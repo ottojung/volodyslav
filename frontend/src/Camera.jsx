@@ -1,5 +1,4 @@
 import React, { useState, useRef, useEffect } from 'react';
-import JSZip from 'jszip';
 
 export default function Camera() {
   const [currentBlob, setCurrentBlob] = useState(null);
@@ -90,38 +89,46 @@ export default function Camera() {
     setMode('camera');
   };
 
-  const handleDone = () => {
+  const handleDone = async () => {
+    // Finalize any preview URL
     if (previewUrl) {
       URL.revokeObjectURL(previewUrl);
       setPreviewUrl(null);
     }
-    setMode('camera');
-    addLastPhoto(currentBlob);
+    // Collect all photos (including current blob if present)
     const allPhotos = currentBlob
       ? [...photos, { blob: currentBlob, name: `photo_${String(photos.length + 1).padStart(2, '0')}.jpg` }]
       : photos;
     if (allPhotos.length === 0) {
-      alert('No photos to download.');
+      alert('No photos to upload.');
       return;
     }
-    const params = new URLSearchParams(window.location.search);
-    const baseName = params.get('name')?.trim() || 'photos';
-    const zipName = baseName + '.zip';
-    const zip = new JSZip();
-    allPhotos.forEach((p) => zip.file(p.name, p.blob));
-    setPhotos([]);
-    zip.generateAsync({ type: 'blob' }).then((zblob) => {
-      const url = URL.createObjectURL(zblob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = zipName;
-      document.body.appendChild(a);
-      a.click();
-      setTimeout(() => {
-        URL.revokeObjectURL(url);
-        a.remove();
-      }, 1000);
+
+    // Prepare form data for upload
+    const formData = new FormData();
+    allPhotos.forEach((p) => {
+      formData.append('photos', p.blob, p.name);
     });
+
+    try {
+      // Hardcoded upload endpoint; adjust as needed
+      const response = await fetch('http://localhost:5000/upload', {
+        method: 'POST',
+        body: formData,
+      });
+      if (!response.ok) {
+        throw new Error(`Server responded with ${response.status}`);
+      }
+      await response.json();
+      alert('Upload successful.');
+      // Clear local state
+      setPhotos([]);
+      setCurrentBlob(null);
+      setMode('camera');
+    } catch (err) {
+      console.error(err);
+      alert('Error uploading photos: ' + err);
+    }
   };
 
   return (
