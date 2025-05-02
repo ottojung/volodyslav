@@ -39,7 +39,7 @@ describe('Camera component', () => {
     // Clean up fetch mock
     delete global.fetch;
   });
-  
+
   // Reset fetch call count before each test
   beforeEach(() => {
     global.fetch.mockClear();
@@ -129,3 +129,4 @@ describe('Camera component', () => {
     alertMock.mockRestore();
   });
 });
+
