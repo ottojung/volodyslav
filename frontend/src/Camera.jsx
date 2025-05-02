@@ -31,12 +31,18 @@ export default function Camera() {
     return () => {
       const stream = video.srcObject;
       if (stream && stream.getTracks) {
-        stream.getTracks().forEach((track) => track.stop());
+        stream.getTracks().forEach(
+          /** @param {MediaStreamTrack} track */
+          (track) => track.stop()
+        );
       }
     };
   }, []);
 
   // Add the current blob to photos list
+  /**
+   * @param {Blob|null} blob
+   */
   const addLastPhoto = (blob) => {
     if (blob) {
       setPhotos((prev) => {
@@ -56,7 +62,9 @@ export default function Camera() {
     canvas.height = video.videoHeight;
     const ctx = canvas.getContext('2d');
     ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-    canvas.toBlob((b) => {
+    canvas.toBlob(
+      /** @param {Blob|null} b */
+      (b) => {
       setCurrentBlob(b);
       setMode('preview');
     }, 'image/jpeg', 1.0);
