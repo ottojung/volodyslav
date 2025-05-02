@@ -179,25 +179,33 @@ export default function Camera() {
         }
       `}</style>
       <div id="camera-container">
-        {mode === 'camera' && (
-          <div className="screen">
-            <video ref={videoRef} autoPlay playsInline />
-            <div className="controls">
-              <button onClick={handleTake} className="btn">Take Photo</button>
-              <button onClick={handleDone} className="btn">Done</button>
-            </div>
+        <div className="screen">
+          <video
+            ref={videoRef}
+            autoPlay
+            playsInline
+            style={{ display: mode === 'camera' ? 'block' : 'none' }}
+          />
+          <img
+            src={previewUrl}
+            alt="Preview"
+            style={{ display: mode === 'preview' ? 'block' : 'none' }}
+          />
+          <div className="controls">
+            {mode === 'camera' ? (
+              <>
+                <button onClick={handleTake} className="btn">Take Photo</button>
+                <button onClick={handleDone} className="btn">Done</button>
+              </>
+            ) : (
+              <>
+                <button onClick={handleRedo} className="btn">Redo</button>
+                <button onClick={handleMore} className="btn">More</button>
+                <button onClick={handleDone} className="btn">Done</button>
+              </>
+            )}
           </div>
-        )}
-        {mode === 'preview' && (
-          <div className="screen">
-            <img src={previewUrl} alt="Preview" />
-            <div className="controls">
-              <button onClick={handleRedo} className="btn">Redo</button>
-              <button onClick={handleMore} className="btn">More</button>
-              <button onClick={handleDone} className="btn">Done</button>
-            </div>
-          </div>
-        )}
+        </div>
       </div>
     </>
   );
