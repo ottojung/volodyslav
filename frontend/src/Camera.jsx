@@ -3,10 +3,10 @@ import JSZip from 'jszip';
 
 export default function Camera() {
   const [currentBlob, setCurrentBlob] = useState(null);
+  const [previewUrl, setPreviewUrl] = useState(null);
   const [photos, setPhotos] = useState([]);
   const [mode, setMode] = useState('camera'); // 'camera' or 'preview'
   const videoRef = useRef(null);
-  const canvasRef = useRef(null);
 
   // Start camera on mount
   useEffect(() => {
@@ -56,31 +56,45 @@ export default function Camera() {
 
   const handleTake = () => {
     const video = videoRef.current;
-    const canvas = canvasRef.current;
-    if (!video || !canvas) return;
+    if (!video) return;
+    const canvas = document.createElement('canvas');
     canvas.width = video.videoWidth;
     canvas.height = video.videoHeight;
     const ctx = canvas.getContext('2d');
     ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-    canvas.toBlob(
-      /** @param {Blob|null} b */
-      (b) => {
-      setCurrentBlob(b);
-      setMode('preview');
+    canvas.toBlob((b) => {
+      if (b) {
+        const url = URL.createObjectURL(b);
+        setPreviewUrl(url);
+        setCurrentBlob(b);
+        setMode('preview');
+      }
     }, 'image/jpeg', 1.0);
   };
 
   const handleMore = () => {
+    if (previewUrl) {
+      URL.revokeObjectURL(previewUrl);
+      setPreviewUrl(null);
+    }
     addLastPhoto(currentBlob);
     setMode('camera');
   };
 
   const handleRedo = () => {
+    if (previewUrl) {
+      URL.revokeObjectURL(previewUrl);
+      setPreviewUrl(null);
+    }
     setCurrentBlob(null);
     setMode('camera');
   };
 
   const handleDone = () => {
+    if (previewUrl) {
+      URL.revokeObjectURL(previewUrl);
+      setPreviewUrl(null);
+    }
     addLastPhoto(currentBlob);
     const allPhotos = currentBlob
       ? [...photos, { blob: currentBlob, name: `photo_${String(photos.length + 1).padStart(2, '0')}.jpg` }]
@@ -133,7 +147,7 @@ export default function Camera() {
           width: 100%;
           overflow: hidden;
         }
-        video, canvas {
+        video, canvas, img {
           width: 100%;
           height: 100%;
           object-fit: cover;
@@ -176,7 +190,7 @@ export default function Camera() {
         )}
         {mode === 'preview' && (
           <div className="screen">
-            <canvas ref={canvasRef} />
+            <img src={previewUrl} alt="Preview" />
             <div className="controls">
               <button onClick={handleRedo} className="btn">Redo</button>
               <button onClick={handleMore} className="btn">More</button>
