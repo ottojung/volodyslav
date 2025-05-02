@@ -91,10 +91,6 @@ export default function Camera() {
   };
 
   const handleDone = () => {
-    if (previewUrl) {
-      URL.revokeObjectURL(previewUrl);
-      setPreviewUrl(null);
-    }
     addLastPhoto(currentBlob);
     const allPhotos = currentBlob
       ? [...photos, { blob: currentBlob, name: `photo_${String(photos.length + 1).padStart(2, '0')}.jpg` }]
