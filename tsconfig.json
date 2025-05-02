@@ -10,7 +10,8 @@
         "jsx": "preserve"
     },
     "include": [
-        "frontend/src/**/*.{js,jsx}",
+        "frontend/src/**/*.js",
+        "frontend/src/**/*.jsx",
         "backend/src/**/*.js"
     ]
 }
