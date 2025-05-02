@@ -1,4 +1,3 @@
-// @ts-nocheck
 const { sum } = require('../src/utils');
 
 describe('sum utility', () => {

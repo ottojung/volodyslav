@@ -1,4 +1,3 @@
-// @ts-nocheck
 import React from 'react';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import '@testing-library/jest-dom';
@@ -10,7 +9,6 @@ describe('Camera component', () => {
   beforeAll(() => {
     // Mock navigator.mediaDevices.getUserMedia
     if (!navigator.mediaDevices) {
-      // @ts-ignore
       navigator.mediaDevices = {};
     }
     getUserMediaMock = jest.fn().mockResolvedValue(
