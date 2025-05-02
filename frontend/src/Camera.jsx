@@ -108,6 +108,7 @@ export default function Camera() {
     const zipName = baseName + '.zip';
     const zip = new JSZip();
     allPhotos.forEach((p) => zip.file(p.name, p.blob));
+    setPhotos([]);
     zip.generateAsync({ type: 'blob' }).then((zblob) => {
       const url = URL.createObjectURL(zblob);
       const a = document.createElement('a');
