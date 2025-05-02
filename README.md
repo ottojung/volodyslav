@@ -55,6 +55,19 @@ Start the backend without auto-reloading:
 npm run start -w backend
 ```
 
+## Running in Production
+
+Start both the frontend and backend for production:
+
+```bash
+npm start
+```
+
+This command will build the frontend and start:
+
+- Frontend: http://localhost:4173
+- Backend: http://localhost:3000
+
 # Licensing
 
 This program is licensed under the AGPL-3.0.

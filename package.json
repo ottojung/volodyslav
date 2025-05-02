@@ -8,6 +8,8 @@
   ],
   "scripts": {
     "dev": "concurrently 'npm run dev -w frontend' 'npm run dev -w backend'",
+    "build": "npm run build -w frontend",
+    "start": "npm run build && concurrently \"npm run start -w backend\" \"npm run serve -w frontend\"",
     "test": "tsc --noEmit && jest",
     "lint": "eslint . --ext .js,.jsx",
     "lint:fix": "eslint . --ext .js,.jsx --fix"
