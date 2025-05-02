@@ -112,9 +112,14 @@ export default function Camera() {
     <>
       <style>{`
         #camera-container {
+          /* fill the entire viewport */
+          position: fixed;
+          top: 0;
+          left: 0;
+          right: 0;
+          bottom: 0;
           margin: 0;
           padding: 0;
-          height: 100vh;
           display: flex;
           flex-direction: column;
           background: #000;
