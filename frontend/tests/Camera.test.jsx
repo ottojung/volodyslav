@@ -28,10 +28,16 @@ describe('Camera component', () => {
     // Define createObjectURL and revokeObjectURL since they may not exist in JSDOM
     URL.createObjectURL = jest.fn(() => 'blob:url');
     URL.revokeObjectURL = jest.fn();
+    // Mock fetch for upload
+    global.fetch = jest.fn().mockResolvedValue({ ok: true, json: () => Promise.resolve({}) });
+    // Suppress error logs from fetch failures
+    jest.spyOn(console, 'error').mockImplementation(() => {});
   });
 
   afterAll(() => {
     jest.restoreAllMocks();
+    // Clean up fetch mock
+    delete global.fetch;
   });
 
   test('initial render shows Take Photo and Done buttons', () => {
@@ -82,7 +88,39 @@ describe('Camera component', () => {
     const alertMock = jest.spyOn(window, 'alert').mockImplementation(() => {});
     render(<Camera />);
     fireEvent.click(screen.getByText('Done'));
-    expect(alertMock).toHaveBeenCalledWith('No photos to download.');
+    expect(alertMock).toHaveBeenCalledWith('No photos to upload.');
+    alertMock.mockRestore();
+  });
+
+  test('Done button with photos uploads and shows success alert', async () => {
+    const alertMock = jest.spyOn(window, 'alert').mockImplementation(() => {});
+    render(<Camera />);
+    await waitFor(() => expect(getUserMediaMock).toHaveBeenCalled());
+    fireEvent.click(screen.getByText('Take Photo'));
+    await waitFor(() => screen.getByAltText('Preview'));
+    fireEvent.click(screen.getByText('Done'));
+    await waitFor(() => expect(global.fetch).toHaveBeenCalledTimes(1));
+    expect(global.fetch).toHaveBeenCalledWith(
+      'http://localhost:5000/upload',
+      expect.objectContaining({ method: 'POST', body: expect.any(FormData) })
+    );
+    expect(alertMock).toHaveBeenCalledWith('Upload successful.');
+    alertMock.mockRestore();
+  });
+
+  test('Done button upload failure alerts error', async () => {
+    // Simulate server error response
+    global.fetch.mockResolvedValueOnce({ ok: false, status: 500 });
+    const alertMock = jest.spyOn(window, 'alert').mockImplementation(() => {});
+    render(<Camera />);
+    await waitFor(() => expect(getUserMediaMock).toHaveBeenCalled());
+    fireEvent.click(screen.getByText('Take Photo'));
+    await waitFor(() => screen.getByAltText('Preview'));
+    fireEvent.click(screen.getByText('Done'));
+    await waitFor(() => expect(global.fetch).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(alertMock).toHaveBeenCalledWith(
+      expect.stringContaining('Error uploading photos')
+    ));
     alertMock.mockRestore();
   });
 });
