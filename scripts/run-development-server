@@ -1,0 +1,9 @@
+#! /bin/sh
+
+set -e
+
+cd -- "$MIYKA_PROJ_PATH"/phone-home/home/my/programs/volodyslav
+
+set -xe
+
+npm run dev
