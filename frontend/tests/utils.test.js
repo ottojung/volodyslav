@@ -1,4 +1,5 @@
-const { sum } = require('./utils');
+// @ts-nocheck
+const { sum } = require('../src/utils');
 
 describe('sum utility', () => {
   test('adds two positive numbers', () => {

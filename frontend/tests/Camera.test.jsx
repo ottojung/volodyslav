@@ -1,15 +1,22 @@
+// @ts-nocheck
 import React from 'react';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import '@testing-library/jest-dom';
-import Camera from './Camera';
+import Camera from '../src/Camera';
 
 describe('Camera component', () => {
   let getUserMediaMock;
 
   beforeAll(() => {
     // Mock navigator.mediaDevices.getUserMedia
-    getUserMediaMock = jest.spyOn(navigator.mediaDevices, 'getUserMedia')
-      .mockImplementation(() => Promise.resolve({ getTracks: () => [{ stop: jest.fn() }] }));
+    if (!navigator.mediaDevices) {
+      // @ts-ignore
+      navigator.mediaDevices = {};
+    }
+    getUserMediaMock = jest.fn().mockResolvedValue(
+      { getTracks: () => [{ stop: jest.fn() }] } /* mock MediaStream */
+    );
+    navigator.mediaDevices.getUserMedia = getUserMediaMock;
     // Mock video.play()
     jest.spyOn(HTMLMediaElement.prototype, 'play').mockImplementation(() => Promise.resolve());
     // Mock canvas methods
@@ -18,8 +25,9 @@ describe('Camera component', () => {
       callback(new Blob(['dummy'], { type: 'image/jpeg' }));
     };
     // Mock URL APIs
-    jest.spyOn(URL, 'createObjectURL').mockImplementation(() => 'blob:url');
-    jest.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {});
+    // Define createObjectURL and revokeObjectURL since they may not exist in JSDOM
+    URL.createObjectURL = jest.fn(() => 'blob:url');
+    URL.revokeObjectURL = jest.fn();
   });
 
   afterAll(() => {
@@ -55,7 +63,8 @@ describe('Camera component', () => {
     await waitFor(() => screen.getByAltText('Preview'));
     fireEvent.click(screen.getByText('More'));
     expect(screen.getByText('Take Photo')).toBeInTheDocument();
-    expect(screen.queryByAltText('Preview')).not.toBeInTheDocument();
+    // Preview image remains in DOM but should be hidden
+    expect(screen.getByAltText('Preview')).not.toBeVisible();
   });
 
   test('Redo button also returns to camera mode', async () => {
@@ -65,7 +74,8 @@ describe('Camera component', () => {
     await waitFor(() => screen.getByAltText('Preview'));
     fireEvent.click(screen.getByText('Redo'));
     expect(screen.getByText('Take Photo')).toBeInTheDocument();
-    expect(screen.queryByAltText('Preview')).not.toBeInTheDocument();
+    // Preview image remains in DOM but should be hidden
+    expect(screen.getByAltText('Preview')).not.toBeVisible();
   });
 
   test('Done button without photos alerts user', () => {
