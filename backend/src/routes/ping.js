@@ -6,7 +6,7 @@ const router = express.Router();
  * @param {import('express').Request} req
  * @param {import('express').Response} res
  */
-router.get('/', (req, res) => {
+router.get('/ping', (req, res) => {
   res.send('pong');
 });
 
