@@ -126,5 +126,33 @@ describe('Camera component', () => {
     ));
     alertMock.mockRestore();
   });
+  test('Done button uploads multiple photos correctly', async () => {
+    const alertMock = jest.spyOn(window, 'alert').mockImplementation(() => {});
+    render(<Camera />);
+    await waitFor(() => expect(getUserMediaMock).toHaveBeenCalled());
+    // Take first photo
+    fireEvent.click(screen.getByText('Take Photo'));
+    await waitFor(() => screen.getByAltText('Preview'));
+    // Add to photos (More) and return to camera
+    fireEvent.click(screen.getByText('More'));
+    expect(screen.getByText('Take Photo')).toBeInTheDocument();
+    // Take second photo
+    fireEvent.click(screen.getByText('Take Photo'));
+    await waitFor(() => screen.getByAltText('Preview'));
+    // Upload all photos
+    fireEvent.click(screen.getByText('Done'));
+    await waitFor(() => expect(global.fetch).toHaveBeenCalledTimes(1));
+    const formData = global.fetch.mock.calls[0][1].body;
+    let photoEntries = [];
+    if (typeof formData.getAll === 'function') {
+      photoEntries = formData.getAll('photos');
+    } else {
+      photoEntries = Array.from(formData.entries())
+        .filter(([name]) => name === 'photos')
+        .map(([, value]) => value);
+    }
+    expect(photoEntries.length).toBe(2);
+    alertMock.mockRestore();
+  });
 });
 
