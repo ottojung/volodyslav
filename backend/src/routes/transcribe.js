@@ -48,8 +48,8 @@ router.get('/transcribe', async (req, res) => {
         // Make the API call
         const resp = await openai.audio.transcriptions.create({
             file: fs.createReadStream(inputPath),
-            model: 'whisper-1',
-            response_format: 'verbose_json',   // you can choose 'json', 'verbose_json', etc.
+            model: 'gpt-4o-transcribe',
+            response_format: 'json',   // you can choose 'json', 'verbose_json', etc.
         });
 
         // Persist full JSON to disk
