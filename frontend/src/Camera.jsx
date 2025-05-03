@@ -95,6 +95,8 @@ export default function Camera() {
       URL.revokeObjectURL(previewUrl);
       setPreviewUrl(null);
     }
+    setMode('camera');
+
     // Collect all photos (including current blob if present)
     const allPhotos = currentBlob
       ? [...photos, { blob: currentBlob, name: `photo_${String(photos.length + 1).padStart(2, '0')}.jpg` }]
@@ -124,7 +126,6 @@ export default function Camera() {
       // Clear local state
       setPhotos([]);
       setCurrentBlob(null);
-      setMode('camera');
     } catch (err) {
       console.error(err);
       alert('Error uploading photos: ' + err);
