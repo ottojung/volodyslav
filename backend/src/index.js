@@ -4,6 +4,7 @@ const rootRouter = require('./routes/root');
 const uploadRouter = require('./routes/upload');
 const pingRouter = require('./routes/ping');
 const staticRouter = require('./routes/static');
+const transcribeRouter = require('./routes/transcribe');
 
 const app = express();
 
@@ -11,6 +12,7 @@ const app = express();
 app.use('/api', uploadRouter);
 app.use('/api', rootRouter);
 app.use('/api', pingRouter);
+app.use('/api', transcribeRouter);
 app.use('/', staticRouter);
 
 // Start server if run directly
