@@ -21,11 +21,7 @@ function myRoot() {
 }
 
 function myServerPort() {
-    try {
-        return parseInt(getEnv("MY_SERVER_PORT"));
-    } catch {
-        return 29932;
-    }
+    return parseInt(getEnv("MY_SERVER_PORT"));
 }
 
 module.exports = { openaiAPIKey, myRoot, myServerPort };
