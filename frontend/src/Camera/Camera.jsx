@@ -86,6 +86,7 @@ export default function Camera() {
         const idx = prev.length + 1;
         const index = String(idx).padStart(2, '0');
         const name = `${prefix}_${index}.jpeg`;
+        return [...prev, { blob, name }];
       });
       setCurrentBlob(null);
     }
