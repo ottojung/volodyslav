@@ -1,10 +1,8 @@
 #! /bin/sh
 
-set -e
+set -ex
 
 cd -- "${0%/*}"/..
-
-set -e
 
 MAYBE_PONG=$(curl --silent "http://localhost:29932/api/ping" 2>/dev/null || true)
 
