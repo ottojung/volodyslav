@@ -40,7 +40,7 @@ export default function Camera() {
       })
       .catch(
         /**
-         * @param {object} err
+         * @param {unknown} err
          */
         (err) => {
         let description;
