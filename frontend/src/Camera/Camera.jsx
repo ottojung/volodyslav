@@ -13,7 +13,13 @@ import {
  * @typedef {{ blob: Blob; name: string }} Photo
  */
 
+
 export default function Camera() {
+  const prefix = useMemo(() => {
+    const params = new URLSearchParams(window.location.search);
+    return params.get('prefix')?.trim() || 'photo';
+  }, []);
+
   const [currentBlob, setCurrentBlob] = useState(/** @type {Blob|null} */ (null));
   const [previewUrl, setPreviewUrl] = useState(/** @type {string|undefined} */ (undefined));
   const [photos, setPhotos] = useState(/** @type {Photo[]} */ ([]));
@@ -79,7 +85,7 @@ export default function Camera() {
       setPhotos((prev) => {
         const idx = prev.length + 1;
         const index = String(idx).padStart(2, '0');
-        return [...prev, { blob, name: `photo_${index}.jpg` }];
+        const name = `${prefix}_${index}.jpeg`;
       });
       setCurrentBlob(null);
     }
