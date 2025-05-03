@@ -71,31 +71,26 @@ export default function Camera() {
         }, 'image/jpeg', 1.0);
     };
 
-    const handleMore = () => {
+    const resetCamera = () => {
         if (previewUrl) {
             URL.revokeObjectURL(previewUrl);
             setPreviewUrl(null);
         }
-        addLastPhoto(currentBlob);
         setMode('camera');
+    };
+
+    const handleMore = () => {
+        addLastPhoto(currentBlob);
+        resetCamera();
     };
 
     const handleRedo = () => {
-        if (previewUrl) {
-            URL.revokeObjectURL(previewUrl);
-            setPreviewUrl(null);
-        }
         setCurrentBlob(null);
-        setMode('camera');
+        resetCamera();
     };
 
     const handleDone = async () => {
-        // Finalize any preview URL
-        if (previewUrl) {
-            URL.revokeObjectURL(previewUrl);
-            setPreviewUrl(null);
-        }
-        setMode('camera');
+        resetCamera();
 
         // Collect all photos (including current blob if present)
         const allPhotos = currentBlob
