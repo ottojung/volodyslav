@@ -13,6 +13,6 @@ if (!fs.existsSync(uploadDir)) {
 }
 
 // Server listening port
-const port = myServerPort() || 29932;
+const port = myServerPort();
 
 module.exports = { uploadDir, port };
