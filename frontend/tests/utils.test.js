@@ -1,4 +1,5 @@
-const { sum } = require('../src/utils');
+
+import { sum } from '../src/utils';
 
 describe('sum utility', () => {
   test('adds two positive numbers', () => {
