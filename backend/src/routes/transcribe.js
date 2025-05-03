@@ -20,7 +20,7 @@ router.use(express.json());
 /**
  * Query params:
  *    ?input=/absolute/path/to/file.wav
- *    &output=transcript.txt
+ *    &output=transcript.json
  */
 router.get('/transcribe', async (req, res) => {
     try {
@@ -52,18 +52,14 @@ router.get('/transcribe', async (req, res) => {
             response_format: 'verbose_json',   // you can choose 'json', 'verbose_json', etc.
         });
 
-        // In v4 the returned object has a .text property
-        const text = resp.text;
-
-        // Write out the transcript
-        fs.writeFileSync(outputPath, text, 'utf8');
-
-        return res.json({
-            success: true,
+        // Persist full JSON to disk
+        fs.writeFileSync(
             outputPath,
-            text: text.slice(0, 200) + (text.length > 200 ? '…' : ''), // sample
-            length: text.length,
-        });
+            JSON.stringify(resp, null, 2),
+            'utf8'
+        );
+
+        return res.json({ success: true });
     } catch (err) {
         console.error('Transcription error:', err);
         return res
