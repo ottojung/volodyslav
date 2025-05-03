@@ -1,7 +1,9 @@
-// Set up required environment variables before loading the app
-process.env.MY_ROOT = __dirname;
-process.env.MY_SERVER_PORT = '0';
-process.env.OPENAI_API_KEY = 'test-key';
+// Mock environment exports to avoid real env dependencies
+jest.mock('../src/environment', () => ({
+  openaiAPIKey: jest.fn().mockReturnValue('test-key'),
+  myRoot: jest.fn().mockReturnValue(__dirname),
+  myServerPort: jest.fn().mockReturnValue(0),
+}));
 const request = require('supertest');
 const fs = require('fs');
 const path = require('path');

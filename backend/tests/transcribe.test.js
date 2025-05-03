@@ -1,10 +1,15 @@
 const path = require('path');
 const fs = require('fs');
 
-// Set up environment variables before loading the app
-process.env.MY_ROOT = path.join(__dirname, 'tmp');
-process.env.MY_SERVER_PORT = '0';
-process.env.OPENAI_API_KEY = 'test-key';
+// Mock environment exports to avoid real env dependencies
+jest.mock('../src/environment', () => {
+  const path = require('path');
+  return {
+    openaiAPIKey: jest.fn().mockReturnValue('test-key'),
+    myRoot: jest.fn().mockReturnValue(path.join(__dirname, 'tmp')),
+    myServerPort: jest.fn().mockReturnValue(0),
+  };
+});
 
 // Mock the OpenAI client to avoid real API calls
 jest.mock('openai', () => {
