@@ -12,6 +12,8 @@ const router = express.Router();
 // ensure we can parse JSON bodies
 router.use(express.json());
 
+const TRANSCRIBER_MODEL = 'gpt-4o-mini-transcribe';
+
 /**
  * Query params:
  *    ?input=/absolute/path/to/file.wav
@@ -41,16 +43,25 @@ router.get('/transcribe', async (req, res) => {
         }
 
         // Make the API call
-        const resp = await openai.audio.transcriptions.create({
+        const response_text = await openai.audio.transcriptions.create({
             file: fs.createReadStream(inputPath),
-            model: 'gpt-4o-mini-transcribe',
-            response_format: 'json',
+            model: TRANSCRIBER_MODEL,
+            response_format: 'text',
         });
+
+        // Wrap into an abstracted structure
+        const wrapped = {
+            text: response_text,
+            transcriber: {
+                name: TRANSCRIBER_MODEL,
+                creator: "OpenAI",
+            },
+        };
 
         // Persist full JSON to disk
         fs.writeFileSync(
             outputPath,
-            JSON.stringify(resp, null, 2),
+            JSON.stringify(wrapped, null, 2),
             'utf8'
         );
 
