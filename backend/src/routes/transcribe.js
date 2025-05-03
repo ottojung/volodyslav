@@ -45,7 +45,7 @@ router.get('/transcribe', async (req, res) => {
                 .json({ success: false, error: 'Input file not found' });
         }
 
-        // Call Whisper (v4 SDK)
+        // Make the API call
         const resp = await openai.audio.transcriptions.create({
             file: fs.createReadStream(inputPath),
             model: 'gpt-4o-transcribe',
