@@ -11,7 +11,7 @@ jest.mock('@chakra-ui/react', () => {
     useToast: () => mockToast,
   };
 });
-import Camera from '../src/Camera';
+import Camera from '../src/Camera/Camera';
 
 describe('Camera component', () => {
   let getUserMediaMock;
