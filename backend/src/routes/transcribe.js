@@ -62,9 +62,17 @@ router.get('/transcribe', async (req, res) => {
         return res.json({ success: true });
     } catch (err) {
         console.error('Transcription error:', err);
+
+        let message;
+        if (err instanceof Error) {
+            message = err.message;
+        } else {
+            message = String(err);
+        }
+
         return res
             .status(500)
-            .json({ success: false, error: err.message || 'Transcription failed' });
+            .json({ success: false, error: message || 'Uknown error' });
     }
 });
 
