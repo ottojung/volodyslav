@@ -40,12 +40,18 @@ export default function Camera() {
       })
       .catch(
         /**
-         * @param {any} err
+         * @param {object} err
          */
         (err) => {
+        let description;
+        if (err instanceof Error) {
+          description = String(err?.message);
+        } else {
+          description = String(err);
+        }
         toast({
           title: 'Error accessing camera',
-          description: err?.message || String(err),
+          description: description,
           status: 'error',
           duration: null,
           isClosable: true,
@@ -156,11 +162,17 @@ export default function Camera() {
       });
       setPhotos([]);
       setCurrentBlob(null);
-    } catch (/** @type {any} */ err) {
+    } catch (/** @type {unknown} */ err) {
       console.error(err);
+      let description;
+      if (err instanceof Error) {
+        description = String(err?.message);
+      } else {
+        description = String(err);
+      }
       toast({
         title: 'Error uploading photos',
-        description: err?.message || String(err),
+        description: description,
         status: 'error',
         duration: null,
         isClosable: true,
