@@ -4,7 +4,6 @@ const path = require('path');
 const { OpenAI } = require('openai');
 const { uploadDir: storageDir } = require('../config');
 const { openaiAPIKey } = require('../environment');
-
 // Instantiate client
 const openai = new OpenAI({ apiKey: openaiAPIKey() });
 

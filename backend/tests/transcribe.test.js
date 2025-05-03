@@ -25,9 +25,12 @@ const { uploadDir: storageDir } = require('../src/config');
 // Ensure a clean test directory
 beforeAll(() => {
   // Clean any pre-existing tmp directory
-  if (fs.existsSync(path.join(__dirname, 'tmp'))) {
-    fs.rmSync(path.join(__dirname, 'tmp'), { recursive: true, force: true });
+  const tmpRoot = path.join(__dirname, 'tmp');
+  if (fs.existsSync(tmpRoot)) {
+    fs.rmSync(tmpRoot, { recursive: true, force: true });
   }
+  // Ensure upload directory exists
+  fs.mkdirSync(storageDir, { recursive: true });
 });
 
 afterAll(() => {
