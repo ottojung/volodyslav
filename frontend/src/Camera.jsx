@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Box, Flex, Button, Image } from '@chakra-ui/react';
+import { Box, Flex, Button, Image, useToast } from '@chakra-ui/react';
 
 export default function Camera() {
     const [currentBlob, setCurrentBlob] = useState(null);
@@ -7,6 +7,7 @@ export default function Camera() {
     const [photos, setPhotos] = useState([]);
     const [mode, setMode] = useState('camera'); // 'camera' or 'preview'
     const videoRef = useRef(null);
+    const toast = useToast();
 
     // Start camera on mount
     useEffect(() => {
@@ -26,7 +27,14 @@ export default function Camera() {
                 video.play();
             })
             .catch((err) => {
-                alert('Error accessing camera: ' + err);
+                toast({
+                    title: 'Error accessing camera',
+                    description: err?.message || String(err),
+                    status: 'error',
+                    duration: null,
+                    isClosable: true,
+                    position: 'top',
+                });
             });
         return () => {
             const stream = video.srcObject;
@@ -98,7 +106,13 @@ export default function Camera() {
               ? [...photos, { blob: currentBlob, name: `photo_${String(photos.length + 1).padStart(2, '0')}.jpg` }]
               : photos;
         if (allPhotos.length === 0) {
-            alert('No photos to upload.');
+            toast({
+                title: 'No photos to upload',
+                status: 'error',
+                duration: null,
+                isClosable: true,
+                position: 'top',
+            });
             return;
         }
 
@@ -118,13 +132,26 @@ export default function Camera() {
                 throw new Error(`Server responded with ${response.status}`);
             }
             await response.json();
-            alert('Upload successful.');
+            toast({
+                title: 'Upload successful',
+                status: 'success',
+                duration: 3000,
+                isClosable: true,
+                position: 'top',
+            });
             // Clear local state
             setPhotos([]);
             setCurrentBlob(null);
         } catch (err) {
             console.error(err);
-            alert('Error uploading photos: ' + err);
+            toast({
+                title: 'Error uploading photos',
+                description: err?.message || String(err),
+                status: 'error',
+                duration: null,
+                isClosable: true,
+                position: 'top',
+            });
         }
     };
 
