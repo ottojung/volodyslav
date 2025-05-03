@@ -8,7 +8,7 @@ const staticRouter = require('./routes/static');
 const app = express();
 
 // Mount upload and API routers
-app.use('/', pingRouter);
+app.use('/', staticRouter);
 app.use('/api', uploadRouter);
 app.use('/api', rootRouter);
 app.use('/api', pingRouter);
