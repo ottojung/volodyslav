@@ -3,6 +3,7 @@ const { port } = require('./config');
 const path = require('path');
 const rootRouter = require('./routes/root');
 const uploadRouter = require('./routes/upload');
+const pingRouter = require('./routes/ping');
 
 const app = express();
 
@@ -15,6 +16,7 @@ if (process.env.NODE_ENV === 'production') {
 // Mount upload and API routers
 app.use('/', uploadRouter);
 app.use('/', rootRouter);
+app.use('/', pingRouter);
 
 // Serve index.html for any unknown route in production (for SPA)
 if (process.env.NODE_ENV === 'production') {
