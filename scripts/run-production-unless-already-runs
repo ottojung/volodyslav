@@ -1,0 +1,17 @@
+#! /bin/sh
+
+set -e
+
+cd -- "${0%/*}"/..
+
+set -e
+
+MAYBE_PONG=$(curl --silent "http://localhost:29932/api/ping" 2>/dev/null || true)
+
+if test "$MAYBE_PONG" = "pong"
+then
+    echo 'Server already running.' 1>&2
+    exit 0
+fi
+
+npm run start -w backend
