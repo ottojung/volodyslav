@@ -8,10 +8,10 @@ const staticRouter = require('./routes/static');
 const app = express();
 
 // Mount upload and API routers
-app.use('/', staticRouter);
 app.use('/api', uploadRouter);
 app.use('/api', rootRouter);
 app.use('/api', pingRouter);
+app.use('/', staticRouter);
 
 // Start server if run directly
 if (require.main === module) {
