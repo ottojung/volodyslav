@@ -5,7 +5,12 @@ import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import Camera from './Camera/Camera';
 import { ChakraProvider } from '@chakra-ui/react';
 
-ReactDOM.createRoot(document.getElementById('root')).render(
+const root = document.getElementById('root');
+if (root === null) {
+    throw new Error("Could not find root node.");
+}
+
+ReactDOM.createRoot(root).render(
   <React.StrictMode>
     <ChakraProvider>
       <BrowserRouter>

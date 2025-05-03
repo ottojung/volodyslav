@@ -9,11 +9,16 @@ import {
   buttonProps,
 } from './Camera.styles';
 
+/**
+ * @typedef {{ blob: Blob; name: string }} Photo
+ */
+
 export default function Camera() {
-  const [currentBlob, setCurrentBlob] = useState(null);
-  const [previewUrl, setPreviewUrl] = useState(null);
-  const [photos, setPhotos] = useState([]);
+  const [currentBlob, setCurrentBlob] = useState(/** @type {Blob|null} */ (null));
+  const [previewUrl, setPreviewUrl] = useState(/** @type {string|undefined} */ (undefined));
+  const [photos, setPhotos] = useState(/** @type {Photo[]} */ ([]));
   const [mode, setMode] = useState('camera'); // 'camera' or 'preview'
+  /** @type {import('react').MutableRefObject<HTMLVideoElement|null>} */
   const videoRef = useRef(null);
   const toast = useToast();
 
@@ -33,7 +38,11 @@ export default function Camera() {
         video.srcObject = stream;
         video.play();
       })
-      .catch((err) => {
+      .catch(
+        /**
+         * @param {any} err
+         */
+        (err) => {
         toast({
           title: 'Error accessing camera',
           description: err?.message || String(err),
@@ -45,7 +54,7 @@ export default function Camera() {
       });
     return () => {
       const stream = video.srcObject;
-      if (stream && stream.getTracks) {
+      if (stream instanceof MediaStream) {
         stream.getTracks().forEach(
           /** @param {MediaStreamTrack} track */
           (track) => track.stop()
@@ -76,6 +85,7 @@ export default function Camera() {
     canvas.width = video.videoWidth;
     canvas.height = video.videoHeight;
     const ctx = canvas.getContext('2d');
+    if (!ctx) return;
     ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
     canvas.toBlob((b) => {
       if (b) {
@@ -90,7 +100,7 @@ export default function Camera() {
   const resetCamera = () => {
     if (previewUrl) {
       URL.revokeObjectURL(previewUrl);
-      setPreviewUrl(null);
+      setPreviewUrl(undefined);
     }
     setMode('camera');
   };
@@ -145,7 +155,7 @@ export default function Camera() {
       });
       setPhotos([]);
       setCurrentBlob(null);
-    } catch (err) {
+    } catch (/** @type {any} */ err) {
       console.error(err);
       toast({
         title: 'Error uploading photos',
