@@ -7,18 +7,18 @@ const pingRouter = require('./routes/ping');
 
 const app = express();
 
-// Serve frontend static assets.
-const staticPath = path.join(__dirname, '..', 'frontend', 'dist');
-app.use(express.static(staticPath));
 
 // Mount upload and API routers
-app.use('/', uploadRouter);
-app.use('/', rootRouter);
-app.use('/', pingRouter);
+app.use('/api', uploadRouter);
+app.use('/api', rootRouter);
+app.use('/api', pingRouter);
 
-// Serve error.html for any unknown route in production (for SPA)
+// Serve frontend static assets.
+// IMPORTANT: Do not check for any production flags.
+const staticPath = path.join(__dirname, '..', '..', 'frontend', 'dist');
+app.use(express.static(staticPath));
 app.get('*', (req, res) => {
-    res.sendFile(path.join(__dirname, '..', 'frontend', 'dist', 'error.html'));
+    res.sendFile(path.join(staticPath, 'index.html'));
 });
 
 // Start server if run directly

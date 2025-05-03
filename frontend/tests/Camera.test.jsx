@@ -121,7 +121,7 @@ describe('Camera component', () => {
     fireEvent.click(screen.getByText('Done'));
     await waitFor(() => expect(global.fetch).toHaveBeenCalledTimes(1));
     expect(global.fetch).toHaveBeenCalledWith(
-      '/upload',
+      '/api/upload',
       expect.objectContaining({ method: 'POST', body: expect.any(FormData) })
     );
     await waitFor(() => {

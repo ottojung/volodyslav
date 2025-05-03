@@ -1,9 +1,9 @@
 const request = require('supertest');
 const app = require('../src/index');
 
-describe('GET /', () => {
+describe('GET /api', () => {
   it('responds with Hello World!', async () => {
-    const res = await request(app).get('/');
+    const res = await request(app).get('/api');
     expect(res.statusCode).toBe(200);
     expect(res.text).toBe('Hello World!');
   });

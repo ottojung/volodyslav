@@ -7,7 +7,7 @@ export default defineConfig({
   server: {
     proxy: {
        // Proxy upload API calls to backend.
-      '/upload': {
+      '/api/upload': {
         target: 'http://localhost:29932',
         changeOrigin: true,
       },

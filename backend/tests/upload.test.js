@@ -4,7 +4,7 @@ const path = require('path');
 const app = require('../src/index');
 const { uploadDir } = require('../src/config');
 
-describe('POST /upload', () => {
+describe('POST /api/upload', () => {
   // Clean up uploaded files after each test
   afterEach(() => {
     if (fs.existsSync(uploadDir)) {
@@ -17,7 +17,7 @@ describe('POST /upload', () => {
 
   it('uploads a single file successfully', async () => {
     const res = await request(app)
-      .post('/upload')
+      .post('/api/upload')
       .attach('photos', Buffer.from('test content'), 'test1.jpg');
 
     expect(res.statusCode).toBe(200);
@@ -27,7 +27,7 @@ describe('POST /upload', () => {
 
   it('uploads multiple files successfully', async () => {
     const res = await request(app)
-      .post('/upload')
+      .post('/api/upload')
       .attach('photos', Buffer.from('first'), 'first.jpg')
       .attach('photos', Buffer.from('second'), 'second.jpg');
 
@@ -38,7 +38,7 @@ describe('POST /upload', () => {
   });
 
   it('responds with empty files array when no files are sent', async () => {
-    const res = await request(app).post('/upload');
+    const res = await request(app).post('/api/upload');
 
     expect(res.statusCode).toBe(200);
     expect(res.body).toEqual({ success: true, files: [] });
