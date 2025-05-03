@@ -3,6 +3,7 @@ const fs = require('fs');
 
 // Set up environment variables before loading the app
 process.env.MY_ROOT = path.join(__dirname, 'tmp');
+process.env.MY_SERVER_PORT = '0';
 process.env.OPENAI_API_KEY = 'test-key';
 
 // Mock the OpenAI client to avoid real API calls
