@@ -45,7 +45,7 @@ export default function Camera() {
         (err) => {
         let description;
         if (err instanceof Error) {
-          description = String(err?.message);
+          description = err.message;
         } else {
           description = String(err);
         }
@@ -166,7 +166,7 @@ export default function Camera() {
       console.error(err);
       let description;
       if (err instanceof Error) {
-        description = String(err?.message);
+        description = err.message;
       } else {
         description = String(err);
       }
