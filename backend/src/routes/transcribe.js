@@ -49,8 +49,7 @@ router.get('/transcribe', async (req, res) => {
         const resp = await openai.audio.transcriptions.create({
             file: fs.createReadStream(inputPath),
             model: 'gpt-4o-mini-transcribe',
-            response_format: 'json',   // you can choose 'json', 'verbose_json', etc.
-            temperature: 0.99,
+            response_format: 'json',
         });
 
         // Persist full JSON to disk
