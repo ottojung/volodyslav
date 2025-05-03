@@ -1,8 +1,16 @@
 const path = require('path');
 const fs = require('fs');
 
-// Directory where uploaded photos are stored
-const uploadDir = path.join(__dirname, '..', 'uploads');
+
+const myroot = process.env.MY_ROOT;
+if (myroot === undefined) {
+   throw new Error("Must defined $MY_ROOT evironment variable.");
+}
+
+
+// Directory where uploaded photos are stored.
+const uploadDir = path.join(myroot, 'wd', 'volodyslav', 'uploads');
+
 // Ensure upload directory exists
 if (!fs.existsSync(uploadDir)) {
   fs.mkdirSync(uploadDir, { recursive: true });
