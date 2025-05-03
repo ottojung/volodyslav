@@ -54,7 +54,8 @@ export default function Camera() {
       });
     return () => {
       const stream = video.srcObject;
-      if (stream instanceof MediaStream) {
+      // Stop all tracks if available
+      if (stream && 'getTracks' in stream) {
         stream.getTracks().forEach(
           /** @param {MediaStreamTrack} track */
           (track) => track.stop()
