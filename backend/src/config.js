@@ -4,7 +4,7 @@ const fs = require('fs');
 
 const myroot = process.env.MY_ROOT;
 if (myroot === undefined) {
-   throw new Error("Must defined $MY_ROOT evironment variable.");
+   throw new Error("Must define $MY_ROOT evironment variable.");
 }
 
 
