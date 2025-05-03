@@ -1,6 +1,16 @@
 import React from 'react';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import '@testing-library/jest-dom';
+// Mock Chakra UI useToast
+const mockToast = jest.fn();
+jest.mock('@chakra-ui/react', () => {
+  const actual = jest.requireActual('@chakra-ui/react');
+  return {
+    __esModule: true,
+    ...actual,
+    useToast: () => mockToast,
+  };
+});
 import Camera from '../src/Camera';
 
 describe('Camera component', () => {
@@ -87,16 +97,23 @@ describe('Camera component', () => {
     expect(screen.getByAltText('Preview')).not.toBeVisible();
   });
 
-  test('Done button without photos alerts user', () => {
-    const alertMock = jest.spyOn(window, 'alert').mockImplementation(() => {});
+  test('Done button without photos shows error toast', async () => {
     render(<Camera />);
     fireEvent.click(screen.getByText('Done'));
-    expect(alertMock).toHaveBeenCalledWith('No photos to upload.');
-    alertMock.mockRestore();
+    await waitFor(() => {
+      expect(mockToast).toHaveBeenCalledWith(
+        expect.objectContaining({
+          title: 'No photos to upload',
+          status: 'error',
+          duration: 3000,
+          isClosable: true,
+          position: 'top',
+        })
+      );
+    });
   });
 
-  test('Done button with photos uploads and shows success alert', async () => {
-    const alertMock = jest.spyOn(window, 'alert').mockImplementation(() => {});
+  test('Done button with photos uploads and shows success toast', async () => {
     render(<Camera />);
     await waitFor(() => expect(getUserMediaMock).toHaveBeenCalled());
     fireEvent.click(screen.getByText('Take Photo'));
@@ -107,35 +124,50 @@ describe('Camera component', () => {
       '/upload',
       expect.objectContaining({ method: 'POST', body: expect.any(FormData) })
     );
-    expect(alertMock).toHaveBeenCalledWith('Upload successful.');
-    alertMock.mockRestore();
+    await waitFor(() => {
+      expect(mockToast).toHaveBeenCalledWith(
+        expect.objectContaining({
+          title: 'Upload successful',
+          status: 'success',
+          duration: 3000,
+          isClosable: true,
+          position: 'top',
+        })
+      );
+    });
   });
 
-  test('Done button upload failure alerts error', async () => {
+  test('Done button upload failure shows error toast', async () => {
     // Simulate server error response
-    global.fetch.mockResolvedValueOnce({ ok: false, status: 500 });
-    const alertMock = jest.spyOn(window, 'alert').mockImplementation(() => {});
+    global.fetch.mockResolvedValueOnce({ ok: false, status: 500, json: () => Promise.resolve({}) });
     render(<Camera />);
     await waitFor(() => expect(getUserMediaMock).toHaveBeenCalled());
     fireEvent.click(screen.getByText('Take Photo'));
     await waitFor(() => screen.getByAltText('Preview'));
     fireEvent.click(screen.getByText('Done'));
     await waitFor(() => expect(global.fetch).toHaveBeenCalledTimes(1));
-    await waitFor(() => expect(alertMock).toHaveBeenCalledWith(
-      expect.stringContaining('Error uploading photos')
-    ));
-    alertMock.mockRestore();
+    await waitFor(() => {
+      expect(mockToast).toHaveBeenCalledWith(
+        expect.objectContaining({
+          title: 'Error uploading photos',
+          description: 'Server responded with 500',
+          status: 'error',
+          duration: null,
+          isClosable: true,
+          position: 'top',
+        })
+      );
+    });
   });
-  test('Done button uploads multiple photos correctly', async () => {
-    const alertMock = jest.spyOn(window, 'alert').mockImplementation(() => {});
+  test('Done button uploads multiple photos correctly and shows success toast', async () => {
     render(<Camera />);
     await waitFor(() => expect(getUserMediaMock).toHaveBeenCalled());
     // Take first photo
     fireEvent.click(screen.getByText('Take Photo'));
     await waitFor(() => screen.getByAltText('Preview'));
-    // Add to photos (More) and return to camera
+    // Add to photos (More) and return to camera view
     fireEvent.click(screen.getByText('More'));
-    expect(screen.getByText('Take Photo')).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByText('Take Photo')).toBeInTheDocument());
     // Take second photo
     fireEvent.click(screen.getByText('Take Photo'));
     await waitFor(() => screen.getByAltText('Preview'));
@@ -152,7 +184,17 @@ describe('Camera component', () => {
         .map(([, value]) => value);
     }
     expect(photoEntries.length).toBe(2);
-    alertMock.mockRestore();
+    await waitFor(() => {
+      expect(mockToast).toHaveBeenCalledWith(
+        expect.objectContaining({
+          title: 'Upload successful',
+          status: 'success',
+          duration: 3000,
+          isClosable: true,
+          position: 'top',
+        })
+      );
+    });
   });
 });
 

@@ -109,7 +109,7 @@ export default function Camera() {
             toast({
                 title: 'No photos to upload',
                 status: 'error',
-                duration: 3000,
+                duration: null,
                 isClosable: true,
                 position: 'top',
             });
