@@ -13,7 +13,7 @@ function getEnv(key) {
 }
 
 function openaiAPIKey() {
-    return getEnv("OPENAI_API_KEY");
+    return getEnv("VOLODYSLAV_OPENAI_API_KEY");
 }
 
 function myRoot() {
