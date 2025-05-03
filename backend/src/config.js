@@ -1,14 +1,10 @@
 const path = require('path');
 const fs = require('fs');
-
-
-const myroot = process.env.MY_ROOT;
-if (myroot === undefined) {
-   throw new Error("Must define $MY_ROOT evironment variable.");
-}
+const { myRoot, myServerPort } = require('./environment');
 
 
 // Directory where uploaded photos are stored.
+const myroot = myRoot();
 const uploadDir = path.join(myroot, 'wd', 'volodyslav', 'uploads');
 
 // Ensure upload directory exists
@@ -17,6 +13,6 @@ if (!fs.existsSync(uploadDir)) {
 }
 
 // Server listening port
-const port = process.env.PORT || 29932;
+const port = myServerPort() || 29932;
 
 module.exports = { uploadDir, port };
