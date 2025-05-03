@@ -50,6 +50,7 @@ router.get('/transcribe', async (req, res) => {
             file: fs.createReadStream(inputPath),
             model: 'whisper-1',
             response_format: 'verbose_json',   // you can choose 'json', 'verbose_json', etc.
+            language: 'english',
         });
 
         // Persist full JSON to disk
