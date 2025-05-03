@@ -1,0 +1,11 @@
+#! /bin/sh
+
+set -e
+
+cd -- "${0%/*}"/..
+
+set -xe
+
+git pull origin master
+npm install
+npm start
