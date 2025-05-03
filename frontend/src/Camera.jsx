@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
+import { Box, Flex, Button, Image } from '@chakra-ui/react';
 
 export default function Camera() {
     const [currentBlob, setCurrentBlob] = useState(null);
@@ -128,90 +129,117 @@ export default function Camera() {
     };
 
     return (
-        <>
-            <style>{`
-        #camera-container {
-          /* fill the entire viewport */
-          position: fixed;
-          top: 0;
-          left: 0;
-          right: 0;
-          bottom: 0;
-          margin: 0;
-          padding: 0;
-          display: flex;
-          flex-direction: column;
-          background: #000;
-          color: #fff;
-          font-family: sans-serif;
-          overflow: hidden;
-        }
-        .screen {
-          position: relative;
-          flex: 1;
-          width: 100%;
-          overflow: hidden;
-        }
-        video, canvas, img {
-          width: 100%;
-          height: 100%;
-          object-fit: cover;
-          background: #000;
-        }
-        .controls {
-          position: absolute;
-          bottom: 20px;
-          left: 50%;
-          transform: translateX(-50%);
-          display: flex;
-          gap: 0.5em;
-          padding: 0 0.5em;
-          box-sizing: border-box;
-          flex-wrap: wrap;
-        }
-        .controls .btn {
-          position: static;
-          margin: 0;
-          transform: none;
-        }
-        .btn {
-          padding: 0.8em 1.6em;
-          font-size: 1rem;
-          border: none;
-          border-radius: 5px;
-          background: rgba(255,255,255,0.2);
-          color: #fff;
-        }
-      `}</style>
-            <div id="camera-container">
-                <div className="screen">
-                    <video
-                        ref={videoRef}
-                        autoPlay
-                        playsInline
-                        style={{ display: mode === 'camera' ? 'block' : 'none' }}
-                    />
-                    <img
-                        src={previewUrl}
-                        alt="Preview"
-                        style={{ display: mode === 'preview' ? 'block' : 'none' }}
-                    />
-                    <div className="controls">
-                        {mode === 'camera' ? (
-                            <>
-                                <button onClick={handleTake} className="btn">Take Photo</button>
-                                <button onClick={handleDone} className="btn">Done</button>
-                            </>
-                        ) : (
-                            <>
-                                <button onClick={handleRedo} className="btn">Redo</button>
-                                <button onClick={handleMore} className="btn">More</button>
-                                <button onClick={handleDone} className="btn">Done</button>
-                            </>
-                        )}
-                    </div>
-                </div>
-            </div>
-        </>
+        <Box
+            as="section"
+            position="fixed"
+            top={0}
+            left={0}
+            right={0}
+            bottom={0}
+            m={0}
+            p={0}
+            display="flex"
+            flexDirection="column"
+            bg="black"
+            color="white"
+            fontFamily="sans-serif"
+            overflow="hidden"
+        >
+            <Box position="relative" flex={1} w="100%" overflow="hidden">
+                <Box
+                    as="video"
+                    ref={videoRef}
+                    autoPlay
+                    playsInline
+                    display={mode === 'camera' ? 'block' : 'none'}
+                    w="100%"
+                    h="100%"
+                    objectFit="cover"
+                    bg="black"
+                />
+                <Image
+                    src={previewUrl}
+                    alt="Preview"
+                    display={mode === 'preview' ? 'block' : 'none'}
+                    w="100%"
+                    h="100%"
+                    objectFit="cover"
+                    bg="black"
+                />
+                <Flex
+                    position="absolute"
+                    bottom="20px"
+                    left="50%"
+                    transform="translateX(-50%)"
+                    gap="0.5em"
+                    px="0.5em"
+                    flexWrap="wrap"
+                    boxSizing="border-box"
+                >
+                    {mode === 'camera' ? (
+                        <>
+                            <Button
+                                onClick={handleTake}
+                                bg="rgba(255,255,255,0.2)"
+                                color="white"
+                                borderRadius="5px"
+                                px="1.6em"
+                                py="0.8em"
+                                fontSize="1rem"
+                            >
+                                Take Photo
+                            </Button>
+                            <Button
+                                onClick={handleDone}
+                                bg="rgba(255,255,255,0.2)"
+                                color="white"
+                                borderRadius="5px"
+                                px="1.6em"
+                                py="0.8em"
+                                fontSize="1rem"
+                            >
+                                Done
+                            </Button>
+                        </>
+                    ) : (
+                        <>
+                            <Button
+                                onClick={handleRedo}
+                                bg="rgba(255,255,255,0.2)"
+                                color="white"
+                                borderRadius="5px"
+                                px="1.6em"
+                                py="0.8em"
+                                fontSize="1rem"
+                            >
+                                Redo
+                            </Button>
+                            <Button
+                                onClick={handleMore}
+                                bg="rgba(255,255,255,0.2)"
+                                color="white"
+                                borderRadius="5px"
+                                px="1.6em"
+                                py="0.8em"
+                                fontSize="1rem"
+                            >
+                                More
+                            </Button>
+                            <Button
+                                onClick={handleDone}
+                                bg="rgba(255,255,255,0.2)"
+                                color="white"
+                                borderRadius="5px"
+                                px="1.6em"
+                                py="0.8em"
+                                fontSize="1rem"
+                            >
+                                Done
+                            </Button>
+                        </>
+                    )}
+                </Flex>
+            </Box>
+        </Box>
     );
 }
