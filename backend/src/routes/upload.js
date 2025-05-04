@@ -2,6 +2,7 @@ const express = require('express');
 const upload = require('../storage');
 const router = express.Router();
 const logger = require('../logger');
+const { fromRequest, markDone } = require('../request_identifier');
 
 /**
  * Photo upload endpoint
@@ -13,6 +14,7 @@ router.post('/upload', upload.array('photos'), (req, res) => {
   const files = /** @type {Express.Multer.File[]} */ (req.files || []);
   const uploaded = files.map((f) => f.filename);
   logger.info({ files: uploaded }, 'Files uploaded');
+  markDone(fromRequest(req));
   res.json({ success: true, files: uploaded });
 });
 

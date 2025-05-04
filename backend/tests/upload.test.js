@@ -65,7 +65,7 @@ describe('POST /api/upload', () => {
   });
 
   it('responds with empty files array when no files are sent', async () => {
-    const res = await request(app).post('/api/upload');
+    const res = await request(app).post('/api/upload').field('request_identifier', 'foo');
 
     expect(res.statusCode).toBe(200);
     expect(res.body).toEqual({ success: true, files: [] });
