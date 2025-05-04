@@ -21,6 +21,9 @@ const storage = multer.diskStorage({
 
         // e.g. /var/www/uploads/REQ12345
         const targetDir = path.join(uploadDir, reqId);
+        if (fs.existsSync(targetDir)) {
+            return cb(new Error('Request request_identifier already handled'), uploadDir);
+        }
 
         // mkdir -p style
         fs.mkdir(targetDir, { recursive: true }, (err /** type {unknown} */) => {
