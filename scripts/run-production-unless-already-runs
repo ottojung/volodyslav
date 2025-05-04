@@ -4,7 +4,7 @@ set -ex
 
 cd -- "${0%/*}"/..
 
-MAYBE_PONG=$(curl --silent "http://localhost:29932/api/ping" 2>/dev/null || true)
+MAYBE_PONG=$(curl --silent "http://$PHONE_LOCAL_SERVER/api/ping" 2>/dev/null || true)
 
 if test "$MAYBE_PONG" = "pong"
 then
