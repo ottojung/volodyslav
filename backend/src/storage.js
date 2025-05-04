@@ -24,12 +24,8 @@ const storage = multer.diskStorage({
         const targetDir = path.join(uploadDir, reqId);
 
         // mkdir -p style
-        fs.mkdir(targetDir, { recursive: true }, (err /** type {unknown} */) => {
-            if (err) {
-                return cb(err, targetDir);
-            }
-            cb(null, targetDir);
-        });
+        fs.mkdirSync(targetDir, { recursive: true });
+        cb(null, targetDir);
     },
 
     /**
