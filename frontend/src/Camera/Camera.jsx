@@ -15,9 +15,9 @@ import {
 
 
 export default function Camera() {
-    const prefix = useMemo(() => {
+    const request_identifier = useMemo(() => {
         const params = new URLSearchParams(window.location.search);
-        return params.get('prefix')?.trim() || "photo";
+        return params.get('request_identifier')?.trim() || '';
     }, []);
 
     const [currentBlob, setCurrentBlob] = useState(/** @type {Blob|null} */ (null));
@@ -28,7 +28,27 @@ export default function Camera() {
     const videoRef = useRef(null);
     const toast = useToast();
 
+    function checkIdentifier() {
+        if (!request_identifier) {
+            toast({
+                title: 'Missing req id',
+                description: "Expected a 'request_identifier' query parameter to be passed.",
+                status: 'error',
+                duration: null,
+                isClosable: true,
+                position: 'top',
+            });
+            return false;
+        } else {
+            return true;
+        }
+    }
+
     useEffect(() => {
+        if (!checkIdentifier()) {
+            return;
+        }
+
         const video = videoRef.current;
         if (!video) return;
         const constraints = {
@@ -84,7 +104,7 @@ export default function Camera() {
         if (blob) {
             const idx = photos.length + 1;
             const index = String(idx).padStart(2, '0');
-            const name = `${prefix}_${index}.jpeg`;
+            const name = `photo_${index}.jpeg`;
             const allPhotos = [...photos, { blob, name }];
             setPhotos((prev) => allPhotos);
             setCurrentBlob(null);
@@ -146,6 +166,7 @@ export default function Camera() {
         }
 
         const formData = new FormData();
+        formData.append('request_identifier', request_identifier);
         allPhotos.forEach((p) => {
             formData.append('photos', p.blob, p.name);
         });

@@ -1,6 +1,7 @@
 import React from 'react';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import '@testing-library/jest-dom';
+
 // Mock Chakra UI useToast
 const mockToast = jest.fn();
 jest.mock('@chakra-ui/react', () => {
@@ -11,6 +12,7 @@ jest.mock('@chakra-ui/react', () => {
     useToast: () => mockToast,
   };
 });
+
 import Camera from '../src/Camera/Camera';
 
 describe('Camera component', () => {
@@ -25,31 +27,38 @@ describe('Camera component', () => {
       { getTracks: () => [{ stop: jest.fn() }] } /* mock MediaStream */
     );
     navigator.mediaDevices.getUserMedia = getUserMediaMock;
+
     // Mock video.play()
     jest.spyOn(HTMLMediaElement.prototype, 'play').mockImplementation(() => Promise.resolve());
+
     // Mock canvas methods
     HTMLCanvasElement.prototype.getContext = () => ({ drawImage: jest.fn() });
     HTMLCanvasElement.prototype.toBlob = function(callback) {
       callback(new Blob(['dummy'], { type: 'image/jpeg' }));
     };
+
     // Mock URL APIs
-    // Define createObjectURL and revokeObjectURL since they may not exist in JSDOM
     URL.createObjectURL = jest.fn(() => 'blob:url');
     URL.revokeObjectURL = jest.fn();
+
     // Mock fetch for upload
     global.fetch = jest.fn().mockResolvedValue({ ok: true, json: () => Promise.resolve({}) });
-    // Suppress error logs from fetch failures
+
+    // Suppress console.error
     jest.spyOn(console, 'error').mockImplementation(() => {});
   });
 
   afterAll(() => {
     jest.restoreAllMocks();
-    // Clean up fetch mock
     delete global.fetch;
   });
 
-  // Reset fetch call count before each test
   beforeEach(() => {
+    // Make sure request_identifier is present
+    window.history.replaceState({}, 'test', '/?request_identifier=TEST_ID');
+
+    // Clear mocks
+    mockToast.mockClear();
     global.fetch.mockClear();
   });
 
@@ -63,12 +72,15 @@ describe('Camera component', () => {
 
   test('takes photo and shows preview with controls', async () => {
     render(<Camera />);
-    // Wait for camera access
     await waitFor(() => expect(getUserMediaMock).toHaveBeenCalled());
     fireEvent.click(screen.getByText('Take Photo'));
-    // Preview should appear
-    await waitFor(() => expect(screen.getByAltText('Preview')).toBeInTheDocument());
-    expect(screen.getByAltText('Preview')).toHaveAttribute('src', 'blob:url');
+
+    await waitFor(() => {
+      const img = screen.getByAltText('Preview');
+      expect(img).toBeInTheDocument();
+      expect(img).toHaveAttribute('src', 'blob:url');
+    });
+
     expect(screen.getByText('Redo')).toBeInTheDocument();
     expect(screen.getByText('More')).toBeInTheDocument();
     expect(screen.getByText('Done')).toBeInTheDocument();
@@ -80,9 +92,11 @@ describe('Camera component', () => {
     await waitFor(() => expect(getUserMediaMock).toHaveBeenCalled());
     fireEvent.click(screen.getByText('Take Photo'));
     await waitFor(() => screen.getByAltText('Preview'));
+
     fireEvent.click(screen.getByText('More'));
     expect(screen.getByText('Take Photo')).toBeInTheDocument();
-    // Preview image remains in DOM but should be hidden
+
+    // Preview remains in the DOM but hidden
     expect(screen.getByAltText('Preview')).not.toBeVisible();
   });
 
@@ -91,15 +105,16 @@ describe('Camera component', () => {
     await waitFor(() => expect(getUserMediaMock).toHaveBeenCalled());
     fireEvent.click(screen.getByText('Take Photo'));
     await waitFor(() => screen.getByAltText('Preview'));
+
     fireEvent.click(screen.getByText('Redo'));
     expect(screen.getByText('Take Photo')).toBeInTheDocument();
-    // Preview image remains in DOM but should be hidden
     expect(screen.getByAltText('Preview')).not.toBeVisible();
   });
 
   test('Done button without photos shows error toast', async () => {
     render(<Camera />);
     fireEvent.click(screen.getByText('Done'));
+
     await waitFor(() => {
       expect(mockToast).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -113,17 +128,26 @@ describe('Camera component', () => {
     });
   });
 
-  test('Done button with photos uploads and shows success toast', async () => {
+  test('Done button with one photo uploads and shows success toast (and includes request_identifier)', async () => {
     render(<Camera />);
     await waitFor(() => expect(getUserMediaMock).toHaveBeenCalled());
+
     fireEvent.click(screen.getByText('Take Photo'));
     await waitFor(() => screen.getByAltText('Preview'));
     fireEvent.click(screen.getByText('Done'));
+
+    // Should call fetch once
     await waitFor(() => expect(global.fetch).toHaveBeenCalledTimes(1));
-    expect(global.fetch).toHaveBeenCalledWith(
-      '/api/upload',
-      expect.objectContaining({ method: 'POST', body: expect.any(FormData) })
-    );
+
+    const [url, options] = global.fetch.mock.calls[0];
+    expect(url).toBe('/api/upload');
+    expect(options.method).toBe('POST');
+    expect(options.body).toBeInstanceOf(FormData);
+
+    // Check that we passed in the request_identifier
+    const fd = options.body;
+    expect(fd.get('request_identifier')).toBe('TEST_ID');
+
     await waitFor(() => {
       expect(mockToast).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -140,12 +164,16 @@ describe('Camera component', () => {
   test('Done button upload failure shows error toast', async () => {
     // Simulate server error response
     global.fetch.mockResolvedValueOnce({ ok: false, status: 500, json: () => Promise.resolve({}) });
+
     render(<Camera />);
     await waitFor(() => expect(getUserMediaMock).toHaveBeenCalled());
+
     fireEvent.click(screen.getByText('Take Photo'));
     await waitFor(() => screen.getByAltText('Preview'));
     fireEvent.click(screen.getByText('Done'));
+
     await waitFor(() => expect(global.fetch).toHaveBeenCalledTimes(1));
+
     await waitFor(() => {
       expect(mockToast).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -159,31 +187,32 @@ describe('Camera component', () => {
       );
     });
   });
+
   test('Done button uploads multiple photos correctly and shows success toast', async () => {
     render(<Camera />);
     await waitFor(() => expect(getUserMediaMock).toHaveBeenCalled());
+
     // Take first photo
     fireEvent.click(screen.getByText('Take Photo'));
     await waitFor(() => screen.getByAltText('Preview'));
-    // Add to photos (More) and return to camera view
     fireEvent.click(screen.getByText('More'));
-    await waitFor(() => expect(screen.getByText('Take Photo')).toBeInTheDocument());
+
     // Take second photo
+    await waitFor(() => screen.getByText('Take Photo'));
     fireEvent.click(screen.getByText('Take Photo'));
     await waitFor(() => screen.getByAltText('Preview'));
-    // Upload all photos
     fireEvent.click(screen.getByText('Done'));
+
     await waitFor(() => expect(global.fetch).toHaveBeenCalledTimes(1));
-    const formData = global.fetch.mock.calls[0][1].body;
-    let photoEntries = [];
-    if (typeof formData.getAll === 'function') {
-      photoEntries = formData.getAll('photos');
-    } else {
-      photoEntries = Array.from(formData.entries())
-        .filter(([name]) => name === 'photos')
-        .map(([, value]) => value);
-    }
-    expect(photoEntries.length).toBe(2);
+
+    const fd = global.fetch.mock.calls[0][1].body;
+    // Check that exactly two photos were appended
+    const allPhotos = fd.getAll ? fd.getAll('photos') : Array.from(fd.entries()).filter(([n]) => n === 'photos');
+    expect(allPhotos.length).toBe(2);
+
+    // And we still included request_identifier
+    expect(fd.get('request_identifier')).toBe('TEST_ID');
+
     await waitFor(() => {
       expect(mockToast).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -197,4 +226,3 @@ describe('Camera component', () => {
     });
   });
 });
-
