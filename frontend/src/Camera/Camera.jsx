@@ -145,7 +145,7 @@ export default function Camera() {
     addLastPhoto(currentBlob);
     resetCamera();
 
-    if (allPhotos.length === 0) {
+    if (photos.length === 0) {
       toast({
         title: 'No photos to upload',
         status: 'error',
@@ -157,7 +157,7 @@ export default function Camera() {
     }
 
     const formData = new FormData();
-    allPhotos.forEach((p) => {
+    photos.forEach((p) => {
       formData.append('photos', p.blob, p.name);
     });
 
