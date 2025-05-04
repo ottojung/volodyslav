@@ -2,11 +2,11 @@ const express = require('express');
 const fs = require('fs');
 const path = require('path');
 const { OpenAI } = require('openai');
-const { uploadDir: storageDir } = require('../config');
 const { openaiAPIKey } = require('../environment');
 // Instantiate client
 const openai = new OpenAI({ apiKey: openaiAPIKey() });
 const logger = require('../logger');
+const { fromRequest, getTargetDirectory, markDone } = require('../request_identifier');
 
 const router = express.Router();
 
@@ -23,13 +23,14 @@ const TRANSCRIBER_MODEL = 'gpt-4o-mini-transcribe';
 router.get('/transcribe', async (req, res) => {
     try {
         // pull request_identifier and validate
-        const rawId = req.query.request_identifier;
-        if (!rawId) {
+        let reqId;
+        try {
+            reqId = fromRequest(req);
+        } catch {
             return res
                 .status(400)
                 .json({ success: false, error: 'Missing request_identifier parameter' });
         }
-        const reqId = String(rawId);
 
         // pull input and output params
         const rawIn = req.query.input;
@@ -45,7 +46,7 @@ router.get('/transcribe', async (req, res) => {
         const inputPath = path.resolve(String(rawIn));
         const outputFile = path.basename('transcription.json');
         // determine target directory for this request and ensure it exists
-        const targetDir = path.join(storageDir, reqId);
+        const targetDir = getTargetDirectory(reqId);
         const outputPath = path.join(targetDir, outputFile);
 
         // Check that the input file exists
