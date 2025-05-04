@@ -2,6 +2,7 @@ const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
 const { uploadDir } = require('./config');
+const { fromRequest, isDone } = require('./request_identifier');
 
 /**
  * Multer storage engine to save uploaded files to disk
@@ -14,9 +15,9 @@ const storage = multer.diskStorage({
      * @param {(error: Error|null, destination: string) => void} cb
      */
     destination: (req, _file, cb) => {
-        const reqId = req.body.request_identifier;
-        if (!reqId) {
-            return cb(new Error('Missing request_identifier field'), uploadDir);
+        const reqId = fromRequest(req);
+        if (isDone(reqId)) {
+            return cb(new Error('Request already handled'), uploadDir);
         }
 
         // e.g. /var/www/uploads/REQ12345

@@ -8,7 +8,11 @@ const { uploadDir } = require('./config');
  * @returns {string}
  */
 function fromRequest(req) {
-    return req.body.request_identifier;
+    const reqId = req.body.request_identifier;
+    if (!reqId) {
+        throw new Error('Missing request_identifier field');
+    }
+    return reqId;
 }
 
 /**
