@@ -20,7 +20,7 @@ describe('POST /api/upload', () => {
       fs.readdirSync(uploadDir).forEach((entry) => {
         const entryPath = path.join(uploadDir, entry);
         if (fs.lstatSync(entryPath).isDirectory()) {
-          fs.rmdirSync(entryPath, { recursive: true });
+          fs.rmSync(entryPath, { recursive: true });
         } else {
           fs.unlinkSync(entryPath);
         }
