@@ -17,7 +17,7 @@ import {
 export default function Camera() {
   const prefix = useMemo(() => {
     const params = new URLSearchParams(window.location.search);
-    return params.get('prefix')?.trim() || 'photo';
+    return params.get('prefix')?.trim();
   }, []);
 
   const [currentBlob, setCurrentBlob] = useState(/** @type {Blob|null} */ (null));
@@ -27,6 +27,18 @@ export default function Camera() {
   /** @type {import('react').MutableRefObject<HTMLVideoElement|null>} */
   const videoRef = useRef(null);
   const toast = useToast();
+
+  if (!prefix) {
+      toast({
+          title: 'Error parsing query',
+          description: "Expected 'prefix' to be set as a query parameter.",
+          status: 'error',
+          duration: null,
+          isClosable: true,
+          position: 'top',
+      });
+      return;
+  }
 
   useEffect(() => {
     const video = videoRef.current;

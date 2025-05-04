@@ -2,7 +2,7 @@
 
 set -e
 
-cd -- "$MIYKA_PROJ_PATH"/phone-home/home/my/programs/volodyslav
+cd -- "${0%/*}"/..
 
 set -xe
 
