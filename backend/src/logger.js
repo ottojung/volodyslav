@@ -15,6 +15,6 @@ const transport = pino.transport({
 });
 
 /** Pino logger instance. @type {pino.Logger} */
-logger = pino({ level: process.env.LOG_LEVEL || 'info' }, transport);
+const logger = pino({ level: process.env.LOG_LEVEL || 'info' }, transport);
 
 module.exports = logger;
