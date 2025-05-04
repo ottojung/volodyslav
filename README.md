@@ -1,74 +1,295 @@
- 
-# Development
 
-Install dependencies:
+# Volodyslav’s Media Service Monorepo
 
-```bash
-npm install
+A full-stack application for capturing photos via a browser camera, uploading them to a server, and transcribing audio files using OpenAI’s APIs. This repository follows a monorepo pattern, containing two primary workspaces:
+
+  • **frontend**: A React + Vite single-page application (SPA) with Chakra UI
+  • **backend**: An Express.js API server, file storage, and transcription endpoints
+
+---
+
+## Table of Contents
+
+1. [Features](#features)
+2. [Technology Stack](#technology-stack)
+3. [Architecture & Project Layout](#architecture--project-layout)
+4. [Getting Started](#getting-started)
+   4.1 [Prerequisites](#prerequisites)
+   4.2 [Environment Variables](#environment-variables)
+   4.3 [Install & Build](#install--build)
+5. [Development Mode](#development-mode)
+   5.1 [Run Both Frontend & Backend](#run-both-frontend--backend)
+   5.2 [Run Frontend Only](#run-frontend-only)
+   5.3 [Run Backend Only](#run-backend-only)
+6. [Production Mode](#production-mode)
+   6.1 [Build Frontend](#build-frontend)
+   6.2 [Serve Frontend](#serve-frontend)
+   6.3 [Start Backend](#start-backend)
+7. [API Endpoints](#api-endpoints)
+8. [Testing](#testing)
+9. [Utilities & Scripts](#utilities--scripts)
+10. [Code Quality & Tooling](#code-quality--tooling)
+11. [License](#license)
+
+---
+
+## Features
+
+- **Camera interface** to capture and preview photos
+- **Batch upload** of photos with a `request_identifier`
+- **Mark-as-done** mechanism to prevent duplicate uploads
+- **Transcription** of audio files (`.wav`, `.mp3`, etc.) using OpenAI’s `audio.transcriptions.create`
+- **Static file serving** of the built frontend assets
+- **Structured logging** via Pino + `pino-pretty`
+- **Comprehensive tests** for both frontend (Jest + React Testing Library) and backend (Jest + SuperTest)
+
+---
+
+## Technology Stack
+
+Frontend
+- React 18, React Router v6
+- Vite + ESBuild for fast bundling
+- Chakra UI component library
+- Jest & React Testing Library
+
+Backend
+- Node.js (ESM & CommonJS)
+- Express.js HTTP server
+- Multer for multipart/form-data file uploads
+- Pino for JSON logging & `pino-pretty` for console output
+- OpenAI SDK for audio transcription
+- Jest & SuperTest for API testing
+
+Tooling
+- ESLint + `plugin:react/recommended` + `plugin:jest/recommended`
+- Babel configured for JSX and modern JavaScript
+- TypeScript used in `checkJs` mode to generate `.d.ts` types only
+- Makefile and shell scripts for common tasks
+
+---
+
+## Architecture & Project Layout
+
+```
+repo-root/
+├── .eslintignore        # Patterns to skip during linting
+├── .eslintrc.js         # ESLint configuration (root)
+├── .gitignore           # Files & dirs ignored by Git
+├── babel.config.js      # Babel presets for JS/JSX
+├── jest.config.js       # Root Jest config pointing to workspaces
+├── tsconfig.json        # TS “emit types only” config
+├── Makefile             # Simple “install” and build recipes
+├── scripts/             # Utility scripts (install, test, deploy)
+│   ├── update-and-install
+│   ├── run-tests
+│   └── …
+├── frontend/            # Vite + React SPA
+│   ├── index.html
+│   ├── vite.config.js
+│   ├── .babelrc
+│   ├── src/
+│   │   ├── index.jsx
+│   │   ├── App.jsx
+│   │   ├── Camera/
+│   │   │   ├── Camera.jsx
+│   │   │   └── Camera.styles.js
+│   │   └── utils.js
+│   └── jest.config.js
+└── backend/             # Express.js API server
+    ├── src/
+    │   ├── index.js         # Express app entry point
+    │   ├── config.js        # Upload dir & port from env
+    │   ├── environment.js   # Env var getters
+    │   ├── logger.js        # Pino logger setup
+    │   ├── storage.js       # Multer storage engine
+    │   ├── request_identifier.js
+    │   └── routes/
+    │       ├── root.js      # GET /
+    │       ├── ping.js      # GET /api/ping
+    │       ├── upload.js    # POST /api/upload
+    │       ├── transcribe.js# GET /api/transcribe
+    │       └── static.js    # Serve SPA assets
+    ├── tests/               # Jest + SuperTest
+    └── package.json         # Backend dependencies & scripts
 ```
 
-Start both frontend and backend servers (monorepo mode):
+---
+
+## Getting Started
+
+### Prerequisites
+
+- Node.js v16+ (or latest LTS)
+- npm v8+ (or Yarn v1/v2)
+- Git CLI
+
+### Environment Variables
+
+Create a `.env` (or set in your shell) with:
+
+  • `MY_ROOT`
+    Absolute path to a parent directory where uploads and done-markers are stored.
+  • `VOLODYSLAV_SERVER_PORT`
+    Port number for the backend HTTP server (e.g. `3000`).
+  • `VOLODYSLAV_OPENAI_API_KEY`
+    Your OpenAI API key (for transcription).
+  • `VOLODYSLAV_LOG_LEVEL`
+    Pino log level (e.g. `info`, `debug`, `silent`).
+
+### Install & Build
+
+```bash
+git clone git@github.com:your-org/your-repo.git
+cd your-repo
+npm install           # Install monorepo dependencies
+npm run build         # Builds frontend and emits TS types
+```
+
+---
+
+## Development Mode
+
+#### Run Both Frontend & Backend
 
 ```bash
 npm run dev
 ```
 
-## Frontend Only
+- Frontend Dev Server ▶ http://localhost:5173
+- Backend API Server ▶ http://localhost:3000
 
-To start only the frontend development server:
+_A proxy is configured so `/api/upload` requests from the frontend forward to the backend port._
+
+#### Run Frontend Only
 
 ```bash
 npm run dev -w frontend
 ```
 
-Open the frontend at http://localhost:5173.
+Open your browser at http://localhost:5173. API calls to `/api/...` will 404 unless you also start the backend.
 
-## Backend Only
-
-To start only the backend development server:
+#### Run Backend Only
 
 ```bash
 npm run dev -w backend
 ```
 
-The backend will run on http://localhost:3000.
+Backend listens on the `VOLODYSLAV_SERVER_PORT` you configured (default `3000`).
 
-## Building Frontend
+---
 
-Build the frontend for production:
+## Production Mode
+
+### Build Frontend
 
 ```bash
 npm run build -w frontend
 ```
 
-Preview the production build:
+Outputs static files to `frontend/dist`.
+
+### Serve Frontend
 
 ```bash
 npm run serve -w frontend
 ```
 
-## Starting Backend in Production
+Serves the `dist` folder on port `4173` by default (Vite preview).
 
-Start the backend without auto-reloading:
+### Start Backend
 
 ```bash
 npm run start -w backend
 ```
 
-## Running in Production
+Launches the Express server in production mode.
 
-Start both the frontend and backend for production:
+### Combined Production
 
 ```bash
 npm start
 ```
 
-This command will build the frontend and start:
+1. Builds the frontend
+2. Serves the frontend at http://localhost:4173
+3. Starts the backend API at http://localhost:3000
 
-- Frontend: http://localhost:4173
-- Backend: http://localhost:3000
+---
 
-# Licensing
+## API Endpoints
 
-This program is licensed under the AGPL-3.0.
-See [COPYING](./COPYING) file for details.
+### GET /
+
+- **Description**: Returns `"Hello World!"`
+- **Route**: `/api`
+
+### GET /api/ping
+
+- **Description**: Health check → returns `"pong"`
+
+### POST /api/upload?request_identifier=ID
+
+- **Description**: Accepts multipart uploads under field name `photos`.
+- **Behavior**:
+  • Creates directory `${uploadDir}/ID`
+  • Saves each file with its original filename
+  • Creates a `.done` marker via `request_identifier.js`
+- **Response**: `{ success: true, files: [ ...filenames ] }`
+
+### GET /api/transcribe?request_identifier=ID&input=/path/to/file.wav
+
+- **Description**: Reads the specified audio file, calls OpenAI, stores JSON result under `${uploadDir}/ID/transcription.json`.
+- **Responses**:
+  • `400` if query params missing
+  • `404` if input file not found
+  • `200 { success: true }` on success
+
+Static asset routing is handled by `static.js`, serving `frontend/dist/index.html` for all unmatched GET requests.
+
+---
+
+## Testing
+
+Run all tests (backend + frontend):
+
+```bash
+npm test
+```
+
+- **Backend tests**: Jest + SuperTest in `backend/tests/`
+- **Frontend tests**: Jest + React Testing Library in `frontend/tests/`
+
+---
+
+## Utilities & Scripts
+
+- `Makefile`
+  - `make install` → runs `scripts/update-and-install`
+- `scripts/update-and-install`
+  Pulls latest `master`, installs, and builds.
+- `scripts/run-tests`
+  `npm test` across workspaces
+- `scripts/run-development-server`
+  Alias for `npm run dev`
+- `scripts/run-production-unless-already-runs`
+  Starts backend only if health check fails
+
+---
+
+## Code Quality & Tooling
+
+- **ESLint** with React & Jest plugins (root-level `.eslintrc.js`)
+- **Babel**
+  - Root config for backend
+  - `.babelrc` in frontend for JSX
+- **TypeScript**
+  - Type-checks JS/JSX via `allowJs` + `checkJs`
+  - Emits declaration files in `dist/types`
+
+---
+
+## License
+
+This project is licensed under the **AGPL-3.0**.
+See the [COPYING](./COPYING) file for full license terms.
