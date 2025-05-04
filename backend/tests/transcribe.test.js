@@ -49,18 +49,22 @@ afterAll(() => {
 
 describe('GET /api/transcribe', () => {
     it('responds with 400 if input or output param missing', async () => {
-        const res = await request(app).get('/api/transcribe');
+        const reqId = 'testreq';
+        const res = await request(app)
+            .get('/api/transcribe')
+            .query({ request_identifier: reqId });
         expect(res.statusCode).toBe(400);
         expect(res.body).toEqual({
             success: false,
-            error: 'Please provide both input and output parameters',
+            error: 'Please provide the input parameter',
         });
     });
 
     it('responds with 404 if input file does not exist', async () => {
+        const reqId = 'testreq';
         const res = await request(app)
               .get('/api/transcribe')
-              .query({ input: '/nonexistent/file.wav', output: 'out.json' });
+              .query({ request_identifier: reqId, input: '/nonexistent/file.wav' });
         expect(res.statusCode).toBe(404);
         expect(res.body).toEqual({ success: false, error: 'Input file not found' });
     });
@@ -72,17 +76,18 @@ describe('GET /api/transcribe', () => {
         fs.mkdirSync(path.dirname(inputPath), { recursive: true });
         fs.writeFileSync(inputPath, 'dummy content');
 
-        const outputFilename = 'result.json';
+        const reqId = 'testreq';
+        const outputFilename = 'transcription.json';
         const res = await request(app)
               .get('/api/transcribe')
-              .query({ input: inputPath, output: outputFilename });
+              .query({ request_identifier: reqId, input: inputPath });
 
         // Verify response
         expect(res.statusCode).toBe(200);
         expect(res.body).toEqual({ success: true });
 
-        // Verify file was written to storageDir
-        const savedPath = path.join(storageDir, outputFilename);
+        // Verify file was written to storageDir under the request identifier
+        const savedPath = path.join(storageDir, reqId, outputFilename);
         expect(fs.existsSync(savedPath)).toBe(true);
         const content = fs.readFileSync(savedPath, 'utf8');
         // Parsed content should match the stubbed response

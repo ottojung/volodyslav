@@ -18,25 +18,35 @@ const TRANSCRIBER_MODEL = 'gpt-4o-mini-transcribe';
 /**
  * Query params:
  *    ?input=/absolute/path/to/file.wav
- *    &output=transcript.json
+ *    &request_identifier=0x123
  */
 router.get('/transcribe', async (req, res) => {
     try {
-        // pull from query
-        const rawIn = req.query.input;
-        const rawOut = req.query.output;
-        // Log the transcription request
-        logger.info({ input: rawIn, output: rawOut }, 'Transcription request received');
-        if (!rawIn || !rawOut) {
+        // pull request_identifier and validate
+        const rawId = req.query.request_identifier;
+        if (!rawId) {
             return res
                 .status(400)
-                .json({ success: false, error: 'Please provide both input and output parameters' });
+                .json({ success: false, error: 'Missing request_identifier parameter' });
+        }
+        const reqId = String(rawId);
+
+        // pull input and output params
+        const rawIn = req.query.input;
+        // Log the transcription request
+        logger.info({ request_identifier: reqId, input: rawIn }, 'Transcription request received');
+        if (!rawIn) {
+            return res
+                .status(400)
+                .json({ success: false, error: 'Please provide the input parameter' });
         }
 
-        // normalize
+        // normalize input and determine paths
         const inputPath = path.resolve(String(rawIn));
-        const outputFile = path.basename(String(rawOut));
-        const outputPath = path.join(storageDir, outputFile);
+        const outputFile = path.basename('transcription.json');
+        // determine target directory for this request and ensure it exists
+        const targetDir = path.join(storageDir, reqId);
+        const outputPath = path.join(targetDir, outputFile);
 
         // Check that the input file exists
         if (!fs.existsSync(inputPath)) {
@@ -62,6 +72,7 @@ router.get('/transcribe', async (req, res) => {
         };
 
         // Persist full JSON to disk
+        fs.mkdirSync(targetDir, { recursive: true });
         fs.writeFileSync(
             outputPath,
             JSON.stringify(wrapped, null, 2),
