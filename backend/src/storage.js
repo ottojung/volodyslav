@@ -1,8 +1,6 @@
 const multer = require('multer');
-const path = require('path');
 const fs = require('fs');
-const { uploadDir } = require('./config');
-const { fromRequest, isDone } = require('./request_identifier');
+const { fromRequest, isDone, getTargetDirectory } = require('./request_identifier');
 
 /**
  * Multer storage engine to save uploaded files to disk
@@ -17,11 +15,11 @@ const storage = multer.diskStorage({
     destination: (req, _file, cb) => {
         const reqId = fromRequest(req);
         if (isDone(reqId)) {
-            return cb(new Error('Request already handled'), uploadDir);
+            return cb(new Error('Request already handled'), "");
         }
 
         // e.g. /var/www/uploads/REQ12345
-        const targetDir = path.join(uploadDir, reqId);
+        const targetDir = getTargetDirectory(reqId);
 
         // mkdir -p style
         fs.mkdirSync(targetDir, { recursive: true });
