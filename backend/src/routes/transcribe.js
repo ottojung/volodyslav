@@ -79,6 +79,7 @@ router.get('/transcribe', async (req, res) => {
             JSON.stringify(wrapped, null, 2),
             'utf8'
         );
+        markDone(reqId);
 
         // Log successful transcription
         logger.info({ outputPath }, 'Transcription successful');
