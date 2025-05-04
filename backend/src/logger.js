@@ -1,8 +1,8 @@
 /**
  * Logger module using pino.
  */
-import pino from 'pino';
 
+const pino = require('pino').default;
 const env = process.env.NODE_ENV || 'development';
 
 /** Pino logger instance. @type {pino.Logger} */
@@ -24,4 +24,4 @@ if (env === 'test') {
   logger = pino({ level: process.env.LOG_LEVEL || 'info' }, transport);
 }
 
-export default logger;
+module.exports = logger;
