@@ -6,6 +6,7 @@ const { uploadDir: storageDir } = require('../config');
 const { openaiAPIKey } = require('../environment');
 // Instantiate client
 const openai = new OpenAI({ apiKey: openaiAPIKey() });
+const logger = require('../logger');
 
 const router = express.Router();
 
@@ -24,6 +25,8 @@ router.get('/transcribe', async (req, res) => {
         // pull from query
         const rawIn = req.query.input;
         const rawOut = req.query.output;
+        // Log the transcription request
+        logger.info({ input: rawIn, output: rawOut }, 'Transcription request received');
         if (!rawIn || !rawOut) {
             return res
                 .status(400)
@@ -65,9 +68,11 @@ router.get('/transcribe', async (req, res) => {
             'utf8'
         );
 
+        // Log successful transcription
+        logger.info({ outputPath }, 'Transcription successful');
         return res.json({ success: true });
     } catch (err) {
-        console.error('Transcription error:', err);
+        logger.error({ err }, 'Transcription error');
 
         let message;
         if (err instanceof Error) {

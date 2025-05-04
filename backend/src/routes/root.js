@@ -1,5 +1,6 @@
 const express = require('express');
 const router = express.Router();
+const logger = require('../logger');
 
 /**
  * Root endpoint
@@ -7,6 +8,7 @@ const router = express.Router();
  * @param {import('express').Response} res
  */
 router.get('/', (req, res) => {
+  logger.info({ method: req.method, url: req.originalUrl }, 'Root endpoint called');
   res.send('Hello World!');
 });
 
