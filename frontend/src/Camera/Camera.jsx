@@ -142,11 +142,9 @@ export default function Camera() {
   };
 
   const handleDone = async () => {
+    addLastPhoto(currentBlob);
     resetCamera();
 
-    const allPhotos = currentBlob
-      ? [...photos, { blob: currentBlob, name: `photo_${String(photos.length + 1).padStart(2, '0')}.jpg` }]
-      : photos;
     if (allPhotos.length === 0) {
       toast({
         title: 'No photos to upload',
