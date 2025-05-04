@@ -3,25 +3,18 @@
  */
 
 const pino = require('pino').default;
-const env = process.env.NODE_ENV || 'development';
 
-/** Pino logger instance. @type {pino.Logger} */
-let logger;
-
-if (env === 'test') {
-  // Disable logging in test environment
-  logger = pino({ level: 'silent' });
-} else {
-  // Pretty-print logs otherwise
-  const transport = pino.transport({
+// Pretty-print logs
+const transport = pino.transport({
     target: 'pino-pretty',
     options: {
-      colorize: true,
-      translateTime: 'yyyy-mm-dd HH:MM:ss.l o',
-      ignore: 'pid,hostname'
+        colorize: true,
+        translateTime: 'yyyy-mm-dd HH:MM:ss.l o',
+        ignore: 'pid,hostname'
     }
-  });
-  logger = pino({ level: process.env.LOG_LEVEL || 'info' }, transport);
-}
+});
+
+/** Pino logger instance. @type {pino.Logger} */
+logger = pino({ level: process.env.LOG_LEVEL || 'info' }, transport);
 
 module.exports = logger;
