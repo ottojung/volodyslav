@@ -82,14 +82,15 @@ export default function Camera() {
      */
     const addLastPhoto = (blob) => {
         if (blob) {
-            setPhotos((prev) => {
-                const idx = prev.length + 1;
-                const index = String(idx).padStart(2, '0');
-                const name = `${prefix}_${index}.jpeg`;
-                return [...prev, { blob, name }];
-            });
+            const idx = photos.length + 1;
+            const index = String(idx).padStart(2, '0');
+            const name = `${prefix}_${index}.jpeg`;
+            const allPhotos = [...photos, { blob, name }];
+            setPhotos((prev) => allPhotos);
             setCurrentBlob(null);
+            return allPhotos;
         }
+        return photos;
     };
 
     const handleTake = () => {
@@ -130,10 +131,10 @@ export default function Camera() {
     };
 
     const handleDone = async () => {
-        addLastPhoto(currentBlob);
+        const allPhotos = addLastPhoto(currentBlob);
         resetCamera();
 
-        if (photos.length === 0) {
+        if (allPhotos.length === 0) {
             toast({
                 title: 'No photos to upload',
                 status: 'error',
@@ -145,7 +146,7 @@ export default function Camera() {
         }
 
         const formData = new FormData();
-        photos.forEach((p) => {
+        allPhotos.forEach((p) => {
             formData.append('photos', p.blob, p.name);
         });
 
