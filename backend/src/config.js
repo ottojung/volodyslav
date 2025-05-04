@@ -1,11 +1,9 @@
 const path = require('path');
 const fs = require('fs');
-const { myRoot, myServerPort } = require('./environment');
-
+const { resultsDirectory, myServerPort } = require('./environment');
 
 // Directory where uploaded photos are stored.
-const myroot = myRoot();
-const uploadDir = path.join(myroot, 'wd', 'volodyslav', 'uploads');
+const uploadDir = resultsDirectory();
 
 // Ensure upload directory exists
 if (!fs.existsSync(uploadDir)) {

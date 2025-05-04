@@ -16,8 +16,8 @@ function openaiAPIKey() {
     return getEnv("VOLODYSLAV_OPENAI_API_KEY");
 }
 
-function myRoot() {
-    return getEnv("MY_ROOT");
+function resultsDirectory() {
+    return getEnv("VOLODYSLAV_RESULTS_DIRECTORY");
 }
 
 function myServerPort() {
@@ -30,7 +30,7 @@ function logLevel() {
 
 module.exports = {
     openaiAPIKey,
-    myRoot,
+    resultsDirectory,
     myServerPort,
     logLevel,
 };
