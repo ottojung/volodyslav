@@ -11,6 +11,7 @@ const router = express.Router();
 router.post('/upload', upload.array('photos'), (req, res) => {
   const files = /** @type {Express.Multer.File[]} */ (req.files || []);
   const uploaded = files.map((f) => f.filename);
+  console.log("Uploaded", uploaded);
   res.json({ success: true, files: uploaded });
 });
 
