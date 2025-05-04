@@ -1,4 +1,6 @@
 const multer = require('multer');
+const path = require('path');
+const fs = require('fs');
 const { uploadDir } = require('./config');
 
 /**
@@ -7,11 +9,28 @@ const { uploadDir } = require('./config');
  */
 const storage = multer.diskStorage({
   /**
-   * @param {import('express').Request} _req
+   * @param {import('express').Request} req
    * @param {Express.Multer.File} _file
    * @param {(error: Error|null, destination: string) => void} cb
    */
-  destination: (_req, _file, cb) => cb(null, uploadDir),
+  destination: (req, _file, cb) => {
+    const reqId = req.body.request_identifier;
+    if (!reqId) {
+      return cb(new Error('Missing request_identifier field'), uploadDir);
+    }
+
+    // e.g. /var/www/uploads/REQ12345
+    const targetDir = path.join(uploadDir, reqId);
+
+    // mkdir -p style
+      fs.mkdir(targetDir, { recursive: true }, (err /** type {unknown} */) => {
+      if (err) {
+        return cb(err, targetDir);
+      }
+      cb(null, targetDir);
+    });
+  },
+
   /**
    * @param {import('express').Request} _req
    * @param {Express.Multer.File} file
