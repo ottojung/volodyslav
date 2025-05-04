@@ -165,14 +165,15 @@ export default function Camera() {
             return;
         }
 
+        const url = new URL('/api/upload', window.location.origin);
+        url.searchParams.set('request_identifier', request_identifier);
         const formData = new FormData();
-        formData.append('request_identifier', request_identifier);
         allPhotos.forEach((p) => {
             formData.append('photos', p.blob, p.name);
         });
 
         try {
-            const response = await fetch('/api/upload', {
+            const response = await fetch(url, {
                 method: 'POST',
                 body: formData,
             });

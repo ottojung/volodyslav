@@ -31,8 +31,7 @@ describe('POST /api/upload', () => {
   it('uploads a single file successfully', async () => {
     const reqId = 'testreq';
     const res = await request(app)
-      .post('/api/upload')
-      .field('request_identifier', reqId)
+          .post(`/api/upload?request_identifier=${reqId}`)
       .attach('photos', Buffer.from('test content'), 'test1.jpg');
 
     expect(res.statusCode).toBe(200);
@@ -44,8 +43,7 @@ describe('POST /api/upload', () => {
     // Upload first file with a unique request_identifier
     const reqId1 = 'testreq1';
     const res1 = await request(app)
-      .post('/api/upload')
-      .field('request_identifier', reqId1)
+      .post(`/api/upload?request_identifier=${reqId1}`)
       .attach('photos', Buffer.from('first'), 'first.jpg');
 
     expect(res1.statusCode).toBe(200);
@@ -55,8 +53,7 @@ describe('POST /api/upload', () => {
     // Upload second file with another unique request_identifier
     const reqId2 = 'testreq2';
     const res2 = await request(app)
-      .post('/api/upload')
-      .field('request_identifier', reqId2)
+      .post(`/api/upload?request_identifier=${reqId2}`)
       .attach('photos', Buffer.from('second'), 'second.jpg');
 
     expect(res2.statusCode).toBe(200);
@@ -65,7 +62,7 @@ describe('POST /api/upload', () => {
   });
 
   it('responds with empty files array when no files are sent', async () => {
-    const res = await request(app).post('/api/upload').field('request_identifier', 'foo');
+    const res = await request(app).post('/api/upload?request_identifier=foo');
 
     expect(res.statusCode).toBe(200);
     expect(res.body).toEqual({ success: true, files: [] });
