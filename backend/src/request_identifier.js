@@ -11,6 +11,8 @@ class RequestIdentifier {
     identifier;
 
     /**
+     * This is a value that is never actually assigned.
+     * Its purpose is to make `RequestIdentifier` a nominal type.
      * @private
      * @type {undefined}
      */
