@@ -24,4 +24,13 @@ function myServerPort() {
     return parseInt(getEnv("VOLODYSLAV_SERVER_PORT"));
 }
 
-module.exports = { openaiAPIKey, myRoot, myServerPort };
+function logLevel() {
+    return getEnv("VOLODYSLAV_LOG_LEVEL");
+}
+
+module.exports = {
+    openaiAPIKey,
+    myRoot,
+    myServerPort,
+    logLevel,
+};

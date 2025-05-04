@@ -3,6 +3,7 @@
  */
 
 const pino = require('pino').default;
+const { logLevel } = require('./environment');
 
 // Pretty-print logs
 const transport = pino.transport({
@@ -15,6 +16,6 @@ const transport = pino.transport({
 });
 
 /** Pino logger instance. @type {pino.Logger} */
-const logger = pino({ level: process.env.LOG_LEVEL || 'info' }, transport);
+const logger = pino({ level: logLevel() }, transport);
 
 module.exports = logger;

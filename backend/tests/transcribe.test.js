@@ -8,6 +8,7 @@ jest.mock('../src/environment', () => {
         openaiAPIKey: jest.fn().mockReturnValue('test-key'),
         myRoot: jest.fn().mockReturnValue(path.join(__dirname, 'tmp')),
         myServerPort: jest.fn().mockReturnValue(0),
+        logLevel: jest.fn().mockReturnValue("silent"),
     };
 });
 
