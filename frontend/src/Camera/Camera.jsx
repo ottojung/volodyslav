@@ -106,7 +106,7 @@ export default function Camera() {
             const index = String(idx).padStart(2, '0');
             const name = `photo_${index}.jpeg`;
             const allPhotos = [...photos, { blob, name }];
-            setPhotos((prev) => allPhotos);
+            setPhotos((_prev) => allPhotos);
             setCurrentBlob(null);
             return allPhotos;
         }
