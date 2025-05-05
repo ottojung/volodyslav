@@ -42,6 +42,28 @@ async function transcribe(file_stream) {
     };
 }
 
+
+/**
+ * Transcribe input file.
+ * @param {string} inputPath
+ * @param {string} outputPath
+ * @returns {Promise<void>}
+ */
+async function transcribeFiles(inputPath, outputPath) {
+    // Check that the input file exists
+    const file_stream = fs.createReadStream(inputPath);
+    const transcription = await transcribe(file_stream);
+
+    // Persist full JSON to disk
+    await fs.promises.mkdir(path.dirname(outputPath), { recursive: true });
+    await fs.promises.writeFile(
+        outputPath,
+        JSON.stringify(transcription, null, 2),
+        'utf8'
+    );
+}
+
+
 /**
  * Query params:
  *    ?input=/absolute/path/to/file.wav
@@ -71,28 +93,18 @@ router.get('/transcribe', async (req, res) => {
 
         // normalize input and determine paths
         const inputPath = path.resolve(String(rawIn));
-        const outputFile = path.basename('transcription.json');
-        // determine target directory for this request and ensure it exists
-        const targetDir = getTargetDirectory(reqId);
-        const outputPath = path.join(targetDir, outputFile);
-
-        // Check that the input file exists
-        if (!fs.existsSync(inputPath)) {
+        const is_exists = await fs.existsSync(inputPath);
+        if (!is_exists) {
             return res
                 .status(404)
                 .json({ success: false, error: 'Input file not found' });
         }
 
-        const file_stream = fs.createReadStream(inputPath);
-        const transcription = await transcribe(file_stream);
-
-        // Persist full JSON to disk
-        fs.mkdirSync(targetDir, { recursive: true });
-        fs.writeFileSync(
-            outputPath,
-            JSON.stringify(transcription, null, 2),
-            'utf8'
-        );
+        const outputFile = path.basename('transcription.json');
+        // determine target directory for this request and ensure it exists
+        const targetDir = getTargetDirectory(reqId);
+        const outputPath = path.join(targetDir, outputFile);
+        await transcribeFiles(inputPath, outputPath);
         markDone(reqId);
 
         // Log successful transcription
