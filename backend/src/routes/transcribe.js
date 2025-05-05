@@ -16,9 +16,13 @@ router.use(express.json());
 const TRANSCRIBER_MODEL = 'gpt-4o-mini-transcribe';
 
 /**
+ * @typedef {{ text: string, transcriber: { name: string, creator: string } }} Transcription
+ */
+
+/**
  * Transcribe input stream.
  * @param {import('fs').ReadStream} file_stream
- * @returns {Promise<{ text: string, transcriber: { name: string, creator: string } }>}
+ * @returns {Promise<Transcription>}
  */
 async function transcribe(file_stream) {
     // Make the API call
