@@ -22,6 +22,12 @@ module.exports = {
         'plugin:react/recommended',
         'plugin:jest/recommended',
     ],
-    rules: {},
+    rules: {
+        "no-unused-vars": ["error", {
+            "vars": "all",
+            "args": "after-used",
+            "argsIgnorePattern": "^_"
+        }]
+    },
     ignorePatterns: ['dist/', 'node_modules/', 'coverage/'],
 };
