@@ -6,7 +6,7 @@ jest.mock('../src/environment', () => {
     const path = require('path');
     return {
         openaiAPIKey: jest.fn().mockReturnValue('test-key'),
-        myRoot: jest.fn().mockReturnValue(path.join(__dirname, 'tmp')),
+        resultsDirectory: jest.fn().mockReturnValue(path.join(__dirname, 'tmp')),
         myServerPort: jest.fn().mockReturnValue(0),
         logLevel: jest.fn().mockReturnValue("silent"),
     };
