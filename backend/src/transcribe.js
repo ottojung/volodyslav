@@ -48,7 +48,7 @@ async function transcribeFiles(inputPath, outputPath) {
 
     // Check that the input file exists
     if (!fs.existsSync(resolvedInputPath)) {
-        throw new Error("Input file not found.", inputPath);
+        throw new Error(`Input file ${inputPath} not found.`);
     }
 
     const file_stream = fs.createReadStream(resolvedInputPath);
