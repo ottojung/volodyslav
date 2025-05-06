@@ -10,6 +10,23 @@ const openai = new OpenAI({ apiKey: openaiAPIKey() });
 const TRANSCRIBER_MODEL = 'gpt-4o-mini-transcribe';
 
 /**
+ * @class
+ */
+class InputNotFound extends Error {
+    /** @type {string} */
+    path;
+
+    /**
+     * @param {string} message
+     * @param {string} path
+     */
+    constructor(message, path) {
+        super(message);
+        this.path = path;
+    }
+}
+
+/**
  * @typedef {{ text: string, transcriber: { name: string, creator: string } }} Transcription
  */
 
@@ -48,7 +65,10 @@ async function transcribeFiles(inputPath, outputPath) {
 
     // Check that the input file exists
     if (!fs.existsSync(resolvedInputPath)) {
-        throw new Error(`Input file ${inputPath} not found.`);
+        throw new InputNotFound(
+            `Input file ${resolvedInputPath} not found.`,
+            resolvedInputPath,
+        );
     }
 
     const file_stream = fs.createReadStream(resolvedInputPath);
@@ -78,6 +98,7 @@ async function transcribeRequest(inputPath, reqId) {
 }
 
 module.exports = {
+    InputNotFound,
     transcribeStream,
     transcribeFiles,
     transcribeRequest,

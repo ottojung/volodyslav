@@ -1,7 +1,7 @@
 const express = require('express');
 const logger = require('../logger');
 const { fromRequest } = require('../request_identifier');
-const { transcribeRequest } = require('../transcribe');
+const { transcribeRequest, InputNotFound } = require('../transcribe');
 
 const router = express.Router();
 
@@ -34,7 +34,17 @@ router.get('/transcribe', async (req, res) => {
 
         // normalize input and determine paths
         const inputPath = String(rawIn);
-        await transcribeRequest(inputPath, reqId);
+        try {
+            await transcribeRequest(inputPath, reqId);
+        } catch (/** type {unknown} */ error) {
+            if (error instanceof InputNotFound) {
+                return res
+                    .status(404)
+                    .json({ success: false, error: 'Input file not found' });
+            } else {
+                throw error;
+            }
+        }
 
         // Log successful transcription
         logger.info({ reqId }, 'Transcription successful');
