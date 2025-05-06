@@ -4,6 +4,6 @@ COPY package* frontend/package* backend/package* ./
 RUN npm install
 # copy everything
 COPY . .
-RUN npm ci
+RUN npm install
 # install all deps (dev + prod) to build both workspaces
 RUN npm run build
