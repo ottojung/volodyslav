@@ -27,23 +27,13 @@ jest.mock('openai', () => {
 
 const request = require('supertest');
 const app = require('../src/index');
-const { uploadDir: storageDir } = require('../src/config');
+const { uploadDir } = require('../src/config');
 
 // Ensure a clean test directory
 beforeAll(() => {
-    // Clean any pre-existing tmp directory
-    const tmpRoot = path.join(__dirname, 'tmp');
-    if (fs.existsSync(tmpRoot)) {
-        fs.rmSync(tmpRoot, { recursive: true, force: true });
-    }
-    // Ensure upload directory exists
-    fs.mkdirSync(storageDir, { recursive: true });
-});
-
-afterAll(() => {
-    // Remove tmp directory after tests
-    if (fs.existsSync(path.join(__dirname, 'tmp'))) {
-        fs.rmSync(path.join(__dirname, 'tmp'), { recursive: true, force: true });
+    // Remove any previous uploads
+    if (fs.existsSync(uploadDir)) {
+        fs.rmSync(uploadDir, { recursive: true, force: true });
     }
 });
 
@@ -71,7 +61,7 @@ describe('GET /api/transcribe', () => {
 
     it('transcribes and saves output file on valid input', async () => {
         // Prepare a dummy input file
-        const inputDir = path.join(__dirname, 'tmp');
+        const inputDir = path.join(__dirname, 'tmp', 'tmp1');
         const inputPath = path.join(inputDir, 'dummy.wav');
         fs.mkdirSync(path.dirname(inputPath), { recursive: true });
         fs.writeFileSync(inputPath, 'dummy content');
@@ -86,8 +76,8 @@ describe('GET /api/transcribe', () => {
         expect(res.statusCode).toBe(200);
         expect(res.body).toEqual({ success: true });
 
-        // Verify file was written to storageDir under the request identifier
-        const savedPath = path.join(storageDir, reqId, outputFilename);
+        // Verify file was written to uploadDir under the request identifier
+        const savedPath = path.join(uploadDir, reqId, outputFilename);
         expect(fs.existsSync(savedPath)).toBe(true);
         const content = fs.readFileSync(savedPath, 'utf8');
         // Parsed content should match the stubbed response

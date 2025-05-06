@@ -34,12 +34,11 @@ class InputDirectoryNotFound extends Error {
 /**
  * Transcribe a request.
  * @param {string} inputDir
- * @param {import('./request_identifier').RequestIdentifier} reqId
+ * @param {string} targetDir
  * @returns {Promise<TranscriptionStatus>}
  */
-async function transcribeAllRequest(inputDir, reqId) {
+async function transcribeAllDirectory(inputDir, targetDir) {
     const resolvedDir = path.resolve(inputDir);
-    const targetDir = getTargetDirectory(reqId);
 
     let entries;
     try {
@@ -63,8 +62,21 @@ async function transcribeAllRequest(inputDir, reqId) {
         }
     }
 
-    await markDone(reqId);
     return { successes, failures };
+}
+
+
+/**
+ * Transcribe a request.
+ * @param {string} inputDir
+ * @param {import('./request_identifier').RequestIdentifier} reqId
+ * @returns {Promise<TranscriptionStatus>}
+ */
+async function transcribeAllRequest(inputDir, reqId) {
+    const targetDir = getTargetDirectory(reqId);
+    const result = await transcribeAllDirectory(inputDir, targetDir);
+    await markDone(reqId);
+    return result;
 }
 
 module.exports = {
