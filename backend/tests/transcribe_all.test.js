@@ -1,13 +1,17 @@
 const path = require('path');
 const fs = require('fs');
+const os = require('os');
 const request = require('supertest');
+const temporary = require('./temporary');
+
 
 // Mock environment exports to avoid real env dependencies
 jest.mock('../src/environment', () => {
     const path = require('path');
+    const temporary = require('./temporary');
     return {
         openaiAPIKey: jest.fn().mockReturnValue('test-key'),
-        resultsDirectory: jest.fn().mockReturnValue(path.join(__dirname, 'tmp')),
+        resultsDirectory: jest.fn().mockImplementation(temporary.output),
         myServerPort: jest.fn().mockReturnValue(0),
         logLevel: jest.fn().mockReturnValue("silent"),
     };
@@ -22,24 +26,19 @@ jest.mock('../src/transcribe', () => {
     };
 });
 
+beforeEach(temporary.beforeEach);
+afterEach(temporary.afterEach);
+
 const { transcribeFile, InputNotFound } = require('../src/transcribe');
 const app = require('../src/index');
 const { uploadDir } = require('../src/config');
 const { getTargetDirectory } = require('../src/request_identifier');
 
-// Clean up working directories before/after tests
-beforeEach(() => {
-    // Remove any previous uploads
-    if (fs.existsSync(uploadDir)) {
-        fs.rmSync(uploadDir, { recursive: true, force: true });
-    }
-});
-
 afterAll(() => {
     if (fs.existsSync(uploadDir)) fs.rmSync(uploadDir, { recursive: true, force: true });
     // Clean up any test tmp dirs
-    ['tmp_empty', 'tmp_mixed', 'tmp_all'].forEach(dirName => {
-        const dirPath = path.join(__dirname, 'tmp', dirName);
+    ['empty', 'mixed', 'all'].forEach(dirName => {
+        const dirPath = path.join(temporary.input(), dirName);
         if (fs.existsSync(dirPath)) fs.rmSync(dirPath, { recursive: true, force: true });
     });
 });
@@ -71,7 +70,7 @@ describe('GET /api/transcribe_all', () => {
 
     it('aggregates successes and failures', async () => {
         // Prepare three files: a.mp4, b.mp4, c.mp4
-        const tmp = path.join(__dirname, 'tmp', 'tmp_mixed');
+        const tmp = path.join(temporary.input(), 'mixed');
         fs.mkdirSync(tmp, { recursive: true });
         ['a.mp4', 'b.mp4', 'c.mp4'].forEach(f => fs.writeFileSync(path.join(tmp, f), ''));
         // Stub: succeed on a, throw on b, succeed on c
@@ -97,7 +96,7 @@ describe('GET /api/transcribe_all', () => {
 
     it('succeeds when all files transcribe', async () => {
         // Prepare mp4 files
-        const tmp = path.join(__dirname, 'tmp', 'tmp_all');
+        const tmp = path.join(temporary.input(), 'all');
         fs.mkdirSync(tmp, { recursive: true });
         ['x.mp4', 'y.mp4'].forEach(f => fs.writeFileSync(path.join(tmp, f), ''));
         // Stub: always resolve

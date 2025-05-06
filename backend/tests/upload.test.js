@@ -1,44 +1,26 @@
-
-// Mock environment exports to avoid real env dependencies
-jest.mock('../src/environment', () => {
-    const path = require('path');
-    return {
-        openaiAPIKey: jest.fn().mockReturnValue('test-key'),
-        resultsDirectory: jest.fn().mockReturnValue(path.join(__dirname, 'tmp')),
-        myServerPort: jest.fn().mockReturnValue(0),
-        logLevel: jest.fn().mockReturnValue("silent"),
-    };
-});
-
 const request = require('supertest');
 const fs = require('fs');
 const path = require('path');
 const app = require('../src/index');
 const { uploadDir } = require('../src/config');
+const temporary = require('./temporary');
 
-// Clean up working directories before/after tests
-beforeEach(() => {
-    // Remove any previous uploads
-    if (fs.existsSync(uploadDir)) {
-        fs.rmSync(uploadDir, { recursive: true, force: true });
-    }
+// Mock environment exports to avoid real env dependencies
+jest.mock('../src/environment', () => {
+    const path = require('path');
+    const temporary = require('./temporary');
+    return {
+        openaiAPIKey: jest.fn().mockReturnValue('test-key'),
+        resultsDirectory: jest.fn().mockImplementation(temporary.output),
+        myServerPort: jest.fn().mockReturnValue(0),
+        logLevel: jest.fn().mockReturnValue("silent"),
+    };
 });
 
-describe('POST /api/upload', () => {
-    // Clean up uploaded files and directories after each test
-    afterEach(() => {
-        if (fs.existsSync(uploadDir)) {
-            fs.readdirSync(uploadDir).forEach((entry) => {
-                const entryPath = path.join(uploadDir, entry);
-                if (fs.lstatSync(entryPath).isDirectory()) {
-                    fs.rmSync(entryPath, { recursive: true });
-                } else {
-                    fs.unlinkSync(entryPath);
-                }
-            });
-        }
-    });
+beforeEach(temporary.beforeEach);
+afterEach(temporary.afterEach);
 
+describe('POST /api/upload', () => {
     it('uploads a single file successfully', async () => {
         const reqId = 'testreq';
         const res = await request(app)
