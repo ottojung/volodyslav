@@ -1,7 +1,10 @@
 {
     "name": "Volodyslav Media Service",
     // use the compose file above
-    "dockerComposeFile": ["docker-compose.yml"],
+    // "dockerComposeFile": ["docker-compose.yml"],
+    "build": {
+        "dockerfile": "../Dockerfile"
+    },
     "service": "dev",
     "workspaceFolder": "/workspace",
     "forwardPorts": [3000, 5173],
