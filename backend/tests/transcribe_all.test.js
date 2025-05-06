@@ -39,7 +39,7 @@ afterAll(() => {
     if (fs.existsSync(uploadDir)) fs.rmSync(uploadDir, { recursive: true, force: true });
     // Clean up any test tmp dirs
     ['tmp_empty', 'tmp_mixed', 'tmp_all'].forEach(dirName => {
-        const dirPath = path.join(__dirname, dirName);
+        const dirPath = path.join(__dirname, 'tmp', dirName);
         if (fs.existsSync(dirPath)) fs.rmSync(dirPath, { recursive: true, force: true });
     });
 });
@@ -71,7 +71,7 @@ describe('GET /api/transcribe_all', () => {
 
     it('aggregates successes and failures', async () => {
         // Prepare three files: a.mp4, b.mp4, c.mp4
-        const tmp = path.join(__dirname, 'tmp_mixed');
+        const tmp = path.join(__dirname, 'tmp', 'tmp_mixed');
         fs.mkdirSync(tmp, { recursive: true });
         ['a.mp4', 'b.mp4', 'c.mp4'].forEach(f => fs.writeFileSync(path.join(tmp, f), ''));
         // Stub: succeed on a, throw on b, succeed on c
@@ -83,17 +83,21 @@ describe('GET /api/transcribe_all', () => {
               .get(base)
               .query({ request_identifier: reqId, input_dir: tmp });
         expect(res.status).toBe(500);
-        expect(res.body).toHaveProperty('success', false);
-        expect(res.body).toHaveProperty('errors');
-        expect(res.body.errors).toEqual([
+        expect(res.body).toHaveProperty('result');
+
+        const body = res.body;
+        expect(body).toHaveProperty('success', false);
+
+        const result = body.result;
+        expect(result.failures).toEqual([
             { file: 'b.mp4', message: 'bad file' }
         ]);
-        expect(res.body.successes).toEqual(['a.mp4', 'c.mp4']);
+        expect(result.successes).toEqual(['a.mp4', 'c.mp4']);
     });
 
     it('succeeds when all files transcribe', async () => {
         // Prepare mp4 files
-        const tmp = path.join(__dirname, 'tmp_all');
+        const tmp = path.join(__dirname, 'tmp', 'tmp_all');
         fs.mkdirSync(tmp, { recursive: true });
         ['x.mp4', 'y.mp4'].forEach(f => fs.writeFileSync(path.join(tmp, f), ''));
         // Stub: always resolve
@@ -102,7 +106,7 @@ describe('GET /api/transcribe_all', () => {
               .get(base)
               .query({ request_identifier: reqId, input_dir: tmp });
         expect(res.status).toBe(200);
-        expect(res.body).toEqual({ success: true, successes: ['x.mp4', 'y.mp4'] });
+        expect(res.body).toEqual({ success: true, result: { successes: ['x.mp4', 'y.mp4'], failures: [] }});
         // Check that .done file exists
         const doneFlag = path.join(uploadDir, reqId + '.done');
         expect(fs.existsSync(doneFlag)).toBe(true);
