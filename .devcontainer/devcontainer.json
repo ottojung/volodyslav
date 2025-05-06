@@ -10,15 +10,15 @@
     "postCreateCommand": "npm install",
     "customizations": {
         "vscode":{
-         "settings": {
-         // optional VS Code settings
-         "terminal.integrated.shell.linux": "/bin/bash"
-        },
-        "extensions": [
-         "dbaeumer.vscode-eslint",
-         "esbenp.prettier-vscode",
-         "ms-azuretools.vscode-docker"
-        ]
+            "settings": {
+                // optional VS Code settings
+                "terminal.integrated.shell.linux": "/bin/bash"
+            },
+            "extensions": [
+                "dbaeumer.vscode-eslint",
+                "esbenp.prettier-vscode",
+                "ms-azuretools.vscode-docker"
+            ]
         }
     }
 }
