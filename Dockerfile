@@ -1,5 +1,5 @@
 FROM node:24 AS builder
-WORKDIR /app
+WORKDIR /workspace
 COPY package* frontend/package* backend/package* ./
 RUN npm install
 # copy everything
