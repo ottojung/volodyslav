@@ -45,6 +45,10 @@ async function transcribeStream(file_stream) {
  */
 async function transcribeFiles(inputPath, outputPath) {
     // Check that the input file exists
+    if (!fs.existsSync(inputPath)) {
+        throw new Error("Input file not found.", inputPath);
+    }
+
     const file_stream = fs.createReadStream(inputPath);
     const transcription = await transcribeStream(file_stream);
 

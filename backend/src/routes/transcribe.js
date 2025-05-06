@@ -36,13 +36,6 @@ router.get('/transcribe', async (req, res) => {
 
         // normalize input and determine paths
         const inputPath = path.resolve(String(rawIn));
-        const is_exists = await fs.existsSync(inputPath);
-        if (!is_exists) {
-            return res
-                .status(404)
-                .json({ success: false, error: 'Input file not found' });
-        }
-
         await transcribeRequest(inputPath, reqId);
 
         // Log successful transcription
