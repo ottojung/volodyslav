@@ -7,6 +7,7 @@ const uploadRouter = require('./routes/upload');
 const pingRouter = require('./routes/ping');
 const staticRouter = require('./routes/static');
 const transcribeRouter = require('./routes/transcribe');
+const transcribeAllRouter = require('./routes/transcribe_all');
 
 const app = express();
 // HTTP request logging
@@ -17,6 +18,7 @@ app.use('/api', uploadRouter);
 app.use('/api', rootRouter);
 app.use('/api', pingRouter);
 app.use('/api', transcribeRouter);
+app.use('/api', transcribeAllRouter);
 app.use('/', staticRouter);
 
 // Start server if run directly
