@@ -5,17 +5,20 @@
     "build": {
         "dockerfile": "../Dockerfile"
     },
-    "service": "dev",
     "workspaceFolder": "/workspace",
     "forwardPorts": [3000, 5173],
     "postCreateCommand": "npm install",
-    "settings": {
-        // optional VS Code settings
-        "terminal.integrated.shell.linux": "/bin/bash"
-    },
-    "extensions": [
-        "dbaeumer.vscode-eslint",
-        "esbenp.prettier-vscode",
-        "ms-azuretools.vscode-docker"
-    ]
+    "customizations": {
+        "vscode":{
+         "settings": {
+         // optional VS Code settings
+         "terminal.integrated.shell.linux": "/bin/bash"
+        },
+        "extensions": [
+         "dbaeumer.vscode-eslint",
+         "esbenp.prettier-vscode",
+         "ms-azuretools.vscode-docker"
+        ]
+        }
+    }
 }
