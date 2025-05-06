@@ -93,8 +93,11 @@ async function transcribeRequest(inputPath, reqId) {
     const outputFile = path.basename('transcription.json');
     const targetDir = getTargetDirectory(reqId);
     const outputPath = path.join(targetDir, outputFile);
-    await transcribeFile(inputPath, outputPath);
-    markDone(reqId);
+    try {
+        await transcribeFile(inputPath, outputPath);
+    } finally {
+        markDone(reqId);
+    }
 }
 
 module.exports = {

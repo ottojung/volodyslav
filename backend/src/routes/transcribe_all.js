@@ -35,16 +35,30 @@ router.get('/transcribe_all', async (req, res) => {
     const resolvedDir = path.resolve(inputDir);
     const targetDir = getTargetDirectory(reqId);
     const entries = await fs.readdir(resolvedDir);
+    const successes = [];
+    const errorsList = [];
     for (const file of entries) {
         const inputPath = path.join(resolvedDir, file);
         const outputFile = `${file}.json`;
         const outputPath = path.join(targetDir, outputFile);
-        await transcribeFile(inputPath, outputPath);
+        try {
+            await transcribeFile(inputPath, outputPath);
+            successes.push(file);
+        } catch (/** @type {unknown} */ err) {
+            const message = err instanceof Error ? err.message : String(err);
+            errorsList.push({ file, message });
+        }
     }
-    markDone(reqId);
 
-    logger.info({ request_identifier: reqId }, 'Batch transcription successful');
-    return res.json({ success: true });
+    markDone(reqId);
+    if (errorsList.length > 0) {
+        return res
+            .status(500)
+            .json({ success: false, errors: errorsList, successes });
+    }
+
+    logger.info({ request_identifier: reqId, successes }, 'Batch transcription successful');
+    return res.json({ success: true, successes });
 });
 
 module.exports = router;
