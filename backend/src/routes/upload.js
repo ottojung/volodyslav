@@ -10,11 +10,11 @@ const { fromRequest, markDone } = require('../request_identifier');
  * @param {import('express').Request & { files: Express.Multer.File[] }} req
  * @param {import('express').Response} res
  */
-router.post('/upload', upload.array('photos'), (req, res) => {
+router.post('/upload', upload.array('photos'), async (req, res) => {
   const files = /** @type {Express.Multer.File[]} */ (req.files || []);
   const uploaded = files.map((f) => f.filename);
   logger.info({ files: uploaded }, 'Files uploaded');
-  markDone(fromRequest(req));
+  await markDone(fromRequest(req));
   res.json({ success: true, files: uploaded });
 });
 

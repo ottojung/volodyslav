@@ -86,7 +86,7 @@ describe('GET /api/transcribe_all', () => {
         expect(res.body).toHaveProperty('success', false);
         expect(res.body).toHaveProperty('errors');
         expect(res.body.errors).toEqual([
-            { file: 'b.mp4', error: 'bad file' }
+            { file: 'b.mp4', message: 'bad file' }
         ]);
         expect(res.body.successes).toEqual(['a.mp4', 'c.mp4']);
     });

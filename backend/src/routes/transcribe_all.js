@@ -59,7 +59,7 @@ router.get('/transcribe_all', async (req, res) => {
         }
     }
 
-    markDone(reqId);
+    await markDone(reqId);
     if (errorsList.length > 0) {
         return res
             .status(500)

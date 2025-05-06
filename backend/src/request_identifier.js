@@ -42,12 +42,13 @@ function fromRequest(req) {
 
 /**
  * @param {RequestIdentifier} reqId
- * @returns {void}
+ * @returns {Promise<void>}
  */
-function markDone(reqId) {
+async function markDone(reqId) {
+    await fs.promises.mkdir(uploadDir, { recursive: true });
     // e.g. /var/www/uploads/REQ12345.done
     const target = path.join(uploadDir, reqId.identifier + ".done");
-    fs.writeFileSync(target, "", "utf8");
+    await fs.promises.writeFile(target, "", "utf8");
 }
 
 /**

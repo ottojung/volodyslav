@@ -96,7 +96,7 @@ async function transcribeRequest(inputPath, reqId) {
     try {
         await transcribeFile(inputPath, outputPath);
     } finally {
-        markDone(reqId);
+        await markDone(reqId);
     }
 }
 
