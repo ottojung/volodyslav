@@ -60,7 +60,7 @@ async function transcribeStream(file_stream) {
  * @param {string} outputPath
  * @returns {Promise<void>}
  */
-async function transcribeFiles(inputPath, outputPath) {
+async function transcribeFile(inputPath, outputPath) {
     const resolvedInputPath = path.resolve(inputPath);
 
     // Check that the input file exists
@@ -93,13 +93,13 @@ async function transcribeRequest(inputPath, reqId) {
     const outputFile = path.basename('transcription.json');
     const targetDir = getTargetDirectory(reqId);
     const outputPath = path.join(targetDir, outputFile);
-    await transcribeFiles(inputPath, outputPath);
+    await transcribeFile(inputPath, outputPath);
     markDone(reqId);
 }
 
 module.exports = {
     InputNotFound,
     transcribeStream,
-    transcribeFiles,
+    transcribeFile,
     transcribeRequest,
 };
