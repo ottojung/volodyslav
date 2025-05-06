@@ -4,6 +4,8 @@ const os = require('os');
 const request = require('supertest');
 const temporary = require('./temporary');
 
+beforeEach(temporary.beforeEach);
+afterEach(temporary.afterEach);
 
 // Mock environment exports to avoid real env dependencies
 jest.mock('../src/environment', () => {
@@ -25,9 +27,6 @@ jest.mock('../src/transcribe', () => {
         transcribeFile: jest.fn(),
     };
 });
-
-beforeEach(temporary.beforeEach);
-afterEach(temporary.afterEach);
 
 const { transcribeFile, InputNotFound } = require('../src/transcribe');
 const app = require('../src/index');

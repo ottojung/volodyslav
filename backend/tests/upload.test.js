@@ -5,6 +5,9 @@ const app = require('../src/index');
 const { uploadDir } = require('../src/config');
 const temporary = require('./temporary');
 
+beforeEach(temporary.beforeEach);
+afterEach(temporary.afterEach);
+
 // Mock environment exports to avoid real env dependencies
 jest.mock('../src/environment', () => {
     const path = require('path');
@@ -16,9 +19,6 @@ jest.mock('../src/environment', () => {
         logLevel: jest.fn().mockReturnValue("silent"),
     };
 });
-
-beforeEach(temporary.beforeEach);
-afterEach(temporary.afterEach);
 
 describe('POST /api/upload', () => {
     it('uploads a single file successfully', async () => {

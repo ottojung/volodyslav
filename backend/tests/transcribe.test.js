@@ -1,12 +1,17 @@
 const path = require('path');
 const fs = require('fs');
+const temporary = require('./temporary');
+
+beforeEach(temporary.beforeEach);
+afterEach(temporary.afterEach);
 
 // Mock environment exports to avoid real env dependencies
 jest.mock('../src/environment', () => {
     const path = require('path');
+    const temporary = require('./temporary');
     return {
         openaiAPIKey: jest.fn().mockReturnValue('test-key'),
-        resultsDirectory: jest.fn().mockReturnValue(path.join(__dirname, 'tmp')),
+        resultsDirectory: jest.fn().mockImplementation(temporary.output),
         myServerPort: jest.fn().mockReturnValue(0),
         logLevel: jest.fn().mockReturnValue("silent"),
     };
@@ -28,14 +33,6 @@ jest.mock('openai', () => {
 const request = require('supertest');
 const app = require('../src/index');
 const { uploadDir } = require('../src/config');
-
-// Ensure a clean test directory
-beforeAll(() => {
-    // Remove any previous uploads
-    if (fs.existsSync(uploadDir)) {
-        fs.rmSync(uploadDir, { recursive: true, force: true });
-    }
-});
 
 describe('GET /api/transcribe', () => {
     it('responds with 400 if input or output param missing', async () => {
@@ -61,7 +58,7 @@ describe('GET /api/transcribe', () => {
 
     it('transcribes and saves output file on valid input', async () => {
         // Prepare a dummy input file
-        const inputDir = path.join(__dirname, 'tmp', 'tmp1');
+        const inputDir = temporary.input();
         const inputPath = path.join(inputDir, 'dummy.wav');
         fs.mkdirSync(path.dirname(inputPath), { recursive: true });
         fs.writeFileSync(inputPath, 'dummy content');
