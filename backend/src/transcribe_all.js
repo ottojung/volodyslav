@@ -22,6 +22,21 @@ class InputDirectoryNotFound extends Error {
 }
 
 
+/**
+ * @typedef {{ file: string, message: string }} TranscriptionFailure
+ */
+
+/**
+ * @typedef {{ successes: string[], failures: TranscriptionFailure[] }} TranscriptionStatus
+ */
+
+
+/**
+ * Transcribe a request.
+ * @param {string} inputDir
+ * @param {import('./request_identifier').RequestIdentifier} reqId
+ * @returns {Promise<TranscriptionStatus>}
+ */
 async function transcribeAllRequest(inputDir, reqId) {
     const resolvedDir = path.resolve(inputDir);
     const targetDir = getTargetDirectory(reqId);
