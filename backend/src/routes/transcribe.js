@@ -7,9 +7,6 @@ const { transcribeRequest } = require('../transcribe');
 
 const router = express.Router();
 
-// ensure we can parse JSON bodies
-router.use(express.json());
-
 /**
  * Query params:
  *    ?input=/absolute/path/to/file.wav
