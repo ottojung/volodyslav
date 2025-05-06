@@ -1,0 +1,110 @@
+const path = require('path');
+const fs = require('fs');
+const request = require('supertest');
+
+// Mock environment exports to avoid real env dependencies
+jest.mock('../src/environment', () => {
+    const path = require('path');
+    return {
+        openaiAPIKey: jest.fn().mockReturnValue('test-key'),
+        resultsDirectory: jest.fn().mockReturnValue(path.join(__dirname, 'tmp')),
+        myServerPort: jest.fn().mockReturnValue(0),
+        logLevel: jest.fn().mockReturnValue("silent"),
+    };
+});
+
+// Use real app, but stub transcribeFile
+jest.mock('../src/transcribe', () => {
+    const original = jest.requireActual('../src/transcribe');
+    return {
+        ...original,
+        transcribeFile: jest.fn(),
+    };
+});
+
+const { transcribeFile, InputNotFound } = require('../src/transcribe');
+const app = require('../src/index');
+const { uploadDir } = require('../src/config');
+const { getTargetDirectory } = require('../src/request_identifier');
+
+// Clean up working directories before/after tests
+beforeEach(() => {
+    // Remove any previous uploads
+    if (fs.existsSync(uploadDir)) {
+        fs.rmSync(uploadDir, { recursive: true, force: true });
+    }
+});
+
+afterAll(() => {
+    if (fs.existsSync(uploadDir)) fs.rmSync(uploadDir, { recursive: true, force: true });
+    // Clean up any test tmp dirs
+    ['tmp_empty', 'tmp_mixed', 'tmp_all'].forEach(dirName => {
+        const dirPath = path.join(__dirname, dirName);
+        if (fs.existsSync(dirPath)) fs.rmSync(dirPath, { recursive: true, force: true });
+    });
+});
+
+describe('GET /api/transcribe_all', () => {
+    const base = '/api/transcribe_all';
+    const reqId = 'batch123';
+    const targetDir = () => getTargetDirectory({ identifier: reqId });
+
+    it('returns 400 when request_identifier missing', async () => {
+        const res = await request(app).get(base);
+        expect(res.status).toBe(400);
+        expect(res.body).toEqual({ success: false, error: 'Missing request_identifier parameter' });
+    });
+
+    it('returns 400 when input_dir missing', async () => {
+        const res = await request(app).get(base).query({ request_identifier: reqId });
+        expect(res.status).toBe(400);
+        expect(res.body).toEqual({ success: false, error: 'Please provide the input_dir parameter' });
+    });
+
+    it('returns 404 when input_dir does not exist', async () => {
+        const res = await request(app)
+              .get(base)
+              .query({ request_identifier: reqId, input_dir: '/no/such/dir' });
+        expect(res.status).toBe(404);
+        expect(res.body).toEqual({ success: false, error: 'Input directory not found' });
+    });
+
+    it('aggregates successes and failures', async () => {
+        // Prepare three files: a.mp4, b.mp4, c.mp4
+        const tmp = path.join(__dirname, 'tmp_mixed');
+        fs.mkdirSync(tmp, { recursive: true });
+        ['a.mp4', 'b.mp4', 'c.mp4'].forEach(f => fs.writeFileSync(path.join(tmp, f), ''));
+        // Stub: succeed on a, throw on b, succeed on c
+        transcribeFile.mockImplementation((inP, outP) => {
+            if (inP.endsWith('/b.mp4')) throw new Error('bad file');
+            return Promise.resolve();
+        });
+        const res = await request(app)
+              .get(base)
+              .query({ request_identifier: reqId, input_dir: tmp });
+        expect(res.status).toBe(500);
+        expect(res.body).toHaveProperty('success', false);
+        expect(res.body).toHaveProperty('errors');
+        expect(res.body.errors).toEqual([
+            { file: 'b.mp4', error: 'bad file' }
+        ]);
+        expect(res.body.successes).toEqual(['a.mp4', 'c.mp4']);
+    });
+
+    it('succeeds when all files transcribe', async () => {
+        // Prepare mp4 files
+        const tmp = path.join(__dirname, 'tmp_all');
+        fs.mkdirSync(tmp, { recursive: true });
+        ['x.mp4', 'y.mp4'].forEach(f => fs.writeFileSync(path.join(tmp, f), ''));
+        // Stub: always resolve
+        transcribeFile.mockResolvedValue();
+        const res = await request(app)
+              .get(base)
+              .query({ request_identifier: reqId, input_dir: tmp });
+        expect(res.status).toBe(200);
+        expect(res.body).toEqual({ success: true, successes: ['x.mp4', 'y.mp4'] });
+        // Check that .done file exists
+        const doneFlag = path.join(uploadDir, reqId + '.done');
+        expect(fs.existsSync(doneFlag)).toBe(true);
+    });
+});

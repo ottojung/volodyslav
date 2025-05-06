@@ -34,7 +34,16 @@ router.get('/transcribe_all', async (req, res) => {
     const inputDir = String(rawDir);
     const resolvedDir = path.resolve(inputDir);
     const targetDir = getTargetDirectory(reqId);
-    const entries = await fs.readdir(resolvedDir);
+
+    let entries;
+    try {
+        entries = await fs.readdir(resolvedDir);
+    } catch {
+        return res
+            .status(404)
+            .json({ success: false, error: 'Input directory not found' });
+    }
+
     const successes = [];
     const errorsList = [];
     for (const file of entries) {
