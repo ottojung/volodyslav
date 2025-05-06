@@ -81,5 +81,6 @@ async function transcribeAllRequest(inputDir, reqId) {
 
 module.exports = {
     InputDirectoryNotFound,
+    transcribeAllDirectory,
     transcribeAllRequest,
 };
