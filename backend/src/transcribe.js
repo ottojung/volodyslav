@@ -2,6 +2,7 @@ const fs = require('fs');
 const path = require('path');
 const { OpenAI } = require('openai');
 const { openaiAPIKey } = require('./environment');
+const { getTargetDirectory, markDone } = require('./request_identifier');
 
 // Instantiate client
 const openai = new OpenAI({ apiKey: openaiAPIKey() });
@@ -17,7 +18,7 @@ const TRANSCRIBER_MODEL = 'gpt-4o-mini-transcribe';
  * @param {import('fs').ReadStream} file_stream
  * @returns {Promise<Transcription>}
  */
-async function transcribe(file_stream) {
+async function transcribeStream(file_stream) {
     // Make the API call
     const response_text = await openai.audio.transcriptions.create({
         file: file_stream,
@@ -45,7 +46,7 @@ async function transcribe(file_stream) {
 async function transcribeFiles(inputPath, outputPath) {
     // Check that the input file exists
     const file_stream = fs.createReadStream(inputPath);
-    const transcription = await transcribe(file_stream);
+    const transcription = await transcribeStream(file_stream);
 
     // Persist full JSON to disk
     await fs.promises.mkdir(path.dirname(outputPath), { recursive: true });
@@ -56,7 +57,22 @@ async function transcribeFiles(inputPath, outputPath) {
     );
 }
 
+/**
+ * Transcribe a request.
+ * @param {string} inputPath
+ * @param {import('./request_identifier').RequestIdentifier} reqId
+ * @returns {Promise<void>}
+ */
+async function transcribeRequest(inputPath, reqId) {
+    const outputFile = path.basename('transcription.json');
+    const targetDir = getTargetDirectory(reqId);
+    const outputPath = path.join(targetDir, outputFile);
+    await transcribeFiles(inputPath, outputPath);
+    markDone(reqId);
+}
+
 module.exports = {
-    transcribe,
+    transcribeStream,
     transcribeFiles,
+    transcribeRequest,
 };

@@ -2,8 +2,8 @@ const express = require('express');
 const fs = require('fs');
 const path = require('path');
 const logger = require('../logger');
-const { fromRequest, getTargetDirectory, markDone } = require('../request_identifier');
-const { transcribeFiles } = require('../transcribe');
+const { fromRequest } = require('../request_identifier');
+const { transcribeRequest } = require('../transcribe');
 
 const router = express.Router();
 
@@ -46,15 +46,10 @@ router.get('/transcribe', async (req, res) => {
                 .json({ success: false, error: 'Input file not found' });
         }
 
-        const outputFile = path.basename('transcription.json');
-        // determine target directory for this request and ensure it exists
-        const targetDir = getTargetDirectory(reqId);
-        const outputPath = path.join(targetDir, outputFile);
-        await transcribeFiles(inputPath, outputPath);
-        markDone(reqId);
+        await transcribeRequest(inputPath, reqId);
 
         // Log successful transcription
-        logger.info({ outputPath }, 'Transcription successful');
+        logger.info({ reqId }, 'Transcription successful');
         return res.json({ success: true });
     } catch (err) {
         logger.error({ err }, 'Transcription error');

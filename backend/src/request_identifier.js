@@ -67,4 +67,10 @@ function getTargetDirectory(reqId) {
     return path.join(uploadDir, reqId.identifier);
 }
 
-module.exports = { fromRequest, markDone, isDone, getTargetDirectory };
+module.exports = {
+    RequestIdentifier,
+    fromRequest,
+    markDone,
+    isDone,
+    getTargetDirectory,
+};
