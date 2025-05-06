@@ -44,12 +44,14 @@ async function transcribeStream(file_stream) {
  * @returns {Promise<void>}
  */
 async function transcribeFiles(inputPath, outputPath) {
+    const resolvedInputPath = path.resolve(inputPath);
+
     // Check that the input file exists
-    if (!fs.existsSync(inputPath)) {
+    if (!fs.existsSync(resolvedInputPath)) {
         throw new Error("Input file not found.", inputPath);
     }
 
-    const file_stream = fs.createReadStream(inputPath);
+    const file_stream = fs.createReadStream(resolvedInputPath);
     const transcription = await transcribeStream(file_stream);
 
     // Persist full JSON to disk

@@ -1,5 +1,4 @@
 const express = require('express');
-const path = require('path');
 const logger = require('../logger');
 const { fromRequest } = require('../request_identifier');
 const { transcribeRequest } = require('../transcribe');
@@ -34,7 +33,7 @@ router.get('/transcribe', async (req, res) => {
         }
 
         // normalize input and determine paths
-        const inputPath = path.resolve(String(rawIn));
+        const inputPath = String(rawIn);
         await transcribeRequest(inputPath, reqId);
 
         // Log successful transcription
