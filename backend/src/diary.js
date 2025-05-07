@@ -10,8 +10,20 @@ import { formatFileTimestamp } from "./formatFileTimestamp";
 import { copyFile, appendFile, writeFile, rename, unlink } from "fs/promises";
 
 /**
- * @param {string} originalPath 
- * @param {string} resultPath 
+ * @param {string} filePath
+ * @param {Array<Object>} entries
+ * @returns {Promise<void>}
+ */
+async function appendEntriesToFile(filePath, entries) {
+    for (const entry of entries) {
+        const entryString = JSON.stringify(entry, null, "\t");
+        await appendFile(filePath, entryString + "\n", "utf8");
+    }
+}
+
+/**
+ * @param {string} originalPath
+ * @param {string} resultPath
  * @returns {Promise<void>}
  */
 async function copyOrTouch(originalPath, resultPath) {
@@ -87,11 +99,11 @@ async function processDiaryAudios() {
     // try to copy the original; if missing, start with empty
     copyOrTouch(originalDataPath, tempDataPath);
 
-    // append one object per successful file
-    for (const filename of successes) {
+    // prepare entries to append
+    const entries = successes.map((filename) => {
         const dateStr = filename_to_date(filename);
 
-        const entry = {
+        return {
             date: dateStr,
             original: `diary [when 0 hours ago]`,
             input: `diary [when 0 hours ago]`,
@@ -101,10 +113,10 @@ async function processDiaryAudios() {
             type: "diary",
             description: "",
         };
+    });
 
-        const entryString = JSON.stringify(entry, null, "\t");
-        await appendFile(tempDataPath, entryString + "\n", "utf8");
-    }
+    // append entries to the temporary file
+    await appendEntriesToFile(tempDataPath, entries);
 
     // atomically replace original
     await rename(tempDataPath, originalDataPath);
@@ -116,6 +128,4 @@ async function processDiaryAudios() {
     }
 }
 
-export {
-    processDiaryAudios,
-}
+export { processDiaryAudios };
