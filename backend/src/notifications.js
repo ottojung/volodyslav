@@ -1,4 +1,6 @@
 const { execFile } = require("child_process");
+const { promisify } = require("util");
+const execFileAsync = promisify(execFile);
 
 
 /**
@@ -17,16 +19,13 @@ const resolveTermuxNotificationPath = (() => {
      */
     async function resolveTermuxNotificationPathInternal() {
         try {
-            const process = execFile("command", ["-v", "termux-notification"], { encoding: "utf-8" });
-            if (process.exitCode !== 0) {
+            const result = await execFileAsync("command", ["-v", "termux-notification"], { encoding: "utf-8" });
+            const stdout = result.stdout;
+            if (!stdout || !stdout.trim()) {
                 return null;
             }
-            const stdout = process.stdout;
-            if (stdout === null) {
-                return null;
-            }
-            const text = stdout.read();
-            return text.trim();
+
+            return stdout.trim();
         } catch (error) {
             return null;
         }
