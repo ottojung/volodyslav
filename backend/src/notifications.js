@@ -19,7 +19,7 @@ async function tryResolveTermuxNotificationPathInternal() {
         const result = await callSubprocess(
             "which",
             ["termux-notification"],
-            {},
+            {}
         );
         const stdout = result.stdout;
         if (!stdout || !stdout.trim()) {
@@ -37,7 +37,9 @@ async function tryResolveTermuxNotificationPathInternal() {
  *
  * @type {() => Promise<string|null>} - The path to the termux-notification executable or null if not found.
  */
-const tryResolveTermuxNotificationPath = memoizeOne(tryResolveTermuxNotificationPathInternal);
+const tryResolveTermuxNotificationPath = memoizeOne(
+    tryResolveTermuxNotificationPathInternal
+);
 
 async function resolveTermuxNotificationPath() {
     const path = await tryResolveTermuxNotificationPath();
@@ -60,7 +62,11 @@ async function ensureNotificationsAvailable() {
  */
 async function notifyAboutError(message) {
     const termuxNotificationPath = await resolveTermuxNotificationPath();
-    await callSubprocess(termuxNotificationPath, ["-t", "Error", "-c", message], {});
+    await callSubprocess(
+        termuxNotificationPath,
+        ["-t", "Error", "-c", message],
+        {}
+    );
 }
 
 /**
@@ -69,12 +75,11 @@ async function notifyAboutError(message) {
  */
 async function notifyAboutWarning(message) {
     const termuxNotificationPath = await resolveTermuxNotificationPath();
-    await callSubprocess(termuxNotificationPath, [
-        "-t",
-        "Warning",
-        "-c",
-        message,
-    ], {});
+    await callSubprocess(
+        termuxNotificationPath,
+        ["-t", "Warning", "-c", message],
+        {}
+    );
 }
 
 module.exports = {
