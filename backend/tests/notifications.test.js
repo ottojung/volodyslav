@@ -1,66 +1,67 @@
-const { notifyAboutError, notifyAboutWarning, ensureNotificationsAvailable } = require('../src/notifications');
-const { callSubprocess } = require('../src/subprocess');
-
-jest.mock('../src/subprocess', () => ({
-    callSubprocess: jest.fn((cmd, args) => { // Removed unused 'options' parameter
-        if (args.includes('-v') && args.includes('termux-notification')) {
-            return Promise.resolve({ stdout: '/usr/bin/termux-notification\n' });
-        } else {
-            return Promise.reject(new Error('command not found'));
-        }
-    }),
+jest.mock("../src/subprocess", () => ({
+    // just start with an empty mock, no default implementation
+    callSubprocess: jest.fn(),
 }));
 
-const mockCallSubprocess = callSubprocess;
+let notifyAboutError,
+    notifyAboutWarning,
+    ensureNotificationsAvailable,
+    callSubprocess;
 
 beforeEach(() => {
-    jest.clearAllMocks();
+    jest.resetModules(); // clear the require cache (and your IIFE memo)
+    jest.clearAllMocks(); // clear any mock history
+
+    // now re-require everything
+    const notifications = require("../src/notifications");
+    notifyAboutError = notifications.notifyAboutError;
+    notifyAboutWarning = notifications.notifyAboutWarning;
+    ensureNotificationsAvailable = notifications.ensureNotificationsAvailable;
+
+    // grab the mock from subprocess
+    ({ callSubprocess } = require("../src/subprocess"));
 });
 
-describe('notifications', () => {
-    describe('ensureNotificationsAvailable', () => {
-        it('should resolve when termux-notification is available', async () => {
-            mockCallSubprocess.mockResolvedValue({ stdout: '/usr/bin/termux-notification\n' });
-            // NOTE: this ^^ doesn't work!!!!
-
+describe("notifications", () => {
+    describe("ensureNotificationsAvailable", () => {
+        it("resolves if termux-notification is on PATH", async () => {
+            callSubprocess.mockResolvedValueOnce({
+                stdout: "/usr/bin/termux-notification\n",
+            });
             await expect(ensureNotificationsAvailable()).resolves.not.toThrow();
         });
 
-        it('should throw an error when termux-notification is unavailable', async () => {
-            mockCallSubprocess.mockImplementation(() => {
-                throw new Error('command not found');
-            }
-            );
-
+        it("throws if termux-notification is missing", async () => {
+            callSubprocess.mockRejectedValueOnce(new Error("not found"));
             await expect(ensureNotificationsAvailable()).rejects.toThrow(
-                'Notifications unavailable. Termux notification executable not found in $PATH. Please ensure that Termux:API is installed and available in your $PATH.'
+                "Notifications unavailable. Termux notification executable not found in $PATH."
             );
         });
     });
 
-    describe('notifyAboutError', () => {
-        it('should send an error notification', async () => {
-            mockCallSubprocess.mockResolvedValue({ stdout: '/usr/bin/termux-notification\n' });
-
-            await notifyAboutError('Test error message');
-
-            expect(mockCallSubprocess).toHaveBeenCalledWith(
-                '/usr/bin/termux-notification',
-                ['-t', 'Error', '-c', 'Test error message'],
+    describe("notifyAboutError", () => {
+        it("invokes termux-notification with Error", async () => {
+            callSubprocess.mockResolvedValueOnce({
+                stdout: "/usr/bin/termux-notification\n",
+            });
+            await notifyAboutError("foo");
+            expect(callSubprocess).toHaveBeenCalledWith(
+                "/usr/bin/termux-notification",
+                ["-t", "Error", "-c", "foo"],
                 {}
             );
         });
     });
 
-    describe('notifyAboutWarning', () => {
-        it('should send a warning notification', async () => {
-            mockCallSubprocess.mockResolvedValue({ stdout: '/usr/bin/termux-notification\n' });
-
-            await notifyAboutWarning('Test warning message');
-
-            expect(mockCallSubprocess).toHaveBeenCalledWith(
-                '/usr/bin/termux-notification',
-                ['-t', 'Warning', '-c', 'Test warning message'],
+    describe("notifyAboutWarning", () => {
+        it("invokes termux-notification with Warning", async () => {
+            callSubprocess.mockResolvedValueOnce({
+                stdout: "/usr/bin/termux-notification\n",
+            });
+            await notifyAboutWarning("bar");
+            expect(callSubprocess).toHaveBeenCalledWith(
+                "/usr/bin/termux-notification",
+                ["-t", "Warning", "-c", "bar"],
                 {}
             );
         });
