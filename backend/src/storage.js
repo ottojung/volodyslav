@@ -1,5 +1,5 @@
 const multer = require('multer');
-const { fromRequest, isDone, makeDirectory } = require('./request_identifier');
+const { fromRequest, makeDirectory } = require('./request_identifier');
 
 /**
  * Multer storage engine to save uploaded files to disk
