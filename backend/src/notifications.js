@@ -2,6 +2,14 @@ const { execFile } = require("child_process");
 const { promisify } = require("util");
 const execFileAsync = promisify(execFile);
 
+class TermuxNotificationError extends Error {
+    constructor() {
+        super(
+            "Termux notification executable not found in PATH. Please ensure that termux-notification is installed and available in your PATH."
+        );
+    }
+}
+
 /**
  * Internal function to resolve the path to the termux-notification executable.
  *
@@ -30,7 +38,7 @@ async function resolveTermuxNotificationPathInternal() {
  *
  * @type {() => Promise<string|null>} - The path to the termux-notification executable or null if not found.
  */
-const resolveTermuxNotificationPath = (() => {
+const tryResolveTermuxNotificationPath = (() => {
     /** @type {string|null} */
     let memoizedTermuxNotificationPath = null;
     async function resolveTermuxNotificationPath() {
@@ -43,22 +51,19 @@ const resolveTermuxNotificationPath = (() => {
     return resolveTermuxNotificationPath;
 })();
 
-class TermuxNotificationError extends Error {
-    constructor() {
-        super(
-            "Termux notification executable not found in PATH. Please ensure that termux-notification is installed and available in your PATH."
-        );
+async function resolveTermuxNotificationPath() {
+    const path = await tryResolveTermuxNotificationPath();
+    if (!path) {
+        throw new TermuxNotificationError();
     }
+    return path;
 }
 
 /**
  * Ensures that the termux-notification executable exists in the PATH.
  */
 async function ensureNotificationsAvailable() {
-    const termuxNotificationPath = await resolveTermuxNotificationPath();
-    if (!termuxNotificationPath) {
-        throw new TermuxNotificationError();
-    }
+    await resolveTermuxNotificationPath();
 }
 
 /**
@@ -67,9 +72,6 @@ async function ensureNotificationsAvailable() {
  */
 async function notifyAboutError(message) {
     const termuxNotificationPath = await resolveTermuxNotificationPath();
-    if (!termuxNotificationPath) {
-        throw new TermuxNotificationError();
-    }
     await execFileAsync(termuxNotificationPath, ["-t", "Error", "-c", message]);
 }
 
@@ -79,9 +81,6 @@ async function notifyAboutError(message) {
  */
 async function notifyAboutWarning(message) {
     const termuxNotificationPath = await resolveTermuxNotificationPath();
-    if (!termuxNotificationPath) {
-        throw new TermuxNotificationError();
-    }
     await execFileAsync(termuxNotificationPath, ["-t", "Warning", "-c", message]);
 }
 
