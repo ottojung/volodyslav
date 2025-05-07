@@ -1,6 +1,4 @@
 const { execFile } = require("child_process");
-const { promisify } = require("util");
-const execFileAsync = promisify(execFile);
 
 class NotificationsUnavailable extends Error {
     constructor() {
@@ -92,7 +90,7 @@ async function ensureNotificationsAvailable() {
  */
 async function notifyAboutError(message) {
     const termuxNotificationPath = await resolveTermuxNotificationPath();
-    await execFileAsync(termuxNotificationPath, ["-t", "Error", "-c", message]);
+    await execFileAsyncWrapper(termuxNotificationPath, ["-t", "Error", "-c", message], {});
 }
 
 /**
@@ -101,12 +99,12 @@ async function notifyAboutError(message) {
  */
 async function notifyAboutWarning(message) {
     const termuxNotificationPath = await resolveTermuxNotificationPath();
-    await execFileAsync(termuxNotificationPath, [
+    await execFileAsyncWrapper(termuxNotificationPath, [
         "-t",
         "Warning",
         "-c",
         message,
-    ]);
+    ], {});
 }
 
 module.exports = {
