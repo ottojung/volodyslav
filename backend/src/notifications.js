@@ -39,8 +39,8 @@ async function resolveTermuxNotificationPathInternal() {
  * @type {() => Promise<string|null>} - The path to the termux-notification executable or null if not found.
  */
 const tryResolveTermuxNotificationPath = (() => {
-    /** @type {string|null} */
-    let memoizedTermuxNotificationPath = null;
+    /** @type {string|null|undefined} */
+    let memoizedTermuxNotificationPath = undefined;
     async function resolveTermuxNotificationPath() {
         if (memoizedTermuxNotificationPath === null) {
             memoizedTermuxNotificationPath =
