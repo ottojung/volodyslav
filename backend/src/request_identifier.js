@@ -6,7 +6,7 @@ const { uploadDir } = require('./config');
 /**
  * @class
  */
-class RequestIdentifier {
+class RequestIdentifierClass {
     /** @type {string} */
     identifier;
 
@@ -30,6 +30,7 @@ class RequestIdentifier {
     }
 }
 
+/** @typedef {RequestIdentifierClass} RequestIdentifier */
 
 /**
  * Primary constructor for a requestIdentifier.
@@ -37,7 +38,7 @@ class RequestIdentifier {
  * @returns {RequestIdentifier}
  */
 function fromRequest(req) {
-    return new RequestIdentifier(req);
+    return new RequestIdentifierClass(req);
 }
 
 /**
@@ -71,7 +72,6 @@ async function makeDirectory(reqId) {
 }
 
 module.exports = {
-    RequestIdentifier,
     fromRequest,
     markDone,
     isDone,
