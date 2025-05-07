@@ -127,4 +127,4 @@ async function commitChanges() {
     throw new Error("Not implemented");
 }
 
-module.exports = { transaction, EventLogStorage };
+module.exports = { transaction };
