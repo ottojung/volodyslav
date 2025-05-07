@@ -2,10 +2,10 @@ const { execFile } = require("child_process");
 const { promisify } = require("util");
 const execFileAsync = promisify(execFile);
 
-class TermuxNotificationError extends Error {
+class NotificationsUnavailable extends Error {
     constructor() {
         super(
-            "Termux notification executable not found in PATH. Please ensure that termux-notification is installed and available in your PATH."
+            "Notifications unavailable. Termux notification executable not found in $PATH. Please ensure that Termux:API is installed and available in your $PATH."
         );
     }
 }
@@ -54,7 +54,7 @@ const tryResolveTermuxNotificationPath = (() => {
 async function resolveTermuxNotificationPath() {
     const path = await tryResolveTermuxNotificationPath();
     if (!path) {
-        throw new TermuxNotificationError();
+        throw new NotificationsUnavailable();
     }
     return path;
 }
