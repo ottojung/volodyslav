@@ -1,4 +1,5 @@
 const { callSubprocess } = require("./subprocess");
+const memoizeOne = require("memoize-one").default;
 
 class NotificationsUnavailable extends Error {
     constructor() {
@@ -36,18 +37,7 @@ async function resolveTermuxNotificationPathInternal() {
  *
  * @type {() => Promise<string|null>} - The path to the termux-notification executable or null if not found.
  */
-const tryResolveTermuxNotificationPath = (() => {
-    /** @type {string|null|undefined} */
-    let memoizedTermuxNotificationPath = undefined;
-    async function resolveTermuxNotificationPath() {
-        if (memoizedTermuxNotificationPath === undefined) {
-            memoizedTermuxNotificationPath =
-                await resolveTermuxNotificationPathInternal();
-        }
-        return memoizedTermuxNotificationPath;
-    }
-    return resolveTermuxNotificationPath;
-})();
+const tryResolveTermuxNotificationPath = memoizeOne(resolveTermuxNotificationPathInternal);
 
 async function resolveTermuxNotificationPath() {
     const path = await tryResolveTermuxNotificationPath();
