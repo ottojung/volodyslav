@@ -103,7 +103,7 @@ async function appendEntriesToFile(filePath, entries) {
 async function transaction(transformation) {
     const eventLogDir = eventLogDirectory();
     const originalDataPath = path.join(eventLogDir, "data.json");
-    const tempDataPath = path.join(os.tmpdir(), `data.json`);
+    const tempDataPath = path.join(os.tmpdir(), "data.json");
     const eventLogStorage = new EventLogStorage();
 
     // try to copy the original; if missing, start with empty
@@ -127,4 +127,4 @@ async function commitChanges() {
     throw new Error("Not implemented");
 }
 
-module.exports = { transaction, EventLogStorage }; 
+module.exports = { transaction, EventLogStorage };
