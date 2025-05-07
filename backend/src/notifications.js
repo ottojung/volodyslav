@@ -7,7 +7,7 @@ const { execFile } = require("child_process");
  * @returns {string|null} - The path to the termux-notification executable or null if not found.
  */
 const resolveTermuxNotificationPath = (() => {
-    /** @type {string|null} */
+    /** @type {Promise<string|null>|null} */
     let memoizedTermuxNotificationPath = null;
 
     /**
@@ -17,8 +17,16 @@ const resolveTermuxNotificationPath = (() => {
      */
     async function resolveTermuxNotificationPathInternal() {
         try {
-            const stdout = execFile("command", ["-v", "termux-notification"], { encoding: "utf-8" });
-            return await stdout.trim();
+            const process = execFile("command", ["-v", "termux-notification"], { encoding: "utf-8" });
+            if (process.exitCode !== 0) {
+                return null;
+            }
+            const stdout = process.stdout;
+            if (stdout === null) {
+                return null;
+            }
+            const text = stdout.read();
+            return text.trim();
         } catch (error) {
             return null;
         }
@@ -26,7 +34,7 @@ const resolveTermuxNotificationPath = (() => {
 
     return async function resolveTermuxNotificationPath() {
         if (memoizedTermuxNotificationPath === null) {
-            memoizedTermuxNotificationPath = await resolveTermuxNotificationPathInternal();
+            memoizedTermuxNotificationPath = resolveTermuxNotificationPathInternal();
         }
         return memoizedTermuxNotificationPath;
     };
