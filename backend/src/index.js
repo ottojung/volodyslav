@@ -1,5 +1,4 @@
 const express = require('express');
-const pinoHttp = require('pino-http').default;
 const logger = require('./logger');
 const { port } = require('./config');
 const rootRouter = require('./routes/root');
@@ -11,8 +10,6 @@ const transcribeAllRouter = require('./routes/transcribe_all');
 const { ensureStartupDependencies } = require('./startup');
 
 const app = express();
-// HTTP request logging
-app.use(pinoHttp({ logger }));
 
 // Mount upload and API routers
 app.use('/api', uploadRouter);
@@ -25,7 +22,7 @@ app.use('/', staticRouter);
 // Start server if run directly
 if (require.main === module) {
   app.listen(port, async () => {
-    await ensureStartupDependencies();
+    await ensureStartupDependencies(app);
     logger.info({ port }, 'Server is running');
   });
 }
