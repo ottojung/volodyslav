@@ -95,6 +95,7 @@ async function processDiaryAudios() {
 
 /**
  * Writes changes to the event log by appending entries for successfully
+ * transcribed diary audio files.
  * @param {Array<string>} successes - An array of successfully transcribed filenames.
  * @returns {Promise<void>} - A promise that resolves when the changes are written.
  */
