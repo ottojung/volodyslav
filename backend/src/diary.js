@@ -10,9 +10,12 @@ import { formatFileTimestamp } from "./formatFileTimestamp";
 import { copyFile, appendFile, writeFile, rename, unlink } from "fs/promises";
 
 /**
- * @param {string} filePath
- * @param {Array<Object>} entries
- * @returns {Promise<void>}
+ * Appends an array of entries to a specified file.
+ * Each entry is serialized to JSON format and appended to the file with a newline.
+ *
+ * @param {string} filePath - The path to the file where entries will be appended.
+ * @param {Array<Object>} entries - An array of objects to append to the file.
+ * @returns {Promise<void>} - A promise that resolves when all entries are appended.
  */
 async function appendEntriesToFile(filePath, entries) {
     for (const entry of entries) {
@@ -42,7 +45,16 @@ async function copyOrTouch(originalPath, resultPath) {
 }
 
 /**
- * @returns {Promise<void>}
+ * Processes diary audio files by transcribing them, organizing the results,
+ * updating the event log, and cleaning up the original files.
+ *
+ * This function performs the following steps:
+ * 1. Transcribes all audio files in the diary audios directory.
+ * 2. Copies successfully transcribed files to a target directory.
+ * 3. Updates the event log with new entries for the transcriptions.
+ * 4. Deletes the original audio files after processing.
+ *
+ * @returns {Promise<void>} - A promise that resolves when all processing is complete.
  */
 async function processDiaryAudios() {
     /**
