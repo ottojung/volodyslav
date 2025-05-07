@@ -1,9 +1,37 @@
 import path from "path";
-import { diaryAudiosDirectory, eventLogAssetsDirectory } from "./environment";
+import os from "os";
+import {
+    diaryAudiosDirectory,
+    eventLogDirectory,
+    eventLogAssetsDirectory,
+} from "./environment";
 import { transcribeAllGeneric } from "./transcribe_all";
 import { formatFileTimestamp } from "./formatFileTimestamp";
-import { copyFile } from "fs/promises";
+import { copyFile, appendFile, writeFile, rename } from "fs/promises";
 
+/**
+ * @param {string} originalPath 
+ * @param {string} resultPath 
+ * @returns {Promise<void>}
+ */
+async function copyOrTouch(originalPath, resultPath) {
+    try {
+        await copyFile(originalPath, resultPath);
+    } catch (error) {
+        if (error instanceof Error) {
+            if ("code" in error && error.code === "ENOENT") {
+                await writeFile(resultPath, "", "utf8");
+                return;
+            }
+        }
+
+        throw error;
+    }
+}
+
+/**
+ * @returns {Promise<void>}
+ */
 async function processDiaryAudios() {
     /**
      * @param {string} filename
@@ -19,7 +47,7 @@ async function processDiaryAudios() {
      */
     function assets_directory(filename) {
         const date = filename_to_date(filename);
-        const ret = path.join(eventLogAssetsDirectory(), date)
+        const ret = path.join(eventLogAssetsDirectory(), date);
         return ret;
     }
 
@@ -34,7 +62,10 @@ async function processDiaryAudios() {
     }
 
     const diaryAudiosDir = diaryAudiosDirectory();
-    const transcriptionResults = await transcribeAllGeneric(diaryAudiosDir, namer);
+    const transcriptionResults = await transcribeAllGeneric(
+        diaryAudiosDir,
+        namer
+    );
 
     const successes = transcriptionResults.successes;
     const failures = transcriptionResults.failures;
@@ -46,24 +77,39 @@ async function processDiaryAudios() {
         await copyFile(inputPath, targetPath);
     }
 
-    // TODO:
-    // - copy file "$eventLogDirectory/data.json" into a private temporary workfile.
-    // - start editing that file.
-    // - for every $success in successes:
-    //   - append a json object to the file like this:
-    //     
-    //       {
-    //          date: filename_to_date($success),
-    // 	        original: "diary [when 0 hours ago]",
-	// input: "diary [when 0 hours ago]",
-	// modifiers: {
-	// 	when: "0 hours ago"
-	// },
-	// type: "diary",
-	// description: "",
-    //       }
     //
+    // now update the event-log data.json
     //
-    // - move the file back into the original (effectively atomically updating it)
-    //
+    const eventLogDir = eventLogDirectory();
+    const originalDataPath = path.join(eventLogDir, "data.json");
+    const tempDataPath = path.join(os.tmpdir(), `data.json`);
+
+    // try to copy the original; if missing, start with empty
+    copyOrTouch(originalDataPath, tempDataPath);
+
+    // append one object per successful file
+    for (const filename of successes) {
+        const dateStr = filename_to_date(filename);
+
+        const entry = {
+            date: dateStr,
+            original: `diary [when 0 hours ago]`,
+            input: `diary [when 0 hours ago]`,
+            modifiers: {
+                when: "0 hours ago",
+            },
+            type: "diary",
+            description: "",
+        };
+
+        const entryString = JSON.stringify(entry, null, "\t");
+        await appendFile(tempDataPath, entryString + "\n", "utf8");
+    }
+
+    // atomically replace original
+    await rename(tempDataPath, originalDataPath);
+}
+
+export {
+    processDiaryAudios,
 }
