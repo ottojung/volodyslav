@@ -1,4 +1,4 @@
-const { execFile } = require("child_process");
+const { execFile, execFileSync } = require("child_process");
 
 /**
  * This function resolves the path to the termux-notification executable.
@@ -6,14 +6,12 @@ const { execFile } = require("child_process");
  * @returns {string|null} - The path to the termux-notification executable or null if not found.
  */
 function resolveTermuxNotificationPath() {
-    // Return path to termux-notification executable.
-    execFile("command", ["-v", "termux-notification"], (error, stdout) => {
-        if (error) {
-            console.error("termux-notification not found in PATH");
-            return null;
-        }
+    try {
+        const stdout = execFileSync("command", ["-v", "termux-notification"], { encoding: "utf-8" });
         return stdout.trim();
-    });
+    } catch (error) {
+        return null;
+    }
 }
 
 class TermuxNotificationError extends Error {
