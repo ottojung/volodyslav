@@ -1,56 +1,16 @@
 const path = require("path");
-const os = require("os");
 const logger = require("./logger");
 const {
     diaryAudiosDirectory,
-    eventLogDirectory,
     eventLogAssetsDirectory,
 } = require("./environment");
 const { transcribeAllGeneric } = require("./transcribe_all");
 const { formatFileTimestamp } = require("./formatFileTimestamp");
 const {
     copyFile,
-    appendFile,
-    writeFile,
-    rename,
     unlink,
 } = require("fs/promises");
-const { commitChanges } = require("./eventLogStorage");
-
-/**
- * Appends an array of entries to a specified file.
- * Each entry is serialized to JSON format and appended to the file with a newline.
- *
- * @param {string} filePath - The path to the file where entries will be appended.
- * @param {Array<Object>} entries - An array of objects to append to the file.
- * @returns {Promise<void>} - A promise that resolves when all entries are appended.
- */
-async function appendEntriesToFile(filePath, entries) {
-    for (const entry of entries) {
-        const entryString = JSON.stringify(entry, null, "\t");
-        await appendFile(filePath, entryString + "\n", "utf8");
-    }
-}
-
-/**
- * @param {string} originalPath
- * @param {string} resultPath
- * @returns {Promise<void>}
- */
-async function copyOrTouch(originalPath, resultPath) {
-    try {
-        await copyFile(originalPath, resultPath);
-    } catch (error) {
-        if (error instanceof Error) {
-            if ("code" in error && error.code === "ENOENT") {
-                await writeFile(resultPath, "", "utf8");
-                return;
-            }
-        }
-
-        throw error;
-    }
-}
+const { transaction } = require("./eventLogStorage");
 
 /**
  * @param {string} filename
@@ -122,15 +82,23 @@ async function processDiaryAudios() {
     }
 
     //
-    // now update the event-log data.json
+    // now update the event-log storage.
     //
-    const eventLogDir = eventLogDirectory();
-    const originalDataPath = path.join(eventLogDir, "data.json");
-    const tempDataPath = path.join(os.tmpdir(), `data.json`);
+    writeChanges(successes);
 
-    // try to copy the original; if missing, start with empty
-    copyOrTouch(originalDataPath, tempDataPath);
+    // Delete the original audio files.
+    for (const filename of successes) {
+        const inputPath = path.join(diaryAudiosDir, filename);
+        await unlink(inputPath);
+    }
+}
 
+/**
+ * Writes changes to the event log by appending entries for successfully
+ * @param {Array<string>} successes - An array of successfully transcribed filenames.
+ * @returns {Promise<void>} - A promise that resolves when the changes are written.
+ */
+async function writeChanges(successes) {
     // prepare entries to append
     const entries = successes.map((filename) => {
         const dateStr = filename_to_date(filename);
@@ -147,20 +115,9 @@ async function processDiaryAudios() {
         };
     });
 
-    // append entries to the temporary file
-    await appendEntriesToFile(tempDataPath, entries);
-
-    // atomically replace original
-    await rename(tempDataPath, originalDataPath);
-
-    // Delete the original audio files.
-    for (const filename of successes) {
-        const inputPath = path.join(diaryAudiosDir, filename);
-        await unlink(inputPath);
-    }
-
-    // Commit diary changes
-    await commitChanges();
+    await transaction((eventLogStorage) => {
+        entries.forEach(eventLogStorage.addEntry);
+    });
 }
 
 module.exports = { processDiaryAudios };
