@@ -5,7 +5,20 @@ const { execFile, execFileSync } = require("child_process");
  *
  * @returns {string|null} - The path to the termux-notification executable or null if not found.
  */
+let memoizedTermuxNotificationPath = null;
 function resolveTermuxNotificationPath() {
+    if (memoizedTermuxNotificationPath === null) {
+        memoizedTermuxNotificationPath = resolveTermuxNotificationPathInternal();
+    }
+    return memoizedTermuxNotificationPath;
+}
+
+/**
+ * Internal function to resolve the path to the termux-notification executable.
+ *
+ * @returns {string|null} - The path to the termux-notification executable or null if not found.
+ */
+function resolveTermuxNotificationPathInternal() {
     try {
         const stdout = execFileSync("command", ["-v", "termux-notification"], { encoding: "utf-8" });
         return stdout.trim();
