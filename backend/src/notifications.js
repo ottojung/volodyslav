@@ -9,6 +9,7 @@ class NotificationsUnavailable extends Error {
 }
 
 /**
+ * Wraps the execFile function to provide a Promise-based interface.
  * Executes a command using execFile and returns a promise.
  * 
  * @param {string} command - The command to execute.
