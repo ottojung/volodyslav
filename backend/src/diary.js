@@ -1,5 +1,6 @@
 const path = require("path");
 const os = require("os");
+const logger = require("./logger");
 const {
     diaryAudiosDirectory,
     eventLogDirectory,
@@ -101,6 +102,17 @@ async function processDiaryAudios() {
 
     const successes = transcriptionResults.successes;
     const failures = transcriptionResults.failures;
+
+    failures.forEach((failure) => {
+        logger.error(
+            {
+                file: failure.file,
+                error: failure.message,
+                directory: diaryAudiosDir,
+            },
+            `Diary audio transcription failed: ${failure.message}`
+        );
+    });
 
     for (const filename of successes) {
         const inputPath = path.join(diaryAudiosDir, filename);
