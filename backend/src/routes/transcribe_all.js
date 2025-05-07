@@ -1,6 +1,4 @@
 const express = require('express');
-const path = require('path');
-const fs = require('fs/promises');
 const logger = require('../logger');
 const { fromRequest } = require('../request_identifier');
 const { transcribeAllRequest, InputDirectoryAccess } = require('../transcribe_all');
