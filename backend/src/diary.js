@@ -116,6 +116,9 @@ async function writeChanges(successes) {
         };
     });
 
+    /**
+     * @type {import('./eventLogStorage').EventLogStorage}
+     */
     await transaction((eventLogStorage) => {
         entries.forEach(eventLogStorage.addEntry);
     });

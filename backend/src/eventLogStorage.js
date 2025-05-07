@@ -10,7 +10,8 @@ const os = require("os");
 const { eventLogDirectory } = require("./environment");
 const { copyFile, writeFile, appendFile, rename } = require("fs/promises");
 
-/** @typedef Event
+/**
+ * @typedef Event
  * @type {Object}
  * @property {string} date - The date of the event.
  * @property {string} original - The original input of the event.
@@ -21,10 +22,10 @@ const { copyFile, writeFile, appendFile, rename } = require("fs/promises");
  */
 
 /**
- * @class EventLogStorage
+ * @class
  * @description A class to manage the storage of event log entries.
  */
-class EventLogStorage {
+class EventLogStorageClass {
     /**
      * Entries to be added to the event log.
      * @private
@@ -56,6 +57,8 @@ class EventLogStorage {
         return this.newEntries;
     }
 }
+
+/** @typedef {EventLogStorageClass} EventLogStorage */
 
 /**
  * @param {string} originalPath
@@ -104,7 +107,7 @@ async function transaction(transformation) {
     const eventLogDir = eventLogDirectory();
     const originalDataPath = path.join(eventLogDir, "data.json");
     const tempDataPath = path.join(os.tmpdir(), "data.json");
-    const eventLogStorage = new EventLogStorage();
+    const eventLogStorage = new EventLogStorageClass();
 
     // try to copy the original; if missing, start with empty
     await copyOrTouch(originalDataPath, tempDataPath);
