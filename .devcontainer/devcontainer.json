@@ -6,7 +6,10 @@
     "workspaceFolder": "/workspace",
     "workspaceMount": "source=${localWorkspaceFolder},target=/workspace,type=bind,consistency=cached",
     "postCreateCommand": "npm install",
-    "remoteUser": "${localEnv:USER}",
+    "runArgs": [
+        "--user",
+        "${localEnv:UID}:${localEnv:GID}"
+    ],
     "customizations": {
         "vscode":{
             "settings": {
