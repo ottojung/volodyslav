@@ -1,5 +1,4 @@
 const multer = require('multer');
-const fs = require('fs');
 const { fromRequest, isDone, makeDirectory } = require('./request_identifier');
 
 /**
