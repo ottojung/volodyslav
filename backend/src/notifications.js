@@ -2,43 +2,46 @@ const { execFile } = require("child_process");
 const { promisify } = require("util");
 const execFileAsync = promisify(execFile);
 
+/**
+ * Internal function to resolve the path to the termux-notification executable.
+ *
+ * @returns {Promise<string|null>} - The path to the termux-notification executable or null if not found.
+ */
+async function resolveTermuxNotificationPathInternal() {
+    try {
+        const result = await execFileAsync(
+            "command",
+            ["-v", "termux-notification"],
+            { encoding: "utf-8" }
+        );
+        const stdout = result.stdout;
+        if (!stdout || !stdout.trim()) {
+            return null;
+        }
+
+        return stdout.trim();
+    } catch (error) {
+        return null;
+    }
+}
 
 /**
  * This function resolves the path to the termux-notification executable.
  *
- * @returns {Promise<string|null>} - The path to the termux-notification executable or null if not found.
+ * @type {() => Promise<string|null>} - The path to the termux-notification executable or null if not found.
  */
 const resolveTermuxNotificationPath = (() => {
-    /** @type {Promise<string|null>|null} */
+    /** @type {string|null} */
     let memoizedTermuxNotificationPath = null;
-
-    /**
-     * Internal function to resolve the path to the termux-notification executable.
-     *
-     * @returns {Promise<string|null>} - The path to the termux-notification executable or null if not found.
-     */
-    async function resolveTermuxNotificationPathInternal() {
-        try {
-            const result = await execFileAsync("command", ["-v", "termux-notification"], { encoding: "utf-8" });
-            const stdout = result.stdout;
-            if (!stdout || !stdout.trim()) {
-                return null;
-            }
-
-            return stdout.trim();
-        } catch (error) {
-            return null;
-        }
-    }
-
-    return async function resolveTermuxNotificationPath() {
+    async function resolveTermuxNotificationPath() {
         if (memoizedTermuxNotificationPath === null) {
-            memoizedTermuxNotificationPath = resolveTermuxNotificationPathInternal();
+            memoizedTermuxNotificationPath =
+                await resolveTermuxNotificationPathInternal();
         }
         return memoizedTermuxNotificationPath;
-    };
+    }
+    return resolveTermuxNotificationPath;
 })();
-
 
 class TermuxNotificationError extends Error {
     constructor() {
