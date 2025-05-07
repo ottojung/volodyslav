@@ -7,7 +7,7 @@ import {
 } from "./environment";
 import { transcribeAllGeneric } from "./transcribe_all";
 import { formatFileTimestamp } from "./formatFileTimestamp";
-import { copyFile, appendFile, writeFile, rename } from "fs/promises";
+import { copyFile, appendFile, writeFile, rename, unlink } from "fs/promises";
 
 /**
  * @param {string} originalPath 
@@ -108,6 +108,12 @@ async function processDiaryAudios() {
 
     // atomically replace original
     await rename(tempDataPath, originalDataPath);
+
+    // Delete the original audio files.
+    for (const filename of successes) {
+        const inputPath = path.join(diaryAudiosDir, filename);
+        await unlink(inputPath);
+    }
 }
 
 export {
