@@ -45,6 +45,34 @@ async function copyOrTouch(originalPath, resultPath) {
 }
 
 /**
+ * @param {string} filename
+ * @returns {string}
+ */
+function filename_to_date(filename) {
+    return formatFileTimestamp(filename);
+}
+
+/**
+ * @param {string} filename
+ * @returns {string}
+ */
+function assets_directory(filename) {
+    const date = filename_to_date(filename);
+    const ret = path.join(eventLogAssetsDirectory(), date);
+    return ret;
+}
+
+/**
+ * @param {string} filename
+ * @returns {string}
+ */
+function namer(filename) {
+    const targetDir = assets_directory(filename);
+    const targetName = `transcription.json`;
+    return path.join(targetDir, targetName);
+}
+
+/**
  * Processes diary audio files by transcribing them, organizing the results,
  * updating the event log, and cleaning up the original files.
  *
@@ -57,34 +85,6 @@ async function copyOrTouch(originalPath, resultPath) {
  * @returns {Promise<void>} - A promise that resolves when all processing is complete.
  */
 async function processDiaryAudios() {
-    /**
-     * @param {string} filename
-     * @returns {string}
-     */
-    function filename_to_date(filename) {
-        return formatFileTimestamp(filename);
-    }
-
-    /**
-     * @param {string} filename
-     * @returns {string}
-     */
-    function assets_directory(filename) {
-        const date = filename_to_date(filename);
-        const ret = path.join(eventLogAssetsDirectory(), date);
-        return ret;
-    }
-
-    /**
-     * @param {string} filename
-     * @returns {string}
-     */
-    function namer(filename) {
-        const targetDir = assets_directory(filename);
-        const targetName = `transcription.json`;
-        return path.join(targetDir, targetName);
-    }
-
     const diaryAudiosDir = diaryAudiosDirectory();
     const transcriptionResults = await transcribeAllGeneric(
         diaryAudiosDir,
