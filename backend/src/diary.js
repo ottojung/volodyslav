@@ -15,7 +15,7 @@ const {
     rename,
     unlink,
 } = require("fs/promises");
-const { commitDiaryChanges } = require("./diaryStorage");
+const { commitChanges } = require("./eventLogStorage");
 
 /**
  * Appends an array of entries to a specified file.
@@ -160,7 +160,7 @@ async function processDiaryAudios() {
     }
 
     // Commit diary changes
-    await commitDiaryChanges();
+    await commitChanges();
 }
 
 module.exports = { processDiaryAudios };
