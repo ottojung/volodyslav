@@ -69,7 +69,6 @@ async function transcribeAllGeneric(inputDir, targetFun) {
  */
 async function transcribeAllDirectory(inputDir, targetDir) {
   /**
-   * Transcribe a request.
    * @param {string} filename
    * @returns {string}
    */
