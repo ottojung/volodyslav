@@ -1,14 +1,20 @@
-import path from "path";
-import os from "os";
-import {
+const path = require("path");
+const os = require("os");
+const {
     diaryAudiosDirectory,
     eventLogDirectory,
     eventLogAssetsDirectory,
-} from "./environment";
-import { transcribeAllGeneric } from "./transcribe_all";
-import { formatFileTimestamp } from "./formatFileTimestamp";
-import { copyFile, appendFile, writeFile, rename, unlink } from "fs/promises";
-import { commitDiaryChanges } from "./diaryStorage";
+} = require("./environment");
+const { transcribeAllGeneric } = require("./transcribe_all");
+const { formatFileTimestamp } = require("./formatFileTimestamp");
+const {
+    copyFile,
+    appendFile,
+    writeFile,
+    rename,
+    unlink,
+} = require("fs/promises");
+const { commitDiaryChanges } = require("./diaryStorage");
 
 /**
  * Appends an array of entries to a specified file.
@@ -145,4 +151,4 @@ async function processDiaryAudios() {
     await commitDiaryChanges();
 }
 
-export { processDiaryAudios };
+module.exports = { processDiaryAudios };
