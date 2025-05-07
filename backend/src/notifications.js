@@ -42,7 +42,7 @@ const tryResolveTermuxNotificationPath = (() => {
     /** @type {string|null|undefined} */
     let memoizedTermuxNotificationPath = undefined;
     async function resolveTermuxNotificationPath() {
-        if (memoizedTermuxNotificationPath === null) {
+        if (memoizedTermuxNotificationPath === undefined) {
             memoizedTermuxNotificationPath =
                 await resolveTermuxNotificationPathInternal();
         }
@@ -81,7 +81,12 @@ async function notifyAboutError(message) {
  */
 async function notifyAboutWarning(message) {
     const termuxNotificationPath = await resolveTermuxNotificationPath();
-    await execFileAsync(termuxNotificationPath, ["-t", "Warning", "-c", message]);
+    await execFileAsync(termuxNotificationPath, [
+        "-t",
+        "Warning",
+        "-c",
+        message,
+    ]);
 }
 
 module.exports = {
