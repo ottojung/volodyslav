@@ -3,4 +3,4 @@ async function commitDiaryChanges() {
     // Implementation to be added later
 }
 
-export { commitDiaryChanges };
+module.exports = { commitDiaryChanges };
