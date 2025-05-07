@@ -11,13 +11,33 @@ class NotificationsUnavailable extends Error {
 }
 
 /**
+ * Executes a command using execFile and returns a promise.
+ * 
+ * @param {string} command - The command to execute.
+ * @param {Array<string>} args - The arguments to pass to the command.
+ * @param {import('child_process').ExecFileOptions} options - The options for the command execution.
+ * @returns {Promise<{ stdout: string, stderr: string }>} - The result of the command execution.
+ */
+function execFileAsyncWrapper(command, args, options) {
+    return new Promise((resolve, reject) => {
+        execFile(command, args, options, (error, stdout, stderr) => {
+            if (error) {
+                reject(error);
+            } else {
+                resolve({ stdout, stderr });
+            }
+        });
+    });
+}
+
+/**
  * Internal function to resolve the path to the termux-notification executable.
  *
  * @returns {Promise<string|null>} - The path to the termux-notification executable or null if not found.
  */
 async function resolveTermuxNotificationPathInternal() {
     try {
-        const result = await execFileAsync(
+        const result = await execFileAsyncWrapper(
             "command",
             ["-v", "termux-notification"],
             { encoding: "utf-8" }
