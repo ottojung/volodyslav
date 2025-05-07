@@ -40,7 +40,7 @@ async function resolveTermuxNotificationPathInternal() {
         const result = await execFileAsyncWrapper(
             "command",
             ["-v", "termux-notification"],
-            { encoding: "utf-8" }
+            {},
         );
         const stdout = result.stdout;
         if (!stdout || !stdout.trim()) {
