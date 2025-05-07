@@ -1,12 +1,8 @@
 {
     "name": "Volodyslav Media Service",
-    // use the compose file above
-    // "dockerComposeFile": ["docker-compose.yml"],
     "build": {
         "dockerfile": "../Dockerfile"
     },
-    "workspaceFolder": "/workspace",
-    "forwardPorts": [3000, 5173],
     "postCreateCommand": "npm install",
     "customizations": {
         "vscode":{
