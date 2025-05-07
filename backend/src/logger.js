@@ -24,10 +24,10 @@ const baseLogger = pino({ level: logLevel() }, transport);
  * Logs an error message and sends a notification.
  * @param {unknown} obj The error object, message string, or object with error details
  * @param {string} [msg] Optional message when the first argument is an object
- * @param {...any} args Additional arguments to pass to the logger
+ * @param {...unknown} args Additional arguments to pass to the logger
  * @returns {void}
  */
-const logError = (obj, msg, ...args) => {
+function logError(obj, msg, ...args) {
     // Call the original error method with proper typing
     if (typeof obj === 'string') {
         baseLogger.error(obj, ...args);
@@ -41,11 +41,6 @@ const logError = (obj, msg, ...args) => {
         message = msg;
     } else if (obj instanceof Error) {
         message = obj.message;
-    } else if (typeof obj === 'object' && obj !== null) {
-        const errorLike = obj;
-        message = (typeof errorLike.msg === 'string' && errorLike.msg) || 
-                 (typeof errorLike.message === 'string' && errorLike.message) || 
-                 JSON.stringify(obj);
     } else {
         message = String(obj);
     }
