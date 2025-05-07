@@ -3,7 +3,7 @@ const path = require('path');
 const fs = require('fs/promises');
 const logger = require('../logger');
 const { fromRequest } = require('../request_identifier');
-const { transcribeAllRequest, InputDirectoryNotFound } = require('../transcribe_all');
+const { transcribeAllRequest, InputDirectoryAccess } = require('../transcribe_all');
 
 const router = express.Router();
 
@@ -41,7 +41,7 @@ router.get('/transcribe_all', async (req, res) => {
                 .json({ success: false, result });
         }
     } catch (/** @type {unknown} */ error) {
-        if (error instanceof InputDirectoryNotFound) {
+        if (error instanceof InputDirectoryAccess) {
             return res
                 .status(404)
                 .json({ success: false, error: error.message });

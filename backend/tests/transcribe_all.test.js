@@ -1,6 +1,5 @@
 const path = require('path');
 const fs = require('fs');
-const os = require('os');
 const request = require('supertest');
 const temporary = require('./temporary');
 
@@ -9,7 +8,6 @@ afterEach(temporary.afterEach);
 
 // Mock environment exports to avoid real env dependencies
 jest.mock('../src/environment', () => {
-    const path = require('path');
     const temporary = require('./temporary');
     return {
         openaiAPIKey: jest.fn().mockReturnValue('test-key'),
@@ -28,7 +26,7 @@ jest.mock('../src/transcribe', () => {
     };
 });
 
-const { transcribeFile, InputNotFound } = require('../src/transcribe');
+const { transcribeFile } = require('../src/transcribe');
 const app = require('../src/index');
 const { uploadDir } = require('../src/config');
 const { getTargetDirectory } = require('../src/request_identifier');
@@ -64,7 +62,7 @@ describe('GET /api/transcribe_all', () => {
               .get(base)
               .query({ request_identifier: reqId, input_dir: '/no/such/dir' });
         expect(res.status).toBe(404);
-        expect(res.body).toEqual({ success: false, error: 'Input directory not found' });
+        expect(res.body).toEqual({ success: false, error: 'Could not read input directory' });
     });
 
     it('aggregates successes and failures', async () => {

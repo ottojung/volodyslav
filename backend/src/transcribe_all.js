@@ -6,7 +6,7 @@ const { transcribeFile } = require("./transcribe");
 /**
  * @class
  */
-class InputDirectoryNotFound extends Error {
+class InputDirectoryAccess extends Error {
   /** @type {string} */
   path;
 
@@ -41,7 +41,7 @@ async function transcribeAllGeneric(inputDir, targetFun) {
   try {
     entries = await fs.readdir(resolvedDir);
   } catch {
-    throw new InputDirectoryNotFound(`Input directory not found`, resolvedDir);
+    throw new InputDirectoryAccess(`Could not read input directory`, resolvedDir);
   }
 
   const successes = [];
@@ -94,7 +94,7 @@ async function transcribeAllRequest(inputDir, reqId) {
 }
 
 module.exports = {
-  InputDirectoryNotFound,
+  InputDirectoryAccess,
   transcribeAllGeneric,
   transcribeAllDirectory,
   transcribeAllRequest,
