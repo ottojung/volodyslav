@@ -1,4 +1,4 @@
-const { execFile } = require("child_process");
+const { callSubprocess } = require("./subprocess");
 
 class NotificationsUnavailable extends Error {
     constructor() {
@@ -9,34 +9,13 @@ class NotificationsUnavailable extends Error {
 }
 
 /**
- * Wraps the execFile function to provide a Promise-based interface.
- * Executes a command using execFile and returns a promise.
- * 
- * @param {string} command - The command to execute.
- * @param {Array<string>} args - The arguments to pass to the command.
- * @param {import('child_process').ExecFileOptions} options - The options for the command execution.
- * @returns {Promise<{ stdout: string, stderr: string }>} - The result of the command execution.
- */
-function execFileAsyncWrapper(command, args, options) {
-    return new Promise((resolve, reject) => {
-        execFile(command, args, options, (error, stdout, stderr) => {
-            if (error) {
-                reject(error);
-            } else {
-                resolve({ stdout, stderr });
-            }
-        });
-    });
-}
-
-/**
  * Internal function to resolve the path to the termux-notification executable.
  *
  * @returns {Promise<string|null>} - The path to the termux-notification executable or null if not found.
  */
 async function resolveTermuxNotificationPathInternal() {
     try {
-        const result = await execFileAsyncWrapper(
+        const result = await callSubprocess(
             "command",
             ["-v", "termux-notification"],
             {},
@@ -91,7 +70,7 @@ async function ensureNotificationsAvailable() {
  */
 async function notifyAboutError(message) {
     const termuxNotificationPath = await resolveTermuxNotificationPath();
-    await execFileAsyncWrapper(termuxNotificationPath, ["-t", "Error", "-c", message], {});
+    await callSubprocess(termuxNotificationPath, ["-t", "Error", "-c", message], {});
 }
 
 /**
@@ -100,7 +79,7 @@ async function notifyAboutError(message) {
  */
 async function notifyAboutWarning(message) {
     const termuxNotificationPath = await resolveTermuxNotificationPath();
-    await execFileAsyncWrapper(termuxNotificationPath, [
+    await callSubprocess(termuxNotificationPath, [
         "-t",
         "Warning",
         "-c",
