@@ -13,11 +13,6 @@ const storage = multer.diskStorage({
      */
     destination: async (req, _file, cb) => {
         const reqId = fromRequest(req);
-        if (isDone(reqId)) {
-            return cb(new Error('Request already handled'), "");
-        }
-
-        // e.g. /var/www/uploads/REQ12345
         const targetDir = await makeDirectory(reqId);
         cb(null, targetDir);
     },
