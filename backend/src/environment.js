@@ -28,9 +28,24 @@ function logLevel() {
     return getEnv("VOLODYSLAV_LOG_LEVEL");
 }
 
+function diaryAudiosDirectory() {
+    return getEnv("VOLODYSLAV_DIARY_RECORDINGS_DIRECTORY");
+}
+
+function eventLogAssetsDirectory() {
+    return getEnv("VOLODYSLAV_EVENT_LOG_ASSETS_DIRECTORY");
+}
+
+function eventLogDirectory() {
+    return getEnv("VOLODYSLAV_EVENT_LOG_DIRECTORY");
+}
+
 module.exports = {
     openaiAPIKey,
     resultsDirectory,
     myServerPort,
     logLevel,
+    diaryAudiosDirectory,
+    eventLogAssetsDirectory,
+    eventLogDirectory,
 };

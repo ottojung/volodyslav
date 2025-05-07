@@ -49,15 +49,15 @@ async function transcribeAllGeneric(inputDir, targetFun) {
 
     const successes = [];
     const failures = [];
-    for (const file of entries) {
-        const inputPath = path.join(resolvedDir, file);
-        const outputPath = targetFun(file);
+    for (const filename of entries) {
+        const inputPath = path.join(resolvedDir, filename);
+        const outputPath = targetFun(filename);
         try {
             await transcribeFile(inputPath, outputPath);
-            successes.push(file);
+            successes.push(filename);
         } catch (/** @type {unknown} */ err) {
             const message = err instanceof Error ? err.message : String(err);
-            failures.push({ file, message });
+            failures.push({ file: filename, message });
         }
     }
 
