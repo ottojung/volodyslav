@@ -27,7 +27,11 @@ describe('notifications', () => {
         });
 
         it('should throw an error when termux-notification is unavailable', async () => {
-            // TODO: implement.
+            mockCallSubprocess.mockResolvedValue({ stdout: '' }); // Simulate no output for termux-notification
+
+            await expect(ensureNotificationsAvailable()).rejects.toThrow(
+                'Notifications unavailable. Termux notification executable not found in $PATH. Please ensure that Termux:API is installed and available in your $PATH.'
+            );
         });
     });
 
