@@ -7,17 +7,17 @@ const { transcribeFile } = require("./transcribe");
  * @class
  */
 class InputDirectoryAccess extends Error {
-  /** @type {string} */
-  path;
+    /** @type {string} */
+    path;
 
-  /**
-   * @param {string} message
-   * @param {string} path
-   */
-  constructor(message, path) {
-    super(message);
-    this.path = path;
-  }
+    /**
+     * @param {string} message
+     * @param {string} path
+     */
+    constructor(message, path) {
+        super(message);
+        this.path = path;
+    }
 }
 
 /**
@@ -35,30 +35,33 @@ class InputDirectoryAccess extends Error {
  * @returns {Promise<TranscriptionStatus>}
  */
 async function transcribeAllGeneric(inputDir, targetFun) {
-  const resolvedDir = path.resolve(inputDir);
+    const resolvedDir = path.resolve(inputDir);
 
-  let entries;
-  try {
-    entries = await fs.readdir(resolvedDir);
-  } catch {
-    throw new InputDirectoryAccess(`Could not read input directory`, resolvedDir);
-  }
-
-  const successes = [];
-  const failures = [];
-  for (const file of entries) {
-    const inputPath = path.join(resolvedDir, file);
-    const outputPath = targetFun(file);
+    let entries;
     try {
-      await transcribeFile(inputPath, outputPath);
-      successes.push(file);
-    } catch (/** @type {unknown} */ err) {
-      const message = err instanceof Error ? err.message : String(err);
-      failures.push({ file, message });
+        entries = await fs.readdir(resolvedDir);
+    } catch {
+        throw new InputDirectoryAccess(
+            `Could not read input directory`,
+            resolvedDir
+        );
     }
-  }
 
-  return { successes, failures };
+    const successes = [];
+    const failures = [];
+    for (const file of entries) {
+        const inputPath = path.join(resolvedDir, file);
+        const outputPath = targetFun(file);
+        try {
+            await transcribeFile(inputPath, outputPath);
+            successes.push(file);
+        } catch (/** @type {unknown} */ err) {
+            const message = err instanceof Error ? err.message : String(err);
+            failures.push({ file, message });
+        }
+    }
+
+    return { successes, failures };
 }
 
 /**
@@ -68,16 +71,16 @@ async function transcribeAllGeneric(inputDir, targetFun) {
  * @returns {Promise<TranscriptionStatus>}
  */
 async function transcribeAllDirectory(inputDir, targetDir) {
-  /**
-   * @param {string} filename
-   * @returns {string}
-   */
-  function namer(filename) {
-    const targetName = `${filename}.json`;
-    return path.join(targetDir, targetName);
-  }
+    /**
+     * @param {string} filename
+     * @returns {string}
+     */
+    function namer(filename) {
+        const targetName = `${filename}.json`;
+        return path.join(targetDir, targetName);
+    }
 
-  return transcribeAllGeneric(inputDir, namer);
+    return transcribeAllGeneric(inputDir, namer);
 }
 
 /**
@@ -87,15 +90,15 @@ async function transcribeAllDirectory(inputDir, targetDir) {
  * @returns {Promise<TranscriptionStatus>}
  */
 async function transcribeAllRequest(inputDir, reqId) {
-  const targetDir = await makeDirectory(reqId);
-  const result = await transcribeAllDirectory(inputDir, targetDir);
-  await markDone(reqId);
-  return result;
+    const targetDir = await makeDirectory(reqId);
+    const result = await transcribeAllDirectory(inputDir, targetDir);
+    await markDone(reqId);
+    return result;
 }
 
 module.exports = {
-  InputDirectoryAccess,
-  transcribeAllGeneric,
-  transcribeAllDirectory,
-  transcribeAllRequest,
+    InputDirectoryAccess,
+    transcribeAllGeneric,
+    transcribeAllDirectory,
+    transcribeAllRequest,
 };
