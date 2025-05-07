@@ -6,7 +6,7 @@ const execFileAsync = promisify(execFile);
 /**
  * This function resolves the path to the termux-notification executable.
  *
- * @returns {string|null} - The path to the termux-notification executable or null if not found.
+ * @returns {Promise<string|null>} - The path to the termux-notification executable or null if not found.
  */
 const resolveTermuxNotificationPath = (() => {
     /** @type {Promise<string|null>|null} */
