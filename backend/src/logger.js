@@ -5,6 +5,7 @@
 const pino = require("pino").default;
 const pinoHttp = require("pino-http").default;
 const { logLevel } = require("./environment");
+const { notifyAboutError } = require("./notifications");
 
 // Pretty-print logs
 const transport = pino.transport({
@@ -19,10 +20,47 @@ const transport = pino.transport({
 /** Pino logger instance. @type {pino.Logger} */
 const baseLogger = pino({ level: logLevel() }, transport);
 
+/**
+ * Logs an error message and sends a notification.
+ * @param {unknown} obj The error object, message string, or object with error details
+ * @param {string} [msg] Optional message when the first argument is an object
+ * @param {...any} args Additional arguments to pass to the logger
+ * @returns {void}
+ */
+const logError = (obj, msg, ...args) => {
+    // Call the original error method with proper typing
+    if (typeof obj === 'string') {
+        baseLogger.error(obj, ...args);
+    } else {
+        baseLogger.error(obj, msg, ...args);
+    }
+
+    // Extract the error message for notification
+    let message;
+    if (typeof msg === 'string') {
+        message = msg;
+    } else if (obj instanceof Error) {
+        message = obj.message;
+    } else if (typeof obj === 'object' && obj !== null) {
+        const errorLike = obj;
+        message = (typeof errorLike.msg === 'string' && errorLike.msg) || 
+                 (typeof errorLike.message === 'string' && errorLike.message) || 
+                 JSON.stringify(obj);
+    } else {
+        message = String(obj);
+    }
+
+    // Send notification
+    notifyAboutError(message).catch((err) => {
+        baseLogger.warn({ error: err }, 'Failed to send error notification');
+    });
+}
+
 // Create a wrapper logger that adds notifications for errors
 /** @type {pino.Logger} */
 const logger = {
     ...baseLogger,
+    error: logError,
 };
 
 /**
