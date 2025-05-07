@@ -2,7 +2,7 @@ const fs = require('fs');
 const path = require('path');
 const { OpenAI } = require('openai');
 const { openaiAPIKey } = require('./environment');
-const { getTargetDirectory, markDone } = require('./request_identifier');
+const { makeDirectory, markDone } = require('./request_identifier');
 
 // Instantiate client
 const openai = new OpenAI({ apiKey: openaiAPIKey() });
@@ -91,7 +91,7 @@ async function transcribeFile(inputPath, outputPath) {
  */
 async function transcribeRequest(inputPath, reqId) {
     const outputFile = path.basename('transcription.json');
-    const targetDir = getTargetDirectory(reqId);
+    const targetDir = await makeDirectory(reqId);
     const outputPath = path.join(targetDir, outputFile);
     try {
         await transcribeFile(inputPath, outputPath);

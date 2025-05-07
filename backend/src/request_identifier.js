@@ -62,10 +62,12 @@ function isDone(reqId) {
 
 /**
  * @param {RequestIdentifier} reqId
- * @returns {string} - path to the target directory.
+ * @returns {Promise<string>} - path to the target directory.
  */
-function getTargetDirectory(reqId) {
-    return path.join(uploadDir, reqId.identifier);
+async function makeDirectory(reqId) {
+    const ret = path.join(uploadDir, reqId.identifier);
+    await fs.promises.mkdir(ret, { recursive: true });
+    return ret;
 }
 
 module.exports = {
@@ -73,5 +75,5 @@ module.exports = {
     fromRequest,
     markDone,
     isDone,
-    getTargetDirectory,
+    makeDirectory,
 };

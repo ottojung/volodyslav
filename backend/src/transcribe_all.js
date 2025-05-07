@@ -1,6 +1,6 @@
 const fs = require("fs/promises");
 const path = require("path");
-const { getTargetDirectory, markDone } = require("./request_identifier");
+const { makeDirectory, markDone } = require("./request_identifier");
 const { transcribeFile } = require("./transcribe");
 
 /**
@@ -87,7 +87,7 @@ async function transcribeAllDirectory(inputDir, targetDir) {
  * @returns {Promise<TranscriptionStatus>}
  */
 async function transcribeAllRequest(inputDir, reqId) {
-  const targetDir = getTargetDirectory(reqId);
+  const targetDir = await makeDirectory(reqId);
   const result = await transcribeAllDirectory(inputDir, targetDir);
   await markDone(reqId);
   return result;
