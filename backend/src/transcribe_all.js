@@ -56,7 +56,8 @@ async function transcribeAllGeneric(inputDir, targetFun) {
             await transcribeFile(inputPath, outputPath);
             successes.push(filename);
         } catch (/** @type {unknown} */ err) {
-            const internalMessage = err instanceof Error ? err.message : String(err);
+            const internalMessage =
+                err instanceof Error ? err.message : String(err);
             const message = `Transcription failed for ${filename}: ${internalMessage}`;
             failures.push({ file: filename, message });
         }
