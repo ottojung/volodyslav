@@ -1,4 +1,4 @@
-const { execFile, execFileSync } = require("child_process");
+const { execFile } = require("child_process");
 
 
 /**
@@ -13,20 +13,20 @@ const resolveTermuxNotificationPath = (() => {
     /**
      * Internal function to resolve the path to the termux-notification executable.
      *
-     * @returns {string|null} - The path to the termux-notification executable or null if not found.
+     * @returns {Promise<string|null>} - The path to the termux-notification executable or null if not found.
      */
-    function resolveTermuxNotificationPathInternal() {
+    async function resolveTermuxNotificationPathInternal() {
         try {
-            const stdout = execFileSync("command", ["-v", "termux-notification"], { encoding: "utf-8" });
-            return stdout.trim();
+            const stdout = execFile("command", ["-v", "termux-notification"], { encoding: "utf-8" });
+            return await stdout.trim();
         } catch (error) {
             return null;
         }
     }
 
-    return function resolveTermuxNotificationPath() {
+    return async function resolveTermuxNotificationPath() {
         if (memoizedTermuxNotificationPath === null) {
-            memoizedTermuxNotificationPath = resolveTermuxNotificationPathInternal();
+            memoizedTermuxNotificationPath = await resolveTermuxNotificationPathInternal();
         }
         return memoizedTermuxNotificationPath;
     };
