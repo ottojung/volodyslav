@@ -1,7 +1,7 @@
 const fs = require('fs/promises');
 const path = require('path');
-const { fromRequest, getTargetDirectory, markDone } = require('./request_identifier');
-const { transcribeFile, InputNotFound } = require('./transcribe');
+const { getTargetDirectory, markDone } = require('./request_identifier');
+const { transcribeFile } = require('./transcribe');
 
 
 /**
