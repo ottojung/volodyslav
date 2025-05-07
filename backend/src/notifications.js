@@ -1,31 +1,37 @@
 const { execFile, execFileSync } = require("child_process");
 
+
 /**
  * This function resolves the path to the termux-notification executable.
  *
  * @returns {string|null} - The path to the termux-notification executable or null if not found.
  */
-let memoizedTermuxNotificationPath = null;
-function resolveTermuxNotificationPath() {
-    if (memoizedTermuxNotificationPath === null) {
-        memoizedTermuxNotificationPath = resolveTermuxNotificationPathInternal();
-    }
-    return memoizedTermuxNotificationPath;
-}
+const resolveTermuxNotificationPath = (() => {
+    /** @type {string|null} */
+    let memoizedTermuxNotificationPath = null;
 
-/**
- * Internal function to resolve the path to the termux-notification executable.
- *
- * @returns {string|null} - The path to the termux-notification executable or null if not found.
- */
-function resolveTermuxNotificationPathInternal() {
-    try {
-        const stdout = execFileSync("command", ["-v", "termux-notification"], { encoding: "utf-8" });
-        return stdout.trim();
-    } catch (error) {
-        return null;
+    /**
+     * Internal function to resolve the path to the termux-notification executable.
+     *
+     * @returns {string|null} - The path to the termux-notification executable or null if not found.
+     */
+    function resolveTermuxNotificationPathInternal() {
+        try {
+            const stdout = execFileSync("command", ["-v", "termux-notification"], { encoding: "utf-8" });
+            return stdout.trim();
+        } catch (error) {
+            return null;
+        }
     }
-}
+
+    return function resolveTermuxNotificationPath() {
+        if (memoizedTermuxNotificationPath === null) {
+            memoizedTermuxNotificationPath = resolveTermuxNotificationPathInternal();
+        }
+        return memoizedTermuxNotificationPath;
+    };
+})();
+
 
 class TermuxNotificationError extends Error {
     constructor() {
