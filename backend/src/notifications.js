@@ -51,6 +51,10 @@ const tryResolveTermuxNotificationPath = (() => {
 
 async function resolveTermuxNotificationPath() {
     const path = await tryResolveTermuxNotificationPath();
+    console.debug(
+        "Resolved termux-notification path: ",
+        path,
+    );
     if (!path) {
         throw new NotificationsUnavailable();
     }
