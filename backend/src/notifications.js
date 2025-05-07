@@ -51,7 +51,7 @@ class TermuxNotificationError extends Error {
 /**
  * Ensures that the termux-notification executable exists in the PATH.
  */
-function ensureTermuxNotificationExists() {
+function ensureNotificationsAvailable() {
     const termuxNotificationPath = resolveTermuxNotificationPath();
     if (!termuxNotificationPath) {
         throw new TermuxNotificationError();
@@ -75,7 +75,7 @@ function notifyAboutWarning(message) {
 }
 
 module.exports = {
-    ensureTermuxNotificationExists,
+    ensureNotificationsAvailable,
     notifyAboutError,
     notifyAboutWarning,
 };
