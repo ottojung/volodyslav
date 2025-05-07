@@ -14,7 +14,7 @@ class NotificationsUnavailable extends Error {
  *
  * @returns {Promise<string|null>} - The path to the termux-notification executable or null if not found.
  */
-async function resolveTermuxNotificationPathInternal() {
+async function tryResolveTermuxNotificationPathInternal() {
     try {
         const result = await callSubprocess(
             "command",
@@ -37,7 +37,7 @@ async function resolveTermuxNotificationPathInternal() {
  *
  * @type {() => Promise<string|null>} - The path to the termux-notification executable or null if not found.
  */
-const tryResolveTermuxNotificationPath = memoizeOne(resolveTermuxNotificationPathInternal);
+const tryResolveTermuxNotificationPath = memoizeOne(tryResolveTermuxNotificationPathInternal);
 
 async function resolveTermuxNotificationPath() {
     const path = await tryResolveTermuxNotificationPath();
