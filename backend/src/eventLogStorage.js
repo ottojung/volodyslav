@@ -26,18 +26,18 @@ const { copyFile, writeFile, appendFile, rename } = require("fs/promises");
  */
 class EventLogStorage {
     /**
-     * A private property to store the entries.
+     * Entries to be added to the event log.
      * @private
      * @type {Array<Event>}
      */
-    entries;
+    newEntries;
 
     /**
      * @constructor
      * Initializes an empty event log storage.
      */
     constructor() {
-        this.entries = [];
+        this.newEntries = [];
     }
 
     /**
@@ -45,15 +45,15 @@ class EventLogStorage {
      * @param {Event} entry - The entry to add.
      */
     addEntry(entry) {
-        this.entries.push(entry);
+        this.newEntries.push(entry);
     }
 
     /**
-     * Retrieves all entries from the event log.
+     * Retrieves all new entries from the event log.
      * @returns {Array<Event>} - The list of entries.
      */
-    getEntries() {
-        return this.entries;
+    getNewEntries() {
+        return this.newEntries;
     }
 }
 
@@ -113,7 +113,7 @@ async function transaction(transformation) {
     transformation(eventLogStorage);
 
     // append entries to the temporary file
-    await appendEntriesToFile(tempDataPath, eventLogStorage.getEntries());
+    await appendEntriesToFile(tempDataPath, eventLogStorage.getNewEntries());
 
     // atomically replace original
     await rename(tempDataPath, originalDataPath);
