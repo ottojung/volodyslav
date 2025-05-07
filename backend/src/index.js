@@ -8,7 +8,7 @@ const pingRouter = require('./routes/ping');
 const staticRouter = require('./routes/static');
 const transcribeRouter = require('./routes/transcribe');
 const transcribeAllRouter = require('./routes/transcribe_all');
-const { ensureNotificationsAvailable } = require('./notifications');
+const { ensureStartupDependencies } = require('./startup');
 
 const app = express();
 // HTTP request logging
@@ -25,7 +25,7 @@ app.use('/', staticRouter);
 // Start server if run directly
 if (require.main === module) {
   app.listen(port, async () => {
-    await ensureNotificationsAvailable();
+    await ensureStartupDependencies();
     logger.info({ port }, 'Server is running');
   });
 }
