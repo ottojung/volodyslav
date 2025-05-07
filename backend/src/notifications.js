@@ -17,8 +17,8 @@ class NotificationsUnavailable extends Error {
 async function tryResolveTermuxNotificationPathInternal() {
     try {
         const result = await callSubprocess(
-            "command",
-            ["-v", "termux-notification"],
+            "which",
+            ["termux-notification"],
             {},
         );
         const stdout = result.stdout;
