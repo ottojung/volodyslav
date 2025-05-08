@@ -59,7 +59,7 @@ const logger = {
  * @description Sets up HTTP call logging for the given Express app.
  */
 function setupHttpCallsLogging(app) {
-    app.use(pinoHttp({ logger }));
+    app.use(pinoHttp({ baseLogger }));
 }
 
 const { error, info, warn, debug, fatal } = logger;
