@@ -1,5 +1,5 @@
 const { callSubprocess } = require("./call_subprocess");
-const memoizeOne = require("memoize-one").default;
+const memoizeOne = require("memoize-one");
 const { CommandUnavailable } = require("./command_unavailable");
 
 /**
