@@ -1,36 +1,48 @@
 name: main
 
 on:
-  push:
-    branches: [ main, master ]
-  pull_request:
-    branches: [ main, master ]
+    push:
+        branches: [main, master]
+    pull_request:
+        branches: [main, master]
 
 jobs:
-  build-and-test:
-    runs-on: ubuntu-latest
+    build-and-test:
+        runs-on: ubuntu-latest
 
-    strategy:
-      matrix:
-        node-version: [23.11.x]
+        strategy:
+            matrix:
+                node-version: [23.11.x]
 
-    steps:
-    - uses: actions/checkout@v3
+        steps:
+            - uses: actions/checkout@v3
 
-    - name: Use Node.js ${{ matrix.node-version }}
-      uses: actions/setup-node@v3
-      with:
-        node-version: ${{ matrix.node-version }}
-        cache: 'npm'
+            - name: Use Node.js ${{ matrix.node-version }}
+              uses: actions/setup-node@v3
+              with:
+                  node-version: ${{ matrix.node-version }}
+                  cache: "npm"
 
-    - name: Install dependencies
-      run: npm ci
+            - name: Install dependencies
+              run: npm ci
 
-    - name: Build frontend
-      run: npm run build
+            - name: Build frontend
+              run: npm run build
 
-    - name: Static analysis
-      run: npx run static-analysis
+            - name: Static analysis
+              run: npx run static-analysis
 
-    - name: Run tests
-      run: npm test
+            - name: Run tests
+              run: npm test
+
+    docker:
+        runs-on: ubuntu-latest
+
+        steps:
+            - uses: actions/checkout@v3
+
+            - name: Set up Docker Buildx
+              uses: docker/setup-buildx-action@v2
+
+            - name: Build
+              run: docker build --tag volodyslav --file Dockerfile .
