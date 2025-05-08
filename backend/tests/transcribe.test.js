@@ -16,6 +16,11 @@ jest.mock('../src/environment', () => {
     };
 });
 
+// Mock notifications to verify error handling
+jest.mock('../src/notifications', () => ({
+    notifyAboutError: jest.fn(),
+}));
+
 // Mock the OpenAI client to avoid real API calls
 jest.mock('openai', () => {
     // Stubbed create method returns a fixed response
@@ -32,8 +37,13 @@ jest.mock('openai', () => {
 const request = require('supertest');
 const app = require('../src/index');
 const { uploadDir } = require('../src/config');
+const { notifyAboutError } = require('../src/notifications');
 
 describe('GET /api/transcribe', () => {
+    beforeEach(() => {
+        jest.clearAllMocks();
+    });
+
     it('responds with 400 if input or output param missing', async () => {
         const reqId = 'testreq';
         const res = await request(app)
@@ -44,6 +54,7 @@ describe('GET /api/transcribe', () => {
             success: false,
             error: 'Please provide the input parameter',
         });
+        expect(notifyAboutError).toHaveBeenCalledWith('Missing input parameter');
     });
 
     it('responds with 404 if input file does not exist', async () => {
@@ -53,6 +64,7 @@ describe('GET /api/transcribe', () => {
               .query({ request_identifier: reqId, input: '/nonexistent/file.wav' });
         expect(res.statusCode).toBe(404);
         expect(res.body).toEqual({ success: false, error: 'Input file not found' });
+        expect(notifyAboutError).toHaveBeenCalledWith('Input file not found');
     });
 
     it('transcribes and saves output file on valid input', async () => {
