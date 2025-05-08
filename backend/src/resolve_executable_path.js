@@ -1,5 +1,5 @@
 const { callSubprocess } = require("./call_subprocess");
-const memoizeOne = require("memoize-one");
+const memoize = require("@emotion/memoize").default;
 const { CommandUnavailable } = require("./command_unavailable");
 
 /**
@@ -27,7 +27,7 @@ async function tryResolvePathInternal(command) {
  *
  * @type {(command: string) => Promise<string|null>} - The path to the command executable or null if not found.
  */
-const tryResolvePath = memoizeOne(tryResolvePathInternal);
+const tryResolvePath = memoize(tryResolvePathInternal);
 
 /**
  * Ensures that the command executable exists in the PATH.
