@@ -23,6 +23,7 @@ describe("Startup Dependencies", () => {
     beforeEach(() => {
         // Reset all mocks before each test
         jest.clearAllMocks();
+        jest.resetModules();
         app = express();
     });
 
