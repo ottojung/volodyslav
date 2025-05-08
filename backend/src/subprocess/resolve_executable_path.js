@@ -1,4 +1,4 @@
-const { callSubprocess } = require("./call_subprocess");
+const { callSubprocess } = require("./call");
 const memoize = require("@emotion/memoize").default;
 const { CommandUnavailable } = require("./command_unavailable");
 

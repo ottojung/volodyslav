@@ -1,4 +1,4 @@
-jest.mock("../src/call_subprocess", () => ({
+jest.mock("../src/subprocess/call", () => ({
     // just start with an empty mock, no default implementation
     callSubprocess: jest.fn(),
 }));
@@ -19,7 +19,7 @@ beforeEach(() => {
     ensureNotificationsAvailable = notifications.ensureNotificationsAvailable;
 
     // grab the mock from subprocess
-    ({ callSubprocess } = require("../src/call_subprocess"));
+    ({ callSubprocess } = require("../src/subprocess/call"));
 });
 
 describe("notifications", () => {

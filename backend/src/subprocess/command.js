@@ -1,5 +1,5 @@
 const { resolvePath } = require("./resolve_executable_path");
-const { callSubprocess } = require("./call_subprocess");
+const { callSubprocess } = require("./call");
 
 /**
  * @typedef {CommandClass} Command

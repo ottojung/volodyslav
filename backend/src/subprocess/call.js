@@ -1,7 +1,6 @@
 const { execFile } = require("node:child_process");
 const { promisify } = require("node:util");
 
-
 /**
  * Executes a subprocess and returns a promise with the result.
  *
