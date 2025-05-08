@@ -42,7 +42,7 @@ function logError(obj, msg) {
 
     // Send notification
     notifyAboutError(message).catch((err) => {
-        baseLogger.warn({ error: err }, 'Failed to send error notification');
+        baseLogger.error({ error: err }, 'Failed to send error notification');
     });
 }
 

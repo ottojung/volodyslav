@@ -1,15 +1,16 @@
 const express = require("express");
 const request = require("supertest");
 
-// Only mock the notifications system since it's an external dependency
 jest.mock("../src/notifications", () => ({
     ensureNotificationsAvailable: jest.fn(),
 }));
 
 // Mock environment with minimal required values
-jest.mock("../src/environment", () => ({
-    logLevel: () => "silent", // Only mock logLevel to keep tests quiet
-}));
+jest.mock('../src/environment', () => {
+    return {
+        logLevel: jest.fn().mockReturnValue("silent"),
+    };
+});
 
 const { ensureStartupDependencies } = require("../src/startup");
 const { ensureNotificationsAvailable } = require("../src/notifications");
