@@ -108,5 +108,4 @@ function registerCommand(command) {
 
 module.exports = { 
     registerCommand,
-    CommandClass
 };
