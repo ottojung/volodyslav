@@ -1,6 +1,6 @@
 const { CommandUnavailable } = require("./subprocess/command_unavailable");
 const { registerCommand } = require("./subprocess");
-const termuxNotification = require("./external_commands/termux_notification");
+const termuxNotification = require("./externalcommands/termuxnotification");
 
 
 class NotificationsUnavailable extends CommandUnavailable {
@@ -14,7 +14,7 @@ class NotificationsUnavailable extends CommandUnavailable {
 /**
  * @typedef {import('./subprocess/command').Command} Command
  */
-const TermuxNotificationCommand = registerCommand(termuxNotification);
+const TermuxNotificationCommand = registerCommand(termuxNotification());
 
 /**
  * Ensures that the termux-notification executable exists in the PATH.
