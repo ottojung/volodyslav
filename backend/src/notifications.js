@@ -9,6 +9,8 @@ class NotificationsUnavailable extends CommandUnavailable {
     }
 }
 
+console.error({registerCommand})
+
 /**
  * @typedef {import('./subprocess').Command} Command
  */

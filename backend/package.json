@@ -16,7 +16,6 @@
     "pino-pretty": "^13.0.0"
   },
   "devDependencies": {
-    "@types/memoize-one": "^4.1.1",
     "@types/multer": "^1.4.12",
     "nodemon": "^3.0.1",
     "supertest": "^6.3.3"
