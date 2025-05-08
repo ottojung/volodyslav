@@ -2,8 +2,11 @@ const express = require("express");
 const { ensureStartupDependencies } = require("../src/startup");
 
 // Mock only the TermuxNotificationCommand in notifications, preserving other functionality
-jest.mock("../src/externalcommands/termuxnotification", () => {
-    return () => 'bash';
+jest.mock("../src/executables", () => {
+    const { registerCommand } = require("../src/subprocess");
+    return {
+        termuxNotification: registerCommand("bash"),
+    };
 });
 
 // Mock environment with minimal required values

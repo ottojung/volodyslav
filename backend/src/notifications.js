@@ -1,6 +1,5 @@
 const { CommandUnavailable } = require("./subprocess/command_unavailable");
-const { registerCommand } = require("./subprocess");
-const termuxNotification = require("./externalcommands/termuxnotification");
+const { termuxNotification } = require("./executables");
 
 
 class NotificationsUnavailable extends CommandUnavailable {
@@ -12,16 +11,11 @@ class NotificationsUnavailable extends CommandUnavailable {
 }
 
 /**
- * @typedef {import('./subprocess/command').Command} Command
- */
-const TermuxNotificationCommand = registerCommand(termuxNotification());
-
-/**
  * Ensures that the termux-notification executable exists in the PATH.
  */
 async function ensureNotificationsAvailable() {
     try {
-        await TermuxNotificationCommand.ensureAvailable();
+        await termuxNotification.ensureAvailable();
     } catch (error) {
         if (error instanceof CommandUnavailable) {
             throw new NotificationsUnavailable();
@@ -35,7 +29,7 @@ async function ensureNotificationsAvailable() {
  * @param {string} message - The error message to display.
  */
 async function notifyAboutError(message) {
-    await TermuxNotificationCommand.call("-t", "Error", "-c", message);
+    await termuxNotification.call("-t", "Error", "-c", message);
 }
 
 /**
@@ -43,7 +37,7 @@ async function notifyAboutError(message) {
  * @param {string} message - The warning message to display.
  */
 async function notifyAboutWarning(message) {
-    await TermuxNotificationCommand.call("-t", "Warning", "-c", message);
+    await termuxNotification.call("-t", "Warning", "-c", message);
 }
 
 module.exports = {
