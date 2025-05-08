@@ -37,6 +37,11 @@ describe("notifications", () => {
                 "Notifications unavailable. Termux notification executable not found in $PATH."
             );
         });
+
+        it("throws if command call fails for other reasons", async () => {
+            callSubprocess.mockRejectedValueOnce(new Error("permission denied"));
+            await expect(ensureNotificationsAvailable()).rejects.toThrow();
+        });
     });
 
     describe("notifyAboutError", () => {
@@ -51,6 +56,31 @@ describe("notifications", () => {
                 {}
             );
         });
+
+        it("handles empty error message", async () => {
+            callSubprocess.mockResolvedValueOnce({
+                stdout: "/usr/bin/termux-notification\n",
+            });
+            await notifyAboutError("");
+            expect(callSubprocess).toHaveBeenCalledWith(
+                "/usr/bin/termux-notification",
+                ["-t", "Error", "-c", ""],
+                {}
+            );
+        });
+
+        it("handles error objects", async () => {
+            callSubprocess.mockResolvedValueOnce({
+                stdout: "/usr/bin/termux-notification\n",
+            });
+            const message = "test error";
+            await notifyAboutError(message);
+            expect(callSubprocess).toHaveBeenCalledWith(
+                "/usr/bin/termux-notification",
+                ["-t", "Error", "-c", message],
+                {}
+            );
+        });
     });
 
     describe("notifyAboutWarning", () => {
@@ -62,6 +92,31 @@ describe("notifications", () => {
             expect(callSubprocess).toHaveBeenCalledWith(
                 "/usr/bin/termux-notification",
                 ["-t", "Warning", "-c", "bar"],
+                {}
+            );
+        });
+
+        it("handles empty warning message", async () => {
+            callSubprocess.mockResolvedValueOnce({
+                stdout: "/usr/bin/termux-notification\n",
+            });
+            await notifyAboutWarning("");
+            expect(callSubprocess).toHaveBeenCalledWith(
+                "/usr/bin/termux-notification",
+                ["-t", "Warning", "-c", ""],
+                {}
+            );
+        });
+
+        it("handles warning objects", async () => {
+            callSubprocess.mockResolvedValueOnce({
+                stdout: "/usr/bin/termux-notification\n",
+            });
+            const message = "test warning";
+            await notifyAboutWarning(message);
+            expect(callSubprocess).toHaveBeenCalledWith(
+                "/usr/bin/termux-notification",
+                ["-t", "Warning", "-c", message],
                 {}
             );
         });
