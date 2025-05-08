@@ -6,4 +6,4 @@ const git = registerCommand('git');
 module.exports = {
     termuxNotification,
     git,
-}
+};
