@@ -49,19 +49,19 @@ async function addAll(directory) {
 
 /**
  * Commit staged changes with a message
- * @param {string} directory - The git repository directory
+ * @param {string} git_directory - The `.git` directory
+ * @param {string} work_directory - The repository directory, where the actual files are
  * @param {string} message - The commit message
  * @returns {Promise<void>}
  */
-async function commit(directory, message) {
+async function commit(git_directory, work_directory, message) {
     await GitCommand.call(
-        "-C",
-        directory,
-        "--config",
-        `safe.directory=${directory}`,
+        "--git-dir", git_directory,
+        "--work-tree", work_directory,
+        "--config", "safe.directory=*",
         "commit",
-        "-m",
-        message
+        "--all",
+        "--message", message
     );
 }
 
