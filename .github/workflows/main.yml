@@ -33,7 +33,7 @@ jobs:
               run: npm run static-analysis
 
             - name: Run tests
-              run: npm test -- verbose
+              run: npm test
 
     docker:
         runs-on: ubuntu-latest
