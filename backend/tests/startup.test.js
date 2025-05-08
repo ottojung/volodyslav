@@ -1,6 +1,7 @@
 const express = require("express");
 const { ensureStartupDependencies } = require("../src/startup");
 
+// FIXME: mock only the TermuxNotificationCommand, everything else should stay the same!
 jest.mock("../src/notifications", () => {
     const { registerCommand } = require("../src/subprocess");
     return {
