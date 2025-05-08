@@ -1,13 +1,17 @@
 const express = require("express");
 const { ensureStartupDependencies } = require("../src/startup");
 
-// FIXME: mock only the TermuxNotificationCommand, everything else should stay the same!
+// Mock only the TermuxNotificationCommand in notifications, preserving other functionality
 jest.mock("../src/notifications", () => {
+    const actualNotifications = jest.requireActual("../src/notifications");
     const { registerCommand } = require("../src/subprocess");
+    
+    // Create a mock instance that always returns a bash command
+    const mockTermuxNotificationCommand = jest.fn().mockReturnValue(registerCommand("bash"));
+    
     return {
-        TermuxNotificationCommand: jest
-            .fn()
-            .mockReturnValue(registerCommand("bash")),
+        ...actualNotifications,  // Keep all original exports
+        TermuxNotificationCommand: mockTermuxNotificationCommand,  // Override only TermuxNotificationCommand
     };
 });
 
