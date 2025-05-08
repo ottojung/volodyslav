@@ -1,5 +1,5 @@
 const { CommandUnavailable } = require("../subprocess/command_unavailable");
-const { registerCommand } = require("../subprocess");
+const { git } = require("../executables");
 
 class GitUnavailable extends CommandUnavailable {
     constructor() {
@@ -10,17 +10,12 @@ class GitUnavailable extends CommandUnavailable {
 }
 
 /**
- * @typedef {import('../subprocess/command').Command} Command
- */
-const GitCommand = registerCommand("git");
-
-/**
  * Ensures that the git executable exists in the PATH.
  * @returns {Promise<void>}
  */
 async function ensureGitAvailable() {
     try {
-        await GitCommand.ensureAvailable();
+        await git.ensureAvailable();
     } catch (error) {
         if (error instanceof CommandUnavailable) {
             throw new GitUnavailable();
@@ -35,7 +30,7 @@ async function ensureGitAvailable() {
  * @returns {Promise<void>}
  */
 async function init(directory) {
-    await GitCommand.call("-C", directory, "init");
+    await git.call("-C", directory, "init");
 }
 
 /**
@@ -44,7 +39,7 @@ async function init(directory) {
  * @returns {Promise<void>}
  */
 async function addAll(directory) {
-    await GitCommand.call("-C", directory, "add", "--all");
+    await git.call("-C", directory, "add", "--all");
 }
 
 /**
@@ -55,7 +50,7 @@ async function addAll(directory) {
  * @returns {Promise<void>}
  */
 async function commit(git_directory, work_directory, message) {
-    await GitCommand.call(
+    await git.call(
         "--git-dir", git_directory,
         "--work-tree", work_directory,
         "--config", "safe.directory=*",
