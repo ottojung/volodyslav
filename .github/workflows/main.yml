@@ -30,7 +30,7 @@ jobs:
               run: npm run build
 
             - name: Static analysis
-              run: npx run static-analysis
+              run: npm run static-analysis
 
             - name: Run tests
               run: npm test
