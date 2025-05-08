@@ -4,6 +4,16 @@ const memoizeOne = require("memoize-one").default;
 const { CommandUnavailable } = require("./command_unavailable");
 
 /**
+ * Executes a subprocess and returns a promise with the result.
+ *
+ * @param {string} command - The command to execute.
+ * @param {string[]} args - The arguments to pass to the command.
+ * @param {import('child_process').ExecFileOptions} options - Options for the subprocess.
+ * @returns {Promise<{ stdout: string, stderr: string }>} - The result of the subprocess execution.
+ */
+const callSubprocess = promisify(execFile);
+
+/**
  * Internal function to resolve the path to the command executable.
  *
  * @param {string} command - The command to resolve.
@@ -44,16 +54,6 @@ async function resolvePath(command) {
     }
     return path;
 }
-
-/**
- * Executes a subprocess and returns a promise with the result.
- *
- * @param {string} command - The command to execute.
- * @param {string[]} args - The arguments to pass to the command.
- * @param {import('child_process').ExecFileOptions} options - Options for the subprocess.
- * @returns {Promise<{ stdout: string, stderr: string }>} - The result of the subprocess execution.
- */
-const callSubprocess = promisify(execFile);
 
 class CommandClass {
     /** @type {string} */

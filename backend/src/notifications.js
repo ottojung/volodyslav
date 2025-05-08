@@ -9,6 +9,9 @@ class NotificationsUnavailable extends CommandUnavailable {
     }
 }
 
+/**
+ * @typedef {import('./subprocess').Command} Command
+ */
 const TermuxNotificationCommand = registerCommand("termux-notification");
 
 /**
