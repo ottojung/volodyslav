@@ -19,7 +19,7 @@ beforeEach(() => {
     ensureNotificationsAvailable = notifications.ensureNotificationsAvailable;
 
     // grab the mock from subprocess
-    ({ callSubprocess } = require("../src/subprocess"));
+    ({ callSubprocess } = require("../src/call_subprocess"));
 });
 
 describe("notifications", () => {

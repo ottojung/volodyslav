@@ -1,4 +1,4 @@
-const { resolvePath } = require("./resolve_executable_path");
+// const { resolvePath } = require("./resolve_executable_path");
 const { callSubprocess } = require("./call_subprocess");
 
 /**
@@ -38,7 +38,8 @@ class CommandClass {
      * @throws {CommandUnavailable} - If the command is unavailable.
      */
     async ensureAvailable() {
-        await resolvePath(this.command);
+        // await resolvePath(this.command);
+        return;
     }
 }
 

@@ -7,7 +7,6 @@ afterEach(temporary.afterEach);
 
 // Mock environment exports to avoid real env dependencies
 jest.mock('../src/environment', () => {
-    const path = require('path');
     const temporary = require('./temporary');
     return {
         openaiAPIKey: jest.fn().mockReturnValue('test-key'),
