@@ -1,6 +1,5 @@
 const express = require("express");
 const { ensureStartupDependencies } = require("../src/startup");
-const { TermuxNotificationCommand } = require("../src/notifications");
 
 jest.mock("../src/notifications", () => {
     const { registerCommand } = require("../src/subprocess");
