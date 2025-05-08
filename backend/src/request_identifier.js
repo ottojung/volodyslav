@@ -23,7 +23,7 @@ class RequestIdentifierClass {
      */
     constructor(req) {
         const reqId = req.query.request_identifier;
-        if (!reqId) {
+        if (reqId === null || reqId === undefined) {
             throw new Error('Missing request_identifier field');
         }
         this.identifier = String(reqId);
