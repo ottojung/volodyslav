@@ -73,8 +73,8 @@ describe("Startup Dependencies", () => {
         ]);
 
         // Test that the app still works after multiple setups
-        app.get("/ping", (req, res) => res.send("test"));
-        const res = await request(app).get("/ping");
+        app.get("/test", (req, res) => res.send("test"));
+        const res = await request(app).get("/test");
         expect(res.status).toBe(200);
     });
 });
