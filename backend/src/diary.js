@@ -5,12 +5,12 @@ const {
     eventLogAssetsDirectory,
 } = require("./environment");
 const { transcribeAllGeneric } = require("./transcribe_all");
-const { formatFileTimestamp } = require("./formatFileTimestamp");
+const { formatFileTimestamp } = require("./format_time_stamp");
 const {
     copyFile,
     unlink,
 } = require("fs/promises");
-const { transaction } = require("./eventLogStorage");
+const { transaction } = require("./event_log_storage");
 
 /**
  * @param {string} filename
@@ -117,7 +117,7 @@ async function writeChanges(successes) {
     });
 
     /**
-     * @type {import('./eventLogStorage').EventLogStorage}
+     * @type {import('./event_log_storage').EventLogStorage}
      */
     await transaction((eventLogStorage) => {
         entries.forEach(eventLogStorage.addEntry);
