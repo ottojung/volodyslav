@@ -41,11 +41,10 @@ async function init(directory) {
 /**
  * Add files to git staging area
  * @param {string} directory - The git repository directory
- * @param {string[]} files - Array of file paths to add
  * @returns {Promise<void>}
  */
-async function add(directory, files) {
-    await GitCommand.call("-C", directory, "add", "--", ...files);
+async function addAll(directory) {
+    await GitCommand.call("-C", directory, "add", "--all");
 }
 
 /**
@@ -55,12 +54,20 @@ async function add(directory, files) {
  * @returns {Promise<void>}
  */
 async function commit(directory, message) {
-    await GitCommand.call("-C", directory, "commit", "-m", message);
+    await GitCommand.call(
+        "-C",
+        directory,
+        "--config",
+        `safe.directory=${directory}`,
+        "commit",
+        "-m",
+        message
+    );
 }
 
 module.exports = {
     ensureGitAvailable,
     init,
-    add,
+    addAll,
     commit,
 };
