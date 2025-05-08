@@ -1,4 +1,4 @@
-jest.mock("../src/subprocess", () => ({
+jest.mock("../src/call_subprocess", () => ({
     // just start with an empty mock, no default implementation
     callSubprocess: jest.fn(),
 }));
