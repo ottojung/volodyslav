@@ -1,12 +1,17 @@
 const express = require("express");
 const request = require("supertest");
 
-jest.mock("../src/notifications", () => ({
-    ensureNotificationsAvailable: jest.fn(),
-}));
+jest.mock("../src/notifications", () => {
+    const { registerCommand } = require("../src/subprocess");
+    return {
+        TermuxNotificationCommand: jest
+            .fn()
+            .mockReturnValue(registerCommand("bash")),
+    };
+});
 
 // Mock environment with minimal required values
-jest.mock('../src/environment', () => {
+jest.mock("../src/environment", () => {
     return {
         logLevel: jest.fn().mockReturnValue("silent"),
     };
@@ -25,8 +30,6 @@ describe("Startup Dependencies", () => {
     });
 
     it("sets up HTTP call logging and handles requests correctly", async () => {
-        ensureNotificationsAvailable.mockResolvedValue();
-
         await ensureStartupDependencies(app);
 
         // Add a test route that will be logged
@@ -41,8 +44,6 @@ describe("Startup Dependencies", () => {
     });
 
     it("ensures notifications are available", async () => {
-        ensureNotificationsAvailable.mockResolvedValue();
-
         await ensureStartupDependencies(app);
 
         expect(ensureNotificationsAvailable).toHaveBeenCalled();
@@ -50,16 +51,12 @@ describe("Startup Dependencies", () => {
 
     it("throws if notifications are not available", async () => {
         const error = new Error("Notifications not available");
-        ensureNotificationsAvailable.mockRejectedValue(error);
-
         await expect(ensureStartupDependencies(app)).rejects.toThrow(
             "Notifications not available"
         );
     });
 
     it("can be called multiple times safely", async () => {
-        ensureNotificationsAvailable.mockResolvedValue();
-
         await Promise.all([
             ensureStartupDependencies(app),
             ensureStartupDependencies(app),
