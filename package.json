@@ -10,7 +10,8 @@
     "dev": "concurrently 'npm run dev -w frontend' 'npm run dev -w backend'",
     "build": "npm run build -w frontend",
     "start": "npm run build && npm run start -w backend",
-    "test": "tsc --noEmit ; jest",
+    "static-analysis": "tsc --noEmit && eslint .",
+    "test": "jest",
     "lint": "eslint . --ext .js,.jsx",
     "lint:fix": "eslint . --ext .js,.jsx --fix"
   },
