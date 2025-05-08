@@ -1,4 +1,4 @@
-const { CommandUnavailable } = require("./subprocess/command_unavailable");
+const { CommandUnavailable } = require("./subprocess");
 const { termuxNotification } = require("./executables");
 
 
