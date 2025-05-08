@@ -10,7 +10,7 @@ const { CommandUnavailable } = require("./command_unavailable");
  */
 async function tryResolvePathInternal(command) {
     try {
-        const result = await callSubprocess("which", ["--", command], {});
+        const result = await callSubprocess(`command -v ${command}`, { shell: true });
         const stdout = result.stdout;
         if (!stdout || !stdout.trim()) {
             return null;
