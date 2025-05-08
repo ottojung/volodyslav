@@ -45,21 +45,22 @@ describe("Startup Dependencies", () => {
     });
 
     it("throws if notifications are not available", async () => {
-        jest.resetModules();
-        jest.resetAllMocks();
+        await jest.isolateModules(async () => {
+            // Inside the isolation, mock the module with a nonexistent command
+            jest.mock("../src/executables", () => {
+                const { registerCommand } = require("../src/subprocess");
+                return {
+                    termuxNotification: registerCommand("nonexistent-command"),
+                };
+            });
 
-        // FIXME: this doesn't work. I think the mock is not being applied correctly.
-        // The command is still being resolved to the original one.
-        jest.mock("../src/executables", () => {
-            const { registerCommand } = require("../src/subprocess");
-            return {
-                termuxNotification: registerCommand("nonexistent-command"),
-            };
+            // Get a fresh instance of the module under test
+            const { ensureStartupDependencies } = require("../src/startup");
+            
+            await expect(ensureStartupDependencies(app)).rejects.toThrow(
+                "Notifications unavailable. Termux notification executable not found in $PATH. Please ensure that Termux:API is installed and available in your $PATH."
+            );
         });
-
-        await expect(ensureStartupDependencies(app)).rejects.toThrow(
-            "Notifications unavailable. Termux notification executable not found in $PATH. Please ensure that Termux:API is installed and available in your $PATH."
-        );
     });
 
     it("can be called multiple times safely", async () => {
@@ -75,3 +76,4 @@ describe("Startup Dependencies", () => {
         expect(res.status).toBe(200);
     });
 });
+
