@@ -58,53 +58,9 @@ async function commit(directory, message) {
     await GitCommand.call("-C", directory, "commit", "-m", message);
 }
 
-/**
- * Show the current git status
- * @param {string} directory - The git repository directory
- * @returns {Promise<{ stdout: string, stderr: string }>}
- */
-async function status(directory) {
-    return GitCommand.call("-C", directory, "status");
-}
-
-/**
- * Show commit log
- * @param {string} directory - The git repository directory
- * @param {string[]} [options=[]] - Additional options for git log
- * @returns {Promise<{ stdout: string, stderr: string }>}
- */
-async function log(directory, options = []) {
-    return GitCommand.call("-C", directory, "log", ...options);
-}
-
-/**
- * Get the contents of a file at a specific commit
- * @param {string} directory - The git repository directory
- * @param {string} commitHash - The commit hash
- * @param {string} filePath - Path to the file
- * @returns {Promise<{ stdout: string, stderr: string }>}
- */
-async function show(directory, commitHash, filePath) {
-    return GitCommand.call("-C", directory, "show", `${commitHash}:${filePath}`);
-}
-
-/**
- * List all files in the repository at a specific commit
- * @param {string} directory - The git repository directory
- * @param {string} [commitHash="HEAD"] - The commit hash, defaults to HEAD
- * @returns {Promise<{ stdout: string, stderr: string }>}
- */
-async function listFiles(directory, commitHash = "HEAD") {
-    return GitCommand.call("-C", directory, "ls-tree", "-r", "--name-only", commitHash);
-}
-
 module.exports = {
     ensureGitAvailable,
     init,
     add,
     commit,
-    status,
-    log,
-    show,
-    listFiles,
 };
