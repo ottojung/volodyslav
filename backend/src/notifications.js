@@ -1,7 +1,7 @@
-const { callSubprocess } = require("./subprocess");
-const memoizeOne = require("memoize-one").default;
+const { CommandUnavailable } = require("./command_unavailable");
+const { registerCommand } = require("./subprocess");
 
-class NotificationsUnavailable extends Error {
+class NotificationsUnavailable extends CommandUnavailable {
     constructor() {
         super(
             "Notifications unavailable. Termux notification executable not found in $PATH. Please ensure that Termux:API is installed and available in your $PATH."
@@ -9,51 +9,20 @@ class NotificationsUnavailable extends Error {
     }
 }
 
-/**
- * Internal function to resolve the path to the termux-notification executable.
- *
- * @returns {Promise<string|null>} - The path to the termux-notification executable or null if not found.
- */
-async function tryResolveTermuxNotificationPathInternal() {
-    try {
-        const result = await callSubprocess(
-            "which",
-            ["termux-notification"],
-            {}
-        );
-        const stdout = result.stdout;
-        if (!stdout || !stdout.trim()) {
-            return null;
-        }
-
-        return stdout.trim();
-    } catch (error) {
-        return null;
-    }
-}
-
-/**
- * This function resolves the path to the termux-notification executable.
- *
- * @type {() => Promise<string|null>} - The path to the termux-notification executable or null if not found.
- */
-const tryResolveTermuxNotificationPath = memoizeOne(
-    tryResolveTermuxNotificationPathInternal
-);
-
-async function resolveTermuxNotificationPath() {
-    const path = await tryResolveTermuxNotificationPath();
-    if (!path) {
-        throw new NotificationsUnavailable();
-    }
-    return path;
-}
+const TermuxNotificationCommand = registerCommand("termux-notification");
 
 /**
  * Ensures that the termux-notification executable exists in the PATH.
  */
 async function ensureNotificationsAvailable() {
-    await resolveTermuxNotificationPath();
+    try {
+        await TermuxNotificationCommand.ensureAvailable();
+    } catch (error) {
+        if (error instanceof CommandUnavailable) {
+            throw new NotificationsUnavailable();
+        }
+        throw error;
+    }
 }
 
 /**
@@ -61,12 +30,7 @@ async function ensureNotificationsAvailable() {
  * @param {string} message - The error message to display.
  */
 async function notifyAboutError(message) {
-    const termuxNotificationPath = await resolveTermuxNotificationPath();
-    await callSubprocess(
-        termuxNotificationPath,
-        ["-t", "Error", "-c", message],
-        {}
-    );
+    await TermuxNotificationCommand.call("-t", "Error", "-c", message);
 }
 
 /**
@@ -74,12 +38,7 @@ async function notifyAboutError(message) {
  * @param {string} message - The warning message to display.
  */
 async function notifyAboutWarning(message) {
-    const termuxNotificationPath = await resolveTermuxNotificationPath();
-    await callSubprocess(
-        termuxNotificationPath,
-        ["-t", "Warning", "-c", message],
-        {}
-    );
+    await TermuxNotificationCommand.call("-t", "Warning", "-c", message);
 }
 
 module.exports = {
