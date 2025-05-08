@@ -18,16 +18,14 @@ jest.mock("../src/environment", () => {
 });
 
 describe("Startup Dependencies", () => {
-    let app;
-
     beforeEach(() => {
         // Reset all mocks before each test
         jest.clearAllMocks();
         jest.resetModules();
-        app = express();
     });
 
     it("sets up HTTP call logging and handles requests correctly", async () => {
+        const app = express();
         await ensureStartupDependencies(app);
 
         // Add a test route that will be logged
@@ -42,10 +40,12 @@ describe("Startup Dependencies", () => {
     });
 
     it("ensures notifications are available", async () => {
+        const app = express();
         await expect(ensureStartupDependencies(app)).resolves.not.toThrow();
     });
 
     it("throws if notifications are not available", async () => {
+        const app = express();
         await jest.isolateModules(async () => {
             // Inside the isolation, mock the module with a nonexistent command
             jest.mock("../src/executables", () => {
@@ -65,6 +65,7 @@ describe("Startup Dependencies", () => {
     });
 
     it("can be called multiple times safely", async () => {
+        const app = express();
         await Promise.all([
             ensureStartupDependencies(app),
             ensureStartupDependencies(app),
