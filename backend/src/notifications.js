@@ -1,5 +1,5 @@
 const { CommandUnavailable } = require("./subprocess/command_unavailable");
-const { registerCommand } = require("./subprocess/command");
+const { registerCommand } = require("./subprocess");
 
 class NotificationsUnavailable extends CommandUnavailable {
     constructor() {
