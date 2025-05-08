@@ -1,6 +1,6 @@
 const { execFile } = require("node:child_process");
 const { promisify } = require("node:util");
-const memoizeOne = require("memoize-one").default;
+const memoizeOne = require("memoize-one");
 const { CommandUnavailable } = require("./command_unavailable");
 
 /**
@@ -55,6 +55,13 @@ async function resolvePath(command) {
     return path;
 }
 
+/**
+ * @typedef {CommandClass} Command
+ */
+
+/**
+ * @class
+ */
 class CommandClass {
     /** @type {string} */
     command;
@@ -90,18 +97,16 @@ class CommandClass {
 }
 
 /**
- * @typedef {CommandClass} Command
- */
-
-/**
  * Registers a subprocess command.
  *
  * @param {string} command - The command to register.
  * @returns {Command}
  */
 function registerCommand(command) {
-    const commandClass = new CommandClass(command);
-    return commandClass;
+    return new CommandClass(command);
 }
 
-module.exports = { registerCommand };
+module.exports = { 
+    registerCommand,
+    CommandClass
+};
