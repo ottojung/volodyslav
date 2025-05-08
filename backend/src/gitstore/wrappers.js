@@ -26,6 +26,7 @@ async function ensureGitAvailable() {
 
 /**
  * Commit staged changes with a message
+ * Note: this operation is atomic. Details at <https://chatgpt.com/share/681d3dcb-a948-800e-8aca-896c8ba2aa07>.
  * @param {string} git_directory - The `.git` directory
  * @param {string} work_directory - The repository directory, where the actual files are
  * @param {string} message - The commit message
@@ -33,16 +34,40 @@ async function ensureGitAvailable() {
  */
 async function commit(git_directory, work_directory, message) {
     await git.call(
-        "--git-dir", git_directory,
-        "--work-tree", work_directory,
-        "--config", "safe.directory=*",
+        "--git-dir",
+        git_directory,
+        "--work-tree",
+        work_directory,
+        "--config",
+        "safe.directory=*",
         "commit",
         "--all",
-        "--message", message
+        "--message",
+        message
+    );
+}
+
+/**
+ * Reset the working directory to the last commit.
+ * @param {string} git_directory - The `.git` directory
+ * @param {string} work_directory - The repository directory, where the actual files are
+ * @returns {Promise<void>}
+ */
+async function reset(git_directory, work_directory) {
+    await git.call(
+        "--git-dir",
+        git_directory,
+        "--work-tree",
+        work_directory,
+        "--config",
+        "safe.directory=*",
+        "reset",
+        "--hard"
     );
 }
 
 module.exports = {
     ensureGitAvailable,
     commit,
+    reset,
 };
