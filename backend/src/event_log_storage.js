@@ -95,7 +95,8 @@ async function appendEntriesToFile(filePath, entries) {
     }
 }
 
-/** @typedef {(eventLogStorage: EventLogStorage) => void} Transformation
+/**
+ * @typedef {(eventLogStorage: EventLogStorage) => void} Transformation
  */
 
 /**
