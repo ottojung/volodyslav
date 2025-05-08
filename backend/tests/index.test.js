@@ -1,4 +1,3 @@
-
 // Mock environment exports to avoid real env dependencies
 jest.mock('../src/environment', () => {
     const path = require('path');
@@ -18,5 +17,20 @@ describe('GET /api', () => {
     const res = await request(app).get('/api');
     expect(res.statusCode).toBe(200);
     expect(res.text).toBe('Hello World!');
+  });
+
+  it('returns text/html content type', async () => {
+    const res = await request(app).get('/api');
+    expect(res.headers['content-type']).toMatch(/text\/html/);
+  });
+
+  it('handles HEAD request', async () => {
+    const res = await request(app).head('/api');
+    expect(res.statusCode).toBe(200);
+  });
+
+  it('handles invalid HTTP method', async () => {
+    const res = await request(app).put('/api');
+    expect(res.statusCode).toBe(404);
   });
 });
