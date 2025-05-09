@@ -10,7 +10,9 @@ afterEach(temporary.afterEach);
 
 async function makeTestRepository() {
     // Create a temporary directory for our test repository
-    const testRepoPath = await fs.mkdir(`${temporary.input()}/gitstore-test`);
+    const testRepoPath = await fs.mkdir(`${temporary.input()}/gitstore-test`, {
+        recursive: true,
+    });
     const testGitDir = path.join(testRepoPath, ".git");
 
     // Initialize a git repository
