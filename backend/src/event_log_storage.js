@@ -96,7 +96,7 @@ async function appendEntriesToFile(filePath, entries) {
 }
 
 /**
- * @typedef {(eventLogStorage: EventLogStorage) => void} Transformation
+ * @typedef {(eventLogStorage: EventLogStorage) => Promise<void>} Transformation
  */
 
 /**
@@ -114,7 +114,7 @@ async function transaction(transformation) {
     await copyOrTouch(originalDataPath, tempDataPath);
 
     // run the transformation
-    transformation(eventLogStorage);
+    await transformation(eventLogStorage);
 
     // append entries to the temporary file
     await appendEntriesToFile(tempDataPath, eventLogStorage.getNewEntries());
