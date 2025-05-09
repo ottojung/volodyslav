@@ -45,7 +45,11 @@ async function run(app, fun) {
                     await fun(app, server);
                     resolve(server);
                 } catch (error) {
-                    server.close();
+                    try {
+                        server.close();
+                    } finally {
+                        true;
+                    }
                     throw error;
                 }
             });
