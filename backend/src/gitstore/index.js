@@ -2,6 +2,8 @@ const os = require("os");
 const { reset, commit } = require("./wrappers");
 const fs = require("fs").promises;
 
+// TODO: should be based on copy+pull+push instead of link+reset+commit.
+
 async function makeTemporaryWorkTree() {
     return await fs.mkdtemp(`${os.tmpdir()}/gitstore-`);
 }
