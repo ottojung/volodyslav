@@ -14,8 +14,9 @@ async function readObjects(filepath) {
         // create a readable stream
         const rs = createReadStream(filepath, { encoding: "utf8" });
         // parser({ jsonStreaming: true }) allows multiple top-level values
+        const jsonParser = parser({ jsonStreaming: true });
         const pipeline = rs
-            .pipe(parser({ jsonStreaming: true }))
+            .pipe(jsonParser)
             .pipe(streamValues());
 
         pipeline.on("data", ({ value }) => {
@@ -26,7 +27,14 @@ async function readObjects(filepath) {
             resolve(objects);
         });
 
+        // Listen for errors on each component of the pipeline
+        jsonParser.on("error", (error) => {
+            rs.destroy(); // Clean up the stream
+            reject(error);
+        });
+
         pipeline.on("error", (error) => {
+            rs.destroy(); // Clean up the stream
             reject(error);
         });
 
