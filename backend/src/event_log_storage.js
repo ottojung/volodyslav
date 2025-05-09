@@ -7,7 +7,7 @@
 
 const path = require("path");
 const { eventLogDirectory } = require("./environment");
-const { copyFile, writeFile, appendFile } = require("fs/promises");
+const { appendFile } = require("fs/promises");
 const gitstore = require("./gitstore");
 
 /**
@@ -61,26 +61,6 @@ class EventLogStorageClass {
 /** @typedef {EventLogStorageClass} EventLogStorage */
 
 /**
- * @param {string} originalPath
- * @param {string} resultPath
- * @returns {Promise<void>}
- */
-async function copyOrTouch(originalPath, resultPath) {
-    try {
-        await copyFile(originalPath, resultPath);
-    } catch (error) {
-        if (error instanceof Error) {
-            if ("code" in error && error.code === "ENOENT") {
-                await writeFile(resultPath, "", "utf8");
-                return;
-            }
-        }
-
-        throw error;
-    }
-}
-
-/**
  * Appends an array of entries to a specified file.
  * Each entry is serialized to JSON format and appended to the file with a newline.
  *
@@ -119,6 +99,7 @@ async function transaction(transformation) {
             dataPath,
             eventLogStorage.getNewEntries()
         );
+
         store.commit("Event log storage update");
     });
 }
