@@ -22,8 +22,8 @@ jest.mock('../src/environment', () => {
 
 describe("gitstore", () => {
     test("transaction allows reading and writing files", async () => {
-        const { testRepoPath, testGitDir } = await makeTestRepository();
-        await transaction(testGitDir, async (store) => {
+        const { workTree, gitDir } = await makeTestRepository();
+        await transaction(gitDir, async (store) => {
             const workTree = await store.getWorkTree();
             const testFile = path.join(workTree, "test.txt");
 
@@ -38,15 +38,15 @@ describe("gitstore", () => {
 
         // Verify the changes were committed by reading directly from the repo
         const output = execSync("git cat-file -p HEAD:test.txt", {
-            cwd: testRepoPath,
+            cwd: workTree,
             encoding: "utf8",
         });
         expect(output.trim()).toBe("modified content");
     });
 
     test("transaction allows multiple commits", async () => {
-        const { testRepoPath, testGitDir } = await makeTestRepository();
-        await transaction(testGitDir, async (store) => {
+        const { workTree, gitDir } = await makeTestRepository();
+        await transaction(gitDir, async (store) => {
             const workTree = await store.getWorkTree();
             const testFile = path.join(workTree, "test.txt");
 
@@ -61,25 +61,25 @@ describe("gitstore", () => {
 
         // Verify we have the correct number of commits
         const commitCount = execSync("git rev-list --count HEAD", {
-            cwd: testRepoPath,
+            cwd: workTree,
             encoding: "utf8",
         });
         expect(parseInt(commitCount)).toBe(3); // Initial + 2 modifications
 
         // Verify the final content
         const output = execSync("git cat-file -p HEAD:test.txt", {
-            cwd: testRepoPath,
+            cwd: workTree,
             encoding: "utf8",
         });
         expect(output.trim()).toBe("second modification");
     });
 
     test("transaction cleans up temporary work tree", async () => {
-        const { testGitDir } = await makeTestRepository();
+        const { gitDir } = await makeTestRepository();
         let temporaryWorkTree;
 
         await expect(
-            transaction(testGitDir, async (store) => {
+            transaction(gitDir, async (store) => {
                 temporaryWorkTree = await store.getWorkTree(); // Get the work tree to create it
                 await expect(
                     fs.access(temporaryWorkTree)
@@ -94,11 +94,11 @@ describe("gitstore", () => {
     });
 
     test("transaction cleans up temporary work tree even if transformation fails", async () => {
-        const { testGitDir } = await makeTestRepository();
+        const { gitDir } = await makeTestRepository();
         let temporaryWorkTree;
 
         await expect(
-            transaction(testGitDir, async (store) => {
+            transaction(gitDir, async (store) => {
                 temporaryWorkTree = await store.getWorkTree(); // Get the work tree to create it
                 await expect(
                     fs.access(temporaryWorkTree)

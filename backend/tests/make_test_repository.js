@@ -8,31 +8,31 @@ const callSubprocess = promisify(execFile);
 
 async function makeTestRepository() {
     // Create a temporary directory for our test repository
-    const testRepoPath = eventLogDirectory();
-    await fs.mkdir(testRepoPath, {
+    const workTree = eventLogDirectory();
+    await fs.mkdir(workTree, {
         recursive: true,
     });
-    const testGitDir = path.join(testRepoPath, ".git");
+    const gitDir = path.join(workTree, ".git");
 
     // Initialize a git repository
-    await callSubprocess("git init", { cwd: testRepoPath, shell: true });
+    await callSubprocess("git init", { cwd: workTree, shell: true });
 
     // Create an initial commit
-    const testFile = path.join(testRepoPath, "test.txt");
+    const testFile = path.join(workTree, "test.txt");
     await fs.writeFile(testFile, "initial content");
     await callSubprocess("git -c user.name=1 -c user.email=1 add .", {
-        cwd: testRepoPath,
+        cwd: workTree,
         shell: true,
     });
     await callSubprocess(
         "git -c user.name=1 -c user.email=1 commit -m 'Initial commit'",
         {
-            cwd: testRepoPath,
+            cwd: workTree,
             shell: true,
         }
     );
 
-    return { testRepoPath, testGitDir };
+    return { workTree, gitDir };
 }
 
 module.exports = makeTestRepository;

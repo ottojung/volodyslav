@@ -26,7 +26,7 @@ afterEach(temporary.afterEach);
 
 describe("event_log_storage", () => {
     test("transaction allows adding and storing event entries", async () => {
-        await makeTestRepository();
+        const { workTree, gitRepo } = await makeTestRepository();
 
         const testEvent = {
             date: "2025-05-09",
@@ -42,7 +42,7 @@ describe("event_log_storage", () => {
         });
 
         // Verify the event was written to the data.json file
-        const dataPath = path.join(eventLogDirectory(), "data.json");
+        const dataPath = path.join(workTree, "data.json");
         const fileContent = await fs.readFile(dataPath, "utf8");
         const lastLine = fileContent.trim().split("\n").pop();
         const storedEvent = JSON.parse(lastLine);
