@@ -58,6 +58,7 @@ describe("gitstore", () => {
     });
 
     test("transaction allows multiple commits", async () => {
+        const { testRepoPath, testGitDir } = await makeTestRepository();
         await transaction(testGitDir, async (store) => {
             const workTree = await store.getWorkTree();
             const testFile = path.join(workTree, "test.txt");
@@ -87,6 +88,7 @@ describe("gitstore", () => {
     });
 
     test("transaction cleans up work tree even if transformation fails", async () => {
+        const { testGitDir } = await makeTestRepository();
         await expect(
             transaction(testGitDir, async (store) => {
                 await store.getWorkTree(); // Get the work tree to create it
