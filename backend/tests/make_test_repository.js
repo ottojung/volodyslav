@@ -7,7 +7,7 @@ const { promisify } = require("node:util");
 const callSubprocess = promisify(execFile);
 
 async function makeTestRepository() {
-    // Create a temporary directory for our test repository
+    // Let eventLogDirectory be our test repository
     const workTree = eventLogDirectory();
     await fs.mkdir(workTree, {
         recursive: true,
