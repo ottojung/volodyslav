@@ -20,7 +20,9 @@ async function makeTestRepository() {
     // Create an initial commit
     const testFile = path.join(workTree, "test.txt");
     await fs.writeFile(testFile, "initial content");
-    await callSubprocess("git -c user.name=1 -c user.email=1 add .", {
+    const dataFile = path.join(workTree, "data.json");
+    await fs.writeFile(dataFile, "");
+    await callSubprocess("git -c user.name=1 -c user.email=1 add --all", {
         cwd: workTree,
         shell: true,
     });

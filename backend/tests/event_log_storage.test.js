@@ -4,13 +4,14 @@ const { transaction } = require("../src/event_log_storage");
 const { eventLogDirectory } = require("../src/environment");
 const temporary = require("./temporary");
 const makeTestRepository = require("./make_test_repository");
+const gitstore = require("../src/gitstore");
 
 // Mock environment exports to avoid real env dependencies
-jest.mock('../src/environment', () => {
-    const temporary = require('./temporary');
-    const path = require('path');
+jest.mock("../src/environment", () => {
+    const temporary = require("./temporary");
+    const path = require("path");
     return {
-        openaiAPIKey: jest.fn().mockReturnValue('test-key'),
+        openaiAPIKey: jest.fn().mockReturnValue("test-key"),
         resultsDirectory: jest.fn().mockImplementation(temporary.output),
         myServerPort: jest.fn().mockReturnValue(0),
         logLevel: jest.fn().mockReturnValue("silent"),
@@ -26,7 +27,7 @@ afterEach(temporary.afterEach);
 
 describe("event_log_storage", () => {
     test("transaction allows adding and storing event entries", async () => {
-        const { workTree, gitRepo } = await makeTestRepository();
+        const { gitDir } = await makeTestRepository();
 
         const testEvent = {
             date: "2025-05-09",
@@ -34,7 +35,7 @@ describe("event_log_storage", () => {
             input: "processed test input",
             modifiers: { key: "value" },
             type: "test_event",
-            description: "Test event description"
+            description: "Test event description",
         };
 
         await transaction(async (eventLogStorage) => {
@@ -42,12 +43,14 @@ describe("event_log_storage", () => {
         });
 
         // Verify the event was written to the data.json file
-        const dataPath = path.join(workTree, "data.json");
-        const fileContent = await fs.readFile(dataPath, "utf8");
-        const lastLine = fileContent.trim().split("\n").pop();
-        const storedEvent = JSON.parse(lastLine);
-
-        // expect(storedEvent).toEqual(testEvent);
+        await gitstore.transaction(gitDir, async (store) => {
+            const workTree = await store.getWorkTree();
+            const dataPath = path.join(workTree, "data.json");
+            const fileContent = await fs.readFile(dataPath, "utf8");
+            const lastLine = fileContent.trim().split("\n").pop();
+            const storedEvent = JSON.parse(lastLine);
+            expect(storedEvent).toEqual(testEvent);
+        });
     }, 999999999);
 
     test("transaction allows adding multiple entries", async () => {
@@ -58,7 +61,7 @@ describe("event_log_storage", () => {
                 input: "processed test input 1",
                 modifiers: { key: "value1" },
                 type: "test_event",
-                description: "Test event description 1"
+                description: "Test event description 1",
             },
             {
                 date: "2025-05-09",
@@ -66,19 +69,19 @@ describe("event_log_storage", () => {
                 input: "processed test input 2",
                 modifiers: { key: "value2" },
                 type: "test_event",
-                description: "Test event description 2"
-            }
+                description: "Test event description 2",
+            },
         ];
 
         await transaction(async (eventLogStorage) => {
-            testEvents.forEach(event => eventLogStorage.addEntry(event));
+            testEvents.forEach((event) => eventLogStorage.addEntry(event));
         });
 
         // Verify both events were written to the data.json file
         const dataPath = path.join(eventLogDirectory(), "data.json");
         const fileContent = await fs.readFile(dataPath, "utf8");
         const lines = fileContent.trim().split("\n");
-        const storedEvents = lines.map(line => JSON.parse(line));
+        const storedEvents = lines.map((line) => JSON.parse(line));
 
         expect(storedEvents).toHaveLength(2);
         expect(storedEvents).toEqual(testEvents);
@@ -91,7 +94,7 @@ describe("event_log_storage", () => {
             input: "processed test input",
             modifiers: { key: "value" },
             type: "test_event",
-            description: "Test event description"
+            description: "Test event description",
         };
 
         await expect(
@@ -113,7 +116,7 @@ describe("event_log_storage", () => {
             input: "processed test input 1",
             modifiers: { key: "value1" },
             type: "test_event",
-            description: "Test event description 1"
+            description: "Test event description 1",
         };
 
         const testEvent2 = {
@@ -122,7 +125,7 @@ describe("event_log_storage", () => {
             input: "processed test input 2",
             modifiers: { key: "value2" },
             type: "test_event",
-            description: "Test event description 2"
+            description: "Test event description 2",
         };
 
         let storedEntries;
@@ -142,7 +145,7 @@ describe("event_log_storage", () => {
         const dataPath = path.join(eventLogDirectory(), "data.json");
         const fileContent = await fs.readFile(dataPath, "utf8");
         const lines = fileContent.trim().split("\n");
-        const storedEventsFromFile = lines.map(line => JSON.parse(line));
+        const storedEventsFromFile = lines.map((line) => JSON.parse(line));
 
         expect(storedEventsFromFile).toEqual(storedEntries);
     });
