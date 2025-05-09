@@ -17,12 +17,6 @@ async function makeTestRepository() {
     // Initialize a git repository
     execSync("git init", { cwd: testRepoPath });
 
-    // Configure git identity
-    execSync("git config user.name 'Test User'", { cwd: testRepoPath });
-    execSync("git config user.email 'test@example.com'", {
-        cwd: testRepoPath,
-    });
-
     // Create an initial commit
     const testFile = path.join(testRepoPath, "test.txt");
     await fs.writeFile(testFile, "initial content");

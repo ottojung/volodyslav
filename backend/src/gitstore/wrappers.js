@@ -36,6 +36,10 @@ async function commit(git_directory, work_directory, message) {
     await git.call(
         "-c",
         "safe.directory=*",
+        "-c",
+        "user.name=volodyslav",
+        "-c",
+        "user.email=volodyslav",
         "--git-dir",
         git_directory,
         "--work-tree",
@@ -57,6 +61,10 @@ async function reset(git_directory, work_directory) {
     await git.call(
         "-c",
         "safe.directory=*",
+        "-c",
+        "user.name=volodyslav",
+        "-c",
+        "user.email=volodyslav",
         "--git-dir",
         git_directory,
         "--work-tree",
