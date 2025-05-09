@@ -3,21 +3,26 @@ const path = require("path");
 const { transaction } = require("../src/event_log_storage");
 const { eventLogDirectory } = require("../src/environment");
 const temporary = require("./temporary");
+const makeTestRepository = require("./make_test_repository");
 
 beforeEach(temporary.beforeEach);
 afterEach(temporary.afterEach);
 
 // Mock environment exports to avoid real env dependencies
 jest.mock('../src/environment', () => {
+    const path = require('path');
     const temporary = require('./temporary');
+    const gitRepoPath = path.join(temporary.input(), "gitstore-test");
     return {
         logLevel: jest.fn().mockReturnValue("silent"),
-        eventLogDirectory: jest.fn().mockImplementation(temporary.output),
+        eventLogDirectory: jest.fn().mockImplementation(gitRepoPath),
     };
 });
 
 describe("event_log_storage", () => {
     test("transaction allows adding and storing event entries", async () => {
+        makeTestRepository();
+
         const testEvent = {
             date: "2025-05-09",
             original: "test input",

@@ -3,28 +3,10 @@ const path = require("path");
 const { execSync } = require("child_process");
 const { transaction } = require("../src/gitstore");
 const temporary = require("./temporary");
+const makeTestRepository = require("./make_test_repository");
 
 beforeEach(temporary.beforeEach);
 afterEach(temporary.afterEach);
-
-async function makeTestRepository() {
-    // Create a temporary directory for our test repository
-    const testRepoPath = await fs.mkdir(`${temporary.input()}/gitstore-test`, {
-        recursive: true,
-    });
-    const testGitDir = path.join(testRepoPath, ".git");
-
-    // Initialize a git repository
-    execSync("git init", { cwd: testRepoPath });
-
-    // Create an initial commit
-    const testFile = path.join(testRepoPath, "test.txt");
-    await fs.writeFile(testFile, "initial content");
-    execSync("git -c user.name=1 -c user.email=1 add .", { cwd: testRepoPath });
-    execSync("git -c user.name=1 -c user.email=1 commit -m 'Initial commit'", { cwd: testRepoPath });
-
-    return { testRepoPath, testGitDir };
-}
 
 describe("gitstore", () => {
     test("transaction allows reading and writing files", async () => {
