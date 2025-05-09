@@ -1,5 +1,5 @@
 const express = require('express');
-const logger = require('../logger');
+const { logger } = require('../logger');
 const { fromRequest } = require('../request_identifier');
 const { transcribeAllRequest, InputDirectoryAccess } = require('../transcribe_all');
 

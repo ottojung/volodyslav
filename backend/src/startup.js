@@ -1,6 +1,5 @@
-const { setupHttpCallsLogging } = require("./logger");
 const { ensureNotificationsAvailable } = require("./notifications");
-const logger = require("./logger");
+const { logger, setupHttpCallsLogging } = require("./logger");
 
 /**
  * @typedef {import("http").Server} Server

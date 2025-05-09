@@ -1,7 +1,7 @@
 const express = require('express');
 const upload = require('../storage');
 const router = express.Router();
-const logger = require('../logger');
+const { logger } = require('../logger');
 const { fromRequest, markDone } = require('../request_identifier');
 
 /**
