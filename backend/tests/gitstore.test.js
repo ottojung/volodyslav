@@ -87,7 +87,23 @@ describe("gitstore", () => {
         expect(output.trim()).toBe("second modification");
     });
 
-    test("transaction cleans up work tree even if transformation fails", async () => {
+    test("transaction cleans up temporary work tree", async () => {
+        const { testGitDir } = await makeTestRepository();
+        await expect(
+            transaction(testGitDir, async (store) => {
+                await store.getWorkTree(); // Get the work tree to create it
+            })
+        ).resolves.toBeUndefined();
+
+        // Verify that no temporary directories are left behind
+        const tempFiles = await fs.readdir(temporary.input());
+        const gitStoreTempDirs = tempFiles.filter((name) =>
+            name.startsWith("gitstore-")
+        );
+        expect(gitStoreTempDirs).toHaveLength(0);
+    });
+
+    test("transaction cleans up temporary work tree even if transformation fails", async () => {
         const { testGitDir } = await makeTestRepository();
         await expect(
             transaction(testGitDir, async (store) => {
@@ -103,4 +119,5 @@ describe("gitstore", () => {
         );
         expect(gitStoreTempDirs).toHaveLength(0);
     });
+
 });
