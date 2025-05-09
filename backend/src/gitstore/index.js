@@ -6,6 +6,36 @@ async function makeTemporaryWorkTree() {
     return await fs.mkdtemp(`${os.tmpdir()}/gitstore-`);
 }
 
+class GitStoreClass {
+    /**
+     * @param {string} gitDirectory
+     */
+    constructor(gitDirectory) {
+        this.gitDirectory = gitDirectory;
+        this.workTree = null;
+    }
+
+    /**
+     * @returns {Promise<string>}
+     */
+    async getWorkTree() {
+        if (!this.workTree) {
+            this.workTree = await makeTemporaryWorkTree();
+            reset(this.gitDirectory, this.workTree);
+        }
+        return this.workTree;
+    }
+
+    /**
+     * @param {string} message
+     * @returns {Promise<void>}
+     */
+    async commit(message) {
+        const workTree = await this.getWorkTree();
+        await commit(this.gitDirectory, workTree, message);
+    }
+}
+
 /**
  * This function performs a transaction on a Git repository.
  * 
