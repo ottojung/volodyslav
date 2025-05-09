@@ -43,15 +43,11 @@ async function run(app, fun) {
             const server = app.listen(port, async function () {
                 try {
                     await fun(app, server);
-                    resolve(server);
                 } catch (error) {
-                    try {
-                        server.close();
-                    } finally {
-                        true;
-                    }
+                    server.close();
                     throw error;
                 }
+                resolve(server);
             });
         } catch (error) {
             reject(error);

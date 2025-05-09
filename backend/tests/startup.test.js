@@ -1,22 +1,22 @@
 const express = require("express");
 const request = require("supertest");
 const { ensureStartupDependencies } = require("../src/startup");
-const temporary = require('./temporary');
+const temporary = require("./temporary");
+const { entry } = require("../src/index");
 
 beforeEach(temporary.beforeEach);
 afterEach(temporary.afterEach);
 
 // Mock environment exports to avoid real env dependencies
-jest.mock('../src/environment', () => {
-    const temporary = require('./temporary');
+jest.mock("../src/environment", () => {
+    const temporary = require("./temporary");
     return {
-        openaiAPIKey: jest.fn().mockReturnValue('test-key'),
+        openaiAPIKey: jest.fn().mockReturnValue("test-key"),
         resultsDirectory: jest.fn().mockImplementation(temporary.output),
         myServerPort: jest.fn().mockReturnValue(0),
-        logLevel: jest.fn().mockReturnValue("error"),
+        logLevel: jest.fn().mockReturnValue("debug"),
     };
 });
-
 
 // Mock only the TermuxNotificationCommand in notifications, preserving other functionality
 jest.mock("../src/executables", () => {
@@ -31,6 +31,10 @@ describe("Startup Dependencies", () => {
         // Reset all mocks before each test
         jest.clearAllMocks();
         jest.resetModules();
+    });
+
+    it("runs the app", async () => {
+        await entry();
     });
 
     it("sets up HTTP call logging and handles requests correctly", async () => {
@@ -66,7 +70,7 @@ describe("Startup Dependencies", () => {
 
             // Get a fresh instance of the module under test
             const { ensureStartupDependencies } = require("../src/startup");
-            
+
             await expect(ensureStartupDependencies(app)).rejects.toThrow(
                 "Notifications unavailable. Termux notification executable not found in $PATH. Please ensure that Termux:API is installed and available in your $PATH."
             );
@@ -87,4 +91,3 @@ describe("Startup Dependencies", () => {
         expect(res.status).toBe(200);
     });
 });
-
