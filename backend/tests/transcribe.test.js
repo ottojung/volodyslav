@@ -35,7 +35,7 @@ jest.mock('openai', () => {
 });
 
 const request = require('supertest');
-const app = require('../src/index');
+const expressApp = require('../src/express_app');
 const { uploadDir } = require('../src/config');
 const { notifyAboutError } = require('../src/notifications');
 
@@ -46,7 +46,7 @@ describe('GET /api/transcribe', () => {
 
     it('responds with 400 if input or output param missing', async () => {
         const reqId = 'testreq';
-        const res = await request(app)
+        const res = await request(expressApp.make())
             .get('/api/transcribe')
             .query({ request_identifier: reqId });
         expect(res.statusCode).toBe(400);
@@ -59,7 +59,7 @@ describe('GET /api/transcribe', () => {
 
     it('responds with 404 if input file does not exist', async () => {
         const reqId = 'testreq';
-        const res = await request(app)
+        const res = await request(expressApp.make())
               .get('/api/transcribe')
               .query({ request_identifier: reqId, input: '/nonexistent/file.wav' });
         expect(res.statusCode).toBe(404);
@@ -76,7 +76,7 @@ describe('GET /api/transcribe', () => {
 
         const reqId = 'testreq';
         const outputFilename = 'transcription.json';
-        const res = await request(app)
+        const res = await request(expressApp.make())
               .get('/api/transcribe')
               .query({ request_identifier: reqId, input: inputPath });
 

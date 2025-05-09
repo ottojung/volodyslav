@@ -1,7 +1,7 @@
 const request = require('supertest');
 const fs = require('fs');
 const path = require('path');
-const app = require('../src/index');
+const expressApp = require('../src/express_app');
 const { uploadDir } = require('../src/config');
 const temporary = require('./temporary');
 
@@ -22,7 +22,7 @@ jest.mock('../src/environment', () => {
 describe('POST /api/upload', () => {
     it('uploads a single file successfully', async () => {
         const reqId = 'testreq';
-        const res = await request(app)
+        const res = await request(expressApp.make())
               .post(`/api/upload?request_identifier=${reqId}`)
               .attach('photos', Buffer.from('test content'), 'test1.jpg');
 
@@ -34,7 +34,7 @@ describe('POST /api/upload', () => {
     it('uploads multiple files successfully', async () => {
         // Upload first file with a unique request_identifier
         const reqId1 = 'testreq1';
-        const res1 = await request(app)
+        const res1 = await request(expressApp.make())
               .post(`/api/upload?request_identifier=${reqId1}`)
               .attach('photos', Buffer.from('first'), 'first.jpg');
 
@@ -44,7 +44,7 @@ describe('POST /api/upload', () => {
 
         // Upload second file with another unique request_identifier
         const reqId2 = 'testreq2';
-        const res2 = await request(app)
+        const res2 = await request(expressApp.make())
               .post(`/api/upload?request_identifier=${reqId2}`)
               .attach('photos', Buffer.from('second'), 'second.jpg');
 
@@ -54,7 +54,7 @@ describe('POST /api/upload', () => {
     });
 
     it('responds with empty files array when no files are sent', async () => {
-        const res = await request(app).post('/api/upload?request_identifier=foo');
+        const res = await request(expressApp.make()).post('/api/upload?request_identifier=foo');
 
         expect(res.statusCode).toBe(200);
         expect(res.body).toEqual({ success: true, files: [] });

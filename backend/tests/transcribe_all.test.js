@@ -27,7 +27,7 @@ jest.mock("../src/transcribe", () => {
 });
 
 const { transcribeFile } = require("../src/transcribe");
-const app = require("../src/index");
+const expressApp = require('../src/express_app');
 const { uploadDir } = require("../src/config");
 
 afterAll(() => {
@@ -46,7 +46,7 @@ describe("GET /api/transcribe_all", () => {
     const reqId = "batch123";
 
     it("returns 400 when request_identifier missing", async () => {
-        const res = await request(app).get(base);
+        const res = await request(expressApp.make()).get(base);
         expect(res.status).toBe(400);
         expect(res.body).toEqual({
             success: false,
@@ -55,7 +55,7 @@ describe("GET /api/transcribe_all", () => {
     });
 
     it("returns 400 when input_dir missing", async () => {
-        const res = await request(app)
+        const res = await request(expressApp.make())
             .get(base)
             .query({ request_identifier: reqId });
         expect(res.status).toBe(400);
@@ -66,7 +66,7 @@ describe("GET /api/transcribe_all", () => {
     });
 
     it("returns 404 when input_dir does not exist", async () => {
-        const res = await request(app)
+        const res = await request(expressApp.make())
             .get(base)
             .query({ request_identifier: reqId, input_dir: "/no/such/dir" });
         expect(res.status).toBe(404);
@@ -88,7 +88,7 @@ describe("GET /api/transcribe_all", () => {
             if (inP.endsWith("/b.mp4")) throw new Error("bad file");
             return Promise.resolve();
         });
-        const res = await request(app)
+        const res = await request(expressApp.make())
             .get(base)
             .query({ request_identifier: reqId, input_dir: tmp });
 
@@ -119,7 +119,7 @@ describe("GET /api/transcribe_all", () => {
         );
         // Stub: always resolve
         transcribeFile.mockResolvedValue();
-        const res = await request(app)
+        const res = await request(expressApp.make())
             .get(base)
             .query({ request_identifier: reqId, input_dir: tmp });
         expect(res.status).toBe(200);

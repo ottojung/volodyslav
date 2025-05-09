@@ -13,7 +13,7 @@ jest.mock("../src/executables", () => {
 // Mock environment with minimal required values
 jest.mock("../src/environment", () => {
     return {
-        logLevel: jest.fn().mockReturnValue("silent"),
+        logLevel: jest.fn().mockReturnValue("debug"),
     };
 });
 
