@@ -1,6 +1,6 @@
 const os = require("os");
-const { reset, commit } = require("./wrappers");
 const fs = require("fs").promises;
+const { git } = require("../executables");
 
 async function makeTemporaryWorkTree() {
     return await fs.mkdtemp(`${os.tmpdir()}/gitstore-`);
@@ -21,6 +21,27 @@ class GitStoreClass {
     async getWorkTree() {
         if (!this.workTree) {
             this.workTree = await makeTemporaryWorkTree();
+            
+            // Initialize the work tree with repository content
+            // Copy the repository content to the work tree
+            await git.call(
+                "--git-dir",
+                this.gitDirectory,
+                "checkout-index",
+                "-a",
+                "--prefix=" + this.workTree + "/"
+            );
+            
+            // Then reset it to ensure it's clean
+            await git.call(
+                "--git-dir",
+                this.gitDirectory,
+                "--work-tree",
+                this.workTree,
+                "reset",
+                "--hard",
+                "HEAD"
+            );
         }
         return this.workTree;
     }
@@ -31,7 +52,24 @@ class GitStoreClass {
      */
     async commit(message) {
         const workTree = await this.getWorkTree();
-        await commit(this.gitDirectory, workTree, message);
+        // Stage all changes before committing
+        await git.call(
+            "--git-dir",
+            this.gitDirectory,
+            "--work-tree",
+            workTree,
+            "add",
+            "."
+        );
+        // Then commit
+        await git.call(
+            "--git-dir",
+            this.gitDirectory,
+            "--work-tree",
+            workTree,
+            "commit",
+            "--message",
+            message);
     }
 }
 
@@ -55,12 +93,13 @@ class GitStoreClass {
 async function transaction(git_directory, transformation) {
     const store = new GitStoreClass(git_directory);
     try {
-        const workTree = await store.getWorkTree();
-        reset(git_directory, workTree);
+        await store.getWorkTree(); // Ensure work tree is created and reset
         await transformation(store);
     } finally {
-        const workTree = await store.getWorkTree();
-        await fs.rm(workTree, { recursive: true, force: true });
+        if (store.workTree) {
+            await fs.rm(store.workTree, { recursive: true, force: true });
+            store.workTree = null;
+        }
     }
 }
 
