@@ -11,12 +11,17 @@ const { appendFile } = require("fs/promises");
 const gitstore = require("./gitstore");
 
 /**
+ * @typedef Modifiers
+ * @type {Record<string, string>}
+ */
+
+/**
  * @typedef Event
  * @type {Object}
  * @property {string} date - The date of the event.
  * @property {string} original - The original input of the event.
  * @property {string} input - The processed input of the event.
- * @property {Object} modifiers - Modifiers applied to the event.
+ * @property {Modifiers} modifiers - Modifiers applied to the event.
  * @property {string} type - The type of the event.
  * @property {string} description - A description of the event.
  */

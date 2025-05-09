@@ -104,7 +104,8 @@ async function writeChanges(successes) {
     const entries = successes.map((filename) => {
         const dateStr = filename_to_date(filename);
 
-        return {
+        /** @type {import('./event_log_storage').Event} */
+        const ret = {
             date: dateStr,
             original: `diary [when 0 hours ago]`,
             input: `diary [when 0 hours ago]`,
@@ -114,6 +115,7 @@ async function writeChanges(successes) {
             type: "diary",
             description: "",
         };
+        return ret;
     });
 
     /**
