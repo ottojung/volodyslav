@@ -1,15 +1,12 @@
 const path = require("path");
-const { logger } = require("./logger");
+const { logError } = require("./logger");
 const {
     diaryAudiosDirectory,
     eventLogAssetsDirectory,
 } = require("./environment");
 const { transcribeAllGeneric } = require("./transcribe_all");
 const { formatFileTimestamp } = require("./format_time_stamp");
-const {
-    copyFile,
-    unlink,
-} = require("fs/promises");
+const { copyFile, unlink } = require("fs/promises");
 const { transaction } = require("./event_log_storage");
 
 /**
@@ -64,7 +61,7 @@ async function processDiaryAudios() {
     const failures = transcriptionResults.failures;
 
     failures.forEach((failure) => {
-        logger.error(
+        logError(
             {
                 file: failure.file,
                 error: failure.message,

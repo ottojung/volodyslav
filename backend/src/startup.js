@@ -1,5 +1,5 @@
 const { ensureNotificationsAvailable } = require("./notifications");
-const { logger, setupHttpCallsLogging } = require("./logger");
+const { logInfo, setupHttpCallsLogging } = require("./logger");
 
 /**
  * @typedef {import("http").Server} Server
@@ -21,9 +21,9 @@ async function ensureStartupDependencies(app) {
  */
 async function start(app, server) {
     const address = server.address();
-    logger.info({ address }, "Server is running");
+    logInfo({ address }, "Server is running");
     await ensureStartupDependencies(app);
-    logger.info("Initialization complete.");
+    logInfo("Initialization complete.");
 }
 
 module.exports = {

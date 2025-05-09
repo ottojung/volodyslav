@@ -1,5 +1,5 @@
 const express = require('express');
-const { logger } = require('../logger');
+const { logInfo } = require('../logger');
 const { fromRequest } = require('../request_identifier');
 const { transcribeAllRequest, InputDirectoryAccess } = require('../transcribe_all');
 
@@ -22,7 +22,7 @@ router.get('/transcribe_all', async (req, res) => {
     }
 
     const rawDir = req.query.input_dir;
-    logger.info({ request_identifier: reqId, input_dir: rawDir }, 'Batch transcription request received');
+    logInfo({ request_identifier: reqId, input_dir: rawDir }, 'Batch transcription request received');
     if (!rawDir) {
         return res
             .status(400)
@@ -46,7 +46,7 @@ router.get('/transcribe_all', async (req, res) => {
         }
     }
 
-    logger.info({ request_identifier: reqId, result }, 'Batch transcription successful');
+    logInfo({ request_identifier: reqId, result }, 'Batch transcription successful');
     return res.json({ success: true, result });
 });
 

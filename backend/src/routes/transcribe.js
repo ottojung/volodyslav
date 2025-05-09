@@ -1,5 +1,5 @@
 const express = require('express');
-const { logger } = require('../logger');
+const { logError, logInfo } = require('../logger');
 const { fromRequest } = require('../request_identifier');
 const { transcribeRequest, InputNotFound } = require('../transcribe');
 
@@ -16,7 +16,7 @@ router.get('/transcribe', async (req, res) => {
     try {
         reqId = fromRequest(req);
     } catch {
-        logger.error({
+        logError({
             error: 'Missing request identifier',
             path: req.path,
             query: req.query,
@@ -30,7 +30,7 @@ router.get('/transcribe', async (req, res) => {
     // pull input and output params
     const rawIn = req.query.input;
     // Log the transcription request
-    logger.info({ 
+    logInfo({ 
         request_identifier: reqId, 
         input: rawIn,
         client_ip: req.ip,
@@ -38,7 +38,7 @@ router.get('/transcribe', async (req, res) => {
     }, 'Transcription request received');
 
     if (!rawIn) {
-        logger.error({
+        logError({
             request_identifier: reqId,
             error: 'Missing input parameter',
             query: req.query
@@ -54,7 +54,7 @@ router.get('/transcribe', async (req, res) => {
         await transcribeRequest(inputPath, reqId);
     } catch (error) {
         if (error instanceof InputNotFound) {
-            logger.error({
+            logError({
                 request_identifier: reqId,
                 error: 'Input file not found',
                 input_path: inputPath,
@@ -64,7 +64,7 @@ router.get('/transcribe', async (req, res) => {
                 .status(404)
                 .json({ success: false, error: 'Input file not found' });
         } else {
-            logger.error({
+            logError({
                 request_identifier: reqId,
                 error: error instanceof Error ? error.message : String(error),
                 error_name: error instanceof Error ? error.name : 'Unknown',
@@ -78,7 +78,7 @@ router.get('/transcribe', async (req, res) => {
     }
 
     // Log successful transcription
-    logger.info({ request_identifier: reqId, input_path: inputPath }, 'Transcription successful');
+    logInfo({ request_identifier: reqId, input_path: inputPath }, 'Transcription successful');
     return res.json({ success: true });
 });
 
