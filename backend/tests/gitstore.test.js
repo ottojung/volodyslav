@@ -3,38 +3,37 @@ const fs = require("fs").promises;
 const path = require("path");
 const { execSync } = require("child_process");
 const { transaction } = require("../src/gitstore");
+const temporary = require("./temporary");
+
+beforeEach(temporary.beforeEach);
+afterEach(temporary.afterEach);
+
+async function makeTestRepository() {
+    // Create a temporary directory for our test repository
+    const testRepoPath = await fs.mkdir(`${temporary.input()}/gitstore-test`);
+    const testGitDir = path.join(testRepoPath, ".git");
+
+    // Initialize a git repository
+    execSync("git init", { cwd: testRepoPath });
+
+    // Configure git identity
+    execSync("git config user.name 'Test User'", { cwd: testRepoPath });
+    execSync("git config user.email 'test@example.com'", {
+        cwd: testRepoPath,
+    });
+
+    // Create an initial commit
+    const testFile = path.join(testRepoPath, "test.txt");
+    await fs.writeFile(testFile, "initial content");
+    execSync("git add .", { cwd: testRepoPath });
+    execSync("git commit -m 'Initial commit'", { cwd: testRepoPath });
+
+    return { testRepoPath, testGitDir };
+}
 
 describe("gitstore", () => {
-    let testRepoPath;
-    let testGitDir;
-
-    beforeEach(async () => {
-        // Create a temporary directory for our test repository
-        testRepoPath = await fs.mkdtemp(`${os.tmpdir()}/gitstore-test-`);
-        testGitDir = path.join(testRepoPath, ".git");
-
-        // Initialize a git repository
-        execSync("git init", { cwd: testRepoPath });
-
-        // Configure git identity
-        execSync("git config user.name 'Test User'", { cwd: testRepoPath });
-        execSync("git config user.email 'test@example.com'", {
-            cwd: testRepoPath,
-        });
-
-        // Create an initial commit
-        const testFile = path.join(testRepoPath, "test.txt");
-        await fs.writeFile(testFile, "initial content");
-        execSync("git add .", { cwd: testRepoPath });
-        execSync("git commit -m 'Initial commit'", { cwd: testRepoPath });
-    });
-
-    afterEach(async () => {
-        // Clean up the test repository
-        await fs.rm(testRepoPath, { recursive: true, force: true });
-    });
-
     test("transaction allows reading and writing files", async () => {
+        const { testRepoPath, testGitDir } = await makeTestRepository();
         await transaction(testGitDir, async (store) => {
             const workTree = await store.getWorkTree();
             const testFile = path.join(workTree, "test.txt");
