@@ -97,7 +97,7 @@ describe("gitstore", () => {
         ).rejects.toThrow("Test error");
 
         // Verify that no temporary directories are left behind
-        const tempFiles = await fs.readdir(os.tmpdir());
+        const tempFiles = await fs.readdir(temporary.input());
         const gitStoreTempDirs = tempFiles.filter((name) =>
             name.startsWith("gitstore-")
         );
