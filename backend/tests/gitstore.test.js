@@ -89,35 +89,40 @@ describe("gitstore", () => {
 
     test("transaction cleans up temporary work tree", async () => {
         const { testGitDir } = await makeTestRepository();
+        let temporaryWorkTree;
+
         await expect(
             transaction(testGitDir, async (store) => {
-                await store.getWorkTree(); // Get the work tree to create it
+                temporaryWorkTree = await store.getWorkTree(); // Get the work tree to create it
+                await expect(
+                    fs.access(temporaryWorkTree)
+                ).resolves.toBeUndefined();
             })
         ).resolves.toBeUndefined();
 
         // Verify that no temporary directories are left behind
-        const tempFiles = await fs.readdir(temporary.input());
-        const gitStoreTempDirs = tempFiles.filter((name) =>
-            name.startsWith("gitstore-")
+        await expect(fs.access(temporaryWorkTree)).rejects.toThrow(
+            "ENOENT: no such file or directory"
         );
-        expect(gitStoreTempDirs).toHaveLength(0);
     });
 
     test("transaction cleans up temporary work tree even if transformation fails", async () => {
         const { testGitDir } = await makeTestRepository();
+        let temporaryWorkTree;
+
         await expect(
             transaction(testGitDir, async (store) => {
-                await store.getWorkTree(); // Get the work tree to create it
+                temporaryWorkTree = await store.getWorkTree(); // Get the work tree to create it
+                await expect(
+                    fs.access(temporaryWorkTree)
+                ).resolves.toBeUndefined();
                 throw new Error("Test error");
             })
         ).rejects.toThrow("Test error");
 
         // Verify that no temporary directories are left behind
-        const tempFiles = await fs.readdir(temporary.input());
-        const gitStoreTempDirs = tempFiles.filter((name) =>
-            name.startsWith("gitstore-")
+        await expect(fs.access(temporaryWorkTree)).rejects.toThrow(
+            "ENOENT: no such file or directory"
         );
-        expect(gitStoreTempDirs).toHaveLength(0);
     });
-
 });
