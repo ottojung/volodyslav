@@ -30,7 +30,7 @@ function make() {
 
 /**
  * @param {express.Express} app
- * @param {(server: Server) => Promise<void>} fun
+ * @param {(app: express.Express, server: Server) => Promise<void>} fun
  * @returns {Promise<Server>}
  */
 async function run(app, fun) {
@@ -42,7 +42,7 @@ async function run(app, fun) {
         try {
             const server = app.listen(port, async function () {
                 try {
-                    await fun(server);
+                    await fun(app, server);
                     resolve(server);
                 } catch (error) {
                     server.close();

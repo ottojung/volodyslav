@@ -1,5 +1,10 @@
-const { setupHttpCallsLogging } = require('./logger');
-const { ensureNotificationsAvailable } = require('./notifications');
+const { setupHttpCallsLogging } = require("./logger");
+const { ensureNotificationsAvailable } = require("./notifications");
+const logger = require("./logger");
+
+/**
+ * @typedef {import("http").Server} Server
+ */
 
 /**
  * @param {import('express').Express} app
@@ -11,6 +16,18 @@ async function ensureStartupDependencies(app) {
     setupHttpCallsLogging(app);
 }
 
+/**
+ * @param {import("express").Express} app
+ * @param {Server} server
+ */
+async function start(app, server) {
+    const address = server.address();
+    logger.info({ address }, "Server is running");
+    await ensureStartupDependencies(app);
+    logger.info("Initialization complete.");
+}
+
 module.exports = {
     ensureStartupDependencies,
+    start,
 };

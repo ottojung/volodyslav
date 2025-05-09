@@ -1,7 +1,6 @@
 const express = require("express");
 const request = require("supertest");
 const { ensureStartupDependencies } = require("../src/startup");
-const { entry } = require("../src/index");
 const temporary = require('./temporary');
 
 beforeEach(temporary.beforeEach);
