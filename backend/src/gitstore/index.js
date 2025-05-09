@@ -56,7 +56,7 @@ async function transaction(git_directory, transformation) {
     const store = new GitStoreClass(git_directory);
     try {
         const workTree = await store.getWorkTree();
-        reset(git_directory, workTree);
+        await reset(git_directory, workTree);
         await transformation(store);
     } finally {
         const workTree = await store.getWorkTree();
