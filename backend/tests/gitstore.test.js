@@ -8,6 +8,18 @@ const makeTestRepository = require("./make_test_repository");
 beforeEach(temporary.beforeEach);
 afterEach(temporary.afterEach);
 
+// Mock environment exports to avoid real env dependencies
+jest.mock('../src/environment', () => {
+    const temporary = require('./temporary');
+    const path = require('path');
+    return {
+        eventLogDirectory: jest.fn().mockImplementation(() => {
+            const dir = temporary.input();
+            return path.join(dir, "event_log");
+        }),
+    };
+});
+
 describe("gitstore", () => {
     test("transaction allows reading and writing files", async () => {
         const { testRepoPath, testGitDir } = await makeTestRepository();
