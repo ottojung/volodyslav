@@ -1,4 +1,3 @@
-const fs = require("fs").promises;
 const { createReadStream } = require("fs");
 const { parser } = require("stream-json");
 const { streamValues } = require("stream-json/streamers/StreamValues");
