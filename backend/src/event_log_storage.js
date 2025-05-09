@@ -91,8 +91,9 @@ async function appendEntriesToFile(filePath, entries) {
  */
 async function transaction(transformation) {
     const eventLogStorage = new EventLogStorageClass();
+    const gitDirectory = path.join(eventLogDirectory(), ".git");
 
-    await gitstore.transaction(eventLogDirectory(), async (store) => {
+    await gitstore.transaction(gitDirectory, async (store) => {
         const workTree = await store.getWorkTree();
         const dataPath = path.join(workTree, "data.json");
 
