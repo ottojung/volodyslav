@@ -13,7 +13,7 @@ jest.mock('../src/environment', () => {
         openaiAPIKey: jest.fn().mockReturnValue('test-key'),
         resultsDirectory: jest.fn().mockImplementation(temporary.output),
         myServerPort: jest.fn().mockReturnValue(0),
-        logLevel: jest.fn().mockReturnValue("debug"),
+        logLevel: jest.fn().mockReturnValue("error"),
     };
 });
 
