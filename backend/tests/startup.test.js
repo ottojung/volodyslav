@@ -34,11 +34,6 @@ describe("Startup Dependencies", () => {
         jest.resetModules();
     });
 
-    // it('runs', async () => {
-    //     const app = await entry();
-    //     app.close();
-    // });
-
     it("sets up HTTP call logging and handles requests correctly", async () => {
         const app = express();
         await ensureStartupDependencies(app);

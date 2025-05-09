@@ -3,16 +3,13 @@ const expressApp = require("./express_app");
 const logger = require("./logger");
 
 /**
- * @typedef {import("http").Server} Server
- */
-
-/**
  * @returns {Promise<void>}
  */
 async function entry() {
     const app = expressApp.make();
-    await expressApp.run(app, async (_server) => {
-        logger.info({}, "Server is running");
+    await expressApp.run(app, async (server) => {
+        const address = server.address();
+        logger.info({ address }, "Server is running");
         await ensureStartupDependencies(app);
         logger.info("Initialization complete.");
     });
