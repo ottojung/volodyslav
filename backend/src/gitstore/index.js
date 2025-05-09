@@ -46,6 +46,7 @@ class GitStoreClass {
  * and allows you to perform a transformation on it.
  *
  * It is atomic: if the transformation fails, the changes are not committed.
+ * Caveat: if you are calling commit() multiple times, they won't necessarily be consequtive.
  *
  * @param {string} git_directory - The `.git` directory
  * @param {function(GitStore): Promise<void>} transformation - A function that takes a directory path and performs some operations on it
