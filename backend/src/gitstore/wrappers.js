@@ -34,12 +34,12 @@ async function ensureGitAvailable() {
  */
 async function commit(git_directory, work_directory, message) {
     await git.call(
+        "-c",
+        "safe.directory=*",
         "--git-dir",
         git_directory,
         "--work-tree",
         work_directory,
-        "--config",
-        "safe.directory=*",
         "commit",
         "--all",
         "--message",
@@ -55,12 +55,12 @@ async function commit(git_directory, work_directory, message) {
  */
 async function reset(git_directory, work_directory) {
     await git.call(
+        "-c",
+        "safe.directory=*",
         "--git-dir",
         git_directory,
         "--work-tree",
         work_directory,
-        "--config",
-        "safe.directory=*",
         "reset",
         "--hard"
     );
