@@ -15,13 +15,13 @@ jest.mock('../src/environment', () => {
     const gitRepoPath = path.join(temporary.input(), "gitstore-test");
     return {
         logLevel: jest.fn().mockReturnValue("silent"),
-        eventLogDirectory: jest.fn().mockImplementation(gitRepoPath),
+        eventLogDirectory: jest.fn().mockReturnValue(gitRepoPath),
     };
 });
 
 describe("event_log_storage", () => {
     test("transaction allows adding and storing event entries", async () => {
-        makeTestRepository();
+        await makeTestRepository();
 
         const testEvent = {
             date: "2025-05-09",
