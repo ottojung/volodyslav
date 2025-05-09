@@ -119,7 +119,7 @@ async function writeChanges(successes) {
     /**
      * @type {import('./event_log_storage').EventLogStorage}
      */
-    await transaction((eventLogStorage) => {
+    await transaction(async (eventLogStorage) => {
         entries.forEach(eventLogStorage.addEntry);
     });
 }
