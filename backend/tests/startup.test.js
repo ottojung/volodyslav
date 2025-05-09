@@ -1,6 +1,23 @@
 const express = require("express");
 const request = require("supertest");
 const { ensureStartupDependencies } = require("../src/startup");
+const { entry } = require("../src/index");
+const temporary = require('./temporary');
+
+beforeEach(temporary.beforeEach);
+afterEach(temporary.afterEach);
+
+// Mock environment exports to avoid real env dependencies
+jest.mock('../src/environment', () => {
+    const temporary = require('./temporary');
+    return {
+        openaiAPIKey: jest.fn().mockReturnValue('test-key'),
+        resultsDirectory: jest.fn().mockImplementation(temporary.output),
+        myServerPort: jest.fn().mockReturnValue(0),
+        logLevel: jest.fn().mockReturnValue("debug"),
+    };
+});
+
 
 // Mock only the TermuxNotificationCommand in notifications, preserving other functionality
 jest.mock("../src/executables", () => {
@@ -10,19 +27,17 @@ jest.mock("../src/executables", () => {
     };
 });
 
-// Mock environment with minimal required values
-jest.mock("../src/environment", () => {
-    return {
-        logLevel: jest.fn().mockReturnValue("debug"),
-    };
-});
-
 describe("Startup Dependencies", () => {
     beforeEach(() => {
         // Reset all mocks before each test
         jest.clearAllMocks();
         jest.resetModules();
     });
+
+    // it('runs', async () => {
+    //     const app = await entry();
+    //     app.close();
+    // });
 
     it("sets up HTTP call logging and handles requests correctly", async () => {
         const app = express();

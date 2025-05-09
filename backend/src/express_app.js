@@ -1,5 +1,4 @@
 const express = require("express");
-const logger = require("./logger");
 const { port } = require("./config");
 const rootRouter = require("./routes/root");
 const uploadRouter = require("./routes/upload");
@@ -26,18 +25,39 @@ function make() {
 }
 
 /**
- * @param {express.Express} app 
- * @param {() => Promise<void>} fun 
- * @returns {void}
+ * @typedef {import("http").Server} Server
  */
-function run(app, fun) {
-    app.listen(port, async () => {
-        logger.info({ port }, "Server is running");
-        await fun();
-    });
+
+/**
+ * @param {express.Express} app
+ * @param {(server: Server) => Promise<void>} fun
+ * @returns {Promise<Server>}
+ */
+async function run(app, fun) {
+    /**
+     * @param {(value: Server) => void} resolve
+     * @param {(reason?: unknown) => void} reject
+     */
+    function toResolve(resolve, reject) {
+        try {
+            const server = app.listen(port, async function () {
+                try {
+                    await fun(server);
+                    resolve(server);
+                } catch (error) {
+                    server.close();
+                    throw error;
+                }
+            });
+        } catch (error) {
+            reject(error);
+        }
+    }
+
+    return new Promise(toResolve);
 }
 
 module.exports = {
     make,
     run,
-}
+};
