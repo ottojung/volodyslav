@@ -1,4 +1,3 @@
-const os = require("os");
 const fs = require("fs").promises;
 const path = require("path");
 const { execSync } = require("child_process");
