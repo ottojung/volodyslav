@@ -6,9 +6,9 @@
 // TODO: handle assets here too.
 
 const path = require("path");
-const os = require("os");
 const { eventLogDirectory } = require("./environment");
-const { copyFile, writeFile, appendFile, rename } = require("fs/promises");
+const { copyFile, writeFile, appendFile } = require("fs/promises");
+const gitstore = require("./gitstore");
 
 /**
  * @typedef Event
@@ -105,30 +105,22 @@ async function appendEntriesToFile(filePath, entries) {
  * @description Applies a transformation to the event log storage.
  */
 async function transaction(transformation) {
-    const eventLogDir = eventLogDirectory();
-    const originalDataPath = path.join(eventLogDir, "data.json");
-    const tempDataPath = path.join(os.tmpdir(), "data.json");
     const eventLogStorage = new EventLogStorageClass();
 
-    // try to copy the original; if missing, start with empty
-    await copyOrTouch(originalDataPath, tempDataPath);
+    gitstore.transaction(eventLogDirectory(), async (store) => {
+        const workTree = await store.getWorkTree();
+        const dataPath = path.join(workTree, "data.json");
 
-    // run the transformation
-    await transformation(eventLogStorage);
+        // run the transformation
+        await transformation(eventLogStorage);
 
-    // append entries to the temporary file
-    await appendEntriesToFile(tempDataPath, eventLogStorage.getNewEntries());
-
-    // atomically replace original
-    await rename(tempDataPath, originalDataPath);
-
-    await commitChanges();
-}
-
-// Create a new module for diary storage
-async function commitChanges() {
-    // TODO: implement the rest.
-    throw new Error("Not implemented");
+        // append entries to the temporary file
+        await appendEntriesToFile(
+            dataPath,
+            eventLogStorage.getNewEntries()
+        );
+        store.commit("Event log storage update");
+    });
 }
 
 module.exports = { transaction };
