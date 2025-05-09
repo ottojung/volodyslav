@@ -20,8 +20,8 @@ async function makeTestRepository() {
     // Create an initial commit
     const testFile = path.join(testRepoPath, "test.txt");
     await fs.writeFile(testFile, "initial content");
-    execSync("git add .", { cwd: testRepoPath });
-    execSync("git commit -m 'Initial commit'", { cwd: testRepoPath });
+    execSync("git -c user.name=1 -c user.email=1 add .", { cwd: testRepoPath });
+    execSync("git -c user.name=1 -c user.email=1 commit -m 'Initial commit'", { cwd: testRepoPath });
 
     return { testRepoPath, testGitDir };
 }
