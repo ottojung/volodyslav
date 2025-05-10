@@ -51,30 +51,6 @@ async function commit(git_directory, work_directory, message) {
         message
     );
 }
-
-/**
- * Reset the working directory to the last commit.
- * @param {string} git_directory - The `.git` directory
- * @param {string} work_directory - The repository directory, where the actual files are
- * @returns {Promise<void>}
- */
-async function reset(git_directory, work_directory) {
-    await git.call(
-        "-c",
-        "safe.directory=*",
-        "-c",
-        "user.name=volodyslav",
-        "-c",
-        "user.email=volodyslav",
-        "--git-dir",
-        git_directory,
-        "--work-tree",
-        work_directory,
-        "reset",
-        "--hard"
-    );
-}
-
 /**
  * Clone latest changes from the remote repository.
  * @param {string} remote_uri - The repository path to pull from (can be a remote URI or local path)
@@ -123,7 +99,6 @@ async function push(work_directory) {
 module.exports = {
     ensureGitAvailable,
     commit,
-    reset,
     clone,
     push,
     GitUnavailable,
