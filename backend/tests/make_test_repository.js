@@ -4,6 +4,7 @@ const { execFile } = require("child_process");
 const { eventLogDirectory } = require("../src/environment");
 const { promisify } = require("node:util");
 const temporary = require("./temporary");
+const defaultBranch = require("../src/gitstore/default_branch");
 
 const callSubprocess = promisify(execFile);
 
@@ -20,7 +21,7 @@ async function makeTestRepository() {
     await callSubprocess("git", [
         "init",
         "--initial-branch",
-        "master",
+        defaultBranch,
         "--",
         workTree,
     ]);
@@ -48,7 +49,7 @@ async function makeTestRepository() {
     await callSubprocess("git", ["remote", "add", "origin", "--", gitDir], {
         cwd: workTree,
     });
-    await callSubprocess("git push origin master", {
+    await callSubprocess("git", ["push", "origin", defaultBranch], {
         cwd: workTree,
         shell: true,
     });

@@ -4,6 +4,7 @@ const { execFileSync } = require("child_process");
 const { transaction } = require("../src/gitstore");
 const temporary = require("./temporary");
 const makeTestRepository = require("./make_test_repository");
+const defaultBranch = require("../src/gitstore/default_branch");
 
 beforeEach(temporary.beforeEach);
 afterEach(temporary.afterEach);
@@ -42,7 +43,7 @@ describe("gitstore", () => {
             gitDir,
             "cat-file",
             "-p",
-            "master:test.txt",
+            `${defaultBranch}:test.txt`,
         ]);
         expect(output.toString().trim()).toBe("modified content");
     });
@@ -67,7 +68,7 @@ describe("gitstore", () => {
             gitDir,
             "rev-list",
             "--count",
-            "master",
+            defaultBranch,
         ]);
         expect(parseInt(commitCount)).toBe(3); // Initial + 2 modifications
 
@@ -77,7 +78,7 @@ describe("gitstore", () => {
             gitDir,
             "cat-file",
             "-p",
-            "master:test.txt",
+            `${defaultBranch}:test.txt`,
         ]);
         expect(output.toString().trim()).toBe("second modification");
     });

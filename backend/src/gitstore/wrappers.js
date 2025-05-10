@@ -1,5 +1,6 @@
 const { CommandUnavailable } = require("../subprocess");
 const { git } = require("../executables");
+const defaultBranch = require("./default_branch");
 
 class GitUnavailable extends CommandUnavailable {
     constructor() {
@@ -91,7 +92,7 @@ async function clone(remote_uri, work_directory) {
         "clone",
         "--depth=1",
         "--single-branch",
-        "--branch=master",
+        `--branch=${defaultBranch}`,
         "--",
         remote_uri,
         work_directory
@@ -115,7 +116,7 @@ async function push(work_directory) {
         "user.email=volodyslav",
         "push",
         "origin",
-        "HEAD"
+        defaultBranch
     );
 }
 
