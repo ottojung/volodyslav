@@ -1,4 +1,3 @@
-const fs = require('fs');
 const { resultsDirectory, myServerPort } = require('./environment');
 
 // Directory where uploaded photos are stored.
