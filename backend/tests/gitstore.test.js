@@ -44,7 +44,7 @@ describe("gitstore", () => {
     });
 
     test("transaction allows multiple commits", async () => {
-        const { workTree, gitDir } = await makeTestRepository();
+        const { gitDir } = await makeTestRepository();
         await transaction(gitDir, async (store) => {
             const workTree = await store.getWorkTree();
             const testFile = path.join(workTree, "test.txt");
@@ -59,17 +59,11 @@ describe("gitstore", () => {
         });
 
         // Verify we have the correct number of commits
-        const commitCount = execSync("git rev-list --count HEAD", {
-            cwd: workTree,
-            encoding: "utf8",
-        });
+        const commitCount = execSync("git", ["--git-dir", gitDir, "rev-list", "--count", "master"]);
         expect(parseInt(commitCount)).toBe(3); // Initial + 2 modifications
 
         // Verify the final content
-        const output = execSync("git cat-file -p HEAD:test.txt", {
-            cwd: workTree,
-            encoding: "utf8",
-        });
+        const output = execSync("git", ["--git-dir", gitDir, "cat-file", "-p", "master:test.txt"]);
         expect(output.trim()).toBe("second modification");
     });
 
