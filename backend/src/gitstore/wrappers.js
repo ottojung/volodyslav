@@ -74,8 +74,59 @@ async function reset(git_directory, work_directory) {
     );
 }
 
+/**
+ * Clone latest changes from the remote repository.
+ * @param {string} remote_uri - The repository path to pull from (can be a remote URI or local path)
+ * @param {string} target_directory - The repository directory to pull to
+ * @returns {Promise<void>}
+ */
+async function clone(remote_uri, target_directory) {
+    await git.call(
+        "-c",
+        "safe.directory=*",
+        "-c",
+        "user.name=volodyslav",
+        "-c",
+        "user.email=volodyslav",
+        "clone",
+        "--depth=1",
+        "--single-branch",
+        "--branch=master",
+        "--",
+        remote_uri,
+        target_directory
+    );
+}
+
+/**
+ * Push changes to the remote repository.
+ * @param {string} source_directory - The repository directory to push from
+ * @param {string} remote_uri - The repository path to push to (can be a remote URI or local path)
+ * @returns {Promise<void>}
+ */
+async function push(source_directory, remote_uri) {
+    await git.call(
+        "-c",
+        "safe.directory=*",
+        "-c",
+        "user.name=volodyslav",
+        "-c",
+        "user.email=volodyslav",
+        "clone",
+        "--depth=1",
+        "--single-branch",
+        "--branch=master",
+        "--",
+        source_directory,
+        remote_uri
+    );
+}
+
 module.exports = {
     ensureGitAvailable,
     commit,
     reset,
+    clone,
+    push,
+    GitUnavailable,
 };
