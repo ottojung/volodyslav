@@ -60,6 +60,7 @@ async function transaction(git_directory, transformation) {
         const workTree = await store.getWorkTree();
         await reset(git_directory, workTree);
         await transformation(store);
+        // await push(workTree, git_directory);
     } finally {
         const workTree = await store.getWorkTree();
         await fs.rm(workTree, { recursive: true, force: true });

@@ -77,10 +77,10 @@ async function reset(git_directory, work_directory) {
 /**
  * Clone latest changes from the remote repository.
  * @param {string} remote_uri - The repository path to pull from (can be a remote URI or local path)
- * @param {string} target_directory - The repository directory to pull to
+ * @param {string} work_directory - The repository directory to pull to
  * @returns {Promise<void>}
  */
-async function clone(remote_uri, target_directory) {
+async function clone(remote_uri, work_directory) {
     await git.call(
         "-c",
         "safe.directory=*",
@@ -94,17 +94,17 @@ async function clone(remote_uri, target_directory) {
         "--branch=master",
         "--",
         remote_uri,
-        target_directory
+        work_directory
     );
 }
 
 /**
  * Push changes to the remote repository.
- * @param {string} source_directory - The repository directory to push from
+ * @param {string} work_directory - The repository directory to push from
  * @param {string} remote_uri - The repository path to push to (can be a remote URI or local path)
  * @returns {Promise<void>}
  */
-async function push(source_directory, remote_uri) {
+async function push(work_directory, remote_uri) {
     await git.call(
         "-c",
         "safe.directory=*",
@@ -112,12 +112,12 @@ async function push(source_directory, remote_uri) {
         "user.name=volodyslav",
         "-c",
         "user.email=volodyslav",
-        "clone",
+        "push",
         "--depth=1",
         "--single-branch",
         "--branch=master",
         "--",
-        source_directory,
+        work_directory,
         remote_uri
     );
 }
