@@ -17,7 +17,13 @@ async function makeTestRepository() {
     // Create a worktree
     const workTree = path.join(temporary.input(), "worktree");
     await fs.mkdir(workTree, { recursive: true });
-    await callSubprocess("git", ["init", "--", workTree]);
+    await callSubprocess("git", [
+        "init",
+        "--initial-branch",
+        "master",
+        "--",
+        workTree,
+    ]);
 
     // Create some content
     const testFile = path.join(workTree, "test.txt");

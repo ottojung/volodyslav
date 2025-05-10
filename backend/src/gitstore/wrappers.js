@@ -101,11 +101,12 @@ async function clone(remote_uri, work_directory) {
 /**
  * Push changes to the remote repository.
  * @param {string} work_directory - The repository directory to push from
- * @param {string} remote_uri - The repository path to push to (can be a remote URI or local path)
  * @returns {Promise<void>}
  */
-async function push(work_directory, remote_uri) {
+async function push(work_directory) {
     await git.call(
+        "-C",
+        work_directory,
         "-c",
         "safe.directory=*",
         "-c",
@@ -113,12 +114,8 @@ async function push(work_directory, remote_uri) {
         "-c",
         "user.email=volodyslav",
         "push",
-        "--depth=1",
-        "--single-branch",
-        "--branch=master",
-        "--",
-        work_directory,
-        remote_uri
+        "origin",
+        "HEAD"
     );
 }
 

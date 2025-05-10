@@ -57,7 +57,7 @@ async function transaction(git_directory, transformation) {
         const store = new GitStoreClass(workTree);
         await clone(git_directory, workTree);
         await transformation(store);
-        await push(workTree, git_directory);
+        await push(workTree);
     } finally {
         await fs.rm(workTree, { recursive: true, force: true });
     }
