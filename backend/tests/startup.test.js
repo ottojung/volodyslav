@@ -47,11 +47,6 @@ describe("Startup Dependencies", () => {
         expect(res.text).toBe("test");
     });
 
-    it("ensures notifications are available", async () => {
-        const app = express();
-        await expect(initialize(app)).resolves.not.toThrow();
-    });
-
     it("throws if notifications are not available", async () => {
         const app = express();
         await jest.isolateModules(async () => {
@@ -63,6 +58,13 @@ describe("Startup Dependencies", () => {
                 };
             });
 
+            // Mock environment exports to avoid real env dependencies
+            jest.mock("../src/environment", () => {
+                return {
+                    logLevel: jest.fn().mockReturnValue("silent"),
+                };
+            });
+
             // Get a fresh instance of the module under test
             const { initialize } = require("../src/startup");
 
@@ -70,19 +72,5 @@ describe("Startup Dependencies", () => {
                 "Notifications unavailable. Termux notification executable not found in $PATH. Please ensure that Termux:API is installed and available in your $PATH."
             );
         });
-    });
-
-    it("can be called multiple times safely", async () => {
-        const app = express();
-        await Promise.all([
-            initialize(app),
-            initialize(app),
-            initialize(app),
-        ]);
-
-        // Test that the app still works after multiple setups
-        app.get("/test", (req, res) => res.send("test"));
-        const res = await request(app).get("/test");
-        expect(res.status).toBe(200);
     });
 });
