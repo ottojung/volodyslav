@@ -1,6 +1,6 @@
 const fs = require("fs").promises;
 const path = require("path");
-const { execSync } = require("child_process");
+const { execFileSync } = require("child_process");
 const { transaction } = require("../src/gitstore");
 const temporary = require("./temporary");
 const makeTestRepository = require("./make_test_repository");
@@ -9,9 +9,9 @@ beforeEach(temporary.beforeEach);
 afterEach(temporary.afterEach);
 
 // Mock environment exports to avoid real env dependencies
-jest.mock('../src/environment', () => {
-    const temporary = require('./temporary');
-    const path = require('path');
+jest.mock("../src/environment", () => {
+    const temporary = require("./temporary");
+    const path = require("path");
     return {
         eventLogDirectory: jest.fn().mockImplementation(() => {
             const dir = temporary.input();
@@ -37,10 +37,14 @@ describe("gitstore", () => {
         });
 
         // Verify the changes were committed by reading directly from the repo
-        const output = execSync("git", ["--git-dir", gitDir, "cat-file", "-p", "HEAD:test.txt"], {
-            encoding: "utf8",
-        });
-        expect(output.trim()).toBe("modified content");
+        const output = execFileSync("git", [
+            "--git-dir",
+            gitDir,
+            "cat-file",
+            "-p",
+            "master:test.txt",
+        ]);
+        expect(output.toString().trim()).toBe("modified content");
     });
 
     test("transaction allows multiple commits", async () => {
@@ -58,13 +62,24 @@ describe("gitstore", () => {
             await store.commit("Second modification");
         });
 
-        // Verify we have the correct number of commits
-        const commitCount = execSync("git", ["--git-dir", gitDir, "rev-list", "--count", "master"]);
+        const commitCount = execFileSync("git", [
+            "--git-dir",
+            gitDir,
+            "rev-list",
+            "--count",
+            "master",
+        ]);
         expect(parseInt(commitCount)).toBe(3); // Initial + 2 modifications
 
         // Verify the final content
-        const output = execSync("git", ["--git-dir", gitDir, "cat-file", "-p", "master:test.txt"]);
-        expect(output.trim()).toBe("second modification");
+        const output = execFileSync("git", [
+            "--git-dir",
+            gitDir,
+            "cat-file",
+            "-p",
+            "master:test.txt",
+        ]);
+        expect(output.toString().trim()).toBe("second modification");
     });
 
     test("transaction cleans up temporary work tree", async () => {
