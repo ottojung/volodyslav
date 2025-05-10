@@ -22,7 +22,7 @@ jest.mock('../src/environment', () => {
 
 describe("gitstore", () => {
     test("transaction allows reading and writing files", async () => {
-        const { workTree, gitDir } = await makeTestRepository();
+        const { gitDir } = await makeTestRepository();
         await transaction(gitDir, async (store) => {
             const workTree = await store.getWorkTree();
             const testFile = path.join(workTree, "test.txt");
@@ -37,8 +37,7 @@ describe("gitstore", () => {
         });
 
         // Verify the changes were committed by reading directly from the repo
-        const output = execSync("git cat-file -p HEAD:test.txt", {
-            cwd: workTree,
+        const output = execSync("git", ["--git-dir", gitDir, "cat-file", "-p", "HEAD:test.txt"], {
             encoding: "utf8",
         });
         expect(output.trim()).toBe("modified content");

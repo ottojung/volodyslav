@@ -1,8 +1,7 @@
 const os = require("os");
-const { reset, commit } = require("./wrappers");
+const { commit, push, clone } = require("./wrappers");
+const path = require("path");
 const fs = require("fs").promises;
-
-// TODO: should be based on copy+pull+push instead of link+reset+commit.
 
 async function makeTemporaryWorkTree() {
     return await fs.mkdtemp(`${os.tmpdir()}/gitstore-`);
@@ -10,20 +9,17 @@ async function makeTemporaryWorkTree() {
 
 class GitStoreClass {
     /**
-     * @param {string} gitDirectory
+     * @param {string} workTree
+     * @constructor
      */
-    constructor(gitDirectory) {
-        this.gitDirectory = gitDirectory;
-        this.workTree = null;
+    constructor(workTree) {
+        this.workTree = workTree;
     }
 
     /**
      * @returns {Promise<string>}
      */
     async getWorkTree() {
-        if (!this.workTree) {
-            this.workTree = await makeTemporaryWorkTree();
-        }
         return this.workTree;
     }
 
@@ -33,7 +29,8 @@ class GitStoreClass {
      */
     async commit(message) {
         const workTree = await this.getWorkTree();
-        await commit(this.gitDirectory, workTree, message);
+        const gitDir = path.join(workTree, ".git");
+        await commit(gitDir, workTree, message);
     }
 }
 
@@ -55,14 +52,13 @@ class GitStoreClass {
  * @returns {Promise<void>}
  */
 async function transaction(git_directory, transformation) {
-    const store = new GitStoreClass(git_directory);
+    const workTree = await makeTemporaryWorkTree();
     try {
-        const workTree = await store.getWorkTree();
-        await reset(git_directory, workTree);
+        const store = new GitStoreClass(workTree);
+        await clone(git_directory, workTree);
         await transformation(store);
-        // await push(workTree, git_directory);
+        await push(workTree, git_directory);
     } finally {
-        const workTree = await store.getWorkTree();
         await fs.rm(workTree, { recursive: true, force: true });
     }
 }

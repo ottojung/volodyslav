@@ -3,26 +3,30 @@ const path = require("path");
 const { execFile } = require("child_process");
 const { eventLogDirectory } = require("../src/environment");
 const { promisify } = require("node:util");
+const temporary = require("./temporary");
 
 const callSubprocess = promisify(execFile);
 
 async function makeTestRepository() {
     // Let eventLogDirectory be our test repository
-    const workTree = eventLogDirectory();
-    await fs.mkdir(workTree, {
-        recursive: true,
-    });
-    const gitDir = path.join(workTree, ".git");
+    const gitDir = eventLogDirectory();
 
     // Initialize a git repository
-    await callSubprocess("git init", { cwd: workTree, shell: true });
+    await callSubprocess("git", ["init", "--bare", "--", gitDir]);
 
-    // Create an initial commit
+    // Create a worktree
+    const workTree = path.join(temporary.input(), "worktree");
+    await fs.mkdir(workTree, { recursive: true });
+    await callSubprocess("git", ["init", "--", workTree]);
+
+    // Create some content
     const testFile = path.join(workTree, "test.txt");
     await fs.writeFile(testFile, "initial content");
     const dataFile = path.join(workTree, "data.json");
     await fs.writeFile(dataFile, "");
-    await callSubprocess("git -c user.name=1 -c user.email=1 add --all", {
+
+    // Add and commit the content
+    await callSubprocess("git add --all", {
         cwd: workTree,
         shell: true,
     });
@@ -34,7 +38,18 @@ async function makeTestRepository() {
         }
     );
 
-    return { workTree, gitDir };
+    // Push the content to the bare repository
+    await callSubprocess("git", ["remote", "add", "origin", "--", gitDir], {
+        cwd: workTree,
+    });
+    await callSubprocess("git push origin master", {
+        cwd: workTree,
+        shell: true,
+    });
+
+    await fs.rm(workTree, { recursive: true, force: true });
+
+    return { gitDir };
 }
 
 module.exports = makeTestRepository;
