@@ -17,11 +17,9 @@ async function ensureStartupDependencies(app) {
 
 /**
  * @param {import("express").Express} app
- * @param {Server} server
  */
-async function start(app, server) {
-    const address = server.address();
-    logInfo({ address }, "Server is running");
+async function start(app) {
+    logInfo({}, "Server is running");
     await ensureStartupDependencies(app);
     logInfo("Initialization complete.");
 }

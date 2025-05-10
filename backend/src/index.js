@@ -6,7 +6,7 @@ const { start } = require("./startup");
  */
 async function entry() {
     const app = expressApp.make();
-    await expressApp.run(app, start);
+    await expressApp.run(app, async (app, _server) => start(app));
 }
 
 // Start server if run directly
