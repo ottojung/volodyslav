@@ -1,8 +1,7 @@
 const express = require("express");
 const request = require("supertest");
-const { ensureStartupDependencies } = require("../src/startup");
+const { initialize } = require("../src/startup");
 const temporary = require("./temporary");
-const { setupHttpCallsLogging } = require("../src/logger");
 
 beforeEach(temporary.beforeEach);
 afterEach(temporary.afterEach);
@@ -35,8 +34,7 @@ describe("Startup Dependencies", () => {
 
     it("sets up HTTP call logging and handles requests correctly", async () => {
         const app = express();
-        await ensureStartupDependencies(app);
-        setupHttpCallsLogging(app);
+        await initialize(app);
 
         // Add a test route that will be logged
         app.get("/test", (req, res) => {
@@ -51,7 +49,7 @@ describe("Startup Dependencies", () => {
 
     it("ensures notifications are available", async () => {
         const app = express();
-        await expect(ensureStartupDependencies(app)).resolves.not.toThrow();
+        await expect(initialize(app)).resolves.not.toThrow();
     });
 
     it("throws if notifications are not available", async () => {
@@ -66,9 +64,9 @@ describe("Startup Dependencies", () => {
             });
 
             // Get a fresh instance of the module under test
-            const { ensureStartupDependencies } = require("../src/startup");
+            const { initialize } = require("../src/startup");
 
-            await expect(ensureStartupDependencies(app)).rejects.toThrow(
+            await expect(initialize(app)).rejects.toThrow(
                 "Notifications unavailable. Termux notification executable not found in $PATH. Please ensure that Termux:API is installed and available in your $PATH."
             );
         });
@@ -77,9 +75,9 @@ describe("Startup Dependencies", () => {
     it("can be called multiple times safely", async () => {
         const app = express();
         await Promise.all([
-            ensureStartupDependencies(app),
-            ensureStartupDependencies(app),
-            ensureStartupDependencies(app),
+            initialize(app),
+            initialize(app),
+            initialize(app),
         ]);
 
         // Test that the app still works after multiple setups

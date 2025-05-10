@@ -18,13 +18,12 @@ async function ensureStartupDependencies(app) {
 /**
  * @param {import("express").Express} app
  */
-async function start(app) {
+async function initialize(app) {
     logInfo({}, "Server is running");
     await ensureStartupDependencies(app);
     logInfo("Initialization complete.");
 }
 
 module.exports = {
-    ensureStartupDependencies,
-    start,
+    initialize,
 };

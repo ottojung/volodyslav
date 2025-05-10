@@ -1,12 +1,12 @@
 const expressApp = require("./express_app");
-const { start } = require("./startup");
+const { initialize } = require("./startup");
 
 /**
  * @returns {Promise<void>}
  */
 async function entry() {
     const app = expressApp.make();
-    await expressApp.run(app, async (app, _server) => start(app));
+    await expressApp.run(app, async (app, _server) => initialize(app));
 }
 
 // Start server if run directly
