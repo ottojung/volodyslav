@@ -48,7 +48,7 @@ async function copyWithOverwrite(inputPath, outputPath) {
     const targetDir = path.dirname(outputPath);
     await mkdir(targetDir, { recursive: true });
     try {
-        await fs.access(outputPath);
+        await access(outputPath);
         logWarning({ file: outputPath }, `Overwriting existing file`);
     } catch {
         // file does not exist, proceed
