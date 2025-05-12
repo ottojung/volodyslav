@@ -9,15 +9,20 @@ const ALPHANUMERIC_CHARS = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnop
  * Generates a random alphanumeric string.
  *
  * @param {number} [length=16] - The length of the generated string. Must be a positive integer.
+ * @param {{ nextInt: (min: number, max: number) => number }} [rng] - Optional RNG instance for reproducibility.
  * @returns {string} A random alphanumeric string of specified length.
- * @throws {TypeError} If the length is not a positive integer.
+ * @throws {TypeError} If the length is not a positive integer or rng is invalid.
  */
-function generateRandomString(length = 16) {
+function generateRandomString(length = 16, rng) {
     if (!Number.isInteger(length) || length < 1) {
         throw new TypeError('Length must be a positive integer');
     }
-    // Use our seedable RNG for random index selection
-    const rng = createRandomRNG();
+    // Use provided RNG or create a fresh one
+    if (rng === undefined) {
+        rng = createRandomRNG();
+    } else if (typeof rng.nextInt !== 'function') {
+        throw new TypeError('rng must have a nextInt(min, max) method');
+    }
     const result = new Array(length);
     const charLen = ALPHANUMERIC_CHARS.length;
     for (let i = 0; i < length; i++) {
