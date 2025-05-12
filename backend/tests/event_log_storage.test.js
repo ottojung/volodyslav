@@ -1,6 +1,7 @@
 const fs = require("fs").promises;
 const path = require("path");
 const { transaction } = require("../src/event_log_storage");
+const { transaction: gitstoreTransaction } = require("../src/gitstore");
 const temporary = require("./temporary");
 const makeTestRepository = require("./make_test_repository");
 
@@ -21,7 +22,7 @@ jest.mock("../src/environment", () => {
 
 describe("event_log_storage", () => {
     test("transaction allows adding and storing event entries", async () => {
-        await makeTestRepository();
+        const { gitDir } = await makeTestRepository();
 
         const testEvent = {
             date: "2025-05-12",
@@ -36,11 +37,13 @@ describe("event_log_storage", () => {
             eventLogStorage.addEntry(testEvent);
         });
 
-        // Read the contents of the data.json file to verify the entry was stored
-        // const dataPath = path.join(temporary.input(), "event_log/data.json");
-        // const fileContent = await fs.readFile(dataPath, "utf8");
-        // const storedEvent = JSON.parse(fileContent);
-
-        // expect(storedEvent).toEqual(testEvent);
+        // Verify the stored event using gitstore transaction
+        await gitstoreTransaction(gitDir, async (store) => {
+            const workTree = await store.getWorkTree();
+            const dataPath = path.join(workTree, "data.json");
+            const fileContent = await fs.readFile(dataPath, "utf8");
+            const storedEvent = JSON.parse(fileContent.trim()); // trim to remove trailing newline
+            expect(storedEvent).toEqual(testEvent);
+        });
     });
 });
