@@ -1,12 +1,12 @@
 const path = require("path");
-const { logError } = require("./logger");
+const { logError, logWarning } = require("./logger");
 const {
     diaryAudiosDirectory,
     eventLogAssetsDirectory,
 } = require("./environment");
 const { transcribeAllGeneric } = require("./transcribe_all");
 const { formatFileTimestamp } = require("./format_time_stamp");
-const { copyFile, unlink } = require("fs/promises");
+const { copyFile, unlink, mkdir, access } = require("fs/promises");
 const { transaction } = require("./event_log_storage");
 
 /**
@@ -35,6 +35,24 @@ function namer(filename) {
     const targetDir = assets_directory(filename);
     const targetName = `transcription.json`;
     return path.join(targetDir, targetName);
+}
+
+/**
+ * Ensures target directory exists, warns on existing file, then copies the file.
+ * @param {string} inputPath
+ * @param {string} targetDir
+ * @param {string} filename
+ */
+async function copyWithOverwrite(inputPath, targetDir, filename) {
+    await mkdir(targetDir, { recursive: true });
+    const targetPath = path.join(targetDir, filename);
+    try {
+        await access(targetPath);
+        logWarning({ file: targetPath }, `Overwriting existing file`);
+    } catch {
+        // file does not exist, proceed
+    }
+    await copyFile(inputPath, targetPath);
 }
 
 /**
@@ -73,8 +91,7 @@ async function processDiaryAudios() {
     for (const filename of successes) {
         const inputPath = path.join(diaryAudiosDir, filename);
         const targetDir = assets_directory(filename);
-        const targetPath = path.join(targetDir, filename);
-        await copyFile(inputPath, targetPath);
+        await copyWithOverwrite(inputPath, targetDir, filename);
     }
 
     //
