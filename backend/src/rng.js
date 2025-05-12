@@ -19,7 +19,7 @@ function mulberry32(seed) {
 }
 
 /** @class */
-class RandomNumberGeneratorClass {
+class Mulberry32Generator {
     /** @type {() => number} */
     _generate;
 
@@ -80,7 +80,12 @@ class RandomNumberGeneratorClass {
     }
 }
 
-/** @typedef {RandomNumberGeneratorClass} RNG */
+/**
+ * @typedef {Object} RNG
+ * @property {() => number} nextFloat - Returns a pseudorandom float in [0, 1).
+ * @property {(min: number, max: number) => number} nextInt - Returns a pseudorandom integer in [min, max).
+ * @description Interface for a random number generator.
+ */
 
 /**
  * Creates a new RNG with the given integer seed.
@@ -88,7 +93,7 @@ class RandomNumberGeneratorClass {
  * @returns {RNG}
  */
 function createRNG(seed) {
-    return new RandomNumberGeneratorClass(seed);
+    return new Mulberry32Generator(seed);
 }
 
 /**
@@ -99,7 +104,7 @@ function createRandomRNG() {
     // Generate a 32-bit random seed
     const buf = crypto.randomBytes(4);
     const seed = buf.readUInt32LE(0);
-    return new RandomNumberGeneratorClass(seed);
+    return new Mulberry32Generator(seed);
 }
 
 module.exports = { createRNG, createRandomRNG };
