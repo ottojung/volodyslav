@@ -38,7 +38,7 @@ async function ensureStartupDependencies(app) {
 async function initialize(app) {
     logInfo({}, "Server is running");
     await ensureStartupDependencies(app);
-    logInfo("Initialization complete.");
+    logInfo({}, "Initialization complete.");
 }
 
 module.exports = {
