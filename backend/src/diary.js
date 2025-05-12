@@ -8,6 +8,7 @@ const { transcribeAllGeneric } = require("./transcribe_all");
 const { formatFileTimestamp } = require("./format_time_stamp");
 const { copyFile, unlink, mkdir, access } = require("fs/promises");
 const { transaction } = require("./event_log_storage");
+const eventId = require("./event_id");
 
 /**
  * @param {string} filename
@@ -66,9 +67,10 @@ async function copyWithOverwrite(inputPath, outputPath) {
  * 3. Updates the event log with new entries for the transcriptions.
  * 4. Deletes the original audio files after processing.
  *
+ * @param {import('./random').RNG} rng - A random number generator instance.
  * @returns {Promise<void>} - A promise that resolves when all processing is complete.
  */
-async function processDiaryAudios() {
+async function processDiaryAudios(rng) {
     const diaryAudiosDir = diaryAudiosDirectory();
     const transcriptionResults = await transcribeAllGeneric(
         diaryAudiosDir,
@@ -99,7 +101,7 @@ async function processDiaryAudios() {
     //
     // now update the event-log storage.
     //
-    await writeChanges(successes);
+    await writeChanges(rng, successes);
 
     // Delete the original audio files.
     for (const filename of successes) {
@@ -111,16 +113,18 @@ async function processDiaryAudios() {
 /**
  * Writes changes to the event log by appending entries for successfully
  * transcribed diary audio files.
+ * @param {import('./random').RNG} rng - A random number generator instance.
  * @param {Array<string>} successes - An array of successfully transcribed filenames.
  * @returns {Promise<void>} - A promise that resolves when the changes are written.
  */
-async function writeChanges(successes) {
+async function writeChanges(rng, successes) {
     // prepare entries to append
     const entries = successes.map((filename) => {
         const dateStr = filename_to_date(filename);
 
         /** @type {import('./event_log_storage').Event} */
         const ret = {
+            id: eventId.make(rng),
             date: dateStr,
             original: `diary [when 0 hours ago]`,
             input: `diary [when 0 hours ago]`,

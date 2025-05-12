@@ -47,6 +47,7 @@ const { diaryAudiosDirectory, eventLogAssetsDirectory } = require('../src/enviro
 const { formatFileTimestamp } = require('../src/format_time_stamp');
 const { transaction } = require('../src/event_log_storage');
 const { logError } = require('../src/logger');
+const random = require('../src/random');
 
 describe('processDiaryAudios', () => {
   let storage;
@@ -71,8 +72,10 @@ describe('processDiaryAudios', () => {
   });
 
   it('should process diary audios correctly', async () => {
+    // Mock the random generator to invoke the processing.
+    const rng = random.default_generator(42);
     // Invoke the processing function under test
-    await processDiaryAudios();
+    await processDiaryAudios(rng);
 
     // Verify that transcription failures are logged with logError
     expect(logError).toHaveBeenCalledWith(
@@ -100,6 +103,7 @@ describe('processDiaryAudios', () => {
     expect(transaction).toHaveBeenCalled();
     expect(storage.addEntry).toHaveBeenCalledTimes(2);
     const expectedEvent = {
+      id: expect.anything(),
       date: '2025-05-12',
       original: 'diary [when 0 hours ago]',
       input: 'diary [when 0 hours ago]',

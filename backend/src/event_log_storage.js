@@ -27,6 +27,7 @@ const gitstore = require("./gitstore");
 /**
  * @typedef Event
  * @type {Object}
+ * @property {import('./event_id').EventId} id - Unique identifier for the event.
  * @property {string} date - The date of the event.
  * @property {string} original - The original input of the event.
  * @property {string} input - The processed input of the event.
