@@ -46,7 +46,7 @@ class Mulberry32Generator {
     }
 
     /**
-     * Returns the next pseudorandom float in the range [0, 1).
+     * Returns the next pseudorandom float in the range (0, 1).
      * @returns {number}
      */
     nextFloat() {
@@ -56,17 +56,18 @@ class Mulberry32Generator {
     /**
      * Returns a pseudorandom integer in [min, max).
      * @param {number} min - Inclusive lower bound (integer)
-     * @param {number} max - Exclusive upper bound (integer)
+     * @param {number} max - Inclusive upper bound (integer)
      * @returns {number}
      */
     nextInt(min, max) {
         if (!Number.isInteger(min) || !Number.isInteger(max)) {
             throw new TypeError("min and max must be integers");
         }
-        if (max <= min) {
-            throw new RangeError("max must be greater than min");
+        if (max < min) {
+            throw new RangeError("max must be greater or equal than min");
         }
-        const range = max - min;
+
+        const range = max + 1 - min;
         return min + Math.floor(this._generate() * range);
     }
 
@@ -82,8 +83,8 @@ class Mulberry32Generator {
 
 /**
  * @typedef {Object} RNG
- * @property {() => number} nextFloat - Returns a pseudorandom float in [0, 1).
- * @property {(min: number, max: number) => number} nextInt - Returns a pseudorandom integer in [min, max).
+ * @property {() => number} nextFloat - Returns a pseudorandom float in (0, 1).
+ * @property {(min: number, max: number) => number} nextInt - Returns a pseudorandom integer in [min, max].
  * @description Interface for a random number generator.
  */
 

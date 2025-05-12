@@ -17,14 +17,14 @@ describe('RandomNumberGeneratorClass', () => {
     expect(rng.getSeed()).toBe(seed);
   });
 
-  test('nextInt returns integer within [min, max)', () => {
+  test('nextInt returns integer within [min, max]', () => {
     const seed = 42;
     const rng = createRNG(seed);
     for (let i = 0; i < 10; i++) {
       const val = rng.nextInt(5, 10);
       expect(Number.isInteger(val)).toBe(true);
       expect(val).toBeGreaterThanOrEqual(5);
-      expect(val).toBeLessThan(10);
+      expect(val).toBeLessThan(10 + 1);
     }
   });
 
@@ -36,7 +36,7 @@ describe('RandomNumberGeneratorClass', () => {
   test('errors on invalid nextInt arguments', () => {
     const rng = createRNG(100);
     expect(() => rng.nextInt(1.2, 5)).toThrow(TypeError);
-    expect(() => rng.nextInt(5, 5)).toThrow(RangeError);
+    expect(() => rng.nextInt(5, 4)).toThrow(RangeError);
     expect(() => rng.nextInt(10, 5)).toThrow(RangeError);
   });
 
