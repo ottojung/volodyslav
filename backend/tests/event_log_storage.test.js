@@ -76,9 +76,17 @@ describe("event_log_storage", () => {
             const workTree = await store.getWorkTree();
             const dataPath = path.join(workTree, "data.json");
             const fileContent = await fs.readFile(dataPath, "utf8");
-            // Parse each JSON object block in the file
-            const blocks = fileContent.match(/{[\s\S]*?}/g);
-            expect(Array.isArray(blocks)).toBe(true);
+            // Group lines into JSON blocks between '{' and '}'
+            const lines = fileContent.trim().split("\n");
+            const blocks = [];
+            let current = [];
+            for (const line of lines) {
+                current.push(line);
+                if (line.trim() === "}") {
+                    blocks.push(current.join("\n"));
+                    current = [];
+                }
+            }
             expect(blocks).toHaveLength(2);
             const [storedEvent1, storedEvent2] = blocks.map((block) => JSON.parse(block));
             expect(storedEvent1).toEqual(event1);
