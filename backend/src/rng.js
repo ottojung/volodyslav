@@ -20,17 +20,6 @@ function mulberry32(seed) {
 
 /** @class */
 class Mulberry32Generator {
-    /** @type {() => number} */
-    _generate;
-
-    /**
-     * Nominal type brand
-     * Its purpose is to make RNG a nominal type without actual use.
-     * @private
-     * @type {undefined}
-     */
-    __brand;
-
     /**
      * Creates a new RNG with the given integer seed.
      * @param {number} seed - 32-bit integer seed for reproducibility
@@ -39,18 +28,11 @@ class Mulberry32Generator {
         if (!Number.isInteger(seed)) {
             throw new TypeError("Seed must be an integer");
         }
+
         // Store seed for inspection
         this._seed = seed;
         // Initialize PRNG
-        this._generate = mulberry32(seed);
-    }
-
-    /**
-     * Returns the next pseudorandom float in the range (0, 1).
-     * @returns {number}
-     */
-    nextFloat() {
-        return this._generate();
+        this.nextFloat = mulberry32(seed);
     }
 
     /**
@@ -68,7 +50,7 @@ class Mulberry32Generator {
         }
 
         const range = max + 1 - min;
-        return min + Math.floor(this._generate() * range);
+        return min + Math.floor(this.nextFloat() * range);
     }
 
     /**

@@ -28,6 +28,9 @@ function generateRandomString(length = 16, rng) {
     for (let i = 0; i < length; i++) {
         const idx = rng.nextInt(0, charLen + 1);
         result[i] = ALPHANUMERIC_CHARS[idx];
+        if (result[i] === undefined) {
+            throw new TypeError('Invalid RNG instance');
+        }
     }
     return result.join('');
 }
