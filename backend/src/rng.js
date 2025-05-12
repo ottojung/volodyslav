@@ -31,8 +31,8 @@ class Mulberry32Generator {
 
         // Store seed for inspection
         this._seed = seed;
-        // Initialize PRNG
-        this.nextFloat = mulberry32(seed);
+        // Initialize PRNG function
+        this._generate = mulberry32(seed);
     }
 
     /**
@@ -50,7 +50,21 @@ class Mulberry32Generator {
         }
 
         const range = max + 1 - min;
-        return min + Math.floor(this.nextFloat() * range);
+        // Note: using this._generate() instead of this.nextFloat() because we need 0.
+        return min + Math.floor(this._generate() * range);
+    }
+
+    /**
+     * Returns the next pseudorandom float in (0, 1), exclusive of both endpoints.
+     * @returns {number}
+     */
+    nextFloat() {
+        let v;
+        // retry if we hit boundaries (<=0 or >=1)
+        do {
+            v = this._generate();
+        } while (v <= 0 || v >= 1);
+        return v;
     }
 
     /**
