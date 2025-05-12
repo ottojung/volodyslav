@@ -1,4 +1,3 @@
-
 # Volodyslav’s Media Service Monorepo
 
 A full-stack application for capturing photos via a browser camera, uploading them to a server, and transcribing audio files using OpenAI’s APIs. This repository follows a monorepo pattern, containing two primary workspaces:
@@ -274,6 +273,11 @@ npm test
   Alias for `npm run dev`
 - `scripts/run-production-unless-already-runs`
   Starts backend only if health check fails
+- **generateRandomString**: Utility to generate a cryptographically secure random alphanumeric string of configurable length (default 16).
+  ```js
+  const { generateRandomString } = require('./backend/src/randomString');
+  const id = generateRandomString(); // e.g. "1Ae3bC9fGh4IjKlM"
+  ```
 
 ---
 
