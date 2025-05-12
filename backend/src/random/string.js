@@ -1,6 +1,7 @@
 // Generates a random alphanumeric string with cryptographic quality
 
-const { default_generator, get_nondeterministic_seed } = require('./random');
+const { get_nondeterministic_seed } = require('./seed');
+const { default_generator } = require('./default');
 
 const ALPHANUMERIC_CHARS = '0123456789abcdefghijklmnopqrstuvwxyz';
 
@@ -8,11 +9,11 @@ const ALPHANUMERIC_CHARS = '0123456789abcdefghijklmnopqrstuvwxyz';
  * Generates a random alphanumeric string.
  *
  * @param {number} [length=16] - The length of the generated string. Must be a positive integer.
- * @param {import('./random/interface').RNG} [rng] - Optional RNG instance for reproducibility.
+ * @param {import('./interface').RNG} [rng] - Optional RNG instance for reproducibility.
  * @returns {string} A random alphanumeric string of specified length.
  * @throws {TypeError} If the length is not a positive integer or rng is invalid.
  */
-function generateRandomString(length = 16, rng) {
+function string(length = 16, rng) {
     if (!Number.isInteger(length) || length < 1) {
         throw new TypeError('Length must be a positive integer');
     }
@@ -31,4 +32,4 @@ function generateRandomString(length = 16, rng) {
     return result.join('');
 }
 
-module.exports = { generateRandomString };
+module.exports = { string };
