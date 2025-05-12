@@ -11,26 +11,35 @@ jest.mock('../src/environment', () => {
 
 const request = require('supertest');
 const expressApp = require('../src/express_app');
+const { addRoutes } = require('../src/startup');
 
 describe('GET /api', () => {
   it('responds with Hello World!', async () => {
-    const res = await request(expressApp.make()).get('/api');
+    const app = expressApp.make();
+    await addRoutes(app);
+    const res = await request(app).get('/api');
     expect(res.statusCode).toBe(200);
     expect(res.text).toBe('Hello World!');
   });
 
   it('returns text/html content type', async () => {
-    const res = await request(expressApp.make()).get('/api');
+    const app = expressApp.make();
+    await addRoutes(app);
+    const res = await request(app).get('/api');
     expect(res.headers['content-type']).toMatch(/text\/html/);
   });
 
   it('handles HEAD request', async () => {
-    const res = await request(expressApp.make()).head('/api');
+    const app = expressApp.make();
+    await addRoutes(app);
+    const res = await request(app).head('/api');
     expect(res.statusCode).toBe(200);
   });
 
   it('handles invalid HTTP method', async () => {
-    const res = await request(expressApp.make()).put('/api');
+    const app = expressApp.make();
+    await addRoutes(app);
+    const res = await request(app).put('/api');
     expect(res.statusCode).toBe(404);
   });
 });

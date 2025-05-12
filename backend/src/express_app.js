@@ -1,27 +1,11 @@
 const express = require("express");
 const { port } = require("./config");
-const rootRouter = require("./routes/root");
-const uploadRouter = require("./routes/upload");
-const pingRouter = require("./routes/ping");
-const staticRouter = require("./routes/static");
-const transcribeRouter = require("./routes/transcribe");
-const transcribeAllRouter = require("./routes/transcribe_all");
 
 /**
  * @returns {express.Express}
  */
 function make() {
-    const app = express();
-
-    // Mount upload and API routers
-    app.use("/api", uploadRouter);
-    app.use("/api", rootRouter);
-    app.use("/api", pingRouter);
-    app.use("/api", transcribeRouter);
-    app.use("/api", transcribeAllRouter);
-    app.use("/", staticRouter);
-
-    return app;
+    return express();
 }
 
 /**

@@ -16,6 +16,7 @@ jest.mock("../src/environment", () => {
 
 const request = require("supertest");
 const expressApp = require("../src/express_app");
+const { addRoutes } = require("../src/startup");
 
 // Create a mock static file structure for testing
 const staticPath = path.join(__dirname, "..", "..", "frontend", "dist");
@@ -37,21 +38,27 @@ afterAll(() => {
 
 describe("Static file serving", () => {
     it("serves index.html for root path", async () => {
-        const res = await request(expressApp.make()).get("/");
+        const app = expressApp.make();
+        await addRoutes(app);
+        const res = await request(app).get("/");
         expect(res.statusCode).toBe(200);
         expect(res.text).toContain("<html>");
         expect(res.headers["content-type"]).toMatch(/text\/html/);
     });
 
     it("serves index.html for unknown routes (SPA fallback)", async () => {
-        const res = await request(expressApp.make()).get("/unknown-route");
+        const app = expressApp.make();
+        await addRoutes(app);
+        const res = await request(app).get("/unknown-route");
         expect(res.statusCode).toBe(200);
         expect(res.text).toContain("<html>");
         expect(res.headers["content-type"]).toMatch(/text\/html/);
     });
 
     it("serves static files correctly", async () => {
-        const res = await request(expressApp.make()).get("/test.txt");
+        const app = expressApp.make();
+        await addRoutes(app);
+        const res = await request(app).get("/test.txt");
         expect(res.statusCode).toBe(200);
         expect(res.text).toBe("test content");
         expect(res.headers["content-type"]).toMatch(/text\/plain/);
@@ -64,7 +71,9 @@ describe("Static file serving", () => {
             'console.log("test");'
         );
 
-        const res = await request(expressApp.make()).get("/test.js");
+        const app = expressApp.make();
+        await addRoutes(app);
+        const res = await request(app).get("/test.js");
         expect(res.statusCode).toBe(200);
         expect(res.headers["content-type"]).toMatch(/application\/javascript/);
 

@@ -38,6 +38,7 @@ const request = require('supertest');
 const expressApp = require('../src/express_app');
 const { uploadDir } = require('../src/config');
 const { notifyAboutError } = require('../src/notifications');
+const { addRoutes } = require('../src/startup');
 
 describe('GET /api/transcribe', () => {
     beforeEach(() => {
@@ -45,8 +46,10 @@ describe('GET /api/transcribe', () => {
     });
 
     it('responds with 400 if input or output param missing', async () => {
+        const app = expressApp.make();
+        await addRoutes(app);
         const reqId = 'testreq';
-        const res = await request(expressApp.make())
+        const res = await request(app)
             .get('/api/transcribe')
             .query({ request_identifier: reqId });
         expect(res.statusCode).toBe(400);
@@ -58,8 +61,10 @@ describe('GET /api/transcribe', () => {
     });
 
     it('responds with 404 if input file does not exist', async () => {
+        const app = expressApp.make();
+        await addRoutes(app);
         const reqId = 'testreq';
-        const res = await request(expressApp.make())
+        const res = await request(app)
               .get('/api/transcribe')
               .query({ request_identifier: reqId, input: '/nonexistent/file.wav' });
         expect(res.statusCode).toBe(404);
@@ -68,6 +73,8 @@ describe('GET /api/transcribe', () => {
     });
 
     it('transcribes and saves output file on valid input', async () => {
+        const app = expressApp.make();
+        await addRoutes(app);
         // Prepare a dummy input file
         const inputDir = temporary.input();
         const inputPath = path.join(inputDir, 'dummy.wav');
@@ -76,7 +83,7 @@ describe('GET /api/transcribe', () => {
 
         const reqId = 'testreq';
         const outputFilename = 'transcription.json';
-        const res = await request(expressApp.make())
+        const res = await request(app)
               .get('/api/transcribe')
               .query({ request_identifier: reqId, input: inputPath });
 

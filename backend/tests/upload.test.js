@@ -4,6 +4,7 @@ const path = require('path');
 const expressApp = require('../src/express_app');
 const { uploadDir } = require('../src/config');
 const temporary = require('./temporary');
+const { addRoutes } = require('../src/startup');
 
 beforeEach(temporary.beforeEach);
 afterEach(temporary.afterEach);
@@ -21,8 +22,10 @@ jest.mock('../src/environment', () => {
 
 describe('POST /api/upload', () => {
     it('uploads a single file successfully', async () => {
+        const app = expressApp.make();
+        await addRoutes(app);
         const reqId = 'testreq';
-        const res = await request(expressApp.make())
+        const res = await request(app)
               .post(`/api/upload?request_identifier=${reqId}`)
               .attach('photos', Buffer.from('test content'), 'test1.jpg');
 
@@ -32,9 +35,11 @@ describe('POST /api/upload', () => {
     });
 
     it('uploads multiple files successfully', async () => {
+        const app = expressApp.make();
+        await addRoutes(app);
         // Upload first file with a unique request_identifier
         const reqId1 = 'testreq1';
-        const res1 = await request(expressApp.make())
+        const res1 = await request(app)
               .post(`/api/upload?request_identifier=${reqId1}`)
               .attach('photos', Buffer.from('first'), 'first.jpg');
 
@@ -44,7 +49,7 @@ describe('POST /api/upload', () => {
 
         // Upload second file with another unique request_identifier
         const reqId2 = 'testreq2';
-        const res2 = await request(expressApp.make())
+        const res2 = await request(app)
               .post(`/api/upload?request_identifier=${reqId2}`)
               .attach('photos', Buffer.from('second'), 'second.jpg');
 
@@ -54,7 +59,9 @@ describe('POST /api/upload', () => {
     });
 
     it('responds with empty files array when no files are sent', async () => {
-        const res = await request(expressApp.make()).post('/api/upload?request_identifier=foo');
+        const app = expressApp.make();
+        await addRoutes(app);
+        const res = await request(app).post('/api/upload?request_identifier=foo');
 
         expect(res.statusCode).toBe(200);
         expect(res.body).toEqual({ success: true, files: [] });

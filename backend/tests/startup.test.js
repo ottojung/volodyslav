@@ -1,7 +1,9 @@
 const express = require("express");
+const expressApp = require("../src/express_app");
 const request = require("supertest");
 const { initialize } = require("../src/startup");
 const temporary = require("./temporary");
+const { resultsDirectory } = require("../src/environment");
 
 beforeEach(temporary.beforeEach);
 afterEach(temporary.afterEach);
@@ -33,22 +35,17 @@ describe("Startup Dependencies", () => {
     });
 
     it("sets up HTTP call logging and handles requests correctly", async () => {
-        const app = express();
+        const app = expressApp.make();
         await initialize(app);
 
-        // Add a test route that will be logged
-        app.get("/test", (req, res) => {
-            res.send("test");
-        });
-
         // Make a request - if logging is set up properly, this won't throw
-        const res = await request(app).get("/test");
+        const res = await request(app).get("/api/ping");
         expect(res.status).toBe(200);
-        expect(res.text).toBe("test");
+        expect(res.text).toBe("pong");
     });
 
     it("throws if notifications are not available", async () => {
-        const app = express();
+        const app = expressApp.make();
         await jest.isolateModules(async () => {
             // Inside the isolation, mock the module with a nonexistent command
             jest.mock("../src/executables", () => {
@@ -58,9 +55,14 @@ describe("Startup Dependencies", () => {
                 };
             });
 
-            // Mock environment exports to avoid real env dependencies
             jest.mock("../src/environment", () => {
+                const temporary = require("./temporary");
                 return {
+                    openaiAPIKey: jest.fn().mockReturnValue("test-key"),
+                    resultsDirectory: jest
+                        .fn()
+                        .mockImplementation(temporary.output),
+                    myServerPort: jest.fn().mockReturnValue(0),
                     logLevel: jest.fn().mockReturnValue("silent"),
                 };
             });
