@@ -1,7 +1,7 @@
-const fs = require("fs").promises;
 const path = require("path");
 const { transaction } = require("../src/event_log_storage");
 const gitstore = require("../src/gitstore");
+const { readObjects } = require("../src/json_stream_file");
 const temporary = require("./temporary");
 const makeTestRepository = require("./make_test_repository");
 const event = require("../src/event/structure");
@@ -43,9 +43,9 @@ describe("event_log_storage", () => {
         await gitstore.transaction(gitDir, async (store) => {
             const workTree = await store.getWorkTree();
             const dataPath = path.join(workTree, "data.json");
-            const fileContent = await fs.readFile(dataPath, "utf8");
-            const storedEvent = JSON.parse(fileContent.trim()); // trim to remove trailing newline
-            expect(storedEvent).toEqual(event.serialize(testEvent));
+            const objects = await readObjects(dataPath);
+            expect(objects).toHaveLength(1);
+            expect(objects[0]).toEqual(event.serialize(testEvent));
         });
     });
 
@@ -79,22 +79,10 @@ describe("event_log_storage", () => {
         await gitstore.transaction(gitDir, async (store) => {
             const workTree = await store.getWorkTree();
             const dataPath = path.join(workTree, "data.json");
-            const fileContent = await fs.readFile(dataPath, "utf8");
-            // Group lines into JSON blocks between '{' and '}'
-            const lines = fileContent.trim().split("\n");
-            const blocks = [];
-            let current = [];
-            for (const line of lines) {
-                current.push(line);
-                if (line.trim() === "}") {
-                    blocks.push(current.join("\n"));
-                    current = [];
-                }
-            }
-            expect(blocks).toHaveLength(2);
-            const [storedEvent1, storedEvent2] = blocks.map((block) => JSON.parse(block));
-            expect(storedEvent1).toEqual(event.serialize(event1));
-            expect(storedEvent2).toEqual(event.serialize(event2));
+            const objects = await readObjects(dataPath);
+            expect(objects).toHaveLength(2);
+            expect(objects[0]).toEqual(event.serialize(event1));
+            expect(objects[1]).toEqual(event.serialize(event2));
         });
     });
 
