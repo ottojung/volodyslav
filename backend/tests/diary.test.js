@@ -118,17 +118,15 @@ describe("processDiaryAudios", () => {
             type: "diary",
             description: "",
         };
-        // The addEntry method is called with the event object, its index, and the full list
+        // The addEntry method is called with the event object and the list of entries
         expect(storage.addEntry).toHaveBeenNthCalledWith(
             1,
             expectedEvent,
-            0,
             expect.any(Array)
         );
         expect(storage.addEntry).toHaveBeenNthCalledWith(
             2,
             expectedEvent,
-            1,
             expect.any(Array)
         );
     });
