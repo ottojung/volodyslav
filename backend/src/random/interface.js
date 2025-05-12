@@ -7,7 +7,7 @@
 
 /**
  *
- * @param {() => number} nextFloat - A function that returns a pseudorandom float in [0, 1).
+ * @param {() => number} nextFloat - A function that returns a pseudorandom float in (0, 1).
  * @returns {(min: number, max: number) => number} - A function that returns a pseudorandom integer in [min, max].
  */
 function from_float_generator(nextFloat) {
