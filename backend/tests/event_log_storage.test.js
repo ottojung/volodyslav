@@ -1,7 +1,7 @@
 const fs = require("fs").promises;
 const path = require("path");
 const { transaction } = require("../src/event_log_storage");
-const { transaction: gitstoreTransaction } = require("../src/gitstore");
+const gitstore = require("../src/gitstore");
 const temporary = require("./temporary");
 const makeTestRepository = require("./make_test_repository");
 
@@ -38,7 +38,7 @@ describe("event_log_storage", () => {
         });
 
         // Verify the stored event using gitstore transaction
-        await gitstoreTransaction(gitDir, async (store) => {
+        await gitstore.transaction(gitDir, async (store) => {
             const workTree = await store.getWorkTree();
             const dataPath = path.join(workTree, "data.json");
             const fileContent = await fs.readFile(dataPath, "utf8");
@@ -72,7 +72,7 @@ describe("event_log_storage", () => {
             eventLogStorage.addEntry(event2);
         });
 
-        await gitstoreTransaction(gitDir, async (store) => {
+        await gitstore.transaction(gitDir, async (store) => {
             const workTree = await store.getWorkTree();
             const dataPath = path.join(workTree, "data.json");
             const fileContent = await fs.readFile(dataPath, "utf8");
