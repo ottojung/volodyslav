@@ -32,7 +32,7 @@ function setupHttpCallsLogging(app) {
 /**
  * Logs an error message and sends a notification.
  * @param {unknown} obj The error object, message string, or object with error details
- * @param {string} [msg] Optional message when the first argument is an object
+ * @param {string} msg
  * @returns {void}
  */
 function logError(obj, msg) {
@@ -57,7 +57,7 @@ function logError(obj, msg) {
 
 /**
  * @param {unknown} obj The error object, message string, or object with error details
- * @param {string} [msg] Optional message when the first argument is an object
+ * @param {string} msg
  * @returns {void}
  */
 function logWarning(obj, msg) {
@@ -66,7 +66,7 @@ function logWarning(obj, msg) {
 
 /**
  * @param {unknown} obj The error object, message string, or object with error details
- * @param {string} [msg] Optional message when the first argument is an object
+ * @param {string} msg
  * @returns {void}
  */
 function logInfo(obj, msg) {
@@ -75,7 +75,7 @@ function logInfo(obj, msg) {
 
 /**
  * @param {unknown} obj The error object, message string, or object with error details
- * @param {string} [msg] Optional message when the first argument is an object
+ * @param {string} msg
  * @returns {void}
  */
 function logDebug(obj, msg) {
