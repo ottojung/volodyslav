@@ -151,7 +151,7 @@ async function transaction(transformation) {
         );
 
         // Stage and commit all changes; failure indicates no entries were added
-        store.commit("Event log storage update");
+        await store.commit("Event log storage update");
     });
 }
 
