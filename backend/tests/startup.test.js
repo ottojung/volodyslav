@@ -1,9 +1,7 @@
-const express = require("express");
 const expressApp = require("../src/express_app");
 const request = require("supertest");
 const { initialize } = require("../src/startup");
 const temporary = require("./temporary");
-const { resultsDirectory } = require("../src/environment");
 
 beforeEach(temporary.beforeEach);
 afterEach(temporary.afterEach);
