@@ -4,7 +4,7 @@ const { transaction } = require("../src/event_log_storage");
 const gitstore = require("../src/gitstore");
 const temporary = require("./temporary");
 const makeTestRepository = require("./make_test_repository");
-const event = require("../src/event");
+const event = require("../src/event/event");
 
 beforeEach(temporary.beforeEach);
 afterEach(temporary.afterEach);

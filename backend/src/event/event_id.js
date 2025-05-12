@@ -1,4 +1,4 @@
-const random = require("./random");
+const random = require("../random");
 
 /**
  * @class
@@ -16,7 +16,7 @@ class EventIdClass {
     __brand;
 
     /**
-     * @param {import('./random').RNG} rng
+     * @param {import('../random').RNG} rng
      */
     constructor(rng) {
         this.identifier = random.string(16, rng);
@@ -26,7 +26,7 @@ class EventIdClass {
 /** @typedef {EventIdClass} EventId */
 
 /**
- * @param {import('./random').RNG} rng
+ * @param {import('../random').RNG} rng
  * @returns {EventId}
  * @description Primary constructor for an EventId.
  */
