@@ -1,5 +1,5 @@
 // file: backend/tests/randomString.test.js
-const { generateRandomString } = require('../src/randomString');
+const { generateRandomString } = require('../src/random_string');
 
 describe('generateRandomString', () => {
   test('generates a string of default length 16', () => {
