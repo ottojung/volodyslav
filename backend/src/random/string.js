@@ -1,6 +1,6 @@
 // Generates a random alphanumeric string with cryptographic quality
 
-const { get_nondeterministic_seed } = require('./seed');
+const { nondeterministic_seed } = require('./seed');
 const { default_generator } = require('./default');
 
 const ALPHANUMERIC_CHARS = '0123456789abcdefghijklmnopqrstuvwxyz';
@@ -20,7 +20,7 @@ function string(length = 16, rng) {
 
     // Use provided RNG or create a fresh one
     if (rng === undefined) {
-        rng = default_generator(get_nondeterministic_seed());
+        rng = default_generator(nondeterministic_seed());
     }
 
     const result = new Array(length);
