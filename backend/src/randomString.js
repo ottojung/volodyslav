@@ -2,7 +2,7 @@
 
 const { createRandomRNG } = require('./rng');
 
-const ALPHANUMERIC_CHARS = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz';
+const ALPHANUMERIC_CHARS = '0123456789abcdefghijklmnopqrstuvwxyz';
 
 /**
  * Generates a random alphanumeric string.
