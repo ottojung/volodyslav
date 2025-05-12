@@ -4,6 +4,7 @@ const { transaction } = require("../src/event_log_storage");
 const gitstore = require("../src/gitstore");
 const temporary = require("./temporary");
 const makeTestRepository = require("./make_test_repository");
+const event = require("../src/event");
 
 beforeEach(temporary.beforeEach);
 afterEach(temporary.afterEach);
@@ -25,6 +26,7 @@ describe("event_log_storage", () => {
         const { gitDir } = await makeTestRepository();
 
         const testEvent = {
+            id: { identifier: "test123" },
             date: "2025-05-12",
             original: "test input",
             input: "processed test input",
@@ -43,7 +45,7 @@ describe("event_log_storage", () => {
             const dataPath = path.join(workTree, "data.json");
             const fileContent = await fs.readFile(dataPath, "utf8");
             const storedEvent = JSON.parse(fileContent.trim()); // trim to remove trailing newline
-            expect(storedEvent).toEqual(testEvent);
+            expect(event.serialize(storedEvent)).toEqual(event.serialize(testEvent));
         });
     });
 

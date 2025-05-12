@@ -122,7 +122,7 @@ async function writeChanges(rng, successes) {
     const entries = successes.map((filename) => {
         const dateStr = filename_to_date(filename);
 
-        /** @type {import('./event_log_storage').Event} */
+        /** @type {import('./event').Event} */
         const ret = {
             id: eventId.make(rng),
             date: dateStr,

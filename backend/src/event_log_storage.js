@@ -18,23 +18,7 @@ const path = require("path");
 const { eventLogDirectory } = require("./environment");
 const { appendFile } = require("fs/promises");
 const gitstore = require("./gitstore");
-
-/**
- * @typedef Modifiers
- * @type {Record<string, string>}
- */
-
-/**
- * @typedef Event
- * @type {Object}
- * @property {import('./event_id').EventId} id - Unique identifier for the event.
- * @property {string} date - The date of the event.
- * @property {string} original - The original input of the event.
- * @property {string} input - The processed input of the event.
- * @property {Modifiers} modifiers - Modifiers applied to the event.
- * @property {string} type - The type of the event.
- * @property {string} description - A description of the event.
- */
+const event = require("./event");
 
 /**
  * @class
@@ -54,7 +38,7 @@ class EventLogStorageClass {
     /**
      * Entries to be added to the event log.
      * @private
-     * @type {Array<Event>}
+     * @type {Array<import('./event').Event>}
      */
     newEntries;
 
@@ -68,7 +52,7 @@ class EventLogStorageClass {
 
     /**
      * Adds an entry to the event log.
-     * @param {Event} entry - The entry to add.
+     * @param {import('./event').Event} entry - The entry to add.
      */
     addEntry(entry) {
         this.newEntries.push(entry);
@@ -76,7 +60,7 @@ class EventLogStorageClass {
 
     /**
      * Retrieves all new entries from the event log.
-     * @returns {Array<Event>} - The list of entries.
+     * @returns {Array<import('./event').Event>} - The list of entries.
      */
     getNewEntries() {
         return this.newEntries;
@@ -90,7 +74,7 @@ class EventLogStorageClass {
  * Each entry is serialized to JSON format and appended to the file with a newline.
  *
  * @param {string} filePath - The path to the file where entries will be appended.
- * @param {Array<Object>} entries - An array of objects to append to the file.
+ * @param {Array<import('./event').Event>} entries - An array of objects to append to the file.
  * @returns {Promise<void>} - A promise that resolves when all entries are appended.
  *
  * Notes and Gotchas:
@@ -101,7 +85,7 @@ class EventLogStorageClass {
 async function appendEntriesToFile(filePath, entries) {
     for (const entry of entries) {
         // Serialize each entry to a JSON string with tab indentation, append newline
-        const entryString = JSON.stringify(entry, null, "\t");
+        const entryString = event.serialize(entry);
         await appendFile(filePath, entryString + "\n", "utf8");
     }
 }
