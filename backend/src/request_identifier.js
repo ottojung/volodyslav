@@ -54,9 +54,9 @@ async function markDone(reqId) {
 
 /**
  * @param {RequestIdentifier} reqId
- * @returns {boolean}
+ * @returns {Promise<boolean>}
  */
-function isDone(reqId) {
+async function isDone(reqId) {
     const target = path.join(uploadDir, reqId.identifier + ".done");
     return fs.existsSync(target);
 }
