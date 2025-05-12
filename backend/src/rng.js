@@ -1,4 +1,3 @@
-// file: backend/src/rng.js
 // Seedable pseudorandom number generator using Mulberry32 algorithm for reproducibility
 
 const crypto = require("crypto");

@@ -1,4 +1,3 @@
-// file: backend/src/randomString.js
 // Generates a random alphanumeric string with cryptographic quality
 
 const { createRandomRNG } = require('./rng');
