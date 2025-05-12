@@ -81,7 +81,7 @@ async function processDiaryAudios() {
     //
     // now update the event-log storage.
     //
-    writeChanges(successes);
+    await writeChanges(successes);
 
     // Delete the original audio files.
     for (const filename of successes) {
