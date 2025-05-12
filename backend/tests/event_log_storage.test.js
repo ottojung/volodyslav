@@ -36,7 +36,7 @@ describe("event_log_storage", () => {
         };
 
         await transaction(async (eventLogStorage) => {
-            eventLogStorage.addEntry(testEvent);
+            eventLogStorage.addEntry(testEvent, []);
         });
 
         // Verify the stored event using gitstore transaction
@@ -72,8 +72,8 @@ describe("event_log_storage", () => {
         };
 
         await transaction(async (eventLogStorage) => {
-            eventLogStorage.addEntry(event1);
-            eventLogStorage.addEntry(event2);
+            eventLogStorage.addEntry(event1, []);
+            eventLogStorage.addEntry(event2, []);
         });
 
         await gitstore.transaction(gitDir, async (store) => {

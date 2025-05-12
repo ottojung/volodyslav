@@ -141,7 +141,9 @@ async function writeChanges(rng, successes) {
      * @type {import('./event_log_storage').EventLogStorage}
      */
     await transaction(async (eventLogStorage) => {
-        entries.forEach(eventLogStorage.addEntry);
+        for (const entry of entries) {
+            eventLogStorage.addEntry(entry, []);
+        }
     });
 }
 

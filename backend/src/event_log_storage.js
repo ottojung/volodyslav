@@ -43,19 +43,29 @@ class EventLogStorageClass {
     newEntries;
 
     /**
+     * Assets to be added to the store.
+     * @private
+     * @type {Array<import('./event').Asset>}
+     */
+    newAssets;
+
+    /**
      * @constructor
      * Initializes an empty event log storage.
      */
     constructor() {
         this.newEntries = [];
+        this.newAssets = [];
     }
 
     /**
      * Adds an entry to the event log.
      * @param {import('./event').Event} entry - The entry to add.
+     * @param {import('./event/asset').Asset[]} assets - Possible assets related to the entry.
      */
-    addEntry(entry) {
+    addEntry(entry, assets) {
         this.newEntries.push(entry);
+        this.newAssets.push(...assets);
     }
 
     /**
@@ -64,6 +74,14 @@ class EventLogStorageClass {
      */
     getNewEntries() {
         return this.newEntries;
+    }
+
+    /**
+     * Retrieves all new assets from the repository.
+     * @returns {Array<import('./event').Asset>} - The list of assets.
+     */
+    getNewAssets() {
+        return this.newAssets;
     }
 }
 
@@ -102,7 +120,7 @@ async function appendEntriesToFile(filePath, entries) {
  * @param {Transformation} transformation - Async callback receiving an EventLogStorage instance.
  *                                         Call `addEntry(...)` to queue events.
  * @returns {Promise<void>} - Resolves when changes are committed and pushed, rejects on any error.
- * 
+ *
  * Detailed Behavior:
  * 1. Construct a fresh `EventLogStorageClass`, with an empty `newEntries`.
  * 2. Determine the bare repository directory via `eventLogDirectory()`.
@@ -119,7 +137,7 @@ async function appendEntriesToFile(filePath, entries) {
  */
 async function transaction(transformation) {
     const eventLogStorage = new EventLogStorageClass();
-    const gitDirectory = eventLogDirectory();  // Bare repo path, often configured via environment
+    const gitDirectory = eventLogDirectory(); // Bare repo path, often configured via environment
 
     // Perform an atomic Git-backed transaction: clone, modify, commit, push, cleanup
     await gitstore.transaction(gitDirectory, async (store) => {
@@ -130,10 +148,7 @@ async function transaction(transformation) {
         await transformation(eventLogStorage);
 
         // Persist queued entries to disk before commit
-        await appendEntriesToFile(
-            dataPath,
-            eventLogStorage.getNewEntries()
-        );
+        await appendEntriesToFile(dataPath, eventLogStorage.getNewEntries());
 
         // Stage and commit all changes; failure indicates no entries were added
         await store.commit("Event log storage update");
