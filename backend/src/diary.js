@@ -46,7 +46,6 @@ function namer(filename) {
  * 2. Copies successfully transcribed files to a target directory.
  * 3. Updates the event log with new entries for the transcriptions.
  * 4. Deletes the original audio files after processing.
- * 5. Commits the diary changes.
  *
  * @returns {Promise<void>} - A promise that resolves when all processing is complete.
  */
