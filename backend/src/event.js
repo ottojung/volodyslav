@@ -16,13 +16,13 @@
  */
 
 /**
- * Serializes an event object into a JSON string.
  * @param {Event} event - The event object to serialize.
- * @returns {string} - The serialized JSON string representation of the event.
+ * @returns {Object} - The serialized event object.
  */
 function serialize(event) {
+    // De-nominalize the event.
     const realEvent = { ...event, id: event.id.identifier };
-    return JSON.stringify(realEvent, null, '\t');
+    return realEvent;
 }
 
 module.exports = {

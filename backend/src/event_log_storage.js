@@ -84,9 +84,10 @@ class EventLogStorageClass {
  */
 async function appendEntriesToFile(filePath, entries) {
     for (const entry of entries) {
-        // Serialize each entry to a JSON string with tab indentation, append newline
-        const entryString = event.serialize(entry);
-        await appendFile(filePath, entryString + "\n", "utf8");
+        // Serialize each entry to JSON string using event.serialize
+        const serialized = event.serialize(entry);
+        const eventString = JSON.stringify(serialized, null, "\t");
+        await appendFile(filePath, eventString + "\n", "utf8");
     }
 }
 

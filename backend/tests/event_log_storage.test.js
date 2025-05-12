@@ -45,7 +45,7 @@ describe("event_log_storage", () => {
             const dataPath = path.join(workTree, "data.json");
             const fileContent = await fs.readFile(dataPath, "utf8");
             const storedEvent = JSON.parse(fileContent.trim()); // trim to remove trailing newline
-            expect(event.serialize(storedEvent)).toEqual(event.serialize(testEvent));
+            expect(storedEvent).toEqual(event.serialize(testEvent));
         });
     });
 
@@ -53,6 +53,7 @@ describe("event_log_storage", () => {
         const { gitDir } = await makeTestRepository();
 
         const event1 = {
+            id: { identifier: "event1" },
             date: "2025-05-12",
             original: "first input",
             input: "processed first input",
@@ -61,6 +62,7 @@ describe("event_log_storage", () => {
             description: "First event description"
         };
         const event2 = {
+            id: { identifier: "event2" },
             date: "2025-05-12",
             original: "second input",
             input: "processed second input",
@@ -91,8 +93,8 @@ describe("event_log_storage", () => {
             }
             expect(blocks).toHaveLength(2);
             const [storedEvent1, storedEvent2] = blocks.map((block) => JSON.parse(block));
-            expect(storedEvent1).toEqual(event1);
-            expect(storedEvent2).toEqual(event2);
+            expect(storedEvent1).toEqual(event.serialize(event1));
+            expect(storedEvent2).toEqual(event.serialize(event2));
         });
     });
 
