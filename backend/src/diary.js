@@ -1,5 +1,5 @@
 const path = require("path");
-const fs = require("fs");
+const fs = require("fs").promises;
 const { logError, logWarning } = require("./logger");
 const {
     diaryAudiosDirectory,
@@ -41,19 +41,20 @@ function namer(filename) {
 /**
  * Ensures target directory exists, warns on existing file, then copies the file.
  * @param {string} inputPath
- * @param {string} targetDir
- * @param {string} filename
+ * @param {string} outputPath
+ * @returns {Promise<void>}
+ * @throws {Error} If the copy operation fails.
  */
-async function copyWithOverwrite(inputPath, targetDir, filename) {
-    await fs.promises.mkdir(targetDir, { recursive: true });
-    const targetPath = path.join(targetDir, filename);
+async function copyWithOverwrite(inputPath, outputPath) {
+    const targetDir = path.dirname(outputPath);
+    await fs.mkdir(targetDir, { recursive: true });
     try {
-        await fs.promises.access(targetPath);
-        logWarning({ file: targetPath }, `Overwriting existing file`);
+        await fs.access(outputPath);
+        logWarning({ file: outputPath }, `Overwriting existing file`);
     } catch {
         // file does not exist, proceed
     }
-    await copyFile(inputPath, targetPath);
+    await copyFile(inputPath, outputPath);
 }
 
 /**
@@ -93,7 +94,7 @@ async function processDiaryAudios() {
         const inputPath = path.join(diaryAudiosDir, filename);
         const targetDir = assets_directory(filename);
         const targetPath = path.join(targetDir, filename);
-        await copyFile(inputPath, targetPath);
+        await copyWithOverwrite(inputPath, targetPath);
     }
 
     //
