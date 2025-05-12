@@ -18,7 +18,7 @@ const path = require("path");
 const { eventLogDirectory } = require("./environment");
 const { appendFile } = require("fs/promises");
 const gitstore = require("./gitstore");
-const event = require("./event/event");
+const event = require("./event");
 
 /**
  * @class
@@ -38,7 +38,7 @@ class EventLogStorageClass {
     /**
      * Entries to be added to the event log.
      * @private
-     * @type {Array<import('./event/event').Event>}
+     * @type {Array<import('./event').Event>}
      */
     newEntries;
 
@@ -52,7 +52,7 @@ class EventLogStorageClass {
 
     /**
      * Adds an entry to the event log.
-     * @param {import('./event/event').Event} entry - The entry to add.
+     * @param {import('./event').Event} entry - The entry to add.
      */
     addEntry(entry) {
         this.newEntries.push(entry);
@@ -60,7 +60,7 @@ class EventLogStorageClass {
 
     /**
      * Retrieves all new entries from the event log.
-     * @returns {Array<import('./event/event').Event>} - The list of entries.
+     * @returns {Array<import('./event').Event>} - The list of entries.
      */
     getNewEntries() {
         return this.newEntries;
@@ -74,7 +74,7 @@ class EventLogStorageClass {
  * Each entry is serialized to JSON format and appended to the file with a newline.
  *
  * @param {string} filePath - The path to the file where entries will be appended.
- * @param {Array<import('./event/event').Event>} entries - An array of objects to append to the file.
+ * @param {Array<import('./event').Event>} entries - An array of objects to append to the file.
  * @returns {Promise<void>} - A promise that resolves when all entries are appended.
  *
  * Notes and Gotchas:

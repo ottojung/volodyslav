@@ -8,7 +8,7 @@ const { transcribeAllGeneric } = require("./transcribe_all");
 const { formatFileTimestamp } = require("./format_time_stamp");
 const { copyFile, unlink, mkdir, access } = require("fs/promises");
 const { transaction } = require("./event_log_storage");
-const eventId = require("./event/event_id");
+const eventId = require("./event/id");
 
 /**
  * @param {string} filename
@@ -122,7 +122,7 @@ async function writeChanges(rng, successes) {
     const entries = successes.map((filename) => {
         const dateStr = filename_to_date(filename);
 
-        /** @type {import('./event/event').Event} */
+        /** @type {import('./event/structure').Event} */
         const ret = {
             id: eventId.make(rng),
             date: dateStr,
