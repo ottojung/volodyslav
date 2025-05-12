@@ -10,6 +10,8 @@ jest.mock('fs/promises', () => ({
   // Mock file operations to spy on copyFile and unlink calls
   copyFile: jest.fn(),
   unlink: jest.fn(),
+  access: jest.fn(),
+  mkdir: jest.fn(),
 }));
 
 // Mock the transcription module to control success and failure scenarios

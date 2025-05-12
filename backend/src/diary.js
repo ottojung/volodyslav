@@ -1,5 +1,4 @@
 const path = require("path");
-const fs = require("fs").promises;
 const { logError, logWarning } = require("./logger");
 const {
     diaryAudiosDirectory,
@@ -7,7 +6,7 @@ const {
 } = require("./environment");
 const { transcribeAllGeneric } = require("./transcribe_all");
 const { formatFileTimestamp } = require("./format_time_stamp");
-const { copyFile, unlink } = require("fs/promises");
+const { copyFile, unlink, mkdir, access } = require("fs/promises");
 const { transaction } = require("./event_log_storage");
 
 /**
@@ -47,7 +46,7 @@ function namer(filename) {
  */
 async function copyWithOverwrite(inputPath, outputPath) {
     const targetDir = path.dirname(outputPath);
-    await fs.mkdir(targetDir, { recursive: true });
+    await mkdir(targetDir, { recursive: true });
     try {
         await fs.access(outputPath);
         logWarning({ file: outputPath }, `Overwriting existing file`);
