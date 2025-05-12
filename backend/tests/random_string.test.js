@@ -25,12 +25,12 @@ describe('generateRandomString', () => {
 });
 
 describe('generateRandomString with seeded RNG', () => {
-  const { createRNG } = require('../src/rng');
+  const random = require('../src/random');
 
   test('same seed produces identical strings', () => {
     const seed = 42;
-    const rng1 = createRNG(seed);
-    const rng2 = createRNG(seed);
+    const rng1 = random.default_generator(seed);
+    const rng2 = random.default_generator(seed);
     const s1 = generateRandomString(8, rng1);
     const s2 = generateRandomString(8, rng2);
     expect(s1).toBe(s2);
