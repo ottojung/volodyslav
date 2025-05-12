@@ -1,7 +1,7 @@
 // file: backend/src/randomString.js
 // Generates a random alphanumeric string with cryptographic quality
 
-const crypto = require('crypto');
+const { createRandomRNG } = require('./rng');
 
 const ALPHANUMERIC_CHARS = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz';
 
@@ -16,11 +16,13 @@ function generateRandomString(length = 16) {
     if (!Number.isInteger(length) || length < 1) {
         throw new TypeError('Length must be a positive integer');
     }
-    const bytes = crypto.randomBytes(length);
+    // Use our seedable RNG for random index selection
+    const rng = createRandomRNG();
     const result = new Array(length);
     const charLen = ALPHANUMERIC_CHARS.length;
     for (let i = 0; i < length; i++) {
-        result[i] = ALPHANUMERIC_CHARS[bytes[i] % charLen];
+        const idx = rng.nextInt(0, charLen);
+        result[i] = ALPHANUMERIC_CHARS[idx];
     }
     return result.join('');
 }
