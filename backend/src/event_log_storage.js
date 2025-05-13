@@ -127,50 +127,40 @@ async function copyAssets(workTree, assets) {
  */
 
 /**
- * @param {Transformation} transformation
- *
- * Applies a transformation to an in-memory event log storage, then persists the results via Git.
- *
- * @param {Transformation} transformation - Async callback receiving an EventLogStorage instance.
- *                                         Call `addEntry(...)` to queue events.
- * @returns {Promise<void>} - Resolves when changes are committed and pushed, rejects on any error.
- *
- * Detailed Behavior:
- * 1. Construct a fresh `EventLogStorageClass`, with an empty `newEntries`.
- * 2. Determine the bare repository directory via `eventLogDirectory()`.
- * 3. Invoke `gitstore.transaction` with the bare repo path:
- *    a. Clone the bare repo into a temporary worktree.
- *    b. Execute the `transformation` callback, populating `newEntries`.
- *    c. Call `appendEntriesToFile` to write queued entries to `<workTree>/data.json`.
- *    d. Commit changes using the message "Event log storage update" and push.
- *
- * Unexpected or Non-Obvious Details:
- * - If no entries were added, the `git commit` step fails (no changes to commit),
- *   causing the entire transaction to reject. This is intentional to catch no-op calls.
- * - The temporary worktree is removed in a finally block, so logs or intermediate files are not left behind.
+ * Performs a Git-backed transaction using the given storage and transformation.
+ * @param {EventLogStorage} eventLogStorage - The event log storage instance.
+ * @param {Transformation} transformation - Async callback to apply to the storage.
+ * @returns {Promise<void>}
  */
-async function transaction(transformation) {
-    const eventLogStorage = new EventLogStorageClass();
-    const gitDirectory = eventLogDirectory(); // Bare repo path, often configured via environment
-
-    // Perform an atomic Git-backed transaction: clone, modify, commit, push, cleanup
+async function performGitTransaction(eventLogStorage, transformation) {
+    const gitDirectory = eventLogDirectory();
     await gitstore.transaction(gitDirectory, async (store) => {
-        const workTree = await store.getWorkTree(); // Path to temp directory clone
-        const dataPath = path.join(workTree, "data.json"); // File within worktree to append entries
+        const workTree = await store.getWorkTree();
+        const dataPath = path.join(workTree, "data.json");
 
         // Run user-provided transformation to accumulate entries
         await transformation(eventLogStorage);
 
-        // Persist queued entries to disk before commit
+        // Persist queued entries
         await appendEntriesToFile(dataPath, eventLogStorage.getNewEntries());
 
-        // Stage and commit all changes; failure indicates no entries were added
+        // Commit queued changes
         await store.commit("Event log storage update");
 
-        // Copy assets to the repository
+        // Copy any queued assets
         const assets = eventLogStorage.getNewAssets();
         await copyAssets(workTree, assets);
     });
+}
+
+/**
+ * Applies a transformation within a Git-backed event log transaction.
+ * @param {Transformation} transformation - The transformation to execute.
+ * @returns {Promise<void>}
+ */
+async function transaction(transformation) {
+    const eventLogStorage = new EventLogStorageClass();
+    await performGitTransaction(eventLogStorage, transformation);
 }
 
 module.exports = { transaction };
