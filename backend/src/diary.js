@@ -77,8 +77,7 @@ async function processDiaryAudios(rng) {
         namer
     );
 
-    const successes = transcriptionResults.successes;
-    const failures = transcriptionResults.failures;
+    const { successes, failures } = transcriptionResults;
 
     failures.forEach((failure) => {
         logError(
@@ -91,10 +90,10 @@ async function processDiaryAudios(rng) {
         );
     });
 
-    for (const filename of successes) {
-        const inputPath = path.join(diaryAudiosDir, filename);
-        const targetDir = assets_directory(filename);
-        const targetPath = path.join(targetDir, filename);
+    for (const { source, target } of successes) {
+        const inputPath = source;
+        const targetDir = path.dirname(target);
+        const targetPath = path.join(targetDir, path.basename(source));
         await copyWithOverwrite(inputPath, targetPath);
     }
 
@@ -104,9 +103,8 @@ async function processDiaryAudios(rng) {
     await writeChanges(rng, successes);
 
     // Delete the original audio files.
-    for (const filename of successes) {
-        const inputPath = path.join(diaryAudiosDir, filename);
-        await unlink(inputPath);
+    for (const { source } of successes) {
+        await unlink(source);
     }
 }
 
@@ -114,12 +112,13 @@ async function processDiaryAudios(rng) {
  * Writes changes to the event log by appending entries for successfully
  * transcribed diary audio files.
  * @param {import('./random').RNG} rng - A random number generator instance.
- * @param {Array<string>} successes - An array of successfully transcribed filenames.
+ * @param {Array<{ source: string, target: string }>} successes - An array of TranscriptionSuccess objects.
  * @returns {Promise<void>} - A promise that resolves when the changes are written.
  */
 async function writeChanges(rng, successes) {
     // prepare entries to append
-    const entries = successes.map((filename) => {
+    const entries = successes.map(({ source }) => {
+        const filename = path.basename(source);
         const date = filename_to_date(filename);
         const id = eventId.make(rng);
 

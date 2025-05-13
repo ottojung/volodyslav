@@ -106,11 +106,15 @@ describe("GET /api/transcribe_all", () => {
         const message = `Transcription failed for ${file}: ${internalMessage}`;
 
         expect(res.status).toBe(500);
+        const expectedSuccesses = ["a.mp4", "c.mp4"].map((fname) => ({
+            source: path.join(tmp, fname),
+            target: path.join(uploadDir, reqId, `${fname}.json`),
+        }));
         expect(res.body).toEqual({
             success: false,
             result: {
                 failures: [{ file, message }],
-                successes: ["a.mp4", "c.mp4"],
+                successes: expectedSuccesses,
             },
         });
 
@@ -134,9 +138,13 @@ describe("GET /api/transcribe_all", () => {
             .get(base)
             .query({ request_identifier: reqId, input_dir: tmp });
         expect(res.status).toBe(200);
+        const expectedAllSuccesses = ["x.mp4", "y.mp4"].map((fname) => ({
+            source: path.join(tmp, fname),
+            target: path.join(uploadDir, reqId, `${fname}.json`),
+        }));
         expect(res.body).toEqual({
             success: true,
-            result: { successes: ["x.mp4", "y.mp4"], failures: [] },
+            result: { successes: expectedAllSuccesses, failures: [] },
         });
         // Check that .done file exists
         const doneFlag = path.join(uploadDir, reqId + ".done");

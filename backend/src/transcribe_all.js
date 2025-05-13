@@ -22,7 +22,11 @@ class InputDirectoryAccess extends Error {
  */
 
 /**
- * @typedef {{ successes: string[], failures: TranscriptionFailure[] }} TranscriptionStatus
+ * @typedef {{ source: string, target: string }} TranscriptionSuccess
+ */
+
+/**
+ * @typedef {{ successes: TranscriptionSuccess[], failures: TranscriptionFailure[] }} TranscriptionStatus
  */
 
 /**
@@ -51,7 +55,7 @@ async function transcribeAllGeneric(inputDir, targetFun) {
         const outputPath = targetFun(filename);
         try {
             await transcribeFile(inputPath, outputPath);
-            successes.push(filename);
+            successes.push({ source: inputPath, target: outputPath });
         } catch (/** @type {unknown} */ err) {
             const internalMessage =
                 err instanceof Error ? err.message : String(err);

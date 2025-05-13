@@ -64,8 +64,18 @@ describe("processDiaryAudios", () => {
         // Ensure formatted filename timestamps are predictable
         formatFileTimestamp.mockReturnValue(new Date("2025-05-12"));
         // Simulate transcription with two successes and one failure
+        const dateStr = new Date("2025-05-12").toISOString();
         transcribeAllGeneric.mockResolvedValue({
-            successes: ["file1.mp3", "file2.mp3"],
+            successes: [
+                {
+                    source: path.join("/fake/diaryDir", "file1.mp3"),
+                    target: path.join("/fake/assetsDir", dateStr, "transcription.json"),
+                },
+                {
+                    source: path.join("/fake/diaryDir", "file2.mp3"),
+                    target: path.join("/fake/assetsDir", dateStr, "transcription.json"),
+                },
+            ],
             failures: [{ file: "bad.mp3", message: "error occurred" }],
         });
         // Use the mock transaction to invoke callback with our fake storage
