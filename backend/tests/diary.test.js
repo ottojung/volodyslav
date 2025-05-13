@@ -8,10 +8,6 @@
 jest.mock("fs/promises", () => ({
     // Mock file operations to spy on readdir, copyFile and unlink calls
     readdir: jest.fn(),
-    copyFile: jest.fn(),
-    unlink: jest.fn(),
-    access: jest.fn(),
-    mkdir: jest.fn(),
 }));
 
 // Mock environment functions to provide fixed diary and assets directories
@@ -36,7 +32,7 @@ jest.mock("../src/logger", () => ({
 }));
 
 const { processDiaryAudios } = require("../src/diary");
-const { readdir, copyFile } = require("fs/promises");
+const { readdir } = require("fs/promises");
 const {
     diaryAudiosDirectory,
     eventLogAssetsDirectory,
@@ -60,12 +56,6 @@ describe("processDiaryAudios", () => {
         // Simulate directory entries and copy behaviour
         const filenames = ["file1.mp3", "file2.mp3", "bad.mp3"];
         readdir.mockResolvedValue(filenames);
-        // copyFile succeeds for good files, fails for bad.mp3
-        copyFile.mockImplementation((src, _dest) => {
-            if (src.endsWith("bad.mp3"))
-                return Promise.reject(new Error("error occurred"));
-            return Promise.resolve();
-        });
         // Use the mock transaction to invoke callback with our fake storage
         transaction.mockImplementation(async (_deleter, cb) => {
             await cb(storage);
