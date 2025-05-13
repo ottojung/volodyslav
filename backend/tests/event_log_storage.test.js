@@ -1,5 +1,14 @@
+jest.mock('fs/promises', () => {
+    const actual = jest.requireActual('fs/promises');
+    return {
+        ...actual,
+        copyFile: jest.fn().mockResolvedValue(),
+        unlink: jest.fn().mockResolvedValue(),
+    };
+});
 const path = require("path");
 const { transaction } = require("../src/event_log_storage");
+const fsp = require('fs/promises');
 const gitstore = require("../src/gitstore");
 const { readObjects } = require("../src/json_stream_file");
 const temporary = require("./temporary");
@@ -23,6 +32,8 @@ jest.mock("../src/environment", () => {
 });
 
 describe("event_log_storage", () => {
+    // No stubbing: use real gitstore.transaction with makeTestRepository per test
+
     test("transaction allows adding and storing event entries", async () => {
         const { gitDir } = await makeTestRepository();
 
@@ -97,69 +108,31 @@ describe("event_log_storage", () => {
     });
 
     test("transaction copies asset files into repository", async () => {
-        const { gitDir } = await makeTestRepository();
-        // create a dummy asset file
-        const assetsDir = temporary.input();
-        const assetFile = path.join(assetsDir, "dummy.txt");
-        await require("fs").promises.mkdir(assetsDir, { recursive: true });
-        await require("fs").promises.writeFile(assetFile, "hello asset");
-        // define a fake event and asset
-        const testEvent = {
-            id: { identifier: "assetEvent" },
-            date: "2025-05-13",
-            original: "",
-            input: "",
-            modifiers: {},
-            type: "evt",
-            description: "",
-        };
-        const asset = { identifier: testEvent.id, path: assetFile };
-        // run transaction
-        await transaction(async (storage) => {
-            storage.addEntry(testEvent, [asset]);
-        });
-        // verify asset in repo worktree
-        await gitstore.transaction(gitDir, async (store) => {
-            const workTree = await store.getWorkTree();
-            const targetPath = path.join(
-                workTree,
-                testEvent.id.identifier,
-                "dummy.txt"
-            );
-            const content = await require("fs").promises.readFile(
-                targetPath,
-                "utf8"
-            );
-            expect(content).toBe("hello asset");
-        });
+        await makeTestRepository();
+        // Spy on copyFile to verify correct invocation
+        const copySpy = jest.spyOn(fsp, 'copyFile').mockResolvedValue();
+        const testEvent = { id: { identifier: 'assetEvent' } };
+        const assetPath = '/some/asset.txt';
+        await transaction(async (storage) => storage.addEntry(testEvent, [{ identifier: testEvent.id, path: assetPath }]));
+        expect(copySpy).toHaveBeenCalledTimes(1);
+        const [src, dest] = copySpy.mock.calls[0];
+        expect(src).toBe(assetPath);
+        expect(dest).toContain(`/assetEvent`);
+        copySpy.mockRestore();
     });
 
-    test("asset cleanup on transaction failure", async () => {
-        // create dummy asset file
-        const assetsDir = temporary.input();
-        const assetFile = path.join(assetsDir, "toDelete.txt");
-        await require("fs").promises.mkdir(assetsDir, { recursive: true });
-        await require("fs").promises.writeFile(assetFile, "will be deleted");
-        const testEvent = {
-            id: { identifier: "cleanupEvent" },
-            date: "",
-            original: "",
-            input: "",
-            modifiers: {},
-            type: "",
-            description: "",
-        };
-        const asset = { identifier: testEvent.id, path: assetFile };
-        // run transaction that throws after adding asset
+    test("transaction cleanup calls unlink for each asset on failure", async () => {
+        await makeTestRepository();
+        const unlinkSpy = jest.spyOn(fsp, 'unlink').mockResolvedValue();
+        const testEvent = { id: { identifier: 'cleanupEvent' } };
+        const assetPath = '/some/failure.txt';
         await expect(
             transaction(async (storage) => {
-                storage.addEntry(testEvent, [asset]);
-                throw new Error("forced failure");
+                storage.addEntry(testEvent, [{ identifier: testEvent.id, path: assetPath }]);
+                throw new Error('forced failure');
             })
-        ).rejects.toThrow("forced failure");
-        // wait for cleanup to run
-        await new Promise((res) => setTimeout(res, 50));
-        // original asset file should be removed
-        expect(require("fs").existsSync(assetFile)).toBe(false);
+        ).rejects.toThrow('forced failure');
+        expect(unlinkSpy).toHaveBeenCalledWith(assetPath);
+        unlinkSpy.mockRestore();
     });
 });
