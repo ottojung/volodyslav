@@ -119,7 +119,7 @@ describe("event_log_storage", () => {
         const assetPath = "/some/asset.txt";
         await transaction(async (storage) =>
             storage.addEntry(testEvent, [
-                { identifier: testEvent.id, path: assetPath },
+                { event: testEvent, path: assetPath },
             ])
         );
         expect(copySpy).toHaveBeenCalledTimes(1);
