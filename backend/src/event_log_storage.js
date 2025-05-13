@@ -14,6 +14,7 @@ const { appendFile, copyFile, unlink } = require("fs/promises");
 const gitstore = require("./gitstore");
 const event = require("./event");
 const { logWarning } = require("./logger");
+const { targetPath } = require("./event/asset");
 
 /**
  * @class
@@ -105,15 +106,12 @@ async function appendEntriesToFile(filePath, entries) {
 
 /**
  * New helper to copy all queued assets into the worktree
- * @param {string} workTree - The path to the temporary worktree.
- * @param {Array<import('./event').Asset>} assets - An array of assets to copy.
+ * @param {import('./event').Asset[]} assets - An array of assets to copy.
  * @returns {Promise<void>} - A promise that resolves when all assets are copied.
  */
-async function copyAssets(workTree, assets) {
+async function copyAssets(assets) {
     for (const asset of assets) {
-        const assetDir = path.join(workTree, asset.identifier.identifier);
-        const assetTargetPath = path.join(assetDir, asset.path);
-        await copyFile(asset.path, assetTargetPath);
+        await copyFile(asset.path, targetPath(asset));
     }
 }
 
@@ -144,7 +142,7 @@ async function performGitTransaction(eventLogStorage, transformation) {
 
         // Copy any queued assets
         const assets = eventLogStorage.getNewAssets();
-        await copyAssets(workTree, assets);
+        await copyAssets(assets);
     });
 }
 

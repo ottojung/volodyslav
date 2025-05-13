@@ -1,3 +1,5 @@
+const path = require('path');
+const { eventLogAssetsDirectory } = require('../environment');
 
 class AssetClass {
     /** @type {import('./id').EventId} */
@@ -27,7 +29,7 @@ class AssetClass {
 /** @typedef {AssetClass} Asset */
 
 /**
- *
+ * Primary constructor for Asset.
  * @param {import('./id').EventId} identifier
  * @param {string} asset
  * @returns {Asset}
@@ -36,6 +38,16 @@ function make(identifier, asset) {
     return new AssetClass(identifier, asset);
 }
 
+/**
+ * @param {Asset} asset
+ * @returns {string}
+ */
+function targetPath(asset) {
+    const baseDir = eventLogAssetsDirectory();
+    return path.join(baseDir, asset.identifier.identifier.toString());
+}
+
 module.exports = {
+    targetPath,
     make,
 };

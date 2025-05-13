@@ -1,5 +1,5 @@
-jest.mock('fs/promises', () => {
-    const actual = jest.requireActual('fs/promises');
+jest.mock("fs/promises", () => {
+    const actual = jest.requireActual("fs/promises");
     return {
         ...actual,
         copyFile: jest.fn().mockResolvedValue(),
@@ -8,7 +8,7 @@ jest.mock('fs/promises', () => {
 });
 const path = require("path");
 const { transaction } = require("../src/event_log_storage");
-const fsp = require('fs/promises');
+const fsp = require("fs/promises");
 const gitstore = require("../src/gitstore");
 const { readObjects } = require("../src/json_stream_file");
 const temporary = require("./temporary");
@@ -24,6 +24,10 @@ jest.mock("../src/environment", () => {
     const path = require("path");
     return {
         logLevel: jest.fn().mockReturnValue("debug"),
+        eventLogAssetsDirectory: jest.fn().mockImplementation(() => {
+            const dir = temporary.input();
+            return path.join(dir, "event_log_assets");
+        }),
         eventLogDirectory: jest.fn().mockImplementation(() => {
             const dir = temporary.input();
             return path.join(dir, "event_log");
@@ -110,10 +114,14 @@ describe("event_log_storage", () => {
     test("transaction copies asset files into repository", async () => {
         await makeTestRepository();
         // Spy on copyFile to verify correct invocation
-        const copySpy = jest.spyOn(fsp, 'copyFile').mockResolvedValue();
-        const testEvent = { id: { identifier: 'assetEvent' } };
-        const assetPath = '/some/asset.txt';
-        await transaction(async (storage) => storage.addEntry(testEvent, [{ identifier: testEvent.id, path: assetPath }]));
+        const copySpy = jest.spyOn(fsp, "copyFile").mockResolvedValue();
+        const testEvent = { id: { identifier: "assetEvent" } };
+        const assetPath = "/some/asset.txt";
+        await transaction(async (storage) =>
+            storage.addEntry(testEvent, [
+                { identifier: testEvent.id, path: assetPath },
+            ])
+        );
         expect(copySpy).toHaveBeenCalledTimes(1);
         const [src, dest] = copySpy.mock.calls[0];
         expect(src).toBe(assetPath);
@@ -123,15 +131,17 @@ describe("event_log_storage", () => {
 
     test("transaction cleanup calls unlink for each asset on failure", async () => {
         await makeTestRepository();
-        const unlinkSpy = jest.spyOn(fsp, 'unlink').mockResolvedValue();
-        const testEvent = { id: { identifier: 'cleanupEvent' } };
-        const assetPath = '/some/failure.txt';
+        const unlinkSpy = jest.spyOn(fsp, "unlink").mockResolvedValue();
+        const testEvent = { id: { identifier: "cleanupEvent" } };
+        const assetPath = "/some/failure.txt";
         await expect(
             transaction(async (storage) => {
-                storage.addEntry(testEvent, [{ identifier: testEvent.id, path: assetPath }]);
-                throw new Error('forced failure');
+                storage.addEntry(testEvent, [
+                    { identifier: testEvent.id, path: assetPath },
+                ]);
+                throw new Error("forced failure");
             })
-        ).rejects.toThrow('forced failure');
+        ).rejects.toThrow("forced failure");
         expect(unlinkSpy).toHaveBeenCalledWith(assetPath);
         unlinkSpy.mockRestore();
     });
