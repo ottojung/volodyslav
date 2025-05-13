@@ -29,6 +29,8 @@ jest.mock("../src/event_log_storage", () => ({
 // Mock the logger to capture error logging without printing to console
 jest.mock("../src/logger", () => ({
     logError: jest.fn(),
+    logWarning: jest.fn(),
+    logInfo: jest.fn(),
 }));
 
 const { processDiaryAudios } = require("../src/diary");
