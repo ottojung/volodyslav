@@ -50,6 +50,7 @@ class FileDeleterClass {
      * Deletes a file at the specified path.
      * @param {string} filePath - The path to the file to delete.
      * @returns {Promise<void>} - A promise that resolves when the file is deleted.
+     * @throws {number} - If the file cannot be deleted.
      */
     async delete(filePath) {
         try {

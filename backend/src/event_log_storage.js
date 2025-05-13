@@ -113,7 +113,7 @@ async function appendEntriesToFile(filePath, entries) {
  */
 async function copyAssets(assets) {
     for (const asset of assets) {
-        await copyFile(asset.path, targetPath(asset));
+        await copyFile(asset.filepath, targetPath(asset));
     }
 }
 
@@ -158,15 +158,15 @@ async function cleanupAssets(deleter, eventLogStorage) {
     const assets = eventLogStorage.getNewAssets();
     for (const asset of assets) {
         try {
-            await deleter.delete(asset.path);
+            await deleter.delete(asset.filepath);
         } catch {
             logWarning(
                 {
-                    file: asset.path,
+                    file: asset.filepath,
                     error: "error occurred",
                     directory: eventLogDirectory(),
                 },
-                `Failed to remove asset file ${asset.path}. This may be due to the file being in use or not existing.`
+                `Failed to remove asset file ${asset.filepath}. This may be due to the file being in use or not existing.`
             );
         }
     }

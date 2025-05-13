@@ -2,12 +2,12 @@ const path = require("path");
 const { readdir, copyFile, mkdir } = require("fs/promises");
 const { formatFileTimestamp } = require("./format_time_stamp");
 const { logError } = require("./logger");
-const {
-    diaryAudiosDirectory,
-    eventLogAssetsDirectory,
-} = require("./environment");
+const { diaryAudiosDirectory } = require("./environment");
 const { transaction } = require("./event_log_storage");
 const eventId = require("./event/id");
+const asset = require("./event/asset");
+
+/** @typedef {import('./event/asset').Asset} Asset */
 
 /**
  * @param {string} filename
@@ -15,16 +15,6 @@ const eventId = require("./event/id");
  */
 function filename_to_date(filename) {
     return formatFileTimestamp(filename);
-}
-
-/**
- * @param {string} filename
- * @returns {string}
- */
-function assets_directory(filename) {
-    const date = filename_to_date(filename);
-    const ret = path.join(eventLogAssetsDirectory(), date.toISOString());
-    return ret;
 }
 
 /**
@@ -50,20 +40,42 @@ async function copyWithOverwrite(inputPath, outputPath) {
  */
 async function processDiaryAudios(deleter, rng) {
     const diaryAudiosDir = diaryAudiosDirectory();
-    const entries = await readdir(diaryAudiosDir);
+    const inputFiles = await readdir(diaryAudiosDir);
+
+    // prepare assets.
+    const assets = inputFiles.map((filename) => {
+        const filepath = path.join(diaryAudiosDir, filename);
+        const date = filename_to_date(filename);
+        const id = eventId.make(rng);
+
+        /** @type {import('./event/structure').Event} */
+        const event = {
+            id,
+            date,
+            original: `diary [when 0 hours ago]`,
+            input: `diary [when 0 hours ago]`,
+            modifiers: {
+                when: "0 hours ago",
+            },
+            type: "diary",
+            description: "",
+        };
+
+        const ass = asset.make(event, filepath);
+        return ass;
+    });
 
     const successes = [];
     const failures = [];
-    for (const filename of entries) {
-        const inputPath = path.join(diaryAudiosDir, filename);
-        const targetDir = assets_directory(filename);
-        const targetPath = path.join(targetDir, filename);
+    for (const ass of assets) {
+        const inputPath = ass.filepath;
+        const targetPath = asset.targetPath(ass);
         try {
             await copyWithOverwrite(inputPath, targetPath);
-            successes.push({ source: inputPath, target: targetPath });
+            successes.push(ass);
         } catch (err) {
             const message = err instanceof Error ? err.message : String(err);
-            failures.push({ file: filename, message });
+            failures.push({ file: path.basename(inputPath), message });
         }
     }
 
@@ -82,8 +94,8 @@ async function processDiaryAudios(deleter, rng) {
     await writeChanges(deleter, rng, successes);
 
     // Delete the original audio files.
-    for (const { source } of successes) {
-        await deleter.delete(source);
+    for (const ass of successes) {
+        await deleter.delete(ass.filepath);
     }
 }
 
@@ -92,37 +104,16 @@ async function processDiaryAudios(deleter, rng) {
  * transcribed diary audio files.
  * @param {import('./filesystem/delete_file').FileDeleter} deleter - A file deleter instance.
  * @param {import('./random').RNG} rng - A random number generator instance.
- * @param {Array<import('./transcribe_all').TranscriptionSuccess>} successes - An array of TranscriptionSuccess objects.
+ * @param {Asset[]} successes - An array of TranscriptionSuccess objects.
  * @returns {Promise<void>} - A promise that resolves when the changes are written.
  */
 async function writeChanges(deleter, rng, successes) {
-    // prepare entries to append
-    const entries = successes.map(({ source }) => {
-        const filename = path.basename(source);
-        const date = filename_to_date(filename);
-        const id = eventId.make(rng);
-
-        /** @type {import('./event/structure').Event} */
-        const ret = {
-            id,
-            date,
-            original: `diary [when 0 hours ago]`,
-            input: `diary [when 0 hours ago]`,
-            modifiers: {
-                when: "0 hours ago",
-            },
-            type: "diary",
-            description: "",
-        };
-        return ret;
-    });
-
     /**
      * @type {import('./event_log_storage').EventLogStorage}
      */
     await transaction(deleter, async (eventLogStorage) => {
-        for (const entry of entries) {
-            eventLogStorage.addEntry(entry, []);
+        for (const ass of successes) {
+            eventLogStorage.addEntry(ass.event, [ass]);
         }
     });
 }

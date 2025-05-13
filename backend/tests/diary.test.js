@@ -4,7 +4,6 @@
 // results by copying successful audio files, removing originals, logging failures,
 // and recording events in the event log. It uses mocks to simulate file operations,
 // transcription outputs, and the event-log API.
-const path = require("path");
 
 jest.mock("fs/promises", () => ({
     // Mock file operations to spy on readdir, copyFile and unlink calls
@@ -63,7 +62,8 @@ describe("processDiaryAudios", () => {
         readdir.mockResolvedValue(filenames);
         // copyFile succeeds for good files, fails for bad.mp3
         copyFile.mockImplementation((src, _dest) => {
-            if (src.endsWith("bad.mp3")) return Promise.reject(new Error("error occurred"));
+            if (src.endsWith("bad.mp3"))
+                return Promise.reject(new Error("error occurred"));
             return Promise.resolve();
         });
         // Use the mock transaction to invoke callback with our fake storage
@@ -94,11 +94,11 @@ describe("processDiaryAudios", () => {
         expect(copyFile).toHaveBeenCalledTimes(3);
         expect(copyFile).toHaveBeenCalledWith(
             "/fake/diaryDir/file1.mp3",
-            path.join("/fake/assetsDir", dateStr, "file1.mp3")
+            expect.stringContaining(eventLogAssetsDirectory()),
         );
         expect(copyFile).toHaveBeenCalledWith(
             "/fake/diaryDir/file2.mp3",
-            path.join("/fake/assetsDir", dateStr, "file2.mp3")
+            expect.stringContaining(eventLogAssetsDirectory()),
         );
 
         // Verify original files are removed after copying

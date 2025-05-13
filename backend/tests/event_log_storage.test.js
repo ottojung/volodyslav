@@ -126,7 +126,7 @@ describe("event_log_storage", () => {
         };
         const assetPath = "/some/asset.txt";
         await transaction(deleter, async (storage) =>
-            storage.addEntry(testEvent, [{ event: testEvent, path: assetPath }])
+            storage.addEntry(testEvent, [{ event: testEvent, filepath: assetPath }])
         );
         expect(copySpy).toHaveBeenCalledTimes(1);
         const [src, dest] = copySpy.mock.calls[0];
@@ -143,7 +143,7 @@ describe("event_log_storage", () => {
         await expect(
             transaction(deleter, async (storage) => {
                 storage.addEntry(testEvent, [
-                    { identifier: testEvent.id, path: assetPath },
+                    { identifier: testEvent.id, filepath: assetPath },
                 ]);
                 throw new Error("forced failure");
             })

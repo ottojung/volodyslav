@@ -6,7 +6,7 @@ class AssetClass {
     event;
 
     /** @type {string} */
-    path;
+    filepath;
 
     /**
      * This is a value that is never actually assigned.
@@ -22,7 +22,7 @@ class AssetClass {
      */
     constructor(event, path) {
         this.event = event;
-        this.path = path;
+        this.filepath = path;
     }
 }
 
@@ -31,11 +31,11 @@ class AssetClass {
 /**
  * Primary constructor for Asset.
  * @param {import('./structure').Event} event
- * @param {string} asset
+ * @param {string} filepath
  * @returns {Asset}
  */
-function make(event, asset) {
-    return new AssetClass(event, asset);
+function make(event, filepath) {
+    return new AssetClass(event, filepath);
 }
 
 /**
