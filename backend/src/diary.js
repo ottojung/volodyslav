@@ -79,7 +79,7 @@ async function processDiaryAudios(deleter, rng) {
     });
 
     // now update the event-log storage.
-    await writeChanges(rng, successes);
+    await writeChanges(deleter, rng, successes);
 
     // Delete the original audio files.
     for (const { source } of successes) {
@@ -90,11 +90,12 @@ async function processDiaryAudios(deleter, rng) {
 /**
  * Writes changes to the event log by appending entries for successfully
  * transcribed diary audio files.
+ * @param {import('./filesystem/delete_file').FileDeleter} deleter - A file deleter instance.
  * @param {import('./random').RNG} rng - A random number generator instance.
  * @param {Array<{ source: string, target: string }>} successes - An array of TranscriptionSuccess objects.
  * @returns {Promise<void>} - A promise that resolves when the changes are written.
  */
-async function writeChanges(rng, successes) {
+async function writeChanges(deleter, rng, successes) {
     // prepare entries to append
     const entries = successes.map(({ source }) => {
         const filename = path.basename(source);
@@ -119,7 +120,7 @@ async function writeChanges(rng, successes) {
     /**
      * @type {import('./event_log_storage').EventLogStorage}
      */
-    await transaction(async (eventLogStorage) => {
+    await transaction(deleter, async (eventLogStorage) => {
         for (const entry of entries) {
             eventLogStorage.addEntry(entry, []);
         }

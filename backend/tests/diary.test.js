@@ -67,7 +67,7 @@ describe("processDiaryAudios", () => {
             return Promise.resolve();
         });
         // Use the mock transaction to invoke callback with our fake storage
-        transaction.mockImplementation(async (cb) => {
+        transaction.mockImplementation(async (_deleter, cb) => {
             await cb(storage);
         });
     });
