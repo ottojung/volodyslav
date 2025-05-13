@@ -8,13 +8,15 @@ const eventId = require("./event/id");
 const asset = require("./event/asset");
 
 /** @typedef {import('./event/asset').Asset} Asset */
+/** @typedef {import('./filesystem/delete_file').FileDeleter} FileDeleter */
+/** @typedef {import('./random').RNG} RNG */
 
 /**
  * Processes diary audio files by copying assets, updating the event log,
  * and cleaning up the originals.
  *
- * @param {import('./filesystem/delete_file').FileDeleter} deleter - A file deleter instance.
- * @param {import('./random').RNG} rng - A random number generator instance.
+ * @param {FileDeleter} deleter - A file deleter instance.
+ * @param {RNG} rng - A random number generator instance.
  * @returns {Promise<void>} - A promise that resolves when processing is complete.
  */
 async function processDiaryAudios(deleter, rng) {
@@ -76,7 +78,7 @@ async function processDiaryAudios(deleter, rng) {
 /**
  * Writes changes to the event log by appending entries for successfully
  * transcribed diary audio files.
- * @param {import('./filesystem/delete_file').FileDeleter} deleter - A file deleter instance.
+ * @param {FileDeleter} deleter - A file deleter instance.
  * @param {Asset} ass - An array of TranscriptionSuccess objects.
  * @returns {Promise<void>} - A promise that resolves when the changes are written.
  */
@@ -92,7 +94,7 @@ async function writeAsset(deleter, ass) {
 /**
  * Deletes original diary audio files and logs outcomes.
  *
- * @param {import('./filesystem/delete_file').FileDeleter} deleter
+ * @param {FileDeleter} deleter
  * @param {Asset[]} successes
  * @param {string} diaryAudiosDir
  */
