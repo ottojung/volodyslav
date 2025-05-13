@@ -1,5 +1,5 @@
 const path = require("path");
-const { readdir, copyFile, mkdir } = require("fs/promises");
+const { readdir } = require("fs/promises");
 const { formatFileTimestamp } = require("./format_time_stamp");
 const { logError } = require("./logger");
 const { diaryAudiosDirectory } = require("./environment");
@@ -15,19 +15,6 @@ const asset = require("./event/asset");
  */
 function filename_to_date(filename) {
     return formatFileTimestamp(filename);
-}
-
-/**
- * Ensures target directory exists, warns on existing file, then copies the file.
- * @param {string} inputPath
- * @param {string} outputPath
- * @returns {Promise<void>}
- * @throws {Error} If the copy operation fails.
- */
-async function copyWithOverwrite(inputPath, outputPath) {
-    const targetDir = path.dirname(outputPath);
-    await mkdir(targetDir, { recursive: true });
-    await copyFile(inputPath, outputPath);
 }
 
 /**
@@ -67,15 +54,15 @@ async function processDiaryAudios(deleter, rng) {
 
     const successes = [];
     const failures = [];
+
+    // now update the event-log storage.
     for (const ass of assets) {
-        const inputPath = ass.filepath;
-        const targetPath = asset.targetPath(ass);
         try {
-            await copyWithOverwrite(inputPath, targetPath);
+            await writeAsset(deleter, ass);
             successes.push(ass);
         } catch (err) {
             const message = err instanceof Error ? err.message : String(err);
-            failures.push({ file: path.basename(inputPath), message });
+            failures.push({ file: path.basename(ass.filepath), message });
         }
     }
 
@@ -90,9 +77,6 @@ async function processDiaryAudios(deleter, rng) {
         );
     });
 
-    // now update the event-log storage.
-    await writeChanges(deleter, rng, successes);
-
     // Delete the original audio files.
     for (const ass of successes) {
         await deleter.delete(ass.filepath);
@@ -103,18 +87,15 @@ async function processDiaryAudios(deleter, rng) {
  * Writes changes to the event log by appending entries for successfully
  * transcribed diary audio files.
  * @param {import('./filesystem/delete_file').FileDeleter} deleter - A file deleter instance.
- * @param {import('./random').RNG} rng - A random number generator instance.
- * @param {Asset[]} successes - An array of TranscriptionSuccess objects.
+ * @param {Asset} ass - An array of TranscriptionSuccess objects.
  * @returns {Promise<void>} - A promise that resolves when the changes are written.
  */
-async function writeChanges(deleter, rng, successes) {
+async function writeAsset(deleter, ass) {
     /**
      * @type {import('./event_log_storage').EventLogStorage}
      */
     await transaction(deleter, async (eventLogStorage) => {
-        for (const ass of successes) {
-            eventLogStorage.addEntry(ass.event, [ass]);
-        }
+        eventLogStorage.addEntry(ass.event, [ass]);
     });
 }
 

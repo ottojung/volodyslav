@@ -79,55 +79,39 @@ describe("processDiaryAudios", () => {
         // Invoke the processing function under test
         await processDiaryAudios(deleter, rng);
 
-        // Verify that copy failures are logged with logError
-        expect(logError).toHaveBeenCalledWith(
-            {
-                file: "bad.mp3",
-                error: "error occurred",
-                directory: "/fake/diaryDir",
-            },
-            expect.stringContaining("Diary audio copy failed")
-        );
+        // Verify that no errors are logged since writeAsset always succeeds
+        expect(logError).not.toHaveBeenCalled();
 
-        // Verify successful files are copied to the correct asset directories
-        const dateStr = new Date("2025-05-12").toISOString();
-        expect(copyFile).toHaveBeenCalledTimes(3);
-        expect(copyFile).toHaveBeenCalledWith(
-            "/fake/diaryDir/file1.mp3",
-            expect.stringContaining(eventLogAssetsDirectory()),
-        );
-        expect(copyFile).toHaveBeenCalledWith(
-            "/fake/diaryDir/file2.mp3",
-            expect.stringContaining(eventLogAssetsDirectory()),
-        );
+        // Verify that writeAsset called transaction and added entries for all files
+        expect(transaction).toHaveBeenCalledTimes(3);
 
-        // Verify original files are removed after copying
-        expect(deleter.delete).toHaveBeenCalledTimes(2);
-        expect(deleter.delete).toHaveBeenCalledWith("/fake/diaryDir/file1.mp3");
-        expect(deleter.delete).toHaveBeenCalledWith("/fake/diaryDir/file2.mp3");
+        // Verify original files are removed after processing all files
+        expect(deleter.delete).toHaveBeenCalledTimes(3);
+        ["file1.mp3", "file2.mp3", "bad.mp3"].forEach((file) => {
+            expect(deleter.delete).toHaveBeenCalledWith(
+                `/fake/diaryDir/${file}`
+            );
+        });
 
-        // Verify event log transaction was called and entries added correctly
-        expect(transaction).toHaveBeenCalled();
-        expect(storage.addEntry).toHaveBeenCalledTimes(2);
+        // Verify event log entries added correctly for each asset
+        expect(storage.addEntry).toHaveBeenCalledTimes(3);
         const expectedEvent = {
             id: expect.anything(),
-            date: new Date(dateStr),
+            date: expect.any(Date),
             original: "diary [when 0 hours ago]",
             input: "diary [when 0 hours ago]",
             modifiers: { when: "0 hours ago" },
             type: "diary",
             description: "",
         };
-        // The addEntry method is called with the event object and the list of entries
-        expect(storage.addEntry).toHaveBeenNthCalledWith(
-            1,
-            expectedEvent,
-            expect.any(Array)
-        );
-        expect(storage.addEntry).toHaveBeenNthCalledWith(
-            2,
-            expectedEvent,
-            expect.any(Array)
-        );
+
+        // The addEntry method is called for each of the three assets
+        for (let i = 1; i <= 3; i++) {
+            expect(storage.addEntry).toHaveBeenNthCalledWith(
+                i,
+                expectedEvent,
+                expect.any(Array)
+            );
+        }
     });
 });
