@@ -16,7 +16,7 @@
 
 const path = require("path");
 const { eventLogDirectory } = require("./environment");
-const { appendFile } = require("fs/promises");
+const { appendFile, copyFile } = require("fs/promises");
 const gitstore = require("./gitstore");
 const event = require("./event");
 
@@ -109,6 +109,20 @@ async function appendEntriesToFile(filePath, entries) {
 }
 
 /**
+ * New helper to copy all queued assets into the worktree
+ * @param {string} workTree - The path to the temporary worktree.
+ * @param {Array<import('./event').Asset>} assets - An array of assets to copy.
+ * @returns {Promise<void>} - A promise that resolves when all assets are copied.
+ */
+async function copyAssets(workTree, assets) {
+    for (const asset of assets) {
+        const assetDir = path.join(workTree, asset.identifier.identifier);
+        const assetTargetPath = path.join(assetDir, asset.path);
+        await copyFile(asset.path, assetTargetPath);
+    }
+}
+
+/**
  * @typedef {(eventLogStorage: EventLogStorage) => Promise<void>} Transformation
  */
 
@@ -152,6 +166,10 @@ async function transaction(transformation) {
 
         // Stage and commit all changes; failure indicates no entries were added
         await store.commit("Event log storage update");
+
+        // Copy assets to the repository
+        const assets = eventLogStorage.getNewAssets();
+        await copyAssets(workTree, assets);
     });
 }
 
