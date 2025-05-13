@@ -1,15 +1,25 @@
 /**
- * @file eventLogStorage.js
- * @description This module handles the storage of event log entries using a Git-based strategy.
+ * @file event_log_storage.js
+ * @description Provides atomic, Git-based storage for event log entries and asset files.
  *
- * Storage Strategy:
- * - Entries are appended to a `data.json` file in a bare Git repository under `eventLogDirectory()`.
- * - Uses `gitstore.transaction` to safely clone, apply changes, commit, and push in a temporary worktree.
+ * Exports:
+ * - `transaction(transformation)`: Runs a transformation to queue entries/assets, writes entries,
+ *   copies assets into a bare Git repo worktree, commits, and pushes atomically.
  *
- * Atomicity and Error Behavior:
- * - If the transformation adds no entries, the underlying `git commit` will fail due to no staged changes,
- *   causing the transaction to reject. This ensures that empty operations are not silently ignored.
- * - All filesystem and Git operations occur in a sandboxed temporary directory, cleaned up on completion or error.
+ * Behavior:
+ * 1. Constructs an in-memory `EventLogStorage`.
+ * 2. Executes the async `transformation(eventLogStorage)` callback to accumulate entries via `addEntry(entry, assets)`.
+ * 3. In a single Git transaction:
+ *    - Appends queued entries to `data.json`.
+ *    - Copies queued asset files into the worktree.
+ *    - Commits and pushes all changes. If no entries are queued, commit fails and rolls back.
+ * 4. On any error (transformation, write, copy, or commit), all copied asset files are cleaned up.
+ *
+ * Helpers:
+ * - `performGitTransaction(eventLogStorage, transformation)`: Core logic invoking `gitstore.transaction`.
+ * - `appendEntriesToFile(filePath, entries)`: Serializes and appends new entries.
+ * - `copyAssets(workTree, assets)`: Copies asset files into the worktree directory.
+ * - `cleanupAssets(eventLogStorage)`: Deletes any asset files on error.
  */
 
 
