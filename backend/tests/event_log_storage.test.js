@@ -33,7 +33,7 @@ describe("event_log_storage", () => {
             input: "processed test input",
             modifiers: { test: "modifier" },
             type: "test_event",
-            description: "Test event description"
+            description: "Test event description",
         };
 
         await transaction(async (eventLogStorage) => {
@@ -60,7 +60,7 @@ describe("event_log_storage", () => {
             input: "processed first input",
             modifiers: { foo: "bar" },
             type: "first_event",
-            description: "First event description"
+            description: "First event description",
         };
         const event2 = {
             id: { identifier: "event2" },
@@ -69,7 +69,7 @@ describe("event_log_storage", () => {
             input: "processed second input",
             modifiers: { baz: "qux" },
             type: "second_event",
-            description: "Second event description"
+            description: "Second event description",
         };
 
         await transaction(async (eventLogStorage) => {
@@ -94,5 +94,72 @@ describe("event_log_storage", () => {
                 // no entries added
             })
         ).rejects.toThrow();
+    });
+
+    test("transaction copies asset files into repository", async () => {
+        const { gitDir } = await makeTestRepository();
+        // create a dummy asset file
+        const assetsDir = temporary.input();
+        const assetFile = path.join(assetsDir, "dummy.txt");
+        await require("fs").promises.mkdir(assetsDir, { recursive: true });
+        await require("fs").promises.writeFile(assetFile, "hello asset");
+        // define a fake event and asset
+        const testEvent = {
+            id: { identifier: "assetEvent" },
+            date: "2025-05-13",
+            original: "",
+            input: "",
+            modifiers: {},
+            type: "evt",
+            description: "",
+        };
+        const asset = { identifier: testEvent.id, path: assetFile };
+        // run transaction
+        await transaction(async (storage) => {
+            storage.addEntry(testEvent, [asset]);
+        });
+        // verify asset in repo worktree
+        await gitstore.transaction(gitDir, async (store) => {
+            const workTree = await store.getWorkTree();
+            const targetPath = path.join(
+                workTree,
+                testEvent.id.identifier,
+                "dummy.txt"
+            );
+            const content = await require("fs").promises.readFile(
+                targetPath,
+                "utf8"
+            );
+            expect(content).toBe("hello asset");
+        });
+    });
+
+    test("asset cleanup on transaction failure", async () => {
+        // create dummy asset file
+        const assetsDir = temporary.input();
+        const assetFile = path.join(assetsDir, "toDelete.txt");
+        await require("fs").promises.mkdir(assetsDir, { recursive: true });
+        await require("fs").promises.writeFile(assetFile, "will be deleted");
+        const testEvent = {
+            id: { identifier: "cleanupEvent" },
+            date: "",
+            original: "",
+            input: "",
+            modifiers: {},
+            type: "",
+            description: "",
+        };
+        const asset = { identifier: testEvent.id, path: assetFile };
+        // run transaction that throws after adding asset
+        await expect(
+            transaction(async (storage) => {
+                storage.addEntry(testEvent, [asset]);
+                throw new Error("forced failure");
+            })
+        ).rejects.toThrow("forced failure");
+        // wait for cleanup to run
+        await new Promise((res) => setTimeout(res, 50));
+        // original asset file should be removed
+        expect(require("fs").existsSync(assetFile)).toBe(false);
     });
 });
