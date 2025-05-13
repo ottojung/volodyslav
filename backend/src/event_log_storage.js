@@ -16,7 +16,7 @@
 
 const path = require("path");
 const { eventLogDirectory } = require("./environment");
-const { appendFile, copyFile } = require("fs/promises");
+const { appendFile, copyFile, unlink } = require("fs/promises");
 const gitstore = require("./gitstore");
 const event = require("./event");
 
@@ -160,7 +160,20 @@ async function performGitTransaction(eventLogStorage, transformation) {
  */
 async function transaction(transformation) {
     const eventLogStorage = new EventLogStorageClass();
-    await performGitTransaction(eventLogStorage, transformation);
+    try {
+        await performGitTransaction(eventLogStorage, transformation);
+    } catch (error) {
+        // If anything goes wrong, clean up all copied assets and rethrow
+        const assets = eventLogStorage.getNewAssets();
+        for (const asset of assets) {
+            try {
+                await unlink(asset.path);
+            } catch {
+                // ignore errors during cleanup
+            }
+        }
+        throw error;
+    }
 }
 
 module.exports = { transaction };
