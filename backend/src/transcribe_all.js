@@ -3,9 +3,6 @@ const path = require("path");
 const { makeDirectory, markDone } = require("./request_identifier");
 const { transcribeFile } = require("./transcribe");
 
-/**
- * @class
- */
 class InputDirectoryAccess extends Error {
     /** @type {string} */
     path;
