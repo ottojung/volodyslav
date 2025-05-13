@@ -15,7 +15,7 @@ const eventId = require("./event/id");
  * @returns {string}
  */
 function filename_to_date(filename) {
-    return formatFileTimestamp(filename);
+    return formatFileTimestamp(filename).toISOString();
 }
 
 /**

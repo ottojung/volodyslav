@@ -62,7 +62,7 @@ describe("processDiaryAudios", () => {
         diaryAudiosDirectory.mockReturnValue("/fake/diaryDir");
         eventLogAssetsDirectory.mockReturnValue("/fake/assetsDir");
         // Ensure formatted filename timestamps are predictable
-        formatFileTimestamp.mockReturnValue("2025-05-12");
+        formatFileTimestamp.mockReturnValue(new Date("2025-05-12"));
         // Simulate transcription with two successes and one failure
         transcribeAllGeneric.mockResolvedValue({
             successes: ["file1.mp3", "file2.mp3"],
@@ -75,6 +75,7 @@ describe("processDiaryAudios", () => {
     });
 
     it("should process diary audios correctly", async () => {
+        const dateStr = new Date("2025-05-12").toISOString();
         // Mock the random generator to invoke the processing.
         const rng = random.default_generator(42);
         // Invoke the processing function under test
@@ -94,11 +95,11 @@ describe("processDiaryAudios", () => {
         expect(copyFile).toHaveBeenCalledTimes(2);
         expect(copyFile).toHaveBeenCalledWith(
             "/fake/diaryDir/file1.mp3",
-            path.join("/fake/assetsDir", "2025-05-12", "file1.mp3")
+            path.join("/fake/assetsDir", dateStr, "file1.mp3")
         );
         expect(copyFile).toHaveBeenCalledWith(
             "/fake/diaryDir/file2.mp3",
-            path.join("/fake/assetsDir", "2025-05-12", "file2.mp3")
+            path.join("/fake/assetsDir", dateStr, "file2.mp3")
         );
 
         // Verify original files are removed after copying
@@ -111,7 +112,7 @@ describe("processDiaryAudios", () => {
         expect(storage.addEntry).toHaveBeenCalledTimes(2);
         const expectedEvent = {
             id: expect.anything(),
-            date: new Date("2025-05-12"),
+            date: new Date(dateStr),
             original: "diary [when 0 hours ago]",
             input: "diary [when 0 hours ago]",
             modifiers: { when: "0 hours ago" },
