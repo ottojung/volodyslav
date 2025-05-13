@@ -1,5 +1,5 @@
 const path = require("path");
-const { readdir, copyFile, unlink, mkdir } = require("fs/promises");
+const { readdir, copyFile, mkdir } = require("fs/promises");
 const { formatFileTimestamp } = require("./format_time_stamp");
 const { logError } = require("./logger");
 const {
@@ -44,10 +44,11 @@ async function copyWithOverwrite(inputPath, outputPath) {
  * Processes diary audio files by copying assets, updating the event log,
  * and cleaning up the originals.
  *
+ * @param {import('./filesystem/delete_file').FileDeleter} deleter - A file deleter instance.
  * @param {import('./random').RNG} rng - A random number generator instance.
  * @returns {Promise<void>} - A promise that resolves when processing is complete.
  */
-async function processDiaryAudios(rng) {
+async function processDiaryAudios(deleter, rng) {
     const diaryAudiosDir = diaryAudiosDirectory();
     const entries = await readdir(diaryAudiosDir);
 
@@ -82,7 +83,7 @@ async function processDiaryAudios(rng) {
 
     // Delete the original audio files.
     for (const { source } of successes) {
-        await unlink(source);
+        await deleter.delete(source);
     }
 }
 

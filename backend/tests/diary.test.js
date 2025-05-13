@@ -37,7 +37,7 @@ jest.mock("../src/logger", () => ({
 }));
 
 const { processDiaryAudios } = require("../src/diary");
-const { readdir, copyFile, unlink } = require("fs/promises");
+const { readdir, copyFile } = require("fs/promises");
 const {
     diaryAudiosDirectory,
     eventLogAssetsDirectory,
@@ -73,10 +73,11 @@ describe("processDiaryAudios", () => {
     });
 
     it("should process diary audios correctly", async () => {
-        // Mock the random generator to invoke the processing.
+        // Mock the file deleter and random generator
+        const deleter = { delete: jest.fn() };
         const rng = random.default_generator(42);
         // Invoke the processing function under test
-        await processDiaryAudios(rng);
+        await processDiaryAudios(deleter, rng);
 
         // Verify that copy failures are logged with logError
         expect(logError).toHaveBeenCalledWith(
@@ -101,9 +102,9 @@ describe("processDiaryAudios", () => {
         );
 
         // Verify original files are removed after copying
-        expect(unlink).toHaveBeenCalledTimes(2);
-        expect(unlink).toHaveBeenCalledWith("/fake/diaryDir/file1.mp3");
-        expect(unlink).toHaveBeenCalledWith("/fake/diaryDir/file2.mp3");
+        expect(deleter.delete).toHaveBeenCalledTimes(2);
+        expect(deleter.delete).toHaveBeenCalledWith("/fake/diaryDir/file1.mp3");
+        expect(deleter.delete).toHaveBeenCalledWith("/fake/diaryDir/file2.mp3");
 
         // Verify event log transaction was called and entries added correctly
         expect(transaction).toHaveBeenCalled();
