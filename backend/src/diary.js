@@ -70,28 +70,7 @@ async function processDiaryAudios(deleter, rng) {
     });
 
     // Delete the original audio files.
-    for (const ass of successes) {
-        try {
-            await deleter.delete(ass.filepath);
-            logInfo(
-                {
-                    file: path.basename(ass.filepath),
-                    directory: diaryAudiosDir,
-                },
-                `Deleted diary audio file: ${path.basename(ass.filepath)}`
-            );
-        } catch (error) {
-            const msg = error instanceof Error ? error.message : String(error);
-            logWarning(
-                {
-                    file: path.basename(ass.filepath),
-                    error: msg,
-                    directory: diaryAudiosDir,
-                },
-                `Failed to delete diary audio file: ${msg}`
-            );
-        }
-    }
+    await deleteOriginalAudios(deleter, successes, diaryAudiosDir);
 }
 
 /**
@@ -110,4 +89,30 @@ async function writeAsset(deleter, ass) {
     });
 }
 
+/**
+ * Deletes original diary audio files and logs outcomes.
+ *
+ * @param {import('./filesystem/delete_file').FileDeleter} deleter
+ * @param {Asset[]} successes
+ * @param {string} diaryAudiosDir
+ */
+async function deleteOriginalAudios(deleter, successes, diaryAudiosDir) {
+    for (const ass of successes) {
+        try {
+            await deleter.delete(ass.filepath);
+            logInfo(
+                { file: path.basename(ass.filepath), directory: diaryAudiosDir },
+                `Deleted diary audio file: ${path.basename(ass.filepath)}`
+            );
+        } catch (error) {
+            const msg = error instanceof Error ? error.message : String(error);
+            logWarning(
+                { file: path.basename(ass.filepath), error: msg, directory: diaryAudiosDir },
+                `Failed to delete diary audio file: ${msg}`
+            );
+        }
+    }
+}
+
+// export remains unchanged
 module.exports = { processDiaryAudios };
