@@ -1,3 +1,4 @@
+
 class AssetClass {
     /** @type {import('./id').EventId} */
     identifier;
