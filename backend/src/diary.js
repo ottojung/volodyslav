@@ -1,7 +1,7 @@
 const path = require("path");
 const { readdir } = require("fs/promises");
 const { formatFileTimestamp } = require("./format_time_stamp");
-const { logError } = require("./logger");
+const { logError, logWarning, logInfo } = require("./logger");
 const { diaryAudiosDirectory } = require("./environment");
 const { transaction } = require("./event_log_storage");
 const eventId = require("./event/id");
@@ -79,7 +79,26 @@ async function processDiaryAudios(deleter, rng) {
 
     // Delete the original audio files.
     for (const ass of successes) {
-        await deleter.delete(ass.filepath);
+        try {
+            await deleter.delete(ass.filepath);
+            logInfo(
+                {
+                    file: path.basename(ass.filepath),
+                    directory: diaryAudiosDir,
+                },
+                `Deleted diary audio file: ${path.basename(ass.filepath)}`
+            );
+        } catch (error) {
+            const msg = error instanceof Error ? error.message : String(error);
+            logWarning(
+                {
+                    file: path.basename(ass.filepath),
+                    error: msg,
+                    directory: diaryAudiosDir,
+                },
+                `Failed to delete diary audio file: ${msg}`
+            );
+        }
     }
 }
 
