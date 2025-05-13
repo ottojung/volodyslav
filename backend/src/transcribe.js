@@ -9,9 +9,6 @@ const openai = new OpenAI({ apiKey: openaiAPIKey() });
 
 const TRANSCRIBER_MODEL = 'gpt-4o-mini-transcribe';
 
-/**
- * @class
- */
 class InputNotFound extends Error {
     /** @type {string} */
     path;
