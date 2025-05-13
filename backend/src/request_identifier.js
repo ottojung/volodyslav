@@ -1,11 +1,8 @@
-const path = require('path');
-const fs = require('fs');
-const { uploadDir } = require('./config');
+const path = require("path");
+const fs = require("fs");
+const { uploadDir } = require("./config");
+const randomModule = require("./random");
 
-
-/**
- * @class
- */
 class RequestIdentifierClass {
     /** @type {string} */
     identifier;
@@ -19,14 +16,10 @@ class RequestIdentifierClass {
     __brand;
 
     /**
-     * @param {import('express').Request} req
+     * @param {string} identifier
      */
-    constructor(req) {
-        const reqId = req.query.request_identifier;
-        if (reqId === null || reqId === undefined) {
-            throw new Error('Missing request_identifier field');
-        }
-        this.identifier = String(reqId);
+    constructor(identifier) {
+        this.identifier = identifier;
     }
 }
 
@@ -38,7 +31,22 @@ class RequestIdentifierClass {
  * @returns {RequestIdentifier}
  */
 function fromRequest(req) {
-    return new RequestIdentifierClass(req);
+    const reqId = req.query.request_identifier;
+    if (reqId === null || reqId === undefined) {
+        throw new Error("Missing request_identifier field");
+    }
+    return new RequestIdentifierClass(reqId.toString());
+}
+
+
+/**
+ * Creates a random request identifier.
+ * @param {import('./random').RNG} rng 
+ * @returns {RequestIdentifier}
+ */
+function random(rng) {
+    const reqId = randomModule.string(8, rng);
+    return new RequestIdentifierClass(reqId.toString());
 }
 
 /**
@@ -73,6 +81,7 @@ async function makeDirectory(reqId) {
 
 module.exports = {
     fromRequest,
+    random,
     markDone,
     isDone,
     makeDirectory,
