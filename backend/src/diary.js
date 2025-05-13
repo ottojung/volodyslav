@@ -92,7 +92,7 @@ async function processDiaryAudios(deleter, rng) {
  * transcribed diary audio files.
  * @param {import('./filesystem/delete_file').FileDeleter} deleter - A file deleter instance.
  * @param {import('./random').RNG} rng - A random number generator instance.
- * @param {Array<{ source: string, target: string }>} successes - An array of TranscriptionSuccess objects.
+ * @param {Array<import('./transcribe_all').TranscriptionSuccess>} successes - An array of TranscriptionSuccess objects.
  * @returns {Promise<void>} - A promise that resolves when the changes are written.
  */
 async function writeChanges(deleter, rng, successes) {
