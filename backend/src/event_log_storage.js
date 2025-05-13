@@ -10,11 +10,13 @@
 
 const path = require("path");
 const { eventLogDirectory } = require("./environment");
-const { appendFile, copyFile, unlink } = require("fs/promises");
+const { appendFile, copyFile } = require("fs/promises");
 const gitstore = require("./gitstore");
 const event = require("./event");
 const { logWarning } = require("./logger");
 const { targetPath } = require("./event/asset");
+
+/** @typedef {import('./filesystem/delete_file').FileDeleter} FileDeleter */
 
 /**
  * @class
@@ -148,14 +150,15 @@ async function performGitTransaction(eventLogStorage, transformation) {
 
 /**
  * Cleans up all copied assets by removing their files.
+ * @param {FileDeleter} deleter - A file deleter instance.
  * @param {EventLogStorage} eventLogStorage - The storage containing asset references.
  * @returns {Promise<void>}
  */
-async function cleanupAssets(eventLogStorage) {
+async function cleanupAssets(deleter, eventLogStorage) {
     const assets = eventLogStorage.getNewAssets();
     for (const asset of assets) {
         try {
-            await unlink(asset.path);
+            await deleter.delete(asset.path);
         } catch {
             logWarning(
                 {
@@ -171,17 +174,18 @@ async function cleanupAssets(eventLogStorage) {
 
 /**
  * Applies a transformation within a Git-backed event log transaction.
+ * @param {FileDeleter} deleter - A file deleter instance.
  * @param {Transformation} transformation - The transformation to execute.
  * @returns {Promise<void>}
  */
-async function transaction(transformation) {
+async function transaction(deleter, transformation) {
     const eventLogStorage = new EventLogStorageClass();
     try {
         await performGitTransaction(eventLogStorage, transformation);
     } catch (error) {
         // If anything goes wrong, clean up all copied assets and rethrow.
         // Note: we do not wait for the cleanup to finish.
-        cleanupAssets(eventLogStorage);
+        cleanupAssets(deleter, eventLogStorage);
         throw error;
     }
 }

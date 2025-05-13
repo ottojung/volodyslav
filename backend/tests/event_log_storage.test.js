@@ -39,6 +39,7 @@ describe("event_log_storage", () => {
     // No stubbing: use real gitstore.transaction with makeTestRepository per test
 
     test("transaction allows adding and storing event entries", async () => {
+        const deleter = { delete: jest.fn() };
         const { gitDir } = await makeTestRepository();
 
         const testEvent = {
@@ -51,7 +52,7 @@ describe("event_log_storage", () => {
             description: "Test event description",
         };
 
-        await transaction(async (eventLogStorage) => {
+        await transaction(deleter, async (eventLogStorage) => {
             eventLogStorage.addEntry(testEvent, []);
         });
 
@@ -66,6 +67,7 @@ describe("event_log_storage", () => {
     });
 
     test("transaction allows adding and storing multiple event entries", async () => {
+        const deleter = { delete: jest.fn() };
         const { gitDir } = await makeTestRepository();
 
         const event1 = {
@@ -87,7 +89,7 @@ describe("event_log_storage", () => {
             description: "Second event description",
         };
 
-        await transaction(async (eventLogStorage) => {
+        await transaction(deleter, async (eventLogStorage) => {
             eventLogStorage.addEntry(event1, []);
             eventLogStorage.addEntry(event2, []);
         });
@@ -103,24 +105,28 @@ describe("event_log_storage", () => {
     });
 
     test("transaction with no entries throws an error", async () => {
+        const deleter = { delete: jest.fn() };
+        await makeTestRepository();
         // Expect the transaction to fail due to no staged changes to commit
         await expect(
-            transaction(async () => {
+            transaction(deleter, async () => {
                 // no entries added
             })
         ).rejects.toThrow();
     });
 
     test("transaction copies asset files into repository", async () => {
+        const deleter = { delete: jest.fn() };
         await makeTestRepository();
         // Spy on copyFile to verify correct invocation
         const copySpy = jest.spyOn(fsp, "copyFile").mockResolvedValue();
-        const testEvent = { id: { identifier: "assetEvent" }, date: new Date("2025-05-13") };
+        const testEvent = {
+            id: { identifier: "assetEvent" },
+            date: new Date("2025-05-13"),
+        };
         const assetPath = "/some/asset.txt";
-        await transaction(async (storage) =>
-            storage.addEntry(testEvent, [
-                { event: testEvent, path: assetPath },
-            ])
+        await transaction(deleter, async (storage) =>
+            storage.addEntry(testEvent, [{ event: testEvent, path: assetPath }])
         );
         expect(copySpy).toHaveBeenCalledTimes(1);
         const [src, dest] = copySpy.mock.calls[0];
@@ -130,19 +136,18 @@ describe("event_log_storage", () => {
     });
 
     test("transaction cleanup calls unlink for each asset on failure", async () => {
+        const deleter = { delete: jest.fn() };
         await makeTestRepository();
-        const unlinkSpy = jest.spyOn(fsp, "unlink").mockResolvedValue();
         const testEvent = { id: { identifier: "cleanupEvent" } };
         const assetPath = "/some/failure.txt";
         await expect(
-            transaction(async (storage) => {
+            transaction(deleter, async (storage) => {
                 storage.addEntry(testEvent, [
                     { identifier: testEvent.id, path: assetPath },
                 ]);
                 throw new Error("forced failure");
             })
         ).rejects.toThrow("forced failure");
-        expect(unlinkSpy).toHaveBeenCalledWith(assetPath);
-        unlinkSpy.mockRestore();
+        expect(deleter.delete).toHaveBeenCalledWith(assetPath);
     });
 });
