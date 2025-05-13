@@ -121,11 +121,13 @@ async function writeChanges(rng, successes) {
     // prepare entries to append
     const entries = successes.map((filename) => {
         const dateStr = filename_to_date(filename);
+        const date = new Date(dateStr);
+        const id = eventId.make(rng);
 
         /** @type {import('./event/structure').Event} */
         const ret = {
-            id: eventId.make(rng),
-            date: dateStr,
+            id,
+            date,
             original: `diary [when 0 hours ago]`,
             input: `diary [when 0 hours ago]`,
             modifiers: {

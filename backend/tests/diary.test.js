@@ -111,7 +111,7 @@ describe("processDiaryAudios", () => {
         expect(storage.addEntry).toHaveBeenCalledTimes(2);
         const expectedEvent = {
             id: expect.anything(),
-            date: "2025-05-12",
+            date: new Date("2025-05-12"),
             original: "diary [when 0 hours ago]",
             input: "diary [when 0 hours ago]",
             modifiers: { when: "0 hours ago" },

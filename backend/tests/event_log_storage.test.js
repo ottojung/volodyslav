@@ -43,7 +43,7 @@ describe("event_log_storage", () => {
 
         const testEvent = {
             id: { identifier: "test123" },
-            date: "2025-05-12",
+            date: new Date("2025-05-12"),
             original: "test input",
             input: "processed test input",
             modifiers: { test: "modifier" },
@@ -70,7 +70,7 @@ describe("event_log_storage", () => {
 
         const event1 = {
             id: { identifier: "event1" },
-            date: "2025-05-12",
+            date: new Date("2025-05-12"),
             original: "first input",
             input: "processed first input",
             modifiers: { foo: "bar" },
@@ -79,7 +79,7 @@ describe("event_log_storage", () => {
         };
         const event2 = {
             id: { identifier: "event2" },
-            date: "2025-05-12",
+            date: new Date("2025-05-12"),
             original: "second input",
             input: "processed second input",
             modifiers: { baz: "qux" },
@@ -115,7 +115,7 @@ describe("event_log_storage", () => {
         await makeTestRepository();
         // Spy on copyFile to verify correct invocation
         const copySpy = jest.spyOn(fsp, "copyFile").mockResolvedValue();
-        const testEvent = { id: { identifier: "assetEvent" } };
+        const testEvent = { id: { identifier: "assetEvent" }, date: new Date("2025-05-13") };
         const assetPath = "/some/asset.txt";
         await transaction(async (storage) =>
             storage.addEntry(testEvent, [
