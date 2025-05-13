@@ -12,10 +12,10 @@ const eventId = require("./event/id");
 
 /**
  * @param {string} filename
- * @returns {string}
+ * @returns {Date}
  */
 function filename_to_date(filename) {
-    return formatFileTimestamp(filename).toISOString();
+    return formatFileTimestamp(filename);
 }
 
 /**
@@ -24,7 +24,7 @@ function filename_to_date(filename) {
  */
 function assets_directory(filename) {
     const date = filename_to_date(filename);
-    const ret = path.join(eventLogAssetsDirectory(), date);
+    const ret = path.join(eventLogAssetsDirectory(), date.toISOString());
     return ret;
 }
 
@@ -120,8 +120,7 @@ async function processDiaryAudios(rng) {
 async function writeChanges(rng, successes) {
     // prepare entries to append
     const entries = successes.map((filename) => {
-        const dateStr = filename_to_date(filename);
-        const date = new Date(dateStr);
+        const date = filename_to_date(filename);
         const id = eventId.make(rng);
 
         /** @type {import('./event/structure').Event} */
