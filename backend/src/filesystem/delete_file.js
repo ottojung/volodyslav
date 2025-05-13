@@ -34,11 +34,11 @@ function makeCapability() {
 
 /**
  * Deletes a file at the specified path.
- * @param {FileDeleter} deleter - The file deleter capability.
+ * @param {FileDeleter} _deleter - The file deleter capability.
  * @param {string} filePath - The path to the file to delete.
  * @returns {Promise<void>} - A promise that resolves when the file is deleted.
  */
-async function deleteFile(deleter, filePath) {
+async function deleteFile(_deleter, filePath) {
     try {
         await fs.unlink(filePath);
     } catch (err) {
