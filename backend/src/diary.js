@@ -10,14 +10,6 @@ const asset = require("./event/asset");
 /** @typedef {import('./event/asset').Asset} Asset */
 
 /**
- * @param {string} filename
- * @returns {Date}
- */
-function filename_to_date(filename) {
-    return formatFileTimestamp(filename);
-}
-
-/**
  * Processes diary audio files by copying assets, updating the event log,
  * and cleaning up the originals.
  *
@@ -32,7 +24,7 @@ async function processDiaryAudios(deleter, rng) {
     // prepare assets.
     const assets = inputFiles.map((filename) => {
         const filepath = path.join(diaryAudiosDir, filename);
-        const date = filename_to_date(filename);
+        const date = formatFileTimestamp(filename);
         const id = eventId.make(rng);
 
         /** @type {import('./event/structure').Event} */
