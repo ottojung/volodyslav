@@ -12,7 +12,6 @@
  * - All filesystem and Git operations occur in a sandboxed temporary directory, cleaned up on completion or error.
  */
 
-// TODO: handle assets here too.
 
 const path = require("path");
 const { eventLogDirectory } = require("./environment");
