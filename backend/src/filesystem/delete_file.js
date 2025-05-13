@@ -20,42 +20,46 @@ class FileNotFoundError extends FileDeleterError {
     }
 }
 
-class FileDeleter {
-    /** 
+class FileDeleterClass {
+    /**
      * @type {undefined}
      * @private
      */
     __brand;
-}
 
-function makeCapability() {
-    return new FileDeleter();
-}
-
-/**
- * Deletes a file at the specified path.
- * @param {FileDeleter} _deleter - The file deleter capability.
- * @param {string} filePath - The path to the file to delete.
- * @returns {Promise<void>} - A promise that resolves when the file is deleted.
- */
-async function deleteFile(_deleter, filePath) {
-    try {
-        await fs.unlink(filePath);
-    } catch (err) {
-        if (err instanceof Error && "code" in err && err.code === "ENOENT") {
-            throw new FileNotFoundError(filePath);
-        } else {
-            throw new FileDeleterError(
-                `Failed to delete file: ${filePath}`,
-                filePath
-            );
+    /**
+     * Deletes a file at the specified path.
+     * @param {string} filePath - The path to the file to delete.
+     * @returns {Promise<void>} - A promise that resolves when the file is deleted.
+     */
+    async delete(filePath) {
+        try {
+            await fs.unlink(filePath);
+        } catch (err) {
+            if (
+                err instanceof Error &&
+                "code" in err &&
+                err.code === "ENOENT"
+            ) {
+                throw new FileNotFoundError(filePath);
+            } else {
+                throw new FileDeleterError(
+                    `Failed to delete file: ${filePath}`,
+                    filePath
+                );
+            }
         }
     }
 }
 
+function make() {
+    return new FileDeleterClass();
+}
+
+/** @typedef {FileDeleterClass} FileDeleter */
+
 module.exports = {
     FileDeleterError,
     FileNotFoundError,
-    makeCapability,
-    deleteFile,
+    make,
 };
