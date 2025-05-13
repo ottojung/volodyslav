@@ -1,5 +1,4 @@
 /**
- * @file event_log_storage.js
  * @description Provides atomic, Git-based storage for event log entries and asset files.
  *
  * Exports:
