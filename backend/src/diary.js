@@ -1,12 +1,11 @@
 const path = require("path");
-const { logError, logWarning } = require("./logger");
+const { readdir, copyFile, unlink, mkdir } = require("fs/promises");
+const { formatFileTimestamp } = require("./format_time_stamp");
+const { logError } = require("./logger");
 const {
     diaryAudiosDirectory,
     eventLogAssetsDirectory,
 } = require("./environment");
-const { transcribeAllGeneric } = require("./transcribe_all");
-const { formatFileTimestamp } = require("./format_time_stamp");
-const { copyFile, unlink, mkdir, access } = require("fs/promises");
 const { transaction } = require("./event_log_storage");
 const eventId = require("./event/id");
 
@@ -29,16 +28,6 @@ function assets_directory(filename) {
 }
 
 /**
- * @param {string} filename
- * @returns {string}
- */
-function namer(filename) {
-    const targetDir = assets_directory(filename);
-    const targetName = `transcription.json`;
-    return path.join(targetDir, targetName);
-}
-
-/**
  * Ensures target directory exists, warns on existing file, then copies the file.
  * @param {string} inputPath
  * @param {string} outputPath
@@ -48,36 +37,34 @@ function namer(filename) {
 async function copyWithOverwrite(inputPath, outputPath) {
     const targetDir = path.dirname(outputPath);
     await mkdir(targetDir, { recursive: true });
-    try {
-        await access(outputPath);
-        logWarning({ file: outputPath }, `Overwriting existing file`);
-    } catch {
-        // file does not exist, proceed
-    }
     await copyFile(inputPath, outputPath);
 }
 
 /**
- * Processes diary audio files by transcribing them, organizing the results,
- * updating the event log, cleaning up the original files, and committing changes.
- *
- * This function performs the following steps:
- * 1. Transcribes all audio files in the diary audios directory.
- * 2. Copies successfully transcribed files to a target directory.
- * 3. Updates the event log with new entries for the transcriptions.
- * 4. Deletes the original audio files after processing.
+ * Processes diary audio files by copying assets, updating the event log,
+ * and cleaning up the originals.
  *
  * @param {import('./random').RNG} rng - A random number generator instance.
- * @returns {Promise<void>} - A promise that resolves when all processing is complete.
+ * @returns {Promise<void>} - A promise that resolves when processing is complete.
  */
 async function processDiaryAudios(rng) {
     const diaryAudiosDir = diaryAudiosDirectory();
-    const transcriptionResults = await transcribeAllGeneric(
-        diaryAudiosDir,
-        namer
-    );
+    const entries = await readdir(diaryAudiosDir);
 
-    const { successes, failures } = transcriptionResults;
+    const successes = [];
+    const failures = [];
+    for (const filename of entries) {
+        const inputPath = path.join(diaryAudiosDir, filename);
+        const targetDir = assets_directory(filename);
+        const targetPath = path.join(targetDir, filename);
+        try {
+            await copyWithOverwrite(inputPath, targetPath);
+            successes.push({ source: inputPath, target: targetPath });
+        } catch (err) {
+            const message = err instanceof Error ? err.message : String(err);
+            failures.push({ file: filename, message });
+        }
+    }
 
     failures.forEach((failure) => {
         logError(
@@ -86,20 +73,11 @@ async function processDiaryAudios(rng) {
                 error: failure.message,
                 directory: diaryAudiosDir,
             },
-            `Diary audio transcription failed: ${failure.message}`
+            `Diary audio copy failed: ${failure.message}`
         );
     });
 
-    for (const { source, target } of successes) {
-        const inputPath = source;
-        const targetDir = path.dirname(target);
-        const targetPath = path.join(targetDir, path.basename(source));
-        await copyWithOverwrite(inputPath, targetPath);
-    }
-
-    //
     // now update the event-log storage.
-    //
     await writeChanges(rng, successes);
 
     // Delete the original audio files.

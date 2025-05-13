@@ -7,16 +7,12 @@
 const path = require("path");
 
 jest.mock("fs/promises", () => ({
-    // Mock file operations to spy on copyFile and unlink calls
+    // Mock file operations to spy on readdir, copyFile and unlink calls
+    readdir: jest.fn(),
     copyFile: jest.fn(),
     unlink: jest.fn(),
     access: jest.fn(),
     mkdir: jest.fn(),
-}));
-
-// Mock the transcription module to control success and failure scenarios
-jest.mock("../src/transcribe_all", () => ({
-    transcribeAllGeneric: jest.fn(),
 }));
 
 // Mock environment functions to provide fixed diary and assets directories
@@ -41,8 +37,7 @@ jest.mock("../src/logger", () => ({
 }));
 
 const { processDiaryAudios } = require("../src/diary");
-const { transcribeAllGeneric } = require("../src/transcribe_all");
-const { copyFile, unlink } = require("fs/promises");
+const { readdir, copyFile, unlink } = require("fs/promises");
 const {
     diaryAudiosDirectory,
     eventLogAssetsDirectory,
@@ -63,20 +58,13 @@ describe("processDiaryAudios", () => {
         eventLogAssetsDirectory.mockReturnValue("/fake/assetsDir");
         // Ensure formatted filename timestamps are predictable
         formatFileTimestamp.mockReturnValue(new Date("2025-05-12"));
-        // Simulate transcription with two successes and one failure
-        const dateStr = new Date("2025-05-12").toISOString();
-        transcribeAllGeneric.mockResolvedValue({
-            successes: [
-                {
-                    source: path.join("/fake/diaryDir", "file1.mp3"),
-                    target: path.join("/fake/assetsDir", dateStr, "transcription.json"),
-                },
-                {
-                    source: path.join("/fake/diaryDir", "file2.mp3"),
-                    target: path.join("/fake/assetsDir", dateStr, "transcription.json"),
-                },
-            ],
-            failures: [{ file: "bad.mp3", message: "error occurred" }],
+        // Simulate directory entries and copy behaviour
+        const filenames = ["file1.mp3", "file2.mp3", "bad.mp3"];
+        readdir.mockResolvedValue(filenames);
+        // copyFile succeeds for good files, fails for bad.mp3
+        copyFile.mockImplementation((src, _dest) => {
+            if (src.endsWith("bad.mp3")) return Promise.reject(new Error("error occurred"));
+            return Promise.resolve();
         });
         // Use the mock transaction to invoke callback with our fake storage
         transaction.mockImplementation(async (cb) => {
@@ -85,24 +73,24 @@ describe("processDiaryAudios", () => {
     });
 
     it("should process diary audios correctly", async () => {
-        const dateStr = new Date("2025-05-12").toISOString();
         // Mock the random generator to invoke the processing.
         const rng = random.default_generator(42);
         // Invoke the processing function under test
         await processDiaryAudios(rng);
 
-        // Verify that transcription failures are logged with logError
+        // Verify that copy failures are logged with logError
         expect(logError).toHaveBeenCalledWith(
             {
                 file: "bad.mp3",
                 error: "error occurred",
                 directory: "/fake/diaryDir",
             },
-            expect.stringContaining("Diary audio transcription failed")
+            expect.stringContaining("Diary audio copy failed")
         );
 
         // Verify successful files are copied to the correct asset directories
-        expect(copyFile).toHaveBeenCalledTimes(2);
+        const dateStr = new Date("2025-05-12").toISOString();
+        expect(copyFile).toHaveBeenCalledTimes(3);
         expect(copyFile).toHaveBeenCalledWith(
             "/fake/diaryDir/file1.mp3",
             path.join("/fake/assetsDir", dateStr, "file1.mp3")
