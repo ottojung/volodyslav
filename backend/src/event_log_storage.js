@@ -19,6 +19,7 @@ const { eventLogDirectory } = require("./environment");
 const { appendFile, copyFile, unlink } = require("fs/promises");
 const gitstore = require("./gitstore");
 const event = require("./event");
+const { logWarning } = require("./logger");
 
 /**
  * @class
@@ -154,6 +155,29 @@ async function performGitTransaction(eventLogStorage, transformation) {
 }
 
 /**
+ * Cleans up all copied assets by removing their files.
+ * @param {EventLogStorage} eventLogStorage - The storage containing asset references.
+ * @returns {Promise<void>}
+ */
+async function cleanupAssets(eventLogStorage) {
+    const assets = eventLogStorage.getNewAssets();
+    for (const asset of assets) {
+        try {
+            await unlink(asset.path);
+        } catch {
+            logWarning(
+                {
+                    file: asset.path,
+                    error: "error occurred",
+                    directory: eventLogDirectory(),
+                },
+                `Failed to remove asset file ${asset.path}. This may be due to the file being in use or not existing.`
+            );
+        }
+    }
+}
+
+/**
  * Applies a transformation within a Git-backed event log transaction.
  * @param {Transformation} transformation - The transformation to execute.
  * @returns {Promise<void>}
@@ -163,15 +187,9 @@ async function transaction(transformation) {
     try {
         await performGitTransaction(eventLogStorage, transformation);
     } catch (error) {
-        // If anything goes wrong, clean up all copied assets and rethrow
-        const assets = eventLogStorage.getNewAssets();
-        for (const asset of assets) {
-            try {
-                await unlink(asset.path);
-            } catch {
-                // ignore errors during cleanup
-            }
-        }
+        // If anything goes wrong, clean up all copied assets and rethrow.
+        // Note: we do not wait for the cleanup to finish.
+        cleanupAssets(eventLogStorage);
         throw error;
     }
 }
