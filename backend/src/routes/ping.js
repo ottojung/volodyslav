@@ -1,6 +1,6 @@
 const express = require('express');
 const router = express.Router();
-const { logInfo } = require('../logger');
+const runtimeIdentifier = require('../runtime_identifier');
 
 /**
  * The alive check endpoint.
@@ -8,8 +8,16 @@ const { logInfo } = require('../logger');
  * @param {import('express').Response} res
  */
 router.get('/ping', (req, res) => {
-  logInfo({ method: req.method, url: req.originalUrl }, 'Ping endpoint called');
-  res.send('pong');
+  const id = req.query.runtime_identifier;
+  if (id !== undefined) {
+    if (!id) {
+      return res.status(400).send('Bad Request');
+    }
+    if (id !== runtimeIdentifier) {
+      return res.status(400).send('Bad Request');
+    }
+  }
+  return res.send('pong');
 });
 
 module.exports = router;

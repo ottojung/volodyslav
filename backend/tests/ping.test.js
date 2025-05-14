@@ -69,4 +69,30 @@ describe('GET /api/ping', () => {
     const res = await request(app).delete('/api/ping');
     expect(res.statusCode).toBe(404);
   });
+
+  it('returns 200 when runtime_identifier matches', async () => {
+    await logger.setup();
+    const app = expressApp.make();
+    await addRoutes(app);
+    const correctId = require('../src/runtime_identifier');
+    const res = await request(app).get(`/api/ping?runtime_identifier=${correctId}`);
+    expect(res.statusCode).toBe(200);
+    expect(res.text).toBe('pong');
+  });
+
+  it('returns 400 when runtime_identifier is empty', async () => {
+    await logger.setup();
+    const app = expressApp.make();
+    await addRoutes(app);
+    const res = await request(app).get('/api/ping?runtime_identifier=');
+    expect(res.statusCode).toBe(400);
+  });
+
+  it('returns 400 when runtime_identifier does not match', async () => {
+    await logger.setup();
+    const app = expressApp.make();
+    await addRoutes(app);
+    const res = await request(app).get('/api/ping?runtime_identifier=wrong-id');
+    expect(res.statusCode).toBe(400);
+  });
 });
