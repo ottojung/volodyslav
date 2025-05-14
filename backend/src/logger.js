@@ -73,18 +73,8 @@ function logError(obj, msg) {
         console.error(obj, msg);
     }
 
-    // Extract the error message for notification
-    let message;
-    if (typeof msg === "string") {
-        message = msg;
-    } else if (obj instanceof Error) {
-        message = obj.message;
-    } else {
-        message = String(obj);
-    }
-
     // Send notification
-    notifyAboutError(message).catch((err) => {
+    notifyAboutError(msg).catch((err) => {
         if (logger !== null) {
             logger.error({ error: err }, "Failed to send error notification");
         } else {
