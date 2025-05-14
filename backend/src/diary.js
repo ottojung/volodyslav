@@ -83,9 +83,6 @@ async function processDiaryAudios(deleter, rng) {
  * @returns {Promise<void>} - A promise that resolves when the changes are written.
  */
 async function writeAsset(deleter, ass) {
-    /**
-     * @type {import('./event_log_storage').EventLogStorage}
-     */
     await transaction(deleter, async (eventLogStorage) => {
         eventLogStorage.addEntry(ass.event, [ass]);
     });
