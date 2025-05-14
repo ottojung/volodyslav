@@ -44,7 +44,15 @@ function make(event, filepath) {
  */
 function targetPath(asset) {
     const baseDir = eventLogAssetsDirectory();
-    return path.join(baseDir, asset.event.id.identifier);
+    const date = asset.event.date;
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    const firstPart = `${year}-${month}`;
+    const secondPart = `${day}`;
+    const thirdPart = `${asset.event.id.identifier}`;
+    const filename = path.basename(asset.filepath);
+    return path.join(baseDir, firstPart, secondPart, thirdPart, filename);
 }
 
 module.exports = {
