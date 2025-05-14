@@ -19,7 +19,7 @@ class EnvironmentError extends Error {
 function getEnv(key) {
     const ret = process.env[key];
     if (!ret) {
-        throw new Error(`Environment variable ${key} must be set.`);
+        throw new EnvironmentError(key);
     }
     return ret;
 }
