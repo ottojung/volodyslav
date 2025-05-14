@@ -3,9 +3,11 @@ const path = require('path');
 const { OpenAI } = require('openai');
 const { openaiAPIKey } = require('./environment');
 const { makeDirectory, markDone } = require('./request_identifier');
+const memoize = require('@emotion/memoize').default;
 
 // Instantiate client
-const openai = new OpenAI({ apiKey: openaiAPIKey() });
+const openaiMemo = memoize(() => new OpenAI({ apiKey: openaiAPIKey() }));
+const openai = () => openaiMemo("");
 
 const TRANSCRIBER_MODEL = 'gpt-4o-mini-transcribe';
 
@@ -34,7 +36,7 @@ class InputNotFound extends Error {
  */
 async function transcribeStream(file_stream) {
     // Make the API call
-    const response_text = await openai.audio.transcriptions.create({
+    const response_text = await openai().audio.transcriptions.create({
         file: file_stream,
         model: TRANSCRIBER_MODEL,
         response_format: 'text',
