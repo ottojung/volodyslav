@@ -18,7 +18,7 @@ function gentleCall(fn, errorsList) {
     return fn().catch(e => {
         if (e instanceof Error && errorsList.some(predicate => predicate(e))) {
             // If the error is a user error, log it to the console.
-            logError({ message: e.message }, e.message);
+            logError({}, e.message);
             process.exit(1);
         } else {
             console.error("An unexpected error occurred:", e);
