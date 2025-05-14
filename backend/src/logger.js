@@ -31,6 +31,9 @@ function enableHttpCallsLogging(app) {
  * @returns {Promise<void>}
  */
 async function setup() {
+    // TODO: Handle the situation where the log file is not set or not writable.
+    // In this case we still want to initialize the logger, just not write to a file.
+
     const logFilePath = logFile();
     // Ensure the directory for the log file exists.
     await fs.mkdir(path.dirname(logFilePath), { recursive: true });
