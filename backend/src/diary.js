@@ -60,6 +60,14 @@ async function processDiaryAudios(deleter, rng) {
         }
     }
 
+    successes.forEach((ass) => {
+        const filename = path.basename(ass.filepath);
+        logInfo(
+            { filename },
+            `Diary audio ${JSON.stringify(filename)} processed`
+        );
+    });
+
     failures.forEach((failure) => {
         logError(
             {
@@ -86,9 +94,6 @@ async function writeAsset(deleter, ass) {
     await transaction(deleter, async (eventLogStorage) => {
         eventLogStorage.addEntry(ass.event, [ass]);
     });
-
-    const filename = path.basename(ass.filepath);
-    logInfo({ filename }, `Diary audio ${JSON.stringify(filename)} processed`);
 }
 
 /**
@@ -103,13 +108,20 @@ async function deleteOriginalAudios(deleter, successes, diaryAudiosDir) {
         try {
             await deleter.delete(ass.filepath);
             logInfo(
-                { file: path.basename(ass.filepath), directory: diaryAudiosDir },
+                {
+                    file: path.basename(ass.filepath),
+                    directory: diaryAudiosDir,
+                },
                 `Deleted diary audio file: ${path.basename(ass.filepath)}`
             );
         } catch (error) {
             const msg = error instanceof Error ? error.message : String(error);
             logWarning(
-                { file: path.basename(ass.filepath), error: msg, directory: diaryAudiosDir },
+                {
+                    file: path.basename(ass.filepath),
+                    error: msg,
+                    directory: diaryAudiosDir,
+                },
                 `Failed to delete diary audio file: ${msg}`
             );
         }
