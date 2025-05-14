@@ -1,7 +1,6 @@
 const { isEnvironmentError } = require("./environment");
-const expressApp = require("./express_app");
 const { gentleWrap } = require("./gentlewrap");
-const { initialize } = require("./server");
+const { start } = require("./server");
 const logger = require("./logger");
 
 /**
@@ -9,8 +8,7 @@ const logger = require("./logger");
  */
 async function entryTyped() {
     await logger.setup();
-    const app = expressApp.make();
-    await expressApp.run(app, async (app, _server) => initialize(app));
+    await start();
     return process.exit(0);
 }
 

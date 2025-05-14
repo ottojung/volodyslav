@@ -7,6 +7,7 @@ const staticRouter = require("./routes/static");
 const transcribeRouter = require("./routes/transcribe");
 const transcribeAllRouter = require("./routes/transcribe_all");
 const scheduler = require("./scheduler");
+const expressApp = require("./express_app");
 
 /**
  * @param {import("express").Express} app
@@ -43,8 +44,14 @@ async function initialize(app) {
     logger.logInfo({}, "Initialization complete.");
 }
 
+async function start() {
+    const app = expressApp.make();
+    await expressApp.run(app, async (app, _server) => initialize(app));
+}
+
 module.exports = {
     addRoutes,
     ensureStartupDependencies,
     initialize,
+    start,
 };
