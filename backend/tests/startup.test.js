@@ -32,6 +32,14 @@ jest.mock("../src/executables", () => {
     };
 });
 
+// Mock only the TermuxNotificationCommand in notifications, preserving other functionality
+jest.mock("../src/scheduler", () => {
+    return {
+        setup: jest.fn(),
+        everyHour: jest.fn(),
+    };
+});
+
 describe("Startup Dependencies", () => {
     beforeEach(() => {
         // Reset all mocks before each test
