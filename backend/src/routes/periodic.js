@@ -5,13 +5,13 @@ const { processDiaryAudios } = require("../diary");
 const deleterCapability = require("../filesystem/delete_file");
 const random = require('../random');
 
-// Function encapsulating hourly tasks
 /**
  * Runs hourly tasks.
- * @param {import('../filesystem/delete_file').FileDeleter} deleter
- * @param {import('../random').RNG} rng
  */
-async function everyHour(deleter, rng) {
+async function everyHour() {
+    const deleter = deleterCapability.make();
+    const rng = random.default_generator(random.nondeterministic_seed());
+
     await processDiaryAudios(deleter, rng);
 }
 
@@ -29,9 +29,6 @@ router.get("/periodic", async (req, res) => {
         "Periodic endpoint called"
     );
 
-    const deleter = deleterCapability.make();
-    const rng = random.default_generator(random.nondeterministic_seed());
-
     if (!period) {
         return res.status(400).send('Bad Request: period parameter is required');
     }
@@ -39,7 +36,7 @@ router.get("/periodic", async (req, res) => {
     switch (period) {
         case 'hour':
         case 'hourly':
-            await everyHour(deleter, rng);
+            await everyHour();
             break;
         default:
             return res.status(400).send('Bad Request: unknown period');
