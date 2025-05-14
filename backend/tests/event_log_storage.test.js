@@ -14,6 +14,9 @@ const { readObjects } = require("../src/json_stream_file");
 const temporary = require("./temporary");
 const makeTestRepository = require("./make_test_repository");
 const event = require("../src/event/structure");
+const logger = require('../src/logger');
+
+logger.setup();
 
 beforeEach(temporary.beforeEach);
 afterEach(temporary.afterEach);

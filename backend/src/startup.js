@@ -1,5 +1,5 @@
 const { ensureNotificationsAvailable } = require("./notifications");
-const { logInfo, setupHttpCallsLogging } = require("./logger");
+const logger = require("./logger");
 const rootRouter = require("./routes/root");
 const uploadRouter = require("./routes/upload");
 const pingRouter = require("./routes/ping");
@@ -29,16 +29,17 @@ function addRoutes(app) {
 async function ensureStartupDependencies(app) {
     await addRoutes(app);
     await ensureNotificationsAvailable();
-    setupHttpCallsLogging(app);
+    await logger.setup();
+    logger.enableHttpCallsLogging(app);
 }
 
 /**
  * @param {import("express").Express} app
  */
 async function initialize(app) {
-    logInfo({}, "Server is running");
+    logger.logInfo({}, "Server is running");
     await ensureStartupDependencies(app);
-    logInfo({}, "Initialization complete.");
+    logger.logInfo({}, "Initialization complete.");
 }
 
 module.exports = {

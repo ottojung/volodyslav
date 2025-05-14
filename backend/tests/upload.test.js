@@ -1,10 +1,11 @@
-const request = require('supertest');
-const fs = require('fs');
-const path = require('path');
-const expressApp = require('../src/express_app');
-const { uploadDir } = require('../src/config');
-const temporary = require('./temporary');
-const { addRoutes } = require('../src/startup');
+const request = require("supertest");
+const fs = require("fs");
+const path = require("path");
+const expressApp = require("../src/express_app");
+const { uploadDir } = require("../src/config");
+const temporary = require("./temporary");
+const { addRoutes } = require("../src/startup");
+const logger = require("../src/logger");
 
 beforeEach(temporary.beforeEach);
 afterEach(temporary.afterEach);
@@ -26,48 +27,57 @@ jest.mock("../src/environment", () => {
     };
 });
 
-describe('POST /api/upload', () => {
-    it('uploads a single file successfully', async () => {
+describe("POST /api/upload", () => {
+    it("uploads a single file successfully", async () => {
+        logger.setup();
         const app = expressApp.make();
         await addRoutes(app);
-        const reqId = 'testreq';
+        const reqId = "testreq";
         const res = await request(app)
-              .post(`/api/upload?request_identifier=${reqId}`)
-              .attach('photos', Buffer.from('test content'), 'test1.jpg');
+            .post(`/api/upload?request_identifier=${reqId}`)
+            .attach("photos", Buffer.from("test content"), "test1.jpg");
 
         expect(res.statusCode).toBe(200);
-        expect(res.body).toEqual({ success: true, files: ['test1.jpg'] });
-        expect(fs.existsSync(path.join(uploadDir, reqId, 'test1.jpg'))).toBe(true);
+        expect(res.body).toEqual({ success: true, files: ["test1.jpg"] });
+        expect(fs.existsSync(path.join(uploadDir, reqId, "test1.jpg"))).toBe(
+            true
+        );
     });
 
-    it('uploads multiple files successfully', async () => {
+    it("uploads multiple files successfully", async () => {
         const app = expressApp.make();
         await addRoutes(app);
         // Upload first file with a unique request_identifier
-        const reqId1 = 'testreq1';
+        const reqId1 = "testreq1";
         const res1 = await request(app)
-              .post(`/api/upload?request_identifier=${reqId1}`)
-              .attach('photos', Buffer.from('first'), 'first.jpg');
+            .post(`/api/upload?request_identifier=${reqId1}`)
+            .attach("photos", Buffer.from("first"), "first.jpg");
 
         expect(res1.statusCode).toBe(200);
-        expect(res1.body).toEqual({ success: true, files: ['first.jpg'] });
-        expect(fs.existsSync(path.join(uploadDir, reqId1, 'first.jpg'))).toBe(true);
+        expect(res1.body).toEqual({ success: true, files: ["first.jpg"] });
+        expect(fs.existsSync(path.join(uploadDir, reqId1, "first.jpg"))).toBe(
+            true
+        );
 
         // Upload second file with another unique request_identifier
-        const reqId2 = 'testreq2';
+        const reqId2 = "testreq2";
         const res2 = await request(app)
-              .post(`/api/upload?request_identifier=${reqId2}`)
-              .attach('photos', Buffer.from('second'), 'second.jpg');
+            .post(`/api/upload?request_identifier=${reqId2}`)
+            .attach("photos", Buffer.from("second"), "second.jpg");
 
         expect(res2.statusCode).toBe(200);
-        expect(res2.body).toEqual({ success: true, files: ['second.jpg'] });
-        expect(fs.existsSync(path.join(uploadDir, reqId2, 'second.jpg'))).toBe(true);
+        expect(res2.body).toEqual({ success: true, files: ["second.jpg"] });
+        expect(fs.existsSync(path.join(uploadDir, reqId2, "second.jpg"))).toBe(
+            true
+        );
     });
 
-    it('responds with empty files array when no files are sent', async () => {
+    it("responds with empty files array when no files are sent", async () => {
         const app = expressApp.make();
         await addRoutes(app);
-        const res = await request(app).post('/api/upload?request_identifier=foo');
+        const res = await request(app).post(
+            "/api/upload?request_identifier=foo"
+        );
 
         expect(res.statusCode).toBe(200);
         expect(res.body).toEqual({ success: true, files: [] });

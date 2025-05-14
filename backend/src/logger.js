@@ -11,12 +11,6 @@ const path = require("path");
 
 const logFilePath = logFile();
 
-// TODO: move this out to a future initialization step.
-// Ensure the directory for the log file exists.
-if (!fs.existsSync(path.dirname(logFilePath))) {
-    fs.mkdirSync(path.dirname(logFilePath), { recursive: true });
-}
-
 const transport = pino.transport({
     targets: [
         {
@@ -30,7 +24,7 @@ const transport = pino.transport({
         },
         {
             target: "pino/file",
-            level: 'debug',
+            level: "debug",
             options: { destination: logFilePath },
         },
     ],
@@ -44,8 +38,19 @@ const logger = pino({ level: logLevel() }, transport);
  * @returns {void}
  * @description Sets up HTTP call logging for the given Express app.
  */
-function setupHttpCallsLogging(app) {
+function enableHttpCallsLogging(app) {
     app.use(pinoHttp({ logger }));
+}
+
+/**
+ * @returns {void}
+ * @description Sets up HTTP call logging for the given Express app.
+ */
+function setup() {
+    // Ensure the directory for the log file exists.
+    if (!fs.existsSync(path.dirname(logFilePath))) {
+        fs.mkdirSync(path.dirname(logFilePath), { recursive: true });
+    }
 }
 
 /**
@@ -60,7 +65,7 @@ function logError(obj, msg) {
 
     // Extract the error message for notification
     let message;
-    if (typeof msg === 'string') {
+    if (typeof msg === "string") {
         message = msg;
     } else if (obj instanceof Error) {
         message = obj.message;
@@ -70,7 +75,7 @@ function logError(obj, msg) {
 
     // Send notification
     notifyAboutError(message).catch((err) => {
-        logger.error({ error: err }, 'Failed to send error notification');
+        logger.error({ error: err }, "Failed to send error notification");
     });
 }
 
@@ -102,9 +107,10 @@ function logDebug(obj, msg) {
 }
 
 module.exports = {
-    setupHttpCallsLogging,
+    enableHttpCallsLogging,
+    setup,
     logError,
     logWarning,
     logInfo,
     logDebug,
-}
+};

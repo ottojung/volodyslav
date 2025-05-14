@@ -1,6 +1,9 @@
 const path = require('path');
 const fs = require('fs');
 const temporary = require('./temporary');
+const logger = require('../src/logger');
+
+logger.setup();
 
 beforeEach(temporary.beforeEach);
 afterEach(temporary.afterEach);

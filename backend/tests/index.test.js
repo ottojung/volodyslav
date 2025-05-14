@@ -18,6 +18,9 @@ jest.mock('../src/environment', () => {
 const request = require('supertest');
 const expressApp = require('../src/express_app');
 const { addRoutes } = require('../src/startup');
+const logger = require('../src/logger');
+
+logger.setup();
 
 describe('GET /api', () => {
   it('responds with Hello World!', async () => {

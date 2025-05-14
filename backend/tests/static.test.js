@@ -21,6 +21,7 @@ jest.mock('../src/environment', () => {
 const request = require("supertest");
 const expressApp = require("../src/express_app");
 const { addRoutes } = require("../src/startup");
+const logger = require("../src/logger");
 
 // Create a mock static file structure for testing
 const staticPath = path.join(__dirname, "..", "..", "frontend", "dist");
@@ -42,6 +43,7 @@ afterAll(() => {
 
 describe("Static file serving", () => {
     it("serves index.html for root path", async () => {
+        logger.setup();
         const app = expressApp.make();
         await addRoutes(app);
         const res = await request(app).get("/");
@@ -51,6 +53,7 @@ describe("Static file serving", () => {
     });
 
     it("serves index.html for unknown routes (SPA fallback)", async () => {
+        logger.setup();
         const app = expressApp.make();
         await addRoutes(app);
         const res = await request(app).get("/unknown-route");
@@ -60,6 +63,7 @@ describe("Static file serving", () => {
     });
 
     it("serves static files correctly", async () => {
+        logger.setup();
         const app = expressApp.make();
         await addRoutes(app);
         const res = await request(app).get("/test.txt");
@@ -69,6 +73,7 @@ describe("Static file serving", () => {
     });
 
     it("preserves Content-Type for different file types", async () => {
+        logger.setup();
         // Create a test.js file
         fs.writeFileSync(
             path.join(staticPath, "test.js"),

@@ -8,24 +8,32 @@ const {
 } = require("../src/request_identifier");
 const { uploadDir } = require("../src/config");
 const temporary = require("./temporary");
+const logger = require("../src/logger");
 
 beforeEach(temporary.beforeEach);
 afterEach(temporary.afterEach);
 
-// Mock environment exports
-jest.mock("../src/environment", () => {
-    const temporary = require("./temporary");
+// Mock environment exports to avoid real env dependencies
+jest.mock('../src/environment', () => {
+    const path = require('path');
+    const temporary = require('./temporary');
     return {
-        openaiAPIKey: jest.fn().mockReturnValue("test-key"),
-        resultsDirectory: jest.fn().mockImplementation(temporary.output),
+        openaiAPIKey: jest.fn().mockReturnValue('test-key'),
+        resultsDirectory: jest.fn().mockImplementation(() => {
+            return path.join(temporary.output(), 'results');
+        }),
         myServerPort: jest.fn().mockReturnValue(0),
         logLevel: jest.fn().mockReturnValue("silent"),
+        logFile: jest.fn().mockImplementation(() => {
+            return path.join(temporary.output(), 'log.txt');
+        }),
     };
 });
 
 describe("Request Identifier", () => {
     describe("fromRequest", () => {
         it("extracts request identifier from query params", () => {
+            logger.setup();
             const req = { query: { request_identifier: "test123" } };
             const reqId = fromRequest(req);
             expect(reqId.identifier).toBe("test123");
@@ -48,6 +56,7 @@ describe("Request Identifier", () => {
 
     describe("makeDirectory", () => {
         it("creates directory for request identifier", async () => {
+            logger.setup();
             const req = { query: { request_identifier: "test123" } };
             const reqId = fromRequest(req);
             const dirPath = await makeDirectory(reqId);

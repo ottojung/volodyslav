@@ -2,6 +2,7 @@ const expressApp = require("../src/express_app");
 const request = require("supertest");
 const { initialize } = require("../src/startup");
 const temporary = require("./temporary");
+const logger = require("../src/logger");
 
 beforeEach(temporary.beforeEach);
 afterEach(temporary.afterEach);
@@ -39,6 +40,7 @@ describe("Startup Dependencies", () => {
     });
 
     it("sets up HTTP call logging and handles requests correctly", async () => {
+        logger.setup();
         const app = expressApp.make();
         await initialize(app);
 

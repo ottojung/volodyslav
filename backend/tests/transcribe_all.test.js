@@ -36,23 +36,14 @@ jest.mock("../src/transcribe", () => {
 const { transcribeFile } = require("../src/transcribe");
 const expressApp = require("../src/express_app");
 const { uploadDir } = require("../src/config");
-
-afterAll(() => {
-    if (fs.existsSync(uploadDir))
-        fs.rmSync(uploadDir, { recursive: true, force: true });
-    // Clean up any test tmp dirs
-    ["empty", "mixed", "all"].forEach((dirName) => {
-        const dirPath = path.join(temporary.input(), dirName);
-        if (fs.existsSync(dirPath))
-            fs.rmSync(dirPath, { recursive: true, force: true });
-    });
-});
+const logger = require("../src/logger");
 
 describe("GET /api/transcribe_all", () => {
     const base = "/api/transcribe_all";
     const reqId = "batch123";
 
     it("returns 400 when request_identifier missing", async () => {
+        logger.setup();
         const app = expressApp.make();
         await addRoutes(app);
         const res = await request(app).get(base);
@@ -64,6 +55,7 @@ describe("GET /api/transcribe_all", () => {
     });
 
     it("returns 400 when input_dir missing", async () => {
+        logger.setup();
         const app = expressApp.make();
         await addRoutes(app);
         const res = await request(app)
@@ -77,6 +69,7 @@ describe("GET /api/transcribe_all", () => {
     });
 
     it("returns 404 when input_dir does not exist", async () => {
+        logger.setup();
         const app = expressApp.make();
         await addRoutes(app);
         const res = await request(app)

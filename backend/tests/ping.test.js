@@ -18,9 +18,11 @@ jest.mock('../src/environment', () => {
 const request = require('supertest');
 const expressApp = require('../src/express_app');
 const { addRoutes } = require('../src/startup');
+const logger = require('../src/logger');
 
 describe('GET /api/ping', () => {
   it('responds with pong', async () => {
+    logger.setup();
     const app = expressApp.make();
     await addRoutes(app);
     const res = await request(app).get('/api/ping');
@@ -29,6 +31,7 @@ describe('GET /api/ping', () => {
   });
 
   it('returns text/html content type', async () => {
+    logger.setup();
     const app = expressApp.make();
     await addRoutes(app);
     const res = await request(app).get('/api/ping');
@@ -36,6 +39,7 @@ describe('GET /api/ping', () => {
   });
 
   it('handles HEAD request', async () => {
+    logger.setup();
     const app = expressApp.make();
     await addRoutes(app);
     const res = await request(app).head('/api/ping');
@@ -43,6 +47,7 @@ describe('GET /api/ping', () => {
   });
 
   it('rejects POST requests', async () => {
+    logger.setup();
     const app = expressApp.make();
     await addRoutes(app);
     const res = await request(app).post('/api/ping');
@@ -50,6 +55,7 @@ describe('GET /api/ping', () => {
   });
 
   it('rejects PUT requests', async () => {
+    logger.setup();
     const app = expressApp.make();
     await addRoutes(app);
     const res = await request(app).put('/api/ping');
@@ -57,6 +63,7 @@ describe('GET /api/ping', () => {
   });
 
   it('rejects DELETE requests', async () => {
+    logger.setup();
     const app = expressApp.make();
     await addRoutes(app);
     const res = await request(app).delete('/api/ping');
