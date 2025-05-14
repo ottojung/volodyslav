@@ -11,7 +11,7 @@ async function entryTyped() {
     await logger.setup();
     const app = expressApp.make();
     await expressApp.run(app, async (app, _server) => initialize(app));
-    throw new Error("Server should not exit");
+    return process.exit(0);
 }
 
 /**
