@@ -6,10 +6,10 @@
 
 const { git } = require("./executables");
 const { logError } = require("./logger");
+const memconst = require("./memconst");
 const random = require("./random");
-const memoize = require("@emotion/memoize").default;
 
-let versionMemo = memoize(async () => {
+let version = memconst(async () => {
     try {
         const repositoryPath = __dirname;
         const { stdout } = await git.call("-C", repositoryPath, "describe");
@@ -20,8 +20,6 @@ let versionMemo = memoize(async () => {
         return "unknown";
     }
 });
-
-let version = () => versionMemo("");
 
 function generateRandomIdentifier() {
     const seed = random.nondeterministic_seed();
