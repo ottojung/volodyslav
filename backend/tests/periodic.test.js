@@ -47,11 +47,11 @@ describe("GET /api/periodic", () => {
         await logger.setup();
     });
 
-    it("responds with done", async () => {
+    it("returns 400 when no period is specified", async () => {
         const app = makeApp();
         const res = await request(app).get("/api/periodic");
-        expect(res.statusCode).toBe(200);
-        expect(res.text).toBe("done");
+        expect(res.statusCode).toBe(400);
+        expect(res.text).toBe("Bad Request: period parameter is required");
     });
 
     it("rejects POST requests", async () => {
@@ -73,11 +73,18 @@ describe("GET /api/periodic", () => {
         expect(res.statusCode).toBe(200);
         expect(res.text).toBe('done');
     });
+    
+    it('returns 400 for empty period parameter', async () => {
+        const app = makeApp();
+        const res = await request(app).get('/api/periodic?period=');
+        expect(res.statusCode).toBe(400);
+        expect(res.text).toBe('Bad Request: period parameter is required');
+    });
 
     it('returns 400 for unknown period', async () => {
         const app = makeApp();
         const res = await request(app).get('/api/periodic?period=daily');
         expect(res.statusCode).toBe(400);
-        expect(res.text).toBe('Bad Request');
+        expect(res.text).toBe('Bad Request: unknown period');
     });
 });

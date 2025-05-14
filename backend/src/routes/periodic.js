@@ -32,14 +32,17 @@ router.get("/periodic", async (req, res) => {
     const deleter = deleterCapability.make();
     const rng = random.default_generator(random.nondeterministic_seed());
 
+    if (!period) {
+        return res.status(400).send('Bad Request: period parameter is required');
+    }
+        
     switch (period) {
-        case undefined:
         case 'hour':
         case 'hourly':
             await everyHour(deleter, rng);
             break;
         default:
-            return res.status(400).send('Bad Request');
+            return res.status(400).send('Bad Request: unknown period');
     }
 
     res.send("done");
