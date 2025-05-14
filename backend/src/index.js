@@ -6,7 +6,7 @@ const { Command } = require("commander");
 
 async function printVersion() {
     const { version } = require("./runtime_identifier");
-    console.log(`Version: ${version()}`);
+    console.log(await version());
 }
 
 /**
@@ -18,14 +18,27 @@ async function entryTyped() {
 
     program.name("volodyslav").description("Volodyslav Media Service CLI");
 
+    // Create a proper version command
     program
-        .command("version, -v, --version")
+        .command("version")
         .description("Display the version")
-        .action(printVersion);
+        .action(async () => {
+            await printVersion();
+        });
+
+    // Add version option to the main program
+    program
+        .option("-v, --version", "Display the version")
+        .action(async (options) => {
+            if (options.version) {
+                await printVersion();
+                process.exit(0);
+            }
+        });
 
     program.command("start").description("Start the server").action(start);
 
-    program.parse();
+    await program.parseAsync();
 
     return process.exit(0);
 }
