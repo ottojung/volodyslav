@@ -11,7 +11,8 @@ const memoize = require("@emotion/memoize").default;
 
 let versionMemo = memoize(async () => {
     try {
-        const { stdout } = await git.call("describe");
+        const repositoryPath = __dirname;
+        const { stdout } = await git.call("-C", repositoryPath, "describe");
         return stdout.trim();
     } catch (e) {
         // If git is not available, we can assume that the version is unknown.
