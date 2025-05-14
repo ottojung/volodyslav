@@ -1,3 +1,16 @@
+
+class EnvironmentError extends Error {
+    /**
+     * Custom error class for environment variable errors.
+     * @param {string} variableName - The name of the environment variable.
+     */
+    constructor(variableName) {
+        const message = `Environment variable ${variableName} must be set.`;
+        super(message);
+        this.variableName = variableName;
+    }
+}
+
 /**
  * Retrieves the value of the specified environment variable or throws if unset.
  * @param {string} key - The name of the environment variable.
@@ -44,6 +57,7 @@ function eventLogDirectory() {
 }
 
 module.exports = {
+    EnvironmentError,
     openaiAPIKey,
     resultsDirectory,
     myServerPort,
