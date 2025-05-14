@@ -2,7 +2,6 @@ const request = require("supertest");
 const fs = require("fs");
 const path = require("path");
 const expressApp = require("../src/express_app");
-const { uploadDir } = require("../src/config");
 const temporary = require("./temporary");
 const { addRoutes } = require("../src/startup");
 const logger = require("../src/logger");
@@ -27,6 +26,9 @@ jest.mock("../src/environment", () => {
     };
 });
 
+const { resultsDirectory } = require("../src/environment");
+const uploadDir = () => resultsDirectory();
+
 describe("POST /api/upload", () => {
     it("uploads a single file successfully", async () => {
         await logger.setup();
@@ -39,7 +41,7 @@ describe("POST /api/upload", () => {
 
         expect(res.statusCode).toBe(200);
         expect(res.body).toEqual({ success: true, files: ["test1.jpg"] });
-        expect(fs.existsSync(path.join(uploadDir, reqId, "test1.jpg"))).toBe(
+        expect(fs.existsSync(path.join(uploadDir(), reqId, "test1.jpg"))).toBe(
             true
         );
     });
@@ -56,7 +58,7 @@ describe("POST /api/upload", () => {
 
         expect(res1.statusCode).toBe(200);
         expect(res1.body).toEqual({ success: true, files: ["first.jpg"] });
-        expect(fs.existsSync(path.join(uploadDir, reqId1, "first.jpg"))).toBe(
+        expect(fs.existsSync(path.join(uploadDir(), reqId1, "first.jpg"))).toBe(
             true
         );
 
@@ -68,7 +70,7 @@ describe("POST /api/upload", () => {
 
         expect(res2.statusCode).toBe(200);
         expect(res2.body).toEqual({ success: true, files: ["second.jpg"] });
-        expect(fs.existsSync(path.join(uploadDir, reqId2, "second.jpg"))).toBe(
+        expect(fs.existsSync(path.join(uploadDir(), reqId2, "second.jpg"))).toBe(
             true
         );
     });

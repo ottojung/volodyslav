@@ -43,9 +43,11 @@ jest.mock("openai", () => {
 
 const request = require("supertest");
 const expressApp = require("../src/express_app");
-const { uploadDir } = require("../src/config");
 const { notifyAboutError } = require("../src/notifications");
 const { addRoutes } = require("../src/startup");
+const { resultsDirectory } = require("../src/environment");
+
+const uploadDir = () => resultsDirectory();
 
 describe("GET /api/transcribe", () => {
     beforeEach(() => {
@@ -111,8 +113,8 @@ describe("GET /api/transcribe", () => {
         expect(res.statusCode).toBe(200);
         expect(res.body).toEqual({ success: true });
 
-        // Verify file was written to uploadDir under the request identifier
-        const savedPath = path.join(uploadDir, reqId, outputFilename);
+        // Verify file was written to uploadDir() under the request identifier
+        const savedPath = path.join(uploadDir(), reqId, outputFilename);
         expect(fs.existsSync(savedPath)).toBe(true);
         const content = fs.readFileSync(savedPath, "utf8");
         // Parsed content should match the stubbed response

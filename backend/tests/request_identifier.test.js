@@ -6,7 +6,6 @@ const {
     markDone,
     isDone,
 } = require("../src/request_identifier");
-const { uploadDir } = require("../src/config");
 const temporary = require("./temporary");
 const logger = require("../src/logger");
 
@@ -29,6 +28,9 @@ jest.mock('../src/environment', () => {
         }),
     };
 });
+
+const { resultsDirectory } = require("../src/environment");
+const uploadDir = () => resultsDirectory();
 
 describe("Request Identifier", () => {
     describe("fromRequest", () => {
@@ -61,7 +63,7 @@ describe("Request Identifier", () => {
             const dirPath = await makeDirectory(reqId);
 
             expect(fs.existsSync(dirPath)).toBe(true);
-            expect(dirPath).toBe(path.join(uploadDir, "test123"));
+            expect(dirPath).toBe(path.join(uploadDir(), "test123"));
         });
 
         it("handles special characters in request identifier", async () => {
@@ -70,7 +72,7 @@ describe("Request Identifier", () => {
             const dirPath = await makeDirectory(reqId);
 
             expect(fs.existsSync(dirPath)).toBe(true);
-            expect(dirPath).toBe(path.join(uploadDir, "test#123"));
+            expect(dirPath).toBe(path.join(uploadDir(), "test#123"));
         });
     });
 
@@ -84,7 +86,7 @@ describe("Request Identifier", () => {
             await markDone(reqId);
 
             await expect(isDone(reqId)).resolves.toBe(true);
-            expect(fs.existsSync(path.join(uploadDir, "test123.done"))).toBe(
+            expect(fs.existsSync(path.join(uploadDir(), "test123.done"))).toBe(
                 true
             );
         });

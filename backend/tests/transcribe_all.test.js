@@ -35,8 +35,10 @@ jest.mock("../src/transcribe", () => {
 
 const { transcribeFile } = require("../src/transcribe");
 const expressApp = require("../src/express_app");
-const { uploadDir } = require("../src/config");
 const logger = require("../src/logger");
+const { resultsDirectory } = require("../src/environment");
+
+const uploadDir = () => resultsDirectory();
 
 describe("GET /api/transcribe_all", () => {
     const base = "/api/transcribe_all";
@@ -107,7 +109,7 @@ describe("GET /api/transcribe_all", () => {
         expect(res.status).toBe(500);
         const expectedSuccesses = ["a.mp4", "c.mp4"].map((fname) => ({
             source: path.join(tmp, fname),
-            target: path.join(uploadDir, reqId, `${fname}.json`),
+            target: path.join(uploadDir(), reqId, `${fname}.json`),
         }));
         expect(res.body).toEqual({
             success: false,
@@ -118,7 +120,7 @@ describe("GET /api/transcribe_all", () => {
         });
 
         // Even with failures, .done file should be created
-        const doneFlag = path.join(uploadDir, reqId + ".done");
+        const doneFlag = path.join(uploadDir(), reqId + ".done");
         expect(fs.existsSync(doneFlag)).toBe(true);
     });
 
@@ -139,14 +141,14 @@ describe("GET /api/transcribe_all", () => {
         expect(res.status).toBe(200);
         const expectedAllSuccesses = ["x.mp4", "y.mp4"].map((fname) => ({
             source: path.join(tmp, fname),
-            target: path.join(uploadDir, reqId, `${fname}.json`),
+            target: path.join(uploadDir(), reqId, `${fname}.json`),
         }));
         expect(res.body).toEqual({
             success: true,
             result: { successes: expectedAllSuccesses, failures: [] },
         });
         // Check that .done file exists
-        const doneFlag = path.join(uploadDir, reqId + ".done");
+        const doneFlag = path.join(uploadDir(), reqId + ".done");
         expect(fs.existsSync(doneFlag)).toBe(true);
     });
 });
