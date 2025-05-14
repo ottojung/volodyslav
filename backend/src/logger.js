@@ -85,16 +85,14 @@ async function setup() {
     } catch (error) {
         // Explicitly typing the error
         const err = /** @type {Error} */ (error);
-        errors.push(
-            `Logger setup issue: ${err.message}`
-        );
+        errors.push(`Logger setup issue: ${err.message}`);
     }
 
     const transport = pino.transport({
         targets: targets,
     });
 
-    logger = pino({ level: 'debug' }, transport);
+    logger = pino({ level: "debug" }, transport);
 
     for (const error of errors) {
         logError({}, error);
