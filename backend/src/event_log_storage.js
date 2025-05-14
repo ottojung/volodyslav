@@ -107,7 +107,7 @@ async function appendEntriesToFile(filePath, entries) {
 }
 
 /**
- * New helper to copy all queued assets into the worktree
+ * New helper to copy all queued assets into the asset directory.
  * @param {import('./event').Asset[]} assets - An array of assets to copy.
  * @returns {Promise<void>} - A promise that resolves when all assets are copied.
  */
