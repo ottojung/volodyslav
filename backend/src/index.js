@@ -1,6 +1,6 @@
 const { isEnvironmentError } = require("./environment");
 const expressApp = require("./express_app");
-const gentleWrap = require("./gentlewrap");
+const { gentleWrap } = require("./gentlewrap");
 const { initialize } = require("./startup");
 
 /**
@@ -12,11 +12,11 @@ async function entryTyped() {
 }
 
 /**
- * @returns {Promise<void>}
+ * @type {() => Promise<void>}
  */
-async function entry() {
-    await gentleWrap(entryTyped, [isEnvironmentError])();
-}
+const entry = gentleWrap(entryTyped, [
+    isEnvironmentError,
+]);
 
 // Start server if run directly
 if (require.main === module) {

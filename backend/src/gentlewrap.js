@@ -33,4 +33,16 @@ function gentleWrap(fn, errorsList) {
     return wrapped;
 }
 
-module.exports = gentleWrap;
+/**
+ * @param {() => Promise<void>} fn - The function to be wrapped.
+ * @param {Array<(err: Error) => boolean>} errorsList - The list of predicates to check errors against.
+ * @returns {Promise<void>}
+ */
+async function gentlecall(fn, errorsList) {
+    return await gentleWrap(fn, errorsList)();
+}
+
+module.exports = {
+    gentleWrap,
+    gentlecall,
+};
