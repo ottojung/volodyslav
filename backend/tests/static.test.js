@@ -20,7 +20,7 @@ jest.mock('../src/environment', () => {
 
 const request = require("supertest");
 const expressApp = require("../src/express_app");
-const { addRoutes } = require("../src/startup");
+const { addRoutes } = require("../src/server");
 const logger = require("../src/logger");
 
 // Create a mock static file structure for testing

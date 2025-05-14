@@ -1,6 +1,6 @@
 const expressApp = require("../src/express_app");
 const request = require("supertest");
-const { initialize } = require("../src/startup");
+const { initialize } = require("../src/server");
 const temporary = require("./temporary");
 const logger = require("../src/logger");
 
@@ -88,7 +88,7 @@ describe("Startup Dependencies", () => {
             });
 
             // Get a fresh instance of the module under test
-            const { initialize } = require("../src/startup");
+            const { initialize } = require("../src/server");
 
             await expect(initialize(app)).rejects.toThrow(
                 "Notifications unavailable. Termux notification executable not found in $PATH. Please ensure that Termux:API is installed and available in your $PATH."

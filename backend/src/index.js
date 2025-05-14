@@ -1,7 +1,7 @@
 const { isEnvironmentError } = require("./environment");
 const expressApp = require("./express_app");
 const { gentleWrap } = require("./gentlewrap");
-const { initialize } = require("./startup");
+const { initialize } = require("./server");
 const logger = require("./logger");
 
 /**

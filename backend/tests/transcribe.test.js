@@ -44,7 +44,7 @@ jest.mock("openai", () => {
 const request = require("supertest");
 const expressApp = require("../src/express_app");
 const { notifyAboutError } = require("../src/notifications");
-const { addRoutes } = require("../src/startup");
+const { addRoutes } = require("../src/server");
 const { resultsDirectory } = require("../src/environment");
 
 const uploadDir = () => resultsDirectory();

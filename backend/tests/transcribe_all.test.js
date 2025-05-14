@@ -2,7 +2,7 @@ const path = require("path");
 const fs = require("fs");
 const request = require("supertest");
 const temporary = require("./temporary");
-const { addRoutes } = require("../src/startup");
+const { addRoutes } = require("../src/server");
 
 beforeEach(temporary.beforeEach);
 afterEach(temporary.afterEach);

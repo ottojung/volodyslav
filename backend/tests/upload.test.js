@@ -3,7 +3,7 @@ const fs = require("fs");
 const path = require("path");
 const expressApp = require("../src/express_app");
 const temporary = require("./temporary");
-const { addRoutes } = require("../src/startup");
+const { addRoutes } = require("../src/server");
 const logger = require("../src/logger");
 
 beforeEach(temporary.beforeEach);
