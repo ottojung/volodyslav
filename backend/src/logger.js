@@ -31,33 +31,74 @@ function enableHttpCallsLogging(app) {
  * @returns {Promise<void>}
  */
 async function setup() {
-    // TODO: Handle the situation where the log file is not set or not writable.
-    // In this case we still want to initialize the logger, just not write to a file.
+    const targets = [];
+    const errors = [];
 
-    const logFilePath = logFile();
-    // Ensure the directory for the log file exists.
-    await fs.mkdir(path.dirname(logFilePath), { recursive: true });
+    let logLevelValue;
+    try {
+        logLevelValue = logLevel();
+    } catch (error) {
+        errors.push("Unable to get log level");
+        logLevelValue = "debug";
+    }
 
-    const transport = pino.transport({
-        targets: [
-            {
-                target: "pino-pretty",
-                level: logLevel(),
-                options: {
-                    colorize: true,
-                    translateTime: "yyyy-mm-dd HH:MM:ss.l o",
-                    ignore: "pid,hostname",
-                },
-            },
-            {
-                target: "pino/file",
-                level: "debug",
-                options: { destination: logFilePath },
-            },
-        ],
+    targets.push({
+        target: "pino-pretty",
+        level: logLevelValue,
+        options: {
+            colorize: true,
+            translateTime: "yyyy-mm-dd HH:MM:ss.l o",
+            ignore: "pid,hostname",
+        },
     });
 
-    logger = pino({ level: logLevel() }, transport);
+    try {
+        // Try to get the log file path
+        const logFilePath = logFile();
+
+        if (logFilePath) {
+            // Ensure the directory for the log file exists.
+            try {
+                await fs.mkdir(path.dirname(logFilePath), { recursive: true });
+
+                // Try to write to the file to verify it's writable
+                await fs.appendFile(logFilePath, "");
+
+                // If we get here, the file is writable, add it to targets
+                targets.push({
+                    target: "pino/file",
+                    level: "debug",
+                    options: { destination: logFilePath },
+                });
+            } catch (error) {
+                // Explicitly typing the error
+                const err = /** @type {Error} */ (error);
+                errors.push(
+                    `Unable to write to log file ${logFilePath}: ${err.message}. Continuing with console logging only.`
+                );
+            }
+        } else {
+            errors.push(
+                "Log file path not provided. Continuing with console logging only."
+            );
+        }
+    } catch (error) {
+        // Explicitly typing the error
+        const err = /** @type {Error} */ (error);
+        errors.push(
+            `Logger setup issue: ${err.message}`
+        );
+    }
+
+    const transport = pino.transport({
+        targets: targets,
+    });
+
+    logger = pino({ level: 'debug' }, transport);
+
+    for (const error of errors) {
+        logError({}, error);
+    }
 }
 
 /**
