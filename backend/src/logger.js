@@ -45,6 +45,7 @@ function createConsoleTarget(level) {
             colorize: true,
             translateTime: "yyyy-mm-dd HH:MM:ss.l o",
             ignore: "pid,hostname",
+            destination: process.stderr.fd, // Redirect logs to stderr instead of stdout
         },
     };
 }
