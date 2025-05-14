@@ -12,6 +12,15 @@ class EnvironmentError extends Error {
 }
 
 /**
+ * Checks if the error is an instance of EnvironmentError.
+ * @param {Error} error - The error to check.
+ * @returns {boolean}
+ */
+function isEnvironmentError(error) {
+    return error instanceof EnvironmentError;
+}
+
+/**
  * Retrieves the value of the specified environment variable or throws if unset.
  * @param {string} key - The name of the environment variable.
  * @returns {string}
@@ -57,7 +66,7 @@ function eventLogDirectory() {
 }
 
 module.exports = {
-    EnvironmentError,
+    isEnvironmentError,
     openaiAPIKey,
     resultsDirectory,
     myServerPort,

@@ -11,7 +11,7 @@ const { logError } = require("./logger");
 
 /**
  * @param {Function} fn - The function to be wrapped.
- * @param {Array<typeof Error>} errorsList - The list of errors to be caught.
+ * @param {Array<(err: Error) => boolean>} errorsList - The list of predicates to check errors against.
  * @returns {Function} - The wrapped function.
  */
 function gentleWrap(fn, errorsList) {
@@ -24,7 +24,7 @@ function gentleWrap(fn, errorsList) {
         try {
             return fn(...args);
         } catch (e) {
-            if (e instanceof Error && errorsList.some(cls => e instanceof cls)) {
+            if (e instanceof Error && errorsList.some(predicate => predicate(e))) {
                 // If the error is a user error, log it to the console.
                 logError({ message: e.message }, e.message);
                 process.exit(1);
