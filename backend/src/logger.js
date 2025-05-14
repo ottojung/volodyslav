@@ -22,8 +22,9 @@ function enableHttpCallsLogging(app) {
 }
 
 /**
+ * Sets up the logger.
+ * @description Initializes the logger with the specified log level and file.
  * @returns {Promise<void>}
- * @description Sets up HTTP call logging for the given Express app.
  */
 async function setup() {
     const logFilePath = logFile();
