@@ -3,11 +3,10 @@ const path = require('path');
 const { OpenAI } = require('openai');
 const { openaiAPIKey } = require('./environment');
 const { makeDirectory, markDone } = require('./request_identifier');
-const memoize = require('@emotion/memoize').default;
+const memconst = require('./memconst');
 
 // Instantiate client
-const openaiMemo = memoize(() => new OpenAI({ apiKey: openaiAPIKey() }));
-const openai = () => openaiMemo("");
+const openai = memconst(() => new OpenAI({ apiKey: openaiAPIKey() }));
 
 const TRANSCRIBER_MODEL = 'gpt-4o-mini-transcribe';
 
