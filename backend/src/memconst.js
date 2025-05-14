@@ -13,12 +13,19 @@ function memconst(fn) {
     let computed = false;
 
     /**
+     * @param {T | undefined} _x
+     * @returns {_x is T}
+     */
+    function isComputed(_x) {
+        return computed;
+    }
+
+    /**
      * @returns {T}
      */
     return function () {
-        if (computed) {
-            // We know memoizedValue is defined at this point
-            return /** @type {T} */ (memoizedValue);
+        if (isComputed(memoizedValue)) {
+            return memoizedValue;
         } else {
             memoizedValue = fn();
             computed = true;
