@@ -21,7 +21,6 @@ function beforeEach() {
 }
 
 function afterEach() {
-    fs.rmSync(tmpDir, { recursive: true, force: true });
 }
 
 module.exports = {
