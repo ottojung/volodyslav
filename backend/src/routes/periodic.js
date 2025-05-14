@@ -1,19 +1,7 @@
 const express = require("express");
 const router = express.Router();
 const { logDebug } = require("../logger");
-const { processDiaryAudios } = require("../diary");
-const deleterCapability = require("../filesystem/delete_file");
-const random = require('../random');
-
-/**
- * Runs hourly tasks.
- */
-async function everyHour() {
-    const deleter = deleterCapability.make();
-    const rng = random.default_generator(random.nondeterministic_seed());
-
-    await processDiaryAudios(deleter, rng);
-}
+const { everyHour } = require("../scheduler");
 
 /**
  * This endpoint is called periodically.

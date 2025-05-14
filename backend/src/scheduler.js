@@ -4,14 +4,18 @@ const { processDiaryAudios } = require("./diary");
 const deleterCapability = require("./filesystem/delete_file");
 const random = require('./random');
 
-async function setup() {
+async function everyHour() {
     const deleter = deleterCapability.make();
     const rng = random.default_generator(random.nondeterministic_seed());
 
-    // Schedule a task to run every hour
-    cron.schedule('0 * * * *', () => processDiaryAudios(deleter, rng));
+    await processDiaryAudios(deleter, rng);
+}
+
+async function setup() {
+    cron.schedule('0 * * * *', everyHour);
 }
 
 module.exports = {
     setup,
+    everyHour,
 };
