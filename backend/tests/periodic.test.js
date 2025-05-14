@@ -59,4 +59,25 @@ describe("GET /api/periodic", () => {
         const res = await request(app).post("/api/periodic");
         expect(res.statusCode).toBe(404);
     });
+
+    it('responds with done for period=hour', async () => {
+        const app = makeApp();
+        const res = await request(app).get('/api/periodic?period=hour');
+        expect(res.statusCode).toBe(200);
+        expect(res.text).toBe('done');
+    });
+
+    it('responds with done for period=hourly', async () => {
+        const app = makeApp();
+        const res = await request(app).get('/api/periodic?period=hourly');
+        expect(res.statusCode).toBe(200);
+        expect(res.text).toBe('done');
+    });
+
+    it('returns 400 for unknown period', async () => {
+        const app = makeApp();
+        const res = await request(app).get('/api/periodic?period=daily');
+        expect(res.statusCode).toBe(400);
+        expect(res.text).toBe('Bad Request');
+    });
 });
