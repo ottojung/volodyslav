@@ -10,25 +10,21 @@
 const { logError } = require("./logger");
 
 /**
- * @param {Function} fn - The function to be wrapped.
+ * @param {() => Promise<void>} fn - The function to be wrapped.
  * @param {Array<(err: Error) => boolean>} errorsList - The list of predicates to check errors against.
- * @returns {Function} - The wrapped function.
+ * @returns {() => Promise<void>} - The wrapped function.
  */
 function gentleWrap(fn, errorsList) {
-    /**
-     * Custom error class for user errors.
-     * The type of the ...args is:
-     * @param {...*} args - The arguments passed to the wrapped function.
-     */
-    function wrapped(...args) {
+    async function wrapped() {
         try {
-            return fn(...args);
+            return await fn();
         } catch (e) {
             if (e instanceof Error && errorsList.some(predicate => predicate(e))) {
                 // If the error is a user error, log it to the console.
                 logError({ message: e.message }, e.message);
                 process.exit(1);
             } else {
+                console.error("An unexpected error occurred:", e);
                 throw e;
             }
         }
