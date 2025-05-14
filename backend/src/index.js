@@ -18,15 +18,6 @@ async function entryTyped() {
 
     program.name("volodyslav").description("Volodyslav Media Service CLI");
 
-    // Create a proper version command
-    program
-        .command("version")
-        .description("Display the version")
-        .action(async () => {
-            await printVersion();
-        });
-
-    // Add version option to the main program
     program
         .option("-v, --version", "Display the version")
         .action(async (options) => {
