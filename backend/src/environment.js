@@ -12,8 +12,8 @@ class EnvironmentError extends Error {
 }
 
 /**
- * Checks if the error is an instance of EnvironmentError.
- * @param {unknown} object - The error to check.
+ * Checks if the object is an instance of EnvironmentError.
+ * @param {unknown} object
  * @returns {object is EnvironmentError}
  */
 function isEnvironmentError(object) {
