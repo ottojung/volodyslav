@@ -12,37 +12,31 @@ const { logError } = require("./logger");
 /**
  * @param {() => Promise<void>} fn - The function to be wrapped.
  * @param {Array<(err: Error) => boolean>} errorsList - The list of predicates to check errors against.
- * @returns {() => Promise<void>} - The wrapped function.
+ * @returns {Promise<void>} - The wrapped function.
  */
-function gentleWrap(fn, errorsList) {
-    async function wrapped() {
-        try {
-            return await fn();
-        } catch (e) {
-            if (e instanceof Error && errorsList.some(predicate => predicate(e))) {
-                // If the error is a user error, log it to the console.
-                logError({ message: e.message }, e.message);
-                process.exit(1);
-            } else {
-                console.error("An unexpected error occurred:", e);
-                throw e;
-            }
+function gentleCall(fn, errorsList) {
+    return fn().catch(e => {
+        if (e instanceof Error && errorsList.some(predicate => predicate(e))) {
+            // If the error is a user error, log it to the console.
+            logError({ message: e.message }, e.message);
+            process.exit(1);
+        } else {
+            console.error("An unexpected error occurred:", e);
+            throw e;
         }
-    }
-
-    return wrapped;
+    });
 }
 
 /**
  * @param {() => Promise<void>} fn - The function to be wrapped.
  * @param {Array<(err: Error) => boolean>} errorsList - The list of predicates to check errors against.
- * @returns {Promise<void>}
+ * @returns {() => Promise<void>}
  */
-async function gentlecall(fn, errorsList) {
-    return await gentleWrap(fn, errorsList)();
+function gentleWrap(fn, errorsList) {
+    return () => gentleCall(fn, errorsList);
 }
 
 module.exports = {
     gentleWrap,
-    gentlecall,
+    gentleCall,
 };
