@@ -24,6 +24,9 @@ jest.mock("../src/environment", () => {
     const path = require("path");
     return {
         logLevel: jest.fn().mockReturnValue("debug"),
+        logFile: jest.fn().mockImplementation(() => {
+            return path.join(temporary.output(), 'log.txt');
+        }),
         eventLogAssetsDirectory: jest.fn().mockImplementation(() => {
             const dir = temporary.input();
             return path.join(dir, "event_log_assets");

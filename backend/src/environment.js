@@ -1,11 +1,10 @@
-
 /**
  * Retrieves the value of the specified environment variable or throws if unset.
  * @param {string} key - The name of the environment variable.
  * @returns {string}
  */
 function getEnv(key) {
-    const ret = process.env[key]
+    const ret = process.env[key];
     if (!ret) {
         throw new Error(`Environment variable ${key} must be set.`);
     }
@@ -28,6 +27,10 @@ function logLevel() {
     return getEnv("VOLODYSLAV_LOG_LEVEL");
 }
 
+function logFile() {
+    return getEnv("VOLODYSLAV_LOG_FILE");
+}
+
 function diaryAudiosDirectory() {
     return getEnv("VOLODYSLAV_DIARY_RECORDINGS_DIRECTORY");
 }
@@ -45,6 +48,7 @@ module.exports = {
     resultsDirectory,
     myServerPort,
     logLevel,
+    logFile,
     diaryAudiosDirectory,
     eventLogAssetsDirectory,
     eventLogDirectory,

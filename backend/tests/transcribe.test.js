@@ -6,13 +6,19 @@ beforeEach(temporary.beforeEach);
 afterEach(temporary.afterEach);
 
 // Mock environment exports to avoid real env dependencies
-jest.mock('../src/environment', () => {
-    const temporary = require('./temporary');
+jest.mock("../src/environment", () => {
+    const path = require("path");
+    const temporary = require("./temporary");
     return {
-        openaiAPIKey: jest.fn().mockReturnValue('test-key'),
-        resultsDirectory: jest.fn().mockImplementation(temporary.output),
+        openaiAPIKey: jest.fn().mockReturnValue("test-key"),
+        resultsDirectory: jest.fn().mockImplementation(() => {
+            return path.join(temporary.output(), "results");
+        }),
         myServerPort: jest.fn().mockReturnValue(0),
         logLevel: jest.fn().mockReturnValue("silent"),
+        logFile: jest.fn().mockImplementation(() => {
+            return path.join(temporary.output(), "log.txt");
+        }),
     };
 });
 

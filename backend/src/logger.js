@@ -4,17 +4,36 @@
 
 const pino = require("pino").default;
 const pinoHttp = require("pino-http").default;
-const { logLevel } = require("./environment");
+const { logLevel, logFile } = require("./environment");
 const { notifyAboutError } = require("./notifications");
+const fs = require("fs");
+const path = require("path");
 
-// Pretty-print logs
+const logFilePath = logFile();
+
+// TODO: move this out to a future initialization step.
+// Ensure the directory for the log file exists.
+if (!fs.existsSync(path.dirname(logFilePath))) {
+    fs.mkdirSync(path.dirname(logFilePath), { recursive: true });
+}
+
 const transport = pino.transport({
-    target: "pino-pretty",
-    options: {
-        colorize: true,
-        translateTime: "yyyy-mm-dd HH:MM:ss.l o",
-        ignore: "pid,hostname",
-    },
+    targets: [
+        {
+            target: "pino-pretty",
+            level: logLevel(),
+            options: {
+                colorize: true,
+                translateTime: "yyyy-mm-dd HH:MM:ss.l o",
+                ignore: "pid,hostname",
+            },
+        },
+        {
+            target: "pino/file",
+            level: 'debug',
+            options: { destination: logFilePath },
+        },
+    ],
 });
 
 /** Pino logger instance. @type {pino.Logger} */
