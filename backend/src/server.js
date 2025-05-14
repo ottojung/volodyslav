@@ -38,7 +38,6 @@ async function ensureStartupDependencies(app) {
  * @param {import("express").Express} app
  */
 async function initialize(app) {
-    logger.logInfo({}, "Server is running");
     await ensureStartupDependencies(app);
     await scheduler.setup();
     logger.logInfo({}, "Initialization complete.");
@@ -46,7 +45,11 @@ async function initialize(app) {
 
 async function start() {
     const app = expressApp.make();
-    await expressApp.run(app, async (app, _server) => initialize(app));
+    await expressApp.run(app, async (app, server) => {
+        const address = server.address();
+        logger.logInfo({ address }, `Server started on ${address}`);
+        await initialize(app);
+    });
 }
 
 module.exports = {
