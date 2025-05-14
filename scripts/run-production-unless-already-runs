@@ -1,10 +1,18 @@
 #! /bin/sh
 
-set -ex
+if ! cd -- "${0%/*}"/..
+then 
+    echo 'Failed to change directory.' 1>&2
+    exit 1
+fi
 
-cd -- "${0%/*}"/..
+if test -z "$PHONE_LOCAL_SERVER"
+then
+    echo 'Environment variable PHONE_LOCAL_SERVER must be set.' 1>&2
+    exit 1
+fi
 
-MAYBE_PONG=$(curl --silent "http://$PHONE_LOCAL_SERVER/api/ping" 2>/dev/null || true)
+MAYBE_PONG=$(curl --silent "http://$PHONE_LOCAL_SERVER/api/ping" 2>/dev/null)
 
 if test "$MAYBE_PONG" = "pong"
 then
