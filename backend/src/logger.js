@@ -13,6 +13,13 @@ const path = require("path");
 let logger = null;
 
 /**
+ * @typedef {Object} TransportTarget
+ * @property {string} target - The target module name
+ * @property {string} level - The log level
+ * @property {Object} options - Target specific options
+ */
+
+/**
  * @param {import('express').Express} app
  * @returns {void}
  * @description Sets up HTTP call logging for the given Express app.
@@ -26,74 +33,120 @@ function enableHttpCallsLogging(app) {
 }
 
 /**
- * Sets up the logger.
- * @description Initializes the logger with the specified log level and file.
- * @returns {Promise<void>}
+ * Creates a console target for logging
+ * @param {string} level The log level to use
+ * @returns {TransportTarget} A pino transport target for console output
  */
-async function setup() {
-    const targets = [];
-    const errors = [];
-
-    let logLevelValue;
-    try {
-        logLevelValue = logLevel();
-    } catch (error) {
-        errors.push("Unable to get log level");
-        logLevelValue = "debug";
-    }
-
-    targets.push({
+function createConsoleTarget(level) {
+    return {
         target: "pino-pretty",
-        level: logLevelValue,
+        level,
         options: {
             colorize: true,
             translateTime: "yyyy-mm-dd HH:MM:ss.l o",
             ignore: "pid,hostname",
         },
-    });
+    };
+}
+
+/**
+ * Creates a file target for logging if possible
+ * @param {string} filePath The path to the log file
+ * @param {string[]} errors Array to collect error messages
+ * @returns {Promise<TransportTarget|null>} A pino transport target for file output, or null if file is not writable
+ */
+async function createFileTarget(filePath, errors) {
+    if (!filePath) {
+        errors.push("Log file path not provided. Continuing with console logging only.");
+        return null;
+    }
 
     try {
-        // Try to get the log file path
-        const logFilePath = logFile();
+        // Ensure the directory for the log file exists
+        await fs.mkdir(path.dirname(filePath), { recursive: true });
 
-        if (logFilePath) {
-            // Ensure the directory for the log file exists.
-            try {
-                await fs.mkdir(path.dirname(logFilePath), { recursive: true });
+        // Try to write to the file to verify it's writable
+        await fs.appendFile(filePath, "");
 
-                // Try to write to the file to verify it's writable
-                await fs.appendFile(logFilePath, "");
-
-                // If we get here, the file is writable, add it to targets
-                targets.push({
-                    target: "pino/file",
-                    level: "debug",
-                    options: { destination: logFilePath },
-                });
-            } catch (error) {
-                // Explicitly typing the error
-                const err = /** @type {Error} */ (error);
-                errors.push(
-                    `Unable to write to log file ${logFilePath}: ${err.message}. Continuing with console logging only.`
-                );
-            }
-        } else {
-            errors.push(
-                "Log file path not provided. Continuing with console logging only."
-            );
-        }
+        // If we get here, the file is writable
+        return {
+            target: "pino/file",
+            level: "debug",
+            options: { destination: filePath },
+        };
     } catch (error) {
         // Explicitly typing the error
         const err = /** @type {Error} */ (error);
+        errors.push(`Unable to write to log file ${filePath}: ${err.message}. Continuing with console logging only.`);
+        return null;
+    }
+}
+
+/**
+ * Safely gets the log level, with fallback to "debug"
+ * @param {string[]} errors Array to collect error messages
+ * @returns {string} The log level to use
+ */
+function safeGetLogLevel(errors) {
+    try {
+        return logLevel();
+    } catch (error) {
+        errors.push("Unable to get log level");
+        return "debug";
+    }
+}
+
+/**
+ * Safely gets the log file path
+ * @param {string[]} errors Array to collect error messages
+ * @returns {string|null} The log file path or null if not available
+ */
+function safeGetLogFilePath(errors) {
+    try {
+        return logFile();
+    } catch (error) {
+        const err = /** @type {Error} */ (error);
         errors.push(`Logger setup issue: ${err.message}`);
+        return null;
+    }
+}
+
+/**
+ * Sets up the logger.
+ * @description Initializes the logger with the specified log level and file.
+ * @returns {Promise<void>}
+ */
+async function setup() {
+    /** @type {string[]} */
+    const errors = [];
+    
+    /** @type {TransportTarget[]} */
+    const targets = [];
+
+    // Get log level safely
+    const logLevelValue = safeGetLogLevel(errors);
+    
+    // Always add console target
+    targets.push(createConsoleTarget(logLevelValue));
+
+    // Try to add file target if possible
+    const logFilePath = safeGetLogFilePath(errors);
+    if (logFilePath) {
+        const fileTarget = await createFileTarget(logFilePath, errors);
+        if (fileTarget) {
+            targets.push(fileTarget);
+        }
     }
 
+    // Create the transport with available targets
     const transport = pino.transport({
         targets: targets,
     });
 
-    logger = pino({ level: "debug" }, transport);
+    // Initialize the logger
+    logger = pino({ level: logLevelValue }, transport);
 
+    // Report any setup errors
     for (const error of errors) {
         logError({}, error);
     }
