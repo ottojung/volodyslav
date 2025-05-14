@@ -91,7 +91,8 @@ function safeGetLogLevel(errors) {
     try {
         return logLevel();
     } catch (error) {
-        errors.push("Unable to get log level");
+        const err = /** @type {Error} */ (error);
+        errors.push(`Unable to get log level: ${err.message}`);
         return "debug";
     }
 }
