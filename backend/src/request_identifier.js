@@ -45,7 +45,7 @@ function fromRequest(req) {
  * @returns {RequestIdentifier}
  */
 function random(rng) {
-    const reqId = randomModule.string(8, rng);
+    const reqId = randomModule.string(rng, 8);
     return new RequestIdentifierClass(reqId.toString());
 }
 
