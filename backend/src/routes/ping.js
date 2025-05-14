@@ -14,7 +14,7 @@ router.get("/ping", (req, res) => {
         if (!id) {
             return res.status(400).send("Bad Request");
         }
-        if (id !== runtimeIdentifier) {
+        if (id !== runtimeIdentifier.instanceIdentifier) {
             return res.status(400).send("Identifiers do not match.");
         }
     }
