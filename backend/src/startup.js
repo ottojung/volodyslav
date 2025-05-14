@@ -6,6 +6,7 @@ const pingRouter = require("./routes/ping");
 const staticRouter = require("./routes/static");
 const transcribeRouter = require("./routes/transcribe");
 const transcribeAllRouter = require("./routes/transcribe_all");
+const scheduler = require("./scheduler");
 
 /**
  * @param {import("express").Express} app
@@ -39,6 +40,7 @@ async function initialize(app) {
     await logger.setup();
     logger.logInfo({}, "Server is running");
     await ensureStartupDependencies(app);
+    await scheduler.setup();
     logger.logInfo({}, "Initialization complete.");
 }
 

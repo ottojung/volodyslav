@@ -4,7 +4,7 @@ const { processDiaryAudios } = require("./diary");
 const deleterCapability = require("./filesystem/delete_file");
 const random = require('./random');
 
-function setup() {
+async function setup() {
     const deleter = deleterCapability.make();
     const rng = random.default_generator(random.nondeterministic_seed());
 
