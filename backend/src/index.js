@@ -5,16 +5,17 @@ const { initialize } = require("./startup");
 const logger = require("./logger");
 
 /**
- * @returns {Promise<void>}
+ * @returns {Promise<never>}
  */
 async function entryTyped() {
     await logger.setup();
     const app = expressApp.make();
     await expressApp.run(app, async (app, _server) => initialize(app));
+    throw new Error("Server should not exit");
 }
 
 /**
- * @type {() => Promise<void>}
+ * @type {() => Promise<never>}
  */
 const entry = gentleWrap(entryTyped, [
     isEnvironmentError,
