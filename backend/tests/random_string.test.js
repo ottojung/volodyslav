@@ -2,15 +2,17 @@ const random = require('../src/random');
 
 describe('random.string', () => {
   test('generates a string of default length 16', () => {
-    const str = random.string();
+    const rng = random.default_generator(42);
+    const str = random.string(rng);
     expect(typeof str).toBe('string');
     expect(str).toHaveLength(16);
     expect(/^[0-9A-Za-z]{16}$/.test(str)).toBe(true);
   });
 
   test('generates a string of custom length', () => {
+    const rng = random.default_generator(42);
     const length = 32;
-    const str = random.string(length);
+    const str = random.string(rng, length);
     expect(str).toHaveLength(length);
     expect(/^[0-9A-Za-z]+$/.test(str)).toBe(true);
   });
@@ -30,8 +32,8 @@ describe('random.string with seeded RNG', () => {
     const seed = 42;
     const rng1 = random.default_generator(seed);
     const rng2 = random.default_generator(seed);
-    const s1 = random.string(8, rng1);
-    const s2 = random.string(8, rng2);
+    const s1 = random.string(rng1, 8);
+    const s2 = random.string(rng2, 8);
     expect(s1).toBe(s2);
     expect(s1).toHaveLength(8);
     expect(/^[0-9A-Za-z]{8}$/.test(s1)).toBe(true);

@@ -19,7 +19,7 @@ class EventIdClass {
      * @param {import('../random').RNG} rng
      */
     constructor(rng) {
-        this.identifier = random.string(16, rng);
+        this.identifier = random.string(rng, 16);
     }
 }
 
