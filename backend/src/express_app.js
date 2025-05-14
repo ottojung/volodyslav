@@ -1,5 +1,5 @@
 const express = require("express");
-const { port } = require("./config");
+const { myServerPort } = require("./environment");
 
 /**
  * @returns {express.Express}
@@ -24,6 +24,7 @@ async function run(app, fun) {
      */
     function toResolve(resolve, reject) {
         try {
+            const port = myServerPort();
             const server = app.listen(port, async function () {
                 try {
                     await fun(app, server);

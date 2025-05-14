@@ -1,7 +1,7 @@
 const path = require("path");
 const fs = require("fs");
-const { uploadDir } = require("./config");
 const randomModule = require("./random");
+const { resultsDirectory } = require("./environment");
 
 class RequestIdentifierClass {
     /** @type {string} */
@@ -54,6 +54,7 @@ function random(rng) {
  * @returns {Promise<void>}
  */
 async function markDone(reqId) {
+    const uploadDir = resultsDirectory();
     await fs.promises.mkdir(uploadDir, { recursive: true });
     // e.g. /var/www/uploads/REQ12345.done
     const target = path.join(uploadDir, reqId.identifier + ".done");
@@ -65,6 +66,7 @@ async function markDone(reqId) {
  * @returns {Promise<boolean>}
  */
 async function isDone(reqId) {
+    const uploadDir = resultsDirectory();
     const target = path.join(uploadDir, reqId.identifier + ".done");
     return fs.existsSync(target);
 }
@@ -74,6 +76,7 @@ async function isDone(reqId) {
  * @returns {Promise<string>} - path to the target directory.
  */
 async function makeDirectory(reqId) {
+    const uploadDir = resultsDirectory();
     const ret = path.join(uploadDir, reqId.identifier);
     await fs.promises.mkdir(ret, { recursive: true });
     return ret;
