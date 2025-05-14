@@ -43,7 +43,7 @@ describe("GET /api/transcribe_all", () => {
     const reqId = "batch123";
 
     it("returns 400 when request_identifier missing", async () => {
-        logger.setup();
+        await logger.setup();
         const app = expressApp.make();
         await addRoutes(app);
         const res = await request(app).get(base);
@@ -55,7 +55,7 @@ describe("GET /api/transcribe_all", () => {
     });
 
     it("returns 400 when input_dir missing", async () => {
-        logger.setup();
+        await logger.setup();
         const app = expressApp.make();
         await addRoutes(app);
         const res = await request(app)
@@ -69,7 +69,7 @@ describe("GET /api/transcribe_all", () => {
     });
 
     it("returns 404 when input_dir does not exist", async () => {
-        logger.setup();
+        await logger.setup();
         const app = expressApp.make();
         await addRoutes(app);
         const res = await request(app)

@@ -43,7 +43,7 @@ afterAll(() => {
 
 describe("Static file serving", () => {
     it("serves index.html for root path", async () => {
-        logger.setup();
+        await logger.setup();
         const app = expressApp.make();
         await addRoutes(app);
         const res = await request(app).get("/");
@@ -53,7 +53,7 @@ describe("Static file serving", () => {
     });
 
     it("serves index.html for unknown routes (SPA fallback)", async () => {
-        logger.setup();
+        await logger.setup();
         const app = expressApp.make();
         await addRoutes(app);
         const res = await request(app).get("/unknown-route");
@@ -63,7 +63,7 @@ describe("Static file serving", () => {
     });
 
     it("serves static files correctly", async () => {
-        logger.setup();
+        await logger.setup();
         const app = expressApp.make();
         await addRoutes(app);
         const res = await request(app).get("/test.txt");
@@ -73,7 +73,7 @@ describe("Static file serving", () => {
     });
 
     it("preserves Content-Type for different file types", async () => {
-        logger.setup();
+        await logger.setup();
         // Create a test.js file
         fs.writeFileSync(
             path.join(staticPath, "test.js"),

@@ -29,7 +29,7 @@ jest.mock("../src/environment", () => {
 
 describe("POST /api/upload", () => {
     it("uploads a single file successfully", async () => {
-        logger.setup();
+        await logger.setup();
         const app = expressApp.make();
         await addRoutes(app);
         const reqId = "testreq";
@@ -45,6 +45,7 @@ describe("POST /api/upload", () => {
     });
 
     it("uploads multiple files successfully", async () => {
+        await logger.setup();
         const app = expressApp.make();
         await addRoutes(app);
         // Upload first file with a unique request_identifier
@@ -73,6 +74,7 @@ describe("POST /api/upload", () => {
     });
 
     it("responds with empty files array when no files are sent", async () => {
+        await logger.setup();
         const app = expressApp.make();
         await addRoutes(app);
         const res = await request(app).post(

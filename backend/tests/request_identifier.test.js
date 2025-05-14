@@ -33,7 +33,6 @@ jest.mock('../src/environment', () => {
 describe("Request Identifier", () => {
     describe("fromRequest", () => {
         it("extracts request identifier from query params", () => {
-            logger.setup();
             const req = { query: { request_identifier: "test123" } };
             const reqId = fromRequest(req);
             expect(reqId.identifier).toBe("test123");
@@ -56,7 +55,7 @@ describe("Request Identifier", () => {
 
     describe("makeDirectory", () => {
         it("creates directory for request identifier", async () => {
-            logger.setup();
+            await logger.setup();
             const req = { query: { request_identifier: "test123" } };
             const reqId = fromRequest(req);
             const dirPath = await makeDirectory(reqId);

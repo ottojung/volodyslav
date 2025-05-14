@@ -16,8 +16,6 @@ const makeTestRepository = require("./make_test_repository");
 const event = require("../src/event/structure");
 const logger = require('../src/logger');
 
-logger.setup();
-
 beforeEach(temporary.beforeEach);
 afterEach(temporary.afterEach);
 
@@ -45,6 +43,7 @@ describe("event_log_storage", () => {
     // No stubbing: use real gitstore.transaction with makeTestRepository per test
 
     test("transaction allows adding and storing event entries", async () => {
+        await logger.setup();
         const deleter = { delete: jest.fn() };
         const { gitDir } = await makeTestRepository();
 
@@ -73,6 +72,7 @@ describe("event_log_storage", () => {
     });
 
     test("transaction allows adding and storing multiple event entries", async () => {
+        await logger.setup();
         const deleter = { delete: jest.fn() };
         const { gitDir } = await makeTestRepository();
 
@@ -111,6 +111,7 @@ describe("event_log_storage", () => {
     });
 
     test("transaction with no entries throws an error", async () => {
+        await logger.setup();
         const deleter = { delete: jest.fn() };
         await makeTestRepository();
         // Expect the transaction to fail due to no staged changes to commit
@@ -122,6 +123,7 @@ describe("event_log_storage", () => {
     });
 
     test("transaction copies asset files into repository", async () => {
+        await logger.setup();
         const deleter = { delete: jest.fn() };
         await makeTestRepository();
         // Spy on copyFile to verify correct invocation
@@ -142,6 +144,7 @@ describe("event_log_storage", () => {
     });
 
     test("transaction cleanup calls unlink for each asset on failure", async () => {
+        await logger.setup();
         const deleter = { delete: jest.fn() };
         await makeTestRepository();
         const testEvent = { id: { identifier: "cleanupEvent" } };

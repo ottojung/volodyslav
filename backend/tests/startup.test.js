@@ -40,7 +40,7 @@ describe("Startup Dependencies", () => {
     });
 
     it("sets up HTTP call logging and handles requests correctly", async () => {
-        logger.setup();
+        await logger.setup();
         const app = expressApp.make();
         await initialize(app);
 
@@ -51,6 +51,7 @@ describe("Startup Dependencies", () => {
     });
 
     it("throws if notifications are not available", async () => {
+        await logger.setup();
         const app = expressApp.make();
         await jest.isolateModules(async () => {
             // Inside the isolation, mock the module with a nonexistent command

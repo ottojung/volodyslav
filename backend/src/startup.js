@@ -29,7 +29,6 @@ function addRoutes(app) {
 async function ensureStartupDependencies(app) {
     await addRoutes(app);
     await ensureNotificationsAvailable();
-    await logger.setup();
     logger.enableHttpCallsLogging(app);
 }
 
@@ -37,6 +36,7 @@ async function ensureStartupDependencies(app) {
  * @param {import("express").Express} app
  */
 async function initialize(app) {
+    await logger.setup();
     logger.logInfo({}, "Server is running");
     await ensureStartupDependencies(app);
     logger.logInfo({}, "Initialization complete.");

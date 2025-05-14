@@ -6,32 +6,11 @@ const pino = require("pino").default;
 const pinoHttp = require("pino-http").default;
 const { logLevel, logFile } = require("./environment");
 const { notifyAboutError } = require("./notifications");
-const fs = require("fs");
+const fs = require("fs").promises;
 const path = require("path");
 
-const logFilePath = logFile();
-
-const transport = pino.transport({
-    targets: [
-        {
-            target: "pino-pretty",
-            level: logLevel(),
-            options: {
-                colorize: true,
-                translateTime: "yyyy-mm-dd HH:MM:ss.l o",
-                ignore: "pid,hostname",
-            },
-        },
-        {
-            target: "pino/file",
-            level: "debug",
-            options: { destination: logFilePath },
-        },
-    ],
-});
-
 /** Pino logger instance. @type {pino.Logger} */
-const logger = pino({ level: logLevel() }, transport);
+let logger;
 
 /**
  * @param {import('express').Express} app
@@ -43,14 +22,34 @@ function enableHttpCallsLogging(app) {
 }
 
 /**
- * @returns {void}
+ * @returns {Promise<void>}
  * @description Sets up HTTP call logging for the given Express app.
  */
-function setup() {
+async function setup() {
+    const logFilePath = logFile();
     // Ensure the directory for the log file exists.
-    if (!fs.existsSync(path.dirname(logFilePath))) {
-        fs.mkdirSync(path.dirname(logFilePath), { recursive: true });
-    }
+    await fs.mkdir(path.dirname(logFilePath), { recursive: true });
+
+    const transport = pino.transport({
+        targets: [
+            {
+                target: "pino-pretty",
+                level: logLevel(),
+                options: {
+                    colorize: true,
+                    translateTime: "yyyy-mm-dd HH:MM:ss.l o",
+                    ignore: "pid,hostname",
+                },
+            },
+            {
+                target: "pino/file",
+                level: "debug",
+                options: { destination: logFilePath },
+            },
+        ],
+    });
+
+    logger = pino({ level: logLevel() }, transport);
 }
 
 /**
