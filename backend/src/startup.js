@@ -37,7 +37,6 @@ async function ensureStartupDependencies(app) {
  * @param {import("express").Express} app
  */
 async function initialize(app) {
-    await logger.setup();
     logger.logInfo({}, "Server is running");
     await ensureStartupDependencies(app);
     await scheduler.setup();
