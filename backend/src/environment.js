@@ -5,7 +5,7 @@ class EnvironmentError extends Error {
      * @param {string} variableName - The name of the environment variable.
      */
     constructor(variableName) {
-        const message = `Environment variable ${variableName} must be set.`;
+        const message = `Environment variable $${variableName} must be set.`;
         super(message);
         this.variableName = variableName;
     }
