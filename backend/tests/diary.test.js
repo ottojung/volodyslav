@@ -95,6 +95,10 @@ describe("processDiaryAudios", () => {
             modifiers: { when: "0 hours ago" },
             type: "diary",
             description: "",
+            creator: {
+                name: "Volodyslav",
+                version: expect.any(String),
+            }
         };
 
         // The addEntry method is called for each of the three assets

@@ -6,6 +6,7 @@ const { diaryAudiosDirectory } = require("./environment");
 const { transaction } = require("./event_log_storage");
 const eventId = require("./event/id");
 const asset = require("./event/asset");
+const runtime_identifier = require("./runtime_identifier");
 
 /** @typedef {import('./event/asset').Asset} Asset */
 /** @typedef {import('./filesystem/delete_file').FileDeleter} FileDeleter */
@@ -22,12 +23,17 @@ const asset = require("./event/asset");
 async function processDiaryAudios(deleter, rng) {
     const diaryAudiosDir = diaryAudiosDirectory();
     const inputFiles = await readdir(diaryAudiosDir);
+    const version = await runtime_identifier.version();
 
     // prepare assets.
     const assets = inputFiles.map((filename) => {
         const filepath = path.join(diaryAudiosDir, filename);
         const date = formatFileTimestamp(filename);
         const id = eventId.make(rng);
+        const creator = {
+            name: "Volodyslav",
+            version: version,
+        };
 
         /** @type {import('./event/structure').Event} */
         const event = {
@@ -40,6 +46,7 @@ async function processDiaryAudios(deleter, rng) {
             },
             type: "diary",
             description: "",
+            creator,
         };
 
         const ass = asset.make(event, filepath);
