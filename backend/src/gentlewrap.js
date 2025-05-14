@@ -14,9 +14,11 @@ const { logError } = require("./logger");
  * @param {Array<(err: Error) => boolean>} errorsList - The list of predicates to check errors against.
  * @returns {Promise<void>} - The wrapped function.
  */
-function gentleCall(fn, errorsList) {
-    return fn().catch(e => {
-        if (e instanceof Error && errorsList.some(predicate => predicate(e))) {
+async function gentleCall(fn, errorsList) {
+    try {
+        return await fn();
+    } catch (e) {
+        if (e instanceof Error && errorsList.some(predicate_1 => predicate_1(e))) {
             // If the error is a user error, log it to the console.
             logError({}, e.message);
             process.exit(1);
@@ -24,7 +26,7 @@ function gentleCall(fn, errorsList) {
             console.error("An unexpected error occurred:", e);
             throw e;
         }
-    });
+    }
 }
 
 /**
