@@ -16,7 +16,7 @@ jest.mock("../src/environment", () => {
             return path.join(temporary.output(), "results");
         }),
         myServerPort: jest.fn().mockReturnValue(0),
-        logLevel: jest.fn().mockReturnValue("silent"),
+        logLevel: jest.fn().mockReturnValue("debug"),
         logFile: jest.fn().mockImplementation(() => {
             return path.join(temporary.output(), "log.txt");
         }),
