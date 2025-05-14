@@ -86,6 +86,9 @@ async function writeAsset(deleter, ass) {
     await transaction(deleter, async (eventLogStorage) => {
         eventLogStorage.addEntry(ass.event, [ass]);
     });
+
+    const filename = path.basename(ass.filepath);
+    logInfo({ filename }, `Diary audio ${JSON.stringify(filename)} processed`);
 }
 
 /**
