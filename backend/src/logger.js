@@ -9,8 +9,8 @@ const { notifyAboutError } = require("./notifications");
 const fs = require("fs").promises;
 const path = require("path");
 
-/** Pino logger instance. @type {pino.Logger} */
-let logger;
+/** Pino logger instance. @type {pino.Logger?} */
+let logger = null;
 
 /**
  * @param {import('express').Express} app
@@ -18,6 +18,10 @@ let logger;
  * @description Sets up HTTP call logging for the given Express app.
  */
 function enableHttpCallsLogging(app) {
+    if (logger === null) {
+        throw new Error("Logger not initialized");
+    }
+
     app.use(pinoHttp({ logger }));
 }
 
@@ -61,7 +65,13 @@ async function setup() {
  */
 function logError(obj, msg) {
     // Call the original error method with proper typing
-    logger.error(obj, msg);
+    if (logger !== null) {
+        logger.error(obj, msg);
+    } else {
+        // Fallback to console if logger is not initialized
+        console.error("Logger not initialized");
+        console.error(obj, msg);
+    }
 
     // Extract the error message for notification
     let message;
@@ -75,7 +85,13 @@ function logError(obj, msg) {
 
     // Send notification
     notifyAboutError(message).catch((err) => {
-        logger.error({ error: err }, "Failed to send error notification");
+        if (logger !== null) {
+            logger.error({ error: err }, "Failed to send error notification");
+        } else {
+            // Fallback to console if logger is not initialized
+            console.error("Logger not initialized");
+            console.error({ error: err }, "Failed to send error notification");
+        }
     });
 }
 
@@ -85,7 +101,13 @@ function logError(obj, msg) {
  * @returns {void}
  */
 function logWarning(obj, msg) {
-    logger.warn(obj, msg);
+    if (logger !== null) {
+        logger.warn(obj, msg);
+    } else {
+        // Fallback to console if logger is not initialized
+        console.error("Logger not initialized");
+        console.warn(obj, msg);
+    }
 }
 
 /**
@@ -94,7 +116,13 @@ function logWarning(obj, msg) {
  * @returns {void}
  */
 function logInfo(obj, msg) {
-    logger.info(obj, msg);
+    if (logger !== null) {
+        logger.info(obj, msg);
+    } else {
+        // Fallback to console if logger is not initialized
+        console.error("Logger not initialized");
+        console.info(obj, msg);
+    }
 }
 
 /**
@@ -103,7 +131,13 @@ function logInfo(obj, msg) {
  * @returns {void}
  */
 function logDebug(obj, msg) {
-    logger.debug(obj, msg);
+    if (logger !== null) {
+        logger.debug(obj, msg);
+    } else {
+        // Fallback to console if logger is not initialized
+        console.error("Logger not initialized");
+        console.debug(obj, msg);
+    }
 }
 
 module.exports = {
