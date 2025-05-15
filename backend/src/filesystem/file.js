@@ -7,6 +7,19 @@
 const fs = require("fs").promises;
 
 class ExistingFileClass {
+    /**
+     * The path to the file.
+     * @type {string}
+     */
+    path;
+
+    /**
+     * This is a value that is never actually assigned.
+     * Its purpose is to make `ExistingFile` a nominal type.
+     * @private
+     * @type {undefined}
+     */
+    __brand;
 
     /**
      * @param {string} path - The path to the file.
