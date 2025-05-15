@@ -1,5 +1,3 @@
-// backend/tests/diary.test.js
-
 // This test verifies that `processDiaryAudios` correctly handles transcription
 // results by copying successful audio files, removing originals, logging failures,
 // and recording events in the event log. It uses mocks to simulate file operations,
