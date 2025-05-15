@@ -19,6 +19,7 @@
 
 const fs = require("fs").promises;
 const path = require("path");
+const { makeEmpty } = require("./file");
 
 class FileCreatorError extends Error {
     /**
@@ -40,21 +41,26 @@ function isFileCreatorError(object) {
     return object instanceof FileCreatorError;
 }
 
-/** @typedef {{createFile: typeof createFile, createDirectory: typeof createDirectory}} FileCreator */
+/**
+ * @typedef {import('./file').ExistingFile} ExistingFile
+ */
 
 /**
- * Creates a file at the specified path with the given content.
- * @param {string} filePath - The path to the file to create.
- * @param {string} [content=""] - The content to write to the file. Defaults to empty string.
- * @returns {Promise<void>} - A promise that resolves when the file is created.
+ * @typedef {object} FileCreator
+ * @property {typeof createFile} createFile
+ * @property {typeof createDirectory} createDirectory
  */
-async function createFile(filePath, content = "") {
+
+/**
+ * Creates a file at the specified path.
+ * @param {string} filePath - The path to the file to create.
+ * @returns {Promise<ExistingFile>} - A promise that resolves when the file is created.
+ */
+async function createFile(filePath) {
     try {
         // Ensure the directory exists
         await createDirectory(path.dirname(filePath));
-
-        // Write the file
-        await fs.writeFile(filePath, content);
+        return await makeEmpty(filePath);
     } catch (err) {
         throw new FileCreatorError(
             `Failed to create file: ${filePath}`,
