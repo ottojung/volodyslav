@@ -1,12 +1,3 @@
-jest.mock("fs/promises", () => {
-    const actual = jest.requireActual("fs/promises");
-    return {
-        ...actual,
-        copyFile: jest.fn().mockResolvedValue(),
-        unlink: jest.fn().mockResolvedValue(),
-        mkdir: jest.fn().mockResolvedValue(),
-    };
-});
 const path = require("path");
 const { transaction } = require("../src/event_log_storage");
 const fsp = require("fs/promises");
@@ -15,7 +6,8 @@ const { readObjects } = require("../src/json_stream_file");
 const temporary = require("./temporary");
 const makeTestRepository = require("./make_test_repository");
 const event = require("../src/event/structure");
-const logger = require('../src/logger');
+const { targetPath } = require("../src/event/asset");
+const logger = require("../src/logger");
 
 beforeEach(temporary.beforeEach);
 afterEach(temporary.afterEach);
@@ -27,14 +19,14 @@ jest.mock("../src/environment", () => {
     return {
         logLevel: jest.fn().mockReturnValue("debug"),
         logFile: jest.fn().mockImplementation(() => {
-            return path.join(temporary.output(), 'log.txt');
+            return path.join(temporary.output(), "log.txt");
         }),
         eventLogAssetsDirectory: jest.fn().mockImplementation(() => {
-            const dir = temporary.input();
+            const dir = temporary.output();
             return path.join(dir, "event_log_assets");
         }),
         eventLogDirectory: jest.fn().mockImplementation(() => {
-            const dir = temporary.input();
+            const dir = temporary.output();
             return path.join(dir, "event_log");
         }),
     };
@@ -127,21 +119,22 @@ describe("event_log_storage", () => {
         await logger.setup();
         const deleter = { delete: jest.fn() };
         await makeTestRepository();
-        // Spy on copyFile to verify correct invocation
-        const copySpy = jest.spyOn(fsp, "copyFile").mockResolvedValue();
         const testEvent = {
             id: { identifier: "assetEvent" },
             date: new Date("2025-05-13"),
         };
-        const assetPath = "/some/asset.txt";
+
+        // Create a temporary asset file.
+        const inputDir = path.join(temporary.input(), "inputs");
+        const assetPath = path.join(inputDir, "asset.txt");
+        await fsp.mkdir(inputDir, { recursive: true });
+        await fsp.writeFile(assetPath, "test content");
+
         await transaction(deleter, async (storage) =>
-            storage.addEntry(testEvent, [{ event: testEvent, filepath: assetPath }])
+            storage.addEntry(testEvent, [
+                { event: testEvent, filepath: assetPath },
+            ])
         );
-        expect(copySpy).toHaveBeenCalledTimes(1);
-        const [src, dest] = copySpy.mock.calls[0];
-        expect(src).toBe(assetPath);
-        expect(dest).toContain(`/assetEvent`);
-        copySpy.mockRestore();
     });
 
     test("transaction cleanup calls unlink for each asset on failure", async () => {
@@ -165,34 +158,42 @@ describe("event_log_storage", () => {
         await logger.setup();
         const deleter = { delete: jest.fn() };
         await makeTestRepository();
-        
-        // Spy on mkdir to verify it's called correctly
-        const mkdirSpy = jest.spyOn(fsp, "mkdir").mockResolvedValue();
-        const copySpy = jest.spyOn(fsp, "copyFile").mockResolvedValue();
-        
+
         const testEvent = {
             id: { identifier: "assetEventWithDirs" },
             date: new Date("2025-05-13"),
         };
-        const assetPath = "/some/nested/asset.txt";
-        
+
+        // Create a temporary asset file.
+        const inputDir = path.join(temporary.input(), "inputs");
+        const assetPath = path.join(inputDir, "asset.txt");
+        await fsp.mkdir(inputDir, { recursive: true });
+        await fsp.writeFile(assetPath, "test content");
+
         await transaction(deleter, async (storage) =>
-            storage.addEntry(testEvent, [{ event: testEvent, filepath: assetPath }])
+            storage.addEntry(testEvent, [
+                { event: testEvent, filepath: assetPath },
+            ])
         );
-        
-        // Verify mkdir was called at least once with recursive option
-        expect(mkdirSpy).toHaveBeenCalled();
-        // Find the call that contains our asset ID
-        const mkdirCall = mkdirSpy.mock.calls.find(call => call[0].includes('assetEventWithDirs'));
-        expect(mkdirCall).toBeDefined();
-        const [dirPath, options] = mkdirCall;
-        expect(dirPath).toContain(`/assetEventWithDirs`);
-        expect(options).toEqual({ recursive: true });
-        
-        // Verify copyFile was called correctly
-        expect(copySpy).toHaveBeenCalledTimes(1);
-        
-        mkdirSpy.mockRestore();
-        copySpy.mockRestore();
+
+        expect(deleter.delete).not.toHaveBeenCalled();
+        const asset = {
+            event: testEvent,
+            filepath: assetPath,
+        };
+        const target = targetPath(asset);
+
+        const targetDir = path.dirname(target);
+        const dirExists = await fsp
+            .stat(targetDir)
+            .then(() => true)
+            .catch(() => false);
+        expect(dirExists).toBe(true);
+
+        const fileExists = await fsp
+            .stat(target)
+            .then(() => true)
+            .catch(() => false);
+        expect(fileExists).toBe(true);
     });
 });
