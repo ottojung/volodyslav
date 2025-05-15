@@ -18,6 +18,7 @@ async function gentleCall(fn, errorsList) {
     try {
         return await fn();
     } catch (e) {
+        console.error("Top level error: ", e);
         if (
             e instanceof Error &&
             errorsList.some((predicate) => predicate(e))
@@ -26,7 +27,6 @@ async function gentleCall(fn, errorsList) {
             logError({}, e.message);
             process.exit(1);
         } else {
-            console.error("Unexpected error:", String(e));
             throw e;
         }
     }
