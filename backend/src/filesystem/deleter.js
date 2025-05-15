@@ -58,7 +58,10 @@ function isFileNotFoundError(object) {
     return object instanceof FileNotFoundError;
 }
 
-/** @typedef {{deleteFile: typeof deleteFile}} FileDeleter */
+/** 
+ * @typedef {object} FileDeleter
+ * @property {typeof deleteFile} deleteFile
+ */
 
 /**
  * Deletes a file at the specified path.
