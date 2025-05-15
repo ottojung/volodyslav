@@ -135,6 +135,25 @@ describe("event_log_storage", () => {
                 { event: testEvent, filepath: assetPath },
             ])
         );
+
+        const asset = {
+            event: testEvent,
+            filepath: assetPath,
+        };
+        const target = targetPath(asset);
+
+        const targetDir = path.dirname(target);
+        const dirExists = await fsp
+            .stat(targetDir)
+            .then(() => true)
+            .catch(() => false);
+        expect(dirExists).toBe(true);
+
+        const fileExists = await fsp
+            .stat(target)
+            .then(() => true)
+            .catch(() => false);
+        expect(fileExists).toBe(true);
     });
 
     test("transaction cleanup calls unlink for each asset on failure", async () => {
@@ -177,6 +196,7 @@ describe("event_log_storage", () => {
         );
 
         expect(deleter.delete).not.toHaveBeenCalled();
+
         const asset = {
             event: testEvent,
             filepath: assetPath,
