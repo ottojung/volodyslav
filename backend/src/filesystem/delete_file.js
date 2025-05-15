@@ -58,20 +58,14 @@ function isFileNotFoundError(object) {
     return object instanceof FileNotFoundError;
 }
 
-/** @typedef {{}} FileDeleter */
-
-/** 
- * @typedef {object} Capabilities
- * @property {FileDeleter} deleter - A file deleter instance.
- */
+/** @typedef {{deleteFile: typeof deleteFile}} FileDeleter */
 
 /**
  * Deletes a file at the specified path.
- * @param {Capabilities} _capabilities - The capabilities object.
  * @param {string} filePath - The path to the file to delete.
  * @returns {Promise<void>} - A promise that resolves when the file is deleted.
  */
-async function deleteFile(_capabilities, filePath) {
+async function deleteFile(filePath) {
     try {
         await fs.unlink(filePath);
     } catch (err) {
@@ -86,8 +80,14 @@ async function deleteFile(_capabilities, filePath) {
     }
 }
 
+function make() {
+    return {
+        deleteFile,
+    };
+}
+
 module.exports = {
     isFileDeleterError,
     isFileNotFoundError,
-    deleteFile,
+    make,
 };

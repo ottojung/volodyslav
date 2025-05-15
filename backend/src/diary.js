@@ -7,7 +7,6 @@ const { transaction } = require("./event_log_storage");
 const eventId = require("./event/id");
 const asset = require("./event/asset");
 const creatorMake = require("./creator");
-const { deleteFile } = require("./filesystem/delete_file");
 
 /** @typedef {import('./event/asset').Asset} Asset */
 /** @typedef {import('./filesystem/delete_file').FileDeleter} FileDeleter */
@@ -120,7 +119,7 @@ async function writeAsset(capabilities, ass) {
 async function deleteOriginalAudios(capabilities, successes, diaryAudiosDir) {
     for (const ass of successes) {
         try {
-            await deleteFile(capabilities, ass.filepath);
+            await capabilities.deleter.deleteFile(ass.filepath);
             logInfo(
                 {
                     file: path.basename(ass.filepath),
