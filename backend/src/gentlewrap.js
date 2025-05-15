@@ -24,7 +24,6 @@ async function gentleCall(fn, errorsList) {
     try {
         return await fn();
     } catch (e) {
-        console.error("Top level error: ", e);
         if (
             e instanceof Error &&
             errorsList.some((predicate) => predicate(e))
