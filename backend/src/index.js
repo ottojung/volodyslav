@@ -35,7 +35,7 @@ async function entryTyped() {
     // so show the help and exit
     if (process.argv.slice(2).length === 0) {
         program.outputHelp(); // or .help() to print and exit
-        process.exit(0);
+        return process.exit(0);
     }
 
     return process.exit(0);
