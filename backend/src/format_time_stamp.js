@@ -4,7 +4,7 @@
  */
 function formatFileTimestamp(filename) {
   // 1) extract the basic‐ISO timestamp (YYYYMMDDThhmmssZ)
-  const m = filename.match(/^(\d{8}T\d{6}Z)/);
+  const m = filename.match(/^(\d{8}T\d{6}Z)[.].*/);
   if (!m) throw new Error('Filename does not start with YYYYMMDDThhmmssZ');
 
   const basic = m[1];
