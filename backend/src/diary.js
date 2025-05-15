@@ -25,8 +25,11 @@ async function processDiaryAudios(deleter, rng) {
     const inputFiles = await readdir(diaryAudiosDir);
     const creator = await creatorMake();
 
-    // prepare assets.
-    const assets = inputFiles.map((filename) => {
+    /**
+     * @param {string} filename
+     * @returns {Asset}
+     */
+    function makeAsset(filename) {
         const filepath = path.join(diaryAudiosDir, filename);
         const date = formatFileTimestamp(filename);
         const id = eventId.make(rng);
@@ -48,19 +51,20 @@ async function processDiaryAudios(deleter, rng) {
 
         const ass = asset.make(event, filepath);
         return ass;
-    });
+    }
 
     const successes = [];
     const failures = [];
 
     // now update the event-log storage.
-    for (const ass of assets) {
+    for (const filename of inputFiles) {
         try {
+            const ass = makeAsset(filename);
             await writeAsset(deleter, ass);
             successes.push(ass);
         } catch (err) {
             const message = err instanceof Error ? err.message : String(err);
-            failures.push({ file: path.basename(ass.filepath), message });
+            failures.push({ file: filename, message });
         }
     }
 
