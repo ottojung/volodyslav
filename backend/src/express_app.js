@@ -1,5 +1,7 @@
 const express = require("express");
 const { myServerPort } = require("./environment");
+const { gentleCall } = require("./gentlewrap");
+const userErrors = require("./user_errors");
 
 /**
  * @returns {express.Express}
@@ -39,7 +41,12 @@ async function run(app, fun) {
         }
     }
 
-    return new Promise(toResolve);
+    function ret() {
+        new Promise(toResolve);
+        return process.exit(0);
+    }
+
+    return gentleCall(ret, userErrors);
 }
 
 module.exports = {
