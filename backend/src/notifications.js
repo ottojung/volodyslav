@@ -11,6 +11,14 @@ class NotificationsUnavailable extends CommandUnavailable {
 }
 
 /**
+ * @param {unknown} object
+ * @returns {object is NotificationsUnavailable}
+ */
+function isNotificationsUnavailable(object) {
+    return object instanceof NotificationsUnavailable;
+}
+
+/**
  * Ensures that the termux-notification executable exists in the PATH.
  */
 async function ensureNotificationsAvailable() {
@@ -41,6 +49,7 @@ async function notifyAboutWarning(message) {
 }
 
 module.exports = {
+    isNotificationsUnavailable,
     ensureNotificationsAvailable,
     notifyAboutError,
     notifyAboutWarning,
