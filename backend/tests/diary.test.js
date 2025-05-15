@@ -179,7 +179,7 @@ describe("processDiaryAudios", () => {
         const storage = setMockDefaults();
 
         // Simulate a failure for the bad.mp3 file.
-        storage.addEntry.mockImplementation((entry, assets) => {
+        storage.addEntry.mockImplementation((_entry, assets) => {
             if (assets[0].filepath.includes("bad.mp3")) {
                 throw new Error("Failed to add entry");
             }
