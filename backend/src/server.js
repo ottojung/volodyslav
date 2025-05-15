@@ -45,7 +45,7 @@ async function initialize(app) {
 
 async function start() {
     const app = expressApp.make();
-    expressApp.run(app, async (app, server) => {
+    await expressApp.run(app, async (app, server) => {
         const address = server.address();
         logger.logInfo(
             { address },

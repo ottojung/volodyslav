@@ -9,9 +9,6 @@ async function printVersion() {
     console.log(await version());
 }
 
-/**
- * @returns {Promise<never>}
- */
 async function entryTyped() {
     await logger.setup();
     const program = new Command();
@@ -35,14 +32,11 @@ async function entryTyped() {
     // so show the help and exit
     if (process.argv.slice(2).length === 0) {
         program.outputHelp(); // or .help() to print and exit
-        return process.exit(0);
     }
-
-    return process.exit(0);
 }
 
 /**
- * @type {() => Promise<object>}
+ * @type {() => Promise<void>}
  */
 const entry = gentleWrap(entryTyped, userErrors);
 

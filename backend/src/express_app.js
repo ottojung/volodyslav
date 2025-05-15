@@ -15,9 +15,9 @@ function make() {
 /**
  * @param {express.Express} app
  * @param {(app: express.Express, server: Server) => Promise<void>} fun
- * @returns {Server}
+ * @returns {Promise<Server>}
  */
-function run(app, fun) {
+async function run(app, fun) {
     const port = myServerPort();
     const server = app.listen(port, async function () {
         try {
