@@ -1,0 +1,3 @@
+#! /bin/sh
+
+echo "Termux notification called: $*" 1>&2
