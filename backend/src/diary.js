@@ -7,20 +7,26 @@ const { transaction } = require("./event_log_storage");
 const eventId = require("./event/id");
 const asset = require("./event/asset");
 const creatorMake = require("./creator");
+const { deleteFile } = require("./filesystem/delete_file");
 
 /** @typedef {import('./event/asset').Asset} Asset */
 /** @typedef {import('./filesystem/delete_file').FileDeleter} FileDeleter */
 /** @typedef {import('./random').RNG} RNG */
 
 /**
+ * @typedef {object} Capabilities
+ * @property {FileDeleter} deleter - A file deleter instance.
+ * @property {RNG} rng - A random number generator instance.
+ */
+
+/**
  * Processes diary audio files by copying assets, updating the event log,
  * and cleaning up the originals.
  *
- * @param {FileDeleter} deleter - A file deleter instance.
- * @param {RNG} rng - A random number generator instance.
+ * @param {Capabilities} capabilities - An object containing the capabilities.
  * @returns {Promise<void>} - A promise that resolves when processing is complete.
  */
-async function processDiaryAudios(deleter, rng) {
+async function processDiaryAudios(capabilities) {
     const diaryAudiosDir = diaryAudiosDirectory();
     const inputFiles = await readdir(diaryAudiosDir);
     const creator = await creatorMake();
@@ -32,7 +38,7 @@ async function processDiaryAudios(deleter, rng) {
     function makeAsset(filename) {
         const filepath = path.join(diaryAudiosDir, filename);
         const date = formatFileTimestamp(filename);
-        const id = eventId.make(rng);
+        const id = eventId.make(capabilities);
 
         /** @type {import('./event/structure').Event} */
         const event = {
@@ -60,7 +66,7 @@ async function processDiaryAudios(deleter, rng) {
     for (const filename of inputFiles) {
         try {
             const ass = makeAsset(filename);
-            await writeAsset(deleter, ass);
+            await writeAsset(capabilities, ass);
             successes.push(ass);
         } catch (err) {
             const message = err instanceof Error ? err.message : String(err);
@@ -88,18 +94,18 @@ async function processDiaryAudios(deleter, rng) {
     });
 
     // Delete the original audio files.
-    await deleteOriginalAudios(deleter, successes, diaryAudiosDir);
+    await deleteOriginalAudios(capabilities, successes, diaryAudiosDir);
 }
 
 /**
  * Writes changes to the event log by appending entries for successfully
  * transcribed diary audio files.
- * @param {FileDeleter} deleter - A file deleter instance.
+ * @param {Capabilities} capabilities - An object containing the capabilities.
  * @param {Asset} ass - An array of TranscriptionSuccess objects.
  * @returns {Promise<void>} - A promise that resolves when the changes are written.
  */
-async function writeAsset(deleter, ass) {
-    await transaction(deleter, async (eventLogStorage) => {
+async function writeAsset(capabilities, ass) {
+    await transaction(capabilities, async (eventLogStorage) => {
         eventLogStorage.addEntry(ass.event, [ass]);
     });
 }
@@ -107,14 +113,14 @@ async function writeAsset(deleter, ass) {
 /**
  * Deletes original diary audio files and logs outcomes.
  *
- * @param {FileDeleter} deleter
- * @param {Asset[]} successes
- * @param {string} diaryAudiosDir
+ * @param {Capabilities} capabilities - An object containing the capabilities.
+ * @param {Asset[]} successes - An array of successfully processed assets.
+ * @param {string} diaryAudiosDir - The directory containing the diary audio files.
  */
-async function deleteOriginalAudios(deleter, successes, diaryAudiosDir) {
+async function deleteOriginalAudios(capabilities, successes, diaryAudiosDir) {
     for (const ass of successes) {
         try {
-            await deleter.delete(ass.filepath);
+            await deleteFile(capabilities, ass.filepath);
             logInfo(
                 {
                     file: path.basename(ass.filepath),

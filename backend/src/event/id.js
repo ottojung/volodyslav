@@ -1,8 +1,5 @@
 const random = require("../random");
 
-/**
- * @class
- */
 class EventIdClass {
     /** @type {string} */
     identifier;
@@ -16,22 +13,27 @@ class EventIdClass {
     __brand;
 
     /**
-     * @param {import('../random').RNG} rng
+     * @param {Capabilities} capabilities
      */
-    constructor(rng) {
-        this.identifier = random.string(rng, 16);
+    constructor(capabilities) {
+        this.identifier = random.string(capabilities, 16);
     }
 }
 
 /** @typedef {EventIdClass} EventId */
 
+/** 
+ * @typedef {object} Capabilities
+ * @property {import('../random').RNG} rng - A random number generator instance.
+ */
+
 /**
- * @param {import('../random').RNG} rng
+ * @param {Capabilities} capabilities
  * @returns {EventId}
  * @description Primary constructor for an EventId.
  */
-function make(rng) {
-    return new EventIdClass(rng);
+function make(capabilities) {
+    return new EventIdClass(capabilities);
 }
 
 module.exports = {

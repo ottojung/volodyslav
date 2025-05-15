@@ -30,56 +30,64 @@ class FileDeleterError extends Error {
     }
 }
 
-class FileNotFoundError extends FileDeleterError {
+/**
+ * Checks if the error is a FileDeleterError.
+ * @param {unknown} object - The error to check.
+ * @returns {object is FileDeleterError}
+ */
+function isFileDeleterError(object) {
+    return object instanceof FileDeleterError;
+}
+
+class FileNotFoundError extends Error {
     /**
      * @param {string} filePath
      */
     constructor(filePath) {
-        super(`File not found: ${filePath}`, filePath);
+        super(`File not found: ${filePath}`);
+        this.filePath = filePath;
     }
 }
 
-class FileDeleterClass {
-    /**
-     * @type {undefined}
-     * @private
-     */
-    __brand;
+/**
+ * Checks if the error is a FileNotFoundError.
+ * @param {unknown} object - The error to check.
+ * @returns {object is FileNotFoundError}
+ */
+function isFileNotFoundError(object) {
+    return object instanceof FileNotFoundError;
+}
 
-    /**
-     * Deletes a file at the specified path.
-     * @param {string} filePath - The path to the file to delete.
-     * @returns {Promise<void>} - A promise that resolves when the file is deleted.
-     * @throws {number} - If the file cannot be deleted.
-     */
-    async delete(filePath) {
-        try {
-            await fs.unlink(filePath);
-        } catch (err) {
-            if (
-                err instanceof Error &&
-                "code" in err &&
-                err.code === "ENOENT"
-            ) {
-                throw new FileNotFoundError(filePath);
-            } else {
-                throw new FileDeleterError(
-                    `Failed to delete file: ${filePath}`,
-                    filePath
-                );
-            }
+/** @typedef {{}} FileDeleter */
+
+/** 
+ * @typedef {object} Capabilities
+ * @property {FileDeleter} deleter - A file deleter instance.
+ */
+
+/**
+ * Deletes a file at the specified path.
+ * @param {Capabilities} _capabilities - The capabilities object.
+ * @param {string} filePath - The path to the file to delete.
+ * @returns {Promise<void>} - A promise that resolves when the file is deleted.
+ */
+async function deleteFile(_capabilities, filePath) {
+    try {
+        await fs.unlink(filePath);
+    } catch (err) {
+        if (err instanceof Error && "code" in err && err.code === "ENOENT") {
+            throw new FileNotFoundError(filePath);
+        } else {
+            throw new FileDeleterError(
+                `Failed to delete file: ${filePath}`,
+                filePath
+            );
         }
     }
 }
 
-function make() {
-    return new FileDeleterClass();
-}
-
-/** @typedef {FileDeleterClass} FileDeleter */
-
 module.exports = {
-    FileDeleterError,
-    FileNotFoundError,
-    make,
+    isFileDeleterError,
+    isFileNotFoundError,
+    deleteFile,
 };
