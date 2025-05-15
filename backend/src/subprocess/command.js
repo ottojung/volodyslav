@@ -35,7 +35,6 @@ class CommandClass {
      * Ensures that the command executable exists in the PATH.
      *
      * @returns {Promise<void>} - Resolves if the command is available, rejects if not.
-     * @throws {CommandUnavailable} - If the command is unavailable.
      */
     async ensureAvailable() {
         await resolvePath(this.command);

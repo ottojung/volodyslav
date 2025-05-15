@@ -1,8 +1,8 @@
-const { CommandUnavailable } = require("../subprocess");
+const { isCommandUnavailable } = require("../subprocess");
 const { git } = require("../executables");
 const defaultBranch = require("./default_branch");
 
-class GitUnavailable extends CommandUnavailable {
+class GitUnavailable extends Error {
     constructor() {
         super(
             "Git operations unavailable. Git executable not found in $PATH. Please ensure that Git is installed and available in your $PATH."
@@ -18,7 +18,7 @@ async function ensureGitAvailable() {
     try {
         await git.ensureAvailable();
     } catch (error) {
-        if (error instanceof CommandUnavailable) {
+        if (isCommandUnavailable(error)) {
             throw new GitUnavailable();
         }
         throw error;

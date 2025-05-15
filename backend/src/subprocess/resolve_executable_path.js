@@ -1,6 +1,28 @@
 const { callSubprocess } = require("./call");
 const memoize = require("@emotion/memoize").default;
-const { CommandUnavailable } = require("./command_unavailable");
+
+class CommandUnavailable extends Error {
+    /** @type {string} */
+    command;
+
+    /**
+     * @param {string} command - The command that is unavailable.
+     */
+    constructor(command) {
+        super(
+            `Command ${command} unavailable, its executable not found in $PATH. Please ensure that respective program is installed and available in your $PATH.`
+        );
+        this.command = command;
+    }
+}
+
+/**
+ * @param {unknown} object
+ * @returns {object is CommandUnavailable}
+ */
+function isCommandUnavailable(object) {
+    return object instanceof CommandUnavailable;
+}
 
 /**
  * Internal function to resolve the path to the command executable.
@@ -46,4 +68,5 @@ async function resolvePath(command) {
 
 module.exports = {
     resolvePath,
+    isCommandUnavailable,
 };

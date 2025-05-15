@@ -1,8 +1,8 @@
 
 const { registerCommand } = require('./command');
-const { CommandUnavailable } = require('./command_unavailable');
+const { isCommandUnavailable } = require('./resolve_executable_path');
 
 module.exports = {
     registerCommand,
-    CommandUnavailable,
+    isCommandUnavailable,
 };

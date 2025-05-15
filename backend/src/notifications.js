@@ -1,6 +1,5 @@
-const { CommandUnavailable } = require("./subprocess");
+const { isCommandUnavailable } = require("./subprocess");
 const { termuxNotification } = require("./executables");
-
 
 class NotificationsUnavailable extends Error {
     constructor() {
@@ -25,7 +24,7 @@ async function ensureNotificationsAvailable() {
     try {
         await termuxNotification.ensureAvailable();
     } catch (error) {
-        if (error instanceof CommandUnavailable) {
+        if (isCommandUnavailable(error)) {
             throw new NotificationsUnavailable();
         }
         throw error;
