@@ -10,9 +10,9 @@
 const { logError } = require("./logger");
 
 /**
- * @param {() => Promise<never>} fn - The function to be wrapped.
+ * @param {() => Promise<object>} fn - The function to be wrapped.
  * @param {Array<(err: Error) => boolean>} errorsList - The list of predicates to check errors against.
- * @returns {Promise<never>} - The wrapped function.
+ * @returns {Promise<object>} - The wrapped function.
  */
 async function gentleCall(fn, errorsList) {
     try {
@@ -33,9 +33,9 @@ async function gentleCall(fn, errorsList) {
 }
 
 /**
- * @param {() => Promise<never>} fn - The function to be wrapped.
+ * @param {() => Promise<object>} fn - The function to be wrapped.
  * @param {Array<(err: Error) => boolean>} errorsList - The list of predicates to check errors against.
- * @returns {() => Promise<never>}
+ * @returns {() => Promise<object>}
  */
 function gentleWrap(fn, errorsList) {
     return () => gentleCall(fn, errorsList);

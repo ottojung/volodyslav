@@ -1,7 +1,5 @@
 const express = require("express");
 const { myServerPort } = require("./environment");
-const { gentleCall } = require("./gentlewrap");
-const userErrors = require("./user_errors");
 
 /**
  * @returns {express.Express}
@@ -17,36 +15,19 @@ function make() {
 /**
  * @param {express.Express} app
  * @param {(app: express.Express, server: Server) => Promise<void>} fun
- * @returns {Promise<Server>}
+ * @returns {Server}
  */
-async function run(app, fun) {
-    /**
-     * @param {(value: Server) => void} resolve
-     * @param {(reason?: unknown) => void} reject
-     */
-    function toResolve(resolve, reject) {
+function run(app, fun) {
+    const port = myServerPort();
+    const server = app.listen(port, async function () {
         try {
-            const port = myServerPort();
-            const server = app.listen(port, async function () {
-                try {
-                    await fun(app, server);
-                } catch (error) {
-                    server.close();
-                    throw error;
-                }
-                resolve(server);
-            });
+            await fun(app, server);
         } catch (error) {
-            reject(error);
+            server.close();
+            throw error;
         }
-    }
-
-    function ret() {
-        new Promise(toResolve);
-        return process.exit(0);
-    }
-
-    return gentleCall(ret, userErrors);
+    });
+    return server;
 }
 
 module.exports = {

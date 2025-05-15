@@ -42,7 +42,7 @@ async function entryTyped() {
 }
 
 /**
- * @type {() => Promise<never>}
+ * @type {() => Promise<object>}
  */
 const entry = gentleWrap(entryTyped, userErrors);
 
