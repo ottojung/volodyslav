@@ -29,7 +29,7 @@ async function entryTyped() {
 
     program.command("start").description("Start the server").action(start);
 
-    await program.parseAsync();
+    await program.parseAsync(process.argv);
 
     // If we made it here then no sub‐commands or flags were used
     // so show the help and exit
