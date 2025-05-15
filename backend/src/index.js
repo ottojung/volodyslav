@@ -31,6 +31,13 @@ async function entryTyped() {
 
     await program.parseAsync();
 
+    // If we made it here then no sub‐commands or flags were used
+    // so show the help and exit
+    if (process.argv.slice(2).length === 0) {
+        program.outputHelp(); // or .help() to print and exit
+        process.exit(0);
+    }
+
     return process.exit(0);
 }
 
