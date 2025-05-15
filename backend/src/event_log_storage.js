@@ -10,7 +10,7 @@
 
 const path = require("path");
 const { eventLogDirectory } = require("./environment");
-const { appendFile, copyFile } = require("fs/promises");
+const { appendFile, copyFile, mkdir } = require("fs/promises");
 const gitstore = require("./gitstore");
 const event = require("./event");
 const { logWarning } = require("./logger");
@@ -108,12 +108,17 @@ async function appendEntriesToFile(filePath, entries) {
 
 /**
  * New helper to copy all queued assets into the asset directory.
+ * Ensures that the parent directory exists before copying files.
  * @param {import('./event').Asset[]} assets - An array of assets to copy.
  * @returns {Promise<void>} - A promise that resolves when all assets are copied.
  */
 async function copyAssets(assets) {
     for (const asset of assets) {
-        await copyFile(asset.filepath, targetPath(asset));
+        const target = targetPath(asset);
+        const targetDir = path.dirname(target);
+        // Create directory recursively if it doesn't exist
+        await mkdir(targetDir, { recursive: true });
+        await copyFile(asset.filepath, target);
     }
 }
 

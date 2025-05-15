@@ -4,6 +4,7 @@ jest.mock("fs/promises", () => {
         ...actual,
         copyFile: jest.fn().mockResolvedValue(),
         unlink: jest.fn().mockResolvedValue(),
+        mkdir: jest.fn().mockResolvedValue(),
     };
 });
 const path = require("path");
@@ -158,5 +159,40 @@ describe("event_log_storage", () => {
             })
         ).rejects.toThrow("forced failure");
         expect(deleter.delete).toHaveBeenCalledWith(assetPath);
+    });
+
+    test("transaction creates parent directories before copying assets", async () => {
+        await logger.setup();
+        const deleter = { delete: jest.fn() };
+        await makeTestRepository();
+        
+        // Spy on mkdir to verify it's called correctly
+        const mkdirSpy = jest.spyOn(fsp, "mkdir").mockResolvedValue();
+        const copySpy = jest.spyOn(fsp, "copyFile").mockResolvedValue();
+        
+        const testEvent = {
+            id: { identifier: "assetEventWithDirs" },
+            date: new Date("2025-05-13"),
+        };
+        const assetPath = "/some/nested/asset.txt";
+        
+        await transaction(deleter, async (storage) =>
+            storage.addEntry(testEvent, [{ event: testEvent, filepath: assetPath }])
+        );
+        
+        // Verify mkdir was called at least once with recursive option
+        expect(mkdirSpy).toHaveBeenCalled();
+        // Find the call that contains our asset ID
+        const mkdirCall = mkdirSpy.mock.calls.find(call => call[0].includes('assetEventWithDirs'));
+        expect(mkdirCall).toBeDefined();
+        const [dirPath, options] = mkdirCall;
+        expect(dirPath).toContain(`/assetEventWithDirs`);
+        expect(options).toEqual({ recursive: true });
+        
+        // Verify copyFile was called correctly
+        expect(copySpy).toHaveBeenCalledTimes(1);
+        
+        mkdirSpy.mockRestore();
+        copySpy.mockRestore();
     });
 });
