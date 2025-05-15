@@ -26,6 +26,7 @@ async function gentleCall(fn, errorsList) {
             logError({}, e.message);
             process.exit(1);
         } else {
+            console.error("Unexpected error:", String(e));
             throw e;
         }
     }
