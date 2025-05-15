@@ -14,9 +14,10 @@ let version = memconst(async () => {
         const repositoryPath = __dirname;
         const { stdout } = await git.call("-C", repositoryPath, "describe");
         return stdout.trim();
-    } catch (e) {
+    } catch (error) {
         // If git is not available, we can assume that the version is unknown.
-        logError({}, "Could not determine version");
+        const message = error instanceof Error ? error.message : String(error);
+        logError({ error }, `Could not determine version: ${message}`);
         return "unknown";
     }
 });
