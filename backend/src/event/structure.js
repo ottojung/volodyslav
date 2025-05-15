@@ -3,12 +3,7 @@
  * @type {Record<string, string>}
  */
 
-/**
- * @typedef Creator
- * @type {Object}
- * @property {string} name - The name of the creator.
- * @property {string} version - The version of the creator.
- */
+/** @typedef {import('../creator').Creator} Creator */
 
 /**
  * @typedef Event

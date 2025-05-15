@@ -4,6 +4,7 @@ const { OpenAI } = require('openai');
 const { openaiAPIKey } = require('./environment');
 const { makeDirectory, markDone } = require('./request_identifier');
 const memconst = require('./memconst');
+const creatorMake = require('./creator');
 
 // Instantiate client
 const openai = memconst(() => new OpenAI({ apiKey: openaiAPIKey() }));
@@ -24,8 +25,19 @@ class InputNotFound extends Error {
     }
 }
 
+/** @typedef {import('./creator').Creator} Creator */
+
 /**
- * @typedef {{ text: string, transcriber: { name: string, creator: string } }} Transcription
+ * @typedef {Object} Transcriber
+ * @property {string} name - The name of the transcriber.
+ * @property {string} creator - The creator of the transcriber.
+ */
+
+/**
+ * @typedef {Object} Transcription
+ * @property {string} text - The transcribed text
+ * @property {Transcriber} transcriber - The transcriber used
+ * @property {Creator} creator - The creator of the transcription
  */
 
 /**
@@ -41,6 +53,8 @@ async function transcribeStream(file_stream) {
         response_format: 'text',
     });
 
+    const creator = await creatorMake();
+
     // Wrap into an abstracted structure
     return {
         text: response_text,
@@ -48,6 +62,7 @@ async function transcribeStream(file_stream) {
             name: TRANSCRIBER_MODEL,
             creator: "OpenAI",
         },
+        creator,
     };
 }
 

@@ -124,6 +124,7 @@ describe("GET /api/transcribe", () => {
                 creator: "OpenAI",
                 name: "gpt-4o-mini-transcribe",
             },
+            creator: expect.any(Object),
         });
     });
 });
