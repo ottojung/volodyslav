@@ -47,7 +47,7 @@ async function start() {
     const app = expressApp.make();
     await expressApp.run(app, async (app, server) => {
         const address = server.address();
-        logger.logInfo({ address }, `Server started on ${address}`);
+        logger.logInfo({ address }, `Server started on ${JSON.stringify(address)}`);
         await initialize(app);
     });
 }
