@@ -35,10 +35,11 @@ async function processDiaryAudios(deleter, rng) {
         const event = {
             id,
             date,
-            original: `diary [when 0 hours ago]`,
-            input: `diary [when 0 hours ago]`,
+            original: `diary [when 0 hours ago] [audiorecording]`,
+            input: `diary [when 0 hours ago] [audiorecording]`,
             modifiers: {
                 when: "0 hours ago",
+                audiorecording: "",
             },
             type: "diary",
             description: "",

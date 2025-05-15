@@ -90,9 +90,9 @@ describe("processDiaryAudios", () => {
         const expectedEvent = {
             id: expect.anything(),
             date: expect.any(Date),
-            original: "diary [when 0 hours ago]",
-            input: "diary [when 0 hours ago]",
-            modifiers: { when: "0 hours ago" },
+            original: "diary [when 0 hours ago] [audiorecording]",
+            input: "diary [when 0 hours ago] [audiorecording]",
+            modifiers: { when: "0 hours ago", audiorecording: "" },
             type: "diary",
             description: "",
             creator: {
