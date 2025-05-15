@@ -38,14 +38,18 @@ function fromRequest(req) {
     return new RequestIdentifierClass(reqId.toString());
 }
 
+/**
+ * @typedef {object} Capabilities
+ * @property {import('./random').RNG} rng - A random number generator instance.
+ */
 
 /**
  * Creates a random request identifier.
- * @param {import('./random').RNG} rng 
+ * @param {Capabilities} capabilities
  * @returns {RequestIdentifier}
  */
-function random(rng) {
-    const reqId = randomModule.string(rng, 8);
+function random(capabilities) {
+    const reqId = randomModule.string(capabilities, 8);
     return new RequestIdentifierClass(reqId.toString());
 }
 
