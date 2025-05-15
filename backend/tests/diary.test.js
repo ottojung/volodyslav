@@ -50,27 +50,29 @@ const { transaction } = require("../src/event_log_storage");
 const { logError } = require("../src/logger");
 const random = require("../src/random");
 
-describe("processDiaryAudios", () => {
-    let storage;
-    // Reset mocks and prepare a fake storage for event entries
-    beforeEach(() => {
-        jest.resetAllMocks();
-        storage = { addEntry: jest.fn() };
-        // Provide fixed directory paths for diary audios and assets
-        diaryAudiosDirectory.mockReturnValue("/fake/diaryDir");
-        eventLogAssetsDirectory.mockReturnValue("/fake/assetsDir");
-        // Ensure formatted filename timestamps are predictable
-        formatFileTimestamp.mockReturnValue(new Date("2025-05-12"));
-        // Simulate directory entries and copy behaviour
-        const filenames = ["file1.mp3", "file2.mp3", "bad.mp3"];
-        readdir.mockResolvedValue(filenames);
-        // Use the mock transaction to invoke callback with our fake storage
-        transaction.mockImplementation(async (_deleter, cb) => {
-            await cb(storage);
-        });
+function setMockDefaults() {
+    jest.resetAllMocks();
+    const storage = { addEntry: jest.fn() };
+    // Provide fixed directory paths for diary audios and assets
+    diaryAudiosDirectory.mockReturnValue("/fake/diaryDir");
+    eventLogAssetsDirectory.mockReturnValue("/fake/assetsDir");
+    // Ensure formatted filename timestamps are predictable
+    formatFileTimestamp.mockReturnValue(new Date("2025-05-12"));
+    // Simulate directory entries and copy behaviour
+    const filenames = ["file1.mp3", "file2.mp3", "bad.mp3"];
+    readdir.mockResolvedValue(filenames);
+    // Use the mock transaction to invoke callback with our fake storage
+    transaction.mockImplementation(async (_deleter, cb) => {
+        await cb(storage);
     });
 
+    return storage;
+}
+
+describe("processDiaryAudios", () => {
+
     it("should process diary audios correctly", async () => {
+        const storage = setMockDefaults();
         // Mock the file deleter and random generator
         const deleter = { delete: jest.fn() };
         const rng = random.default_generator(42);
