@@ -16,6 +16,12 @@ jest.mock("../src/environment", () => ({
     eventLogAssetsDirectory: jest.fn(),
 }));
 
+// Mock the logger to capture error logging without printing to console
+jest.mock("../src/creator", () => () => ({
+    name: "Volodyslav",
+    version: "0.1.0",
+}));
+
 // Mock the timestamp formatter for predictable date strings
 jest.mock("../src/format_time_stamp", () => ({
     formatFileTimestamp: jest.fn(),
@@ -95,10 +101,10 @@ describe("processDiaryAudios", () => {
             modifiers: { when: "0 hours ago", audiorecording: "" },
             type: "diary",
             description: "",
-            creator: {
+            creator: expect.objectContaining({
                 name: "Volodyslav",
-                version: expect.any(String),
-            }
+                version: "0.1.0",
+            }),
         };
 
         // The addEntry method is called for each of the three assets
