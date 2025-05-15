@@ -127,6 +127,7 @@ describe("gitstore", () => {
 
         // Change owner of the git directory to a different user.
         try {
+            // TODO: ensure that these IDs are different from the current user.
             await fs.chown(gitDir, 1001, 1001, { recursive: true });
         } catch (err) {
             console.error();
