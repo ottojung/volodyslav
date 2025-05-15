@@ -64,6 +64,33 @@ describe("event_log_storage", () => {
         });
     });
 
+    test("transaction fails if git fails", async () => {
+        await logger.setup();
+        const deleter = { delete: jest.fn() };
+        const gitDir = temporary.input();
+        await fsp.mkdir(gitDir, { recursive: true });
+
+        const testEvent = {
+            id: { identifier: "test123" },
+            date: new Date("2025-05-12"),
+            original: "test input",
+            input: "processed test input",
+            modifiers: { test: "modifier" },
+            type: "test_event",
+            description: "Test event description",
+        };
+
+        await expect(
+            transaction(deleter, async (eventLogStorage) => {
+                eventLogStorage.addEntry(testEvent, []);
+            })
+        ).rejects.toThrow();
+
+        await expect(
+            gitstore.transaction(gitDir, async (_store) => {})
+        ).rejects.toThrow("does not exist");
+    });
+
     test("transaction allows adding and storing multiple event entries", async () => {
         await logger.setup();
         const deleter = { delete: jest.fn() };
