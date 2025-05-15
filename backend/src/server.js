@@ -8,8 +8,6 @@ const transcribeRouter = require("./routes/transcribe");
 const transcribeAllRouter = require("./routes/transcribe_all");
 const scheduler = require("./scheduler");
 const expressApp = require("./express_app");
-const { gentleWrap } = require("./gentlewrap");
-const userErrors = require("./user_errors");
 
 /**
  * @param {import("express").Express} app
@@ -53,8 +51,7 @@ async function start() {
             { address },
             `Server started on ${JSON.stringify(address)}`
         );
-        const gentleInitialize = gentleWrap(async () => { await initialize(app); return {}; }, userErrors);
-        await gentleInitialize();
+        await initialize(app);
     });
 }
 
