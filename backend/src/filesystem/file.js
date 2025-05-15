@@ -1,5 +1,7 @@
 /**
- *
+ * This module provides a class for representing an existing file and simple introduction rules for it.
+ * Note that the file is not guaranteed to exist just because you have an instance of this class.
+ * All this class guarantees is that the file was created at some point in the past.
  */
 
 const fs = require("fs").promises;
