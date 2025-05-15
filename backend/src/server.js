@@ -6,6 +6,7 @@ const pingRouter = require("./routes/ping");
 const staticRouter = require("./routes/static");
 const transcribeRouter = require("./routes/transcribe");
 const transcribeAllRouter = require("./routes/transcribe_all");
+const periodicRouter = require("./routes/periodic");
 const scheduler = require("./scheduler");
 const expressApp = require("./express_app");
 
@@ -20,6 +21,7 @@ function addRoutes(app) {
     app.use("/api", pingRouter);
     app.use("/api", transcribeRouter);
     app.use("/api", transcribeAllRouter);
+    app.use("/api", periodicRouter);
     app.use("/", staticRouter);
 }
 
