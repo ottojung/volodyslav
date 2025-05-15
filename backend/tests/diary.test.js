@@ -71,7 +71,7 @@ function setMockDefaults() {
 
 describe("processDiaryAudios", () => {
 
-    it("should process diary audios correctly", async () => {
+    it("should process diary audios correctly when all files succeed", async () => {
         const storage = setMockDefaults();
         // Mock the file deleter and random generator
         const deleter = { delete: jest.fn() };
