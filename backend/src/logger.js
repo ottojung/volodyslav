@@ -125,12 +125,15 @@ function safeGetLogFilePath(errors) {
 async function setup() {
     /** @type {string[]} */
     const errors = [];
+    /** @type {string[]} */
+    const infos = [];
 
     /** @type {TransportTarget[]} */
     const targets = [];
 
     // Get log level safely
     const logLevelValue = safeGetLogLevel(errors);
+    infos.push(`Log level set to: ${logLevelValue}`);
 
     // Always add console target
     targets.push(createConsoleTarget(logLevelValue));
@@ -138,6 +141,7 @@ async function setup() {
     // Try to add file target if possible
     const logFilePath = safeGetLogFilePath(errors);
     if (logFilePath) {
+        infos.push(`Log file path set to: ${logFilePath}`);
         const fileTarget = await createFileTarget(logFilePath, errors);
         if (fileTarget) {
             targets.push(fileTarget);
@@ -155,6 +159,11 @@ async function setup() {
     // Report any setup errors
     for (const error of errors) {
         logError({}, error);
+    }
+
+    // Report any setup info
+    for (const info of infos) {
+        logInfo({}, info);
     }
 }
 
