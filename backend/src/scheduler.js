@@ -1,5 +1,5 @@
 
-const cron = require('node-cron');
+// const cron = require('node-cron');
 const { processDiaryAudios } = require("./diary");
 const deleterCapability = require("./filesystem/delete_file");
 const random = require('./random');
@@ -12,7 +12,7 @@ async function everyHour() {
 }
 
 async function setup() {
-    cron.schedule('0 * * * *', everyHour);
+    // cron.schedule('0 * * * *', everyHour);
 }
 
 module.exports = {
