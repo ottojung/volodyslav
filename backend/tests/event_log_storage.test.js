@@ -229,58 +229,88 @@ describe("event_log_storage", () => {
             description: "Mixed assets test event",
         };
 
-        // Create real files that will succeed
-        const inputDir = path.join(temporary.input(), "valid_assets");
-        await fsp.mkdir(inputDir, { recursive: true });
-        
-        const validPaths = [];
-        const invalidPaths = [];
-        
-        // Create 3 valid files
-        for (let i = 1; i <= 3; i++) {
-            const validPath = path.join(inputDir, `valid_asset_${i}.txt`);
-            await fsp.writeFile(validPath, `valid content ${i}`);
-            validPaths.push(validPath);
-        }
-        
-        // Create 3 invalid paths that don't exist
-        for (let i = 1; i <= 3; i++) {
-            const invalidPath = path.join(temporary.input(), `nonexistent_dir_${i}`, `invalid_asset_${i}.txt`);
-            invalidPaths.push(invalidPath);
-        }
-        
-        // Mix valid and invalid assets
-        const allAssets = [
-            ...validPaths.map(filepath => ({ event: testEvent, filepath })),
-            ...invalidPaths.map(filepath => ({ event: testEvent, filepath }))
-        ];
-        
+        // Helper function to create test assets
+        const createTestAssets = async () => {
+            const inputDir = path.join(temporary.input(), "valid_assets");
+            await fsp.mkdir(inputDir, { recursive: true });
+
+            const validPaths = [];
+            const invalidPaths = [];
+
+            // Create 3 valid files
+            for (let i = 1; i <= 3; i++) {
+                const validPath = path.join(inputDir, `valid_asset_${i}.txt`);
+                await fsp.writeFile(validPath, `valid content ${i}`);
+                validPaths.push(validPath);
+            }
+
+            // Create 3 invalid paths that don't exist
+            for (let i = 1; i <= 3; i++) {
+                const invalidPath = path.join(
+                    temporary.input(),
+                    `nonexistent_dir_${i}`,
+                    `invalid_asset_${i}.txt`
+                );
+                invalidPaths.push(invalidPath);
+            }
+
+            return {
+                validPaths,
+                invalidPaths,
+                allAssets: [
+                    ...validPaths.map((filepath) => ({
+                        event: testEvent,
+                        filepath,
+                    })),
+                    ...invalidPaths.map((filepath) => ({
+                        event: testEvent,
+                        filepath,
+                    })),
+                ],
+            };
+        };
+
+        // Create our test assets
+        const { validPaths, allAssets } = await createTestAssets();
+
         // Execute the transaction with mixed assets
         await expect(
             transaction(deleter, async (storage) => {
                 storage.addEntry(testEvent, allAssets);
             })
         ).rejects.toThrow(); // Should throw due to invalid paths
-        
-        // Check that the deleter was called for all valid paths 
+
+        // Check that the deleter was called for all valid paths
         // (as those would have been successfully copied before the error)
-        validPaths.forEach(validPath => {
+        validPaths.forEach((validPath) => {
             expect(deleter.delete).toHaveBeenCalledWith(validPath);
         });
-        
-        // Verify that event was not stored due to transaction failure
+
+        // Verify that the transaction was rolled back and event wasn't stored
         await gitstore.transaction(gitDir, async (store) => {
             const workTree = await store.getWorkTree();
             const dataPath = path.join(workTree, "data.json");
-            
-            // If data.json exists, confirm event wasn't stored
-            try {
+
+            // Check if data.json exists or not
+            const fileExists = await fsp
+                .access(dataPath)
+                .then(() => true)
+                .catch(() => false);
+
+            // Either the file doesn't exist (good) or it doesn't contain our event (also good)
+            let found = false;
+            if (fileExists) {
                 const objects = await readObjects(dataPath);
-                expect(objects).not.toContainEqual(event.serialize(testEvent));
-            } catch (err) {
-                // If the file doesn't exist, that's fine too - it means no event was stored
-                expect(err.code).toBe('ENOENT');
+                const serializedEvent = event.serialize(testEvent);
+                found = objects.some(
+                    (obj) =>
+                        obj.id?.identifier === serializedEvent.id?.identifier
+                );
+            } else {
+                // Test passes if the file doesn't exist - no events were committed
             }
+
+            expect(found).toBe(false);
         });
     });
 });
