@@ -41,6 +41,12 @@ jest.mock("openai", () => {
     };
 });
 
+// Mock the logger to capture error logging without printing to console
+jest.mock("../src/creator", () => () => ({
+    name: "Volodyslav",
+    version: "0.1.0",
+}));
+
 const request = require("supertest");
 const expressApp = require("../src/express_app");
 const { notifyAboutError } = require("../src/notifications");
