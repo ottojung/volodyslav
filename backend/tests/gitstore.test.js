@@ -153,9 +153,6 @@ describe("gitstore", () => {
             await store.commit("Modified with dubious ownership");
         });
 
-        // Reset permissions to ensure we can verify the content
-        await fs.chmod(gitDir, 0o755);
-
         // Verify the changes were committed by reading directly from the repo
         const output = execFileSync("git", [
             "--git-dir",
