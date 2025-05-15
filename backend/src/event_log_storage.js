@@ -19,6 +19,11 @@ const { targetPath } = require("./event/asset");
 /** @typedef {import('./filesystem/delete_file').FileDeleter} FileDeleter */
 
 /**
+ * @typedef {object} Capabilities
+ * @property {FileDeleter} deleter - A file deleter instance.
+ */
+
+/**
  * @class
  * @description A class to manage the storage of event log entries.
  *
@@ -163,7 +168,7 @@ async function cleanupAssets(deleter, eventLogStorage) {
     const assets = eventLogStorage.getNewAssets();
     for (const asset of assets) {
         try {
-            await deleter.delete(asset.filepath);
+            await deleter.deleteFile(asset.filepath);
         } catch {
             logWarning(
                 {
@@ -179,18 +184,18 @@ async function cleanupAssets(deleter, eventLogStorage) {
 
 /**
  * Applies a transformation within a Git-backed event log transaction.
- * @param {FileDeleter} deleter - A file deleter instance.
+ * @param {Capabilities} capabilities - An object containing the capabilities.
  * @param {Transformation} transformation - The transformation to execute.
  * @returns {Promise<void>}
  */
-async function transaction(deleter, transformation) {
+async function transaction(capabilities, transformation) {
     const eventLogStorage = new EventLogStorageClass();
     try {
         await performGitTransaction(eventLogStorage, transformation);
     } catch (error) {
         // If anything goes wrong, clean up all copied assets and rethrow.
         // Note: we do not wait for the cleanup to finish.
-        cleanupAssets(deleter, eventLogStorage);
+        cleanupAssets(capabilities.deleter, eventLogStorage);
         throw error;
     }
 }

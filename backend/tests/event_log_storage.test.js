@@ -37,7 +37,8 @@ describe("event_log_storage", () => {
 
     test("transaction allows adding and storing event entries", async () => {
         await logger.setup();
-        const deleter = { delete: jest.fn() };
+        const deleter = { deleteFile: jest.fn() };
+        const capabilities = { deleter };
         const { gitDir } = await makeTestRepository();
 
         const testEvent = {
@@ -50,7 +51,7 @@ describe("event_log_storage", () => {
             description: "Test event description",
         };
 
-        await transaction(deleter, async (eventLogStorage) => {
+        await transaction(capabilities, async (eventLogStorage) => {
             eventLogStorage.addEntry(testEvent, []);
         });
 
@@ -66,7 +67,8 @@ describe("event_log_storage", () => {
 
     test("transaction fails if git fails", async () => {
         await logger.setup();
-        const deleter = { delete: jest.fn() };
+        const deleter = { deleteFile: jest.fn() };
+        const capabilities = { deleter };
         const gitDir = temporary.input();
         await fsp.mkdir(gitDir, { recursive: true });
 
@@ -81,7 +83,7 @@ describe("event_log_storage", () => {
         };
 
         await expect(
-            transaction(deleter, async (eventLogStorage) => {
+            transaction(capabilities, async (eventLogStorage) => {
                 eventLogStorage.addEntry(testEvent, []);
             })
         ).rejects.toThrow();
@@ -93,7 +95,8 @@ describe("event_log_storage", () => {
 
     test("transaction allows adding and storing multiple event entries", async () => {
         await logger.setup();
-        const deleter = { delete: jest.fn() };
+        const deleter = { deleteFile: jest.fn() };
+        const capabilities = { deleter };
         const { gitDir } = await makeTestRepository();
 
         const event1 = {
@@ -115,7 +118,7 @@ describe("event_log_storage", () => {
             description: "Second event description",
         };
 
-        await transaction(deleter, async (eventLogStorage) => {
+        await transaction(capabilities, async (eventLogStorage) => {
             eventLogStorage.addEntry(event1, []);
             eventLogStorage.addEntry(event2, []);
         });
@@ -132,11 +135,12 @@ describe("event_log_storage", () => {
 
     test("transaction with no entries throws an error", async () => {
         await logger.setup();
-        const deleter = { delete: jest.fn() };
+        const deleter = { deleteFile: jest.fn() };
+        const capabilities = { deleter };
         await makeTestRepository();
         // Expect the transaction to fail due to no staged changes to commit
         await expect(
-            transaction(deleter, async () => {
+            transaction(capabilities, async () => {
                 // no entries added
             })
         ).rejects.toThrow();
@@ -144,7 +148,8 @@ describe("event_log_storage", () => {
 
     test("transaction copies asset files into repository", async () => {
         await logger.setup();
-        const deleter = { delete: jest.fn() };
+        const deleter = { deleteFile: jest.fn() };
+        const capabilities = { deleter };
         await makeTestRepository();
         const testEvent = {
             id: { identifier: "assetEvent" },
@@ -157,7 +162,7 @@ describe("event_log_storage", () => {
         await fsp.mkdir(inputDir, { recursive: true });
         await fsp.writeFile(assetPath, "test content");
 
-        await transaction(deleter, async (storage) =>
+        await transaction(capabilities, async (storage) =>
             storage.addEntry(testEvent, [
                 { event: testEvent, filepath: assetPath },
             ])
@@ -185,25 +190,27 @@ describe("event_log_storage", () => {
 
     test("transaction cleanup calls unlink for each asset on failure", async () => {
         await logger.setup();
-        const deleter = { delete: jest.fn() };
+        const deleter = { deleteFile: jest.fn() };
+        const capabilities = { deleter };
         await makeTestRepository();
         const testEvent = { id: { identifier: "cleanupEvent" } };
         const assetPath = "/some/failure.txt";
         await expect(
-            transaction(deleter, async (storage) => {
+            transaction(capabilities, async (storage) => {
                 storage.addEntry(testEvent, [
                     { identifier: testEvent.id, filepath: assetPath },
                 ]);
                 throw new Error("forced failure");
             })
         ).rejects.toThrow("forced failure");
-        expect(deleter.delete).toHaveBeenCalledWith(assetPath);
+        expect(deleter.deleteFile).toHaveBeenCalledWith(assetPath);
     });
 
     test("transaction creates parent directories before copying assets", async () => {
         await logger.setup();
-        const deleter = { delete: jest.fn() };
-        await makeTestRepository();
+        const deleter = { deleteFile: jest.fn() };
+                const capabilities = { deleter };
+                await makeTestRepository();
 
         const testEvent = {
             id: { identifier: "assetEventWithDirs" },
@@ -216,13 +223,13 @@ describe("event_log_storage", () => {
         await fsp.mkdir(inputDir, { recursive: true });
         await fsp.writeFile(assetPath, "test content");
 
-        await transaction(deleter, async (storage) =>
+        await transaction(capabilities, async (storage) =>
             storage.addEntry(testEvent, [
                 { event: testEvent, filepath: assetPath },
             ])
         );
 
-        expect(deleter.delete).not.toHaveBeenCalled();
+        expect(deleter.deleteFile).not.toHaveBeenCalled();
 
         const asset = {
             event: testEvent,
@@ -246,7 +253,8 @@ describe("event_log_storage", () => {
 
     test("transaction handles mix of successful and failed asset additions", async () => {
         await logger.setup();
-        const deleter = { delete: jest.fn() };
+        const deleter = { deleteFile: jest.fn() };
+        const capabilities = { deleter };
         const { gitDir } = await makeTestRepository();
 
         const testEvent = {
@@ -302,7 +310,7 @@ describe("event_log_storage", () => {
 
         // Execute the transaction with mixed assets
         await expect(
-            transaction(deleter, async (storage) => {
+            transaction(capabilities, async (storage) => {
                 storage.addEntry(testEvent, allAssets);
             })
         ).rejects.toThrow(); // Should throw due to invalid paths
@@ -310,7 +318,7 @@ describe("event_log_storage", () => {
         // Check that the deleter was called for all valid paths
         // (as those would have been successfully copied before the error)
         validPaths.forEach((validPath) => {
-            expect(deleter.delete).toHaveBeenCalledWith(validPath);
+            expect(deleter.deleteFile).toHaveBeenCalledWith(validPath);
         });
 
         // Verify that the transaction was rolled back and event wasn't stored
