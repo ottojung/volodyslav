@@ -71,10 +71,11 @@ describe("processDiaryAudios", () => {
     it("should process diary audios correctly when all files succeed", async () => {
         const storage = setMockDefaults();
         // Mock the file deleter and random generator
-        const deleter = { delete: jest.fn() };
+        const deleter = { deleteFile: jest.fn() };
         const rng = random.default_generator(42);
+        const capabilities = { deleter, rng };
         // Invoke the processing function under test
-        await processDiaryAudios(deleter, rng);
+        await processDiaryAudios(capabilities);
 
         // Verify that no errors are logged since writeAsset always succeeds
         expect(logError).not.toHaveBeenCalled();
@@ -83,9 +84,9 @@ describe("processDiaryAudios", () => {
         expect(transaction).toHaveBeenCalledTimes(3);
 
         // Verify original files are removed after processing all files
-        expect(deleter.delete).toHaveBeenCalledTimes(3);
+        expect(deleter.deleteFile).toHaveBeenCalledTimes(3);
         ["file1.mp3", "file2.mp3", "bad.mp3"].forEach((file) => {
-            expect(deleter.delete).toHaveBeenCalledWith(
+            expect(deleter.deleteFile).toHaveBeenCalledWith(
                 `/fake/diaryDir/${file}`
             );
         });
@@ -128,10 +129,11 @@ describe("processDiaryAudios", () => {
         });
 
         // Mock the file deleter and random generator
-        const deleter = { delete: jest.fn() };
+        const deleter = { deleteFile: jest.fn() };
         const rng = random.default_generator(42);
+        const capabilities = { deleter, rng };
         // Invoke the processing function under test
-        await processDiaryAudios(deleter, rng);
+        await processDiaryAudios(capabilities);
 
         // Verify that no errors are logged since writeAsset always succeeds
         expect(logError).toHaveBeenCalledTimes(1);
@@ -140,9 +142,9 @@ describe("processDiaryAudios", () => {
         expect(transaction).toHaveBeenCalledTimes(2);
 
         // Verify original files are removed after processing all files
-        expect(deleter.delete).toHaveBeenCalledTimes(2);
+        expect(deleter.deleteFile).toHaveBeenCalledTimes(2);
         ["file1.mp3", "file2.mp3"].forEach((file) => {
-            expect(deleter.delete).toHaveBeenCalledWith(
+            expect(deleter.deleteFile).toHaveBeenCalledWith(
                 `/fake/diaryDir/${file}`
             );
         });
@@ -184,10 +186,11 @@ describe("processDiaryAudios", () => {
         });
 
         // Mock the file deleter and random generator
-        const deleter = { delete: jest.fn() };
+        const deleter = { deleteFile: jest.fn() };
         const rng = random.default_generator(42);
+        const capabilities = { deleter, rng };
         // Invoke the processing function under test
-        await processDiaryAudios(deleter, rng);
+        await processDiaryAudios(capabilities);
 
         // Verify that no errors are logged since writeAsset always succeeds
         expect(logError).toHaveBeenCalledTimes(1);
@@ -196,9 +199,9 @@ describe("processDiaryAudios", () => {
         expect(transaction).toHaveBeenCalledTimes(3);
 
         // Verify original files are removed after processing all files
-        expect(deleter.delete).toHaveBeenCalledTimes(2);
+        expect(deleter.deleteFile).toHaveBeenCalledTimes(2);
         ["file1.mp3", "file2.mp3"].forEach((file) => {
-            expect(deleter.delete).toHaveBeenCalledWith(
+            expect(deleter.deleteFile).toHaveBeenCalledWith(
                 `/fake/diaryDir/${file}`
             );
         });
