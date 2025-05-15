@@ -126,7 +126,17 @@ describe("gitstore", () => {
         const { gitDir } = await makeTestRepository();
 
         // Change owner of the git directory to a different user.
-        await fs.chown(gitDir, 1001, 1001, { recursive: true });
+        try {
+            await fs.chown(gitDir, 1001, 1001, { recursive: true });
+        } catch (err) {
+            console.error();
+            console.error();
+            console.error("Failed to change ownership:", err);
+            console.error("Skipping test due to permission issues.");
+            console.error();
+            console.error();
+            return;
+        }
 
         // Execute transaction on the restricted repository
         await transaction(gitDir, async (store) => {
