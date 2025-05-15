@@ -10,6 +10,7 @@ const memconst = require("./memconst");
 const random = require("./random");
 
 let version = memconst(async () => {
+    git.ensureAvailable();
     try {
         const repositoryPath = __dirname;
         const { stdout } = await git.call("-C", repositoryPath, "describe");
