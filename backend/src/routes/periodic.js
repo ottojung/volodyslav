@@ -18,16 +18,18 @@ router.get("/periodic", async (req, res) => {
     );
 
     if (!period) {
-        return res.status(400).send('Bad Request: period parameter is required');
+        return res
+            .status(400)
+            .send("Bad Request: period parameter is required");
     }
-        
+
     switch (period) {
-        case 'hour':
-        case 'hourly':
+        case "hour":
+        case "hourly":
             await everyHour();
             break;
         default:
-            return res.status(400).send('Bad Request: unknown period');
+            return res.status(400).send("Bad Request: unknown period");
     }
 
     res.send("done");
