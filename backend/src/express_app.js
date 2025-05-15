@@ -1,7 +1,6 @@
 const express = require("express");
 const { myServerPort } = require("./environment");
 const { gentleWrap } = require("./gentlewrap");
-const userErrors = require("./user_errors");
 
 /**
  * @returns {express.Express}
@@ -23,7 +22,7 @@ async function run(app, fun) {
     const port = myServerPort();
     const server = app.listen(port, async function () {
         try {
-            const gentleFun = gentleWrap(async () => fun(app, server), userErrors);
+            const gentleFun = gentleWrap(async () => fun(app, server));
             await gentleFun();
         } catch (error) {
             server.close();

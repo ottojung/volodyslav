@@ -2,7 +2,6 @@ const { gentleWrap } = require("./gentlewrap");
 const { start } = require("./server");
 const logger = require("./logger");
 const { Command } = require("commander");
-const userErrors = require("./user_errors");
 
 async function printVersion() {
     const { version } = require("./runtime_identifier");
@@ -38,7 +37,7 @@ async function entryTyped() {
 /**
  * @type {() => Promise<void>}
  */
-const entry = gentleWrap(entryTyped, userErrors);
+const entry = gentleWrap(entryTyped);
 
 // Set up the command line interface with commander
 if (require.main === module) {

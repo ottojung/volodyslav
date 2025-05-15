@@ -8,14 +8,19 @@
  */
 
 const { logError } = require("./logger");
+const userErrors = require("./user_errors");
 
 /**
  * @template T
  * @param {() => Promise<T>} fn - The function to be wrapped.
- * @param {Array<(err: Error) => boolean>} errorsList - The list of predicates to check errors against.
+ * @param {Array<(err: Error) => boolean>} [errorsList] - The list of predicates to check errors against.
  * @returns {Promise<T>} - The wrapped function.
  */
 async function gentleCall(fn, errorsList) {
+    if (errorsList === undefined) {
+        errorsList = userErrors;
+    }
+
     try {
         return await fn();
     } catch (e) {
@@ -36,7 +41,7 @@ async function gentleCall(fn, errorsList) {
 /**
  * @template T
  * @param {() => Promise<T>} fn - The function to be wrapped.
- * @param {Array<(err: Error) => boolean>} errorsList - The list of predicates to check errors against.
+ * @param {Array<(err: Error) => boolean>} [errorsList] - The list of predicates to check errors against.
  * @returns {() => Promise<T>}
  */
 function gentleWrap(fn, errorsList) {
