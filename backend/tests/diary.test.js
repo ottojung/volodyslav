@@ -70,7 +70,6 @@ function setMockDefaults() {
 }
 
 describe("processDiaryAudios", () => {
-
     it("should process diary audios correctly when all files succeed", async () => {
         const storage = setMockDefaults();
         // Mock the file deleter and random generator
@@ -111,6 +110,63 @@ describe("processDiaryAudios", () => {
 
         // The addEntry method is called for each of the three assets
         for (let i = 1; i <= 3; i++) {
+            expect(storage.addEntry).toHaveBeenNthCalledWith(
+                i,
+                expectedEvent,
+                expect.any(Array)
+            );
+        }
+    });
+
+    it("should process diary audios correctly when some files incorrectly named", async () => {
+        const storage = setMockDefaults();
+
+        // Simulate a failure for the bad.mp3 file.
+        formatFileTimestamp.mockImplementation((filename) => {
+            if (filename === "bad.mp3") {
+                throw new Error("Failed to process file");
+            }
+            return new Date("2025-05-12");
+        });
+
+        // Mock the file deleter and random generator
+        const deleter = { delete: jest.fn() };
+        const rng = random.default_generator(42);
+        // Invoke the processing function under test
+        await processDiaryAudios(deleter, rng);
+
+        // Verify that no errors are logged since writeAsset always succeeds
+        expect(logError).toHaveBeenCalledTimes(1);
+
+        // Verify that writeAsset called transaction and added entries for 2/3 files
+        expect(transaction).toHaveBeenCalledTimes(2);
+
+        // Verify original files are removed after processing all files
+        expect(deleter.delete).toHaveBeenCalledTimes(2);
+        ["file1.mp3", "file2.mp3"].forEach((file) => {
+            expect(deleter.delete).toHaveBeenCalledWith(
+                `/fake/diaryDir/${file}`
+            );
+        });
+
+        // Verify event log entries added correctly for each asset
+        expect(storage.addEntry).toHaveBeenCalledTimes(2);
+        const expectedEvent = {
+            id: expect.anything(),
+            date: expect.any(Date),
+            original: "diary [when 0 hours ago] [audiorecording]",
+            input: "diary [when 0 hours ago] [audiorecording]",
+            modifiers: { when: "0 hours ago", audiorecording: "" },
+            type: "diary",
+            description: "",
+            creator: expect.objectContaining({
+                name: "Volodyslav",
+                version: "0.1.0",
+            }),
+        };
+
+        // The addEntry method is called for each of the two assets
+        for (let i = 1; i <= 2; i++) {
             expect(storage.addEntry).toHaveBeenNthCalledWith(
                 i,
                 expectedEvent,
