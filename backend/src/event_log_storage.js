@@ -16,7 +16,7 @@ const event = require("./event");
 const { logWarning } = require("./logger");
 const { targetPath } = require("./event/asset");
 
-/** @typedef {import('./filesystem/delete_file').FileDeleter} FileDeleter */
+/** @typedef {import('./filesystem/deleter').FileDeleter} FileDeleter */
 
 /**
  * @typedef {object} Capabilities

@@ -9,7 +9,7 @@ const asset = require("./event/asset");
 const creatorMake = require("./creator");
 
 /** @typedef {import('./event/asset').Asset} Asset */
-/** @typedef {import('./filesystem/delete_file').FileDeleter} FileDeleter */
+/** @typedef {import('./filesystem/deleter').FileDeleter} FileDeleter */
 /** @typedef {import('./random').RNG} RNG */
 
 /**

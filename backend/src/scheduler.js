@@ -1,7 +1,7 @@
 
 // const cron = require('node-cron');
 const { processDiaryAudios } = require("./diary");
-const deleterCapability = require("./filesystem/delete_file");
+const deleterCapability = require("./filesystem/deleter");
 const random = require('./random');
 
 async function everyHour() {
