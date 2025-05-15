@@ -216,4 +216,71 @@ describe("event_log_storage", () => {
             .catch(() => false);
         expect(fileExists).toBe(true);
     });
+
+    test("transaction handles mix of successful and failed asset additions", async () => {
+        await logger.setup();
+        const deleter = { delete: jest.fn() };
+        const { gitDir } = await makeTestRepository();
+
+        const testEvent = {
+            id: { identifier: "mixedAssetsEvent" },
+            date: new Date("2025-05-13"),
+            type: "test_event",
+            description: "Mixed assets test event",
+        };
+
+        // Create real files that will succeed
+        const inputDir = path.join(temporary.input(), "valid_assets");
+        await fsp.mkdir(inputDir, { recursive: true });
+        
+        const validPaths = [];
+        const invalidPaths = [];
+        
+        // Create 3 valid files
+        for (let i = 1; i <= 3; i++) {
+            const validPath = path.join(inputDir, `valid_asset_${i}.txt`);
+            await fsp.writeFile(validPath, `valid content ${i}`);
+            validPaths.push(validPath);
+        }
+        
+        // Create 3 invalid paths that don't exist
+        for (let i = 1; i <= 3; i++) {
+            const invalidPath = path.join(temporary.input(), `nonexistent_dir_${i}`, `invalid_asset_${i}.txt`);
+            invalidPaths.push(invalidPath);
+        }
+        
+        // Mix valid and invalid assets
+        const allAssets = [
+            ...validPaths.map(filepath => ({ event: testEvent, filepath })),
+            ...invalidPaths.map(filepath => ({ event: testEvent, filepath }))
+        ];
+        
+        // Execute the transaction with mixed assets
+        await expect(
+            transaction(deleter, async (storage) => {
+                storage.addEntry(testEvent, allAssets);
+            })
+        ).rejects.toThrow(); // Should throw due to invalid paths
+        
+        // Check that the deleter was called for all valid paths 
+        // (as those would have been successfully copied before the error)
+        validPaths.forEach(validPath => {
+            expect(deleter.delete).toHaveBeenCalledWith(validPath);
+        });
+        
+        // Verify that event was not stored due to transaction failure
+        await gitstore.transaction(gitDir, async (store) => {
+            const workTree = await store.getWorkTree();
+            const dataPath = path.join(workTree, "data.json");
+            
+            // If data.json exists, confirm event wasn't stored
+            try {
+                const objects = await readObjects(dataPath);
+                expect(objects).not.toContainEqual(event.serialize(testEvent));
+            } catch (err) {
+                // If the file doesn't exist, that's fine too - it means no event was stored
+                expect(err.code).toBe('ENOENT');
+            }
+        });
+    });
 });
