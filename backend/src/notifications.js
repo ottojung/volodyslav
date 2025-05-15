@@ -2,7 +2,7 @@ const { CommandUnavailable } = require("./subprocess");
 const { termuxNotification } = require("./executables");
 
 
-class NotificationsUnavailable extends CommandUnavailable {
+class NotificationsUnavailable extends Error {
     constructor() {
         super(
             "Notifications unavailable. Termux notification executable not found in $PATH. Please ensure that Termux:API is installed and available in your $PATH."
