@@ -7,7 +7,7 @@
     "backend"
   ],
   "scripts": {
-    "dev": "concurrently 'npm run dev -w frontend' 'npm run dev -w backend'",
+    "dev": "concurrently 'npm run dev -w frontend' 'npm run dev -w backend -- start'",
     "build": "npm run build -w frontend",
     "start": "npm run build && npm run start -w backend",
     "static-analysis": "tsc --noEmit && eslint .",
