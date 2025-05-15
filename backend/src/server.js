@@ -31,7 +31,6 @@ function addRoutes(app) {
 async function ensureStartupDependencies(app) {
     await addRoutes(app);
     await ensureNotificationsAvailable();
-    logger.enableHttpCallsLogging(app);
 }
 
 /**
@@ -45,6 +44,7 @@ async function initialize(app) {
 
 async function start() {
     const app = expressApp.make();
+    logger.enableHttpCallsLogging(app);
     await expressApp.run(app, async (app, server) => {
         const address = server.address();
         logger.logInfo(
