@@ -51,6 +51,7 @@ async function commit(git_directory, work_directory, message) {
         message
     );
 }
+
 /**
  * Clone latest changes from the remote repository.
  * @param {string} remote_uri - The repository path to pull from (can be a remote URI or local path)
