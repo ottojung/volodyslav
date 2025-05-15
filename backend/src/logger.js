@@ -58,7 +58,9 @@ function createConsoleTarget(level) {
  */
 async function createFileTarget(filePath, errors) {
     if (!filePath) {
-        errors.push("Log file path not provided. Continuing with console logging only.");
+        errors.push(
+            "Log file path not provided. Continuing with console logging only."
+        );
         return null;
     }
 
@@ -78,7 +80,9 @@ async function createFileTarget(filePath, errors) {
     } catch (error) {
         // Explicitly typing the error
         const err = /** @type {Error} */ (error);
-        errors.push(`Unable to write to log file ${filePath}: ${err.message}. Continuing with console logging only.`);
+        errors.push(
+            `Unable to write to log file ${filePath}: ${err.message}. Continuing with console logging only.`
+        );
         return null;
     }
 }
@@ -121,13 +125,13 @@ function safeGetLogFilePath(errors) {
 async function setup() {
     /** @type {string[]} */
     const errors = [];
-    
+
     /** @type {TransportTarget[]} */
     const targets = [];
 
     // Get log level safely
     const logLevelValue = safeGetLogLevel(errors);
-    
+
     // Always add console target
     targets.push(createConsoleTarget(logLevelValue));
 
