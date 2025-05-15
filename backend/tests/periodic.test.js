@@ -19,8 +19,8 @@ jest.mock("../src/environment", () => {
 jest.mock("../src/diary", () => ({
     processDiaryAudios: jest.fn().mockResolvedValue(),
 }));
-jest.mock("../src/filesystem/delete_file", () => ({
-    make: jest.fn().mockReturnValue({ delete: jest.fn() }),
+jest.mock("../src/filesystem/deleter", () => ({
+    make: jest.fn().mockReturnValue({ deleteFile: jest.fn() }),
 }));
 
 // Mock random generator
