@@ -1,3 +1,23 @@
+/**
+ * @module checker
+ *
+ * Purpose:
+ *   This module provides a unified abstraction for safely checking the existence of files
+ *   in the filesystem, decoupling low-level fs.stat calls from application logic.
+ *
+ * Why this Module Exists:
+ *   Direct filesystem operations can scatter try/catch blocks and inconsistent error handling
+ *   throughout the codebase. Centralizing file existence checking logic here ensures a single place to
+ *   manage and categorize errors, keeping application code clean and maintainable.
+ *
+ * Conceptual Design Principles:
+ *   • Single Responsibility - Focused solely on the semantics of file existence checking.
+ *   • Error Categorization - Distinguishes between different checking failures (FileCheckerError)
+ *     for precise caller handling.
+ *   • Promise-Based API - Leverages async/await for clear asynchronous flows.
+ *   • Factory Pattern - Exposes a make() function for easy dependency injection or mocking.
+ */
+
 const fs = require("fs").promises;
 
 class FileCheckerError extends Error {
