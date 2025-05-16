@@ -28,7 +28,7 @@ router.get("/periodic", async (req, res) => {
         case "hour":
         case "hourly":
             await everyHour();
-            res.send("done: hourly tasks initiated");
+            res.send("done");
             return;
         default:
             res.status(400).send("Bad Request: unknown period");
