@@ -33,23 +33,19 @@ class ExistingFileClass {
     /**
      * The path to the file.
      * @type {string}
-     */
-    path;
-
-    /**
-     * This is a value that is never actually assigned.
-     * Its purpose is to make `ExistingFile` a nominal type.
      * @private
-     * @type {undefined}
      */
-    // @ts-ignore
-    __brand;
+    _path;
+
+    get path() {
+        return this._path;
+    }
 
     /**
      * @param {string} path - The path to the file.
      */
     constructor(path) {
-        this.path = path;
+        this._path = path;
     }
 }
 

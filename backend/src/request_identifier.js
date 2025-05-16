@@ -4,23 +4,24 @@ const randomModule = require("./random");
 const { resultsDirectory } = require("./environment");
 
 class RequestIdentifierClass {
-    /** @type {string} */
-    identifier;
+    /**
+     * @type {string}
+     * @private
+     */
+    _identifier;
 
     /**
-     * This is a value that is never actually assigned.
-     * Its purpose is to make `RequestIdentifier` a nominal type.
-     * @private
-     * @type {undefined}
+     * @returns {string}
      */
-    // @ts-ignore
-    __brand;
+    get identifier() {
+        return this._identifier;
+    }
 
     /**
      * @param {string} identifier
      */
     constructor(identifier) {
-        this.identifier = identifier;
+        this._identifier = identifier;
     }
 }
 
