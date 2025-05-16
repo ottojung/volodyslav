@@ -35,10 +35,38 @@ jest.mock("../src/environment", () => {
 describe("event_log_storage", () => {
     // No stubbing: use real gitstore.transaction with makeTestRepository per test
 
+    // Helper to create a full set of mocked capabilities for tests
+    const makeMockCapabilities = () => {
+        const deleter = { deleteFile: jest.fn().mockResolvedValue(undefined) };
+        const appender = {
+            appendFile: jest.fn(async (file, content) => {
+                const dataDir = path.dirname(file.path);
+                try {
+                    await fsp.access(dataDir);
+                } catch (e) {
+                    await fsp.mkdir(dataDir, { recursive: true });
+                }
+                await fsp.appendFile(file.path, content, "utf8");
+            }),
+        };
+        const creator = {
+            createDirectory: jest.fn(async (dirPath) => {
+                await fsp.mkdir(dirPath, { recursive: true });
+            }),
+        };
+        const copier = {
+            copyFile: jest.fn(async (sourceFile, destPath) => {
+                await fsp.access(sourceFile.path); // Check if source exists
+                await fsp.copyFile(sourceFile.path, destPath);
+                return { path: destPath, __brand: "ExistingFile" };
+            }),
+        };
+        return { deleter, appender, creator, copier };
+    };
+
     test("transaction allows adding and storing event entries", async () => {
         await logger.setup();
-        const deleter = { deleteFile: jest.fn() };
-        const capabilities = { deleter };
+        const capabilities = makeMockCapabilities();
         const { gitDir } = await makeTestRepository();
 
         const testEvent = {
@@ -67,8 +95,7 @@ describe("event_log_storage", () => {
 
     test("transaction fails if git fails", async () => {
         await logger.setup();
-        const deleter = { deleteFile: jest.fn() };
-        const capabilities = { deleter };
+        const capabilities = makeMockCapabilities();
         const gitDir = temporary.input();
         await fsp.mkdir(gitDir, { recursive: true });
 
@@ -95,8 +122,7 @@ describe("event_log_storage", () => {
 
     test("transaction allows adding and storing multiple event entries", async () => {
         await logger.setup();
-        const deleter = { deleteFile: jest.fn() };
-        const capabilities = { deleter };
+        const capabilities = makeMockCapabilities();
         const { gitDir } = await makeTestRepository();
 
         const event1 = {
@@ -135,8 +161,7 @@ describe("event_log_storage", () => {
 
     test("transaction with no entries throws an error", async () => {
         await logger.setup();
-        const deleter = { deleteFile: jest.fn() };
-        const capabilities = { deleter };
+        const capabilities = makeMockCapabilities();
         await makeTestRepository();
         // Expect the transaction to fail due to no staged changes to commit
         await expect(
@@ -148,8 +173,7 @@ describe("event_log_storage", () => {
 
     test("transaction copies asset files into repository", async () => {
         await logger.setup();
-        const deleter = { deleteFile: jest.fn() };
-        const capabilities = { deleter };
+        const capabilities = makeMockCapabilities(); // Ensure capabilities are correctly initialized
         await makeTestRepository();
         const testEvent = {
             id: { identifier: "assetEvent" },
@@ -163,7 +187,7 @@ describe("event_log_storage", () => {
         await fsp.writeFile(assetPath, "test content");
         const asset = {
             event: testEvent,
-            file: { path: assetPath },
+            file: { path: assetPath, __brand: "ExistingFile" },
         };
 
         await transaction(capabilities, async (storage) =>
@@ -188,27 +212,28 @@ describe("event_log_storage", () => {
 
     test("transaction cleanup calls unlink for each asset on failure", async () => {
         await logger.setup();
-        const deleter = { deleteFile: jest.fn() };
-        const capabilities = { deleter };
+        const capabilities = makeMockCapabilities();
         await makeTestRepository();
         const testEvent = { id: { identifier: "cleanupEvent" } };
         const assetPath = "/some/failure.txt";
         await expect(
             transaction(capabilities, async (storage) => {
                 storage.addEntry(testEvent, [
-                    { identifier: testEvent.id, file: { path: assetPath } },
+                    {
+                        event: testEvent, // Added event to make asset structure consistent
+                        file: { path: assetPath, __brand: "ExistingFile" },
+                    },
                 ]);
                 throw new Error("forced failure");
             })
         ).rejects.toThrow("forced failure");
-        expect(deleter.deleteFile).toHaveBeenCalledWith(assetPath);
+        expect(capabilities.deleter.deleteFile).toHaveBeenCalledWith(assetPath);
     });
 
     test("transaction creates parent directories before copying assets", async () => {
         await logger.setup();
-        const deleter = { deleteFile: jest.fn() };
-                const capabilities = { deleter };
-                await makeTestRepository();
+        const capabilities = makeMockCapabilities();
+        await makeTestRepository();
 
         const testEvent = {
             id: { identifier: "assetEventWithDirs" },
@@ -222,14 +247,14 @@ describe("event_log_storage", () => {
         await fsp.writeFile(assetPath, "test content");
         const asset = {
             event: testEvent,
-            file: { path: assetPath },
+            file: { path: assetPath, __brand: "ExistingFile" },
         };
 
         await transaction(capabilities, async (storage) =>
             storage.addEntry(testEvent, [asset])
         );
 
-        expect(deleter.deleteFile).not.toHaveBeenCalled();
+        expect(capabilities.deleter.deleteFile).not.toHaveBeenCalled();
 
         const target = targetPath(asset);
 
@@ -249,8 +274,7 @@ describe("event_log_storage", () => {
 
     test("transaction handles mix of successful and failed asset additions", async () => {
         await logger.setup();
-        const deleter = { deleteFile: jest.fn() };
-        const capabilities = { deleter };
+        const capabilities = makeMockCapabilities(); // Ensure capabilities are correctly initialized
         const { gitDir } = await makeTestRepository();
 
         const testEvent = {
@@ -291,18 +315,18 @@ describe("event_log_storage", () => {
                 allAssets: [
                     ...validPaths.map((filepath) => ({
                         event: testEvent,
-                        file: { path: filepath },
+                        file: { path: filepath, __brand: "ExistingFile" },
                     })),
                     ...invalidPaths.map((filepath) => ({
                         event: testEvent,
-                        file: { path: filepath },
+                        file: { path: filepath, __brand: "ExistingFile" }, // Source file won't exist, copier mock will throw
                     })),
                 ],
             };
         };
 
         // Create our test assets
-        const { validPaths, allAssets } = await createTestAssets();
+        const { allAssets } = await createTestAssets(); // Removed validPaths from destructuring
 
         // Execute the transaction with mixed assets
         await expect(
@@ -311,10 +335,29 @@ describe("event_log_storage", () => {
             })
         ).rejects.toThrow(); // Should throw due to invalid paths
 
-        // Check that the deleter was called for all valid paths
-        // (as those would have been successfully copied before the error)
-        validPaths.forEach((validPath) => {
-            expect(deleter.deleteFile).toHaveBeenCalledWith(validPath);
+        // Check that the deleter was called for all valid paths that would have been copied
+        // The copier mock throws on the first invalid asset.
+        // Assets are copied *after* data.json is committed.
+        // If copyAssets fails, cleanup is called for assets *already processed by copyAssets*
+        // In this test, the first invalid asset will stop copyAssets.
+        // The current event_log_storage.js implementation copies assets one by one, and if one fails,
+        // it throws, and then cleanupAssets is called for *all* assets in newAssets.
+        // So, deleter should be called for all original asset paths if the source file existed.
+
+        // The copier mock will throw when it encounters the first invalid_asset.
+        // The `cleanupAssets` function is then called with `eventLogStorage.getNewAssets()`,
+        // which contains all assets (valid and invalid).
+        // `deleter.deleteFile` is then called for each of these.
+        // The mock for `deleter.deleteFile` doesn't care if the file exists.
+
+        // What should be asserted for deleter.deleteFile?
+        // cleanupAssets will iterate all assets in newAssets.
+        // For validPaths, their corresponding asset.file.path will be called.
+        // For invalidPaths, their corresponding asset.file.path will also be called.
+        allAssets.forEach((assetItem) => {
+            expect(capabilities.deleter.deleteFile).toHaveBeenCalledWith(
+                assetItem.file.path
+            );
         });
 
         // Verify that the transaction was rolled back and event wasn't stored
