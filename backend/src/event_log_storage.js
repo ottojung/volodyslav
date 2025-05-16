@@ -117,9 +117,6 @@ async function appendEntriesToFile(capabilities, file, entries) {
     for (const entry of entries) {
         const serialized = event.serialize(entry);
         const eventString = JSON.stringify(serialized, null, "\t");
-        // TODO: Ensure filePath is an ExistingFile. This might require a new capability or a change to the appender.
-        // For now, assuming appender can handle a path string or a simple object.
-        // This will likely cause an error if not addressed.
         await capabilities.appender.appendFile(file, eventString + "\n");
     }
 }
