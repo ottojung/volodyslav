@@ -13,7 +13,6 @@ class RequestIdentifierClass {
      * @private
      * @type {undefined}
      */
-    // @ts-ignore
     __brand;
 
     /**
@@ -21,6 +20,9 @@ class RequestIdentifierClass {
      */
     constructor(identifier) {
         this.identifier = identifier;
+        if (this.__brand !== undefined) {
+            throw new Error();
+        }
     }
 }
 

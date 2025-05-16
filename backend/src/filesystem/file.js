@@ -42,7 +42,6 @@ class ExistingFileClass {
      * @private
      * @type {undefined}
      */
-    // @ts-ignore
     __brand;
 
     /**
@@ -50,6 +49,9 @@ class ExistingFileClass {
      */
     constructor(path) {
         this.path = path;
+        if (this.__brand !== undefined) {
+            throw new Error();
+        }
     }
 }
 

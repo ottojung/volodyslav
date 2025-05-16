@@ -10,7 +10,6 @@ class EventIdClass {
      * @private
      * @type {undefined}
      */
-    // @ts-ignore
     __brand;
 
     /**
@@ -18,6 +17,9 @@ class EventIdClass {
      */
     constructor(capabilities) {
         this.identifier = random.string(capabilities, 16);
+        if (this.__brand !== undefined) {
+            throw new Error();
+        }
     }
 }
 
