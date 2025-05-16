@@ -40,35 +40,36 @@ function formatFileTimestamp(filename) {
 
     const basic = m[1];
 
-    // 2) convert to a true ISO string: "YYYY-MM-DDThh:mm:ssZ"
-    const isoUTC = format_time_stamp(basic);
+    // 2) get Date object from basic timestamp
+    const dateObject = format_time_stamp(basic);
 
-    if (typeof isoUTC !== "string" || isoUTC === basic) {
-        // Check if replace did anything or if it's a valid string
-        // basic.replace might return the original string if no match is found.
-        // Or handle if isoUTC is not a string as expected.
-        throw new Error(`Failed to convert to ISO format: ${basic}`);
+    if (dateObject === undefined) {
+        // This should ideally not be hit if 'basic' is from the regex match above
+        // and format_time_stamp's regex is correct.
+        throw new Error(
+            `Failed to parse valid Date from timestamp string: ${basic}`
+        );
     }
 
-    // 3) parse into a Date
-    const d = new Date(isoUTC);
-
-    return d;
+    return dateObject;
 }
 
 /**
- * @param {string | undefined} basic
+ * @param {string | undefined} basic - String in YYYYMMDDThhmmssZ format
  * @returns {Date | undefined}
  */
 function format_time_stamp(basic) {
     if (basic === undefined) {
         return undefined;
     }
+
+    // Convert YYYYMMDDThhmmssZ to YYYY-MM-DDTHH:mm:ssZ
     const isoUTC = basic.replace(
-        /(\d{4})(\d{2})(\d{2}) (\d{2})(\d{2})(\d{2})/,
+        /(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})(\d{2})Z/,
         "$1-$2-$3T$4:$5:$6Z"
     );
 
+    // If basic didn't match the regex, .replace returns the original string.
     if (isoUTC === basic) {
         return undefined;
     }
@@ -77,6 +78,7 @@ function format_time_stamp(basic) {
     if (isNaN(d.getTime())) {
         return undefined;
     }
+
     return d;
 }
 
