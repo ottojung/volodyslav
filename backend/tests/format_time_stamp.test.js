@@ -16,7 +16,7 @@ describe('formatFileTimestamp', () => {
 
   it('throws an error for filename without valid prefix', async () => {
     await expect(async () => formatFileTimestamp('invalidfile.txt')).rejects.toThrow(
-      'Filename does not start with YYYYMMDDThhmmssZ'
+      'Filename "invalidfile.txt" does not start with YYYYMMDDThhmmssZ'
     );
   });
 });
