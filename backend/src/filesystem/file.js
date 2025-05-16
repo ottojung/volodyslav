@@ -2,6 +2,8 @@
  * This module provides a class for representing an existing file and simple introduction rules for it.
  * Note that the file is not guaranteed to exist just because you have an instance of this class.
  * All this class guarantees is that the file was created at some point in the past.
+ *
+ * This module should not be used outside of the ./filesystem/ directory.
  */
 
 const fs = require("fs").promises;
@@ -45,6 +47,22 @@ async function makeEmpty(path) {
 }
 
 /**
+ * Creates an empty file at the specified path.
+ * @param {ExistingFile} existingFile - The existing file to copy.
+ * @param {string} destinationPath - The path to the destination file.
+ * @returns {Promise<ExistingFile>} - A promise that resolves when the file is created.
+ */
+async function makeCopy(existingFile, destinationPath) {
+    // Ensure the destination directory exists
+    await fs.mkdir(path.dirname(destinationPath), { recursive: true });
+
+    // Copy the file
+    await fs.copyFile(existingFile.path, destinationPath);
+
+    return new ExistingFileClass(destinationPath);
+}
+
+/**
  * Gets the children of a directory at the specified path.
  * @param {string} dirPath - The path to the directory to scan.
  * @returns {Promise<ExistingFile[]>} - A promise that resolves to an array of ExistingFile objects representing the directory contents.
@@ -58,5 +76,6 @@ async function getDirectoryChildren(dirPath) {
 
 module.exports = {
     makeEmpty,
+    makeCopy,
     getDirectoryChildren,
 };
