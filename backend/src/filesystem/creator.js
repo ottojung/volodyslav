@@ -19,8 +19,8 @@
 
 const fs = require("fs").promises;
 const path = require("path");
-const os = require("os"); // Added for os.tmpdir()
 const { makeEmpty } = require("./file");
+const { resultsDirectory } = require("../environment");
 
 class FileCreatorError extends Error {
     /**
@@ -92,8 +92,8 @@ async function createDirectory(dirPath) {
  * @returns {Promise<string>} - A promise that resolves with the path to the created temporary directory.
  */
 async function createTemporaryDirectory() {
-    const tmpDir = os.tmpdir();
-    const uniquePrefix = path.join(tmpDir, "volodyslav-");
+    const tmpDir = resultsDirectory();
+    const uniquePrefix = path.join(tmpDir, "tmp-");
     try {
         const createdTmpDirPath = await fs.mkdtemp(uniquePrefix);
         return createdTmpDirPath;
