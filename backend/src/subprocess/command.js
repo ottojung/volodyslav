@@ -51,6 +51,6 @@ function registerCommand(command) {
     return new CommandClass(command);
 }
 
-module.exports = { 
+module.exports = {
     registerCommand,
 };
