@@ -6,7 +6,6 @@ const makeTestRepository = require("./make_test_repository");
 const { processDiaryAudios } = require("../src/diary");
 const gitstore = require("../src/gitstore");
 const { readObjects } = require("../src/json_stream_file");
-const event = require("../src/event/structure");
 const { formatFileTimestamp } = require("../src/format_time_stamp");
 const logger = require("../src/logger");
 
@@ -26,6 +25,11 @@ jest.mock("../src/environment", () => {
         eventLogDirectory: jest.fn().mockImplementation(() => {
             const dir = temporary.output();
             return path.join(dir, "eventlog");
+        }),
+        logLevel: jest.fn().mockReturnValue("debug"),
+        logFile: jest.fn().mockImplementation(() => {
+            const dir = temporary.output();
+            return path.join(dir, "log.txt");
         }),
     };
 });
@@ -74,7 +78,7 @@ describe("processDiaryAudios", () => {
     });
 
     it("processes all diary audios successfully", async () => {
-        const { gitDir } = await makeTestRepository();
+        await makeTestRepository();
         const capabilities = makeMockCapabilities();
 
         // Prepare diary directory with audio files
@@ -138,7 +142,7 @@ describe("processDiaryAudios", () => {
     });
 
     it("skips files with invalid timestamp names and logs errors", async () => {
-        const { gitDir } = await makeTestRepository();
+        await makeTestRepository();
         const capabilities = makeMockCapabilities();
 
         // Prepare diary directory
@@ -174,7 +178,7 @@ describe("processDiaryAudios", () => {
     });
 
     it("continues processing when event log transaction fails for an asset", async () => {
-        const { gitDir } = await makeTestRepository();
+        await makeTestRepository();
         const capabilities = makeMockCapabilities();
 
         // Override copier to throw for specific file
