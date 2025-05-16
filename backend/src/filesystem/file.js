@@ -9,6 +9,26 @@
 const fs = require("fs").promises;
 const path = require("path");
 
+class FileCreatorError extends Error {
+    /**
+     * @param {string} message
+     * @param {string} filePath
+     */
+    constructor(message, filePath) {
+        super(message);
+        this.filePath = filePath;
+    }
+}
+
+/**
+ * Checks if the error is a FileCreatorError.
+ * @param {unknown} object - The error to check.
+ * @returns {object is FileCreatorError}
+ */
+function isFileCreatorError(object) {
+    return object instanceof FileCreatorError;
+}
+
 class ExistingFileClass {
     /**
      * The path to the file.
@@ -47,6 +67,20 @@ async function makeEmpty(path) {
 }
 
 /**
+ * Checks if the path exists, and only then creates the verified instance.
+ * @param {string} path - The path to the file to create.
+ * @returns {Promise<ExistingFile>} - A promise that resolves when the file is created.
+ */
+async function tryMake(path) {
+    try {
+        await fs.access(path);
+        return new ExistingFileClass(path);
+    } catch {
+        throw new FileCreatorError(`File does not exist: ${path}`, path);
+    }
+}
+
+/**
  * Creates an empty file at the specified path.
  * @param {ExistingFile} existingFile - The existing file to copy.
  * @param {string} destinationPath - The path to the destination file.
@@ -75,7 +109,9 @@ async function getDirectoryChildren(dirPath) {
 }
 
 module.exports = {
+    tryMake,
     makeEmpty,
     makeCopy,
     getDirectoryChildren,
+    isFileCreatorError,
 };
