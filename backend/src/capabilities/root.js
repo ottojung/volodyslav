@@ -8,8 +8,8 @@ const memconst = require("../memconst");
 
 const make = memconst(() => {
     return {
-        deleter: deleterCapability.make(),
         seed: random.seed.make(),
+        deleter: deleterCapability.make(),
         scanner: dirscanner.make(),
         copier: copierCapability.make(),
         creator: creatorCapability.make(),
