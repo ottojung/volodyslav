@@ -225,20 +225,28 @@ describe("event_log_storage", () => {
         await logger.setup();
         const capabilities = makeMockCapabilities();
         await makeTestRepository();
-        const testEvent = { id: { identifier: "cleanupEvent" } };
+        const testEvent = {
+            id: { identifier: "cleanupEvent" },
+            date: new Date("2025-05-14"),
+        };
         const assetPath = "/some/failure.txt";
+        const asset = {
+            event: testEvent,
+            file: { path: assetPath, __brand: "ExistingFile" },
+        };
+
         await expect(
             transaction(capabilities, async (storage) => {
-                storage.addEntry(testEvent, [
-                    {
-                        event: testEvent, // Added event to make asset structure consistent
-                        file: { path: assetPath, __brand: "ExistingFile" },
-                    },
-                ]);
+                storage.addEntry(testEvent, [asset]);
                 throw new Error("forced failure");
             })
         ).rejects.toThrow("forced failure");
-        expect(capabilities.deleter.deleteFile).toHaveBeenCalledWith(assetPath);
+
+        // Should delete the copied asset file at its target path
+        const expectedTarget = targetPath(asset);
+        expect(capabilities.deleter.deleteFile).toHaveBeenCalledWith(
+            expectedTarget
+        );
     });
 
     test("transaction creates parent directories before copying assets", async () => {
@@ -361,8 +369,10 @@ describe("event_log_storage", () => {
         // `deleter.deleteFile` is then called for each of these.
         // The mock for `deleter.deleteFile` doesn't care if the file exists.
         allAssets.forEach((assetItem) => {
+            // cleanupAssets deletes the copied files at their target paths
+            const expected = targetPath(assetItem);
             expect(capabilities.deleter.deleteFile).toHaveBeenCalledWith(
-                assetItem.file.path
+                expected
             );
         });
 

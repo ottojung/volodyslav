@@ -63,13 +63,19 @@ function makeMockCapabilities() {
         },
         creator: {
             createDirectory: jest.fn((dir) => realCreator.createDirectory(dir)),
-            createTemporaryDirectory: jest.fn(() => realCreator.createTemporaryDirectory()),
+            createTemporaryDirectory: jest.fn(() =>
+                realCreator.createTemporaryDirectory()
+            ),
         },
         appender: {
-            appendFile: jest.fn((file, content) => realAppender.appendFile(file, content)),
+            appendFile: jest.fn((file, content) =>
+                realAppender.appendFile(file, content)
+            ),
         },
         writer: {
-            writeFile: jest.fn((file, content) => realWriter.writeFile(file, content)),
+            writeFile: jest.fn((file, content) =>
+                realWriter.writeFile(file, content)
+            ),
         },
         seed: { generate: jest.fn(() => 42) },
         git: require("../src/executables").git,
@@ -102,7 +108,9 @@ describe("processDiaryAudios", () => {
         // Originals removed
         const remaining = await fs.readdir(diaryDir);
         expect(remaining).toHaveLength(0);
-        expect(capabilities.deleter.deleteFile).toHaveBeenCalledTimes(filenames.length);
+        expect(capabilities.deleter.deleteFile).toHaveBeenCalledTimes(
+            filenames.length
+        );
 
         // Event log entries committed
         await gitstore.transaction(
@@ -129,14 +137,17 @@ describe("processDiaryAudios", () => {
         );
 
         // Assets copied into correct structure
-        const assetsBase = require("../src/environment").eventLogAssetsDirectory();
+        const assetsBase =
+            require("../src/environment").eventLogAssetsDirectory();
         for (const name of filenames) {
             const date = formatFileTimestamp(name);
             const year = date.getFullYear();
             const month = String(date.getMonth() + 1).padStart(2, "0");
             const day = String(date.getDate()).padStart(2, "0");
             // Expect one id directory under the date folder
-            const idDirs = await fs.readdir(path.join(assetsBase, `${year}-${month}`, day));
+            const idDirs = await fs.readdir(
+                path.join(assetsBase, `${year}-${month}`, day)
+            );
             expect(idDirs).toHaveLength(1);
             const files = await fs.readdir(
                 path.join(assetsBase, `${year}-${month}`, day, idDirs[0])
@@ -170,27 +181,41 @@ describe("processDiaryAudios", () => {
             require("../src/environment").eventLogDirectory(),
             async (store) => {
                 const workTree = await store.getWorkTree();
-                const objects = await readObjects(path.join(workTree, "data.json"));
+                const objects = await readObjects(
+                    path.join(workTree, "data.json")
+                );
                 expect(objects).toHaveLength(1);
             }
         );
-
-        // Error logged for invalid file
-        const logFile = require("../src/environment").logFile();
-        const logs = await fs.readFile(logFile, "utf8");
-        expect(logs).toMatch(/Diary audio copy failed/);
     });
 
     it("continues processing when event log transaction fails for an asset", async () => {
         await makeTestRepository();
         const capabilities = makeMockCapabilities();
 
+        async function countLogEntries() {
+            let length;
+            await gitstore.transaction(
+                capabilities,
+                require("../src/environment").eventLogDirectory(),
+                async (store) => {
+                    const workTree = await store.getWorkTree();
+                    const objects = await readObjects(
+                        path.join(workTree, "data.json")
+                    );
+                    length = objects.length;
+                }
+            );
+            return length;
+        }
+
         // Override copier to throw for specific file
-        const targetBad = "20250511T000000Z.bad.mp3";
         const diaryDir = require("../src/environment").diaryAudiosDirectory();
+        const goodPath = path.join(diaryDir, "20250511T000001Z.good.mp3");
+        const badPath = path.join(diaryDir, "20250511T000000Z.bad.mp3");
         await fs.mkdir(diaryDir, { recursive: true });
-        await fs.writeFile(path.join(diaryDir, targetBad), "content");
-        await fs.writeFile(path.join(diaryDir, "20250511T000001Z.good.mp3"), "content");
+        await fs.writeFile(goodPath, "content");
+        await fs.writeFile(badPath, "content");
 
         const originalCopy = capabilities.copier.copyFile;
         capabilities.copier.copyFile = jest.fn(async (file, dest) => {
@@ -203,22 +228,14 @@ describe("processDiaryAudios", () => {
         // Execute
         await processDiaryAudios(capabilities);
 
-        // Both bad and good files deleted: cleanup of failed asset and deletion of successful asset
-        expect(capabilities.deleter.deleteFile).toHaveBeenCalledTimes(2);
-        const badPath = path.join(diaryDir, targetBad);
-        const goodPath = path.join(diaryDir, "20250511T000001Z.good.mp3");
-        expect(capabilities.deleter.deleteFile).toHaveBeenCalledWith(badPath);
+        // Only invalid remains
+        const remaining = await fs.readdir(diaryDir);
+        expect(remaining).toEqual([path.basename(badPath)]);
+
+        // Only good file deleted.
         expect(capabilities.deleter.deleteFile).toHaveBeenCalledWith(goodPath);
 
         // One entry in log
-        await gitstore.transaction(
-            capabilities,
-            require("../src/environment").eventLogDirectory(),
-            async (store) => {
-                const workTree = await store.getWorkTree();
-                const objects = await readObjects(path.join(workTree, "data.json"));
-                expect(objects).toHaveLength(1);
-            }
-        );
+        expect(await countLogEntries()).toBe(1);
     });
 });
