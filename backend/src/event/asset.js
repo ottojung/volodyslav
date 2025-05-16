@@ -1,34 +1,31 @@
-const path = require("path");
-const { eventLogAssetsDirectory } = require("../environment");
+const path = require('path');
+const { eventLogAssetsDirectory } = require('../environment');
 
 class AssetClass {
-    /** 
-     * @type {import('./structure').Event}
-     * @private
-     */
-    _event;
+    /** @type {import('./structure').Event} */
+    event;
 
-    get event() {
-        return this._event;
-    }    
+    /** @type {ExistingFile} */
+    file;
 
     /**
-     * @type {ExistingFile}
+     * This is a value that is never actually assigned.
+     * Its purpose is to make `RequestIdentifier` a nominal type.
      * @private
+     * @type {undefined}
      */
-    _file;
-
-    get file() {
-        return this._file;
-    }
+    // @ts-ignore
+    /** @type {Brand} */
+    // @ts-ignore
+    __brand;
 
     /**
      * @param {import('./structure').Event} event
      * @param {ExistingFile} file
      */
     constructor(event, file) {
-        this._event = event;
-        this._file = file;
+        this.event = event;
+        this.file = file;
     }
 }
 
@@ -53,8 +50,8 @@ function targetPath(asset) {
     const baseDir = eventLogAssetsDirectory();
     const date = asset.event.date;
     const year = date.getFullYear();
-    const month = String(date.getMonth() + 1).padStart(2, "0");
-    const day = String(date.getDate()).padStart(2, "0");
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
     const firstPart = `${year}-${month}`;
     const secondPart = `${day}`;
     const thirdPart = `${asset.event.id.identifier}`;

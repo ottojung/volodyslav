@@ -1,21 +1,23 @@
 const random = require("../random");
 
 class EventIdClass {
-    /**
-     * @type {string}
-     * @private
-     */
-    _identifier;
+    /** @type {string} */
+    identifier;
 
-    get identifier() {
-        return this._identifier;
-    }
+    /**
+     * This is a value that is never actually assigned.
+     * Its purpose is to make `EventId` a nominal type.
+     * @private
+     * @type {undefined}
+     */
+    // @ts-ignore
+    __brand;
 
     /**
      * @param {Capabilities} capabilities
      */
     constructor(capabilities) {
-        this._identifier = random.string(capabilities, 16);
+        this.identifier = random.string(capabilities, 16);
     }
 }
 
