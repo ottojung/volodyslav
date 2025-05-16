@@ -38,9 +38,11 @@ function fromRequest(req) {
     return new RequestIdentifierClass(reqId.toString());
 }
 
+/** @typedef {import('./random/seed').NonDeterministicSeed} NonDeterministicSeed */
+
 /**
  * @typedef {object} Capabilities
- * @property {import('./random').RNG} rng - A random number generator instance.
+ * @property {NonDeterministicSeed} seed - A random number generator instance.
  */
 
 /**

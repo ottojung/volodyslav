@@ -9,13 +9,13 @@ const creatorMake = require("./creator");
 
 /** @typedef {import('./event/asset').Asset} Asset */
 /** @typedef {import('./filesystem/deleter').FileDeleter} FileDeleter */
-/** @typedef {import('./random').RNG} RNG */
+/** @typedef {import('./random/seed').NonDeterministicSeed} NonDeterministicSeed */
 /** @typedef {import('./filesystem/dirscanner').DirScanner} DirScanner */
 
 /**
  * @typedef {object} Capabilities
  * @property {FileDeleter} deleter - A file deleter instance.
- * @property {RNG} rng - A random number generator instance.
+ * @property {NonDeterministicSeed} seed - A random number generator instance.
  * @property {DirScanner} scanner - A directory scanner instance.
  */
 

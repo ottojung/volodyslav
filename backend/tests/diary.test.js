@@ -45,7 +45,6 @@ const {
 const { formatFileTimestamp } = require("../src/format_time_stamp");
 const { transaction } = require("../src/event_log_storage");
 const { logError } = require("../src/logger");
-const random = require("../src/random");
 const path = require("path");
 
 function setMockDefaults() {
@@ -83,8 +82,8 @@ describe("processDiaryAudios", () => {
         const { storage, scanner } = setMockDefaults();
         // Mock the file deleter and random generator
         const deleter = { deleteFile: jest.fn() };
-        const rng = random.default_generator(42);
-        const capabilities = { deleter, rng, scanner };
+        const seed = { generate: () => 42 };
+        const capabilities = { deleter, seed, scanner };
         // Invoke the processing function under test
         await processDiaryAudios(capabilities);
 
@@ -141,8 +140,8 @@ describe("processDiaryAudios", () => {
 
         // Mock the file deleter and random generator
         const deleter = { deleteFile: jest.fn() };
-        const rng = random.default_generator(42);
-        const capabilities = { deleter, rng, scanner };
+        const seed = { generate: () => 42 };
+        const capabilities = { deleter, seed, scanner };
         // Invoke the processing function under test
         await processDiaryAudios(capabilities);
 
@@ -198,8 +197,8 @@ describe("processDiaryAudios", () => {
 
         // Mock the file deleter and random generator
         const deleter = { deleteFile: jest.fn() };
-        const rng = random.default_generator(42);
-        const capabilities = { deleter, rng, scanner };
+        const seed = { generate: () => 42 };
+        const capabilities = { deleter, seed, scanner };
         // Invoke the processing function under test
         await processDiaryAudios(capabilities);
 

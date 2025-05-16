@@ -19,14 +19,14 @@ jest.mock("../src/environment", () => {
 jest.mock("../src/diary", () => ({
     processDiaryAudios: jest.fn().mockResolvedValue(),
 }));
+
 jest.mock("../src/filesystem/deleter", () => ({
     make: jest.fn().mockReturnValue({ deleteFile: jest.fn() }),
 }));
 
 // Mock random generator
-jest.mock("../src/random", () => ({
-    nondeterministic_seed: jest.fn().mockReturnValue(123),
-    default_generator: jest.fn().mockReturnValue({ next: jest.fn() }),
+jest.mock("../src/random/seed", () => ({
+    make: () => ({ generate: jest.fn().mockReturnValue(123) }),
 }));
 
 const request = require("supertest");

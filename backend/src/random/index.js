@@ -1,13 +1,13 @@
 const { string } = require("./string");
-const { nondeterministic_seed } = require("./seed");
-const { default_generator } = require("./default");
+const { defaultGenerator } = require("./default");
+const seed = require("./seed");
 
 /**
  * @typedef {import('./interface').RNG} RNG
  */
 
 module.exports = {
-    default_generator,
-    nondeterministic_seed,
+    defaultGenerator,
     string,
+    seed,
 };

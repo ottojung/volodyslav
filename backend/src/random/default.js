@@ -1,20 +1,25 @@
-
 const { make } = require("./interface");
 const { mulberry32 } = require("./mulberry32");
 
 /**
- * @param {number} seed - 32-bit integer seed
+ * @typedef {import('./seed').NonDeterministicSeed} NonDeterministicSeed
+ */
+
+/**
+ * @typedef {object} Capabilities
+ * @property {NonDeterministicSeed} seed - A function that generates a nondeterministic seed.
+ */
+
+/**
+ * @param {Capabilities} capabilities
  * @returns {import('./interface').RNG} - A random number generator with the given seed.
  * @description This is a wrapper around the mulberry32 PRNG.
  */
-function default_generator(seed) {
-    if (typeof seed !== "number" || !Number.isInteger(seed)) {
-        throw new TypeError("seed must be a 32-bit integer");
-    }
-
+function defaultGenerator(capabilities) {
+    const seed = capabilities.seed.generate();
     return make({ nextFloat: mulberry32(seed) });
 }
 
 module.exports = {
-    default_generator,
+    defaultGenerator,
 };

@@ -24,9 +24,8 @@ let version = memconst(async () => {
 });
 
 function generateRandomIdentifier() {
-    const seed = random.nondeterministic_seed();
-    const rng = random.default_generator(seed);
-    return random.string({ rng });
+    const seed = random.seed.make();
+    return random.string({ seed });
 }
 
 const instanceIdentifier = generateRandomIdentifier();

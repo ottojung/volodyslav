@@ -3,7 +3,7 @@ const { processDiaryAudios } = require("./diary");
 const capabilities = require("./capabilities/root");
 
 async function everyHour() {
-    await processDiaryAudios(capabilities);
+    await processDiaryAudios(capabilities.make());
 }
 
 async function setup() {

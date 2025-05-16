@@ -22,9 +22,11 @@ class EventIdClass {
 
 /** @typedef {EventIdClass} EventId */
 
-/** 
+/** @typedef {import('../random/seed').NonDeterministicSeed} NonDeterministicSeed */
+
+/**
  * @typedef {object} Capabilities
- * @property {import('../random').RNG} rng - A random number generator instance.
+ * @property {NonDeterministicSeed} seed - A random number generator instance.
  */
 
 /**
