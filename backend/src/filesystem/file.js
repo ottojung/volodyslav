@@ -5,6 +5,7 @@
  */
 
 const fs = require("fs").promises;
+const path = require("path");
 
 class ExistingFileClass {
     /**
@@ -23,7 +24,7 @@ class ExistingFileClass {
 
     /**
      * @param {string} path - The path to the file.
-     */    
+     */
     constructor(path) {
         this.path = path;
     }
@@ -43,6 +44,19 @@ async function makeEmpty(path) {
     return new ExistingFileClass(path);
 }
 
+/**
+ * Gets the children of a directory at the specified path.
+ * @param {string} dirPath - The path to the directory to scan.
+ * @returns {Promise<ExistingFile[]>} - A promise that resolves to an array of ExistingFile objects representing the directory contents.
+ */
+async function getDirectoryChildren(dirPath) {
+    const files = await fs.readdir(dirPath);
+    return files.map((file) => {
+        return new ExistingFileClass(path.join(dirPath, file));
+    });
+}
+
 module.exports = {
     makeEmpty,
+    getDirectoryChildren,
 };
