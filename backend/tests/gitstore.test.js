@@ -24,6 +24,11 @@ jest.mock("../src/environment", () => {
 
 const capabilities = {
     git: executables.git, // Use the actual git command, not a mock.
+    deleter: {
+        deleteDirectory: async (dir) => {
+            await fs.rm(dir, { recursive: true, force: true });
+        }
+    },
     creator: {
         createTemporaryDirectory: async () => {
             const base = temporary.input();

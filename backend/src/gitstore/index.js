@@ -4,11 +4,13 @@ const path = require("path");
 
 /** @typedef {import('../subprocess/command').Command} Command */
 /** @typedef {import('../filesystem/creator').FileCreator} FileCreator */
+/** @typedef {import('../filesystem/deleter').FileDeleter} FileDeleter */
 
 /**
  * @typedef {object} Capabilities
  * @property {Command} git - A command instance for Git operations.
  * @property {FileCreator} creator - A file creator instance.
+ * @property {FileDeleter} deleter - A file deleter instance.
  */
 
 /**
@@ -75,7 +77,7 @@ async function transaction(capabilities, git_directory, transformation) {
         await transformation(store);
         await push(capabilities, workTree); // Use wrapper
     } finally {
-        await fs.rm(workTree, { recursive: true, force: true });
+        await capabilities.deleter.deleteDirectory(workTree);    
     }
 }
 

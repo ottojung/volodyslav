@@ -38,7 +38,12 @@ describe("event_log_storage", () => {
 
     // Helper to create a full set of mocked capabilities for tests
     const makeMockCapabilities = () => {
-        const deleter = { deleteFile: jest.fn().mockResolvedValue(undefined) };
+        const deleter = {
+            deleteFile: jest.fn().mockResolvedValue(undefined),
+            deleteDirectory: jest.fn().mockImplementation(async (dir) => {
+                await fsp.rm(dir, { recursive: true, force: true });
+            }),
+        };
         const appender = {
             appendFile: jest.fn(async (file, content) => {
                 const dataDir = path.dirname(file.path);
