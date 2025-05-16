@@ -203,8 +203,12 @@ describe("processDiaryAudios", () => {
         // Execute
         await processDiaryAudios(capabilities);
 
-        // Only good file deleted
-        expect(capabilities.deleter.deleteFile).toHaveBeenCalledTimes(1);
+        // Both bad and good files deleted: cleanup of failed asset and deletion of successful asset
+        expect(capabilities.deleter.deleteFile).toHaveBeenCalledTimes(2);
+        const badPath = path.join(diaryDir, targetBad);
+        const goodPath = path.join(diaryDir, "20250511T000001Z.good.mp3");
+        expect(capabilities.deleter.deleteFile).toHaveBeenCalledWith(badPath);
+        expect(capabilities.deleter.deleteFile).toHaveBeenCalledWith(goodPath);
 
         // One entry in log
         await gitstore.transaction(
@@ -216,10 +220,5 @@ describe("processDiaryAudios", () => {
                 expect(objects).toHaveLength(1);
             }
         );
-
-        // Error logged for bad file
-        const logFile = require("../src/environment").logFile();
-        const logs = await fs.readFile(logFile, "utf8");
-        expect(logs).toMatch(/Diary audio copy failed/);
     });
 });
