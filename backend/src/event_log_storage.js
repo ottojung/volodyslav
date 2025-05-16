@@ -208,7 +208,6 @@ async function transaction(capabilities, transformation) {
         await performGitTransaction(capabilities, eventLogStorage, transformation);
     } catch (error) {
         // If anything goes wrong, clean up all copied assets and rethrow.
-        // Note: we do not wait for the cleanup to finish.
         await cleanupAssets(capabilities.deleter, eventLogStorage);
         throw error;
     }
