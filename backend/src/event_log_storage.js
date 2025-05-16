@@ -189,16 +189,18 @@ async function performGitTransaction(
 async function cleanupAssets(deleter, eventLogStorage) {
     const assets = eventLogStorage.getNewAssets();
     for (const asset of assets) {
+        // determine path of copied asset and attempt removal
+        const assetPath = targetPath(asset);
         try {
-            await deleter.deleteFile(asset.file.path);
+            await deleter.deleteFile(assetPath);
         } catch {
             logWarning(
                 {
-                    file: asset.file.path,
+                    file: assetPath,
                     error: "error occurred",
                     directory: eventLogDirectory(),
                 },
-                `Failed to remove asset file ${asset.file.path}. This may be due to the file being in use or not existing.`
+                `Failed to remove asset file ${assetPath}. This may be due to the file being in use or not existing.`
             );
         }
     }
