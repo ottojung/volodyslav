@@ -2,10 +2,11 @@ const { gentleWrap } = require("./gentlewrap");
 const { start } = require("./server");
 const logger = require("./logger");
 const { Command } = require("commander");
+const runtimeIdentifier = require("./runtime_identifier");
 
 async function printVersion() {
-    const { version } = require("./runtime_identifier");
-    console.log(await version());
+    const { version } = await runtimeIdentifier();
+    console.log(version);
 }
 
 async function entryTyped() {

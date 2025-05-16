@@ -7,14 +7,15 @@ const runtimeIdentifier = require("../runtime_identifier");
  * @param {import('express').Request} req
  * @param {import('express').Response} res
  */
-router.get("/ping", (req, res) => {
+router.get("/ping", async (req, res) => {
     const id = req.query.runtime_identifier;
 
     if (id !== undefined) {
         if (!id) {
             return res.status(400).send("Bad Request");
         }
-        if (id !== runtimeIdentifier.instanceIdentifier) {
+        const { instanceIdentifier } = await runtimeIdentifier();
+        if (id !== instanceIdentifier) {
             return res.status(400).send("Identifiers do not match.");
         }
     }

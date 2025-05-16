@@ -12,7 +12,7 @@ const runtime_identifier = require("./runtime_identifier");
  * @returns {Promise<Creator>} - The creator object.
  */
 async function creator() {
-    const version = await runtime_identifier.version();
+    const { version } = await runtime_identifier();
     return {
         name: "Volodyslav",
         version: version,

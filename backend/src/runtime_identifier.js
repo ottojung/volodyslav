@@ -8,6 +8,7 @@ const { git } = require("./executables");
 const { logError } = require("./logger");
 const memconst = require("./memconst");
 const random = require("./random");
+const rootCapabilities = require("./capabilities/root");
 
 let version = memconst(async () => {
     git.ensureAvailable();
@@ -23,13 +24,29 @@ let version = memconst(async () => {
     }
 });
 
-function generateRandomIdentifier() {
-    const seed = random.seed.make();
-    return random.string({ seed });
+/**
+ * @typedef {object} Capabilities
+ * @property {import("./random/seed").NonDeterministicSeed} seed
+ */
+
+/**
+ * Generates a random identifier for the runtime.
+ * @param {Capabilities} capabilities
+ * @returns {string}
+ */
+function generateRandomIdentifier(capabilities) {
+    return random.string(capabilities);
 }
 
-const instanceIdentifier = generateRandomIdentifier();
+/**
+ * @returns {Promise<{ version: string, instanceIdentifier: string }>}
+ */
+async function getRuntimeIdentifier() {
+    const capabilities = rootCapabilities.make();
+    const instanceIdentifier = generateRandomIdentifier(capabilities);
+    return { version: await version(), instanceIdentifier };
+}
 
-const runtimeIdentifier = { version, instanceIdentifier };
+const runtimeIdentifier = memconst(async () => getRuntimeIdentifier());
 
 module.exports = runtimeIdentifier;
