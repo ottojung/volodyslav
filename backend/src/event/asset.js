@@ -14,6 +14,9 @@ class AssetClass {
      * @private
      * @type {undefined}
      */
+    // @ts-ignore
+    /** @type {Brand} */
+    // @ts-ignore
     __brand;
 
     /**

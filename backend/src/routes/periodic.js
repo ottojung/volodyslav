@@ -10,7 +10,9 @@ const { everyHour } = require("../scheduler");
  * @param {import('express').Response} res
  */
 router.get("/periodic", async (req, res) => {
-    const period = req.query.period;
+    /** @type {any} */
+    const query = req.query;
+    const period = query['period'];
 
     logDebug(
         { method: req.method, url: req.originalUrl },
@@ -18,21 +20,20 @@ router.get("/periodic", async (req, res) => {
     );
 
     if (!period) {
-        return res
-            .status(400)
-            .send("Bad Request: period parameter is required");
+        res.status(400).send("Bad Request: period parameter is required");
+        return;
     }
 
     switch (period) {
         case "hour":
         case "hourly":
             await everyHour();
-            break;
+            res.send("done: hourly tasks initiated");
+            return;
         default:
-            return res.status(400).send("Bad Request: unknown period");
+            res.status(400).send("Bad Request: unknown period");
+            return;
     }
-
-    res.send("done");
 });
 
 module.exports = router;

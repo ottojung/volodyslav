@@ -10,6 +10,7 @@ class EventIdClass {
      * @private
      * @type {undefined}
      */
+    // @ts-ignore
     __brand;
 
     /**

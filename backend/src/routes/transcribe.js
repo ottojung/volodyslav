@@ -28,7 +28,9 @@ router.get('/transcribe', async (req, res) => {
     }
 
     // pull input and output params
-    const rawIn = req.query.input;
+    /** @type {any} */
+    const query = req.query;
+    const rawIn = query['input'];
     // Log the transcription request
     logInfo({ 
         request_identifier: reqId, 

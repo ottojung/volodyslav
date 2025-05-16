@@ -42,6 +42,7 @@ class ExistingFileClass {
      * @private
      * @type {undefined}
      */
+    // @ts-ignore
     __brand;
 
     /**

@@ -13,6 +13,7 @@ class RequestIdentifierClass {
      * @private
      * @type {undefined}
      */
+    // @ts-ignore
     __brand;
 
     /**
@@ -31,7 +32,9 @@ class RequestIdentifierClass {
  * @returns {RequestIdentifier}
  */
 function fromRequest(req) {
-    const reqId = req.query.request_identifier;
+    /** @type {any} */
+    const query = req.query;
+    const reqId = query['request_identifier'];
     if (reqId === null || reqId === undefined) {
         throw new Error("Missing request_identifier field");
     }

@@ -21,7 +21,9 @@ router.get('/transcribe_all', async (req, res) => {
             .json({ success: false, error: 'Missing request_identifier parameter' });
     }
 
-    const rawDir = req.query.input_dir;
+    /** @type {any} */
+    const query = req.query;
+    const rawDir = query['input_dir'];
     logInfo({ request_identifier: reqId, input_dir: rawDir }, 'Batch transcription request received');
     if (!rawDir) {
         return res

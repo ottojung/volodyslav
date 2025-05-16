@@ -10,6 +10,7 @@ router.use(express.static(staticPath));
  * @param {import('express').Request} req
  * @param {import('express').Response} res
  */
+// @ts-ignore
 router.get('*', (req, res) => {
     res.sendFile(path.join(staticPath, 'index.html'));
 });

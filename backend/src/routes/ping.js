@@ -8,7 +8,9 @@ const runtimeIdentifier = require("../runtime_identifier");
  * @param {import('express').Response} res
  */
 router.get("/ping", async (req, res) => {
-    const id = req.query.runtime_identifier;
+    /** @type {any} */
+    const query = req.query;
+    const id = query['runtime_identifier'];
 
     if (id !== undefined) {
         if (!id) {
