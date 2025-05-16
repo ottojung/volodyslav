@@ -24,6 +24,12 @@ jest.mock("../src/environment", () => {
 
 const capabilities = {
     git: executables.git, // Use the actual git command, not a mock.
+    creator: {
+        createTemporaryDirectory: async () => {
+            const base = temporary.input();
+            return await fs.mkdtemp(base);
+        },
+    }
 };
 
 describe("gitstore", () => {

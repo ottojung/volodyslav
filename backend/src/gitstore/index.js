@@ -1,17 +1,23 @@
-const os = require("os");
+const fs = require("fs").promises;
 const { commit, push, clone } = require("./wrappers");
 const path = require("path");
-const fs = require("fs").promises;
 
 /** @typedef {import('../subprocess/command').Command} Command */
+/** @typedef {import('../filesystem/creator').FileCreator} FileCreator */
 
 /**
  * @typedef {object} Capabilities
  * @property {Command} git - A command instance for Git operations.
+ * @property {FileCreator} creator - A file creator instance.
  */
 
-async function makeTemporaryWorkTree() {
-    return await fs.mkdtemp(`${os.tmpdir()}/gitstore-`);
+/**
+ * Creates a temporary work tree for Git operations.
+ * @param {Capabilities} capabilities - The capabilities object.
+ * @returns {Promise<string>} - A promise that resolves to the path of the temporary work tree.
+ */
+async function makeTemporaryWorkTree(capabilities) {
+    return capabilities.creator.createTemporaryDirectory();
 }
 
 class GitStoreClass {
@@ -62,7 +68,7 @@ class GitStoreClass {
  * @returns {Promise<void>}
  */
 async function transaction(capabilities, git_directory, transformation) {
-    const workTree = await makeTemporaryWorkTree();
+    const workTree = await makeTemporaryWorkTree(capabilities);
     try {
         const store = new GitStoreClass(workTree, capabilities);
         await clone(capabilities, git_directory, workTree); // Use wrapper

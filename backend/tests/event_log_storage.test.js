@@ -54,6 +54,10 @@ describe("event_log_storage", () => {
             createDirectory: jest.fn(async (dirPath) => {
                 await fsp.mkdir(dirPath, { recursive: true });
             }),
+            createTemporaryDirectory: jest.fn(async () => {
+                const base = temporary.input();
+                return await fsp.mkdtemp(base);
+            }),
         };
         const copier = {
             copyFile: jest.fn(async (sourceFile, destPath) => {
