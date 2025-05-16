@@ -207,7 +207,7 @@ async function transaction(capabilities, transformation) {
     } catch (error) {
         // If anything goes wrong, clean up all copied assets and rethrow.
         // Note: we do not wait for the cleanup to finish.
-        cleanupAssets(capabilities.deleter, eventLogStorage);
+        await cleanupAssets(capabilities.deleter, eventLogStorage);
         throw error;
     }
 }
