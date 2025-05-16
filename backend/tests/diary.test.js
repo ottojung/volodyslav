@@ -116,7 +116,7 @@ describe("processDiaryAudios", () => {
                 objects.forEach((obj, i) => {
                     expect(obj).toEqual({
                         id: obj.id,
-                        date: formatFileTimestamp(filenames[i]),
+                        date: formatFileTimestamp(filenames[i]).toISOString(),
                         original: "diary [when 0 hours ago] [audiorecording]",
                         input: "diary [when 0 hours ago] [audiorecording]",
                         modifiers: { when: "0 hours ago", audiorecording: "" },
