@@ -11,16 +11,21 @@ const creatorMake = require("./creator");
 /** @typedef {import('./filesystem/deleter').FileDeleter} FileDeleter */
 /** @typedef {import('./random/seed').NonDeterministicSeed} NonDeterministicSeed */
 /** @typedef {import('./filesystem/dirscanner').DirScanner} DirScanner */
+/** @typedef {import('./filesystem/copier').FileCopier} FileCopier */
+/** @typedef {import('./filesystem/writer').FileWriter} FileWriter */
+/** @typedef {import('./filesystem/appender').FileAppender} FileAppender */
+/** @typedef {import('./filesystem/creator').FileCreator} FileCreator */
+/** @typedef {import('./filesystem/file').ExistingFile} ExistingFile */
 
 /**
  * @typedef {object} Capabilities
- * @property {FileDeleter} deleter - A file deleter instance.
  * @property {NonDeterministicSeed} seed - A random number generator instance.
+ * @property {FileDeleter} deleter - A file deleter instance.
  * @property {DirScanner} scanner - A directory scanner instance.
- */
-
-/**
- * @typedef {import('./filesystem/file').ExistingFile} ExistingFile
+ * @property {FileCopier} copier - A file copier instance.
+ * @property {FileWriter} writer - A file writer instance.
+ * @property {FileAppender} appender - A file appender instance.
+ * @property {FileCreator} creator - A directory creator instance.
  */
 
 /**

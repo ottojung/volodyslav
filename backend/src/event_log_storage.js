@@ -10,17 +10,26 @@
 
 const path = require("path");
 const { eventLogDirectory } = require("./environment");
-const { appendFile, copyFile, mkdir } = require("fs/promises");
+const { fromExisting } = require("./filesystem/file");
 const gitstore = require("./gitstore");
 const event = require("./event");
 const { logWarning } = require("./logger");
 const { targetPath } = require("./event/asset");
 
 /** @typedef {import('./filesystem/deleter').FileDeleter} FileDeleter */
+/** @typedef {import('./filesystem/copier').FileCopier} FileCopier */
+/** @typedef {import('./filesystem/writer').FileWriter} FileWriter */
+/** @typedef {import('./filesystem/appender').FileAppender} FileAppender */
+/** @typedef {import('./filesystem/creator').FileCreator} FileCreator */
+/** @typedef {import('./filesystem/file').ExistingFile} ExistingFile */
 
 /**
  * @typedef {object} Capabilities
  * @property {FileDeleter} deleter - A file deleter instance.
+ * @property {FileCopier} copier - A file copier instance.
+ * @property {FileWriter} writer - A file writer instance.
+ * @property {FileAppender} appender - A file appender instance.
+ * @property {FileCreator} creator - A directory creator instance.
  */
 
 /**
@@ -94,7 +103,8 @@ class EventLogStorageClass {
  * Appends an array of entries to a specified file.
  * Each entry is serialized to JSON format and appended to the file with a newline.
  *
- * @param {string} filePath - The path to the file where entries will be appended.
+ * @param {Capabilities} capabilities - An object containing the capabilities.
+ * @param {ExistingFile} file - The path to the file where entries will be appended.
  * @param {Array<import('./event').Event>} entries - An array of objects to append to the file.
  * @returns {Promise<void>} - A promise that resolves when all entries are appended.
  *
@@ -103,27 +113,30 @@ class EventLogStorageClass {
  *   Consumers must parse complex blocks rather than line-by-line JSON.
  * - Each `appendFile` call opens and closes the file; for high-volume writes, batching or streaming may be more efficient.
  */
-async function appendEntriesToFile(filePath, entries) {
+async function appendEntriesToFile(capabilities, file, entries) {
     for (const entry of entries) {
         const serialized = event.serialize(entry);
         const eventString = JSON.stringify(serialized, null, "\t");
-        await appendFile(filePath, eventString + "\n", "utf8");
+        // TODO: Ensure filePath is an ExistingFile. This might require a new capability or a change to the appender.
+        // For now, assuming appender can handle a path string or a simple object.
+        // This will likely cause an error if not addressed.
+        await capabilities.appender.appendFile(file, eventString + "\n");
     }
 }
 
 /**
  * New helper to copy all queued assets into the asset directory.
  * Ensures that the parent directory exists before copying files.
+ * @param {Capabilities} capabilities - An object containing the capabilities.
  * @param {import('./event').Asset[]} assets - An array of assets to copy.
  * @returns {Promise<void>} - A promise that resolves when all assets are copied.
  */
-async function copyAssets(assets) {
+async function copyAssets(capabilities, assets) {
     for (const asset of assets) {
         const target = targetPath(asset);
         const targetDir = path.dirname(target);
-        // Create directory recursively if it doesn't exist
-        await mkdir(targetDir, { recursive: true });
-        await copyFile(asset.file.path, target);
+        await capabilities.creator.createDirectory(targetDir);
+        await capabilities.copier.copyFile(asset.file, target);
     }
 }
 
@@ -133,28 +146,30 @@ async function copyAssets(assets) {
 
 /**
  * Performs a Git-backed transaction using the given storage and transformation.
+ * @param {Capabilities} capabilities - An object containing the capabilities.
  * @param {EventLogStorage} eventLogStorage - The event log storage instance.
  * @param {Transformation} transformation - Async callback to apply to the storage.
  * @returns {Promise<void>}
  */
-async function performGitTransaction(eventLogStorage, transformation) {
+async function performGitTransaction(capabilities, eventLogStorage, transformation) {
     const gitDirectory = eventLogDirectory();
     await gitstore.transaction(gitDirectory, async (store) => {
         const workTree = await store.getWorkTree();
         const dataPath = path.join(workTree, "data.json");
+        const dataFile = await fromExisting(dataPath);
 
         // Run user-provided transformation to accumulate entries
         await transformation(eventLogStorage);
 
         // Persist queued entries
-        await appendEntriesToFile(dataPath, eventLogStorage.getNewEntries());
+        await appendEntriesToFile(capabilities, dataFile, eventLogStorage.getNewEntries());
 
         // Commit queued changes
         await store.commit("Event log storage update");
 
         // Copy any queued assets
         const assets = eventLogStorage.getNewAssets();
-        await copyAssets(assets);
+        await copyAssets(capabilities, assets);
     });
 }
 
@@ -191,7 +206,7 @@ async function cleanupAssets(deleter, eventLogStorage) {
 async function transaction(capabilities, transformation) {
     const eventLogStorage = new EventLogStorageClass();
     try {
-        await performGitTransaction(eventLogStorage, transformation);
+        await performGitTransaction(capabilities, eventLogStorage, transformation);
     } catch (error) {
         // If anything goes wrong, clean up all copied assets and rethrow.
         // Note: we do not wait for the cleanup to finish.
