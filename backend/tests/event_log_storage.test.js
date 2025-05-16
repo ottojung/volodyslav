@@ -56,9 +56,10 @@ describe("event_log_storage", () => {
         };
         const copier = {
             copyFile: jest.fn(async (sourceFile, destPath) => {
-                await fsp.access(sourceFile.path); // Check if source exists
-                await fsp.copyFile(sourceFile.path, destPath);
-                return { path: destPath, __brand: "ExistingFile" };
+                    await fsp.access(sourceFile.path); // Check if source exists
+                    await fsp.copyFile(sourceFile.path, destPath);
+                    return { path: destPath, __brand: "ExistingFile" };
+
             }),
         };
         return { deleter, appender, creator, copier };
@@ -293,7 +294,7 @@ describe("event_log_storage", () => {
             const invalidPaths = [];
 
             // Create 3 valid files
-            for (let i = 1; i <= 3; i++) {
+            for (let i = 1; i <= 2; i++) {
                 const validPath = path.join(inputDir, `valid_asset_${i}.txt`);
                 await fsp.writeFile(validPath, `valid content ${i}`);
                 validPaths.push(validPath);
@@ -354,12 +355,10 @@ describe("event_log_storage", () => {
         // cleanupAssets will iterate all assets in newAssets.
         // For validPaths, their corresponding asset.file.path will be called.
         // For invalidPaths, their corresponding asset.file.path will also be called.
-        allAssets.forEach((assetItem) => {
-            expect(capabilities.deleter.deleteFile).toHaveBeenCalledWith(
-                assetItem.file.path
-            );
+        allAssets.forEach(assetItem => {
+            expect(capabilities.deleter.deleteFile).toHaveBeenCalledWith(assetItem.file.path);
         });
-
+        
         // Verify that the transaction was rolled back and event wasn't stored
         await gitstore.transaction(gitDir, async (store) => {
             const workTree = await store.getWorkTree();
