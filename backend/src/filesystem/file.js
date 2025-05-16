@@ -67,11 +67,12 @@ async function makeEmpty(path) {
 }
 
 /**
- * Checks if the path exists, and only then creates the verified instance.
+ * Creates an ExistingFile instance from an existing file.
  * @param {string} path - The path to the file to create.
  * @returns {Promise<ExistingFile>} - A promise that resolves when the file is created.
+ * @throws {FileCreatorError} - If the file does not exist.
  */
-async function tryMake(path) {
+async function fromExisting(path) {
     try {
         await fs.access(path);
         return new ExistingFileClass(path);
@@ -109,7 +110,7 @@ async function getDirectoryChildren(dirPath) {
 }
 
 module.exports = {
-    tryMake,
+    fromExisting,
     makeEmpty,
     makeCopy,
     getDirectoryChildren,
