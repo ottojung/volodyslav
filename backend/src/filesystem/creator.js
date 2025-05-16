@@ -95,6 +95,7 @@ async function createTemporaryDirectory() {
     const tmpDir = resultsDirectory();
     const uniquePrefix = path.join(tmpDir, "tmp-");
     try {
+        await fs.mkdir(tmpDir, { recursive: true });
         const createdTmpDirPath = await fs.mkdtemp(uniquePrefix);
         return createdTmpDirPath;
     } catch (err) {
