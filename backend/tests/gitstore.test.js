@@ -5,6 +5,7 @@ const { transaction } = require("../src/gitstore");
 const temporary = require("./temporary");
 const makeTestRepository = require("./make_test_repository");
 const defaultBranch = require("../src/gitstore/default_branch");
+const executables = require("../src/executables");
 
 beforeEach(temporary.beforeEach);
 afterEach(temporary.afterEach);
@@ -22,9 +23,7 @@ jest.mock("../src/environment", () => {
 });
 
 const capabilities = {
-    git: {
-        run: jest.fn(),
-    },
+    git: executables.git, // Use the actual git command, not a mock.
 };
 
 describe("gitstore", () => {

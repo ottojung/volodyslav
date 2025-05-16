@@ -8,6 +8,7 @@ const makeTestRepository = require("./make_test_repository");
 const event = require("../src/event/structure");
 const { targetPath } = require("../src/event/asset");
 const logger = require("../src/logger");
+const executables = require("../src/executables");
 
 beforeEach(temporary.beforeEach);
 afterEach(temporary.afterEach);
@@ -61,7 +62,8 @@ describe("event_log_storage", () => {
                 return { path: destPath, __brand: "ExistingFile" };
             }),
         };
-        return { deleter, appender, creator, copier };
+        const git = executables.git; // Use the actual git command, not a mock.
+        return { deleter, appender, creator, copier, git };
     };
 
     test("transaction allows adding and storing event entries", async () => {
