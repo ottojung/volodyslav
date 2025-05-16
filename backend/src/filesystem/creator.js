@@ -19,6 +19,7 @@
 
 const fs = require("fs").promises;
 const path = require("path");
+const os = require("os"); // Added for os.tmpdir()
 const { makeEmpty } = require("./file");
 
 class FileCreatorError extends Error {
@@ -49,6 +50,7 @@ function isFileCreatorError(object) {
  * @typedef {object} FileCreator
  * @property {typeof createFile} createFile
  * @property {typeof createDirectory} createDirectory
+ * @property {typeof createTemporaryDirectory} createTemporaryDirectory
  */
 
 /**
@@ -85,10 +87,29 @@ async function createDirectory(dirPath) {
     }
 }
 
+/**
+ * Creates a temporary directory in the system's temporary folder.
+ * @returns {Promise<string>} - A promise that resolves with the path to the created temporary directory.
+ */
+async function createTemporaryDirectory() {
+    const tmpDir = os.tmpdir();
+    const uniquePrefix = path.join(tmpDir, "volodyslav-");
+    try {
+        const createdTmpDirPath = await fs.mkdtemp(uniquePrefix);
+        return createdTmpDirPath;
+    } catch (err) {
+        throw new FileCreatorError(
+            `Failed to create temporary directory with prefix: ${uniquePrefix}`,
+            uniquePrefix // Using uniquePrefix as filePath for the error
+        );
+    }
+}
+
 function make() {
     return {
         createFile,
         createDirectory,
+        createTemporaryDirectory,
     };
 }
 
