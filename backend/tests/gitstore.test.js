@@ -21,10 +21,16 @@ jest.mock("../src/environment", () => {
     };
 });
 
+const capabilities = {
+    git: {
+        run: jest.fn(),
+    },
+};
+
 describe("gitstore", () => {
     test("transaction allows reading and writing files", async () => {
         const { gitDir } = await makeTestRepository();
-        await transaction(gitDir, async (store) => {
+        await transaction(capabilities, gitDir, async (store) => {
             const workTree = await store.getWorkTree();
             const testFile = path.join(workTree, "test.txt");
 
@@ -50,7 +56,7 @@ describe("gitstore", () => {
 
     test("transaction allows multiple commits", async () => {
         const { gitDir } = await makeTestRepository();
-        await transaction(gitDir, async (store) => {
+        await transaction(capabilities, gitDir, async (store) => {
             const workTree = await store.getWorkTree();
             const testFile = path.join(workTree, "test.txt");
 
@@ -88,7 +94,7 @@ describe("gitstore", () => {
         let temporaryWorkTree;
 
         await expect(
-            transaction(gitDir, async (store) => {
+            transaction(capabilities, gitDir, async (store) => {
                 temporaryWorkTree = await store.getWorkTree(); // Get the work tree to create it
                 await expect(
                     fs.access(temporaryWorkTree)
@@ -107,7 +113,7 @@ describe("gitstore", () => {
         let temporaryWorkTree;
 
         await expect(
-            transaction(gitDir, async (store) => {
+            transaction(capabilities, gitDir, async (store) => {
                 temporaryWorkTree = await store.getWorkTree(); // Get the work tree to create it
                 await expect(
                     fs.access(temporaryWorkTree)

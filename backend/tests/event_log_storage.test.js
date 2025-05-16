@@ -84,7 +84,7 @@ describe("event_log_storage", () => {
         });
 
         // Verify the stored event using gitstore transaction
-        await gitstore.transaction(gitDir, async (store) => {
+        await gitstore.transaction(capabilities, gitDir, async (store) => {
             const workTree = await store.getWorkTree();
             const dataPath = path.join(workTree, "data.json");
             const objects = await readObjects(dataPath);
@@ -116,7 +116,7 @@ describe("event_log_storage", () => {
         ).rejects.toThrow();
 
         await expect(
-            gitstore.transaction(gitDir, async (_store) => {})
+            gitstore.transaction(capabilities, gitDir, async (_store) => {})
         ).rejects.toThrow("does not exist");
     });
 
@@ -149,7 +149,7 @@ describe("event_log_storage", () => {
             eventLogStorage.addEntry(event2, []);
         });
 
-        await gitstore.transaction(gitDir, async (store) => {
+        await gitstore.transaction(capabilities, gitDir, async (store) => {
             const workTree = await store.getWorkTree();
             const dataPath = path.join(workTree, "data.json");
             const objects = await readObjects(dataPath);
@@ -356,7 +356,7 @@ describe("event_log_storage", () => {
         });
 
         // Verify that the transaction was rolled back and event wasn't stored
-        await gitstore.transaction(gitDir, async (store) => {
+        await gitstore.transaction(capabilities, gitDir, async (store) => {
             const workTree = await store.getWorkTree();
             const dataPath = path.join(workTree, "data.json");
 

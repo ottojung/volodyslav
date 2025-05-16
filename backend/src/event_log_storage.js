@@ -150,9 +150,13 @@ async function copyAssets(capabilities, assets) {
  * @param {Transformation} transformation - Async callback to apply to the storage.
  * @returns {Promise<void>}
  */
-async function performGitTransaction(capabilities, eventLogStorage, transformation) {
+async function performGitTransaction(
+    capabilities,
+    eventLogStorage,
+    transformation
+) {
     const gitDirectory = eventLogDirectory();
-    await gitstore.transaction(gitDirectory, async (store) => {
+    await gitstore.transaction(capabilities, gitDirectory, async (store) => {
         const workTree = await store.getWorkTree();
         const dataPath = path.join(workTree, "data.json");
         const dataFile = await fromExisting(dataPath);
@@ -161,7 +165,11 @@ async function performGitTransaction(capabilities, eventLogStorage, transformati
         await transformation(eventLogStorage);
 
         // Persist queued entries
-        await appendEntriesToFile(capabilities, dataFile, eventLogStorage.getNewEntries());
+        await appendEntriesToFile(
+            capabilities,
+            dataFile,
+            eventLogStorage.getNewEntries()
+        );
 
         // Commit queued changes
         await store.commit("Event log storage update");
@@ -205,7 +213,11 @@ async function cleanupAssets(deleter, eventLogStorage) {
 async function transaction(capabilities, transformation) {
     const eventLogStorage = new EventLogStorageClass();
     try {
-        await performGitTransaction(capabilities, eventLogStorage, transformation);
+        await performGitTransaction(
+            capabilities,
+            eventLogStorage,
+            transformation
+        );
     } catch (error) {
         // If anything goes wrong, clean up all copied assets and rethrow.
         await cleanupAssets(capabilities.deleter, eventLogStorage);
