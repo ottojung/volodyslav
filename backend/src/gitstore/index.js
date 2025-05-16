@@ -39,12 +39,7 @@ class GitStoreClass {
     async commit(message) {
         const workTree = await this.getWorkTree();
         const gitDir = path.join(workTree, ".git");
-        // TODO: This is a placeholder. The actual git command should be used here.
-        // This will require the 'Command' type to be properly integrated.
-        // For now, we'll keep the existing call to the wrapper.
-        // In a subsequent step, we would replace this with something like:
-        // await this.capabilities.git.run(...) 
-        await commit(gitDir, workTree, message);
+        await commit(this.capabilities.git, gitDir, workTree, message); // Use wrapper
     }
 }
 
@@ -70,12 +65,9 @@ async function transaction(capabilities, git_directory, transformation) {
     const workTree = await makeTemporaryWorkTree();
     try {
         const store = new GitStoreClass(workTree, capabilities);
-        // TODO: Similar to the commit method, these git operations (clone, push)
-        // should ideally use the capabilities.git command.
-        // For now, we'll keep the existing calls to the wrappers.
-        await clone(git_directory, workTree);
+        await clone(capabilities.git, git_directory, workTree); // Use wrapper
         await transformation(store);
-        await push(workTree);
+        await push(capabilities.git, workTree); // Use wrapper
     } finally {
         await fs.rm(workTree, { recursive: true, force: true });
     }
