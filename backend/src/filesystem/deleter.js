@@ -58,7 +58,7 @@ function isFileNotFoundError(object) {
     return object instanceof FileNotFoundError;
 }
 
-/** 
+/**
  * @typedef {object} FileDeleter
  * @property {typeof deleteFile} deleteFile
  */
@@ -83,9 +83,30 @@ async function deleteFile(filePath) {
     }
 }
 
+/**
+ * Deletes a directory at the specified path.
+ * @param {string} directoryPath - The path to the directory to delete.
+ * @returns {Promise<void>} - A promise that resolves when the directory is deleted.
+ */
+async function deleteDirectory(directoryPath) {
+    try {
+        await fs.rm(directoryPath, { recursive: true, force: true });
+    } catch (err) {
+        if (err instanceof Error && "code" in err && err.code === "ENOENT") {
+            throw new FileNotFoundError(directoryPath);
+        } else {
+            throw new FileDeleterError(
+                `Failed to delete directory: ${directoryPath}`,
+                directoryPath
+            );
+        }
+    }
+}
+
 function make() {
     return {
         deleteFile,
+        deleteDirectory,
     };
 }
 
