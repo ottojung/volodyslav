@@ -24,7 +24,7 @@
  */
 function serialize(event) {
     // De-nominalize the event.
-    const date = event.date.toUTCString();
+    const date = event.date.toISOString();
     const id = event.id.identifier;
     const realEvent = { ...event, date, id };
     return realEvent;
