@@ -59,11 +59,6 @@ function isFileNotFoundError(object) {
 }
 
 /**
- * @typedef {object} FileDeleter
- * @property {typeof deleteFile} deleteFile
- */
-
-/**
  * Deletes a file at the specified path.
  * @param {string} filePath - The path to the file to delete.
  * @returns {Promise<void>} - A promise that resolves when the file is deleted.
@@ -102,6 +97,12 @@ async function deleteDirectory(directoryPath) {
         }
     }
 }
+
+/**
+ * @typedef {Object} FileDeleter
+ * @property {typeof deleteFile} deleteFile - Deletes a file.
+ * @property {typeof deleteDirectory} deleteDirectory - Deletes a directory.
+ */
 
 function make() {
     return {
