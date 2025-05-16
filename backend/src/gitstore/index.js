@@ -1,4 +1,3 @@
-const fs = require("fs").promises;
 const { commit, push, clone } = require("./wrappers");
 const path = require("path");
 
