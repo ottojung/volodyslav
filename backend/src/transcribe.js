@@ -25,6 +25,15 @@ class InputNotFound extends Error {
     }
 }
 
+/**
+ * Checks if the given object is an instance of InputNotFound.
+ * @param {unknown} object
+ * @returns {object is InputNotFound}
+ */
+function isInputNotFound(object) {
+    return object instanceof InputNotFound;
+}
+
 /** @typedef {import('./creator').Creator} Creator */
 
 /**
@@ -114,7 +123,7 @@ async function transcribeRequest(inputPath, reqId) {
 }
 
 module.exports = {
-    InputNotFound,
+    isInputNotFound,
     transcribeStream,
     transcribeFile,
     transcribeRequest,
