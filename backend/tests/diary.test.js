@@ -87,6 +87,22 @@ describe("processDiaryAudios", () => {
         await logger.setup();
     });
 
+    async function countLogEntries() {
+        let length;
+        await gitstore.transaction(
+            makeMockCapabilities(),
+            require("../src/environment").eventLogDirectory(),
+            async (store) => {
+                const workTree = await store.getWorkTree();
+                const objects = await readObjects(
+                    path.join(workTree, "data.json")
+                );
+                length = objects.length;
+            }
+        );
+        return length;
+    }
+
     it("processes all diary audios successfully", async () => {
         await makeTestRepository();
         const capabilities = makeMockCapabilities();
@@ -168,6 +184,9 @@ describe("processDiaryAudios", () => {
         await fs.writeFile(path.join(diaryDir, valid), "ok");
         await fs.writeFile(path.join(diaryDir, invalid), "fail");
 
+        // Empty log before execution.
+        expect(await countLogEntries()).toBe(0);
+
         // Execute
         await processDiaryAudios(capabilities);
 
@@ -176,38 +195,12 @@ describe("processDiaryAudios", () => {
         expect(remaining).toEqual([invalid]);
 
         // Only one entry in log
-        await gitstore.transaction(
-            capabilities,
-            require("../src/environment").eventLogDirectory(),
-            async (store) => {
-                const workTree = await store.getWorkTree();
-                const objects = await readObjects(
-                    path.join(workTree, "data.json")
-                );
-                expect(objects).toHaveLength(1);
-            }
-        );
+        expect(await countLogEntries()).toBe(1);
     });
 
     it("continues processing when event log transaction fails for an asset", async () => {
         await makeTestRepository();
         const capabilities = makeMockCapabilities();
-
-        async function countLogEntries() {
-            let length;
-            await gitstore.transaction(
-                capabilities,
-                require("../src/environment").eventLogDirectory(),
-                async (store) => {
-                    const workTree = await store.getWorkTree();
-                    const objects = await readObjects(
-                        path.join(workTree, "data.json")
-                    );
-                    length = objects.length;
-                }
-            );
-            return length;
-        }
 
         // Override copier to throw for specific file
         const diaryDir = require("../src/environment").diaryAudiosDirectory();
@@ -224,6 +217,9 @@ describe("processDiaryAudios", () => {
             }
             return originalCopy(file, dest);
         });
+
+        // Empty log before execution.
+        expect(await countLogEntries()).toBe(0);
 
         // Execute
         await processDiaryAudios(capabilities);
