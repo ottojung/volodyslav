@@ -193,9 +193,9 @@ describe("processDiaryAudios", () => {
         await fs.writeFile(path.join(diaryDir, "20250511T000001Z.good.mp3"), "content");
 
         const originalCopy = capabilities.copier.copyFile;
-        capabilities.copier.copyFile = jest.fn((file, dest) => {
+        capabilities.copier.copyFile = jest.fn(async (file, dest) => {
             if (file.path.endsWith("bad.mp3")) {
-                return Promise.reject(new Error("copy failed"));
+                throw new Error("copy failed");
             }
             return originalCopy(file, dest);
         });
