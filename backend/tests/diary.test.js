@@ -1,244 +1,217 @@
-// This test verifies that `processDiaryAudios` correctly handles transcription
-// results by copying successful audio files, removing originals, logging failures,
-// and recording events in the event log. It uses mocks to simulate file operations,
-// transcription outputs, and the event-log API.
-
-jest.mock("fs/promises", () => ({
-    // Mock file operations to spy on readdir, copyFile and unlink calls
-    readdir: jest.fn(),
-}));
-
-// Mock environment functions to provide fixed diary and assets directories
-jest.mock("../src/environment", () => ({
-    diaryAudiosDirectory: jest.fn(),
-    eventLogAssetsDirectory: jest.fn(),
-}));
-
-// Mock the logger to capture error logging without printing to console
-jest.mock("../src/creator", () => () => ({
-    name: "Volodyslav",
-    version: "0.1.0",
-}));
-
-// Mock the timestamp formatter for predictable date strings
-jest.mock("../src/format_time_stamp", () => ({
-    formatFileTimestamp: jest.fn(),
-}));
-
-// Mock the transaction API of event_log_storage to capture added entries
-jest.mock("../src/event_log_storage", () => ({
-    transaction: jest.fn(),
-}));
-
-// Mock the logger to capture error logging without printing to console
-jest.mock("../src/logger", () => ({
-    logError: jest.fn(),
-    logWarning: jest.fn(),
-    logInfo: jest.fn(),
-}));
-
-const { processDiaryAudios } = require("../src/diary");
-const {
-    diaryAudiosDirectory,
-    eventLogAssetsDirectory,
-} = require("../src/environment");
-const { formatFileTimestamp } = require("../src/format_time_stamp");
-const { transaction } = require("../src/event_log_storage");
-const { logError } = require("../src/logger");
+// Reimplemented tests for processDiaryAudios using real capabilities and git-backed event log storage
 const path = require("path");
+const fs = require("fs/promises");
+const temporary = require("./temporary");
+const makeTestRepository = require("./make_test_repository");
+const { processDiaryAudios } = require("../src/diary");
+const gitstore = require("../src/gitstore");
+const { readObjects } = require("../src/json_stream_file");
+const event = require("../src/event/structure");
+const { formatFileTimestamp } = require("../src/format_time_stamp");
+const logger = require("../src/logger");
 
-function setMockDefaults() {
-    jest.resetAllMocks();
-    const storage = { addEntry: jest.fn() };
-    // Provide fixed directory paths for diary audios and assets
-    diaryAudiosDirectory.mockReturnValue("/fake/diaryDir");
-    eventLogAssetsDirectory.mockReturnValue("/fake/assetsDir");
-    // Ensure formatted filename timestamps are predictable
-    formatFileTimestamp.mockReturnValue(new Date("2025-05-12"));
-    // Simulate directory entries and copy behaviour
-    const filenames = ["file1.mp3", "file2.mp3", "bad.mp3"];
-    const files = filenames.map((filename) => ({
-        path: path.join(diaryAudiosDirectory(), filename),
-    }));
-    const scanner = {
-        scanDirectory: jest.fn().mockImplementation(async (directory) => {
-            if (directory == diaryAudiosDirectory()) {
-                return files;
-            }
-            return [];
+// Mock environment to isolate test directories
+jest.mock("../src/environment", () => {
+    const temporary = require("./temporary");
+    const path = require("path");
+    return {
+        diaryAudiosDirectory: jest.fn().mockImplementation(() => {
+            const dir = temporary.input();
+            return path.join(dir, "diary");
+        }),
+        eventLogAssetsDirectory: jest.fn().mockImplementation(() => {
+            const dir = temporary.output();
+            return path.join(dir, "assets");
+        }),
+        eventLogDirectory: jest.fn().mockImplementation(() => {
+            const dir = temporary.output();
+            return path.join(dir, "eventlog");
         }),
     };
+});
 
-    // Use the mock transaction to invoke callback with our fake storage
-    transaction.mockImplementation(async (_deleter, cb) => {
-        await cb(storage);
-    });
+beforeEach(temporary.beforeEach);
+afterEach(temporary.afterEach);
 
-    return { storage, scanner };
+// Helper to create inspectable capability wrappers around real implementations
+function makeMockCapabilities() {
+    const realDeleter = require("../src/filesystem/deleter").make();
+    const realCopier = require("../src/filesystem/copier").make();
+    const realScanner = require("../src/filesystem/dirscanner").make();
+    const realCreator = require("../src/filesystem/creator").make();
+    const realAppender = require("../src/filesystem/appender").make();
+    const realWriter = require("../src/filesystem/writer").make();
+
+    return {
+        deleter: {
+            deleteFile: jest.fn((p) => realDeleter.deleteFile(p)),
+            deleteDirectory: jest.fn((p) => realDeleter.deleteDirectory(p)),
+        },
+        copier: {
+            copyFile: jest.fn((file, dest) => realCopier.copyFile(file, dest)),
+        },
+        scanner: {
+            scanDirectory: jest.fn((dir) => realScanner.scanDirectory(dir)),
+        },
+        creator: {
+            createDirectory: jest.fn((dir) => realCreator.createDirectory(dir)),
+            createTemporaryDirectory: jest.fn(() => realCreator.createTemporaryDirectory()),
+        },
+        appender: {
+            appendFile: jest.fn((file, content) => realAppender.appendFile(file, content)),
+        },
+        writer: {
+            writeFile: jest.fn((file, content) => realWriter.writeFile(file, content)),
+        },
+        seed: { generate: jest.fn(() => 42) },
+        git: require("../src/executables").git,
+    };
 }
 
 describe("processDiaryAudios", () => {
-    it("should process diary audios correctly when all files succeed", async () => {
-        const { storage, scanner } = setMockDefaults();
-        // Mock the file deleter and random generator
-        const deleter = { deleteFile: jest.fn() };
-        const seed = { generate: () => 42 };
-        const capabilities = { deleter, seed, scanner };
-        // Invoke the processing function under test
+    beforeEach(async () => {
+        await logger.setup();
+    });
+
+    it("processes all diary audios successfully", async () => {
+        const { gitDir } = await makeTestRepository();
+        const capabilities = makeMockCapabilities();
+
+        // Prepare diary directory with audio files
+        const diaryDir = require("../src/environment").diaryAudiosDirectory();
+        await fs.mkdir(diaryDir, { recursive: true });
+        const filenames = [
+            "20250511T000000Z.file1.mp3",
+            "20250511T000001Z.file2.mp3",
+        ];
+        for (const name of filenames) {
+            await fs.writeFile(path.join(diaryDir, name), "content");
+        }
+
+        // Execute
         await processDiaryAudios(capabilities);
 
-        // Verify that no errors are logged since writeAsset always succeeds
-        expect(logError).not.toHaveBeenCalled();
+        // Originals removed
+        const remaining = await fs.readdir(diaryDir);
+        expect(remaining).toHaveLength(0);
+        expect(capabilities.deleter.deleteFile).toHaveBeenCalledTimes(filenames.length);
 
-        // Verify that writeAsset called transaction and added entries for all files
-        expect(transaction).toHaveBeenCalledTimes(3);
+        // Event log entries committed
+        await gitstore.transaction(
+            capabilities,
+            require("../src/environment").eventLogDirectory(),
+            async (store) => {
+                const workTree = await store.getWorkTree();
+                const dataPath = path.join(workTree, "data.json");
+                const objects = await readObjects(dataPath);
+                expect(objects).toHaveLength(filenames.length);
+                objects.forEach((obj, i) => {
+                    expect(obj).toEqual({
+                        id: obj.id,
+                        date: formatFileTimestamp(filenames[i]),
+                        original: "diary [when 0 hours ago] [audiorecording]",
+                        input: "diary [when 0 hours ago] [audiorecording]",
+                        modifiers: { when: "0 hours ago", audiorecording: "" },
+                        type: "diary",
+                        description: "",
+                        creator: expect.any(Object),
+                    });
+                });
+            }
+        );
 
-        // Verify original files are removed after processing all files
-        expect(deleter.deleteFile).toHaveBeenCalledTimes(3);
-        ["file1.mp3", "file2.mp3", "bad.mp3"].forEach((file) => {
-            expect(deleter.deleteFile).toHaveBeenCalledWith(
-                `/fake/diaryDir/${file}`
+        // Assets copied into correct structure
+        const assetsBase = require("../src/environment").eventLogAssetsDirectory();
+        for (const name of filenames) {
+            const date = formatFileTimestamp(name);
+            const year = date.getFullYear();
+            const month = String(date.getMonth() + 1).padStart(2, "0");
+            const day = String(date.getDate()).padStart(2, "0");
+            // Expect one id directory under the date folder
+            const idDirs = await fs.readdir(path.join(assetsBase, `${year}-${month}`, day));
+            expect(idDirs).toHaveLength(1);
+            const files = await fs.readdir(
+                path.join(assetsBase, `${year}-${month}`, day, idDirs[0])
             );
-        });
-
-        // Verify event log entries added correctly for each asset
-        expect(storage.addEntry).toHaveBeenCalledTimes(3);
-        const expectedEvent = {
-            id: expect.anything(),
-            date: expect.any(Date),
-            original: "diary [when 0 hours ago] [audiorecording]",
-            input: "diary [when 0 hours ago] [audiorecording]",
-            modifiers: { when: "0 hours ago", audiorecording: "" },
-            type: "diary",
-            description: "",
-            creator: expect.objectContaining({
-                name: "Volodyslav",
-                version: "0.1.0",
-            }),
-        };
-
-        // The addEntry method is called for each of the three assets
-        for (let i = 1; i <= 3; i++) {
-            expect(storage.addEntry).toHaveBeenNthCalledWith(
-                i,
-                expectedEvent,
-                expect.any(Array)
-            );
+            expect(files).toContain(path.basename(name));
         }
     });
 
-    it("should process diary audios correctly when some files incorrectly named", async () => {
-        const { storage, scanner } = setMockDefaults();
+    it("skips files with invalid timestamp names and logs errors", async () => {
+        const { gitDir } = await makeTestRepository();
+        const capabilities = makeMockCapabilities();
 
-        // Simulate a failure for the bad.mp3 file.
-        formatFileTimestamp.mockImplementation((filename) => {
-            if (filename === "bad.mp3") {
-                throw new Error("Failed to process file");
-            }
-            return new Date("2025-05-12");
-        });
+        // Prepare diary directory
+        const diaryDir = require("../src/environment").diaryAudiosDirectory();
+        await fs.mkdir(diaryDir, { recursive: true });
+        const valid = "20250511T000000Z.good.mp3";
+        const invalid = "bad.mp3";
+        await fs.writeFile(path.join(diaryDir, valid), "ok");
+        await fs.writeFile(path.join(diaryDir, invalid), "fail");
 
-        // Mock the file deleter and random generator
-        const deleter = { deleteFile: jest.fn() };
-        const seed = { generate: () => 42 };
-        const capabilities = { deleter, seed, scanner };
-        // Invoke the processing function under test
+        // Execute
         await processDiaryAudios(capabilities);
 
-        // Verify that no errors are logged since writeAsset always succeeds
-        expect(logError).toHaveBeenCalledTimes(1);
+        // Only invalid remains
+        const remaining = await fs.readdir(diaryDir);
+        expect(remaining).toEqual([invalid]);
 
-        // Verify that writeAsset called transaction and added entries for 2/3 files
-        expect(transaction).toHaveBeenCalledTimes(2);
+        // Only one entry in log
+        await gitstore.transaction(
+            capabilities,
+            require("../src/environment").eventLogDirectory(),
+            async (store) => {
+                const workTree = await store.getWorkTree();
+                const objects = await readObjects(path.join(workTree, "data.json"));
+                expect(objects).toHaveLength(1);
+            }
+        );
 
-        // Verify original files are removed after processing all files
-        expect(deleter.deleteFile).toHaveBeenCalledTimes(2);
-        ["file1.mp3", "file2.mp3"].forEach((file) => {
-            expect(deleter.deleteFile).toHaveBeenCalledWith(
-                `/fake/diaryDir/${file}`
-            );
-        });
-
-        // Verify event log entries added correctly for each asset
-        expect(storage.addEntry).toHaveBeenCalledTimes(2);
-        const expectedEvent = {
-            id: expect.anything(),
-            date: expect.any(Date),
-            original: "diary [when 0 hours ago] [audiorecording]",
-            input: "diary [when 0 hours ago] [audiorecording]",
-            modifiers: { when: "0 hours ago", audiorecording: "" },
-            type: "diary",
-            description: "",
-            creator: expect.objectContaining({
-                name: "Volodyslav",
-                version: "0.1.0",
-            }),
-        };
-
-        // The addEntry method is called for each of the two assets
-        for (let i = 1; i <= 2; i++) {
-            expect(storage.addEntry).toHaveBeenNthCalledWith(
-                i,
-                expectedEvent,
-                expect.any(Array)
-            );
-        }
+        // Error logged for invalid file
+        const logFile = require("../src/environment").logFile();
+        const logs = await fs.readFile(logFile, "utf8");
+        expect(logs).toMatch(/Diary audio copy failed/);
     });
 
-    it("should process diary audios correctly when some files fail transaction", async () => {
-        const { storage, scanner } = setMockDefaults();
+    it("continues processing when event log transaction fails for an asset", async () => {
+        const { gitDir } = await makeTestRepository();
+        const capabilities = makeMockCapabilities();
 
-        // Simulate a failure for the bad.mp3 file.
-        storage.addEntry.mockImplementation((_entry, assets) => {
-            if (assets[0].file.path.includes("bad.mp3")) {
-                throw new Error("Failed to add entry");
+        // Override copier to throw for specific file
+        const targetBad = "20250511T000000Z.bad.mp3";
+        const diaryDir = require("../src/environment").diaryAudiosDirectory();
+        await fs.mkdir(diaryDir, { recursive: true });
+        await fs.writeFile(path.join(diaryDir, targetBad), "content");
+        await fs.writeFile(path.join(diaryDir, "20250511T000001Z.good.mp3"), "content");
+
+        const originalCopy = capabilities.copier.copyFile;
+        capabilities.copier.copyFile = jest.fn((file, dest) => {
+            if (file.path.endsWith("bad.mp3")) {
+                return Promise.reject(new Error("copy failed"));
             }
+            return originalCopy(file, dest);
         });
 
-        // Mock the file deleter and random generator
-        const deleter = { deleteFile: jest.fn() };
-        const seed = { generate: () => 42 };
-        const capabilities = { deleter, seed, scanner };
-        // Invoke the processing function under test
+        // Execute
         await processDiaryAudios(capabilities);
 
-        // Verify that no errors are logged since writeAsset always succeeds
-        expect(logError).toHaveBeenCalledTimes(1);
+        // Only good file deleted
+        expect(capabilities.deleter.deleteFile).toHaveBeenCalledTimes(1);
 
-        // Verify that writeAsset called transaction and added entries for 2/3 files
-        expect(transaction).toHaveBeenCalledTimes(3);
+        // One entry in log
+        await gitstore.transaction(
+            capabilities,
+            require("../src/environment").eventLogDirectory(),
+            async (store) => {
+                const workTree = await store.getWorkTree();
+                const objects = await readObjects(path.join(workTree, "data.json"));
+                expect(objects).toHaveLength(1);
+            }
+        );
 
-        // Verify original files are removed after processing all files
-        expect(deleter.deleteFile).toHaveBeenCalledTimes(2);
-        ["file1.mp3", "file2.mp3"].forEach((file) => {
-            expect(deleter.deleteFile).toHaveBeenCalledWith(
-                `/fake/diaryDir/${file}`
-            );
-        });
-
-        // Verify event log entries added correctly for each asset
-        expect(storage.addEntry).toHaveBeenCalledTimes(3);
-        const expectedEvent = {
-            id: expect.anything(),
-            date: expect.any(Date),
-            original: "diary [when 0 hours ago] [audiorecording]",
-            input: "diary [when 0 hours ago] [audiorecording]",
-            modifiers: { when: "0 hours ago", audiorecording: "" },
-            type: "diary",
-            description: "",
-            creator: expect.objectContaining({
-                name: "Volodyslav",
-                version: "0.1.0",
-            }),
-        };
-
-        // The addEntry method is called for each of the three assets
-        for (let i = 1; i <= 3; i++) {
-            expect(storage.addEntry).toHaveBeenNthCalledWith(
-                i,
-                expectedEvent,
-                expect.any(Array)
-            );
-        }
+        // Error logged for bad file
+        const logFile = require("../src/environment").logFile();
+        const logs = await fs.readFile(logFile, "utf8");
+        expect(logs).toMatch(/Diary audio copy failed/);
     });
 });
