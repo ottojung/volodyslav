@@ -1,21 +1,53 @@
 /**
+ * This module provides a function to format a timestamp from a filename
+ * into a Date object. The filename is expected to start with a timestamp
+ * in the format YYYYMMDDThhmmssZ.
+ */
+
+class FilenameDoesNotEncodeDate extends Error {
+    /**
+     * @param {string} message
+     * @param {string} filename
+     */
+    constructor(message, filename) {
+        super(message);
+        this.filename = filename;
+    }
+}
+
+/**
+ * @param {unknown} object
+ * @returns {object is FilenameDoesNotEncodeDate}
+ */
+function isFilenameDoesNotEncodeDate(object) {
+    return object instanceof FilenameDoesNotEncodeDate;
+}
+
+/**
  * @param {string} filename
  * @returns {Date}
  */
 function formatFileTimestamp(filename) {
     // 1) extract the basic‐ISO timestamp (YYYYMMDDThhmmssZ)
     const m = filename.match(/^(\d{8}T\d{6}Z)[.].*/);
-    if (!m) throw new Error("Filename does not start with YYYYMMDDThhmmssZ");
+    if (!m)
+        throw new FilenameDoesNotEncodeDate(
+            `Filename ${JSON.stringify(
+                filename
+            )} does not start with YYYYMMDDThhmmssZ`,
+            filename
+        );
 
     const basic = m[1];
 
     // 2) convert to a true ISO string: "YYYY-MM-DDThh:mm:ssZ"
     const isoUTC = format_time_stamp(basic);
 
-    if (typeof isoUTC !== 'string' || isoUTC === basic) { // Check if replace did anything or if it's a valid string
+    if (typeof isoUTC !== "string" || isoUTC === basic) {
+        // Check if replace did anything or if it's a valid string
         // basic.replace might return the original string if no match is found.
         // Or handle if isoUTC is not a string as expected.
-        return "Invalid date format"; // Or return undefined or throw an error
+        throw new Error(`Failed to convert to ISO format: ${basic}`);
     }
 
     // 3) parse into a Date
@@ -37,7 +69,7 @@ function format_time_stamp(basic) {
         "$1-$2-$3T$4:$5:$6Z"
     );
 
-    if (isoUTC === basic) { 
+    if (isoUTC === basic) {
         return undefined;
     }
 
@@ -50,4 +82,5 @@ function format_time_stamp(basic) {
 
 module.exports = {
     formatFileTimestamp,
+    isFilenameDoesNotEncodeDate,
 };
