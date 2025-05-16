@@ -5,8 +5,8 @@ class AssetClass {
     /** @type {import('./structure').Event} */
     event;
 
-    /** @type {string} */
-    filepath;
+    /** @type {ExistingFile} */
+    file;
 
     /**
      * This is a value that is never actually assigned.
@@ -18,24 +18,25 @@ class AssetClass {
 
     /**
      * @param {import('./structure').Event} event
-     * @param {string} path
+     * @param {ExistingFile} file
      */
-    constructor(event, path) {
+    constructor(event, file) {
         this.event = event;
-        this.filepath = path;
+        this.file = file;
     }
 }
 
 /** @typedef {AssetClass} Asset */
+/** @typedef {import('../filesystem/file').ExistingFile} ExistingFile */
 
 /**
  * Primary constructor for Asset.
  * @param {import('./structure').Event} event
- * @param {string} filepath
+ * @param {ExistingFile} file
  * @returns {Asset}
  */
-function make(event, filepath) {
-    return new AssetClass(event, filepath);
+function make(event, file) {
+    return new AssetClass(event, file);
 }
 
 /**
@@ -51,7 +52,7 @@ function targetPath(asset) {
     const firstPart = `${year}-${month}`;
     const secondPart = `${day}`;
     const thirdPart = `${asset.event.id.identifier}`;
-    const filename = path.basename(asset.filepath);
+    const filename = path.basename(asset.file.path);
     return path.join(baseDir, firstPart, secondPart, thirdPart, filename);
 }
 

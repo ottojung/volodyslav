@@ -161,17 +161,15 @@ describe("event_log_storage", () => {
         const assetPath = path.join(inputDir, "asset.txt");
         await fsp.mkdir(inputDir, { recursive: true });
         await fsp.writeFile(assetPath, "test content");
-
-        await transaction(capabilities, async (storage) =>
-            storage.addEntry(testEvent, [
-                { event: testEvent, filepath: assetPath },
-            ])
-        );
-
         const asset = {
             event: testEvent,
-            filepath: assetPath,
+            file: { path: assetPath },
         };
+
+        await transaction(capabilities, async (storage) =>
+            storage.addEntry(testEvent, [asset])
+        );
+
         const target = targetPath(asset);
 
         const targetDir = path.dirname(target);
@@ -198,7 +196,7 @@ describe("event_log_storage", () => {
         await expect(
             transaction(capabilities, async (storage) => {
                 storage.addEntry(testEvent, [
-                    { identifier: testEvent.id, filepath: assetPath },
+                    { identifier: testEvent.id, file: { path: assetPath } },
                 ]);
                 throw new Error("forced failure");
             })
@@ -222,19 +220,17 @@ describe("event_log_storage", () => {
         const assetPath = path.join(inputDir, "asset.txt");
         await fsp.mkdir(inputDir, { recursive: true });
         await fsp.writeFile(assetPath, "test content");
+        const asset = {
+            event: testEvent,
+            file: { path: assetPath },
+        };
 
         await transaction(capabilities, async (storage) =>
-            storage.addEntry(testEvent, [
-                { event: testEvent, filepath: assetPath },
-            ])
+            storage.addEntry(testEvent, [asset])
         );
 
         expect(deleter.deleteFile).not.toHaveBeenCalled();
 
-        const asset = {
-            event: testEvent,
-            filepath: assetPath,
-        };
         const target = targetPath(asset);
 
         const targetDir = path.dirname(target);
@@ -295,11 +291,11 @@ describe("event_log_storage", () => {
                 allAssets: [
                     ...validPaths.map((filepath) => ({
                         event: testEvent,
-                        filepath,
+                        file: { path: filepath },
                     })),
                     ...invalidPaths.map((filepath) => ({
                         event: testEvent,
-                        filepath,
+                        file: { path: filepath },
                     })),
                 ],
             };

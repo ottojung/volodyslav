@@ -38,7 +38,6 @@ jest.mock("../src/logger", () => ({
 }));
 
 const { processDiaryAudios } = require("../src/diary");
-const { readdir } = require("fs/promises");
 const {
     diaryAudiosDirectory,
     eventLogAssetsDirectory,
@@ -47,6 +46,7 @@ const { formatFileTimestamp } = require("../src/format_time_stamp");
 const { transaction } = require("../src/event_log_storage");
 const { logError } = require("../src/logger");
 const random = require("../src/random");
+const path = require("path");
 
 function setMockDefaults() {
     jest.resetAllMocks();
@@ -58,22 +58,33 @@ function setMockDefaults() {
     formatFileTimestamp.mockReturnValue(new Date("2025-05-12"));
     // Simulate directory entries and copy behaviour
     const filenames = ["file1.mp3", "file2.mp3", "bad.mp3"];
-    readdir.mockResolvedValue(filenames);
+    const files = filenames.map((filename) => ({
+        path: path.join(diaryAudiosDirectory(), filename),
+    }));
+    const scanner = {
+        scanDirectory: jest.fn().mockImplementation(async (directory) => {
+            if (directory == diaryAudiosDirectory()) {
+                return files;
+            }
+            return [];
+        }),
+    };
+
     // Use the mock transaction to invoke callback with our fake storage
     transaction.mockImplementation(async (_deleter, cb) => {
         await cb(storage);
     });
 
-    return storage;
+    return { storage, scanner };
 }
 
 describe("processDiaryAudios", () => {
     it("should process diary audios correctly when all files succeed", async () => {
-        const storage = setMockDefaults();
+        const { storage, scanner } = setMockDefaults();
         // Mock the file deleter and random generator
         const deleter = { deleteFile: jest.fn() };
         const rng = random.default_generator(42);
-        const capabilities = { deleter, rng };
+        const capabilities = { deleter, rng, scanner };
         // Invoke the processing function under test
         await processDiaryAudios(capabilities);
 
@@ -118,7 +129,7 @@ describe("processDiaryAudios", () => {
     });
 
     it("should process diary audios correctly when some files incorrectly named", async () => {
-        const storage = setMockDefaults();
+        const { storage, scanner } = setMockDefaults();
 
         // Simulate a failure for the bad.mp3 file.
         formatFileTimestamp.mockImplementation((filename) => {
@@ -131,7 +142,7 @@ describe("processDiaryAudios", () => {
         // Mock the file deleter and random generator
         const deleter = { deleteFile: jest.fn() };
         const rng = random.default_generator(42);
-        const capabilities = { deleter, rng };
+        const capabilities = { deleter, rng, scanner };
         // Invoke the processing function under test
         await processDiaryAudios(capabilities);
 
@@ -176,11 +187,11 @@ describe("processDiaryAudios", () => {
     });
 
     it("should process diary audios correctly when some files fail transaction", async () => {
-        const storage = setMockDefaults();
+        const { storage, scanner } = setMockDefaults();
 
         // Simulate a failure for the bad.mp3 file.
         storage.addEntry.mockImplementation((_entry, assets) => {
-            if (assets[0].filepath.includes("bad.mp3")) {
+            if (assets[0].file.path.includes("bad.mp3")) {
                 throw new Error("Failed to add entry");
             }
         });
@@ -188,7 +199,7 @@ describe("processDiaryAudios", () => {
         // Mock the file deleter and random generator
         const deleter = { deleteFile: jest.fn() };
         const rng = random.default_generator(42);
-        const capabilities = { deleter, rng };
+        const capabilities = { deleter, rng, scanner };
         // Invoke the processing function under test
         await processDiaryAudios(capabilities);
 

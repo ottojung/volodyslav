@@ -1,5 +1,4 @@
 const path = require("path");
-const { readdir } = require("fs/promises");
 const { formatFileTimestamp } = require("./format_time_stamp");
 const { logError, logWarning, logInfo } = require("./logger");
 const { diaryAudiosDirectory } = require("./environment");
@@ -11,11 +10,17 @@ const creatorMake = require("./creator");
 /** @typedef {import('./event/asset').Asset} Asset */
 /** @typedef {import('./filesystem/deleter').FileDeleter} FileDeleter */
 /** @typedef {import('./random').RNG} RNG */
+/** @typedef {import('./filesystem/dirscanner').DirScanner} DirScanner */
 
 /**
  * @typedef {object} Capabilities
  * @property {FileDeleter} deleter - A file deleter instance.
  * @property {RNG} rng - A random number generator instance.
+ * @property {DirScanner} scanner - A directory scanner instance.
+ */
+
+/**
+ * @typedef {import('./filesystem/file').ExistingFile} ExistingFile
  */
 
 /**
@@ -27,15 +32,16 @@ const creatorMake = require("./creator");
  */
 async function processDiaryAudios(capabilities) {
     const diaryAudiosDir = diaryAudiosDirectory();
-    const inputFiles = await readdir(diaryAudiosDir);
+    const inputFiles = await capabilities.scanner.scanDirectory(diaryAudiosDir);
     const creator = await creatorMake();
 
     /**
-     * @param {string} filename
+     * @param {ExistingFile} file
      * @returns {Asset}
      */
-    function makeAsset(filename) {
-        const filepath = path.join(diaryAudiosDir, filename);
+    function makeAsset(file) {
+        const filepath = file.path;
+        const filename = path.basename(filepath);
         const date = formatFileTimestamp(filename);
         const id = eventId.make(capabilities);
 
@@ -54,7 +60,7 @@ async function processDiaryAudios(capabilities) {
             creator,
         };
 
-        const ass = asset.make(event, filepath);
+        const ass = asset.make(event, file);
         return ass;
     }
 
@@ -74,7 +80,7 @@ async function processDiaryAudios(capabilities) {
     }
 
     successes.forEach((ass) => {
-        const filename = path.basename(ass.filepath);
+        const filename = path.basename(ass.file.path);
         logInfo(
             { filename },
             `Diary audio ${JSON.stringify(filename)} processed`
@@ -84,7 +90,7 @@ async function processDiaryAudios(capabilities) {
     failures.forEach((failure) => {
         logError(
             {
-                file: failure.file,
+                file: failure.file.path,
                 error: failure.message,
                 directory: diaryAudiosDir,
             },
@@ -119,19 +125,19 @@ async function writeAsset(capabilities, ass) {
 async function deleteOriginalAudios(capabilities, successes, diaryAudiosDir) {
     for (const ass of successes) {
         try {
-            await capabilities.deleter.deleteFile(ass.filepath);
+            await capabilities.deleter.deleteFile(ass.file.path);
             logInfo(
                 {
-                    file: path.basename(ass.filepath),
+                    file: path.basename(ass.file.path),
                     directory: diaryAudiosDir,
                 },
-                `Deleted diary audio file: ${path.basename(ass.filepath)}`
+                `Deleted diary audio file: ${path.basename(ass.file.path)}`
             );
         } catch (error) {
             const msg = error instanceof Error ? error.message : String(error);
             logWarning(
                 {
-                    file: path.basename(ass.filepath),
+                    file: path.basename(ass.file.path),
                     error: msg,
                     directory: diaryAudiosDir,
                 },

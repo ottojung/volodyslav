@@ -123,7 +123,7 @@ async function copyAssets(assets) {
         const targetDir = path.dirname(target);
         // Create directory recursively if it doesn't exist
         await mkdir(targetDir, { recursive: true });
-        await copyFile(asset.filepath, target);
+        await copyFile(asset.file.path, target);
     }
 }
 
@@ -168,15 +168,15 @@ async function cleanupAssets(deleter, eventLogStorage) {
     const assets = eventLogStorage.getNewAssets();
     for (const asset of assets) {
         try {
-            await deleter.deleteFile(asset.filepath);
+            await deleter.deleteFile(asset.file.path);
         } catch {
             logWarning(
                 {
-                    file: asset.filepath,
+                    file: asset.file.path,
                     error: "error occurred",
                     directory: eventLogDirectory(),
                 },
-                `Failed to remove asset file ${asset.filepath}. This may be due to the file being in use or not existing.`
+                `Failed to remove asset file ${asset.file.path}. This may be due to the file being in use or not existing.`
             );
         }
     }
