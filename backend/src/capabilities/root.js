@@ -12,6 +12,7 @@ const copierCapability = require("../filesystem/copier");
 const creatorCapability = require("../filesystem/creator");
 const writerCapability = require("../filesystem/writer");
 const appendCapability = require("../filesystem/appender");
+const checkerCapability = require("../filesystem/checker");
 const gitCapability = require("../executables").git;
 
 const make = memconst(() => {
@@ -23,6 +24,7 @@ const make = memconst(() => {
         creator: creatorCapability.make(),
         writer: writerCapability.make(),
         appender: appendCapability.make(),
+        checker: checkerCapability.make(),
         git: gitCapability,
     };
 });
