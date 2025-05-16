@@ -39,7 +39,7 @@ class GitStoreClass {
     async commit(message) {
         const workTree = await this.getWorkTree();
         const gitDir = path.join(workTree, ".git");
-        await commit(this.capabilities.git, gitDir, workTree, message); // Use wrapper
+        await commit(this.capabilities, gitDir, workTree, message); // Use wrapper
     }
 }
 
@@ -65,9 +65,9 @@ async function transaction(capabilities, git_directory, transformation) {
     const workTree = await makeTemporaryWorkTree();
     try {
         const store = new GitStoreClass(workTree, capabilities);
-        await clone(capabilities.git, git_directory, workTree); // Use wrapper
+        await clone(capabilities, git_directory, workTree); // Use wrapper
         await transformation(store);
-        await push(capabilities.git, workTree); // Use wrapper
+        await push(capabilities, workTree); // Use wrapper
     } finally {
         await fs.rm(workTree, { recursive: true, force: true });
     }

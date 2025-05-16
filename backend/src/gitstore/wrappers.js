@@ -28,14 +28,14 @@ async function ensureGitAvailable() {
 /**
  * Commit staged changes with a message
  * Note: this operation is atomic. Details at <https://chatgpt.com/share/681d3dcb-a948-800e-8aca-896c8ba2aa07>.
- * @param {import('../subprocess/command').Command} gitCommand - The git command execution capability.
+ * @param {import('./index').Capabilities} capabilities - The capabilities object containing the git command.
  * @param {string} git_directory - The `.git` directory
  * @param {string} work_directory - The repository directory, where the actual files are
  * @param {string} message - The commit message
  * @returns {Promise<void>}
  */
-async function commit(gitCommand, git_directory, work_directory, message) {
-    await gitCommand.call(
+async function commit(capabilities, git_directory, work_directory, message) {
+    await capabilities.git.call(
         "-c",
         "safe.directory=*",
         "-c",
@@ -55,13 +55,13 @@ async function commit(gitCommand, git_directory, work_directory, message) {
 
 /**
  * Clone latest changes from the remote repository.
- * @param {import('../subprocess/command').Command} gitCommand - The git command execution capability.
+ * @param {import('./index').Capabilities} capabilities - The capabilities object containing the git command.
  * @param {string} remote_uri - The repository path to pull from (can be a remote URI or local path)
  * @param {string} work_directory - The repository directory to pull to
  * @returns {Promise<void>}
  */
-async function clone(gitCommand, remote_uri, work_directory) {
-    await gitCommand.call(
+async function clone(capabilities, remote_uri, work_directory) {
+    await capabilities.git.call(
         "-c",
         "safe.directory=*",
         "-c",
@@ -80,12 +80,12 @@ async function clone(gitCommand, remote_uri, work_directory) {
 
 /**
  * Push changes to the remote repository.
- * @param {import('../subprocess/command').Command} gitCommand - The git command execution capability.
+ * @param {import('./index').Capabilities} capabilities - The capabilities object containing the git command.
  * @param {string} work_directory - The repository directory to push from
  * @returns {Promise<void>}
  */
-async function push(gitCommand, work_directory) {
-    await gitCommand.call(
+async function push(capabilities, work_directory) {
+    await capabilities.git.call(
         "-C",
         work_directory,
         "-c",
