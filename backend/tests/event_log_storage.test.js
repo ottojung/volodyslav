@@ -8,7 +8,7 @@ const makeTestRepository = require("./make_test_repository");
 const event = require("../src/event/structure");
 const { targetPath } = require("../src/event/asset");
 const logger = require("../src/logger");
-const executables = require("../src/executables");
+const { getMockedRootCapabilities } = require("./mockCapabilities");
 
 beforeEach(temporary.beforeEach);
 afterEach(temporary.afterEach);
@@ -30,54 +30,19 @@ jest.mock("../src/environment", () => {
             const dir = temporary.output();
             return path.join(dir, "event_log");
         }),
+        resultsDirectory: jest.fn().mockImplementation(() => {
+            const dir = temporary.output();
+            return path.join(dir, "results");
+        }),
     };
 });
 
 describe("event_log_storage", () => {
     // No stubbing: use real gitstore.transaction with makeTestRepository per test
 
-    // Helper to create a full set of mocked capabilities for tests
-    const makeMockCapabilities = () => {
-        const deleter = {
-            deleteFile: jest.fn().mockResolvedValue(undefined),
-            deleteDirectory: jest.fn().mockImplementation(async (dir) => {
-                await fsp.rm(dir, { recursive: true, force: true });
-            }),
-        };
-        const appender = {
-            appendFile: jest.fn(async (file, content) => {
-                const dataDir = path.dirname(file.path);
-                try {
-                    await fsp.access(dataDir);
-                } catch (e) {
-                    await fsp.mkdir(dataDir, { recursive: true });
-                }
-                await fsp.appendFile(file.path, content, "utf8");
-            }),
-        };
-        const creator = {
-            createDirectory: jest.fn(async (dirPath) => {
-                await fsp.mkdir(dirPath, { recursive: true });
-            }),
-            createTemporaryDirectory: jest.fn(async () => {
-                const base = temporary.input();
-                return await fsp.mkdtemp(base);
-            }),
-        };
-        const copier = {
-            copyFile: jest.fn(async (sourceFile, destPath) => {
-                await fsp.access(sourceFile.path); // Check if source exists
-                await fsp.copyFile(sourceFile.path, destPath);
-                return { path: destPath, __brand: "ExistingFile" };
-            }),
-        };
-        const git = executables.git; // Use the actual git command, not a mock.
-        return { deleter, appender, creator, copier, git };
-    };
-
     test("transaction allows adding and storing event entries", async () => {
         await logger.setup();
-        const capabilities = makeMockCapabilities();
+        const capabilities = getMockedRootCapabilities();
         const { gitDir } = await makeTestRepository();
 
         const testEvent = {
@@ -106,7 +71,7 @@ describe("event_log_storage", () => {
 
     test("transaction fails if git fails", async () => {
         await logger.setup();
-        const capabilities = makeMockCapabilities();
+        const capabilities = getMockedRootCapabilities();
         const gitDir = temporary.input();
         await fsp.mkdir(gitDir, { recursive: true });
 
@@ -133,7 +98,7 @@ describe("event_log_storage", () => {
 
     test("transaction allows adding and storing multiple event entries", async () => {
         await logger.setup();
-        const capabilities = makeMockCapabilities();
+        const capabilities = getMockedRootCapabilities();
         const { gitDir } = await makeTestRepository();
 
         const event1 = {
@@ -172,7 +137,7 @@ describe("event_log_storage", () => {
 
     test("transaction with no entries throws an error", async () => {
         await logger.setup();
-        const capabilities = makeMockCapabilities();
+        const capabilities = getMockedRootCapabilities();
         await makeTestRepository();
         // Expect the transaction to fail due to no staged changes to commit
         await expect(
@@ -184,7 +149,7 @@ describe("event_log_storage", () => {
 
     test("transaction copies asset files into repository", async () => {
         await logger.setup();
-        const capabilities = makeMockCapabilities(); // Ensure capabilities are correctly initialized
+        const capabilities = getMockedRootCapabilities(); // Ensure capabilities are correctly initialized
         await makeTestRepository();
         const testEvent = {
             id: { identifier: "assetEvent" },
@@ -223,7 +188,7 @@ describe("event_log_storage", () => {
 
     test("transaction cleanup calls unlink for each asset on failure", async () => {
         await logger.setup();
-        const capabilities = makeMockCapabilities();
+        const capabilities = getMockedRootCapabilities();
         await makeTestRepository();
         const testEvent = {
             id: { identifier: "cleanupEvent" },
@@ -251,7 +216,7 @@ describe("event_log_storage", () => {
 
     test("transaction creates parent directories before copying assets", async () => {
         await logger.setup();
-        const capabilities = makeMockCapabilities();
+        const capabilities = getMockedRootCapabilities();
         await makeTestRepository();
 
         const testEvent = {
@@ -293,7 +258,7 @@ describe("event_log_storage", () => {
 
     test("transaction handles mix of successful and failed asset additions", async () => {
         await logger.setup();
-        const capabilities = makeMockCapabilities(); // Ensure capabilities are correctly initialized
+        const capabilities = getMockedRootCapabilities(); // Ensure capabilities are correctly initialized
         const { gitDir } = await makeTestRepository();
 
         const testEvent = {
