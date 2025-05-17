@@ -69,7 +69,7 @@ async function handleTranscribeRequest(capabilities, req, res) {
     try {
         await transcribeRequest(capabilities, inputPath, reqId);
         // If successful, send a 200 OK response
-        return res.status(200).json({ success: true, message: 'Transcription started successfully.' });
+        return res.status(200).json({ success: true });
     } catch (error) {
         if (isInputNotFound(error)) {
             logError({

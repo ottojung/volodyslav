@@ -40,14 +40,23 @@ const { resultsDirectory } = require("../src/environment");
 
 const uploadDir = () => resultsDirectory();
 
+const { getMockedRootCapabilities } = require('./mockCapabilities');
+const capabilities = getMockedRootCapabilities();
+
+async function makeApp() {
+    const app = expressApp.make();
+    await logger.setup();
+    logger.enableHttpCallsLogging(app);
+    await addRoutes(capabilities, app);
+    return app;
+}
+
 describe("GET /api/transcribe_all", () => {
     const base = "/api/transcribe_all";
     const reqId = "batch123";
 
     it("returns 400 when request_identifier missing", async () => {
-        await logger.setup();
-        const app = expressApp.make();
-        await addRoutes(app);
+        const app = await makeApp();
         const res = await request(app).get(base);
         expect(res.status).toBe(400);
         expect(res.body).toEqual({
@@ -57,9 +66,7 @@ describe("GET /api/transcribe_all", () => {
     });
 
     it("returns 400 when input_dir missing", async () => {
-        await logger.setup();
-        const app = expressApp.make();
-        await addRoutes(app);
+        const app = await makeApp();
         const res = await request(app)
             .get(base)
             .query({ request_identifier: reqId });
@@ -71,9 +78,7 @@ describe("GET /api/transcribe_all", () => {
     });
 
     it("returns 404 when input_dir does not exist", async () => {
-        await logger.setup();
-        const app = expressApp.make();
-        await addRoutes(app);
+        const app = await makeApp();
         const res = await request(app)
             .get(base)
             .query({ request_identifier: reqId, input_dir: "/no/such/dir" });
@@ -85,8 +90,7 @@ describe("GET /api/transcribe_all", () => {
     });
 
     it("aggregates successes and failures and returns 500", async () => {
-        const app = expressApp.make();
-        await addRoutes(app);
+        const app = await makeApp();
         // Prepare three files: a.mp4, b.mp4, c.mp4
         const tmp = path.join(temporary.input(), "mixed");
         fs.mkdirSync(tmp, { recursive: true });
@@ -125,8 +129,7 @@ describe("GET /api/transcribe_all", () => {
     });
 
     it("succeeds when all files transcribe", async () => {
-        const app = expressApp.make();
-        await addRoutes(app);
+        const app = await makeApp();
         // Prepare mp4 files
         const tmp = path.join(temporary.input(), "all");
         fs.mkdirSync(tmp, { recursive: true });

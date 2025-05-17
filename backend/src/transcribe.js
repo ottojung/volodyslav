@@ -125,7 +125,15 @@ async function transcribeRequest(capabilities, inputPath, reqId) {
     const outputFile = path.basename("transcription.json");
     const targetDir = await makeDirectory(capabilities, reqId);
     const outputPath = path.join(targetDir, outputFile);
-    const inputFile = await capabilities.checker.instanciate(inputPath);
+    const inputFile = await capabilities.checker
+        .instanciate(inputPath)
+        .catch((/** @type {unknown} */ _err) => {
+            throw new InputNotFound(
+                `Input file ${inputPath} not found.`,
+                inputPath
+            );
+        });
+
     try {
         await transcribeFile(capabilities, inputFile, outputPath);
     } finally {
