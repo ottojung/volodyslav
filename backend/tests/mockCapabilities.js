@@ -22,4 +22,7 @@ function mockCapabilities(real) {
     return real;
 }
 
-module.exports = { mockCapabilities };
+const getMockedRootCapabilities = () =>
+    mockCapabilities(require("../src/capabilities/root").make());
+
+module.exports = { mockCapabilities, getMockedRootCapabilities };

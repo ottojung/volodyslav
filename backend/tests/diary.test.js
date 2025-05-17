@@ -8,8 +8,7 @@ const gitstore = require("../src/gitstore");
 const { readObjects } = require("../src/json_stream_file");
 const { formatFileTimestamp } = require("../src/format_time_stamp");
 const logger = require("../src/logger");
-const { mockCapabilities } = require("./mockCapabilities");
-const root = require("../src/capabilities/root");
+const { getMockedRootCapabilities } = require("./mockCapabilities");
 
 // Mock environment to isolate test directories
 jest.mock("../src/environment", () => {
@@ -43,9 +42,6 @@ jest.mock("../src/environment", () => {
 beforeEach(temporary.beforeEach);
 afterEach(temporary.afterEach);
 
-// Helper to create inspectable capability wrappers around real implementations
-const makeMockCapabilities = () => mockCapabilities(root.make());
-
 describe("processDiaryAudios", () => {
     beforeEach(async () => {
         await logger.setup();
@@ -54,7 +50,7 @@ describe("processDiaryAudios", () => {
     async function countLogEntries() {
         let length;
         await gitstore.transaction(
-            makeMockCapabilities(),
+            getMockedRootCapabilities(),
             require("../src/environment").eventLogDirectory(),
             async (store) => {
                 const workTree = await store.getWorkTree();
@@ -69,7 +65,7 @@ describe("processDiaryAudios", () => {
 
     it("processes all diary audios successfully", async () => {
         await makeTestRepository();
-        const capabilities = makeMockCapabilities();
+        const capabilities = getMockedRootCapabilities();
 
         // Prepare diary directory with audio files
         const diaryDir = require("../src/environment").diaryAudiosDirectory();
@@ -138,7 +134,7 @@ describe("processDiaryAudios", () => {
 
     it("skips files with invalid timestamp names and logs errors", async () => {
         await makeTestRepository();
-        const capabilities = makeMockCapabilities();
+        const capabilities = getMockedRootCapabilities();
 
         // Prepare diary directory
         const diaryDir = require("../src/environment").diaryAudiosDirectory();
@@ -164,7 +160,7 @@ describe("processDiaryAudios", () => {
 
     it("continues processing when event log transaction fails for an asset", async () => {
         await makeTestRepository();
-        const capabilities = makeMockCapabilities();
+        const capabilities = getMockedRootCapabilities();
 
         // Override copier to throw for specific file
         const diaryDir = require("../src/environment").diaryAudiosDirectory();
