@@ -1,39 +1,70 @@
 const express = require("express");
-const router = express.Router();
 const { logDebug } = require("../logger");
 const { everyHour } = require("../scheduler");
 
+/** @typedef {import('../filesystem/deleter').FileDeleter} FileDeleter */
+/** @typedef {import('../random/seed').NonDeterministicSeed} NonDeterministicSeed */
+/** @typedef {import('../filesystem/dirscanner').DirScanner} DirScanner */
+/** @typedef {import('../filesystem/copier').FileCopier} FileCopier */
+/** @typedef {import('../filesystem/writer').FileWriter} FileWriter */
+/** @typedef {import('../filesystem/appender').FileAppender} FileAppender */
+/** @typedef {import('../filesystem/creator').FileCreator} FileCreator */
+/** @typedef {import('../filesystem/checker').FileChecker} FileChecker */
+/** @typedef {import('../subprocess/command').Command} Command */
+
 /**
- * This endpoint is called periodically.
- * It is responsible for some chore tasks like garbage collection.
+ * @typedef {object} Capabilities
+ * @property {NonDeterministicSeed} seed
+ * @property {FileDeleter} deleter
+ * @property {DirScanner} scanner
+ * @property {FileCopier} copier
+ * @property {FileWriter} writer
+ * @property {FileAppender} appender
+ * @property {FileCreator} creator
+ * @property {FileChecker} checker
+ * @property {Command} git
+ */
+
+/**
+ * Handles the periodic task execution request.
+ * @param {Capabilities} capabilities
  * @param {import('express').Request} req
  * @param {import('express').Response} res
  */
-router.get("/periodic", async (req, res) => {
+async function handlePeriodicRequest(capabilities, req, res) {
     /** @type {any} */
     const query = req.query;
     const period = query['period'];
 
     logDebug(
-        { method: req.method, url: req.originalUrl },
+        { method: req.method, url: req.originalUrl, period, client_ip: req.ip, user_agent: req.get('user-agent') },
         "Periodic endpoint called"
     );
 
     if (!period) {
-        res.status(400).send("Bad Request: period parameter is required");
-        return;
+        return res.status(400).send("Bad Request: period parameter is required");
     }
 
     switch (period) {
         case "hour":
         case "hourly":
-            await everyHour();
-            res.send("done");
-            return;
+            await everyHour(capabilities);
+            return res.send("done");
         default:
-            res.status(400).send("Bad Request: unknown period");
-            return;
+            return res.status(400).send("Bad Request: unknown period");
     }
-});
+}
 
-module.exports = router;
+/**
+ * @param {Capabilities} capabilities
+ * @returns {import('express').Router}
+ */
+function makeRouter(capabilities) {
+    const router = express.Router();
+
+    router.get("/periodic", (req, res) => handlePeriodicRequest(capabilities, req, res));
+
+    return router;
+}
+
+module.exports = { makeRouter };
