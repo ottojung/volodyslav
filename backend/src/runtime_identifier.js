@@ -29,7 +29,10 @@ async function getVersion(capabilities) {
         return stdout.trim();
     } catch (error) {
         // If git is not available, we can assume that the version is unknown.
-        const message = error instanceof Error ? error.message : String(error);
+        const message =
+            error instanceof Object && error !== null && "message" in error
+                ? String(error.message)
+                : String(error);
         logError({ error }, `Could not determine version: ${message}`);
         return "unknown";
     }

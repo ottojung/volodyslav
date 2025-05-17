@@ -1,7 +1,7 @@
-const express = require('express');
-const { logError, logInfo } = require('../logger');
-const { fromRequest } = require('../request_identifier');
-const { transcribeRequest, isInputNotFound } = require('../transcribe');
+const express = require("express");
+const { logError, logInfo } = require("../logger");
+const { fromRequest } = require("../request_identifier");
+const { transcribeRequest, isInputNotFound } = require("../transcribe");
 
 /** @typedef {import('../filesystem/creator').FileCreator} FileCreator */
 /** @typedef {import('../filesystem/checker').FileChecker} FileChecker */
@@ -30,38 +30,53 @@ async function handleTranscribeRequest(capabilities, req, res) {
     try {
         reqId = fromRequest(req);
     } catch {
-        logError({
-            error: 'Missing request identifier',
-            path: req.path,
-            query: req.query,
-            headers: req.headers
-        }, 'Transcription request failed - invalid request identifier');
+        logError(
+            {
+                error: "Missing request identifier",
+                path: req.path,
+                query: req.query,
+                headers: req.headers,
+            },
+            "Transcription request failed - invalid request identifier"
+        );
         return res
             .status(400)
-            .json({ success: false, error: 'Missing request_identifier parameter' });
+            .json({
+                success: false,
+                error: "Missing request_identifier parameter",
+            });
     }
 
     // pull input and output params
     /** @type {any} */
     const query = req.query;
-    const rawIn = query['input'];
+    const rawIn = query["input"];
     // Log the transcription request
-    logInfo({ 
-        request_identifier: reqId, 
-        input: rawIn,
-        client_ip: req.ip,
-        user_agent: req.get('user-agent')
-    }, 'Transcription request received');
+    logInfo(
+        {
+            request_identifier: reqId,
+            input: rawIn,
+            client_ip: req.ip,
+            user_agent: req.get("user-agent"),
+        },
+        "Transcription request received"
+    );
 
     if (!rawIn) {
-        logError({
-            request_identifier: reqId,
-            error: 'Missing input parameter',
-            query: req.query
-        }, 'Transcription request failed - missing input');
+        logError(
+            {
+                request_identifier: reqId,
+                error: "Missing input parameter",
+                query: req.query,
+            },
+            "Transcription request failed - missing input"
+        );
         return res
             .status(400)
-            .json({ success: false, error: 'Please provide the input parameter' });
+            .json({
+                success: false,
+                error: "Please provide the input parameter",
+            });
     }
 
     // normalize input and determine paths
@@ -72,26 +87,39 @@ async function handleTranscribeRequest(capabilities, req, res) {
         return res.status(200).json({ success: true });
     } catch (error) {
         if (isInputNotFound(error)) {
-            logError({
-                request_identifier: reqId,
-                error: 'Input file not found',
-                input_path: inputPath,
-                error_details: error.message
-            }, 'Transcription request failed - file not found');
+            logError(
+                {
+                    request_identifier: reqId,
+                    error: "Input file not found",
+                    input_path: inputPath,
+                    error_details: error.message,
+                },
+                "Transcription request failed - file not found"
+            );
             return res
                 .status(404)
-                .json({ success: false, error: 'Input file not found' });
+                .json({ success: false, error: "Input file not found" });
         } else {
-            logError({
-                request_identifier: reqId,
-                error: error instanceof Error ? error.message : String(error),
-                error_name: error instanceof Error ? error.name : 'Unknown',
-                error_stack: error instanceof Error ? error.stack : undefined,
-                input_path: inputPath
-            }, 'Transcription request failed - internal error');
+            logError(
+                {
+                    request_identifier: reqId,
+                    error:
+                        error instanceof Object && "message" in error
+                            ? String(error.message)
+                            : String(error),
+                    error_name: error instanceof Error ? error.name : "Unknown",
+                    error_stack:
+                        error instanceof Error ? error.stack : undefined,
+                    input_path: inputPath,
+                },
+                "Transcription request failed - internal error"
+            );
             return res
                 .status(500)
-                .json({ success: false, error: 'Internal server error during transcription' });
+                .json({
+                    success: false,
+                    error: "Internal server error during transcription",
+                });
         }
     }
 }
@@ -108,7 +136,9 @@ function makeRouter(capabilities) {
      *    ?input=/absolute/path/to/file.wav
      *    &request_identifier=0x123
      */
-    router.get('/transcribe', (req, res) => handleTranscribeRequest(capabilities, req, res));
+    router.get("/transcribe", (req, res) =>
+        handleTranscribeRequest(capabilities, req, res)
+    );
 
     return router;
 }

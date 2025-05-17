@@ -67,7 +67,7 @@ async function deleteFile(filePath) {
     try {
         await fs.unlink(filePath);
     } catch (err) {
-        if (err instanceof Error && "code" in err && err.code === "ENOENT") {
+        if (err instanceof Object && "code" in err && err.code === "ENOENT") {
             throw new FileNotFoundError(filePath);
         } else {
             throw new FileDeleterError(
@@ -87,7 +87,7 @@ async function deleteDirectory(directoryPath) {
     try {
         await fs.rm(directoryPath, { recursive: true, force: true });
     } catch (err) {
-        if (err instanceof Error && "code" in err && err.code === "ENOENT") {
+        if (err instanceof Object && "code" in err && err.code === "ENOENT") {
             throw new FileNotFoundError(directoryPath);
         } else {
             throw new FileDeleterError(

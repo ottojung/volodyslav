@@ -43,12 +43,10 @@ async function handleTranscribeAllRequest(capabilities, req, res) {
             },
             "Batch transcription request failed - invalid request identifier"
         );
-        return res
-            .status(400)
-            .json({
-                success: false,
-                error: "Missing request_identifier parameter",
-            });
+        return res.status(400).json({
+            success: false,
+            error: "Missing request_identifier parameter",
+        });
     }
 
     /** @type {any} */
@@ -72,12 +70,10 @@ async function handleTranscribeAllRequest(capabilities, req, res) {
             },
             "Batch transcription request failed - missing input_dir"
         );
-        return res
-            .status(400)
-            .json({
-                success: false,
-                error: "Please provide the input_dir parameter",
-            });
+        return res.status(400).json({
+            success: false,
+            error: "Please provide the input_dir parameter",
+        });
     }
 
     const inputDir = String(rawDir);
@@ -124,19 +120,20 @@ async function handleTranscribeAllRequest(capabilities, req, res) {
         logError(
             {
                 request_identifier: reqId,
-                error: error instanceof Error ? error.message : String(error),
+                error:
+                    error instanceof Object && "message" in error
+                        ? String(error.message)
+                        : String(error),
                 error_name: error instanceof Error ? error.name : "Unknown",
                 error_stack: error instanceof Error ? error.stack : undefined,
                 input_dir: inputDir,
             },
             "Batch transcription failed - internal error"
         );
-        return res
-            .status(500)
-            .json({
-                success: false,
-                error: "Internal server error during batch transcription",
-            });
+        return res.status(500).json({
+            success: false,
+            error: "Internal server error during batch transcription",
+        });
     }
 }
 

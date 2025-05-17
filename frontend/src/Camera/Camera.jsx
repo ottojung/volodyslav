@@ -70,8 +70,8 @@ export default function Camera() {
                  */
                 (err) => {
                     let description;
-                    if (err instanceof Error) {
-                        description = err.message;
+                    if (err instanceof Object && 'message' in err) {
+                        description = String(err.message);
                     } else {
                         description = String(err);
                     }

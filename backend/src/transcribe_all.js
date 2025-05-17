@@ -73,11 +73,18 @@ async function transcribeAllGeneric(capabilities, inputDir, targetFun) {
         const filename = path.basename(source.path);
         const targetPath = targetFun(filename);
         try {
-            const target = await transcribeFile(capabilities, source, targetPath);
+            const target = await transcribeFile(
+                capabilities,
+                source,
+                targetPath
+            );
             successes.push({ source, target });
         } catch (/** @type {unknown} */ err) {
             const internalMessage =
-                err instanceof Error ? err.message : String(err);
+                err instanceof Object && err !== null && "message" in err
+                    ? String(err.message)
+                    : String(err);
+
             const message = `Transcription failed for ${filename}: ${internalMessage}`;
             failures.push({ source, message });
         }
@@ -115,7 +122,11 @@ async function transcribeAllDirectory(capabilities, inputDir, targetDir) {
  */
 async function transcribeAllRequest(capabilities, inputDir, reqId) {
     const targetDir = await makeDirectory(capabilities, reqId);
-    const result = await transcribeAllDirectory(capabilities, inputDir, targetDir);
+    const result = await transcribeAllDirectory(
+        capabilities,
+        inputDir,
+        targetDir
+    );
     await markDone(capabilities, reqId);
     return result;
 }

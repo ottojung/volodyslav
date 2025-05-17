@@ -13,7 +13,7 @@ const userErrors = require("./user_errors");
 /**
  * @template T
  * @param {() => Promise<T>} fn - The function to be wrapped.
- * @param {Array<(err: Error) => boolean>} [errorsList] - The list of predicates to check errors against.
+ * @param {Array<(err: unknown) => boolean>} [errorsList] - The list of predicates to check errors against.
  * @returns {Promise<T>} - The wrapped function.
  */
 async function gentleCall(fn, errorsList) {
@@ -24,12 +24,13 @@ async function gentleCall(fn, errorsList) {
     try {
         return await fn();
     } catch (e) {
-        if (
-            e instanceof Error &&
-            errorsList.some((predicate) => predicate(e))
-        ) {
+        if (errorsList.some((predicate) => predicate(e))) {
             // If the error is a user error, log it to the console.
-            logError({}, e.message);
+            const message =
+                e instanceof Object && e !== null && "message" in e
+                    ? String(e.message)
+                    : String(e);
+            logError({}, message);
             process.exit(1);
         } else {
             throw e;
@@ -40,7 +41,7 @@ async function gentleCall(fn, errorsList) {
 /**
  * @template T
  * @param {() => Promise<T>} fn - The function to be wrapped.
- * @param {Array<(err: Error) => boolean>} [errorsList] - The list of predicates to check errors against.
+ * @param {Array<(err: unknown) => boolean>} [errorsList] - The list of predicates to check errors against.
  * @returns {() => Promise<T>}
  */
 function gentleWrap(fn, errorsList) {
