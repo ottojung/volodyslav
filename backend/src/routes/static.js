@@ -1,17 +1,33 @@
-const express = require('express');
-const path = require('path');
-
-const staticPath = path.join(__dirname, '..', '..', '..', 'frontend', 'dist');
-const router = express.Router();
-router.use(express.static(staticPath));
+const express = require("express");
+const path = require("path");
 
 /**
- * Static files checkpoint.
- * @param {import('express').Request} req
- * @param {import('express').Response} res
+ * @typedef {object} Capabilities
  */
-router.get('*', (_req, res) => {
-    res.sendFile(path.join(staticPath, 'index.html'));
-});
 
-module.exports = router;
+const staticPath = path.join(__dirname, "..", "..", "..", "frontend", "dist");
+
+/**
+ * Handles serving the index.html for all other GET requests.
+ * @param {Capabilities} _capabilities - The capabilities object (unused).
+ * @param {import('express').Request} _req - The Express request object (unused).
+ * @param {import('express').Response} res - The Express response object.
+ */
+function handleStaticFallback(_capabilities, _req, res) {
+    res.sendFile(path.join(staticPath, "index.html"));
+}
+
+/**
+ * @param {Capabilities} capabilities
+ * @returns {import('express').Router}
+ */
+function makeRouter(capabilities) {
+    const router = express.Router();
+
+    router.use(express.static(staticPath));
+    router.get("*", (req, res) => handleStaticFallback(capabilities, req, res));
+
+    return router;
+}
+
+module.exports = { makeRouter };

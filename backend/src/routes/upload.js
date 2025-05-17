@@ -31,4 +31,4 @@ function makeRouter(capabilities) {
     return router;
 }
 
-module.exports = makeRouter;
+module.exports = { makeRouter };
