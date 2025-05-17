@@ -5,10 +5,10 @@
  */
 function mockCapabilities(real) {
     // Wrap standalone functions with jest.fn to spy on calls
-    if (typeof real === 'function') {
+    if (typeof real === "function") {
         return jest.fn((...args) => real(...args));
     }
-    if (real && typeof real === 'object') {
+    if (real && typeof real === "object") {
         // Preserve prototype so instances keep their type
         const mocked = Array.isArray(real)
             ? []
