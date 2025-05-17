@@ -1,7 +1,21 @@
-const fs = require("fs/promises");
 const path = require("path");
 const { makeDirectory, markDone } = require("./request_identifier");
 const { transcribeFile } = require("./transcribe");
+
+/** @typedef {import('./random/seed').NonDeterministicSeed} NonDeterministicSeed */
+/** @typedef {import('./filesystem/creator').FileCreator} FileCreator */
+/** @typedef {import('./filesystem/checker').FileChecker} Checker */
+/** @typedef {import('./filesystem/dirscanner').DirScanner} DirScanner */
+/** @typedef {import('./subprocess/command').Command} Command */
+
+/**
+ * @typedef {object} Capabilities
+ * @property {NonDeterministicSeed} seed - A random number generator instance.
+ * @property {FileCreator} creator - A file system creator instance.
+ * @property {Checker} checker - A file system checker instance.
+ * @property {DirScanner} dirScanner - A directory scanner instance.
+ * @property {Command} git - A command instance for Git operations.
+ */
 
 class InputDirectoryAccess extends Error {
     /** @type {string} */
@@ -31,16 +45,17 @@ class InputDirectoryAccess extends Error {
 
 /**
  * Transcribe a request with a generic namer.
+ * @param {Capabilities} capabilities
  * @param {string} inputDir
  * @param {(file: string) => string} targetFun
  * @returns {Promise<TranscriptionStatus>}
  */
-async function transcribeAllGeneric(inputDir, targetFun) {
+async function transcribeAllGeneric(capabilities, inputDir, targetFun) {
     const resolvedDir = path.resolve(inputDir);
 
     let entries;
     try {
-        entries = await fs.readdir(resolvedDir);
+        entries = await capabilities.dirScanner.scanDirectory(resolvedDir);
     } catch {
         throw new InputDirectoryAccess(
             `Could not read input directory`,
@@ -50,11 +65,12 @@ async function transcribeAllGeneric(inputDir, targetFun) {
 
     const successes = [];
     const failures = [];
-    for (const filename of entries) {
-        const inputPath = path.join(resolvedDir, filename);
+    for (const file of entries) {
+        const inputPath = file.path;    
+        const filename = path.basename(inputPath);
         const outputPath = targetFun(filename);
         try {
-            await transcribeFile(inputPath, outputPath);
+            await transcribeFile(capabilities, inputPath, outputPath);
             successes.push({ source: inputPath, target: outputPath });
         } catch (/** @type {unknown} */ err) {
             const internalMessage =
@@ -69,11 +85,12 @@ async function transcribeAllGeneric(inputDir, targetFun) {
 
 /**
  * Transcribe a request.
+ * @param {Capabilities} capabilities
  * @param {string} inputDir
  * @param {string} targetDir
  * @returns {Promise<TranscriptionStatus>}
  */
-async function transcribeAllDirectory(inputDir, targetDir) {
+async function transcribeAllDirectory(capabilities, inputDir, targetDir) {
     /**
      * @param {string} filename
      * @returns {string}
@@ -83,19 +100,20 @@ async function transcribeAllDirectory(inputDir, targetDir) {
         return path.join(targetDir, targetName);
     }
 
-    return transcribeAllGeneric(inputDir, namer);
+    return transcribeAllGeneric(capabilities, inputDir, namer);
 }
 
 /**
  * Transcribe a request.
+ * @param {Capabilities} capabilities
  * @param {string} inputDir
  * @param {import('./request_identifier').RequestIdentifier} reqId
  * @returns {Promise<TranscriptionStatus>}
  */
-async function transcribeAllRequest(inputDir, reqId) {
-    const targetDir = await makeDirectory(reqId);
-    const result = await transcribeAllDirectory(inputDir, targetDir);
-    await markDone(reqId);
+async function transcribeAllRequest(capabilities, inputDir, reqId) {
+    const targetDir = await makeDirectory(capabilities, reqId);
+    const result = await transcribeAllDirectory(capabilities, inputDir, targetDir);
+    await markDone(capabilities, reqId);
     return result;
 }
 

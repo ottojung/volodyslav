@@ -1,7 +1,17 @@
 const path = require("path");
-const fs = require("fs");
 const randomModule = require("./random");
 const { resultsDirectory } = require("./environment");
+
+/** @typedef {import('./random/seed').NonDeterministicSeed} NonDeterministicSeed */
+/** @typedef {import('./filesystem/creator').FileCreator} Creator */
+/** @typedef {import('./filesystem/checker').FileChecker} Checker */
+
+/**
+ * @typedef {object} Capabilities
+ * @property {NonDeterministicSeed} seed - A random number generator instance.
+ * @property {Creator} creator - A file system creator instance.
+ * @property {Checker} checker - A file system checker instance.
+ */
 
 class RequestIdentifierClass {
     /** @type {string} */
@@ -43,13 +53,6 @@ function fromRequest(req) {
     return new RequestIdentifierClass(reqId.toString());
 }
 
-/** @typedef {import('./random/seed').NonDeterministicSeed} NonDeterministicSeed */
-
-/**
- * @typedef {object} Capabilities
- * @property {NonDeterministicSeed} seed - A random number generator instance.
- */
-
 /**
  * Creates a random request identifier.
  * @param {Capabilities} capabilities
@@ -61,35 +64,37 @@ function random(capabilities) {
 }
 
 /**
+ * @param {Capabilities} capabilities
  * @param {RequestIdentifier} reqId
  * @returns {Promise<void>}
  */
-async function markDone(reqId) {
-    const uploadDir = resultsDirectory();
-    await fs.promises.mkdir(uploadDir, { recursive: true });
-    // e.g. /var/www/uploads/REQ12345.done
+async function markDone(capabilities, reqId) {
+    const uploadDir = resultsDirectory(); // This might need to use capabilities.path.join
+    await capabilities.creator.createDirectory(uploadDir);
     const target = path.join(uploadDir, reqId.identifier + ".done");
-    await fs.promises.writeFile(target, "", "utf8");
+    await capabilities.creator.createFile(target);
 }
 
 /**
+ * @param {Capabilities} capabilities
  * @param {RequestIdentifier} reqId
  * @returns {Promise<boolean>}
  */
-async function isDone(reqId) {
+async function isDone(capabilities, reqId) {
     const uploadDir = resultsDirectory();
     const target = path.join(uploadDir, reqId.identifier + ".done");
-    return fs.existsSync(target);
+    return capabilities.checker.fileExists(target);
 }
 
 /**
+ * @param {Capabilities} capabilities
  * @param {RequestIdentifier} reqId
  * @returns {Promise<string>} - path to the target directory.
  */
-async function makeDirectory(reqId) {
+async function makeDirectory(capabilities, reqId) {
     const uploadDir = resultsDirectory();
     const ret = path.join(uploadDir, reqId.identifier);
-    await fs.promises.mkdir(ret, { recursive: true });
+    await capabilities.creator.createDirectory(ret);
     return ret;
 }
 
