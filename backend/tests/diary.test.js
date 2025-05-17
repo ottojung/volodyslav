@@ -9,7 +9,7 @@ const { readObjects } = require("../src/json_stream_file");
 const { formatFileTimestamp } = require("../src/format_time_stamp");
 const logger = require("../src/logger");
 const { mockCapabilities } = require("./mockCapabilities");
-const { make: makeRealCapabilities } = require("../src/capabilities/root");
+const root = require("../src/capabilities/root");
 
 // Mock environment to isolate test directories
 jest.mock("../src/environment", () => {
@@ -44,9 +44,7 @@ beforeEach(temporary.beforeEach);
 afterEach(temporary.afterEach);
 
 // Helper to create inspectable capability wrappers around real implementations
-function makeMockCapabilities() {
-    return mockCapabilities(makeRealCapabilities());
-}
+const makeMockCapabilities = () => mockCapabilities(root.make());
 
 describe("processDiaryAudios", () => {
     beforeEach(async () => {
