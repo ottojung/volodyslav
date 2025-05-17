@@ -17,6 +17,7 @@ const expressApp = require("./express_app");
 /** @typedef {import('./filesystem/writer').FileWriter} FileWriter */
 /** @typedef {import('./filesystem/appender').FileAppender} FileAppender */
 /** @typedef {import('./filesystem/creator').FileCreator} FileCreator */
+/** @typedef {import('./filesystem/checker').FileChecker} FileChecker */
 /** @typedef {import('./subprocess/command').Command} Command */
 
 /**
@@ -28,31 +29,34 @@ const expressApp = require("./express_app");
  * @property {FileWriter} writer - A file writer instance.
  * @property {FileAppender} appender - A file appender instance.
  * @property {FileCreator} creator - A directory creator instance.
+ * @property {FileChecker} checker - A file checker instance.
  * @property {Command} git - A command instance for Git operations.
  */
 
 /**
+ * @param {Capabilities} capabilities
  * @param {import("express").Express} app
  * @description Adds routes to the Express application.
  */
-function addRoutes(app) {
+function addRoutes(capabilities, app) {
     // Mount upload and API routers
-    app.use("/api", uploadRouter);
-    app.use("/api", rootRouter);
-    app.use("/api", pingRouter);
-    app.use("/api", transcribeRouter);
-    app.use("/api", transcribeAllRouter);
-    app.use("/api", periodicRouter);
-    app.use("/", staticRouter);
+    app.use("/api", uploadRouter.makeRouter(capabilities));
+    app.use("/api", rootRouter.makeRouter(capabilities));
+    app.use("/api", pingRouter.makeRouter(capabilities));
+    app.use("/api", transcribeRouter.makeRouter(capabilities));
+    app.use("/api", transcribeAllRouter.makeRouter(capabilities));
+    app.use("/api", periodicRouter.makeRouter(capabilities));
+    app.use("/", staticRouter.makeRouter(capabilities));
 }
 
 /**
+ * @param {Capabilities} capabilities
  * @param {import('express').Express} app
  * @returns {Promise<void>} - A promise that resolves when the dependencies are ensured.
  * @description Ensures that the necessary startup dependencies are available.
  */
-async function ensureStartupDependencies(app) {
-    await addRoutes(app);
+async function ensureStartupDependencies(capabilities, app) {
+    await addRoutes(capabilities, app);
     await ensureNotificationsAvailable();
 }
 
@@ -61,7 +65,7 @@ async function ensureStartupDependencies(app) {
  * @param {import("express").Express} app
  */
 async function initialize(capabilities, app) {
-    await ensureStartupDependencies(app);
+    await ensureStartupDependencies(capabilities, app);
     await scheduler.setup(capabilities);
     logger.logInfo({}, "Initialization complete.");
 }

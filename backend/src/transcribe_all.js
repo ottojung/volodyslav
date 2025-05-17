@@ -16,7 +16,7 @@ const { transcribeFile } = require("./transcribe");
  * @property {NonDeterministicSeed} seed - A random number generator instance.
  * @property {FileCreator} creator - A file system creator instance.
  * @property {Checker} checker - A file system checker instance.
- * @property {DirScanner} dirScanner - A directory scanner instance.
+ * @property {DirScanner} scanner - A directory scanner instance.
  * @property {FileWriter} writer - A file writer instance.
  * @property {Command} git - A command instance for Git operations.
  */
@@ -59,7 +59,7 @@ async function transcribeAllGeneric(capabilities, inputDir, targetFun) {
 
     let entries;
     try {
-        entries = await capabilities.dirScanner.scanDirectory(resolvedDir);
+        entries = await capabilities.scanner.scanDirectory(resolvedDir);
     } catch {
         throw new InputDirectoryAccess(
             `Could not read input directory`,

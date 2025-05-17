@@ -17,7 +17,7 @@ const {
  * @typedef {object} Capabilities
  * @property {FileCreator} creator
  * @property {FileChecker} checker
- * @property {DirScanner} dirScanner
+ * @property {DirScanner} scanner
  * @property {FileWriter} writer
  * @property {NonDeterministicSeed} seed
  * @property {Command} git
