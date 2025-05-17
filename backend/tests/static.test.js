@@ -26,6 +26,9 @@ const logger = require("../src/logger");
 // Create a mock static file structure for testing
 const staticPath = path.join(__dirname, "..", "..", "frontend", "dist");
 
+const { getMockedRootCapabilities } = require('./mockCapabilities');
+const capabilities = getMockedRootCapabilities();
+
 beforeAll(() => {
     // Create mock dist directory and files
     fs.mkdirSync(staticPath, { recursive: true });
@@ -41,11 +44,17 @@ afterAll(() => {
     fs.rmSync(staticPath, { recursive: true, force: true });
 });
 
+async function makeApp() {
+    const app = expressApp.make();
+    logger.enableHttpCallsLogging(app);
+    await addRoutes(capabilities, app);
+    return app;
+}
+
 describe("Static file serving", () => {
     it("serves index.html for root path", async () => {
-        await logger.setup();
-        const app = expressApp.make();
-        await addRoutes(app);
+        await logger.setup();    
+        const app = await makeApp();
         const res = await request(app).get("/");
         expect(res.statusCode).toBe(200);
         expect(res.text).toContain("<html>");
@@ -54,8 +63,7 @@ describe("Static file serving", () => {
 
     it("serves index.html for unknown routes (SPA fallback)", async () => {
         await logger.setup();
-        const app = expressApp.make();
-        await addRoutes(app);
+        const app = await makeApp();
         const res = await request(app).get("/unknown-route");
         expect(res.statusCode).toBe(200);
         expect(res.text).toContain("<html>");
@@ -64,8 +72,7 @@ describe("Static file serving", () => {
 
     it("serves static files correctly", async () => {
         await logger.setup();
-        const app = expressApp.make();
-        await addRoutes(app);
+        const app = await makeApp();
         const res = await request(app).get("/test.txt");
         expect(res.statusCode).toBe(200);
         expect(res.text).toBe("test content");
@@ -73,15 +80,13 @@ describe("Static file serving", () => {
     });
 
     it("preserves Content-Type for different file types", async () => {
-        await logger.setup();
         // Create a test.js file
         fs.writeFileSync(
             path.join(staticPath, "test.js"),
             'console.log("test");'
         );
 
-        const app = expressApp.make();
-        await addRoutes(app);
+        const app = await makeApp();
         const res = await request(app).get("/test.js");
         expect(res.statusCode).toBe(200);
         expect(res.headers["content-type"]).toMatch(/application\/javascript/);

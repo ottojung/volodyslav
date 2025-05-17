@@ -55,15 +55,24 @@ const { resultsDirectory } = require("../src/environment");
 
 const uploadDir = () => resultsDirectory();
 
+const { getMockedRootCapabilities } = require('./mockCapabilities');
+const capabilities = getMockedRootCapabilities();
+
+async function makeApp() {
+    const app = expressApp.make();
+    await logger.setup();
+    logger.enableHttpCallsLogging(app);
+    await addRoutes(capabilities, app);
+    return app;
+}
+
 describe("GET /api/transcribe", () => {
     beforeEach(() => {
         jest.clearAllMocks();
     });
 
     it("responds with 400 if input or output param missing", async () => {
-        await logger.setup();
-        const app = expressApp.make();
-        await addRoutes(app);
+        const app = await makeApp();
         const reqId = "testreq";
         const res = await request(app)
             .get("/api/transcribe")
@@ -79,9 +88,7 @@ describe("GET /api/transcribe", () => {
     });
 
     it("responds with 404 if input file does not exist", async () => {
-        await logger.setup();
-        const app = expressApp.make();
-        await addRoutes(app);
+        const app = await makeApp();
         const reqId = "testreq";
         const res = await request(app)
             .get("/api/transcribe")
@@ -100,9 +107,7 @@ describe("GET /api/transcribe", () => {
     });
 
     it("transcribes and saves output file on valid input", async () => {
-        await logger.setup();
-        const app = expressApp.make();
-        await addRoutes(app);
+        const app = await makeApp();
         // Prepare a dummy input file
         const inputDir = temporary.input();
         const inputPath = path.join(inputDir, "dummy.wav");

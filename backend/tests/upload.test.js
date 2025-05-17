@@ -29,11 +29,20 @@ jest.mock("../src/environment", () => {
 const { resultsDirectory } = require("../src/environment");
 const uploadDir = () => resultsDirectory();
 
+const { getMockedRootCapabilities } = require('./mockCapabilities');
+const capabilities = getMockedRootCapabilities();
+
+async function makeApp() {
+    const app = expressApp.make();
+    await logger.setup();
+    logger.enableHttpCallsLogging(app);
+    await addRoutes(capabilities, app);
+    return app;
+}
+
 describe("POST /api/upload", () => {
     it("uploads a single file successfully", async () => {
-        await logger.setup();
-        const app = expressApp.make();
-        await addRoutes(app);
+        const app = await makeApp();
         const reqId = "testreq";
         const res = await request(app)
             .post(`/api/upload?request_identifier=${reqId}`)
@@ -47,9 +56,7 @@ describe("POST /api/upload", () => {
     });
 
     it("uploads multiple files successfully", async () => {
-        await logger.setup();
-        const app = expressApp.make();
-        await addRoutes(app);
+        const app = await makeApp();
         // Upload first file with a unique request_identifier
         const reqId1 = "testreq1";
         const res1 = await request(app)
@@ -76,9 +83,7 @@ describe("POST /api/upload", () => {
     });
 
     it("responds with empty files array when no files are sent", async () => {
-        await logger.setup();
-        const app = expressApp.make();
-        await addRoutes(app);
+        const app = await makeApp();
         const res = await request(app).post(
             "/api/upload?request_identifier=foo"
         );
