@@ -71,9 +71,9 @@ async function transcribeAllGeneric(capabilities, inputDir, targetFun) {
     const failures = [];
     for (const source of entries) {
         const filename = path.basename(source.path);
-        const outputPath = targetFun(filename);
+        const targetPath = targetFun(filename);
         try {
-            const target = await transcribeFile(capabilities, source, outputPath);
+            const target = await transcribeFile(capabilities, source, targetPath);
             successes.push({ source, target });
         } catch (/** @type {unknown} */ err) {
             const internalMessage =
