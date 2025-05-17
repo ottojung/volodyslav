@@ -98,9 +98,9 @@ describe("GET /api/transcribe_all", () => {
             fs.writeFileSync(path.join(tmp, f), "")
         );
         // Stub: succeed on a, throw on b, succeed on c
-        transcribeFile.mockImplementation((inP, _outP) => {
-            if (inP.endsWith("/b.mp4")) throw new Error("bad file");
-            return Promise.resolve();
+        transcribeFile.mockImplementation(async (caps, inputFile, outP) => {
+            if (inputFile.path.endsWith("/b.mp4")) throw new Error("bad file");
+            return Promise.resolve({ path: outP }); 
         });
         const res = await request(app)
             .get(base)
@@ -112,13 +112,13 @@ describe("GET /api/transcribe_all", () => {
 
         expect(res.status).toBe(500);
         const expectedSuccesses = ["a.mp4", "c.mp4"].map((fname) => ({
-            source: path.join(tmp, fname),
-            target: path.join(uploadDir(), reqId, `${fname}.json`),
-        }));
+            source: { path: path.join(tmp, fname) }, 
+            target: { path: path.join(uploadDir(), reqId, `${fname}.json`) }, // Changed targetPath to target: { path: ... }
+        })); 
         expect(res.body).toEqual({
             success: false,
             result: {
-                failures: [{ file, message }],
+                failures: [{ source: { path: path.join(tmp, file) }, message }], // Changed file to source: { path: ... }
                 successes: expectedSuccesses,
             },
         });
@@ -137,15 +137,17 @@ describe("GET /api/transcribe_all", () => {
             fs.writeFileSync(path.join(tmp, f), "")
         );
         // Stub: always resolve
-        transcribeFile.mockResolvedValue();
+        transcribeFile.mockImplementation(async (caps, inputFile, outP) => { 
+            return Promise.resolve({ path: outP });
+        });
         const res = await request(app)
             .get(base)
             .query({ request_identifier: reqId, input_dir: tmp });
         expect(res.status).toBe(200);
         const expectedAllSuccesses = ["x.mp4", "y.mp4"].map((fname) => ({
-            source: path.join(tmp, fname),
-            target: path.join(uploadDir(), reqId, `${fname}.json`),
-        }));
+            source: { path: path.join(tmp, fname) }, 
+            target: { path: path.join(uploadDir(), reqId, `${fname}.json`) }, // Changed targetPath to target: { path: ... }
+        })); 
         expect(res.body).toEqual({
             success: true,
             result: { successes: expectedAllSuccesses, failures: [] },
