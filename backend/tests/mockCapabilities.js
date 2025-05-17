@@ -4,24 +4,17 @@
  * @returns {*} - A mocked version with same shape where functions are replaced by jest spies
  */
 function mockCapabilities(real) {
-    // Passthrough for true CommandClass instances (e.g., git, notifications)
-    // They have both a .call method and a .command property
-    if (
-        real &&
-        typeof real.call === 'function' &&
-        typeof real.command === 'string'
-    ) {
-        return real;
-    }
     // Wrap standalone functions with jest.fn to spy on calls
     if (typeof real === 'function') {
         return jest.fn((...args) => real(...args));
     }
-    // Recursively mock object properties
     if (real && typeof real === 'object') {
-        const mocked = Array.isArray(real) ? [] : {};
-        for (const [key, val] of Object.entries(real)) {
-            mocked[key] = mockCapabilities(val);
+        // Preserve prototype so instances keep their type
+        const mocked = Array.isArray(real)
+            ? []
+            : Object.create(Object.getPrototypeOf(real));
+        for (const key of Object.keys(real)) {
+            mocked[key] = mockCapabilities(real[key]);
         }
         return mocked;
     }
