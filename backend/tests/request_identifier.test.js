@@ -32,6 +32,9 @@ jest.mock('../src/environment', () => {
 const { resultsDirectory } = require("../src/environment");
 const uploadDir = () => resultsDirectory();
 
+const { getMockedRootCapabilities } = require('./mockCapabilities');
+const capabilities = getMockedRootCapabilities();
+
 describe("Request Identifier", () => {
     describe("fromRequest", () => {
         it("extracts request identifier from query params", () => {
@@ -60,7 +63,7 @@ describe("Request Identifier", () => {
             await logger.setup();
             const req = { query: { request_identifier: "test123" } };
             const reqId = fromRequest(req);
-            const dirPath = await makeDirectory(reqId);
+            const dirPath = await makeDirectory(capabilities, reqId);
 
             expect(fs.existsSync(dirPath)).toBe(true);
             expect(dirPath).toBe(path.join(uploadDir(), "test123"));
@@ -69,7 +72,7 @@ describe("Request Identifier", () => {
         it("handles special characters in request identifier", async () => {
             const req = { query: { request_identifier: "test#123" } };
             const reqId = fromRequest(req);
-            const dirPath = await makeDirectory(reqId);
+            const dirPath = await makeDirectory(capabilities, reqId);
 
             expect(fs.existsSync(dirPath)).toBe(true);
             expect(dirPath).toBe(path.join(uploadDir(), "test#123"));
@@ -81,11 +84,11 @@ describe("Request Identifier", () => {
             const req = { query: { request_identifier: "test123" } };
             const reqId = fromRequest(req);
 
-            await expect(isDone(reqId)).resolves.toBe(false);
+            await expect(isDone(capabilities, reqId)).resolves.toBe(false);
 
-            await markDone(reqId);
+            await markDone(capabilities, reqId);
 
-            await expect(isDone(reqId)).resolves.toBe(true);
+            await expect(isDone(capabilities, reqId)).resolves.toBe(true);
             expect(fs.existsSync(path.join(uploadDir(), "test123.done"))).toBe(
                 true
             );
@@ -96,12 +99,12 @@ describe("Request Identifier", () => {
             const reqId = fromRequest(req);
 
             await Promise.all([
-                markDone(reqId),
-                markDone(reqId),
-                markDone(reqId),
+                markDone(capabilities, reqId),
+                markDone(capabilities, reqId),
+                markDone(capabilities, reqId),
             ]);
 
-            await expect(isDone(reqId)).resolves.toBe(true);
+            await expect(isDone(capabilities, reqId)).resolves.toBe(true);
         });
     });
 });

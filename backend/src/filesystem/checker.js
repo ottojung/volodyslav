@@ -60,7 +60,12 @@ async function fileExists(filePath) {
         const stats = await fs.stat(filePath);
         return stats.isFile();
     } catch (err) {
-        if (err instanceof Error && "code" in err && err.code === "ENOENT") {
+        if (
+            err !== null &&
+            typeof err === "object" &&
+            "code" in err &&
+            err.code === "ENOENT"
+        ) {
             return false;
         }
 

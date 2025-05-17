@@ -33,12 +33,15 @@ const request = require("supertest");
 const express = require("express");
 const periodicRouter = require("../src/routes/periodic");
 const logger = require("../src/logger");
+const { getMockedRootCapabilities } = require('./mockCapabilities');
+
+const capabilities = getMockedRootCapabilities();
 
 // Helper to create app with logging and periodic route mounted at /api
 function makeApp() {
     const app = express();
     logger.enableHttpCallsLogging(app);
-    app.use("/api", periodicRouter);
+    app.use("/api", periodicRouter.makeRouter(capabilities));
     return app;
 }
 
