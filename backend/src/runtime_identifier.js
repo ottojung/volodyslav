@@ -4,17 +4,28 @@
  * This is useful for tracking and debugging purposes.
  */
 
-const { git } = require("./executables");
 const { logError } = require("./logger");
-const memconst = require("./memconst");
 const random = require("./random");
-const rootCapabilities = require("./capabilities/root");
 
-let version = memconst(async () => {
-    git.ensureAvailable();
+/**
+ * @typedef {object} Capabilities
+ * @property {import("./random/seed").NonDeterministicSeed} seed
+ * @property {import("./subprocess/command").Command} git
+ */
+
+/**
+ * @param {Capabilities} capabilities
+ * @returns {Promise<string>}
+ */
+async function getVersion(capabilities) {
+    capabilities.git.ensureAvailable();
     try {
         const repositoryPath = __dirname;
-        const { stdout } = await git.call("-C", repositoryPath, "describe");
+        const { stdout } = await capabilities.git.call(
+            "-C",
+            repositoryPath,
+            "describe"
+        );
         return stdout.trim();
     } catch (error) {
         // If git is not available, we can assume that the version is unknown.
@@ -22,12 +33,7 @@ let version = memconst(async () => {
         logError({ error }, `Could not determine version: ${message}`);
         return "unknown";
     }
-});
-
-/**
- * @typedef {object} Capabilities
- * @property {import("./random/seed").NonDeterministicSeed} seed
- */
+}
 
 /**
  * Generates a random identifier for the runtime.
@@ -39,14 +45,31 @@ function generateRandomIdentifier(capabilities) {
 }
 
 /**
+ * Generates a runtime identifier.
+ * @param {Capabilities} capabilities
  * @returns {Promise<{ version: string, instanceIdentifier: string }>}
  */
-async function getRuntimeIdentifier() {
-    const capabilities = rootCapabilities.make();
+async function getRuntimeIdentifier(capabilities) {
     const instanceIdentifier = generateRandomIdentifier(capabilities);
-    return { version: await version(), instanceIdentifier };
+    const version = await getVersion(capabilities);
+    return { version, instanceIdentifier };
 }
 
-const runtimeIdentifier = memconst(async () => getRuntimeIdentifier());
+/**
+ * @type {{ version: string, instanceIdentifier: string }}
+ */
+let runtimeIdentifierState;
+
+/**
+ * @param {Capabilities} capabilities
+ * @returns {Promise<{ version: string, instanceIdentifier: string }>}
+ */
+async function runtimeIdentifier(capabilities) {
+    if (runtimeIdentifierState === undefined) {
+        runtimeIdentifierState = await getRuntimeIdentifier(capabilities);
+    }
+
+    return runtimeIdentifierState;
+}
 
 module.exports = runtimeIdentifier;

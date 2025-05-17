@@ -40,7 +40,7 @@ const creatorMake = require("./creator");
 async function processDiaryAudios(capabilities) {
     const diaryAudiosDir = diaryAudiosDirectory();
     const inputFiles = await capabilities.scanner.scanDirectory(diaryAudiosDir);
-    const creator = await creatorMake();
+    const creator = await creatorMake(capabilities);
 
     /**
      * @param {ExistingFile} file

@@ -1,17 +1,43 @@
 const { gentleWrap } = require("./gentlewrap");
 const { start } = require("./server");
 const logger = require("./logger");
-const { Command } = require("commander");
+const commander = require("commander");
 const runtimeIdentifier = require("./runtime_identifier");
+const root = require("./capabilities/root");
 
-async function printVersion() {
-    const { version } = await runtimeIdentifier();
+/** @typedef {import('./filesystem/deleter').FileDeleter} FileDeleter */
+/** @typedef {import('./random/seed').NonDeterministicSeed} NonDeterministicSeed */
+/** @typedef {import('./filesystem/dirscanner').DirScanner} DirScanner */
+/** @typedef {import('./filesystem/copier').FileCopier} FileCopier */
+/** @typedef {import('./filesystem/writer').FileWriter} FileWriter */
+/** @typedef {import('./filesystem/appender').FileAppender} FileAppender */
+/** @typedef {import('./filesystem/creator').FileCreator} FileCreator */
+/** @typedef {import('./subprocess/command').Command} Command */
+
+/**
+ * @typedef {object} Capabilities
+ * @property {NonDeterministicSeed} seed - A random number generator instance.
+ * @property {FileDeleter} deleter - A file deleter instance.
+ * @property {DirScanner} scanner - A directory scanner instance.
+ * @property {FileCopier} copier - A file copier instance.
+ * @property {FileWriter} writer - A file writer instance.
+ * @property {FileAppender} appender - A file appender instance.
+ * @property {FileCreator} creator - A directory creator instance.
+ * @property {Command} git - A command instance for Git operations.
+ */
+
+/**
+ * @param {Capabilities} capabilities
+ */
+async function printVersion(capabilities) {
+    const { version } = await runtimeIdentifier(capabilities);
     console.log(version);
 }
 
 async function entryTyped() {
     await logger.setup();
-    const program = new Command();
+    const program = new commander.Command();
+    const capabilities = root.make();
 
     program.name("volodyslav").description("Volodyslav Media Service CLI");
 
@@ -19,12 +45,15 @@ async function entryTyped() {
         .option("-v, --version", "Display the version")
         .action(async (options) => {
             if (options.version) {
-                await printVersion();
+                await printVersion(capabilities);
                 process.exit(0);
             }
         });
 
-    program.command("start").description("Start the server").action(start);
+    program
+        .command("start")
+        .description("Start the server")
+        .action(start(capabilities));
 
     await program.parseAsync(process.argv);
 

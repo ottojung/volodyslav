@@ -3,6 +3,7 @@ const request = require("supertest");
 const { initialize } = require("../src/server");
 const temporary = require("./temporary");
 const logger = require("../src/logger");
+const { getMockedRootCapabilities } = require("./mockCapabilities");
 
 beforeEach(temporary.beforeEach);
 afterEach(temporary.afterEach);
@@ -40,6 +41,8 @@ jest.mock("../src/scheduler", () => {
     };
 });
 
+const capabilities = getMockedRootCapabilities();
+
 describe("Startup Dependencies", () => {
     beforeEach(() => {
         // Reset all mocks before each test
@@ -50,7 +53,7 @@ describe("Startup Dependencies", () => {
     it("sets up HTTP call logging and handles requests correctly", async () => {
         await logger.setup();
         const app = expressApp.make();
-        await initialize(app);
+        await initialize(capabilities, app);
 
         // Make a request - if logging is set up properly, this won't throw
         const res = await request(app).get("/api/ping");
@@ -90,7 +93,7 @@ describe("Startup Dependencies", () => {
             // Get a fresh instance of the module under test
             const { initialize } = require("../src/server");
 
-            await expect(initialize(app)).rejects.toThrow(
+            await expect(initialize(capabilities, app)).rejects.toThrow(
                 "Notifications unavailable. Termux notification executable not found in $PATH. Please ensure that Termux:API is installed and available in your $PATH."
             );
         });

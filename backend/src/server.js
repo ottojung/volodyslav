@@ -10,6 +10,27 @@ const periodicRouter = require("./routes/periodic");
 const scheduler = require("./scheduler");
 const expressApp = require("./express_app");
 
+/** @typedef {import('./filesystem/deleter').FileDeleter} FileDeleter */
+/** @typedef {import('./random/seed').NonDeterministicSeed} NonDeterministicSeed */
+/** @typedef {import('./filesystem/dirscanner').DirScanner} DirScanner */
+/** @typedef {import('./filesystem/copier').FileCopier} FileCopier */
+/** @typedef {import('./filesystem/writer').FileWriter} FileWriter */
+/** @typedef {import('./filesystem/appender').FileAppender} FileAppender */
+/** @typedef {import('./filesystem/creator').FileCreator} FileCreator */
+/** @typedef {import('./subprocess/command').Command} Command */
+
+/**
+ * @typedef {object} Capabilities
+ * @property {NonDeterministicSeed} seed - A random number generator instance.
+ * @property {FileDeleter} deleter - A file deleter instance.
+ * @property {DirScanner} scanner - A directory scanner instance.
+ * @property {FileCopier} copier - A file copier instance.
+ * @property {FileWriter} writer - A file writer instance.
+ * @property {FileAppender} appender - A file appender instance.
+ * @property {FileCreator} creator - A directory creator instance.
+ * @property {Command} git - A command instance for Git operations.
+ */
+
 /**
  * @param {import("express").Express} app
  * @description Adds routes to the Express application.
@@ -36,15 +57,19 @@ async function ensureStartupDependencies(app) {
 }
 
 /**
+ * @param {Capabilities} capabilities
  * @param {import("express").Express} app
  */
-async function initialize(app) {
+async function initialize(capabilities, app) {
     await ensureStartupDependencies(app);
-    await scheduler.setup();
+    await scheduler.setup(capabilities);
     logger.logInfo({}, "Initialization complete.");
 }
 
-async function start() {
+/**
+ * @param {Capabilities} capabilities
+ */
+async function startWithCapabilities(capabilities) {
     const app = expressApp.make();
     logger.enableHttpCallsLogging(app);
     await expressApp.run(app, async (app, server) => {
@@ -53,8 +78,16 @@ async function start() {
             { address },
             `Server started on ${JSON.stringify(address)}`
         );
-        await initialize(app);
+        await initialize(capabilities, app);
     });
+}
+
+/**
+ * @param {Capabilities} capabilities
+ * @returns {() => Promise<void>}
+ */
+function start(capabilities) {
+    return () => startWithCapabilities(capabilities);
 }
 
 module.exports = {

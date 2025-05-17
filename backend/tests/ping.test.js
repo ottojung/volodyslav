@@ -74,7 +74,8 @@ describe('GET /api/ping', () => {
     await logger.setup();
     const app = expressApp.make();
     await addRoutes(app);
-    const { instanceIdentifier } = await require('../src/runtime_identifier')();
+    const capabilities = require('../src/capabilities/root').make();
+    const { instanceIdentifier } = await require('../src/runtime_identifier')(capabilities);
     const correctId = instanceIdentifier;
     const res = await request(app).get(`/api/ping?runtime_identifier=${correctId}`);
     expect(res.statusCode).toBe(200);
