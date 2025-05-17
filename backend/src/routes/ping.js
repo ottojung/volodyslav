@@ -1,28 +1,52 @@
 const express = require("express");
-const router = express.Router();
 const runtimeIdentifier = require("../runtime_identifier");
 
+/** @typedef {import('../random/seed').NonDeterministicSeed} NonDeterministicSeed */
+/** @typedef {import('../subprocess/command').Command} Command */
+
 /**
- * The alive check endpoint.
+ * @typedef {object} Capabilities
+ * @property {NonDeterministicSeed} seed - A random number generator instance.
+ * @property {Command} git - A command instance for Git operations.
+ */
+
+/**
+ * Handles the ping request.
+ * @param {Capabilities} capabilities
  * @param {import('express').Request} req
  * @param {import('express').Response} res
  */
-router.get("/ping", async (req, res) => {
+async function handlePingRequest(capabilities, req, res) {
     /** @type {any} */
     const query = req.query;
-    const id = query['runtime_identifier'];
+    const id = query["runtime_identifier"];
 
     if (id !== undefined) {
         if (!id) {
             return res.status(400).send("Bad Request");
         }
-        const { instanceIdentifier } = await runtimeIdentifier();
+        // runtimeIdentifier now expects capabilities
+        const { instanceIdentifier } = await runtimeIdentifier(capabilities);
         if (id !== instanceIdentifier) {
             return res.status(400).send("Identifiers do not match.");
         }
     }
 
     return res.send("pong");
-});
+}
 
-module.exports = router;
+/**
+ * @param {Capabilities} capabilities
+ * @returns {import('express').Router}
+ */
+function makeRouter(capabilities) {
+    const router = express.Router();
+
+    router.get("/ping", (req, res) =>
+        handlePingRequest(capabilities, req, res)
+    );
+
+    return router;
+}
+
+module.exports = { makeRouter };
