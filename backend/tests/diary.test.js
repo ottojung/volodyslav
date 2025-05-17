@@ -8,6 +8,8 @@ const gitstore = require("../src/gitstore");
 const { readObjects } = require("../src/json_stream_file");
 const { formatFileTimestamp } = require("../src/format_time_stamp");
 const logger = require("../src/logger");
+const { mockCapabilities } = require("./mockCapabilities");
+const { make: makeRealCapabilities } = require("../src/capabilities/root");
 
 // Mock environment to isolate test directories
 jest.mock("../src/environment", () => {
@@ -43,43 +45,7 @@ afterEach(temporary.afterEach);
 
 // Helper to create inspectable capability wrappers around real implementations
 function makeMockCapabilities() {
-    const realDeleter = require("../src/filesystem/deleter").make();
-    const realCopier = require("../src/filesystem/copier").make();
-    const realScanner = require("../src/filesystem/dirscanner").make();
-    const realCreator = require("../src/filesystem/creator").make();
-    const realAppender = require("../src/filesystem/appender").make();
-    const realWriter = require("../src/filesystem/writer").make();
-
-    return {
-        deleter: {
-            deleteFile: jest.fn((p) => realDeleter.deleteFile(p)),
-            deleteDirectory: jest.fn((p) => realDeleter.deleteDirectory(p)),
-        },
-        copier: {
-            copyFile: jest.fn((file, dest) => realCopier.copyFile(file, dest)),
-        },
-        scanner: {
-            scanDirectory: jest.fn((dir) => realScanner.scanDirectory(dir)),
-        },
-        creator: {
-            createDirectory: jest.fn((dir) => realCreator.createDirectory(dir)),
-            createTemporaryDirectory: jest.fn(() =>
-                realCreator.createTemporaryDirectory()
-            ),
-        },
-        appender: {
-            appendFile: jest.fn((file, content) =>
-                realAppender.appendFile(file, content)
-            ),
-        },
-        writer: {
-            writeFile: jest.fn((file, content) =>
-                realWriter.writeFile(file, content)
-            ),
-        },
-        seed: { generate: jest.fn(() => 42) },
-        git: require("../src/executables").git,
-    };
+    return mockCapabilities(makeRealCapabilities());
 }
 
 describe("processDiaryAudios", () => {
@@ -112,7 +78,7 @@ describe("processDiaryAudios", () => {
         await fs.mkdir(diaryDir, { recursive: true });
         const filenames = [
             "20250511T000000Z.file1.mp3",
-            "20250511T000001Z.file2.mp3",
+            "20250512T000001Z.file2.mp3",
         ];
         for (const name of filenames) {
             await fs.writeFile(path.join(diaryDir, name), "content");
