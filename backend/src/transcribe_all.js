@@ -2,10 +2,13 @@ const path = require("path");
 const { makeDirectory, markDone } = require("./request_identifier");
 const { transcribeFile } = require("./transcribe");
 
+/** @typedef {import('./filesystem/file').ExistingFile} ExistingFile */
+
 /** @typedef {import('./random/seed').NonDeterministicSeed} NonDeterministicSeed */
 /** @typedef {import('./filesystem/creator').FileCreator} FileCreator */
 /** @typedef {import('./filesystem/checker').FileChecker} Checker */
 /** @typedef {import('./filesystem/dirscanner').DirScanner} DirScanner */
+/** @typedef {import('./filesystem/writer').FileWriter} FileWriter */
 /** @typedef {import('./subprocess/command').Command} Command */
 
 /**
@@ -14,6 +17,7 @@ const { transcribeFile } = require("./transcribe");
  * @property {FileCreator} creator - A file system creator instance.
  * @property {Checker} checker - A file system checker instance.
  * @property {DirScanner} dirScanner - A directory scanner instance.
+ * @property {FileWriter} writer - A file writer instance.
  * @property {Command} git - A command instance for Git operations.
  */
 
@@ -32,11 +36,11 @@ class InputDirectoryAccess extends Error {
 }
 
 /**
- * @typedef {{ file: string, message: string }} TranscriptionFailure
+ * @typedef {{ source: ExistingFile, message: string }} TranscriptionFailure
  */
 
 /**
- * @typedef {{ source: string, target: string }} TranscriptionSuccess
+ * @typedef {{ source: ExistingFile, target: ExistingFile }} TranscriptionSuccess
  */
 
 /**
@@ -65,18 +69,17 @@ async function transcribeAllGeneric(capabilities, inputDir, targetFun) {
 
     const successes = [];
     const failures = [];
-    for (const file of entries) {
-        const inputPath = file.path;    
-        const filename = path.basename(inputPath);
+    for (const source of entries) {
+        const filename = path.basename(source.path);
         const outputPath = targetFun(filename);
         try {
-            await transcribeFile(capabilities, inputPath, outputPath);
-            successes.push({ source: inputPath, target: outputPath });
+            const target = await transcribeFile(capabilities, source, outputPath);
+            successes.push({ source, target });
         } catch (/** @type {unknown} */ err) {
             const internalMessage =
                 err instanceof Error ? err.message : String(err);
             const message = `Transcription failed for ${filename}: ${internalMessage}`;
-            failures.push({ file: filename, message });
+            failures.push({ source, message });
         }
     }
 

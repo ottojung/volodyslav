@@ -3,14 +3,26 @@ const { logError, logInfo } = require('../logger');
 const { fromRequest } = require('../request_identifier');
 const { transcribeRequest, isInputNotFound } = require('../transcribe');
 
-const router = express.Router();
+/** @typedef {import('../filesystem/creator').FileCreator} FileCreator */
+/** @typedef {import('../filesystem/checker').FileChecker} FileChecker */
+/** @typedef {import('../filesystem/writer').FileWriter} FileWriter */
+/** @typedef {import('../random/seed').NonDeterministicSeed} NonDeterministicSeed */
 
 /**
- * Query params:
- *    ?input=/absolute/path/to/file.wav
- *    &request_identifier=0x123
+ * @typedef {object} Capabilities
+ * @property {FileCreator} creator - A directory creator instance.
+ * @property {FileChecker} checker - A file system checker instance.
+ * @property {FileWriter} writer - A file writer instance.
+ * @property {NonDeterministicSeed} seed - A random number generator instance.
  */
-router.get('/transcribe', async (req, res) => {
+
+/**
+ * Handles the transcription request.
+ * @param {Capabilities} capabilities
+ * @param {import('express').Request} req
+ * @param {import('express').Response} res
+ */
+async function handleTranscribeRequest(capabilities, req, res) {
     // pull request_identifier and validate
     let reqId;
     try {
@@ -53,7 +65,9 @@ router.get('/transcribe', async (req, res) => {
     // normalize input and determine paths
     const inputPath = String(rawIn);
     try {
-        await transcribeRequest(inputPath, reqId);
+        await transcribeRequest(capabilities, inputPath, reqId);
+        // If successful, send a 200 OK response
+        return res.status(200).json({ success: true, message: 'Transcription started successfully.' });
     } catch (error) {
         if (isInputNotFound(error)) {
             logError({
@@ -72,16 +86,29 @@ router.get('/transcribe', async (req, res) => {
                 error_name: error instanceof Error ? error.name : 'Unknown',
                 error_stack: error instanceof Error ? error.stack : undefined,
                 input_path: inputPath
-            }, 'Transcription request failed - unexpected error');
+            }, 'Transcription request failed - internal error');
             return res
                 .status(500)
                 .json({ success: false, error: 'Internal server error during transcription' });
         }
     }
+}
 
-    // Log successful transcription
-    logInfo({ request_identifier: reqId, input_path: inputPath }, 'Transcription successful');
-    return res.json({ success: true });
-});
+/**
+ * @param {Capabilities} capabilities
+ * @returns {import('express').Router}
+ */
+function makeRouter(capabilities) {
+    const router = express.Router();
 
-module.exports = router;
+    /**
+     * Query params:
+     *    ?input=/absolute/path/to/file.wav
+     *    &request_identifier=0x123
+     */
+    router.get('/transcribe', (req, res) => handleTranscribeRequest(capabilities, req, res));
+
+    return router;
+}
+
+module.exports = { makeRouter };

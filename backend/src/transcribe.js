@@ -8,15 +8,19 @@ const creatorMake = require("./creator");
 
 /** @typedef {import('./random/seed').NonDeterministicSeed} NonDeterministicSeed */
 /** @typedef {import('./filesystem/creator').FileCreator} FileCreator */
-/** @typedef {import('./filesystem/checker').FileChecker} Checker */
+/** @typedef {import('./filesystem/checker').FileChecker} FileChecker */
+/** @typedef {import('./filesystem/writer').FileWriter} FileWriter */
 /** @typedef {import('./subprocess/command').Command} Command */
+
+/** @typedef {import('./filesystem/file').ExistingFile} ExistingFile */
 
 /**
  * @typedef {object} Capabilities
  * @property {NonDeterministicSeed} seed - A random number generator instance.
  * @property {FileCreator} creator - A file system creator instance.
- * @property {Checker} checker - A file system checker instance.
- * @property {Command} git - A command instance for Git operations.
+ * @property {FileChecker} checker - A file system checker instance.
+ * @property {FileWriter} writer - A file system writer instance.
+ * @property {Command} git - A command instance for Git operations (optional if not always used).
  */
 
 // Instantiate client
@@ -92,31 +96,22 @@ async function transcribeStream(capabilities, file_stream) {
 /**
  * Transcribe input file.
  * @param {Capabilities} capabilities
- * @param {string} inputPath
+ * @param {ExistingFile} inputFile
  * @param {string} outputPath
- * @returns {Promise<void>}
+ * @returns {Promise<ExistingFile>}
  */
-async function transcribeFile(capabilities, inputPath, outputPath) {
-    const resolvedInputPath = path.resolve(inputPath);
-
-    // Check that the input file exists
-    if (!fs.existsSync(resolvedInputPath)) {
-        throw new InputNotFound(
-            `Input file ${resolvedInputPath} not found.`,
-            resolvedInputPath
-        );
-    }
-
-    const file_stream = fs.createReadStream(resolvedInputPath);
+async function transcribeFile(capabilities, inputFile, outputPath) {
+    const file_stream = fs.createReadStream(inputFile.path);
     const transcription = await transcribeStream(capabilities, file_stream);
 
     // Persist full JSON to disk
-    await fs.promises.mkdir(path.dirname(outputPath), { recursive: true });
-    await fs.promises.writeFile(
-        outputPath,
-        JSON.stringify(transcription, null, 2),
-        "utf8"
+    const outputFile = await capabilities.creator.createFile(outputPath);
+    await capabilities.writer.writeFile(
+        outputFile,
+        JSON.stringify(transcription, null, 2)
     );
+
+    return outputFile;
 }
 
 /**
@@ -130,8 +125,9 @@ async function transcribeRequest(capabilities, inputPath, reqId) {
     const outputFile = path.basename("transcription.json");
     const targetDir = await makeDirectory(capabilities, reqId);
     const outputPath = path.join(targetDir, outputFile);
+    const inputFile = await capabilities.checker.instanciate(inputPath);
     try {
-        await transcribeFile(capabilities, inputPath, outputPath);
+        await transcribeFile(capabilities, inputFile, outputPath);
     } finally {
         await markDone(capabilities, reqId);
     }

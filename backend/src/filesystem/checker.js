@@ -18,7 +18,11 @@
  *   • Factory Pattern - Exposes a make() function for easy dependency injection or mocking.
  */
 
+const { fromExisting } = require("./file");
+
 const fs = require("fs").promises;
+
+/** @typedef {import('./file').ExistingFile} ExistingFile */
 
 class FileCheckerError extends Error {
     /**
@@ -43,6 +47,7 @@ function isFileCheckerError(object) {
 /**
  * @typedef {object} FileChecker
  * @property {typeof fileExists} fileExists
+ * @property {typeof instanciate} instanciate
  */
 
 /**
@@ -67,12 +72,22 @@ async function fileExists(filePath) {
 }
 
 /**
+ * Creates an ExistingFile instance from a file path.
+ * @param {string} path - The path to the file.
+ * @returns {Promise<ExistingFile>} - A promise that resolves to an ExistingFile instance.
+ */
+async function instanciate(path) {
+    return await fromExisting(path);
+}
+
+/**
  * Creates a FileChecker instance.
  * @returns {FileChecker} - A FileChecker instance.
  */
 function make() {
     return {
         fileExists,
+        instanciate,
     };
 }
 

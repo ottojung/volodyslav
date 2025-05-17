@@ -9,6 +9,8 @@
  *   throughout the codebase. Centralizing writing logic here ensures a single place to
  *   manage and categorize errors, keeping application code clean and maintainable.
  *
+ * Note that this module does not create files; it assumes the file already exists.
+ *
  * Conceptual Design Principles:
  *   • Single Responsibility - Focused solely on the semantics of file writing.
  *   • Error Categorization - Distinguishes between different writing failures (FileWriterError)
@@ -18,7 +20,6 @@
  */
 
 const fs = require("fs").promises;
-const path = require("path");
 
 class FileWriterError extends Error {
     /**
@@ -57,9 +58,6 @@ function isFileWriterError(object) {
  */
 async function writeFile(file, content) {
     try {
-        // Ensure the directory exists
-        await fs.mkdir(path.dirname(file.path), { recursive: true });
-        // Write the content to the file
         await fs.writeFile(file.path, content);
     } catch (err) {
         throw new FileWriterError(
