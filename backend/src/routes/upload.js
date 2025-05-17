@@ -1,21 +1,34 @@
 const express = require('express');
 const upload = require('../storage');
-const router = express.Router();
 const { logInfo } = require('../logger');
 const { fromRequest, markDone } = require('../request_identifier');
 
-/**
- * Photo upload endpoint
- * Expects multipart/form-data with 'photos' files
- * @param {import('express').Request & { files: Express.Multer.File[] }} req
- * @param {import('express').Response} res
- */
-router.post('/upload', upload.array('photos'), async (req, res) => {
-    const files = /** @type {Express.Multer.File[]} */ (req.files || []);
-    const uploaded = files.map((f) => f.filename);
-    logInfo({ files: uploaded }, 'Files uploaded');
-    await markDone(fromRequest(req));
-    res.json({ success: true, files: uploaded });
-});
+/** @typedef {import('../random/seed').NonDeterministicSeed} NonDeterministicSeed */
+/** @typedef {import('../filesystem/creator').FileCreator} Creator */
+/** @typedef {import('../filesystem/checker').FileChecker} Checker */
 
-module.exports = router;
+/**
+ * @typedef {object} Capabilities
+ * @property {NonDeterministicSeed} seed - A random number generator instance.
+ * @property {Creator} creator - A file system creator instance.
+ * @property {Checker} checker - A file system checker instance.
+ */
+
+/**
+ * @param {Capabilities} capabilities
+ * @returns {import('express').Router}
+ */
+function makeRouter(capabilities) {
+    const uploadMiddleware = upload.makeUpload(capabilities);
+    const router = express.Router();
+    router.post('/upload', uploadMiddleware.array('photos'), async (req, res) => {
+        const files = /** @type {Express.Multer.File[]} */ (req.files || []);
+        const uploaded = files.map((f) => f.filename);
+        logInfo({ files: uploaded }, 'Files uploaded');
+        await markDone(capabilities, fromRequest(req));
+        res.json({ success: true, files: uploaded });
+    });
+    return router;
+}
+
+module.exports = makeRouter;
