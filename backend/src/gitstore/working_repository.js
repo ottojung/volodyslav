@@ -6,7 +6,7 @@
 
 const environment = require("../environment");
 const path = require("path");
-const { ensureGitAvailable, clone } = require("./wrappers");
+const { clone } = require("./wrappers");
 const defaultBranch = require("./default_branch");
 
 /** @typedef {import('../subprocess/command').Command} Command */
@@ -65,7 +65,6 @@ async function synchronize(capabilities) {
     const indexFile = path.join(localRepoPath, "index");
     const remoteRepo = environment.eventLogRepository();
     try {
-        await ensureGitAvailable();
         if (await capabilities.checker.fileExists(indexFile)) {
             // Pull latest changes
             await capabilities.git.call(
