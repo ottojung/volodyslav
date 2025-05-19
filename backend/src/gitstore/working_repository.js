@@ -101,20 +101,13 @@ async function synchronize(capabilities) {
  */
 async function getRepository(capabilities) {
     const localRepoPath = pathToLocalRepository();
-    try {
+    const indexFile = path.join(localRepoPath, "index");
+
+    if (!(await capabilities.checker.fileExists(indexFile))) {
         await synchronize(capabilities);
-        await fs.access(localRepoPath);
-        return localRepoPath;
-    } catch (err) {
-        const anyErr = /** @type {{code?:string}} */ (err);
-        if (isWorkingRepositoryError(err) || anyErr.code === "ENOENT") {
-            throw new WorkingRepositoryError(
-                `Repository unavailable at: ${localRepoPath}`,
-                localRepoPath
-            );
-        }
-        throw err;
     }
+
+    return localRepoPath;
 }
 
 module.exports = {
