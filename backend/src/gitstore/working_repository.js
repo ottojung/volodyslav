@@ -7,7 +7,6 @@
 const environment = require("../environment");
 const path = require("path");
 const gitmethod = require("./wrappers");
-const defaultBranch = require("./default_branch");
 
 /** @typedef {import('../subprocess/command').Command} Command */
 /** @typedef {import('../filesystem/creator').FileCreator} FileCreator */
