@@ -2,6 +2,13 @@ const { isCommandUnavailable } = require("../subprocess");
 const { git } = require("../executables");
 const defaultBranch = require("./default_branch");
 
+/** @typedef {import('../subprocess/command').Command} Command */
+
+/**
+ * @typedef {object} Capabilities
+ * @property {Command} git - A command instance for Git operations.
+ */
+
 class GitUnavailable extends Error {
     constructor() {
         super(
@@ -28,7 +35,7 @@ async function ensureGitAvailable() {
 /**
  * Commit staged changes with a message
  * Note: this operation is atomic. Details at <https://chatgpt.com/share/681d3dcb-a948-800e-8aca-896c8ba2aa07>.
- * @param {import('./index').Capabilities} capabilities - The capabilities object containing the git command.
+ * @param {Capabilities} capabilities - The capabilities object containing the git command.
  * @param {string} git_directory - The `.git` directory
  * @param {string} work_directory - The repository directory, where the actual files are
  * @param {string} message - The commit message
@@ -55,7 +62,7 @@ async function commit(capabilities, git_directory, work_directory, message) {
 
 /**
  * Clone latest changes from the remote repository.
- * @param {import('./index').Capabilities} capabilities - The capabilities object containing the git command.
+ * @param {Capabilities} capabilities - The capabilities object containing the git command.
  * @param {string} remote_uri - The repository path to pull from (can be a remote URI or local path)
  * @param {string} work_directory - The repository directory to pull to
  * @returns {Promise<void>}
@@ -80,7 +87,7 @@ async function clone(capabilities, remote_uri, work_directory) {
 
 /** 
  * Pull changes from the remote repository.
- * @param {import('./index').Capabilities} capabilities - The capabilities object containing the git command.
+ * @param {Capabilities} capabilities - The capabilities object containing the git command.
  * @param {string} work_directory - The repository directory to pull from
  * @returns {Promise<void>}
  */
@@ -102,7 +109,7 @@ async function pull(capabilities, work_directory) {
 
 /**
  * Push changes to the remote repository.
- * @param {import('./index').Capabilities} capabilities - The capabilities object containing the git command.
+ * @param {Capabilities} capabilities - The capabilities object containing the git command.
  * @param {string} work_directory - The repository directory to push from
  * @returns {Promise<void>}
  */
