@@ -6,7 +6,7 @@
 
 const environment = require("../environment");
 const path = require("path");
-const { clone } = require("./wrappers");
+const gitmethod = require("./wrappers");
 const defaultBranch = require("./default_branch");
 
 /** @typedef {import('../subprocess/command').Command} Command */
@@ -81,7 +81,7 @@ async function synchronize(capabilities) {
                 defaultBranch
             );
         } else {
-            await clone(capabilities, remoteRepo, localRepoPath);
+            await gitmethod.clone(capabilities, remoteRepo, localRepoPath);
         }
     } catch (err) {
         throw new WorkingRepositoryError(
