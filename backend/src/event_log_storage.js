@@ -9,7 +9,7 @@
  */
 
 const path = require("path");
-const { eventLogDirectory } = require("./environment");
+const { eventLogRepository } = require("./environment");
 const { fromExisting } = require("./filesystem/file");
 const gitstore = require("./gitstore");
 const event = require("./event");
@@ -155,7 +155,7 @@ async function performGitTransaction(
     eventLogStorage,
     transformation
 ) {
-    const gitDirectory = eventLogDirectory();
+    const gitDirectory = eventLogRepository();
     await gitstore.transaction(capabilities, gitDirectory, async (store) => {
         const workTree = await store.getWorkTree();
         const dataPath = path.join(workTree, "data.json");
@@ -198,7 +198,7 @@ async function cleanupAssets(deleter, eventLogStorage) {
                 {
                     file: assetPath,
                     error: "error occurred",
-                    directory: eventLogDirectory(),
+                    directory: eventLogRepository(),
                 },
                 `Failed to remove asset file ${assetPath}. This may be due to the file being in use or not existing.`
             );

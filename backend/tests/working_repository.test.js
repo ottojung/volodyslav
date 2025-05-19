@@ -24,7 +24,7 @@ jest.mock("../src/environment", () => {
         eventLogRepository: jest.fn().mockImplementation(() => {
             return path.join(temporary.input(), "event_log_repository.git");
         }),
-        eventLogDirectory: jest.fn().mockImplementation(() => {
+        eventLogRepository: jest.fn().mockImplementation(() => {
             return path.join(temporary.input(), "event_log_directory");
         }),
     };

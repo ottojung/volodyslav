@@ -23,7 +23,7 @@ jest.mock("../src/environment", () => {
             const dir = temporary.output();
             return path.join(dir, "assets");
         }),
-        eventLogDirectory: jest.fn().mockImplementation(() => {
+        eventLogRepository: jest.fn().mockImplementation(() => {
             const dir = temporary.output();
             return path.join(dir, "eventlog");
         }),
@@ -51,7 +51,7 @@ describe("processDiaryAudios", () => {
         let length;
         await gitstore.transaction(
             getMockedRootCapabilities(),
-            require("../src/environment").eventLogDirectory(),
+            require("../src/environment").eventLogRepository(),
             async (store) => {
                 const workTree = await store.getWorkTree();
                 const objects = await readObjects(
@@ -91,7 +91,7 @@ describe("processDiaryAudios", () => {
         // Event log entries committed
         await gitstore.transaction(
             capabilities,
-            require("../src/environment").eventLogDirectory(),
+            require("../src/environment").eventLogRepository(),
             async (store) => {
                 const workTree = await store.getWorkTree();
                 const dataPath = path.join(workTree, "data.json");
