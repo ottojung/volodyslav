@@ -78,6 +78,28 @@ async function clone(capabilities, remote_uri, work_directory) {
     );
 }
 
+/** 
+ * Pull changes from the remote repository.
+ * @param {import('./index').Capabilities} capabilities - The capabilities object containing the git command.
+ * @param {string} work_directory - The repository directory to pull from
+ * @returns {Promise<void>}
+ */
+async function pull(capabilities, work_directory) {
+    await capabilities.git.call(
+        "-C",
+        work_directory,
+        "-c",
+        "safe.directory=*",
+        "-c",
+        "user.name=volodyslav",
+        "-c",
+        "user.email=volodyslav",
+        "pull",
+        "origin",
+        defaultBranch
+    );
+}
+
 /**
  * Push changes to the remote repository.
  * @param {import('./index').Capabilities} capabilities - The capabilities object containing the git command.
@@ -104,6 +126,7 @@ module.exports = {
     ensureGitAvailable,
     commit,
     clone,
+    pull,
     push,
     GitUnavailable,
 };

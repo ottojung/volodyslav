@@ -66,20 +66,7 @@ async function synchronize(capabilities) {
     const remoteRepo = environment.eventLogRepository();
     try {
         if (await capabilities.checker.fileExists(indexFile)) {
-            // Pull latest changes
-            await capabilities.git.call(
-                "-C",
-                localRepoPath,
-                "-c",
-                "safe.directory=*",
-                "-c",
-                "user.name=volodyslav",
-                "-c",
-                "user.email=volodyslav",
-                "pull",
-                "origin",
-                defaultBranch
-            );
+            await gitmethod.pull(capabilities, localRepoPath);
         } else {
             await gitmethod.clone(capabilities, remoteRepo, localRepoPath);
         }
