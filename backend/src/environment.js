@@ -60,6 +60,10 @@ function eventLogAssetsDirectory() {
     return getEnv("VOLODYSLAV_EVENT_LOG_ASSETS_DIRECTORY");
 }
 
+function eventLogRepository() {
+    return getEnv("VOLODYSLAV_EVENT_LOG_REPOSITORY");
+}
+
 function eventLogDirectory() {
     return getEnv("VOLODYSLAV_EVENT_LOG_DIRECTORY");
 }
@@ -73,5 +77,6 @@ module.exports = {
     logFile,
     diaryAudiosDirectory,
     eventLogAssetsDirectory,
+    eventLogRepository,
     eventLogDirectory,
 };
