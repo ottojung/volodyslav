@@ -37,7 +37,7 @@ function openaiAPIKey() {
 }
 
 function workingDirectory() {
-    return getEnv("VOLODYSLAV_RESULTS_DIRECTORY");
+    return getEnv("VOLODYSLAV_WORKING_DIRECTORY");
 }
 
 function myServerPort() {
