@@ -7,9 +7,19 @@
 const environment = require("../environment");
 const path = require("path");
 const fs = require("fs").promises;
-const { git } = require("../executables");
-const { ensureGitAvailable } = require("./wrappers");
+const { ensureGitAvailable, clone } = require("./wrappers");
 const defaultBranch = require("./default_branch");
+
+/** @typedef {import('../subprocess/command').Command} Command */
+/** @typedef {import('../filesystem/creator').FileCreator} FileCreator */
+/** @typedef {import('../filesystem/deleter').FileDeleter} FileDeleter */
+
+/**
+ * @typedef {object} Capabilities
+ * @property {Command} git - A command instance for Git operations.
+ * @property {FileCreator} creator - A file creator instance.
+ * @property {FileDeleter} deleter - A file deleter instance.
+ */
 
 /**
  * Custom error for WorkingRepository operations.
@@ -45,16 +55,18 @@ function pathToLocalRepository() {
 
 /**
  * Synchronize the local repository with remote: pull if exists, else clone.
+ * @param {Capabilities} capabilities
  * @returns {Promise<void>}
  * @throws {WorkingRepositoryError}
  */
-async function synchronize() {
+async function synchronize(capabilities) {
     const localRepoPath = pathToLocalRepository();
     const remoteRepo = environment.eventLogRepository();
     try {
         await ensureGitAvailable();
         await fs.access(localRepoPath);
-        await git.call(
+        // Pull latest changes
+        await capabilities.git.call(
             "-C", localRepoPath,
             "-c", "safe.directory=*",
             "-c", "user.name=volodyslav",
@@ -67,18 +79,8 @@ async function synchronize() {
         const anyErr = /** @type {{code?:string, message?:string}} */ (err);
         if (anyErr.code === "ENOENT") {
             try {
-                await git.call(
-                    "-c", "safe.directory=*",
-                    "-c", "user.name=volodyslav",
-                    "-c", "user.email=volodyslav",
-                    "clone",
-                    "--depth=1",
-                    "--single-branch",
-                    `--branch=${defaultBranch}`,
-                    "--",
-                    remoteRepo,
-                    localRepoPath
-                );
+                // Clone repository if not present
+                await clone(capabilities, remoteRepo, localRepoPath);
             } catch (cloneErr) {
                 throw new WorkingRepositoryError(
                     `Failed to clone repository: ${remoteRepo}`,
@@ -96,13 +98,14 @@ async function synchronize() {
 
 /**
  * Ensure the repository is present locally and return its path.
+ * @param {Capabilities} capabilities
  * @returns {Promise<string>}
  * @throws {WorkingRepositoryError}
  */
-async function getRepository() {
+async function getRepository(capabilities) {
     const localRepoPath = pathToLocalRepository();
     try {
-        await synchronize();
+        await synchronize(capabilities);
         await fs.access(localRepoPath);
         return localRepoPath;
     } catch (err) {
