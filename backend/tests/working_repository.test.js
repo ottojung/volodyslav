@@ -1,14 +1,10 @@
 const path = require("path");
 const workingRepository = require("../src/gitstore/working_repository");
 const fsp = require("fs/promises");
-const { execFile } = require("child_process");
-const { promisify } = require("util");
 const temporary = require("./temporary");
 const { getMockedRootCapabilities } = require("./mockCapabilities");
 const logger = require("../src/logger");
 const makeTestRepository = require("./make_test_repository");
-
-const callSubprocess = promisify(execFile);
 
 beforeEach(temporary.beforeEach);
 afterEach(temporary.afterEach);
@@ -23,35 +19,44 @@ jest.mock("../src/environment", () => {
             return path.join(temporary.output(), "log.txt");
         }),
         workingDirectory: jest.fn().mockImplementation(() => {
-            return path.join(temporary.output(), "working-git-repository");
+            return path.join(temporary.output(), "wd");
         }),
         eventLogRepository: jest.fn().mockImplementation(() => {
-            const dir = temporary.input();
-            return path.join(dir, "remote-repo");
+            return path.join(temporary.input(), "event_log_repository.git");
         }),
         eventLogDirectory: jest.fn().mockImplementation(() => {
-            const dir = temporary.input();
-            return path.join(dir, "event_log");
+            return path.join(temporary.input(), "event_log_directory");
         }),
     };
 });
+
+const environment = require("../src/environment");
 
 describe("working_repository", () => {
     test("synchronize creates working repository when it doesn't exist", async () => {
         await logger.setup();
         const capabilities = getMockedRootCapabilities();
+        const localRepoPath = path.join(
+            environment.workingDirectory(),
+            "working-git-repository",
+            ".git"
+        );
 
         // Set up a real git repo to clone from
         await makeTestRepository();
+
+        // Ensure the repository doesn't exist before synchronization.
+        const indexExistsBeforeSync = await fsp
+            .stat(path.join(localRepoPath, "index"))
+            .then(() => true)
+            .catch(() => false);
+
+        expect(indexExistsBeforeSync).toBe(false);
 
         // Execute synchronize
         await workingRepository.synchronize(capabilities);
 
         // Verify the repository was created and has the index file
-        const localRepoPath = path.join(
-            temporary.output(),
-            "working-git-repository"
-        );
         const indexExists = await fsp
             .stat(path.join(localRepoPath, "index"))
             .then(() => true)
@@ -72,8 +77,9 @@ describe("working_repository", () => {
 
         // Verify correct path is returned
         const expectedPath = path.join(
-            temporary.output(),
-            "working-git-repository"
+            environment.workingDirectory(),
+            "working-git-repository",
+            ".git"
         );
         expect(repoPath).toBe(expectedPath);
 
@@ -97,17 +103,40 @@ describe("working_repository", () => {
             .fn()
             .mockReturnValue("/nonexistent/repo");
 
-        // Execute and verify error is thrown and matches expected pattern
-        let error;
+        // Execute and verify error is thrown with the expected message
+        await expect(
+            workingRepository.synchronize(capabilities)
+        ).rejects.toThrow("Failed to synchronize repository");
+
+        // Restore original function
+        require("../src/environment").eventLogRepository = origEventLogRepo;
+    });
+
+    // Separate test for WorkingRepositoryError type checking
+    test("errors from synchronize are WorkingRepositoryError instances", async () => {
+        await logger.setup();
+        const capabilities = getMockedRootCapabilities();
+
+        // Make the eventLogRepository return a non-existent path
+        const origEventLogRepo =
+            require("../src/environment").eventLogRepository;
+        require("../src/environment").eventLogRepository = jest
+            .fn()
+            .mockReturnValue("/nonexistent/repo");
+
+        // Execute and save the error
+        let thrownError = null;
         try {
             await workingRepository.synchronize(capabilities);
-            fail("Expected synchronize to throw an error");
-        } catch (e) {
-            error = e;
+        } catch (error) {
+            thrownError = error;
         }
 
-        expect(error.message).toMatch(/Failed to synchronize repository/);
-        expect(workingRepository.isWorkingRepositoryError(error)).toBe(true);
+        // Verify error is of the correct type
+        expect(thrownError).not.toBeNull();
+        expect(workingRepository.isWorkingRepositoryError(thrownError)).toBe(
+            true
+        );
 
         // Restore original function
         require("../src/environment").eventLogRepository = origEventLogRepo;

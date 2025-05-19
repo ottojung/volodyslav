@@ -54,6 +54,15 @@ function pathToLocalRepository() {
 }
 
 /**
+ * Get local repository path to the `.git` directory.
+ * @returns {string}
+ */
+function pathToLocalRepositoryGitDir() {
+    const repo = pathToLocalRepository();
+    return path.join(repo, ".git");
+}
+
+/**
  * Synchronize the local repository with remote: pull if exists, else clone.
  * @param {Capabilities} capabilities
  * @returns {Promise<void>}
@@ -61,7 +70,7 @@ function pathToLocalRepository() {
  */
 async function synchronize(capabilities) {
     const localRepoPath = pathToLocalRepository();
-    const indexFile = path.join(localRepoPath, "index");
+    const indexFile = path.join(pathToLocalRepositoryGitDir(), "index");
     const remoteRepo = environment.eventLogRepository();
     try {
         if (await capabilities.checker.fileExists(indexFile)) {
@@ -79,19 +88,20 @@ async function synchronize(capabilities) {
 
 /**
  * Ensure the repository is present locally and return its path.
+ * Note: returns the path to the `.git` directory.
  * @param {Capabilities} capabilities
  * @returns {Promise<string>}
  * @throws {WorkingRepositoryError}
  */
 async function getRepository(capabilities) {
-    const localRepoPath = pathToLocalRepository();
-    const indexFile = path.join(localRepoPath, "index");
+    const gitDir = pathToLocalRepositoryGitDir();
+    const indexFile = path.join(gitDir, "index");
 
     if (!(await capabilities.checker.fileExists(indexFile))) {
         await synchronize(capabilities);
     }
 
-    return localRepoPath;
+    return gitDir;
 }
 
 module.exports = {
