@@ -1,6 +1,6 @@
 const path = require("path");
 const randomModule = require("./random");
-const { resultsDirectory } = require("./environment");
+const { workingDirectory } = require("./environment");
 
 /** @typedef {import('./random/seed').NonDeterministicSeed} NonDeterministicSeed */
 /** @typedef {import('./filesystem/creator').FileCreator} Creator */
@@ -69,7 +69,7 @@ function random(capabilities) {
  * @returns {Promise<void>}
  */
 async function markDone(capabilities, reqId) {
-    const uploadDir = resultsDirectory(); // This might need to use capabilities.path.join
+    const uploadDir = workingDirectory(); // This might need to use capabilities.path.join
     await capabilities.creator.createDirectory(uploadDir);
     const target = path.join(uploadDir, reqId.identifier + ".done");
     await capabilities.creator.createFile(target);
@@ -81,7 +81,7 @@ async function markDone(capabilities, reqId) {
  * @returns {Promise<boolean>}
  */
 async function isDone(capabilities, reqId) {
-    const uploadDir = resultsDirectory();
+    const uploadDir = workingDirectory();
     const target = path.join(uploadDir, reqId.identifier + ".done");
     return capabilities.checker.fileExists(target);
 }
@@ -92,7 +92,7 @@ async function isDone(capabilities, reqId) {
  * @returns {Promise<string>} - path to the target directory.
  */
 async function makeDirectory(capabilities, reqId) {
-    const uploadDir = resultsDirectory();
+    const uploadDir = workingDirectory();
     const ret = path.join(uploadDir, reqId.identifier);
     await capabilities.creator.createDirectory(ret);
     return ret;

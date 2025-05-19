@@ -4,7 +4,7 @@ jest.mock("../src/environment", () => {
     const temporary = require("./temporary");
     return {
         openaiAPIKey: jest.fn().mockReturnValue("test-key"),
-        resultsDirectory: jest
+        workingDirectory: jest
             .fn()
             .mockImplementation(() => path.join(temporary.output(), "results")),
         myServerPort: jest.fn().mockReturnValue(0),

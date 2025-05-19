@@ -20,7 +20,7 @@
 const fs = require("fs").promises;
 const path = require("path");
 const { makeEmpty } = require("./file");
-const { resultsDirectory } = require("../environment");
+const { workingDirectory } = require("../environment");
 
 class FileCreatorError extends Error {
     /**
@@ -92,7 +92,7 @@ async function createDirectory(dirPath) {
  * @returns {Promise<string>} - A promise that resolves with the path to the created temporary directory.
  */
 async function createTemporaryDirectory() {
-    const tmpDir = resultsDirectory();
+    const tmpDir = workingDirectory();
     const uniquePrefix = path.join(tmpDir, "tmp-");
     try {
         await fs.mkdir(tmpDir, { recursive: true });

@@ -15,7 +15,7 @@ jest.mock("../src/environment", () => {
     const temporary = require("./temporary");
     return {
         openaiAPIKey: jest.fn().mockReturnValue("test-key"),
-        resultsDirectory: jest.fn().mockImplementation(() => {
+        workingDirectory: jest.fn().mockImplementation(() => {
             return path.join(temporary.output(), "results");
         }),
         myServerPort: jest.fn().mockReturnValue(0),
@@ -26,8 +26,8 @@ jest.mock("../src/environment", () => {
     };
 });
 
-const { resultsDirectory } = require("../src/environment");
-const uploadDir = () => resultsDirectory();
+const { workingDirectory } = require("../src/environment");
+const uploadDir = () => workingDirectory();
 
 const { getMockedRootCapabilities } = require('./mockCapabilities');
 const capabilities = getMockedRootCapabilities();

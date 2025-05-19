@@ -13,7 +13,7 @@ jest.mock("../src/environment", () => {
     const temporary = require("./temporary");
     return {
         openaiAPIKey: jest.fn().mockReturnValue("test-key"),
-        resultsDirectory: jest.fn().mockImplementation(() => {
+        workingDirectory: jest.fn().mockImplementation(() => {
             return path.join(temporary.output(), "results");
         }),
         myServerPort: jest.fn().mockReturnValue(0),
@@ -36,9 +36,9 @@ jest.mock("../src/transcribe", () => {
 const { transcribeFile } = require("../src/transcribe");
 const expressApp = require("../src/express_app");
 const logger = require("../src/logger");
-const { resultsDirectory } = require("../src/environment");
+const { workingDirectory } = require("../src/environment");
 
-const uploadDir = () => resultsDirectory();
+const uploadDir = () => workingDirectory();
 
 const { getMockedRootCapabilities } = require('./mockCapabilities');
 const capabilities = getMockedRootCapabilities();

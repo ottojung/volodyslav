@@ -14,7 +14,7 @@ jest.mock("../src/environment", () => {
     const temporary = require("./temporary");
     return {
         openaiAPIKey: jest.fn().mockReturnValue("test-key"),
-        resultsDirectory: jest.fn().mockImplementation(() => {
+        workingDirectory: jest.fn().mockImplementation(() => {
             return path.join(temporary.output(), "results");
         }),
         myServerPort: jest.fn().mockReturnValue(0),
@@ -79,7 +79,7 @@ describe("Startup Dependencies", () => {
                 const temporary = require("./temporary");
                 return {
                     openaiAPIKey: jest.fn().mockReturnValue("test-key"),
-                    resultsDirectory: jest.fn().mockImplementation(() => {
+                    workingDirectory: jest.fn().mockImplementation(() => {
                         return path.join(temporary.output(), "results");
                     }),
                     myServerPort: jest.fn().mockReturnValue(0),

@@ -36,7 +36,7 @@ function openaiAPIKey() {
     return getEnv("VOLODYSLAV_OPENAI_API_KEY");
 }
 
-function resultsDirectory() {
+function workingDirectory() {
     return getEnv("VOLODYSLAV_RESULTS_DIRECTORY");
 }
 
@@ -67,7 +67,7 @@ function eventLogDirectory() {
 module.exports = {
     isEnvironmentError,
     openaiAPIKey,
-    resultsDirectory,
+    workingDirectory,
     myServerPort,
     logLevel,
     logFile,

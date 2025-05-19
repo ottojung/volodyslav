@@ -30,7 +30,7 @@ jest.mock("../src/environment", () => {
             const dir = temporary.output();
             return path.join(dir, "event_log");
         }),
-        resultsDirectory: jest.fn().mockImplementation(() => {
+        workingDirectory: jest.fn().mockImplementation(() => {
             const dir = temporary.output();
             return path.join(dir, "results");
         }),
