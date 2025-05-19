@@ -6,7 +6,6 @@
 
 const environment = require("../environment");
 const path = require("path");
-const fs = require("fs").promises;
 const { ensureGitAvailable, clone } = require("./wrappers");
 const defaultBranch = require("./default_branch");
 
