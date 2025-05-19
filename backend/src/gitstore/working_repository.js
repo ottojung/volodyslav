@@ -1,5 +1,5 @@
 //
-// This modules provides definitions and methods 
+// This modules provides definitions and methods
 // for working with the local copy of the git repository
 // that Volodyslav uses to store events in.
 //
@@ -13,12 +13,14 @@ const defaultBranch = require("./default_branch");
 /** @typedef {import('../subprocess/command').Command} Command */
 /** @typedef {import('../filesystem/creator').FileCreator} FileCreator */
 /** @typedef {import('../filesystem/deleter').FileDeleter} FileDeleter */
+/** @typedef {import('../filesystem/checker').FileChecker} FileChecker */
 
 /**
  * @typedef {object} Capabilities
  * @property {Command} git - A command instance for Git operations.
  * @property {FileCreator} creator - A file creator instance.
  * @property {FileDeleter} deleter - A file deleter instance.
+ * @property {FileChecker} checker - A file checker instance.
  */
 
 /**
@@ -61,38 +63,33 @@ function pathToLocalRepository() {
  */
 async function synchronize(capabilities) {
     const localRepoPath = pathToLocalRepository();
+    const indexFile = path.join(localRepoPath, "index");
     const remoteRepo = environment.eventLogRepository();
     try {
         await ensureGitAvailable();
-        await fs.access(localRepoPath);
-        // Pull latest changes
-        await capabilities.git.call(
-            "-C", localRepoPath,
-            "-c", "safe.directory=*",
-            "-c", "user.name=volodyslav",
-            "-c", "user.email=volodyslav",
-            "pull",
-            "origin",
-            defaultBranch
-        );
-    } catch (err) {
-        const anyErr = /** @type {{code?:string, message?:string}} */ (err);
-        if (anyErr.code === "ENOENT") {
-            try {
-                // Clone repository if not present
-                await clone(capabilities, remoteRepo, localRepoPath);
-            } catch (cloneErr) {
-                throw new WorkingRepositoryError(
-                    `Failed to clone repository: ${remoteRepo}`,
-                    localRepoPath
-                );
-            }
-        } else {
-            throw new WorkingRepositoryError(
-                `Failed to synchronize repository: ${anyErr.message || anyErr}`,
-                localRepoPath
+        if (await capabilities.checker.fileExists(indexFile)) {
+            // Pull latest changes
+            await capabilities.git.call(
+                "-C",
+                localRepoPath,
+                "-c",
+                "safe.directory=*",
+                "-c",
+                "user.name=volodyslav",
+                "-c",
+                "user.email=volodyslav",
+                "pull",
+                "origin",
+                defaultBranch
             );
+        } else {
+            await clone(capabilities, remoteRepo, localRepoPath);
         }
+    } catch (err) {
+        throw new WorkingRepositoryError(
+            `Failed to synchronize repository: ${err}`,
+            localRepoPath
+        );
     }
 }
 
