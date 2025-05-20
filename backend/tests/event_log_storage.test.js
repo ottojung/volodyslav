@@ -3,47 +3,25 @@ const { transaction } = require("../src/event_log_storage");
 const fsp = require("fs/promises");
 const gitstore = require("../src/gitstore");
 const { readObjects } = require("../src/json_stream_file");
-const temporary = require("./temporary");
 const makeTestRepository = require("./make_test_repository");
 const event = require("../src/event/structure");
 const { targetPath } = require("../src/event/asset");
 const logger = require("../src/logger");
-const { getMockedRootCapabilities } = require("./mockCapabilities");
+const { getMockedRootCapabilities, stubEnvironment } = require("./mocked");
 
-beforeEach(temporary.beforeEach);
-afterEach(temporary.afterEach);
-
-// Mock environment exports to avoid real env dependencies
-jest.mock("../src/environment", () => {
-    const temporary = require("./temporary");
-    const path = require("path");
-    return {
-        logLevel: jest.fn().mockReturnValue("debug"),
-        logFile: jest.fn().mockImplementation(() => {
-            return path.join(temporary.output(), "log.txt");
-        }),
-        eventLogAssetsDirectory: jest.fn().mockImplementation(() => {
-            const dir = temporary.output();
-            return path.join(dir, "event_log_assets");
-        }),
-        eventLogRepository: jest.fn().mockImplementation(() => {
-            const dir = temporary.output();
-            return path.join(dir, "event_log");
-        }),
-        workingDirectory: jest.fn().mockImplementation(() => {
-            const dir = temporary.output();
-            return path.join(dir, "results");
-        }),
-    };
-});
+function getTestCapabilities() {
+    const capabilities = getMockedRootCapabilities();
+    stubEnvironment(capabilities);
+    return capabilities;
+}
 
 describe("event_log_storage", () => {
     // No stubbing: use real gitstore.transaction with makeTestRepository per test
 
     test("transaction allows adding and storing event entries", async () => {
         await logger.setup();
-        const capabilities = getMockedRootCapabilities();
-        await makeTestRepository();
+        const capabilities = getTestCapabilities();
+        await makeTestRepository(capabilities);
 
         const testEvent = {
             id: { identifier: "test123" },
@@ -71,7 +49,7 @@ describe("event_log_storage", () => {
 
     test("transaction fails if git fails", async () => {
         await logger.setup();
-        const capabilities = getMockedRootCapabilities();
+        const capabilities = getTestCapabilities();
 
         // Note: didn't use makeTestRepository here to avoid creating a real git repo.
 
@@ -98,8 +76,8 @@ describe("event_log_storage", () => {
 
     test("transaction allows adding and storing multiple event entries", async () => {
         await logger.setup();
-        const capabilities = getMockedRootCapabilities();
-        await makeTestRepository();
+        const capabilities = getTestCapabilities();
+        await makeTestRepository(capabilities);
 
         const event1 = {
             id: { identifier: "event1" },
@@ -137,8 +115,8 @@ describe("event_log_storage", () => {
 
     test("transaction with no entries throws an error", async () => {
         await logger.setup();
-        const capabilities = getMockedRootCapabilities();
-        await makeTestRepository();
+        const capabilities = getTestCapabilities();
+        await makeTestRepository(capabilities);
         // Expect the transaction to fail due to no staged changes to commit
         await expect(
             transaction(capabilities, async () => {
@@ -149,15 +127,15 @@ describe("event_log_storage", () => {
 
     test("transaction copies asset files into repository", async () => {
         await logger.setup();
-        const capabilities = getMockedRootCapabilities(); // Ensure capabilities are correctly initialized
-        await makeTestRepository();
+        const capabilities = getTestCapabilities(); // Ensure capabilities are correctly initialized
+        await makeTestRepository(capabilities);
         const testEvent = {
             id: { identifier: "assetEvent" },
             date: new Date("2025-05-13"),
         };
 
         // Create a temporary asset file.
-        const inputDir = path.join(temporary.input(), "inputs");
+        const inputDir = await capabilities.creator.createTemporaryDirectory(capabilities);
         const assetPath = path.join(inputDir, "asset.txt");
         await fsp.mkdir(inputDir, { recursive: true });
         await fsp.writeFile(assetPath, "test content");
@@ -170,7 +148,7 @@ describe("event_log_storage", () => {
             storage.addEntry(testEvent, [asset])
         );
 
-        const target = targetPath(asset);
+        const target = targetPath(capabilities, asset);
 
         const targetDir = path.dirname(target);
         const dirExists = await fsp
@@ -188,8 +166,8 @@ describe("event_log_storage", () => {
 
     test("transaction cleanup calls unlink for each asset on failure", async () => {
         await logger.setup();
-        const capabilities = getMockedRootCapabilities();
-        await makeTestRepository();
+        const capabilities = getTestCapabilities();
+        await makeTestRepository(capabilities);
         const testEvent = {
             id: { identifier: "cleanupEvent" },
             date: new Date("2025-05-14"),
@@ -208,7 +186,7 @@ describe("event_log_storage", () => {
         ).rejects.toThrow("forced failure");
 
         // Should delete the copied asset file at its target path
-        const expectedTarget = targetPath(asset);
+        const expectedTarget = targetPath(capabilities, asset);
         expect(capabilities.deleter.deleteFile).toHaveBeenCalledWith(
             expectedTarget
         );
@@ -216,8 +194,8 @@ describe("event_log_storage", () => {
 
     test("transaction creates parent directories before copying assets", async () => {
         await logger.setup();
-        const capabilities = getMockedRootCapabilities();
-        await makeTestRepository();
+        const capabilities = getTestCapabilities();
+        await makeTestRepository(capabilities);
 
         const testEvent = {
             id: { identifier: "assetEventWithDirs" },
@@ -225,7 +203,7 @@ describe("event_log_storage", () => {
         };
 
         // Create a temporary asset file.
-        const inputDir = path.join(temporary.input(), "inputs");
+        const inputDir = await capabilities.creator.createTemporaryDirectory(capabilities);
         const assetPath = path.join(inputDir, "asset.txt");
         await fsp.mkdir(inputDir, { recursive: true });
         await fsp.writeFile(assetPath, "test content");
@@ -240,7 +218,7 @@ describe("event_log_storage", () => {
 
         expect(capabilities.deleter.deleteFile).not.toHaveBeenCalled();
 
-        const target = targetPath(asset);
+        const target = targetPath(capabilities, asset);
 
         const targetDir = path.dirname(target);
         const dirExists = await fsp
@@ -258,8 +236,8 @@ describe("event_log_storage", () => {
 
     test("transaction handles mix of successful and failed asset additions", async () => {
         await logger.setup();
-        const capabilities = getMockedRootCapabilities(); // Ensure capabilities are correctly initialized
-        await makeTestRepository();
+        const capabilities = getTestCapabilities(); // Ensure capabilities are correctly initialized
+        await makeTestRepository(capabilities);
 
         const testEvent = {
             id: { identifier: "mixedAssetsEvent" },
@@ -270,7 +248,7 @@ describe("event_log_storage", () => {
 
         // Helper function to create test assets
         const createTestAssets = async () => {
-            const inputDir = path.join(temporary.input(), "valid_assets");
+            const inputDir = await capabilities.creator.createTemporaryDirectory(capabilities);
             await fsp.mkdir(inputDir, { recursive: true });
 
             const validPaths = [];
@@ -286,7 +264,7 @@ describe("event_log_storage", () => {
             // Create 3 invalid paths that don't exist
             for (let i = 1; i <= 3; i++) {
                 const invalidPath = path.join(
-                    temporary.input(),
+                    inputDir,
                     `nonexistent_dir_${i}`,
                     `invalid_asset_${i}.txt`
                 );
@@ -335,7 +313,7 @@ describe("event_log_storage", () => {
         // The mock for `deleter.deleteFile` doesn't care if the file exists.
         allAssets.forEach((assetItem) => {
             // cleanupAssets deletes the copied files at their target paths
-            const expected = targetPath(assetItem);
+            const expected = targetPath(capabilities, assetItem);
             expect(capabilities.deleter.deleteFile).toHaveBeenCalledWith(
                 expected
             );
