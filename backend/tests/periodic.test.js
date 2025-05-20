@@ -7,6 +7,9 @@ jest.mock("../src/environment", () => {
         workingDirectory: jest
             .fn()
             .mockImplementation(() => path.join(temporary.output(), "results")),
+        eventLogRepository: jest
+            .fn()
+            .mockImplementation(() => path.join(temporary.input(), "event_log_repository.git")),
         myServerPort: jest.fn().mockReturnValue(0),
         logLevel: jest.fn().mockReturnValue("silent"),
         logFile: jest
@@ -34,6 +37,7 @@ const express = require("express");
 const periodicRouter = require("../src/routes/periodic");
 const logger = require("../src/logger");
 const { getMockedRootCapabilities } = require('./mockCapabilities');
+const makeTestRepository = require("./make_test_repository");
 
 const capabilities = getMockedRootCapabilities();
 
@@ -65,6 +69,7 @@ describe("GET /api/periodic", () => {
 
     it("responds with done for period=hour", async () => {
         const app = makeApp();
+        await makeTestRepository();
         const res = await request(app).get("/api/periodic?period=hour");
         expect(res.statusCode).toBe(200);
         expect(res.text).toBe("done");
@@ -72,6 +77,7 @@ describe("GET /api/periodic", () => {
 
     it("responds with done for period=hourly", async () => {
         const app = makeApp();
+        await makeTestRepository();
         const res = await request(app).get("/api/periodic?period=hourly");
         expect(res.statusCode).toBe(200);
         expect(res.text).toBe("done");
