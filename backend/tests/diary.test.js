@@ -8,7 +8,7 @@ const gitstore = require("../src/gitstore");
 const { readObjects } = require("../src/json_stream_file");
 const { formatFileTimestamp } = require("../src/format_time_stamp");
 const logger = require("../src/logger");
-const { getMockedRootCapabilities } = require("./mockCapabilities");
+const { getMockedRootCapabilities } = require("./mocked");
 
 // Mock environment to isolate test directories
 jest.mock("../src/environment", () => {
