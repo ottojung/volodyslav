@@ -53,13 +53,12 @@ function pathToLocalRepository() {
     return path.join(wd, "working-git-repository");
 }
 
-/**
- * Get local repository path to the `.git` directory.
+/** 
+ * Get the path to the local repository's .git directory.
  * @returns {string}
  */
 function pathToLocalRepositoryGitDir() {
-    const repo = pathToLocalRepository();
-    return path.join(repo, ".git");
+    return path.join(pathToLocalRepository(), ".git");
 }
 
 /**
@@ -69,19 +68,22 @@ function pathToLocalRepositoryGitDir() {
  * @throws {WorkingRepositoryError}
  */
 async function synchronize(capabilities) {
-    const localRepoPath = pathToLocalRepository();
-    const indexFile = path.join(pathToLocalRepositoryGitDir(), "index");
+    const gitDir = pathToLocalRepositoryGitDir();
+    const workDir = pathToLocalRepository();
+    const indexFile = path.join(gitDir, "index");
     const remoteRepo = environment.eventLogRepository();
     try {
         if (await capabilities.checker.fileExists(indexFile)) {
-            await gitmethod.pull(capabilities, localRepoPath);
+            await gitmethod.pull(capabilities, workDir);
         } else {
-            await gitmethod.clone(capabilities, remoteRepo, localRepoPath);
+            // TODO: rollback if any of the following operations fail.
+            await gitmethod.clone(capabilities, remoteRepo, workDir);
+            await gitmethod.makePushable(capabilities, workDir);
         }
     } catch (err) {
         throw new WorkingRepositoryError(
             `Failed to synchronize repository: ${err}`,
-            localRepoPath
+            remoteRepo
         );
     }
 }

@@ -61,6 +61,30 @@ async function commit(capabilities, git_directory, work_directory, message) {
 }
 
 /**
+ * Make the repository pushable by setting up the necessary configuration.
+ * @param {Capabilities} capabilities - The capabilities object containing the git command.
+ * @param {string} workDirectory - The repository directory to make pushable
+ * @returns {Promise<void>}
+ */
+async function makePushable(capabilities, workDirectory) {
+    // Make sure that we can push to this repository
+    // as if it was a bare repository.
+    await capabilities.git.call(
+        "-C",
+        workDirectory,
+        "-c",
+        "safe.directory=*",
+        "-c",
+        "user.name=volodyslav",
+        "-c",
+        "user.email=volodyslav",
+        "config",
+        "receive.denyCurrentBranch",
+        "updateInstead"
+    );
+}
+
+/**
  * Clone latest changes from the remote repository.
  * @param {Capabilities} capabilities - The capabilities object containing the git command.
  * @param {string} remote_uri - The repository path to pull from (can be a remote URI or local path)
@@ -88,13 +112,13 @@ async function clone(capabilities, remote_uri, work_directory) {
 /** 
  * Pull changes from the remote repository.
  * @param {Capabilities} capabilities - The capabilities object containing the git command.
- * @param {string} work_directory - The repository directory to pull from
+ * @param {string} workDirectory - The repository directory to pull from
  * @returns {Promise<void>}
  */
-async function pull(capabilities, work_directory) {
+async function pull(capabilities, workDirectory) {
     await capabilities.git.call(
         "-C",
-        work_directory,
+        workDirectory,
         "-c",
         "safe.directory=*",
         "-c",
@@ -110,13 +134,13 @@ async function pull(capabilities, work_directory) {
 /**
  * Push changes to the remote repository.
  * @param {Capabilities} capabilities - The capabilities object containing the git command.
- * @param {string} work_directory - The repository directory to push from
+ * @param {string} targetGitDirectory - The repository directory to push from
  * @returns {Promise<void>}
  */
-async function push(capabilities, work_directory) {
+async function push(capabilities, targetGitDirectory) {
     await capabilities.git.call(
-        "-C",
-        work_directory,
+        "--git-dir",
+        targetGitDirectory,
         "-c",
         "safe.directory=*",
         "-c",
@@ -132,6 +156,7 @@ async function push(capabilities, work_directory) {
 module.exports = {
     ensureGitAvailable,
     commit,
+    makePushable,
     clone,
     pull,
     push,
