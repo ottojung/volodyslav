@@ -1,33 +1,19 @@
 const path = require("path");
 const fs = require("fs");
-
-// Mock environment exports to avoid real env dependencies
-jest.mock('../src/environment', () => {
-    const path = require('path');
-    const temporary = require('./temporary');
-    return {
-        openaiAPIKey: jest.fn().mockReturnValue('test-key'),
-        workingDirectory: jest.fn().mockImplementation(() => {
-            return path.join(temporary.output(), 'results');
-        }),
-        myServerPort: jest.fn().mockReturnValue(0),
-        logLevel: jest.fn().mockReturnValue("silent"),
-        logFile: jest.fn().mockImplementation(() => {
-            return path.join(temporary.output(), 'log.txt');
-        }),
-    };
-});
-
 const request = require("supertest");
 const expressApp = require("../src/express_app");
 const { addRoutes } = require("../src/server");
 const logger = require("../src/logger");
+const { getMockedRootCapabilities, stubEnvironment } = require("./mocked");
+
+function getTestCapabilities() {
+    const capabilities = getMockedRootCapabilities();
+    stubEnvironment(capabilities);
+    return capabilities;
+}
 
 // Create a mock static file structure for testing
 const staticPath = path.join(__dirname, "..", "..", "frontend", "dist");
-
-const { getMockedRootCapabilities } = require('./mockCapabilities');
-const capabilities = getMockedRootCapabilities();
 
 beforeAll(() => {
     // Create mock dist directory and files
@@ -44,7 +30,7 @@ afterAll(() => {
     fs.rmSync(staticPath, { recursive: true, force: true });
 });
 
-async function makeApp() {
+async function makeApp(capabilities) {
     const app = expressApp.make();
     logger.enableHttpCallsLogging(app);
     await addRoutes(capabilities, app);
@@ -53,8 +39,9 @@ async function makeApp() {
 
 describe("Static file serving", () => {
     it("serves index.html for root path", async () => {
-        await logger.setup();    
-        const app = await makeApp();
+        const capabilities = getTestCapabilities();
+        await logger.setup();
+        const app = await makeApp(capabilities);
         const res = await request(app).get("/");
         expect(res.statusCode).toBe(200);
         expect(res.text).toContain("<html>");
@@ -62,8 +49,9 @@ describe("Static file serving", () => {
     });
 
     it("serves index.html for unknown routes (SPA fallback)", async () => {
+        const capabilities = getTestCapabilities();
         await logger.setup();
-        const app = await makeApp();
+        const app = await makeApp(capabilities);
         const res = await request(app).get("/unknown-route");
         expect(res.statusCode).toBe(200);
         expect(res.text).toContain("<html>");
@@ -71,8 +59,9 @@ describe("Static file serving", () => {
     });
 
     it("serves static files correctly", async () => {
+        const capabilities = getTestCapabilities();
         await logger.setup();
-        const app = await makeApp();
+        const app = await makeApp(capabilities);
         const res = await request(app).get("/test.txt");
         expect(res.statusCode).toBe(200);
         expect(res.text).toBe("test content");
@@ -80,13 +69,15 @@ describe("Static file serving", () => {
     });
 
     it("preserves Content-Type for different file types", async () => {
+        const capabilities = getTestCapabilities();
+
         // Create a test.js file
         fs.writeFileSync(
             path.join(staticPath, "test.js"),
             'console.log("test");'
         );
 
-        const app = await makeApp();
+        const app = await makeApp(capabilities);
         const res = await request(app).get("/test.js");
         expect(res.statusCode).toBe(200);
         expect(res.headers["content-type"]).toMatch(/application\/javascript/);
