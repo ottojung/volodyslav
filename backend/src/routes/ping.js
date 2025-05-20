@@ -3,11 +3,13 @@ const runtimeIdentifier = require("../runtime_identifier");
 
 /** @typedef {import('../random/seed').NonDeterministicSeed} NonDeterministicSeed */
 /** @typedef {import('../subprocess/command').Command} Command */
+/** @typedef {import('../logger').Logger} Logger */
 
 /**
  * @typedef {object} Capabilities
  * @property {NonDeterministicSeed} seed - A random number generator instance.
  * @property {Command} git - A command instance for Git operations.
+ * @property {Logger} logger - A logger instance.
  */
 
 /**
