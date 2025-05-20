@@ -1,48 +1,18 @@
-// Mock environment exports to avoid real env dependencies
-jest.mock("../src/environment", () => {
-    const path = require("path");
-    const temporary = require("./temporary");
-    return {
-        openaiAPIKey: jest.fn().mockReturnValue("test-key"),
-        workingDirectory: jest
-            .fn()
-            .mockImplementation(() => path.join(temporary.output(), "results")),
-        eventLogRepository: jest
-            .fn()
-            .mockImplementation(() => path.join(temporary.input(), "event_log_repository.git")),
-        myServerPort: jest.fn().mockReturnValue(0),
-        logLevel: jest.fn().mockReturnValue("silent"),
-        logFile: jest
-            .fn()
-            .mockImplementation(() => path.join(temporary.output(), "log.txt")),
-    };
-});
-
-// Mock diary processing and filesystem deleter
-jest.mock("../src/diary", () => ({
-    processDiaryAudios: jest.fn().mockResolvedValue(),
-}));
-
-jest.mock("../src/filesystem/deleter", () => ({
-    make: jest.fn().mockReturnValue({ deleteFile: jest.fn() }),
-}));
-
-// Mock random generator
-jest.mock("../src/random/seed", () => ({
-    make: () => ({ generate: jest.fn().mockReturnValue(123) }),
-}));
-
 const request = require("supertest");
 const express = require("express");
 const periodicRouter = require("../src/routes/periodic");
 const logger = require("../src/logger");
-const { getMockedRootCapabilities } = require('./mockCapabilities');
 const makeTestRepository = require("./make_test_repository");
+const { getMockedRootCapabilities, stubEnvironment } = require("./mocked");
 
-const capabilities = getMockedRootCapabilities();
+function getTestCapabilities() {
+    const capabilities = getMockedRootCapabilities();
+    stubEnvironment(capabilities);
+    return capabilities;
+}
 
 // Helper to create app with logging and periodic route mounted at /api
-function makeApp() {
+function makeApp(capabilities) {
     const app = express();
     logger.enableHttpCallsLogging(app);
     app.use("/api", periodicRouter.makeRouter(capabilities));
@@ -55,43 +25,49 @@ describe("GET /api/periodic", () => {
     });
 
     it("returns 400 when no period is specified", async () => {
-        const app = makeApp();
+        const capabilities = getTestCapabilities();
+        const app = makeApp(capabilities);
         const res = await request(app).get("/api/periodic");
         expect(res.statusCode).toBe(400);
         expect(res.text).toBe("Bad Request: period parameter is required");
     });
 
     it("rejects POST requests", async () => {
-        const app = makeApp();
+        const capabilities = getTestCapabilities();
+        const app = makeApp(capabilities);
         const res = await request(app).post("/api/periodic");
         expect(res.statusCode).toBe(404);
     });
 
     it("responds with done for period=hour", async () => {
-        const app = makeApp();
-        await makeTestRepository();
+        const capabilities = getTestCapabilities();
+        const app = makeApp(capabilities);
+        await makeTestRepository(capabilities);
         const res = await request(app).get("/api/periodic?period=hour");
         expect(res.statusCode).toBe(200);
         expect(res.text).toBe("done");
     });
 
     it("responds with done for period=hourly", async () => {
-        const app = makeApp();
-        await makeTestRepository();
+        const capabilities = getTestCapabilities();
+        const app = makeApp(capabilities);
+        await makeTestRepository(capabilities);
         const res = await request(app).get("/api/periodic?period=hourly");
         expect(res.statusCode).toBe(200);
         expect(res.text).toBe("done");
     });
 
     it("returns 400 for empty period parameter", async () => {
-        const app = makeApp();
+        const capabilities = getTestCapabilities();
+        const app = makeApp(capabilities);
         const res = await request(app).get("/api/periodic?period=");
         expect(res.statusCode).toBe(400);
         expect(res.text).toBe("Bad Request: period parameter is required");
     });
 
     it("returns 400 for unknown period", async () => {
-        const app = makeApp();
+        const capabilities = getTestCapabilities();
+        const app = makeApp(capabilities);
         const res = await request(app).get("/api/periodic?period=daily");
         expect(res.statusCode).toBe(400);
         expect(res.text).toBe("Bad Request: unknown period");

@@ -60,8 +60,6 @@ function stubEnvironment(capabilities) {
             const dir = temporary.input();
             return path.join(dir, "diary");
         });
-
-    return capabilities;
 }
 
 beforeEach(temporary.beforeEach);
