@@ -55,8 +55,6 @@ async function makeTestRepository() {
     });
 
     await fs.rm(workTree, { recursive: true, force: true });
-
-    return { gitDir };
 }
 
 module.exports = makeTestRepository;

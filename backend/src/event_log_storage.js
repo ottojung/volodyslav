@@ -9,7 +9,6 @@
  */
 
 const path = require("path");
-const { eventLogRepository } = require("./environment");
 const { fromExisting } = require("./filesystem/file");
 const gitstore = require("./gitstore");
 const event = require("./event");
@@ -22,6 +21,7 @@ const { targetPath } = require("./event/asset");
 /** @typedef {import('./filesystem/appender').FileAppender} FileAppender */
 /** @typedef {import('./filesystem/creator').FileCreator} FileCreator */
 /** @typedef {import('./filesystem/file').ExistingFile} ExistingFile */
+/** @typedef {import('./filesystem/checker').FileChecker} FileChecker */
 /** @typedef {import('./subprocess/command').Command} Command */
 
 /**
@@ -31,6 +31,7 @@ const { targetPath } = require("./event/asset");
  * @property {FileWriter} writer - A file writer instance.
  * @property {FileAppender} appender - A file appender instance.
  * @property {FileCreator} creator - A directory creator instance.
+ * @property {FileChecker} checker - A file checker instance.
  * @property {Command} git - A command instance for Git operations.
  */
 
@@ -155,8 +156,7 @@ async function performGitTransaction(
     eventLogStorage,
     transformation
 ) {
-    const gitDirectory = eventLogRepository();
-    await gitstore.transaction(capabilities, gitDirectory, async (store) => {
+    await gitstore.transaction(capabilities, async (store) => {
         const workTree = await store.getWorkTree();
         const dataPath = path.join(workTree, "data.json");
         const dataFile = await fromExisting(dataPath);
@@ -198,7 +198,6 @@ async function cleanupAssets(deleter, eventLogStorage) {
                 {
                     file: assetPath,
                     error: "error occurred",
-                    directory: eventLogRepository(),
                 },
                 `Failed to remove asset file ${assetPath}. This may be due to the file being in use or not existing.`
             );

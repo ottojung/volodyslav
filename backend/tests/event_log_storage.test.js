@@ -43,7 +43,7 @@ describe("event_log_storage", () => {
     test("transaction allows adding and storing event entries", async () => {
         await logger.setup();
         const capabilities = getMockedRootCapabilities();
-        const { gitDir } = await makeTestRepository();
+        await makeTestRepository();
 
         const testEvent = {
             id: { identifier: "test123" },
@@ -60,7 +60,7 @@ describe("event_log_storage", () => {
         });
 
         // Verify the stored event using gitstore transaction
-        await gitstore.transaction(capabilities, gitDir, async (store) => {
+        await gitstore.transaction(capabilities, async (store) => {
             const workTree = await store.getWorkTree();
             const dataPath = path.join(workTree, "data.json");
             const objects = await readObjects(dataPath);
@@ -72,8 +72,8 @@ describe("event_log_storage", () => {
     test("transaction fails if git fails", async () => {
         await logger.setup();
         const capabilities = getMockedRootCapabilities();
-        const gitDir = temporary.input();
-        await fsp.mkdir(gitDir, { recursive: true });
+
+        // Note: didn't use makeTestRepository here to avoid creating a real git repo.
 
         const testEvent = {
             id: { identifier: "test123" },
@@ -92,14 +92,14 @@ describe("event_log_storage", () => {
         ).rejects.toThrow();
 
         await expect(
-            gitstore.transaction(capabilities, gitDir, async (_store) => {})
+            gitstore.transaction(capabilities, async (_store) => {})
         ).rejects.toThrow("does not exist");
     });
 
     test("transaction allows adding and storing multiple event entries", async () => {
         await logger.setup();
         const capabilities = getMockedRootCapabilities();
-        const { gitDir } = await makeTestRepository();
+        await makeTestRepository();
 
         const event1 = {
             id: { identifier: "event1" },
@@ -125,7 +125,7 @@ describe("event_log_storage", () => {
             eventLogStorage.addEntry(event2, []);
         });
 
-        await gitstore.transaction(capabilities, gitDir, async (store) => {
+        await gitstore.transaction(capabilities, async (store) => {
             const workTree = await store.getWorkTree();
             const dataPath = path.join(workTree, "data.json");
             const objects = await readObjects(dataPath);
@@ -259,7 +259,7 @@ describe("event_log_storage", () => {
     test("transaction handles mix of successful and failed asset additions", async () => {
         await logger.setup();
         const capabilities = getMockedRootCapabilities(); // Ensure capabilities are correctly initialized
-        const { gitDir } = await makeTestRepository();
+        await makeTestRepository();
 
         const testEvent = {
             id: { identifier: "mixedAssetsEvent" },
@@ -342,7 +342,7 @@ describe("event_log_storage", () => {
         });
 
         // Verify that the transaction was rolled back and event wasn't stored
-        await gitstore.transaction(capabilities, gitDir, async (store) => {
+        await gitstore.transaction(capabilities, async (store) => {
             const workTree = await store.getWorkTree();
             const dataPath = path.join(workTree, "data.json");
 
