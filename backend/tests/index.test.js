@@ -1,30 +1,18 @@
-// Mock environment exports to avoid real env dependencies
-jest.mock("../src/environment", () => {
-    const path = require("path");
-    const temporary = require("./temporary");
-    return {
-        openaiAPIKey: jest.fn().mockReturnValue("test-key"),
-        workingDirectory: jest.fn().mockImplementation(() => {
-            return path.join(temporary.output(), "results");
-        }),
-        myServerPort: jest.fn().mockReturnValue(0),
-        logLevel: jest.fn().mockReturnValue("silent"),
-        logFile: jest.fn().mockImplementation(() => {
-            return path.join(temporary.output(), "log.txt");
-        }),
-    };
-});
-
 const request = require("supertest");
 const expressApp = require("../src/express_app");
 const { addRoutes } = require("../src/server");
 const logger = require("../src/logger");
-const { getMockedRootCapabilities } = require('./mockCapabilities');
+const { getMockedRootCapabilities, stubEnvironment } = require("./mocked");
 
-const capabilities = getMockedRootCapabilities();
+function getTestCapabilities() {
+    const capabilities = getMockedRootCapabilities();
+    stubEnvironment(capabilities);
+    return capabilities;
+}
 
 describe("GET /api", () => {
     it("responds with Hello World!", async () => {
+        const capabilities = getTestCapabilities();
         await logger.setup();
         const app = expressApp.make();
         await addRoutes(capabilities, app);
@@ -34,6 +22,7 @@ describe("GET /api", () => {
     });
 
     it("returns text/html content type", async () => {
+        const capabilities = getTestCapabilities();
         const app = expressApp.make();
         await addRoutes(capabilities, app);
         const res = await request(app).get("/api");
@@ -41,6 +30,7 @@ describe("GET /api", () => {
     });
 
     it("handles HEAD request", async () => {
+        const capabilities = getTestCapabilities();
         const app = expressApp.make();
         await addRoutes(capabilities, app);
         const res = await request(app).head("/api");
@@ -48,6 +38,7 @@ describe("GET /api", () => {
     });
 
     it("handles invalid HTTP method", async () => {
+        const capabilities = getTestCapabilities();
         const app = expressApp.make();
         await addRoutes(capabilities, app);
         const res = await request(app).put("/api");
