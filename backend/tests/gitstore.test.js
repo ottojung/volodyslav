@@ -5,7 +5,8 @@ const { transaction } = require("../src/gitstore");
 const temporary = require("./temporary");
 const makeTestRepository = require("./make_test_repository");
 const defaultBranch = require("../src/gitstore/default_branch");
-const executables = require("../src/executables");
+const workingRepository = require("../src/gitstore/working_repository");
+const { getMockedRootCapabilities } = require("./mockCapabilities");
 
 beforeEach(temporary.beforeEach);
 afterEach(temporary.afterEach);
@@ -19,28 +20,19 @@ jest.mock("../src/environment", () => {
             const dir = temporary.input();
             return path.join(dir, "event_log");
         }),
+        workingDirectory: jest.fn().mockImplementation(() => {
+            return path.join(temporary.output(), "wd");
+        }
+        ),
     };
 });
 
-const capabilities = {
-    git: executables.git, // Use the actual git command, not a mock.
-    deleter: {
-        deleteDirectory: async (dir) => {
-            await fs.rm(dir, { recursive: true, force: true });
-        }
-    },
-    creator: {
-        createTemporaryDirectory: async () => {
-            const base = temporary.input();
-            return await fs.mkdtemp(base);
-        },
-    }
-};
+const capabilities = getMockedRootCapabilities();
 
 describe("gitstore", () => {
     test("transaction allows reading and writing files", async () => {
-        const { gitDir } = await makeTestRepository();
-        await transaction(capabilities, gitDir, async (store) => {
+        await makeTestRepository();
+        await transaction(capabilities, async (store) => {
             const workTree = await store.getWorkTree();
             const testFile = path.join(workTree, "test.txt");
 
@@ -54,6 +46,7 @@ describe("gitstore", () => {
         });
 
         // Verify the changes were committed by reading directly from the repo
+        const gitDir = await workingRepository.getRepository(capabilities);
         const output = execFileSync("git", [
             "--git-dir",
             gitDir,

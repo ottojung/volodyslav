@@ -134,13 +134,13 @@ async function pull(capabilities, workDirectory) {
 /**
  * Push changes to the remote repository.
  * @param {Capabilities} capabilities - The capabilities object containing the git command.
- * @param {string} targetGitDirectory - The repository directory to push from
+ * @param {string} workDirectory - The repository directory to push from
  * @returns {Promise<void>}
  */
-async function push(capabilities, targetGitDirectory) {
+async function push(capabilities, workDirectory) {
     await capabilities.git.call(
-        "--git-dir",
-        targetGitDirectory,
+        "-C",
+        workDirectory,
         "-c",
         "safe.directory=*",
         "-c",

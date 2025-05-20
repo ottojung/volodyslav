@@ -1,15 +1,18 @@
 const { commit, push, clone } = require("./wrappers");
 const path = require("path");
+const workingRepository = require("./working_repository");
 
 /** @typedef {import('../subprocess/command').Command} Command */
 /** @typedef {import('../filesystem/creator').FileCreator} FileCreator */
 /** @typedef {import('../filesystem/deleter').FileDeleter} FileDeleter */
+/** @typedef {import('../filesystem/checker').FileChecker} FileChecker */
 
 /**
  * @typedef {object} Capabilities
  * @property {Command} git - A command instance for Git operations.
  * @property {FileCreator} creator - A file creator instance.
  * @property {FileDeleter} deleter - A file deleter instance.
+ * @property {FileChecker} checker - A file checker instance.
  */
 
 /**
@@ -64,17 +67,17 @@ class GitStoreClass {
  * Caveat: if you are calling commit() multiple times, they won't necessarily be consequtive.
  *
  * @param {Capabilities} capabilities - An object containing the capabilities.
- * @param {string} git_directory - The `.git` directory
  * @param {function(GitStore): Promise<void>} transformation - A function that takes a directory path and performs some operations on it
  * @returns {Promise<void>}
  */
-async function transaction(capabilities, git_directory, transformation) {
+async function transaction(capabilities, transformation) {
     const workTree = await makeTemporaryWorkTree(capabilities);
     try {
+        const git_directory = await workingRepository.getRepository(capabilities);
         const store = new GitStoreClass(workTree, capabilities);
-        await clone(capabilities, git_directory, workTree); // Use wrapper
+        await clone(capabilities, git_directory, workTree);
         await transformation(store);
-        await push(capabilities, workTree); // Use wrapper
+        await push(capabilities, workTree);
     } finally {
         await capabilities.deleter.deleteDirectory(workTree);    
     }
