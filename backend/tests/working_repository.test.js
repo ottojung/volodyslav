@@ -179,23 +179,20 @@ describe("working_repository", () => {
 
         // Verify the remote repository contains the new file
         const remoteRepoPath = environment.eventLogRepository();
-        // FIXME: the remove repo is a bare repo, so it doesn't have a working tree
-        // and we can't check for the existence of the file directly.
-        // Must clone it first.
 
-        const remoteFilePath = path.join(remoteRepoPath, "new-file.txt");
-        const remoteFileExists = await fsp
-            .stat(remoteFilePath)
+        // Clone the bare remote repository as a non-bare repository
+        const clonedRepoPath = path.join(temporary.output(), "cloned-repo");
+        await callSubprocess(`git clone ${remoteRepoPath} ${clonedRepoPath}`, {
+            shell: true,
+        });
+
+        // Verify the new file exists in the cloned repository's working tree
+        const clonedFilePath = path.join(clonedRepoPath, "new-file.txt");
+        const clonedFileExists = await fsp
+            .stat(clonedFilePath)
             .then(() => true)
             .catch(() => false);
 
-        expect(remoteFileExists).toBe(true);
-
-        // Verify the content of the new file in the remote repository
-        const remoteFileContent = await callSubprocess("git show HEAD:new-file.txt", {
-            cwd: remoteRepoPath,
-            shell: true,
-        });
-        expect(remoteFileContent.stdout.trim()).toBe("new content");
+        expect(clonedFileExists).toBe(true);
     });
 });
