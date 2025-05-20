@@ -60,6 +60,9 @@ function stubEnvironment(capabilities) {
             const dir = temporary.input();
             return path.join(dir, "diary");
         });
+    capabilities.environment.openaiAPIKey = jest
+        .fn()
+        .mockReturnValue("mocked-openai-key");
 }
 
 beforeEach(temporary.beforeEach);
