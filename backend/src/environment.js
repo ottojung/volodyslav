@@ -64,6 +64,35 @@ function eventLogRepository() {
     return getEnv("VOLODYSLAV_EVENT_LOG_REPOSITORY");
 }
 
+/**
+ * @typedef {object} Environment
+ * @property {() => string} openaiAPIKey - Returns the OpenAI API key
+ * @property {() => string} workingDirectory - Returns the working directory
+ * @property {() => number} myServerPort - Returns the server port
+ * @property {() => string} logLevel - Returns the log level
+ * @property {() => string} logFile - Returns the log file path
+ * @property {() => string} diaryAudiosDirectory - Returns the diary audio recordings directory
+ * @property {() => string} eventLogAssetsDirectory - Returns the event log assets directory
+ * @property {() => string} eventLogRepository - Returns the event log repository path
+ */
+
+/**
+ * Creates an environment capability object.
+ * @returns {Environment} - An environment capability object.
+ */
+function make() {
+    return {
+        openaiAPIKey,
+        workingDirectory,
+        myServerPort,
+        logLevel,
+        logFile,
+        diaryAudiosDirectory,
+        eventLogAssetsDirectory,
+        eventLogRepository,
+    };
+}
+
 module.exports = {
     isEnvironmentError,
     openaiAPIKey,
@@ -74,4 +103,5 @@ module.exports = {
     diaryAudiosDirectory,
     eventLogAssetsDirectory,
     eventLogRepository,
+    make,
 };

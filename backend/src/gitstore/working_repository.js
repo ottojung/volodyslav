@@ -4,7 +4,6 @@
 // that Volodyslav uses to store events in.
 //
 
-const environment = require("../environment");
 const path = require("path");
 const gitmethod = require("./wrappers");
 
@@ -12,6 +11,7 @@ const gitmethod = require("./wrappers");
 /** @typedef {import('../filesystem/creator').FileCreator} FileCreator */
 /** @typedef {import('../filesystem/deleter').FileDeleter} FileDeleter */
 /** @typedef {import('../filesystem/checker').FileChecker} FileChecker */
+/** @typedef {import('../environment').Environment} Environment */
 
 /**
  * @typedef {object} Capabilities
@@ -19,6 +19,7 @@ const gitmethod = require("./wrappers");
  * @property {FileCreator} creator - A file creator instance.
  * @property {FileDeleter} deleter - A file deleter instance.
  * @property {FileChecker} checker - A file checker instance.
+ * @property {Environment} environment - An environment instance.
  */
 
 /**
@@ -46,19 +47,21 @@ function isWorkingRepositoryError(object) {
 
 /**
  * Get local repository path.
+ * @param {Capabilities} capabilities
  * @returns {string}
  */
-function pathToLocalRepository() {
-    const wd = environment.workingDirectory();
+function pathToLocalRepository(capabilities) {
+    const wd = capabilities.environment.workingDirectory();
     return path.join(wd, "working-git-repository");
 }
 
 /** 
  * Get the path to the local repository's .git directory.
+ * @param {Capabilities} capabilities
  * @returns {string}
  */
-function pathToLocalRepositoryGitDir() {
-    return path.join(pathToLocalRepository(), ".git");
+function pathToLocalRepositoryGitDir(capabilities) {
+    return path.join(pathToLocalRepository(capabilities), ".git");
 }
 
 /**
@@ -69,10 +72,10 @@ function pathToLocalRepositoryGitDir() {
  * @throws {WorkingRepositoryError}
  */
 async function synchronize(capabilities) {
-    const gitDir = pathToLocalRepositoryGitDir();
-    const workDir = pathToLocalRepository();
+    const gitDir = pathToLocalRepositoryGitDir(capabilities);
+    const workDir = pathToLocalRepository(capabilities);
     const indexFile = path.join(gitDir, "index");
-    const remoteRepo = environment.eventLogRepository();
+    const remoteRepo = capabilities.environment.eventLogRepository();
     try {
         if (await capabilities.checker.fileExists(indexFile)) {
             await gitmethod.pull(capabilities, workDir);
@@ -98,7 +101,7 @@ async function synchronize(capabilities) {
  * @throws {WorkingRepositoryError}
  */
 async function getRepository(capabilities) {
-    const gitDir = pathToLocalRepositoryGitDir();
+    const gitDir = pathToLocalRepositoryGitDir(capabilities);
     const indexFile = path.join(gitDir, "index");
 
     if (!(await capabilities.checker.fileExists(indexFile))) {
