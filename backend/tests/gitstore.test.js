@@ -2,36 +2,21 @@ const fs = require("fs").promises;
 const path = require("path");
 const { execFileSync } = require("child_process");
 const { transaction } = require("../src/gitstore");
-const temporary = require("./temporary");
 const makeTestRepository = require("./make_test_repository");
 const defaultBranch = require("../src/gitstore/default_branch");
 const workingRepository = require("../src/gitstore/working_repository");
-const { getMockedRootCapabilities } = require("./mockCapabilities");
+const { getMockedRootCapabilities, stubEnvironment } = require("./mocked");
 
-beforeEach(temporary.beforeEach);
-afterEach(temporary.afterEach);
-
-// Mock environment exports to avoid real env dependencies
-jest.mock("../src/environment", () => {
-    const temporary = require("./temporary");
-    const path = require("path");
-    return {
-        eventLogRepository: jest.fn().mockImplementation(() => {
-            const dir = temporary.input();
-            return path.join(dir, "event_log");
-        }),
-        workingDirectory: jest.fn().mockImplementation(() => {
-            return path.join(temporary.output(), "wd");
-        }
-        ),
-    };
-});
-
-const capabilities = getMockedRootCapabilities();
+function getTestCapabilities() {
+    const capabilities = getMockedRootCapabilities();
+    stubEnvironment(capabilities);
+    return capabilities;
+}
 
 describe("gitstore", () => {
     test("transaction allows reading and writing files", async () => {
-        await makeTestRepository();
+        const capabilities = getTestCapabilities();
+        await makeTestRepository(capabilities);
         await transaction(capabilities, async (store) => {
             const workTree = await store.getWorkTree();
             const testFile = path.join(workTree, "test.txt");
@@ -58,7 +43,8 @@ describe("gitstore", () => {
     });
 
     test("transaction allows multiple commits", async () => {
-        await makeTestRepository();
+        const capabilities = getTestCapabilities();
+        await makeTestRepository(capabilities);
         await transaction(capabilities, async (store) => {
             const workTree = await store.getWorkTree();
             const testFile = path.join(workTree, "test.txt");
@@ -95,7 +81,8 @@ describe("gitstore", () => {
     });
 
     test("transaction cleans up temporary work tree", async () => {
-        await makeTestRepository();
+        const capabilities = getTestCapabilities();
+        await makeTestRepository(capabilities);
         let temporaryWorkTree;
 
         await expect(
@@ -114,7 +101,8 @@ describe("gitstore", () => {
     });
 
     test("transaction cleans up temporary work tree even if transformation fails", async () => {
-        await makeTestRepository();
+        const capabilities = getTestCapabilities();
+        await makeTestRepository(capabilities);
         let temporaryWorkTree;
 
         await expect(
