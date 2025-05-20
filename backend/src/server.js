@@ -19,6 +19,7 @@ const expressApp = require("./express_app");
 /** @typedef {import('./filesystem/creator').FileCreator} FileCreator */
 /** @typedef {import('./filesystem/checker').FileChecker} FileChecker */
 /** @typedef {import('./subprocess/command').Command} Command */
+/** @typedef {import('./environment').Environment} Environment */
 
 /**
  * @typedef {object} Capabilities
@@ -31,6 +32,7 @@ const expressApp = require("./express_app");
  * @property {FileCreator} creator - A directory creator instance.
  * @property {FileChecker} checker - A file checker instance.
  * @property {Command} git - A command instance for Git operations.
+ * @property {Environment} environment - An environment instance.
  */
 
 /**
@@ -76,7 +78,7 @@ async function initialize(capabilities, app) {
 async function startWithCapabilities(capabilities) {
     const app = expressApp.make();
     logger.enableHttpCallsLogging(app);
-    await expressApp.run(app, async (app, server) => {
+    await expressApp.run(capabilities, app, async (app, server) => {
         const address = server.address();
         logger.logInfo(
             { address },

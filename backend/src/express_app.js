@@ -1,6 +1,12 @@
 const express = require("express");
-const { myServerPort } = require("./environment");
 const { gentleWrap } = require("./gentlewrap");
+
+/** @typedef {import('./environment').Environment} Environment */
+
+/**
+ * @typedef {object} Capabilities
+ * @property {Environment} environment - An environment instance.
+ */
 
 /**
  * @returns {express.Express}
@@ -14,12 +20,13 @@ function make() {
  */
 
 /**
+ * @param {Capabilities} capabilities - An object containing the capabilities.
  * @param {express.Express} app
  * @param {(app: express.Express, server: Server) => Promise<void>} fun
  * @returns {Promise<Server>}
  */
-async function run(app, fun) {
-    const port = myServerPort();
+async function run(capabilities, app, fun) {
+    const port = capabilities.environment.myServerPort();
     const server = app.listen(port, async function () {
         try {
             const gentleFun = gentleWrap(async () => fun(app, server));

@@ -4,10 +4,16 @@
 
 const pino = require("pino").default;
 const pinoHttp = require("pino-http").default;
-const { logLevel, logFile } = require("./environment");
 const { notifyAboutError } = require("./notifications");
 const fs = require("fs").promises;
 const path = require("path");
+
+/** @typedef {import('./environment').Environment} Environment */
+
+/**
+ * @typedef {object} Capabilities
+ * @property {Environment} environment - An environment instance.
+ */
 
 /** Pino logger instance. @type {pino.Logger?} */
 let logger = null;
@@ -89,12 +95,13 @@ async function createFileTarget(filePath, errors) {
 
 /**
  * Safely gets the log level, with fallback to "debug"
+ * @param {Capabilities} capabilities - An object containing the capabilities.
  * @param {string[]} errors Array to collect error messages
  * @returns {string} The log level to use
  */
-function safeGetLogLevel(errors) {
+function safeGetLogLevel(capabilities, errors) {
     try {
-        return logLevel();
+        return capabilities.environment.logLevel();
     } catch (error) {
         const err = /** @type {Error} */ (error);
         errors.push(`Unable to get log level: ${err.message}`);
@@ -104,12 +111,13 @@ function safeGetLogLevel(errors) {
 
 /**
  * Safely gets the log file path
+ * @param {Capabilities} capabilities - An object containing the capabilities.
  * @param {string[]} errors Array to collect error messages
  * @returns {string|null} The log file path or null if not available
  */
-function safeGetLogFilePath(errors) {
+function safeGetLogFilePath(capabilities, errors) {
     try {
-        return logFile();
+        return capabilities.environment.logFile();
     } catch (error) {
         const err = /** @type {Error} */ (error);
         errors.push(`Logger setup issue: ${err.message}`);
@@ -119,10 +127,11 @@ function safeGetLogFilePath(errors) {
 
 /**
  * Sets up the logger.
+ * @param {Capabilities} capabilities - An object containing the capabilities.
  * @description Initializes the logger with the specified log level and file.
  * @returns {Promise<void>}
  */
-async function setup() {
+async function setup(capabilities) {
     /** @type {string[]} */
     const errors = [];
     /** @type {string[]} */
@@ -132,14 +141,14 @@ async function setup() {
     const targets = [];
 
     // Get log level safely
-    const logLevelValue = safeGetLogLevel(errors);
+    const logLevelValue = safeGetLogLevel(capabilities, errors);
     infos.push(`Log level set to: ${logLevelValue}`);
 
     // Always add console target
     targets.push(createConsoleTarget(logLevelValue));
 
     // Try to add file target if possible
-    const logFilePath = safeGetLogFilePath(errors);
+    const logFilePath = safeGetLogFilePath(capabilities, errors);
     if (logFilePath) {
         infos.push(`Log file path set to: ${logFilePath}`);
         const fileTarget = await createFileTarget(logFilePath, errors);

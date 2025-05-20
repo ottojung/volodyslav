@@ -11,6 +11,7 @@ const workingRepository = require('./gitstore/working_repository');
 /** @typedef {import('./filesystem/creator').FileCreator} FileCreator */
 /** @typedef {import('./filesystem/checker').FileChecker} FileChecker */
 /** @typedef {import('./subprocess/command').Command} Command */
+/** @typedef {import('./environment').Environment} Environment */
 
 /**
  * @typedef {object} Capabilities
@@ -23,6 +24,7 @@ const workingRepository = require('./gitstore/working_repository');
  * @property {FileCreator} creator - A directory creator instance.
  * @property {FileChecker} checker - A file system checker instance.
  * @property {Command} git - A command instance for Git operations.
+ * @property {Environment} environment - An environment instance.
  */
 
 /**

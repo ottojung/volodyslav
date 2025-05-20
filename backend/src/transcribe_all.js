@@ -10,6 +10,7 @@ const { transcribeFile } = require("./transcribe");
 /** @typedef {import('./filesystem/dirscanner').DirScanner} DirScanner */
 /** @typedef {import('./filesystem/writer').FileWriter} FileWriter */
 /** @typedef {import('./subprocess/command').Command} Command */
+/** @typedef {import('./environment').Environment} Environment */
 
 /**
  * @typedef {object} Capabilities
@@ -19,6 +20,7 @@ const { transcribeFile } = require("./transcribe");
  * @property {DirScanner} scanner - A directory scanner instance.
  * @property {FileWriter} writer - A file writer instance.
  * @property {Command} git - A command instance for Git operations.
+ * @property {Environment} environment - An environment instance.
  */
 
 class InputDirectoryAccess extends Error {

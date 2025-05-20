@@ -1,16 +1,16 @@
 const fs = require("fs");
 const path = require("path");
 const { OpenAI } = require("openai");
-const { openaiAPIKey } = require("./environment");
 const { makeDirectory, markDone } = require("./request_identifier");
-const memconst = require("./memconst");
 const creatorMake = require("./creator");
+const memoize = require("@emotion/memoize").default;
 
 /** @typedef {import('./random/seed').NonDeterministicSeed} NonDeterministicSeed */
 /** @typedef {import('./filesystem/creator').FileCreator} FileCreator */
 /** @typedef {import('./filesystem/checker').FileChecker} FileChecker */
 /** @typedef {import('./filesystem/writer').FileWriter} FileWriter */
 /** @typedef {import('./subprocess/command').Command} Command */
+/** @typedef {import('./environment').Environment} Environment */
 
 /** @typedef {import('./filesystem/file').ExistingFile} ExistingFile */
 
@@ -21,10 +21,11 @@ const creatorMake = require("./creator");
  * @property {FileChecker} checker - A file system checker instance.
  * @property {FileWriter} writer - A file system writer instance.
  * @property {Command} git - A command instance for Git operations (optional if not always used).
+ * @property {Environment} environment - An environment instance.
  */
 
 // Instantiate client
-const openai = memconst(() => new OpenAI({ apiKey: openaiAPIKey() }));
+const openai = memoize((/** @type {string} */ apiKey) => new OpenAI({ apiKey }));
 
 const TRANSCRIBER_MODEL = "gpt-4o-mini-transcribe";
 
@@ -74,7 +75,8 @@ function isInputNotFound(object) {
  */
 async function transcribeStream(capabilities, file_stream) {
     // Make the API call
-    const response_text = await openai().audio.transcriptions.create({
+    const apiKey = capabilities.environment.openaiAPIKey();
+    const response_text = await openai(apiKey).audio.transcriptions.create({
         file: file_stream,
         model: TRANSCRIBER_MODEL,
         response_format: "text",

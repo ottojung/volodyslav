@@ -13,6 +13,7 @@ const root = require("./capabilities/root");
 /** @typedef {import('./filesystem/appender').FileAppender} FileAppender */
 /** @typedef {import('./filesystem/creator').FileCreator} FileCreator */
 /** @typedef {import('./subprocess/command').Command} Command */
+/** @typedef {import('./environment').Environment} Environment */
 
 /**
  * @typedef {object} Capabilities
@@ -24,6 +25,7 @@ const root = require("./capabilities/root");
  * @property {FileAppender} appender - A file appender instance.
  * @property {FileCreator} creator - A directory creator instance.
  * @property {Command} git - A command instance for Git operations.
+ * @property {Environment} environment - An environment instance.
  */
 
 /**
@@ -35,9 +37,9 @@ async function printVersion(capabilities) {
 }
 
 async function entryTyped() {
-    await logger.setup();
-    const program = new commander.Command();
     const capabilities = root.make();
+    await logger.setup(capabilities);
+    const program = new commander.Command();
 
     program.name("volodyslav").description("Volodyslav Media Service CLI");
 

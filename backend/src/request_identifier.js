@@ -1,16 +1,17 @@
 const path = require("path");
 const randomModule = require("./random");
-const { workingDirectory } = require("./environment");
 
 /** @typedef {import('./random/seed').NonDeterministicSeed} NonDeterministicSeed */
 /** @typedef {import('./filesystem/creator').FileCreator} Creator */
 /** @typedef {import('./filesystem/checker').FileChecker} Checker */
+/** @typedef {import('./environment').Environment} Environment */
 
 /**
  * @typedef {object} Capabilities
  * @property {NonDeterministicSeed} seed - A random number generator instance.
  * @property {Creator} creator - A file system creator instance.
  * @property {Checker} checker - A file system checker instance.
+ * @property {Environment} environment - An environment instance.
  */
 
 class RequestIdentifierClass {
@@ -69,7 +70,7 @@ function random(capabilities) {
  * @returns {Promise<void>}
  */
 async function markDone(capabilities, reqId) {
-    const uploadDir = workingDirectory(); // This might need to use capabilities.path.join
+    const uploadDir = capabilities.environment.workingDirectory();
     await capabilities.creator.createDirectory(uploadDir);
     const target = path.join(uploadDir, reqId.identifier + ".done");
     await capabilities.creator.createFile(target);
@@ -81,7 +82,7 @@ async function markDone(capabilities, reqId) {
  * @returns {Promise<boolean>}
  */
 async function isDone(capabilities, reqId) {
-    const uploadDir = workingDirectory();
+    const uploadDir = capabilities.environment.workingDirectory();
     const target = path.join(uploadDir, reqId.identifier + ".done");
     return capabilities.checker.fileExists(target);
 }
@@ -92,7 +93,7 @@ async function isDone(capabilities, reqId) {
  * @returns {Promise<string>} - path to the target directory.
  */
 async function makeDirectory(capabilities, reqId) {
-    const uploadDir = workingDirectory();
+    const uploadDir = capabilities.environment.workingDirectory();
     const ret = path.join(uploadDir, reqId.identifier);
     await capabilities.creator.createDirectory(ret);
     return ret;
