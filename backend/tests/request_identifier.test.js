@@ -6,34 +6,15 @@ const {
     markDone,
     isDone,
 } = require("../src/request_identifier");
-const temporary = require("./temporary");
 const logger = require("../src/logger");
 
-beforeEach(temporary.beforeEach);
-afterEach(temporary.afterEach);
+const { getMockedRootCapabilities, stubEnvironment } = require("./mocked");
 
-// Mock environment exports to avoid real env dependencies
-jest.mock('../src/environment', () => {
-    const path = require('path');
-    const temporary = require('./temporary');
-    return {
-        openaiAPIKey: jest.fn().mockReturnValue('test-key'),
-        workingDirectory: jest.fn().mockImplementation(() => {
-            return path.join(temporary.output(), 'results');
-        }),
-        myServerPort: jest.fn().mockReturnValue(0),
-        logLevel: jest.fn().mockReturnValue("silent"),
-        logFile: jest.fn().mockImplementation(() => {
-            return path.join(temporary.output(), 'log.txt');
-        }),
-    };
-});
-
-const { workingDirectory } = require("../src/environment");
-const uploadDir = () => workingDirectory();
-
-const { getMockedRootCapabilities } = require('./mockCapabilities');
-const capabilities = getMockedRootCapabilities();
+function getTestCapabilities() {
+    const capabilities = getMockedRootCapabilities();
+    stubEnvironment(capabilities);
+    return capabilities;
+}
 
 describe("Request Identifier", () => {
     describe("fromRequest", () => {
@@ -60,41 +41,48 @@ describe("Request Identifier", () => {
 
     describe("makeDirectory", () => {
         it("creates directory for request identifier", async () => {
+            const capabilities = getTestCapabilities();
             await logger.setup();
             const req = { query: { request_identifier: "test123" } };
             const reqId = fromRequest(req);
             const dirPath = await makeDirectory(capabilities, reqId);
+            const uploadDir = capabilities.environment.workingDirectory();
 
             expect(fs.existsSync(dirPath)).toBe(true);
-            expect(dirPath).toBe(path.join(uploadDir(), "test123"));
+            expect(dirPath).toBe(path.join(uploadDir, "test123"));
         });
 
         it("handles special characters in request identifier", async () => {
+            const capabilities = getTestCapabilities();
             const req = { query: { request_identifier: "test#123" } };
             const reqId = fromRequest(req);
             const dirPath = await makeDirectory(capabilities, reqId);
+            const uploadDir = capabilities.environment.workingDirectory();
 
             expect(fs.existsSync(dirPath)).toBe(true);
-            expect(dirPath).toBe(path.join(uploadDir(), "test#123"));
+            expect(dirPath).toBe(path.join(uploadDir, "test#123"));
         });
     });
 
     describe("markDone and isDone", () => {
         it("creates and checks done marker", async () => {
+            const capabilities = getTestCapabilities();
             const req = { query: { request_identifier: "test123" } };
             const reqId = fromRequest(req);
+            const uploadDir = capabilities.environment.workingDirectory();
 
             await expect(isDone(capabilities, reqId)).resolves.toBe(false);
 
             await markDone(capabilities, reqId);
 
             await expect(isDone(capabilities, reqId)).resolves.toBe(true);
-            expect(fs.existsSync(path.join(uploadDir(), "test123.done"))).toBe(
+            expect(fs.existsSync(path.join(uploadDir, "test123.done"))).toBe(
                 true
             );
         });
 
         it("handles concurrent markDone calls", async () => {
+            const capabilities = getTestCapabilities();
             const req = { query: { request_identifier: "test123" } };
             const reqId = fromRequest(req);
 
