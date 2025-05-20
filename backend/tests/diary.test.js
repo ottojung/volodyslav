@@ -15,25 +15,20 @@ function getTestCapabilities() {
     return capabilities;
 }
 
+async function countLogEntries(capabilities) {
+    let length;
+    await gitstore.transaction(capabilities, async (store) => {
+        const workTree = await store.getWorkTree();
+        const objects = await readObjects(path.join(workTree, "data.json"));
+        length = objects.length;
+    });
+    return length;
+}
+
 describe("processDiaryAudios", () => {
     beforeEach(async () => {
         await logger.setup();
     });
-
-    async function countLogEntries(capabilities) {
-        let length;
-        await gitstore.transaction(
-            capabilities,
-            async (store) => {
-                const workTree = await store.getWorkTree();
-                const objects = await readObjects(
-                    path.join(workTree, "data.json")
-                );
-                length = objects.length;
-            }
-        );
-        return length;
-    }
 
     it("processes all diary audios successfully", async () => {
         const capabilities = getTestCapabilities();
@@ -61,27 +56,24 @@ describe("processDiaryAudios", () => {
         );
 
         // Event log entries committed
-        await gitstore.transaction(
-            capabilities,
-            async (store) => {
-                const workTree = await store.getWorkTree();
-                const dataPath = path.join(workTree, "data.json");
-                const objects = await readObjects(dataPath);
-                expect(objects).toHaveLength(filenames.length);
-                objects.forEach((obj, i) => {
-                    expect(obj).toEqual({
-                        id: obj.id,
-                        date: formatFileTimestamp(filenames[i]).toISOString(),
-                        original: "diary [when 0 hours ago] [audiorecording]",
-                        input: "diary [when 0 hours ago] [audiorecording]",
-                        modifiers: { when: "0 hours ago", audiorecording: "" },
-                        type: "diary",
-                        description: "",
-                        creator: expect.any(Object),
-                    });
+        await gitstore.transaction(capabilities, async (store) => {
+            const workTree = await store.getWorkTree();
+            const dataPath = path.join(workTree, "data.json");
+            const objects = await readObjects(dataPath);
+            expect(objects).toHaveLength(filenames.length);
+            objects.forEach((obj, i) => {
+                expect(obj).toEqual({
+                    id: obj.id,
+                    date: formatFileTimestamp(filenames[i]).toISOString(),
+                    original: "diary [when 0 hours ago] [audiorecording]",
+                    input: "diary [when 0 hours ago] [audiorecording]",
+                    modifiers: { when: "0 hours ago", audiorecording: "" },
+                    type: "diary",
+                    description: "",
+                    creator: expect.any(Object),
                 });
-            }
-        );
+            });
+        });
 
         // Assets copied into correct structure
         const assetsBase = capabilities.environment.eventLogAssetsDirectory();
