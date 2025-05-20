@@ -4,13 +4,15 @@
  * This is useful for tracking and debugging purposes.
  */
 
-const { logError } = require("./logger");
+/** @typedef {import("./logger").Logger} Logger */
+
 const random = require("./random");
 
 /**
  * @typedef {object} Capabilities
  * @property {import("./random/seed").NonDeterministicSeed} seed
  * @property {import("./subprocess/command").Command} git
+ * @property {Logger} logger - A logger instance.
  */
 
 /**
@@ -33,7 +35,7 @@ async function getVersion(capabilities) {
             error instanceof Object && error !== null && "message" in error
                 ? String(error.message)
                 : String(error);
-        logError({ error }, `Could not determine version: ${message}`);
+        capabilities.logger.logError({ error }, `Could not determine version: ${message}`);
         return "unknown";
     }
 }

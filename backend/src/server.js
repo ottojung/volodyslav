@@ -1,5 +1,4 @@
 const { ensureNotificationsAvailable } = require("./notifications");
-const logger = require("./logger");
 const rootRouter = require("./routes/root");
 const uploadRouter = require("./routes/upload");
 const pingRouter = require("./routes/ping");
@@ -20,6 +19,7 @@ const expressApp = require("./express_app");
 /** @typedef {import('./filesystem/checker').FileChecker} FileChecker */
 /** @typedef {import('./subprocess/command').Command} Command */
 /** @typedef {import('./environment').Environment} Environment */
+/** @typedef {import('./logger').Logger} Logger */
 
 /**
  * @typedef {object} Capabilities
@@ -33,6 +33,7 @@ const expressApp = require("./express_app");
  * @property {FileChecker} checker - A file checker instance.
  * @property {Command} git - A command instance for Git operations.
  * @property {Environment} environment - An environment instance.
+ * @property {Logger} logger - A logger instance.
  */
 
 /**
@@ -69,7 +70,7 @@ async function ensureStartupDependencies(capabilities, app) {
 async function initialize(capabilities, app) {
     await ensureStartupDependencies(capabilities, app);
     await scheduler.setup(capabilities);
-    logger.logInfo({}, "Initialization complete.");
+    capabilities.logger.logInfo({}, "Initialization complete.");
 }
 
 /**
@@ -77,10 +78,10 @@ async function initialize(capabilities, app) {
  */
 async function startWithCapabilities(capabilities) {
     const app = expressApp.make();
-    logger.enableHttpCallsLogging(app);
+    capabilities.logger.enableHttpCallsLogging(app);
     await expressApp.run(capabilities, app, async (app, server) => {
         const address = server.address();
-        logger.logInfo(
+        capabilities.logger.logInfo(
             { address },
             `Server started on ${JSON.stringify(address)}`
         );

@@ -1,8 +1,8 @@
 const express = require("express");
-const { logError, logInfo } = require("../logger");
 const { fromRequest } = require("../request_identifier");
 const { transcribeRequest, isInputNotFound } = require("../transcribe");
 
+/** @typedef {import('../logger').Logger} Logger */
 /** @typedef {import('../filesystem/creator').FileCreator} FileCreator */
 /** @typedef {import('../filesystem/checker').FileChecker} FileChecker */
 /** @typedef {import('../filesystem/writer').FileWriter} FileWriter */
@@ -18,6 +18,7 @@ const { transcribeRequest, isInputNotFound } = require("../transcribe");
  * @property {NonDeterministicSeed} seed - A random number generator instance.
  * @property {Command} git - A command instance for Git operations (optional if not always used).
  * @property {Environment} environment - An environment instance.
+ * @property {Logger} logger - A logger instance.
  */
 
 /**
@@ -32,7 +33,7 @@ async function handleTranscribeRequest(capabilities, req, res) {
     try {
         reqId = fromRequest(req);
     } catch {
-        logError(
+        capabilities.logger.logError(
             {
                 error: "Missing request identifier",
                 path: req.path,
@@ -54,7 +55,7 @@ async function handleTranscribeRequest(capabilities, req, res) {
     const query = req.query;
     const rawIn = query["input"];
     // Log the transcription request
-    logInfo(
+    capabilities.logger.logInfo(
         {
             request_identifier: reqId,
             input: rawIn,
@@ -65,7 +66,7 @@ async function handleTranscribeRequest(capabilities, req, res) {
     );
 
     if (!rawIn) {
-        logError(
+        capabilities.logger.logError(
             {
                 request_identifier: reqId,
                 error: "Missing input parameter",
@@ -89,7 +90,7 @@ async function handleTranscribeRequest(capabilities, req, res) {
         return res.status(200).json({ success: true });
     } catch (error) {
         if (isInputNotFound(error)) {
-            logError(
+            capabilities.logger.logError(
                 {
                     request_identifier: reqId,
                     error: "Input file not found",
@@ -102,7 +103,7 @@ async function handleTranscribeRequest(capabilities, req, res) {
                 .status(404)
                 .json({ success: false, error: "Input file not found" });
         } else {
-            logError(
+            capabilities.logger.logError(
                 {
                     request_identifier: reqId,
                     error:

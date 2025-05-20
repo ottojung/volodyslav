@@ -1,10 +1,6 @@
 const express = require("express");
-const { logInfo, logError } = require("../logger");
 const { fromRequest } = require("../request_identifier");
-const {
-    transcribeAllRequest,
-    InputDirectoryAccess,
-} = require("../transcribe_all");
+const { transcribeAllRequest, InputDirectoryAccess } = require("../transcribe_all");
 
 /** @typedef {import('../filesystem/creator').FileCreator} FileCreator */
 /** @typedef {import('../filesystem/checker').FileChecker} FileChecker */
@@ -13,6 +9,7 @@ const {
 /** @typedef {import('../random/seed').NonDeterministicSeed} NonDeterministicSeed */
 /** @typedef {import('../subprocess/command').Command} Command */
 /** @typedef {import('../environment').Environment} Environment */
+/** @typedef {import('../logger').Logger} Logger */
 
 /**
  * @typedef {object} Capabilities
@@ -23,6 +20,7 @@ const {
  * @property {NonDeterministicSeed} seed
  * @property {Command} git
  * @property {Environment} environment - An environment instance.
+ * @property {Logger} logger - A logger instance.
  */
 
 /**
@@ -36,7 +34,7 @@ async function handleTranscribeAllRequest(capabilities, req, res) {
     try {
         reqId = fromRequest(req);
     } catch {
-        logError(
+        capabilities.logger.logError(
             {
                 error: "Missing request identifier",
                 path: req.path,
@@ -54,7 +52,7 @@ async function handleTranscribeAllRequest(capabilities, req, res) {
     /** @type {any} */
     const query = req.query;
     const rawDir = query["input_dir"];
-    logInfo(
+    capabilities.logger.logInfo(
         {
             request_identifier: reqId,
             input_dir: rawDir,
@@ -64,7 +62,7 @@ async function handleTranscribeAllRequest(capabilities, req, res) {
         "Batch transcription request received"
     );
     if (!rawDir) {
-        logError(
+        capabilities.logger.logError(
             {
                 request_identifier: reqId,
                 error: "Missing input_dir parameter",
@@ -86,7 +84,7 @@ async function handleTranscribeAllRequest(capabilities, req, res) {
             reqId
         );
         if (result.failures.length > 0) {
-            logError(
+            capabilities.logger.logError(
                 {
                     request_identifier: reqId,
                     result,
@@ -98,14 +96,14 @@ async function handleTranscribeAllRequest(capabilities, req, res) {
                 .status(500) // Using 500 for partial failure, or 207 Multi-Status if more appropriate
                 .json({ success: false, result });
         }
-        logInfo(
+        capabilities.logger.logInfo(
             { request_identifier: reqId, result, input_dir: inputDir },
             "Batch transcription successful"
         );
         return res.json({ success: true, result });
     } catch (/** @type {unknown} */ error) {
         if (error instanceof InputDirectoryAccess) {
-            logError(
+            capabilities.logger.logError(
                 {
                     request_identifier: reqId,
                     error: error.message,
@@ -119,7 +117,7 @@ async function handleTranscribeAllRequest(capabilities, req, res) {
                 .json({ success: false, error: error.message });
         }
         // Catch-all for other errors
-        logError(
+        capabilities.logger.logError(
             {
                 request_identifier: reqId,
                 error:

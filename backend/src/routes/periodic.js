@@ -1,5 +1,4 @@
 const express = require("express");
-const { logDebug } = require("../logger");
 const { everyHour } = require("../scheduler");
 
 /** @typedef {import('../filesystem/deleter').FileDeleter} FileDeleter */
@@ -12,6 +11,7 @@ const { everyHour } = require("../scheduler");
 /** @typedef {import('../filesystem/checker').FileChecker} FileChecker */
 /** @typedef {import('../subprocess/command').Command} Command */
 /** @typedef {import('../environment').Environment} Environment */
+/** @typedef {import('../logger').Logger} Logger */
 
 /**
  * @typedef {object} Capabilities
@@ -25,6 +25,7 @@ const { everyHour } = require("../scheduler");
  * @property {FileChecker} checker
  * @property {Command} git
  * @property {Environment} environment - An environment instance.
+ * @property {Logger} logger - A logger instance.
  */
 
 /**
@@ -38,7 +39,7 @@ async function handlePeriodicRequest(capabilities, req, res) {
     const query = req.query;
     const period = query['period'];
 
-    logDebug(
+    capabilities.logger.logDebug(
         { method: req.method, url: req.originalUrl, period, client_ip: req.ip, user_agent: req.get('user-agent') },
         "Periodic endpoint called"
     );

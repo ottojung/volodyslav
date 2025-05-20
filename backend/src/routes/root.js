@@ -1,18 +1,20 @@
 const express = require("express");
-const { logInfo } = require("../logger");
+
+/** @typedef {import('../logger').Logger} Logger */
 
 /**
  * @typedef {object} Capabilities - An empty capabilities object for this route.
+ * @property {Logger} logger - A logger instance.
  */
 
 /**
  * Handles the root request.
- * @param {Capabilities} _capabilities - The capabilities object (unused in this handler).
+ * @param {Capabilities} capabilities - The capabilities object (unused in this handler).
  * @param {import('express').Request} req
  * @param {import('express').Response} res
  */
-function handleRootRequest(_capabilities, req, res) {
-    logInfo(
+function handleRootRequest(capabilities, req, res) {
+    capabilities.logger.logInfo(
         {
             method: req.method,
             url: req.originalUrl,
