@@ -196,4 +196,116 @@ describe("working_repository", () => {
 
         expect(clonedFileExists).toBe(true);
     });
+
+    test("synchronize does not overwrite existing repository", async () => {
+        await logger.setup();
+        const capabilities = getMockedRootCapabilities();
+        const localRepoPath = path.join(
+            environment.workingDirectory(),
+            "working-git-repository",
+            ".git"
+        );
+
+        // Set up a real git repo to clone from
+        await makeTestRepository();
+
+        // Execute synchronize to create the repository
+        await workingRepository.synchronize(capabilities);
+
+        // Modify the local repository
+        const newFilePath = path.join(
+            environment.workingDirectory(),
+            "working-git-repository",
+            "existing-file.txt"
+        );
+        await fsp.writeFile(newFilePath, "existing content");
+        await callSubprocess("git add existing-file.txt", {
+            cwd: path.dirname(localRepoPath),
+            shell: true,
+        });
+        await callSubprocess("git commit -m 'Add existing file'", {
+            cwd: path.dirname(localRepoPath),
+            shell: true,
+        });
+
+        // Execute synchronize again
+        await workingRepository.synchronize(capabilities);
+
+        // Verify the existing file is not overwritten
+        const existingFileContent = await fsp.readFile(newFilePath, "utf8");
+        expect(existingFileContent).toBe("existing content");
+    });
+
+    test("synchronize throws error for invalid repository path", async () => {
+        await logger.setup();
+        const capabilities = getMockedRootCapabilities();
+
+        // Mock an invalid repository path
+        const origEventLogRepo = environment.eventLogRepository;
+        environment.eventLogRepository = jest.fn().mockReturnValue("/invalid/path");
+
+        // Execute and verify error is thrown
+        await expect(
+            workingRepository.synchronize(capabilities)
+        ).rejects.toThrow("Failed to synchronize repository");
+
+        // Restore original function
+        environment.eventLogRepository = origEventLogRepo;
+    });
+
+    test("push changes to remote repository", async () => {
+        await logger.setup();
+        const capabilities = getMockedRootCapabilities();
+        const localRepoPath = path.join(
+            environment.workingDirectory(),
+            "working-git-repository",
+            ".git"
+        );
+
+        // Set up a real git repo to clone from
+        await makeTestRepository();
+
+        // Execute synchronize
+        await workingRepository.synchronize(capabilities);
+
+        // Modify the local repository
+        const newFilePath = path.join(
+            environment.workingDirectory(),
+            "working-git-repository",
+            "pushed-file.txt"
+        );
+        await fsp.writeFile(newFilePath, "pushed content");
+        await callSubprocess("git add pushed-file.txt", {
+            cwd: path.dirname(localRepoPath),
+            shell: true,
+        });
+        await callSubprocess("git commit -m 'Add pushed file'", {
+            cwd: path.dirname(localRepoPath),
+            shell: true,
+        });
+        await callSubprocess("git push origin", {
+            cwd: path.dirname(localRepoPath),
+            shell: true,
+        });
+
+        // Clone the remote repository to verify the pushed changes
+        const remoteRepoPath = environment.eventLogRepository();
+        const clonedRepoPath = path.join(temporary.output(), "cloned-repo");
+        await callSubprocess(`git clone --branch ${defaultBranch} ${remoteRepoPath} ${clonedRepoPath}`, {
+            shell: true,
+        });
+
+        // Verify the pushed file exists in the cloned repository
+        const clonedFilePath = path.join(clonedRepoPath, "pushed-file.txt");
+        const clonedFileExists = await fsp
+            .stat(clonedFilePath)
+            .then(() => true)
+            .catch(() => false);
+
+        expect(clonedFileExists).toBe(true);
+
+        // Verify the content of the pushed file
+        const clonedFileContent = await fsp.readFile(clonedFilePath, "utf8");
+        expect(clonedFileContent).toBe("pushed content");
+    });
 });
