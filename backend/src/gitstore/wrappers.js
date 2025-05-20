@@ -160,5 +160,4 @@ module.exports = {
     clone,
     pull,
     push,
-    GitUnavailable,
 };
