@@ -19,8 +19,8 @@ const environmentCapability = require("../environment");
 /**
  * This structure collects maximum capabilities that any part of Volodyslav can access.
  * It is supposed to be initialized at the main entry to Volodyslav, and then passed down the call stack.
- * It should be a pure, well-behaved, non-throwing function
- * - because it is required for everything else in Volodyslav to work, including error reporting.
+ * It should be a pure, well-behaved, non-throwing function,
+ * because it is required for everything else in Volodyslav to work, including error reporting.
  */
 const make = memconst(() => {
     return {
