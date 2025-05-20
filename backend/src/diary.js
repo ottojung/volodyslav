@@ -16,6 +16,7 @@ const creatorMake = require("./creator");
 /** @typedef {import('./filesystem/appender').FileAppender} FileAppender */
 /** @typedef {import('./filesystem/creator').FileCreator} FileCreator */
 /** @typedef {import('./filesystem/file').ExistingFile} ExistingFile */
+/** @typedef {import('./filesystem/checker').FileChecker} FileChecker */
 /** @typedef {import('./subprocess/command').Command} Command */
 
 /**
@@ -27,6 +28,7 @@ const creatorMake = require("./creator");
  * @property {FileWriter} writer - A file writer instance.
  * @property {FileAppender} appender - A file appender instance.
  * @property {FileCreator} creator - A directory creator instance.
+ * @property {FileChecker} checker - A file checker instance.
  * @property {Command} git - A command instance for Git operations.
  */
 
