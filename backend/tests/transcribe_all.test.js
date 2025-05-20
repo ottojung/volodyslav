@@ -1,28 +1,17 @@
 const path = require("path");
 const fs = require("fs");
 const request = require("supertest");
-const temporary = require("./temporary");
 const { addRoutes } = require("../src/server");
+const { transcribeFile } = require("../src/transcribe");
+const expressApp = require("../src/express_app");
+const logger = require("../src/logger");
+const { getMockedRootCapabilities, stubEnvironment } = require("./mocked");
 
-beforeEach(temporary.beforeEach);
-afterEach(temporary.afterEach);
-
-// Mock environment exports to avoid real env dependencies
-jest.mock("../src/environment", () => {
-    const path = require("path");
-    const temporary = require("./temporary");
-    return {
-        openaiAPIKey: jest.fn().mockReturnValue("test-key"),
-        workingDirectory: jest.fn().mockImplementation(() => {
-            return path.join(temporary.output(), "results");
-        }),
-        myServerPort: jest.fn().mockReturnValue(0),
-        logLevel: jest.fn().mockReturnValue("silent"),
-        logFile: jest.fn().mockImplementation(() => {
-            return path.join(temporary.output(), "log.txt");
-        }),
-    };
-});
+function getTestCapabilities() {
+    const capabilities = getMockedRootCapabilities();
+    stubEnvironment(capabilities);
+    return capabilities;
+}
 
 // Use real app, but stub transcribeFile
 jest.mock("../src/transcribe", () => {
@@ -33,17 +22,7 @@ jest.mock("../src/transcribe", () => {
     };
 });
 
-const { transcribeFile } = require("../src/transcribe");
-const expressApp = require("../src/express_app");
-const logger = require("../src/logger");
-const { workingDirectory } = require("../src/environment");
-
-const uploadDir = () => workingDirectory();
-
-const { getMockedRootCapabilities } = require('./mockCapabilities');
-const capabilities = getMockedRootCapabilities();
-
-async function makeApp() {
+async function makeApp(capabilities) {
     const app = expressApp.make();
     await logger.setup();
     logger.enableHttpCallsLogging(app);
@@ -56,7 +35,8 @@ describe("GET /api/transcribe_all", () => {
     const reqId = "batch123";
 
     it("returns 400 when request_identifier missing", async () => {
-        const app = await makeApp();
+        const capabilities = getTestCapabilities();
+        const app = await makeApp(capabilities);
         const res = await request(app).get(base);
         expect(res.status).toBe(400);
         expect(res.body).toEqual({
@@ -66,7 +46,8 @@ describe("GET /api/transcribe_all", () => {
     });
 
     it("returns 400 when input_dir missing", async () => {
-        const app = await makeApp();
+        const capabilities = getTestCapabilities();
+        const app = await makeApp(capabilities);
         const res = await request(app)
             .get(base)
             .query({ request_identifier: reqId });
@@ -78,7 +59,8 @@ describe("GET /api/transcribe_all", () => {
     });
 
     it("returns 404 when input_dir does not exist", async () => {
-        const app = await makeApp();
+        const capabilities = getTestCapabilities();
+        const app = await makeApp(capabilities);
         const res = await request(app)
             .get(base)
             .query({ request_identifier: reqId, input_dir: "/no/such/dir" });
@@ -90,10 +72,11 @@ describe("GET /api/transcribe_all", () => {
     });
 
     it("aggregates successes and failures and returns 500", async () => {
-        const app = await makeApp();
+        const capabilities = getTestCapabilities();
+        const app = await makeApp(capabilities);
+        const uploadDir = capabilities.environment.workingDirectory();
         // Prepare three files: a.mp4, b.mp4, c.mp4
-        const tmp = path.join(temporary.input(), "mixed");
-        fs.mkdirSync(tmp, { recursive: true });
+        const tmp = await capabilities.creator.createTemporaryDirectory(capabilities);
         ["a.mp4", "b.mp4", "c.mp4"].forEach((f) =>
             fs.writeFileSync(path.join(tmp, f), "")
         );
@@ -113,7 +96,7 @@ describe("GET /api/transcribe_all", () => {
         expect(res.status).toBe(500);
         const expectedSuccesses = ["a.mp4", "c.mp4"].map((fname) => ({
             source: { path: path.join(tmp, fname) }, 
-            target: { path: path.join(uploadDir(), reqId, `${fname}.json`) }, // Changed targetPath to target: { path: ... }
+            target: { path: path.join(uploadDir, reqId, `${fname}.json`) }, // Changed targetPath to target: { path: ... }
         })); 
         expect(res.body).toEqual({
             success: false,
@@ -124,14 +107,16 @@ describe("GET /api/transcribe_all", () => {
         });
 
         // Even with failures, .done file should be created
-        const doneFlag = path.join(uploadDir(), reqId + ".done");
+        const doneFlag = path.join(uploadDir, reqId + ".done");
         expect(fs.existsSync(doneFlag)).toBe(true);
     });
 
     it("succeeds when all files transcribe", async () => {
-        const app = await makeApp();
+        const capabilities = getTestCapabilities();    
+        const app = await makeApp(capabilities);
+        const uploadDir = capabilities.environment.workingDirectory();
         // Prepare mp4 files
-        const tmp = path.join(temporary.input(), "all");
+        const tmp = await capabilities.creator.createTemporaryDirectory(capabilities);
         fs.mkdirSync(tmp, { recursive: true });
         ["x.mp4", "y.mp4"].forEach((f) =>
             fs.writeFileSync(path.join(tmp, f), "")
@@ -146,14 +131,14 @@ describe("GET /api/transcribe_all", () => {
         expect(res.status).toBe(200);
         const expectedAllSuccesses = ["x.mp4", "y.mp4"].map((fname) => ({
             source: { path: path.join(tmp, fname) }, 
-            target: { path: path.join(uploadDir(), reqId, `${fname}.json`) }, // Changed targetPath to target: { path: ... }
+            target: { path: path.join(uploadDir, reqId, `${fname}.json`) }, // Changed targetPath to target: { path: ... }
         })); 
         expect(res.body).toEqual({
             success: true,
             result: { successes: expectedAllSuccesses, failures: [] },
         });
         // Check that .done file exists
-        const doneFlag = path.join(uploadDir(), reqId + ".done");
+        const doneFlag = path.join(uploadDir, reqId + ".done");
         expect(fs.existsSync(doneFlag)).toBe(true);
     });
 });
