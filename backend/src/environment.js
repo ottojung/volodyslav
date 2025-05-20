@@ -1,3 +1,18 @@
+/**
+ * This module handles environment variable retrieval and validation.
+ */
+
+/**
+ * @typedef {object} Environment
+ * @property {() => string} openaiAPIKey
+ * @property {() => string} workingDirectory
+ * @property {() => number} myServerPort
+ * @property {() => string} logLevel
+ * @property {() => string} logFile
+ * @property {() => string} diaryAudiosDirectory
+ * @property {() => string} eventLogAssetsDirectory
+ * @property {() => string} eventLogRepository
+ */
 
 class EnvironmentError extends Error {
     /**
@@ -64,14 +79,24 @@ function eventLogRepository() {
     return getEnv("VOLODYSLAV_EVENT_LOG_REPOSITORY");
 }
 
+/**
+ * Creates an environment object with all the necessary environment variables.
+ * @returns {Environment}
+ */
+function make() {
+    return {
+        openaiAPIKey,
+        workingDirectory,
+        myServerPort,
+        logLevel,
+        logFile,
+        diaryAudiosDirectory,
+        eventLogAssetsDirectory,
+        eventLogRepository,
+    };
+}
+
 module.exports = {
     isEnvironmentError,
-    openaiAPIKey,
-    workingDirectory,
-    myServerPort,
-    logLevel,
-    logFile,
-    diaryAudiosDirectory,
-    eventLogAssetsDirectory,
-    eventLogRepository,
+    make,
 };

@@ -1,8 +1,17 @@
 const path = require("path");
-const { eventLogAssetsDirectory } = require("../environment");
+
+/** @typedef {import('./structure').Event} Event */
+/** @typedef {import('../filesystem/file').ExistingFile} ExistingFile */
+
+/** @typedef {import('../environment').Environment} Environment */
+
+/**
+ * @typedef {object} Capabilities
+ * @property {Environment} environment - An environment instance.
+ */
 
 class AssetClass {
-    /** @type {import('./structure').Event} */
+    /** @type {Event} */
     event;
 
     /** @type {ExistingFile} */
@@ -30,11 +39,10 @@ class AssetClass {
 }
 
 /** @typedef {AssetClass} Asset */
-/** @typedef {import('../filesystem/file').ExistingFile} ExistingFile */
 
 /**
  * Primary constructor for Asset.
- * @param {import('./structure').Event} event
+ * @param {Event} event
  * @param {ExistingFile} file
  * @returns {Asset}
  */
@@ -44,11 +52,12 @@ function make(event, file) {
 }
 
 /**
+ * @param {Capabilities} capabilities
  * @param {Asset} asset
  * @returns {string}
  */
-function targetPath(asset) {
-    const baseDir = eventLogAssetsDirectory();
+function targetPath(capabilities, asset) {
+    const baseDir = capabilities.environment.eventLogAssetsDirectory();
     const date = asset.event.date;
     const year = date.getFullYear();
     const month = String(date.getMonth() + 1).padStart(2, "0");

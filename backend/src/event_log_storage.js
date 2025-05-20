@@ -23,6 +23,7 @@ const { targetPath } = require("./event/asset");
 /** @typedef {import('./filesystem/file').ExistingFile} ExistingFile */
 /** @typedef {import('./filesystem/checker').FileChecker} FileChecker */
 /** @typedef {import('./subprocess/command').Command} Command */
+/** @typedef {import('./environment').Environment} Environment */
 
 /**
  * @typedef {object} Capabilities
@@ -33,6 +34,7 @@ const { targetPath } = require("./event/asset");
  * @property {FileCreator} creator - A directory creator instance.
  * @property {FileChecker} checker - A file checker instance.
  * @property {Command} git - A command instance for Git operations.
+ * @property {Environment} environment - An environment instance.
  */
 
 /**
@@ -133,7 +135,7 @@ async function appendEntriesToFile(capabilities, file, entries) {
  */
 async function copyAssets(capabilities, assets) {
     for (const asset of assets) {
-        const target = targetPath(asset);
+        const target = targetPath(capabilities, asset);
         const targetDir = path.dirname(target);
         await capabilities.creator.createDirectory(targetDir);
         await capabilities.copier.copyFile(asset.file, target);
@@ -182,17 +184,17 @@ async function performGitTransaction(
 
 /**
  * Cleans up all copied assets by removing their files.
- * @param {FileDeleter} deleter - A file deleter instance.
+ * @param {Capabilities} capabilities - An object containing the capabilities.
  * @param {EventLogStorage} eventLogStorage - The storage containing asset references.
  * @returns {Promise<void>}
  */
-async function cleanupAssets(deleter, eventLogStorage) {
+async function cleanupAssets(capabilities, eventLogStorage) {
     const assets = eventLogStorage.getNewAssets();
     for (const asset of assets) {
         // determine path of copied asset and attempt removal
-        const assetPath = targetPath(asset);
+        const assetPath = targetPath(capabilities, asset);
         try {
-            await deleter.deleteFile(assetPath);
+            await capabilities.deleter.deleteFile(assetPath);
         } catch {
             logWarning(
                 {
@@ -221,7 +223,7 @@ async function transaction(capabilities, transformation) {
         );
     } catch (error) {
         // If anything goes wrong, clean up all copied assets and rethrow.
-        await cleanupAssets(capabilities.deleter, eventLogStorage);
+        await cleanupAssets(capabilities, eventLogStorage);
         throw error;
     }
 }

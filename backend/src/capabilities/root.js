@@ -14,6 +14,7 @@ const writerCapability = require("../filesystem/writer");
 const appendCapability = require("../filesystem/appender");
 const checkerCapability = require("../filesystem/checker");
 const gitCapability = require("../executables").git;
+const environmentCapability = require("../environment");
 
 const make = memconst(() => {
     return {
@@ -26,6 +27,7 @@ const make = memconst(() => {
         appender: appendCapability.make(),
         checker: checkerCapability.make(),
         git: gitCapability,
+        environment: environmentCapability.make(),
     };
 });
 

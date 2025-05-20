@@ -1,7 +1,6 @@
 const path = require("path");
 const { formatFileTimestamp } = require("./format_time_stamp");
 const { logError, logWarning, logInfo } = require("./logger");
-const { diaryAudiosDirectory } = require("./environment");
 const { transaction } = require("./event_log_storage");
 const eventId = require("./event/id");
 const asset = require("./event/asset");
@@ -18,6 +17,7 @@ const creatorMake = require("./creator");
 /** @typedef {import('./filesystem/file').ExistingFile} ExistingFile */
 /** @typedef {import('./filesystem/checker').FileChecker} FileChecker */
 /** @typedef {import('./subprocess/command').Command} Command */
+/** @typedef {import('./environment').Environment} Environment */
 
 /**
  * @typedef {object} Capabilities
@@ -30,6 +30,7 @@ const creatorMake = require("./creator");
  * @property {FileCreator} creator - A directory creator instance.
  * @property {FileChecker} checker - A file checker instance.
  * @property {Command} git - A command instance for Git operations.
+ * @property {Environment} environment - An environment instance.
  */
 
 /**
@@ -40,7 +41,7 @@ const creatorMake = require("./creator");
  * @returns {Promise<void>} - A promise that resolves when processing is complete.
  */
 async function processDiaryAudios(capabilities) {
-    const diaryAudiosDir = diaryAudiosDirectory();
+    const diaryAudiosDir = capabilities.environment.diaryAudiosDirectory();
     const inputFiles = await capabilities.scanner.scanDirectory(diaryAudiosDir);
     const creator = await creatorMake(capabilities);
 
