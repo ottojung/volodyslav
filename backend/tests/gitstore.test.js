@@ -58,8 +58,8 @@ describe("gitstore", () => {
     });
 
     test("transaction allows multiple commits", async () => {
-        const { gitDir } = await makeTestRepository();
-        await transaction(capabilities, gitDir, async (store) => {
+        await makeTestRepository();
+        await transaction(capabilities, async (store) => {
             const workTree = await store.getWorkTree();
             const testFile = path.join(workTree, "test.txt");
 
@@ -72,6 +72,8 @@ describe("gitstore", () => {
             await store.commit("Second modification");
         });
 
+        // Verify the changes were committed by reading directly from the repo
+        const gitDir = await workingRepository.getRepository(capabilities);
         const commitCount = execFileSync("git", [
             "--git-dir",
             gitDir,
@@ -93,11 +95,11 @@ describe("gitstore", () => {
     });
 
     test("transaction cleans up temporary work tree", async () => {
-        const { gitDir } = await makeTestRepository();
+        await makeTestRepository();
         let temporaryWorkTree;
 
         await expect(
-            transaction(capabilities, gitDir, async (store) => {
+            transaction(capabilities, async (store) => {
                 temporaryWorkTree = await store.getWorkTree(); // Get the work tree to create it
                 await expect(
                     fs.access(temporaryWorkTree)
@@ -112,11 +114,11 @@ describe("gitstore", () => {
     });
 
     test("transaction cleans up temporary work tree even if transformation fails", async () => {
-        const { gitDir } = await makeTestRepository();
+        await makeTestRepository();
         let temporaryWorkTree;
 
         await expect(
-            transaction(capabilities, gitDir, async (store) => {
+            transaction(capabilities, async (store) => {
                 temporaryWorkTree = await store.getWorkTree(); // Get the work tree to create it
                 await expect(
                     fs.access(temporaryWorkTree)
