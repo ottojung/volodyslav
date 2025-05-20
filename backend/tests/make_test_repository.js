@@ -8,6 +8,20 @@ const defaultBranch = require("../src/gitstore/default_branch");
 
 const callSubprocess = promisify(execFile);
 
+/**
+ * Creates a test repository for use in tests.
+ * 
+ * This function initializes a bare git repository and a worktree,
+ * adds some content to the worktree, and commits it.
+ * The content is then pushed to the bare repository.
+ * 
+ * Note that this function does not return anything.
+ * This is because all the paths are derived from conventions in the source code.
+ * I.e. the test repository is always created in the same location
+ *  - the location that is later used throughout the implementation code.
+ *
+ * @returns {Promise<void>} A promise that resolves when the repository is created.
+ */
 async function makeTestRepository() {
     // Let eventLogRepository be our test repository
     const gitDir = eventLogRepository();

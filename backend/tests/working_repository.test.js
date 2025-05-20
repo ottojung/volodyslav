@@ -5,6 +5,9 @@ const temporary = require("./temporary");
 const { getMockedRootCapabilities } = require("./mockCapabilities");
 const logger = require("../src/logger");
 const makeTestRepository = require("./make_test_repository");
+const { promisify } = require("util");
+const { execFile } = require("child_process");
+const callSubprocess = promisify(execFile);
 
 beforeEach(temporary.beforeEach);
 afterEach(temporary.afterEach);
@@ -137,5 +140,62 @@ describe("working_repository", () => {
 
         // Restore original function
         require("../src/environment").eventLogRepository = origEventLogRepo;
+    });
+
+    test("synchronize updates remote repository with local changes", async () => {
+        await logger.setup();
+        const capabilities = getMockedRootCapabilities();
+        const localRepoPath = path.join(
+            environment.workingDirectory(),
+            "working-git-repository",
+            ".git"
+        );
+
+        // Set up a real git repo to clone from
+        await makeTestRepository();
+
+        // Execute synchronize
+        await workingRepository.synchronize(capabilities);
+
+        // Modify the local repository
+        const newFilePath = path.join(
+            environment.workingDirectory(),
+            "working-git-repository",
+            "new-file.txt"
+        );
+        await fsp.writeFile(newFilePath, "new content");
+        await callSubprocess("git add new-file.txt", {
+            cwd: path.dirname(localRepoPath),
+            shell: true,
+        });
+        await callSubprocess("git commit -m 'Add new file'", {
+            cwd: path.dirname(localRepoPath),
+            shell: true,
+        });
+        await callSubprocess("git push origin", {
+            cwd: path.dirname(localRepoPath),
+            shell: true,
+        });
+
+        // Verify the remote repository contains the new file
+        const remoteRepoPath = environment.eventLogRepository();
+        // FIXME: the remove repo is a bare repo, so it doesn't have a working tree
+        // and we can't check for the existence of the file directly.
+        // Must clone it first.
+
+        const remoteFilePath = path.join(remoteRepoPath, "new-file.txt");
+        const remoteFileExists = await fsp
+            .stat(remoteFilePath)
+            .then(() => true)
+            .catch(() => false);
+
+        expect(remoteFileExists).toBe(true);
+
+        // Verify the content of the new file in the remote repository
+        const remoteFileContent = await callSubprocess("git show HEAD:new-file.txt", {
+            cwd: remoteRepoPath,
+            shell: true,
+        });
+        expect(remoteFileContent.stdout.trim()).toBe("new content");
     });
 });
