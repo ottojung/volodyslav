@@ -20,7 +20,13 @@
 const fs = require("fs").promises;
 const path = require("path");
 const { makeEmpty } = require("./file");
-const { workingDirectory } = require("../environment");
+
+/** @typedef {import('../environment').Environment} Environment */
+
+/**
+ * @typedef {object} Capabilities
+ * @property {Environment} environment - An environment instance.
+ */
 
 class FileCreatorError extends Error {
     /**
@@ -89,10 +95,11 @@ async function createDirectory(dirPath) {
 
 /**
  * Creates a temporary directory in the system's temporary folder.
+ * @param {Capabilities} capabilities - The capabilities instance.
  * @returns {Promise<string>} - A promise that resolves with the path to the created temporary directory.
  */
-async function createTemporaryDirectory() {
-    const tmpDir = workingDirectory();
+async function createTemporaryDirectory(capabilities) {
+    const tmpDir = capabilities.environment.workingDirectory();
     const uniquePrefix = path.join(tmpDir, "tmp-");
     try {
         await fs.mkdir(tmpDir, { recursive: true });

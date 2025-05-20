@@ -11,6 +11,7 @@ const { everyHour } = require("../scheduler");
 /** @typedef {import('../filesystem/creator').FileCreator} FileCreator */
 /** @typedef {import('../filesystem/checker').FileChecker} FileChecker */
 /** @typedef {import('../subprocess/command').Command} Command */
+/** @typedef {import('../environment').Environment} Environment */
 
 /**
  * @typedef {object} Capabilities
@@ -23,6 +24,7 @@ const { everyHour } = require("../scheduler");
  * @property {FileCreator} creator
  * @property {FileChecker} checker
  * @property {Command} git
+ * @property {Environment} environment - An environment instance.
  */
 
 /**

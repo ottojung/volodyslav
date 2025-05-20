@@ -6,12 +6,14 @@ const { fromRequest, markDone } = require('../request_identifier');
 /** @typedef {import('../random/seed').NonDeterministicSeed} NonDeterministicSeed */
 /** @typedef {import('../filesystem/creator').FileCreator} Creator */
 /** @typedef {import('../filesystem/checker').FileChecker} Checker */
+/** @typedef {import('../environment').Environment} Environment */
 
 /**
  * @typedef {object} Capabilities
  * @property {NonDeterministicSeed} seed - A random number generator instance.
  * @property {Creator} creator - A file system creator instance.
  * @property {Checker} checker - A file system checker instance.
+ * @property {Environment} environment - An environment instance.
  */
 
 /**

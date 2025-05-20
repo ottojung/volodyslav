@@ -6,6 +6,7 @@ const workingRepository = require("./working_repository");
 /** @typedef {import('../filesystem/creator').FileCreator} FileCreator */
 /** @typedef {import('../filesystem/deleter').FileDeleter} FileDeleter */
 /** @typedef {import('../filesystem/checker').FileChecker} FileChecker */
+/** @typedef {import('../environment').Environment} Environment */
 
 /**
  * @typedef {object} Capabilities
@@ -13,6 +14,7 @@ const workingRepository = require("./working_repository");
  * @property {FileCreator} creator - A file creator instance.
  * @property {FileDeleter} deleter - A file deleter instance.
  * @property {FileChecker} checker - A file checker instance.
+ * @property {Environment} environment - An environment instance.
  */
 
 /**
@@ -21,7 +23,7 @@ const workingRepository = require("./working_repository");
  * @returns {Promise<string>} - A promise that resolves to the path of the temporary work tree.
  */
 async function makeTemporaryWorkTree(capabilities) {
-    return capabilities.creator.createTemporaryDirectory();
+    return capabilities.creator.createTemporaryDirectory(capabilities);
 }
 
 class GitStoreClass {

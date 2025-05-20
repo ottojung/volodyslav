@@ -12,6 +12,7 @@ const {
 /** @typedef {import('../filesystem/writer').FileWriter} FileWriter */
 /** @typedef {import('../random/seed').NonDeterministicSeed} NonDeterministicSeed */
 /** @typedef {import('../subprocess/command').Command} Command */
+/** @typedef {import('../environment').Environment} Environment */
 
 /**
  * @typedef {object} Capabilities
@@ -21,6 +22,7 @@ const {
  * @property {FileWriter} writer
  * @property {NonDeterministicSeed} seed
  * @property {Command} git
+ * @property {Environment} environment - An environment instance.
  */
 
 /**

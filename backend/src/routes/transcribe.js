@@ -8,6 +8,7 @@ const { transcribeRequest, isInputNotFound } = require("../transcribe");
 /** @typedef {import('../filesystem/writer').FileWriter} FileWriter */
 /** @typedef {import('../random/seed').NonDeterministicSeed} NonDeterministicSeed */
 /** @typedef {import('../subprocess/command').Command} Command */
+/** @typedef {import('../environment').Environment} Environment */
 
 /**
  * @typedef {object} Capabilities
@@ -16,6 +17,7 @@ const { transcribeRequest, isInputNotFound } = require("../transcribe");
  * @property {FileWriter} writer - A file writer instance.
  * @property {NonDeterministicSeed} seed - A random number generator instance.
  * @property {Command} git - A command instance for Git operations (optional if not always used).
+ * @property {Environment} environment - An environment instance.
  */
 
 /**
