@@ -1,29 +1,14 @@
 const expressApp = require("../src/express_app");
 const request = require("supertest");
 const { initialize } = require("../src/server");
-const temporary = require("./temporary");
 const logger = require("../src/logger");
-const { getMockedRootCapabilities } = require("./mockCapabilities");
+const { getMockedRootCapabilities, stubEnvironment } = require("./mocked");
 
-beforeEach(temporary.beforeEach);
-afterEach(temporary.afterEach);
-
-// Mock environment exports to avoid real env dependencies
-jest.mock("../src/environment", () => {
-    const path = require("path");
-    const temporary = require("./temporary");
-    return {
-        openaiAPIKey: jest.fn().mockReturnValue("test-key"),
-        workingDirectory: jest.fn().mockImplementation(() => {
-            return path.join(temporary.output(), "results");
-        }),
-        myServerPort: jest.fn().mockReturnValue(0),
-        logLevel: jest.fn().mockReturnValue("debug"),
-        logFile: jest.fn().mockImplementation(() => {
-            return path.join(temporary.output(), "log.txt");
-        }),
-    };
-});
+function getTestCapabilities() {
+    const capabilities = getMockedRootCapabilities();
+    stubEnvironment(capabilities);
+    return capabilities;
+}
 
 // Mock only the TermuxNotificationCommand in notifications, preserving other functionality
 jest.mock("../src/executables", () => {
@@ -41,8 +26,6 @@ jest.mock("../src/scheduler", () => {
     };
 });
 
-const capabilities = getMockedRootCapabilities();
-
 describe("Startup Dependencies", () => {
     beforeEach(() => {
         // Reset all mocks before each test
@@ -51,6 +34,7 @@ describe("Startup Dependencies", () => {
     });
 
     it("sets up HTTP call logging and handles requests correctly", async () => {
+        const capabilities = getTestCapabilities();
         await logger.setup();
         const app = expressApp.make();
         await initialize(capabilities, app);
@@ -62,6 +46,7 @@ describe("Startup Dependencies", () => {
     });
 
     it("throws if notifications are not available", async () => {
+        const capabilities = getTestCapabilities();
         await logger.setup();
         const app = expressApp.make();
         await jest.isolateModules(async () => {
@@ -70,23 +55,6 @@ describe("Startup Dependencies", () => {
                 const { registerCommand } = require("../src/subprocess");
                 return {
                     termuxNotification: registerCommand("nonexistent-command"),
-                };
-            });
-
-            // Mock environment exports to avoid real env dependencies
-            jest.mock("../src/environment", () => {
-                const path = require("path");
-                const temporary = require("./temporary");
-                return {
-                    openaiAPIKey: jest.fn().mockReturnValue("test-key"),
-                    workingDirectory: jest.fn().mockImplementation(() => {
-                        return path.join(temporary.output(), "results");
-                    }),
-                    myServerPort: jest.fn().mockReturnValue(0),
-                    logLevel: jest.fn().mockReturnValue("silent"),
-                    logFile: jest.fn().mockImplementation(() => {
-                        return path.join(temporary.output(), "log.txt");
-                    }),
                 };
             });
 
