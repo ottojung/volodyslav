@@ -1,6 +1,5 @@
 const path = require("path");
 const { formatFileTimestamp } = require("./format_time_stamp");
-const { logError, logWarning, logInfo } = require("./logger");
 const { transaction } = require("./event_log_storage");
 const eventId = require("./event/id");
 const asset = require("./event/asset");
@@ -18,6 +17,7 @@ const creatorMake = require("./creator");
 /** @typedef {import('./filesystem/checker').FileChecker} FileChecker */
 /** @typedef {import('./subprocess/command').Command} Command */
 /** @typedef {import('./environment').Environment} Environment */
+/** @typedef {import('./logger').Logger} Logger */
 
 /**
  * @typedef {object} Capabilities
@@ -31,6 +31,7 @@ const creatorMake = require("./creator");
  * @property {FileChecker} checker - A file checker instance.
  * @property {Command} git - A command instance for Git operations.
  * @property {Environment} environment - An environment instance.
+ * @property {Logger} logger - A logger instance.
  */
 
 /**
@@ -94,14 +95,14 @@ async function processDiaryAudios(capabilities) {
 
     successes.forEach((ass) => {
         const filename = path.basename(ass.file.path);
-        logInfo(
+        capabilities.logger.logInfo(
             { filename },
             `Diary audio ${JSON.stringify(filename)} processed`
         );
     });
 
     failures.forEach((failure) => {
-        logError(
+        capabilities.logger.logError(
             {
                 file: failure.file.path,
                 error: failure.message,
@@ -139,7 +140,7 @@ async function deleteOriginalAudios(capabilities, successes, diaryAudiosDir) {
     for (const ass of successes) {
         try {
             await capabilities.deleter.deleteFile(ass.file.path);
-            logInfo(
+            capabilities.logger.logInfo(
                 {
                     file: path.basename(ass.file.path),
                     directory: diaryAudiosDir,
@@ -151,7 +152,7 @@ async function deleteOriginalAudios(capabilities, successes, diaryAudiosDir) {
                 error instanceof Object && error !== null && "message" in error
                     ? error.message
                     : String(error);
-            logWarning(
+            capabilities.logger.logWarning(
                 {
                     file: path.basename(ass.file.path),
                     error: msg,

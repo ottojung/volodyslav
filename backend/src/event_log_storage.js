@@ -12,8 +12,6 @@ const path = require("path");
 const { fromExisting } = require("./filesystem/file");
 const gitstore = require("./gitstore");
 const event = require("./event");
-const { logWarning } = require("./logger");
-const { targetPath } = require("./event/asset");
 
 /** @typedef {import('./filesystem/deleter').FileDeleter} FileDeleter */
 /** @typedef {import('./filesystem/copier').FileCopier} FileCopier */
@@ -24,6 +22,7 @@ const { targetPath } = require("./event/asset");
 /** @typedef {import('./filesystem/checker').FileChecker} FileChecker */
 /** @typedef {import('./subprocess/command').Command} Command */
 /** @typedef {import('./environment').Environment} Environment */
+/** @typedef {import('./logger').Logger} Logger */
 
 /**
  * @typedef {object} Capabilities
@@ -35,6 +34,7 @@ const { targetPath } = require("./event/asset");
  * @property {FileChecker} checker - A file checker instance.
  * @property {Command} git - A command instance for Git operations.
  * @property {Environment} environment - An environment instance.
+ * @property {Logger} logger - A logger instance.
  */
 
 /**
@@ -196,7 +196,7 @@ async function cleanupAssets(capabilities, eventLogStorage) {
         try {
             await capabilities.deleter.deleteFile(assetPath);
         } catch {
-            logWarning(
+            capabilities.logger.logWarning(
                 {
                     file: assetPath,
                     error: "error occurred",
@@ -227,5 +227,7 @@ async function transaction(capabilities, transformation) {
         throw error;
     }
 }
+
+const { targetPath } = require("./event/asset");
 
 module.exports = { transaction };
