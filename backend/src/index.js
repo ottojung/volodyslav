@@ -1,6 +1,5 @@
 const { gentleWrap } = require("./gentlewrap");
 const { start } = require("./server");
-const logger = require("./logger");
 const commander = require("commander");
 const runtimeIdentifier = require("./runtime_identifier");
 const root = require("./capabilities/root");
@@ -14,6 +13,7 @@ const root = require("./capabilities/root");
 /** @typedef {import('./filesystem/creator').FileCreator} FileCreator */
 /** @typedef {import('./subprocess/command').Command} Command */
 /** @typedef {import('./environment').Environment} Environment */
+/** @typedef {import('./logger').Logger} Logger */
 
 /**
  * @typedef {object} Capabilities
@@ -26,6 +26,7 @@ const root = require("./capabilities/root");
  * @property {FileCreator} creator - A directory creator instance.
  * @property {Command} git - A command instance for Git operations.
  * @property {Environment} environment - An environment instance.
+ * @property {Logger} logger - A logger instance.
  */
 
 /**
@@ -38,7 +39,7 @@ async function printVersion(capabilities) {
 
 async function entryTyped() {
     const capabilities = root.make();
-    await logger.setup(capabilities);
+    await capabilities.logger.setup(capabilities);
     const program = new commander.Command();
 
     program.name("volodyslav").description("Volodyslav Media Service CLI");

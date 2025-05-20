@@ -249,11 +249,21 @@ function logDebug(obj, msg) {
     }
 }
 
+/** 
+ * @typedef {ReturnType<make>} Logger
+ */
+
+function make() {
+    return {
+        enableHttpCallsLogging,    
+        setup,
+        logError,
+        logWarning,
+        logInfo,
+        logDebug,
+    };
+}
+
 module.exports = {
-    enableHttpCallsLogging,
-    setup,
-    logError,
-    logWarning,
-    logInfo,
-    logDebug,
+    make,    
 };

@@ -15,6 +15,7 @@ const appendCapability = require("../filesystem/appender");
 const checkerCapability = require("../filesystem/checker");
 const gitCapability = require("../executables").git;
 const environmentCapability = require("../environment");
+const loggingCapability = require("../logger");
 
 /**
  * This structure collects maximum capabilities that any part of Volodyslav can access.
@@ -34,6 +35,7 @@ const make = memconst(() => {
         checker: checkerCapability.make(),
         git: gitCapability,
         environment: environmentCapability.make(),
+        logger: loggingCapability.make(),
     };
 });
 
