@@ -1,56 +1,29 @@
 // Reimplemented tests for processDiaryAudios using real capabilities and git-backed event log storage
 const path = require("path");
 const fs = require("fs/promises");
-const temporary = require("./temporary");
 const makeTestRepository = require("./make_test_repository");
 const { processDiaryAudios } = require("../src/diary");
 const gitstore = require("../src/gitstore");
 const { readObjects } = require("../src/json_stream_file");
 const { formatFileTimestamp } = require("../src/format_time_stamp");
 const logger = require("../src/logger");
-const { getMockedRootCapabilities } = require("./mocked");
+const { getMockedRootCapabilities, stubEnvironment } = require("./mocked");
 
-// Mock environment to isolate test directories
-jest.mock("../src/environment", () => {
-    const temporary = require("./temporary");
-    const path = require("path");
-    return {
-        diaryAudiosDirectory: jest.fn().mockImplementation(() => {
-            const dir = temporary.input();
-            return path.join(dir, "diary");
-        }),
-        eventLogAssetsDirectory: jest.fn().mockImplementation(() => {
-            const dir = temporary.output();
-            return path.join(dir, "assets");
-        }),
-        eventLogRepository: jest.fn().mockImplementation(() => {
-            const dir = temporary.output();
-            return path.join(dir, "eventlog");
-        }),
-        workingDirectory: jest.fn().mockImplementation(() => {
-            const dir = temporary.output();
-            return path.join(dir, "results");
-        }),
-        logLevel: jest.fn().mockReturnValue("debug"),
-        logFile: jest.fn().mockImplementation(() => {
-            const dir = temporary.output();
-            return path.join(dir, "log.txt");
-        }),
-    };
-});
-
-beforeEach(temporary.beforeEach);
-afterEach(temporary.afterEach);
+function getTestCapabilities() {
+    const capabilities = getMockedRootCapabilities();
+    stubEnvironment(capabilities);
+    return capabilities;
+}
 
 describe("processDiaryAudios", () => {
     beforeEach(async () => {
         await logger.setup();
     });
 
-    async function countLogEntries() {
+    async function countLogEntries(capabilities) {
         let length;
         await gitstore.transaction(
-            getMockedRootCapabilities(),
+            capabilities,
             async (store) => {
                 const workTree = await store.getWorkTree();
                 const objects = await readObjects(
@@ -63,11 +36,11 @@ describe("processDiaryAudios", () => {
     }
 
     it("processes all diary audios successfully", async () => {
-        await makeTestRepository();
-        const capabilities = getMockedRootCapabilities();
+        const capabilities = getTestCapabilities();
+        await makeTestRepository(capabilities);
 
         // Prepare diary directory with audio files
-        const diaryDir = require("../src/environment").diaryAudiosDirectory();
+        const diaryDir = capabilities.environment.diaryAudiosDirectory();
         await fs.mkdir(diaryDir, { recursive: true });
         const filenames = [
             "20250511T000000Z.file1.mp3",
@@ -111,8 +84,7 @@ describe("processDiaryAudios", () => {
         );
 
         // Assets copied into correct structure
-        const assetsBase =
-            require("../src/environment").eventLogAssetsDirectory();
+        const assetsBase = capabilities.environment.eventLogAssetsDirectory();
         for (const name of filenames) {
             const date = formatFileTimestamp(name);
             const year = date.getFullYear();
@@ -131,11 +103,11 @@ describe("processDiaryAudios", () => {
     });
 
     it("skips files with invalid timestamp names and logs errors", async () => {
-        await makeTestRepository();
-        const capabilities = getMockedRootCapabilities();
+        const capabilities = getTestCapabilities();
+        await makeTestRepository(capabilities);
 
         // Prepare diary directory
-        const diaryDir = require("../src/environment").diaryAudiosDirectory();
+        const diaryDir = capabilities.environment.diaryAudiosDirectory();
         await fs.mkdir(diaryDir, { recursive: true });
         const valid = "20250511T000000Z.good.mp3";
         const invalid = "bad.mp3";
@@ -143,7 +115,7 @@ describe("processDiaryAudios", () => {
         await fs.writeFile(path.join(diaryDir, invalid), "fail");
 
         // Empty log before execution.
-        expect(await countLogEntries()).toBe(0);
+        expect(await countLogEntries(capabilities)).toBe(0);
 
         // Execute
         await processDiaryAudios(capabilities);
@@ -153,15 +125,15 @@ describe("processDiaryAudios", () => {
         expect(remaining).toEqual([invalid]);
 
         // Only one entry in log
-        expect(await countLogEntries()).toBe(1);
+        expect(await countLogEntries(capabilities)).toBe(1);
     });
 
     it("continues processing when event log transaction fails for an asset", async () => {
-        await makeTestRepository();
-        const capabilities = getMockedRootCapabilities();
+        const capabilities = getTestCapabilities();
+        await makeTestRepository(capabilities);
 
         // Override copier to throw for specific file
-        const diaryDir = require("../src/environment").diaryAudiosDirectory();
+        const diaryDir = capabilities.environment.diaryAudiosDirectory();
         const goodPath = path.join(diaryDir, "20250511T000001Z.good.mp3");
         const badPath = path.join(diaryDir, "20250511T000000Z.bad.mp3");
         await fs.mkdir(diaryDir, { recursive: true });
@@ -177,7 +149,7 @@ describe("processDiaryAudios", () => {
         });
 
         // Empty log before execution.
-        expect(await countLogEntries()).toBe(0);
+        expect(await countLogEntries(capabilities)).toBe(0);
 
         // Execute
         await processDiaryAudios(capabilities);
@@ -190,6 +162,6 @@ describe("processDiaryAudios", () => {
         expect(capabilities.deleter.deleteFile).toHaveBeenCalledWith(goodPath);
 
         // One entry in log
-        expect(await countLogEntries()).toBe(1);
+        expect(await countLogEntries(capabilities)).toBe(1);
     });
 });

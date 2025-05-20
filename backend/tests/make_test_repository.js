@@ -1,7 +1,6 @@
 const fs = require("fs/promises");
 const path = require("path");
 const { execFile } = require("child_process");
-const { eventLogRepository } = require("../src/environment");
 const { promisify } = require("node:util");
 const temporary = require("./temporary");
 const defaultBranch = require("../src/gitstore/default_branch");
@@ -22,9 +21,9 @@ const callSubprocess = promisify(execFile);
  *
  * @returns {Promise<void>} A promise that resolves when the repository is created.
  */
-async function makeTestRepository() {
+async function makeTestRepository(capabilities) {
     // Let eventLogRepository be our test repository
-    const gitDir = eventLogRepository();
+    const gitDir = capabilities.environment.eventLogRepository();
 
     // Initialize a git repository
     await callSubprocess("git", ["init", "--bare", "--", gitDir]);
