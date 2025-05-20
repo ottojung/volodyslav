@@ -1,5 +1,5 @@
 //
-// This modules provides definitions and methods
+// This module provides definitions and methods
 // for working with the local copy of the git repository
 // that Volodyslav uses to store events in.
 //
