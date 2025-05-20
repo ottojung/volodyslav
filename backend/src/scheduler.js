@@ -1,5 +1,6 @@
-// const cron = require('node-cron');
-const { processDiaryAudios } = require("./diary");
+const cron = require('node-cron');
+// const { processDiaryAudios } = require("./diary");
+const workingRepository = require('./gitstore/working_repository');
 
 /** @typedef {import('./filesystem/deleter').FileDeleter} FileDeleter */
 /** @typedef {import('./random/seed').NonDeterministicSeed} NonDeterministicSeed */
@@ -29,16 +30,16 @@ const { processDiaryAudios } = require("./diary");
  * @returns {Promise<void>}
  */
 async function everyHour(capabilities) {
-    await processDiaryAudios(capabilities);
+    // await processDiaryAudios(capabilities);
+    await workingRepository.synchronize(capabilities);
 }
 
 /**
- * @param {Capabilities} _capabilities
+ * @param {Capabilities} capabilities
  * @description Sets up the scheduler to run tasks at specified intervals.
  */
-async function setup(_capabilities) {
-    // TODO: use the capabilities.
-    // cron.schedule('0 * * * *', () => everyHour(_capabilities));
+async function setup(capabilities) {
+    cron.schedule('0 * * * *', () => everyHour(capabilities));
 }
 
 module.exports = {
