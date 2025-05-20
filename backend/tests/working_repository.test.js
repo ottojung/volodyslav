@@ -31,6 +31,7 @@ jest.mock("../src/environment", () => {
 });
 
 const environment = require("../src/environment");
+const defaultBranch = require("../src/gitstore/default_branch");
 
 describe("working_repository", () => {
     test("synchronize creates working repository when it doesn't exist", async () => {
@@ -182,7 +183,7 @@ describe("working_repository", () => {
 
         // Clone the bare remote repository as a non-bare repository
         const clonedRepoPath = path.join(temporary.output(), "cloned-repo");
-        await callSubprocess(`git clone ${remoteRepoPath} ${clonedRepoPath}`, {
+        await callSubprocess(`git clone --branch ${defaultBranch} ${remoteRepoPath} ${clonedRepoPath}`, {
             shell: true,
         });
 
