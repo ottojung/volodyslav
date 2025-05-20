@@ -5,9 +5,6 @@ const { callSubprocess } = require("./call");
  * @typedef {CommandClass} Command
  */
 
-/**
- * @class
- */
 class CommandClass {
     /** @type {string} */
     command;
