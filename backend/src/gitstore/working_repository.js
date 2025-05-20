@@ -63,6 +63,7 @@ function pathToLocalRepositoryGitDir() {
 
 /**
  * Synchronize the local repository with remote: pull if exists, else clone.
+ * Then push the changes as well.
  * @param {Capabilities} capabilities
  * @returns {Promise<void>}
  * @throws {WorkingRepositoryError}
@@ -75,6 +76,7 @@ async function synchronize(capabilities) {
     try {
         if (await capabilities.checker.fileExists(indexFile)) {
             await gitmethod.pull(capabilities, workDir);
+            await gitmethod.push(capabilities, workDir);
         } else {
             // TODO: rollback if any of the following operations fail.
             await gitmethod.clone(capabilities, remoteRepo, workDir);
