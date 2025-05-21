@@ -1,10 +1,10 @@
-const { setup } = require("./runner");
+const { schedule } = require("./runner");
 
 /** @typedef {ReturnType<make>} Scheduler */
 
 function make() {
     return {
-        setup,
+        schedule,
     };
 }
 

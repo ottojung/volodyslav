@@ -6,6 +6,7 @@ const transcribeRouter = require("./routes/transcribe");
 const transcribeAllRouter = require("./routes/transcribe_all");
 const periodicRouter = require("./routes/periodic");
 const expressApp = require("./express_app");
+const { scheduleAll } = require("./schedule/tasks");
 
 /** @typedef {import('./filesystem/deleter').FileDeleter} FileDeleter */
 /** @typedef {import('./random/seed').NonDeterministicSeed} NonDeterministicSeed */
@@ -75,7 +76,7 @@ async function ensureStartupDependencies(capabilities, app) {
  */
 async function initialize(capabilities, app) {
     await ensureStartupDependencies(capabilities, app);
-    await capabilities.scheduler.setup(capabilities);
+    await scheduleAll(capabilities);
     capabilities.logger.logInfo({}, "Initialization complete.");
 }
 

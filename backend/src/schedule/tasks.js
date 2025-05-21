@@ -1,4 +1,4 @@
-const workingRepository = require('../gitstore/working_repository');
+const workingRepository = require("../gitstore/working_repository");
 
 /** @typedef {import('../filesystem/deleter').FileDeleter} FileDeleter */
 /** @typedef {import('../random/seed').NonDeterministicSeed} NonDeterministicSeed */
@@ -10,6 +10,7 @@ const workingRepository = require('../gitstore/working_repository');
 /** @typedef {import('../filesystem/checker').FileChecker} FileChecker */
 /** @typedef {import('../subprocess/command').Command} Command */
 /** @typedef {import('../environment').Environment} Environment */
+/** @typedef {import('../schedule').Scheduler} Scheduler */
 
 /**
  * @typedef {object} Capabilities
@@ -23,6 +24,7 @@ const workingRepository = require('../gitstore/working_repository');
  * @property {FileChecker} checker - A file system checker instance.
  * @property {Command} git - A command instance for Git operations.
  * @property {Environment} environment - An environment instance.
+ * @property {Scheduler} scheduler - A scheduler instance.
  */
 
 /**
@@ -35,14 +37,14 @@ async function everyHour(capabilities) {
 }
 
 /**
+ * Schedules all tasks.
  * @param {Capabilities} capabilities
- * @returns {Promise<void>}
  */
-async function all(capabilities) {
-    await everyHour(capabilities);
+function scheduleAll(capabilities) {
+    capabilities.scheduler.schedule("0 * * * *", () => everyHour(capabilities));
 }
 
 module.exports = {
     everyHour,
-    all,
+    scheduleAll,
 };
