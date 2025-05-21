@@ -1,7 +1,11 @@
 const expressApp = require("../src/express_app");
 const request = require("supertest");
 const { initialize } = require("../src/server");
-const { getMockedRootCapabilities, stubEnvironment, stubLogger } = require("./mocked");
+const {
+    getMockedRootCapabilities,
+    stubEnvironment,
+    stubLogger,
+} = require("./mocked");
 
 function getTestCapabilities() {
     const capabilities = getMockedRootCapabilities();
@@ -46,22 +50,12 @@ describe("Startup Dependencies", () => {
 
     it("throws if notifications are not available", async () => {
         const capabilities = getTestCapabilities();
-        const app = expressApp.make();
-        await jest.isolateModules(async () => {
-            // Inside the isolation, mock the module with a nonexistent command
-            jest.mock("../src/executables", () => {
-                const { registerCommand } = require("../src/subprocess");
-                return {
-                    termuxNotification: registerCommand("nonexistent-command"),
-                };
-            });
-
-            // Get a fresh instance of the module under test
-            const { initialize } = require("../src/server");
-
-            await expect(initialize(capabilities, app)).rejects.toThrow(
-                "Notifications unavailable. Termux notification executable not found in $PATH. Please ensure that Termux:API is installed and available in your $PATH."
-            );
+        capabilities.notifier.ensureNotificationsAvailable = jest.fn(() => {
+            throw new Error("Notifications unavailable. Termux notification executable not found in $PATH. Please ensure that Termux:API is installed and available in your $PATH.");
         });
+        const app = expressApp.make();
+        await expect(initialize(capabilities, app)).rejects.toThrow(
+            "Notifications unavailable. Termux notification executable not found in $PATH. Please ensure that Termux:API is installed and available in your $PATH."
+        );
     });
 });
