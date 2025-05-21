@@ -6,11 +6,12 @@ const { readObjects } = require("../src/json_stream_file");
 const makeTestRepository = require("./make_test_repository");
 const event = require("../src/event/structure");
 const { targetPath } = require("../src/event/asset");
-const { getMockedRootCapabilities, stubEnvironment } = require("./mocked");
+const { getMockedRootCapabilities, stubEnvironment, stubLogger } = require("./mocked");
 
 function getTestCapabilities() {
     const capabilities = getMockedRootCapabilities();
     stubEnvironment(capabilities);
+    stubLogger(capabilities);
     return capabilities;
 }
 
