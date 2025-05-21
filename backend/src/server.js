@@ -5,7 +5,6 @@ const staticRouter = require("./routes/static");
 const transcribeRouter = require("./routes/transcribe");
 const transcribeAllRouter = require("./routes/transcribe_all");
 const periodicRouter = require("./routes/periodic");
-const scheduler = require("./scheduler");
 const expressApp = require("./express_app");
 
 /** @typedef {import('./filesystem/deleter').FileDeleter} FileDeleter */
@@ -20,6 +19,7 @@ const expressApp = require("./express_app");
 /** @typedef {import('./environment').Environment} Environment */
 /** @typedef {import('./logger').Logger} Logger */
 /** @typedef {import('./notifications').Notifier} Notifier */
+/** @typedef {import('./schedule').Scheduler} Scheduler */
 
 /**
  * @typedef {object} Capabilities
@@ -35,6 +35,7 @@ const expressApp = require("./express_app");
  * @property {Environment} environment - An environment instance.
  * @property {Logger} logger - A logger instance.
  * @property {Notifier} notifier - A notifier instance.
+ * @property {Scheduler} scheduler - A scheduler instance.
  */
 
 /**
@@ -74,7 +75,7 @@ async function ensureStartupDependencies(capabilities, app) {
  */
 async function initialize(capabilities, app) {
     await ensureStartupDependencies(capabilities, app);
-    await scheduler.setup(capabilities);
+    await capabilities.scheduler.setup(capabilities);
     capabilities.logger.logInfo({}, "Initialization complete.");
 }
 

@@ -6,6 +6,7 @@ const {
     stubEnvironment,
     stubLogger,
     stubNotifier,
+    stubScheduler,
 } = require("./mocked");
 
 function getTestCapabilities() {
@@ -13,16 +14,9 @@ function getTestCapabilities() {
     stubEnvironment(capabilities);
     stubLogger(capabilities);
     stubNotifier(capabilities);
+    stubScheduler(capabilities);
     return capabilities;
 }
-
-// Mock only the TermuxNotificationCommand in notifications, preserving other functionality
-jest.mock("../src/scheduler", () => {
-    return {
-        setup: jest.fn(),
-        everyHour: jest.fn(),
-    };
-});
 
 describe("Startup Dependencies", () => {
     it("sets up HTTP call logging and handles requests correctly", async () => {

@@ -15,6 +15,8 @@
 /** @typedef {import('../environment').Environment} Environment */
 /** @typedef {import('../logger').Logger} Logger */
 /** @typedef {import('../notifications').Notifier} Notifier */
+/** @typedef {import('../schedule').Scheduler} Scheduler */
+
 
 /**
  * @typedef {object} Capabilities
@@ -30,6 +32,7 @@
  * @property {Environment} environment - An environment instance.
  * @property {Logger} logger - A logger instance.
  * @property {Notifier} notifier - A notifier instance.
+ * @property {Scheduler} scheduler - A scheduler instance.
  */
 
 const memconst = require("../memconst");
@@ -46,6 +49,7 @@ const gitCapability = require("../executables").git;
 const environmentCapability = require("../environment");
 const loggingCapability = require("../logger");
 const notifierCapability = require("../notifications");
+const schedulerCapability = require("../schedule");
 
 /**
  * This structure collects maximum capabilities that any part of Volodyslav can access.
@@ -68,6 +72,7 @@ const make = memconst(() => {
         environment: environmentCapability.make(),
         logger: loggingCapability.make(() => ret),
         notifier: notifierCapability.make(),
+        scheduler: schedulerCapability.make(),
     };
 
     return ret;

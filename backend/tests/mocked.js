@@ -80,7 +80,11 @@ function stubNotifier(capabilities) {
     capabilities.notifier.notifyAboutWarning = jest.fn();
 }
 
+function stubScheduler(capabilities) {
+    capabilities.scheduler.setup = jest.fn();
+}
+
 beforeEach(temporary.beforeEach);
 afterEach(temporary.afterEach);
 
-module.exports = { getMockedRootCapabilities, stubEnvironment, stubLogger, stubNotifier };
+module.exports = { getMockedRootCapabilities, stubEnvironment, stubLogger, stubNotifier, stubScheduler };
