@@ -1,7 +1,7 @@
 const path = require("path");
 const fs = require("fs");
 const os = require("os");
-const { stubEventLogRepository } = require("./hello");
+const { stubEventLogRepository } = require("./stub_event_log_repository");
 
 /**
  * Stubs the environment capabilities for testing.
