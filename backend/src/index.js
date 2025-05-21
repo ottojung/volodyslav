@@ -1,4 +1,4 @@
-const { gentleWrap } = require("./gentlewrap");
+const { gentleCall } = require("./gentlewrap");
 const { start } = require("./server");
 const commander = require("commander");
 const runtimeIdentifier = require("./runtime_identifier");
@@ -11,6 +11,7 @@ const root = require("./capabilities/root");
 /** @typedef {import('./filesystem/writer').FileWriter} FileWriter */
 /** @typedef {import('./filesystem/appender').FileAppender} FileAppender */
 /** @typedef {import('./filesystem/creator').FileCreator} FileCreator */
+/** @typedef {import('./filesystem/checker').FileChecker} FileChecker */
 /** @typedef {import('./subprocess/command').Command} Command */
 /** @typedef {import('./environment').Environment} Environment */
 /** @typedef {import('./logger').Logger} Logger */
@@ -24,6 +25,7 @@ const root = require("./capabilities/root");
  * @property {FileWriter} writer - A file writer instance.
  * @property {FileAppender} appender - A file appender instance.
  * @property {FileCreator} creator - A directory creator instance.
+ * @property {FileChecker} checker - A file checker instance.
  * @property {Command} git - A command instance for Git operations.
  * @property {Environment} environment - An environment instance.
  * @property {Logger} logger - A logger instance.
@@ -37,8 +39,10 @@ async function printVersion(capabilities) {
     console.log(version);
 }
 
-async function entryTyped() {
-    const capabilities = root.make();
+/**
+ * @param {Capabilities} capabilities
+ */
+async function entryTyped(capabilities) {
     await capabilities.logger.setup(capabilities);
     const program = new commander.Command();
 
@@ -67,10 +71,10 @@ async function entryTyped() {
     }
 }
 
-/**
- * @type {() => Promise<void>}
- */
-const entry = gentleWrap(entryTyped);
+async function entry() {
+    const capabilities = root.make();
+    return await gentleCall(capabilities, () => entryTyped(capabilities));
+}
 
 // Set up the command line interface with commander
 if (require.main === module) {

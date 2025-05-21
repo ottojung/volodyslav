@@ -8,16 +8,22 @@
  */
 
 const userErrors = require("./user_errors");
-/** @typedef {import("./logger").Logger} Logger */
+
+/** @typedef {import('./logger').Logger} Logger */
+
+/**
+ * @typedef {object} Capabilities
+ * @property {Logger} logger - A logger instance.
+ */
 
 /**
  * @template T
+ * @param {Capabilities} capabilities - The capabilities object.
  * @param {() => Promise<T>} fn - The function to be wrapped.
- * @param {Logger} logger - The logger capability to use.
  * @param {Array<(err: unknown) => boolean>} [errorsList] - The list of predicates to check errors against.
  * @returns {Promise<T>} - The wrapped function.
  */
-async function gentleCall(fn, logger, errorsList) {
+async function gentleCall(capabilities, fn, errorsList) {
     if (errorsList === undefined) {
         errorsList = userErrors;
     }
@@ -31,7 +37,7 @@ async function gentleCall(fn, logger, errorsList) {
                 e instanceof Object && e !== null && "message" in e
                     ? String(e.message)
                     : String(e);
-            logger.logError({}, message);
+            capabilities.logger.logError({}, message);
             process.exit(1);
         } else {
             throw e;
@@ -41,13 +47,13 @@ async function gentleCall(fn, logger, errorsList) {
 
 /**
  * @template T
+ * @param {Capabilities} capabilities - The capabilities object.
  * @param {() => Promise<T>} fn - The function to be wrapped.
- * @param {Logger} logger - The logger capability to use.
  * @param {Array<(err: unknown) => boolean>} [errorsList] - The list of predicates to check errors against.
  * @returns {() => Promise<T>}
  */
-function gentleWrap(fn, logger, errorsList) {
-    return () => gentleCall(fn, logger, errorsList);
+function gentleWrap(capabilities, fn, errorsList) {
+    return () => gentleCall(capabilities, fn, errorsList);
 }
 
 module.exports = {
