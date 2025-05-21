@@ -34,6 +34,15 @@ async function everyHour(capabilities) {
     await workingRepository.synchronize(capabilities);
 }
 
+/**
+ * @param {Capabilities} capabilities
+ * @returns {Promise<void>}
+ */
+async function all(capabilities) {
+    await everyHour(capabilities);
+}
+
 module.exports = {
     everyHour,
+    all,
 };
