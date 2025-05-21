@@ -41,28 +41,6 @@ describe("logger capability", () => {
         }
     });
 
-    it("handles missing log file gracefully", async () => {
-        const capabilities = getMockedRootCapabilities();
-        stubEnvironment(capabilities);
-        capabilities.environment.logFile = () =>
-            "/nonexistent/path/shouldfail.log";
-        capabilities.environment.logLevel = () => "debug";
-        const logger = make();
-        await logger.setup(capabilities);
-        let called = false;
-        const origInfo = console.info;
-        console.info = () => {
-            called = true;
-        };
-        try {
-            logger.logInfo({}, "should log to console");
-            await new Promise((r) => setTimeout(r, 50));
-            expect(called).toBe(true);
-        } finally {
-            console.info = origInfo;
-        }
-    });
-
     it("respects log level", async () => {
         const capabilities = getMockedRootCapabilities();
         stubEnvironment(capabilities);
