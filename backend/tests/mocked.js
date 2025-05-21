@@ -62,6 +62,9 @@ function stubEnvironment(capabilities) {
     capabilities.environment.openaiAPIKey = jest
         .fn()
         .mockReturnValue("mocked-openai-key");
+    capabilities.environment.myServerPort = jest
+        .fn()
+        .mockReturnValue(1234);
 }
 
 function stubLogger(capabilities) {

@@ -61,6 +61,9 @@ function addRoutes(capabilities, app) {
  */
 async function ensureStartupDependencies(capabilities, app) {
     await addRoutes(capabilities, app);
+    await capabilities.environment.ensureEnvironmentIsInitialized(
+        capabilities.environment
+    );
     await capabilities.notifier.ensureNotificationsAvailable();
 }
 

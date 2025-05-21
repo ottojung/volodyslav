@@ -71,15 +71,15 @@ function eventLogRepository() {
     return getEnv("VOLODYSLAV_EVENT_LOG_REPOSITORY");
 }
 
-function ensureEnvironmentIsInitialized() {
-    openaiAPIKey();
-    workingDirectory();
-    myServerPort();
-    logLevel();
-    logFile();
-    diaryAudiosDirectory();
-    eventLogAssetsDirectory();
-    eventLogRepository();
+function ensureEnvironmentIsInitialized(environment) {
+    environment.openaiAPIKey();
+    environment.workingDirectory();
+    environment.myServerPort();
+    environment.logLevel();
+    environment.logFile();
+    environment.diaryAudiosDirectory();
+    environment.eventLogAssetsDirectory();
+    environment.eventLogRepository();
 }
 
 /**
