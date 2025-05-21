@@ -2,12 +2,12 @@ const expressApp = require("../src/express_app");
 const request = require("supertest");
 const { initialize } = require("../src/server");
 const {
-    getMockedRootCapabilities,
     stubEnvironment,
     stubLogger,
     stubNotifier,
     stubScheduler,
-} = require("./mocked");
+} = require("./stubs");
+const { getMockedRootCapabilities } = require("./mocks");
 const makeTestRepository = require("./make_test_repository");
 
 function getTestCapabilities() {

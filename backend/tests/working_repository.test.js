@@ -5,7 +5,8 @@ const makeTestRepository = require("./make_test_repository");
 const { promisify } = require("util");
 const { execFile } = require("child_process");
 const callSubprocess = promisify(execFile);
-const { getMockedRootCapabilities, stubEnvironment, stubLogger } = require("./mocked");
+const { getMockedRootCapabilities } = require("./mocks");
+const { stubEnvironment, stubLogger } = require("./stubs");
 const defaultBranch = require("../src/gitstore/default_branch");
 
 function getTestCapabilities() {

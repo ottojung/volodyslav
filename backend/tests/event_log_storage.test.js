@@ -6,7 +6,8 @@ const { readObjects } = require("../src/json_stream_file");
 const makeTestRepository = require("./make_test_repository");
 const event = require("../src/event/structure");
 const { targetPath } = require("../src/event/asset");
-const { getMockedRootCapabilities, stubEnvironment, stubLogger } = require("./mocked");
+const { stubEnvironment, stubLogger } = require("./stubs");
+const { getMockedRootCapabilities } = require("./mocks");
 
 function getTestCapabilities() {
     const capabilities = getMockedRootCapabilities();

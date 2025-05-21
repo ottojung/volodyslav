@@ -7,7 +7,8 @@ const {
     isDone,
 } = require("../src/request_identifier");
 
-const { getMockedRootCapabilities, stubEnvironment, stubLogger } = require("./mocked");
+const { getMockedRootCapabilities } = require("./mocks");
+const { stubEnvironment, stubLogger } = require("./stubs");
 
 function getTestCapabilities() {
     const capabilities = getMockedRootCapabilities();

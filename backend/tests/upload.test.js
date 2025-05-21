@@ -3,7 +3,8 @@ const fs = require("fs");
 const path = require("path");
 const expressApp = require("../src/express_app");
 const { addRoutes } = require("../src/server");
-const { getMockedRootCapabilities, stubEnvironment, stubLogger } = require("./mocked");
+const { getMockedRootCapabilities } = require("./mocks");
+const { stubEnvironment, stubLogger } = require("./stubs");
 
 function getTestCapabilities() {
     const capabilities = getMockedRootCapabilities();

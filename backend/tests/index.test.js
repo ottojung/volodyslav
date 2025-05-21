@@ -1,7 +1,8 @@
 const request = require("supertest");
 const expressApp = require("../src/express_app");
 const { addRoutes } = require("../src/server");
-const { getMockedRootCapabilities, stubEnvironment, stubLogger } = require("./mocked");
+const { stubEnvironment, stubLogger } = require("./stubs");
+const { getMockedRootCapabilities } = require("./mocks");
 
 function getTestCapabilities() {
     const capabilities = getMockedRootCapabilities();

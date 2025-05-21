@@ -1,62 +1,43 @@
 const path = require("path");
-const temporary = require("./temporary");
-const rootCapabilities = require("../src/capabilities/root");
+const fs = require("fs");
+const os = require("os");
 
 /**
- * Recursively wraps functions in an object with jest.fn spies, preserving behavior.
- * @param {*} real - The real capabilities object or function
- * @returns {*} - A mocked version with same shape where functions are replaced by jest spies
+ * Stubs the environment capabilities for testing.
+ * Makes up temporary directories for input and output.
  */
-function mockCapabilities(real) {
-    // Wrap standalone functions with jest.fn to spy on calls
-    if (typeof real === "function") {
-        return jest.fn((...args) => real(...args));
-    }
-    if (real && typeof real === "object") {
-        // Preserve prototype so instances keep their type
-        const mocked = Array.isArray(real)
-            ? []
-            : Object.create(Object.getPrototypeOf(real));
-        for (const key of Object.keys(real)) {
-            mocked[key] = mockCapabilities(real[key]);
-        }
-        return mocked;
-    }
-    // Return primitives unchanged
-    return real;
-}
-
-const getMockedRootCapabilities = () =>
-    mockCapabilities(rootCapabilities.make());
-
 function stubEnvironment(capabilities) {
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "jest-"));
+    const input = path.join(tmpDir, "input");
+    const output = path.join(tmpDir, "output");
+
     capabilities.environment.logLevel = jest.fn().mockReturnValue("debug");
     capabilities.environment.logFile = jest.fn().mockImplementation(() => {
-        const dir = temporary.output();
+        const dir = output;
         return path.join(dir, "log.txt");
     });
     capabilities.environment.workingDirectory = jest
         .fn()
         .mockImplementation(() => {
-            const dir = temporary.output();
+            const dir = output;
             return path.join(dir, "results");
         });
     capabilities.environment.eventLogRepository = jest
         .fn()
         .mockImplementation(() => {
-            const dir = temporary.output();
+            const dir = output;
             return path.join(dir, "eventlog");
         });
     capabilities.environment.eventLogAssetsDirectory = jest
         .fn()
         .mockImplementation(() => {
-            const dir = temporary.output();
+            const dir = output;
             return path.join(dir, "assets");
         });
     capabilities.environment.diaryAudiosDirectory = jest
         .fn()
         .mockImplementation(() => {
-            const dir = temporary.input();
+            const dir = input;
             return path.join(dir, "diary");
         });
     capabilities.environment.openaiAPIKey = jest
@@ -65,6 +46,10 @@ function stubEnvironment(capabilities) {
     capabilities.environment.myServerPort = jest.fn().mockReturnValue(1234);
 }
 
+/**
+ * Stubs the logger capabilities for testing.
+ * Silences all logging functions.
+ */
 function stubLogger(capabilities) {
     capabilities.logger.setup = jest.fn();
     capabilities.logger.enableHttpCallsLogging = jest.fn();
@@ -74,12 +59,20 @@ function stubLogger(capabilities) {
     capabilities.logger.logDebug = jest.fn();
 }
 
+/**
+ * Stubs the notifier capabilities for testing.
+ * Silences all notification functions.
+ */
 function stubNotifier(capabilities) {
     capabilities.notifier.ensureNotificationsAvailable = jest.fn();
     capabilities.notifier.notifyAboutError = jest.fn();
     capabilities.notifier.notifyAboutWarning = jest.fn();
 }
 
+/**
+ * Stubs the scheduler capabilities for testing.
+ * Mocks the schedule function to immediately execute the task.
+ */
 function stubScheduler(capabilities) {
     capabilities.scheduler.schedule = jest
         .fn()
@@ -88,11 +81,7 @@ function stubScheduler(capabilities) {
         });
 }
 
-beforeEach(temporary.beforeEach);
-afterEach(temporary.afterEach);
-
 module.exports = {
-    getMockedRootCapabilities,
     stubEnvironment,
     stubLogger,
     stubNotifier,

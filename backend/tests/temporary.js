@@ -26,6 +26,7 @@ function afterEach() {
 module.exports = {
     input,
     output,
+    makeTemporary,
     beforeEach,
     afterEach,
 };

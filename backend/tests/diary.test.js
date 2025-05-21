@@ -6,7 +6,8 @@ const { processDiaryAudios } = require("../src/diary");
 const gitstore = require("../src/gitstore");
 const { readObjects } = require("../src/json_stream_file");
 const { formatFileTimestamp } = require("../src/format_time_stamp");
-const { getMockedRootCapabilities, stubEnvironment, stubLogger } = require("./mocked");
+const { stubEnvironment, stubLogger } = require("./stubs");
+const { getMockedRootCapabilities } = require("./mocks");
 
 function getTestCapabilities() {
     const capabilities = getMockedRootCapabilities();

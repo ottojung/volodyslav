@@ -5,7 +5,8 @@ const { transaction } = require("../src/gitstore");
 const makeTestRepository = require("./make_test_repository");
 const defaultBranch = require("../src/gitstore/default_branch");
 const workingRepository = require("../src/gitstore/working_repository");
-const { getMockedRootCapabilities, stubEnvironment } = require("./mocked");
+const { getMockedRootCapabilities } = require("./mocks");
+const { stubEnvironment } = require("./stubs");
 
 function getTestCapabilities() {
     const capabilities = getMockedRootCapabilities();
