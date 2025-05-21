@@ -1,12 +1,11 @@
 // Reimplemented tests for processDiaryAudios using real capabilities and git-backed event log storage
 const path = require("path");
 const fs = require("fs/promises");
-const makeTestRepository = require("./make_test_repository");
 const { processDiaryAudios } = require("../src/diary");
 const gitstore = require("../src/gitstore");
 const { readObjects } = require("../src/json_stream_file");
 const { formatFileTimestamp } = require("../src/format_time_stamp");
-const { stubEnvironment, stubLogger } = require("./stubs");
+const { stubEnvironment, stubLogger, stubEventLogRepository } = require("./stubs");
 const { getMockedRootCapabilities } = require("./mocks");
 
 function getTestCapabilities() {
@@ -29,7 +28,7 @@ async function countLogEntries(capabilities) {
 describe("processDiaryAudios", () => {
     it("processes all diary audios successfully", async () => {
         const capabilities = getTestCapabilities();
-        await makeTestRepository(capabilities);
+        await stubEventLogRepository(capabilities);
 
         // Prepare diary directory with audio files
         const diaryDir = capabilities.environment.diaryAudiosDirectory();
@@ -93,7 +92,7 @@ describe("processDiaryAudios", () => {
 
     it("skips files with invalid timestamp names and logs errors", async () => {
         const capabilities = getTestCapabilities();
-        await makeTestRepository(capabilities);
+        await stubEventLogRepository(capabilities);
 
         // Prepare diary directory
         const diaryDir = capabilities.environment.diaryAudiosDirectory();
@@ -119,7 +118,7 @@ describe("processDiaryAudios", () => {
 
     it("continues processing when event log transaction fails for an asset", async () => {
         const capabilities = getTestCapabilities();
-        await makeTestRepository(capabilities);
+        await stubEventLogRepository(capabilities);
 
         // Override copier to throw for specific file
         const diaryDir = capabilities.environment.diaryAudiosDirectory();

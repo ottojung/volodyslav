@@ -10,11 +10,11 @@ const callSubprocess = promisify(execFile);
 /**
  * Creates a test repository for use in tests.
  * Specifically, it creates the eventLogRepository.
- * 
+ *
  * This function initializes a bare git repository and a worktree,
  * adds some content to the worktree, and commits it.
  * The content is then pushed to the bare repository.
- * 
+ *
  * Note that this function does not return anything.
  * This is because all the paths are derived from conventions in the source code.
  * I.e. the test repository is always created in the same location
@@ -22,7 +22,7 @@ const callSubprocess = promisify(execFile);
  *
  * @returns {Promise<void>} A promise that resolves when the repository is created.
  */
-async function makeTestRepository(capabilities) {
+async function stubEventLogRepository(capabilities) {
     // Let eventLogRepository be our test repository
     const gitDir = capabilities.environment.eventLogRepository();
 
@@ -71,4 +71,4 @@ async function makeTestRepository(capabilities) {
     await fs.rm(workTree, { recursive: true, force: true });
 }
 
-module.exports = makeTestRepository;
+module.exports = { stubEventLogRepository };

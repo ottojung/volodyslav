@@ -1,8 +1,7 @@
 const request = require("supertest");
 const express = require("express");
 const periodicRouter = require("../src/routes/periodic");
-const makeTestRepository = require("./make_test_repository");
-const { stubEnvironment, stubLogger } = require("./stubs");
+const { stubEnvironment, stubLogger, stubEventLogRepository } = require("./stubs");
 const { getMockedRootCapabilities } = require("./mocks");
 
 function getTestCapabilities() {
@@ -39,7 +38,7 @@ describe("GET /api/periodic", () => {
     it("responds with done for period=hour", async () => {
         const capabilities = getTestCapabilities();
         const app = makeApp(capabilities);
-        await makeTestRepository(capabilities);
+        await stubEventLogRepository(capabilities);
         const res = await request(app).get("/api/periodic?period=hour");
         expect(res.statusCode).toBe(200);
         expect(res.text).toBe("done");
@@ -48,7 +47,7 @@ describe("GET /api/periodic", () => {
     it("responds with done for period=hourly", async () => {
         const capabilities = getTestCapabilities();
         const app = makeApp(capabilities);
-        await makeTestRepository(capabilities);
+        await stubEventLogRepository(capabilities);
         const res = await request(app).get("/api/periodic?period=hourly");
         expect(res.statusCode).toBe(200);
         expect(res.text).toBe("done");

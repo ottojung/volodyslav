@@ -2,11 +2,10 @@ const fs = require("fs").promises;
 const path = require("path");
 const { execFileSync } = require("child_process");
 const { transaction } = require("../src/gitstore");
-const makeTestRepository = require("./make_test_repository");
 const defaultBranch = require("../src/gitstore/default_branch");
 const workingRepository = require("../src/gitstore/working_repository");
 const { getMockedRootCapabilities } = require("./mocks");
-const { stubEnvironment } = require("./stubs");
+const { stubEnvironment, stubEventLogRepository } = require("./stubs");
 
 function getTestCapabilities() {
     const capabilities = getMockedRootCapabilities();
@@ -17,7 +16,7 @@ function getTestCapabilities() {
 describe("gitstore", () => {
     test("transaction allows reading and writing files", async () => {
         const capabilities = getTestCapabilities();
-        await makeTestRepository(capabilities);
+        await stubEventLogRepository(capabilities);
         await transaction(capabilities, async (store) => {
             const workTree = await store.getWorkTree();
             const testFile = path.join(workTree, "test.txt");
@@ -45,7 +44,7 @@ describe("gitstore", () => {
 
     test("transaction allows multiple commits", async () => {
         const capabilities = getTestCapabilities();
-        await makeTestRepository(capabilities);
+        await stubEventLogRepository(capabilities);
         await transaction(capabilities, async (store) => {
             const workTree = await store.getWorkTree();
             const testFile = path.join(workTree, "test.txt");
@@ -83,7 +82,7 @@ describe("gitstore", () => {
 
     test("transaction cleans up temporary work tree", async () => {
         const capabilities = getTestCapabilities();
-        await makeTestRepository(capabilities);
+        await stubEventLogRepository(capabilities);
         let temporaryWorkTree;
 
         await expect(
@@ -103,7 +102,7 @@ describe("gitstore", () => {
 
     test("transaction cleans up temporary work tree even if transformation fails", async () => {
         const capabilities = getTestCapabilities();
-        await makeTestRepository(capabilities);
+        await stubEventLogRepository(capabilities);
         let temporaryWorkTree;
 
         await expect(

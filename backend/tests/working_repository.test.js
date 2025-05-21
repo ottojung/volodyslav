@@ -1,12 +1,11 @@
 const path = require("path");
 const workingRepository = require("../src/gitstore/working_repository");
 const fsp = require("fs/promises");
-const makeTestRepository = require("./make_test_repository");
 const { promisify } = require("util");
 const { execFile } = require("child_process");
 const callSubprocess = promisify(execFile);
 const { getMockedRootCapabilities } = require("./mocks");
-const { stubEnvironment, stubLogger } = require("./stubs");
+const { stubEnvironment, stubLogger, stubEventLogRepository } = require("./stubs");
 const defaultBranch = require("../src/gitstore/default_branch");
 
 function getTestCapabilities() {
@@ -27,7 +26,7 @@ describe("working_repository", () => {
         );
 
         // Set up a real git repo to clone from
-        await makeTestRepository(capabilities);
+        await stubEventLogRepository(capabilities);
 
         // Ensure the repository doesn't exist before synchronization.
         const indexExistsBeforeSync = await fsp
@@ -54,7 +53,7 @@ describe("working_repository", () => {
         await capabilities.logger.setup(capabilities);
 
         // Set up a real git repo to clone from
-        await makeTestRepository(capabilities);
+        await stubEventLogRepository(capabilities);
 
         // Execute getRepository (which should trigger synchronize)
         const repoPath = await workingRepository.getRepository(capabilities);
@@ -136,7 +135,7 @@ describe("working_repository", () => {
         );
 
         // Set up a real git repo to clone from
-        await makeTestRepository(capabilities);
+        await stubEventLogRepository(capabilities);
 
         // Execute synchronize
         await workingRepository.synchronize(capabilities);
@@ -190,7 +189,7 @@ describe("working_repository", () => {
         );
 
         // Set up a real git repo to clone from
-        await makeTestRepository(capabilities);
+        await stubEventLogRepository(capabilities);
 
         // Execute synchronize to create the repository
         await workingRepository.synchronize(capabilities);
@@ -246,7 +245,7 @@ describe("working_repository", () => {
         );
 
         // Set up a real git repo to clone from
-        await makeTestRepository(capabilities);
+        await stubEventLogRepository(capabilities);
 
         // Execute synchronize
         await workingRepository.synchronize(capabilities);

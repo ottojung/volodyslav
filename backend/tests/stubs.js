@@ -1,7 +1,7 @@
 const path = require("path");
 const fs = require("fs");
 const os = require("os");
-const makeTestRepository = require("./make_test_repository");
+const { stubEventLogRepository } = require("./hello");
 
 /**
  * Stubs the environment capabilities for testing.
@@ -87,5 +87,5 @@ module.exports = {
     stubLogger,
     stubNotifier,
     stubScheduler,
-    stubEventLogRepository: makeTestRepository,
+    stubEventLogRepository,
 };

@@ -6,9 +6,9 @@ const {
     stubLogger,
     stubNotifier,
     stubScheduler,
+    stubEventLogRepository,
 } = require("./stubs");
 const { getMockedRootCapabilities } = require("./mocks");
-const makeTestRepository = require("./make_test_repository");
 
 function getTestCapabilities() {
     const capabilities = getMockedRootCapabilities();
@@ -22,7 +22,7 @@ function getTestCapabilities() {
 describe("Startup Dependencies", () => {
     it("sets up HTTP call logging and handles requests correctly", async () => {
         const capabilities = getTestCapabilities();
-        await makeTestRepository(capabilities); // A scheduled task will access this.
+        await stubEventLogRepository(capabilities); // A scheduled task will access this.
         const app = expressApp.make();
         await initialize(capabilities, app);
 
