@@ -8,6 +8,7 @@ const {
     stubNotifier,
     stubScheduler,
 } = require("./mocked");
+const makeTestRepository = require("./make_test_repository");
 
 function getTestCapabilities() {
     const capabilities = getMockedRootCapabilities();
@@ -21,6 +22,7 @@ function getTestCapabilities() {
 describe("Startup Dependencies", () => {
     it("sets up HTTP call logging and handles requests correctly", async () => {
         const capabilities = getTestCapabilities();
+        await makeTestRepository(capabilities); // A scheduled task will access this.
         const app = expressApp.make();
         await initialize(capabilities, app);
 
@@ -33,7 +35,9 @@ describe("Startup Dependencies", () => {
     it("throws if notifications are not available", async () => {
         const capabilities = getTestCapabilities();
         capabilities.notifier.ensureNotificationsAvailable = jest.fn(() => {
-            throw new Error("Notifications unavailable. Termux notification executable not found in $PATH. Please ensure that Termux:API is installed and available in your $PATH.");
+            throw new Error(
+                "Notifications unavailable. Termux notification executable not found in $PATH. Please ensure that Termux:API is installed and available in your $PATH."
+            );
         });
         const app = expressApp.make();
         await expect(initialize(capabilities, app)).rejects.toThrow(
