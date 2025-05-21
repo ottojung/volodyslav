@@ -261,10 +261,13 @@ function logDebug(state, obj, msg) {
     }
 }
 
+/** @typedef {ReturnType<make>} Logger */
+
 /**
  * Factory returning a Logger interface bound to its state.
+ * @param {() => Capabilities} getCapabilities - A function to get the capabilities.
  */
-function make() {
+function make(getCapabilities) {
     /** @type {LoggerState} */
     const state = { logger: null, logLevel: "debug", logFile: null };
 
@@ -275,11 +278,8 @@ function make() {
         enableHttpCallsLogging(state, app);
     }
 
-    /**
-     * @param {Capabilities} capabilities - An object containing the capabilities.
-     */
-    function setupWrapper(capabilities) {
-        return setup(state, capabilities);
+    function setupWrapper() {
+        return setup(state, getCapabilities());
     }
 
     /**

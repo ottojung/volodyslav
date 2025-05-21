@@ -11,8 +11,8 @@ describe("logger capability", () => {
         const logFilePath = path.join(tmpDir, "test.log");
         capabilities.environment.logFile = () => logFilePath;
         capabilities.environment.logLevel = () => "debug";
-        const logger = make();
-        await logger.setup(capabilities);
+        const logger = make(() => capabilities);
+        await logger.setup();
         logger.logInfo({ foo: 1 }, "info message");
         logger.logWarning({ bar: 2 }, "warn message");
         logger.logError({ baz: 3 }, "error message");
@@ -48,8 +48,8 @@ describe("logger capability", () => {
         const logFilePath = path.join(tmpDir, "test.log");
         capabilities.environment.logFile = () => logFilePath;
         capabilities.environment.logLevel = () => "error";
-        const logger = make();
-        await logger.setup(capabilities);
+        const logger = make(() => capabilities);
+        await logger.setup();
         logger.logInfo({}, "info should not appear");
         logger.logError({}, "error should appear");
         await new Promise((r) => setTimeout(r, 200));

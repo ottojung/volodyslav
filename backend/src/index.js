@@ -43,7 +43,7 @@ async function printVersion(capabilities) {
  * @param {Capabilities} capabilities
  */
 async function entryTyped(capabilities) {
-    await capabilities.logger.setup(capabilities);
+    await capabilities.logger.setup();
     const program = new commander.Command();
 
     program.name("volodyslav").description("Volodyslav Media Service CLI");
