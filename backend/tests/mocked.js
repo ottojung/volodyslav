@@ -81,10 +81,20 @@ function stubNotifier(capabilities) {
 }
 
 function stubScheduler(capabilities) {
-    capabilities.scheduler.schedule = jest.fn();
+    capabilities.scheduler.schedule = jest
+        .fn()
+        .mockImplementation((_cronExpression, taskFn) => {
+            taskFn();
+        });
 }
 
 beforeEach(temporary.beforeEach);
 afterEach(temporary.afterEach);
 
-module.exports = { getMockedRootCapabilities, stubEnvironment, stubLogger, stubNotifier, stubScheduler };
+module.exports = {
+    getMockedRootCapabilities,
+    stubEnvironment,
+    stubLogger,
+    stubNotifier,
+    stubScheduler,
+};
