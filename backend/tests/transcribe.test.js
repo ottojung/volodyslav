@@ -5,11 +5,6 @@ const expressApp = require("../src/express_app");
 const { addRoutes } = require("../src/server");
 const { getMockedRootCapabilities, stubEnvironment, stubLogger } = require("./mocked");
 
-// Mock notifications to verify error handling
-jest.mock("../src/notifications", () => ({
-    notifyAboutError: jest.fn().mockResolvedValue(undefined),
-}));
-
 // Mock the OpenAI client to avoid real API calls
 jest.mock("openai", () => {
     // Stubbed create method returns a fixed response
