@@ -12,6 +12,7 @@ const { everyHour } = require("../schedule/tasks");
 /** @typedef {import('../subprocess/command').Command} Command */
 /** @typedef {import('../environment').Environment} Environment */
 /** @typedef {import('../logger').Logger} Logger */
+/** @typedef {import('../schedule').Scheduler} Scheduler */
 
 /**
  * @typedef {object} Capabilities
@@ -26,6 +27,7 @@ const { everyHour } = require("../schedule/tasks");
  * @property {Command} git
  * @property {Environment} environment - An environment instance.
  * @property {Logger} logger - A logger instance.
+ * @property {Scheduler} scheduler - A scheduler instance.
  */
 
 /**
