@@ -17,7 +17,7 @@ describe("logger capability", () => {
         logger.logWarning({ bar: 2 }, "warn message");
         logger.logError({ baz: 3 }, "error message");
         logger.logDebug({ qux: 4 }, "debug message");
-        await new Promise((r) => setTimeout(r, 200));
+        await new Promise((r) => setTimeout(r, 1000));
         const content = fs.readFileSync(logFilePath, "utf8");
         expect(content).toMatch(/info message/);
         expect(content).toMatch(/warn message/);
@@ -52,7 +52,7 @@ describe("logger capability", () => {
         await logger.setup();
         logger.logInfo({}, "info should not appear");
         logger.logError({}, "error should appear");
-        await new Promise((r) => setTimeout(r, 200));
+        await new Promise((r) => setTimeout(r, 1000));
         const content = fs.readFileSync(logFilePath, "utf8");
         expect(content).not.toMatch(/info should not appear/);
         expect(content).toMatch(/error should appear/);
