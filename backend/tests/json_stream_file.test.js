@@ -1,10 +1,13 @@
 const fs = require("fs").promises;
-const os = require("os");
 const path = require("path");
 const { readObjects } = require("../src/json_stream_file");
+const temporary = require("./temporary");
+
+beforeEach(temporary.beforeEach);
+afterEach(temporary.afterEach);
 
 describe("json_stream_file", () => {
-    const testDir = path.join(os.tmpdir(), "json_stream_file_test");
+    const testDir = temporary.input();
     const testFile = path.join(testDir, "test.json");
 
     beforeAll(async () => {
