@@ -25,12 +25,6 @@ jest.mock("../src/scheduler", () => {
 });
 
 describe("Startup Dependencies", () => {
-    beforeEach(() => {
-        // Reset all mocks before each test
-        jest.clearAllMocks();
-        jest.resetModules();
-    });
-
     it("sets up HTTP call logging and handles requests correctly", async () => {
         const capabilities = getTestCapabilities();
         const app = expressApp.make();
