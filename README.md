@@ -68,53 +68,6 @@ Tooling
 
 ---
 
-## Architecture & Project Layout
-
-```
-repo-root/
-├── .eslintignore        # Patterns to skip during linting
-├── .eslintrc.js         # ESLint configuration (root)
-├── .gitignore           # Files & dirs ignored by Git
-├── babel.config.js      # Babel presets for JS/JSX
-├── jest.config.js       # Root Jest config pointing to workspaces
-├── tsconfig.json        # TS “emit types only” config
-├── Makefile             # Simple “install” and build recipes
-├── scripts/             # Utility scripts (install, test, deploy)
-│   ├── update-and-install
-│   ├── run-tests
-│   └── …
-├── frontend/            # Vite + React SPA
-│   ├── index.html
-│   ├── vite.config.js
-│   ├── .babelrc
-│   ├── src/
-│   │   ├── index.jsx
-│   │   ├── App.jsx
-│   │   ├── Camera/
-│   │   │   ├── Camera.jsx
-│   │   │   └── Camera.styles.js
-│   │   └── utils.js
-│   └── jest.config.js
-└── backend/             # Express.js API server
-    ├── src/
-    │   ├── index.js         # Express app entry point
-    │   ├── config.js        # Upload dir & port from env
-    │   ├── environment.js   # Env var getters
-    │   ├── logger.js        # Pino logger setup
-    │   ├── storage.js       # Multer storage engine
-    │   ├── request_identifier.js
-    │   └── routes/
-    │       ├── root.js      # GET /
-    │       ├── ping.js      # GET /api/ping
-    │       ├── upload.js    # POST /api/upload
-    │       ├── transcribe.js# GET /api/transcribe
-    │       └── static.js    # Serve SPA assets
-    ├── tests/               # Jest + SuperTest
-    └── package.json         # Backend dependencies & scripts
-```
-
----
-
 ## Getting Started
 
 ### Prerequisites
@@ -122,19 +75,12 @@ repo-root/
 - Node.js v16+ (or latest LTS)
 - npm v8+ (or Yarn v1/v2)
 - Git CLI
+- (... TODO: more)
 
-### Environment Variables
+### Environment
 
-Create a `.env` (or set in your shell) with:
-
-  • `MY_ROOT`
-    Absolute path to a parent directory where uploads and done-markers are stored.
-  • `VOLODYSLAV_SERVER_PORT`
-    Port number for the backend HTTP server (e.g. `3000`).
-  • `VOLODYSLAV_OPENAI_API_KEY`
-    Your OpenAI API key (for transcription).
-  • `VOLODYSLAV_LOG_LEVEL`
-    Pino log level (e.g. `info`, `debug`, `silent`).
+See [backend/tests/stubs.js](backend/tests/stubs.js) for an idea of how to set up the environment.
+(TODO: provide actual instructions)
 
 ### Install & Build
 
