@@ -71,6 +71,11 @@ function eventLogRepository() {
     return getEnv("VOLODYSLAV_EVENT_LOG_REPOSITORY");
 }
 
+/**
+ * Ensures that the environment is initialized by checking all required variables.
+ * @param {Environment} environment - The environment object to check.
+ * @throws {EnvironmentError} If any required environment variable is not set.
+ */
 function ensureEnvironmentIsInitialized(environment) {
     environment.openaiAPIKey();
     environment.workingDirectory();
