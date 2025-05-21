@@ -62,9 +62,7 @@ function stubEnvironment(capabilities) {
     capabilities.environment.openaiAPIKey = jest
         .fn()
         .mockReturnValue("mocked-openai-key");
-    capabilities.environment.myServerPort = jest
-        .fn()
-        .mockReturnValue(1234);
+    capabilities.environment.myServerPort = jest.fn().mockReturnValue(1234);
 }
 
 function stubLogger(capabilities) {
@@ -76,7 +74,13 @@ function stubLogger(capabilities) {
     capabilities.logger.logDebug = jest.fn();
 }
 
+function stubNotifier(capabilities) {
+    capabilities.notifier.ensureNotificationsAvailable = jest.fn();
+    capabilities.notifier.notifyAboutError = jest.fn();
+    capabilities.notifier.notifyAboutWarning = jest.fn();
+}
+
 beforeEach(temporary.beforeEach);
 afterEach(temporary.afterEach);
 
-module.exports = { getMockedRootCapabilities, stubEnvironment, stubLogger };
+module.exports = { getMockedRootCapabilities, stubEnvironment, stubLogger, stubNotifier };

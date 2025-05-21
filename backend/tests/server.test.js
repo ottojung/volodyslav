@@ -5,22 +5,16 @@ const {
     getMockedRootCapabilities,
     stubEnvironment,
     stubLogger,
+    stubNotifier,
 } = require("./mocked");
 
 function getTestCapabilities() {
     const capabilities = getMockedRootCapabilities();
     stubEnvironment(capabilities);
     stubLogger(capabilities);
+    stubNotifier(capabilities);
     return capabilities;
 }
-
-// Mock only the TermuxNotificationCommand in notifications, preserving other functionality
-jest.mock("../src/executables", () => {
-    const { registerCommand } = require("../src/subprocess");
-    return {
-        termuxNotification: registerCommand("bash"),
-    };
-});
 
 // Mock only the TermuxNotificationCommand in notifications, preserving other functionality
 jest.mock("../src/scheduler", () => {
