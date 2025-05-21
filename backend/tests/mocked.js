@@ -81,7 +81,7 @@ function stubNotifier(capabilities) {
 }
 
 function stubScheduler(capabilities) {
-    capabilities.scheduler.setup = jest.fn();
+    capabilities.scheduler.schedule = jest.fn();
 }
 
 beforeEach(temporary.beforeEach);
