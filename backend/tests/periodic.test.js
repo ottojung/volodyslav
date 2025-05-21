@@ -1,29 +1,25 @@
 const request = require("supertest");
 const express = require("express");
 const periodicRouter = require("../src/routes/periodic");
-const logger = require("../src/logger");
 const makeTestRepository = require("./make_test_repository");
-const { getMockedRootCapabilities, stubEnvironment } = require("./mocked");
+const { getMockedRootCapabilities, stubEnvironment, stubLogger } = require("./mocked");
 
 function getTestCapabilities() {
     const capabilities = getMockedRootCapabilities();
     stubEnvironment(capabilities);
+    stubLogger(capabilities);
     return capabilities;
 }
 
 // Helper to create app with logging and periodic route mounted at /api
 function makeApp(capabilities) {
     const app = express();
-    logger.enableHttpCallsLogging(app);
+    capabilities.logger.enableHttpCallsLogging(app);
     app.use("/api", periodicRouter.makeRouter(capabilities));
     return app;
 }
 
 describe("GET /api/periodic", () => {
-    beforeAll(async () => {
-        await logger.setup();
-    });
-
     it("returns 400 when no period is specified", async () => {
         const capabilities = getTestCapabilities();
         const app = makeApp(capabilities);

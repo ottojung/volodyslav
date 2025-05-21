@@ -4,12 +4,12 @@ const request = require("supertest");
 const { addRoutes } = require("../src/server");
 const { transcribeFile } = require("../src/transcribe");
 const expressApp = require("../src/express_app");
-const logger = require("../src/logger");
-const { getMockedRootCapabilities, stubEnvironment } = require("./mocked");
+const { getMockedRootCapabilities, stubEnvironment, stubLogger } = require("./mocked");
 
 function getTestCapabilities() {
     const capabilities = getMockedRootCapabilities();
     stubEnvironment(capabilities);
+    stubLogger(capabilities);
     return capabilities;
 }
 
@@ -24,8 +24,8 @@ jest.mock("../src/transcribe", () => {
 
 async function makeApp(capabilities) {
     const app = expressApp.make();
-    await logger.setup();
-    logger.enableHttpCallsLogging(app);
+    capabilities.logger.setup(capabilities);
+    capabilities.logger.enableHttpCallsLogging(app);
     await addRoutes(capabilities, app);
     return app;
 }

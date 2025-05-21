@@ -1,24 +1,24 @@
 const path = require("path");
 const workingRepository = require("../src/gitstore/working_repository");
 const fsp = require("fs/promises");
-const logger = require("../src/logger");
 const makeTestRepository = require("./make_test_repository");
 const { promisify } = require("util");
 const { execFile } = require("child_process");
 const callSubprocess = promisify(execFile);
-const { getMockedRootCapabilities, stubEnvironment } = require("./mocked");
+const { getMockedRootCapabilities, stubEnvironment, stubLogger } = require("./mocked");
 const defaultBranch = require("../src/gitstore/default_branch");
 
 function getTestCapabilities() {
     const capabilities = getMockedRootCapabilities();
     stubEnvironment(capabilities);
+    stubLogger(capabilities);
     return capabilities;
 }
 
 describe("working_repository", () => {
     test("synchronize creates working repository when it doesn't exist", async () => {
-        await logger.setup();
         const capabilities = getTestCapabilities();
+        await capabilities.logger.setup(capabilities);
         const localRepoPath = path.join(
             capabilities.environment.workingDirectory(),
             "working-git-repository",
@@ -49,8 +49,8 @@ describe("working_repository", () => {
     });
 
     test("getRepository returns the correct repository path", async () => {
-        await logger.setup();
         const capabilities = getTestCapabilities();
+        await capabilities.logger.setup(capabilities);
 
         // Set up a real git repo to clone from
         await makeTestRepository(capabilities);
@@ -77,7 +77,7 @@ describe("working_repository", () => {
 
     test("synchronize throws WorkingRepositoryError on git failure", async () => {
         const capabilities = getTestCapabilities();
-        await logger.setup();
+        await capabilities.logger.setup(capabilities);
 
         // Make the eventLogRepository return a non-existent path
         const origEventLogRepo =
@@ -97,8 +97,8 @@ describe("working_repository", () => {
 
     // Separate test for WorkingRepositoryError type checking
     test("errors from synchronize are WorkingRepositoryError instances", async () => {
-        await logger.setup();
         const capabilities = getTestCapabilities();
+        await capabilities.logger.setup(capabilities);
 
         // Make the eventLogRepository return a non-existent path
         const origEventLogRepo =
@@ -126,8 +126,8 @@ describe("working_repository", () => {
     });
 
     test("synchronize updates remote repository with local changes", async () => {
-        await logger.setup();
         const capabilities = getTestCapabilities();
+        await capabilities.logger.setup(capabilities);
         const localRepoPath = path.join(
             capabilities.environment.workingDirectory(),
             "working-git-repository",
@@ -180,8 +180,8 @@ describe("working_repository", () => {
     });
 
     test("synchronize does not overwrite existing repository", async () => {
-        await logger.setup();
         const capabilities = getTestCapabilities();
+        await capabilities.logger.setup(capabilities);
         const localRepoPath = path.join(
             capabilities.environment.workingDirectory(),
             "working-git-repository",
@@ -219,8 +219,8 @@ describe("working_repository", () => {
     });
 
     test("synchronize throws error for invalid repository path", async () => {
-        await logger.setup();
         const capabilities = getTestCapabilities();
+        await capabilities.logger.setup(capabilities);
 
         // Mock an invalid repository path
         const origEventLogRepo = capabilities.environment.eventLogRepository;
@@ -236,8 +236,8 @@ describe("working_repository", () => {
     });
 
     test("push changes to remote repository", async () => {
-        await logger.setup();
         const capabilities = getTestCapabilities();
+        await capabilities.logger.setup(capabilities);
         const localRepoPath = path.join(
             capabilities.environment.workingDirectory(),
             "working-git-repository",

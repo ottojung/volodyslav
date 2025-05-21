@@ -1,12 +1,12 @@
 const expressApp = require("../src/express_app");
 const request = require("supertest");
 const { initialize } = require("../src/server");
-const logger = require("../src/logger");
-const { getMockedRootCapabilities, stubEnvironment } = require("./mocked");
+const { getMockedRootCapabilities, stubEnvironment, stubLogger } = require("./mocked");
 
 function getTestCapabilities() {
     const capabilities = getMockedRootCapabilities();
     stubEnvironment(capabilities);
+    stubLogger(capabilities);
     return capabilities;
 }
 
@@ -35,7 +35,6 @@ describe("Startup Dependencies", () => {
 
     it("sets up HTTP call logging and handles requests correctly", async () => {
         const capabilities = getTestCapabilities();
-        await logger.setup();
         const app = expressApp.make();
         await initialize(capabilities, app);
 
@@ -47,7 +46,6 @@ describe("Startup Dependencies", () => {
 
     it("throws if notifications are not available", async () => {
         const capabilities = getTestCapabilities();
-        await logger.setup();
         const app = expressApp.make();
         await jest.isolateModules(async () => {
             // Inside the isolation, mock the module with a nonexistent command

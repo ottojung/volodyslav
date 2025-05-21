@@ -1,18 +1,18 @@
 const request = require("supertest");
 const expressApp = require("../src/express_app");
 const { addRoutes } = require("../src/server");
-const logger = require("../src/logger");
-const { getMockedRootCapabilities, stubEnvironment } = require("./mocked");
+const { getMockedRootCapabilities, stubEnvironment, stubLogger } = require("./mocked");
 
 function getTestCapabilities() {
     const capabilities = getMockedRootCapabilities();
     stubEnvironment(capabilities);
+    stubLogger(capabilities);
     return capabilities;
 }
 
 async function makeApp(capabilities) {
     const app = expressApp.make();
-    logger.enableHttpCallsLogging(app);
+    capabilities.logger.enableHttpCallsLogging(app);
     await addRoutes(capabilities, app);
     return app;
 }
@@ -20,7 +20,6 @@ async function makeApp(capabilities) {
 describe("GET /api/ping", () => {
     it("responds with pong", async () => {
         const capabilities = getTestCapabilities();
-        await logger.setup();
         const app = await makeApp(capabilities);
         const res = await request(app).get("/api/ping");
         expect(res.statusCode).toBe(200);
@@ -29,7 +28,6 @@ describe("GET /api/ping", () => {
 
     it("returns text/html content type", async () => {
         const capabilities = getTestCapabilities();
-        await logger.setup();
         const app = await makeApp(capabilities);
         const res = await request(app).get("/api/ping");
         expect(res.headers["content-type"]).toMatch(/text\/html/);
@@ -37,7 +35,6 @@ describe("GET /api/ping", () => {
 
     it("handles HEAD request", async () => {
         const capabilities = getTestCapabilities();
-        await logger.setup();
         const app = await makeApp(capabilities);
         const res = await request(app).head("/api/ping");
         expect(res.statusCode).toBe(200);
@@ -45,7 +42,6 @@ describe("GET /api/ping", () => {
 
     it("rejects POST requests", async () => {
         const capabilities = getTestCapabilities();
-        await logger.setup();
         const app = await makeApp(capabilities);
         const res = await request(app).post("/api/ping");
         expect(res.statusCode).toBe(404);
@@ -53,7 +49,6 @@ describe("GET /api/ping", () => {
 
     it("rejects PUT requests", async () => {
         const capabilities = getTestCapabilities();
-        await logger.setup();
         const app = await makeApp(capabilities);
         const res = await request(app).put("/api/ping");
         expect(res.statusCode).toBe(404);
@@ -61,7 +56,6 @@ describe("GET /api/ping", () => {
 
     it("rejects DELETE requests", async () => {
         const capabilities = getTestCapabilities();
-        await logger.setup();
         const app = await makeApp(capabilities);
         const res = await request(app).delete("/api/ping");
         expect(res.statusCode).toBe(404);
@@ -69,7 +63,6 @@ describe("GET /api/ping", () => {
 
     it("returns 200 when runtime_identifier matches", async () => {
         const capabilities = getTestCapabilities();
-        await logger.setup();
         const app = await makeApp(capabilities);
         const { instanceIdentifier } =
             await require("../src/runtime_identifier")(capabilities);
@@ -83,7 +76,6 @@ describe("GET /api/ping", () => {
 
     it("returns 400 when runtime_identifier is empty", async () => {
         const capabilities = getTestCapabilities();
-        await logger.setup();
         const app = await makeApp(capabilities);
         const res = await request(app).get("/api/ping?runtime_identifier=");
         expect(res.statusCode).toBe(400);
@@ -91,7 +83,6 @@ describe("GET /api/ping", () => {
 
     it("returns 400 when runtime_identifier does not match", async () => {
         const capabilities = getTestCapabilities();
-        await logger.setup();
         const app = await makeApp(capabilities);
         const res = await request(app).get(
             "/api/ping?runtime_identifier=wrong-id"

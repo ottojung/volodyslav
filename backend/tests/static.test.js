@@ -3,12 +3,12 @@ const fs = require("fs");
 const request = require("supertest");
 const expressApp = require("../src/express_app");
 const { addRoutes } = require("../src/server");
-const logger = require("../src/logger");
-const { getMockedRootCapabilities, stubEnvironment } = require("./mocked");
+const { getMockedRootCapabilities, stubEnvironment, stubLogger } = require("./mocked");
 
 function getTestCapabilities() {
     const capabilities = getMockedRootCapabilities();
     stubEnvironment(capabilities);
+    stubLogger(capabilities);
     return capabilities;
 }
 
@@ -32,7 +32,7 @@ afterAll(() => {
 
 async function makeApp(capabilities) {
     const app = expressApp.make();
-    logger.enableHttpCallsLogging(app);
+    capabilities.logger.enableHttpCallsLogging(app);
     await addRoutes(capabilities, app);
     return app;
 }
@@ -40,7 +40,6 @@ async function makeApp(capabilities) {
 describe("Static file serving", () => {
     it("serves index.html for root path", async () => {
         const capabilities = getTestCapabilities();
-        await logger.setup();
         const app = await makeApp(capabilities);
         const res = await request(app).get("/");
         expect(res.statusCode).toBe(200);
@@ -50,7 +49,6 @@ describe("Static file serving", () => {
 
     it("serves index.html for unknown routes (SPA fallback)", async () => {
         const capabilities = getTestCapabilities();
-        await logger.setup();
         const app = await makeApp(capabilities);
         const res = await request(app).get("/unknown-route");
         expect(res.statusCode).toBe(200);
@@ -60,7 +58,6 @@ describe("Static file serving", () => {
 
     it("serves static files correctly", async () => {
         const capabilities = getTestCapabilities();
-        await logger.setup();
         const app = await makeApp(capabilities);
         const res = await request(app).get("/test.txt");
         expect(res.statusCode).toBe(200);

@@ -1,5 +1,6 @@
 const path = require("path");
 const temporary = require("./temporary");
+const rootCapabilities = require("../src/capabilities/root");
 
 /**
  * Recursively wraps functions in an object with jest.fn spies, preserving behavior.
@@ -24,8 +25,6 @@ function mockCapabilities(real) {
     // Return primitives unchanged
     return real;
 }
-
-const rootCapabilities = require("../src/capabilities/root");
 
 const getMockedRootCapabilities = () =>
     mockCapabilities(rootCapabilities.make());
@@ -65,7 +64,16 @@ function stubEnvironment(capabilities) {
         .mockReturnValue("mocked-openai-key");
 }
 
+function stubLogger(capabilities) {
+    capabilities.logger.setup = jest.fn();
+    capabilities.logger.enableHttpCallsLogging = jest.fn();
+    capabilities.logger.logError = jest.fn();
+    capabilities.logger.logWarning = jest.fn();
+    capabilities.logger.logInfo = jest.fn();
+    capabilities.logger.logDebug = jest.fn();
+}
+
 beforeEach(temporary.beforeEach);
 afterEach(temporary.afterEach);
 
-module.exports = { getMockedRootCapabilities, stubEnvironment };
+module.exports = { getMockedRootCapabilities, stubEnvironment, stubLogger };

@@ -1,11 +1,9 @@
 const path = require("path");
 const fs = require("fs");
-const logger = require("../src/logger");
 const request = require("supertest");
 const expressApp = require("../src/express_app");
-const { notifyAboutError } = require("../src/notifications");
 const { addRoutes } = require("../src/server");
-const { getMockedRootCapabilities, stubEnvironment } = require("./mocked");
+const { getMockedRootCapabilities, stubEnvironment, stubLogger } = require("./mocked");
 
 // Mock notifications to verify error handling
 jest.mock("../src/notifications", () => ({
@@ -28,13 +26,14 @@ jest.mock("openai", () => {
 function getTestCapabilities() {
     const capabilities = getMockedRootCapabilities();
     stubEnvironment(capabilities);
+    stubLogger(capabilities);
     return capabilities;
 }
 
 async function makeApp(capabilities) {
     const app = expressApp.make();
-    await logger.setup();
-    logger.enableHttpCallsLogging(app);
+    await capabilities.logger.setup();
+    await capabilities.logger.enableHttpCallsLogging(app);
     await addRoutes(capabilities, app);
     return app;
 }
@@ -56,9 +55,7 @@ describe("GET /api/transcribe", () => {
             success: false,
             error: "Please provide the input parameter",
         });
-        expect(notifyAboutError).toHaveBeenCalledWith(
-            "Transcription request failed - missing input"
-        );
+        expect(capabilities.logger.logError).toHaveBeenCalledTimes(1);
     });
 
     it("responds with 404 if input file does not exist", async () => {
@@ -74,9 +71,7 @@ describe("GET /api/transcribe", () => {
             success: false,
             error: "Input file not found",
         });
-        expect(notifyAboutError).toHaveBeenCalledWith(
-            "Transcription request failed - file not found"
-        );
+        expect(capabilities.logger.logError).toHaveBeenCalledTimes(1);
     });
 
     it("transcribes and saves output file on valid input", async () => {

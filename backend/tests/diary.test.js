@@ -6,7 +6,6 @@ const { processDiaryAudios } = require("../src/diary");
 const gitstore = require("../src/gitstore");
 const { readObjects } = require("../src/json_stream_file");
 const { formatFileTimestamp } = require("../src/format_time_stamp");
-const logger = require("../src/logger");
 const { getMockedRootCapabilities, stubEnvironment } = require("./mocked");
 
 function getTestCapabilities() {
@@ -26,10 +25,6 @@ async function countLogEntries(capabilities) {
 }
 
 describe("processDiaryAudios", () => {
-    beforeEach(async () => {
-        await logger.setup();
-    });
-
     it("processes all diary audios successfully", async () => {
         const capabilities = getTestCapabilities();
         await makeTestRepository(capabilities);

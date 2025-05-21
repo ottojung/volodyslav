@@ -3,19 +3,19 @@ const fs = require("fs");
 const path = require("path");
 const expressApp = require("../src/express_app");
 const { addRoutes } = require("../src/server");
-const logger = require("../src/logger");
-const { getMockedRootCapabilities, stubEnvironment } = require("./mocked");
+const { getMockedRootCapabilities, stubEnvironment, stubLogger } = require("./mocked");
 
 function getTestCapabilities() {
     const capabilities = getMockedRootCapabilities();
     stubEnvironment(capabilities);
+    stubLogger(capabilities);
     return capabilities;
 }
 
 async function makeApp(capabilities) {
     const app = expressApp.make();
-    await logger.setup();
-    logger.enableHttpCallsLogging(app);
+    await capabilities.logger.setup();
+    await capabilities.logger.enableHttpCallsLogging(app);
     await addRoutes(capabilities, app);
     return app;
 }

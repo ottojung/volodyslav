@@ -6,7 +6,6 @@ const { readObjects } = require("../src/json_stream_file");
 const makeTestRepository = require("./make_test_repository");
 const event = require("../src/event/structure");
 const { targetPath } = require("../src/event/asset");
-const logger = require("../src/logger");
 const { getMockedRootCapabilities, stubEnvironment } = require("./mocked");
 
 function getTestCapabilities() {
@@ -19,7 +18,6 @@ describe("event_log_storage", () => {
     // No stubbing: use real gitstore.transaction with makeTestRepository per test
 
     test("transaction allows adding and storing event entries", async () => {
-        await logger.setup();
         const capabilities = getTestCapabilities();
         await makeTestRepository(capabilities);
 
@@ -48,7 +46,6 @@ describe("event_log_storage", () => {
     });
 
     test("transaction fails if git fails", async () => {
-        await logger.setup();
         const capabilities = getTestCapabilities();
 
         // Note: didn't use makeTestRepository here to avoid creating a real git repo.
@@ -75,7 +72,6 @@ describe("event_log_storage", () => {
     });
 
     test("transaction allows adding and storing multiple event entries", async () => {
-        await logger.setup();
         const capabilities = getTestCapabilities();
         await makeTestRepository(capabilities);
 
@@ -114,7 +110,6 @@ describe("event_log_storage", () => {
     });
 
     test("transaction with no entries throws an error", async () => {
-        await logger.setup();
         const capabilities = getTestCapabilities();
         await makeTestRepository(capabilities);
         // Expect the transaction to fail due to no staged changes to commit
@@ -126,7 +121,6 @@ describe("event_log_storage", () => {
     });
 
     test("transaction copies asset files into repository", async () => {
-        await logger.setup();
         const capabilities = getTestCapabilities(); // Ensure capabilities are correctly initialized
         await makeTestRepository(capabilities);
         const testEvent = {
@@ -165,7 +159,6 @@ describe("event_log_storage", () => {
     });
 
     test("transaction cleanup calls unlink for each asset on failure", async () => {
-        await logger.setup();
         const capabilities = getTestCapabilities();
         await makeTestRepository(capabilities);
         const testEvent = {
@@ -193,7 +186,6 @@ describe("event_log_storage", () => {
     });
 
     test("transaction creates parent directories before copying assets", async () => {
-        await logger.setup();
         const capabilities = getTestCapabilities();
         await makeTestRepository(capabilities);
 
@@ -235,7 +227,6 @@ describe("event_log_storage", () => {
     });
 
     test("transaction handles mix of successful and failed asset additions", async () => {
-        await logger.setup();
         const capabilities = getTestCapabilities(); // Ensure capabilities are correctly initialized
         await makeTestRepository(capabilities);
 

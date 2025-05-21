@@ -6,13 +6,13 @@ const {
     markDone,
     isDone,
 } = require("../src/request_identifier");
-const logger = require("../src/logger");
 
-const { getMockedRootCapabilities, stubEnvironment } = require("./mocked");
+const { getMockedRootCapabilities, stubEnvironment, stubLogger } = require("./mocked");
 
 function getTestCapabilities() {
     const capabilities = getMockedRootCapabilities();
     stubEnvironment(capabilities);
+    stubLogger(capabilities);
     return capabilities;
 }
 
@@ -42,7 +42,6 @@ describe("Request Identifier", () => {
     describe("makeDirectory", () => {
         it("creates directory for request identifier", async () => {
             const capabilities = getTestCapabilities();
-            await logger.setup();
             const req = { query: { request_identifier: "test123" } };
             const reqId = fromRequest(req);
             const dirPath = await makeDirectory(capabilities, reqId);
