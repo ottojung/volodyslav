@@ -4,7 +4,7 @@ const request = require("supertest");
 const { addRoutes } = require("../src/server");
 const { transcribeFile } = require("../src/transcribe");
 const expressApp = require("../src/express_app");
-const { getMockedRootCapabilities } = require("./mocks");
+const { getMockedRootCapabilities } = require("./spies");
 const { stubEnvironment, stubLogger } = require("./stubs");
 
 function getTestCapabilities() {

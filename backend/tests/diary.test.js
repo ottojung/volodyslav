@@ -6,7 +6,7 @@ const gitstore = require("../src/gitstore");
 const { readObjects } = require("../src/json_stream_file");
 const { formatFileTimestamp } = require("../src/format_time_stamp");
 const { stubEnvironment, stubLogger, stubEventLogRepository } = require("./stubs");
-const { getMockedRootCapabilities } = require("./mocks");
+const { getMockedRootCapabilities } = require("./spies");
 
 function getTestCapabilities() {
     const capabilities = getMockedRootCapabilities();

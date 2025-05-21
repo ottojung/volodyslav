@@ -4,7 +4,7 @@ const { execFileSync } = require("child_process");
 const { transaction } = require("../src/gitstore");
 const defaultBranch = require("../src/gitstore/default_branch");
 const workingRepository = require("../src/gitstore/working_repository");
-const { getMockedRootCapabilities } = require("./mocks");
+const { getMockedRootCapabilities } = require("./spies");
 const { stubEnvironment, stubEventLogRepository } = require("./stubs");
 
 function getTestCapabilities() {

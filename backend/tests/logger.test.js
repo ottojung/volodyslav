@@ -1,7 +1,7 @@
 const fs = require("fs");
 const path = require("path");
 const { make } = require("../src/logger");
-const { getMockedRootCapabilities } = require("./mocks");
+const { getMockedRootCapabilities } = require("./spies");
 const { stubEnvironment } = require("./stubs");
 
 describe("logger capability", () => {

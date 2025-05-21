@@ -4,7 +4,7 @@ const fsp = require("fs/promises");
 const { promisify } = require("util");
 const { execFile } = require("child_process");
 const callSubprocess = promisify(execFile);
-const { getMockedRootCapabilities } = require("./mocks");
+const { getMockedRootCapabilities } = require("./spies");
 const { stubEnvironment, stubLogger, stubEventLogRepository } = require("./stubs");
 const defaultBranch = require("../src/gitstore/default_branch");
 

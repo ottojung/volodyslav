@@ -8,7 +8,7 @@ const {
     stubScheduler,
     stubEventLogRepository,
 } = require("./stubs");
-const { getMockedRootCapabilities } = require("./mocks");
+const { getMockedRootCapabilities } = require("./spies");
 
 function getTestCapabilities() {
     const capabilities = getMockedRootCapabilities();
