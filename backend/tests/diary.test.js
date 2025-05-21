@@ -6,11 +6,12 @@ const { processDiaryAudios } = require("../src/diary");
 const gitstore = require("../src/gitstore");
 const { readObjects } = require("../src/json_stream_file");
 const { formatFileTimestamp } = require("../src/format_time_stamp");
-const { getMockedRootCapabilities, stubEnvironment } = require("./mocked");
+const { getMockedRootCapabilities, stubEnvironment, stubLogger } = require("./mocked");
 
 function getTestCapabilities() {
     const capabilities = getMockedRootCapabilities();
     stubEnvironment(capabilities);
+    stubLogger(capabilities);
     return capabilities;
 }
 
