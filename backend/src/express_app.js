@@ -2,10 +2,12 @@ const express = require("express");
 const { gentleWrap } = require("./gentlewrap");
 
 /** @typedef {import('./environment').Environment} Environment */
+/** @typedef {import('./logger').Logger} Logger */
 
 /**
  * @typedef {object} Capabilities
  * @property {Environment} environment - An environment instance.
+ * @property {Logger} logger - A logger instance.
  */
 
 /**
@@ -29,7 +31,7 @@ async function run(capabilities, app, fun) {
     const port = capabilities.environment.myServerPort();
     const server = app.listen(port, async function () {
         try {
-            const gentleFun = gentleWrap(async () => fun(app, server));
+            const gentleFun = gentleWrap(capabilities, async () => fun(app, server));
             await gentleFun();
         } catch (error) {
             server.close();

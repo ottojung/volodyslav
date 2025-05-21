@@ -11,6 +11,7 @@ const { transcribeFile } = require("./transcribe");
 /** @typedef {import('./filesystem/writer').FileWriter} FileWriter */
 /** @typedef {import('./subprocess/command').Command} Command */
 /** @typedef {import('./environment').Environment} Environment */
+/** @typedef {import('./logger').Logger} Logger */
 
 /**
  * @typedef {object} Capabilities
@@ -21,6 +22,7 @@ const { transcribeFile } = require("./transcribe");
  * @property {FileWriter} writer - A file writer instance.
  * @property {Command} git - A command instance for Git operations.
  * @property {Environment} environment - An environment instance.
+ * @property {Logger} logger - A logger instance.
  */
 
 class InputDirectoryAccess extends Error {

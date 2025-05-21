@@ -5,14 +5,15 @@ const { makeDirectory, markDone } = require("./request_identifier");
 const creatorMake = require("./creator");
 const memoize = require("@emotion/memoize").default;
 
+/** @typedef {import('./filesystem/file').ExistingFile} ExistingFile */
+
 /** @typedef {import('./random/seed').NonDeterministicSeed} NonDeterministicSeed */
 /** @typedef {import('./filesystem/creator').FileCreator} FileCreator */
 /** @typedef {import('./filesystem/checker').FileChecker} FileChecker */
 /** @typedef {import('./filesystem/writer').FileWriter} FileWriter */
 /** @typedef {import('./subprocess/command').Command} Command */
 /** @typedef {import('./environment').Environment} Environment */
-
-/** @typedef {import('./filesystem/file').ExistingFile} ExistingFile */
+/** @typedef {import('./logger').Logger} Logger */
 
 /**
  * @typedef {object} Capabilities
@@ -22,6 +23,7 @@ const memoize = require("@emotion/memoize").default;
  * @property {FileWriter} writer - A file system writer instance.
  * @property {Command} git - A command instance for Git operations (optional if not always used).
  * @property {Environment} environment - An environment instance.
+ * @property {Logger} logger - A logger instance.
  */
 
 // Instantiate client
