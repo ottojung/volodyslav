@@ -14,6 +14,7 @@
 /** @typedef {import('../subprocess/command').Command} Command */
 /** @typedef {import('../environment').Environment} Environment */
 /** @typedef {import('../logger').Logger} Logger */
+/** @typedef {import('../notifications').Notifier} Notifier */
 
 /**
  * @typedef {object} Capabilities
@@ -28,6 +29,7 @@
  * @property {Command} git - A command instance for Git operations.
  * @property {Environment} environment - An environment instance.
  * @property {Logger} logger - A logger instance.
+ * @property {Notifier} notifier - A notifier instance.
  */
 
 const memconst = require("../memconst");
@@ -43,6 +45,7 @@ const checkerCapability = require("../filesystem/checker");
 const gitCapability = require("../executables").git;
 const environmentCapability = require("../environment");
 const loggingCapability = require("../logger");
+const notifierCapability = require("../notifications");
 
 /**
  * This structure collects maximum capabilities that any part of Volodyslav can access.
@@ -64,6 +67,7 @@ const make = memconst(() => {
         git: gitCapability,
         environment: environmentCapability.make(),
         logger: loggingCapability.make(() => ret),
+        notifier: notifierCapability.make(),
     };
 
     return ret;

@@ -47,9 +47,17 @@ async function notifyAboutWarning(message) {
     await termuxNotification.call("-t", "Warning", "-c", message);
 }
 
+/** @typedef {ReturnType<make>} Notifier */
+
+function make() {
+    return {
+        ensureNotificationsAvailable,
+        notifyAboutError,
+        notifyAboutWarning,
+    };
+}
+
 module.exports = {
     isNotificationsUnavailable,
-    ensureNotificationsAvailable,
-    notifyAboutError,
-    notifyAboutWarning,
+    make,
 };

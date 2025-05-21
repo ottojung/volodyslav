@@ -15,6 +15,7 @@ const root = require("./capabilities/root");
 /** @typedef {import('./subprocess/command').Command} Command */
 /** @typedef {import('./environment').Environment} Environment */
 /** @typedef {import('./logger').Logger} Logger */
+/** @typedef {import('./notifications').Notifier} Notifier */
 
 /**
  * @typedef {object} Capabilities
@@ -29,6 +30,7 @@ const root = require("./capabilities/root");
  * @property {Command} git - A command instance for Git operations.
  * @property {Environment} environment - An environment instance.
  * @property {Logger} logger - A logger instance.
+ * @property {Notifier} notifier - A notifier instance.
  */
 
 /**

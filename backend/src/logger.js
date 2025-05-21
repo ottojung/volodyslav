@@ -4,15 +4,16 @@
 
 const pino = require("pino").default;
 const pinoHttp = require("pino-http").default;
-const { notifyAboutError } = require("./notifications");
 const fs = require("fs").promises;
 const path = require("path");
 
 /** @typedef {import('./environment').Environment} Environment */
+/** @typedef {import('./notifications').Notifier} Notifier */
 
 /**
  * @typedef {object} Capabilities
  * @property {Environment} environment - An environment instance.
+ * @property {Notifier} notifier - A notifier instance.
  */
 
 /**
@@ -27,6 +28,7 @@ const path = require("path");
  * @property {pino.Logger?} logger - The Pino logger instance.
  * @property {string} logLevel - The current log level.
  * @property {string?} logFile - The log file path, if any.
+ * @property {Capabilities?} capabilities - The capabilities instance.
  */
 
 /**
@@ -199,7 +201,7 @@ function logError(state, obj, msg) {
     }
 
     // Send notification
-    notifyAboutError(msg).catch((err) => {
+    state.capabilities?.notifier.notifyAboutError(msg).catch((err) => {
         if (state.logger !== null) {
             state.logger.error(
                 { error: err },
@@ -269,7 +271,7 @@ function logDebug(state, obj, msg) {
  */
 function make(getCapabilities) {
     /** @type {LoggerState} */
-    const state = { logger: null, logLevel: "debug", logFile: null };
+    const state = { logger: null, logLevel: "debug", logFile: null, capabilities: null };
 
     /**
      * @param {import('express').Express} app
@@ -279,7 +281,8 @@ function make(getCapabilities) {
     }
 
     function setupWrapper() {
-        return setup(state, getCapabilities());
+        state.capabilities = getCapabilities();
+        return setup(state, state.capabilities);
     }
 
     /**

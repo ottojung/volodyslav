@@ -1,4 +1,3 @@
-const { ensureNotificationsAvailable } = require("./notifications");
 const rootRouter = require("./routes/root");
 const uploadRouter = require("./routes/upload");
 const pingRouter = require("./routes/ping");
@@ -20,6 +19,7 @@ const expressApp = require("./express_app");
 /** @typedef {import('./subprocess/command').Command} Command */
 /** @typedef {import('./environment').Environment} Environment */
 /** @typedef {import('./logger').Logger} Logger */
+/** @typedef {import('./notifications').Notifier} Notifier */
 
 /**
  * @typedef {object} Capabilities
@@ -34,6 +34,7 @@ const expressApp = require("./express_app");
  * @property {Command} git - A command instance for Git operations.
  * @property {Environment} environment - An environment instance.
  * @property {Logger} logger - A logger instance.
+ * @property {Notifier} notifier - A notifier instance.
  */
 
 /**
@@ -60,7 +61,7 @@ function addRoutes(capabilities, app) {
  */
 async function ensureStartupDependencies(capabilities, app) {
     await addRoutes(capabilities, app);
-    await ensureNotificationsAvailable();
+    await capabilities.notifier.ensureNotificationsAvailable();
 }
 
 /**
