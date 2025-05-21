@@ -9,6 +9,7 @@ const callSubprocess = promisify(execFile);
 
 /**
  * Creates a test repository for use in tests.
+ * Specifically, it creates the eventLogRepository.
  * 
  * This function initializes a bare git repository and a worktree,
  * adds some content to the worktree, and commits it.
