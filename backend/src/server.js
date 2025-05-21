@@ -65,6 +65,7 @@ async function ensureStartupDependencies(capabilities, app) {
         capabilities.environment
     );
     await capabilities.notifier.ensureNotificationsAvailable();
+    await capabilities.git.ensureAvailable();
 }
 
 /**
