@@ -85,8 +85,8 @@ See [backend/tests/stubs.js](backend/tests/stubs.js) for an idea of how to set u
 ### Install & Build
 
 ```bash
-git clone git@github.com:your-org/your-repo.git
-cd your-repo
+git clone git@github.com:ottojung/volodyslav.git
+cd volodyslav
 npm install           # Install monorepo dependencies
 npm run build         # Builds frontend and emits TS types
 ```
@@ -162,38 +162,6 @@ npm start
 
 ---
 
-## API Endpoints
-
-### GET /
-
-- **Description**: Returns `"Hello World!"`
-- **Route**: `/api`
-
-### GET /api/ping
-
-- **Description**: Health check → returns `"pong"`
-
-### POST /api/upload?request_identifier=ID
-
-- **Description**: Accepts multipart uploads under field name `photos`.
-- **Behavior**:
-  • Creates directory `${uploadDir}/ID`
-  • Saves each file with its original filename
-  • Creates a `.done` marker via `request_identifier.js`
-- **Response**: `{ success: true, files: [ ...filenames ] }`
-
-### GET /api/transcribe?request_identifier=ID&input=/path/to/file.wav
-
-- **Description**: Reads the specified audio file, calls OpenAI, stores JSON result under `${uploadDir}/ID/transcription.json`.
-- **Responses**:
-  • `400` if query params missing
-  • `404` if input file not found
-  • `200 { success: true }` on success
-
-Static asset routing is handled by `static.js`, serving `frontend/dist/index.html` for all unmatched GET requests.
-
----
-
 ## Testing
 
 Run all tests (backend + frontend):
@@ -204,26 +172,6 @@ npm test
 
 - **Backend tests**: Jest + SuperTest in `backend/tests/`
 - **Frontend tests**: Jest + React Testing Library in `frontend/tests/`
-
----
-
-## Utilities & Scripts
-
-- `Makefile`
-  - `make install` → runs `scripts/update-and-install`
-- `scripts/update-and-install`
-  Pulls latest `master`, installs, and builds.
-- `scripts/run-tests`
-  `npm test` across workspaces
-- `scripts/run-development-server`
-  Alias for `npm run dev`
-- `scripts/run-production-unless-already-runs`
-  Starts backend only if health check fails
-- **generateRandomString**: Utility to generate a cryptographically secure random alphanumeric string of configurable length (default 16).
-  ```js
-  const { generateRandomString } = require('./backend/src/randomString');
-  const id = generateRandomString(); // e.g. "1Ae3bC9fGh4IjKlM"
-  ```
 
 ---
 
