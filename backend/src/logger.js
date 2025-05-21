@@ -15,9 +15,6 @@ const path = require("path");
  * @property {Environment} environment - An environment instance.
  */
 
-/** Pino logger instance. @type {pino.Logger?} */
-let logger = null;
-
 /**
  * @typedef {Object} TransportTarget
  * @property {string} target - The target module name
@@ -26,16 +23,24 @@ let logger = null;
  */
 
 /**
+ * @typedef {object} LoggerState
+ * @property {pino.Logger?} logger - The Pino logger instance.
+ * @property {string} logLevel - The current log level.
+ * @property {string?} logFile - The log file path, if any.
+ */
+
+/**
+ * @param {LoggerState} state - The logger state.
  * @param {import('express').Express} app
  * @returns {void}
  * @description Sets up HTTP call logging for the given Express app.
  */
-function enableHttpCallsLogging(app) {
-    if (logger === null) {
+function enableHttpCallsLogging(state, app) {
+    if (state.logger === null) {
         throw new Error("Logger not initialized");
     }
 
-    app.use(pinoHttp({ logger }));
+    app.use(pinoHttp({ logger: state.logger }));
 }
 
 /**
@@ -126,12 +131,11 @@ function safeGetLogFilePath(capabilities, errors) {
 }
 
 /**
- * Sets up the logger.
+ * @param {LoggerState} state - The logger state.
  * @param {Capabilities} capabilities - An object containing the capabilities.
- * @description Initializes the logger with the specified log level and file.
  * @returns {Promise<void>}
  */
-async function setup(capabilities) {
+async function setup(state, capabilities) {
     /** @type {string[]} */
     const errors = [];
     /** @type {string[]} */
@@ -162,30 +166,32 @@ async function setup(capabilities) {
         targets: targets,
     });
 
-    // Initialize the logger
-    logger = pino({ level: logLevelValue }, transport);
+    // Initialize the logger and record in state
+    state.logger = pino({ level: logLevelValue }, transport);
+    state.logLevel = logLevelValue;
+    state.logFile = logFilePath;
 
     // Report any setup errors
     for (const error of errors) {
-        logError({}, error);
+        logError(state, {}, error);
     }
 
     // Report any setup info
     for (const info of infos) {
-        logInfo({}, info);
+        logInfo(state, {}, info);
     }
 }
 
 /**
- * Logs an error message and sends a notification.
+ * @param {LoggerState} state - The logger state.
  * @param {unknown} obj The error object, message string, or object with error details
  * @param {string} msg
  * @returns {void}
  */
-function logError(obj, msg) {
+function logError(state, obj, msg) {
     // Call the original error method with proper typing
-    if (logger !== null) {
-        logger.error(obj, msg);
+    if (state.logger !== null) {
+        state.logger.error(obj, msg);
     } else {
         // Fallback to console if logger is not initialized
         console.error("Logger not initialized");
@@ -194,8 +200,11 @@ function logError(obj, msg) {
 
     // Send notification
     notifyAboutError(msg).catch((err) => {
-        if (logger !== null) {
-            logger.error({ error: err }, "Failed to send error notification");
+        if (state.logger !== null) {
+            state.logger.error(
+                { error: err },
+                "Failed to send error notification"
+            );
         } else {
             // Fallback to console if logger is not initialized
             console.error("Logger not initialized");
@@ -205,13 +214,14 @@ function logError(obj, msg) {
 }
 
 /**
+ * @param {LoggerState} state - The logger state.
  * @param {unknown} obj The error object, message string, or object with error details
  * @param {string} msg
  * @returns {void}
  */
-function logWarning(obj, msg) {
-    if (logger !== null) {
-        logger.warn(obj, msg);
+function logWarning(state, obj, msg) {
+    if (state.logger !== null) {
+        state.logger.warn(obj, msg);
     } else {
         // Fallback to console if logger is not initialized
         console.error("Logger not initialized");
@@ -220,13 +230,14 @@ function logWarning(obj, msg) {
 }
 
 /**
+ * @param {LoggerState} state - The logger state.
  * @param {unknown} obj The error object, message string, or object with error details
  * @param {string} msg
  * @returns {void}
  */
-function logInfo(obj, msg) {
-    if (logger !== null) {
-        logger.info(obj, msg);
+function logInfo(state, obj, msg) {
+    if (state.logger !== null) {
+        state.logger.info(obj, msg);
     } else {
         // Fallback to console if logger is not initialized
         console.error("Logger not initialized");
@@ -235,13 +246,14 @@ function logInfo(obj, msg) {
 }
 
 /**
+ * @param {LoggerState} state - The logger state.
  * @param {unknown} obj The error object, message string, or object with error details
  * @param {string} msg
  * @returns {void}
  */
-function logDebug(obj, msg) {
-    if (logger !== null) {
-        logger.debug(obj, msg);
+function logDebug(state, obj, msg) {
+    if (state.logger !== null) {
+        state.logger.debug(obj, msg);
     } else {
         // Fallback to console if logger is not initialized
         console.error("Logger not initialized");
@@ -249,21 +261,69 @@ function logDebug(obj, msg) {
     }
 }
 
-/** 
- * @typedef {ReturnType<make>} Logger
+/**
+ * Factory returning a Logger interface bound to its state.
  */
-
 function make() {
+    /** @type {LoggerState} */
+    const state = { logger: null, logLevel: "debug", logFile: null };
+
+    /**
+     * @param {import('express').Express} app
+     */
+    function enableWrapper(app) {
+        enableHttpCallsLogging(state, app);
+    }
+
+    /**
+     * @param {Capabilities} capabilities - An object containing the capabilities.
+     */
+    function setupWrapper(capabilities) {
+        return setup(state, capabilities);
+    }
+
+    /**
+     * @param {unknown} obj
+     * @param {string} msg
+     */
+    function errorWrapper(obj, msg) {
+        logError(state, obj, msg);
+    }
+
+    /**
+     * @param {unknown} obj
+     * @param {string} msg
+     */
+    function warnWrapper(obj, msg) {
+        logWarning(state, obj, msg);
+    }
+
+    /**
+     * @param {unknown} obj
+     * @param {string} msg
+     */
+    function infoWrapper(obj, msg) {
+        logInfo(state, obj, msg);
+    }
+
+    /**
+     * @param {unknown} obj
+     * @param {string} msg
+     */
+    function debugWrapper(obj, msg) {
+        logDebug(state, obj, msg);
+    }
+
     return {
-        enableHttpCallsLogging,    
-        setup,
-        logError,
-        logWarning,
-        logInfo,
-        logDebug,
+        enableHttpCallsLogging: enableWrapper,
+        setup: setupWrapper,
+        logError: errorWrapper,
+        logWarning: warnWrapper,
+        logInfo: infoWrapper,
+        logDebug: debugWrapper,
     };
 }
 
 module.exports = {
-    make,    
+    make,
 };
