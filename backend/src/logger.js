@@ -127,7 +127,7 @@ function safeGetLogFilePath(capabilities, errors) {
         return capabilities.environment.logFile();
     } catch (error) {
         const err = /** @type {Error} */ (error);
-        errors.push(`Logger setup issue: ${err.message}`);
+        errors.push(`Unable to get log file: ${err.message}`);
         return null;
     }
 }
