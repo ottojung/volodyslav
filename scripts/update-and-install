@@ -11,7 +11,7 @@ shift
 
 git checkout master
 git pull origin master --tags
-npm install
+npm ci
 npm test
 npm run build
 
