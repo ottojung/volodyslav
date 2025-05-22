@@ -12,6 +12,7 @@ const gitmethod = require("./wrappers");
 /** @typedef {import('../filesystem/deleter').FileDeleter} FileDeleter */
 /** @typedef {import('../filesystem/checker').FileChecker} FileChecker */
 /** @typedef {import('../environment').Environment} Environment */
+/** @typedef {import('../logger').Logger} Logger */
 
 /**
  * @typedef {object} Capabilities
@@ -20,6 +21,7 @@ const gitmethod = require("./wrappers");
  * @property {FileDeleter} deleter - A file deleter instance.
  * @property {FileChecker} checker - A file checker instance.
  * @property {Environment} environment - An environment instance.
+ * @property {Logger} logger - A logger instance.
  */
 
 /**
@@ -75,20 +77,21 @@ async function synchronize(capabilities) {
     const gitDir = pathToLocalRepositoryGitDir(capabilities);
     const workDir = pathToLocalRepository(capabilities);
     const indexFile = path.join(gitDir, "index");
-    const remoteRepo = capabilities.environment.eventLogRepository();
+    const repository = capabilities.environment.eventLogRepository();
     try {
+        capabilities.logger.logInfo({ repository }, "Synchronizing repository");
         if (await capabilities.checker.fileExists(indexFile)) {
             await gitmethod.pull(capabilities, workDir);
             await gitmethod.push(capabilities, workDir);
         } else {
             // TODO: rollback if any of the following operations fail.
-            await gitmethod.clone(capabilities, remoteRepo, workDir);
+            await gitmethod.clone(capabilities, repository, workDir);
             await gitmethod.makePushable(capabilities, workDir);
         }
     } catch (err) {
         throw new WorkingRepositoryError(
             `Failed to synchronize repository: ${err}`,
-            remoteRepo
+            repository
         );
     }
 }
