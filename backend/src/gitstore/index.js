@@ -7,6 +7,7 @@ const workingRepository = require("./working_repository");
 /** @typedef {import('../filesystem/deleter').FileDeleter} FileDeleter */
 /** @typedef {import('../filesystem/checker').FileChecker} FileChecker */
 /** @typedef {import('../environment').Environment} Environment */
+/** @typedef {import('../logger').Logger} Logger */
 
 /**
  * @typedef {object} Capabilities
@@ -15,6 +16,7 @@ const workingRepository = require("./working_repository");
  * @property {FileDeleter} deleter - A file deleter instance.
  * @property {FileChecker} checker - A file checker instance.
  * @property {Environment} environment - An environment instance.
+ * @property {Logger} logger - A logger instance.
  */
 
 /**
