@@ -3,7 +3,7 @@ const { start } = require("./server");
 const commander = require("commander");
 const runtimeIdentifier = require("./runtime_identifier");
 const root = require("./capabilities/root");
-const { everyHour } = require("./schedule/tasks");
+const { allTasks } = require("./schedule/tasks");
 
 /**
  * @typedef {import('./capabilities/root').Capabilities} Capabilities
@@ -43,7 +43,7 @@ async function entryTyped(capabilities) {
         .command("run-periodic")
         .description("Run all periodic tasks immediately (not on schedule)")
         .action(async () => {
-            await everyHour(capabilities);
+            await allTasks(capabilities);
             capabilities.logger.logInfo(
                 {},
                 "All periodic tasks have been run."

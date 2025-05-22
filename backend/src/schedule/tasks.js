@@ -41,6 +41,14 @@ async function everyHour(capabilities) {
 }
 
 /**
+ * @param {Capabilities} capabilities
+ * @returns {Promise<void>}
+ */
+async function allTasks(capabilities) {
+    everyHour(capabilities).catch((error) => capabilities.logger.logDebug({ error }, "Error in all tasks"));
+}
+
+/**
  * Schedules all tasks.
  * @param {Capabilities} capabilities
  */
@@ -50,5 +58,6 @@ function scheduleAll(capabilities) {
 
 module.exports = {
     everyHour,
+    allTasks,
     scheduleAll,
 };
