@@ -111,8 +111,18 @@ async function getRepository(capabilities) {
     return gitDir;
 }
 
+/**
+ * Ensure the repository is present locally.
+ * @param {Capabilities} capabilities
+ * @returns {Promise<void>}
+ */
+async function ensureAccessible(capabilities) {
+    await getRepository(capabilities);
+}
+
 module.exports = {
     synchronize,
     getRepository,
+    ensureAccessible,
     isWorkingRepositoryError,
 };

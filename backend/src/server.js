@@ -7,6 +7,7 @@ const transcribeAllRouter = require("./routes/transcribe_all");
 const periodicRouter = require("./routes/periodic");
 const expressApp = require("./express_app");
 const { scheduleAll } = require("./schedule/tasks");
+const workingRepository = require("./gitstore/working_repository");
 
 /** @typedef {import('./filesystem/deleter').FileDeleter} FileDeleter */
 /** @typedef {import('./random/seed').NonDeterministicSeed} NonDeterministicSeed */
@@ -68,6 +69,7 @@ async function ensureStartupDependencies(capabilities, app) {
     );
     await capabilities.notifier.ensureNotificationsAvailable();
     await capabilities.git.ensureAvailable();
+    await workingRepository.ensureAccessible(capabilities);
 }
 
 /**
