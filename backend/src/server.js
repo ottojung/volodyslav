@@ -86,6 +86,7 @@ async function initialize(capabilities, app) {
  * @param {Capabilities} capabilities
  */
 async function startWithCapabilities(capabilities) {
+    await capabilities.logger.setup();
     const app = expressApp.make();
     capabilities.logger.enableHttpCallsLogging(app);
     await expressApp.run(capabilities, app, async (app, server) => {
