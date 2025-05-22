@@ -65,14 +65,19 @@ function createConsoleTarget(level) {
 
 /**
  * Creates a file target for logging if possible
+ * @param {LoggerState} state - The logger state.
  * @param {string} filePath The path to the log file
- * @param {string[]} errors Array to collect error messages
+ * @param {(() => void)[]} todos Array to collect error messages
  * @returns {Promise<TransportTarget|null>} A pino transport target for file output, or null if file is not writable
  */
-async function createFileTarget(filePath, errors) {
+async function createFileTarget(state, filePath, todos) {
     if (!filePath) {
-        errors.push(
-            "Log file path not provided. Continuing with console logging only."
+        todos.push(() =>
+            logWarning(
+                state,
+                {},
+                "Log file path not provided. Continuing with console logging only."
+            )
         );
         return null;
     }
@@ -93,8 +98,12 @@ async function createFileTarget(filePath, errors) {
     } catch (error) {
         // Explicitly typing the error
         const err = /** @type {Error} */ (error);
-        errors.push(
-            `Unable to write to log file ${filePath}: ${err.message}. Continuing with console logging only.`
+        todos.push(() =>
+            logWarning(
+                state,
+                {},
+                `Unable to write to log file ${filePath}: ${err.message}. Continuing with console logging only.`
+            )
         );
         return null;
     }
@@ -102,62 +111,71 @@ async function createFileTarget(filePath, errors) {
 
 /**
  * Safely gets the log level, with fallback to "debug"
- * @param {Capabilities} capabilities - An object containing the capabilities.
- * @param {string[]} errors Array to collect error messages
+ * @param {LoggerState} state - The logger state.
+ * @param {(() => void)[]} todos Array to collect error messages
  * @returns {string} The log level to use
  */
-function safeGetLogLevel(capabilities, errors) {
+function safeGetLogLevel(state, todos) {
     try {
-        return capabilities.environment.logLevel();
+        if (!state.capabilities) {
+            throw new Error("Capabilities not initialized");
+        }
+        return state.capabilities.environment.logLevel();
     } catch (error) {
         const err = /** @type {Error} */ (error);
-        errors.push(`Unable to get log level: ${err.message}`);
+        todos.push(() =>
+            logError(state, {}, `Unable to get log level: ${err.message}`)
+        );
         return "debug";
     }
 }
 
 /**
  * Safely gets the log file path
- * @param {Capabilities} capabilities - An object containing the capabilities.
- * @param {string[]} errors Array to collect error messages
- * @returns {string|null} The log file path or null if not available
+ * @param {LoggerState} state - The logger state.
+ * @param {(() => void)[]} todos Array to collect error messages
+ * @returns {string?} The log file path or null if not available
  */
-function safeGetLogFilePath(capabilities, errors) {
+function safeGetLogFilePath(state, todos) {
     try {
-        return capabilities.environment.logFile();
+        if (!state.capabilities) {
+            throw new Error("Capabilities not initialized");
+        }
+        return state.capabilities.environment.logFile();
     } catch (error) {
         const err = /** @type {Error} */ (error);
-        errors.push(`Unable to get log file: ${err.message}`);
+        todos.push(() =>
+            logError(state, {}, `Unable to get log file: ${err.message}`)
+        );
         return null;
     }
 }
 
 /**
  * @param {LoggerState} state - The logger state.
- * @param {Capabilities} capabilities - An object containing the capabilities.
  * @returns {Promise<void>}
  */
-async function setup(state, capabilities) {
-    /** @type {string[]} */
-    const errors = [];
-    /** @type {string[]} */
-    const infos = [];
+async function setup(state) {
+    /** @type {(() => void)[]} */
+    const todos = [];
 
     /** @type {TransportTarget[]} */
     const targets = [];
 
     // Get log level safely
-    const logLevelValue = safeGetLogLevel(capabilities, errors);
-    infos.push(`Log level set to: ${logLevelValue}`);
+    const logLevelValue = safeGetLogLevel(state, todos);
+    todos.push(() => logInfo(state, {}, `Log level set to: ${logLevelValue}`));
 
     // Always add console target
     targets.push(createConsoleTarget(logLevelValue));
 
     // Try to add file target if possible
-    const logFilePath = safeGetLogFilePath(capabilities, errors);
+    const logFilePath = safeGetLogFilePath(state, todos);
     if (logFilePath) {
-        infos.push(`Log file path set to: ${logFilePath}`);
-        const fileTarget = await createFileTarget(logFilePath, errors);
+        todos.push(() =>
+            logInfo(state, {}, `Log file path set to: ${logFilePath}`)
+        );
+        const fileTarget = await createFileTarget(state, logFilePath, todos);
         if (fileTarget) {
             targets.push(fileTarget);
         }
@@ -173,14 +191,9 @@ async function setup(state, capabilities) {
     state.logLevel = logLevelValue;
     state.logFile = logFilePath;
 
-    // Report any setup errors
-    for (const error of errors) {
-        logError(state, {}, error);
-    }
-
-    // Report any setup info
-    for (const info of infos) {
-        logInfo(state, {}, info);
+    // Execute all collected todos.
+    for (const todo of todos) {
+        todo();
     }
 }
 
@@ -271,7 +284,12 @@ function logDebug(state, obj, msg) {
  */
 function make(getCapabilities) {
     /** @type {LoggerState} */
-    const state = { logger: null, logLevel: "debug", logFile: null, capabilities: null };
+    const state = {
+        logger: null,
+        logLevel: "debug",
+        logFile: null,
+        capabilities: null,
+    };
 
     /**
      * @param {import('express').Express} app
@@ -282,7 +300,7 @@ function make(getCapabilities) {
 
     function setupWrapper() {
         state.capabilities = getCapabilities();
-        return setup(state, state.capabilities);
+        return setup(state);
     }
 
     /**
