@@ -14,7 +14,7 @@ function make() {
  */
 function runAllTasks(capabilities) {
     return async () => {
-        capabilities.logger.setup();
+        await capabilities.logger.setup();
         capabilities.logger.logInfo({}, "Running all periodic tasks now");
         await allTasks(capabilities);
         capabilities.logger.logInfo({}, "All periodic tasks have been run.");
