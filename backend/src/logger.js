@@ -297,9 +297,9 @@ function make(getCapabilities) {
         enableHttpCallsLogging(state, app);
     }
 
-    function setupWrapper() {
+    async function setupWrapper() {
         state.capabilities = getCapabilities();
-        return setup(state);
+        await setup(state);
     }
 
     /**
