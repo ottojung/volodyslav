@@ -7,31 +7,6 @@ A full-stack application for capturing photos via a browser camera, uploading th
 
 ---
 
-## Table of Contents
-
-1. [Features](#features)
-2. [Technology Stack](#technology-stack)
-3. [Architecture & Project Layout](#architecture--project-layout)
-4. [Getting Started](#getting-started)
-   4.1 [Prerequisites](#prerequisites)
-   4.2 [Environment Variables](#environment-variables)
-   4.3 [Install & Build](#install--build)
-5. [Development Mode](#development-mode)
-   5.1 [Run Both Frontend & Backend](#run-both-frontend--backend)
-   5.2 [Run Frontend Only](#run-frontend-only)
-   5.3 [Run Backend Only](#run-backend-only)
-6. [Production Mode](#production-mode)
-   6.1 [Build Frontend](#build-frontend)
-   6.2 [Serve Frontend](#serve-frontend)
-   6.3 [Start Backend](#start-backend)
-7. [API Endpoints](#api-endpoints)
-8. [Testing](#testing)
-9. [Utilities & Scripts](#utilities--scripts)
-10. [Code Quality & Tooling](#code-quality--tooling)
-11. [License](#license)
-
----
-
 ## Features
 
 - **Camera interface** to capture and preview photos
