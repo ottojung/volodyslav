@@ -47,6 +47,7 @@ async function run(capabilities, app, fun) {
     const port = capabilities.environment.myServerPort();
     return new Promise((resolve, reject) => {
         const server = app.listen(port);
+        const runFunc = gentleWrap(capabilities, () => fun(app, server));
 
         // Handle address-in-use error
         server.once(
@@ -62,7 +63,6 @@ async function run(capabilities, app, fun) {
 
         // Once listening, execute the provided function gently
         server.once("listening", () => {
-            const runFunc = gentleWrap(capabilities, () => fun(app, server));
             runFunc()
                 .then(() => resolve(server))
                 .catch((err) => {
