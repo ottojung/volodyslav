@@ -206,24 +206,23 @@ async function setup(state) {
 function logError(state, obj, msg) {
     // Call the original error method with proper typing
     if (state.logger !== null) {
-        state.logger.error(obj, msg);
+        state.logger.error(msg, { obj });
     } else {
         // Fallback to console if logger is not initialized
         console.error("Logger not initialized");
-        console.error(obj, msg);
+        console.error(msg, { obj });
     }
 
     // Send notification
     state.capabilities?.notifier.notifyAboutError(msg).catch((err) => {
         if (state.logger !== null) {
-            state.logger.error(
-                { error: err },
-                "Failed to send error notification"
-            );
+            state.logger.error("Failed to send error notification", {
+                error: err,
+            });
         } else {
             // Fallback to console if logger is not initialized
             console.error("Logger not initialized");
-            console.error({ error: err }, "Failed to send error notification");
+            console.error("Failed to send error notification", { error: err });
         }
     });
 }
@@ -240,7 +239,7 @@ function logWarning(state, obj, msg) {
     } else {
         // Fallback to console if logger is not initialized
         console.error("Logger not initialized");
-        console.warn(obj, msg);
+        console.warn(msg, { obj });
     }
 }
 
@@ -256,7 +255,7 @@ function logInfo(state, obj, msg) {
     } else {
         // Fallback to console if logger is not initialized
         console.error("Logger not initialized");
-        console.info(obj, msg);
+        console.info(msg, { obj });
     }
 }
 
@@ -272,7 +271,7 @@ function logDebug(state, obj, msg) {
     } else {
         // Fallback to console if logger is not initialized
         console.error("Logger not initialized");
-        console.debug(obj, msg);
+        console.debug(msg, { obj });
     }
 }
 
