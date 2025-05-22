@@ -43,16 +43,32 @@ function make() {
  */
 async function run(capabilities, app, fun) {
     const port = capabilities.environment.myServerPort();
-    const server = app.listen(port, async function () {
-        try {
-            const gentleFun = gentleWrap(capabilities, async () => fun(app, server));
-            await gentleFun();
-        } catch (error) {
-            server.close();
-            throw error;
-        }
+    return new Promise((resolve, reject) => {
+        const server = app.listen(port);
+
+        // Handle address-in-use error
+        server.once(
+            "error",
+            /** @param {NodeJS.ErrnoException} error */ (error) => {
+                if (error.code === "EADDRINUSE") {
+                    reject(new ServerAddressAlreadyInUseError());
+                } else {
+                    reject(error);
+                }
+            }
+        );
+
+        // Once listening, execute the provided function gently
+        server.once("listening", () => {
+            const runFunc = gentleWrap(capabilities, () => fun(app, server));
+            runFunc()
+                .then(() => resolve(server))
+                .catch((err) => {
+                    server.close();
+                    reject(err);
+                });
+        });
     });
-    return server;
 }
 
 module.exports = {
