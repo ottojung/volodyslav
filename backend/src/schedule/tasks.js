@@ -11,6 +11,7 @@ const workingRepository = require("../gitstore/working_repository");
 /** @typedef {import('../subprocess/command').Command} Command */
 /** @typedef {import('../environment').Environment} Environment */
 /** @typedef {import('../schedule').Scheduler} Scheduler */
+/** @typedef {import('../logger').Logger} Logger */
 
 /**
  * @typedef {object} Capabilities
@@ -25,6 +26,7 @@ const workingRepository = require("../gitstore/working_repository");
  * @property {Command} git - A command instance for Git operations.
  * @property {Environment} environment - An environment instance.
  * @property {Scheduler} scheduler - A scheduler instance.
+ * @property {Logger} logger - A logger instance.
  */
 
 /**
@@ -32,6 +34,8 @@ const workingRepository = require("../gitstore/working_repository");
  * @returns {Promise<void>}
  */
 async function everyHour(capabilities) {
+    capabilities.logger.logInfo({}, "Running every hour task");
+
     // await processDiaryAudios(capabilities);
     await workingRepository.synchronize(capabilities);
 }
