@@ -6,7 +6,13 @@ cd -- "${0%/*}"/..
 
 set -xe
 
+PREFIX="$1"
+shift
+
 git checkout master
 git pull origin master --tags
 npm install
 npm run build
+
+mkdir -p "$PREFIX"/bin
+ln -srfT -- "scripts/run-main" "$PREFIX"/bin/volodyslav
