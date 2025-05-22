@@ -205,7 +205,7 @@ describe("working_repository", () => {
             cwd: path.dirname(localRepoPath),
             shell: true,
         });
-        await callSubprocess("git commit -m 'Add existing file'", {
+        await callSubprocess("git -c user.name=volodyslav -c user.email=volodyslav commit -m 'Add existing file'", {
             cwd: path.dirname(localRepoPath),
             shell: true,
         });
