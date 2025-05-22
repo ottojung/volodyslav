@@ -12,7 +12,9 @@ const { gentleWrap } = require("./gentlewrap");
 
 class ServerAddressAlreadyInUseError extends Error {
     constructor() {
-        super("Server address is already in use");
+        super(
+            "Server address is already in use. This usually means that the server is already running."
+        );
     }
 }
 
