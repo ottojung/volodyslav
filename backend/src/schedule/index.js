@@ -1,3 +1,4 @@
+const { allTasks } = require("./tasks");
 const { schedule } = require("./runner");
 
 /** @typedef {ReturnType<make>} Scheduler */
@@ -8,6 +9,19 @@ function make() {
     };
 }
 
+/**
+ * @param {import("./tasks").Capabilities} capabilities
+ */
+function runAllTasks(capabilities) {
+    return async () => {
+        capabilities.logger.setup();
+        capabilities.logger.logInfo({}, "Running all periodic tasks now");
+        await allTasks(capabilities);
+        capabilities.logger.logInfo({}, "All periodic tasks have been run.");
+    };
+}
+
 module.exports = {
     make,
+    runAllTasks,
 };
