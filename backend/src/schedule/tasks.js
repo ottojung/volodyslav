@@ -37,7 +37,13 @@ async function everyHour(capabilities) {
     capabilities.logger.logInfo({}, "Running every hour task");
 
     // await processDiaryAudios(capabilities);
-    await workingRepository.synchronize(capabilities);
+
+    workingRepository.synchronize(capabilities).catch((error) => {
+        capabilities.logger.logError(
+            { error },
+            "Error during workingRepository synchronization"
+        );
+    });
 }
 
 /**
@@ -45,7 +51,9 @@ async function everyHour(capabilities) {
  * @returns {Promise<void>}
  */
 async function allTasks(capabilities) {
-    everyHour(capabilities).catch((error) => capabilities.logger.logDebug({ error }, "Error in all tasks"));
+    everyHour(capabilities).catch((error) =>
+        capabilities.logger.logDebug({ error }, "Error in all tasks")
+    );
 }
 
 /**
