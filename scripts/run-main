@@ -5,4 +5,7 @@ set -e
 SELF="${0}"
 SELF=$(readlink -f -- "$SELF")
 
-node -- "$SELF"/../../backend/src/index.js "$@"
+VOLODYSLAV_SOURCE="${SELF}/../.."
+cd -- "$VOLODYSLAV_SOURCE"
+
+node -- backend/src/index.js "$@"
