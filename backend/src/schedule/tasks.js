@@ -1,4 +1,5 @@
 const workingRepository = require("../gitstore/working_repository");
+const { processDiaryAudios } = require("../diary");
 
 /** @typedef {import('../filesystem/deleter').FileDeleter} FileDeleter */
 /** @typedef {import('../random/seed').NonDeterministicSeed} NonDeterministicSeed */
@@ -36,7 +37,9 @@ const workingRepository = require("../gitstore/working_repository");
 async function everyHour(capabilities) {
     capabilities.logger.logInfo({}, "Running every hour tasks");
 
-    // await processDiaryAudios(capabilities);
+    await processDiaryAudios(capabilities).catch((error) => {
+        capabilities.logger.logError({ error }, "Error in processDiaryAudios");
+    });
 
     await workingRepository.synchronize(capabilities).catch((error) => {
         capabilities.logger.logError(
