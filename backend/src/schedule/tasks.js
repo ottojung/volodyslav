@@ -38,7 +38,7 @@ async function everyHour(capabilities) {
 
     // await processDiaryAudios(capabilities);
 
-    workingRepository.synchronize(capabilities).catch((error) => {
+    await workingRepository.synchronize(capabilities).catch((error) => {
         capabilities.logger.logError(
             { error },
             "Error during workingRepository synchronization"
@@ -51,7 +51,7 @@ async function everyHour(capabilities) {
  * @returns {Promise<void>}
  */
 async function allTasks(capabilities) {
-    everyHour(capabilities).catch((error) =>
+    await everyHour(capabilities).catch((error) =>
         capabilities.logger.logDebug({ error }, "Error in all tasks")
     );
 }
