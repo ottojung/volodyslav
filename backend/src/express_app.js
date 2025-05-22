@@ -10,6 +10,20 @@ const { gentleWrap } = require("./gentlewrap");
  * @property {Logger} logger - A logger instance.
  */
 
+class ServerAddressAlreadyInUseError extends Error {
+    constructor() {
+        super("Server address is already in use");
+    }
+}
+
+/**
+ * @param {unknown} object
+ * @returns {object is ServerAddressAlreadyInUseError}
+ */
+function isServerAddressAlreadyInUseError(object) {
+    return object instanceof ServerAddressAlreadyInUseError;
+}
+
 /**
  * @returns {express.Express}
  */
@@ -44,4 +58,5 @@ async function run(capabilities, app, fun) {
 module.exports = {
     make,
     run,
+    isServerAddressAlreadyInUseError,
 };
