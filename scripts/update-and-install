@@ -12,6 +12,7 @@ shift
 git checkout master
 git pull origin master --tags
 npm install
+npm test
 npm run build
 
 mkdir -p "$PREFIX"/bin
