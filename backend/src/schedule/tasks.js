@@ -34,7 +34,7 @@ const workingRepository = require("../gitstore/working_repository");
  * @returns {Promise<void>}
  */
 async function everyHour(capabilities) {
-    capabilities.logger.logInfo({}, "Running every hour task");
+    capabilities.logger.logInfo({}, "Running every hour tasks");
 
     // await processDiaryAudios(capabilities);
 
