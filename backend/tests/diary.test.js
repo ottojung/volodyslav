@@ -5,7 +5,12 @@ const { processDiaryAudios } = require("../src/diary");
 const gitstore = require("../src/gitstore");
 const { readObjects } = require("../src/json_stream_file");
 const { formatFileTimestamp } = require("../src/format_time_stamp");
-const { stubEnvironment, stubLogger, stubEventLogRepository } = require("./stubs");
+const dateFormatter = require("../src/event/date");
+const {
+    stubEnvironment,
+    stubLogger,
+    stubEventLogRepository,
+} = require("./stubs");
 const { getMockedRootCapabilities } = require("./spies");
 
 function getTestCapabilities() {
@@ -58,9 +63,10 @@ describe("processDiaryAudios", () => {
             const objects = await readObjects(dataPath);
             expect(objects).toHaveLength(filenames.length);
             objects.forEach((obj, i) => {
+                const date = formatFileTimestamp(filenames[i]);
                 expect(obj).toEqual({
                     id: obj.id,
-                    date: formatFileTimestamp(filenames[i]).toISOString(),
+                    date: dateFormatter.format(date),
                     original: "diary [when 0 hours ago] [audiorecording]",
                     input: "diary [when 0 hours ago] [audiorecording]",
                     modifiers: { when: "0 hours ago", audiorecording: "" },

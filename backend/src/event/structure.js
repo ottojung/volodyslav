@@ -1,3 +1,5 @@
+const { format } = require("./date");
+
 /**
  * @typedef Modifiers
  * @type {Record<string, string>}
@@ -24,7 +26,7 @@
  */
 function serialize(event) {
     // De-nominalize the event.
-    const date = event.date.toISOString();
+    const date = format(event.date);
     const id = event.id.identifier;
     const realEvent = { ...event, date, id };
     return realEvent;
