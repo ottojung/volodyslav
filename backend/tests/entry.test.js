@@ -89,4 +89,55 @@ describe("createEntry (integration, with real capabilities)", () => {
         expect(event.date.getTime()).toBeGreaterThanOrEqual(before);
         expect(event.date.getTime()).toBeLessThanOrEqual(after);
     });
+
+    it("creates an event log entry with empty modifiers if not provided", async () => {
+        const capabilities = await getTestCapabilities();
+        const entryData = {
+            original: "No modifiers original",
+            input: "No modifiers input",
+            type: "no-modifiers-type",
+            description: "Entry without modifiers.",
+            // no modifiers field
+        };
+        const event = await createEntry(capabilities, entryData);
+        expect(event.modifiers).toEqual({});
+    });
+
+    it("creates an event log entry with empty description if not provided", async () => {
+        const capabilities = await getTestCapabilities();
+        const entryData = {
+            original: "No description original",
+            input: "No description input",
+            type: "no-description-type",
+            // no description field
+        };
+        const event = await createEntry(capabilities, entryData);
+        expect(event.description).toBeUndefined();
+    });
+
+    it("creates an event log entry with custom type and verifies type is set", async () => {
+        const capabilities = await getTestCapabilities();
+        const entryData = {
+            original: "Custom type original",
+            input: "Custom type input",
+            type: "custom-type-xyz",
+            description: "Entry with custom type.",
+        };
+        const event = await createEntry(capabilities, entryData);
+        expect(event.type).toBe("custom-type-xyz");
+    });
+
+    it("creates an event log entry with a future date", async () => {
+        const capabilities = await getTestCapabilities();
+        const futureDate = new Date(Date.now() + 1000 * 60 * 60 * 24 * 365).toISOString();
+        const entryData = {
+            original: "Future date original",
+            input: "Future date input",
+            type: "future-date-type",
+            description: "Entry with a future date.",
+            date: futureDate,
+        };
+        const event = await createEntry(capabilities, entryData);
+        expect(event.date).toEqual(new Date(futureDate));
+    });
 });
