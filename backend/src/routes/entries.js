@@ -42,12 +42,13 @@ function makeRouter(capabilities) {
      */
     router.post("/entries", async (req, res) => {
         try {
-            const { type, description, date, modifiers } = req.body;
+            const { type, description, date, modifiers, original, input } =
+                req.body;
 
             // Basic validation
-            if (!type || !description) {
+            if (!type || !description || !original || !input) {
                 return res.status(400).json({
-                    error: "Missing required fields: type and description",
+                    error: "Missing required fields: type, description, original, and input",
                 });
             }
 
@@ -56,6 +57,8 @@ function makeRouter(capabilities) {
                 description,
                 date,
                 modifiers,
+                original,
+                input,
             };
 
             const event = await createEntry(capabilities, entryData);

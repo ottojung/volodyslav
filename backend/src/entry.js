@@ -33,6 +33,8 @@ const creatorMake = require("./creator");
 /**
  * @typedef {object} EntryData
  * @property {string} [date] - ISO date string, defaults to current time
+ * @property {string} original - The original, raw input for the event
+ * @property {string} input - The processed input for the event
  * @property {string} type - The type of entry (e.g., "note", "diary", "todo")
  * @property {string} description - The content/description of the entry
  * @property {Record<string, string>} [modifiers] - Additional key-value modifiers
@@ -55,8 +57,8 @@ async function createEntry(capabilities, entryData, file) {
     const event = {
         id,
         date,
-        original: entryData.description,
-        input: entryData.description,
+        original: entryData.original,
+        input: entryData.input,
         modifiers: entryData.modifiers || {},
         type: entryData.type,
         description: entryData.description,
