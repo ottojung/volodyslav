@@ -3,6 +3,7 @@ const upload = require("../storage");
 const { createEntry } = require("../entry");
 const { fromExisting } = require("../filesystem/file");
 const { random: randomRequestId } = require("../request_identifier");
+const { serialize } = require("../event");
 
 /**
  * @typedef {import('../environment').Environment} Environment
@@ -105,12 +106,7 @@ async function handleEntryPost(req, res, capabilities) {
 
         return res.status(201).json({
             success: true,
-            entry: {
-                id: event.id,
-                type: event.type,
-                description: event.description,
-                date: event.date,
-            },
+            entry: serialize(event),
         });
     } catch (error) {
         const message = error instanceof Error ? error.message : String(error);

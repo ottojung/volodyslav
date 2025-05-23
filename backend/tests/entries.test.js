@@ -36,7 +36,7 @@ describe("POST /api/entries", () => {
             type: "http-type",
             description: "HTTP description",
             modifiers: { foo: "bar" },
-            date: "2025-05-23T12:00:00.000Z",
+            date: "2025-05-23T12:00:00+0000",
         };
         const res = await request(app)
             .post("/api/entries")
