@@ -115,15 +115,12 @@ async function handleEntryPost(req, res, capabilities) {
     } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
         capabilities.logger.logError(
-            { error: message },
+            {
+                error: message,
+                stack: error instanceof Error ? error.stack : undefined,
+            },
             `Failed to create entry: ${message}`
         );
-        // Only print stack if present and error is an Error
-        if (error instanceof Error && error.stack) {
-            console.error("/api/entries error", error, error.stack);
-        } else {
-            console.error("/api/entries error", error);
-        }
 
         return res.status(500).json({
             error: "Internal server error",
