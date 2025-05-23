@@ -166,3 +166,9 @@ npm test
 
 This project is licensed under the **AGPL-3.0**.
 See the [COPYING](./COPYING) file for full license terms.
+
+---
+
+# UID
+
+This project's universally unique identifier is `kje8by853ouyll677gos7qvsd5e2r9vl`.
