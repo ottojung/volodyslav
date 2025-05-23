@@ -1,9 +1,8 @@
 const express = require("express");
-const multer = require("multer");
+const upload = require("../storage");
 const { createEntry } = require("../entry");
 const { fromExisting } = require("../filesystem/file");
-
-const upload = multer({ dest: "/tmp" });
+const { random: randomRequestId } = require("../request_identifier");
 
 /**
  * @typedef {import('../environment').Environment} Environment
@@ -39,81 +38,97 @@ const upload = multer({ dest: "/tmp" });
  * @returns {express.Router} - The configured router.
  */
 function makeRouter(capabilities) {
+    const uploadMiddleware = upload.makeUpload(capabilities);
     const router = express.Router();
 
     /**
      * POST /entries - Create a new entry
      */
-    router.post("/entries", upload.single("file"), async (req, res) => {
-        try {
-            // For multipart/form-data, fields are in req.body, file in req.file
-            const { type, description, date, modifiers, original, input } =
-                req.body;
-
-            // Basic validation
-            if (!type || !description || !original || !input) {
-                return res.status(400).json({
-                    error: "Missing required fields: type, description, original, and input",
-                });
-            }
-
-            // If modifiers is a string (from multipart), try to parse as JSON
-            let parsedModifiers = modifiers;
-            if (typeof modifiers === "string") {
-                try {
-                    parsedModifiers = JSON.parse(modifiers);
-                } catch {
-                    parsedModifiers = undefined;
-                }
-            }
-
-            const entryData = {
-                type,
-                description,
-                date,
-                modifiers: parsedModifiers,
-                original,
-                input,
-            };
-
-            // If file is present, wrap as ExistingFileClass using fromExisting
-            let fileObj = undefined;
-            if (req.file) {
-                fileObj = await fromExisting(req.file.path);
-            }
-
-            const event = await createEntry(capabilities, entryData, fileObj);
-
-            return res.status(201).json({
-                success: true,
-                entry: {
-                    id: event.id,
-                    type: event.type,
-                    description: event.description,
-                    date: event.date,
-                },
-            });
-        } catch (error) {
-            const message =
-                error instanceof Error ? error.message : String(error);
-            capabilities.logger.logError(
-                { error: message },
-                `Failed to create entry: ${message}`
-            );
-            // Only print stack if present and error is an Error
-            if (error instanceof Error && error.stack) {
-                console.error("/api/entries error", error, error.stack);
-            } else {
-                console.error("/api/entries error", error);
-            }
-
-            return res.status(500).json({
-                error: "Internal server error",
-            });
-        }
+    router.post("/entries", async (req, res, next) => {
+        // Generate a random request identifier and attach to req.query
+        const reqId = randomRequestId(capabilities);
+        req.query["request_identifier"] = reqId.identifier;
+        // Call multer upload middleware
+        uploadMiddleware.single("file")(req, res, (err) => {
+            if (err) return next(err);
+            handleEntryPost(req, res, capabilities);
+        });
     });
 
     return router;
+}
+
+/**
+ * Handles the POST /entries logic after file upload.
+ * @param {import('express').Request} req
+ * @param {import('express').Response} res
+ * @param {Capabilities} capabilities
+ */
+async function handleEntryPost(req, res, capabilities) {
+    try {
+        const { type, description, date, modifiers, original, input } =
+            req.body;
+
+        // Basic validation
+        if (!type || !description || !original || !input) {
+            return res.status(400).json({
+                error: "Missing required fields: type, description, original, and input",
+            });
+        }
+
+        // If modifiers is a string (from multipart), try to parse as JSON
+        let parsedModifiers = modifiers;
+        if (typeof modifiers === "string") {
+            try {
+                parsedModifiers = JSON.parse(modifiers);
+            } catch {
+                parsedModifiers = undefined;
+            }
+        }
+
+        const entryData = {
+            type,
+            description,
+            date,
+            modifiers: parsedModifiers,
+            original,
+            input,
+        };
+
+        // If file is present, wrap as ExistingFileClass using fromExisting
+        let fileObj = undefined;
+        if (req.file) {
+            fileObj = await fromExisting(req.file.path);
+        }
+
+        const event = await createEntry(capabilities, entryData, fileObj);
+
+        return res.status(201).json({
+            success: true,
+            entry: {
+                id: event.id,
+                type: event.type,
+                description: event.description,
+                date: event.date,
+            },
+        });
+    } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        capabilities.logger.logError(
+            { error: message },
+            `Failed to create entry: ${message}`
+        );
+        // Only print stack if present and error is an Error
+        if (error instanceof Error && error.stack) {
+            console.error("/api/entries error", error, error.stack);
+        } else {
+            console.error("/api/entries error", error);
+        }
+
+        return res.status(500).json({
+            error: "Internal server error",
+        });
+    }
 }
 
 module.exports = { makeRouter };
