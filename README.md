@@ -162,7 +162,7 @@ npm test
 
 ---
 
-## License
+# License
 
 This project is licensed under the **AGPL-3.0**.
 See the [COPYING](./COPYING) file for full license terms.
