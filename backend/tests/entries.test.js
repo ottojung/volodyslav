@@ -2,7 +2,11 @@ const request = require("supertest");
 const expressApp = require("../src/express_app");
 const { addRoutes } = require("../src/server");
 const { getMockedRootCapabilities } = require("./spies");
-const { stubEnvironment, stubLogger, stubEventLogRepository } = require("./stubs");
+const {
+    stubEnvironment,
+    stubLogger,
+    stubEventLogRepository,
+} = require("./stubs");
 const fs = require("fs");
 const path = require("path");
 const os = require("os");
@@ -20,6 +24,11 @@ async function makeTestApp() {
 
 describe("POST /api/entries", () => {
     it("creates an entry and returns 201 with event data", async () => {
+        // Equivalent curl command:
+        // curl -X POST http://localhost:PORT/api/entries \
+        //   -H "Content-Type: application/json" \
+        //   -d '{"original":"HTTP original","input":"HTTP input","type":"http-type","description":"HTTP description","modifiers":{"foo":"bar"},"date":"2025-05-23T12:00:00.000Z"}'
+
         const { app, capabilities } = await makeTestApp();
         const entry = {
             original: "HTTP original",
@@ -27,7 +36,7 @@ describe("POST /api/entries", () => {
             type: "http-type",
             description: "HTTP description",
             modifiers: { foo: "bar" },
-            date: "2025-05-23T12:00:00.000Z"
+            date: "2025-05-23T12:00:00.000Z",
         };
         const res = await request(app)
             .post("/api/entries")
@@ -38,7 +47,7 @@ describe("POST /api/entries", () => {
         expect(res.body.entry).toMatchObject({
             type: entry.type,
             description: entry.description,
-            date: entry.date
+            date: entry.date,
         });
         expect(capabilities.logger.logInfo).toHaveBeenCalledWith(
             expect.objectContaining({ type: entry.type, hasFile: false }),
@@ -47,6 +56,11 @@ describe("POST /api/entries", () => {
     });
 
     it("returns 400 if required fields are missing", async () => {
+        // Equivalent curl command:
+        // curl -X POST http://localhost:PORT/api/entries \
+        //   -H "Content-Type: application/json" \
+        //   -d '{"type":"missing-fields"}'
+
         const { app } = await makeTestApp();
         const res = await request(app)
             .post("/api/entries")
@@ -58,14 +72,16 @@ describe("POST /api/entries", () => {
 
     it("creates an entry with an asset when a file is uploaded", async () => {
         const { app, capabilities } = await makeTestApp();
-        const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "entries-http-test-"));
+        const tmpDir = fs.mkdtempSync(
+            path.join(os.tmpdir(), "entries-http-test-")
+        );
         const tmpFilePath = path.join(tmpDir, "upload.txt");
         fs.writeFileSync(tmpFilePath, "uploaded content");
         const entry = {
             original: "File original",
             input: "File input",
             type: "file-type",
-            description: "File description"
+            description: "File description",
         };
         const res = await request(app)
             .post("/api/entries")
