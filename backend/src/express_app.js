@@ -30,7 +30,10 @@ function isServerAddressAlreadyInUseError(object) {
  * @returns {express.Express}
  */
 function make() {
-    return express();
+    const app = express();
+    app.use(express.json());
+    app.use(express.urlencoded({ extended: true }));
+    return app;
 }
 
 /**

@@ -1,5 +1,8 @@
 const express = require("express");
+const multer = require("multer");
 const { createEntry } = require("../entry");
+
+const upload = multer({ dest: "/tmp" });
 
 /**
  * @typedef {import('../environment').Environment} Environment
@@ -40,9 +43,6 @@ function makeRouter(capabilities) {
     /**
      * POST /entries - Create a new entry
      */
-    router.post("/entries", async (req, res) => {
-        try {
-            const { type, description, date, modifiers, original, input } =
                 req.body;
 
             // Basic validation
@@ -79,6 +79,7 @@ function makeRouter(capabilities) {
                 { error: message },
                 `Failed to create entry: ${message}`
             );
+            console.error("/api/entries error", error, error && error.stack);
 
             return res.status(500).json({
                 error: "Internal server error",
