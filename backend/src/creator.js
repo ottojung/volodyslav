@@ -16,6 +16,7 @@ const runtime_identifier = require("./runtime_identifier");
  * @typedef Creator
  * @type {Object}
  * @property {string} name - The name of the creator.
+ * @property {string} uuid - The UUID of the creator.
  * @property {string} version - The version of the creator.
  */
 
@@ -28,6 +29,7 @@ async function creator(capabilities) {
     const { version } = await runtime_identifier(capabilities);
     return {
         name: "Volodyslav",
+        uuid: 'kje8by853ouyll677gos7qvsd5e2r9vl',
         version: version,
     };
 }
