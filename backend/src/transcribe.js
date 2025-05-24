@@ -1,9 +1,7 @@
 const fs = require("fs");
 const path = require("path");
-const { OpenAI } = require("openai");
 const { makeDirectory, markDone } = require("./request_identifier");
 const creatorMake = require("./creator");
-const memoize = require("@emotion/memoize").default;
 
 /** @typedef {import('./filesystem/file').ExistingFile} ExistingFile */
 
@@ -14,6 +12,7 @@ const memoize = require("@emotion/memoize").default;
 /** @typedef {import('./subprocess/command').Command} Command */
 /** @typedef {import('./environment').Environment} Environment */
 /** @typedef {import('./logger').Logger} Logger */
+/** @typedef {import('./ai_transcription').AITranscription} AITranscription */
 
 /**
  * @typedef {object} Capabilities
@@ -24,14 +23,8 @@ const memoize = require("@emotion/memoize").default;
  * @property {Command} git - A command instance for Git operations (optional if not always used).
  * @property {Environment} environment - An environment instance.
  * @property {Logger} logger - A logger instance.
+ * @property {AITranscription} aiTranscription - An AI transcription instance.
  */
-
-// Instantiate client
-const openai = memoize(
-    (/** @type {string} */ apiKey) => new OpenAI({ apiKey })
-);
-
-const TRANSCRIBER_MODEL = "gpt-4o-mini-transcribe";
 
 class InputNotFound extends Error {
     /** @type {string} */
@@ -78,23 +71,15 @@ function isInputNotFound(object) {
  * @returns {Promise<Transcription>}
  */
 async function transcribeStream(capabilities, file_stream) {
-    // Make the API call
-    const apiKey = capabilities.environment.openaiAPIKey();
-    const response_text = await openai(apiKey).audio.transcriptions.create({
-        file: file_stream,
-        model: TRANSCRIBER_MODEL,
-        response_format: "text",
-    });
-
+    // Make the API call using the AI transcription capability
+    const response_text = await capabilities.aiTranscription.transcribeStream(file_stream);
+    const transcriber = capabilities.aiTranscription.getTranscriberInfo();
     const creator = await creatorMake(capabilities);
 
     // Wrap into an abstracted structure
     return {
         text: response_text,
-        transcriber: {
-            name: TRANSCRIBER_MODEL,
-            creator: "OpenAI",
-        },
+        transcriber,
         creator,
     };
 }

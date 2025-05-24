@@ -12,6 +12,7 @@ const { transcribeFile } = require("./transcribe");
 /** @typedef {import('./subprocess/command').Command} Command */
 /** @typedef {import('./environment').Environment} Environment */
 /** @typedef {import('./logger').Logger} Logger */
+/** @typedef {import('./ai_transcription').AITranscription} AITranscription */
 
 /**
  * @typedef {object} Capabilities
@@ -23,6 +24,7 @@ const { transcribeFile } = require("./transcribe");
  * @property {Command} git - A command instance for Git operations.
  * @property {Environment} environment - An environment instance.
  * @property {Logger} logger - A logger instance.
+ * @property {AITranscription} aiTranscription - An AI transcription instance.
  */
 
 class InputDirectoryAccess extends Error {

@@ -9,6 +9,7 @@ const { transcribeRequest, isInputNotFound } = require("../transcribe");
 /** @typedef {import('../random/seed').NonDeterministicSeed} NonDeterministicSeed */
 /** @typedef {import('../subprocess/command').Command} Command */
 /** @typedef {import('../environment').Environment} Environment */
+/** @typedef {import('../ai_transcription').AITranscription} AITranscription */
 
 /**
  * @typedef {object} Capabilities
@@ -19,6 +20,7 @@ const { transcribeRequest, isInputNotFound } = require("../transcribe");
  * @property {Command} git - A command instance for Git operations (optional if not always used).
  * @property {Environment} environment - An environment instance.
  * @property {Logger} logger - A logger instance.
+ * @property {AITranscription} aiTranscription - An AI transcription instance.
  */
 
 /**

@@ -10,6 +10,7 @@ const { transcribeAllRequest, InputDirectoryAccess } = require("../transcribe_al
 /** @typedef {import('../subprocess/command').Command} Command */
 /** @typedef {import('../environment').Environment} Environment */
 /** @typedef {import('../logger').Logger} Logger */
+/** @typedef {import('../ai_transcription').AITranscription} AITranscription */
 
 /**
  * @typedef {object} Capabilities
@@ -21,6 +22,7 @@ const { transcribeAllRequest, InputDirectoryAccess } = require("../transcribe_al
  * @property {Command} git
  * @property {Environment} environment - An environment instance.
  * @property {Logger} logger - A logger instance.
+ * @property {AITranscription} aiTranscription - An AI transcription instance.
  */
 
 /**

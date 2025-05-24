@@ -6,18 +6,17 @@ const { addRoutes } = require("../src/server");
 const { getMockedRootCapabilities } = require("./spies");
 const { stubEnvironment, stubLogger } = require("./stubs");
 
-// Mock the OpenAI client to avoid real API calls
-jest.mock("openai", () => {
-    // Stubbed create method returns a fixed response
-    const createMock = jest.fn().mockResolvedValue("foo bar baz");
-    return {
-        OpenAI: jest.fn().mockImplementation(() => ({
-            audio: {
-                transcriptions: { create: createMock },
-            },
-        })),
-    };
-});
+// Mock the AITranscription capability instead of OpenAI directly
+jest.mock("../src/ai_transcription", () => ({
+    make: () => ({
+        transcribeStream: jest.fn().mockResolvedValue("foo bar baz"),
+        getTranscriberInfo: jest.fn().mockReturnValue({
+            name: "gpt-4o-mini-transcribe",
+            creator: "OpenAI",
+        }),
+    }),
+    isAITranscriptionError: jest.fn(),
+}));
 
 function getTestCapabilities() {
     const capabilities = getMockedRootCapabilities();

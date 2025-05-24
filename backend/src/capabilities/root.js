@@ -17,6 +17,7 @@
 /** @typedef {import('../logger').Logger} Logger */
 /** @typedef {import('../notifications').Notifier} Notifier */
 /** @typedef {import('../schedule').Scheduler} Scheduler */
+/** @typedef {import('../ai_transcription').AITranscription} AITranscription */
 
 
 /**
@@ -35,6 +36,7 @@
  * @property {Logger} logger - A logger instance.
  * @property {Notifier} notifier - A notifier instance.
  * @property {Scheduler} scheduler - A scheduler instance.
+ * @property {AITranscription} aiTranscription - An AI transcription instance.
  */
 
 const memconst = require("../memconst");
@@ -53,6 +55,7 @@ const environmentCapability = require("../environment");
 const loggingCapability = require("../logger");
 const notifierCapability = require("../notifications");
 const schedulerCapability = require("../schedule");
+const aiTranscriptionCapability = require("../ai_transcription");
 
 /**
  * This structure collects maximum capabilities that any part of Volodyslav can access.
@@ -77,6 +80,7 @@ const make = memconst(() => {
         logger: loggingCapability.make(() => ret),
         notifier: notifierCapability.make(),
         scheduler: schedulerCapability.make(),
+        aiTranscription: aiTranscriptionCapability.make({ environment: environmentCapability.make() }),
     };
 
     return ret;
