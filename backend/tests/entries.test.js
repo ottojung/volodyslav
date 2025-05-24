@@ -105,7 +105,7 @@ describe("POST /api/entries", () => {
 describe("GET /api/entries", () => {
     it("returns empty results when no entries exist", async () => {
         // Equivalent curl command:
-        // curl -X GET http://localhost:PORT/api/entries
+        // curl http://localhost:PORT/api/entries
 
         const { app } = await makeTestApp();
         const res = await request(app).get("/api/entries");
@@ -117,7 +117,7 @@ describe("GET /api/entries", () => {
 
     it("returns entries with default pagination", async () => {
         // Equivalent curl command:
-        // curl -X GET http://localhost:PORT/api/entries
+        // curl http://localhost:PORT/api/entries
 
         const { app } = await makeTestApp();
 
@@ -146,7 +146,7 @@ describe("GET /api/entries", () => {
 
     it("returns paginated results with custom page and limit", async () => {
         // Equivalent curl command:
-        // curl -X GET "http://localhost:PORT/api/entries?page=1&limit=2"
+        // curl "http://localhost:PORT/api/entries?page=1&limit=2"
 
         const { app } = await makeTestApp();
 
@@ -189,7 +189,7 @@ describe("GET /api/entries", () => {
 
     it("returns correct page when requesting second page", async () => {
         // Equivalent curl command:
-        // curl -X GET "http://localhost:PORT/api/entries?page=2&limit=2"
+        // curl "http://localhost:PORT/api/entries?page=2&limit=2"
 
         const { app } = await makeTestApp();
 
@@ -231,7 +231,7 @@ describe("GET /api/entries", () => {
 
     it("handles invalid pagination parameters gracefully", async () => {
         // Equivalent curl command:
-        // curl -X GET "http://localhost:PORT/api/entries?page=-1&limit=0"
+        // curl "http://localhost:PORT/api/entries?page=-1&limit=0"
 
         const { app } = await makeTestApp();
 
@@ -256,7 +256,7 @@ describe("GET /api/entries", () => {
 
     it("limits results to maximum of 100 per page", async () => {
         // Equivalent curl command:
-        // curl -X GET "http://localhost:PORT/api/entries?limit=200"
+        // curl "http://localhost:PORT/api/entries?limit=200"
 
         const { app } = await makeTestApp();
 
