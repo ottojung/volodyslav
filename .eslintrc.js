@@ -17,6 +17,7 @@ module.exports = {
     settings: {
         react: { version: "detect" },
     },
+    plugins: ["@typescript-eslint"],
     extends: [
         "eslint:recommended",
         "plugin:react/recommended",
