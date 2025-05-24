@@ -10,7 +10,7 @@ const { transcribeAllRequest, InputDirectoryAccess } = require("../transcribe_al
 /** @typedef {import('../subprocess/command').Command} Command */
 /** @typedef {import('../environment').Environment} Environment */
 /** @typedef {import('../logger').Logger} Logger */
-/** @typedef {import('../ai_transcription').AITranscription} AITranscription */
+/** @typedef {import('../ai/transcription').AITranscription} AITranscription */
 
 /**
  * @typedef {object} Capabilities

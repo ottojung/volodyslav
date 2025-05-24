@@ -23,7 +23,7 @@ const workingRepository = require("./gitstore/working_repository");
 /** @typedef {import('./logger').Logger} Logger */
 /** @typedef {import('./notifications').Notifier} Notifier */
 /** @typedef {import('./schedule').Scheduler} Scheduler */
-/** @typedef {import('./ai_transcription').AITranscription} AITranscription */
+/** @typedef {import('./ai/transcription').AITranscription} AITranscription */
 
 /**
  * @typedef {object} Capabilities

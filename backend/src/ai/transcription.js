@@ -20,7 +20,7 @@
 const { OpenAI } = require("openai");
 const memoize = require("@emotion/memoize").default;
 
-/** @typedef {import('./environment').Environment} Environment */
+/** @typedef {import('../environment').Environment} Environment */
 
 /**
  * @typedef {object} Capabilities

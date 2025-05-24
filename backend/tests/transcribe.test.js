@@ -7,7 +7,7 @@ const { getMockedRootCapabilities } = require("./spies");
 const { stubEnvironment, stubLogger } = require("./stubs");
 
 // Mock the AITranscription capability instead of OpenAI directly
-jest.mock("../src/ai_transcription", () => ({
+jest.mock("../src/ai/transcription", () => ({
     make: () => ({
         transcribeStream: jest.fn().mockResolvedValue("foo bar baz"),
         getTranscriberInfo: jest.fn().mockReturnValue({

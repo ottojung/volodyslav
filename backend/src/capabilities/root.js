@@ -17,7 +17,7 @@
 /** @typedef {import('../logger').Logger} Logger */
 /** @typedef {import('../notifications').Notifier} Notifier */
 /** @typedef {import('../schedule').Scheduler} Scheduler */
-/** @typedef {import('../ai_transcription').AITranscription} AITranscription */
+/** @typedef {import('../ai/transcription').AITranscription} AITranscription */
 
 
 /**
@@ -55,7 +55,7 @@ const environmentCapability = require("../environment");
 const loggingCapability = require("../logger");
 const notifierCapability = require("../notifications");
 const schedulerCapability = require("../schedule");
-const aiTranscriptionCapability = require("../ai_transcription");
+const aiTranscriptionCapability = require("../ai/transcription");
 
 /**
  * This structure collects maximum capabilities that any part of Volodyslav can access.

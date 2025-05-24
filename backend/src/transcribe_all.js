@@ -12,7 +12,7 @@ const { transcribeFile } = require("./transcribe");
 /** @typedef {import('./subprocess/command').Command} Command */
 /** @typedef {import('./environment').Environment} Environment */
 /** @typedef {import('./logger').Logger} Logger */
-/** @typedef {import('./ai_transcription').AITranscription} AITranscription */
+/** @typedef {import('./ai/transcription').AITranscription} AITranscription */
 
 /**
  * @typedef {object} Capabilities
