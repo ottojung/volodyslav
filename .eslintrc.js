@@ -37,6 +37,7 @@ module.exports = {
         "import/no-cycle": ["error", { maxDepth: "∞" }],
         "@typescript-eslint/no-require-imports": "off",
         "@typescript-eslint/no-unused-vars": "off",
+        "@typescript-eslint/consistent-type-assertions": "error",
     },
     ignorePatterns: ["dist/", "node_modules/", "coverage/"],
 };
