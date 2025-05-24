@@ -84,4 +84,61 @@ async function createEntry(capabilities, entryData, file) {
     return event;
 }
 
-module.exports = { createEntry };
+/**
+ * @typedef {object} PaginationParams
+ * @property {number} page - The current page number (1-based)
+ * @property {number} limit - The number of items per page
+ */
+
+/**
+ * @typedef {object} PaginationResult
+ * @property {any[]} results - The paginated entries
+ * @property {number} total - Total number of entries
+ * @property {boolean} hasMore - Whether there are more pages available
+ * @property {number} page - Current page number
+ * @property {number} limit - Items per page
+ */
+
+/**
+ * Retrieves entries from the event log with pagination support.
+ *
+ * @param {Capabilities} capabilities - An object containing the capabilities.
+ * @param {PaginationParams} pagination - Pagination parameters.
+ * @returns {Promise<PaginationResult>} - The paginated entries result.
+ */
+async function getEntries(capabilities, pagination) {
+    const { page, limit } = pagination;
+
+    // Fetch all entries from storage
+    const entries = await transaction(capabilities, async (storage) => {
+        return await storage.getExistingEntries();
+    });
+
+    // Apply pagination
+    const total = entries.length;
+    const start = (page - 1) * limit;
+    const end = start + limit;
+    const results = entries.slice(start, end);
+    const hasMore = end < total;
+
+    capabilities.logger.logInfo(
+        {
+            total,
+            page,
+            limit,
+            resultCount: results.length,
+            hasMore,
+        },
+        `Retrieved entries: page ${page}, ${results.length}/${total} entries`
+    );
+
+    return {
+        results,
+        total,
+        hasMore,
+        page,
+        limit,
+    };
+}
+
+module.exports = { createEntry, getEntries };

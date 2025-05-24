@@ -1,10 +1,9 @@
 const express = require("express");
 const upload = require("../storage");
-const { createEntry } = require("../entry");
+const { createEntry, getEntries } = require("../entry");
 const { fromExisting } = require("../filesystem/file");
 const { random: randomRequestId } = require("../request_identifier");
 const { serialize } = require("../event");
-const { transaction } = require("../event_log_storage");
 
 /**
  * @typedef {import('../environment').Environment} Environment
@@ -247,24 +246,6 @@ function parsePaginationParams(query) {
 }
 
 /**
- * Applies pagination to an array of entries.
- *
- * @param {any[]} entries - The complete array of entries.
- * @param {PaginationParams} pagination - The pagination parameters.
- * @returns {{paged: any[], total: number, hasMore: boolean}} - The pagination result.
- */
-function applyPagination(entries, pagination) {
-    const { page, limit } = pagination;
-    const total = entries.length;
-    const start = (page - 1) * limit;
-    const end = start + limit;
-    const paged = entries.slice(start, end);
-    const hasMore = end < total;
-
-    return { paged, total, hasMore };
-}
-
-/**
  * Builds the next page URL if more results exist.
  *
  * @param {import('express').Request} req - The Express request object.
@@ -297,20 +278,15 @@ async function handleEntriesGet(req, res, capabilities) {
         // Parse pagination parameters
         const pagination = parsePaginationParams(req.query);
 
-        // Fetch all entries
-        const entries = await transaction(capabilities, async (storage) => {
-            return await storage.getExistingEntries();
-        });
-
-        // Apply pagination
-        const { paged, hasMore } = applyPagination(entries, pagination);
+        // Get entries using the entry module
+        const result = await getEntries(capabilities, pagination);
 
         // Build next page URL
-        const next = buildNextPageUrl(req, pagination, hasMore);
+        const next = buildNextPageUrl(req, pagination, result.hasMore);
 
         // Return response
         res.json({
-            results: paged.map(serialize),
+            results: result.results.map(serialize),
             next,
         });
     } catch (error) {
