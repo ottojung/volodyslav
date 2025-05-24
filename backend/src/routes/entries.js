@@ -4,6 +4,7 @@ const { createEntry } = require("../entry");
 const { fromExisting } = require("../filesystem/file");
 const { random: randomRequestId } = require("../request_identifier");
 const { serialize } = require("../event");
+const { transaction } = require("../event_log_storage");
 
 /**
  * @typedef {import('../environment').Environment} Environment
@@ -56,6 +57,63 @@ function makeRouter(capabilities) {
             if (err) return next(err);
             handleEntryPost(req, res, capabilities);
         });
+    });
+
+    /**
+     * GET /entries - List entries with pagination
+     */
+    router.get("/entries", async (req, res) => {
+        // Parse pagination params
+        const pageRaw = req.query["page"];
+        const limitRaw = req.query["limit"];
+        const page = Math.max(
+            1,
+            parseInt(
+                pageRaw !== undefined
+                    ? String(Array.isArray(pageRaw) ? pageRaw[0] : pageRaw)
+                    : "1",
+                10
+            ) || 1
+        );
+        const limit = Math.max(
+            1,
+            Math.min(
+                100,
+                parseInt(
+                    limitRaw !== undefined
+                        ? String(
+                              Array.isArray(limitRaw) ? limitRaw[0] : limitRaw
+                          )
+                        : "20",
+                    10
+                ) || 20
+            )
+        );
+
+        const entries = await transaction(capabilities, async (storage) => {
+            return await storage.getExistingEntries();
+        });
+
+        const total = entries.length;
+        const start = (page - 1) * limit;
+        const end = start + limit;
+        const paged = entries.slice(start, end);
+
+        // Compose next page URL if more results exist
+        let next = null;
+        if (end < total) {
+            const url = new URL(
+                req.protocol +
+                    "://" +
+                    req.get("host") +
+                    req.originalUrl.split("?")[0]
+            );
+            url.searchParams.set("page", String(page + 1));
+            url.searchParams.set("limit", String(limit));
+            next = url.toString();
+        }
+
+        res.json({ results: paged.map(serialize), next });
     });
 
     return router;
