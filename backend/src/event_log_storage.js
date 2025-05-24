@@ -13,6 +13,7 @@ const { fromExisting } = require("./filesystem/file");
 const gitstore = require("./gitstore");
 const event = require("./event");
 const { readObjects } = require("./json_stream_file");
+const { targetPath } = require("./event/asset");
 
 /** @typedef {import('./filesystem/deleter').FileDeleter} FileDeleter */
 /** @typedef {import('./filesystem/copier').FileCopier} FileCopier */
@@ -283,7 +284,5 @@ async function transaction(capabilities, transformation) {
         throw error;
     }
 }
-
-const { targetPath } = require("./event/asset");
 
 module.exports = { transaction };
