@@ -421,50 +421,36 @@ describe("event_log_storage", () => {
             storage.addEntry(initialEvent, []);
         });
 
-        // Patch the file read function to count reads
-        const jsonStreamFile = require("../src/json_stream_file");
-        const originalReadObjects = jsonStreamFile.readObjects;
-        let readCount = 0;
-        jsonStreamFile.readObjects = async function (capabilities, ...args) {
-            readCount++;
-            return await originalReadObjects.apply(this, [
-                capabilities,
-                ...args,
-            ]);
-        };
+        // Count calls to createReadStream (already a jest mock in spies.js)
+        const reader = capabilities.reader;
 
-        try {
-            // Now run a new transaction to test caching
-            await transaction(capabilities, async (storage) => {
-                // First call should read the file
-                const firstResult = await storage.getExistingEntries();
-                expect(firstResult).toHaveLength(1);
-                expect(readCount).toBe(1);
+        // Now run a new transaction to test caching
+        await transaction(capabilities, async (storage) => {
+            // First call should read the file
+            const firstResult = await storage.getExistingEntries();
+            expect(firstResult).toHaveLength(1);
+            expect(reader.createReadStream.mock.calls.length).toBe(1);
 
-                // Second call should use the cache
-                const secondResult = await storage.getExistingEntries();
-                expect(secondResult).toHaveLength(1);
-                expect(readCount).toBe(1); // Still only called once
+            // Second call should use the cache
+            const secondResult = await storage.getExistingEntries();
+            expect(secondResult).toHaveLength(1);
+            expect(reader.createReadStream.mock.calls.length).toBe(1); // Still only called once
 
-                // Both results should be identical
-                expect(secondResult).toBe(firstResult); // Same reference
+            // Both results should be identical
+            expect(secondResult).toBe(firstResult); // Same reference
 
-                // Ensure there is always something to commit
-                storage.addEntry(
-                    {
-                        id: { identifier: "cache-test-2" },
-                        date: new Date("2025-05-25"),
-                        original: "cache test 2",
-                        input: "cache test input 2",
-                        type: "cache_test",
-                        description: "Testing getExistingEntries caching 2",
-                    },
-                    []
-                );
-            });
-        } finally {
-            // Restore the original function
-            jsonStreamFile.readObjects = originalReadObjects;
-        }
+            // Ensure there is always something to commit
+            storage.addEntry(
+                {
+                    id: { identifier: "cache-test-2" },
+                    date: new Date("2025-05-25"),
+                    original: "cache test 2",
+                    input: "cache test input 2",
+                    type: "cache_test",
+                    description: "Testing getExistingEntries caching 2",
+                },
+                []
+            );
+        });
     });
 });
