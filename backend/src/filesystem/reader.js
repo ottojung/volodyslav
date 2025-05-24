@@ -70,9 +70,28 @@ async function readFileAsBuffer(filePath) {
 }
 
 /**
+ * Creates a readable stream for a file.
+ * @param {string} filePath
+ * @returns {import('fs').ReadStream}
+ * @throws {ReaderError} - If the stream cannot be created (synchronously throws for missing file, etc.)
+ */
+function createReadStream(filePath) {
+    const fsModule = require("fs");
+    try {
+        return fsModule.createReadStream(filePath);
+    } catch (err) {
+        throw new ReaderError(
+            `Failed to create read stream: ${filePath}`,
+            filePath
+        );
+    }
+}
+
+/**
  * @typedef {object} FileReader
  * @property {typeof readFileAsText} readFileAsText
  * @property {typeof readFileAsBuffer} readFileAsBuffer
+ * @property {typeof createReadStream} createReadStream
  */
 
 /**
@@ -83,6 +102,7 @@ function make() {
     return {
         readFileAsText,
         readFileAsBuffer,
+        createReadStream,
     };
 }
 
