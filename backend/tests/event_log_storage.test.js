@@ -402,4 +402,66 @@ describe("event_log_storage", () => {
             expect(objects[1].id).toEqual(event.serialize(secondEvent).id);
         });
     });
+
+    test("getExistingEntries caches results to avoid repeated file reads", async () => {
+        const capabilities = getTestCapabilities();
+        await stubEventLogRepository(capabilities);
+
+        // First create an initial entry
+        const initialEvent = {
+            id: { identifier: "cache-test" },
+            date: new Date("2025-05-24"),
+            original: "cache test",
+            input: "cache test input",
+            type: "cache_test",
+            description: "Testing getExistingEntries caching",
+        };
+
+        await transaction(capabilities, async (storage) => {
+            storage.addEntry(initialEvent, []);
+        });
+
+        // Patch the file read function to count reads
+        const jsonStreamFile = require("../src/json_stream_file");
+        const originalReadObjects = jsonStreamFile.readObjects;
+        let readCount = 0;
+        jsonStreamFile.readObjects = async function (...args) {
+            readCount++;
+            return await originalReadObjects.apply(this, args);
+        };
+
+        try {
+            // Now run a new transaction to test caching
+            await transaction(capabilities, async (storage) => {
+                // First call should read the file
+                const firstResult = await storage.getExistingEntries();
+                expect(firstResult).toHaveLength(1);
+                expect(readCount).toBe(1);
+
+                // Second call should use the cache
+                const secondResult = await storage.getExistingEntries();
+                expect(secondResult).toHaveLength(1);
+                expect(readCount).toBe(1); // Still only called once
+
+                // Both results should be identical
+                expect(secondResult).toBe(firstResult); // Same reference
+
+                // Ensure there is always something to commit
+                storage.addEntry(
+                    {
+                        id: { identifier: "cache-test-2" },
+                        date: new Date("2025-05-25"),
+                        original: "cache test 2",
+                        input: "cache test input 2",
+                        type: "cache_test",
+                        description: "Testing getExistingEntries caching 2",
+                    },
+                    []
+                );
+            });
+        } finally {
+            // Restore the original function
+            jsonStreamFile.readObjects = originalReadObjects;
+        }
+    });
 });

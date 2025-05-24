@@ -72,6 +72,13 @@ class EventLogStorageClass {
     dataPath = null;
 
     /**
+     * Cache for existing entries loaded from data.json
+     * @private
+     * @type {Array<any>|null}
+     */
+    existingEntriesCache = null;
+
+    /**
      * @constructor
      * Initializes an empty event log storage.
      */
@@ -109,7 +116,7 @@ class EventLogStorageClass {
     /**
      * Lazily reads and returns the events that existed in data.json
      * at the start of the current transaction. The file is only read
-     * when this method is called, not before.
+     * on the first call, subsequent calls return cached results.
      *
      * @returns {Promise<Array<any>>} - The list of existing entries from data.json.
      * @throws {Error} - If called outside of a transaction.
@@ -120,11 +127,19 @@ class EventLogStorageClass {
                 "getExistingEntries() called outside of a transaction"
             );
         }
+        
+        // Return cached results if available
+        if (this.existingEntriesCache !== null) {
+            return this.existingEntriesCache;
+        }
+
         const { readObjects } = require("./json_stream_file");
         try {
-            return await readObjects(this.dataPath);
+            this.existingEntriesCache = await readObjects(this.dataPath);
+            return this.existingEntriesCache;
         } catch (error) {
-            return [];
+            this.existingEntriesCache = [];
+            return this.existingEntriesCache;
         }
     }
 }
