@@ -74,50 +74,50 @@ function tryDeserialize(obj) {
         }
 
         // Extract and validate each field individually
-        if (!('id' in obj)) return null;
+        if (!("id" in obj)) return null;
         const id = obj.id;
         if (typeof id !== "string") {
             return null;
         }
 
-        if (!('date' in obj)) return null;
+        if (!("date" in obj)) return null;
         const date = obj.date;
         if (typeof date !== "string") {
             return null;
         }
 
-        if (!('original' in obj)) return null;
+        if (!("original" in obj)) return null;
         const original = obj.original;
         if (typeof original !== "string") {
             return null;
         }
 
-        if (!('input' in obj)) return null;
+        if (!("input" in obj)) return null;
         const input = obj.input;
         if (typeof input !== "string") {
             return null;
         }
 
-        if (!('type' in obj)) return null;
+        if (!("type" in obj)) return null;
         const type = obj.type;
         if (typeof type !== "string") {
             return null;
         }
 
-        if (!('description' in obj)) return null;
+        if (!("description" in obj)) return null;
         const description = obj.description;
         if (typeof description !== "string") {
             return null;
         }
 
-        if (!('creator' in obj)) return null;
+        if (!("creator" in obj)) return null;
         const creator = obj.creator;
         if (!creator || typeof creator !== "object" || Array.isArray(creator)) {
             return null;
         }
 
         // Handle modifiers - can be missing (defaults to {}) or must be a non-array object
-        const modifiers = ('modifiers' in obj) ? obj.modifiers : undefined;
+        const modifiers = "modifiers" in obj ? obj.modifiers : undefined;
         if (
             modifiers !== undefined &&
             (typeof modifiers !== "object" || Array.isArray(modifiers))
