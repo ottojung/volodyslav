@@ -116,29 +116,10 @@ function tryDeserialize(obj) {
             return null;
         }
 
-        // Handle modifiers - can be missing (defaults to {}) or must be a non-array object
-        const modifiers = "modifiers" in obj ? obj.modifiers : undefined;
-        if (
-            modifiers !== undefined &&
-            (typeof modifiers !== "object" || Array.isArray(modifiers))
-        ) {
-            return null;
-        }
-
-        // Manually validate and create the EventId
-        // Create minimal object for eventId.deserialize - only id is used
-        const minimalSerialized = {
-            id: id,
-            date: "",
-            original: "",
-            input: "",
-            type: "",
-            description: "",
-            creator: { name: "", uuid: "", version: "" },
-            modifiers: {},
-        };
-        const eventIdObj = eventId.deserialize(minimalSerialized);
-        if (!eventIdObj || !eventIdObj.identifier) {
+        // Handle modifiers - defaults to {} if missing, must be a non-array object if present
+        const rawModifiers = "modifiers" in obj ? obj.modifiers : {};
+        const modifiers = rawModifiers || {};
+        if (typeof modifiers !== "object" || Array.isArray(modifiers)) {
             return null;
         }
 
@@ -174,12 +155,8 @@ function tryDeserialize(obj) {
         }
 
         // Manually validate modifiers
-        const sourceModifiers = modifiers || {};
-        if (typeof sourceModifiers !== "object") {
-            return null;
-        }
         // Build modifiers object manually using Object.entries
-        const sourceEntries = Object.entries(sourceModifiers);
+        const sourceEntries = Object.entries(modifiers);
         const validatedEntries = [];
         for (let i = 0; i < sourceEntries.length; i++) {
             const entry = sourceEntries[i];
@@ -194,6 +171,29 @@ function tryDeserialize(obj) {
             validatedEntries.push([key, value]);
         }
         const validatedModifiers = Object.fromEntries(validatedEntries);
+
+        // Create validated SerializedEvent object for eventId.deserialize
+        const validatedSerializedEvent = {
+            id: id,
+            date: date,
+            original: original,
+            input: input,
+            type: type,
+            description: description,
+            creator: {
+                name: creatorName,
+                uuid: creatorUuid,
+                version: creatorVersion
+            },
+            modifiers: validatedModifiers
+        };
+        const eventIdObj = eventId.deserialize(validatedSerializedEvent);
+        if (!eventIdObj || !eventIdObj.identifier) {
+            return null;
+        }
+        if (!eventIdObj || !eventIdObj.identifier) {
+            return null;
+        }
 
         // Create and return the Event object
         return {
