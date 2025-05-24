@@ -10,26 +10,29 @@ module.exports = {
         jest: true,
     },
     parserOptions: {
-        ecmaVersion: 'latest',
-        sourceType: 'module',
+        ecmaVersion: "latest",
+        sourceType: "module",
         ecmaFeatures: { jsx: true },
     },
     settings: {
-        react: { version: 'detect' },
+        react: { version: "detect" },
     },
     extends: [
-        'eslint:recommended',
-        'plugin:react/recommended',
-        'plugin:jest/recommended',
-        'plugin:import/recommended',
+        "eslint:recommended",
+        "plugin:react/recommended",
+        "plugin:jest/recommended",
+        "plugin:import/recommended",
     ],
     rules: {
-        "no-unused-vars": ["error", {
-            "vars": "all",
-            "args": "after-used",
-            "argsIgnorePattern": "^_"
-        }],
-        "import/no-cycle": ["error", { "maxDepth": "∞" }],
+        "no-unused-vars": [
+            "error",
+            {
+                vars: "all",
+                args: "after-used",
+                argsIgnorePattern: "^_",
+            },
+        ],
+        "import/no-cycle": ["error", { maxDepth: "∞" }],
     },
-    ignorePatterns: ['dist/', 'node_modules/', 'coverage/'],
+    ignorePatterns: ["dist/", "node_modules/", "coverage/"],
 };
