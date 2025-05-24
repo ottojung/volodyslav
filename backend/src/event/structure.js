@@ -21,8 +21,21 @@ const { format } = require("./date");
  */
 
 /**
+ * @typedef SerializedEvent
+ * @type {Object}
+ * @property {string} id - Unique identifier for the event.
+ * @property {string} date - The date of the event.
+ * @property {string} original - The original input of the event.
+ * @property {string} input - The processed input of the event.
+ * @property {Modifiers} modifiers - Modifiers applied to the event.
+ * @property {string} type - The type of the event.
+ * @property {string} description - A description of the event.
+ * @property {Creator} creator - Who created the event.
+ */
+
+/**
  * @param {Event} event - The event object to serialize.
- * @returns {Object} - The serialized event object.
+ * @returns {SerializedEvent} - The serialized event object.
  */
 function serialize(event) {
     // De-nominalize the event.
