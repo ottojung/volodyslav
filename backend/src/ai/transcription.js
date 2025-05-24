@@ -53,11 +53,6 @@ function isAITranscriptionError(object) {
     return object instanceof AITranscriptionError;
 }
 
-// Memoized OpenAI client factory
-const openai = memoize(
-    (/** @type {string} */ apiKey) => new OpenAI({ apiKey })
-);
-
 const TRANSCRIBER_MODEL = "gpt-4o-mini-transcribe";
 
 /**
@@ -68,11 +63,12 @@ const TRANSCRIBER_MODEL = "gpt-4o-mini-transcribe";
 
 /**
  * Transcribes audio from a readable stream.
+ * @param {function(string): OpenAI} openai - A memoized function to create an OpenAI client.
  * @param {Capabilities} capabilities - The capabilities object.
  * @param {import('fs').ReadStream} fileStream - The audio file stream to transcribe.
  * @returns {Promise<string>} - The transcribed text.
  */
-async function transcribeStream(capabilities, fileStream) {
+async function transcribeStream(openai, capabilities, fileStream) {
     try {
         const apiKey = capabilities.environment.openaiAPIKey();
         const responseText = await openai(apiKey).audio.transcriptions.create({
@@ -106,8 +102,9 @@ function getTranscriberInfo() {
  * @returns {AITranscription} - The AI transcription interface.
  */
 function make(capabilities) {
+    const openai = memoize((apiKey) => new OpenAI({ apiKey }));
     return {
-        transcribeStream: (fileStream) => transcribeStream(capabilities, fileStream),
+        transcribeStream: (fileStream) => transcribeStream(openai, capabilities, fileStream),
         getTranscriberInfo,
     };
 }
