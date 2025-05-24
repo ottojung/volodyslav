@@ -286,7 +286,7 @@ async function handleEntriesGet(req, res, capabilities) {
 
         // Return response
         res.json({
-            results: result.results,
+            results: result.results.map(serialize),
             next,
         });
     } catch (error) {

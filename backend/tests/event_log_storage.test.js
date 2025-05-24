@@ -384,7 +384,7 @@ describe("event_log_storage", () => {
             // Check that we can read the existing entries
             const existingEntries = await storage.getExistingEntries();
             expect(existingEntries).toHaveLength(1);
-            expect(existingEntries[0].id).toEqual(
+            expect(existingEntries[0].id.identifier).toEqual(
                 event.serialize(firstEvent).id
             );
 

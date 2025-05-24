@@ -77,7 +77,7 @@ class EventLogStorageClass {
     /**
      * Cache for existing entries loaded from data.json
      * @private
-     * @type {Array<object>|null}
+     * @type {Array<import('./event/structure').Event>|null}
      */
     existingEntriesCache = null;
 
@@ -129,7 +129,7 @@ class EventLogStorageClass {
      * at the start of the current transaction. The file is only read
      * on the first call, subsequent calls return cached results.
      *
-     * @returns {Promise<Array<object>>} - The list of existing entries from data.json.
+     * @returns {Promise<Array<import('./event/structure').Event>>} - The list of existing entries from data.json.
      * @throws {Error} - If called outside of a transaction.
      */
     async getExistingEntries() {
@@ -144,10 +144,13 @@ class EventLogStorageClass {
         }
 
         try {
-            this.existingEntriesCache = await readObjects(
+            const serializedEntries = await readObjects(
                 this.capabilities,
                 this.dataPath
             );
+            // Deserialize the entries to return proper Event structures
+            const { deserialize } = require('./event/structure');
+            this.existingEntriesCache = serializedEntries.map(deserialize);
             return this.existingEntriesCache;
         } catch (error) {
             this.existingEntriesCache = [];

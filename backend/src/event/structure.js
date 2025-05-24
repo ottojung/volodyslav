@@ -32,6 +32,19 @@ function serialize(event) {
     return realEvent;
 }
 
+/**
+ * @param {any} serializedEvent - The serialized event object from JSON.
+ * @returns {Event} - The deserialized event object.
+ */
+function deserialize(serializedEvent) {
+    return {
+        ...serializedEvent,
+        id: { identifier: serializedEvent.id, __brand: undefined },
+        date: new Date(serializedEvent.date),
+    };
+}
+
 module.exports = {
     serialize,
+    deserialize,
 };
