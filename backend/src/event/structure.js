@@ -1,4 +1,5 @@
 const { format } = require("./date");
+const eventId = require("./id");
 
 /**
  * @typedef Modifiers
@@ -50,10 +51,9 @@ function serialize(event) {
  * @returns {Event} - The deserialized event object.
  */
 function deserialize(serializedEvent) {
-    const eventId = require('./id');
     return {
         ...serializedEvent,
-        id: eventId.fromString(serializedEvent.id),
+        id: eventId.deserialize(serializedEvent),
         date: new Date(serializedEvent.date),
     };
 }

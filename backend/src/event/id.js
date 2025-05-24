@@ -13,10 +13,10 @@ class EventIdClass {
     __brand;
 
     /**
-     * @param {Capabilities} capabilities
+     * @param {string} identifier - The unique identifier for the event.
      */
-    constructor(capabilities) {
-        this.identifier = random.string(capabilities, 16);
+    constructor(identifier) {
+        this.identifier = identifier;
         if (this.__brand !== undefined) {
             throw new Error();
         }
@@ -38,23 +38,19 @@ class EventIdClass {
  * @description Primary constructor for an EventId.
  */
 function make(capabilities) {
-    return new EventIdClass(capabilities);
+    this.identifier = random.string(capabilities, 16);
+    return new EventIdClass(this.identifier);
 }
 
 /**
- * Creates an EventId from an existing string identifier.
- * Used for deserialization from JSON.
- * @param {string} identifier - The string identifier to create EventId from.
+ * @param {import('./structure').SerializedEvent} serialized
  * @returns {EventId}
- * @description Creates an EventId from an existing identifier.
  */
-function fromString(identifier) {
-    const eventId = Object.create(EventIdClass.prototype);
-    eventId.identifier = identifier;
-    return eventId;
+function deserialize(serialized) {
+    return new EventIdClass(serialized.id);
 }
 
 module.exports = {
     make,
-    fromString,
+    deserialize,
 };
