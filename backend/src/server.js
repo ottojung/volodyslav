@@ -23,6 +23,7 @@ const workingRepository = require("./gitstore/working_repository");
 /** @typedef {import('./logger').Logger} Logger */
 /** @typedef {import('./notifications').Notifier} Notifier */
 /** @typedef {import('./schedule').Scheduler} Scheduler */
+/** @typedef {import('./ai_transcription').AITranscription} AITranscription */
 
 /**
  * @typedef {object} Capabilities
@@ -40,6 +41,7 @@ const workingRepository = require("./gitstore/working_repository");
  * @property {Notifier} notifier - A notifier instance.
  * @property {Scheduler} scheduler - A scheduler instance.
  * @property {import('./filesystem/reader').FileReader} reader - A file reader instance.
+ * @property {AITranscription} aiTranscription - An AI transcription instance.
  */
 
 /**
