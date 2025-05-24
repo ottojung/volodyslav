@@ -79,10 +79,18 @@ class EventLogStorageClass {
     existingEntriesCache = null;
 
     /**
+     * Capabilities object for file operations.
+     * @type {Capabilities}
+     */
+    capabilities;
+
+    /**
      * @constructor
      * Initializes an empty event log storage.
+     * @param {Capabilities} capabilities - The capabilities object for file operations.
      */
-    constructor() {
+    constructor(capabilities) {
+        this.capabilities = capabilities;
         this.newEntries = [];
         this.newAssets = [];
     }
@@ -127,15 +135,16 @@ class EventLogStorageClass {
                 "getExistingEntries() called outside of a transaction"
             );
         }
-        
         // Return cached results if available
         if (this.existingEntriesCache !== null) {
             return this.existingEntriesCache;
         }
-
         const { readObjects } = require("./json_stream_file");
         try {
-            this.existingEntriesCache = await readObjects(this.dataPath);
+            this.existingEntriesCache = await readObjects(
+                this.capabilities,
+                this.dataPath
+            );
             return this.existingEntriesCache;
         } catch (error) {
             this.existingEntriesCache = [];
@@ -259,7 +268,7 @@ async function cleanupAssets(capabilities, eventLogStorage) {
  * @returns {Promise<void>}
  */
 async function transaction(capabilities, transformation) {
-    const eventLogStorage = new EventLogStorageClass();
+    const eventLogStorage = new EventLogStorageClass(capabilities);
     try {
         await performGitTransaction(
             capabilities,

@@ -24,7 +24,10 @@ async function countLogEntries(capabilities) {
     let length;
     await gitstore.transaction(capabilities, async (store) => {
         const workTree = await store.getWorkTree();
-        const objects = await readObjects(path.join(workTree, "data.json"));
+        const objects = await readObjects(
+            capabilities,
+            path.join(workTree, "data.json")
+        );
         length = objects.length;
     });
     return length;
@@ -60,7 +63,7 @@ describe("processDiaryAudios", () => {
         await gitstore.transaction(capabilities, async (store) => {
             const workTree = await store.getWorkTree();
             const dataPath = path.join(workTree, "data.json");
-            const objects = await readObjects(dataPath);
+            const objects = await readObjects(capabilities, dataPath);
             expect(objects).toHaveLength(filenames.length);
             objects.forEach((obj, i) => {
                 const date = formatFileTimestamp(filenames[i]);

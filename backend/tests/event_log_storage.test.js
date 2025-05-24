@@ -44,7 +44,7 @@ describe("event_log_storage", () => {
         await gitstore.transaction(capabilities, async (store) => {
             const workTree = await store.getWorkTree();
             const dataPath = path.join(workTree, "data.json");
-            const objects = await readObjects(dataPath);
+            const objects = await readObjects(capabilities, dataPath);
             expect(objects).toHaveLength(1);
             expect(objects[0]).toEqual(event.serialize(testEvent));
         });
@@ -107,7 +107,7 @@ describe("event_log_storage", () => {
         await gitstore.transaction(capabilities, async (store) => {
             const workTree = await store.getWorkTree();
             const dataPath = path.join(workTree, "data.json");
-            const objects = await readObjects(dataPath);
+            const objects = await readObjects(capabilities, dataPath);
             expect(objects).toHaveLength(2);
             expect(objects[0]).toEqual(event.serialize(event1));
             expect(objects[1]).toEqual(event.serialize(event2));
@@ -336,7 +336,7 @@ describe("event_log_storage", () => {
             // Either the file doesn't exist (good) or it doesn't contain our event (also good)
             let found = false;
             if (fileExists) {
-                const objects = await readObjects(dataPath);
+                const objects = await readObjects(capabilities, dataPath);
                 const serializedEvent = event.serialize(testEvent);
                 found = objects.some(
                     (obj) =>
@@ -396,7 +396,7 @@ describe("event_log_storage", () => {
         await gitstore.transaction(capabilities, async (store) => {
             const workTree = await store.getWorkTree();
             const dataPath = path.join(workTree, "data.json");
-            const objects = await readObjects(dataPath);
+            const objects = await readObjects(capabilities, dataPath);
             expect(objects).toHaveLength(2);
             expect(objects[0].id).toEqual(event.serialize(firstEvent).id);
             expect(objects[1].id).toEqual(event.serialize(secondEvent).id);
@@ -425,9 +425,12 @@ describe("event_log_storage", () => {
         const jsonStreamFile = require("../src/json_stream_file");
         const originalReadObjects = jsonStreamFile.readObjects;
         let readCount = 0;
-        jsonStreamFile.readObjects = async function (...args) {
+        jsonStreamFile.readObjects = async function (capabilities, ...args) {
             readCount++;
-            return await originalReadObjects.apply(this, args);
+            return await originalReadObjects.apply(this, [
+                capabilities,
+                ...args,
+            ]);
         };
 
         try {
