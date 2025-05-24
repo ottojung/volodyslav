@@ -183,9 +183,9 @@ function tryDeserialize(obj) {
             creator: {
                 name: creatorName,
                 uuid: creatorUuid,
-                version: creatorVersion
+                version: creatorVersion,
             },
-            modifiers: validatedModifiers
+            modifiers: validatedModifiers,
         };
         const eventIdObj = eventId.deserialize(validatedSerializedEvent);
         if (!eventIdObj || !eventIdObj.identifier) {
@@ -197,18 +197,9 @@ function tryDeserialize(obj) {
 
         // Create and return the Event object
         return {
+            ...validatedSerializedEvent,
             id: eventIdObj,
             date: dateObj,
-            original: original,
-            input: input,
-            type: type,
-            description: description,
-            creator: {
-                name: creatorName,
-                uuid: creatorUuid,
-                version: creatorVersion,
-            },
-            modifiers: validatedModifiers,
         };
     } catch {
         // Any error in deserialization (invalid EventId, invalid Date, etc.) returns null
