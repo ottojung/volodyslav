@@ -131,7 +131,7 @@ async function transcribeRequest(capabilities, inputPath, reqId) {
     const outputPath = path.join(targetDir, outputFile);
     const inputFile = await capabilities.checker
         .instanciate(inputPath)
-        .catch((/** @type {unknown} */ _err) => {
+        .catch(() => {
             throw new InputNotFound(
                 `Input file ${inputPath} not found.`,
                 inputPath
