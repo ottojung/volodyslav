@@ -4,24 +4,13 @@ const request = require("supertest");
 const expressApp = require("../src/express_app");
 const { addRoutes } = require("../src/server");
 const { getMockedRootCapabilities } = require("./spies");
-const { stubEnvironment, stubLogger } = require("./stubs");
-
-// Mock the AITranscription capability instead of OpenAI directly
-jest.mock("../src/ai/transcription", () => ({
-    make: () => ({
-        transcribeStream: jest.fn().mockResolvedValue("foo bar baz"),
-        getTranscriberInfo: jest.fn().mockReturnValue({
-            name: "gpt-4o-mini-transcribe",
-            creator: "OpenAI",
-        }),
-    }),
-    isAITranscriptionError: jest.fn(),
-}));
+const { stubEnvironment, stubLogger, stubAiTranscriber } = require("./stubs");
 
 function getTestCapabilities() {
     const capabilities = getMockedRootCapabilities();
     stubEnvironment(capabilities);
     stubLogger(capabilities);
+    stubAiTranscriber(capabilities);
     return capabilities;
 }
 
@@ -34,10 +23,6 @@ async function makeApp(capabilities) {
 }
 
 describe("GET /api/transcribe", () => {
-    beforeEach(() => {
-        jest.clearAllMocks();
-    });
-
     it("responds with 400 if input or output param missing", async () => {
         const capabilities = getTestCapabilities();
         const app = await makeApp(capabilities);
@@ -96,10 +81,10 @@ describe("GET /api/transcribe", () => {
         const content = fs.readFileSync(savedPath, "utf8");
         // Parsed content should match the stubbed response
         expect(JSON.parse(content)).toEqual({
-            text: "foo bar baz",
+            text: "mocked transcription result",
             transcriber: {
-                creator: "OpenAI",
-                name: "gpt-4o-mini-transcribe",
+                creator: "Mocked Creator",
+                name: "mocked-transcriber",
             },
             creator: expect.any(Object),
         });

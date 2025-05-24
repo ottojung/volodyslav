@@ -61,6 +61,19 @@ function stubLogger(capabilities) {
 }
 
 /**
+ * Stubs the AI transcription capabilities for testing.
+ */
+function stubAiTranscriber(capabilities) {
+    capabilities.aiTranscription.transcribeStream = jest
+        .fn()
+        .mockResolvedValue("mocked transcription result");
+    capabilities.aiTranscription.getTranscriberInfo = jest.fn().mockReturnValue({
+        name: "mocked-transcriber",
+        creator: "Mocked Creator",
+    });
+}
+
+/**
  * Stubs the notifier capabilities for testing.
  * Silences all notification functions.
  */
@@ -85,6 +98,7 @@ function stubScheduler(capabilities) {
 module.exports = {
     stubEnvironment,
     stubLogger,
+    stubAiTranscriber,
     stubNotifier,
     stubScheduler,
     stubEventLogRepository,
