@@ -29,7 +29,7 @@ async function creator(capabilities) {
     const { version } = await runtime_identifier(capabilities);
     return {
         name: "Volodyslav",
-        uuid: 'kje8by853ouyll677gos7qvsd5e2r9vl',
+        uuid: '81c3188c-d2cc-4879-a237-cdd0f1121346',
         version: version,
     };
 }
