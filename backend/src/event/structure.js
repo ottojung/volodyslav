@@ -76,43 +76,43 @@ function tryDeserialize(obj) {
         const candidate = /** @type {Record<string, unknown>} */ (obj);
 
         // Extract and validate each field individually
-        const id = candidate["id"];
+        const id = candidate['id'];
         if (typeof id !== "string") {
             return null;
         }
 
-        const date = candidate["date"];
+        const date = candidate['date'];
         if (typeof date !== "string") {
             return null;
         }
 
-        const original = candidate["original"];
+        const original = candidate['original'];
         if (typeof original !== "string") {
             return null;
         }
 
-        const input = candidate["input"];
+        const input = candidate['input'];
         if (typeof input !== "string") {
             return null;
         }
 
-        const type = candidate["type"];
+        const type = candidate['type'];
         if (typeof type !== "string") {
             return null;
         }
 
-        const description = candidate["description"];
+        const description = candidate['description'];
         if (typeof description !== "string") {
             return null;
         }
 
-        const creator = candidate["creator"];
+        const creator = candidate['creator'];
         if (!creator || typeof creator !== "object" || Array.isArray(creator)) {
             return null;
         }
 
         // Handle modifiers - can be missing (defaults to {}) or must be a non-array object
-        const modifiers = candidate["modifiers"];
+        const modifiers = candidate['modifiers'];
         if (
             modifiers !== undefined &&
             (typeof modifiers !== "object" || Array.isArray(modifiers))
@@ -120,21 +120,67 @@ function tryDeserialize(obj) {
             return null;
         }
 
-        // Create SerializedEvent object explicitly with validated fields
-        /** @type {SerializedEvent} */
-        const serializedEvent = {
+        // Manually validate and create the EventId
+        // Create minimal object for eventId.deserialize - only id is used
+        const minimalSerialized = {
             id: id,
-            date: date,
+            date: '',
+            original: '',
+            input: '',
+            type: '',
+            description: '',
+            creator: { name: '', uuid: '', version: '' },
+            modifiers: {}
+        };
+        const eventIdObj = eventId.deserialize(minimalSerialized);
+        if (!eventIdObj || !eventIdObj.identifier) {
+            return null;
+        }
+
+        // Manually validate and parse the date
+        const dateObj = new Date(date);
+        if (isNaN(dateObj.getTime())) {
+            return null;
+        }
+
+        // Manually validate creator has required properties
+        const creatorObj = /** @type {Record<string, unknown>} */ (creator);
+        const creatorName = creatorObj['name'];
+        const creatorUuid = creatorObj['uuid'];
+        const creatorVersion = creatorObj['version'];
+        if (!creatorName || typeof creatorName !== 'string' ||
+            !creatorUuid || typeof creatorUuid !== 'string' ||
+            !creatorVersion || typeof creatorVersion !== 'string') {
+            return null;
+        }
+
+        // Manually validate modifiers
+        const sourceModifiers = modifiers || {};
+        const validatedModifiers = /** @type {Record<string, string>} */ ({});
+        const modifiersObj = /** @type {Record<string, unknown>} */ (sourceModifiers);
+        for (const key in modifiersObj) {
+            const value = modifiersObj[key];
+            if (typeof value !== 'string') {
+                return null;
+            }
+            validatedModifiers[key] = value;
+        }
+        
+        // Create and return the Event object
+        return {
+            id: eventIdObj,
+            date: dateObj,
             original: original,
             input: input,
             type: type,
             description: description,
-            creator: /** @type {Creator} */ (creator),
-            modifiers: /** @type {Modifiers} */ (modifiers || {}),
+            creator: {
+                name: creatorName,
+                uuid: creatorUuid,
+                version: creatorVersion
+            },
+            modifiers: validatedModifiers
         };
-
-        // Attempt to deserialize - this will validate EventId and Date parsing
-        return deserialize(serializedEvent);
     } catch {
         // Any error in deserialization (invalid EventId, invalid Date, etc.) returns null
         return null;
