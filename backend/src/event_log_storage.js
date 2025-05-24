@@ -66,6 +66,12 @@ class EventLogStorageClass {
     newAssets;
 
     /**
+     * Path to the data.json file, set during transaction
+     * @type {string|null}
+     */
+    dataPath = null;
+
+    /**
      * @constructor
      * Initializes an empty event log storage.
      */
@@ -98,6 +104,28 @@ class EventLogStorageClass {
      */
     getNewAssets() {
         return this.newAssets;
+    }
+
+    /**
+     * Lazily reads and returns the events that existed in data.json
+     * at the start of the current transaction. The file is only read
+     * when this method is called, not before.
+     *
+     * @returns {Promise<Array<any>>} - The list of existing entries from data.json.
+     * @throws {Error} - If called outside of a transaction.
+     */
+    async getExistingEntries() {
+        if (!this.dataPath) {
+            throw new Error(
+                "getExistingEntries() called outside of a transaction"
+            );
+        }
+        const { readObjects } = require("./json_stream_file");
+        try {
+            return await readObjects(this.dataPath);
+        } catch (error) {
+            return [];
+        }
     }
 }
 
@@ -161,6 +189,9 @@ async function performGitTransaction(
         const workTree = await store.getWorkTree();
         const dataPath = path.join(workTree, "data.json");
         const dataFile = await fromExisting(dataPath);
+
+        // Set dataPath for possible lazy loading of existing entries
+        eventLogStorage.dataPath = dataPath;
 
         // Run user-provided transformation to accumulate entries
         await transformation(eventLogStorage);

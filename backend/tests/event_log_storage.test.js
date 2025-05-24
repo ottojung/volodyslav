@@ -5,7 +5,11 @@ const gitstore = require("../src/gitstore");
 const { readObjects } = require("../src/json_stream_file");
 const event = require("../src/event/structure");
 const { targetPath } = require("../src/event/asset");
-const { stubEnvironment, stubLogger, stubEventLogRepository } = require("./stubs");
+const {
+    stubEnvironment,
+    stubLogger,
+    stubEventLogRepository,
+} = require("./stubs");
 const { getMockedRootCapabilities } = require("./spies");
 
 function getTestCapabilities() {
@@ -130,7 +134,9 @@ describe("event_log_storage", () => {
         };
 
         // Create a temporary asset file.
-        const inputDir = await capabilities.creator.createTemporaryDirectory(capabilities);
+        const inputDir = await capabilities.creator.createTemporaryDirectory(
+            capabilities
+        );
         const assetPath = path.join(inputDir, "asset.txt");
         await fsp.mkdir(inputDir, { recursive: true });
         await fsp.writeFile(assetPath, "test content");
@@ -196,7 +202,9 @@ describe("event_log_storage", () => {
         };
 
         // Create a temporary asset file.
-        const inputDir = await capabilities.creator.createTemporaryDirectory(capabilities);
+        const inputDir = await capabilities.creator.createTemporaryDirectory(
+            capabilities
+        );
         const assetPath = path.join(inputDir, "asset.txt");
         await fsp.mkdir(inputDir, { recursive: true });
         await fsp.writeFile(assetPath, "test content");
@@ -240,7 +248,10 @@ describe("event_log_storage", () => {
 
         // Helper function to create test assets
         const createTestAssets = async () => {
-            const inputDir = await capabilities.creator.createTemporaryDirectory(capabilities);
+            const inputDir =
+                await capabilities.creator.createTemporaryDirectory(
+                    capabilities
+                );
             await fsp.mkdir(inputDir, { recursive: true });
 
             const validPaths = [];
@@ -336,6 +347,59 @@ describe("event_log_storage", () => {
             }
 
             expect(found).toBe(false);
+        });
+    });
+
+    test("getExistingEntries returns entries that were already in data.json", async () => {
+        const capabilities = getTestCapabilities();
+        await stubEventLogRepository(capabilities);
+
+        // First transaction: create initial entries
+        const firstEvent = {
+            id: { identifier: "existing1" },
+            date: new Date("2025-05-01"),
+            original: "first input",
+            input: "processed first input",
+            modifiers: { test: "first" },
+            type: "existing_event",
+            description: "First existing event",
+        };
+
+        await transaction(capabilities, async (storage) => {
+            storage.addEntry(firstEvent, []);
+        });
+
+        // Second transaction: verify we can read existing entries and add more
+        const secondEvent = {
+            id: { identifier: "new1" },
+            date: new Date("2025-05-15"),
+            original: "new input",
+            input: "processed new input",
+            modifiers: { test: "new" },
+            type: "new_event",
+            description: "New event added after checking existing",
+        };
+
+        await transaction(capabilities, async (storage) => {
+            // Check that we can read the existing entries
+            const existingEntries = await storage.getExistingEntries();
+            expect(existingEntries).toHaveLength(1);
+            expect(existingEntries[0].id).toEqual(
+                event.serialize(firstEvent).id
+            );
+
+            // Now add a new entry
+            storage.addEntry(secondEvent, []);
+        });
+
+        // Verify both entries are now in data.json
+        await gitstore.transaction(capabilities, async (store) => {
+            const workTree = await store.getWorkTree();
+            const dataPath = path.join(workTree, "data.json");
+            const objects = await readObjects(dataPath);
+            expect(objects).toHaveLength(2);
+            expect(objects[0].id).toEqual(event.serialize(firstEvent).id);
+            expect(objects[1].id).toEqual(event.serialize(secondEvent).id);
         });
     });
 });
