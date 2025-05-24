@@ -76,43 +76,43 @@ function tryDeserialize(obj) {
         const candidate = /** @type {Record<string, unknown>} */ (obj);
 
         // Extract and validate each field individually
-        const id = candidate['id'];
+        const id = candidate["id"];
         if (typeof id !== "string") {
             return null;
         }
 
-        const date = candidate['date'];
+        const date = candidate["date"];
         if (typeof date !== "string") {
             return null;
         }
 
-        const original = candidate['original'];
+        const original = candidate["original"];
         if (typeof original !== "string") {
             return null;
         }
 
-        const input = candidate['input'];
+        const input = candidate["input"];
         if (typeof input !== "string") {
             return null;
         }
 
-        const type = candidate['type'];
+        const type = candidate["type"];
         if (typeof type !== "string") {
             return null;
         }
 
-        const description = candidate['description'];
+        const description = candidate["description"];
         if (typeof description !== "string") {
             return null;
         }
 
-        const creator = candidate['creator'];
+        const creator = candidate["creator"];
         if (!creator || typeof creator !== "object" || Array.isArray(creator)) {
             return null;
         }
 
         // Handle modifiers - can be missing (defaults to {}) or must be a non-array object
-        const modifiers = candidate['modifiers'];
+        const modifiers = candidate["modifiers"];
         if (
             modifiers !== undefined &&
             (typeof modifiers !== "object" || Array.isArray(modifiers))
@@ -124,13 +124,13 @@ function tryDeserialize(obj) {
         // Create minimal object for eventId.deserialize - only id is used
         const minimalSerialized = {
             id: id,
-            date: '',
-            original: '',
-            input: '',
-            type: '',
-            description: '',
-            creator: { name: '', uuid: '', version: '' },
-            modifiers: {}
+            date: "",
+            original: "",
+            input: "",
+            type: "",
+            description: "",
+            creator: { name: "", uuid: "", version: "" },
+            modifiers: {},
         };
         const eventIdObj = eventId.deserialize(minimalSerialized);
         if (!eventIdObj || !eventIdObj.identifier) {
@@ -144,28 +144,52 @@ function tryDeserialize(obj) {
         }
 
         // Manually validate creator has required properties
-        const creatorObj = /** @type {Record<string, unknown>} */ (creator);
-        const creatorName = creatorObj['name'];
-        const creatorUuid = creatorObj['uuid'];
-        const creatorVersion = creatorObj['version'];
-        if (!creatorName || typeof creatorName !== 'string' ||
-            !creatorUuid || typeof creatorUuid !== 'string' ||
-            !creatorVersion || typeof creatorVersion !== 'string') {
+        if (!creator || typeof creator !== "object") {
+            return null;
+        }
+        if (
+            !("name" in creator) ||
+            !("uuid" in creator) ||
+            !("version" in creator)
+        ) {
+            return null;
+        }
+        const creatorName = creator.name;
+        const creatorUuid = creator.uuid;
+        const creatorVersion = creator.version;
+        if (
+            !creatorName ||
+            typeof creatorName !== "string" ||
+            !creatorUuid ||
+            typeof creatorUuid !== "string" ||
+            !creatorVersion ||
+            typeof creatorVersion !== "string"
+        ) {
             return null;
         }
 
         // Manually validate modifiers
         const sourceModifiers = modifiers || {};
-        const validatedModifiers = /** @type {Record<string, string>} */ ({});
-        const modifiersObj = /** @type {Record<string, unknown>} */ (sourceModifiers);
-        for (const key in modifiersObj) {
-            const value = modifiersObj[key];
-            if (typeof value !== 'string') {
+        if (typeof sourceModifiers !== "object") {
+            return null;
+        }
+        // Build modifiers object manually using Object.entries
+        const sourceEntries = Object.entries(sourceModifiers);
+        const validatedEntries = [];
+        for (let i = 0; i < sourceEntries.length; i++) {
+            const entry = sourceEntries[i];
+            if (!entry || entry.length !== 2) {
                 return null;
             }
-            validatedModifiers[key] = value;
+            const key = entry[0];
+            const value = entry[1];
+            if (typeof value !== "string") {
+                return null;
+            }
+            validatedEntries.push([key, value]);
         }
-        
+        const validatedModifiers = Object.fromEntries(validatedEntries);
+
         // Create and return the Event object
         return {
             id: eventIdObj,
@@ -177,9 +201,9 @@ function tryDeserialize(obj) {
             creator: {
                 name: creatorName,
                 uuid: creatorUuid,
-                version: creatorVersion
+                version: creatorVersion,
             },
-            modifiers: validatedModifiers
+            modifiers: validatedModifiers,
         };
     } catch {
         // Any error in deserialization (invalid EventId, invalid Date, etc.) returns null
