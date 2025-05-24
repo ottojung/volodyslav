@@ -144,10 +144,13 @@ class EventLogStorageClass {
         }
 
         try {
-            const serializedEntries = await readObjects(
+            const objects = await readObjects(
                 this.capabilities,
                 this.dataPath
             );
+            // Type the objects as SerializedEvent since we know this file contains events
+            /** @type {Array<import('./event/structure').SerializedEvent>} */
+            const serializedEntries = objects;
             // Deserialize the entries to return proper Event structures
             const { deserialize } = require('./event/structure');
             this.existingEntriesCache = serializedEntries.map(deserialize);

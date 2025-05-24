@@ -10,11 +10,11 @@ const { streamValues } = require("stream-json/streamers/StreamValues");
  * Reads JSON objects from a file using streaming
  * @param {Capabilities} capabilities - The capabilities object
  * @param {string} filepath - Path to the JSON file to read
- * @returns {Promise<Array<import('../event/structure').SerializedEvent>>} Array of serialized event objects
+ * @returns {Promise<Array<any>>} Array of parsed JSON objects
  */
 async function readObjects(capabilities, filepath) {
     return new Promise((resolve, reject) => {
-        /** @type {Array<import('../event/structure').SerializedEvent>} */
+        /** @type {Array<any>} */
         const objects = [];
 
         // create a readable stream using capabilities
@@ -25,7 +25,7 @@ async function readObjects(capabilities, filepath) {
         const jsonParser = parser({ jsonStreaming: true });
         const pipeline = rs.pipe(jsonParser).pipe(streamValues());
 
-        pipeline.on("data", (/** @type {{ value: import('../event/structure').SerializedEvent }} */ { value }) => {
+        pipeline.on("data", (/** @type {{ value: any }} */ { value }) => {
             objects.push(value);
         });
 
