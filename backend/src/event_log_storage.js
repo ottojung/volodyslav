@@ -77,7 +77,7 @@ class EventLogStorageClass {
     /**
      * Cache for existing entries loaded from data.json
      * @private
-     * @type {Array<any>|null}
+     * @type {Array<object>|null}
      */
     existingEntriesCache = null;
 
@@ -129,7 +129,7 @@ class EventLogStorageClass {
      * at the start of the current transaction. The file is only read
      * on the first call, subsequent calls return cached results.
      *
-     * @returns {Promise<Array<any>>} - The list of existing entries from data.json.
+     * @returns {Promise<Array<object>>} - The list of existing entries from data.json.
      * @throws {Error} - If called outside of a transaction.
      */
     async getExistingEntries() {

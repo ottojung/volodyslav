@@ -92,7 +92,7 @@ async function createEntry(capabilities, entryData, file) {
 
 /**
  * @typedef {object} PaginationResult
- * @property {any[]} results - The paginated entries
+ * @property {object[]} results - The paginated entries (serialized events from JSON)
  * @property {number} total - Total number of entries
  * @property {boolean} hasMore - Whether there are more pages available
  * @property {number} page - Current page number

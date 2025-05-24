@@ -212,7 +212,7 @@ async function handleEntryPost(req, res, capabilities) {
 /**
  * Parses pagination parameters from query string.
  *
- * @param {Record<string, any>} query - The request query object.
+ * @param {import('express').Request['query']} query - The request query object.
  * @returns {PaginationParams} - The parsed pagination parameters.
  */
 function parsePaginationParams(query) {
@@ -286,7 +286,7 @@ async function handleEntriesGet(req, res, capabilities) {
 
         // Return response
         res.json({
-            results: result.results.map(serialize),
+            results: result.results,
             next,
         });
     } catch (error) {
