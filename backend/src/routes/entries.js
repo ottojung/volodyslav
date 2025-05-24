@@ -49,6 +49,7 @@ function makeRouter(capabilities) {
         // Generate a random request identifier and attach to req.query
         const reqId = randomRequestId(capabilities);
         req.query["request_identifier"] = reqId.identifier;
+
         // Call multer upload middleware
         uploadMiddleware.single("file")(req, res, (err) => {
             if (err) return next(err);
@@ -60,6 +61,110 @@ function makeRouter(capabilities) {
 }
 
 /**
+ * @typedef {object} EntryRequestBody
+ * @property {string} type - The type of entry
+ * @property {string} description - The description of the entry
+ * @property {string} original - The original content
+ * @property {string} input - The processed input
+ * @property {string} [date] - Optional date string
+ * @property {Record<string,string>|string} [modifiers] - Optional modifiers
+ */
+
+/**
+ * Validates that all required fields are present in the request body.
+ *
+ * @param {EntryRequestBody} body - The request body.
+ * @returns {{isValid: boolean, error?: string}} - Validation result.
+ */
+function validateEntryFields(body) {
+    const { type, description, original, input } = body;
+
+    if (!type || !description || !original || !input) {
+        return {
+            isValid: false,
+            error: "Missing required fields: type, description, original, and input",
+        };
+    }
+
+    return { isValid: true };
+}
+
+/**
+ * Parses modifiers from string to object if needed.
+ * 
+ * @param {Record<string,string>|string|undefined} modifiers - The modifiers to parse.
+ * @returns {Record<string,string>|undefined} - Parsed modifiers.
+ */
+function parseModifiers(modifiers) {
+    if (typeof modifiers !== "string") {
+        return modifiers;
+    }
+    
+    try {
+        return JSON.parse(modifiers);
+    } catch {
+        return undefined;
+    }
+}
+
+/**
+ * Creates an entry data object from request body.
+ *
+ * @param {EntryRequestBody} body - The request body.
+ * @returns {import('../entry').EntryData} - The entry data.
+ */
+function createEntryData(body) {
+    const { type, description, date, original, input } = body;
+    const parsedModifiers = parseModifiers(body.modifiers);
+
+    return {
+        type,
+        description,
+        date,
+        modifiers: parsedModifiers,
+        original,
+        input,
+    };
+}
+
+/**
+ * Prepares the file object for entry creation if a file was uploaded.
+ *
+ * @param {Express.Multer.File|undefined} file - The uploaded file.
+ * @returns {Promise<import('../filesystem/file').ExistingFile|undefined>} - The file object.
+ */
+async function prepareFileObject(file) {
+    if (!file) {
+        return undefined;
+    }
+
+    return await fromExisting(file.path);
+}
+
+/**
+ * Handles errors during entry creation.
+ *
+ * @param {Error|unknown} error - The error that occurred.
+ * @param {Capabilities} capabilities - The capabilities.
+ * @returns {object} - The error response.
+ */
+function handleEntryError(error, capabilities) {
+    const message = error instanceof Error ? error.message : String(error);
+
+    capabilities.logger.logError(
+        {
+            error: message,
+            stack: error instanceof Error ? error.stack : undefined,
+        },
+        `Failed to create entry: ${message}`
+    );
+
+    return {
+        error: "Internal server error",
+    };
+}
+
+/**
  * Handles the POST /entries logic after file upload.
  * @param {import('express').Request} req
  * @param {import('express').Response} res
@@ -67,41 +172,17 @@ function makeRouter(capabilities) {
  */
 async function handleEntryPost(req, res, capabilities) {
     try {
-        const { type, description, date, modifiers, original, input } =
-            req.body;
-
-        // Basic validation
-        if (!type || !description || !original || !input) {
-            return res.status(400).json({
-                error: "Missing required fields: type, description, original, and input",
-            });
+        // Validate request fields
+        const validation = validateEntryFields(req.body);
+        if (!validation.isValid) {
+            return res.status(400).json({ error: validation.error });
         }
 
-        // If modifiers is a string (from multipart), try to parse as JSON
-        let parsedModifiers = modifiers;
-        if (typeof modifiers === "string") {
-            try {
-                parsedModifiers = JSON.parse(modifiers);
-            } catch {
-                parsedModifiers = undefined;
-            }
-        }
+        // Create entry data and prepare file
+        const entryData = createEntryData(req.body);
+        const fileObj = await prepareFileObject(req.file);
 
-        const entryData = {
-            type,
-            description,
-            date,
-            modifiers: parsedModifiers,
-            original,
-            input,
-        };
-
-        // If file is present, wrap as ExistingFileClass using fromExisting
-        let fileObj = undefined;
-        if (req.file) {
-            fileObj = await fromExisting(req.file.path);
-        }
-
+        // Create entry and return response
         const event = await createEntry(capabilities, entryData, fileObj);
 
         return res.status(201).json({
@@ -109,18 +190,8 @@ async function handleEntryPost(req, res, capabilities) {
             entry: serialize(event),
         });
     } catch (error) {
-        const message = error instanceof Error ? error.message : String(error);
-        capabilities.logger.logError(
-            {
-                error: message,
-                stack: error instanceof Error ? error.stack : undefined,
-            },
-            `Failed to create entry: ${message}`
-        );
-
-        return res.status(500).json({
-            error: "Internal server error",
-        });
+        const errorResponse = handleEntryError(error, capabilities);
+        return res.status(500).json(errorResponse);
     }
 }
 
