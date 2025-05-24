@@ -37,7 +37,13 @@ module.exports = {
         "import/no-cycle": ["error", { maxDepth: "∞" }],
         "@typescript-eslint/no-require-imports": "off",
         "@typescript-eslint/no-unused-vars": "off",
-        "@typescript-eslint/consistent-type-assertions": "error",
+        "@typescript-eslint/consistent-type-assertions": [
+            "error",
+            { assertionStyle: "never" },
+        ],
+
+        // Ban non-null assertions (`foo!.bar`):
+        "@typescript-eslint/no-non-null-assertion": "error",
     },
     ignorePatterns: ["dist/", "node_modules/", "coverage/"],
 };
