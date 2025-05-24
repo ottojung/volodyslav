@@ -34,6 +34,7 @@ describe("event_log_storage", () => {
             modifiers: { test: "modifier" },
             type: "test_event",
             description: "Test event description",
+            creator: { name: "test", uuid: "test-uuid", version: "1.0.0" },
         };
 
         await transaction(capabilities, async (eventLogStorage) => {
@@ -63,6 +64,7 @@ describe("event_log_storage", () => {
             modifiers: { test: "modifier" },
             type: "test_event",
             description: "Test event description",
+            creator: { name: "test", uuid: "test-uuid", version: "1.0.0" },
         };
 
         await expect(
@@ -363,6 +365,7 @@ describe("event_log_storage", () => {
             modifiers: { test: "first" },
             type: "existing_event",
             description: "First existing event",
+            creator: { name: "test", uuid: "test-uuid", version: "1.0.0" },
         };
 
         await transaction(capabilities, async (storage) => {
@@ -378,6 +381,7 @@ describe("event_log_storage", () => {
             modifiers: { test: "new" },
             type: "new_event",
             description: "New event added after checking existing",
+            creator: { name: "test", uuid: "test-uuid", version: "1.0.0" },
         };
 
         await transaction(capabilities, async (storage) => {
@@ -415,6 +419,7 @@ describe("event_log_storage", () => {
             input: "cache test input",
             type: "cache_test",
             description: "Testing getExistingEntries caching",
+            creator: { name: "test", uuid: "test-uuid", version: "1.0.0" },
         };
 
         await transaction(capabilities, async (storage) => {
@@ -450,6 +455,11 @@ describe("event_log_storage", () => {
                     input: "cache test input 2",
                     type: "cache_test",
                     description: "Testing getExistingEntries caching 2",
+                    creator: {
+                        name: "test",
+                        uuid: "test-uuid",
+                        version: "1.0.0",
+                    },
                 },
                 []
             );

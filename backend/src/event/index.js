@@ -1,5 +1,5 @@
 
-const { serialize, deserialize } = require('./structure');
+const { serialize, deserialize, tryDeserialize } = require('./structure');
 
 /** @typedef {import('./structure').Event} Event */
 /** @typedef {import('./structure').SerializedEvent} SerializedEvent */
@@ -9,4 +9,5 @@ const { serialize, deserialize } = require('./structure');
 module.exports = {
     serialize,
     deserialize,
+    tryDeserialize,
 };

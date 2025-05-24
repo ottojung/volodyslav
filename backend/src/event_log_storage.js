@@ -144,16 +144,25 @@ class EventLogStorageClass {
         }
 
         try {
-            const objects = await readObjects(
-                this.capabilities,
-                this.dataPath
-            );
-            // Type the objects as SerializedEvent since we know this file contains events
-            /** @type {Array<import('./event/structure').SerializedEvent>} */
-            const serializedEntries = objects;
-            // Deserialize the entries to return proper Event structures
-            const { deserialize } = require('./event/structure');
-            this.existingEntriesCache = serializedEntries.map(deserialize);
+            const objects = await readObjects(this.capabilities, this.dataPath);
+
+            // Use tryDeserialize to safely convert objects to Events
+            /** @type {Array<import('./event/structure').Event>} */
+            const validEvents = [];
+
+            for (const obj of objects) {
+                const eventObj = event.tryDeserialize(obj);
+                if (eventObj !== null) {
+                    validEvents.push(eventObj);
+                } else {
+                    this.capabilities.logger.logWarning(
+                        { invalidObject: obj },
+                        "Found invalid object in data.json, skipping"
+                    );
+                }
+            }
+
+            this.existingEntriesCache = validEvents;
             return this.existingEntriesCache;
         } catch (error) {
             this.existingEntriesCache = [];
