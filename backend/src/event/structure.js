@@ -62,42 +62,78 @@ function deserialize(serializedEvent) {
 /**
  * Attempts to deserialize an unknown object into an Event.
  * Returns null if the object is not a valid SerializedEvent or if deserialization fails.
- * 
+ *
  * @param {unknown} obj - The object to attempt to deserialize
  * @returns {Event | null} - The deserialized Event or null if invalid
  */
 function tryDeserialize(obj) {
     try {
         // Basic type and property checks
-        if (!obj || typeof obj !== 'object' || Array.isArray(obj)) {
+        if (!obj || typeof obj !== "object" || Array.isArray(obj)) {
             return null;
         }
 
         const candidate = /** @type {Record<string, unknown>} */ (obj);
 
-        // Check all required properties exist and have correct types
+        // Extract and validate each field individually
+        const id = candidate["id"];
+        if (typeof id !== "string") {
+            return null;
+        }
+
+        const date = candidate["date"];
+        if (typeof date !== "string") {
+            return null;
+        }
+
+        const original = candidate["original"];
+        if (typeof original !== "string") {
+            return null;
+        }
+
+        const input = candidate["input"];
+        if (typeof input !== "string") {
+            return null;
+        }
+
+        const type = candidate["type"];
+        if (typeof type !== "string") {
+            return null;
+        }
+
+        const description = candidate["description"];
+        if (typeof description !== "string") {
+            return null;
+        }
+
+        const creator = candidate["creator"];
+        if (!creator || typeof creator !== "object" || Array.isArray(creator)) {
+            return null;
+        }
+
+        // Handle modifiers - can be missing (defaults to {}) or must be a non-array object
+        const modifiers = candidate["modifiers"];
         if (
-            typeof candidate['id'] !== 'string' ||
-            typeof candidate['date'] !== 'string' ||
-            typeof candidate['original'] !== 'string' ||
-            typeof candidate['input'] !== 'string' ||
-            typeof candidate['type'] !== 'string' ||
-            typeof candidate['description'] !== 'string' ||
-            !candidate['creator'] ||
-            typeof candidate['creator'] !== 'object' ||
-            Array.isArray(candidate['creator'])
+            modifiers !== undefined &&
+            (typeof modifiers !== "object" || Array.isArray(modifiers))
         ) {
             return null;
         }
 
-        // Check modifiers - it can be missing (will default to {}) or must be a non-array object
-        if (candidate['modifiers'] !== undefined && 
-            (typeof candidate['modifiers'] !== 'object' || Array.isArray(candidate['modifiers']))) {
-            return null;
-        }
+        // Create SerializedEvent object explicitly with validated fields
+        /** @type {SerializedEvent} */
+        const serializedEvent = {
+            id: id,
+            date: date,
+            original: original,
+            input: input,
+            type: type,
+            description: description,
+            creator: /** @type {Creator} */ (creator),
+            modifiers: /** @type {Modifiers} */ (modifiers || {}),
+        };
 
         // Attempt to deserialize - this will validate EventId and Date parsing
-        const serializedEvent = /** @type {SerializedEvent} */ (candidate);
         return deserialize(serializedEvent);
     } catch {
         // Any error in deserialization (invalid EventId, invalid Date, etc.) returns null
