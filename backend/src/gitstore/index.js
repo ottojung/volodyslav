@@ -70,9 +70,10 @@ class GitStoreClass {
  * It is atomic: if the transformation fails, the changes are not committed.
  * Caveat: if you are calling commit() multiple times, they won't necessarily be consequtive.
  *
+ * @template T
  * @param {Capabilities} capabilities - An object containing the capabilities.
- * @param {function(GitStore): Promise<void>} transformation - A function that takes a directory path and performs some operations on it
- * @returns {Promise<void>}
+ * @param {function(GitStore): Promise<T>} transformation - A function that takes a directory path and performs some operations on it
+ * @returns {Promise<T>}
  */
 async function transaction(capabilities, transformation) {
     // TODO: retry several times if the repository is busy.
@@ -81,8 +82,9 @@ async function transaction(capabilities, transformation) {
         const git_directory = await workingRepository.getRepository(capabilities);
         const store = new GitStoreClass(workTree, capabilities);
         await clone(capabilities, git_directory, workTree);
-        await transformation(store);
+        const result = await transformation(store);
         await push(capabilities, workTree);
+        return result;
     } finally {
         await capabilities.deleter.deleteDirectory(workTree);    
     }

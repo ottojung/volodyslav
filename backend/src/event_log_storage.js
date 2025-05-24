@@ -197,22 +197,24 @@ async function copyAssets(capabilities, assets) {
 }
 
 /**
- * @typedef {(eventLogStorage: EventLogStorage) => Promise<void>} Transformation
+ * @template T
+ * @typedef {(eventLogStorage: EventLogStorage) => Promise<T>} Transformation
  */
 
 /**
  * Performs a Git-backed transaction using the given storage and transformation.
+ * @template T
  * @param {Capabilities} capabilities - An object containing the capabilities.
  * @param {EventLogStorage} eventLogStorage - The event log storage instance.
- * @param {Transformation} transformation - Async callback to apply to the storage.
- * @returns {Promise<void>}
+ * @param {Transformation<T>} transformation - Async callback to apply to the storage.
+ * @returns {Promise<T>}
  */
 async function performGitTransaction(
     capabilities,
     eventLogStorage,
     transformation
 ) {
-    await gitstore.transaction(capabilities, async (store) => {
+    return await gitstore.transaction(capabilities, async (store) => {
         const workTree = await store.getWorkTree();
         const dataPath = path.join(workTree, "data.json");
         const dataFile = await fromExisting(dataPath);
@@ -221,7 +223,7 @@ async function performGitTransaction(
         eventLogStorage.dataPath = dataPath;
 
         // Run user-provided transformation to accumulate entries
-        await transformation(eventLogStorage);
+        const result = await transformation(eventLogStorage);
 
         // Persist queued entries
         await appendEntriesToFile(
@@ -236,6 +238,8 @@ async function performGitTransaction(
         // Copy any queued assets
         const assets = eventLogStorage.getNewAssets();
         await copyAssets(capabilities, assets);
+
+        return result;
     });
 }
 
@@ -266,14 +270,15 @@ async function cleanupAssets(capabilities, eventLogStorage) {
 
 /**
  * Applies a transformation within a Git-backed event log transaction.
+ * @template T
  * @param {Capabilities} capabilities - An object containing the capabilities.
- * @param {Transformation} transformation - The transformation to execute.
- * @returns {Promise<void>}
+ * @param {Transformation<T>} transformation - The transformation to execute.
+ * @returns {Promise<T>}
  */
 async function transaction(capabilities, transformation) {
     const eventLogStorage = new EventLogStorageClass(capabilities);
     try {
-        await performGitTransaction(
+        return await performGitTransaction(
             capabilities,
             eventLogStorage,
             transformation
