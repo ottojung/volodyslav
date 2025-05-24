@@ -73,46 +73,51 @@ function tryDeserialize(obj) {
             return null;
         }
 
-        const candidate = /** @type {Record<string, unknown>} */ (obj);
-
         // Extract and validate each field individually
-        const id = candidate["id"];
+        if (!('id' in obj)) return null;
+        const id = obj.id;
         if (typeof id !== "string") {
             return null;
         }
 
-        const date = candidate["date"];
+        if (!('date' in obj)) return null;
+        const date = obj.date;
         if (typeof date !== "string") {
             return null;
         }
 
-        const original = candidate["original"];
+        if (!('original' in obj)) return null;
+        const original = obj.original;
         if (typeof original !== "string") {
             return null;
         }
 
-        const input = candidate["input"];
+        if (!('input' in obj)) return null;
+        const input = obj.input;
         if (typeof input !== "string") {
             return null;
         }
 
-        const type = candidate["type"];
+        if (!('type' in obj)) return null;
+        const type = obj.type;
         if (typeof type !== "string") {
             return null;
         }
 
-        const description = candidate["description"];
+        if (!('description' in obj)) return null;
+        const description = obj.description;
         if (typeof description !== "string") {
             return null;
         }
 
-        const creator = candidate["creator"];
+        if (!('creator' in obj)) return null;
+        const creator = obj.creator;
         if (!creator || typeof creator !== "object" || Array.isArray(creator)) {
             return null;
         }
 
         // Handle modifiers - can be missing (defaults to {}) or must be a non-array object
-        const modifiers = candidate["modifiers"];
+        const modifiers = ('modifiers' in obj) ? obj.modifiers : undefined;
         if (
             modifiers !== undefined &&
             (typeof modifiers !== "object" || Array.isArray(modifiers))
