@@ -225,15 +225,17 @@ async function performGitTransaction(
         // Run user-provided transformation to accumulate entries
         const result = await transformation(eventLogStorage);
 
-        // Persist queued entries
-        await appendEntriesToFile(
-            capabilities,
-            dataFile,
-            eventLogStorage.getNewEntries()
-        );
+        // Get the new entries to persist
+        const newEntries = eventLogStorage.getNewEntries();
 
-        // Commit queued changes
-        await store.commit("Event log storage update");
+        // Only persist and commit if there are new entries
+        if (newEntries.length > 0) {
+            // Persist queued entries
+            await appendEntriesToFile(capabilities, dataFile, newEntries);
+
+            // Commit queued changes
+            await store.commit("Event log storage update");
+        }
 
         // Copy any queued assets
         const assets = eventLogStorage.getNewAssets();

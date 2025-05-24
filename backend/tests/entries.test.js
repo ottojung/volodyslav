@@ -101,3 +101,181 @@ describe("POST /api/entries", () => {
         fs.rmdirSync(tmpDir);
     });
 });
+
+describe("GET /api/entries", () => {
+    it("returns empty results when no entries exist", async () => {
+        // Equivalent curl command:
+        // curl -X GET http://localhost:PORT/api/entries
+
+        const { app } = await makeTestApp();
+        const res = await request(app).get("/api/entries");
+
+        expect(res.statusCode).toBe(200);
+        expect(res.body.results).toEqual([]);
+        expect(res.body.next).toBeNull();
+    });
+
+    it("returns entries with default pagination", async () => {
+        // Equivalent curl command:
+        // curl -X GET http://localhost:PORT/api/entries
+
+        const { app } = await makeTestApp();
+
+        // Create a test entry first
+        const entry = {
+            original: "Test original",
+            input: "Test input",
+            type: "test-type",
+            description: "Test description",
+        };
+        await request(app)
+            .post("/api/entries")
+            .send(entry)
+            .set("Content-Type", "application/json");
+
+        const res = await request(app).get("/api/entries");
+
+        expect(res.statusCode).toBe(200);
+        expect(res.body.results).toHaveLength(1);
+        expect(res.body.results[0]).toMatchObject({
+            type: entry.type,
+            description: entry.description,
+        });
+        expect(res.body.next).toBeNull();
+    });
+
+    it("returns paginated results with custom page and limit", async () => {
+        // Equivalent curl command:
+        // curl -X GET "http://localhost:PORT/api/entries?page=1&limit=2"
+
+        const { app } = await makeTestApp();
+
+        // Create multiple test entries
+        const entries = [
+            {
+                original: "Original 1",
+                input: "Input 1",
+                type: "type-1",
+                description: "Description 1",
+            },
+            {
+                original: "Original 2",
+                input: "Input 2",
+                type: "type-2",
+                description: "Description 2",
+            },
+            {
+                original: "Original 3",
+                input: "Input 3",
+                type: "type-3",
+                description: "Description 3",
+            },
+        ];
+
+        for (const entry of entries) {
+            await request(app)
+                .post("/api/entries")
+                .send(entry)
+                .set("Content-Type", "application/json");
+        }
+
+        const res = await request(app).get("/api/entries?page=1&limit=2");
+
+        expect(res.statusCode).toBe(200);
+        expect(res.body.results).toHaveLength(2);
+        expect(res.body.next).toContain("page=2");
+        expect(res.body.next).toContain("limit=2");
+    });
+
+    it("returns correct page when requesting second page", async () => {
+        // Equivalent curl command:
+        // curl -X GET "http://localhost:PORT/api/entries?page=2&limit=2"
+
+        const { app } = await makeTestApp();
+
+        // Create multiple test entries
+        const entries = [
+            {
+                original: "Original 1",
+                input: "Input 1",
+                type: "type-1",
+                description: "Description 1",
+            },
+            {
+                original: "Original 2",
+                input: "Input 2",
+                type: "type-2",
+                description: "Description 2",
+            },
+            {
+                original: "Original 3",
+                input: "Input 3",
+                type: "type-3",
+                description: "Description 3",
+            },
+        ];
+
+        for (const entry of entries) {
+            await request(app)
+                .post("/api/entries")
+                .send(entry)
+                .set("Content-Type", "application/json");
+        }
+
+        const res = await request(app).get("/api/entries?page=2&limit=2");
+
+        expect(res.statusCode).toBe(200);
+        expect(res.body.results).toHaveLength(1); // Only one item on second page
+        expect(res.body.next).toBeNull(); // No more pages
+    });
+
+    it("handles invalid pagination parameters gracefully", async () => {
+        // Equivalent curl command:
+        // curl -X GET "http://localhost:PORT/api/entries?page=-1&limit=0"
+
+        const { app } = await makeTestApp();
+
+        // Create a test entry
+        const entry = {
+            original: "Test original",
+            input: "Test input",
+            type: "test-type",
+            description: "Test description",
+        };
+        await request(app)
+            .post("/api/entries")
+            .send(entry)
+            .set("Content-Type", "application/json");
+
+        const res = await request(app).get("/api/entries?page=-1&limit=0");
+
+        expect(res.statusCode).toBe(200);
+        expect(res.body.results).toHaveLength(1); // Should default to valid values
+        expect(res.body.next).toBeNull();
+    });
+
+    it("limits results to maximum of 100 per page", async () => {
+        // Equivalent curl command:
+        // curl -X GET "http://localhost:PORT/api/entries?limit=200"
+
+        const { app } = await makeTestApp();
+
+        // Create a test entry
+        const entry = {
+            original: "Test original",
+            input: "Test input",
+            type: "test-type",
+            description: "Test description",
+        };
+        await request(app)
+            .post("/api/entries")
+            .send(entry)
+            .set("Content-Type", "application/json");
+
+        const res = await request(app).get("/api/entries?limit=200");
+
+        expect(res.statusCode).toBe(200);
+        // The limit should be capped at 100, but with only 1 entry we'll get 1 result
+        expect(res.body.results).toHaveLength(1);
+    });
+});

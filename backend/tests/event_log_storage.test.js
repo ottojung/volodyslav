@@ -114,15 +114,15 @@ describe("event_log_storage", () => {
         });
     });
 
-    test("transaction with no entries throws an error", async () => {
+    test("transaction with no entries succeeds without committing", async () => {
         const capabilities = getTestCapabilities();
         await stubEventLogRepository(capabilities);
-        // Expect the transaction to fail due to no staged changes to commit
+        // Read-only transactions should succeed without committing changes
         await expect(
             transaction(capabilities, async () => {
-                // no entries added
+                // no entries added - this should be allowed for read-only operations
             })
-        ).rejects.toThrow();
+        ).resolves.not.toThrow();
     });
 
     test("transaction copies asset files into repository", async () => {
