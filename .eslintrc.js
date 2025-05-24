@@ -23,6 +23,7 @@ module.exports = {
         "plugin:react/recommended",
         "plugin:jest/recommended",
         "plugin:import/recommended",
+        "plugin:@typescript-eslint/recommended",
     ],
     rules: {
         "no-unused-vars": [
@@ -34,6 +35,8 @@ module.exports = {
             },
         ],
         "import/no-cycle": ["error", { maxDepth: "∞" }],
+        "@typescript-eslint/no-require-imports": "off",
+        "@typescript-eslint/no-unused-vars": "off",
     },
     ignorePatterns: ["dist/", "node_modules/", "coverage/"],
 };
