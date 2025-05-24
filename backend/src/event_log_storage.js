@@ -35,6 +35,7 @@ const event = require("./event");
  * @property {Command} git - A command instance for Git operations.
  * @property {Environment} environment - An environment instance.
  * @property {Logger} logger - A logger instance.
+ * @property {import('./filesystem/reader').FileReader} reader - A file reader instance.
  */
 
 /**
