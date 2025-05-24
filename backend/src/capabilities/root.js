@@ -8,6 +8,7 @@
 /** @typedef {import('../filesystem/dirscanner').DirScanner} DirScanner */
 /** @typedef {import('../filesystem/copier').FileCopier} FileCopier */
 /** @typedef {import('../filesystem/writer').FileWriter} FileWriter */
+/** @typedef {import('../filesystem/reader').FileReader} FileReader */
 /** @typedef {import('../filesystem/appender').FileAppender} FileAppender */
 /** @typedef {import('../filesystem/creator').FileCreator} FileCreator */
 /** @typedef {import('../filesystem/checker').FileChecker} FileChecker */
@@ -25,6 +26,7 @@
  * @property {DirScanner} scanner - A directory scanner instance.
  * @property {FileCopier} copier - A file copier instance.
  * @property {FileWriter} writer - A file writer instance.
+ * @property {FileReader} reader - A file reader instance.
  * @property {FileAppender} appender - A file appender instance.
  * @property {FileCreator} creator - A directory creator instance.
  * @property {FileChecker} checker - A file checker instance.
@@ -43,6 +45,7 @@ const dirscanner = require("../filesystem/dirscanner");
 const copierCapability = require("../filesystem/copier");
 const creatorCapability = require("../filesystem/creator");
 const writerCapability = require("../filesystem/writer");
+const readerCapability = require("../filesystem/reader");
 const appendCapability = require("../filesystem/appender");
 const checkerCapability = require("../filesystem/checker");
 const gitCapability = require("../executables").git;
@@ -66,6 +69,7 @@ const make = memconst(() => {
         copier: copierCapability.make(),
         creator: creatorCapability.make(),
         writer: writerCapability.make(),
+        reader: readerCapability.make(),
         appender: appendCapability.make(),
         checker: checkerCapability.make(),
         git: gitCapability,
