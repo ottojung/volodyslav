@@ -38,8 +38,7 @@ const event = require("./event");
  */
 
 /**
- * @class
- * @description A class to manage the storage of event log entries.
+ * A class to manage the storage of event log entries.
  *
  * Class to accumulate event entries before persisting.
  *
