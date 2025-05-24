@@ -91,7 +91,7 @@ function validateEntryFields(body) {
 
 /**
  * Parses modifiers from string to object if needed.
- * 
+ *
  * @param {Record<string,string>|string|undefined} modifiers - The modifiers to parse.
  * @returns {Record<string,string>|undefined} - Parsed modifiers.
  */
@@ -99,7 +99,7 @@ function parseModifiers(modifiers) {
     if (typeof modifiers !== "string") {
         return modifiers;
     }
-    
+
     try {
         return JSON.parse(modifiers);
     } catch {
