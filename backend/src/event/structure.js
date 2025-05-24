@@ -144,11 +144,8 @@ function tryDeserialize(obj) {
         const creatorUuid = creator.uuid;
         const creatorVersion = creator.version;
         if (
-            !creatorName ||
             typeof creatorName !== "string" ||
-            !creatorUuid ||
             typeof creatorUuid !== "string" ||
-            !creatorVersion ||
             typeof creatorVersion !== "string"
         ) {
             return null;
