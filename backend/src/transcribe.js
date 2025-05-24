@@ -27,7 +27,9 @@ const memoize = require("@emotion/memoize").default;
  */
 
 // Instantiate client
-const openai = memoize((/** @type {string} */ apiKey) => new OpenAI({ apiKey }));
+const openai = memoize(
+    (/** @type {string} */ apiKey) => new OpenAI({ apiKey })
+);
 
 const TRANSCRIBER_MODEL = "gpt-4o-mini-transcribe";
 
