@@ -423,18 +423,20 @@ describe("event_log_storage", () => {
 
         // Count calls to createReadStream (already a jest mock in spies.js)
         const reader = capabilities.reader;
+        expect(reader.createReadStream).toHaveBeenCalledTimes(0);
 
         // Now run a new transaction to test caching
         await transaction(capabilities, async (storage) => {
+            expect(reader.createReadStream).toHaveBeenCalledTimes(0);
             // First call should read the file
             const firstResult = await storage.getExistingEntries();
             expect(firstResult).toHaveLength(1);
-            expect(reader.createReadStream.mock.calls.length).toBe(1);
+            expect(reader.createReadStream).toHaveBeenCalledTimes(1);
 
             // Second call should use the cache
             const secondResult = await storage.getExistingEntries();
             expect(secondResult).toHaveLength(1);
-            expect(reader.createReadStream.mock.calls.length).toBe(1); // Still only called once
+            expect(reader.createReadStream).toHaveBeenCalledTimes(1); // Still called once.
 
             // Both results should be identical
             expect(secondResult).toBe(firstResult); // Same reference
