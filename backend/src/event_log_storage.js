@@ -12,6 +12,7 @@ const path = require("path");
 const { fromExisting } = require("./filesystem/file");
 const gitstore = require("./gitstore");
 const event = require("./event");
+const { readObjects } = require("./json_stream_file");
 
 /** @typedef {import('./filesystem/deleter').FileDeleter} FileDeleter */
 /** @typedef {import('./filesystem/copier').FileCopier} FileCopier */
@@ -140,7 +141,7 @@ class EventLogStorageClass {
         if (this.existingEntriesCache !== null) {
             return this.existingEntriesCache;
         }
-        const { readObjects } = require("./json_stream_file");
+
         try {
             this.existingEntriesCache = await readObjects(
                 this.capabilities,
