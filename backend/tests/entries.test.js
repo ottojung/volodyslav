@@ -47,7 +47,7 @@ describe("POST /api/entries", () => {
         expect(res.body.entry).toMatchObject({
             type: entry.type,
             description: entry.description,
-            date: entry.date,
+            date: expect.stringContaining("2025-05-23T12:00:00"), // Except the timezone.
         });
         expect(capabilities.logger.logInfo).toHaveBeenCalledWith(
             expect.objectContaining({ type: entry.type, hasFile: false }),
