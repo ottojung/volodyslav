@@ -30,6 +30,7 @@ const { serialize } = require("../event");
  * @property {FileCreator} creator - A directory creator instance.
  * @property {FileChecker} checker - A file checker instance.
  * @property {Command} git - A command instance for Git operations.
+ * @property {import('../filesystem/reader').FileReader} reader - A file reader instance.
  */
 
 /**

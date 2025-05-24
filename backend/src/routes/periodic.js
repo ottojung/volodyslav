@@ -28,6 +28,7 @@ const { everyHour } = require("../schedule/tasks");
  * @property {Environment} environment - An environment instance.
  * @property {Logger} logger - A logger instance.
  * @property {Scheduler} scheduler - A scheduler instance.
+ * @property {import('../filesystem/reader').FileReader} reader - A file reader instance.
  */
 
 /**

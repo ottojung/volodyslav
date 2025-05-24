@@ -39,6 +39,7 @@ const workingRepository = require("./gitstore/working_repository");
  * @property {Logger} logger - A logger instance.
  * @property {Notifier} notifier - A notifier instance.
  * @property {Scheduler} scheduler - A scheduler instance.
+ * @property {import('./filesystem/reader').FileReader} reader - A file reader instance.
  */
 
 /**
