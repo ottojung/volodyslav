@@ -63,57 +63,7 @@ function makeRouter(capabilities) {
      * GET /entries - List entries with pagination
      */
     router.get("/entries", async (req, res) => {
-        // Parse pagination params
-        const pageRaw = req.query["page"];
-        const limitRaw = req.query["limit"];
-        const page = Math.max(
-            1,
-            parseInt(
-                pageRaw !== undefined
-                    ? String(Array.isArray(pageRaw) ? pageRaw[0] : pageRaw)
-                    : "1",
-                10
-            ) || 1
-        );
-        const limit = Math.max(
-            1,
-            Math.min(
-                100,
-                parseInt(
-                    limitRaw !== undefined
-                        ? String(
-                              Array.isArray(limitRaw) ? limitRaw[0] : limitRaw
-                          )
-                        : "20",
-                    10
-                ) || 20
-            )
-        );
-
-        const entries = await transaction(capabilities, async (storage) => {
-            return await storage.getExistingEntries();
-        });
-
-        const total = entries.length;
-        const start = (page - 1) * limit;
-        const end = start + limit;
-        const paged = entries.slice(start, end);
-
-        // Compose next page URL if more results exist
-        let next = null;
-        if (end < total) {
-            const url = new URL(
-                req.protocol +
-                    "://" +
-                    req.get("host") +
-                    req.originalUrl.split("?")[0]
-            );
-            url.searchParams.set("page", String(page + 1));
-            url.searchParams.set("limit", String(limit));
-            next = url.toString();
-        }
-
-        res.json({ results: paged.map(serialize), next });
+        await handleEntriesGet(req, res, capabilities);
     });
 
     return router;
@@ -251,6 +201,132 @@ async function handleEntryPost(req, res, capabilities) {
     } catch (error) {
         const errorResponse = handleEntryError(error, capabilities);
         return res.status(500).json(errorResponse);
+    }
+}
+
+/**
+ * @typedef {object} PaginationParams
+ * @property {number} page - The current page number (1-based)
+ * @property {number} limit - The number of items per page
+ */
+
+/**
+ * Parses pagination parameters from query string.
+ *
+ * @param {Record<string, any>} query - The request query object.
+ * @returns {PaginationParams} - The parsed pagination parameters.
+ */
+function parsePaginationParams(query) {
+    const pageRaw = query["page"];
+    const limitRaw = query["limit"];
+
+    const page = Math.max(
+        1,
+        parseInt(
+            pageRaw !== undefined
+                ? String(Array.isArray(pageRaw) ? pageRaw[0] : pageRaw)
+                : "1",
+            10
+        ) || 1
+    );
+
+    const limit = Math.max(
+        1,
+        Math.min(
+            100,
+            parseInt(
+                limitRaw !== undefined
+                    ? String(Array.isArray(limitRaw) ? limitRaw[0] : limitRaw)
+                    : "20",
+                10
+            ) || 20
+        )
+    );
+
+    return { page, limit };
+}
+
+/**
+ * Applies pagination to an array of entries.
+ *
+ * @param {any[]} entries - The complete array of entries.
+ * @param {PaginationParams} pagination - The pagination parameters.
+ * @returns {{paged: any[], total: number, hasMore: boolean}} - The pagination result.
+ */
+function applyPagination(entries, pagination) {
+    const { page, limit } = pagination;
+    const total = entries.length;
+    const start = (page - 1) * limit;
+    const end = start + limit;
+    const paged = entries.slice(start, end);
+    const hasMore = end < total;
+
+    return { paged, total, hasMore };
+}
+
+/**
+ * Builds the next page URL if more results exist.
+ *
+ * @param {import('express').Request} req - The Express request object.
+ * @param {PaginationParams} pagination - The current pagination parameters.
+ * @param {boolean} hasMore - Whether there are more results available.
+ * @returns {string|null} - The next page URL or null if no more results.
+ */
+function buildNextPageUrl(req, pagination, hasMore) {
+    if (!hasMore) {
+        return null;
+    }
+
+    const url = new URL(
+        req.protocol + "://" + req.get("host") + req.originalUrl.split("?")[0]
+    );
+    url.searchParams.set("page", String(pagination.page + 1));
+    url.searchParams.set("limit", String(pagination.limit));
+
+    return url.toString();
+}
+
+/**
+ * Handles the GET /entries logic.
+ * @param {import('express').Request} req
+ * @param {import('express').Response} res
+ * @param {Capabilities} capabilities
+ */
+async function handleEntriesGet(req, res, capabilities) {
+    try {
+        // Parse pagination parameters
+        const pagination = parsePaginationParams(req.query);
+
+        // Fetch all entries
+        const entries = await transaction(capabilities, async (storage) => {
+            return await storage.getExistingEntries();
+        });
+
+        // Apply pagination
+        const { paged, hasMore } = applyPagination(entries, pagination);
+
+        // Build next page URL
+        const next = buildNextPageUrl(req, pagination, hasMore);
+
+        // Return response
+        res.json({
+            results: paged.map(serialize),
+            next,
+        });
+    } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+
+        capabilities.logger.logError(
+            {
+                error: message,
+                stack: error instanceof Error ? error.stack : undefined,
+            },
+            `Failed to fetch entries: ${message}`
+        );
+
+        res.status(500).json({
+            error: "Internal server error",
+        });
     }
 }
 
