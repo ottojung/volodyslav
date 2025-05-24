@@ -41,6 +41,20 @@ function make(capabilities) {
     return new EventIdClass(capabilities);
 }
 
+/**
+ * Creates an EventId from an existing string identifier.
+ * Used for deserialization from JSON.
+ * @param {string} identifier - The string identifier to create EventId from.
+ * @returns {EventId}
+ * @description Creates an EventId from an existing identifier.
+ */
+function fromString(identifier) {
+    const eventId = Object.create(EventIdClass.prototype);
+    eventId.identifier = identifier;
+    return eventId;
+}
+
 module.exports = {
     make,
+    fromString,
 };

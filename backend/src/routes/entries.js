@@ -16,6 +16,7 @@ const { serialize } = require("../event");
  * @typedef {import('../filesystem/creator').FileCreator} FileCreator
  * @typedef {import('../filesystem/checker').FileChecker} FileChecker
  * @typedef {import('../subprocess/command').Command} Command
+ * @typedef {import('../event/structure').SerializedEvent} SerializedEvent
  */
 
 /**
@@ -175,7 +176,7 @@ function handleEntryError(error, capabilities) {
 /**
  * Handles the POST /entries logic after file upload.
  * @param {import('express').Request} req
- * @param {import('express').Response} res
+ * @param {import('express').Response} res - Responds with EntryCreateResponse on success or EntryCreateErrorResponse on error
  * @param {Capabilities} capabilities
  */
 async function handleEntryPost(req, res, capabilities) {
@@ -195,6 +196,7 @@ async function handleEntryPost(req, res, capabilities) {
 
         return res.status(201).json({
             success: true,
+            /** @type {import('../event/structure').SerializedEvent} */
             entry: serialize(event),
         });
     } catch (error) {
@@ -270,7 +272,7 @@ function buildNextPageUrl(req, pagination, hasMore) {
 /**
  * Handles the GET /entries logic.
  * @param {import('express').Request} req
- * @param {import('express').Response} res
+ * @param {import('express').Response} res - Responds with EntriesListResponse on success or EntriesListErrorResponse on error
  * @param {Capabilities} capabilities
  */
 async function handleEntriesGet(req, res, capabilities) {
@@ -286,6 +288,7 @@ async function handleEntriesGet(req, res, capabilities) {
 
         // Return response
         res.json({
+            /** @type {Array<import('../event/structure').SerializedEvent>} */
             results: result.results.map(serialize),
             next,
         });
@@ -305,5 +308,27 @@ async function handleEntriesGet(req, res, capabilities) {
         });
     }
 }
+
+/**
+ * @typedef {object} EntryCreateResponse
+ * @property {boolean} success - Whether the entry was created successfully
+ * @property {SerializedEvent} entry - The created entry in serialized format
+ */
+
+/**
+ * @typedef {object} EntryCreateErrorResponse
+ * @property {string} error - Error message
+ */
+
+/**
+ * @typedef {object} EntriesListResponse
+ * @property {Array<SerializedEvent>} results - Array of entries in serialized format
+ * @property {string|null} next - URL for the next page of results, or null if no more results
+ */
+
+/**
+ * @typedef {object} EntriesListErrorResponse
+ * @property {string} error - Error message
+ */
 
 module.exports = { makeRouter };

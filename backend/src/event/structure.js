@@ -46,13 +46,14 @@ function serialize(event) {
 }
 
 /**
- * @param {any} serializedEvent - The serialized event object from JSON.
+ * @param {SerializedEvent} serializedEvent - The serialized event object from JSON.
  * @returns {Event} - The deserialized event object.
  */
 function deserialize(serializedEvent) {
+    const eventId = require('./id');
     return {
         ...serializedEvent,
-        id: { identifier: serializedEvent.id, __brand: undefined },
+        id: eventId.fromString(serializedEvent.id),
         date: new Date(serializedEvent.date),
     };
 }
