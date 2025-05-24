@@ -75,6 +75,7 @@ class GitStoreClass {
  * @returns {Promise<void>}
  */
 async function transaction(capabilities, transformation) {
+    // TODO: retry several times if the repository is busy.
     const workTree = await makeTemporaryWorkTree(capabilities);
     try {
         const git_directory = await workingRepository.getRepository(capabilities);
