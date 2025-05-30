@@ -46,10 +46,10 @@ const creatorMake = require("./creator");
  *
  * @param {Capabilities} capabilities - An object containing the capabilities.
  * @param {EntryData} entryData - The entry data from the HTTP request.
- * @param {ExistingFile} [file] - Optional file attachment.
+ * @param {ExistingFile[]} [files] - Optional file attachments.
  * @returns {Promise<import('./event/structure').Event>} - The created event.
  */
-async function createEntry(capabilities, entryData, file) {
+async function createEntry(capabilities, entryData, files = []) {
     const creator = await creatorMake(capabilities);
     const id = eventId.make(capabilities);
     const date = entryData.date ? new Date(entryData.date) : new Date();
@@ -66,7 +66,7 @@ async function createEntry(capabilities, entryData, file) {
         creator,
     };
 
-    const assets = file ? [asset.make(event, file)] : [];
+    const assets = files.map((file) => asset.make(event, file));
 
     await transaction(capabilities, async (eventLogStorage) => {
         eventLogStorage.addEntry(event, assets);
@@ -76,9 +76,9 @@ async function createEntry(capabilities, entryData, file) {
         {
             eventId: event.id,
             type: event.type,
-            hasFile: !!file,
+            fileCount: files.length,
         },
-        `Entry created: ${event.type}`
+        `Entry created: ${event.type} with ${files.length} file(s)`
     );
 
     return event;

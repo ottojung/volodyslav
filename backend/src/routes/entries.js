@@ -52,8 +52,8 @@ function makeRouter(capabilities) {
         const reqId = randomRequestId(capabilities);
         req.query["request_identifier"] = reqId.identifier;
 
-        // Call multer upload middleware
-        uploadMiddleware.single("file")(req, res, (err) => {
+        // Call multer upload middleware for multiple files
+        uploadMiddleware.array("files")(req, res, (err) => {
             if (err) return next(err);
             handleEntryPost(req, res, capabilities);
         });
@@ -137,17 +137,23 @@ function createEntryData(body) {
 }
 
 /**
- * Prepares the file object for entry creation if a file was uploaded.
+ * Prepares the file objects for entry creation if files were uploaded.
  *
- * @param {Express.Multer.File|undefined} file - The uploaded file.
- * @returns {Promise<import('../filesystem/file').ExistingFile|undefined>} - The file object.
+ * @param {Express.Multer.File[]|undefined} files - The uploaded files.
+ * @returns {Promise<import('../filesystem/file').ExistingFile[]>} - The file objects.
  */
-async function prepareFileObject(file) {
-    if (!file) {
-        return undefined;
+async function prepareFileObjects(files) {
+    if (!files || !Array.isArray(files) || files.length === 0) {
+        return [];
     }
 
-    return await fromExisting(file.path);
+    const fileObjects = [];
+    for (const file of files) {
+        const existingFile = await fromExisting(file.path);
+        fileObjects.push(existingFile);
+    }
+
+    return fileObjects;
 }
 
 /**
@@ -187,12 +193,14 @@ async function handleEntryPost(req, res, capabilities) {
             return res.status(400).json({ error: validation.error });
         }
 
-        // Create entry data and prepare file
+        // Create entry data and prepare files
         const entryData = createEntryData(req.body);
-        const fileObj = await prepareFileObject(req.file);
+        const fileObjects = await prepareFileObjects(
+            /** @type {Express.Multer.File[]} */ (req.files)
+        );
 
         // Create entry and return response
-        const event = await createEntry(capabilities, entryData, fileObj);
+        const event = await createEntry(capabilities, entryData, fileObjects);
 
         return res.status(201).json({
             success: true,

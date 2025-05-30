@@ -34,7 +34,7 @@ describe("createEntry (integration, with real capabilities)", () => {
             expect.objectContaining({
                 eventId: event.id,
                 type: event.type,
-                hasFile: false,
+                fileCount: 0,
             }),
             expect.stringContaining("Entry created")
         );
@@ -55,7 +55,7 @@ describe("createEntry (integration, with real capabilities)", () => {
             description: "Description for file entry.",
         };
         const mockFile = { path: tmpFilePath };
-        const event = await createEntry(capabilities, entryData, mockFile);
+        const event = await createEntry(capabilities, entryData, [mockFile]);
         expect(event.original).toBe(entryData.original);
         expect(event.input).toBe(entryData.input);
         expect(event.type).toBe(entryData.type);
@@ -66,11 +66,50 @@ describe("createEntry (integration, with real capabilities)", () => {
             expect.objectContaining({
                 eventId: event.id,
                 type: event.type,
-                hasFile: true,
+                fileCount: 1,
             }),
             expect.stringContaining("Entry created")
         );
         fs.unlinkSync(tmpFilePath);
+        fs.rmdirSync(tmpDir);
+    });
+
+    it("creates an event log entry with multiple assets when multiple files are provided", async () => {
+        const fs = require("fs");
+        const path = require("path");
+        const os = require("os");
+        const tmpDir = fs.mkdtempSync(
+            path.join(os.tmpdir(), "entry-multi-test-")
+        );
+        const tmpFilePath1 = path.join(tmpDir, "testfile1.txt");
+        const tmpFilePath2 = path.join(tmpDir, "testfile2.txt");
+        fs.writeFileSync(tmpFilePath1, "test content 1");
+        fs.writeFileSync(tmpFilePath2, "test content 2");
+        const capabilities = await getTestCapabilities();
+        const entryData = {
+            original: "Original with multiple files",
+            input: "Input with multiple files",
+            type: "multi-file-entry",
+            description: "Description for multi-file entry.",
+        };
+        const mockFiles = [{ path: tmpFilePath1 }, { path: tmpFilePath2 }];
+        const event = await createEntry(capabilities, entryData, mockFiles);
+        expect(event.original).toBe(entryData.original);
+        expect(event.input).toBe(entryData.input);
+        expect(event.type).toBe(entryData.type);
+        expect(event.description).toBe(entryData.description);
+        expect(event.id).toBeDefined();
+        expect(event.creator).toBeDefined();
+        expect(capabilities.logger.logInfo).toHaveBeenCalledWith(
+            expect.objectContaining({
+                eventId: event.id,
+                type: event.type,
+                fileCount: 2,
+            }),
+            expect.stringContaining("Entry created")
+        );
+        fs.unlinkSync(tmpFilePath1);
+        fs.unlinkSync(tmpFilePath2);
         fs.rmdirSync(tmpDir);
     });
 
@@ -129,7 +168,9 @@ describe("createEntry (integration, with real capabilities)", () => {
 
     it("creates an event log entry with a future date", async () => {
         const capabilities = await getTestCapabilities();
-        const futureDate = new Date(Date.now() + 1000 * 60 * 60 * 24 * 365).toISOString();
+        const futureDate = new Date(
+            Date.now() + 1000 * 60 * 60 * 24 * 365
+        ).toISOString();
         const entryData = {
             original: "Future date original",
             input: "Future date input",

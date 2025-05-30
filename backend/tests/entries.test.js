@@ -50,7 +50,7 @@ describe("POST /api/entries", () => {
             date: expect.stringContaining("2025-05-2"), // Timezone invariant.
         });
         expect(capabilities.logger.logInfo).toHaveBeenCalledWith(
-            expect.objectContaining({ type: entry.type, hasFile: false }),
+            expect.objectContaining({ type: entry.type, fileCount: 0 }),
             expect.stringContaining("Entry created")
         );
     });
@@ -89,15 +89,50 @@ describe("POST /api/entries", () => {
             .field("input", entry.input)
             .field("type", entry.type)
             .field("description", entry.description)
-            .attach("file", tmpFilePath);
+            .attach("files", tmpFilePath);
         expect(res.statusCode).toBe(201);
         expect(res.body.success).toBe(true);
         expect(res.body.entry.type).toBe(entry.type);
         expect(capabilities.logger.logInfo).toHaveBeenCalledWith(
-            expect.objectContaining({ type: entry.type, hasFile: true }),
+            expect.objectContaining({ type: entry.type, fileCount: 1 }),
             expect.stringContaining("Entry created")
         );
         fs.unlinkSync(tmpFilePath);
+        fs.rmdirSync(tmpDir);
+    });
+
+    it("creates an entry with multiple assets when multiple files are uploaded", async () => {
+        const { app, capabilities } = await makeTestApp();
+        const tmpDir = fs.mkdtempSync(
+            path.join(os.tmpdir(), "entries-http-multi-test-")
+        );
+        const tmpFilePath1 = path.join(tmpDir, "upload1.txt");
+        const tmpFilePath2 = path.join(tmpDir, "upload2.txt");
+        fs.writeFileSync(tmpFilePath1, "uploaded content 1");
+        fs.writeFileSync(tmpFilePath2, "uploaded content 2");
+        const entry = {
+            original: "Multi-file original",
+            input: "Multi-file input",
+            type: "multi-file-type",
+            description: "Multi-file description",
+        };
+        const res = await request(app)
+            .post("/api/entries")
+            .field("original", entry.original)
+            .field("input", entry.input)
+            .field("type", entry.type)
+            .field("description", entry.description)
+            .attach("files", tmpFilePath1)
+            .attach("files", tmpFilePath2);
+        expect(res.statusCode).toBe(201);
+        expect(res.body.success).toBe(true);
+        expect(res.body.entry.type).toBe(entry.type);
+        expect(capabilities.logger.logInfo).toHaveBeenCalledWith(
+            expect.objectContaining({ type: entry.type, fileCount: 2 }),
+            expect.stringContaining("Entry created")
+        );
+        fs.unlinkSync(tmpFilePath1);
+        fs.unlinkSync(tmpFilePath2);
         fs.rmdirSync(tmpDir);
     });
 });
