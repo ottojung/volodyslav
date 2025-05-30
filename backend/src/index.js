@@ -3,7 +3,6 @@ const { start } = require("./server");
 const commander = require("commander");
 const runtimeIdentifier = require("./runtime_identifier");
 const root = require("./capabilities/root");
-const { runAllTasks } = require("./schedule");
 
 /**
  * @typedef {import('./capabilities/root').Capabilities} Capabilities
@@ -38,11 +37,6 @@ async function entryTyped(capabilities) {
         .command("start")
         .description("Start the server")
         .action(start(capabilities));
-
-    program
-        .command("run-periodic")
-        .description("Run all periodic tasks immediately (not on schedule)")
-        .action(runAllTasks(capabilities));
 
     await program.parseAsync(process.argv);
 
