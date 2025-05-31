@@ -17,6 +17,10 @@ function getTestCapabilities() {
     const capabilities = getMockedRootCapabilities();
     stubEnvironment(capabilities);
     stubLogger(capabilities);
+
+    // Mock isFileStable to return true by default for existing tests
+    capabilities.checker.isFileStable = jest.fn().mockResolvedValue(true);
+
     return capabilities;
 }
 
@@ -160,5 +164,102 @@ describe("processDiaryAudios", () => {
 
         // One entry in log
         expect(await countLogEntries(capabilities)).toBe(1);
+    });
+
+    it("skips unstable files that are still being recorded", async () => {
+        const capabilities = getTestCapabilities();
+        await stubEventLogRepository(capabilities);
+
+        // Prepare diary directory with audio files
+        const diaryDir = capabilities.environment.diaryAudiosDirectory();
+        await fs.mkdir(diaryDir, { recursive: true });
+
+        const stableFile = "20250511T000000Z.stable.mp3";
+        const unstableFile = "20250511T000001Z.unstable.mp3";
+
+        await fs.writeFile(path.join(diaryDir, stableFile), "stable content");
+        await fs.writeFile(
+            path.join(diaryDir, unstableFile),
+            "unstable content"
+        );
+
+        // Mock the checker to return false for unstable file
+        capabilities.checker.isFileStable = jest.fn(async (filePath) => {
+            return !filePath.includes("unstable");
+        });
+
+        // Execute
+        await processDiaryAudios(capabilities);
+
+        // Only unstable file should remain (stable file processed and deleted)
+        const remaining = await fs.readdir(diaryDir);
+        expect(remaining).toEqual([unstableFile]);
+
+        // Verify stability check was called for both files
+        expect(capabilities.checker.isFileStable).toHaveBeenCalledTimes(2);
+        expect(capabilities.checker.isFileStable).toHaveBeenCalledWith(
+            path.join(diaryDir, stableFile)
+        );
+        expect(capabilities.checker.isFileStable).toHaveBeenCalledWith(
+            path.join(diaryDir, unstableFile)
+        );
+
+        // Only stable file should be deleted
+        expect(capabilities.deleter.deleteFile).toHaveBeenCalledWith(
+            path.join(diaryDir, stableFile)
+        );
+        expect(capabilities.deleter.deleteFile).not.toHaveBeenCalledWith(
+            path.join(diaryDir, unstableFile)
+        );
+
+        // One entry in log (for stable file only)
+        expect(await countLogEntries(capabilities)).toBe(1);
+    });
+
+    it("handles file stability check errors gracefully", async () => {
+        const capabilities = getTestCapabilities();
+        await stubEventLogRepository(capabilities);
+
+        // Prepare diary directory with audio files
+        const diaryDir = capabilities.environment.diaryAudiosDirectory();
+        await fs.mkdir(diaryDir, { recursive: true });
+
+        const goodFile = "20250511T000000Z.good.mp3";
+        const errorFile = "20250511T000001Z.error.mp3";
+
+        await fs.writeFile(path.join(diaryDir, goodFile), "good content");
+        await fs.writeFile(path.join(diaryDir, errorFile), "error content");
+
+        // Mock the checker to throw error for error file
+        capabilities.checker.isFileStable = jest.fn(async (filePath) => {
+            if (filePath.includes("error")) {
+                throw new Error("Permission denied");
+            }
+            return true; // good file is stable
+        });
+
+        // Execute
+        await processDiaryAudios(capabilities);
+
+        // Error file should remain (not processed due to stability check error)
+        const remaining = await fs.readdir(diaryDir);
+        expect(remaining).toEqual([errorFile]);
+
+        // Only good file should be deleted
+        expect(capabilities.deleter.deleteFile).toHaveBeenCalledWith(
+            path.join(diaryDir, goodFile)
+        );
+        expect(capabilities.deleter.deleteFile).not.toHaveBeenCalledWith(
+            path.join(diaryDir, errorFile)
+        );
+
+        // Warning should be logged for error file
+        expect(capabilities.logger.logWarning).toHaveBeenCalledWith(
+            expect.objectContaining({
+                file: path.join(diaryDir, errorFile),
+                error: "Permission denied",
+            }),
+            expect.stringContaining("Failed to check file stability")
+        );
     });
 });

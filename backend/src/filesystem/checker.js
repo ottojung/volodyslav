@@ -48,6 +48,7 @@ function isFileCheckerError(object) {
  * @typedef {object} FileChecker
  * @property {typeof fileExists} fileExists
  * @property {typeof instanciate} instanciate
+ * @property {typeof isFileStable} isFileStable
  */
 
 /**
@@ -86,6 +87,65 @@ async function instanciate(path) {
 }
 
 /**
+ * Checks if a file is stable (not currently being written to).
+ * A file is considered stable if:
+ * 1. It hasn't been modified for at least the specified age threshold
+ * 2. Its size hasn't changed between two checks separated by a delay
+ *
+ * @param {string} filePath - The path to the file to check.
+ * @param {object} options - Stability check options.
+ * @param {number} [options.minAgeMs=300000] - Minimum age in milliseconds (default: 5 minutes).
+ * @param {number} [options.sizeCheckDelayMs=1000] - Delay between size checks in milliseconds (default: 1 second).
+ * @returns {Promise<boolean>} - A promise that resolves with true if the file is stable, false otherwise.
+ */
+async function isFileStable(filePath, options = {}) {
+    const { minAgeMs = 300000, sizeCheckDelayMs = 1000 } = options; // 5 minutes default
+
+    try {
+        // First check: get initial file stats
+        const initialStats = await fs.stat(filePath);
+        if (!initialStats.isFile()) {
+            return false;
+        }
+
+        // Check 1: File age - must not have been modified recently
+        const now = Date.now();
+        const fileModifiedTime = initialStats.mtime.getTime();
+        const ageMs = now - fileModifiedTime;
+
+        if (ageMs < minAgeMs) {
+            return false; // File was modified too recently
+        }
+
+        // Check 2: File size stability - check that size doesn't change
+        const initialSize = initialStats.size;
+
+        // Wait a short time and check size again
+        await new Promise((resolve) => setTimeout(resolve, sizeCheckDelayMs));
+
+        const finalStats = await fs.stat(filePath);
+        const finalSize = finalStats.size;
+
+        // File is stable if size hasn't changed
+        return initialSize === finalSize;
+    } catch (err) {
+        if (
+            err !== null &&
+            typeof err === "object" &&
+            "code" in err &&
+            err.code === "ENOENT"
+        ) {
+            return false; // File doesn't exist
+        }
+
+        throw new FileCheckerError(
+            `Failed to check file stability: ${filePath}`,
+            filePath
+        );
+    }
+}
+
+/**
  * Creates a FileChecker instance.
  * @returns {FileChecker} - A FileChecker instance.
  */
@@ -93,6 +153,7 @@ function make() {
     return {
         fileExists,
         instanciate,
+        isFileStable,
     };
 }
 

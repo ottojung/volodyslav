@@ -44,7 +44,48 @@ const creatorMake = require("./creator");
  */
 async function processDiaryAudios(capabilities) {
     const diaryAudiosDir = capabilities.environment.diaryAudiosDirectory();
-    const inputFiles = await capabilities.scanner.scanDirectory(diaryAudiosDir);
+    const allFiles = await capabilities.scanner.scanDirectory(diaryAudiosDir);
+
+    // Filter files to only include stable ones (not currently being recorded)
+    const stableFiles = [];
+    const unstableFiles = [];
+
+    for (const file of allFiles) {
+        try {
+            const isStable = await capabilities.checker.isFileStable(file.path);
+            if (isStable) {
+                stableFiles.push(file);
+            } else {
+                unstableFiles.push(file);
+            }
+        } catch (error) {
+            const errorMessage =
+                error instanceof Error ? error.message : String(error);
+            capabilities.logger.logWarning(
+                {
+                    file: file.path,
+                    error: errorMessage,
+                },
+                `Failed to check file stability, skipping: ${file.path}`
+            );
+            unstableFiles.push(file);
+        }
+    }
+
+    // Log information about skipped files
+    if (unstableFiles.length > 0) {
+        capabilities.logger.logInfo(
+            {
+                unstableCount: unstableFiles.length,
+                totalCount: allFiles.length,
+                skippedFiles: unstableFiles.map((f) => path.basename(f.path)),
+            },
+            `Skipping ${unstableFiles.length} unstable files that may still be recording`
+        );
+    }
+
+    // Only process stable files
+    const inputFiles = stableFiles;
     const creator = await creatorMake(capabilities);
 
     /**
