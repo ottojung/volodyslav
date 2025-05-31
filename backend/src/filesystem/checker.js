@@ -95,11 +95,11 @@ async function instanciate(path) {
  * @param {string} filePath - The path to the file to check.
  * @param {object} options - Stability check options.
  * @param {number} [options.minAgeMs=300000] - Minimum age in milliseconds (default: 5 minutes).
- * @param {number} [options.sizeCheckDelayMs=1000] - Delay between size checks in milliseconds (default: 1 second).
+ * @param {number} [options.sizeCheckDelayMs=30000] - Delay between size checks in milliseconds (default: 30 second).
  * @returns {Promise<boolean>} - A promise that resolves with true if the file is stable, false otherwise.
  */
 async function isFileStable(filePath, options = {}) {
-    const { minAgeMs = 300000, sizeCheckDelayMs = 1000 } = options; // 5 minutes default
+    const { minAgeMs = 300000, sizeCheckDelayMs = 30000 } = options; // 5 minutes, 30 seconds default
 
     try {
         // First check: get initial file stats
