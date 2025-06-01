@@ -7,28 +7,16 @@ const temporary = require("./temporary");
 beforeEach(temporary.beforeEach);
 afterEach(temporary.afterEach);
 
-describe("json_stream_file", () => {
+async function getTestPath() {
     const testDir = temporary.input();
-    const testFile = path.join(testDir, "test.json");
+    await fs.mkdir(testDir, { recursive: true });
+    return path.join(testDir, "test.json");
+}
 
-    beforeAll(async () => {
-        await fs.mkdir(testDir, { recursive: true });
-    });
-
-    afterAll(async () => {
-        await fs.rm(testDir, { recursive: true, force: true });
-    });
-
-    beforeEach(async () => {
-        // Clean up test file before each test
-        try {
-            await fs.unlink(testFile);
-        } catch (error) {
-            if (error.code !== "ENOENT") throw error;
-        }
-    });
+describe("json_stream_file", () => {
 
     it("should read a single JSON object from file", async () => {
+        const testFile = await getTestPath();
         const capabilities = {
             reader: require("../src/filesystem/reader").make(),
         };
@@ -42,6 +30,7 @@ describe("json_stream_file", () => {
     });
 
     it("should read multiple JSON objects from file (JSON Lines format)", async () => {
+        const testFile = await getTestPath();
         const capabilities = {
             reader: require("../src/filesystem/reader").make(),
         };
@@ -60,6 +49,7 @@ describe("json_stream_file", () => {
     });
 
     it("should handle empty file", async () => {
+        const testFile = await getTestPath();
         const capabilities = {
             reader: require("../src/filesystem/reader").make(),
         };
@@ -71,6 +61,7 @@ describe("json_stream_file", () => {
     });
 
     it("should reject on invalid JSON", async () => {
+        const testFile = await getTestPath();
         const capabilities = {
             reader: require("../src/filesystem/reader").make(),
         };
@@ -81,7 +72,7 @@ describe("json_stream_file", () => {
     });
 
     it("should reject on non-existent file", async () => {
-        const nonExistentFile = path.join(testDir, "non-existent.json");
-        await expect(fromExisting(nonExistentFile)).rejects.toThrow();
+        const testFile = await getTestPath();
+        await expect(fromExisting(testFile)).rejects.toThrow();
     });
 });
