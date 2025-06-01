@@ -34,7 +34,6 @@ async function ensureGitAvailable() {
 
 /**
  * Commit staged changes with a message
- * Note: this operation is atomic. Details at <https://chatgpt.com/share/681d3dcb-a948-800e-8aca-896c8ba2aa07>.
  * @param {Capabilities} capabilities - The capabilities object containing the git command.
  * @param {string} git_directory - The `.git` directory
  * @param {string} work_directory - The repository directory, where the actual files are
@@ -42,6 +41,23 @@ async function ensureGitAvailable() {
  * @returns {Promise<void>}
  */
 async function commit(capabilities, git_directory, work_directory, message) {
+    // First add all files (including new untracked files) to the staging area
+    await capabilities.git.call(
+        "-c",
+        "safe.directory=*",
+        "-c",
+        "user.name=volodyslav",
+        "-c",
+        "user.email=volodyslav",
+        "--git-dir",
+        git_directory,
+        "--work-tree",
+        work_directory,
+        "add",
+        "--all"
+    );
+
+    // Then commit all staged changes
     await capabilities.git.call(
         "-c",
         "safe.directory=*",
@@ -54,7 +70,6 @@ async function commit(capabilities, git_directory, work_directory, message) {
         "--work-tree",
         work_directory,
         "commit",
-        "--all",
         "--message",
         message
     );

@@ -14,6 +14,7 @@ const gitstore = require("./gitstore");
 const event = require("./event");
 const { readObjects } = require("./json_stream_file");
 const { targetPath } = require("./event/asset");
+const configStorage = require("./config/storage");
 
 /** @typedef {import('./filesystem/deleter').FileDeleter} FileDeleter */
 /** @typedef {import('./filesystem/copier').FileCopier} FileCopier */
@@ -75,11 +76,31 @@ class EventLogStorageClass {
     dataFile = null;
 
     /**
+     * Path to the config.json file, set during transaction
+     * @type {ExistingFile|null|undefined}
+     */
+    configFile = undefined;
+
+    /**
      * Cache for existing entries loaded from data.json
      * @private
      * @type {Array<import('./event/structure').Event>|null}
      */
     existingEntriesCache = null;
+
+    /**
+     * Cache for existing config loaded from config.json
+     * @private
+     * @type {import('./config/structure').Config|null}
+     */
+    existingConfigCache = null;
+
+    /**
+     * New config to be written to config.json
+     * @private
+     * @type {import('./config/structure').Config|null}
+     */
+    newConfig = null;
 
     /**
      * Capabilities object for file operations.
@@ -122,6 +143,63 @@ class EventLogStorageClass {
      */
     getNewAssets() {
         return this.newAssets;
+    }
+
+    /**
+     * Sets a new configuration to be written to config.json
+     * @param {import('./config/structure').Config} configObj - The config object to write
+     */
+    setConfig(configObj) {
+        this.newConfig = configObj;
+    }
+
+    /**
+     * Gets the new configuration to be written
+     * @returns {import('./config/structure').Config|null} - The config object or null if none set
+     */
+    getNewConfig() {
+        return this.newConfig;
+    }
+
+    /**
+     * Lazily reads and returns the config that existed in config.json
+     * at the start of the current transaction. The file is only read
+     * on the first call, subsequent calls return cached results.
+     *
+     * @returns {Promise<import('./config/structure').Config|null>} - The existing config or null if not found/invalid
+     * @throws {Error} - If called outside of a transaction.
+     */
+    async getExistingConfig() {
+        if (this.configFile === undefined) {
+            throw new Error(
+                "getExistingConfig() called outside of a transaction"
+            );
+        }
+
+        // Return cached results if available
+        if (this.existingConfigCache !== null) {
+            return this.existingConfigCache;
+        }
+
+        // If config file doesn't exist, return null
+        if (this.configFile === null) {
+            this.existingConfigCache = null;
+            return null;
+        }
+
+        try {
+            const configStorage = require("./config/storage");
+
+            const configObj = await configStorage.readConfig(
+                this.capabilities,
+                this.configFile
+            );
+            this.existingConfigCache = configObj;
+            return this.existingConfigCache;
+        } catch (error) {
+            this.existingConfigCache = null;
+            return this.existingConfigCache;
+        }
     }
 
     /**
@@ -233,23 +311,43 @@ async function performGitTransaction(
     return await gitstore.transaction(capabilities, async (store) => {
         const workTree = await store.getWorkTree();
         const dataPath = path.join(workTree, "data.json");
+        const configPath = path.join(workTree, "config.json");
         const dataFile = await fromExisting(dataPath);
+        const configFile = await fromExisting(configPath).catch(() => null);
 
-        // Set dataPath for possible lazy loading of existing entries
+        // Set file paths for possible lazy loading
         eventLogStorage.dataFile = dataFile;
+        eventLogStorage.configFile = configFile;
 
-        // Run user-provided transformation to accumulate entries
+        // Run user-provided transformation to accumulate entries and config
         const result = await transformation(eventLogStorage);
 
         // Get the new entries to persist
         const newEntries = eventLogStorage.getNewEntries();
+        const newConfig = eventLogStorage.getNewConfig();
+
+        // Track if we need to commit
+        let needsCommit = false;
 
         // Only persist and commit if there are new entries
         if (newEntries.length > 0) {
             // Persist queued entries
             await appendEntriesToFile(capabilities, dataFile, newEntries);
+            needsCommit = true;
+        }
 
-            // Commit queued changes
+        // Write config if changed
+        if (newConfig !== null) {
+            await configStorage.writeConfig(
+                capabilities,
+                configPath,
+                newConfig
+            );
+            needsCommit = true;
+        }
+
+        // Commit queued changes if needed
+        if (needsCommit) {
             await store.commit("Event log storage update");
         }
 

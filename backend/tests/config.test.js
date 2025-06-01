@@ -30,8 +30,12 @@ describe("config structure", () => {
                 help: "Test help text",
                 shortcuts: [
                     { pattern: "test", replacement: "TEST" },
-                    { pattern: "hello", replacement: "Hello World", description: "Greeting" }
-                ]
+                    {
+                        pattern: "hello",
+                        replacement: "Hello World",
+                        description: "Greeting",
+                    },
+                ],
             };
 
             const result = config.serialize(configObj);
@@ -40,22 +44,22 @@ describe("config structure", () => {
                 help: "Test help text",
                 shortcuts: [
                     ["test", "TEST"],
-                    ["hello", "Hello World", "Greeting"]
-                ]
+                    ["hello", "Hello World", "Greeting"],
+                ],
             });
         });
 
         it("should serialize empty config", () => {
             const configObj = {
                 help: "Empty config",
-                shortcuts: []
+                shortcuts: [],
             };
 
             const result = config.serialize(configObj);
 
             expect(result).toEqual({
                 help: "Empty config",
-                shortcuts: []
+                shortcuts: [],
             });
         });
 
@@ -64,8 +68,8 @@ describe("config structure", () => {
                 help: "No descriptions",
                 shortcuts: [
                     { pattern: "test1", replacement: "TEST1" },
-                    { pattern: "test2", replacement: "TEST2" }
-                ]
+                    { pattern: "test2", replacement: "TEST2" },
+                ],
             };
 
             const result = config.serialize(configObj);
@@ -74,8 +78,8 @@ describe("config structure", () => {
                 help: "No descriptions",
                 shortcuts: [
                     ["test1", "TEST1"],
-                    ["test2", "TEST2"]
-                ]
+                    ["test2", "TEST2"],
+                ],
             });
         });
     });
@@ -86,8 +90,8 @@ describe("config structure", () => {
                 help: "Test help text",
                 shortcuts: [
                     ["test", "TEST"],
-                    ["hello", "Hello World", "Greeting"]
-                ]
+                    ["hello", "Hello World", "Greeting"],
+                ],
             };
 
             const result = config.deserialize(serializedConfig);
@@ -96,8 +100,12 @@ describe("config structure", () => {
                 help: "Test help text",
                 shortcuts: [
                     { pattern: "test", replacement: "TEST" },
-                    { pattern: "hello", replacement: "Hello World", description: "Greeting" }
-                ]
+                    {
+                        pattern: "hello",
+                        replacement: "Hello World",
+                        description: "Greeting",
+                    },
+                ],
             });
         });
 
@@ -106,8 +114,8 @@ describe("config structure", () => {
                 help: "No descriptions",
                 shortcuts: [
                     ["test1", "TEST1"],
-                    ["test2", "TEST2"]
-                ]
+                    ["test2", "TEST2"],
+                ],
             };
 
             const result = config.deserialize(serializedConfig);
@@ -116,22 +124,22 @@ describe("config structure", () => {
                 help: "No descriptions",
                 shortcuts: [
                     { pattern: "test1", replacement: "TEST1" },
-                    { pattern: "test2", replacement: "TEST2" }
-                ]
+                    { pattern: "test2", replacement: "TEST2" },
+                ],
             });
         });
 
         it("should handle empty shortcuts array", () => {
             const serializedConfig = {
                 help: "Empty shortcuts",
-                shortcuts: []
+                shortcuts: [],
             };
 
             const result = config.deserialize(serializedConfig);
 
             expect(result).toEqual({
                 help: "Empty shortcuts",
-                shortcuts: []
+                shortcuts: [],
             });
         });
     });
@@ -142,8 +150,8 @@ describe("config structure", () => {
                 help: "Valid config",
                 shortcuts: [
                     ["test", "TEST"],
-                    ["hello", "Hello World", "Greeting"]
-                ]
+                    ["hello", "Hello World", "Greeting"],
+                ],
             };
 
             const result = config.tryDeserialize(validObj);
@@ -152,8 +160,12 @@ describe("config structure", () => {
                 help: "Valid config",
                 shortcuts: [
                     { pattern: "test", replacement: "TEST" },
-                    { pattern: "hello", replacement: "Hello World", description: "Greeting" }
-                ]
+                    {
+                        pattern: "hello",
+                        replacement: "Hello World",
+                        description: "Greeting",
+                    },
+                ],
             });
         });
 
@@ -175,29 +187,35 @@ describe("config structure", () => {
                 { help: "valid" }, // missing shortcuts
             ];
 
-            invalidObjects.forEach(obj => {
+            invalidObjects.forEach((obj) => {
                 expect(config.tryDeserialize(obj)).toBeNull();
             });
         });
 
         it("should handle edge cases in shortcuts validation", () => {
             // Valid minimal shortcut
-            expect(config.tryDeserialize({
-                help: "Valid",
-                shortcuts: [["a", "b"]]
-            })).not.toBeNull();
+            expect(
+                config.tryDeserialize({
+                    help: "Valid",
+                    shortcuts: [["a", "b"]],
+                })
+            ).not.toBeNull();
 
             // Valid shortcut with undefined description (should be filtered out)
-            expect(config.tryDeserialize({
-                help: "Valid", 
-                shortcuts: [["a", "b", undefined]]
-            })).not.toBeNull();
+            expect(
+                config.tryDeserialize({
+                    help: "Valid",
+                    shortcuts: [["a", "b", undefined]],
+                })
+            ).not.toBeNull();
 
             // Invalid: too many elements should still work (extra elements ignored)
-            expect(config.tryDeserialize({
-                help: "Valid",
-                shortcuts: [["a", "b", "c", "d", "e"]]
-            })).not.toBeNull();
+            expect(
+                config.tryDeserialize({
+                    help: "Valid",
+                    shortcuts: [["a", "b", "c", "d", "e"]],
+                })
+            ).not.toBeNull();
         });
 
         it("should validate shortcuts array elements", () => {
@@ -208,7 +226,7 @@ describe("config structure", () => {
                 { help: "test", shortcuts: ["string"] },
             ];
 
-            invalidShortcuts.forEach(obj => {
+            invalidShortcuts.forEach((obj) => {
                 expect(config.tryDeserialize(obj)).toBeNull();
             });
         });
@@ -220,10 +238,18 @@ describe("config structure", () => {
                 help: "Complex config with various shortcuts",
                 shortcuts: [
                     { pattern: "simple", replacement: "SIMPLE" },
-                    { pattern: "with-desc", replacement: "WITH-DESC", description: "Has description" },
-                    { pattern: "regex\\d+", replacement: "NUMBER_$1", description: "Regex pattern" },
+                    {
+                        pattern: "with-desc",
+                        replacement: "WITH-DESC",
+                        description: "Has description",
+                    },
+                    {
+                        pattern: "regex\\d+",
+                        replacement: "NUMBER_$1",
+                        description: "Regex pattern",
+                    },
                     { pattern: "", replacement: "" }, // Edge case: empty strings
-                ]
+                ],
             };
 
             const serialized = config.serialize(originalConfig);
@@ -236,8 +262,12 @@ describe("config structure", () => {
             const originalConfig = {
                 help: "Test config",
                 shortcuts: [
-                    { pattern: "test", replacement: "TEST", description: "Test shortcut" }
-                ]
+                    {
+                        pattern: "test",
+                        replacement: "TEST",
+                        description: "Test shortcut",
+                    },
+                ],
             };
 
             const serialized = config.serialize(originalConfig);
@@ -256,7 +286,7 @@ describe("config storage", () => {
 
                 expect(defaultConfig).toEqual({
                     help: "Welcome to Volodyslav's configuration. Add shortcuts below to customize text replacements.",
-                    shortcuts: []
+                    shortcuts: [],
                 });
             });
         });
@@ -266,12 +296,19 @@ describe("config storage", () => {
                 const originalConfig = {
                     help: "Test config",
                     shortcuts: [
-                        { pattern: "existing", replacement: "EXISTING" }
-                    ]
+                        { pattern: "existing", replacement: "EXISTING" },
+                    ],
                 };
 
-                const newShortcut = { pattern: "new", replacement: "NEW", description: "New shortcut" };
-                const result = configStorage.addShortcut(originalConfig, newShortcut);
+                const newShortcut = {
+                    pattern: "new",
+                    replacement: "NEW",
+                    description: "New shortcut",
+                };
+                const result = configStorage.addShortcut(
+                    originalConfig,
+                    newShortcut
+                );
 
                 // Original should be unchanged
                 expect(originalConfig.shortcuts).toHaveLength(1);
@@ -281,16 +318,23 @@ describe("config storage", () => {
                     help: "Test config",
                     shortcuts: [
                         { pattern: "existing", replacement: "EXISTING" },
-                        { pattern: "new", replacement: "NEW", description: "New shortcut" }
-                    ]
+                        {
+                            pattern: "new",
+                            replacement: "NEW",
+                            description: "New shortcut",
+                        },
+                    ],
                 });
             });
 
             it("should add shortcut to empty config", () => {
                 const emptyConfig = configStorage.createDefaultConfig();
                 const newShortcut = { pattern: "first", replacement: "FIRST" };
-                
-                const result = configStorage.addShortcut(emptyConfig, newShortcut);
+
+                const result = configStorage.addShortcut(
+                    emptyConfig,
+                    newShortcut
+                );
 
                 expect(result.shortcuts).toHaveLength(1);
                 expect(result.shortcuts[0]).toEqual(newShortcut);
@@ -304,11 +348,14 @@ describe("config storage", () => {
                     shortcuts: [
                         { pattern: "keep1", replacement: "KEEP1" },
                         { pattern: "remove", replacement: "REMOVE" },
-                        { pattern: "keep2", replacement: "KEEP2" }
-                    ]
+                        { pattern: "keep2", replacement: "KEEP2" },
+                    ],
                 };
 
-                const result = configStorage.removeShortcut(originalConfig, "remove");
+                const result = configStorage.removeShortcut(
+                    originalConfig,
+                    "remove"
+                );
 
                 // Original should be unchanged
                 expect(originalConfig.shortcuts).toHaveLength(3);
@@ -318,8 +365,8 @@ describe("config storage", () => {
                     help: "Test config",
                     shortcuts: [
                         { pattern: "keep1", replacement: "KEEP1" },
-                        { pattern: "keep2", replacement: "KEEP2" }
-                    ]
+                        { pattern: "keep2", replacement: "KEEP2" },
+                    ],
                 });
             });
 
@@ -327,11 +374,14 @@ describe("config storage", () => {
                 const originalConfig = {
                     help: "Test config",
                     shortcuts: [
-                        { pattern: "existing", replacement: "EXISTING" }
-                    ]
+                        { pattern: "existing", replacement: "EXISTING" },
+                    ],
                 };
 
-                const result = configStorage.removeShortcut(originalConfig, "nonexistent");
+                const result = configStorage.removeShortcut(
+                    originalConfig,
+                    "nonexistent"
+                );
 
                 expect(result).toEqual(originalConfig);
                 expect(result).not.toBe(originalConfig); // Should be a new object
@@ -339,7 +389,10 @@ describe("config storage", () => {
 
             it("should handle empty shortcuts array", () => {
                 const emptyConfig = configStorage.createDefaultConfig();
-                const result = configStorage.removeShortcut(emptyConfig, "anything");
+                const result = configStorage.removeShortcut(
+                    emptyConfig,
+                    "anything"
+                );
 
                 expect(result).toEqual(emptyConfig);
                 expect(result).not.toBe(emptyConfig); // Should be a new object
@@ -352,9 +405,13 @@ describe("config storage", () => {
                     help: "Test config",
                     shortcuts: [
                         { pattern: "first", replacement: "FIRST" },
-                        { pattern: "second", replacement: "SECOND", description: "Second shortcut" },
-                        { pattern: "third", replacement: "THIRD" }
-                    ]
+                        {
+                            pattern: "second",
+                            replacement: "SECOND",
+                            description: "Second shortcut",
+                        },
+                        { pattern: "third", replacement: "THIRD" },
+                    ],
                 };
 
                 const result = configStorage.findShortcut(testConfig, "second");
@@ -362,7 +419,7 @@ describe("config storage", () => {
                 expect(result).toEqual({
                     pattern: "second",
                     replacement: "SECOND",
-                    description: "Second shortcut"
+                    description: "Second shortcut",
                 });
             });
 
@@ -370,18 +427,24 @@ describe("config storage", () => {
                 const testConfig = {
                     help: "Test config",
                     shortcuts: [
-                        { pattern: "existing", replacement: "EXISTING" }
-                    ]
+                        { pattern: "existing", replacement: "EXISTING" },
+                    ],
                 };
 
-                const result = configStorage.findShortcut(testConfig, "nonexistent");
+                const result = configStorage.findShortcut(
+                    testConfig,
+                    "nonexistent"
+                );
 
                 expect(result).toBeNull();
             });
 
             it("should return null for empty shortcuts", () => {
                 const emptyConfig = configStorage.createDefaultConfig();
-                const result = configStorage.findShortcut(emptyConfig, "anything");
+                const result = configStorage.findShortcut(
+                    emptyConfig,
+                    "anything"
+                );
 
                 expect(result).toBeNull();
             });
@@ -391,15 +454,18 @@ describe("config storage", () => {
                     help: "Test config",
                     shortcuts: [
                         { pattern: "duplicate", replacement: "FIRST" },
-                        { pattern: "duplicate", replacement: "SECOND" }
-                    ]
+                        { pattern: "duplicate", replacement: "SECOND" },
+                    ],
                 };
 
-                const result = configStorage.findShortcut(testConfig, "duplicate");
+                const result = configStorage.findShortcut(
+                    testConfig,
+                    "duplicate"
+                );
 
                 expect(result).toEqual({
                     pattern: "duplicate",
-                    replacement: "FIRST"
+                    replacement: "FIRST",
                 });
             });
         });
@@ -410,26 +476,33 @@ describe("config storage", () => {
             it("should read and deserialize a valid config file", async () => {
                 const testFile = await getTestPath();
                 const capabilities = getTestCapabilities();
-                
+
                 const testConfig = {
                     help: "Test configuration file",
                     shortcuts: [
                         ["test", "TEST"],
-                        ["hello", "Hello World", "Greeting shortcut"]
-                    ]
+                        ["hello", "Hello World", "Greeting shortcut"],
+                    ],
                 };
 
                 await fs.writeFile(testFile, JSON.stringify(testConfig));
                 const file = await fromExisting(testFile);
 
-                const result = await configStorage.readConfig(capabilities, file);
+                const result = await configStorage.readConfig(
+                    capabilities,
+                    file
+                );
 
                 expect(result).toEqual({
                     help: "Test configuration file",
                     shortcuts: [
                         { pattern: "test", replacement: "TEST" },
-                        { pattern: "hello", replacement: "Hello World", description: "Greeting shortcut" }
-                    ]
+                        {
+                            pattern: "hello",
+                            replacement: "Hello World",
+                            description: "Greeting shortcut",
+                        },
+                    ],
                 });
             });
 
@@ -440,7 +513,10 @@ describe("config storage", () => {
                 await fs.writeFile(testFile, "");
                 const file = await fromExisting(testFile);
 
-                const result = await configStorage.readConfig(capabilities, file);
+                const result = await configStorage.readConfig(
+                    capabilities,
+                    file
+                );
 
                 expect(result).toBeNull();
                 expect(capabilities.logger.logWarning).toHaveBeenCalledWith(
@@ -457,7 +533,10 @@ describe("config storage", () => {
                 await fs.writeFile(testFile, JSON.stringify(invalidConfig));
                 const file = await fromExisting(testFile);
 
-                const result = await configStorage.readConfig(capabilities, file);
+                const result = await configStorage.readConfig(
+                    capabilities,
+                    file
+                );
 
                 expect(result).toBeNull();
                 expect(capabilities.logger.logWarning).toHaveBeenCalledWith(
@@ -472,24 +551,28 @@ describe("config storage", () => {
 
                 const validConfig1 = {
                     help: "First config",
-                    shortcuts: [["test1", "TEST1"]]
+                    shortcuts: [["test1", "TEST1"]],
                 };
                 const validConfig2 = {
-                    help: "Second config", 
-                    shortcuts: [["test2", "TEST2"]]
+                    help: "Second config",
+                    shortcuts: [["test2", "TEST2"]],
                 };
 
-                const content = JSON.stringify(validConfig1) + "\n" + JSON.stringify(validConfig2);
+                const content =
+                    JSON.stringify(validConfig1) +
+                    "\n" +
+                    JSON.stringify(validConfig2);
                 await fs.writeFile(testFile, content);
                 const file = await fromExisting(testFile);
 
-                const result = await configStorage.readConfig(capabilities, file);
+                const result = await configStorage.readConfig(
+                    capabilities,
+                    file
+                );
 
                 expect(result).toEqual({
                     help: "First config",
-                    shortcuts: [
-                        { pattern: "test1", replacement: "TEST1" }
-                    ]
+                    shortcuts: [{ pattern: "test1", replacement: "TEST1" }],
                 });
                 expect(capabilities.logger.logWarning).toHaveBeenCalledWith(
                     { filepath: file, objectCount: 2 },
@@ -499,10 +582,15 @@ describe("config storage", () => {
 
             it("should handle file read errors gracefully", async () => {
                 const capabilities = getTestCapabilities();
-                const nonexistentFile = await fromExisting("/nonexistent/config.json").catch(() => null);
-                
+                const nonexistentFile = await fromExisting(
+                    "/nonexistent/config.json"
+                ).catch(() => null);
+
                 if (nonexistentFile) {
-                    const result = await configStorage.readConfig(capabilities, nonexistentFile);
+                    const result = await configStorage.readConfig(
+                        capabilities,
+                        nonexistentFile
+                    );
                     expect(result).toBeNull();
                     expect(capabilities.logger.logWarning).toHaveBeenCalledWith(
                         expect.objectContaining({ filepath: nonexistentFile }),
@@ -521,11 +609,19 @@ describe("config storage", () => {
                     help: "Test config to write",
                     shortcuts: [
                         { pattern: "test", replacement: "TEST" },
-                        { pattern: "hello", replacement: "Hello World", description: "Greeting" }
-                    ]
+                        {
+                            pattern: "hello",
+                            replacement: "Hello World",
+                            description: "Greeting",
+                        },
+                    ],
                 };
 
-                await configStorage.writeConfig(capabilities, testFile, configObj);
+                await configStorage.writeConfig(
+                    capabilities,
+                    testFile,
+                    configObj
+                );
 
                 // Verify file was created and contains correct content
                 const content = await fs.readFile(testFile, "utf8");
@@ -535,15 +631,15 @@ describe("config storage", () => {
                     help: "Test config to write",
                     shortcuts: [
                         ["test", "TEST"],
-                        ["hello", "Hello World", "Greeting"]
-                    ]
+                        ["hello", "Hello World", "Greeting"],
+                    ],
                 });
 
                 // Verify logging
                 expect(capabilities.logger.logInfo).toHaveBeenCalledWith(
                     {
                         filepath: testFile,
-                        shortcutCount: 2
+                        shortcutCount: 2,
                     },
                     "Config file written successfully"
                 );
@@ -551,14 +647,26 @@ describe("config storage", () => {
 
             it("should create directories if they don't exist", async () => {
                 const capabilities = getTestCapabilities();
-                const nestedPath = path.join(temporary.input(), "nested", "deep", "config.json");
+                const nestedPath = path.join(
+                    temporary.input(),
+                    "nested",
+                    "deep",
+                    "config.json"
+                );
 
                 const configObj = configStorage.createDefaultConfig();
 
-                await configStorage.writeConfig(capabilities, nestedPath, configObj);
+                await configStorage.writeConfig(
+                    capabilities,
+                    nestedPath,
+                    configObj
+                );
 
                 // Verify file was created
-                const fileExists = await fs.access(nestedPath).then(() => true).catch(() => false);
+                const fileExists = await fs
+                    .access(nestedPath)
+                    .then(() => true)
+                    .catch(() => false);
                 expect(fileExists).toBe(true);
 
                 const content = await fs.readFile(nestedPath, "utf8");
@@ -571,16 +679,22 @@ describe("config storage", () => {
                 const configObj = configStorage.createDefaultConfig();
 
                 // Override creator to throw error
-                capabilities.creator.createFile = jest.fn().mockRejectedValue(new Error("Permission denied"));
+                capabilities.creator.createFile = jest
+                    .fn()
+                    .mockRejectedValue(new Error("Permission denied"));
 
                 await expect(
-                    configStorage.writeConfig(capabilities, "/invalid/path/config.json", configObj)
+                    configStorage.writeConfig(
+                        capabilities,
+                        "/invalid/path/config.json",
+                        configObj
+                    )
                 ).rejects.toThrow("Permission denied");
 
                 expect(capabilities.logger.logError).toHaveBeenCalledWith(
                     {
                         filepath: "/invalid/path/config.json",
-                        error: "Permission denied"
+                        error: "Permission denied",
                     },
                     "Failed to write config file"
                 );
@@ -593,19 +707,27 @@ describe("config storage", () => {
                 const configObj = {
                     help: "Formatting test",
                     shortcuts: [
-                        { pattern: "test", replacement: "TEST", description: "Test description" }
-                    ]
+                        {
+                            pattern: "test",
+                            replacement: "TEST",
+                            description: "Test description",
+                        },
+                    ],
                 };
 
-                await configStorage.writeConfig(capabilities, testFile, configObj);
+                await configStorage.writeConfig(
+                    capabilities,
+                    testFile,
+                    configObj
+                );
 
                 const content = await fs.readFile(testFile, "utf8");
-                
+
                 // Should be properly indented with tabs
                 expect(content).toContain('\t"help":');
                 expect(content).toContain('\t"shortcuts":');
                 expect(content).toMatch(/\t\t\[\n\t\t\t/); // Nested array formatting
-                expect(content.endsWith('\n')); // Should end with newline
+                expect(content.endsWith("\n")).toBe(true); // Should end with newline
             });
         });
     });
@@ -618,45 +740,67 @@ describe("config storage", () => {
             // 1. Create and write initial config
             const initialConfig = {
                 help: "Integration test config",
-                shortcuts: [
-                    { pattern: "initial", replacement: "INITIAL" }
-                ]
+                shortcuts: [{ pattern: "initial", replacement: "INITIAL" }],
             };
 
-            await configStorage.writeConfig(capabilities, testFile, initialConfig);
+            await configStorage.writeConfig(
+                capabilities,
+                testFile,
+                initialConfig
+            );
 
             // 2. Read config back
             const file = await fromExisting(testFile);
-            const readConfig = await configStorage.readConfig(capabilities, file);
+            const readConfig = await configStorage.readConfig(
+                capabilities,
+                file
+            );
             expect(readConfig).toEqual(initialConfig);
 
             // 3. Modify config using utility functions
             let modifiedConfig = configStorage.addShortcut(readConfig, {
-                pattern: "new", 
-                replacement: "NEW", 
-                description: "Added shortcut"
+                pattern: "new",
+                replacement: "NEW",
+                description: "Added shortcut",
             });
 
-            modifiedConfig = configStorage.removeShortcut(modifiedConfig, "initial");
+            modifiedConfig = configStorage.removeShortcut(
+                modifiedConfig,
+                "initial"
+            );
 
             // 4. Write modified config
-            await configStorage.writeConfig(capabilities, testFile, modifiedConfig);
+            await configStorage.writeConfig(
+                capabilities,
+                testFile,
+                modifiedConfig
+            );
 
             // 5. Read and verify final config
-            const finalConfig = await configStorage.readConfig(capabilities, file);
+            const finalConfig = await configStorage.readConfig(
+                capabilities,
+                file
+            );
             expect(finalConfig).toEqual({
                 help: "Integration test config",
                 shortcuts: [
-                    { pattern: "new", replacement: "NEW", description: "Added shortcut" }
-                ]
+                    {
+                        pattern: "new",
+                        replacement: "NEW",
+                        description: "Added shortcut",
+                    },
+                ],
             });
 
             // 6. Verify utility functions work on final config
-            const foundShortcut = configStorage.findShortcut(finalConfig, "new");
+            const foundShortcut = configStorage.findShortcut(
+                finalConfig,
+                "new"
+            );
             expect(foundShortcut).toEqual({
-                pattern: "new", 
-                replacement: "NEW", 
-                description: "Added shortcut"
+                pattern: "new",
+                replacement: "NEW",
+                description: "Added shortcut",
             });
 
             const notFound = configStorage.findShortcut(finalConfig, "initial");
@@ -670,26 +814,59 @@ describe("config storage", () => {
             const complexConfig = {
                 help: "Complex shortcuts with special characters",
                 shortcuts: [
-                    { pattern: "\\d+", replacement: "[NUMBER]", description: "Regex for digits" },
-                    { pattern: "@user", replacement: "@username", description: "User mention" },
-                    { pattern: "emoji😀", replacement: "😊", description: "Emoji replacement" },
-                    { pattern: "multi\nline", replacement: "single line", description: "Newline handling" },
-                    { pattern: "quotes\"test", replacement: "quotes'test", description: "Quote handling" },
+                    {
+                        pattern: "\\d+",
+                        replacement: "[NUMBER]",
+                        description: "Regex for digits",
+                    },
+                    {
+                        pattern: "@user",
+                        replacement: "@username",
+                        description: "User mention",
+                    },
+                    {
+                        pattern: "emoji😀",
+                        replacement: "😊",
+                        description: "Emoji replacement",
+                    },
+                    {
+                        pattern: "multi\nline",
+                        replacement: "single line",
+                        description: "Newline handling",
+                    },
+                    {
+                        pattern: 'quotes"test',
+                        replacement: "quotes'test",
+                        description: "Quote handling",
+                    },
                     { pattern: "", replacement: "empty pattern" }, // Edge case
-                ]
+                ],
             };
 
-            await configStorage.writeConfig(capabilities, testFile, complexConfig);
+            await configStorage.writeConfig(
+                capabilities,
+                testFile,
+                complexConfig
+            );
 
             const file = await fromExisting(testFile);
-            const readConfig = await configStorage.readConfig(capabilities, file);
+            const readConfig = await configStorage.readConfig(
+                capabilities,
+                file
+            );
 
             expect(readConfig).toEqual(complexConfig);
 
             // Test specific pattern lookups
-            expect(configStorage.findShortcut(readConfig, "\\d+")?.description).toBe("Regex for digits");
-            expect(configStorage.findShortcut(readConfig, "emoji😀")?.replacement).toBe("😊");
-            expect(configStorage.findShortcut(readConfig, "")?.replacement).toBe("empty pattern");
+            expect(
+                configStorage.findShortcut(readConfig, "\\d+")?.description
+            ).toBe("Regex for digits");
+            expect(
+                configStorage.findShortcut(readConfig, "emoji😀")?.replacement
+            ).toBe("😊");
+            expect(
+                configStorage.findShortcut(readConfig, "")?.replacement
+            ).toBe("empty pattern");
         });
     });
 });
