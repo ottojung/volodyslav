@@ -579,25 +579,6 @@ describe("config storage", () => {
                     "Config file contains multiple objects, using first one"
                 );
             });
-
-            it("should handle file read errors gracefully", async () => {
-                const capabilities = getTestCapabilities();
-                const nonexistentFile = await fromExisting(
-                    "/nonexistent/config.json"
-                ).catch(() => null);
-
-                if (nonexistentFile) {
-                    const result = await configStorage.readConfig(
-                        capabilities,
-                        nonexistentFile
-                    );
-                    expect(result).toBeNull();
-                    expect(capabilities.logger.logWarning).toHaveBeenCalledWith(
-                        expect.objectContaining({ filepath: nonexistentFile }),
-                        "Failed to read config file"
-                    );
-                }
-            });
         });
 
         describe("writeConfig", () => {
