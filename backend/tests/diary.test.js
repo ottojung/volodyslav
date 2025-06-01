@@ -184,8 +184,8 @@ describe("processDiaryAudios", () => {
         );
 
         // Mock the checker to return false for unstable file
-        capabilities.checker.isFileStable = jest.fn(async (filePath) => {
-            return !filePath.includes("unstable");
+        capabilities.checker.isFileStable = jest.fn(async (file) => {
+            return !file.path.includes("unstable");
         });
 
         // Execute
@@ -198,10 +198,14 @@ describe("processDiaryAudios", () => {
         // Verify stability check was called for both files
         expect(capabilities.checker.isFileStable).toHaveBeenCalledTimes(2);
         expect(capabilities.checker.isFileStable).toHaveBeenCalledWith(
-            path.join(diaryDir, stableFile)
+            expect.objectContaining({
+                path: path.join(diaryDir, stableFile),
+            })
         );
         expect(capabilities.checker.isFileStable).toHaveBeenCalledWith(
-            path.join(diaryDir, unstableFile)
+            expect.objectContaining({
+                path: path.join(diaryDir, unstableFile),
+            })
         );
 
         // Only stable file should be deleted
@@ -209,7 +213,9 @@ describe("processDiaryAudios", () => {
             path.join(diaryDir, stableFile)
         );
         expect(capabilities.deleter.deleteFile).not.toHaveBeenCalledWith(
-            path.join(diaryDir, unstableFile)
+            expect.objectContaining({
+                path: path.join(diaryDir, unstableFile),
+            })
         );
 
         // One entry in log (for stable file only)
@@ -231,8 +237,8 @@ describe("processDiaryAudios", () => {
         await fs.writeFile(path.join(diaryDir, errorFile), "error content");
 
         // Mock the checker to throw error for error file
-        capabilities.checker.isFileStable = jest.fn(async (filePath) => {
-            if (filePath.includes("error")) {
+        capabilities.checker.isFileStable = jest.fn(async (file) => {
+            if (file.path.includes("error")) {
                 throw new Error("Permission denied");
             }
             return true; // good file is stable
