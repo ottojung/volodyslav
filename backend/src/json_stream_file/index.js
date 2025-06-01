@@ -9,16 +9,16 @@ const { streamValues } = require("stream-json/streamers/StreamValues");
 /**
  * Reads JSON objects from a file using streaming
  * @param {Capabilities} capabilities - The capabilities object
- * @param {string} filepath - Path to the JSON file to read
+ * @param {import('../event_log_storage').ExistingFile} file - Path to the JSON file to read
  * @returns {Promise<Array<unknown>>} Array of parsed JSON objects
  */
-async function readObjects(capabilities, filepath) {
+async function readObjects(capabilities, file) {
     return new Promise((resolve, reject) => {
         /** @type {Array<unknown>} */
         const objects = [];
 
         // create a readable stream using capabilities
-        const rs = capabilities.reader.createReadStream(filepath);
+        const rs = capabilities.reader.createReadStream(file);
         rs.setEncoding("utf8");
 
         // parser({ jsonStreaming: true }) allows multiple top-level values

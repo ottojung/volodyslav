@@ -24,16 +24,16 @@ const { fromExisting } = require("../filesystem/file");
 /**
  * Reads and deserializes a config.json file
  * @param {Capabilities} capabilities - The capabilities object
- * @param {string} filepath - Path to the config.json file to read
+ * @param {import("../event_log_storage").ExistingFile} file - Path to the config.json file to read
  * @returns {Promise<import('./structure').Config | null>} The parsed config or null if invalid/missing
  */
-async function readConfig(capabilities, filepath) {
+async function readConfig(capabilities, file) {
     try {
-        const objects = await readObjects(capabilities, filepath);
+        const objects = await readObjects(capabilities, file);
 
         if (objects.length === 0) {
             capabilities.logger.logWarning(
-                { filepath },
+                { filepath: file },
                 "Config file is empty"
             );
             return null;
@@ -41,7 +41,7 @@ async function readConfig(capabilities, filepath) {
 
         if (objects.length > 1) {
             capabilities.logger.logWarning(
-                { filepath, objectCount: objects.length },
+                { filepath: file, objectCount: objects.length },
                 "Config file contains multiple objects, using first one"
             );
         }
@@ -49,7 +49,7 @@ async function readConfig(capabilities, filepath) {
         const configObj = config.tryDeserialize(objects[0]);
         if (configObj === null) {
             capabilities.logger.logWarning(
-                { filepath, invalidObject: objects[0] },
+                { filepath: file, invalidObject: objects[0] },
                 "Found invalid config object in file"
             );
             return null;
@@ -59,7 +59,7 @@ async function readConfig(capabilities, filepath) {
     } catch (error) {
         capabilities.logger.logWarning(
             {
-                filepath,
+                filepath: file,
                 error: error instanceof Error ? error.message : String(error),
             },
             "Failed to read config file"

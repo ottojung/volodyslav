@@ -71,20 +71,20 @@ async function readFileAsBuffer(filePath) {
 
 /**
  * Creates a readable stream for a file.
- * @param {string} filePath
+ * @param {import("./file").ExistingFile} file
  * @returns {import('fs').ReadStream}
  * @throws {ReaderError} - If the stream cannot be created (synchronously throws for missing file, etc.)
  */
-function createReadStream(filePath) {
+function createReadStream(file) {
     const fsModule = require("fs");
     try {
-        return fsModule.createReadStream(filePath, {
+        return fsModule.createReadStream(file.path, {
             encoding: "utf8",
         });
     } catch (err) {
         throw new ReaderError(
-            `Failed to create read stream: ${filePath}`,
-            filePath
+            `Failed to create read stream: ${file.path}`,
+            file.path
         );
     }
 }
