@@ -52,7 +52,7 @@ async function processDiaryAudios(capabilities) {
 
     for (const file of allFiles) {
         try {
-            const isStable = await capabilities.checker.isFileStable(file.path);
+            const isStable = await capabilities.checker.isFileStable(file);
             if (isStable) {
                 stableFiles.push(file);
             } else {

@@ -92,23 +92,18 @@ async function instanciate(path) {
  * 1. It hasn't been modified for at least the specified age threshold
  * 2. Its size hasn't changed between two checks separated by a delay
  *
- * @param {string} filePath - The path to the file to check.
+ * @param {ExistingFile} file - The path to the file to check.
  * @param {object} options - Stability check options.
  * @param {number} [options.minAgeMs=300000] - Minimum age in milliseconds (default: 5 minutes).
  * @param {number} [options.sizeCheckDelayMs=30000] - Delay between size checks in milliseconds (default: 30 second).
  * @returns {Promise<boolean>} - A promise that resolves with true if the file is stable, false otherwise.
  */
-async function isFileStable(filePath, options = {}) {
+async function isFileStable(file, options = {}) {
     const { minAgeMs = 300000, sizeCheckDelayMs = 30000 } = options; // 5 minutes, 30 seconds default
 
     try {
         // First check: get initial file stats
-        const initialStats = await fs.stat(filePath);
-        if (!initialStats.isFile()) {
-            return false;
-        }
-
-        // Check 1: File age - must not have been modified recently
+        const initialStats = await fs.stat(file.path);
         const now = Date.now();
         const fileModifiedTime = initialStats.mtime.getTime();
         const ageMs = now - fileModifiedTime;
@@ -123,7 +118,7 @@ async function isFileStable(filePath, options = {}) {
         // Wait a short time and check size again
         await new Promise((resolve) => setTimeout(resolve, sizeCheckDelayMs));
 
-        const finalStats = await fs.stat(filePath);
+        const finalStats = await fs.stat(file.path);
         const finalSize = finalStats.size;
 
         // File is stable if size hasn't changed
@@ -139,8 +134,8 @@ async function isFileStable(filePath, options = {}) {
         }
 
         throw new FileCheckerError(
-            `Failed to check file stability: ${filePath}`,
-            filePath
+            `Failed to check file stability: ${file.path}`,
+            file.path
         );
     }
 }
