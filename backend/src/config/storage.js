@@ -7,6 +7,7 @@
 
 const config = require("./index");
 const { readObjects } = require("../json_stream_file");
+const { fromExisting } = require("../filesystem/file");
 
 /** @typedef {import('../filesystem/reader').FileReader} FileReader */
 /** @typedef {import('../filesystem/writer').FileWriter} FileWriter */
@@ -16,6 +17,7 @@ const { readObjects } = require("../json_stream_file");
  * @typedef {object} Capabilities
  * @property {FileReader} reader - A file reader instance
  * @property {FileWriter} writer - A file writer instance
+ * @property {import('../filesystem/creator').FileCreator} creator - A file creator instance
  * @property {Logger} logger - A logger instance
  */
 
@@ -77,7 +79,11 @@ async function writeConfig(capabilities, filepath, configObj) {
     try {
         const serialized = config.serialize(configObj);
         const configString = JSON.stringify(serialized, null, "\t");
-        await capabilities.writer.writeFile(filepath, configString + "\n");
+
+        // Create file first if it doesn't exist, then get ExistingFile instance
+        await capabilities.creator.createFile(filepath);
+        const file = await fromExisting(filepath);
+        await capabilities.writer.writeFile(file, configString + "\n");
 
         capabilities.logger.logInfo(
             {

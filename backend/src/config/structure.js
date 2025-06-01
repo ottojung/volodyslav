@@ -14,11 +14,11 @@
  */
 
 /**
- * @typedef SerializedShortcut
- * @type {Array}
- * @property {string} 0 - The regex pattern
- * @property {string} 1 - The replacement string
- * @property {string} [2] - Optional description
+ * @typedef {[string, string, string?]} SerializedShortcut
+ * Array representation of a shortcut:
+ * - [0]: The regex pattern
+ * - [1]: The replacement string
+ * - [2]: Optional description
  */
 
 /**
@@ -47,6 +47,7 @@ function serializeShortcut(shortcut) {
  */
 function deserializeShortcut(serializedShortcut) {
     const [pattern, replacement, description] = serializedShortcut;
+    /** @type {Shortcut} */
     const shortcut = { pattern, replacement };
     if (description !== undefined) {
         shortcut.description = description;
@@ -105,6 +106,7 @@ function tryDeserialize(obj) {
         }
 
         // Validate each shortcut
+        /** @type {SerializedShortcut[]} */
         const validatedShortcuts = [];
         for (let i = 0; i < shortcuts.length; i++) {
             const shortcut = shortcuts[i];
@@ -133,7 +135,10 @@ function tryDeserialize(obj) {
                 return null;
             }
 
-            validatedShortcuts.push(shortcut);
+            // Cast to proper type after validation
+            validatedShortcuts.push(
+                /** @type {SerializedShortcut} */ (shortcut)
+            );
         }
 
         // Create validated SerializedConfig object
