@@ -1,6 +1,7 @@
 const fs = require("fs").promises;
 const path = require("path");
 const { readObjects } = require("../src/json_stream_file");
+const { fromExisting } = require("../src/filesystem/file");
 const temporary = require("./temporary");
 
 beforeEach(temporary.beforeEach);
@@ -34,7 +35,8 @@ describe("json_stream_file", () => {
         const testObject = { name: "test", value: 42 };
         await fs.writeFile(testFile, JSON.stringify(testObject));
 
-        const objects = await readObjects(capabilities, testFile);
+        const testFileObj = await fromExisting(testFile);
+        const objects = await readObjects(capabilities, testFileObj);
         expect(objects).toHaveLength(1);
         expect(objects[0]).toEqual(testObject);
     });
@@ -51,7 +53,8 @@ describe("json_stream_file", () => {
         const content = testObjects.map(obj => JSON.stringify(obj)).join("\n");
         await fs.writeFile(testFile, content);
 
-        const objects = await readObjects(capabilities, testFile);
+        const testFileObj = await fromExisting(testFile);
+        const objects = await readObjects(capabilities, testFileObj);
         expect(objects).toHaveLength(3);
         expect(objects).toEqual(testObjects);
     });
@@ -62,7 +65,8 @@ describe("json_stream_file", () => {
         };
         await fs.writeFile(testFile, "");
 
-        const objects = await readObjects(capabilities, testFile);
+        const testFileObj = await fromExisting(testFile);
+        const objects = await readObjects(capabilities, testFileObj);
         expect(objects).toHaveLength(0);
     });
 
@@ -72,14 +76,12 @@ describe("json_stream_file", () => {
         };
         await fs.writeFile(testFile, "{ invalid json }");
 
-        await expect(readObjects(capabilities, testFile)).rejects.toThrow();
+        const testFileObj = await fromExisting(testFile);
+        await expect(readObjects(capabilities, testFileObj)).rejects.toThrow();
     });
 
     it("should reject on non-existent file", async () => {
-        const capabilities = {
-            reader: require("../src/filesystem/reader").make(),
-        };
         const nonExistentFile = path.join(testDir, "non-existent.json");
-        await expect(readObjects(capabilities, nonExistentFile)).rejects.toThrow();
+        await expect(fromExisting(nonExistentFile)).rejects.toThrow();
     });
 });

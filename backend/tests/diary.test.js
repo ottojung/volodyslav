@@ -4,6 +4,7 @@ const fs = require("fs/promises");
 const { processDiaryAudios } = require("../src/diary");
 const gitstore = require("../src/gitstore");
 const { readObjects } = require("../src/json_stream_file");
+const { fromExisting } = require("../src/filesystem/file");
 const { formatFileTimestamp } = require("../src/format_time_stamp");
 const dateFormatter = require("../src/event/date");
 const {
@@ -28,9 +29,10 @@ async function countLogEntries(capabilities) {
     let length;
     await gitstore.transaction(capabilities, async (store) => {
         const workTree = await store.getWorkTree();
+        const dataFile = await fromExisting(path.join(workTree, "data.json"));
         const objects = await readObjects(
             capabilities,
-            path.join(workTree, "data.json")
+            dataFile
         );
         length = objects.length;
     });
@@ -67,7 +69,8 @@ describe("processDiaryAudios", () => {
         await gitstore.transaction(capabilities, async (store) => {
             const workTree = await store.getWorkTree();
             const dataPath = path.join(workTree, "data.json");
-            const objects = await readObjects(capabilities, dataPath);
+            const dataFile = await fromExisting(dataPath);
+            const objects = await readObjects(capabilities, dataFile);
             expect(objects).toHaveLength(filenames.length);
             objects.forEach((obj, i) => {
                 const date = formatFileTimestamp(filenames[i]);
