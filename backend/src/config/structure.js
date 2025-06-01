@@ -1,23 +1,36 @@
 /**
+ * @typedef {string} RegexPattern
+ * A string representing a JavaScript regular expression pattern.
+ * Examples: "\\d+", "hello.*world", "^start", "end$", "[a-zA-Z]+"
+ */
+
+/**
+ * @typedef {string} RegexReplacement
+ * A string used as replacement in regex substitution.
+ * May contain capture group references like $1, $2, etc.
+ * Examples: "NUMBER", "Hello $1", "$1_suffix", "[$2]"
+ */
+
+/**
  * @typedef Shortcut
  * @type {Object}
- * @property {string} pattern - The regex pattern to match against
- * @property {string} replacement - The replacement string
- * @property {string} [description] - Optional description of what the shortcut does
+ * @property {RegexPattern} pattern - JavaScript regex pattern to match against input text
+ * @property {RegexReplacement} replacement - Replacement string, may include capture group refs ($1, $2, etc.)
+ * @property {string} [description] - Optional description of what this regex shortcut does
  */
 
 /**
  * @typedef Config
  * @type {Object}
  * @property {string} help - Help text for the configuration
- * @property {Shortcut[]} shortcuts - Array of shortcuts with regex patterns and replacements
+ * @property {Shortcut[]} shortcuts - Array of regex shortcuts with patterns and replacements
  */
 
 /**
- * @typedef {[string, string, string?]} SerializedShortcut
- * Array representation of a shortcut:
- * - [0]: The regex pattern
- * - [1]: The replacement string
+ * @typedef {[RegexPattern, RegexReplacement, string?]} SerializedShortcut
+ * Array representation of a regex shortcut:
+ * - [0]: JavaScript regex pattern string
+ * - [1]: Replacement string (may contain $1, $2, etc.)
  * - [2]: Optional description
  */
 
@@ -25,12 +38,12 @@
  * @typedef SerializedConfig
  * @type {Object}
  * @property {string} help - Help text for the configuration
- * @property {SerializedShortcut[]} shortcuts - Array of shortcuts as arrays
+ * @property {SerializedShortcut[]} shortcuts - Array of regex shortcuts as arrays
  */
 
 /**
- * Serializes a shortcut to its array representation
- * @param {Shortcut} shortcut - The shortcut object to serialize
+ * Serializes a regex shortcut to its array representation
+ * @param {Shortcut} shortcut - The regex shortcut object to serialize
  * @returns {SerializedShortcut} - The serialized shortcut as an array
  */
 function serializeShortcut(shortcut) {
@@ -41,9 +54,9 @@ function serializeShortcut(shortcut) {
 }
 
 /**
- * Deserializes a shortcut from its array representation
+ * Deserializes a regex shortcut from its array representation
  * @param {SerializedShortcut} serializedShortcut - The serialized shortcut array
- * @returns {Shortcut} - The deserialized shortcut object
+ * @returns {Shortcut} - The deserialized regex shortcut object
  */
 function deserializeShortcut(serializedShortcut) {
     const [pattern, replacement, description] = serializedShortcut;
@@ -116,12 +129,12 @@ function tryDeserialize(obj) {
                 return null;
             }
 
-            // Must have at least 2 elements (pattern and replacement)
+            // Must have at least 2 elements (regex pattern and replacement)
             if (shortcut.length < 2) {
                 return null;
             }
 
-            // First two elements must be strings
+            // First two elements must be strings (regex pattern and replacement)
             const [pattern, replacement, description] = shortcut;
             if (
                 typeof pattern !== "string" ||
