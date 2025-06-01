@@ -70,9 +70,9 @@ class EventLogStorageClass {
 
     /**
      * Path to the data.json file, set during transaction
-     * @type {string|null}
+     * @type {ExistingFile|null}
      */
-    dataPath = null;
+    dataFile = null;
 
     /**
      * Cache for existing entries loaded from data.json
@@ -133,18 +133,19 @@ class EventLogStorageClass {
      * @throws {Error} - If called outside of a transaction.
      */
     async getExistingEntries() {
-        if (!this.dataPath) {
+        if (!this.dataFile) {
             throw new Error(
                 "getExistingEntries() called outside of a transaction"
             );
         }
+
         // Return cached results if available
         if (this.existingEntriesCache !== null) {
             return this.existingEntriesCache;
         }
 
         try {
-            const objects = await readObjects(this.capabilities, this.dataPath);
+            const objects = await readObjects(this.capabilities, this.dataFile);
 
             // Use tryDeserialize to safely convert objects to Events
             /** @type {Array<import('./event/structure').Event>} */
@@ -235,7 +236,7 @@ async function performGitTransaction(
         const dataFile = await fromExisting(dataPath);
 
         // Set dataPath for possible lazy loading of existing entries
-        eventLogStorage.dataPath = dataPath;
+        eventLogStorage.dataFile = dataFile;
 
         // Run user-provided transformation to accumulate entries
         const result = await transformation(eventLogStorage);
