@@ -1,89 +1,842 @@
 <!DOCTYPE html>
-<html>
-<head>
-    <title>PWA Installation Check</title>
-    <link rel="manifest" href="/manifest.webmanifest" />
-    <meta charset="UTF-8">
-    <style>
-        body { font-family: Arial, sans-serif; margin: 20px; }
-        .check { color: green; }
-        .error { color: red; }
-        .warning { color: orange; }
-    </style>
-</head>
-<body>
-    <h1>PWA Installation Requirements Check</h1>
-    <div id="results"></div>
-
-    <script>
-        function checkPWARequirements() {
-            const results = document.getElementById('results');
-            const checks = [];
-
-            // Check for HTTPS or localhost
-            const isSecure = location.protocol === 'https:' || location.hostname === 'localhost';
-            checks.push({
-                name: 'Secure Context (HTTPS or localhost)',
-                status: isSecure,
-                message: isSecure ? 'Running on secure context' : 'Must run on HTTPS or localhost'
-            });
-
-            // Check for service worker
-            const hasServiceWorker = 'serviceWorker' in navigator;
-            checks.push({
-                name: 'Service Worker Support',
-                status: hasServiceWorker,
-                message: hasServiceWorker ? 'Service Worker supported' : 'Service Worker not supported'
-            });
-
-            // Check for manifest
-            const manifestLink = document.querySelector('link[rel="manifest"]');
-            checks.push({
-                name: 'Web App Manifest',
-                status: !!manifestLink,
-                message: manifestLink ? 'Manifest linked' : 'No manifest link found'
-            });
-
-            // Check beforeinstallprompt event availability
-            let installPromptSupported = false;
-            window.addEventListener('beforeinstallprompt', () => {
-                installPromptSupported = true;
-            });
-
-            // Display results
-            results.innerHTML = checks.map(check =>
-                `<div class="${check.status ? 'check' : 'error'}">
-                    ${check.status ? '✓' : '✗'} ${check.name}: ${check.message}
-                </div>`
-            ).join('');
-
-            // Additional info
-            results.innerHTML += `
-                <hr>
-                <h3>Additional Information:</h3>
-                <p><strong>User Agent:</strong> ${navigator.userAgent}</p>
-                <p><strong>Current URL:</strong> ${window.location.href}</p>
-                <p><strong>Protocol:</strong> ${window.location.protocol}</p>
-            `;
-
-            // Test manifest fetch
-            if (manifestLink) {
-                fetch(manifestLink.href)
-                    .then(response => response.json())
-                    .then(manifest => {
-                        console.log('Manifest loaded:', manifest);
-                        results.innerHTML += `<p class="check">✓ Manifest loaded successfully</p>`;
-                        results.innerHTML += `<pre>${JSON.stringify(manifest, null, 2)}</pre>`;
-                    })
-                    .catch(error => {
-                        console.error('Failed to load manifest:', error);
-                        results.innerHTML += `<p class="error">✗ Failed to load manifest: ${error.message}</p>`;
-                    });
+<html lang="en">
+    <head>
+        <title>PWA Installation Check</title>
+        <link rel="manifest" href="/manifest.webmanifest" />
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <style>
+            * {
+                box-sizing: border-box;
             }
-        }
+            body {
+                font-family: -apple-system, BlinkMacSystemFont, "Segoe UI",
+                    Roboto, sans-serif;
+                margin: 0;
+                padding: 20px;
+                background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                min-height: 100vh;
+                color: #333;
+            }
+            .container {
+                max-width: 900px;
+                margin: 0 auto;
+                background: white;
+                border-radius: 12px;
+                box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+                overflow: hidden;
+            }
+            .header {
+                background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                color: white;
+                padding: 30px;
+                text-align: center;
+            }
+            .header h1 {
+                margin: 0;
+                font-size: 2.5rem;
+                font-weight: 300;
+            }
+            .header p {
+                margin: 10px 0 0 0;
+                opacity: 0.9;
+                font-size: 1.1rem;
+            }
+            .content {
+                padding: 30px;
+            }
+            .loading {
+                text-align: center;
+                padding: 40px;
+                color: #666;
+            }
+            .spinner {
+                border: 3px solid #f3f3f3;
+                border-top: 3px solid #667eea;
+                border-radius: 50%;
+                width: 40px;
+                height: 40px;
+                animation: spin 1s linear infinite;
+                margin: 0 auto 20px;
+            }
+            @keyframes spin {
+                0% {
+                    transform: rotate(0deg);
+                }
+                100% {
+                    transform: rotate(360deg);
+                }
+            }
+            .check-item {
+                display: flex;
+                align-items: center;
+                padding: 15px;
+                margin: 10px 0;
+                border-radius: 8px;
+                border-left: 4px solid;
+                transition: all 0.3s ease;
+            }
+            .check-item:hover {
+                transform: translateX(5px);
+                box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+            }
+            .check {
+                background: #f0f9ff;
+                border-left-color: #10b981;
+                color: #065f46;
+            }
+            .error {
+                background: #fef2f2;
+                border-left-color: #ef4444;
+                color: #991b1b;
+            }
+            .warning {
+                background: #fffbeb;
+                border-left-color: #f59e0b;
+                color: #92400e;
+            }
+            .info {
+                background: #f0f9ff;
+                border-left-color: #3b82f6;
+                color: #1e40af;
+            }
+            .check-icon {
+                font-size: 1.5rem;
+                margin-right: 15px;
+                min-width: 30px;
+            }
+            .check-content {
+                flex: 1;
+            }
+            .check-title {
+                font-weight: 600;
+                font-size: 1.1rem;
+                margin-bottom: 5px;
+            }
+            .check-message {
+                font-size: 0.9rem;
+                opacity: 0.8;
+            }
+            .section {
+                margin: 30px 0;
+            }
+            .section-title {
+                font-size: 1.5rem;
+                font-weight: 600;
+                margin-bottom: 20px;
+                color: #374151;
+                border-bottom: 2px solid #e5e7eb;
+                padding-bottom: 10px;
+            }
+            .install-button {
+                background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                color: white;
+                border: none;
+                padding: 15px 30px;
+                border-radius: 8px;
+                font-size: 1.1rem;
+                font-weight: 600;
+                cursor: pointer;
+                transition: all 0.3s ease;
+                box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
+            }
+            .install-button:hover {
+                transform: translateY(-2px);
+                box-shadow: 0 6px 20px rgba(102, 126, 234, 0.4);
+            }
+            .install-button:disabled {
+                background: #9ca3af;
+                cursor: not-allowed;
+                transform: none;
+                box-shadow: none;
+            }
+            .manifest-content {
+                background: #f8fafc;
+                border: 1px solid #e2e8f0;
+                border-radius: 8px;
+                padding: 20px;
+                font-family: "Courier New", monospace;
+                font-size: 0.85rem;
+                overflow-x: auto;
+                white-space: pre-wrap;
+                margin-top: 15px;
+            }
+            .browser-info {
+                display: grid;
+                grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+                gap: 15px;
+                margin-top: 20px;
+            }
+            .info-card {
+                background: #f8fafc;
+                border: 1px solid #e2e8f0;
+                border-radius: 8px;
+                padding: 15px;
+            }
+            .info-card strong {
+                color: #374151;
+            }
+            .retry-button {
+                background: #6b7280;
+                color: white;
+                border: none;
+                padding: 8px 16px;
+                border-radius: 6px;
+                font-size: 0.9rem;
+                cursor: pointer;
+                margin-left: 10px;
+                transition: background 0.3s ease;
+            }
+            .retry-button:hover {
+                background: #4b5563;
+            }
+            @media (max-width: 768px) {
+                body {
+                    padding: 10px;
+                }
+                .header {
+                    padding: 20px;
+                }
+                .header h1 {
+                    font-size: 2rem;
+                }
+                .content {
+                    padding: 20px;
+                }
+                .browser-info {
+                    grid-template-columns: 1fr;
+                }
+            }
+        </style>
+    </head>
+    <body>
+        <div class="container">
+            <div class="header">
+                <h1>PWA Installation Check</h1>
+                <p>
+                    Comprehensive Progressive Web App validation and
+                    installation testing
+                </p>
+            </div>
+            <div class="content">
+                <div id="loading" class="loading">
+                    <div class="spinner"></div>
+                    <p>Analyzing PWA requirements...</p>
+                </div>
+                <div id="results" style="display: none"></div>
+            </div>
+        </div>
 
-        // Run checks when page loads
-        window.addEventListener('load', checkPWARequirements);
-    </script>
-</body>
+        <script>
+            class PWAChecker {
+                constructor() {
+                    this.checks = [];
+                    this.manifest = null;
+                    this.installPrompt = null;
+                    this.isStandalone = false;
+                    this.serviceWorkerRegistration = null;
+                }
+
+                async init() {
+                    const loading = document.getElementById("loading");
+                    const results = document.getElementById("results");
+
+                    try {
+                        await this.runAllChecks();
+                        this.displayResults();
+
+                        loading.style.display = "none";
+                        results.style.display = "block";
+                    } catch (error) {
+                        console.error("Error running PWA checks:", error);
+                        loading.innerHTML = `<p class="error">Error running checks: ${error.message}</p>`;
+                    }
+                }
+
+                async runAllChecks() {
+                    // Basic checks
+                    this.checkSecureContext();
+                    this.checkServiceWorkerSupport();
+                    this.checkManifestLink();
+                    this.checkInstallationStatus();
+                    this.detectBrowser();
+
+                    // Async checks
+                    await Promise.all([
+                        this.checkServiceWorkerRegistration(),
+                        this.checkManifestContent(),
+                        this.checkOfflineCapability(),
+                    ]);
+
+                    // Install prompt check (needs delay)
+                    await this.checkInstallPrompt();
+                }
+
+                checkSecureContext() {
+                    const isSecure =
+                        location.protocol === "https:" ||
+                        location.hostname === "localhost" ||
+                        location.hostname === "127.0.0.1";
+
+                    this.addCheck({
+                        name: "Secure Context",
+                        status: isSecure,
+                        message: isSecure
+                            ? "Running on secure context (HTTPS/localhost)"
+                            : "Must run on HTTPS or localhost for PWA installation",
+                        critical: true,
+                    });
+                }
+
+                checkServiceWorkerSupport() {
+                    const hasServiceWorker = "serviceWorker" in navigator;
+
+                    this.addCheck({
+                        name: "Service Worker API Support",
+                        status: hasServiceWorker,
+                        message: hasServiceWorker
+                            ? "Service Worker API is supported"
+                            : "Service Worker API not supported in this browser",
+                        critical: true,
+                    });
+                }
+
+                async checkServiceWorkerRegistration() {
+                    if (!("serviceWorker" in navigator)) return;
+
+                    try {
+                        const registration =
+                            await navigator.serviceWorker.getRegistration();
+                        this.serviceWorkerRegistration = registration;
+
+                        if (registration) {
+                            const isActive = registration.active !== null;
+                            this.addCheck({
+                                name: "Service Worker Registration",
+                                status: isActive,
+                                message: isActive
+                                    ? `Service Worker registered and active (${registration.scope})`
+                                    : "Service Worker registered but not active",
+                                critical: true,
+                            });
+                        } else {
+                            this.addCheck({
+                                name: "Service Worker Registration",
+                                status: false,
+                                message: "No Service Worker registered",
+                                critical: true,
+                            });
+                        }
+                    } catch (error) {
+                        this.addCheck({
+                            name: "Service Worker Registration",
+                            status: false,
+                            message: `Error checking Service Worker: ${error.message}`,
+                            critical: true,
+                        });
+                    }
+                }
+
+                checkManifestLink() {
+                    const manifestLink = document.querySelector(
+                        'link[rel="manifest"]'
+                    );
+
+                    this.addCheck({
+                        name: "Web App Manifest Link",
+                        status: !!manifestLink,
+                        message: manifestLink
+                            ? `Manifest linked: ${manifestLink.href}`
+                            : "No manifest link found in HTML head",
+                        critical: true,
+                    });
+                }
+
+                async checkManifestContent() {
+                    const manifestLink = document.querySelector(
+                        'link[rel="manifest"]'
+                    );
+                    if (!manifestLink) return;
+
+                    try {
+                        const response = await fetch(manifestLink.href);
+                        if (!response.ok) {
+                            throw new Error(
+                                `HTTP ${response.status}: ${response.statusText}`
+                            );
+                        }
+
+                        this.manifest = await response.json();
+
+                        this.addCheck({
+                            name: "Manifest File Access",
+                            status: true,
+                            message: "Manifest file loaded successfully",
+                        });
+
+                        this.validateManifestContent();
+                        this.checkIconRequirements();
+                    } catch (error) {
+                        this.addCheck({
+                            name: "Manifest File Access",
+                            status: false,
+                            message: `Failed to load manifest: ${error.message}`,
+                            critical: true,
+                        });
+                    }
+                }
+
+                validateManifestContent() {
+                    if (!this.manifest) return;
+
+                    const requiredFields = ["name", "start_url", "display"];
+                    const missingFields = requiredFields.filter(
+                        (field) => !this.manifest[field]
+                    );
+
+                    this.addCheck({
+                        name: "Manifest Required Fields",
+                        status: missingFields.length === 0,
+                        message:
+                            missingFields.length === 0
+                                ? "All required manifest fields present"
+                                : `Missing required fields: ${missingFields.join(
+                                      ", "
+                                  )}`,
+                        critical: missingFields.length > 0,
+                    });
+
+                    // Check display mode
+                    const validDisplayModes = [
+                        "standalone",
+                        "fullscreen",
+                        "minimal-ui",
+                        "browser",
+                    ];
+                    const hasValidDisplay = validDisplayModes.includes(
+                        this.manifest.display
+                    );
+
+                    this.addCheck({
+                        name: "Display Mode",
+                        status: hasValidDisplay,
+                        message: hasValidDisplay
+                            ? `Display mode: ${this.manifest.display}`
+                            : `Invalid display mode: ${
+                                  this.manifest.display
+                              }. Should be one of: ${validDisplayModes.join(
+                                  ", "
+                              )}`,
+                    });
+
+                    // Check start_url
+                    this.addCheck({
+                        name: "Start URL",
+                        status: !!this.manifest.start_url,
+                        message: this.manifest.start_url
+                            ? `Start URL: ${this.manifest.start_url}`
+                            : "Start URL not specified",
+                    });
+                }
+
+                checkIconRequirements() {
+                    if (!this.manifest || !this.manifest.icons) {
+                        this.addCheck({
+                            name: "App Icons",
+                            status: false,
+                            message: "No icons defined in manifest",
+                            critical: true,
+                        });
+                        return;
+                    }
+
+                    const icons = this.manifest.icons;
+                    const has192 = icons.some(
+                        (icon) => icon.sizes && icon.sizes.includes("192x192")
+                    );
+                    const has512 = icons.some(
+                        (icon) => icon.sizes && icon.sizes.includes("512x512")
+                    );
+
+                    this.addCheck({
+                        name: "Required Icon Sizes",
+                        status: has192 && has512,
+                        message:
+                            has192 && has512
+                                ? "Required icon sizes (192x192, 512x512) present"
+                                : `Missing required icons: ${
+                                      !has192 ? "192x192 " : ""
+                                  }${!has512 ? "512x512" : ""}`.trim(),
+                        critical: !has192 || !has512,
+                    });
+
+                    // Check maskable icons
+                    const hasMaskable = icons.some(
+                        (icon) =>
+                            icon.purpose && icon.purpose.includes("maskable")
+                    );
+
+                    this.addCheck({
+                        name: "Maskable Icons",
+                        status: hasMaskable,
+                        message: hasMaskable
+                            ? "Maskable icons available for better platform integration"
+                            : "No maskable icons found (recommended for Android)",
+                        warning: !hasMaskable,
+                    });
+                }
+
+                checkInstallationStatus() {
+                    // Check if already installed/running in standalone mode
+                    this.isStandalone =
+                        window.navigator.standalone === true ||
+                        window.matchMedia("(display-mode: standalone)")
+                            .matches ||
+                        window.matchMedia("(display-mode: fullscreen)").matches;
+
+                    this.addCheck({
+                        name: "Installation Status",
+                        status: this.isStandalone,
+                        message: this.isStandalone
+                            ? "PWA is currently running in standalone mode (installed)"
+                            : "PWA is running in browser mode (not installed)",
+                        info: true,
+                    });
+                }
+
+                async checkInstallPrompt() {
+                    return new Promise((resolve) => {
+                        let promptDetected = false;
+
+                        const promptHandler = (e) => {
+                            promptDetected = true;
+                            this.installPrompt = e;
+                            e.preventDefault(); // Prevent immediate prompt
+
+                            this.addCheck({
+                                name: "Install Prompt Available",
+                                status: true,
+                                message: "Browser install prompt is available",
+                            });
+                            resolve();
+                        };
+
+                        window.addEventListener(
+                            "beforeinstallprompt",
+                            promptHandler
+                        );
+
+                        // Wait for potential prompt, then cleanup
+                        setTimeout(() => {
+                            window.removeEventListener(
+                                "beforeinstallprompt",
+                                promptHandler
+                            );
+
+                            if (!promptDetected) {
+                                this.addCheck({
+                                    name: "Install Prompt Available",
+                                    status: false,
+                                    message: this.isStandalone
+                                        ? "Install prompt not available (already installed)"
+                                        : "Install prompt not available (PWA criteria not met or browser doesn't support it)",
+                                });
+                            }
+                            resolve();
+                        }, 1000);
+                    });
+                }
+
+                async checkOfflineCapability() {
+                    if (!this.serviceWorkerRegistration) return;
+
+                    try {
+                        // Test if current page is cached
+                        const cache = await caches.open(
+                            "workbox-precache-v2-" + location.origin + "/"
+                        );
+                        const cachedResponse = await cache.match(
+                            location.pathname
+                        );
+
+                        this.addCheck({
+                            name: "Offline Capability",
+                            status: !!cachedResponse,
+                            message: cachedResponse
+                                ? "Current page is cached for offline access"
+                                : "Current page not cached - limited offline functionality",
+                        });
+                    } catch (error) {
+                        this.addCheck({
+                            name: "Offline Capability",
+                            status: false,
+                            message: "Could not verify offline capability",
+                        });
+                    }
+                }
+
+                detectBrowser() {
+                    const userAgent = navigator.userAgent;
+                    let browser = "Unknown";
+                    let installSupport = "Unknown";
+
+                    if (
+                        userAgent.includes("Chrome") &&
+                        !userAgent.includes("Edg")
+                    ) {
+                        browser = "Chrome";
+                        installSupport = "Full PWA install support";
+                    } else if (userAgent.includes("Firefox")) {
+                        browser = "Firefox";
+                        installSupport = "Limited PWA install support";
+                    } else if (
+                        userAgent.includes("Safari") &&
+                        !userAgent.includes("Chrome")
+                    ) {
+                        browser = "Safari";
+                        installSupport =
+                            'PWA support with "Add to Home Screen"';
+                    } else if (userAgent.includes("Edg")) {
+                        browser = "Edge";
+                        installSupport = "Full PWA install support";
+                    }
+
+                    this.addCheck({
+                        name: "Browser Compatibility",
+                        status: true,
+                        message: `${browser} - ${installSupport}`,
+                        info: true,
+                    });
+                }
+
+                addCheck(check) {
+                    this.checks.push({
+                        ...check,
+                        timestamp: new Date().toISOString(),
+                    });
+                }
+
+                displayResults() {
+                    const results = document.getElementById("results");
+
+                    // Categorize checks
+                    const criticalFailed = this.checks.filter(
+                        (c) => c.critical && !c.status
+                    );
+                    const warnings = this.checks.filter(
+                        (c) => c.warning && !c.status
+                    );
+                    const passed = this.checks.filter((c) => c.status);
+                    const failed = this.checks.filter(
+                        (c) => !c.status && !c.info
+                    );
+
+                    let html = "";
+
+                    // Overall status
+                    const overallStatus = criticalFailed.length === 0;
+                    html += `
+                    <div class="section">
+                        <div class="check-item ${
+                            overallStatus ? "check" : "error"
+                        }">
+                            <div class="check-icon">${
+                                overallStatus ? "🎉" : "❌"
+                            }</div>
+                            <div class="check-content">
+                                <div class="check-title">Overall PWA Status</div>
+                                <div class="check-message">
+                                    ${
+                                        overallStatus
+                                            ? "Your PWA meets all critical installation requirements!"
+                                            : `${criticalFailed.length} critical issue(s) preventing PWA installation`
+                                    }
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                `;
+
+                    // Install button
+                    if (this.installPrompt && !this.isStandalone) {
+                        html += `
+                        <div class="section">
+                            <button id="installButton" class="install-button">
+                                📱 Install PWA Now
+                            </button>
+                        </div>
+                    `;
+                    }
+
+                    // Critical issues
+                    if (criticalFailed.length > 0) {
+                        html += `<div class="section">
+                        <h2 class="section-title">🚨 Critical Issues</h2>
+                        ${criticalFailed
+                            .map((check) => this.renderCheck(check))
+                            .join("")}
+                    </div>`;
+                    }
+
+                    // Warnings
+                    if (warnings.length > 0) {
+                        html += `<div class="section">
+                        <h2 class="section-title">⚠️ Warnings</h2>
+                        ${warnings
+                            .map((check) => this.renderCheck(check))
+                            .join("")}
+                    </div>`;
+                    }
+
+                    // Passed checks
+                    html += `<div class="section">
+                    <h2 class="section-title">✅ Passed Checks</h2>
+                    ${passed.map((check) => this.renderCheck(check)).join("")}
+                </div>`;
+
+                    // Failed non-critical
+                    const nonCriticalFailed = failed.filter((c) => !c.critical);
+                    if (nonCriticalFailed.length > 0) {
+                        html += `<div class="section">
+                        <h2 class="section-title">❌ Failed Checks</h2>
+                        ${nonCriticalFailed
+                            .map((check) => this.renderCheck(check))
+                            .join("")}
+                    </div>`;
+                    }
+
+                    // Manifest content
+                    if (this.manifest) {
+                        html += `<div class="section">
+                        <h2 class="section-title">📄 Manifest Content</h2>
+                        <div class="manifest-content">${JSON.stringify(
+                            this.manifest,
+                            null,
+                            2
+                        )}</div>
+                    </div>`;
+                    }
+
+                    // Browser and environment info
+                    html += this.renderBrowserInfo();
+
+                    results.innerHTML = html;
+
+                    // Add install button functionality
+                    if (this.installPrompt) {
+                        document
+                            .getElementById("installButton")
+                            ?.addEventListener("click", () => {
+                                this.triggerInstall();
+                            });
+                    }
+                }
+
+                renderCheck(check) {
+                    const statusClass = check.status
+                        ? "check"
+                        : check.warning
+                        ? "warning"
+                        : check.info
+                        ? "info"
+                        : "error";
+
+                    const icon = check.status
+                        ? "✅"
+                        : check.warning
+                        ? "⚠️"
+                        : check.info
+                        ? "ℹ️"
+                        : "❌";
+
+                    return `
+                    <div class="check-item ${statusClass}">
+                        <div class="check-icon">${icon}</div>
+                        <div class="check-content">
+                            <div class="check-title">${check.name}</div>
+                            <div class="check-message">${check.message}</div>
+                        </div>
+                    </div>
+                `;
+                }
+
+                renderBrowserInfo() {
+                    return `
+                    <div class="section">
+                        <h2 class="section-title">🔍 Environment Information</h2>
+                        <div class="browser-info">
+                            <div class="info-card">
+                                <strong>User Agent:</strong><br>
+                                ${navigator.userAgent}
+                            </div>
+                            <div class="info-card">
+                                <strong>Current URL:</strong><br>
+                                ${window.location.href}
+                            </div>
+                            <div class="info-card">
+                                <strong>Protocol:</strong><br>
+                                ${window.location.protocol}
+                            </div>
+                            <div class="info-card">
+                                <strong>Display Mode:</strong><br>
+                                ${
+                                    this.isStandalone
+                                        ? "Standalone (Installed)"
+                                        : "Browser"
+                                }
+                            </div>
+                            <div class="info-card">
+                                <strong>Online Status:</strong><br>
+                                ${navigator.onLine ? "Online" : "Offline"}
+                            </div>
+                            <div class="info-card">
+                                <strong>Screen:</strong><br>
+                                ${screen.width}x${screen.height}
+                            </div>
+                        </div>
+                        <button class="retry-button" onclick="location.reload()">
+                            🔄 Rerun Checks
+                        </button>
+                    </div>
+                `;
+                }
+
+                async triggerInstall() {
+                    if (!this.installPrompt) return;
+
+                    try {
+                        const result = await this.installPrompt.prompt();
+                        console.log("Install prompt result:", result);
+
+                        if (result.outcome === "accepted") {
+                            const button =
+                                document.getElementById("installButton");
+                            if (button) {
+                                button.textContent = "✅ Installation Started";
+                                button.disabled = true;
+                            }
+                        }
+                    } catch (error) {
+                        console.error("Error triggering install:", error);
+                        alert("Installation failed: " + error.message);
+                    }
+                }
+            }
+
+            // Initialize when page loads
+            window.addEventListener("load", () => {
+                const checker = new PWAChecker();
+                checker.init();
+            });
+
+            // Handle online/offline events
+            window.addEventListener("online", () => {
+                console.log("Back online");
+            });
+
+            window.addEventListener("offline", () => {
+                console.log("Gone offline");
+            });
+        </script>
+    </body>
 </html>
