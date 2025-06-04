@@ -45,5 +45,5 @@ module.exports = {
         // Ban non-null assertions (`foo!.bar`):
         "@typescript-eslint/no-non-null-assertion": "error",
     },
-    ignorePatterns: ["dist/", "node_modules/", "coverage/"],
+    ignorePatterns: ["dist/", "node_modules/", "coverage/", "docs/build/"],
 };
