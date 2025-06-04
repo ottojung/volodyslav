@@ -1,3 +1,5 @@
+/* eslint-disable @typescript-eslint/ban-ts-comment */
+// @ts-nocheck
 // Simple service worker for Termux compatibility
 // This avoids the complex workbox-build process that uses terser
 //
@@ -6,7 +8,7 @@
 // This service worker is specifically designed for the injectManifest strategy
 // to work around Terser minification issues in resource-constrained environments
 //
-// NOTE: TypeScript errors are expected here - this runs in a Service Worker context,
+// TypeScript checking is disabled because this runs in a Service Worker context,
 // not the main browser context, so self, __WB_MANIFEST, etc. are available globally
 
 import { precacheAndRoute, cleanupOutdatedCaches } from 'workbox-precaching';
@@ -18,7 +20,7 @@ precacheAndRoute(self.__WB_MANIFEST);
 cleanupOutdatedCaches();
 
 // Basic service worker events
-self.addEventListener('install', (event) => {
+self.addEventListener('install', () => {
   console.log('Service worker installing');
   self.skipWaiting();
 });
