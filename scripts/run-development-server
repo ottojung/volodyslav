@@ -6,4 +6,10 @@ cd -- "${0%/*}"/..
 
 set -xe
 
+export VOLODYSLAV_OPENAI_API_KEY="$OPENAI_API_KEY"
+export VOLODYSLAV_WORKING_DIRECTORY="dist/test/wd"
+export VOLODYSLAV_DIARY_RECORDINGS_DIRECTORY="dist/test/recordings"
+export VOLODYSLAV_EVENT_LOG_ASSETS_DIRECTORY="dist/test/event-log-assets"
+export VOLODYSLAV_EVENT_LOG_REPOSITORY="backend/tests/mock-event-log-repository"
+
 npm run dev
