@@ -9,6 +9,9 @@ export default defineConfig({
   plugins: [
     react(),
     VitePWA({
+      strategies: 'injectManifest',
+      srcDir: 'src',
+      filename: 'sw.js',
       registerType: 'prompt',
       manifest: {
         name: 'Volodyslav',
@@ -18,22 +21,12 @@ export default defineConfig({
         background_color: '#ffffff',
         theme_color: '#000000',
       },
-      workbox: {
-        skipWaiting: true,
-        clientsClaim: true,
-      },
-      // Disable minification completely for PWA
-      minify: false,
-      // Configure workbox-specific options to avoid terser
       injectManifest: {
+        swSrc: 'src/sw.js',  // This is correct
+        swDest: 'dist/sw.js', // But we need to specify the full destination
+        // Disable minification to avoid terser
         minify: false,
-      },
-      workboxOptions: {
-        skipWaiting: true,
-        clientsClaim: true,
-        // Disable minification in workbox
-        disableDevLogs: true,
-        minify: false,
+        rollupFormat: 'es',
       },
     }),
   ],
