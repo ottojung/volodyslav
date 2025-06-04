@@ -28,5 +28,15 @@ export default defineConfig({
         changeOrigin: true,
       },
     },
+  },
+  build: {
+    // Use esbuild instead of terser for better Termux compatibility
+    minify: 'esbuild',
+    // Optimize for Termux environment
+    rollupOptions: {
+      output: {
+        manualChunks: undefined,
+      }
+    }
   }
 });
