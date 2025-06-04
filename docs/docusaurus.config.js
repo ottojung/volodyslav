@@ -2,7 +2,7 @@ module.exports = {
   title: 'Volodyslav Documentation',
   tagline: 'Documentation for the Volodyslav project',
   url: 'https://example.com',
-  baseUrl: '/',
+  baseUrl: '/volodyslav/',
   onBrokenLinks: 'warn',
   onBrokenMarkdownLinks: 'warn',
   favicon: 'img/favicon.ico',
