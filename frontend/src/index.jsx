@@ -1,9 +1,10 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
+// eslint-disable-next-line import/no-unresolved
 import { registerSW } from 'virtual:pwa-register';
-import App from './App';
+import App from './App.jsx';
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
-import Camera from './Camera/Camera';
+import Camera from './Camera/Camera.jsx';
 import { ChakraProvider } from '@chakra-ui/react';
 
 const root = document.getElementById('root');

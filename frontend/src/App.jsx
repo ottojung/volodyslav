@@ -2,11 +2,13 @@ import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { Button, Box, VStack, Heading, Text } from '@chakra-ui/react';
 
+/* eslint-disable @typescript-eslint/no-explicit-any */
 function App() {
   const [deferredPrompt, setDeferredPrompt] = useState(null);
   const [isInstallable, setIsInstallable] = useState(false);
 
   useEffect(() => {
+    // @ts-expect-error - beforeinstallprompt is a browser API not in TS types
     const handleBeforeInstallPrompt = (e) => {
       // Prevent the mini-infobar from appearing on mobile
       e.preventDefault();
@@ -35,16 +37,21 @@ function App() {
       return;
     }
 
-    // Show the install prompt
-    deferredPrompt.prompt();
+    try {
+      // @ts-expect-error - PWA install API not in TS types
+      await deferredPrompt.prompt();
 
-    // Wait for the user to respond to the prompt
-    const { outcome } = await deferredPrompt.userChoice;
-    
-    if (outcome === 'accepted') {
-      console.log('User accepted the install prompt');
-    } else {
-      console.log('User dismissed the install prompt');
+      // @ts-expect-error - PWA install API not in TS types
+      const result = await deferredPrompt.userChoice;
+      const outcome = result?.outcome;
+      
+      if (outcome === 'accepted') {
+        console.log('User accepted the install prompt');
+      } else {
+        console.log('User dismissed the install prompt');
+      }
+    } catch (error) {
+      console.log('Install prompt error:', error);
     }
 
     // Clear the deferredPrompt so it can only be used once
@@ -81,5 +88,6 @@ function App() {
     </Box>
   );
 }
+/* eslint-enable @typescript-eslint/no-explicit-any */
 
 export default App;
