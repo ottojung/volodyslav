@@ -1,7 +1,7 @@
 module.exports = {
     title: "Volodyslav Documentation",
     tagline: "Documentation for the Volodyslav project",
-    url: "https://example.com",
+    url: "https://ottojung.github.io/volodyslav",
     baseUrl: "/volodyslav/",
     onBrokenLinks: "warn",
     onBrokenMarkdownLinks: "warn",
