@@ -18,6 +18,23 @@ export default defineConfig({
         background_color: '#ffffff',
         theme_color: '#000000',
       },
+      workbox: {
+        skipWaiting: true,
+        clientsClaim: true,
+      },
+      // Disable minification completely for PWA
+      minify: false,
+      // Configure workbox-specific options to avoid terser
+      injectManifest: {
+        minify: false,
+      },
+      workboxOptions: {
+        skipWaiting: true,
+        clientsClaim: true,
+        // Disable minification in workbox
+        disableDevLogs: true,
+        minify: false,
+      },
     }),
   ],
   server: {
