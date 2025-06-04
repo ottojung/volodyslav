@@ -4,5 +4,9 @@
   "scripts": {
     "dev": "docusaurus start",
     "build": "docusaurus build"
+  },
+  "dependencies": {
+    "@docusaurus/core": "^3.8.0",
+    "@docusaurus/preset-classic": "^3.8.0"
   }
 }
