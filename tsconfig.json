@@ -34,6 +34,7 @@
     "include": [
         "frontend/src/**/*.js",
         "frontend/src/**/*.jsx",
+        "frontend/src/**/*.d.ts",
         "backend/src/**/*.js"
     ]
 }
