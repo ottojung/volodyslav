@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>PWA Installation Check</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        .check { color: green; }
+        .error { color: red; }
+        .warning { color: orange; }
+    </style>
+</head>
+<body>
+    <h1>PWA Installation Requirements Check</h1>
+    <div id="results"></div>
+
+    <script>
+        function checkPWARequirements() {
+            const results = document.getElementById('results');
+            const checks = [];
+
+            // Check for HTTPS or localhost
+            const isSecure = location.protocol === 'https:' || location.hostname === 'localhost';
+            checks.push({
+                name: 'Secure Context (HTTPS or localhost)',
+                status: isSecure,
+                message: isSecure ? 'Running on secure context' : 'Must run on HTTPS or localhost'
+            });
+
+            // Check for service worker
+            const hasServiceWorker = 'serviceWorker' in navigator;
+            checks.push({
+                name: 'Service Worker Support',
+                status: hasServiceWorker,
+                message: hasServiceWorker ? 'Service Worker supported' : 'Service Worker not supported'
+            });
+
+            // Check for manifest
+            const manifestLink = document.querySelector('link[rel="manifest"]');
+            checks.push({
+                name: 'Web App Manifest',
+                status: !!manifestLink,
+                message: manifestLink ? 'Manifest linked' : 'No manifest link found'
+            });
+
+            // Check beforeinstallprompt event availability
+            let installPromptSupported = false;
+            window.addEventListener('beforeinstallprompt', () => {
+                installPromptSupported = true;
+            });
+
+            // Display results
+            results.innerHTML = checks.map(check => 
+                `<div class="${check.status ? 'check' : 'error'}">
+                    ${check.status ? '✓' : '✗'} ${check.name}: ${check.message}
+                </div>`
+            ).join('');
+
+            // Additional info
+            results.innerHTML += `
+                <hr>
+                <h3>Additional Information:</h3>
+                <p><strong>User Agent:</strong> ${navigator.userAgent}</p>
+                <p><strong>Current URL:</strong> ${window.location.href}</p>
+                <p><strong>Protocol:</strong> ${window.location.protocol}</p>
+            `;
+
+            // Test manifest fetch
+            if (manifestLink) {
+                fetch(manifestLink.href)
+                    .then(response => response.json())
+                    .then(manifest => {
+                        console.log('Manifest loaded:', manifest);
+                        results.innerHTML += `<p class="check">✓ Manifest loaded successfully</p>`;
+                        results.innerHTML += `<pre>${JSON.stringify(manifest, null, 2)}</pre>`;
+                    })
+                    .catch(error => {
+                        console.error('Failed to load manifest:', error);
+                        results.innerHTML += `<p class="error">✗ Failed to load manifest: ${error.message}</p>`;
+                    });
+            }
+        }
+
+        // Run checks when page loads
+        window.addEventListener('load', checkPWARequirements);
+    </script>
+</body>
+</html>

@@ -11,7 +11,11 @@ export default defineConfig({
             strategies: "injectManifest",
             srcDir: "src",
             filename: "sw.js",
-            registerType: "prompt",
+            registerType: "autoUpdate",
+            workbox: {
+                globPatterns: ['**/*.{js,css,html,ico,png,svg}']
+            },
+            includeAssets: ['**/*'],
             manifest: {
                 name: "Volodyslav",
                 short_name: "Volodyslav",
@@ -19,11 +23,27 @@ export default defineConfig({
                 display: "standalone",
                 background_color: "#ffffff",
                 theme_color: "#000000",
+                description: "Volodyslav PWA Application",
+                orientation: "portrait-primary",
+                scope: "/",
+                icons: [
+                    {
+                        src: "/icon-192.png",
+                        sizes: "192x192",
+                        type: "image/png",
+                        purpose: "any maskable"
+                    },
+                    {
+                        src: "/icon-512.png",
+                        sizes: "512x512",
+                        type: "image/png",
+                        purpose: "any maskable"
+                    }
+                ]
             },
             injectManifest: {
-                swSrc: "src/sw.js", // This is correct
-                swDest: "dist/sw.js", // But we need to specify the full destination
-                // Disable minification to avoid terser
+                swSrc: "src/sw.js",
+                swDest: "dist/sw.js",
                 minify: false,
                 rollupFormat: "es",
             },
