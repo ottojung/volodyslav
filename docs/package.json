@@ -1,0 +1,8 @@
+{
+  "name": "volodyslav-docs",
+  "private": true,
+  "scripts": {
+    "dev": "docusaurus start",
+    "build": "docusaurus build"
+  }
+}

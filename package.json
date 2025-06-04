@@ -4,7 +4,8 @@
   "private": true,
   "workspaces": [
     "frontend",
-    "backend"
+    "backend",
+    "docs"
   ],
   "scripts": {
     "dev": "concurrently 'npm run dev -w frontend' 'sh scripts/backend-dev.sh'",
@@ -14,8 +15,8 @@
     "test": "jest",
     "lint": "eslint . --ext .js,.jsx",
     "lint:fix": "eslint . --ext .js,.jsx --fix",
-    "docs:dev": "docusaurus start docs",
-    "docs:build": "docusaurus build docs"
+    "docs:dev": "npm run dev -w docs",
+    "docs:build": "npm run build -w docs"
   },
   "devDependencies": {
     "@babel/core": "^7.27.1",
