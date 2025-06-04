@@ -49,7 +49,7 @@
             });
 
             // Display results
-            results.innerHTML = checks.map(check => 
+            results.innerHTML = checks.map(check =>
                 `<div class="${check.status ? 'check' : 'error'}">
                     ${check.status ? '✓' : '✗'} ${check.name}: ${check.message}
                 </div>`
