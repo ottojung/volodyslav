@@ -12,11 +12,11 @@ A full-stack application for capturing photos via a browser camera, uploading th
 - **Camera interface** to capture and preview photos
 - **Batch upload** of photos with a `request_identifier`
 - **Mark-as-done** mechanism to prevent duplicate uploads
-- **Transcription** of audio files (`.wav`, `.mp3`, etc.) using OpenAI’s `audio.transcriptions.create`
+- **Transcription** of audio files (`.wav`, `.mp3`, etc.) using OpenAI's `audio.transcriptions.create`
 - **Static file serving** of the built frontend assets
 - **Structured logging** via Pino + `pino-pretty`
 - **Comprehensive tests** for both frontend (Jest + React Testing Library) and backend (Jest + SuperTest)
-- **Progressive Web App** installable in Chrome
+- **Progressive Web App** installable in Chrome (optimized for Termux)
 
 ---
 
@@ -27,6 +27,7 @@ Frontend
 - Vite + ESBuild for fast bundling
 - Chakra UI component library
 - Jest & React Testing Library
+- **PWA with custom Termux-optimized configuration**
 
 Backend
 - Node.js (ESM & CommonJS)
@@ -109,6 +110,8 @@ npm run build -w frontend
 ```
 
 Outputs static files to `frontend/dist`.
+
+**Note for Termux users**: The build configuration is optimized for Termux compatibility. See [PWA Termux Configuration](docs/PWA_TERMUX_CONFIGURATION.md) for technical details about the specialized build process.
 
 ### Serve Frontend
 
