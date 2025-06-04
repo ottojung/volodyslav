@@ -1,3 +1,5 @@
 node_modules/
 dist/
 vol*-*e
+docs/.docusaurus/
+docs/build/
