@@ -11,7 +11,7 @@
 // TypeScript checking is disabled because this runs in a Service Worker context,
 // not the main browser context, so self, __WB_MANIFEST, etc. are available globally
 
-import { precacheAndRoute, cleanupOutdatedCaches } from 'workbox-precaching';
+import { precacheAndRoute, cleanupOutdatedCaches } from "workbox-precaching";
 
 // Precache all static assets
 precacheAndRoute(self.__WB_MANIFEST);
@@ -20,12 +20,12 @@ precacheAndRoute(self.__WB_MANIFEST);
 cleanupOutdatedCaches();
 
 // Basic service worker events
-self.addEventListener('install', () => {
-  console.log('Service worker installing');
-  self.skipWaiting();
+self.addEventListener("install", () => {
+    console.log("Service worker installing");
+    self.skipWaiting();
 });
 
-self.addEventListener('activate', (event) => {
-  console.log('Service worker activating');
-  event.waitUntil(self.clients.claim());
+self.addEventListener("activate", (event) => {
+    console.log("Service worker activating");
+    event.waitUntil(self.clients.claim());
 });
