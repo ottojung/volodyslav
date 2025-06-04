@@ -1,5 +1,6 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
+import { registerSW } from 'virtual:pwa-register';
 import App from './App';
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import Camera from './Camera/Camera';
@@ -9,6 +10,8 @@ const root = document.getElementById('root');
 if (root === null) {
     throw new Error("Could not find root node.");
 }
+
+registerSW();
 
 ReactDOM.createRoot(root).render(
   <React.StrictMode>

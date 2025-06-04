@@ -16,6 +16,7 @@ A full-stack application for capturing photos via a browser camera, uploading th
 - **Static file serving** of the built frontend assets
 - **Structured logging** via Pino + `pino-pretty`
 - **Comprehensive tests** for both frontend (Jest + React Testing Library) and backend (Jest + SuperTest)
+- **Progressive Web App** installable in Chrome
 
 ---
 
@@ -134,6 +135,16 @@ npm start
 1. Builds the frontend
 2. Serves the frontend at http://localhost:4173
 3. Starts the backend API at http://localhost:3000
+
+When you open the frontend in Chrome, you can install it as a
+**Progressive Web App**. Click the browser's install button in the address bar
+to add Volodyslav to your desktop or mobile home screen.
+
+## Chrome App Installation
+
+Chrome detects the PWA manifest and service worker. After starting the
+application with `npm start`, open `http://localhost:4173` in Chrome and click
+the **Install** icon in the address bar.
 
 ---
 
