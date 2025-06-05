@@ -13,7 +13,7 @@ jest.mock('@chakra-ui/react', () => {
     };
 });
 
-import Camera from '../src/Camera/Camera';
+import Camera from '../src/Camera/Camera.jsx';
 
 describe('Camera component', () => {
     let getUserMediaMock;
