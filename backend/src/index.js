@@ -54,7 +54,10 @@ async function entry() {
 
 // Set up the command line interface with commander
 if (require.main === module) {
-    entry();
+    entry().catch((err) => {
+        console.error(err);
+        process.exit(1);
+    });
 }
 
 module.exports = {
