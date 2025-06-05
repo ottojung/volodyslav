@@ -206,11 +206,11 @@ async function setup(state) {
 function logError(state, obj, msg) {
     // Call the original error method with proper typing
     if (state.logger !== null) {
-        state.logger.error(msg, { obj });
+        state.logger.error(obj, msg);
     } else {
         // Fallback to console if logger is not initialized
         console.error("Logger not initialized");
-        console.error(msg, { obj });
+        console.error(obj, msg);
     }
 
     // Send notification
