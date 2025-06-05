@@ -3,9 +3,9 @@
  *
  * Call `transaction(transformation)` with a function that uses
  * `storage.addEntry(entry, assets)` to queue log entries and assets. The
- * process appends entries to `data.json`, copies assets into the repository,
- * commits, and pushes all changes in one transaction. If any step fails,
- * copied assets are removed before the error is rethrown.
+ * process appends entries to `data.json` and writes any config changes,
+ * commits the changes, and only then copies assets into the repository.
+ * If any step fails, copied assets are removed before the error is rethrown.
  */
 
 const path = require("path");
