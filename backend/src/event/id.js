@@ -38,8 +38,8 @@ class EventIdClass {
  * @description Primary constructor for an EventId.
  */
 function make(capabilities) {
-    this.identifier = random.string(capabilities, 16);
-    return new EventIdClass(this.identifier);
+    const identifier = random.string(capabilities, 16);
+    return new EventIdClass(identifier);
 }
 
 /**
