@@ -3,7 +3,7 @@ const express = require("express");
 /** @typedef {import('../logger').Logger} Logger */
 
 /**
- * @typedef {object} Capabilities - An empty capabilities object for this route.
+ * @typedef {object} Capabilities - Capabilities required by this route.
  * @property {Logger} logger - A logger instance.
  */
 
