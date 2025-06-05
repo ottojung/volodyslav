@@ -48,7 +48,12 @@ function workingDirectory() {
 }
 
 function myServerPort() {
-    return parseInt(getEnv("VOLODYSLAV_SERVER_PORT"));
+    const raw = getEnv("VOLODYSLAV_SERVER_PORT");
+    const port = parseInt(raw, 10);
+    if (!Number.isInteger(port) || port < 0 || port > 65535) {
+        throw new EnvironmentError("VOLODYSLAV_SERVER_PORT");
+    }
+    return port;
 }
 
 function logLevel() {
