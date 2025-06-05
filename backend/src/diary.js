@@ -162,7 +162,7 @@ async function processDiaryAudios(capabilities) {
  * Writes changes to the event log by appending entries for successfully
  * transcribed diary audio files.
  * @param {Capabilities} capabilities - An object containing the capabilities.
- * @param {Asset} ass - An array of TranscriptionSuccess objects.
+ * @param {Asset} ass - The processed diary audio asset to record.
  * @returns {Promise<void>} - A promise that resolves when the changes are written.
  */
 async function writeAsset(capabilities, ass) {
