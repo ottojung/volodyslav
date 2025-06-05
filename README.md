@@ -46,7 +46,7 @@ sh scripts/run-development-server
 
 ```bash
 # Set all required environment variables.
-sh scripts/update-and-install
+sh scripts/update-and-install /usr/local
 volodyslav start
 ```
 
