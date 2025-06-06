@@ -11,5 +11,6 @@ export VOLODYSLAV_WORKING_DIRECTORY="dist/test/wd"
 export VOLODYSLAV_DIARY_RECORDINGS_DIRECTORY="dist/test/recordings"
 export VOLODYSLAV_EVENT_LOG_ASSETS_DIRECTORY="dist/test/event-log-assets"
 export VOLODYSLAV_EVENT_LOG_REPOSITORY="backend/tests/mock-event-log-repository"
+export VOLODYSLAV_SERVER_PORT=3000
 
 npm run dev
