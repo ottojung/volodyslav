@@ -1,7 +1,6 @@
 const express = require("express");
 const upload = require("../storage");
 const { createEntry, getEntries } = require("../entry");
-const { fromExisting } = require("../filesystem/file");
 const { random: randomRequestId } = require("../request_identifier");
 const { serialize } = require("../event");
 
@@ -143,17 +142,18 @@ function createEntryData(body) {
 /**
  * Prepares the file objects for entry creation if files were uploaded.
  *
+ * @param {Capabilities} capabilities - The capabilities.
  * @param {Express.Multer.File[]|undefined} files - The uploaded files.
  * @returns {Promise<import('../filesystem/file').ExistingFile[]>} - The file objects.
  */
-async function prepareFileObjects(files) {
+async function prepareFileObjects(capabilities, files) {
     if (!files || !Array.isArray(files) || files.length === 0) {
         return [];
     }
 
     const fileObjects = [];
     for (const file of files) {
-        const existingFile = await fromExisting(file.path);
+        const existingFile = await capabilities.checker.instanciate(file.path);
         fileObjects.push(existingFile);
     }
 
@@ -200,6 +200,7 @@ async function handleEntryPost(req, res, capabilities) {
         // Create entry data and prepare files
         const entryData = createEntryData(req.body);
         const fileObjects = await prepareFileObjects(
+            capabilities,
             /** @type {Express.Multer.File[]} */ (req.files)
         );
 

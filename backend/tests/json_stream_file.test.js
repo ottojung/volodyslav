@@ -1,7 +1,7 @@
 const fs = require("fs").promises;
 const path = require("path");
 const { readObjects } = require("../src/json_stream_file");
-const { fromExisting } = require("../src/filesystem/file");
+const checker = require("../src/filesystem/checker");
 const temporary = require("./temporary");
 
 beforeEach(temporary.beforeEach);
@@ -23,7 +23,7 @@ describe("json_stream_file", () => {
         const testObject = { name: "test", value: 42 };
         await fs.writeFile(testFile, JSON.stringify(testObject));
 
-        const testFileObj = await fromExisting(testFile);
+        const testFileObj = await checker.make().instanciate(testFile);
         const objects = await readObjects(capabilities, testFileObj);
         expect(objects).toHaveLength(1);
         expect(objects[0]).toEqual(testObject);
@@ -42,7 +42,7 @@ describe("json_stream_file", () => {
         const content = testObjects.map(obj => JSON.stringify(obj)).join("\n");
         await fs.writeFile(testFile, content);
 
-        const testFileObj = await fromExisting(testFile);
+        const testFileObj = await checker.make().instanciate(testFile);
         const objects = await readObjects(capabilities, testFileObj);
         expect(objects).toHaveLength(3);
         expect(objects).toEqual(testObjects);
@@ -55,7 +55,7 @@ describe("json_stream_file", () => {
         };
         await fs.writeFile(testFile, "");
 
-        const testFileObj = await fromExisting(testFile);
+        const testFileObj = await checker.make().instanciate(testFile);
         const objects = await readObjects(capabilities, testFileObj);
         expect(objects).toHaveLength(0);
     });
@@ -67,12 +67,12 @@ describe("json_stream_file", () => {
         };
         await fs.writeFile(testFile, "{ invalid json }");
 
-        const testFileObj = await fromExisting(testFile);
+        const testFileObj = await checker.make().instanciate(testFile);
         await expect(readObjects(capabilities, testFileObj)).rejects.toThrow();
     });
 
     it("should reject on non-existent file", async () => {
         const testFile = await getTestPath();
-        await expect(fromExisting(testFile)).rejects.toThrow();
+        await expect(checker.make().instanciate(testFile)).rejects.toThrow();
     });
 });

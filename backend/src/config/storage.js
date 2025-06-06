@@ -18,6 +18,7 @@ const { fromExisting } = require("../filesystem/file");
  * @property {FileReader} reader - A file reader instance
  * @property {FileWriter} writer - A file writer instance
  * @property {import('../filesystem/creator').FileCreator} creator - A file creator instance
+ * @property {import('../filesystem/checker').FileChecker} checker - A file checker instance
  * @property {Logger} logger - A logger instance
  */
 
@@ -80,9 +81,13 @@ async function writeConfig(capabilities, filepath, configObj) {
         const serialized = config.serialize(configObj);
         const configString = JSON.stringify(serialized, null, "\t");
 
-        // Create file first if it doesn't exist, then get ExistingFile instance
+        // Create file first if it doesn't exist, then get ExistingFile instance with proof
         await capabilities.creator.createFile(filepath);
-        const file = await fromExisting(filepath);
+        const proof = await capabilities.checker.fileExists(filepath);
+        if (!proof) {
+            throw new Error(`Failed to create config file: ${filepath}`);
+        }
+        const file = await fromExisting(filepath, proof);
         await capabilities.writer.writeFile(file, configString + "\n");
 
         capabilities.logger.logInfo(

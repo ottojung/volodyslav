@@ -84,7 +84,12 @@ async function markDone(capabilities, reqId) {
 async function isDone(capabilities, reqId) {
     const uploadDir = capabilities.environment.workingDirectory();
     const target = path.join(uploadDir, reqId.identifier + ".done");
-    return capabilities.checker.fileExists(target);
+    const proof = capabilities.checker.fileExists(target);
+    if (proof === null) {
+        return false;
+    } else {
+        return true;
+    }
 }
 
 /**
