@@ -1,4 +1,4 @@
-// Generates a random alphanumeric string with cryptographic quality
+// Generates a random alphanumeric string using a seeded RNG
 
 const { defaultGenerator } = require('./default');
 
@@ -17,7 +17,7 @@ const ALPHANUMERIC_CHARS = '0123456789abcdefghijklmnopqrstuvwxyz';
  * @param {Capabilities} capabilities - An object containing a random number generator.
  * @param {number} [length=16] - The length of the generated string. Must be a positive integer.
  * @returns {string} A random alphanumeric string of specified length.
- * @throws {TypeError} If the length is not a positive integer or rng is invalid.
+ * @throws {TypeError} If the length is not a positive integer.
  */
 function string(capabilities, length = 16) {
     if (!Number.isInteger(length) || length < 1) {
