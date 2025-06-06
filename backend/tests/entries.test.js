@@ -70,6 +70,23 @@ describe("POST /api/entries", () => {
         expect(res.body.error).toMatch(/Missing required fields/);
     });
 
+    it("ignores modifiers field when it is not an object", async () => {
+        const { app } = await makeTestApp();
+        const entry = {
+            original: "Bad mods original",
+            input: "Bad mods input",
+            type: "bad-mods",
+            description: "bad",
+            modifiers: "true",
+        };
+        const res = await request(app)
+            .post("/api/entries")
+            .send(entry)
+            .set("Content-Type", "application/json");
+        expect(res.statusCode).toBe(201);
+        expect(res.body.entry.modifiers).toEqual({});
+    });
+
     it("creates an entry with an asset when a file is uploaded", async () => {
         const { app, capabilities } = await makeTestApp();
         const tmpDir = fs.mkdtempSync(
