@@ -3,8 +3,9 @@
  *
  * Call `transaction(transformation)` with a function that uses
  * `storage.addEntry(entry, assets)` to queue log entries and assets. The
- * process appends entries to `data.json` and writes any config changes,
- * commits the changes, and only then copies assets into the repository.
+ * process appends entries to `data.json` and writes any config changes.
+ * If there are new entries or config, those changes are committed before
+ * any assets are copied into the repository.
  * If any step fails, copied assets are removed before the error is rethrown.
  */
 
