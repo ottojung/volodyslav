@@ -37,7 +37,7 @@ const creatorMake = require("./creator");
  * @property {string} original - The original, raw input for the event
  * @property {string} input - The processed input for the event
  * @property {string} type - The type of entry (e.g., "note", "diary", "todo")
- * @property {string} description - The content/description of the entry
+ * @property {string} description - The content/description of the entry (required)
  * @property {Record<string, string>} [modifiers] - Additional key-value modifiers
  */
 
@@ -55,6 +55,13 @@ async function createEntry(capabilities, entryData, files = []) {
     const date = entryData.date ? new Date(entryData.date) : new Date();
     if (isNaN(date.getTime())) {
         throw new Error('Invalid date');
+    }
+
+    if (
+        typeof entryData.description !== "string" ||
+        entryData.description.trim() === ""
+    ) {
+        throw new Error("description field is required");
     }
 
     /** @type {import('./event/structure').Event} */

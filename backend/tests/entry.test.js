@@ -142,7 +142,7 @@ describe("createEntry (integration, with real capabilities)", () => {
         expect(event.modifiers).toEqual({});
     });
 
-    it("creates an event log entry with empty description if not provided", async () => {
+    it("throws if description is missing", async () => {
         const capabilities = await getTestCapabilities();
         const entryData = {
             original: "No description original",
@@ -150,8 +150,9 @@ describe("createEntry (integration, with real capabilities)", () => {
             type: "no-description-type",
             // no description field
         };
-        const event = await createEntry(capabilities, entryData);
-        expect(event.description).toBeUndefined();
+        await expect(createEntry(capabilities, entryData)).rejects.toThrow(
+            /description field is required/
+        );
     });
 
     it("creates an event log entry with custom type and verifies type is set", async () => {
