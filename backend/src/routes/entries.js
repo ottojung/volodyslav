@@ -53,9 +53,13 @@ function makeRouter(capabilities) {
         req.query["request_identifier"] = reqId.identifier;
 
         // Call multer upload middleware for multiple files
-        uploadMiddleware.array("files")(req, res, (err) => {
+        uploadMiddleware.array("files")(req, res, async (err) => {
             if (err) return next(err);
-            handleEntryPost(req, res, capabilities);
+            try {
+                await handleEntryPost(req, res, capabilities);
+            } catch (error) {
+                next(error);
+            }
         });
     });
 
