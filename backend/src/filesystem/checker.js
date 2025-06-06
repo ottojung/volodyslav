@@ -131,7 +131,7 @@ async function instantiate(path) {
  * @param {ExistingFile} file - The path to the file to check.
  * @param {object} options - Stability check options.
  * @param {number} [options.minAgeMs=300000] - Minimum age in milliseconds (default: 5 minutes).
- * @param {number} [options.sizeCheckDelayMs=30000] - Delay between size checks in milliseconds (default: 30 second).
+ * @param {number} [options.sizeCheckDelayMs=30000] - Delay between size checks in milliseconds (default: 30 seconds).
  * @returns {Promise<boolean>} - A promise that resolves with true if the file is stable, false otherwise.
  */
 async function isFileStable(file, options = {}) {
