@@ -374,11 +374,13 @@ async function cleanupAssets(capabilities, eventLogStorage) {
         const assetPath = targetPath(capabilities, asset);
         try {
             await capabilities.deleter.deleteFile(assetPath);
-        } catch {
+        } catch (error) {
+            const msg =
+                error instanceof Error ? error.message : String(error);
             capabilities.logger.logWarning(
                 {
                     file: assetPath,
-                    error: "error occurred",
+                    error: msg,
                 },
                 `Failed to remove asset file ${assetPath}. This may be due to the file being in use or not existing.`
             );
