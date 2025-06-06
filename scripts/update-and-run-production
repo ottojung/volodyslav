@@ -6,5 +6,8 @@ cd -- "${0%/*}"/..
 
 set -xe
 
-sh scripts/update-and-install
-sh scripts/run-main
+PREFIX="$1"
+shift
+
+sh scripts/update-and-install "$PREFIX"
+sh scripts/run-main "$@"
