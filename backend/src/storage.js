@@ -27,7 +27,15 @@ function makeStorage(capabilities) {
          * @param {(error: Error|null, destination: string) => void} cb
          */
         destination: (req, _file, cb) => {
-            const reqId = fromRequest(req);
+            let reqId;
+            try {
+                reqId = fromRequest(req);
+            } catch (err) {
+                const error = err instanceof Error ? err : new Error(String(err));
+                cb(error, "");
+                return;
+            }
+
             makeDirectory(capabilities, reqId)
                 .then((targetDir) => cb(null, targetDir))
                 .catch((err) => cb(err, ""));
