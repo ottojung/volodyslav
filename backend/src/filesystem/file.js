@@ -85,10 +85,12 @@ async function fromExisting(path) {
 }
 
 /**
- * Creates an empty file at the specified path.
- * @param {ExistingFile} existingFile - The existing file to copy.
- * @param {string} destinationPath - The path to the destination file.
- * @returns {Promise<ExistingFile>} - A promise that resolves when the file is created.
+ * Copies an existing file to the destination path.
+ * The target directory is created if it does not exist.
+ *
+ * @param {ExistingFile} existingFile - The file to copy from.
+ * @param {string} destinationPath - The path of the copied file.
+ * @returns {Promise<ExistingFile>} - A promise that resolves with the new file instance.
  */
 async function makeCopy(existingFile, destinationPath) {
     // Ensure the destination directory exists
