@@ -1,4 +1,4 @@
-const { createEntry } = require("../src/entry");
+const { createEntry, getEntries } = require("../src/entry");
 const { getMockedRootCapabilities } = require("./spies");
 const { stubEnvironment, stubEventLogRepository } = require("./stubs");
 
@@ -180,5 +180,24 @@ describe("createEntry (integration, with real capabilities)", () => {
         };
         const event = await createEntry(capabilities, entryData);
         expect(event.date).toEqual(new Date(futureDate));
+    });
+});
+
+describe("getEntries pagination validation", () => {
+    it("throws for non-positive page or limit", async () => {
+        const capabilities = await getTestCapabilities();
+        const entryData = {
+            original: "orig",
+            input: "inp",
+            type: "t",
+            description: "d",
+        };
+        await createEntry(capabilities, entryData);
+        await expect(
+            getEntries(capabilities, { page: 0, limit: 5 })
+        ).rejects.toThrow();
+        await expect(
+            getEntries(capabilities, { page: 1, limit: 0 })
+        ).rejects.toThrow();
     });
 });

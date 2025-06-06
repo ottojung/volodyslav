@@ -109,6 +109,13 @@ async function createEntry(capabilities, entryData, files = []) {
 async function getEntries(capabilities, pagination) {
     const { page, limit } = pagination;
 
+    if (!Number.isInteger(page) || page < 1) {
+        throw new Error('page must be a positive integer');
+    }
+    if (!Number.isInteger(limit) || limit < 1) {
+        throw new Error('limit must be a positive integer');
+    }
+
     // Fetch all entries from storage
     const entries = await transaction(capabilities, async (storage) => {
         return await storage.getExistingEntries();
