@@ -11,13 +11,15 @@ describe("random.string", () => {
         const str = random.string(capabilities);
         expect(typeof str).toBe("string");
         expect(str).toHaveLength(16);
-        expect(/^[0-9A-Za-z]{16}$/.test(str)).toBe(true);
+        // Should only contain digits and lowercase letters
+        expect(/^[0-9a-z]{16}$/.test(str)).toBe(true);
     });
 
     test("generates a string of custom length", () => {
         const str = random.string(capabilities, 32);
         expect(str).toHaveLength(32);
-        expect(/^[0-9A-Za-z]+$/.test(str)).toBe(true);
+        // Generated string should remain lowercase alphanumeric
+        expect(/^[0-9a-z]+$/.test(str)).toBe(true);
     });
 
     test("throws a TypeError when length is not a positive integer", () => {
