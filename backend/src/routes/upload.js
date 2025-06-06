@@ -25,11 +25,33 @@ function makeRouter(capabilities) {
     const uploadMiddleware = upload.makeUpload(capabilities);
     const router = express.Router();
     router.post('/upload', uploadMiddleware.array('photos'), async (req, res) => {
+        let reqId;
+        try {
+            reqId = fromRequest(req);
+        } catch {
+            capabilities.logger.logError(
+                {
+                    error: 'Missing request identifier',
+                    path: req.path,
+                    query: req.query,
+                    headers: req.headers,
+                },
+                'Upload failed - invalid request identifier'
+            );
+            return res.status(400).json({
+                success: false,
+                error: 'Missing request_identifier parameter',
+            });
+        }
+
         const files = /** @type {Express.Multer.File[]} */ (req.files || []);
         const uploaded = files.map((f) => f.filename);
-        capabilities.logger.logInfo({ files: uploaded }, 'Files uploaded');
-        await markDone(capabilities, fromRequest(req));
-        res.json({ success: true, files: uploaded });
+        capabilities.logger.logInfo(
+            { files: uploaded, request_identifier: reqId },
+            'Files uploaded'
+        );
+        await markDone(capabilities, reqId);
+        return res.json({ success: true, files: uploaded });
     });
     return router;
 }
