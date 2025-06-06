@@ -74,8 +74,18 @@ function format_time_stamp(basic) {
         return undefined;
     }
 
+    const match = isoUTC.match(/(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})Z/);
     const d = new Date(isoUTC);
-    if (isNaN(d.getTime())) {
+    if (
+        !match ||
+        isNaN(d.getTime()) ||
+        d.getUTCFullYear() !== Number(match[1]) ||
+        d.getUTCMonth() + 1 !== Number(match[2]) ||
+        d.getUTCDate() !== Number(match[3]) ||
+        d.getUTCHours() !== Number(match[4]) ||
+        d.getUTCMinutes() !== Number(match[5]) ||
+        d.getUTCSeconds() !== Number(match[6])
+    ) {
         return undefined;
     }
 

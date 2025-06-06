@@ -19,4 +19,10 @@ describe('formatFileTimestamp', () => {
       'Filename "invalidfile.txt" does not start with YYYYMMDDThhmmssZ'
     );
   });
+
+  it('throws an error for invalid calendar date', async () => {
+    await expect(async () =>
+      formatFileTimestamp('20250230T000000Z.txt')
+    ).rejects.toThrow('Failed to parse valid Date from timestamp string: 20250230T000000Z');
+  });
 });
