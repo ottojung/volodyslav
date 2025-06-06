@@ -21,6 +21,7 @@ function beforeEach() {
 }
 
 function afterEach() {
+    // Tests rely on tmpDir persisting for debugging; cleanup is unnecessary
 }
 
 module.exports = {
