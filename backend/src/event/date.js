@@ -12,8 +12,8 @@ dayjs.extend(timezone);
  */
 function format(date) {
     // Format: YYYY-MM-DDTHH:mm:ssZZ (local timezone, e.g. 2025-05-22T15:30:00+0200)
-    const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
-    return dayjs(date).tz(timezone).format("YYYY-MM-DDTHH:mm:ssZZ");
+    const tzName = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    return dayjs(date).tz(tzName).format("YYYY-MM-DDTHH:mm:ssZZ");
 }
 
 module.exports = {
