@@ -19,7 +19,7 @@ class AssetClass {
 
     /**
      * This is a value that is never actually assigned.
-     * Its purpose is to make `RequestIdentifier` a nominal type.
+     * Its purpose is to make `Asset` a nominal type.
      * @type {undefined}
      * @private
      */
