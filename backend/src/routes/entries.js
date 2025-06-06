@@ -113,7 +113,16 @@ function parseModifiers(modifiers) {
     }
 
     try {
-        return JSON.parse(modifiers);
+        const parsed = JSON.parse(modifiers);
+        if (
+            parsed &&
+            typeof parsed === "object" &&
+            !Array.isArray(parsed) &&
+            Object.values(parsed).every((v) => typeof v === "string")
+        ) {
+            return parsed;
+        }
+        return undefined;
     } catch {
         return undefined;
     }
