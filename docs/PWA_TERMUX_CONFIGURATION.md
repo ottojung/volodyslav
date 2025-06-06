@@ -4,7 +4,7 @@ This project targets Android devices running [Termux](https://termux.dev/). The 
 
 Key points:
 
-- **injectManifest strategy** – see `frontend/vite.config.js`. The service worker source lives in `frontend/src/sw.js` and is copied as-is during the build.
+- **injectManifest strategy** – see `frontend/vite.config.js`. The service worker source lives in `frontend/src/sw.js` and the precache manifest is injected during the build.
 - **esbuild minify** – the Vite build step uses `esbuild` instead of `terser`.
 
 These adjustments allow the PWA build to complete inside Termux without additional native dependencies.
