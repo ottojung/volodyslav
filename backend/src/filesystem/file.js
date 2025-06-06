@@ -66,15 +66,7 @@ class ExistingFileClass {
  */
 async function makeEmpty(path) {
     await fs.writeFile(path, "");
-
-    // Create a proof that the file exists since we just created it
-    const { fileExists } = require("./checker").make();
-    const proof = await fileExists(path);
-    if (!proof) {
-        throw new FileCreatorError(`Failed to create file: ${path}`, path);
-    }
-
-    return await fromExisting(path, proof);
+    return new ExistingFileClass(path);
 }
 
 /**
@@ -124,17 +116,7 @@ async function makeCopy(existingFile, destinationPath) {
     // Copy the file
     await fs.copyFile(existingFile.path, destinationPath);
 
-    // Create a proof that the file exists since we just created it
-    const { fileExists } = require("./checker").make();
-    const proof = await fileExists(destinationPath);
-    if (!proof) {
-        throw new FileCreatorError(
-            `Failed to copy file to: ${destinationPath}`,
-            destinationPath
-        );
-    }
-
-    return await fromExisting(destinationPath, proof);
+    return new ExistingFileClass(destinationPath);    
 }
 
 module.exports = {
