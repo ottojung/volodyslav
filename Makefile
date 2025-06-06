@@ -6,5 +6,8 @@ all: install
 install:
 	sh scripts/update-and-install $(PREFIX)
 
-.PHONY: all install
+uninstall:
+	sh scripts/uninstall $(PREFIX)
+
+.PHONY: all install uninstall
 .SECONDARY:
