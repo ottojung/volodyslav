@@ -43,11 +43,8 @@ export default defineConfig({
             },
             injectManifest: {
                 swSrc: "src/sw.js",
-                // swDest should be relative to the build outDir.
-                // Using "dist/sw.js" here would nest the output as
-                // "dist/dist/sw.js". Keep just the filename to place the
-                // service worker directly in the outDir.
-                swDest: "sw.js",
+                // Include the output directory so Workbox can find the file
+                swDest: "dist/sw.js",
                 minify: false,
                 rollupFormat: "es",
             },
