@@ -33,7 +33,7 @@ const creatorMake = require("./creator");
 
 /**
  * @typedef {object} EntryData
- * @property {string} [date] - ISO date string, defaults to current time
+ * @property {string} [date] - ISO date string, defaults to current time. Must be valid when provided.
  * @property {string} original - The original, raw input for the event
  * @property {string} input - The processed input for the event
  * @property {string} type - The type of entry (e.g., "note", "diary", "todo")
@@ -53,6 +53,9 @@ async function createEntry(capabilities, entryData, files = []) {
     const creator = await creatorMake(capabilities);
     const id = eventId.make(capabilities);
     const date = entryData.date ? new Date(entryData.date) : new Date();
+    if (isNaN(date.getTime())) {
+        throw new Error('Invalid date');
+    }
 
     /** @type {import('./event/structure').Event} */
     const event = {
