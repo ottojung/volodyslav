@@ -22,9 +22,9 @@ function mulberry32(seed) {
     /**
      * @returns {number} A pseudorandom number in (0, 1)
      * @description This function generates a pseudorandom number in the range (0, 1) by calling the inclusive function
-     * and ensuring the result is not equal to 0 or 1.
+     * and ensuring the result is not equal to 0.
      * It uses a while loop to keep generating numbers until a valid one is found.
-     * This is a workaround for the fact that the inclusive function can return 0 or 1.
+     * This is a workaround for the fact that the inclusive function can return 0.
      */
     function exclusive() {
         let ret = 0;
