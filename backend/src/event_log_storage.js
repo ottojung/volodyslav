@@ -330,7 +330,7 @@ async function performGitTransaction(
         // Track if we need to commit
         let needsCommit = false;
 
-        // Only persist and commit if there are new entries
+        // Persist and commit when we have new entries or configuration changes
         if (newEntries.length > 0) {
             // Persist queued entries
             await appendEntriesToFile(capabilities, dataFile, newEntries);
