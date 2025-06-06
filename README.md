@@ -1,5 +1,5 @@
 
-# Volodyslav’s Media Service
+# Volodyslav Media Service
 
 A full-stack application for capturing photos via a browser camera, uploading them to a server, and transcribing audio files using OpenAI's APIs. This repository follows a monorepo pattern.
 
