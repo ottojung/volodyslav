@@ -1,0 +1,22 @@
+#! /bin/sh
+
+set -e
+
+cd -- "${0%/*}"/..
+
+set -xe
+
+PREFIX="$1"
+shift
+
+test "$#" = 0
+
+npm ci
+npm test
+npm run build
+
+mkdir -p -- "$PREFIX"/bin
+mkdir -p -- "$PREFIX"/share/volodyslav
+rm -rf -- "$PREFIX"/share/volodyslav/source
+cp -r -T -- "$PWD" "$PREFIX"/share/volodyslav/source
+ln -srfT -- "$PREFIX"/share/volodyslav/source/scripts/run-main "$PREFIX"/bin/volodyslav

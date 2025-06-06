@@ -9,11 +9,8 @@ set -xe
 PREFIX="$1"
 shift
 
+test "$#" = 0
+
 git checkout master
 git pull origin master --tags
-npm ci
-npm test
-npm run build
-
-mkdir -p "$PREFIX"/bin
-ln -srfT -- "$PWD/scripts/run-main" "$PREFIX"/bin/volodyslav
+sh scripts/install "$PREFIX"
