@@ -64,6 +64,7 @@ const aiTranscriptionCapability = require("../ai/transcription");
  * because it is required for everything else in Volodyslav to work, including error reporting.
  */
 const make = memconst(() => {
+    const environment = environmentCapability.make();
     /** @type {Capabilities} */
     const ret = {
         seed: random.seed.make(),
@@ -76,11 +77,11 @@ const make = memconst(() => {
         appender: appendCapability.make(),
         checker: checkerCapability.make(),
         git: gitCapability,
-        environment: environmentCapability.make(),
+        environment,
         logger: loggingCapability.make(() => ret),
         notifier: notifierCapability.make(),
         scheduler: schedulerCapability.make(),
-        aiTranscription: aiTranscriptionCapability.make({ environment: environmentCapability.make() }),
+        aiTranscription: aiTranscriptionCapability.make({ environment }),
     };
 
     return ret;
