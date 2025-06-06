@@ -3,7 +3,6 @@ const { transaction } = require("../src/event_log_storage");
 const fsp = require("fs/promises");
 const gitstore = require("../src/gitstore");
 const { readObjects } = require("../src/json_stream_file");
-const checker = require("../src/filesystem/checker");
 const event = require("../src/event/structure");
 const { targetPath } = require("../src/event/asset");
 const {
@@ -46,7 +45,7 @@ describe("event_log_storage", () => {
         await gitstore.transaction(capabilities, async (store) => {
             const workTree = await store.getWorkTree();
             const dataPath = path.join(workTree, "data.json");
-            const dataFile = await checker.make().instantiate(dataPath);
+            const dataFile = await capabilities.checker.instantiate(dataPath);
             const objects = await readObjects(capabilities, dataFile);
             expect(objects).toHaveLength(1);
             expect(objects[0]).toEqual(event.serialize(testEvent));
@@ -111,7 +110,7 @@ describe("event_log_storage", () => {
         await gitstore.transaction(capabilities, async (store) => {
             const workTree = await store.getWorkTree();
             const dataPath = path.join(workTree, "data.json");
-            const dataFile = await checker.make().instantiate(dataPath);
+            const dataFile = await capabilities.checker.instantiate(dataPath);
             const objects = await readObjects(capabilities, dataFile);
             expect(objects).toHaveLength(2);
             expect(objects[0]).toEqual(event.serialize(event1));
@@ -341,7 +340,7 @@ describe("event_log_storage", () => {
             // Either the file doesn't exist (good) or it doesn't contain our event (also good)
             let found = false;
             if (fileExists) {
-                const dataFile = await checker.make().instantiate(dataPath);
+                const dataFile = await capabilities.checker.instantiate(dataPath);
                 const objects = await readObjects(capabilities, dataFile);
                 const serializedEvent = event.serialize(testEvent);
                 found = objects.some(
@@ -404,7 +403,7 @@ describe("event_log_storage", () => {
         await gitstore.transaction(capabilities, async (store) => {
             const workTree = await store.getWorkTree();
             const dataPath = path.join(workTree, "data.json");
-            const dataFile = await checker.make().instantiate(dataPath);
+            const dataFile = await capabilities.checker.instantiate(dataPath);
             const objects = await readObjects(capabilities, dataFile);
             expect(objects).toHaveLength(2);
             expect(objects[0].id).toEqual(event.serialize(firstEvent).id);
@@ -512,7 +511,7 @@ describe("event_log_storage", () => {
                 .catch(() => false);
             expect(fileExists).toBe(true);
 
-            const configFile = await checker.make().instantiate(configPath);
+            const configFile = await capabilities.checker.instantiate(configPath);
             const configStorage = require("../src/config/storage");
             const storedConfig = await configStorage.readConfig(
                 capabilities,
@@ -605,14 +604,14 @@ describe("event_log_storage", () => {
 
             // Check data.json
             const dataPath = path.join(workTree, "data.json");
-            const dataFile = await checker.make().instantiate(dataPath);
+            const dataFile = await capabilities.checker.instantiate(dataPath);
             const objects = await readObjects(capabilities, dataFile);
             expect(objects).toHaveLength(1);
             expect(objects[0].id).toBe("config-and-event");
 
             // Check config.json
             const configPath = path.join(workTree, "config.json");
-            const configFile = await checker.make().instantiate(configPath);
+            const configFile = await capabilities.checker.instantiate(configPath);
             const configStorage = require("../src/config/storage");
             const storedConfig = await configStorage.readConfig(
                 capabilities,
