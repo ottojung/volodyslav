@@ -49,7 +49,10 @@ function workingDirectory() {
 
 function myServerPort() {
     const raw = getEnv("VOLODYSLAV_SERVER_PORT");
-    const port = parseInt(raw, 10);
+    if (!/^\d+$/.test(raw)) {
+        throw new EnvironmentError("VOLODYSLAV_SERVER_PORT");
+    }
+    const port = Number(raw);
     if (!Number.isInteger(port) || port < 0 || port > 65535) {
         throw new EnvironmentError("VOLODYSLAV_SERVER_PORT");
     }
