@@ -2,7 +2,12 @@ import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import { VitePWA } from "vite-plugin-pwa";
 
-const port = parseInt(process.env.VOLODYSLAV_SERVER_PORT);
+// Require a valid port from the environment.
+const rawPort = process.env.VOLODYSLAV_SERVER_PORT;
+const port = Number.parseInt(rawPort ?? "", 10);
+if (!rawPort || !Number.isInteger(port) || port < 0 || port > 65535) {
+    throw new Error("Environment variable VOLODYSLAV_SERVER_PORT must be a valid port");
+}
 
 export default defineConfig({
     plugins: [
