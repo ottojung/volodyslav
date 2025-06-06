@@ -47,7 +47,7 @@ function makeRouter(capabilities) {
         const files = /** @type {Express.Multer.File[]} */ (req.files || []);
         const uploaded = files.map((f) => f.filename);
         capabilities.logger.logInfo(
-            { files: uploaded, request_identifier: reqId },
+            { files: uploaded, request_identifier: reqId.identifier },
             'Files uploaded'
         );
         await markDone(capabilities, reqId);

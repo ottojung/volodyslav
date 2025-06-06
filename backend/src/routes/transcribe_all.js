@@ -56,7 +56,7 @@ async function handleTranscribeAllRequest(capabilities, req, res) {
     const rawDir = query["input_dir"];
     capabilities.logger.logInfo(
         {
-            request_identifier: reqId,
+            request_identifier: reqId.identifier,
             input_dir: rawDir,
             client_ip: req.ip,
             user_agent: req.get("user-agent"),
@@ -66,7 +66,7 @@ async function handleTranscribeAllRequest(capabilities, req, res) {
     if (!rawDir) {
         capabilities.logger.logError(
             {
-                request_identifier: reqId,
+                request_identifier: reqId.identifier,
                 error: "Missing input_dir parameter",
                 query: req.query,
             },
@@ -88,7 +88,7 @@ async function handleTranscribeAllRequest(capabilities, req, res) {
         if (result.failures.length > 0) {
             capabilities.logger.logError(
                 {
-                    request_identifier: reqId,
+                    request_identifier: reqId.identifier,
                     result,
                     input_dir: inputDir,
                 },
@@ -99,7 +99,7 @@ async function handleTranscribeAllRequest(capabilities, req, res) {
                 .json({ success: false, result });
         }
         capabilities.logger.logInfo(
-            { request_identifier: reqId, result, input_dir: inputDir },
+            { request_identifier: reqId.identifier, result, input_dir: inputDir },
             "Batch transcription successful"
         );
         return res.json({ success: true, result });
@@ -107,7 +107,7 @@ async function handleTranscribeAllRequest(capabilities, req, res) {
         if (error instanceof InputDirectoryAccess) {
             capabilities.logger.logError(
                 {
-                    request_identifier: reqId,
+                    request_identifier: reqId.identifier,
                     error: error.message,
                     input_dir: inputDir,
                     error_stack: error.stack,
@@ -121,7 +121,7 @@ async function handleTranscribeAllRequest(capabilities, req, res) {
         // Catch-all for other errors
         capabilities.logger.logError(
             {
-                request_identifier: reqId,
+                request_identifier: reqId.identifier,
                 error:
                     error instanceof Object && "message" in error
                         ? String(error.message)

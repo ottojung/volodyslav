@@ -59,7 +59,7 @@ async function handleTranscribeRequest(capabilities, req, res) {
     // Log the transcription request
     capabilities.logger.logInfo(
         {
-            request_identifier: reqId,
+            request_identifier: reqId.identifier,
             input: rawIn,
             client_ip: req.ip,
             user_agent: req.get("user-agent"),
@@ -70,7 +70,7 @@ async function handleTranscribeRequest(capabilities, req, res) {
     if (!rawIn) {
         capabilities.logger.logError(
             {
-                request_identifier: reqId,
+                request_identifier: reqId.identifier,
                 error: "Missing input parameter",
                 query: req.query,
             },
@@ -94,7 +94,7 @@ async function handleTranscribeRequest(capabilities, req, res) {
         if (isInputNotFound(error)) {
             capabilities.logger.logError(
                 {
-                    request_identifier: reqId,
+                    request_identifier: reqId.identifier,
                     error: "Input file not found",
                     input_path: inputPath,
                     error_details: error.message,
@@ -107,7 +107,7 @@ async function handleTranscribeRequest(capabilities, req, res) {
         } else {
             capabilities.logger.logError(
                 {
-                    request_identifier: reqId,
+                    request_identifier: reqId.identifier,
                     error:
                         error instanceof Object && "message" in error
                             ? String(error.message)
