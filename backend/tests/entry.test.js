@@ -182,6 +182,21 @@ describe("createEntry (integration, with real capabilities)", () => {
         const event = await createEntry(capabilities, entryData);
         expect(event.date).toEqual(new Date(futureDate));
     });
+
+    it("throws if modifiers contain non-string values", async () => {
+        const capabilities = await getTestCapabilities();
+        const entryData = {
+            original: "Invalid modifiers original",
+            input: "Invalid modifiers input",
+            type: "invalid-modifiers-type",
+            description: "Entry with invalid modifiers.",
+            modifiers: { foo: 123 },
+        };
+
+        await expect(createEntry(capabilities, entryData)).rejects.toThrow(
+            /modifiers must be key-value strings/
+        );
+    });
 });
 
 describe("getEntries pagination validation", () => {
