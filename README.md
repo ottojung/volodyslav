@@ -24,7 +24,7 @@ Main backend dependencies:
 
 Tooling
 - ESLint + `plugin:react/recommended` + `plugin:jest/recommended`
-- TypeScript used in `checkJs` mode for type checking only
+- TypeScript used in `checkJs` mode for type checking; declaration files are emitted as a side effect
 - Makefile and shell scripts for common tasks
 
 ---
