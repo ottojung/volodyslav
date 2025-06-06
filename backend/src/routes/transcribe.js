@@ -141,8 +141,8 @@ function makeRouter(capabilities) {
      *    ?input=/absolute/path/to/file.wav
      *    &request_identifier=0x123
      */
-    router.get("/transcribe", (req, res) =>
-        handleTranscribeRequest(capabilities, req, res)
+    router.get("/transcribe", async (req, res) =>
+        await handleTranscribeRequest(capabilities, req, res)
     );
 
     return router;
