@@ -9,7 +9,7 @@ const { streamValues } = require("stream-json/streamers/StreamValues");
 /**
  * Reads JSON objects from a file using streaming
  * @param {Capabilities} capabilities - The capabilities object
- * @param {import('../filesystem/file').ExistingFile} file - Path to the JSON file to read
+ * @param {import('../filesystem/file').ExistingFile} file - The JSON file to read
  * @returns {Promise<Array<unknown>>} Array of parsed JSON objects
  */
 async function readObjects(capabilities, file) {
