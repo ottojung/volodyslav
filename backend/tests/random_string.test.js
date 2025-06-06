@@ -24,7 +24,8 @@ describe("random.string", () => {
         expect(() => random.string(capabilities, 0)).toThrow(TypeError);
         expect(() => random.string(capabilities, -5)).toThrow(TypeError);
         expect(() => random.string(capabilities, 1.5)).toThrow(TypeError);
-        expect(() => random.string("16")).toThrow(TypeError);
+        // Length must be numeric; passing a string should throw
+        expect(() => random.string(capabilities, "16")).toThrow(TypeError);
     });
 });
 
