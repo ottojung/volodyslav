@@ -26,10 +26,11 @@ function makeStorage(capabilities) {
          * @param {Express.Multer.File} _file
          * @param {(error: Error|null, destination: string) => void} cb
          */
-        destination: async (req, _file, cb) => {
+        destination: (req, _file, cb) => {
             const reqId = fromRequest(req);
-            const targetDir = await makeDirectory(capabilities, reqId);
-            cb(null, targetDir);
+            makeDirectory(capabilities, reqId)
+                .then((targetDir) => cb(null, targetDir))
+                .catch((err) => cb(err, ""));
         },
 
         /**
