@@ -20,7 +20,7 @@ const random = require("./random");
  * @returns {Promise<string>}
  */
 async function getVersion(capabilities) {
-    capabilities.git.ensureAvailable();
+    await capabilities.git.ensureAvailable();
     try {
         const repositoryPath = __dirname;
         const { stdout } = await capabilities.git.call(
