@@ -116,12 +116,22 @@ function tryDeserialize(obj) {
             return null;
         }
 
-        // Handle modifiers - defaults to {} if missing, must be a non-array object if present
-        const rawModifiers = "modifiers" in obj ? obj.modifiers : {};
-        const modifiers = rawModifiers || {};
-        if (typeof modifiers !== "object" || Array.isArray(modifiers)) {
+        // Handle modifiers - defaults to {} if missing. When provided it must
+        // be an object and not an array. Falsy values like 0 should be
+        // considered invalid rather than treated as an empty object.
+        const hasModifiers = "modifiers" in obj;
+        /** @type {unknown} */
+        const rawModifiers = hasModifiers ? obj.modifiers : {};
+        if (
+            hasModifiers &&
+            (rawModifiers === null ||
+                typeof rawModifiers !== "object" ||
+                Array.isArray(rawModifiers))
+        ) {
             return null;
         }
+        /** @type {Record<string, unknown>} */
+        const modifiers = hasModifiers ? /** @type {Record<string, unknown>} */ (rawModifiers) : {};
 
         // Manually validate and parse the date
         const dateObj = new Date(date);
