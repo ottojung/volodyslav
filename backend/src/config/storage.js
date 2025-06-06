@@ -24,7 +24,7 @@ const { fromExisting } = require("../filesystem/file");
 /**
  * Reads and deserializes a config.json file
  * @param {Capabilities} capabilities - The capabilities object
- * @param {import("../filesystem/file").ExistingFile} file - Path to the config.json file to read
+ * @param {import("../filesystem/file").ExistingFile} file - The config.json file to read
  * @returns {Promise<import('./structure').Config | null>} The parsed config or null if invalid/missing
  */
 async function readConfig(capabilities, file) {
