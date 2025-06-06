@@ -16,4 +16,4 @@ npm test
 npm run build
 
 mkdir -p "$PREFIX"/bin
-ln -srfT -- "scripts/run-main" "$PREFIX"/bin/volodyslav
+ln -srfT -- "$PWD/scripts/run-main" "$PREFIX"/bin/volodyslav
