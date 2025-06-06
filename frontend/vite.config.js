@@ -44,6 +44,7 @@ export default defineConfig({
             },
             injectManifest: {
                 swSrc: "src/sw.js",
+                // Include the output directory so Workbox can find the file
                 swDest: "dist/sw.js",
                 minify: false,
                 rollupFormat: "es",
