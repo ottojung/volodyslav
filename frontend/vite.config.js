@@ -2,7 +2,8 @@ import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import { VitePWA } from "vite-plugin-pwa";
 
-const port = parseInt(process.env.VOLODYSLAV_SERVER_PORT);
+// Default to 3000 if the env variable is unset
+const port = parseInt(process.env.VOLODYSLAV_SERVER_PORT || "3000", 10);
 
 export default defineConfig({
     plugins: [
