@@ -188,9 +188,6 @@ function tryDeserialize(obj) {
         if (!eventIdObj || !eventIdObj.identifier) {
             return null;
         }
-        if (!eventIdObj || !eventIdObj.identifier) {
-            return null;
-        }
 
         // Create and return the Event object
         return {
