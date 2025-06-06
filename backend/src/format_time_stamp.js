@@ -1,7 +1,7 @@
 /**
  * This module provides a function to format a timestamp from a filename
  * into a Date object. The filename is expected to start with a timestamp
- * in the format YYYYMMDDThhmmssZ.
+ * in the format YYYYMMDDThhmmssZ followed by a dot and an extension.
  */
 
 class FilenameDoesNotEncodeDate extends Error {
