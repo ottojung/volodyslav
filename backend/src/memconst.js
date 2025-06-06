@@ -13,8 +13,11 @@ function memconst(fn) {
     let computed = false;
 
     /**
-     * @param {T | undefined} _x
-     * @returns {_x is T}
+     * Indicates whether the memoized value has been computed.
+     * The parameter is ignored and only exists so generic type T is inferred.
+     *
+     * @param {T | undefined} _x - unused value
+     * @returns {_x is T} true if the value was already computed
      */
     function isComputed(_x) {
         return computed;
