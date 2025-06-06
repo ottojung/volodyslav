@@ -37,7 +37,7 @@ const creatorMake = require("./creator");
  * @property {string} original - The original, raw input for the event
  * @property {string} input - The processed input for the event
  * @property {string} type - The type of entry (e.g., "note", "diary", "todo")
- * @property {string} [description] - The content/description of the entry
+ * @property {string} description - The content/description of the entry
  * @property {Record<string, string>} [modifiers] - Additional key-value modifiers
  */
 

@@ -17,7 +17,7 @@ const eventId = require("./id");
  * @property {string} input - The processed input of the event.
  * @property {Modifiers} modifiers - Modifiers applied to the event.
  * @property {string} type - The type of the event.
- * @property {string} [description] - A description of the event.
+ * @property {string} description - A description of the event.
  * @property {Creator} creator - Who created the event.
  */
 
@@ -30,7 +30,7 @@ const eventId = require("./id");
  * @property {string} input - The processed input of the event.
  * @property {Modifiers} modifiers - Modifiers applied to the event.
  * @property {string} type - The type of the event.
- * @property {string} [description] - A description of the event.
+ * @property {string} description - A description of the event.
  * @property {Creator} creator - Who created the event.
  */
 
@@ -170,6 +170,7 @@ function tryDeserialize(obj) {
         const validatedModifiers = Object.fromEntries(validatedEntries);
 
         // Create validated SerializedEvent object for eventId.deserialize
+        /** @type {SerializedEvent} */
         const validatedSerializedEvent = {
             id: id,
             date: date,
