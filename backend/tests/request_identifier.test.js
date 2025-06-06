@@ -32,11 +32,11 @@ describe("Request Identifier", () => {
             );
         });
 
-        it("handles empty request_identifier", () => {
+        it("throws error when request_identifier is empty", () => {
             const req = { query: { request_identifier: "" } };
-            expect(() => fromRequest(req)).not.toThrow();
-            const reqId = fromRequest(req);
-            expect(reqId.identifier).toBe("");
+            expect(() => fromRequest(req)).toThrow(
+                "Missing request_identifier field"
+            );
         });
     });
 
