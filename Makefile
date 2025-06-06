@@ -4,7 +4,7 @@ PREFIX = /usr/local
 all: install
 
 install:
-	sh scripts/update-and-install $(PREFIX)
+	sh scripts/install $(PREFIX)
 
 uninstall:
 	sh scripts/uninstall $(PREFIX)
