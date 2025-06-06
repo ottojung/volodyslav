@@ -64,6 +64,14 @@ async function createEntry(capabilities, entryData, files = []) {
         throw new Error("description field is required");
     }
 
+    if (entryData.modifiers !== undefined) {
+        for (const [, v] of Object.entries(entryData.modifiers)) {
+            if (typeof v !== "string") {
+                throw new Error("modifiers must be key-value strings");
+            }
+        }
+    }
+
     /** @type {import('./event/structure').Event} */
     const event = {
         id,
