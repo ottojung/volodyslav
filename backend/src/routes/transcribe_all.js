@@ -152,8 +152,8 @@ function makeRouter(capabilities) {
      *    ?input_dir=/absolute/path/to/directory
      *    &request_identifier=0x123
      */
-    router.get("/transcribe_all", (req, res) =>
-        handleTranscribeAllRequest(capabilities, req, res)
+    router.get("/transcribe_all", async (req, res) =>
+        await handleTranscribeAllRequest(capabilities, req, res)
     );
 
     return router;
