@@ -47,6 +47,7 @@ const workingRepository = require("./gitstore/working_repository");
 /**
  * @param {Capabilities} capabilities
  * @param {import("express").Express} app
+ * @returns {void}
  * @description Adds routes to the Express application.
  */
 function addRoutes(capabilities, app) {
@@ -68,7 +69,7 @@ function addRoutes(capabilities, app) {
  * @description Ensures that the necessary startup dependencies are available.
  */
 async function ensureStartupDependencies(capabilities, app) {
-    await addRoutes(capabilities, app);
+    addRoutes(capabilities, app);
     await capabilities.environment.ensureEnvironmentIsInitialized(
         capabilities.environment
     );
