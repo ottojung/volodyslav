@@ -117,7 +117,7 @@ async function transcribeRequest(capabilities, inputPath, reqId) {
     const targetDir = await makeDirectory(capabilities, reqId);
     const outputPath = path.join(targetDir, outputFile);
     const inputFile = await capabilities.checker
-        .instanciate(inputPath)
+        .instantiate(inputPath)
         .catch(() => {
             throw new InputNotFound(
                 `Input file ${inputPath} not found.`,

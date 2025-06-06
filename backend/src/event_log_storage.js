@@ -311,9 +311,9 @@ async function performGitTransaction(
         const workTree = await store.getWorkTree();
         const dataPath = path.join(workTree, "data.json");
         const configPath = path.join(workTree, "config.json");
-        const dataFile = await capabilities.checker.instanciate(dataPath);
+        const dataFile = await capabilities.checker.instantiate(dataPath);
         const configFile = await capabilities.checker
-            .instanciate(configPath)
+            .instantiate(configPath)
             .catch(() => null);
 
         // Set file paths for possible lazy loading

@@ -47,7 +47,7 @@ function isFileCheckerError(object) {
 /**
  * @typedef {object} FileChecker
  * @property {typeof fileExists} fileExists
- * @property {typeof instanciate} instanciate
+ * @property {typeof instantiate} instantiate
  * @property {typeof isFileStable} isFileStable
  */
 
@@ -114,7 +114,7 @@ async function fileExists(filePath) {
  * @returns {Promise<ExistingFile>} - A promise that resolves to an ExistingFile instance.
  * @throws {FileCheckerError} - If the file does not exist.
  */
-async function instanciate(path) {
+async function instantiate(path) {
     const proof = await fileExists(path);
     if (!proof) {
         throw new FileCheckerError(`File does not exist: ${path}`, path);
@@ -183,7 +183,7 @@ async function isFileStable(file, options = {}) {
 function make() {
     return {
         fileExists,
-        instanciate,
+        instantiate,
         isFileStable,
     };
 }

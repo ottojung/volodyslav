@@ -153,7 +153,7 @@ async function prepareFileObjects(capabilities, files) {
 
     const fileObjects = [];
     for (const file of files) {
-        const existingFile = await capabilities.checker.instanciate(file.path);
+        const existingFile = await capabilities.checker.instantiate(file.path);
         fileObjects.push(existingFile);
     }
 

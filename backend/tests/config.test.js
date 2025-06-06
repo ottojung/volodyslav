@@ -486,7 +486,7 @@ describe("config storage", () => {
                 };
 
                 await fs.writeFile(testFile, JSON.stringify(testConfig));
-                const file = await checker.make().instanciate(testFile);
+                const file = await checker.make().instantiate(testFile);
 
                 const result = await configStorage.readConfig(
                     capabilities,
@@ -511,7 +511,7 @@ describe("config storage", () => {
                 const capabilities = getTestCapabilities();
 
                 await fs.writeFile(testFile, "");
-                const file = await checker.make().instanciate(testFile);
+                const file = await checker.make().instantiate(testFile);
 
                 const result = await configStorage.readConfig(
                     capabilities,
@@ -531,7 +531,7 @@ describe("config storage", () => {
 
                 const invalidConfig = { invalid: "format" };
                 await fs.writeFile(testFile, JSON.stringify(invalidConfig));
-                const file = await checker.make().instanciate(testFile);
+                const file = await checker.make().instantiate(testFile);
 
                 const result = await configStorage.readConfig(
                     capabilities,
@@ -563,7 +563,7 @@ describe("config storage", () => {
                     "\n" +
                     JSON.stringify(validConfig2);
                 await fs.writeFile(testFile, content);
-                const file = await checker.make().instanciate(testFile);
+                const file = await checker.make().instantiate(testFile);
 
                 const result = await configStorage.readConfig(
                     capabilities,
@@ -731,7 +731,7 @@ describe("config storage", () => {
             );
 
             // 2. Read config back
-            const file = await checker.make().instanciate(testFile);
+            const file = await checker.make().instantiate(testFile);
             const readConfig = await configStorage.readConfig(
                 capabilities,
                 file
@@ -829,7 +829,7 @@ describe("config storage", () => {
                 testFile,
                 complexConfig                );
 
-                const file = await checker.make().instanciate(testFile);
+                const file = await checker.make().instantiate(testFile);
             const readConfig = await configStorage.readConfig(
                 capabilities,
                 file
