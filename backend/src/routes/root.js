@@ -9,7 +9,7 @@ const express = require("express");
 
 /**
  * Handles the root request.
- * @param {Capabilities} capabilities - The capabilities object (unused in this handler).
+ * @param {Capabilities} capabilities - The capabilities object used for logging.
  * @param {import('express').Request} req
  * @param {import('express').Response} res
  */
