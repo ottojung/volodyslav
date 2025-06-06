@@ -1,4 +1,5 @@
-// Generates a random alphanumeric string with cryptographic quality
+// Generates a pseudo-random alphanumeric string.
+// Note: this uses a seeded PRNG and is not suitable for cryptographic purposes.
 
 const { defaultGenerator } = require('./default');
 
