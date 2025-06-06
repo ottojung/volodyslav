@@ -238,7 +238,7 @@ function logWarning(state, obj, msg) {
         state.logger.warn(obj, msg);
     } else {
         // Fallback to console if logger is not initialized
-        console.error("Logger not initialized");
+        console.warn("Logger not initialized");
         console.warn(msg, { obj });
     }
 }
@@ -254,7 +254,7 @@ function logInfo(state, obj, msg) {
         state.logger.info(obj, msg);
     } else {
         // Fallback to console if logger is not initialized
-        console.error("Logger not initialized");
+        console.info("Logger not initialized");
         console.info(msg, { obj });
     }
 }
@@ -270,7 +270,7 @@ function logDebug(state, obj, msg) {
         state.logger.debug(obj, msg);
     } else {
         // Fallback to console if logger is not initialized
-        console.error("Logger not initialized");
+        console.debug("Logger not initialized");
         console.debug(msg, { obj });
     }
 }
