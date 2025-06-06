@@ -78,9 +78,9 @@ async function readFileAsBuffer(filePath) {
 function createReadStream(file) {
     const fsModule = require("fs");
     try {
-        return fsModule.createReadStream(file.path, {
-            encoding: "utf8",
-        });
+        // Leave encoding undefined so consumers can decide how to interpret the
+        // data. This keeps the reader suitable for both text and binary files.
+        return fsModule.createReadStream(file.path);
     } catch (err) {
         throw new ReaderError(
             `Failed to create read stream: ${file.path}`,
