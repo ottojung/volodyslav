@@ -51,15 +51,46 @@ function isFileCheckerError(object) {
  * @property {typeof isFileStable} isFileStable
  */
 
+class ExplicitClass {
+    /**
+     * The path to the file.
+     * @type {string}
+     */
+    path;
+
+    /**
+     * This is a value that is never actually assigned.
+     * Its purpose is to make `Explicit` a nominal type.
+     * @private
+     * @type {undefined}
+     */
+    __brand;
+
+    /**
+     * @param {string} path - The path to the file.
+     */
+    constructor(path) {
+        this.path = path;
+        if (this.__brand !== undefined) {
+            throw new Error(
+                "Explicit is a nominal type and should not be instantiated directly."
+            );
+        }
+    }
+}
+
+/** @typedef {ExplicitClass} Explicit */
+
 /**
  * Checks if a file exists and is a regular file.
  * @param {string} filePath - The path to the file to check.
- * @returns {Promise<boolean>} - A promise that resolves with true if the file exists and is a regular file, false otherwise.
+ * @returns {Promise<Explicit?>} - A promise that resolves with the proof object if the file exists and is a regular file, null otherwise.
  */
 async function fileExists(filePath) {
     try {
         const stats = await fs.stat(filePath);
-        return stats.isFile();
+        const exists = stats.isFile();
+        return exists ? new ExplicitClass(filePath) : null;
     } catch (err) {
         if (
             err !== null &&
@@ -67,7 +98,7 @@ async function fileExists(filePath) {
             "code" in err &&
             err.code === "ENOENT"
         ) {
-            return false;
+            return null;
         }
 
         throw new FileCheckerError(
@@ -81,9 +112,14 @@ async function fileExists(filePath) {
  * Creates an ExistingFile instance from a file path.
  * @param {string} path - The path to the file.
  * @returns {Promise<ExistingFile>} - A promise that resolves to an ExistingFile instance.
+ * @throws {FileCheckerError} - If the file does not exist.
  */
 async function instanciate(path) {
-    return await fromExisting(path);
+    const proof = await fileExists(path);
+    if (!proof) {
+        throw new FileCheckerError(`File does not exist: ${path}`, path);
+    }
+    return await fromExisting(path, proof);
 }
 
 /**

@@ -16,8 +16,6 @@
  *   • Factory Pattern - Exposes a make() function for easy dependency injection or mocking.
  */
 
-const { getDirectoryChildren } = require("./file");
-
 class DirScannerError extends Error {
     /**
      * @param {string} message
@@ -42,6 +40,36 @@ function isDirScannerError(object) {
  * @typedef {import('./file').ExistingFile} ExistingFile
  */
 
+class DirectoryMemberClass {
+    /**
+     * The path to the file.
+     * @type {string}
+     */
+    path;
+
+    /**
+     * This is a value that is never actually assigned.
+     * Its purpose is to make `DirectoryMember` a nominal type.
+     * @private
+     * @type {undefined}
+     */
+    __brand;
+
+    /**
+     * @param {string} path - The path to the file.
+     */
+    constructor(path) {
+        this.path = path;
+        if (this.__brand !== undefined) {
+            throw new Error(
+                "DirectoryMember is a nominal type and should not be instantiated directly."
+            );
+        }
+    }
+}
+
+/** @typedef {DirectoryMemberClass} DirectoryMember */
+
 /**
  * @typedef {object} DirScanner
  * @property {typeof scanDirectory} scanDirectory
@@ -53,8 +81,22 @@ function isDirScannerError(object) {
  * @returns {Promise<ExistingFile[]>} - A promise that resolves to an array of ExistingFile objects representing the directory contents.
  */
 async function scanDirectory(dirPath) {
+    const fs = require("fs").promises;
+    const path = require("path");
+    const { fromExisting } = require("./file");
+
     try {
-        return await getDirectoryChildren(dirPath);
+        const files = await fs.readdir(dirPath);
+        const existingFiles = [];
+        
+        for (const file of files) {
+            const filePath = path.join(dirPath, file);
+            const proof = new DirectoryMemberClass(filePath);
+            const existingFile = await fromExisting(filePath, proof);
+            existingFiles.push(existingFile);
+        }
+        
+        return existingFiles;
     } catch (err) {
         throw new DirScannerError(
             `Failed to scan directory: ${dirPath}`,
@@ -76,4 +118,5 @@ function make() {
 module.exports = {
     isDirScannerError,
     make,
+    DirectoryMemberClass,
 };

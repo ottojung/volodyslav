@@ -66,16 +66,41 @@ class ExistingFileClass {
  */
 async function makeEmpty(path) {
     await fs.writeFile(path, "");
-    return new ExistingFileClass(path);
+
+    // Create a proof that the file exists since we just created it
+    const { fileExists } = require("./checker").make();
+    const proof = await fileExists(path);
+    if (!proof) {
+        throw new FileCreatorError(`Failed to create file: ${path}`, path);
+    }
+
+    return await fromExisting(path, proof);
 }
+
+/**
+ * @typedef {import('./checker').Explicit} Explicit
+ * @typedef {import('./dirscanner').DirectoryMember} DirectoryMember
+ * @typedef {Explicit|DirectoryMember} FileExistenceProof
+ */
 
 /**
  * Creates an ExistingFile instance from an existing file.
  * @param {string} path - The path to the file to create.
+ * @param {FileExistenceProof} proof - A proof that the file exists.
  * @returns {Promise<ExistingFile>} - A promise that resolves when the file is created.
  * @throws {FileCreatorError} - If the file does not exist.
  */
-async function fromExisting(path) {
+async function fromExisting(path, proof) {
+    if (!proof) {
+        throw new FileCreatorError(`No proof provided for file: ${path}`, path);
+    }
+
+    if (proof.path !== path) {
+        throw new Error(
+            `Proof path does not match: expected ${path}, got ${proof.path}`
+        );
+    }
+
     try {
         await fs.access(path);
         return new ExistingFileClass(path);
@@ -99,25 +124,22 @@ async function makeCopy(existingFile, destinationPath) {
     // Copy the file
     await fs.copyFile(existingFile.path, destinationPath);
 
-    return new ExistingFileClass(destinationPath);
-}
+    // Create a proof that the file exists since we just created it
+    const { fileExists } = require("./checker").make();
+    const proof = await fileExists(destinationPath);
+    if (!proof) {
+        throw new FileCreatorError(
+            `Failed to copy file to: ${destinationPath}`,
+            destinationPath
+        );
+    }
 
-/**
- * Gets the children of a directory at the specified path.
- * @param {string} dirPath - The path to the directory to scan.
- * @returns {Promise<ExistingFile[]>} - A promise that resolves to an array of ExistingFile objects representing the directory contents.
- */
-async function getDirectoryChildren(dirPath) {
-    const files = await fs.readdir(dirPath);
-    return files.map((file) => {
-        return new ExistingFileClass(path.join(dirPath, file));
-    });
+    return await fromExisting(destinationPath, proof);
 }
 
 module.exports = {
     fromExisting,
     makeEmpty,
     makeCopy,
-    getDirectoryChildren,
     isFileCreatorError,
 };

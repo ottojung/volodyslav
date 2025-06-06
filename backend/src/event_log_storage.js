@@ -9,7 +9,6 @@
  */
 
 const path = require("path");
-const { fromExisting } = require("./filesystem/file");
 const gitstore = require("./gitstore");
 const event = require("./event");
 const { readObjects } = require("./json_stream_file");
@@ -312,8 +311,10 @@ async function performGitTransaction(
         const workTree = await store.getWorkTree();
         const dataPath = path.join(workTree, "data.json");
         const configPath = path.join(workTree, "config.json");
-        const dataFile = await fromExisting(dataPath);
-        const configFile = await fromExisting(configPath).catch(() => null);
+        const dataFile = await capabilities.checker.instanciate(dataPath);
+        const configFile = await capabilities.checker
+            .instanciate(configPath)
+            .catch(() => null);
 
         // Set file paths for possible lazy loading
         eventLogStorage.dataFile = dataFile;
