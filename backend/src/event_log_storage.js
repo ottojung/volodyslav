@@ -257,7 +257,7 @@ class EventLogStorageClass {
  * Each entry is serialized to JSON format and appended to the file with a newline.
  *
  * @param {Capabilities} capabilities - An object containing the capabilities.
- * @param {ExistingFile} file - The path to the file where entries will be appended.
+ * @param {ExistingFile} file - The file where entries will be appended.
  * @param {Array<import('./event').Event>} entries - An array of objects to append to the file.
  * @returns {Promise<void>} - A promise that resolves when all entries are appended.
  *
