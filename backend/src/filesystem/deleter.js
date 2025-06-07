@@ -85,7 +85,7 @@ async function deleteFile(filePath) {
  */
 async function deleteDirectory(directoryPath) {
     try {
-        await fs.rm(directoryPath, { recursive: true, force: true });
+        await fs.rm(directoryPath, { recursive: true });
     } catch (err) {
         if (err instanceof Object && "code" in err && err.code === "ENOENT") {
             throw new FileNotFoundError(directoryPath);
