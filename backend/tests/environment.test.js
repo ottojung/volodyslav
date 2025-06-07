@@ -15,4 +15,10 @@ describe('myServerPort', () => {
     const env = make();
     expect(() => env.myServerPort()).toThrow('VOLODYSLAV_SERVER_PORT');
   });
+
+  it('allows "0" as a valid port', () => {
+    process.env.VOLODYSLAV_SERVER_PORT = '0';
+    const env = make();
+    expect(env.myServerPort()).toBe(0);
+  });
 });
