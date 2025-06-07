@@ -96,13 +96,12 @@ async function createFileTarget(state, filePath, todos) {
             options: { destination: filePath },
         };
     } catch (error) {
-        // Explicitly typing the error
-        const err = /** @type {Error} */ (error);
+        const message = error instanceof Error ? error.message : String(error);
         todos.push(() =>
             logWarning(
                 state,
                 {},
-                `Unable to write to log file ${filePath}: ${err.message}. Continuing with console logging only.`
+                `Unable to write to log file ${filePath}: ${message}. Continuing with console logging only.`
             )
         );
         return null;
@@ -122,9 +121,9 @@ function safeGetLogLevel(state, todos) {
         }
         return state.capabilities.environment.logLevel();
     } catch (error) {
-        const err = /** @type {Error} */ (error);
+        const message = error instanceof Error ? error.message : String(error);
         todos.push(() =>
-            logError(state, {}, `Unable to get log level: ${err.message}`)
+            logError(state, {}, `Unable to get log level: ${message}`)
         );
         return "debug";
     }
