@@ -2,7 +2,9 @@
 /**
  * This function takes another function of zero arguments and returns a memoized version of it.
  * Basically this always returns the same value. But it doesn't recompute it.
- * 
+ *
+ * Note: this function does not handle exceptions. If the function throws, it will be called again on the next call.
+ *
  * @template T The type of the value returned by the function
  * @param {() => T} fn A function that takes no arguments and returns a value of type T
  * @returns {() => T} A memoized function that returns the same value on every call
