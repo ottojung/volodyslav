@@ -92,7 +92,7 @@ async function scanDirectory(dirPath) {
         for (const file of files) {
             const filePath = path.join(dirPath, file);
             const proof = new DirectoryMemberClass(filePath);
-            const existingFile = await fromExisting(filePath, proof);
+            const existingFile = fromExisting(filePath, proof);
             existingFiles.push(existingFile);
         }
         

@@ -119,7 +119,7 @@ async function instantiate(path) {
     if (!proof) {
         throw new FileCheckerError(`File does not exist: ${path}`, path);
     }
-    return await fromExisting(path, proof);
+    return fromExisting(path, proof);
 }
 
 /**

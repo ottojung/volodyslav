@@ -87,7 +87,7 @@ async function writeConfig(capabilities, filepath, configObj) {
         if (!proof) {
             throw new Error(`Failed to create config file: ${filepath}`);
         }
-        const file = await fromExisting(filepath, proof);
+        const file = fromExisting(filepath, proof);
         await capabilities.writer.writeFile(file, configString + "\n");
 
         capabilities.logger.logInfo(
