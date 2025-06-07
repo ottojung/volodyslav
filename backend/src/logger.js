@@ -143,9 +143,9 @@ function safeGetLogFilePath(state, todos) {
         }
         return state.capabilities.environment.logFile();
     } catch (error) {
-        const err = /** @type {Error} */ (error);
+        const message = error instanceof Error ? error.message : String(error);
         todos.push(() =>
-            logError(state, {}, `Unable to get log file: ${err.message}`)
+            logError(state, {}, `Unable to get log file: ${message}`)
         );
         return null;
     }
