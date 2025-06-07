@@ -214,15 +214,15 @@ function logError(state, obj, msg) {
     }
 
     // Send notification
-    state.capabilities?.notifier.notifyAboutError(msg).catch((err) => {
+    state.capabilities?.notifier.notifyAboutError(msg).catch((error) => {
         if (state.logger !== null) {
             state.logger.error("Failed to send error notification", {
-                error: err,
+                error,
             });
         } else {
             // Fallback to console if logger is not initialized
             console.error("Logger not initialized");
-            console.error("Failed to send error notification", { error: err });
+            console.error("Failed to send error notification", { error });
         }
     });
 }
