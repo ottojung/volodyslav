@@ -42,6 +42,50 @@ const configStorage = require("./config/storage");
  */
 
 /**
+ * Minimal capabilities needed for appending entries to files
+ * @typedef {object} AppendCapabilities
+ * @property {FileAppender} appender - A file appender instance
+ */
+
+/**
+ * Minimal capabilities needed for copying assets
+ * @typedef {object} CopyAssetCapabilities
+ * @property {FileCreator} creator - A file creator instance
+ * @property {FileCopier} copier - A file copier instance
+ * @property {Environment} environment - An environment instance (for targetPath)
+ */
+
+/**
+ * Minimal capabilities needed for cleaning up assets
+ * @typedef {object} CleanupAssetCapabilities
+ * @property {FileDeleter} deleter - A file deleter instance
+ * @property {Environment} environment - An environment instance (for targetPath)
+ * @property {Logger} logger - A logger instance
+ */
+
+/**
+ * Minimal capabilities needed for reading existing entries
+ * @typedef {object} ReadEntriesCapabilities
+ * @property {import('./filesystem/reader').FileReader} reader - A file reader instance
+ * @property {Logger} logger - A logger instance
+ */
+
+/**
+ * Comprehensive capabilities needed for EventLogStorage operations and transactions
+ * @typedef {object} EventLogStorageCapabilities
+ * @property {import('./filesystem/reader').FileReader} reader - A file reader instance
+ * @property {FileWriter} writer - A file writer instance
+ * @property {FileCreator} creator - A file creator instance
+ * @property {FileChecker} checker - A file checker instance
+ * @property {FileDeleter} deleter - A file deleter instance
+ * @property {FileCopier} copier - A file copier instance
+ * @property {FileAppender} appender - A file appender instance
+ * @property {Command} git - A Git command instance
+ * @property {Environment} environment - An environment instance
+ * @property {Logger} logger - A logger instance
+ */
+
+/**
  * A class to manage the storage of event log entries.
  *
  * Class to accumulate event entries before persisting.
@@ -111,7 +155,7 @@ class EventLogStorageClass {
     /**
      * @constructor
      * Initializes an empty event log storage.
-     * @param {Capabilities} capabilities - The capabilities object for file operations.
+     * @param {EventLogStorageCapabilities} capabilities - The capabilities object for file operations.
      */
     constructor(capabilities) {
         this.capabilities = capabilities;
@@ -166,6 +210,8 @@ class EventLogStorageClass {
      * at the start of the current transaction. The file is only read
      * on the first call, subsequent calls return cached results.
      *
+     * Uses capabilities: reader, logger (via configStorage.readConfig)
+     *
      * @returns {Promise<import('./config/structure').Config|null>} - The existing config or null if not found/invalid
      * @throws {Error} - If called outside of a transaction.
      */
@@ -206,6 +252,8 @@ class EventLogStorageClass {
      * Lazily reads and returns the events that existed in data.json
      * at the start of the current transaction. The file is only read
      * on the first call, subsequent calls return cached results.
+     *
+     * Uses capabilities: reader, logger (via readObjects)
      *
      * @returns {Promise<Array<import('./event/structure').Event>>} - The list of existing entries from data.json.
      * @throws {Error} - If called outside of a transaction.
@@ -256,7 +304,7 @@ class EventLogStorageClass {
  * Appends an array of entries to a specified file.
  * Each entry is serialized to JSON format and appended to the file with a newline.
  *
- * @param {Capabilities} capabilities - An object containing the capabilities.
+ * @param {AppendCapabilities} capabilities - The minimal capabilities needed for appending entries
  * @param {ExistingFile} file - The file where entries will be appended.
  * @param {Array<import('./event').Event>} entries - An array of objects to append to the file.
  * @returns {Promise<void>} - A promise that resolves when all entries are appended.
@@ -277,7 +325,7 @@ async function appendEntriesToFile(capabilities, file, entries) {
 /**
  * New helper to copy all queued assets into the asset directory.
  * Ensures that the parent directory exists before copying files.
- * @param {Capabilities} capabilities - An object containing the capabilities.
+ * @param {CopyAssetCapabilities} capabilities - The minimal capabilities needed for copying assets
  * @param {import('./event').Asset[]} assets - An array of assets to copy.
  * @returns {Promise<void>} - A promise that resolves when all assets are copied.
  */
@@ -298,7 +346,7 @@ async function copyAssets(capabilities, assets) {
 /**
  * Performs a Git-backed transaction using the given storage and transformation.
  * @template T
- * @param {Capabilities} capabilities - An object containing the capabilities.
+ * @param {EventLogStorageCapabilities} capabilities - An object containing the capabilities.
  * @param {EventLogStorage} eventLogStorage - The event log storage instance.
  * @param {Transformation<T>} transformation - Async callback to apply to the storage.
  * @returns {Promise<T>}
@@ -363,7 +411,7 @@ async function performGitTransaction(
 
 /**
  * Cleans up all copied assets by removing their files.
- * @param {Capabilities} capabilities - An object containing the capabilities.
+ * @param {CleanupAssetCapabilities} capabilities - The minimal capabilities needed for cleaning up assets
  * @param {EventLogStorage} eventLogStorage - The storage containing asset references.
  * @returns {Promise<void>}
  */
@@ -391,7 +439,7 @@ async function cleanupAssets(capabilities, eventLogStorage) {
 /**
  * Applies a transformation within a Git-backed event log transaction.
  * @template T
- * @param {Capabilities} capabilities - An object containing the capabilities.
+ * @param {EventLogStorageCapabilities} capabilities - An object containing the capabilities.
  * @param {Transformation<T>} transformation - The transformation to execute.
  * @returns {Promise<T>}
  */

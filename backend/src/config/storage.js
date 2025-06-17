@@ -23,8 +23,24 @@ const { fromExisting } = require("../filesystem/file");
  */
 
 /**
+ * Minimal capabilities needed for reading config files
+ * @typedef {object} ConfigReadCapabilities
+ * @property {FileReader} reader - A file reader instance
+ * @property {Logger} logger - A logger instance
+ */
+
+/**
+ * Minimal capabilities needed for writing config files
+ * @typedef {object} ConfigWriteCapabilities
+ * @property {FileWriter} writer - A file writer instance
+ * @property {import('../filesystem/creator').FileCreator} creator - A file creator instance
+ * @property {import('../filesystem/checker').FileChecker} checker - A file checker instance
+ * @property {Logger} logger - A logger instance
+ */
+
+/**
  * Reads and deserializes a config.json file
- * @param {Capabilities} capabilities - The capabilities object
+ * @param {ConfigReadCapabilities} capabilities - The minimal capabilities needed for reading
  * @param {import("../filesystem/file").ExistingFile} file - The config.json file to read
  * @returns {Promise<import('./structure').Config | null>} The parsed config or null if invalid/missing
  */
@@ -71,7 +87,7 @@ async function readConfig(capabilities, file) {
 
 /**
  * Serializes and writes a config object to a JSON file
- * @param {Capabilities} capabilities - The capabilities object
+ * @param {ConfigWriteCapabilities} capabilities - The minimal capabilities needed for writing
  * @param {string} filepath - Path to write the config.json file
  * @param {import('./structure').Config} configObj - The config object to write
  * @returns {Promise<void>}

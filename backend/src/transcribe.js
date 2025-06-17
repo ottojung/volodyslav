@@ -49,6 +49,41 @@ function isInputNotFound(object) {
     return object instanceof InputNotFound;
 }
 
+/**
+ * Minimal capabilities needed for transcribing streams
+ * @typedef {object} TranscribeStreamCapabilities
+ * @property {AITranscription} aiTranscription - An AI transcription instance
+ * @property {NonDeterministicSeed} seed - A random number generator instance
+ * @property {Environment} environment - An environment instance
+ * @property {Logger} logger - A logger instance
+ * @property {Command} git - A command instance for Git operations
+ */
+
+/**
+ * Minimal capabilities needed for transcribing files
+ * @typedef {object} TranscribeFileCapabilities
+ * @property {FileCreator} creator - A file system creator instance
+ * @property {FileWriter} writer - A file system writer instance
+ * @property {AITranscription} aiTranscription - An AI transcription instance
+ * @property {NonDeterministicSeed} seed - A random number generator instance
+ * @property {Environment} environment - An environment instance
+ * @property {Logger} logger - A logger instance
+ * @property {Command} git - A command instance for Git operations
+ */
+
+/**
+ * Minimal capabilities needed for transcribing requests
+ * @typedef {object} TranscribeRequestCapabilities
+ * @property {FileCreator} creator - A file system creator instance
+ * @property {FileChecker} checker - A file system checker instance
+ * @property {FileWriter} writer - A file system writer instance
+ * @property {Environment} environment - An environment instance
+ * @property {AITranscription} aiTranscription - An AI transcription instance
+ * @property {NonDeterministicSeed} seed - A random number generator instance
+ * @property {Logger} logger - A logger instance
+ * @property {Command} git - A command instance for Git operations
+ */
+
 /** @typedef {import('./creator').Creator} Creator */
 
 /**
@@ -66,7 +101,7 @@ function isInputNotFound(object) {
 
 /**
  * Transcribe input stream.
- * @param {Capabilities} capabilities
+ * @param {TranscribeStreamCapabilities} capabilities
  * @param {import('fs').ReadStream} file_stream
  * @returns {Promise<Transcription>}
  */
@@ -86,7 +121,7 @@ async function transcribeStream(capabilities, file_stream) {
 
 /**
  * Transcribe input file.
- * @param {Capabilities} capabilities
+ * @param {TranscribeFileCapabilities} capabilities
  * @param {ExistingFile} inputFile
  * @param {string} outputPath
  * @returns {Promise<ExistingFile>}
@@ -107,7 +142,7 @@ async function transcribeFile(capabilities, inputFile, outputPath) {
 
 /**
  * Transcribe a request.
- * @param {Capabilities} capabilities
+ * @param {TranscribeRequestCapabilities} capabilities
  * @param {string} inputPath
  * @param {import('./request_identifier').RequestIdentifier} reqId
  * @returns {Promise<void>}

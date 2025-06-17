@@ -77,13 +77,15 @@ describe("parseModifier", () => {
     });
 
     test("error includes original input", () => {
+        let error;
         try {
             parseModifier("invalid format here [brackets]");
-        } catch (error) {
-            expect(error).toBeInstanceOf(InputParseError);
-            expect(error.input).toBe("invalid format here [brackets]");
-            expect(error.message).toContain("Not a valid modifier");
+        } catch (e) {
+            error = e;
         }
+        expect(error).toBeInstanceOf(InputParseError);
+        expect(error.input).toBe("invalid format here [brackets]");
+        expect(error.message).toContain("Not a valid modifier");
     });
 });
 
@@ -163,12 +165,14 @@ describe("parseStructuredInput", () => {
     });
 
     test("error includes original input", () => {
+        let error;
         try {
             parseStructuredInput("invalid input format");
-        } catch (error) {
-            expect(error).toBeInstanceOf(InputParseError);
-            expect(error.input).toBe("invalid input format");
+        } catch (e) {
+            error = e;
         }
+        expect(error).toBeInstanceOf(InputParseError);
+        expect(error.input).toBe("invalid input format");
     });
 });
 
