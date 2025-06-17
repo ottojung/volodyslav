@@ -1,0 +1,294 @@
+#! /usr/bin/env phone-python
+
+#
+# EUID: hmbgfr6x7ux6fncupyo6eoottomcuj1b
+#
+
+import subprocess
+import csv
+import sys
+import os
+from pathlib import Path
+import json
+import re
+from typing import Mapping, Union, Sequence
+from datetime import datetime
+
+
+TAKE_PHOTO_CONSTANT = '[phone_take_photo]'
+
+
+try:
+    import colorama
+    colorama.init()
+except:
+    pass
+
+
+def highlight(text: str) -> str:
+    try:
+        import colorama
+        from colorama import Fore, Style
+    except:
+        return text
+
+    return Fore.YELLOW + Style.BRIGHT + text + Style.RESET_ALL
+
+
+def downlight(text: str) -> str:
+    try:
+        import colorama
+        from colorama import Fore, Style
+        GREY = '\033[90m'
+    except:
+        return text
+
+    return GREY + Style.DIM + text + Style.RESET_ALL
+
+
+class ParseError(ValueError):
+    pass
+
+def parse_modifier(modifier: str) -> Mapping[str, Union[str, Sequence[str]]]:
+    pattern = r"^\s*(?P<type>\w+)(\s+(?P<description>.+))?\s*$"
+    match = re.match(pattern, modifier)
+    if match:
+        type_part = match.group('type')
+        description_part = (match.group('description') or '').strip()
+        return {
+            "type": type_part,
+            "description": description_part,
+        }
+    else:
+        raise ParseError(f"Not a valid modifier {modifier!r}.")
+
+def parse_line(input_str: str) -> Mapping[str, Union[str, Sequence[str]]]:
+    pattern = r"^\s*(?P<type>\w+)\s*(?P<modifiers>((\[[^][]+\])\s*)*)\s*(?P<description>[^][]+)?$"
+
+    match = re.match(pattern, input_str)
+    if match:
+        # Extracting the type, modifiers, and description using named groups.
+        type_part = match.group('type')
+        modifiers_part = (match.group('modifiers') or '')
+        description_part = (match.group('description') or '').strip()
+
+        # Further split modifiers into a list of separate bracketed items.
+        modifiers = re.findall(r"\[[^][]+\]", modifiers_part)
+        modifiers = [m.strip('[]') for m in modifiers]
+        modifiers = [parse_modifier(m) for m in modifiers]
+        modifiers = {m['type']: m['description'] for m in modifiers}
+
+        return {
+            'modifiers': modifiers,
+            'type': type_part,
+            'description': description_part
+        }
+    else:
+        raise ParseError("Bad structure of input.")
+
+
+def format_shortcuts(shortcuts: Sequence[Sequence[str]]) -> str:
+    ret = ''
+
+    for shortcut in shortcuts:
+        regex = shortcut[0]
+        r_init = ''
+        r_inner = regex
+        r_end = ''
+        r_end_buffer = []
+
+        while True:
+            if r_inner.startswith("^"):
+                r_init += r_inner[:1]
+                r_inner = r_inner[1:]
+
+            elif r_inner.startswith("\\"):
+                r_init += r_inner[:2]
+                r_inner = r_inner[2:]
+
+            else: break
+
+        while True:
+            if r_inner.endswith("$"):
+                r_end_buffer.append(r_inner[-1:])
+                r_inner = r_inner[:-1]
+
+            elif r_inner.endswith("\\b"):
+                r_end_buffer.append(r_inner[-2:])
+                r_inner = r_inner[:-2]
+
+            else: break
+
+        r_end = ''.join(reversed(r_end_buffer))
+
+        ret += downlight(r_init)
+        ret += highlight(r_inner)
+        ret += downlight(r_end)
+        ret += " "
+        ret += "->"
+        ret += " "
+        if len(shortcut) >= 3:
+            ret += '(' + highlight(shortcut[2]) + ')'
+            ret += " "
+        ret += shortcut[1]
+        ret += '\n'
+
+    return ret
+
+
+def get_last_entries() -> Sequence[str]:
+    n = 10
+    process = subprocess.Popen(["jq", "--slurp", "--", f".[-{n}:]", str(log_path)],
+                               stdout=subprocess.PIPE,
+                               stderr=subprocess.PIPE,
+                               text=True,
+                               bufsize=1,
+                               universal_newlines=True,
+                            )
+
+    try:
+        with process.stdout as pipe:
+            obj = json.load(pipe)
+    finally:
+        # Ensure the process is not hanging and clean up.
+        # .wait() ensures that any remaining output is processed.
+        process.wait()
+
+    return tuple(entry.get('original', entry['input']) for entry in obj)
+
+
+def format_last_entries(inputs: Sequence[str]) -> str:
+    ret = ''
+
+    for inp in inputs:
+        ret += ' ' * 4
+        ret += inp
+        ret += '\n'
+
+    return ret
+
+event_log_root = Path(os.environ["VOLODYSLAV_EVENT_LOG_DIRECTORY"])
+assert event_log_root.exists(), f"Event log root must must exist at {repr(str(event_log_root))}."
+
+assets_path = Path(os.environ["VOLODYSLAV_EVENT_LOG_ASSETS_DIRECTORY"])
+assets_path.mkdir(parents=True, exist_ok=True)
+
+log_path = event_log_root / "data.json"
+log_path.touch(exist_ok=True)
+
+config_path = event_log_root / "config.json"
+if config_path.exists():
+    with open(config_path, "r") as reader:
+        config = json.load(reader)
+else:
+    config = {
+        "types": [],
+        "shortcuts": [],
+    }
+
+print("""\
+Syntax: TYPE [MODIFIERS...] - DESCRIPTION
+Examples:
+   food [certainty 9] earl gray tea, unsweetened
+   food [when now] [certainty 9] pizza capricciossa, medium size
+   food[when 5 hours ago][certainty 7]ceasar salad with croutons and slide of bread
+   food earl gray tea, unsweetened
+
+{help}
+Shortcuts:
+{existing_shortcuts}
+Last entries:
+{last_entries}""".format(
+    last_entries=format_last_entries(get_last_entries()),
+    help=config.get("help", ""),
+    existing_shortcuts=format_shortcuts(config["shortcuts"]),
+))
+
+def normalize_input(s: str) -> str:
+    return ' '.join(s.split())
+
+
+def take_photo(date: str, user_input: str) -> None:
+    safedate = date.replace(':', '-')
+    dirname = f"f{safedate}"
+    dirpath = assets_path / dirname
+    subprocess.call(["phone-take-multiple-photos", str(dirpath.absolute())])
+
+
+def try_take_photo(date: str, user_input: str) -> None:
+    if TAKE_PHOTO_CONSTANT in user_input:
+        take_photo(date=date, user_input=user_input)
+
+
+def process_parsed(original_user_input: str, user_input: str, parsed: Mapping[str, Union[str, Sequence[str]]]) -> None:
+    date = datetime.now().astimezone().strftime("%Y-%m-%dT%H:%M:%S%z")
+
+    try_take_photo(date, user_input)
+
+    to_output = {
+        "original": original_user_input,
+        "date": date,
+        "input": user_input,
+    }
+    to_output.update(parsed)
+
+    with open(config_path, "w") as config_file, \
+         open(log_path, "at") as event_log_file:
+        json.dump(config, config_file, indent='\t')
+        json.dump(to_output, event_log_file, indent='\t')
+        event_log_file.write("\n")
+
+    show = to_output["input"]
+    print(f"Written:\n{show}\n")
+
+
+def loop() -> None:
+
+    while True:
+
+        try:
+            user_input = input("Event: ")
+        except KeyboardInterrupt:
+            print("Interrupted.", file=sys.stderr)
+            sys.exit(1)
+            break
+        except EOFError:
+            print("Could not read stdin. Exiting.", file=sys.stderr)
+            sys.exit(1)
+            break
+
+        original_user_input = normalize_input(user_input)
+
+        user_input = original_user_input
+        if not user_input:
+            print("Empty input. Exiting.", file=sys.stderr)
+            sys.exit(1)
+            return (user_input, {})
+
+        print("Transforming...")
+
+        def replace_loop(user_input: str) -> str:
+            for shortcut in config["shortcuts"]:
+                input_regex = shortcut[0]
+                output_words = shortcut[1]
+
+                new = re.sub(input_regex, output_words, user_input)
+                if new != user_input:
+                    return replace_loop(new)
+
+            return user_input
+
+        user_input = replace_loop(user_input)
+
+        try:
+            parsed = parse_line(user_input)
+        except ParseError as ex:
+            print(f"ERROR ({ex}) Try again.", file=sys.stderr)
+            continue
+
+        process_parsed(original_user_input, user_input, parsed)
+
+try:
+    loop()
+finally:
+    subprocess.call(["phone-commit-event-log", "Wrote this from phone-log-interactive (EUID: hmbgfr6x7ux6fncupyo6eoottomcuj1b)."])
