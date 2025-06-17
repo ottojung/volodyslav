@@ -7,25 +7,26 @@
  * USAGE EXAMPLES:
  * 
  * Basic parsing (no shortcuts):
- *   const input = "WORK [loc office] - Fixed the parser bug";
+ *   const input = "work [loc office] Fixed the parser bug";
  *   const normalized = normalizeInput(input);
  *   const parsed = parseStructuredInput(normalized);
- *   // Result: { type: "WORK", description: "- Fixed the parser bug", modifiers: { loc: "office" } }
+ *   // Result: { type: "work", description: "Fixed the parser bug", modifiers: { loc: "office" } }
  * 
  * Full pipeline with shortcuts (requires capabilities object):
- *   const result = processUserInput(capabilities, "w [loc office] - Fixed bug");
- *   // If shortcuts config has "w": "WORK", this will expand to the same as above
+ *   const result = processUserInput(capabilities, "w [loc office] Fixed bug");
+ *   // If shortcuts config has "w": "work", this will expand to the same as above
  * 
- * Supported input format: TYPE [MODIFIERS...] - DESCRIPTION
- * - TYPE is required (single word, case-sensitive)
+ * Supported input format: TYPE [MODIFIERS...] DESCRIPTION
+ * - TYPE is required (must start with a letter, can contain letters/digits/underscores)
  * - MODIFIERS are optional, format: [key value] (multiple allowed)
- * - DESCRIPTION is optional, can contain any text after the dash
+ * - DESCRIPTION is optional, can contain any text (including dashes, brackets, special chars)
  * 
  * Examples of valid inputs:
- * - "WORK" (minimal)
- * - "MEAL - Had breakfast" (with description)
- * - "EXERCISE [loc gym] - Weightlifting session" (with modifier and description)
- * - "SOCIAL [with John] [loc cafe] - Coffee meeting" (multiple modifiers)
+ * - "work" (minimal)
+ * - "meal Had breakfast" (with description)
+ * - "exercise [loc gym] Weightlifting session" (with modifier and description)
+ * - "social [with John] [loc cafe] Coffee meeting" (multiple modifiers)
+ * - "task - Important project" (description can start with dash)
  */
 
 const { readConfig } = require("../config/storage");
@@ -112,7 +113,7 @@ function parseModifier(modifier) {
 }
 
 /**
- * Parses structured input in the format: TYPE [MODIFIERS...] - DESCRIPTION
+ * Parses structured input in the format: TYPE [MODIFIERS...] DESCRIPTION
  * @param {string} input - The input string to parse
  * @returns {ParsedInput} - The parsed input structure
  */
