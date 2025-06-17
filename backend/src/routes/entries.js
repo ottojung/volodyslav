@@ -3,6 +3,7 @@ const upload = require("../storage");
 const { createEntry, getEntries } = require("../entry");
 const { random: randomRequestId } = require("../request_identifier");
 const { serialize } = require("../event");
+const { processUserInput, InputParseError } = require("../event/from_input");
 
 /**
  * @typedef {import('../environment').Environment} Environment
@@ -200,27 +201,40 @@ function handleEntryError(error, capabilities) {
  */
 async function handleEntryPost(req, res, capabilities) {
     try {
-        // Validate request fields
-        const validation = validateEntryFields(req.body);
-        if (!validation.isValid) {
-            return res.status(400).json({ error: validation.error });
+        // Ensure req.files is always an array
+        const files = Array.isArray(req.files) ? req.files : [];
+        let event;
+        if (req.body.rawInput !== undefined) {
+            // New API: rawInput with optional date
+            const { rawInput, date } = req.body;
+            if (typeof rawInput !== "string" || rawInput.trim() === "") {
+                return res.status(400).json({ error: "Missing required field: rawInput" });
+            }
+            let processed;
+            try {
+                processed = await processUserInput(capabilities, rawInput);
+            } catch (error) {
+                if (error instanceof InputParseError) {
+                    return res.status(400).json({ error: error.message });
+                }
+                throw error;
+            }
+            const { original, input, parsed } = processed;
+            const entryDataNew = { type: parsed.type, description: parsed.description, modifiers: parsed.modifiers, original, input, date };
+            const fileObjectsNew = await prepareFileObjects(capabilities, files);
+            event = await createEntry(capabilities, entryDataNew, fileObjectsNew);
+        } else {
+            // Legacy API: full event fields in body
+            const validation = validateEntryFields(req.body);
+            if (!validation.isValid) {
+                return res.status(400).json({ error: validation.error });
+            }
+            const entryDataLegacy = createEntryData(req.body);
+            const fileObjectsLegacy = await prepareFileObjects(capabilities, files);
+            event = await createEntry(capabilities, entryDataLegacy, fileObjectsLegacy);
         }
 
-        // Create entry data and prepare files
-        const entryData = createEntryData(req.body);
-        const fileObjects = await prepareFileObjects(
-            capabilities,
-            /** @type {Express.Multer.File[]} */ (req.files)
-        );
-
-        // Create entry and return response
-        const event = await createEntry(capabilities, entryData, fileObjects);
-
-        return res.status(201).json({
-            success: true,
-            /** @type {import('../event/structure').SerializedEvent} */
-            entry: serialize(event),
-        });
+        return res.status(201).json({ success: true, entry: serialize(event) });
     } catch (error) {
         const errorResponse = handleEntryError(error, capabilities);
         return res.status(500).json(errorResponse);
