@@ -11,10 +11,6 @@ const {
 } = require("../src/event/from_input");
 const { getMockedRootCapabilities } = require("./spies");
 const { stubEnvironment, stubLogger } = require("./stubs");
-const temporary = require("./temporary");
-
-beforeEach(temporary.beforeEach);
-afterEach(temporary.afterEach);
 
 function getTestCapabilities() {
     const capabilities = getMockedRootCapabilities();
