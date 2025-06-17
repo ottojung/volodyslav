@@ -125,6 +125,11 @@ function parseModifier(modifier) {
         throw new InputParseError(`Type is required but not found in modifier: ${JSON.stringify(modifier)}`, modifier);
     }
 
+    // Reject modifiers that contain square brackets (invalid format)
+    if (description.includes('[') || description.includes(']')) {
+        throw new InputParseError(`Not a valid modifier: ${JSON.stringify(modifier)}`, modifier);
+    }
+
     return { type, description };
 }
 
@@ -162,6 +167,13 @@ function parseStructuredInput(input) {
         const modifierContent = modifierMatch.slice(1, -1);
         const parsed = parseModifier(modifierContent);
         modifiers[parsed.type] = parsed.description;
+    }
+
+    // If description has multiple words but no modifiers, it should start with punctuation
+    if (description && description.includes(' ') && Object.keys(modifiers).length === 0) {
+        if (!/^[^\w\s]/.test(description)) {
+            throw new InputParseError("Bad structure of input", input);
+        }
     }
 
     return {
