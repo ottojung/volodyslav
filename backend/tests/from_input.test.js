@@ -27,6 +27,8 @@ describe("normalizeInput", () => {
     test("trims whitespace", () => {
         expect(normalizeInput("  WORK  ")).toBe("WORK");
         expect(normalizeInput("\t\nWORK [loc office]\n\t")).toBe("WORK [loc office]");
+        expect(normalizeInput("  work  ")).toBe("work");
+        expect(normalizeInput("\t\nwork [loc office]\n\t")).toBe("work [loc office]");
     });
 
     test("handles empty input", () => {
@@ -35,7 +37,7 @@ describe("normalizeInput", () => {
     });
 
     test("preserves internal structure", () => {
-        const input = "WORK [loc office] - Fixed the parser bug";
+        const input = "work [loc office] - Fixed the parser bug";
         expect(normalizeInput(input)).toBe(input);
     });
 });
@@ -175,14 +177,9 @@ describe("parseStructuredInput", () => {
 });
 
 describe("applyShortcuts", () => {
-    let capabilities;
-
-    beforeEach(() => {
-        capabilities = getTestCapabilities();
-    });
-
     test("applies no shortcuts when config is empty", async () => {
         // Mock empty config
+        const capabilities = getTestCapabilities();
         const configPath = capabilities.environment.eventLogRepository() + "/config.json";
         await fs.mkdir(path.dirname(configPath), { recursive: true });
         await fs.writeFile(configPath, JSON.stringify({
@@ -195,6 +192,7 @@ describe("applyShortcuts", () => {
     });
 
     test("applies simple shortcut", async () => {
+        const capabilities = getTestCapabilities();
         const configPath = capabilities.environment.eventLogRepository() + "/config.json";
         await fs.mkdir(path.dirname(configPath), { recursive: true });
         await fs.writeFile(configPath, JSON.stringify({
@@ -209,6 +207,7 @@ describe("applyShortcuts", () => {
     });
 
     test("applies multiple shortcuts", async () => {
+        const capabilities = getTestCapabilities();
         const configPath = capabilities.environment.eventLogRepository() + "/config.json";
         await fs.mkdir(path.dirname(configPath), { recursive: true });
         await fs.writeFile(configPath, JSON.stringify({
@@ -224,6 +223,7 @@ describe("applyShortcuts", () => {
     });
 
     test("applies recursive shortcuts", async () => {
+        const capabilities = getTestCapabilities();
         const configPath = capabilities.environment.eventLogRepository() + "/config.json";
         await fs.mkdir(path.dirname(configPath), { recursive: true });
         await fs.writeFile(configPath, JSON.stringify({
@@ -240,12 +240,14 @@ describe("applyShortcuts", () => {
     });
 
     test("handles missing config file gracefully", async () => {
+        const capabilities = getTestCapabilities();
         // Don't create config file - it should handle this gracefully
         const result = await applyShortcuts(capabilities, "WORK [loc office]");
         expect(result).toBe("WORK [loc office]");
     });
 
     test("handles malformed config file", async () => {
+        const capabilities = getTestCapabilities();
         const configPath = capabilities.environment.eventLogRepository() + "/config.json";
         await fs.mkdir(path.dirname(configPath), { recursive: true });
         await fs.writeFile(configPath, "invalid json");
@@ -255,6 +257,7 @@ describe("applyShortcuts", () => {
     });
 
     test("handles config without shortcuts property", async () => {
+        const capabilities = getTestCapabilities();
         const configPath = capabilities.environment.eventLogRepository() + "/config.json";
         await fs.mkdir(path.dirname(configPath), { recursive: true });
         await fs.writeFile(configPath, JSON.stringify({
@@ -267,6 +270,7 @@ describe("applyShortcuts", () => {
     });
 
     test("preserves input when no shortcuts match", async () => {
+        const capabilities = getTestCapabilities();
         const configPath = capabilities.environment.eventLogRepository() + "/config.json";
         await fs.mkdir(path.dirname(configPath), { recursive: true });
         await fs.writeFile(configPath, JSON.stringify({
@@ -281,6 +285,7 @@ describe("applyShortcuts", () => {
     });
 
     test("applies word boundary matching", async () => {
+        const capabilities = getTestCapabilities();
         const configPath = capabilities.environment.eventLogRepository() + "/config.json";
         await fs.mkdir(path.dirname(configPath), { recursive: true });
         await fs.writeFile(configPath, JSON.stringify({
@@ -416,13 +421,8 @@ describe("Error Classes", () => {
 });
 
 describe("Integration Tests", () => {
-    let capabilities;
-
-    beforeEach(() => {
-        capabilities = getTestCapabilities();
-    });
-
     test("complex workflow with multiple shortcuts and modifiers", async () => {
+        const capabilities = getTestCapabilities();
         const configPath = capabilities.environment.eventLogRepository() + "/config.json";
         await fs.mkdir(path.dirname(configPath), { recursive: true });
         await fs.writeFile(configPath, JSON.stringify({
@@ -451,6 +451,7 @@ describe("Integration Tests", () => {
     });
 
     test("edge case: shortcut creates invalid structure", async () => {
+        const capabilities = getTestCapabilities();
         const configPath = capabilities.environment.eventLogRepository() + "/config.json";
         await fs.mkdir(path.dirname(configPath), { recursive: true });
         await fs.writeFile(configPath, JSON.stringify({
@@ -465,6 +466,7 @@ describe("Integration Tests", () => {
     });
 
     test("preserves complex descriptions", async () => {
+        const capabilities = getTestCapabilities();
         const configPath = capabilities.environment.eventLogRepository() + "/config.json";
         await fs.mkdir(path.dirname(configPath), { recursive: true });
         await fs.writeFile(configPath, JSON.stringify({
@@ -473,7 +475,7 @@ describe("Integration Tests", () => {
         }));
 
         const complexDescription = "Implemented new feature with \\[brackets\\] and special chars: @#$%";
-        const result = await processUserInput(capabilities, `WORK - ${complexDescription}`);
+        const result = await processUserInput(capabilities, `work - ${complexDescription}`);
 
         expect(result.parsed.description).toBe(`- ${complexDescription}`);
     });
