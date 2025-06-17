@@ -1,0 +1,480 @@
+const fs = require("fs").promises;
+const path = require("path");
+const {
+    InputParseError,
+    ShortcutApplicationError,
+    normalizeInput,
+    parseModifier,
+    parseStructuredInput,
+    applyShortcuts,
+    processUserInput
+} = require("../src/event/from_input");
+const { getMockedRootCapabilities } = require("./spies");
+const { stubEnvironment, stubLogger } = require("./stubs");
+const temporary = require("./temporary");
+
+beforeEach(temporary.beforeEach);
+afterEach(temporary.afterEach);
+
+function getTestCapabilities() {
+    const capabilities = getMockedRootCapabilities();
+    stubEnvironment(capabilities);
+    stubLogger(capabilities);
+    return capabilities;
+}
+
+describe("normalizeInput", () => {
+    test("trims whitespace", () => {
+        expect(normalizeInput("  WORK  ")).toBe("WORK");
+        expect(normalizeInput("\t\nWORK [loc office]\n\t")).toBe("WORK [loc office]");
+    });
+
+    test("handles empty input", () => {
+        expect(normalizeInput("")).toBe("");
+        expect(normalizeInput("   ")).toBe("");
+    });
+
+    test("preserves internal structure", () => {
+        const input = "WORK [loc office] - Fixed the parser bug";
+        expect(normalizeInput(input)).toBe(input);
+    });
+});
+
+describe("parseModifier", () => {
+    test("parses simple modifier", () => {
+        const result = parseModifier("loc office");
+        expect(result).toEqual({
+            type: "loc",
+            description: "office"
+        });
+    });
+
+    test("parses modifier with multiple words in description", () => {
+        const result = parseModifier("with John Doe");
+        expect(result).toEqual({
+            type: "with",
+            description: "John Doe"
+        });
+    });
+
+    test("handles numeric values", () => {
+        const result = parseModifier("amount 50.5");
+        expect(result).toEqual({
+            type: "amount",
+            description: "50.5"
+        });
+    });
+
+    test("handles empty description", () => {
+        const result = parseModifier("flag");
+        expect(result).toEqual({
+            type: "flag",
+            description: ""
+        });
+    });
+
+    test("throws InputParseError for invalid format", () => {
+        expect(() => parseModifier("")).toThrow(InputParseError);
+        expect(() => parseModifier("   ")).toThrow(InputParseError);
+    });
+
+    test("error includes original input", () => {
+        try {
+            parseModifier("invalid format here [brackets]");
+        } catch (error) {
+            expect(error).toBeInstanceOf(InputParseError);
+            expect(error.input).toBe("invalid format here [brackets]");
+            expect(error.message).toContain("Not a valid modifier");
+        }
+    });
+});
+
+describe("parseStructuredInput", () => {
+    test("parses minimal input (type only)", () => {
+        const result = parseStructuredInput("WORK");
+        expect(result).toEqual({
+            type: "WORK",
+            description: "",
+            modifiers: {}
+        });
+    });
+
+    test("parses type with description", () => {
+        const result = parseStructuredInput("MEAL - Had breakfast");
+        expect(result).toEqual({
+            type: "MEAL",
+            description: "- Had breakfast",
+            modifiers: {}
+        });
+    });
+
+    test("parses type with single modifier", () => {
+        const result = parseStructuredInput("WORK [loc office]");
+        expect(result).toEqual({
+            type: "WORK",
+            description: "",
+            modifiers: {
+                loc: "office"
+            }
+        });
+    });
+
+    test("parses type with modifier and description", () => {
+        const result = parseStructuredInput("EXERCISE [loc gym] - Weightlifting session");
+        expect(result).toEqual({
+            type: "EXERCISE",
+            description: "- Weightlifting session",
+            modifiers: {
+                loc: "gym"
+            }
+        });
+    });
+
+    test("parses multiple modifiers", () => {
+        const result = parseStructuredInput("SOCIAL [with John] [loc cafe] - Coffee meeting");
+        expect(result).toEqual({
+            type: "SOCIAL",
+            description: "- Coffee meeting",
+            modifiers: {
+                with: "John",
+                loc: "cafe"
+            }
+        });
+    });
+
+    test("handles whitespace variations", () => {
+        const result = parseStructuredInput("  WORK   [loc  office]   -   Fixed  bug  ");
+        expect(result).toEqual({
+            type: "WORK",
+            description: "-   Fixed  bug",
+            modifiers: {
+                loc: "office"
+            }
+        });
+    });
+
+    test("throws InputParseError for invalid structure", () => {
+        expect(() => parseStructuredInput("")).toThrow(InputParseError);
+        expect(() => parseStructuredInput("   ")).toThrow(InputParseError);
+        expect(() => parseStructuredInput("[invalid] structure")).toThrow(InputParseError);
+        expect(() => parseStructuredInput("123invalid")).toThrow(InputParseError);
+    });
+
+    test("throws InputParseError when type is missing", () => {
+        expect(() => parseStructuredInput("[loc office] - no type")).toThrow(InputParseError);
+    });
+
+    test("error includes original input", () => {
+        try {
+            parseStructuredInput("invalid input format");
+        } catch (error) {
+            expect(error).toBeInstanceOf(InputParseError);
+            expect(error.input).toBe("invalid input format");
+        }
+    });
+});
+
+describe("applyShortcuts", () => {
+    let capabilities;
+
+    beforeEach(() => {
+        capabilities = getTestCapabilities();
+    });
+
+    test("applies no shortcuts when config is empty", async () => {
+        // Mock empty config
+        const configPath = capabilities.environment.eventLogRepository() + "/config.json";
+        await fs.mkdir(path.dirname(configPath), { recursive: true });
+        await fs.writeFile(configPath, JSON.stringify({
+            help: "test config",
+            shortcuts: []
+        }));
+
+        const result = await applyShortcuts(capabilities, "WORK [loc office]");
+        expect(result).toBe("WORK [loc office]");
+    });
+
+    test("applies simple shortcut", async () => {
+        const configPath = capabilities.environment.eventLogRepository() + "/config.json";
+        await fs.mkdir(path.dirname(configPath), { recursive: true });
+        await fs.writeFile(configPath, JSON.stringify({
+            help: "test config",
+            shortcuts: [
+                ["\\bw\\b", "WORK"]
+            ]
+        }));
+
+        const result = await applyShortcuts(capabilities, "w [loc office]");
+        expect(result).toBe("WORK [loc office]");
+    });
+
+    test("applies multiple shortcuts", async () => {
+        const configPath = capabilities.environment.eventLogRepository() + "/config.json";
+        await fs.mkdir(path.dirname(configPath), { recursive: true });
+        await fs.writeFile(configPath, JSON.stringify({
+            help: "test config",
+            shortcuts: [
+                ["\\bw\\b", "WORK"],
+                ["\\bh\\b", "HOME"]
+            ]
+        }));
+
+        let result = await applyShortcuts(capabilities, "w [loc h]");
+        expect(result).toBe("WORK [loc HOME]");
+    });
+
+    test("applies recursive shortcuts", async () => {
+        const configPath = capabilities.environment.eventLogRepository() + "/config.json";
+        await fs.mkdir(path.dirname(configPath), { recursive: true });
+        await fs.writeFile(configPath, JSON.stringify({
+            help: "test config",
+            shortcuts: [
+                ["\\bw\\b", "WORK"],
+                ["\\bo\\b", "office"],
+                ["\\bwo\\b", "w [loc o]"]
+            ]
+        }));
+
+        const result = await applyShortcuts(capabilities, "wo - Fixed bug");
+        expect(result).toBe("WORK [loc office] - Fixed bug");
+    });
+
+    test("handles missing config file gracefully", async () => {
+        // Don't create config file - it should handle this gracefully
+        const result = await applyShortcuts(capabilities, "WORK [loc office]");
+        expect(result).toBe("WORK [loc office]");
+    });
+
+    test("handles malformed config file", async () => {
+        const configPath = capabilities.environment.eventLogRepository() + "/config.json";
+        await fs.mkdir(path.dirname(configPath), { recursive: true });
+        await fs.writeFile(configPath, "invalid json");
+
+        const result = await applyShortcuts(capabilities, "WORK [loc office]");
+        expect(result).toBe("WORK [loc office]");
+    });
+
+    test("handles config without shortcuts property", async () => {
+        const configPath = capabilities.environment.eventLogRepository() + "/config.json";
+        await fs.mkdir(path.dirname(configPath), { recursive: true });
+        await fs.writeFile(configPath, JSON.stringify({
+            help: "config without shortcuts",
+            other: "config"
+        }));
+
+        const result = await applyShortcuts(capabilities, "WORK [loc office]");
+        expect(result).toBe("WORK [loc office]");
+    });
+
+    test("preserves input when no shortcuts match", async () => {
+        const configPath = capabilities.environment.eventLogRepository() + "/config.json";
+        await fs.mkdir(path.dirname(configPath), { recursive: true });
+        await fs.writeFile(configPath, JSON.stringify({
+            help: "test config",
+            shortcuts: [
+                ["\\bw\\b", "WORK"]
+            ]
+        }));
+
+        const result = await applyShortcuts(capabilities, "EXERCISE [loc gym]");
+        expect(result).toBe("EXERCISE [loc gym]");
+    });
+
+    test("applies word boundary matching", async () => {
+        const configPath = capabilities.environment.eventLogRepository() + "/config.json";
+        await fs.mkdir(path.dirname(configPath), { recursive: true });
+        await fs.writeFile(configPath, JSON.stringify({
+            help: "test config",
+            shortcuts: [
+                ["\\bw\\b", "WORK"]
+            ]
+        }));
+
+        // Should not replace 'w' inside 'working'
+        const result = await applyShortcuts(capabilities, "working on project");
+        expect(result).toBe("working on project");
+    });
+});
+
+describe("processUserInput", () => {
+    let capabilities;
+
+    beforeEach(() => {
+        capabilities = getTestCapabilities();
+    });
+
+    test("processes complete pipeline without shortcuts", async () => {
+        const configPath = capabilities.environment.eventLogRepository() + "/config.json";
+        await fs.mkdir(path.dirname(configPath), { recursive: true });
+        await fs.writeFile(configPath, JSON.stringify({
+            help: "test config",
+            shortcuts: []
+        }));
+
+        const result = await processUserInput(capabilities, "WORK [loc office] - Fixed bug");
+
+        expect(result).toEqual({
+            original: "WORK [loc office] - Fixed bug",
+            input: "WORK [loc office] - Fixed bug",
+            parsed: {
+                type: "WORK",
+                description: "- Fixed bug",
+                modifiers: {
+                    loc: "office"
+                }
+            }
+        });
+    });
+
+    test("processes complete pipeline with shortcuts", async () => {
+        const configPath = capabilities.environment.eventLogRepository() + "/config.json";
+        await fs.mkdir(path.dirname(configPath), { recursive: true });
+        await fs.writeFile(configPath, JSON.stringify({
+            help: "test config",
+            shortcuts: [
+                ["\\bw\\b", "WORK"],
+                ["\\bo\\b", "office"]
+            ]
+        }));
+
+        const result = await processUserInput(capabilities, "  w [loc o] - Fixed bug  ");
+
+        expect(result).toEqual({
+            original: "  w [loc o] - Fixed bug  ",
+            input: "WORK [loc office] - Fixed bug",
+            parsed: {
+                type: "WORK",
+                description: "- Fixed bug",
+                modifiers: {
+                    loc: "office"
+                }
+            }
+        });
+    });
+
+    test("handles whitespace normalization", async () => {
+        const configPath = capabilities.environment.eventLogRepository() + "/config.json";
+        await fs.mkdir(path.dirname(configPath), { recursive: true });
+        await fs.writeFile(configPath, JSON.stringify({
+            help: "test config",
+            shortcuts: []
+        }));
+
+        const result = await processUserInput(capabilities, "  \t\n  WORK  \t\n  ");
+
+        expect(result.original).toBe("  \t\n  WORK  \t\n  ");
+        expect(result.input).toBe("WORK");
+        expect(result.parsed.type).toBe("WORK");
+    });
+
+    test("propagates parsing errors", async () => {
+        const configPath = capabilities.environment.eventLogRepository() + "/config.json";
+        await fs.mkdir(path.dirname(configPath), { recursive: true });
+        await fs.writeFile(configPath, JSON.stringify({
+            help: "test config",
+            shortcuts: []
+        }));
+
+        await expect(processUserInput(capabilities, "[invalid] format"))
+            .rejects.toThrow(InputParseError);
+    });
+
+    test("handles minimal input", async () => {
+        const configPath = capabilities.environment.eventLogRepository() + "/config.json";
+        await fs.mkdir(path.dirname(configPath), { recursive: true });
+        await fs.writeFile(configPath, JSON.stringify({
+            help: "test config",
+            shortcuts: []
+        }));
+
+        const result = await processUserInput(capabilities, "WORK");
+
+        expect(result.parsed).toEqual({
+            type: "WORK",
+            description: "",
+            modifiers: {}
+        });
+    });
+});
+
+describe("Error Classes", () => {
+    test("InputParseError stores input and message", () => {
+        const error = new InputParseError("Test message", "test input");
+        expect(error.message).toBe("Test message");
+        expect(error.input).toBe("test input");
+        expect(error).toBeInstanceOf(Error);
+        expect(error.name).toBe("InputParseError");
+    });
+
+    test("ShortcutApplicationError stores input and message", () => {
+        const error = new ShortcutApplicationError("Test message", "test input");
+        expect(error.message).toBe("Test message");
+        expect(error.input).toBe("test input");
+        expect(error).toBeInstanceOf(Error);
+        expect(error.name).toBe("ShortcutApplicationError");
+    });
+});
+
+describe("Integration Tests", () => {
+    let capabilities;
+
+    beforeEach(() => {
+        capabilities = getTestCapabilities();
+    });
+
+    test("complex workflow with multiple shortcuts and modifiers", async () => {
+        const configPath = capabilities.environment.eventLogRepository() + "/config.json";
+        await fs.mkdir(path.dirname(configPath), { recursive: true });
+        await fs.writeFile(configPath, JSON.stringify({
+            help: "test config",
+            shortcuts: [
+                ["\\bw\\b", "WORK"],
+                ["\\bs\\b", "SOCIAL"],
+                ["\\bo\\b", "office"],
+                ["\\bh\\b", "home"],
+                ["\\bj\\b", "John"],
+                ["\\bm\\b", "Mary"],
+                ["\\bquick\\b", "w [loc o] [with j]"]
+            ]
+        }));
+
+        const result = await processUserInput(capabilities, "quick - Daily standup meeting");
+
+        expect(result.parsed).toEqual({
+            type: "WORK",
+            description: "- Daily standup meeting",
+            modifiers: {
+                loc: "office",
+                with: "John"
+            }
+        });
+    });
+
+    test("edge case: shortcut creates invalid structure", async () => {
+        const configPath = capabilities.environment.eventLogRepository() + "/config.json";
+        await fs.mkdir(path.dirname(configPath), { recursive: true });
+        await fs.writeFile(configPath, JSON.stringify({
+            help: "test config",
+            shortcuts: [
+                ["\\bbad\\b", "[invalid structure"]
+            ]
+        }));
+
+        await expect(processUserInput(capabilities, "bad"))
+            .rejects.toThrow(InputParseError);
+    });
+
+    test("preserves complex descriptions", async () => {
+        const configPath = capabilities.environment.eventLogRepository() + "/config.json";
+        await fs.mkdir(path.dirname(configPath), { recursive: true });
+        await fs.writeFile(configPath, JSON.stringify({
+            help: "test config",
+            shortcuts: []
+        }));
+
+        const complexDescription = "Implemented new feature with \\[brackets\\] and special chars: @#$%";
+        const result = await processUserInput(capabilities, `WORK - ${complexDescription}`);
+
+        expect(result.parsed.description).toBe(`- ${complexDescription}`);
+    });
+});

@@ -118,8 +118,9 @@ function parseModifier(modifier) {
  */
 function parseStructuredInput(input) {
     // Match: TYPE [modifiers...] description
-    // Modifiers are optional, description is optional (but should have either modifiers or description)
-    const pattern = /^\s*(\w+)\s*((?:\[[^\]]+\]\s*)*)\s*([^[\]]+)?$/;
+    // TYPE must start with a letter, modifiers are optional, description is optional
+    // We need to be careful to match modifiers first, then everything else is description
+    const pattern = /^\s*([A-Za-z]\w*)\s*((?:\[[^\]]+\]\s*)*)\s*(.*)$/;
     const match = input.match(pattern);
 
     if (!match) {
@@ -232,8 +233,9 @@ async function applyShortcuts(capabilities, input) {
  * @returns {Promise<{original: string, input: string, parsed: ParsedInput}>} - The processing result
  */
 async function processUserInput(capabilities, rawInput) {
-    const original = normalizeInput(rawInput);
-    const input = await applyShortcuts(capabilities, original);
+    const original = rawInput; // Keep the original raw input
+    const normalized = normalizeInput(rawInput);
+    const input = await applyShortcuts(capabilities, normalized);
     const parsed = parseStructuredInput(input);
 
     return {
