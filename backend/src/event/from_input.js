@@ -4,6 +4,13 @@
  * This module provides functionality to transform raw user input into structured Event objects.
  * It implements a pipeline approach with separate functions for each transformation step.
  * 
+ * CAPABILITY REQUIREMENTS:
+ * - normalizeInput(): No capabilities needed (pure function)
+ * - parseModifier(): No capabilities needed (pure function)  
+ * - parseStructuredInput(): No capabilities needed (pure function)
+ * - applyShortcuts(): Requires ShortcutCapabilities (for config file access)
+ * - processUserInput(): Requires ShortcutCapabilities (calls applyShortcuts)
+ * 
  * USAGE EXAMPLES:
  * 
  * Basic parsing (no shortcuts):
@@ -31,7 +38,16 @@
 
 const { readConfig } = require("../config/storage");
 
-/** @typedef {import('../event_log_storage').Capabilities} Capabilities */
+/**
+ * Minimal capabilities needed for shortcut application and config reading
+ * @typedef {object} ShortcutCapabilities
+ * @property {import('../environment').Environment} environment - Environment to get repository path
+ * @property {import('../filesystem/checker').FileChecker} checker - File checker for instantiating config files
+ * @property {import('../filesystem/reader').FileReader} reader - File reader for reading config files
+ * @property {import('../filesystem/writer').FileWriter} writer - File writer (required by config storage)
+ * @property {import('../filesystem/creator').FileCreator} creator - File creator (required by config storage)
+ * @property {import('../logger').Logger} logger - Logger for error reporting
+ */
 
 /**
  * @typedef {object} ParsedInput
@@ -157,7 +173,7 @@ function parseStructuredInput(input) {
 
 /**
  * Applies shortcuts recursively to transform the input.
- * @param {Capabilities} capabilities - The capabilities object
+ * @param {ShortcutCapabilities} capabilities - The capabilities object
  * @param {string} input - The input string to transform
  * @returns {Promise<string>} - The transformed input
  */
@@ -229,7 +245,7 @@ async function applyShortcuts(capabilities, input) {
 
 /**
  * Processes user input through the complete pipeline: normalize → shortcuts → parse
- * @param {Capabilities} capabilities - The capabilities object
+ * @param {ShortcutCapabilities} capabilities - The capabilities object
  * @param {string} rawInput - The raw user input
  * @returns {Promise<{original: string, input: string, parsed: ParsedInput}>} - The processing result
  */
