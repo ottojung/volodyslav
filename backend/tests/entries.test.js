@@ -89,7 +89,7 @@ describe("POST /api/entries", () => {
         fs.writeFileSync(tmpFilePath, "uploaded content");
         const requestBody = {
             rawInput: "filetype - File description",
-        };        const res = await request(app)
+        }; const res = await request(app)
             .post("/api/entries")
             .field("rawInput", requestBody.rawInput)
             .attach("files", tmpFilePath);
@@ -122,11 +122,7 @@ describe("POST /api/entries", () => {
             .field("rawInput", requestBody.rawInput)
             .attach("files", tmpFilePath1)
             .attach("files", tmpFilePath2);
-        
-        if (res.statusCode !== 201) {
-            console.log("Response body:", res.body);
-        }
-        
+
         if (res.statusCode !== 201) {
             console.log("Response body:", res.body);
         }

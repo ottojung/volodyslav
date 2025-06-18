@@ -140,13 +140,13 @@ async function handleEntryPost(req, res, capabilities) {
             // If req.files is an object, it might be { files: [file1, file2] }
             files = req.files['files'] || [];
         }
-        
+
         // New API: rawInput with optional date
         const { rawInput, date } = req.body;
         if (typeof rawInput !== "string" || rawInput.trim() === "") {
             return res.status(400).json({ error: "Missing required field: rawInput" });
         }
-        
+
         // Parse and process user input into structured event fields
         let processed;
         try {
@@ -157,9 +157,9 @@ async function handleEntryPost(req, res, capabilities) {
             }
             throw error;
         }
-        
+
         const { original, input, parsed } = processed;
-        
+
         // Construct entry data from parsed input
         const entryData = {
             type: parsed.type,
@@ -169,10 +169,10 @@ async function handleEntryPost(req, res, capabilities) {
             input,
             date
         };
-        
+
         // Prepare file attachments
         const fileObjects = await prepareFileObjects(capabilities, files);
-        
+
         // Create entry event
         const event = await createEntry(capabilities, entryData, fileObjects);
 
