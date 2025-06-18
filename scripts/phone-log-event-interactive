@@ -137,7 +137,7 @@ Last entries:
 
 
 def normalize_input(s: str) -> str:
-    return " ".join(s.split())
+    return " ".join(s.strip().split())
 
 
 def take_photo(date: str, user_input: str) -> list:
