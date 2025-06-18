@@ -27,30 +27,27 @@ describe("POST /api/entries", () => {
         // Equivalent curl command:
         // curl -X POST http://localhost:PORT/api/entries \
         //   -H "Content-Type: application/json" \
-        //   -d '{"original":"HTTP original","input":"HTTP input","type":"http-type","description":"HTTP description","modifiers":{"foo":"bar"},"date":"2025-05-23T12:00:00.000Z"}'
+        //   -d '{"rawInput":"httptype [foo bar] HTTP description","date":"2025-05-23T12:00:00.000Z"}'
 
         const { app, capabilities } = await makeTestApp();
-        const entry = {
-            original: "HTTP original",
-            input: "HTTP input",
-            type: "http-type",
-            description: "HTTP description",
-            modifiers: { foo: "bar" },
+        const requestBody = {
+            rawInput: "httptype [foo bar] HTTP description",
             date: "2025-05-23T12:00:00+0000",
         };
         const res = await request(app)
             .post("/api/entries")
-            .send(entry)
+            .send(requestBody)
             .set("Content-Type", "application/json");
         expect(res.statusCode).toBe(201);
         expect(res.body.success).toBe(true);
         expect(res.body.entry).toMatchObject({
-            type: entry.type,
-            description: entry.description,
+            type: "httptype",
+            description: "HTTP description",
             date: expect.stringContaining("2025-05-2"), // Timezone invariant.
+            modifiers: { foo: "bar" },
         });
         expect(capabilities.logger.logInfo).toHaveBeenCalledWith(
-            expect.objectContaining({ type: entry.type, fileCount: 0 }),
+            expect.objectContaining({ type: "httptype", fileCount: 0 }),
             expect.stringContaining("Entry created")
         );
     });
@@ -59,29 +56,25 @@ describe("POST /api/entries", () => {
         // Equivalent curl command:
         // curl -X POST http://localhost:PORT/api/entries \
         //   -H "Content-Type: application/json" \
-        //   -d '{"type":"missing-fields"}'
+        //   -d '{}'
 
         const { app } = await makeTestApp();
         const res = await request(app)
             .post("/api/entries")
-            .send({ type: "missing-fields" })
+            .send({})
             .set("Content-Type", "application/json");
         expect(res.statusCode).toBe(400);
-        expect(res.body.error).toMatch(/Missing required fields/);
+        expect(res.body.error).toMatch(/Missing required field: rawInput/);
     });
 
     it("ignores modifiers field when it is not an object", async () => {
         const { app } = await makeTestApp();
-        const entry = {
-            original: "Bad mods original",
-            input: "Bad mods input",
-            type: "bad-mods",
-            description: "bad",
-            modifiers: "true",
+        const requestBody = {
+            rawInput: "bad-mods bad",
         };
         const res = await request(app)
             .post("/api/entries")
-            .send(entry)
+            .send(requestBody)
             .set("Content-Type", "application/json");
         expect(res.statusCode).toBe(201);
         expect(res.body.entry.modifiers).toEqual({});
@@ -94,24 +87,18 @@ describe("POST /api/entries", () => {
         );
         const tmpFilePath = path.join(tmpDir, "upload.txt");
         fs.writeFileSync(tmpFilePath, "uploaded content");
-        const entry = {
-            original: "File original",
-            input: "File input",
-            type: "file-type",
-            description: "File description",
-        };
-        const res = await request(app)
+        const requestBody = {
+            rawInput: "filetype - File description",
+        };        const res = await request(app)
             .post("/api/entries")
-            .field("original", entry.original)
-            .field("input", entry.input)
-            .field("type", entry.type)
-            .field("description", entry.description)
+            .field("rawInput", requestBody.rawInput)
             .attach("files", tmpFilePath);
         expect(res.statusCode).toBe(201);
         expect(res.body.success).toBe(true);
-        expect(res.body.entry.type).toBe(entry.type);
+        expect(res.body.entry.type).toBe("filetype");
+        expect(res.body.entry.description).toBe("- File description");
         expect(capabilities.logger.logInfo).toHaveBeenCalledWith(
-            expect.objectContaining({ type: entry.type, fileCount: 1 }),
+            expect.objectContaining({ type: "filetype", fileCount: 1 }),
             expect.stringContaining("Entry created")
         );
         fs.unlinkSync(tmpFilePath);
@@ -127,25 +114,27 @@ describe("POST /api/entries", () => {
         const tmpFilePath2 = path.join(tmpDir, "upload2.txt");
         fs.writeFileSync(tmpFilePath1, "uploaded content 1");
         fs.writeFileSync(tmpFilePath2, "uploaded content 2");
-        const entry = {
-            original: "Multi-file original",
-            input: "Multi-file input",
-            type: "multi-file-type",
-            description: "Multi-file description",
+        const requestBody = {
+            rawInput: "multifile - Multi-file description",
         };
         const res = await request(app)
             .post("/api/entries")
-            .field("original", entry.original)
-            .field("input", entry.input)
-            .field("type", entry.type)
-            .field("description", entry.description)
+            .field("rawInput", requestBody.rawInput)
             .attach("files", tmpFilePath1)
             .attach("files", tmpFilePath2);
+        
+        if (res.statusCode !== 201) {
+            console.log("Response body:", res.body);
+        }
+        
+        if (res.statusCode !== 201) {
+            console.log("Response body:", res.body);
+        }
         expect(res.statusCode).toBe(201);
         expect(res.body.success).toBe(true);
-        expect(res.body.entry.type).toBe(entry.type);
+        expect(res.body.entry.type).toBe("multifile");
         expect(capabilities.logger.logInfo).toHaveBeenCalledWith(
-            expect.objectContaining({ type: entry.type, fileCount: 2 }),
+            expect.objectContaining({ type: "multifile", fileCount: 2 }),
             expect.stringContaining("Entry created")
         );
         fs.unlinkSync(tmpFilePath1);
@@ -174,15 +163,12 @@ describe("GET /api/entries", () => {
         const { app } = await makeTestApp();
 
         // Create a test entry first
-        const entry = {
-            original: "Test original",
-            input: "Test input",
-            type: "test-type",
-            description: "Test description",
+        const requestBody = {
+            rawInput: "testtype - Test description",
         };
         await request(app)
             .post("/api/entries")
-            .send(entry)
+            .send(requestBody)
             .set("Content-Type", "application/json");
 
         const res = await request(app).get("/api/entries");
@@ -190,8 +176,8 @@ describe("GET /api/entries", () => {
         expect(res.statusCode).toBe(200);
         expect(res.body.results).toHaveLength(1);
         expect(res.body.results[0]).toMatchObject({
-            type: entry.type,
-            description: entry.description,
+            type: "testtype",
+            description: "- Test description",
         });
         expect(res.body.next).toBeNull();
     });
@@ -204,24 +190,9 @@ describe("GET /api/entries", () => {
 
         // Create multiple test entries
         const entries = [
-            {
-                original: "Original 1",
-                input: "Input 1",
-                type: "type-1",
-                description: "Description 1",
-            },
-            {
-                original: "Original 2",
-                input: "Input 2",
-                type: "type-2",
-                description: "Description 2",
-            },
-            {
-                original: "Original 3",
-                input: "Input 3",
-                type: "type-3",
-                description: "Description 3",
-            },
+            { rawInput: "type1 - Description 1" },
+            { rawInput: "type2 - Description 2" },
+            { rawInput: "type3 - Description 3" },
         ];
 
         for (const entry of entries) {
@@ -247,24 +218,9 @@ describe("GET /api/entries", () => {
 
         // Create multiple test entries
         const entries = [
-            {
-                original: "Original 1",
-                input: "Input 1",
-                type: "type-1",
-                description: "Description 1",
-            },
-            {
-                original: "Original 2",
-                input: "Input 2",
-                type: "type-2",
-                description: "Description 2",
-            },
-            {
-                original: "Original 3",
-                input: "Input 3",
-                type: "type-3",
-                description: "Description 3",
-            },
+            { rawInput: "type1 - Description 1" },
+            { rawInput: "type2 - Description 2" },
+            { rawInput: "type3 - Description 3" },
         ];
 
         for (const entry of entries) {
@@ -288,15 +244,12 @@ describe("GET /api/entries", () => {
         const { app } = await makeTestApp();
 
         // Create a test entry
-        const entry = {
-            original: "Test original",
-            input: "Test input",
-            type: "test-type",
-            description: "Test description",
+        const requestBody = {
+            rawInput: "testtype - Test description",
         };
         await request(app)
             .post("/api/entries")
-            .send(entry)
+            .send(requestBody)
             .set("Content-Type", "application/json");
 
         const res = await request(app).get("/api/entries?page=-1&limit=0");
@@ -313,15 +266,12 @@ describe("GET /api/entries", () => {
         const { app } = await makeTestApp();
 
         // Create a test entry
-        const entry = {
-            original: "Test original",
-            input: "Test input",
-            type: "test-type",
-            description: "Test description",
+        const requestBody = {
+            rawInput: "testtype - Test description",
         };
         await request(app)
             .post("/api/entries")
-            .send(entry)
+            .send(requestBody)
             .set("Content-Type", "application/json");
 
         const res = await request(app).get("/api/entries?limit=200");

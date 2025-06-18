@@ -75,79 +75,9 @@ function makeRouter(capabilities) {
 
 /**
  * @typedef {object} EntryRequestBody
- * @property {string} type - The type of entry
- * @property {string} description - The description of the entry
- * @property {string} original - The original content
- * @property {string} input - The processed input
+ * @property {string} rawInput - The raw user input to parse
  * @property {string} [date] - Optional date string
- * @property {Record<string,string>|string} [modifiers] - Optional modifiers
  */
-
-/**
- * Validates that all required fields are present in the request body.
- *
- * @param {EntryRequestBody} body - The request body.
- * @returns {{isValid: boolean, error?: string}} - Validation result.
- */
-function validateEntryFields(body) {
-    const { type, description, original, input } = body;
-
-    if (!type || !description || !original || !input) {
-        return {
-            isValid: false,
-            error: "Missing required fields: type, description, original, and input",
-        };
-    }
-
-    return { isValid: true };
-}
-
-/**
- * Parses modifiers from string to object if needed.
- *
- * @param {Record<string,string>|string|undefined} modifiers - The modifiers to parse.
- * @returns {Record<string,string>|undefined} - Parsed modifiers.
- */
-function parseModifiers(modifiers) {
-    if (typeof modifiers !== "string") {
-        return modifiers;
-    }
-
-    try {
-        const parsed = JSON.parse(modifiers);
-        if (
-            parsed &&
-            typeof parsed === "object" &&
-            !Array.isArray(parsed) &&
-            Object.values(parsed).every((v) => typeof v === "string")
-        ) {
-            return parsed;
-        }
-        return undefined;
-    } catch {
-        return undefined;
-    }
-}
-
-/**
- * Creates an entry data object from request body.
- *
- * @param {EntryRequestBody} body - The request body.
- * @returns {import('../entry').EntryData} - The entry data.
- */
-function createEntryData(body) {
-    const { type, description, date, original, input } = body;
-    const parsedModifiers = parseModifiers(body.modifiers);
-
-    return {
-        type,
-        description,
-        date,
-        modifiers: parsedModifiers,
-        original,
-        input,
-    };
-}
 
 /**
  * Prepares the file objects for entry creation if files were uploaded.
@@ -201,38 +131,50 @@ function handleEntryError(error, capabilities) {
  */
 async function handleEntryPost(req, res, capabilities) {
     try {
-        // Ensure req.files is always an array
-        const files = Array.isArray(req.files) ? req.files : [];
-        let event;
-        if (req.body.rawInput !== undefined) {
-            // New API: rawInput with optional date
-            const { rawInput, date } = req.body;
-            if (typeof rawInput !== "string" || rawInput.trim() === "") {
-                return res.status(400).json({ error: "Missing required field: rawInput" });
-            }
-            let processed;
-            try {
-                processed = await processUserInput(capabilities, rawInput);
-            } catch (error) {
-                if (error instanceof InputParseError) {
-                    return res.status(400).json({ error: error.message });
-                }
-                throw error;
-            }
-            const { original, input, parsed } = processed;
-            const entryDataNew = { type: parsed.type, description: parsed.description, modifiers: parsed.modifiers, original, input, date };
-            const fileObjectsNew = await prepareFileObjects(capabilities, files);
-            event = await createEntry(capabilities, entryDataNew, fileObjectsNew);
-        } else {
-            // Legacy API: full event fields in body
-            const validation = validateEntryFields(req.body);
-            if (!validation.isValid) {
-                return res.status(400).json({ error: validation.error });
-            }
-            const entryDataLegacy = createEntryData(req.body);
-            const fileObjectsLegacy = await prepareFileObjects(capabilities, files);
-            event = await createEntry(capabilities, entryDataLegacy, fileObjectsLegacy);
+        // Handle req.files - multer can provide an object or array
+        /** @type {Express.Multer.File[]} */
+        let files = [];
+        if (Array.isArray(req.files)) {
+            files = req.files;
+        } else if (req.files && typeof req.files === 'object') {
+            // If req.files is an object, it might be { files: [file1, file2] }
+            files = req.files['files'] || [];
         }
+        
+        // New API: rawInput with optional date
+        const { rawInput, date } = req.body;
+        if (typeof rawInput !== "string" || rawInput.trim() === "") {
+            return res.status(400).json({ error: "Missing required field: rawInput" });
+        }
+        
+        // Parse and process user input into structured event fields
+        let processed;
+        try {
+            processed = await processUserInput(capabilities, rawInput);
+        } catch (error) {
+            if (error instanceof InputParseError) {
+                return res.status(400).json({ error: error.message });
+            }
+            throw error;
+        }
+        
+        const { original, input, parsed } = processed;
+        
+        // Construct entry data from parsed input
+        const entryData = {
+            type: parsed.type,
+            description: parsed.description,
+            modifiers: parsed.modifiers,
+            original,
+            input,
+            date
+        };
+        
+        // Prepare file attachments
+        const fileObjects = await prepareFileObjects(capabilities, files);
+        
+        // Create entry event
+        const event = await createEntry(capabilities, entryData, fileObjects);
 
         return res.status(201).json({ success: true, entry: serialize(event) });
     } catch (error) {
