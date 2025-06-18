@@ -1,13 +1,14 @@
 const request = require("supertest");
 const express = require("express");
 const periodicRouter = require("../src/routes/periodic");
-const { stubEnvironment, stubLogger, stubEventLogRepository } = require("./stubs");
+const { stubEnvironment, stubLogger, stubEventLogRepository, stubDatetime } = require("./stubs");
 const { getMockedRootCapabilities } = require("./spies");
 
 function getTestCapabilities() {
     const capabilities = getMockedRootCapabilities();
     stubEnvironment(capabilities);
     stubLogger(capabilities);
+    stubDatetime(capabilities);
     return capabilities;
 }
 

@@ -9,6 +9,7 @@ const dateFormatter = require("../src/event/date");
 const {
     stubEnvironment,
     stubLogger,
+    stubDatetime,
     stubEventLogRepository,
 } = require("./stubs");
 const { getMockedRootCapabilities } = require("./spies");
@@ -17,6 +18,7 @@ function getTestCapabilities() {
     const capabilities = getMockedRootCapabilities();
     stubEnvironment(capabilities);
     stubLogger(capabilities);
+    stubDatetime(capabilities);
 
     // Mock isFileStable to return true by default for existing tests
     capabilities.checker.isFileStable = jest.fn().mockResolvedValue(true);

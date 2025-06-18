@@ -29,6 +29,7 @@ const { processDiaryAudios } = require("../diary");
  * @property {Scheduler} scheduler - A scheduler instance.
  * @property {Logger} logger - A logger instance.
  * @property {import('../filesystem/reader').FileReader} reader - A file reader instance.
+ * @property {import('../datetime').Datetime} datetime - Datetime utilities.
  */
 
 /**

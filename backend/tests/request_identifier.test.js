@@ -8,12 +8,13 @@ const {
 } = require("../src/request_identifier");
 
 const { getMockedRootCapabilities } = require("./spies");
-const { stubEnvironment, stubLogger } = require("./stubs");
+const { stubEnvironment, stubLogger, stubDatetime } = require("./stubs");
 
 function getTestCapabilities() {
     const capabilities = getMockedRootCapabilities();
     stubEnvironment(capabilities);
     stubLogger(capabilities);
+    stubDatetime(capabilities);
     return capabilities;
 }
 

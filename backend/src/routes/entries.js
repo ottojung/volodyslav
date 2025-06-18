@@ -32,6 +32,7 @@ const { processUserInput, InputParseError } = require("../event/from_input");
  * @property {FileChecker} checker - A file checker instance.
  * @property {Command} git - A command instance for Git operations.
  * @property {import('../filesystem/reader').FileReader} reader - A file reader instance.
+ * @property {import('../datetime').Datetime} datetime - Datetime utilities.
  */
 
 /**

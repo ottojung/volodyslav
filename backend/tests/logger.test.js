@@ -2,12 +2,13 @@ const fs = require("fs");
 const path = require("path");
 const { make } = require("../src/logger");
 const { getMockedRootCapabilities } = require("./spies");
-const { stubEnvironment } = require("./stubs");
+const { stubEnvironment, stubDatetime } = require("./stubs");
 
 describe("logger capability", () => {
     it("writes info, warn, error, and debug to file", async () => {
         const capabilities = getMockedRootCapabilities();
         stubEnvironment(capabilities);
+        stubDatetime(capabilities);
         const tmpDir = await capabilities.creator.createTemporaryDirectory(capabilities);
         const logFilePath = path.join(tmpDir, "test.log");
         capabilities.environment.logFile = () => logFilePath;

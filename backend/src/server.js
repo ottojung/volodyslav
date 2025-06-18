@@ -42,6 +42,7 @@ const workingRepository = require("./gitstore/working_repository");
  * @property {Scheduler} scheduler - A scheduler instance.
  * @property {import('./filesystem/reader').FileReader} reader - A file reader instance.
  * @property {AITranscription} aiTranscription - An AI transcription instance.
+ * @property {import('./datetime').Datetime} datetime - Datetime utilities.
  */
 
 /**

@@ -5,6 +5,7 @@ const { getMockedRootCapabilities } = require("./spies");
 const {
     stubEnvironment,
     stubLogger,
+    stubDatetime,
     stubEventLogRepository,
 } = require("./stubs");
 const fs = require("fs");
@@ -15,6 +16,7 @@ async function makeTestApp() {
     const capabilities = getMockedRootCapabilities();
     stubEnvironment(capabilities);
     stubLogger(capabilities);
+    stubDatetime(capabilities);
     await stubEventLogRepository(capabilities);
     const app = expressApp.make();
     capabilities.logger.enableHttpCallsLogging(app);
