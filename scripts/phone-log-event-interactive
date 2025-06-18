@@ -5,7 +5,6 @@
 #
 
 import subprocess
-import csv
 import sys
 import os
 from pathlib import Path
@@ -21,17 +20,15 @@ API_BASE_URL = os.environ.get("VOLODYSLAV_API_URL", "http://localhost:3000/api")
 
 try:
     import colorama
-
     colorama.init()
-except:
+except BaseException:
     pass
 
 
 def highlight(text: str) -> str:
     try:
-        import colorama
         from colorama import Fore, Style
-    except:
+    except BaseException:
         return text
 
     return Fore.YELLOW + Style.BRIGHT + text + Style.RESET_ALL
@@ -39,11 +36,9 @@ def highlight(text: str) -> str:
 
 def downlight(text: str) -> str:
     try:
-        import colorama
-        from colorama import Fore, Style
-
+        from colorama import Style
         GREY = "\033[90m"
-    except:
+    except BaseException:
         return text
 
     return GREY + Style.DIM + text + Style.RESET_ALL
