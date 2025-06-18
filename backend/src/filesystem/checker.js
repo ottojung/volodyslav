@@ -23,6 +23,7 @@ const { fromExisting } = require("./file");
 const fs = require("fs").promises;
 
 /** @typedef {import('./file').ExistingFile} ExistingFile */
+/** @typedef {import('../datetime').Datetime} Datetime */
 
 class FileCheckerError extends Error {
     /**
@@ -48,7 +49,7 @@ function isFileCheckerError(object) {
  * @typedef {object} FileChecker
  * @property {typeof fileExists} fileExists
  * @property {typeof instantiate} instantiate
- * @property {typeof isFileStable} isFileStable
+ * @property {(file: ExistingFile, options?: {minAgeMs?: number, sizeCheckDelayMs?: number}) => Promise<boolean>} isFileStable
  */
 
 class ExplicitClass {
@@ -128,19 +129,20 @@ async function instantiate(path) {
  * 1. It hasn't been modified for at least the specified age threshold
  * 2. Its size hasn't changed between two checks separated by a delay
  *
+ * @param {Datetime} datetime - Datetime capability.
  * @param {ExistingFile} file - The path to the file to check.
  * @param {object} options - Stability check options.
  * @param {number} [options.minAgeMs=300000] - Minimum age in milliseconds (default: 5 minutes).
  * @param {number} [options.sizeCheckDelayMs=30000] - Delay between size checks in milliseconds (default: 30 seconds).
  * @returns {Promise<boolean>} - A promise that resolves with true if the file is stable, false otherwise.
  */
-async function isFileStable(file, options = {}) {
+async function isFileStable(datetime, file, options = {}) {
     const { minAgeMs = 300000, sizeCheckDelayMs = 30000 } = options; // 5 minutes, 30 seconds default
 
     try {
         // First check: get initial file stats
         const initialStats = await fs.stat(file.path);
-        const now = Date.now();
+        const now = datetime.now();
         const fileModifiedTime = initialStats.mtime.getTime();
         const ageMs = now - fileModifiedTime;
 
@@ -180,11 +182,16 @@ async function isFileStable(file, options = {}) {
  * Creates a FileChecker instance.
  * @returns {FileChecker} - A FileChecker instance.
  */
-function make() {
+/**
+ * @param {{ datetime: import('../datetime').Datetime }} deps
+ */
+function make(deps) {
     return {
         fileExists,
         instantiate,
-        isFileStable,
+        /** @type {(file: ExistingFile, options?: {minAgeMs?: number, sizeCheckDelayMs?: number}) => Promise<boolean>} */
+        isFileStable: (file, options = {}) =>
+            isFileStable(deps.datetime, file, options),
     };
 }
 

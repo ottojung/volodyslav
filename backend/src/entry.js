@@ -29,6 +29,7 @@ const creatorMake = require("./creator");
  * @property {Environment} environment - An environment instance.
  * @property {Logger} logger - A logger instance.
  * @property {import('./filesystem/reader').FileReader} reader - A file reader instance.
+ * @property {import('./datetime').Datetime} datetime - Datetime utilities.
  */
 
 /**
@@ -52,7 +53,9 @@ const creatorMake = require("./creator");
 async function createEntry(capabilities, entryData, files = []) {
     const creator = await creatorMake(capabilities);
     const id = eventId.make(capabilities);
-    const date = entryData.date ? new Date(entryData.date) : new Date();
+    const date = entryData.date
+        ? new Date(entryData.date)
+        : new Date(capabilities.datetime.now());
     if (isNaN(date.getTime())) {
         throw new Error('Invalid date');
     }

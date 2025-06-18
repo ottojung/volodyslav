@@ -3,7 +3,7 @@ const path = require("path");
 const config = require("../src/config");
 const configStorage = require("../src/config/storage");
 const { getMockedRootCapabilities } = require("./spies");
-const { stubEnvironment, stubLogger } = require("./stubs");
+const { stubEnvironment, stubLogger, stubDatetime } = require("./stubs");
 const temporary = require("./temporary");
 
 beforeEach(temporary.beforeEach);
@@ -13,6 +13,7 @@ function getTestCapabilities() {
     const capabilities = getMockedRootCapabilities();
     stubEnvironment(capabilities);
     stubLogger(capabilities);
+    stubDatetime(capabilities);
     return capabilities;
 }
 

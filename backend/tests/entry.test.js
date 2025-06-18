@@ -1,10 +1,11 @@
 const { createEntry, getEntries } = require("../src/entry");
 const { getMockedRootCapabilities } = require("./spies");
-const { stubEnvironment, stubEventLogRepository } = require("./stubs");
+const { stubEnvironment, stubEventLogRepository, stubDatetime } = require("./stubs");
 
 async function getTestCapabilities() {
     const capabilities = getMockedRootCapabilities();
     stubEnvironment(capabilities);
+    stubDatetime(capabilities);
     await stubEventLogRepository(capabilities);
     return capabilities;
 }

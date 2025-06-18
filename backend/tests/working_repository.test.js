@@ -8,6 +8,7 @@ const { getMockedRootCapabilities } = require("./spies");
 const {
     stubEnvironment,
     stubLogger,
+    stubDatetime,
     stubEventLogRepository,
 } = require("./stubs");
 const defaultBranch = require("../src/gitstore/default_branch");
@@ -16,6 +17,7 @@ function getTestCapabilities() {
     const capabilities = getMockedRootCapabilities();
     stubEnvironment(capabilities);
     stubLogger(capabilities);
+    stubDatetime(capabilities);
     return capabilities;
 }
 

@@ -4,13 +4,14 @@ const request = require("supertest");
 const expressApp = require("../src/express_app");
 const { addRoutes } = require("../src/server");
 const { getMockedRootCapabilities } = require("./spies");
-const { stubEnvironment, stubLogger, stubAiTranscriber } = require("./stubs");
+const { stubEnvironment, stubLogger, stubAiTranscriber, stubDatetime } = require("./stubs");
 
 function getTestCapabilities() {
     const capabilities = getMockedRootCapabilities();
     stubEnvironment(capabilities);
     stubLogger(capabilities);
     stubAiTranscriber(capabilities);
+    stubDatetime(capabilities);
     return capabilities;
 }
 
