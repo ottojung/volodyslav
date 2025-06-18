@@ -79,33 +79,13 @@ def get_last_entries() -> Sequence[str]:
             )
         else:
             # Fallback to file reading if API is not available
-            return get_last_entries_from_file()
-    except Exception:
-        # Fallback to file reading if API call fails
-        return get_last_entries_from_file()
-
-
-def get_last_entries_from_file() -> Sequence[str]:
-    """Fallback method to read entries from file"""
-    n = 10
-    process = subprocess.Popen(
-        ["jq", "--slurp", "--", f".[-{n}:]", str(log_path)],
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        text=True,
-        bufsize=1,
-        universal_newlines=True,
-    )
-
-    try:
-        with process.stdout as pipe:
-            obj = json.load(pipe)
-    finally:
-        # Ensure the process is not hanging and clean up.
-        # .wait() ensures that any remaining output is processed.
-        process.wait()
-
-    return tuple(entry.get("original", entry["input"]) for entry in obj)
+            raise APIError(
+                f"Failed to fetch entries from API: {response.status_code} {response.text}"
+            )
+    except Exception as e:
+        raise APIError(
+            "Failed to fetch last entries from API or file. Please check your API connection."
+        ) from e
 
 
 def format_last_entries(inputs: Sequence[str]) -> str:
