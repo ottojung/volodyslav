@@ -153,6 +153,15 @@ describe("parseStructuredInput", () => {
         });
     });
 
+    test("parses multi-word description without modifiers", () => {
+        const result = parseStructuredInput("work Fixed the parser bug");
+        expect(result).toEqual({
+            type: "work",
+            description: "Fixed the parser bug",
+            modifiers: {}
+        });
+    });
+
     test("throws InputParseError for invalid structure", () => {
         expect(() => parseStructuredInput("")).toThrow(InputParseError);
         expect(() => parseStructuredInput("   ")).toThrow(InputParseError);
@@ -167,12 +176,12 @@ describe("parseStructuredInput", () => {
     test("error includes original input", () => {
         let error;
         try {
-            parseStructuredInput("invalid input format");
+            parseStructuredInput("123invalid");
         } catch (e) {
             error = e;
         }
         expect(error).toBeInstanceOf(InputParseError);
-        expect(error.input).toBe("invalid input format");
+        expect(error.input).toBe("123invalid");
     });
 });
 

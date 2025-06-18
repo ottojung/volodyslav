@@ -24,16 +24,17 @@
  *   // If shortcuts config has "w": "work", this will expand to the same as above
  * 
  * Supported input format: TYPE [MODIFIERS...] DESCRIPTION
- * - TYPE is required (must start with a letter, can contain letters/digits/underscores)
- * - MODIFIERS are optional, format: [key value] (multiple allowed)
+ * - TYPE is required and must be a single word (letters and digits only, starting with a letter)
+ * - MODIFIERS are optional, format: [key value] (multiple allowed)  
  * - DESCRIPTION is optional, can contain any text (including dashes, brackets, special chars)
+ * - Multi-word descriptions don't require punctuation when used without modifiers
  * 
  * Examples of valid inputs:
  * - "work" (minimal)
- * - "meal Had breakfast" (with description)
+ * - "meal Had breakfast" (with description - no punctuation required)
  * - "exercise [loc gym] Weightlifting session" (with modifier and description)
  * - "social [with John] [loc cafe] Coffee meeting" (multiple modifiers)
- * - "task - Important project" (description can start with dash)
+ * - "task Important project details" (multi-word description without modifiers)
  */
 
 const { readConfig } = require("../config/storage");
@@ -140,9 +141,10 @@ function parseModifier(modifier) {
  */
 function parseStructuredInput(input) {
     // Match: TYPE [modifiers...] description
-    // TYPE must start with a letter, modifiers are optional, description is optional
+    // TYPE must be a single word (letters and digits only, starting with a letter)
+    // modifiers are optional, description is optional
     // We need to be careful to match modifiers first, then everything else is description
-    const pattern = /^\s*([A-Za-z]\w*)\s*((?:\[[^\]]+\]\s*)*)\s*(.*)$/;
+    const pattern = /^\s*([A-Za-z][A-Za-z0-9]*)\s*((?:\[[^\]]+\]\s*)*)\s*(.*)$/;
     const match = input.match(pattern);
 
     if (!match) {
@@ -167,13 +169,6 @@ function parseStructuredInput(input) {
         const modifierContent = modifierMatch.slice(1, -1);
         const parsed = parseModifier(modifierContent);
         modifiers[parsed.type] = parsed.description;
-    }
-
-    // If description has multiple words but no modifiers, it should start with punctuation
-    if (description && description.includes(' ') && Object.keys(modifiers).length === 0) {
-        if (!/^[^\w\s]/.test(description)) {
-            throw new InputParseError("Bad structure of input", input);
-        }
     }
 
     return {
