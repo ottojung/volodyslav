@@ -360,7 +360,9 @@ async function performGitTransaction(
         const workTree = await store.getWorkTree();
         const dataPath = path.join(workTree, "data.json");
         const configPath = path.join(workTree, "config.json");
-        const dataFile = await capabilities.checker.instantiate(dataPath);
+        const dataFile = await capabilities.checker
+            .instantiate(dataPath)
+            .catch(() => null);
         const configFile = await capabilities.checker
             .instantiate(configPath)
             .catch(() => null);
@@ -382,7 +384,8 @@ async function performGitTransaction(
         // Persist and commit when we have new entries or configuration changes
         if (newEntries.length > 0) {
             // Persist queued entries
-            await appendEntriesToFile(capabilities, dataFile, newEntries);
+            const existingDataFile = dataFile == null ? await capabilities.creator.createFile(dataPath) : dataFile;
+            await appendEntriesToFile(capabilities, existingDataFile, newEntries);
             needsCommit = true;
         }
 
