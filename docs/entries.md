@@ -1,119 +1,140 @@
-# Entries – Holistic System Overview
+# Entries – Comprehensive System Overview
 
-This document provides a broad, high-level view of how "entries" (user events) flow through the entire backend architecture—from ingestion via CLI or HTTP, through validation and processing, to durable storage, retrieval, and integrations with scheduling, notifications, and versioning.
+This document provides a concept-level map of how "entries" (user events) interact with and traverse the backend system—covering ingestion, processing, storage, retrieval, cross-cutting services, and lifecycle concerns.
 
 ## 1. System Entry Points
 
-- **Command-Line Interface** (`backend/src/index.js`)
-  - `start` command boots the HTTP server
-  - `--version` flag prints the current service version
+Entries can originate from multiple interfaces:
 
-- **HTTP API** (`backend/src/routes/entries.js`)
-  - `POST /api/entries` for creating entries (with optional file uploads)
-  - `GET /api/entries` for listing entries with pagination
+- **Command-Line Interface**  
+  Lightweight CLI for local workflows; boots HTTP server or handles simple entry commands.
 
-- **Automated Processes**
-  - **Scheduled Tasks** (`backend/src/schedule/`) may periodically read or manipulate entries
-  - **Webhooks/AI** pipelines (e.g., transcription, analysis) can record or augment entry data
+- **HTTP API**  
+  REST endpoints enable remote clients to create and list entries. File uploads and raw text requests flow through common parsing and storage logic.
+
+- **Automated & Batch Processes**  
+  - Scheduled jobs scan or generate entries (e.g., periodic reminders, diary audio processing).  
+  - Webhooks or AI pipelines (transcription, classification) create or augment entries asynchronously.
 
 ## 2. Shared Capabilities & Initialization
 
-- A central **Capabilities** object (built in `capabilities/root.js`) provides:
-  - **Environment** (configuration, file paths, ports)
-  - **Logger** (structured logging, HTTP request logs)
-  - **Filesystem** interfaces (reader, writer, appender, checker, deleter, copier)
-  - **Random/seeding** utilities for IDs (`request_identifier`, `event/id`)
-  - **Subprocess & Git** support (`command`, `gitstore` for versioned commits)
-  - **Scheduler** for periodic jobs
-  - **Notifier** for external alerts
-  - **AI transcription** for media attachments
-  - **Datetime** helper for consistent timestamping
+A unified **Capabilities** object binds together:
 
-- **Server Startup** (`backend/src/server.js`)
-  - Constructs Express app, mounts all feature routers, ensures environment, Git, notifier, and working repository are ready, and then schedules periodic tasks.
+- Environment & Configuration (paths, ports, feature flags)  
+- Structured Logging & Monitoring (entry events, errors, metrics)  
+- Filesystem Interfaces (reader, writer, appender, checker, deleter, copier)  
+- Unique ID Generation & Seeding  
+- Version Control (Git-backed commits for audit)  
+- Scheduling Engine & Notifier Service  
+- AI Enrichment (transcription, analysis)  
+- Datetime Utilities (consistent timestamping)
 
-## 3. Ingestion & Parsing Workflow
+Server startup ensures all systems (env, storage backends, notifier, scheduler, Git repo) are primed before handling entry traffic.
 
-1. **Raw Input**
-   - CLI passes free-form text.
-   - HTTP clients send `rawInput` and optional `date` in JSON.
-2. **Middleware**
-   - JSON and URL-encoded body parsing in Express.
-   - Multer handles file uploads, mapping to `filesystem.checker` objects.
-3. **User Input Processing**
-   - `processUserInput` applies domain-specific parsing rules to extract:
-     - `type` (note, todo, diary, etc.)
-     - `description` (main text)
-     - `modifiers` (tags, key=value pairs)
-   - Parsing errors (`InputParseError`) result in `400 Bad Request` responses.
+## 3. Ingestion & Validation
 
-## 4. Entry Creation Core
+- **Input Sources**  
+  Raw text (CLI), JSON payloads (API), and multipart uploads funnel through common middleware.
+- **Parsing Engine**  
+  Normalizes input to an internal schema, handling multiple entry types and modifiers.
+- **Validation**  
+  Early rejection of malformed data (missing description, invalid date, bad modifiers) with clear client errors.
 
-- **Entry Data Structure**
-  ```ts
-  interface EntryData {
-    date?: string;
-    original: string;
-    input: string;
-    type: string;
-    description: string;
-    modifiers?: Record<string, string>;
-  }
-  ```
+## 4. Core Domain Logic & Specialized Flows
 
-- **createEntry** (`backend/src/entry.js`)
-  - Generates a unique `id` via `eventId.make`.
-  - Resolves `date` (from input or current time).
-  - Validates `description` and `modifiers`.
-  - Constructs an `Event` with `creator`, `assets`, and all fields.
-  - Wraps writes in `transaction` on **event log storage**:
-    - `storage.addEntry(event, assets)` appends to log
-    - Optionally commits via Git for immutable history
-  - Logs success with `logger.logInfo`.
+- **Entry Factory**  
+  Assigns unique ID, resolves date, and tags with creating subsystem.
+- **Specialized Handlers**  
+  - Diary entries may invoke audio transcription tasks.  
+  - Task or reminder types might schedule follow-up jobs.  
+  - Custom types can plug into this factory to extend behavior.
+- **Asset Linking**  
+  Associates uploaded or referenced files with entries, producing immutable asset descriptors.
 
-## 5. File Attachments & Asset Linking
+## 5. Durability & Pluggable Storage
 
-- Uploaded files are converted into `ExistingFile` instances.
-- `event/asset.make(event, file)` generates metadata linking each file to its event.
-- Assets persist alongside event records in the storage backend.
+- **Transactional Event Log**  
+  All entry writes (and linked assets) occur within atomic transactions, ensuring consistency or rollback.
+- **Versioned Backends**  
+  Support for append-only JSON streams, databases, or Git-backed repositories for audit, history, and diff-driven workflows.
+- **Retrieval Interface**  
+  Unified query layer provides pagination, filtering, and cursor-based navigation for large datasets.
 
-## 6. Storage Backend & Transactions
+## 6. Asset Lifecycle Management
 
-- **event_log_storage** abstraction supports:
-  - **Atomic Writes**: all-or-nothing via transactions
-  - **Pluggable Backends**: JSON streams, file-based logs, Git-backed stores
-  - **Consistent Reads**: safe retrieval during concurrent operations
+- **Creation**  upon entry ingestion.  
+- **Retention & Cleanup**  policies determine when assets become orphaned or are archived.  
+- **Deletion**  cascades or manual pruning remove assets from storage and log.
 
-## 7. Retrieval & Pagination
+## 7. Cross-Cutting Integrations
 
-- **getEntries** (`backend/src/entry.js`)
-  - Validates `page` and `limit` parameters.
-  - Reads full event list inside a transaction.
-  - Slices results for the requested page.
-  - Returns `{ results, total, hasMore, page, limit }`.
+- **Logging & Observability**  
+  Entry lifecycle emits structured logs and metrics, enabling tracing and health monitoring.
+- **Error Handling**  
+  Centralized error middleware differentiates client faults (validation) from system failures (storage, dependencies), with structured alerts.
+- **Notifications & Alerts**  
+  New or updated entries can trigger email/push notifications or escalate via external channels.
+- **Scheduling Hooks**  
+  Periodic or delayed tasks consume entries (for reminders, summaries) and may update entry state.
+- **AI/Transcription Pipelines**  
+  Media attachments can feed AI services to auto-generate transcripts or enrich metadata.
 
-- **HTTP GET /api/entries**
-  - Maps `getEntries` result to JSON with `results` (serialized) and `next` URL.
+## 8. Security & Access Control
 
-## 8. Cross-Cutting Integrations
+- **Authentication & Authorization**  
+  Gate entry creation and retrieval based on user roles and scopes.
+- **Input Sanitization**  
+  Prevent injection attacks by validating and escaping entry content and file metadata.
+- **File Validation**  
+  Enforce upload size, type restrictions, and virus scanning for attachments.
 
-- **Version Control**: every change to the log can be committed via `gitstore`, enabling history, rollbacks, and diff-driven workflows.
-- **Scheduler Hooks**: periodic jobs may consume entries to trigger reminders, cleanups, or summaries.
-- **Notifications**: new entries can trigger alerts (email, push, etc.) via the `Notifier` interface.
-- **AI/Transcription**: media attachments may be transcribed and linked to entries.
+## 9. Performance & Scalability
 
-## 9. Testing & Quality
+- **Pagination Strategies**  
+  Avoid large in-memory scans by employing cursors or indexed queries.
+- **Storage Sharding**  
+  Distribute event logs across partitions or services for high throughput.
+- **Caching**  
+  Layer results or metadata to reduce repeated storage reads.
 
-- Unit tests cover parsing, storage, route handlers, and end-to-end flows (`backend/src/tests`).
-- Error scenarios tested: invalid dates, missing fields, storage faults.
-- CI scripts (`run-tests`, `Makefile`) integrate coverage checks.
+## 10. Testing & Quality Assurance
 
-## 10. Extension Points
+- **Unit Tests**  
+  Cover parsing rules, core factory logic, and storage interactions.  
+- **Integration Tests**  
+  Validate end-to-end flows through API, storage, and auxiliary services (scheduler, notifier).  
+- **Mock Repositories**  
+  Simulate versioned storage to test transactional guarantees.  
+- **Fault Injection**  
+  Verify resilience by simulating errors in dependencies (filesystem, Git, AI services).
 
-- To support new types (e.g., `reminder`, `bookmark`): extend `processUserInput` and adjust downstream handlers.
-- Swap or augment storage by implementing custom `event_log_storage` modules.
-- Add hooks in `transaction` callbacks for auditing, replication, or real-time streaming.
+## 11. Configuration & Environment
+
+- **Feature Flags**  
+  Toggle new entry types or pipelines without redeploying code.  
+- **Storage Settings**  
+  Configure backend type, retention policies, and path locations.  
+- **Security Settings**  
+  Define authentication providers, rate limits, and access control rules.
+
+## 12. Lifecycle & Cleanup
+
+- **Entry Deletion**  
+  Soft or hard delete semantics, with optional archival for compliance.  
+- **Audit Trails**  
+  Maintain immutable logs of create/update/delete actions for governance.  
+- **Data Retention**  
+  Automated purge based on age or policy, impacting both entries and assets.
+
+## 13. Extension & Customization
+
+- **Parser Plugins**  
+  Add or override parsing rules for new entry types and modifiers.  
+- **Storage Adapters**  
+  Implement custom backends (NoSQL, distributed logs) by conforming to the transaction API.  
+- **Lifecycle Hooks**  
+  Insert custom logic at key points (pre-create, post-retrieve, on-delete) for auditing or replication.
 
 ---
 
-This overview captures all major touchpoints for entries in the backend, from ingestion to persistence and integration with auxiliary systems.
+*This overview integrates all entry-related touchpoints—highlighting system entry points, core flows, cross-cutting services, and lifecycle considerations to guide developers and architects.*
