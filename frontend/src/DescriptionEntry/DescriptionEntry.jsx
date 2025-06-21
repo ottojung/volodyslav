@@ -19,6 +19,9 @@ export default function DescriptionEntry() {
     const [isSubmitting, setIsSubmitting] = useState(false);
     const toast = useToast();
 
+    // For now, use the same default as the Python script
+    const API_BASE_URL = "/api";
+
     const handleSubmit = async () => {
         if (!description.trim()) {
             toast({
@@ -35,25 +38,63 @@ export default function DescriptionEntry() {
         setIsSubmitting(true);
 
         try {
-            // Simulate API call - replace with actual backend integration
-            await new Promise((resolve) => setTimeout(resolve, 800));
-
-            setDescription("");
-
-            toast({
-                title: "Description saved",
-                description: "Your description has been successfully saved.",
-                status: "success",
-                duration: 3000,
-                isClosable: true,
-                position: "top",
+            // Make real API call to Volodyslav backend
+            const response = await fetch(`${API_BASE_URL}/entries`, {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                },
+                body: JSON.stringify({
+                    rawInput: description.trim(),
+                }),
             });
+
+            if (response.status === 201) {
+                const result = await response.json();
+
+                if (result.success) {
+                    const entry = result.entry || {};
+                    const savedInput = entry.input || description.trim();
+
+                    setDescription("");
+
+                    toast({
+                        title: "Event logged successfully",
+                        description: `Saved: ${savedInput}`,
+                        status: "success",
+                        duration: 4000,
+                        isClosable: true,
+                        position: "top",
+                    });
+                } else {
+                    throw new Error(
+                        result.error || "API returned unsuccessful response"
+                    );
+                }
+            } else {
+                let errorMessage = `HTTP ${response.status}`;
+                try {
+                    const errorData = await response.json();
+                    errorMessage = errorData.error || errorMessage;
+                } catch {
+                    // If we can't parse error as JSON, use status message
+                    errorMessage = `HTTP ${response.status} ${response.statusText}`;
+                }
+                throw new Error(errorMessage);
+            }
         } catch (error) {
+            console.error("Error logging event:", error);
+
+            const errorMessage =
+                error instanceof Error
+                    ? error.message
+                    : "Please check your connection and try again.";
+
             toast({
-                title: "Error saving description",
-                description: "Please try again.",
+                title: "Error logging event",
+                description: errorMessage,
                 status: "error",
-                duration: 3000,
+                duration: 5000,
                 isClosable: true,
                 position: "top",
             });
@@ -80,10 +121,10 @@ export default function DescriptionEntry() {
                 {/* Header */}
                 <Box textAlign="center">
                     <Heading size="xl" color="gray.800" fontWeight="400" mb={3}>
-                        Describe Something
+                        Log an Event
                     </Heading>
                     <Text color="gray.600" fontSize="lg">
-                        What&apos;s on your mind?
+                        What happened?
                     </Text>
                 </Box>
 
@@ -100,7 +141,7 @@ export default function DescriptionEntry() {
                     <CardBody p={6}>
                         <VStack spacing={4} align="stretch">
                             <Input
-                                placeholder="Type your description here..."
+                                placeholder="Type your event description here..."
                                 value={description}
                                 onChange={(e) => setDescription(e.target.value)}
                                 onKeyPress={handleKeyPress}
@@ -124,7 +165,7 @@ export default function DescriptionEntry() {
 
                             <HStack spacing={3} justify="space-between">
                                 <Text fontSize="sm" color="gray.500">
-                                    Press Enter to save
+                                    Press Enter to log event
                                 </Text>
                                 <HStack spacing={2}>
                                     <Button
@@ -142,13 +183,13 @@ export default function DescriptionEntry() {
                                         colorScheme="blue"
                                         onClick={handleSubmit}
                                         isLoading={isSubmitting}
-                                        loadingText="Saving..."
+                                        loadingText="Logging..."
                                         isDisabled={!description.trim()}
                                         size="md"
                                         px={8}
                                         borderRadius="xl"
                                     >
-                                        Save
+                                        Log Event
                                     </Button>
                                 </HStack>
                             </HStack>

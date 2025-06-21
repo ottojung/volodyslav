@@ -84,7 +84,7 @@ function App() {
             <Button colorScheme="teal" w="200px">Open Camera</Button>
           </Link>
           <Link to="/describe">
-            <Button colorScheme="blue" variant="outline" w="200px">Describe Something</Button>
+            <Button colorScheme="blue" variant="outline" w="200px">Log an Event</Button>
           </Link>
         </VStack>
       </VStack>
