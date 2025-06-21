@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useRef, useEffect } from "react";
 import {
     Box,
     VStack,
@@ -18,6 +18,16 @@ export default function DescriptionEntry() {
     const [description, setDescription] = useState("");
     const [isSubmitting, setIsSubmitting] = useState(false);
     const toast = useToast();
+
+    // Ref for the input field
+    const inputRef = useRef(null);
+
+    useEffect(() => {
+        if (inputRef.current) {
+            // @ts-expect-error: inputRef is not typed, but focus() is valid for Chakra Input
+            inputRef.current.focus();
+        }
+    }, []);
 
     // For now, use the same default as the Python script
     const API_BASE_URL = "/api";
@@ -152,6 +162,7 @@ export default function DescriptionEntry() {
                                 bg="gray.50"
                                 fontSize="lg"
                                 py={6}
+                                ref={inputRef}
                                 _placeholder={{
                                     color: "gray.500",
                                     fontSize: "lg",
