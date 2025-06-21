@@ -3,7 +3,7 @@ import {
     Box,
     VStack,
     Heading,
-    Textarea,
+    Input,
     Button,
     Text,
     useToast,
@@ -11,6 +11,7 @@ import {
     Card,
     CardBody,
     Container,
+    HStack,
 } from "@chakra-ui/react";
 import { Link } from "react-router-dom";
 
@@ -80,89 +81,99 @@ export default function DescriptionEntry() {
         }
     };
 
+    /** @param {React.KeyboardEvent<HTMLInputElement>} e */
+    const handleKeyPress = (e) => {
+        if (e.key === 'Enter' && !e.shiftKey) {
+            e.preventDefault();
+            handleSubmit();
+        }
+    };
+
     const handleClear = () => {
         setDescription("");
     };
 
     return (
-        <Container maxW="container.md" py={8}>
-            <VStack spacing={8} align="stretch">
+        <Container maxW="100%" px={4} py={6}>
+            <VStack spacing={6} align="stretch" minH="100vh">
                 {/* Header */}
-                <Box textAlign="center">
-                    <Heading size="lg" color="gray.700" fontWeight="300" mb={2}>
+                <Box textAlign="center" pt={4}>
+                    <Heading size="xl" color="gray.800" fontWeight="400" mb={3}>
                         Describe Something
                     </Heading>
-                    <Text color="gray.500" fontSize="sm">
-                        Share your thoughts, observations, or ideas
+                    <Text color="gray.600" fontSize="lg">
+                        What&apos;s on your mind?
                     </Text>
                 </Box>
 
                 {/* Main Input Card */}
-                <Card shadow="sm" borderRadius="lg" bg="white">
+                <Card shadow="lg" borderRadius="2xl" bg="white" mx={2}>
                     <CardBody p={6}>
                         <VStack spacing={4} align="stretch">
-                            <Textarea
-                                placeholder="What would you like to describe? Share your thoughts here..."
+                            <Input
+                                placeholder="Type your description here..."
                                 value={description}
                                 onChange={(e) => setDescription(e.target.value)}
-                                minH="120px"
-                                resize="vertical"
-                                border="1px"
+                                onKeyPress={handleKeyPress}
+                                size="lg"
+                                border="2px"
                                 borderColor="gray.200"
                                 focusBorderColor="blue.400"
                                 bg="gray.50"
-                                fontSize="md"
-                                lineHeight="1.6"
+                                fontSize="lg"
+                                py={6}
                                 _placeholder={{
-                                    color: "gray.400",
-                                    fontStyle: "italic",
+                                    color: "gray.500",
+                                    fontSize: "lg",
                                 }}
                                 _focus={{
                                     bg: "white",
-                                    shadow: "sm",
+                                    shadow: "md",
+                                    borderColor: "blue.500",
                                 }}
                             />
-
-                            <Box
-                                display="flex"
-                                gap={3}
-                                justifyContent="flex-end"
-                            >
-                                <Button
-                                    variant="ghost"
-                                    onClick={handleClear}
-                                    isDisabled={
-                                        !description.trim() || isSubmitting
-                                    }
-                                    size="sm"
-                                    color="gray.600"
-                                >
-                                    Clear
-                                </Button>
-                                <Button
-                                    colorScheme="blue"
-                                    onClick={handleSubmit}
-                                    isLoading={isSubmitting}
-                                    loadingText="Saving..."
-                                    isDisabled={!description.trim()}
-                                    size="sm"
-                                    px={6}
-                                >
-                                    Save Description
-                                </Button>
-                            </Box>
+                            
+                            <HStack spacing={3} justify="space-between">
+                                <Text fontSize="sm" color="gray.500">
+                                    Press Enter to save
+                                </Text>
+                                <HStack spacing={2}>
+                                    <Button
+                                        variant="ghost"
+                                        onClick={handleClear}
+                                        isDisabled={!description.trim() || isSubmitting}
+                                        size="md"
+                                        color="gray.600"
+                                    >
+                                        Clear
+                                    </Button>
+                                    <Button
+                                        colorScheme="blue"
+                                        onClick={handleSubmit}
+                                        isLoading={isSubmitting}
+                                        loadingText="Saving..."
+                                        isDisabled={!description.trim()}
+                                        size="md"
+                                        px={8}
+                                        borderRadius="xl"
+                                    >
+                                        Save
+                                    </Button>
+                                </HStack>
+                            </HStack>
                         </VStack>
                     </CardBody>
                 </Card>
 
                 {/* Recent Entries */}
                 {savedEntries.length > 0 && (
-                    <Box>
+                    <Box px={2}>
                         <Heading
-                            size="md"
-                            color="gray.600"
+                            size="lg"
+                            color="gray.700"
                             mb={4}
-                            fontWeight="400"
+                            fontWeight="500"
+                            textAlign="center"
                         >
                             Recent Descriptions
                         </Heading>
@@ -176,23 +187,27 @@ export default function DescriptionEntry() {
                                     }}
                                 >
                                     <Card
-                                        size="sm"
                                         bg="gray.50"
-                                        borderRadius="md"
+                                        borderRadius="xl"
+                                        shadow="sm"
+                                        border="1px"
+                                        borderColor="gray.100"
                                     >
-                                        <CardBody p={4}>
+                                        <CardBody p={5}>
                                             <Text
-                                                fontSize="sm"
-                                                color="gray.700"
-                                                lineHeight="1.5"
-                                                mb={2}
+                                                fontSize="md"
+                                                color="gray.800"
+                                                lineHeight="1.6"
+                                                mb={3}
+                                                fontWeight="400"
                                             >
                                                 {entry.description}
                                             </Text>
                                             <Text
-                                                fontSize="xs"
+                                                fontSize="sm"
                                                 color="gray.500"
                                                 textAlign="right"
+                                                fontWeight="300"
                                             >
                                                 {entry.timestamp}
                                             </Text>
@@ -205,9 +220,15 @@ export default function DescriptionEntry() {
                 )}
 
                 {/* Navigation */}
-                <Box textAlign="center" pt={4}>
+                <Box textAlign="center" pt={6} pb={4}>
                     <Link to="/">
-                        <Button variant="ghost" size="sm" color="gray.500">
+                        <Button 
+                            variant="ghost" 
+                            size="lg" 
+                            color="gray.600"
+                            borderRadius="xl"
+                            px={6}
+                        >
                             ← Back to Home
                         </Button>
                     </Link>
