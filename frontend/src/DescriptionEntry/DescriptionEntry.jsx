@@ -15,7 +15,7 @@ import {
     Badge,
     Divider,
 } from "@chakra-ui/react";
-import { Link } from "react-router-dom";
+import { fetchRecentEntries as apiFetchRecentEntries, submitEntry } from "./api";
 
 /**
  * @typedef {Object} Entry
@@ -51,24 +51,11 @@ export default function DescriptionEntry() {
         fetchRecentEntries();
     }, []);
 
-    const API_BASE_URL = "/api";
-
     const fetchRecentEntries = async () => {
         try {
             setIsLoadingEntries(true);
-            const response = await fetch(
-                `${API_BASE_URL}/entries?limit=${NUMBER_OF_RECENT_ENTRIES}`
-            );
-
-            if (response.ok) {
-                const data = await response.json();
-                setRecentEntries(data.results || []);
-            } else {
-                console.warn(
-                    "Failed to fetch recent entries:",
-                    response.status
-                );
-            }
+            const entries = await apiFetchRecentEntries(NUMBER_OF_RECENT_ENTRIES);
+            setRecentEntries(entries);
         } catch (error) {
             console.error("Error fetching recent entries:", error);
         } finally {
@@ -92,53 +79,23 @@ export default function DescriptionEntry() {
         setIsSubmitting(true);
 
         try {
-            // Make real API call to Volodyslav backend
-            const response = await fetch(`${API_BASE_URL}/entries`, {
-                method: "POST",
-                headers: {
-                    "Content-Type": "application/json",
-                },
-                body: JSON.stringify({
-                    rawInput: description.trim(),
-                }),
+            const result = await submitEntry(description.trim());
+            const entry = result.entry || {};
+            const savedInput = entry.input || description.trim();
+
+            setDescription("");
+
+            // Refresh recent entries
+            fetchRecentEntries();
+
+            toast({
+                title: "Event logged successfully",
+                description: `Saved: ${savedInput}`,
+                status: "success",
+                duration: 4000,
+                isClosable: true,
+                position: "top",
             });
-
-            if (response.status === 201) {
-                const result = await response.json();
-
-                if (result.success) {
-                    const entry = result.entry || {};
-                    const savedInput = entry.input || description.trim();
-
-                    setDescription("");
-
-                    // Refresh recent entries
-                    fetchRecentEntries();
-
-                    toast({
-                        title: "Event logged successfully",
-                        description: `Saved: ${savedInput}`,
-                        status: "success",
-                        duration: 4000,
-                        isClosable: true,
-                        position: "top",
-                    });
-                } else {
-                    throw new Error(
-                        result.error || "API returned unsuccessful response"
-                    );
-                }
-            } else {
-                let errorMessage = `HTTP ${response.status}`;
-                try {
-                    const errorData = await response.json();
-                    errorMessage = errorData.error || errorMessage;
-                } catch {
-                    // If we can't parse error as JSON, use status message
-                    errorMessage = `HTTP ${response.status} ${response.statusText}`;
-                }
-                throw new Error(errorMessage);
-            }
         } catch (error) {
             console.error("Error logging event:", error);
 
@@ -393,21 +350,6 @@ export default function DescriptionEntry() {
                         </CardBody>
                     </Card>
                 )}
-
-                {/* Navigation */}
-                <Box textAlign="center" pt={6} pb={4}>
-                    <Link to="/">
-                        <Button
-                            variant="ghost"
-                            size="lg"
-                            color="gray.600"
-                            borderRadius="xl"
-                            px={6}
-                        >
-                            ← Back to Home
-                        </Button>
-                    </Link>
-                </Box>
             </VStack>
         </Container>
     );
