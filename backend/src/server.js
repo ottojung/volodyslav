@@ -6,6 +6,7 @@ const transcribeRouter = require("./routes/transcribe");
 const transcribeAllRouter = require("./routes/transcribe_all");
 const periodicRouter = require("./routes/periodic");
 const entriesRouter = require("./routes/entries");
+const configRouter = require("./routes/config");
 const expressApp = require("./express_app");
 const { scheduleAll } = require("./schedule/tasks");
 const workingRepository = require("./gitstore/working_repository");
@@ -60,6 +61,7 @@ function addRoutes(capabilities, app) {
     app.use("/api", transcribeAllRouter.makeRouter(capabilities));
     app.use("/api", periodicRouter.makeRouter(capabilities));
     app.use("/api", entriesRouter.makeRouter(capabilities));
+    app.use("/api", configRouter.makeRouter(capabilities));
     app.use("/", staticRouter.makeRouter(capabilities));
 }
 
