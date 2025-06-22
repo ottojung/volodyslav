@@ -11,12 +11,30 @@ import {
     CardBody,
     Container,
     HStack,
+    Skeleton,
+    Badge,
+    Divider,
 } from "@chakra-ui/react";
 import { Link } from "react-router-dom";
+
+/**
+ * @typedef {Object} Entry
+ * @property {string} id - Unique identifier for the entry
+ * @property {string} date - ISO date string
+ * @property {string} type - Type of the entry
+ * @property {string} description - Description of the entry
+ * @property {string} input - Processed input
+ * @property {string} original - Original input
+ * @property {Object} modifiers - Entry modifiers
+ * @property {Object} creator - Entry creator info
+ */
 
 export default function DescriptionEntry() {
     const [description, setDescription] = useState("");
     const [isSubmitting, setIsSubmitting] = useState(false);
+    /** @type {[Entry[], Function]} */
+    const [recentEntries, setRecentEntries] = useState([]);
+    const [isLoadingEntries, setIsLoadingEntries] = useState(true);
     const toast = useToast();
 
     // Ref for the input field
@@ -27,10 +45,33 @@ export default function DescriptionEntry() {
             // @ts-expect-error: inputRef is not typed, but focus() is valid for Chakra Input
             inputRef.current.focus();
         }
+        // Fetch recent entries on component mount
+        fetchRecentEntries();
     }, []);
 
     // For now, use the same default as the Python script
     const API_BASE_URL = "/api";
+
+    const fetchRecentEntries = async () => {
+        try {
+            setIsLoadingEntries(true);
+            const response = await fetch(`${API_BASE_URL}/entries?limit=5`);
+
+            if (response.ok) {
+                const data = await response.json();
+                setRecentEntries(data.results || []);
+            } else {
+                console.warn(
+                    "Failed to fetch recent entries:",
+                    response.status
+                );
+            }
+        } catch (error) {
+            console.error("Error fetching recent entries:", error);
+        } finally {
+            setIsLoadingEntries(false);
+        }
+    };
 
     const handleSubmit = async () => {
         if (!description.trim()) {
@@ -67,6 +108,9 @@ export default function DescriptionEntry() {
                     const savedInput = entry.input || description.trim();
 
                     setDescription("");
+
+                    // Refresh recent entries
+                    fetchRecentEntries();
 
                     toast({
                         title: "Event logged successfully",
@@ -123,6 +167,23 @@ export default function DescriptionEntry() {
 
     const handleClear = () => {
         setDescription("");
+    };
+
+    /** @param {string} dateString */
+    const formatDate = (dateString) => {
+        const date = new Date(dateString);
+        const now = new Date();
+        const diffMs = now.getTime() - date.getTime();
+        const diffMins = Math.floor(diffMs / (1000 * 60));
+        const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
+        const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+
+        if (diffMins < 1) return "just now";
+        if (diffMins < 60) return `${diffMins}m ago`;
+        if (diffHours < 24) return `${diffHours}h ago`;
+        if (diffDays < 7) return `${diffDays}d ago`;
+
+        return date.toLocaleDateString();
     };
 
     return (
@@ -207,6 +268,128 @@ export default function DescriptionEntry() {
                         </VStack>
                     </CardBody>
                 </Card>
+
+                {/* Recent Entries Section */}
+                {!isLoadingEntries && recentEntries.length > 0 && (
+                    <Card
+                        shadow="md"
+                        borderRadius="xl"
+                        bg="gray.50"
+                        mx={2}
+                        maxW="md"
+                        alignSelf="center"
+                        w="full"
+                    >
+                        <CardBody p={4}>
+                            <VStack spacing={3} align="stretch">
+                                <Text
+                                    fontSize="sm"
+                                    fontWeight="semibold"
+                                    color="gray.600"
+                                    textAlign="center"
+                                >
+                                    Recent Events
+                                </Text>
+                                <Divider />
+                                {recentEntries.map((entry, index) => (
+                                    <Box
+                                        key={entry.id || index}
+                                        p={3}
+                                        bg="white"
+                                        borderRadius="lg"
+                                        shadow="sm"
+                                    >
+                                        <HStack
+                                            justify="space-between"
+                                            align="flex-start"
+                                        >
+                                            <VStack
+                                                align="flex-start"
+                                                spacing={1}
+                                                flex={1}
+                                            >
+                                                <HStack spacing={2}>
+                                                    <Badge
+                                                        colorScheme="blue"
+                                                        variant="subtle"
+                                                        fontSize="xs"
+                                                    >
+                                                        {entry.type}
+                                                    </Badge>
+                                                    <Text
+                                                        fontSize="xs"
+                                                        color="gray.500"
+                                                    >
+                                                        {formatDate(entry.date)}
+                                                    </Text>
+                                                </HStack>
+                                                <Text
+                                                    fontSize="sm"
+                                                    color="gray.700"
+                                                >
+                                                    {entry.description}
+                                                </Text>
+                                            </VStack>
+                                        </HStack>
+                                    </Box>
+                                ))}
+                            </VStack>
+                        </CardBody>
+                    </Card>
+                )}
+
+                {/* Loading state for recent entries */}
+                {isLoadingEntries && (
+                    <Card
+                        shadow="md"
+                        borderRadius="xl"
+                        bg="gray.50"
+                        mx={2}
+                        maxW="md"
+                        alignSelf="center"
+                        w="full"
+                    >
+                        <CardBody p={4}>
+                            <VStack spacing={3} align="stretch">
+                                <Text
+                                    fontSize="sm"
+                                    fontWeight="semibold"
+                                    color="gray.600"
+                                    textAlign="center"
+                                >
+                                    Recent Events
+                                </Text>
+                                <Divider />
+                                {[...Array(3)].map((_, i) => (
+                                    <Box
+                                        key={i}
+                                        p={3}
+                                        bg="white"
+                                        borderRadius="lg"
+                                        shadow="sm"
+                                    >
+                                        <VStack align="flex-start" spacing={2}>
+                                            <HStack spacing={2}>
+                                                <Skeleton
+                                                    height="16px"
+                                                    width="60px"
+                                                />
+                                                <Skeleton
+                                                    height="14px"
+                                                    width="50px"
+                                                />
+                                            </HStack>
+                                            <Skeleton
+                                                height="16px"
+                                                width="100%"
+                                            />
+                                        </VStack>
+                                    </Box>
+                                ))}
+                            </VStack>
+                        </CardBody>
+                    </Card>
+                )}
 
                 {/* Navigation */}
                 <Box textAlign="center" pt={6} pb={4}>
