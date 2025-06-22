@@ -2,7 +2,7 @@ const API_BASE_URL = "/api";
 
 export const fetchRecentEntries = async (limit = 10) => {
     const response = await fetch(`${API_BASE_URL}/entries?limit=${limit}`);
-    
+
     if (response.ok) {
         const data = await response.json();
         return data.results || [];
@@ -12,7 +12,12 @@ export const fetchRecentEntries = async (limit = 10) => {
     }
 };
 
-export const submitEntry = async (rawInput) => {
+/**
+ * Submits a new entry to the API.
+ * @param {string} rawInput - The raw input description for the entry.
+ * @returns {Promise<Object>} - The API response.
+ */
+export async function submitEntry(rawInput) {
     const response = await fetch(`${API_BASE_URL}/entries`, {
         method: "POST",
         headers: {
@@ -38,4 +43,4 @@ export const submitEntry = async (rawInput) => {
         }
         throw new Error(errorMessage);
     }
-};
+}
