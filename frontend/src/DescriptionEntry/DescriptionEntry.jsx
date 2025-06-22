@@ -29,6 +29,8 @@ import { Link } from "react-router-dom";
  * @property {Object} creator - Entry creator info
  */
 
+const NUMBER_OF_RECENT_ENTRIES = 10;
+
 export default function DescriptionEntry() {
     const [description, setDescription] = useState("");
     const [isSubmitting, setIsSubmitting] = useState(false);
@@ -54,7 +56,9 @@ export default function DescriptionEntry() {
     const fetchRecentEntries = async () => {
         try {
             setIsLoadingEntries(true);
-            const response = await fetch(`${API_BASE_URL}/entries?limit=5`);
+            const response = await fetch(
+                `${API_BASE_URL}/entries?limit=${NUMBER_OF_RECENT_ENTRIES}`
+            );
 
             if (response.ok) {
                 const data = await response.json();
