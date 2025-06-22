@@ -114,7 +114,7 @@ export default function DescriptionEntry() {
     };
 
     /** @param {React.KeyboardEvent<HTMLInputElement>} e */
-    const handleKeyPress = (e) => {
+    const handleKeyUp = (e) => {
         if (e.key === "Enter" && !e.shiftKey) {
             e.preventDefault();
             handleSubmit();
@@ -154,7 +154,7 @@ export default function DescriptionEntry() {
                                 placeholder="Type your event description here..."
                                 value={description}
                                 onChange={(e) => setDescription(e.target.value)}
-                                onKeyPress={handleKeyPress}
+                                onKeyUp={handleKeyUp}
                                 size="lg"
                                 border="2px"
                                 borderColor="gray.200"
