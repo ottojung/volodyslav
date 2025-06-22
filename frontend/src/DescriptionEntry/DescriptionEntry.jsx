@@ -49,7 +49,6 @@ export default function DescriptionEntry() {
         fetchRecentEntries();
     }, []);
 
-    // For now, use the same default as the Python script
     const API_BASE_URL = "/api";
 
     const fetchRecentEntries = async () => {
