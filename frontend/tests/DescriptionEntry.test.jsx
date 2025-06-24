@@ -8,6 +8,7 @@ jest.mock("../src/DescriptionEntry/api", () => ({
     submitEntry: jest.fn(() =>
         Promise.resolve({ success: true, entry: { input: "test" } })
     ),
+    fetchConfig: jest.fn(() => Promise.resolve(null)),
 }));
 
 import DescriptionEntry from "../src/DescriptionEntry/DescriptionEntry.jsx";
