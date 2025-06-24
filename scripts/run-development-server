@@ -10,7 +10,12 @@ export VOLODYSLAV_OPENAI_API_KEY="$OPENAI_API_KEY"
 export VOLODYSLAV_WORKING_DIRECTORY="dist/test/wd"
 export VOLODYSLAV_DIARY_RECORDINGS_DIRECTORY="dist/test/recordings"
 export VOLODYSLAV_EVENT_LOG_ASSETS_DIRECTORY="dist/test/event-log-assets"
-export VOLODYSLAV_EVENT_LOG_REPOSITORY="backend/tests/mock-event-log-repository"
+export VOLODYSLAV_EVENT_LOG_REPOSITORY="dist/test/mock-event-log-repository"
 export VOLODYSLAV_SERVER_PORT=3000
+
+if ! test -d "$VOLODYSLAV_EVENT_LOG_REPOSITORY"
+then
+    cp -r -T -- "backend/tests/mock-event-log-repository" "$VOLODYSLAV_EVENT_LOG_REPOSITORY"
+fi
 
 npm run dev
