@@ -21,11 +21,37 @@ import {
     Icon,
     Skeleton,
 } from "@chakra-ui/react";
-// Using built-in Chakra icons or creating simple ones
-const ChevronDownIcon = () => <span>▼</span>;
-const ChevronUpIcon = () => <span>▲</span>;
-const InfoIcon = () => <span>ℹ️</span>;
-const CopyIcon = () => <span>📋</span>;
+
+// Using built-in Chakra icons or creating simple ones with forwardRef to avoid warnings
+const ChevronDownIcon = React.forwardRef((props, ref) => (
+    <span ref={ref} {...props}>
+        ▼
+    </span>
+));
+ChevronDownIcon.displayName = "ChevronDownIcon";
+
+const ChevronUpIcon = React.forwardRef((props, ref) => (
+    <span ref={ref} {...props}>
+        ▲
+    </span>
+));
+ChevronUpIcon.displayName = "ChevronUpIcon";
+
+const InfoIcon = React.forwardRef((props, ref) => (
+    <span ref={ref} {...props}>
+        ℹ️
+    </span>
+));
+InfoIcon.displayName = "InfoIcon";
+
+const CopyIcon = React.forwardRef((props, ref) => (
+    <span ref={ref} {...props}>
+        📋
+    </span>
+));
+
+CopyIcon.displayName = "CopyIcon";
+
 import { fetchConfig } from "./api.js";
 import { CARD_STYLES, TEXT_STYLES, SPACING, COLORS } from "./styles.js";
 
