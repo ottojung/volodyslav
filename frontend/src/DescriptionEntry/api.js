@@ -1,16 +1,21 @@
 const API_BASE_URL = "/api";
 
 /**
+ * @typedef {import('./DescriptionEntry.jsx').Entry} Entry
+ */
+
+/**
  * Fetches recent entries from the API.
  * @param {number} [limit=10] - The maximum number of entries to fetch.
- * @returns {Promise<Array<Object>>} - Array of recent entries, or empty array if fetch fails.
+ * @returns {Promise<Entry[]>} - Array of recent entries, or empty array if fetch fails.
  */
 export const fetchRecentEntries = async (limit = 10) => {
     const response = await fetch(`${API_BASE_URL}/entries?limit=${limit}`);
 
     if (response.ok) {
         const data = await response.json();
-        return data.results || [];
+        // data.results is any, cast to Entry[]
+        return /** @type {Entry[]} */ (data.results || []);
     } else {
         console.warn("Failed to fetch recent entries:", response.status);
         return [];
@@ -20,7 +25,7 @@ export const fetchRecentEntries = async (limit = 10) => {
 /**
  * Submits a new entry to the API.
  * @param {string} rawInput - The raw input description for the entry.
- * @returns {Promise<{success: boolean, entry?: Object, error?: string}>} - The API response object containing success status and entry data.
+ * @returns {Promise<{success: boolean, entry?: Entry, error?: string}>} - The API response object containing success status and entry data.
  * @throws {Error} - Throws an error if the submission fails.
  */
 export async function submitEntry(rawInput) {

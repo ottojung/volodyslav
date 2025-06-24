@@ -15,7 +15,10 @@ import {
     Badge,
     Divider,
 } from "@chakra-ui/react";
-import { fetchRecentEntries as apiFetchRecentEntries, submitEntry } from "./api";
+import {
+    fetchRecentEntries as apiFetchRecentEntries,
+    submitEntry,
+} from "./api";
 
 /**
  * @typedef {Object} Entry
@@ -34,12 +37,13 @@ const NUMBER_OF_RECENT_ENTRIES = 10;
 export default function DescriptionEntry() {
     const [description, setDescription] = useState("");
     const [isSubmitting, setIsSubmitting] = useState(false);
-    /** @type {[Entry[], Function]} */
-    const [recentEntries, setRecentEntries] = useState([]);
+    // State for recent entries, typed as Entry[]
+    const [recentEntries, setRecentEntries] = useState(
+        /** @type {Entry[]} */ ([])
+    );
     const [isLoadingEntries, setIsLoadingEntries] = useState(true);
     const toast = useToast();
 
-    // Ref for the input field
     const inputRef = useRef(null);
 
     useEffect(() => {
@@ -47,14 +51,15 @@ export default function DescriptionEntry() {
             // @ts-expect-error: inputRef is not typed, but focus() is valid for Chakra Input
             inputRef.current.focus();
         }
-        // Fetch recent entries on component mount
         fetchRecentEntries();
     }, []);
 
     const fetchRecentEntries = async () => {
         try {
             setIsLoadingEntries(true);
-            const entries = await apiFetchRecentEntries(NUMBER_OF_RECENT_ENTRIES);
+            const entries = await apiFetchRecentEntries(
+                NUMBER_OF_RECENT_ENTRIES
+            );
             setRecentEntries(entries);
         } catch (error) {
             console.error("Error fetching recent entries:", error);
@@ -80,12 +85,11 @@ export default function DescriptionEntry() {
 
         try {
             const result = await submitEntry(description.trim());
-            const entry = result.entry || {};
-            const savedInput = entry.input || description.trim();
+            // use optional chaining on entry to get input
+            const savedInput = result.entry?.input ?? description.trim();
 
             setDescription("");
 
-            // Refresh recent entries
             fetchRecentEntries();
 
             toast({
