@@ -26,7 +26,7 @@ import {
  * @param {() => void} props.onClear - Clear form handler
  * @param {(e: React.KeyboardEvent) => void} props.onKeyUp - Key up handler
  * @param {boolean} props.isSubmitting - Whether form is submitting
- * @param {React.RefObject} props.inputRef - Input element ref
+ * @param {React.RefObject<HTMLInputElement>} props.inputRef - Input element ref
  */
 export const FormInputSection = ({
     description,
