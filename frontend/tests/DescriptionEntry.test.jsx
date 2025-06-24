@@ -24,7 +24,7 @@ describe("DescriptionEntry", () => {
         submitEntry.mockClear();
         fetchConfig.mockClear();
 
-        // Set default mock implementations
+        // Set default mock implementations that resolve immediately
         fetchRecentEntries.mockResolvedValue([]);
         submitEntry.mockResolvedValue({
             success: true,
@@ -35,6 +35,11 @@ describe("DescriptionEntry", () => {
 
     it("renders the main elements", async () => {
         render(<DescriptionEntry />);
+
+        // Wait for async operations to complete first
+        await waitFor(() => {
+            expect(screen.getByText("Event Logging Help")).toBeInTheDocument();
+        });
 
         expect(screen.getByText("Log an Event")).toBeInTheDocument();
         expect(screen.getByText("What happened?")).toBeInTheDocument();
@@ -47,15 +52,15 @@ describe("DescriptionEntry", () => {
         expect(
             screen.getByRole("button", { name: /clear/i })
         ).toBeInTheDocument();
-
-        // Wait for async operations to complete
-        await waitFor(() => {
-            expect(true).toBe(true); // Just wait for component to settle
-        });
     });
 
     it("updates input value when typing", async () => {
         render(<DescriptionEntry />);
+
+        // Wait for component to settle first
+        await waitFor(() => {
+            expect(screen.getByText("Event Logging Help")).toBeInTheDocument();
+        });
 
         const input = screen.getByPlaceholderText(
             "Type your event description here..."
@@ -63,15 +68,15 @@ describe("DescriptionEntry", () => {
         fireEvent.change(input, { target: { value: "test input" } });
 
         expect(input.value).toBe("test input");
-
-        // Wait for async operations to complete
-        await waitFor(() => {
-            expect(true).toBe(true);
-        });
     });
 
     it("enables buttons when input has content", async () => {
         render(<DescriptionEntry />);
+
+        // Wait for component to settle first
+        await waitFor(() => {
+            expect(screen.getByText("Event Logging Help")).toBeInTheDocument();
+        });
 
         const input = screen.getByPlaceholderText(
             "Type your event description here..."
@@ -89,11 +94,6 @@ describe("DescriptionEntry", () => {
         // Now enabled
         expect(logButton).toBeEnabled();
         expect(clearButton).toBeEnabled();
-
-        // Wait for async operations to complete
-        await waitFor(() => {
-            expect(true).toBe(true);
-        });
     });
 
     it("renders config section with demo data when no config is available", async () => {
@@ -153,6 +153,11 @@ describe("DescriptionEntry", () => {
     it("submits entry when Log Event button is clicked", async () => {
         render(<DescriptionEntry />);
 
+        // Wait for component to settle
+        await waitFor(() => {
+            expect(screen.getByText("Event Logging Help")).toBeInTheDocument();
+        });
+
         const input = screen.getByPlaceholderText(
             "Type your event description here..."
         );
@@ -172,6 +177,11 @@ describe("DescriptionEntry", () => {
     it("submits entry when Enter key is pressed", async () => {
         render(<DescriptionEntry />);
 
+        // Wait for component to settle
+        await waitFor(() => {
+            expect(screen.getByText("Event Logging Help")).toBeInTheDocument();
+        });
+
         const input = screen.getByPlaceholderText(
             "Type your event description here..."
         );
@@ -190,6 +200,11 @@ describe("DescriptionEntry", () => {
     it("does not submit when Enter is pressed with Shift key", async () => {
         render(<DescriptionEntry />);
 
+        // Wait for component to settle
+        await waitFor(() => {
+            expect(screen.getByText("Event Logging Help")).toBeInTheDocument();
+        });
+
         const input = screen.getByPlaceholderText(
             "Type your event description here..."
         );
@@ -206,6 +221,11 @@ describe("DescriptionEntry", () => {
 
     it("clears input when Clear button is clicked", async () => {
         render(<DescriptionEntry />);
+
+        // Wait for component to settle
+        await waitFor(() => {
+            expect(screen.getByText("Event Logging Help")).toBeInTheDocument();
+        });
 
         const input = screen.getByPlaceholderText(
             "Type your event description here..."
@@ -315,6 +335,11 @@ describe("DescriptionEntry", () => {
 
     it("does not submit empty or whitespace-only input", async () => {
         render(<DescriptionEntry />);
+
+        // Wait for component to settle
+        await waitFor(() => {
+            expect(screen.getByText("Event Logging Help")).toBeInTheDocument();
+        });
 
         const input = screen.getByPlaceholderText(
             "Type your event description here..."
@@ -675,6 +700,11 @@ describe("DescriptionEntry", () => {
     it("trims whitespace from input before submission", async () => {
         render(<DescriptionEntry />);
 
+        // Wait for component to settle
+        await waitFor(() => {
+            expect(screen.getByText("Event Logging Help")).toBeInTheDocument();
+        });
+
         const input = screen.getByPlaceholderText(
             "Type your event description here..."
         );
@@ -693,6 +723,11 @@ describe("DescriptionEntry", () => {
 
     it("handles Enter key submission with trimmed input", async () => {
         render(<DescriptionEntry />);
+
+        // Wait for component to settle
+        await waitFor(() => {
+            expect(screen.getByText("Event Logging Help")).toBeInTheDocument();
+        });
 
         const input = screen.getByPlaceholderText(
             "Type your event description here..."
@@ -814,6 +849,11 @@ describe("DescriptionEntry", () => {
 
     it("maintains correct button states after clear", async () => {
         render(<DescriptionEntry />);
+
+        // Wait for component to settle
+        await waitFor(() => {
+            expect(screen.getByText("Event Logging Help")).toBeInTheDocument();
+        });
 
         const input = screen.getByPlaceholderText(
             "Type your event description here..."
