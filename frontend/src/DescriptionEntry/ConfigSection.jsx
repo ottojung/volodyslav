@@ -70,22 +70,22 @@ export const ConfigSection = ({ onShortcutClick, currentInput = "" }) => {
                             description: "Quick dinner entry",
                         },
                         {
-                            pattern: "\\\\bcoffee\\\\b",
+                            pattern: "\\bcoffee\\b",
                             replacement: "food [certainty 10] coffee",
                             description: "Coffee shortcut",
                         },
                         {
-                            pattern: "\\\\btea\\\\b",
+                            pattern: "\\btea\\b",
                             replacement: "food [certainty 10] tea",
                             description: "Tea shortcut",
                         },
                         {
-                            pattern: "slept (\\\\d+)h",
+                            pattern: "slept (\\d+)h",
                             replacement: "sleep [duration $1 hours]",
                             description: "Sleep duration shortcut",
                         },
                         {
-                            pattern: "worked (\\\\d+)h",
+                            pattern: "worked (\\d+)h",
                             replacement: "work [duration $1 hours]",
                             description: "Work duration shortcut",
                         },
@@ -101,24 +101,9 @@ export const ConfigSection = ({ onShortcutClick, currentInput = "" }) => {
     }, []);
 
     const handleShortcutClick = (/** @type {Shortcut} */ shortcut) => {
-        // For demonstration, use the replacement text directly
-        // In a real implementation, you might want to apply the regex transformation
-        let exampleText = shortcut.replacement;
-
-        // If it's a simple pattern, use the replacement directly
-        if (
-            !shortcut.pattern.includes("\\\\") &&
-            !shortcut.pattern.includes("(")
-        ) {
-            exampleText = shortcut.replacement;
-        } else {
-            // For more complex patterns, show the description or a simple example
-            exampleText =
-                shortcut.description ||
-                `${shortcut.pattern} → ${shortcut.replacement}`;
-        }
-
-        onShortcutClick(exampleText);
+        // Use the pattern as the input text for the user to type
+        // This allows them to see what to type to trigger the shortcut
+        onShortcutClick(shortcut.pattern);
     };
 
     const applyShortcut = (
@@ -206,7 +191,13 @@ export const ConfigSection = ({ onShortcutClick, currentInput = "" }) => {
 
                     <Collapse in={isOpen} animateOpacity>
                         <VStack spacing={SPACING.lg} align="stretch">
-                            <Tabs variant="soft-rounded" colorScheme="blue">
+                            <Tabs
+                                variant="soft-rounded"
+                                colorScheme="blue"
+                                defaultIndex={
+                                    config.shortcuts.length > 0 ? 1 : 0
+                                }
+                            >
                                 <TabList>
                                     <Tab>Syntax</Tab>
                                     {config.shortcuts.length > 0 && (
@@ -289,8 +280,8 @@ export const ConfigSection = ({ onShortcutClick, currentInput = "" }) => {
                                                     fontSize="sm"
                                                     color="gray.600"
                                                 >
-                                                    Click a shortcut to see how
-                                                    it works:
+                                                    Click a shortcut to copy its
+                                                    pattern to the input:
                                                 </Text>
                                                 {config.shortcuts.map(
                                                     (shortcut, index) => {
