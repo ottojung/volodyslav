@@ -21,7 +21,8 @@ export const SIZES = {
 
 // Color scheme
 export const COLORS = {
-    primary: "blue",
+    primary: "blue.500",
+    primaryScheme: "blue",
     text: {
         primary: "gray.800",
         secondary: "gray.600",
@@ -89,7 +90,7 @@ export const INPUT_STYLES = {
 
 export const BUTTON_STYLES = {
     primary: {
-        colorScheme: COLORS.primary,
+        colorScheme: COLORS.primaryScheme,
         size: "md",
         px: SIZES.buttonPadding,
         borderRadius: "xl",
@@ -112,6 +113,10 @@ export const TEXT_STYLES = {
         color: COLORS.text.secondary,
         fontSize: "lg",
     },
+    cardHeading: {
+        color: COLORS.text.primary,
+        fontWeight: "medium",
+    },
     sectionTitle: {
         fontSize: "sm",
         fontWeight: "semibold",
@@ -133,7 +138,7 @@ export const TEXT_STYLES = {
 };
 
 export const BADGE_STYLES = {
-    colorScheme: COLORS.primary,
+    colorScheme: COLORS.primaryScheme,
     variant: "subtle",
     fontSize: "xs",
 };

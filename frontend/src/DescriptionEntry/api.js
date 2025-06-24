@@ -13,6 +13,19 @@ const API_BASE_URL = "/api";
  */
 
 /**
+ * @typedef {Object} Shortcut
+ * @property {string} pattern - Regex pattern to match
+ * @property {string} replacement - Replacement string  
+ * @property {string} [description] - Optional description
+ */
+
+/**
+ * @typedef {Object} Config
+ * @property {string} help - Help text for the configuration
+ * @property {Shortcut[]} shortcuts - Array of shortcuts
+ */
+
+/**
  * Fetches recent entries from the API.
  * @param {number} [limit=10] - The maximum number of entries to fetch.
  * @returns {Promise<Entry[]>} - Array of recent entries, or empty array if fetch fails.
@@ -63,3 +76,24 @@ export async function submitEntry(rawInput) {
         throw new Error(errorMessage);
     }
 }
+
+/**
+ * Fetches the current configuration from the API.
+ * @returns {Promise<Config|null>} - The configuration object, or null if not found.
+ */
+export const fetchConfig = async () => {
+    try {
+        const response = await fetch(`${API_BASE_URL}/config`);
+
+        if (response.ok) {
+            const data = await response.json();
+            return data.config;
+        } else {
+            console.warn("Failed to fetch config:", response.status);
+            return null;
+        }
+    } catch (error) {
+        console.error("Error fetching config:", error);
+        return null;
+    }
+};
