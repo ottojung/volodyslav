@@ -1,5 +1,10 @@
 const API_BASE_URL = "/api";
 
+/**
+ * Fetches recent entries from the API.
+ * @param {number} [limit=10] - The maximum number of entries to fetch.
+ * @returns {Promise<Array<Object>>} - Array of recent entries, or empty array if fetch fails.
+ */
 export const fetchRecentEntries = async (limit = 10) => {
     const response = await fetch(`${API_BASE_URL}/entries?limit=${limit}`);
 
@@ -15,7 +20,8 @@ export const fetchRecentEntries = async (limit = 10) => {
 /**
  * Submits a new entry to the API.
  * @param {string} rawInput - The raw input description for the entry.
- * @returns {Promise<Object>} - The API response.
+ * @returns {Promise<{success: boolean, entry?: Object, error?: string}>} - The API response object containing success status and entry data.
+ * @throws {Error} - Throws an error if the submission fails.
  */
 export async function submitEntry(rawInput) {
     const response = await fetch(`${API_BASE_URL}/entries`, {
