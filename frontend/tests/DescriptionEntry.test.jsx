@@ -396,7 +396,7 @@ describe("DescriptionEntry", () => {
 
         // Input should be updated with the pattern
         await waitFor(() => {
-            expect(input.value).toBe("breakfast");
+            expect(input.value).toBe("food [when this morning]");
         });
 
         // Input should be focused after shortcut click
