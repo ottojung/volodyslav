@@ -9,6 +9,16 @@ jest.mock("../src/DescriptionEntry/api", () => ({
     fetchConfig: jest.fn(),
 }));
 
+// Mock the logger module to prevent console output during tests
+jest.mock("../src/DescriptionEntry/logger", () => ({
+    logger: {
+        error: jest.fn(),
+        warn: jest.fn(),
+        info: jest.fn(),
+        debug: jest.fn(),
+    },
+}));
+
 import DescriptionEntry from "../src/DescriptionEntry/DescriptionEntry.jsx";
 // Import the mocked functions after the mock is set up
 import {

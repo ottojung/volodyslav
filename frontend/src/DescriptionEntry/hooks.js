@@ -5,6 +5,7 @@ import {
     submitEntry,
 } from "./api";
 import { isValidDescription, createToastConfig } from "./utils.js";
+import { logger } from "./logger.js";
 
 /**
  * Custom hook for managing description entry form state and actions
@@ -23,7 +24,7 @@ export const useDescriptionEntry = (numberOfEntries = 10) => {
             const entries = await apiFetchRecentEntries(numberOfEntries);
             setRecentEntries(entries);
         } catch (error) {
-            console.error("Error fetching recent entries:", error);
+            logger.error("Error fetching recent entries:", error);
         } finally {
             setIsLoadingEntries(false);
         }
@@ -45,7 +46,7 @@ export const useDescriptionEntry = (numberOfEntries = 10) => {
             fetchRecentEntries();
             toast(createToastConfig.success(savedInput));
         } catch (error) {
-            console.error("Error logging event:", error);
+            logger.error("Error logging event:", error);
             const errorMessage = error instanceof Error 
                 ? error.message 
                 : "Please check your connection and try again.";
