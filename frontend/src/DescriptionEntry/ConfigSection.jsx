@@ -127,9 +127,7 @@ export const ConfigSection = ({ onShortcutClick, currentInput = "" }) => {
     }, []);
 
     const handleShortcutClick = (/** @type {Shortcut} */ shortcut) => {
-        // Use the pattern as the input text for the user to type
-        // This allows them to see what to type to trigger the shortcut
-        onShortcutClick(shortcut.pattern);
+        onShortcutClick(shortcut.replacement);
     };
 
     const applyShortcut = (
