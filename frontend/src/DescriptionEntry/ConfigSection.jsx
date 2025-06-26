@@ -75,52 +75,7 @@ export const ConfigSection = ({ onShortcutClick, currentInput = "" }) => {
         const loadConfig = async () => {
             setIsLoading(true);
             const configData = await fetchConfig();
-            if (!configData) {
-                // Fallback demo config for development
-                const demoConfig = {
-                    help: "Event logging help text\n\nSyntax: TYPE [MODIFIERS...] DESCRIPTION\n\nExamples:\n   food [certainty 9] earl gray tea, unsweetened\n   food [when now] [certainty 9] pizza capricciossa, medium size\n   sleep [when 5 hours ago] went to bed\n\nModifiers:\n   [when TIME] - specify when the event happened\n   [certainty LEVEL] - specify how certain you are (1-10)\n\nTypes available: food, sleep, exercise, work, social",
-                    shortcuts: [
-                        {
-                            pattern: "breakfast",
-                            replacement: "food [when this morning]",
-                            description: "Quick breakfast entry",
-                        },
-                        {
-                            pattern: "lunch",
-                            replacement: "food [when noon]",
-                            description: "Quick lunch entry",
-                        },
-                        {
-                            pattern: "dinner",
-                            replacement: "food [when evening]",
-                            description: "Quick dinner entry",
-                        },
-                        {
-                            pattern: "\\bcoffee\\b",
-                            replacement: "food [certainty 10] coffee",
-                            description: "Coffee shortcut",
-                        },
-                        {
-                            pattern: "\\btea\\b",
-                            replacement: "food [certainty 10] tea",
-                            description: "Tea shortcut",
-                        },
-                        {
-                            pattern: "slept (\\d+)h",
-                            replacement: "sleep [duration $1 hours]",
-                            description: "Sleep duration shortcut",
-                        },
-                        {
-                            pattern: "worked (\\d+)h",
-                            replacement: "work [duration $1 hours]",
-                            description: "Work duration shortcut",
-                        },
-                    ],
-                };
-                setConfig(demoConfig);
-            } else {
-                setConfig(configData);
-            }
+            setConfig(configData);
             setIsLoading(false);
         };
         loadConfig();

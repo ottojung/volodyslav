@@ -18,6 +18,48 @@ import {
 } from "../src/DescriptionEntry/api";
 
 describe("DescriptionEntry", () => {
+    // Default mock config for tests that need config functionality
+    const defaultMockConfig = {
+        help: "Event logging help text\n\nSyntax: TYPE [MODIFIERS...] DESCRIPTION\n\nExamples:\n   food [certainty 9] earl gray tea, unsweetened\n   food [when now] [certainty 9] pizza capricciossa, medium size\n   sleep [when 5 hours ago] went to bed\n\nModifiers:\n   [when TIME] - specify when the event happened\n   [certainty LEVEL] - specify how certain you are (1-10)\n\nTypes available: food, sleep, exercise, work, social",
+        shortcuts: [
+            {
+                pattern: "breakfast",
+                replacement: "food [when this morning]",
+                description: "Quick breakfast entry",
+            },
+            {
+                pattern: "lunch",
+                replacement: "food [when noon]", 
+                description: "Quick lunch entry",
+            },
+            {
+                pattern: "dinner",
+                replacement: "food [when evening]",
+                description: "Quick dinner entry",
+            },
+            {
+                pattern: "\\bcoffee\\b",
+                replacement: "food [certainty 10] coffee",
+                description: "Coffee shortcut",
+            },
+            {
+                pattern: "\\btea\\b", 
+                replacement: "food [certainty 10] tea",
+                description: "Tea shortcut",
+            },
+            {
+                pattern: "slept (\\d+)h",
+                replacement: "sleep [duration $1 hours]",
+                description: "Sleep duration shortcut",
+            },
+            {
+                pattern: "worked (\\d+)h",
+                replacement: "work [duration $1 hours]",
+                description: "Work duration shortcut",
+            },
+        ],
+    };
+
     beforeEach(() => {
         // Reset mocks before each test
         fetchRecentEntries.mockClear();
@@ -30,7 +72,8 @@ describe("DescriptionEntry", () => {
             success: true,
             entry: { input: "test" },
         });
-        fetchConfig.mockResolvedValue(null);
+        // Use default mock config instead of null
+        fetchConfig.mockResolvedValue(defaultMockConfig);
     });
 
     it("renders the main elements", async () => {
@@ -96,19 +139,20 @@ describe("DescriptionEntry", () => {
         expect(clearButton).toBeEnabled();
     });
 
-    it("renders config section with demo data when no config is available", async () => {
+    it("does not render config section when no config is available", async () => {
+        // Override default mock to return null for this test
+        fetchConfig.mockResolvedValue(null);
+        
         render(<DescriptionEntry />);
 
-        // Wait for config to load
+        // Wait for component to finish loading
         await waitFor(() => {
-            expect(screen.getByText("Event Logging Help")).toBeInTheDocument();
+            expect(screen.getByText("Log an Event")).toBeInTheDocument();
         });
 
-        // Should show shortcuts count badge
-        expect(screen.getByText("7 shortcuts")).toBeInTheDocument();
-
-        // Should show Hide Details button (since config is open by default)
-        expect(screen.getByText("Hide Details")).toBeInTheDocument();
+        // Should not show config section when no config is available
+        expect(screen.queryByText("Event Logging Help")).not.toBeInTheDocument();
+        expect(screen.queryByText("shortcuts")).not.toBeInTheDocument();
     });
 
     it("renders config section with server data when available", async () => {
@@ -531,18 +575,19 @@ describe("DescriptionEntry", () => {
     });
 
     it("handles fetchConfig error gracefully", async () => {
-        // Clear the default mock and make it return null to simulate error fallback
+        // Clear the default mock and make it return null to simulate no config
         fetchConfig.mockResolvedValue(null);
 
         render(<DescriptionEntry />);
 
-        // When config fetch returns null, it should show demo config instead
+        // When config fetch returns null, no config section should be shown
         await waitFor(() => {
-            expect(screen.getByText("Event Logging Help")).toBeInTheDocument();
+            expect(screen.getByText("Log an Event")).toBeInTheDocument();
         });
 
-        // Should show demo shortcuts count (fallback behavior)
-        expect(screen.getByText("7 shortcuts")).toBeInTheDocument();
+        // Should not show config section when no config is available
+        expect(screen.queryByText("Event Logging Help")).not.toBeInTheDocument();
+        expect(screen.queryByText("shortcuts")).not.toBeInTheDocument();
     });
 
     it("maintains input focus after shortcut click", async () => {

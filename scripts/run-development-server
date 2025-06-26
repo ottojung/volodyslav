@@ -10,12 +10,22 @@ export VOLODYSLAV_OPENAI_API_KEY="$OPENAI_API_KEY"
 export VOLODYSLAV_WORKING_DIRECTORY="dist/test/wd"
 export VOLODYSLAV_DIARY_RECORDINGS_DIRECTORY="dist/test/recordings"
 export VOLODYSLAV_EVENT_LOG_ASSETS_DIRECTORY="dist/test/event-log-assets"
-export VOLODYSLAV_EVENT_LOG_REPOSITORY="dist/test/mock-event-log-repository"
+
+# Use populated repository by default for better development experience
+# To use empty repository instead, set VOLODYSLAV_USE_EMPTY_REPO=true
+if [ "$VOLODYSLAV_USE_EMPTY_REPO" = "true" ]; then
+    export VOLODYSLAV_EVENT_LOG_REPOSITORY="dist/test/mock-event-log-repository-empty"
+    SOURCE_REPO="backend/tests/mock-event-log-repository"
+else
+    export VOLODYSLAV_EVENT_LOG_REPOSITORY="dist/test/mock-event-log-repository"
+    SOURCE_REPO="backend/tests/mock-event-log-repository-populated"
+fi
+
 export VOLODYSLAV_SERVER_PORT=3000
 
 if ! test -d "$VOLODYSLAV_EVENT_LOG_REPOSITORY"
 then
-    cp -r -T -- "backend/tests/mock-event-log-repository" "$VOLODYSLAV_EVENT_LOG_REPOSITORY"
+    cp -r -T -- "$SOURCE_REPO" "$VOLODYSLAV_EVENT_LOG_REPOSITORY"
 fi
 
 npm run dev
