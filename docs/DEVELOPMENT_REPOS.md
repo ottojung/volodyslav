@@ -25,7 +25,7 @@ This project supports two test event log repositories for development:
 ### Using the Empty Repository
 ```bash
 # Set the environment variable to use the empty repository
-VOLODYSLAV_USE_EMPTY_REPO=true ./scripts/run-development-server
+VOLODYSLAV_USE_EMPTY_REPO=1 ./scripts/run-development-server
 ```
 
 ## Repository Contents
