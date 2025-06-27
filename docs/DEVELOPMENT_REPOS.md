@@ -1,6 +1,6 @@
 # Development Repository Setup
 
-This project now supports two test event log repositories for development:
+This project supports two test event log repositories for development:
 
 ## Available Repositories
 
@@ -47,10 +47,3 @@ The frontend now loads configuration from the backend API instead of using hardc
 1. **Default Development**: Use populated repository for realistic development experience
 2. **Clean Slate Testing**: Use empty repository to test initial user experience
 3. **Configuration Testing**: Modify `backend/tests/mock-event-log-repository-populated` to test different configurations
-
-## Changes Made
-- ✅ Removed hardcoded `demoConfig` from frontend `ConfigSection.jsx`
-- ✅ Created populated test repository with realistic sample data
-- ✅ Updated development script to support easy repository switching
-- ✅ Updated frontend tests to work with the new configuration loading behavior
-- ✅ Ensured backward compatibility for testing scenarios
