@@ -19,7 +19,7 @@ then
     export VOLODYSLAV_EVENT_LOG_REPOSITORY="dist/test/mock-event-log-repository-empty"
     SOURCE_REPO="backend/tests/mock-event-log-repository"
 else
-    export VOLODYSLAV_EVENT_LOG_REPOSITORY="dist/test/mock-event-log-repository"
+    export VOLODYSLAV_EVENT_LOG_REPOSITORY="dist/test/mock-event-log-repository-populated"
     SOURCE_REPO="backend/tests/mock-event-log-repository-populated"
 fi
 
