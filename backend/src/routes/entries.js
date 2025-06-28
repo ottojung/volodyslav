@@ -55,10 +55,33 @@ function makeRouter(capabilities) {
 
         // Call multer upload middleware for multiple files
         uploadMiddleware.array("files")(req, res, async (err) => {
-            if (err) return next(err);
+            if (err) {
+                capabilities.logger.logError(
+                    {
+                        request_identifier: reqId.identifier,
+                        error: err.message,
+                        error_name: err.name,
+                        error_code: err.code,
+                        error_stack: err.stack,
+                        client_ip: req.ip
+                    },
+                    "File upload middleware error during entry creation"
+                );
+                return next(err);
+            }
             try {
-                await handleEntryPost(req, res, capabilities);
+                await handleEntryPost(req, res, capabilities, reqId);
             } catch (error) {
+                capabilities.logger.logError(
+                    {
+                        request_identifier: reqId.identifier,
+                        error: error instanceof Error ? error.message : String(error),
+                        error_name: error instanceof Error ? error.name : "Unknown",
+                        error_stack: error instanceof Error ? error.stack : undefined,
+                        client_ip: req.ip
+                    },
+                    "Unhandled error during entry creation"
+                );
                 next(error);
             }
         });
@@ -68,7 +91,30 @@ function makeRouter(capabilities) {
      * GET /entries - List entries with pagination
      */
     router.get("/entries", async (req, res) => {
-        await handleEntriesGet(req, res, capabilities);
+        // Generate request ID for tracking
+        const reqId = randomRequestId(capabilities);
+
+        try {
+            await handleEntriesGet(req, res, capabilities, reqId);
+        } catch (error) {
+            capabilities.logger.logError(
+                {
+                    request_identifier: reqId.identifier,
+                    error: error instanceof Error ? error.message : String(error),
+                    error_name: error instanceof Error ? error.name : "Unknown",
+                    error_stack: error instanceof Error ? error.stack : undefined,
+                    client_ip: req.ip,
+                    query: req.query
+                },
+                "Unhandled error during entries list request"
+            );
+            // Let handleEntriesGet handle the response if it hasn't been sent yet
+            if (!res.headersSent) {
+                res.status(500).json({
+                    error: "Internal server error",
+                });
+            }
+        }
     });
 
     return router;
@@ -85,17 +131,32 @@ function makeRouter(capabilities) {
  *
  * @param {Capabilities} capabilities - The capabilities.
  * @param {Express.Multer.File[]|undefined} files - The uploaded files.
+ * @param {import('../request_identifier').RequestIdentifier} reqId - Request identifier for tracking
  * @returns {Promise<import('../filesystem/file').ExistingFile[]>} - The file objects.
  */
-async function prepareFileObjects(capabilities, files) {
+async function prepareFileObjects(capabilities, files, reqId) {
     if (!files || !Array.isArray(files) || files.length === 0) {
         return [];
     }
 
     const fileObjects = [];
     for (const file of files) {
-        const existingFile = await capabilities.checker.instantiate(file.path);
-        fileObjects.push(existingFile);
+        try {
+            const existingFile = await capabilities.checker.instantiate(file.path);
+            fileObjects.push(existingFile);
+        } catch (error) {
+            capabilities.logger.logError(
+                {
+                    request_identifier: reqId.identifier,
+                    error: error instanceof Error ? error.message : String(error),
+                    file_path: file.path,
+                    file_name: file.originalname,
+                    error_stack: error instanceof Error ? error.stack : undefined
+                },
+                "Failed to prepare file object for entry creation"
+            );
+            throw error;
+        }
     }
 
     return fileObjects;
@@ -106,14 +167,17 @@ async function prepareFileObjects(capabilities, files) {
  *
  * @param {Error|unknown} error - The error that occurred.
  * @param {Capabilities} capabilities - The capabilities.
+ * @param {import('../request_identifier').RequestIdentifier} reqId - Request identifier for tracking
  * @returns {object} - The error response.
  */
-function handleEntryError(error, capabilities) {
+function handleEntryError(error, capabilities, reqId) {
     const message = error instanceof Error ? error.message : String(error);
 
     capabilities.logger.logError(
         {
+            request_identifier: reqId.identifier,
             error: message,
+            error_name: error instanceof Error ? error.name : "Unknown",
             stack: error instanceof Error ? error.stack : undefined,
         },
         `Failed to create entry: ${message}`
@@ -129,8 +193,9 @@ function handleEntryError(error, capabilities) {
  * @param {import('express').Request} req
  * @param {import('express').Response} res - Responds with EntryCreateResponse on success or EntryCreateErrorResponse on error
  * @param {Capabilities} capabilities
+ * @param {import('../request_identifier').RequestIdentifier} reqId - Request identifier for tracking
  */
-async function handleEntryPost(req, res, capabilities) {
+async function handleEntryPost(req, res, capabilities, reqId) {
     try {
         // Handle req.files - multer can provide an object or array
         /** @type {Express.Multer.File[]} */
@@ -145,6 +210,16 @@ async function handleEntryPost(req, res, capabilities) {
         // New API: rawInput with optional date
         const { rawInput, date } = req.body;
         if (typeof rawInput !== "string" || rawInput.trim() === "") {
+            capabilities.logger.logError(
+                {
+                    request_identifier: reqId.identifier,
+                    error: "Missing required field: rawInput",
+                    body: req.body,
+                    status_code: 400,
+                    client_ip: req.ip
+                },
+                "Entry creation failed - missing rawInput field"
+            );
             return res.status(400).json({ error: "Missing required field: rawInput" });
         }
 
@@ -154,6 +229,16 @@ async function handleEntryPost(req, res, capabilities) {
             processed = await processUserInput(capabilities, rawInput);
         } catch (error) {
             if (error instanceof InputParseError) {
+                capabilities.logger.logInfo(
+                    {
+                        request_identifier: reqId.identifier,
+                        error: error.message,
+                        raw_input: rawInput,
+                        status_code: 400,
+                        client_ip: req.ip
+                    },
+                    "Entry creation failed - input parse error (user error)"
+                );
                 return res.status(400).json({ error: error.message });
             }
             throw error;
@@ -172,14 +257,34 @@ async function handleEntryPost(req, res, capabilities) {
         };
 
         // Prepare file attachments
-        const fileObjects = await prepareFileObjects(capabilities, files);
+        const fileObjects = await prepareFileObjects(capabilities, files, reqId);
 
         // Create entry event
         const event = await createEntry(capabilities, entryData, fileObjects);
 
+        capabilities.logger.logInfo(
+            {
+                request_identifier: reqId.identifier,
+                entry_type: event.type,
+                file_count: fileObjects.length,
+                has_modifiers: Object.keys(parsed.modifiers || {}).length > 0,
+                status_code: 201,
+                client_ip: req.ip
+            },
+            "Entry created successfully"
+        );
+
         return res.status(201).json({ success: true, entry: serialize(event) });
     } catch (error) {
-        const errorResponse = handleEntryError(error, capabilities);
+        const errorResponse = handleEntryError(error, capabilities, reqId);
+        capabilities.logger.logError(
+            {
+                request_identifier: reqId.identifier,
+                status_code: 500,
+                client_ip: req.ip
+            },
+            "Entry creation request completed with status 500"
+        );
         return res.status(500).json(errorResponse);
     }
 }
@@ -264,8 +369,9 @@ function buildNextPageUrl(req, pagination, hasMore) {
  * @param {import('express').Request} req
  * @param {import('express').Response} res - Responds with EntriesListResponse on success or EntriesListErrorResponse on error
  * @param {Capabilities} capabilities
+ * @param {import('../request_identifier').RequestIdentifier} reqId - Request identifier for tracking
  */
-async function handleEntriesGet(req, res, capabilities) {
+async function handleEntriesGet(req, res, capabilities, reqId) {
     try {
         // Parse pagination parameters
         const pagination = parsePaginationParams(req.query);
@@ -275,6 +381,18 @@ async function handleEntriesGet(req, res, capabilities) {
 
         // Build next page URL
         const next = buildNextPageUrl(req, pagination, result.hasMore);
+
+        capabilities.logger.logInfo(
+            {
+                request_identifier: reqId.identifier,
+                results_count: result.results.length,
+                has_more: result.hasMore,
+                pagination: pagination,
+                status_code: 200,
+                client_ip: req.ip
+            },
+            "Entries list request completed successfully"
+        );
 
         // Return response
         res.json({
@@ -287,10 +405,23 @@ async function handleEntriesGet(req, res, capabilities) {
 
         capabilities.logger.logError(
             {
+                request_identifier: reqId.identifier,
                 error: message,
+                error_name: error instanceof Error ? error.name : "Unknown",
                 stack: error instanceof Error ? error.stack : undefined,
+                query: req.query,
+                client_ip: req.ip
             },
             `Failed to fetch entries: ${message}`
+        );
+
+        capabilities.logger.logError(
+            {
+                request_identifier: reqId.identifier,
+                status_code: 500,
+                client_ip: req.ip
+            },
+            "Entries list request completed with status 500"
         );
 
         res.status(500).json({
