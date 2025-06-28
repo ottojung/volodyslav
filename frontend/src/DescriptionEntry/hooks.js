@@ -6,6 +6,14 @@ import {
 } from "./api";
 import { isValidDescription, createToastConfig } from "./utils.js";
 import { logger } from "./logger.js";
+import { 
+    requiresCamera, 
+    generateRequestIdentifier, 
+    navigateToCamera, 
+    checkCameraReturn, 
+    cleanupUrlParams,
+    cleanDescription 
+} from "./cameraUtils.js";
 
 /**
  * Custom hook for managing description entry form state and actions
@@ -16,6 +24,7 @@ export const useDescriptionEntry = (numberOfEntries = 10) => {
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [recentEntries, setRecentEntries] = useState(/** @type {any[]} */ ([]));
     const [isLoadingEntries, setIsLoadingEntries] = useState(true);
+    const [pendingRequestIdentifier, setPendingRequestIdentifier] = useState(/** @type {string|null} */ (null));
     const toast = useToast();
 
     const fetchRecentEntries = async () => {
@@ -36,13 +45,24 @@ export const useDescriptionEntry = (numberOfEntries = 10) => {
             return;
         }
 
+        // Check if camera is required
+        if (requiresCamera(description)) {
+            const requestIdentifier = generateRequestIdentifier();
+            setPendingRequestIdentifier(requestIdentifier);
+            navigateToCamera(requestIdentifier);
+            return;
+        }
+
         setIsSubmitting(true);
 
         try {
-            const result = await submitEntry(description.trim());
+            const result = pendingRequestIdentifier 
+                ? await submitEntry(description.trim(), pendingRequestIdentifier)
+                : await submitEntry(description.trim());
             const savedInput = result.entry?.input ?? description.trim();
 
             setDescription("");
+            setPendingRequestIdentifier(null);
             fetchRecentEntries();
             toast(createToastConfig.success(savedInput));
         } catch (error) {
@@ -58,6 +78,7 @@ export const useDescriptionEntry = (numberOfEntries = 10) => {
 
     const handleClear = () => {
         setDescription("");
+        setPendingRequestIdentifier(null);
     };
 
     const handleKeyUp = (/** @type {any} */ e) => {
@@ -72,12 +93,39 @@ export const useDescriptionEntry = (numberOfEntries = 10) => {
         fetchRecentEntries();
     }, []);
 
+    // Handle return from camera
+    useEffect(() => {
+        const cameraReturn = checkCameraReturn();
+        if (cameraReturn.isReturn && cameraReturn.requestIdentifier) {
+            // Set the request identifier for the next submission
+            setPendingRequestIdentifier(cameraReturn.requestIdentifier);
+            
+            // Clean description of camera trigger pattern if present
+            if (requiresCamera(description)) {
+                setDescription(cleanDescription(description));
+            }
+            
+            // Clean up URL parameters
+            cleanupUrlParams();
+            
+            // Show a toast to let user know photos are ready
+            toast({
+                title: 'Photos uploaded successfully',
+                description: 'Complete your description and submit to create the entry.',
+                status: 'success',
+                duration: 5000,
+                isClosable: true,
+            });
+        }
+    }, [description, toast]);
+
     return {
         // State
         description,
         isSubmitting,
         recentEntries,
         isLoadingEntries,
+        pendingRequestIdentifier,
         
         // Actions
         setDescription,

@@ -14,6 +14,7 @@ export default function DescriptionEntry() {
         isSubmitting,
         recentEntries,
         isLoadingEntries,
+        pendingRequestIdentifier,
         setDescription,
         handleSubmit,
         handleClear,
@@ -67,6 +68,7 @@ export default function DescriptionEntry() {
                     onKeyUp={handleKeyUp}
                     isSubmitting={isSubmitting}
                     inputRef={inputRef}
+                    hasPhotos={!!pendingRequestIdentifier}
                 />
 
                 {/* Recent Entries Section */}

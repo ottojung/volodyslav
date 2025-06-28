@@ -20,6 +20,11 @@ export default function Camera() {
         return params.get('request_identifier')?.trim() || '';
     }, []);
 
+    const return_to = useMemo(() => {
+        const params = new URLSearchParams(window.location.search);
+        return params.get('return_to')?.trim() || '/';
+    }, []);
+
     const [currentBlob, setCurrentBlob] = useState(/** @type {Blob|null} */ (null));
     const [previewUrl, setPreviewUrl] = useState(/** @type {string|undefined} */ (undefined));
     const [photos, setPhotos] = useState(/** @type {Photo[]} */ ([]));
@@ -190,6 +195,12 @@ export default function Camera() {
             });
             setPhotos([]);
             setCurrentBlob(null);
+            
+            // Navigate back to the originating page with camera info
+            const returnUrl = new URL(return_to, window.location.origin);
+            returnUrl.searchParams.set('from_camera', 'true');
+            returnUrl.searchParams.set('request_identifier', request_identifier);
+            window.location.href = returnUrl.toString();
         } catch (/** @type {unknown} */ err) {
             console.error(err);
             let description;

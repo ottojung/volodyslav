@@ -7,6 +7,7 @@ import {
     HStack,
     Card,
     CardBody,
+    Badge,
 } from "@chakra-ui/react";
 import { isValidDescription } from "./utils.js";
 import { 
@@ -27,6 +28,7 @@ import {
  * @param {(e: React.KeyboardEvent) => void} props.onKeyUp - Key up handler
  * @param {boolean} props.isSubmitting - Whether form is submitting
  * @param {React.RefObject<HTMLInputElement>} props.inputRef - Input element ref
+ * @param {boolean} [props.hasPhotos] - Whether photos are attached
  */
 export const FormInputSection = ({
     description,
@@ -36,6 +38,7 @@ export const FormInputSection = ({
     onKeyUp,
     isSubmitting,
     inputRef,
+    hasPhotos = false,
 }) => {
     const isValidInput = isValidDescription(description);
 
@@ -53,9 +56,16 @@ export const FormInputSection = ({
                     />
 
                     <HStack spacing={SPACING.md} justify="space-between">
-                        <Text {...TEXT_STYLES.helper}>
-                            Press Enter to log event
-                        </Text>
+                        <HStack spacing={SPACING.sm}>
+                            <Text {...TEXT_STYLES.helper}>
+                                Press Enter to log event
+                            </Text>
+                            {hasPhotos && (
+                                <Badge colorScheme="green" fontSize="xs">
+                                    📸 Photos attached
+                                </Badge>
+                            )}
+                        </HStack>
                         <HStack spacing={SPACING.sm}>
                             <Button
                                 {...BUTTON_STYLES.secondary}

@@ -48,16 +48,25 @@ export const fetchRecentEntries = async (limit = 10) => {
 /**
  * Submits a new entry to the API.
  * @param {string} rawInput - The raw input description for the entry.
+ * @param {string} [requestIdentifier] - Optional request identifier for associated photos.
  * @returns {Promise<{success: boolean, entry?: Entry, error?: string}>} - The API response object containing success status and entry data.
  * @throws {Error} - Throws an error if the submission fails.
  */
-export async function submitEntry(rawInput) {
-    const response = await fetch(`${API_BASE_URL}/entries`, {
+export async function submitEntry(rawInput, requestIdentifier = undefined) {
+    const requestBody = { rawInput };
+    
+    // If we have a request identifier, include it in the request
+    let url = `${API_BASE_URL}/entries`;
+    if (requestIdentifier) {
+        url += `?request_identifier=${encodeURIComponent(requestIdentifier)}`;
+    }
+
+    const response = await fetch(url, {
         method: "POST",
         headers: {
             "Content-Type": "application/json",
         },
-        body: JSON.stringify({ rawInput }),
+        body: JSON.stringify(requestBody),
     });
 
     if (response.status === 201) {
