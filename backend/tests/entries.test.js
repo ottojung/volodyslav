@@ -141,6 +141,49 @@ describe("POST /api/entries", () => {
         fs.unlinkSync(tmpFilePath2);
         fs.rmdirSync(tmpDir);
     });
+
+    it("returns 400 for empty rawInput", async () => {
+        const { app } = await makeTestApp();
+        
+        const requestBody = {
+            rawInput: "",
+        };
+        const res = await request(app)
+            .post("/api/entries")
+            .send(requestBody)
+            .set("Content-Type", "application/json");
+        
+        expect(res.statusCode).toBe(400);
+        expect(res.body.error).toContain("Missing required field: rawInput");
+    });
+
+    it("returns 400 for missing rawInput", async () => {
+        const { app } = await makeTestApp();
+        
+        const requestBody = {}; // No rawInput field
+        const res = await request(app)
+            .post("/api/entries")
+            .send(requestBody)
+            .set("Content-Type", "application/json");
+        
+        expect(res.statusCode).toBe(400);
+        expect(res.body.error).toContain("Missing required field: rawInput");
+    });
+
+    it("returns 400 for input parse errors", async () => {
+        const { app } = await makeTestApp();
+        
+        const requestBody = {
+            rawInput: "123invalid", // Invalid format - type cannot start with number
+        };
+        const res = await request(app)
+            .post("/api/entries")
+            .send(requestBody)
+            .set("Content-Type", "application/json");
+        
+        expect(res.statusCode).toBe(400);
+        expect(res.body.error).toContain("Bad structure of input");
+    });
 });
 
 describe("GET /api/entries", () => {

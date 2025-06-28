@@ -1,4 +1,4 @@
-const { createEntry, getEntries } = require("../src/entry");
+const { createEntry, getEntries, EntryValidationError } = require("../src/entry");
 const { getMockedRootCapabilities } = require("./spies");
 const { stubEnvironment, stubEventLogRepository, stubDatetime, stubLogger } = require("./stubs");
 
@@ -155,7 +155,7 @@ describe("createEntry (integration, with real capabilities)", () => {
             // no description field
         };
         await expect(createEntry(capabilities, entryData)).rejects.toThrow(
-            /description field is required/
+            EntryValidationError
         );
     });
 
@@ -182,7 +182,7 @@ describe("createEntry (integration, with real capabilities)", () => {
         };
 
         await expect(createEntry(capabilities, entryData)).rejects.toThrow(
-            /modifiers must be key-value strings/
+            EntryValidationError
         );
     });
 });
