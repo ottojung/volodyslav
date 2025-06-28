@@ -27,7 +27,7 @@ describe("Config Debug Test", () => {
             storage.setConfig({
                 help: "test config",
                 shortcuts: [
-                    ["\\bw\\b", "WORK"]
+                    {pattern: "\\bw\\b", replacement: "WORK"}
                 ]
             });
             console.log('3b. setConfig called');

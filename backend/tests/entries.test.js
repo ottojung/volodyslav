@@ -742,18 +742,17 @@ describe("POST /api/entries - rawInput transformation and shortcuts", () => {
         const fixedTime = new Date("2025-05-23T12:00:00.000Z").getTime();
         capabilities.datetime.now.mockReturnValue(fixedTime);
 
-        // Create a config file with shortcuts
-        const configPath = capabilities.environment.eventLogRepository() + "/config.json";
-        const fs = require("fs");
-        const path = require("path");
-        fs.mkdirSync(path.dirname(configPath), { recursive: true });
-        fs.writeFileSync(configPath, JSON.stringify({
-            help: "test config",
-            shortcuts: [
-                ["\\bw\\b", "WORK"],
-                ["\\bo\\b", "office"]
-            ]
-        }));
+        // Create a config with shortcuts using transaction system
+        const { transaction } = require("../src/event_log_storage");
+        await transaction(capabilities, async (storage) => {
+            storage.setConfig({
+                help: "test config",
+                shortcuts: [
+                    {pattern: "\\bw\\b", replacement: "WORK"},
+                    {pattern: "\\bo\\b", replacement: "office"}
+                ]
+            });
+        });
 
         const requestBody = {
             rawInput: "w [loc o] - Fixed the parser",
@@ -773,9 +772,6 @@ describe("POST /api/entries - rawInput transformation and shortcuts", () => {
             input: "WORK [loc office] - Fixed the parser",
             original: "w [loc o] - Fixed the parser"
         });
-
-        // Clean up
-        fs.unlinkSync(configPath);
     });
 
     it("applies recursive shortcuts correctly", async () => {
@@ -783,19 +779,18 @@ describe("POST /api/entries - rawInput transformation and shortcuts", () => {
         const fixedTime = new Date("2025-05-23T12:00:00.000Z").getTime();
         capabilities.datetime.now.mockReturnValue(fixedTime);
 
-        // Create config with recursive shortcuts
-        const configPath = capabilities.environment.eventLogRepository() + "/config.json";
-        const fs = require("fs");
-        const path = require("path");
-        fs.mkdirSync(path.dirname(configPath), { recursive: true });
-        fs.writeFileSync(configPath, JSON.stringify({
-            help: "test config",
-            shortcuts: [
-                ["\\bw\\b", "WORK"],
-                ["\\bo\\b", "office"],
-                ["\\bwo\\b", "w [loc o]"]
-            ]
-        }));
+        // Create config with recursive shortcuts using transaction system
+        const { transaction } = require("../src/event_log_storage");
+        await transaction(capabilities, async (storage) => {
+            storage.setConfig({
+                help: "test config",
+                shortcuts: [
+                    {pattern: "\\bw\\b", replacement: "WORK"},
+                    {pattern: "\\bo\\b", replacement: "office"},
+                    {pattern: "\\bwo\\b", replacement: "w [loc o]"}
+                ]
+            });
+        });
 
         const requestBody = {
             rawInput: "wo - Fixed bug",
@@ -815,9 +810,6 @@ describe("POST /api/entries - rawInput transformation and shortcuts", () => {
             input: "WORK [loc office] - Fixed bug",
             original: "wo - Fixed bug"
         });
-
-        // Clean up
-        fs.unlinkSync(configPath);
     });
 
     it("works without shortcuts when config file doesn't exist", async () => {
@@ -850,15 +842,14 @@ describe("POST /api/entries - rawInput transformation and shortcuts", () => {
         const fixedTime = new Date("2025-05-23T12:00:00.000Z").getTime();
         capabilities.datetime.now.mockReturnValue(fixedTime);
 
-        // Create config with empty shortcuts
-        const configPath = capabilities.environment.eventLogRepository() + "/config.json";
-        const fs = require("fs");
-        const path = require("path");
-        fs.mkdirSync(path.dirname(configPath), { recursive: true });
-        fs.writeFileSync(configPath, JSON.stringify({
-            help: "test config",
-            shortcuts: []
-        }));
+        // Create config with empty shortcuts using transaction system
+        const { transaction } = require("../src/event_log_storage");
+        await transaction(capabilities, async (storage) => {
+            storage.setConfig({
+                help: "test config",
+                shortcuts: []
+            });
+        });
 
         const requestBody = {
             rawInput: "EXERCISE [loc gym] - Weightlifting session",
@@ -878,9 +869,6 @@ describe("POST /api/entries - rawInput transformation and shortcuts", () => {
             input: "EXERCISE [loc gym] - Weightlifting session",
             original: "EXERCISE [loc gym] - Weightlifting session"
         });
-
-        // Clean up
-        fs.unlinkSync(configPath);
     });
 
     it("handles malformed config gracefully", async () => {
@@ -923,17 +911,16 @@ describe("POST /api/entries - rawInput transformation and shortcuts", () => {
         const fixedTime = new Date("2025-05-23T12:00:00.000Z").getTime();
         capabilities.datetime.now.mockReturnValue(fixedTime);
 
-        // Create config with word boundary shortcuts
-        const configPath = capabilities.environment.eventLogRepository() + "/config.json";
-        const fs = require("fs");
-        const path = require("path");
-        fs.mkdirSync(path.dirname(configPath), { recursive: true });
-        fs.writeFileSync(configPath, JSON.stringify({
-            help: "test config",
-            shortcuts: [
-                ["\\bw\\b", "WORK"]
-            ]
-        }));
+        // Create config with word boundary shortcuts using transaction system
+        const { transaction } = require("../src/event_log_storage");
+        await transaction(capabilities, async (storage) => {
+            storage.setConfig({
+                help: "test config",
+                shortcuts: [
+                    {pattern: "\\bw\\b", replacement: "WORK"}
+                ]
+            });
+        });
 
         const requestBody = {
             rawInput: "working on project", // Should NOT be transformed to "WORKing"
@@ -953,9 +940,6 @@ describe("POST /api/entries - rawInput transformation and shortcuts", () => {
             input: "working on project",
             original: "working on project"
         });
-
-        // Clean up
-        fs.unlinkSync(configPath);
     });
 
     it("applies shortcuts to modifiers as well as type", async () => {
@@ -963,19 +947,18 @@ describe("POST /api/entries - rawInput transformation and shortcuts", () => {
         const fixedTime = new Date("2025-05-23T12:00:00.000Z").getTime();
         capabilities.datetime.now.mockReturnValue(fixedTime);
 
-        // Create config with shortcuts for locations
-        const configPath = capabilities.environment.eventLogRepository() + "/config.json";
-        const fs = require("fs");
-        const path = require("path");
-        fs.mkdirSync(path.dirname(configPath), { recursive: true });
-        fs.writeFileSync(configPath, JSON.stringify({
-            help: "test config",
-            shortcuts: [
-                ["\\bm\\b", "MEETING"],
-                ["\\bhq\\b", "headquarters"],
-                ["\\bj\\b", "John Smith"]
-            ]
-        }));
+        // Create config with shortcuts for locations using transaction system
+        const { transaction } = require("../src/event_log_storage");
+        await transaction(capabilities, async (storage) => {
+            storage.setConfig({
+                help: "test config",
+                shortcuts: [
+                    {pattern: "\\bm\\b", replacement: "MEETING"},
+                    {pattern: "\\bhq\\b", replacement: "headquarters"},
+                    {pattern: "\\bj\\b", replacement: "John Smith"}
+                ]
+            });
+        });
 
         const requestBody = {
             rawInput: "m [loc hq] [with j] - Weekly standup",
@@ -998,9 +981,6 @@ describe("POST /api/entries - rawInput transformation and shortcuts", () => {
             input: "MEETING [loc headquarters] [with John Smith] - Weekly standup",
             original: "m [loc hq] [with j] - Weekly standup"
         });
-
-        // Clean up
-        fs.unlinkSync(configPath);
     });
 
     it("normalizes whitespace during transformation", async () => {
@@ -1031,17 +1011,16 @@ describe("POST /api/entries - rawInput transformation and shortcuts", () => {
     it("returns correct error for invalid input after transformation", async () => {
         const { app, capabilities } = await makeTestApp();
 
-        // Create config that could potentially create invalid input
-        const configPath = capabilities.environment.eventLogRepository() + "/config.json";
-        const fs = require("fs");
-        const path = require("path");
-        fs.mkdirSync(path.dirname(configPath), { recursive: true });
-        fs.writeFileSync(configPath, JSON.stringify({
-            help: "test config",
-            shortcuts: [
-                ["badtype", "123invalid"] // Creates invalid type name
-            ]
-        }));
+        // Create config that could potentially create invalid input using transaction system
+        const { transaction } = require("../src/event_log_storage");
+        await transaction(capabilities, async (storage) => {
+            storage.setConfig({
+                help: "test config",
+                shortcuts: [
+                    {pattern: "badtype", replacement: "123invalid"} // Creates invalid type name
+                ]
+            });
+        });
 
         const requestBody = {
             rawInput: "badtype - Description",
@@ -1054,9 +1033,6 @@ describe("POST /api/entries - rawInput transformation and shortcuts", () => {
 
         expect(res.statusCode).toBe(400);
         expect(res.body.error).toContain("Bad structure of input");
-
-        // Clean up
-        fs.unlinkSync(configPath);
     });
 
     it("demonstrates complex multi-step transformation workflow", async () => {
@@ -1065,36 +1041,35 @@ describe("POST /api/entries - rawInput transformation and shortcuts", () => {
         const fixedTime = new Date("2025-05-23T12:00:00.000Z").getTime();
         capabilities.datetime.now.mockReturnValue(fixedTime);
 
-        // Create complex config with shorthand expansions
-        const configPath = capabilities.environment.eventLogRepository() + "/config.json";
-        const fs = require("fs");
-        const path = require("path");
-        fs.mkdirSync(path.dirname(configPath), { recursive: true });
-        fs.writeFileSync(configPath, JSON.stringify({
-            help: "Complex shortcuts test config",
-            shortcuts: [
-                // Basic shortcuts
-                ["\\bw\\b", "WORK"],
-                ["\\bm\\b", "MEETING"],
-                ["\\be\\b", "EXERCISE"],
+        // Create complex config with shorthand expansions using transaction system
+        const { transaction } = require("../src/event_log_storage");
+        await transaction(capabilities, async (storage) => {
+            storage.setConfig({
+                help: "Complex shortcuts test config",
+                shortcuts: [
+                    // Basic shortcuts
+                    {pattern: "\\bw\\b", replacement: "WORK"},
+                    {pattern: "\\bm\\b", replacement: "MEETING"},
+                    {pattern: "\\be\\b", replacement: "EXERCISE"},
 
-                // Location shortcuts  
-                ["\\bhome\\b", "house"],
-                ["\\boff\\b", "office"],
-                ["\\bgym\\b", "fitness center"],
+                    // Location shortcuts  
+                    {pattern: "\\bhome\\b", replacement: "house"},
+                    {pattern: "\\boff\\b", replacement: "office"},
+                    {pattern: "\\bgym\\b", replacement: "fitness center"},
 
-                // Person shortcuts
-                ["\\bboss\\b", "manager Sarah"],
-                ["\\bteam\\b", "development team"],
+                    // Person shortcuts
+                    {pattern: "\\bboss\\b", replacement: "manager Sarah"},
+                    {pattern: "\\bteam\\b", replacement: "development team"},
 
-                // Compound shortcuts (these expand to use other shortcuts)
-                ["\\bwh\\b", "w [loc home]"],
-                ["\\bwo\\b", "w [loc off]"],
-                ["\\bmb\\b", "m [with boss]"],
-                ["\\bmt\\b", "m [with team]"],
-                ["\\beg\\b", "e [loc gym]"]
-            ]
-        }));
+                    // Compound shortcuts (these expand to use other shortcuts)
+                    {pattern: "\\bwh\\b", replacement: "w [loc home]"},
+                    {pattern: "\\bwo\\b", replacement: "w [loc off]"},
+                    {pattern: "\\bmb\\b", replacement: "m [with boss]"},
+                    {pattern: "\\bmt\\b", replacement: "m [with team]"},
+                    {pattern: "\\beg\\b", replacement: "e [loc gym]"}
+                ]
+            });
+        });
 
         const testCases = [
             {
@@ -1139,9 +1114,6 @@ describe("POST /api/entries - rawInput transformation and shortcuts", () => {
             expect(res.body.success).toBe(true);
             expect(res.body.entry).toMatchObject(testCase.expected);
         }
-
-        // Clean up
-        fs.unlinkSync(configPath);
     });
 
     it("verifies end-to-end transformation with real application setup", async () => {
@@ -1154,20 +1126,18 @@ describe("POST /api/entries - rawInput transformation and shortcuts", () => {
         const eventLogRepo = capabilities.environment.eventLogRepository();
         console.log("Event log repository path:", eventLogRepo);
 
-        // Create a config file with a simple shortcut
-        const configPath = eventLogRepo + "/config.json";
-        const fs = require("fs");
-        const path = require("path");
-        fs.mkdirSync(path.dirname(configPath), { recursive: true });
-        fs.writeFileSync(configPath, JSON.stringify({
-            help: "End-to-end test config",
-            shortcuts: [
-                ["\\btest\\b", "TRANSFORMED"]
-            ]
-        }));
+        // Create a config with a simple shortcut using transaction system
+        const { transaction } = require("../src/event_log_storage");
+        await transaction(capabilities, async (storage) => {
+            storage.setConfig({
+                help: "End-to-end test config",
+                shortcuts: [
+                    {pattern: "\\btest\\b", replacement: "TRANSFORMED"}
+                ]
+            });
+        });
 
-        console.log("Created config file at:", configPath);
-        console.log("Config file contents:", fs.readFileSync(configPath, 'utf8'));
+        console.log("Created config via transaction system");
 
         // Test the transformation
         const requestBody = { rawInput: "test - This should be transformed" };
@@ -1187,9 +1157,6 @@ describe("POST /api/entries - rawInput transformation and shortcuts", () => {
         expect(res.body.entry.original).toBe("test - This should be transformed");
         expect(res.body.entry.input).toBe("TRANSFORMED - This should be transformed");
         expect(res.body.entry.type).toBe("TRANSFORMED");
-
-        // Clean up
-        fs.unlinkSync(configPath);
     });
 
     it("confirms no transformation when config file doesn't exist (expected behavior)", async () => {
