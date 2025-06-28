@@ -1,7 +1,7 @@
 const event = require('../src/event/structure');
 
 describe('event.tryDeserialize', () => {
-  it('returns null when modifiers is not an object', () => {
+  it('returns error object when modifiers is not an object', () => {
     const obj = {
       id: 'abc',
       date: '2025-01-01T00:00:00.000Z',
@@ -12,6 +12,11 @@ describe('event.tryDeserialize', () => {
       creator: { name: 'n', uuid: 'u', version: 'v' },
       modifiers: 0
     };
-    expect(event.tryDeserialize(obj)).toBeNull();
+    const result = event.tryDeserialize(obj);
+    expect(result).toBeInstanceOf(event.InvalidTypeError);
+    expect(result.message).toContain("Invalid type for field 'modifiers'");
+    expect(result.field).toBe('modifiers');
+    expect(result.value).toBe(0);
+    expect(result.expectedType).toBe('object');
   });
 });

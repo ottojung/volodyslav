@@ -169,79 +169,62 @@ function deserialize(serializedEvent) {
 
 /**
  * Attempts to deserialize an unknown object into an Event.
- * Returns null if the object is not a valid SerializedEvent or if deserialization fails.
- * This function is kept for backward compatibility.
+ * Returns the Event on success, or a TryDeserializeError on failure.
  *
  * @param {unknown} obj - The object to attempt to deserialize
- * @returns {Event | null} - The deserialized Event or null if invalid
+ * @returns {Event | TryDeserializeError} - The deserialized Event or error object
  */
 function tryDeserialize(obj) {
     try {
-        return tryDeserializeWithErrors(obj);
-    } catch {
-        return null;
-    }
-}
-
-/**
- * Attempts to deserialize an unknown object into an Event.
- * Returns the Event on success, or throws a TryDeserializeError on failure.
- *
- * @param {unknown} obj - The object to attempt to deserialize
- * @returns {Event} - The deserialized Event
- * @throws {TryDeserializeError} - If the object is not a valid SerializedEvent or deserialization fails
- */
-function tryDeserializeWithErrors(obj) {
-    try {
         // Basic type and property checks
         if (!obj || typeof obj !== "object" || Array.isArray(obj)) {
-            throw new InvalidStructureError(
+            return new InvalidStructureError(
                 "Object must be a non-null object and not an array",
                 obj
             );
         }
 
         // Extract and validate each field individually
-        if (!("id" in obj)) throw new MissingFieldError("id");
+        if (!("id" in obj)) return new MissingFieldError("id");
         const id = obj.id;
         if (typeof id !== "string") {
-            throw new InvalidTypeError("id", id, "string");
+            return new InvalidTypeError("id", id, "string");
         }
 
-        if (!("date" in obj)) throw new MissingFieldError("date");
+        if (!("date" in obj)) return new MissingFieldError("date");
         const date = obj.date;
         if (typeof date !== "string") {
-            throw new InvalidTypeError("date", date, "string");
+            return new InvalidTypeError("date", date, "string");
         }
 
-        if (!("original" in obj)) throw new MissingFieldError("original");
+        if (!("original" in obj)) return new MissingFieldError("original");
         const original = obj.original;
         if (typeof original !== "string") {
-            throw new InvalidTypeError("original", original, "string");
+            return new InvalidTypeError("original", original, "string");
         }
 
-        if (!("input" in obj)) throw new MissingFieldError("input");
+        if (!("input" in obj)) return new MissingFieldError("input");
         const input = obj.input;
         if (typeof input !== "string") {
-            throw new InvalidTypeError("input", input, "string");
+            return new InvalidTypeError("input", input, "string");
         }
 
-        if (!("type" in obj)) throw new MissingFieldError("type");
+        if (!("type" in obj)) return new MissingFieldError("type");
         const type = obj.type;
         if (typeof type !== "string") {
-            throw new InvalidTypeError("type", type, "string");
+            return new InvalidTypeError("type", type, "string");
         }
 
-        if (!("description" in obj)) throw new MissingFieldError("description");
+        if (!("description" in obj)) return new MissingFieldError("description");
         const description = obj.description;
         if (typeof description !== "string") {
-            throw new InvalidTypeError("description", description, "string");
+            return new InvalidTypeError("description", description, "string");
         }
 
-        if (!("creator" in obj)) throw new MissingFieldError("creator");
+        if (!("creator" in obj)) return new MissingFieldError("creator");
         const creator = obj.creator;
         if (!creator || typeof creator !== "object" || Array.isArray(creator)) {
-            throw new InvalidTypeError("creator", creator, "object");
+            return new InvalidTypeError("creator", creator, "object");
         }
 
         // Handle modifiers - defaults to {} if missing. When provided it must
@@ -256,7 +239,7 @@ function tryDeserializeWithErrors(obj) {
                 typeof rawModifiers !== "object" ||
                 Array.isArray(rawModifiers))
         ) {
-            throw new InvalidTypeError("modifiers", rawModifiers, "object");
+            return new InvalidTypeError("modifiers", rawModifiers, "object");
         }
         /** @type {Record<string, unknown>} */
         const modifiers = hasModifiers ? /** @type {Record<string, unknown>} */ (rawModifiers) : {};
@@ -264,34 +247,34 @@ function tryDeserializeWithErrors(obj) {
         // Manually validate and parse the date
         const dateObj = new Date(date);
         if (isNaN(dateObj.getTime())) {
-            throw new InvalidValueError("date", date, "not a valid date string");
+            return new InvalidValueError("date", date, "not a valid date string");
         }
 
         // Manually validate creator has required properties
         if (!creator || typeof creator !== "object") {
-            throw new InvalidTypeError("creator", creator, "object");
+            return new InvalidTypeError("creator", creator, "object");
         }
         if (!("name" in creator)) {
-            throw new NestedFieldError("creator", "name", creator, "missing required field");
+            return new NestedFieldError("creator", "name", creator, "missing required field");
         }
         if (!("uuid" in creator)) {
-            throw new NestedFieldError("creator", "uuid", creator, "missing required field");
+            return new NestedFieldError("creator", "uuid", creator, "missing required field");
         }
         if (!("version" in creator)) {
-            throw new NestedFieldError("creator", "version", creator, "missing required field");
+            return new NestedFieldError("creator", "version", creator, "missing required field");
         }
         
         const creatorName = creator.name;
         const creatorUuid = creator.uuid;
         const creatorVersion = creator.version;
         if (typeof creatorName !== "string") {
-            throw new NestedFieldError("creator", "name", creatorName, "expected string");
+            return new NestedFieldError("creator", "name", creatorName, "expected string");
         }
         if (typeof creatorUuid !== "string") {
-            throw new NestedFieldError("creator", "uuid", creatorUuid, "expected string");
+            return new NestedFieldError("creator", "uuid", creatorUuid, "expected string");
         }
         if (typeof creatorVersion !== "string") {
-            throw new NestedFieldError("creator", "version", creatorVersion, "expected string");
+            return new NestedFieldError("creator", "version", creatorVersion, "expected string");
         }
 
         // Manually validate modifiers
@@ -301,12 +284,12 @@ function tryDeserializeWithErrors(obj) {
         for (let i = 0; i < sourceEntries.length; i++) {
             const entry = sourceEntries[i];
             if (!entry || entry.length !== 2) {
-                throw new InvalidValueError("modifiers", modifiers, "invalid entry structure");
+                return new InvalidValueError("modifiers", modifiers, "invalid entry structure");
             }
             const key = entry[0];
             const value = entry[1];
             if (typeof value !== "string") {
-                throw new NestedFieldError("modifiers", key, value, "expected string value");
+                return new NestedFieldError("modifiers", key, value, "expected string value");
             }
             validatedEntries.push([key, value]);
         }
@@ -331,7 +314,7 @@ function tryDeserializeWithErrors(obj) {
         
         const eventIdObj = eventId.deserialize(validatedSerializedEvent);
         if (!eventIdObj || !eventIdObj.identifier) {
-            throw new InvalidValueError("id", id, "failed to deserialize event ID");
+            return new InvalidValueError("id", id, "failed to deserialize event ID");
         }
 
         // Create and return the Event object
@@ -341,12 +324,8 @@ function tryDeserializeWithErrors(obj) {
             date: dateObj,
         };
     } catch (error) {
-        // Re-throw TryDeserializeError instances
-        if (error instanceof TryDeserializeError) {
-            throw error;
-        }
         // Wrap any other errors (e.g., from eventId.deserialize) in InvalidValueError
-        throw new InvalidValueError(
+        return new InvalidValueError(
             "unknown",
             obj,
             `Unexpected error during deserialization: ${error instanceof Error ? error.message : String(error)}`
@@ -358,7 +337,6 @@ module.exports = {
     serialize,
     deserialize,
     tryDeserialize,
-    tryDeserializeWithErrors,
     TryDeserializeError,
     MissingFieldError,
     InvalidTypeError,

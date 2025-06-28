@@ -278,32 +278,21 @@ class EventLogStorageClass {
             const validEvents = [];
 
             for (const obj of objects) {
-                try {
-                    const eventObj = event.tryDeserializeWithErrors(obj);
-                    validEvents.push(eventObj);
-                } catch (/** @type {unknown} */ error) {
-                    if (error instanceof event.TryDeserializeError) {
-                        this.capabilities.logger.logWarning(
-                            { 
-                                invalidObject: obj,
-                                error: error.message,
-                                field: error.field,
-                                value: error.value,
-                                expectedType: error.expectedType,
-                                errorType: error.name
-                            },
-                            "Found invalid object in data.json, skipping"
-                        );
-                    } else {
-                        this.capabilities.logger.logError(
-                            { 
-                                invalidObject: obj,
-                                error: error instanceof Error ? error.message : String(error),
-                                stack: error instanceof Error ? error.stack : undefined
-                            },
-                            "Unexpected error while deserializing event object"
-                        );
-                    }
+                const result = event.tryDeserialize(obj);
+                if (result instanceof event.TryDeserializeError) {
+                    this.capabilities.logger.logWarning(
+                        { 
+                            invalidObject: obj,
+                            error: result.message,
+                            field: result.field,
+                            value: result.value,
+                            expectedType: result.expectedType,
+                            errorType: result.name
+                        },
+                        "Found invalid object in data.json, skipping"
+                    );
+                } else {
+                    validEvents.push(result);
                 }
             }
 
