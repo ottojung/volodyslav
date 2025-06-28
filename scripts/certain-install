@@ -13,4 +13,9 @@ test "$#" = 0
 
 git checkout master
 git pull origin master --tags
-sh scripts/install "$PREFIX"
+
+npm ci
+npm test
+npm run build
+
+sh scripts/link "$PREFIX"
