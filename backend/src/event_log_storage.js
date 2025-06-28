@@ -278,14 +278,32 @@ class EventLogStorageClass {
             const validEvents = [];
 
             for (const obj of objects) {
-                const eventObj = event.tryDeserialize(obj);
-                if (eventObj !== null) {
+                try {
+                    const eventObj = event.tryDeserializeWithErrors(obj);
                     validEvents.push(eventObj);
-                } else {
-                    this.capabilities.logger.logWarning(
-                        { invalidObject: obj },
-                        "Found invalid object in data.json, skipping"
-                    );
+                } catch (/** @type {unknown} */ error) {
+                    if (error instanceof event.TryDeserializeError) {
+                        this.capabilities.logger.logWarning(
+                            { 
+                                invalidObject: obj,
+                                error: error.message,
+                                field: error.field,
+                                value: error.value,
+                                expectedType: error.expectedType,
+                                errorType: error.name
+                            },
+                            "Found invalid object in data.json, skipping"
+                        );
+                    } else {
+                        this.capabilities.logger.logError(
+                            { 
+                                invalidObject: obj,
+                                error: error instanceof Error ? error.message : String(error),
+                                stack: error instanceof Error ? error.stack : undefined
+                            },
+                            "Unexpected error while deserializing event object"
+                        );
+                    }
                 }
             }
 

@@ -63,6 +63,7 @@ async function readConfig(capabilities, file) {
             );
         }
 
+        // Try to deserialize the config object
         const configObj = config.tryDeserialize(objects[0]);
         if (configObj === null) {
             capabilities.logger.logWarning(
