@@ -235,12 +235,31 @@ class EventLogStorageClass {
 
         try {
             const configStorage = require("./config/storage");
+            const config = require("./config");
 
-            const configObj = await configStorage.readConfig(
+            const configResult = await configStorage.readConfig(
                 this.capabilities,
                 this.configFile
             );
-            this.existingConfigCache = configObj;
+            
+            // If readConfig returned an error object, it means the config is invalid
+            if (configResult instanceof config.TryDeserializeError) {
+                this.capabilities.logger.logWarning(
+                    { 
+                        filepath: this.configFile,
+                        error: configResult.message,
+                        field: configResult.field,
+                        value: configResult.value,
+                        expectedType: configResult.expectedType,
+                        errorType: configResult.name
+                    },
+                    "Found invalid config object in file"
+                );
+                this.existingConfigCache = null;
+                return null;
+            }
+            
+            this.existingConfigCache = configResult;
             return this.existingConfigCache;
         } catch (error) {
             this.existingConfigCache = null;

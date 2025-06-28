@@ -188,9 +188,10 @@ async function applyShortcuts(capabilities, input) {
     // Load config from event log repository using path construction
     const eventLogRepo = capabilities.environment.eventLogRepository();
     const configPath = require("path").join(eventLogRepo, "config.json");
+    const config = require("../config");
 
     /** @type {import('../config/structure').Config | null} */
-    let config;
+    let configObj;
     try {
         const configFile = await capabilities.checker
             .instantiate(configPath)
@@ -201,7 +202,24 @@ async function applyShortcuts(capabilities, input) {
             return input;
         }
 
-        config = await readConfig(capabilities, configFile);
+        const configResult = await readConfig(capabilities, configFile);
+        
+        // If readConfig returned an error object, it means the config is invalid
+        if (configResult instanceof config.TryDeserializeError) {
+            capabilities.logger.logInfo(
+                { 
+                    error: configResult.message,
+                    field: configResult.field,
+                    value: configResult.value,
+                    expectedType: configResult.expectedType,
+                    errorType: configResult.name
+                },
+                "Found invalid config object, proceeding without shortcuts"
+            );
+            return input;
+        }
+        
+        configObj = configResult;
     } catch (error) {
         // If config doesn't exist or can't be read, return input unchanged
         capabilities.logger.logInfo(
@@ -211,7 +229,7 @@ async function applyShortcuts(capabilities, input) {
         return input;
     }
 
-    if (!config || !config.shortcuts) {
+    if (!configObj || !configObj.shortcuts) {
         return input;
     }
 
@@ -221,11 +239,11 @@ async function applyShortcuts(capabilities, input) {
      * @returns {string}
      */
     function replaceLoop(currentInput) {
-        if (!config) {
+        if (!configObj) {
             return currentInput;
         }
 
-        for (const shortcut of config.shortcuts) {
+        for (const shortcut of configObj.shortcuts) {
             try {
                 const regex = new RegExp(shortcut.pattern, 'g');
                 const newInput = currentInput.replace(regex, shortcut.replacement);

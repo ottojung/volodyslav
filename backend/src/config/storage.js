@@ -42,48 +42,22 @@ const { fromExisting } = require("../filesystem/file");
  * Reads and deserializes a config.json file
  * @param {ConfigReadCapabilities} capabilities - The minimal capabilities needed for reading
  * @param {import("../filesystem/file").ExistingFile} file - The config.json file to read
- * @returns {Promise<import('./structure').Config | null>} The parsed config or null if invalid/missing
+ * @returns {Promise<import('./structure').Config | import('./structure').TryDeserializeError>} The parsed config or error object
  */
 async function readConfig(capabilities, file) {
-    try {
-        const objects = await readObjects(capabilities, file);
+    const objects = await readObjects(capabilities, file);
 
-        if (objects.length === 0) {
-            capabilities.logger.logWarning(
-                { filepath: file },
-                "Config file is empty"
-            );
-            return null;
-        }
-
-        if (objects.length > 1) {
-            capabilities.logger.logWarning(
-                { filepath: file, objectCount: objects.length },
-                "Config file contains multiple objects, using first one"
-            );
-        }
-
-        // Try to deserialize the config object
-        const configObj = config.tryDeserialize(objects[0]);
-        if (configObj === null) {
-            capabilities.logger.logWarning(
-                { filepath: file, invalidObject: objects[0] },
-                "Found invalid config object in file"
-            );
-            return null;
-        }
-
-        return configObj;
-    } catch (error) {
-        capabilities.logger.logWarning(
-            {
-                filepath: file,
-                error: error instanceof Error ? error.message : String(error),
-            },
-            "Failed to read config file"
-        );
-        return null;
+    if (objects.length === 0) {
+        return new config.InvalidStructureError("Config file is empty", []);
     }
+
+    if (objects.length > 1) {
+        // This is not necessarily an error, just use the first object
+        // Higher-level code can decide whether to log this or not
+    }
+
+    // Try to deserialize the config object and return the result (either Config or error)
+    return config.tryDeserialize(objects[0]);
 }
 
 /**

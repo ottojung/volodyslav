@@ -188,7 +188,8 @@ describe("config structure", () => {
             ];
 
             invalidObjects.forEach((obj) => {
-                expect(config.tryDeserialize(obj)).toBeNull();
+                const result = config.tryDeserialize(obj);
+                expect(result).toBeInstanceOf(config.TryDeserializeError);
             });
         });
 
@@ -227,7 +228,8 @@ describe("config structure", () => {
             ];
 
             invalidShortcuts.forEach((obj) => {
-                expect(config.tryDeserialize(obj)).toBeNull();
+                const result = config.tryDeserialize(obj);
+                expect(result).toBeInstanceOf(config.TryDeserializeError);
             });
         });
     });
@@ -518,11 +520,8 @@ describe("config storage", () => {
                     file
                 );
 
-                expect(result).toBeNull();
-                expect(capabilities.logger.logWarning).toHaveBeenCalledWith(
-                    { filepath: file },
-                    "Config file is empty"
-                );
+                expect(result).toBeInstanceOf(config.InvalidStructureError);
+                expect(result.message).toBe("Config file is empty");
             });
 
             it("should return null for invalid config format", async () => {
@@ -538,11 +537,8 @@ describe("config storage", () => {
                     file
                 );
 
-                expect(result).toBeNull();
-                expect(capabilities.logger.logWarning).toHaveBeenCalledWith(
-                    { filepath: file, invalidObject: invalidConfig },
-                    "Found invalid config object in file"
-                );
+                expect(result).toBeInstanceOf(config.MissingFieldError);
+                expect(result.field).toBe("help");
             });
 
             it("should handle multiple objects and use first one", async () => {
@@ -574,10 +570,8 @@ describe("config storage", () => {
                     help: "First config",
                     shortcuts: [{ pattern: "test1", replacement: "TEST1" }],
                 });
-                expect(capabilities.logger.logWarning).toHaveBeenCalledWith(
-                    { filepath: file, objectCount: 2 },
-                    "Config file contains multiple objects, using first one"
-                );
+                // Note: readConfig no longer logs warnings for multiple objects,
+                // it just uses the first one silently
             });
         });
 
