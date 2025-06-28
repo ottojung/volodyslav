@@ -29,6 +29,7 @@ then
     rm -rf -- "$VOLODYSLAV_EVENT_LOG_REPOSITORY"
     if ! test -d "$VOLODYSLAV_EVENT_LOG_REPOSITORY"
     then
+        mkdir -p -- dist/test
         cp -r -T -- "$SOURCE_REPO" "$VOLODYSLAV_EVENT_LOG_REPOSITORY"
     fi
 fi
