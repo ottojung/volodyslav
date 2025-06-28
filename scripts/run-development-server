@@ -26,7 +26,6 @@ then
         SOURCE_REPO="backend/tests/mock-event-log-repository-populated"
     fi
 
-    rm -rf -- "$VOLODYSLAV_EVENT_LOG_REPOSITORY"
     if ! test -d "$VOLODYSLAV_EVENT_LOG_REPOSITORY"
     then
         mkdir -p -- dist/test
