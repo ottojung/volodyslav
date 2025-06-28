@@ -11,7 +11,8 @@ import {
     generateRequestIdentifier, 
     navigateToCamera, 
     checkCameraReturn, 
-    cleanupUrlParams
+    cleanupUrlParams,
+    restoreDescription
 } from "./cameraUtils.js";
 
 /**
@@ -48,7 +49,7 @@ export const useDescriptionEntry = (numberOfEntries = 10) => {
         if (requiresCamera(description)) {
             const requestIdentifier = generateRequestIdentifier();
             setPendingRequestIdentifier(requestIdentifier);
-            navigateToCamera(requestIdentifier);
+            navigateToCamera(requestIdentifier, description);
             return;
         }
 
@@ -96,6 +97,12 @@ export const useDescriptionEntry = (numberOfEntries = 10) => {
     useEffect(() => {
         const cameraReturn = checkCameraReturn();
         if (cameraReturn.isReturn && cameraReturn.requestIdentifier) {
+            // Restore the description that was stored before going to camera
+            const restoredDescription = restoreDescription(cameraReturn.requestIdentifier);
+            if (restoredDescription) {
+                setDescription(restoredDescription);
+            }
+            
             // Set the request identifier for the next submission
             setPendingRequestIdentifier(cameraReturn.requestIdentifier);
             
@@ -111,7 +118,7 @@ export const useDescriptionEntry = (numberOfEntries = 10) => {
                 isClosable: true,
             });
         }
-    }, [description, toast]);
+    }, [toast]); // Remove description dependency to avoid running on every description change
 
     return {
         // State

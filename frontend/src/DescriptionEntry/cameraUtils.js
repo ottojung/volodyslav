@@ -29,8 +29,14 @@ export const requiresCamera = (description) => {
 /**
  * Navigates to the camera page with a request identifier
  * @param {string} requestIdentifier - The unique request identifier
+ * @param {string} currentDescription - The current description to preserve
  */
-export const navigateToCamera = (requestIdentifier) => {
+export const navigateToCamera = (requestIdentifier, currentDescription = '') => {
+    // Store the current description in sessionStorage to restore it later
+    if (currentDescription.trim()) {
+        sessionStorage.setItem(`description_${requestIdentifier}`, currentDescription);
+    }
+    
     const url = new URL('/camera', window.location.origin);
     url.searchParams.set('request_identifier', requestIdentifier);
     url.searchParams.set('return_to', '/describe');
@@ -60,4 +66,20 @@ export const cleanupUrlParams = () => {
     url.searchParams.delete('from_camera');
     url.searchParams.delete('request_identifier');
     window.history.replaceState({}, '', url.toString());
+};
+
+/**
+ * Restores the description from sessionStorage after returning from camera
+ * @param {string} requestIdentifier - The request identifier
+ * @returns {string|null} - The restored description or null if not found
+ */
+export const restoreDescription = (requestIdentifier) => {
+    const key = `description_${requestIdentifier}`;
+    const stored = sessionStorage.getItem(key);
+    if (stored) {
+        // Clean up the stored description
+        sessionStorage.removeItem(key);
+        return stored;
+    }
+    return null;
 };

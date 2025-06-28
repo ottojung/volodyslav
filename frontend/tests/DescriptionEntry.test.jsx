@@ -19,6 +19,17 @@ jest.mock("../src/DescriptionEntry/logger", () => ({
     },
 }));
 
+// Mock camera utilities to test camera integration
+jest.mock("../src/DescriptionEntry/cameraUtils", () => ({
+    requiresCamera: jest.fn(),
+    generateRequestIdentifier: jest.fn(),
+    navigateToCamera: jest.fn(),
+    checkCameraReturn: jest.fn(),
+    cleanupUrlParams: jest.fn(),
+    restoreDescription: jest.fn(),
+    TAKE_PHOTO_CONSTANT: "[phone_take_photo]",
+}));
+
 import DescriptionEntry from "../src/DescriptionEntry/DescriptionEntry.jsx";
 // Import the mocked functions after the mock is set up
 import {
@@ -26,6 +37,16 @@ import {
     submitEntry,
     fetchConfig,
 } from "../src/DescriptionEntry/api";
+
+// Import the mocked camera functions
+import {
+    requiresCamera,
+    generateRequestIdentifier,
+    navigateToCamera,
+    checkCameraReturn,
+    cleanupUrlParams,
+    restoreDescription,
+} from "../src/DescriptionEntry/cameraUtils";
 
 describe("DescriptionEntry", () => {
     // Default mock config for tests that need config functionality
@@ -47,6 +68,14 @@ describe("DescriptionEntry", () => {
         fetchRecentEntries.mockClear();
         submitEntry.mockClear();
         fetchConfig.mockClear();
+        
+        // Reset camera mocks
+        requiresCamera.mockClear();
+        generateRequestIdentifier.mockClear();
+        navigateToCamera.mockClear();
+        checkCameraReturn.mockClear();
+        cleanupUrlParams.mockClear();
+        restoreDescription.mockClear();
 
         // Set default mock implementations that resolve immediately
         fetchRecentEntries.mockResolvedValue([]);
@@ -56,6 +85,11 @@ describe("DescriptionEntry", () => {
         });
         // Use default mock config instead of null
         fetchConfig.mockResolvedValue(defaultMockConfig);
+        
+        // Set default camera mock implementations
+        requiresCamera.mockReturnValue(false);
+        generateRequestIdentifier.mockReturnValue("test-req-id-123");
+        checkCameraReturn.mockReturnValue({ isReturn: false });
     });
 
     it("renders the main elements", async () => {
@@ -892,3 +926,152 @@ describe("DescriptionEntry", () => {
         expect(input.value).toBe("");
     });
 });
+
+describe("Camera Integration", () => {
+        it("detects camera trigger and navigates to camera", async () => {
+            // Mock camera requirement detection
+            requiresCamera.mockReturnValue(true);
+            
+            render(<DescriptionEntry />);
+
+            await waitFor(() => {
+                expect(screen.getByText("Event Logging Help")).toBeInTheDocument();
+            });
+
+            const input = screen.getByPlaceholderText(
+                "Type your event description here..."
+            );
+            const logButton = screen.getByRole("button", { name: /log event/i });
+
+            // Type a description with camera trigger
+            const cameraDescription = "Take a photo [phone_take_photo] of the sunset";
+            fireEvent.change(input, { target: { value: cameraDescription } });
+
+            // Click log event button
+            fireEvent.click(logButton);
+
+            // Should detect camera requirement and navigate
+            expect(requiresCamera).toHaveBeenCalledWith(cameraDescription);
+            expect(generateRequestIdentifier).toHaveBeenCalled();
+            expect(navigateToCamera).toHaveBeenCalledWith("test-req-id-123", cameraDescription);
+            
+            // Should not call submitEntry since we're going to camera
+            expect(submitEntry).not.toHaveBeenCalled();
+        });
+
+        it("restores description when returning from camera", async () => {
+            // Mock returning from camera
+            checkCameraReturn.mockReturnValue({
+                isReturn: true,
+                requestIdentifier: "test-req-id-123"
+            });
+            restoreDescription.mockReturnValue("Take a photo [phone_take_photo] of the sunset");
+
+            render(<DescriptionEntry />);
+
+            await waitFor(() => {
+                expect(checkCameraReturn).toHaveBeenCalled();
+                expect(restoreDescription).toHaveBeenCalledWith("test-req-id-123");
+                expect(cleanupUrlParams).toHaveBeenCalled();
+            });
+
+            // The description should be restored
+            const input = screen.getByPlaceholderText(
+                "Type your event description here..."
+            );
+            expect(input.value).toBe("Take a photo [phone_take_photo] of the sunset");
+
+            // Should show photos attached indicator (look for the camera emoji)
+            expect(screen.getByText(/📷/)).toBeInTheDocument();
+        });
+
+        it("submits entry with photos when returning from camera", async () => {
+            // Mock returning from camera
+            checkCameraReturn.mockReturnValue({
+                isReturn: true,
+                requestIdentifier: "test-req-id-123"
+            });
+            restoreDescription.mockReturnValue("Take a photo [phone_take_photo] of the sunset");
+
+            render(<DescriptionEntry />);
+
+            await waitFor(() => {
+                expect(restoreDescription).toHaveBeenCalledWith("test-req-id-123");
+            });
+
+            const logButton = screen.getByRole("button", { name: /log event/i });
+
+            // Click log event button to submit with photos
+            fireEvent.click(logButton);
+
+            await waitFor(() => {
+                // Should submit with request identifier for photos
+                expect(submitEntry).toHaveBeenCalledWith(
+                    "Take a photo [phone_take_photo] of the sunset",
+                    "test-req-id-123"
+                );
+            });
+        });
+
+        it("does not navigate to camera for regular descriptions", async () => {
+            // Mock no camera requirement
+            requiresCamera.mockReturnValue(false);
+            
+            render(<DescriptionEntry />);
+
+            await waitFor(() => {
+                expect(screen.getByText("Event Logging Help")).toBeInTheDocument();
+            });
+
+            const input = screen.getByPlaceholderText(
+                "Type your event description here..."
+            );
+            const logButton = screen.getByRole("button", { name: /log event/i });
+
+            // Type a regular description without camera trigger
+            const regularDescription = "Just had a great lunch";
+            fireEvent.change(input, { target: { value: regularDescription } });
+
+            // Click log event button
+            fireEvent.click(logButton);
+
+            await waitFor(() => {
+                // Should submit normally without camera
+                expect(submitEntry).toHaveBeenCalledWith(regularDescription);
+            });
+
+            // Should not navigate to camera
+            expect(navigateToCamera).not.toHaveBeenCalled();
+        });
+
+        it("preserves description text exactly as typed", async () => {
+            // Mock returning from camera
+            checkCameraReturn.mockReturnValue({
+                isReturn: true,
+                requestIdentifier: "test-req-id-123"
+            });
+            const originalDescription = "Meeting [phone_take_photo] with client about new project";
+            restoreDescription.mockReturnValue(originalDescription);
+
+            render(<DescriptionEntry />);
+
+            await waitFor(() => {
+                expect(restoreDescription).toHaveBeenCalledWith("test-req-id-123");
+            });
+
+            const input = screen.getByPlaceholderText(
+                "Type your event description here..."
+            );
+
+            // The description should be preserved exactly as typed
+            expect(input.value).toBe(originalDescription);
+
+            const logButton = screen.getByRole("button", { name: /log event/i });
+            fireEvent.click(logButton);
+
+            await waitFor(() => {
+                // Should submit with the exact original description
+                expect(submitEntry).toHaveBeenCalledWith(originalDescription, "test-req-id-123");
+            });
+        });
+    });
