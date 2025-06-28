@@ -1143,4 +1143,101 @@ describe("POST /api/entries - rawInput transformation and shortcuts", () => {
         // Clean up
         fs.unlinkSync(configPath);
     });
+
+    it("verifies end-to-end transformation with real application setup", async () => {
+        // This test simulates the real application environment to check if transformations work
+        const { app, capabilities } = await makeTestApp();
+        const fixedTime = new Date("2025-05-23T12:00:00.000Z").getTime();
+        capabilities.datetime.now.mockReturnValue(fixedTime);
+
+        // First, let's log what the environment path is
+        const eventLogRepo = capabilities.environment.eventLogRepository();
+        console.log("Event log repository path:", eventLogRepo);
+
+        // Create a config file with a simple shortcut
+        const configPath = eventLogRepo + "/config.json";
+        const fs = require("fs");
+        const path = require("path");
+        fs.mkdirSync(path.dirname(configPath), { recursive: true });
+        fs.writeFileSync(configPath, JSON.stringify({
+            help: "End-to-end test config",
+            shortcuts: [
+                ["\\btest\\b", "TRANSFORMED"]
+            ]
+        }));
+
+        console.log("Created config file at:", configPath);
+        console.log("Config file contents:", fs.readFileSync(configPath, 'utf8'));
+
+        // Test the transformation
+        const requestBody = { rawInput: "test - This should be transformed" };
+
+        const res = await request(app)
+            .post("/api/entries")
+            .send(requestBody)
+            .set("Content-Type", "application/json");
+
+        console.log("Response status:", res.statusCode);
+        console.log("Response body:", JSON.stringify(res.body, null, 2));
+
+        expect(res.statusCode).toBe(201);
+        expect(res.body.success).toBe(true);
+        
+        // Verify the transformation worked
+        expect(res.body.entry.original).toBe("test - This should be transformed");
+        expect(res.body.entry.input).toBe("TRANSFORMED - This should be transformed");
+        expect(res.body.entry.type).toBe("TRANSFORMED");
+
+        // Clean up
+        fs.unlinkSync(configPath);
+    });
+
+    it("confirms no transformation when config file doesn't exist (expected behavior)", async () => {
+        // This test verifies what happens when there's no config file - 
+        // this is likely what's happening in your real application
+        const { app, capabilities } = await makeTestApp();
+        const fixedTime = new Date("2025-05-23T12:00:00.000Z").getTime();
+        capabilities.datetime.now.mockReturnValue(fixedTime);
+
+        // Ensure no config file exists
+        const eventLogRepo = capabilities.environment.eventLogRepository();
+        const configPath = eventLogRepo + "/config.json";
+        
+        // Make sure the directory exists but no config file
+        const fs = require("fs");
+        const path = require("path");
+        fs.mkdirSync(path.dirname(configPath), { recursive: true });
+        
+        // Verify no config file exists
+        if (fs.existsSync(configPath)) {
+            fs.unlinkSync(configPath);
+        }
+
+        console.log("Config path:", configPath);
+        console.log("Config file exists:", fs.existsSync(configPath));
+
+        // Test with input that would be transformed if shortcuts existed
+        const requestBody = { rawInput: "w [loc o] - Should not be transformed" };
+
+        const res = await request(app)
+            .post("/api/entries")
+            .send(requestBody)
+            .set("Content-Type", "application/json");
+
+        console.log("Response:", JSON.stringify(res.body, null, 2));
+
+        expect(res.statusCode).toBe(201);
+        expect(res.body.success).toBe(true);
+        
+        // Without config, no transformation should happen
+        expect(res.body.entry.original).toBe("w [loc o] - Should not be transformed");
+        expect(res.body.entry.input).toBe("w [loc o] - Should not be transformed"); // Same as original
+        expect(res.body.entry.type).toBe("w"); // Not transformed
+
+        // Test the config endpoint too
+        const configRes = await request(app).get("/api/config");
+        console.log("Config endpoint response:", JSON.stringify(configRes.body, null, 2));
+        expect(configRes.statusCode).toBe(200);
+        expect(configRes.body.config).toBeNull(); // No config file means null config
+    });
 });
