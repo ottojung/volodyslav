@@ -11,8 +11,7 @@ import {
     generateRequestIdentifier, 
     navigateToCamera, 
     checkCameraReturn, 
-    cleanupUrlParams,
-    cleanDescription 
+    cleanupUrlParams
 } from "./cameraUtils.js";
 
 /**
@@ -99,11 +98,6 @@ export const useDescriptionEntry = (numberOfEntries = 10) => {
         if (cameraReturn.isReturn && cameraReturn.requestIdentifier) {
             // Set the request identifier for the next submission
             setPendingRequestIdentifier(cameraReturn.requestIdentifier);
-            
-            // Clean description of camera trigger pattern if present
-            if (requiresCamera(description)) {
-                setDescription(cleanDescription(description));
-            }
             
             // Clean up URL parameters
             cleanupUrlParams();

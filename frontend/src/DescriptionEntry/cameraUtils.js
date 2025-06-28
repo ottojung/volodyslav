@@ -24,14 +24,7 @@ export const requiresCamera = (description) => {
     return description.includes(TAKE_PHOTO_CONSTANT);
 };
 
-/**
- * Removes the camera trigger pattern from the description
- * @param {string} description - The user's description text
- * @returns {string} - Description with camera pattern removed
- */
-export const cleanDescription = (description) => {
-    return description.replace(new RegExp(TAKE_PHOTO_CONSTANT, 'g'), '').trim();
-};
+
 
 /**
  * Navigates to the camera page with a request identifier
