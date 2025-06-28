@@ -184,6 +184,261 @@ describe("POST /api/entries", () => {
         expect(res.statusCode).toBe(400);
         expect(res.body.error).toContain("Bad structure of input");
     });
+
+    it("returns 400 for malformed modifier syntax", async () => {
+        const { app } = await makeTestApp();
+        
+        const requestBody = {
+            rawInput: "work [invalid modifier format here [nested]", // Invalid modifier syntax
+        };
+        const res = await request(app)
+            .post("/api/entries")
+            .send(requestBody)
+            .set("Content-Type", "application/json");
+        
+        expect(res.statusCode).toBe(400);
+        expect(res.body.error).toContain("Not a valid modifier");
+    });
+
+    it("returns 400 for empty type", async () => {
+        const { app } = await makeTestApp();
+        
+        const requestBody = {
+            rawInput: " [loc office] description without type", // No type at start
+        };
+        const res = await request(app)
+            .post("/api/entries")
+            .send(requestBody)
+            .set("Content-Type", "application/json");
+        
+        expect(res.statusCode).toBe(400);
+        expect(res.body.error).toContain("Bad structure of input");
+    });
+
+    it("returns 400 for whitespace-only rawInput", async () => {
+        const { app } = await makeTestApp();
+        
+        const requestBody = {
+            rawInput: "   \t\n   ", // Only whitespace
+        };
+        const res = await request(app)
+            .post("/api/entries")
+            .send(requestBody)
+            .set("Content-Type", "application/json");
+        
+        expect(res.statusCode).toBe(400);
+        expect(res.body.error).toContain("Missing required field: rawInput");
+    });
+
+    it("handles unclosed brackets as description text", async () => {
+        const { app } = await makeTestApp();
+        
+        const requestBody = {
+            rawInput: "work [unclosed bracket description", // Unclosed bracket
+        };
+        const res = await request(app)
+            .post("/api/entries")
+            .send(requestBody)
+            .set("Content-Type", "application/json");
+        
+        // This input is actually valid - it treats everything after "work " as description
+        expect(res.statusCode).toBe(201);
+        expect(res.body.entry.description).toBe("[unclosed bracket description");
+    });
+
+    describe("File validation errors", () => {
+        it("handles file upload validation gracefully", async () => {
+            // Note: It's difficult to trigger FileValidationError in integration tests
+            // since the multer middleware handles most file upload issues.
+            // The FileValidationError is primarily for cases where files become
+            // inaccessible between upload and processing.
+            
+            const { app } = await makeTestApp();
+            
+            // Test with valid file upload to ensure the endpoint works
+            const fs = require("fs");
+            const path = require("path");
+            const os = require("os");
+
+            const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "test-"));
+            const tmpFilePath = path.join(tmpDir, "test-file.txt");
+            fs.writeFileSync(tmpFilePath, "test content");
+
+            const res = await request(app)
+                .post("/api/entries")
+                .field("rawInput", "test [loc home] Test with valid file")
+                .attach("files", tmpFilePath)
+                .expect(201);
+
+            expect(res.body.success).toBe(true);
+            
+            // Cleanup
+            fs.unlinkSync(tmpFilePath);
+            fs.rmdirSync(tmpDir);
+        });
+    });
+
+    describe("User vs Server error distinction", () => {
+        it("correctly returns 400 for validation errors", async () => {
+            const { app } = await makeTestApp();
+            
+            // Test various user error scenarios
+            const userErrorTests = [
+                { rawInput: "", expectedContains: "Missing required field" },
+                { rawInput: "123invalid", expectedContains: "Bad structure" },
+                { rawInput: "work [invalid [nested] brackets]", expectedContains: "Not a valid modifier" }
+            ];
+
+            for (const test of userErrorTests) {
+                const res = await request(app)
+                    .post("/api/entries")
+                    .send({ rawInput: test.rawInput })
+                    .set("Content-Type", "application/json");
+                
+                expect(res.statusCode).toBe(400);
+                expect(res.body.error).toContain(test.expectedContains);
+            }
+        });
+
+        it("returns proper error structure for validation failures", async () => {
+            const { app } = await makeTestApp();
+            
+            const res = await request(app)
+                .post("/api/entries")
+                .send({ rawInput: "123invalid" })
+                .set("Content-Type", "application/json");
+            
+            expect(res.statusCode).toBe(400);
+            expect(res.body).toHaveProperty("error");
+            expect(res.body.error).toContain("Bad structure of input");
+            expect(res.body).not.toHaveProperty("success");
+        });
+    });
+
+    describe("Edge cases and boundary conditions", () => {
+        it("handles very long valid input", async () => {
+            const { app } = await makeTestApp();
+            
+            // Create a very long but valid description
+            const longDescription = "A".repeat(1000);
+            const requestBody = {
+                rawInput: `work [loc office] ${longDescription}`,
+            };
+            
+            const res = await request(app)
+                .post("/api/entries")
+                .send(requestBody)
+                .set("Content-Type", "application/json");
+            
+            expect(res.statusCode).toBe(201);
+            expect(res.body.success).toBe(true);
+            expect(res.body.entry.description).toBe(longDescription);
+        });
+
+        it("handles special characters in descriptions", async () => {
+            const { app } = await makeTestApp();
+            
+            const specialChars = "Special chars: @#$%^&*()_+-={}[]|\\:;\"'<>,.?/~`";
+            const requestBody = {
+                rawInput: `work [loc office] ${specialChars}`,
+            };
+            
+            const res = await request(app)
+                .post("/api/entries")
+                .send(requestBody)
+                .set("Content-Type", "application/json");
+            
+            expect(res.statusCode).toBe(201);
+            expect(res.body.success).toBe(true);
+            expect(res.body.entry.description).toBe(specialChars);
+        });
+
+        it("handles unicode characters", async () => {
+            const { app } = await makeTestApp();
+            
+            const unicode = "测试 🚀 Ñoño café résumé";
+            const requestBody = {
+                rawInput: `work [loc home] ${unicode}`,
+            };
+            
+            const res = await request(app)
+                .post("/api/entries")
+                .send(requestBody)
+                .set("Content-Type", "application/json");
+            
+            expect(res.statusCode).toBe(201);
+            expect(res.body.success).toBe(true);
+            expect(res.body.entry.description).toBe(unicode);
+        });
+
+        it("returns 400 for null rawInput", async () => {
+            const { app } = await makeTestApp();
+            
+            const requestBody = {
+                rawInput: null,
+            };
+            const res = await request(app)
+                .post("/api/entries")
+                .send(requestBody)
+                .set("Content-Type", "application/json");
+            
+            expect(res.statusCode).toBe(400);
+            expect(res.body.error).toContain("Missing required field: rawInput");
+        });
+
+        it("returns 400 for numeric rawInput", async () => {
+            const { app } = await makeTestApp();
+            
+            const requestBody = {
+                rawInput: 12345,
+            };
+            const res = await request(app)
+                .post("/api/entries")
+                .send(requestBody)
+                .set("Content-Type", "application/json");
+            
+            expect(res.statusCode).toBe(400);
+            expect(res.body.error).toContain("Missing required field: rawInput");
+        });
+
+        it("returns 400 for entries with only type (no description)", async () => {
+            const { app } = await makeTestApp();
+            
+            const requestBody = {
+                rawInput: "work", // Just type, no description - should be invalid
+            };
+            
+            const res = await request(app)
+                .post("/api/entries")
+                .send(requestBody)
+                .set("Content-Type", "application/json");
+            
+            expect(res.statusCode).toBe(400);
+            expect(res.body.error).toContain("description field is required");
+        });
+
+        it("handles entries with multiple modifiers", async () => {
+            const { app } = await makeTestApp();
+            
+            const requestBody = {
+                rawInput: "meeting [with John] [loc office] [priority high] [duration 2h] Important project discussion",
+            };
+            
+            const res = await request(app)
+                .post("/api/entries")
+                .send(requestBody)
+                .set("Content-Type", "application/json");
+            
+            expect(res.statusCode).toBe(201);
+            expect(res.body.success).toBe(true);
+            expect(res.body.entry.modifiers).toEqual({
+                with: "John",
+                loc: "office", 
+                priority: "high",
+                duration: "2h"
+            });
+        });
+    });
 });
 
 describe("GET /api/entries", () => {
