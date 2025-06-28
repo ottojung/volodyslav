@@ -200,13 +200,6 @@ async function applyShortcuts(capabilities, input) {
 
     const configObj = await getConfig(capabilities);
     
-    // Debug logging
-    console.log('DEBUG applyShortcuts: getConfig returned:', configObj);
-    capabilities.logger.logInfo(
-        { configExists: configObj !== null, shortcutCount: configObj?.shortcuts?.length || 0 },
-        `applyShortcuts: config ${configObj ? 'found' : 'not found'}`
-    );
-
     if (!configObj || !configObj.shortcuts) {
         return input;
     }
