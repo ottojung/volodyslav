@@ -401,27 +401,11 @@ describe("POST /api/entries", () => {
             expect(res.body.error).toContain("Missing required field: rawInput");
         });
 
-        it("returns 400 for entries with only type (no description)", async () => {
+        it("allows entries with only type (no description)", async () => {
             const { app } = await makeTestApp();
 
             const requestBody = {
-                rawInput: "work", // Just type, no description - should be invalid
-            };
-
-            const res = await request(app)
-                .post("/api/entries")
-                .send(requestBody)
-                .set("Content-Type", "application/json");
-
-            expect(res.statusCode).toBe(400);
-            expect(res.body.error).toContain("description field is required");
-        });
-
-        it("handles entries with multiple modifiers", async () => {
-            const { app } = await makeTestApp();
-
-            const requestBody = {
-                rawInput: "meeting [with John] [loc office] [priority high] [duration 2h] Important project discussion",
+                rawInput: "work", // Just type, no description - should now be valid
             };
 
             const res = await request(app)
@@ -431,12 +415,47 @@ describe("POST /api/entries", () => {
 
             expect(res.statusCode).toBe(201);
             expect(res.body.success).toBe(true);
-            expect(res.body.entry.modifiers).toEqual({
-                with: "John",
-                loc: "office",
-                priority: "high",
-                duration: "2h"
-            });
+            expect(res.body.entry.type).toBe("work");
+            expect(res.body.entry.description).toBe("");
+            expect(res.body.entry.modifiers).toEqual({});
+        });
+
+        it("allows entries with empty descriptions after type", async () => {
+            const { app } = await makeTestApp();
+
+            const requestBody = {
+                rawInput: "work ", // Type with space but no description
+            };
+
+            const res = await request(app)
+                .post("/api/entries")
+                .send(requestBody)
+                .set("Content-Type", "application/json");
+
+            expect(res.statusCode).toBe(201);
+            expect(res.body.success).toBe(true);
+            expect(res.body.entry.type).toBe("work");
+            expect(res.body.entry.description).toBe("");
+            expect(res.body.entry.modifiers).toEqual({});
+        });
+
+        it("allows entries with only modifiers and empty description", async () => {
+            const { app } = await makeTestApp();
+
+            const requestBody = {
+                rawInput: "work [loc office]", // Type and modifier but no description
+            };
+
+            const res = await request(app)
+                .post("/api/entries")
+                .send(requestBody)
+                .set("Content-Type", "application/json");
+
+            expect(res.statusCode).toBe(201);
+            expect(res.body.success).toBe(true);
+            expect(res.body.entry.type).toBe("work");
+            expect(res.body.entry.description).toBe("");
+            expect(res.body.entry.modifiers).toEqual({ loc: "office" });
         });
     });
 });

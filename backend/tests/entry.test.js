@@ -185,6 +185,19 @@ describe("createEntry (integration, with real capabilities)", () => {
             EntryValidationError
         );
     });
+
+    it("allows empty descriptions", async () => {
+        const capabilities = await getTestCapabilities();
+        const entryData = {
+            original: "Empty description original",
+            input: "Empty description input", 
+            type: "empty-description-type",
+            description: "", // Empty but present
+        };
+        const event = await createEntry(capabilities, entryData);
+        expect(event.description).toBe("");
+        expect(event.type).toBe("empty-description-type");
+    });
 });
 
 describe("getEntries pagination validation", () => {
