@@ -3,6 +3,36 @@ const eventId = require("./event/id");
 const asset = require("./event/asset");
 const creatorMake = require("./creator");
 
+/**
+ * Error thrown when entry data validation fails due to user input issues.
+ * This should result in a 400 Bad Request response.
+ */
+class EntryValidationError extends Error {
+    /**
+     * @param {string} message - The validation error message
+     */
+    constructor(message) {
+        super(message);
+        this.name = "EntryValidationError";
+    }
+}
+
+/**
+ * Error thrown when file processing fails due to user input issues.
+ * This should result in a 400 Bad Request response.
+ */
+class FileValidationError extends Error {
+    /**
+     * @param {string} message - The file validation error message
+     * @param {string} filePath - The path of the problematic file
+     */
+    constructor(message, filePath) {
+        super(message);
+        this.name = "FileValidationError";
+        this.filePath = filePath;
+    }
+}
+
 /** @typedef {import('./event/asset').Asset} Asset */
 /** @typedef {import('./random/seed').NonDeterministicSeed} NonDeterministicSeed */
 /** @typedef {import('./filesystem/deleter').FileDeleter} FileDeleter */
@@ -58,13 +88,13 @@ async function createEntry(capabilities, entryData, files = []) {
         typeof entryData.description !== "string" ||
         entryData.description.trim() === ""
     ) {
-        throw new Error("description field is required");
+        throw new EntryValidationError("description field is required");
     }
 
     if (entryData.modifiers !== undefined) {
         for (const [, v] of Object.entries(entryData.modifiers)) {
             if (typeof v !== "string") {
-                throw new Error("modifiers must be key-value strings");
+                throw new EntryValidationError("modifiers must be key-value strings");
             }
         }
     }
@@ -127,13 +157,13 @@ async function getEntries(capabilities, pagination) {
     const { page, limit, order = 'dateDescending' } = pagination;
 
     if (!Number.isInteger(page) || page < 1) {
-        throw new Error('page must be a positive integer');
+        throw new EntryValidationError('page must be a positive integer');
     }
     if (!Number.isInteger(limit) || limit < 1) {
-        throw new Error('limit must be a positive integer');
+        throw new EntryValidationError('limit must be a positive integer');
     }
     if (!['dateAscending', 'dateDescending'].includes(order)) {
-        throw new Error('order must be either "dateAscending" or "dateDescending"');
+        throw new EntryValidationError('order must be either "dateAscending" or "dateDescending"');
     }
 
     // Fetch all entries from storage
@@ -177,4 +207,4 @@ async function getEntries(capabilities, pagination) {
     };
 }
 
-module.exports = { createEntry, getEntries };
+module.exports = { createEntry, getEntries, EntryValidationError, FileValidationError };

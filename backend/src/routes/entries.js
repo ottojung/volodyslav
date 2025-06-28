@@ -1,6 +1,6 @@
 const express = require("express");
 const upload = require("../storage");
-const { createEntry, getEntries } = require("../entry");
+const { createEntry, getEntries, EntryValidationError, FileValidationError } = require("../entry");
 const { random: randomRequestId } = require("../request_identifier");
 const { serialize } = require("../event");
 const { processUserInput, InputParseError } = require("../event/from_input");
@@ -155,7 +155,11 @@ async function prepareFileObjects(capabilities, files, reqId) {
                 },
                 "Failed to prepare file object for entry creation"
             );
-            throw error;
+            // Treat file preparation errors as user errors (invalid uploads)
+            throw new FileValidationError(
+                `Invalid file upload: ${file.originalname}`,
+                file.path
+            );
         }
     }
 
@@ -275,6 +279,22 @@ async function handleEntryPost(req, res, capabilities, reqId) {
 
         return res.status(201).json({ success: true, entry: serialize(event) });
     } catch (error) {
+        // Handle user validation errors with 400 status
+        if (error instanceof EntryValidationError || error instanceof FileValidationError) {
+            capabilities.logger.logInfo(
+                {
+                    request_identifier: reqId.identifier,
+                    error: error.message,
+                    error_name: error.name,
+                    status_code: 400,
+                    client_ip: req.ip
+                },
+                "Entry creation failed - validation error (user error)"
+            );
+            return res.status(400).json({ error: error.message });
+        }
+        
+        // Handle all other errors as internal server errors
         const errorResponse = handleEntryError(error, capabilities, reqId);
         capabilities.logger.logError(
             {
