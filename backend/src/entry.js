@@ -53,9 +53,17 @@ const creatorMake = require("./creator");
 async function createEntry(capabilities, entryData, files = []) {
     const creator = await creatorMake(capabilities);
     const id = eventId.make(capabilities);
-    const date = entryData.date
-        ? new Date(entryData.date)
-        : new Date(capabilities.datetime.now());
+    
+    // Determine the date - priority: entryData.date, then 'when' modifier, then current time
+    let date;
+    if (entryData.date) {
+        date = new Date(entryData.date);
+    } else if (entryData.modifiers && entryData.modifiers['when']) {
+        date = new Date(entryData.modifiers['when']);
+    } else {
+        date = new Date(capabilities.datetime.now());
+    }
+    
     if (isNaN(date.getTime())) {
         throw new Error('Invalid date');
     }
