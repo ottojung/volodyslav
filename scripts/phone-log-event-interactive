@@ -11,7 +11,7 @@ from pathlib import Path
 import json
 from typing import Sequence, Optional
 from datetime import datetime
-import requests
+import requests  # type: ignore
 
 
 TAKE_PHOTO_CONSTANT = "[phone_take_photo]"
@@ -19,7 +19,7 @@ API_BASE_URL = os.environ.get("VOLODYSLAV_API_URL", "http://localhost:3000/api")
 
 
 try:
-    import colorama
+    import colorama  # type: ignore
     colorama.init()
 except BaseException:
     pass
@@ -27,7 +27,7 @@ except BaseException:
 
 def highlight(text: str) -> str:
     try:
-        from colorama import Fore, Style
+        from colorama import Fore, Style  # type: ignore
     except BaseException:
         return text
 
@@ -36,7 +36,7 @@ def highlight(text: str) -> str:
 
 def downlight(text: str) -> str:
     try:
-        from colorama import Style
+        from colorama import Style  # type: ignore
         GREY = "\033[90m"
     except BaseException:
         return text
