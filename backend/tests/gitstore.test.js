@@ -5,12 +5,13 @@ const { transaction } = require("../src/gitstore");
 const defaultBranch = require("../src/gitstore/default_branch");
 const workingRepository = require("../src/gitstore/working_repository");
 const { getMockedRootCapabilities } = require("./spies");
-const { stubEnvironment, stubEventLogRepository, stubDatetime } = require("./stubs");
+const { stubEnvironment, stubEventLogRepository, stubDatetime, stubLogger } = require("./stubs");
 
 function getTestCapabilities() {
     const capabilities = getMockedRootCapabilities();
     stubEnvironment(capabilities);
     stubDatetime(capabilities);
+    stubLogger(capabilities);
     return capabilities;
 }
 
