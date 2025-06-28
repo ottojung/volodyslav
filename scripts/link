@@ -15,4 +15,17 @@ mkdir -p -- "$PREFIX"/bin
 mkdir -p -- "$PREFIX"/share/volodyslav
 rm -rf -- "$PREFIX"/share/volodyslav/source
 cp -r -T -- "$PWD" "$PREFIX"/share/volodyslav/source
+
+# Capture the version from the source repository and store it for the installed version
+if command -v git >/dev/null 2>&1
+then
+    VERSION=$(git describe 2>/dev/null || echo "unknown")
+else
+    VERSION="unknown"
+fi
+echo "$VERSION" > "$PREFIX"/share/volodyslav/source/VERSION
+
+# Remove .git to avoid broken references in submodule setups
+rm -rf -- "$PREFIX"/share/volodyslav/source/.git
+
 ln -srfT -- "$PREFIX"/share/volodyslav/source/scripts/run-main "$PREFIX"/bin/volodyslav
