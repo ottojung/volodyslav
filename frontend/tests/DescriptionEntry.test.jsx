@@ -69,13 +69,13 @@ describe("DescriptionEntry", () => {
         submitEntry.mockClear();
         fetchConfig.mockClear();
         
-        // Reset camera mocks
-        requiresCamera.mockClear();
-        generateRequestIdentifier.mockClear();
-        navigateToCamera.mockClear();
-        checkCameraReturn.mockClear();
-        cleanupUrlParams.mockClear();
-        restoreDescription.mockClear();
+        // Reset camera mocks - use mockReset to clear all state
+        requiresCamera.mockReset();
+        generateRequestIdentifier.mockReset();
+        navigateToCamera.mockReset();
+        checkCameraReturn.mockReset();
+        cleanupUrlParams.mockReset();
+        restoreDescription.mockReset();
 
         // Set default mock implementations that resolve immediately
         fetchRecentEntries.mockResolvedValue([]);
@@ -86,10 +86,22 @@ describe("DescriptionEntry", () => {
         // Use default mock config instead of null
         fetchConfig.mockResolvedValue(defaultMockConfig);
         
-        // Set default camera mock implementations
+        // Set default camera mock implementations - ensure clean state
         requiresCamera.mockReturnValue(false);
         generateRequestIdentifier.mockReturnValue("test-req-id-123");
-        checkCameraReturn.mockReturnValue({ isReturn: false });
+        checkCameraReturn.mockReturnValue({ isReturn: false, requestIdentifier: null });
+        restoreDescription.mockReturnValue(null);
+        
+        // Clear sessionStorage to ensure clean state
+        Object.defineProperty(window, 'sessionStorage', {
+            value: {
+                getItem: jest.fn(),
+                setItem: jest.fn(),
+                removeItem: jest.fn(),
+                clear: jest.fn(),
+            },
+            writable: true
+        });
     });
 
     it("renders the main elements", async () => {
@@ -927,15 +939,23 @@ describe("DescriptionEntry", () => {
     });
 });
 
-describe("Camera Integration", () => {
-        it("detects camera trigger and navigates to camera", async () => {
-            // Mock camera requirement detection
-            requiresCamera.mockReturnValue(true);
+describe("Camera Integration", () => {        it("detects camera trigger and navigates to camera", async () => {
+            // Reset and set up mocks for camera navigation
+            requiresCamera.mockReset();
+            generateRequestIdentifier.mockReset();
+            navigateToCamera.mockReset();
+            checkCameraReturn.mockReset();
             
+            // Set specific mock values for this test
+            requiresCamera.mockReturnValue(true);
+            generateRequestIdentifier.mockReturnValue("test-req-id-123");
+            checkCameraReturn.mockReturnValue({ isReturn: false });
+
             render(<DescriptionEntry />);
 
+            // Wait for the component to settle
             await waitFor(() => {
-                expect(screen.getByText("Event Logging Help")).toBeInTheDocument();
+                expect(screen.getByPlaceholderText("Type your event description here...")).toBeInTheDocument();
             });
 
             const input = screen.getByPlaceholderText(
@@ -981,23 +1001,41 @@ describe("Camera Integration", () => {
             );
             expect(input.value).toBe("Take a photo [phone_take_photo] of the sunset");
 
-            // Should show photos attached indicator (look for the camera emoji)
-            expect(screen.getByText(/📷/)).toBeInTheDocument();
+            // Should show photos attached indicator 
+            expect(screen.getByText(/Photos attached/)).toBeInTheDocument();
         });
 
         it("submits entry with photos when returning from camera", async () => {
+            // Reset and set up mocks for returning from camera
+            checkCameraReturn.mockReset();
+            restoreDescription.mockReset();
+            requiresCamera.mockReset();
+            submitEntry.mockReset();
+            
             // Mock returning from camera
             checkCameraReturn.mockReturnValue({
                 isReturn: true,
                 requestIdentifier: "test-req-id-123"
             });
             restoreDescription.mockReturnValue("Take a photo [phone_take_photo] of the sunset");
+            requiresCamera.mockReturnValue(false); // Don't trigger camera again during submission
+            submitEntry.mockResolvedValue({
+                success: true,
+                entry: { input: "Take a photo [phone_take_photo] of the sunset" },
+            });
 
             render(<DescriptionEntry />);
 
+            // Wait for the component to process the camera return
             await waitFor(() => {
                 expect(restoreDescription).toHaveBeenCalledWith("test-req-id-123");
             });
+
+            // Verify description is restored
+            const input = screen.getByPlaceholderText(
+                "Type your event description here..."
+            );
+            expect(input.value).toBe("Take a photo [phone_take_photo] of the sunset");
 
             const logButton = screen.getByRole("button", { name: /log event/i });
 
@@ -1014,13 +1052,21 @@ describe("Camera Integration", () => {
         });
 
         it("does not navigate to camera for regular descriptions", async () => {
-            // Mock no camera requirement
+            // Start fresh - explicitly reset all camera mocks for this test
+            requiresCamera.mockReset();
+            generateRequestIdentifier.mockReset();
+            navigateToCamera.mockReset();
+            checkCameraReturn.mockReset();
+            
+            // Set specific mock values for this test
             requiresCamera.mockReturnValue(false);
+            checkCameraReturn.mockReturnValue({ isReturn: false }); // Ensure no camera return state
             
             render(<DescriptionEntry />);
 
+            // Wait for the component to settle
             await waitFor(() => {
-                expect(screen.getByText("Event Logging Help")).toBeInTheDocument();
+                expect(screen.getByPlaceholderText("Type your event description here...")).toBeInTheDocument();
             });
 
             const input = screen.getByPlaceholderText(
@@ -1036,7 +1082,7 @@ describe("Camera Integration", () => {
             fireEvent.click(logButton);
 
             await waitFor(() => {
-                // Should submit normally without camera
+                // Should submit normally without camera and without request identifier
                 expect(submitEntry).toHaveBeenCalledWith(regularDescription);
             });
 

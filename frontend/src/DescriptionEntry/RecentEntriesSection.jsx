@@ -42,7 +42,7 @@ export const RecentEntriesSection = ({ entries, isLoading }) => {
         );
     }
 
-    if (!entries.length) {
+    if (!entries || !entries.length) {
         return null;
     }
 
