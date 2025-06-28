@@ -333,7 +333,9 @@ describe("API Ordering Integration Tests", () => {
             expect(createRes.body.success).toBe(true);
             
             // The created entry should use current time, not the when modifier
-            expect(createRes.body.entry.date).toBe(new Date(fixedTime).toISOString().replace('.000Z', '+0000'));
+            // Parse the returned date and compare timestamps to avoid timezone issues
+            const returnedDate = new Date(createRes.body.entry.date);
+            expect(returnedDate.getTime()).toBe(fixedTime);
         });
 
         it("ignores explicit date parameter and uses current time", async () => {
@@ -356,7 +358,9 @@ describe("API Ordering Integration Tests", () => {
             expect(createRes.body.success).toBe(true);
             
             // The created entry should use current time, ignoring both the explicit date and when modifier
-            expect(createRes.body.entry.date).toBe(new Date(fixedTime).toISOString().replace('.000Z', '+0000'));
+            // Parse the returned date and compare timestamps to avoid timezone issues
+            const returnedDate = new Date(createRes.body.entry.date);
+            expect(returnedDate.getTime()).toBe(fixedTime);
         });
     });
 });
