@@ -207,8 +207,8 @@ async function handleEntryPost(req, res, capabilities, reqId) {
             files = req.files['files'] || [];
         }
 
-        // New API: rawInput with optional date
-        const { rawInput, date } = req.body;
+        // New API: rawInput
+        const { rawInput } = req.body;
         if (typeof rawInput !== "string" || rawInput.trim() === "") {
             capabilities.logger.logError(
                 {
@@ -253,7 +253,6 @@ async function handleEntryPost(req, res, capabilities, reqId) {
             modifiers: parsed.modifiers,
             original,
             input,
-            date
         };
 
         // Prepare file attachments

@@ -29,12 +29,14 @@ describe("POST /api/entries", () => {
         // Equivalent curl command:
         // curl -X POST http://localhost:PORT/api/entries \
         //   -H "Content-Type: application/json" \
-        //   -d '{"rawInput":"httptype [foo bar] HTTP description","date":"2025-05-23T12:00:00.000Z"}'
+        //   -d '{"rawInput":"httptype [foo bar] HTTP description"}'
 
         const { app, capabilities } = await makeTestApp();
+        const fixedTime = new Date("2025-05-23T12:00:00.000Z").getTime();
+        capabilities.datetime.now.mockReturnValue(fixedTime);
+        
         const requestBody = {
             rawInput: "httptype [foo bar] HTTP description",
-            date: "2025-05-23T12:00:00+0000",
         };
         const res = await request(app)
             .post("/api/entries")
@@ -282,30 +284,44 @@ describe("GET /api/entries", () => {
 
 describe("GET /api/entries with ordering", () => {
     it("returns entries in descending date order by default", async () => {
-        const { app } = await makeTestApp();
+        const { app, capabilities } = await makeTestApp();
 
-        // Create entries with different rawInput that include dates
+        // Create entries with different dates by controlling datetime.now()
+        const baseTime = new Date("2023-01-01T10:00:00Z").getTime();
         const entries = [
-            { rawInput: "type1 [when 2023-01-01] - Description 1" },
-            { rawInput: "type2 [when 2023-01-03] - Description 3" },
-            { rawInput: "type3 [when 2023-01-02] - Description 2" },
+            { rawInput: "type1 - Description 1" },
+            { rawInput: "type2 - Description 3" },
+            { rawInput: "type3 - Description 2" },
         ];
 
-        for (const entry of entries) {
-            await request(app)
-                .post("/api/entries")
-                .send(entry)
-                .set("Content-Type", "application/json");
-        }
+        // Mock datetime to return different times for each entry
+        capabilities.datetime.now.mockReturnValueOnce(baseTime); // Oldest
+        await request(app)
+            .post("/api/entries")
+            .send(entries[0])
+            .set("Content-Type", "application/json");
+
+        capabilities.datetime.now.mockReturnValueOnce(baseTime + 2 * 24 * 60 * 60 * 1000); // Newest
+        await request(app)
+            .post("/api/entries")
+            .send(entries[1])
+            .set("Content-Type", "application/json");
+
+        capabilities.datetime.now.mockReturnValueOnce(baseTime + 24 * 60 * 60 * 1000); // Middle
+        await request(app)
+            .post("/api/entries")
+            .send(entries[2])
+            .set("Content-Type", "application/json");
 
         const res = await request(app).get("/api/entries");
 
         expect(res.statusCode).toBe(200);
         expect(res.body.results).toHaveLength(3);
         // Should be in descending date order (newest first)
-        // Note: The exact order depends on how the date parsing works
-        // For now, let's just verify we get all 3 entries
-        expect(res.body.results.length).toBe(3);
+        const dates = res.body.results.map(entry => new Date(entry.date));
+        for (let i = 1; i < dates.length; i++) {
+            expect(dates[i - 1].getTime()).toBeGreaterThanOrEqual(dates[i].getTime());
+        }
     });
 
     it("supports dateAscending order parameter", async () => {

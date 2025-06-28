@@ -34,7 +34,6 @@ const creatorMake = require("./creator");
 
 /**
  * @typedef {object} EntryData
- * @property {string} [date] - ISO date string, defaults to current time. Must be valid when provided.
  * @property {string} original - The original, raw input for the event
  * @property {string} input - The processed input for the event
  * @property {string} type - The type of entry (e.g., "note", "diary", "todo")

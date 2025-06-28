@@ -48,36 +48,42 @@ describe("API Ordering Integration Tests", () => {
 
     describe("Default Ordering Behavior", () => {
         it("defaults to dateDescending when no order parameter is provided", async () => {
-            const { app } = await makeTestApp();
+            const { app, capabilities } = await makeTestApp();
 
-            // Create entries with specific dates using [when DATE] modifiers
+            // Create entries with different dates by controlling datetime.now()
+            const baseTime = new Date("2023-01-01T10:00:00Z").getTime();
             const entries = [
-                { rawInput: "test [when 2023-01-01T10:00:00Z] - Oldest entry" },
-                { rawInput: "test [when 2023-01-03T10:00:00Z] - Newest entry" },
-                { rawInput: "test [when 2023-01-02T10:00:00Z] - Middle entry" },
+                { rawInput: "test - Oldest entry" },
+                { rawInput: "test - Newest entry" },
+                { rawInput: "test - Middle entry" },
             ];
 
-            for (const entry of entries) {
-                await request(app)
-                    .post("/api/entries")
-                    .send(entry)
-                    .set("Content-Type", "application/json");
-            }
+            // Mock datetime to return different times for each entry
+            capabilities.datetime.now.mockReturnValueOnce(baseTime); // Oldest
+            await request(app)
+                .post("/api/entries")
+                .send(entries[0])
+                .set("Content-Type", "application/json");
+
+            capabilities.datetime.now.mockReturnValueOnce(baseTime + 2 * 24 * 60 * 60 * 1000); // Newest
+            await request(app)
+                .post("/api/entries")
+                .send(entries[1])
+                .set("Content-Type", "application/json");
+
+            capabilities.datetime.now.mockReturnValueOnce(baseTime + 24 * 60 * 60 * 1000); // Middle
+            await request(app)
+                .post("/api/entries")
+                .send(entries[2])
+                .set("Content-Type", "application/json");
 
             const res = await request(app).get("/api/entries");
 
             expect(res.statusCode).toBe(200);
             expect(res.body.results).toHaveLength(3);
 
-            // Find our test entries and verify they are in descending date order
-            const testEntries = res.body.results.filter(entry => 
-                entry.date.includes('2023-01-0')
-            );
-
-            expect(testEntries).toHaveLength(3);
-
             // Verify the order is descending (newest first)
-            const dates = testEntries.map(entry => new Date(entry.date));
+            const dates = res.body.results.map(entry => new Date(entry.date));
             for (let i = 1; i < dates.length; i++) {
                 expect(dates[i - 1].getTime()).toBeGreaterThanOrEqual(dates[i].getTime());
             }
@@ -86,20 +92,26 @@ describe("API Ordering Integration Tests", () => {
 
     describe("Explicit Order Parameters", () => {
         it("supports dateDescending order parameter", async () => {
-            const { app } = await makeTestApp();
+            const { app, capabilities } = await makeTestApp();
 
-            // Create entries with specific dates
+            // Create entries with different dates by controlling datetime.now()
+            const baseTime = new Date("2023-01-01T10:00:00Z").getTime();
             const entries = [
-                { rawInput: "test [when 2023-01-01T10:00:00Z] - First" },
-                { rawInput: "test [when 2023-01-02T10:00:00Z] - Second" },
+                { rawInput: "test - First" },
+                { rawInput: "test - Second" },
             ];
 
-            for (const entry of entries) {
-                await request(app)
-                    .post("/api/entries")
-                    .send(entry)
-                    .set("Content-Type", "application/json");
-            }
+            capabilities.datetime.now.mockReturnValueOnce(baseTime);
+            await request(app)
+                .post("/api/entries")
+                .send(entries[0])
+                .set("Content-Type", "application/json");
+
+            capabilities.datetime.now.mockReturnValueOnce(baseTime + 24 * 60 * 60 * 1000);
+            await request(app)
+                .post("/api/entries")
+                .send(entries[1])
+                .set("Content-Type", "application/json");
 
             const res = await request(app).get("/api/entries?order=dateDescending");
 
@@ -114,20 +126,26 @@ describe("API Ordering Integration Tests", () => {
         });
 
         it("supports dateAscending order parameter", async () => {
-            const { app } = await makeTestApp();
+            const { app, capabilities } = await makeTestApp();
 
-            // Create entries with specific dates
+            // Create entries with different dates by controlling datetime.now()
+            const baseTime = new Date("2023-01-01T10:00:00Z").getTime();
             const entries = [
-                { rawInput: "test [when 2023-01-02T10:00:00Z] - Second" },
-                { rawInput: "test [when 2023-01-01T10:00:00Z] - First" },
+                { rawInput: "test - Second" },
+                { rawInput: "test - First" },
             ];
 
-            for (const entry of entries) {
-                await request(app)
-                    .post("/api/entries")
-                    .send(entry)
-                    .set("Content-Type", "application/json");
-            }
+            capabilities.datetime.now.mockReturnValueOnce(baseTime + 24 * 60 * 60 * 1000); // Second (newer)
+            await request(app)
+                .post("/api/entries")
+                .send(entries[0])
+                .set("Content-Type", "application/json");
+
+            capabilities.datetime.now.mockReturnValueOnce(baseTime); // First (older)
+            await request(app)
+                .post("/api/entries")
+                .send(entries[1])
+                .set("Content-Type", "application/json");
 
             const res = await request(app).get("/api/entries?order=dateAscending");
 
@@ -200,20 +218,23 @@ describe("API Ordering Integration Tests", () => {
         });
 
         it("maintains correct ordering across paginated results", async () => {
-            const { app } = await makeTestApp();
+            const { app, capabilities } = await makeTestApp();
 
-            // Create entries with specific dates
+            // Create entries with different dates by controlling datetime.now()
+            const baseTime = new Date("2023-01-01T10:00:00Z").getTime();
             const entries = [
-                { rawInput: "test [when 2023-01-01T10:00:00Z] - Entry 1" },
-                { rawInput: "test [when 2023-01-02T10:00:00Z] - Entry 2" },
-                { rawInput: "test [when 2023-01-03T10:00:00Z] - Entry 3" },
-                { rawInput: "test [when 2023-01-04T10:00:00Z] - Entry 4" },
+                { rawInput: "test - Entry 1" },
+                { rawInput: "test - Entry 2" },
+                { rawInput: "test - Entry 3" },
+                { rawInput: "test - Entry 4" },
             ];
 
-            for (const entry of entries) {
+            // Create entries with incrementing timestamps
+            for (let i = 0; i < entries.length; i++) {
+                capabilities.datetime.now.mockReturnValueOnce(baseTime + i * 24 * 60 * 60 * 1000);
                 await request(app)
                     .post("/api/entries")
-                    .send(entry)
+                    .send(entries[i])
                     .set("Content-Type", "application/json");
             }
 
@@ -292,12 +313,15 @@ describe("API Ordering Integration Tests", () => {
         });
     });
 
-    describe("Date Modifier Processing", () => {
-        it("extracts date from [when DATE] modifier", async () => {
-            const { app } = await makeTestApp();
+    describe("Date Processing", () => {
+        it("ignores when modifiers and uses current time", async () => {
+            const { app, capabilities } = await makeTestApp();
+
+            const fixedTime = new Date("2025-06-28T10:00:00Z").getTime();
+            capabilities.datetime.now.mockReturnValue(fixedTime);
 
             const requestBody = {
-                rawInput: "test [when 2023-06-15T14:30:00Z] - Entry with specific date",
+                rawInput: "test [when 2023-06-15T14:30:00Z] - Entry with when modifier",
             };
             
             const createRes = await request(app)
@@ -308,12 +332,15 @@ describe("API Ordering Integration Tests", () => {
             expect(createRes.statusCode).toBe(201);
             expect(createRes.body.success).toBe(true);
             
-            // The created entry should have the date from the modifier
-            expect(createRes.body.entry.date).toBe("2023-06-15T14:30:00+0000");
+            // The created entry should use current time, not the when modifier
+            expect(createRes.body.entry.date).toBe(new Date(fixedTime).toISOString().replace('.000Z', '+0000'));
         });
 
-        it("prioritizes explicit date over when modifier", async () => {
-            const { app } = await makeTestApp();
+        it("ignores explicit date parameter and uses current time", async () => {
+            const { app, capabilities } = await makeTestApp();
+
+            const fixedTime = new Date("2025-06-28T12:00:00Z").getTime();
+            capabilities.datetime.now.mockReturnValue(fixedTime);
 
             const requestBody = {
                 rawInput: "test [when 2023-06-15T14:30:00Z] - Entry with both dates",
@@ -328,8 +355,8 @@ describe("API Ordering Integration Tests", () => {
             expect(createRes.statusCode).toBe(201);
             expect(createRes.body.success).toBe(true);
             
-            // The created entry should use the explicit date, not the modifier
-            expect(createRes.body.entry.date).toBe("2023-07-01T10:00:00+0000");
+            // The created entry should use current time, ignoring both the explicit date and when modifier
+            expect(createRes.body.entry.date).toBe(new Date(fixedTime).toISOString().replace('.000Z', '+0000'));
         });
     });
 });
