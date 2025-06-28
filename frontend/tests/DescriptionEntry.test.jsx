@@ -26,7 +26,6 @@ jest.mock("../src/DescriptionEntry/cameraUtils", () => ({
     checkCameraReturn: jest.fn(),
     cleanupUrlParams: jest.fn(),
     restoreDescription: jest.fn(),
-    TAKE_PHOTO_CONSTANT: "[phone_take_photo]",
 }));
 
 import DescriptionEntry from "../src/DescriptionEntry/DescriptionEntry.jsx";
@@ -1116,7 +1115,9 @@ describe("Camera Integration", () => {
             generateRequestIdentifier.mockReset();
             navigateToCamera.mockReset();
             submitEntry.mockReset();
+            checkCameraReturn.mockReset();
             generateRequestIdentifier.mockReturnValue("test-req-id-123");
+            checkCameraReturn.mockReturnValue({ isReturn: false, requestIdentifier: null });
             
             render(<DescriptionEntry />);
 

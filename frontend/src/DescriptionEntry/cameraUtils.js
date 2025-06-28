@@ -3,25 +3,11 @@
  */
 
 /**
- * The pattern that triggers camera functionality, matching the CLI script
- */
-export const TAKE_PHOTO_CONSTANT = "[phone_take_photo]";
-
-/**
  * Generates a unique request identifier for camera sessions
  * @returns {string} - A unique identifier
  */
 export const generateRequestIdentifier = () => {
     return `camera_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-};
-
-/**
- * Checks if the description contains the camera trigger pattern
- * @param {string} description - The user's description text
- * @returns {boolean} - True if camera is required
- */
-export const requiresCamera = (description) => {
-    return description.includes(TAKE_PHOTO_CONSTANT);
 };
 
 
