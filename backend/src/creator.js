@@ -10,6 +10,8 @@ const runtime_identifier = require("./runtime_identifier");
  * @property {NonDeterministicSeed} seed - A random number generator instance.
  * @property {Logger} logger - A logger instance.
  * @property {Command} git - A command instance for Git operations.
+ * @property {import('./filesystem/reader').FileReader} reader - A file reader instance.
+ * @property {import('./filesystem/checker').FileChecker} checker - A file checker instance.
  */
 
 /**
