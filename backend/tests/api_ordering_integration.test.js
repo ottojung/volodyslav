@@ -116,7 +116,7 @@ describe("API Ordering Integration Tests", () => {
             const res = await request(app).get("/api/entries?order=dateDescending");
 
             expect(res.statusCode).toBe(200);
-            
+
             // Verify entries are in descending order
             for (let i = 1; i < res.body.results.length; i++) {
                 const currentDate = new Date(res.body.results[i].date);
@@ -150,7 +150,7 @@ describe("API Ordering Integration Tests", () => {
             const res = await request(app).get("/api/entries?order=dateAscending");
 
             expect(res.statusCode).toBe(200);
-            
+
             // Verify entries are in ascending order
             for (let i = 1; i < res.body.results.length; i++) {
                 const currentDate = new Date(res.body.results[i].date);
@@ -175,10 +175,10 @@ describe("API Ordering Integration Tests", () => {
 
             expect(res.statusCode).toBe(200);
             expect(res.body.results).toBeDefined();
-            
+
             // Should still work and return results in descending order
             expect(res.body.results.length).toBeGreaterThan(0);
-            
+
             // Extract all dates and verify they are in descending order
             const dates = res.body.results.map(entry => new Date(entry.date));
             for (let i = 1; i < dates.length; i++) {
@@ -209,7 +209,7 @@ describe("API Ordering Integration Tests", () => {
 
             expect(res.statusCode).toBe(200);
             expect(res.body.results).toHaveLength(2);
-            
+
             // Next URL should contain order parameter
             expect(res.body.next).toBeDefined();
             expect(res.body.next).toContain("order=dateAscending");
@@ -250,7 +250,7 @@ describe("API Ordering Integration Tests", () => {
             // Verify ordering is maintained across pages
             expect(page1.body.results.length).toBeGreaterThan(0);
             expect(page2.body.results.length).toBeGreaterThan(0);
-            
+
             const lastFromPage1 = new Date(page1.body.results[page1.body.results.length - 1].date);
             const firstFromPage2 = new Date(page2.body.results[0].date);
             expect(lastFromPage1.getTime()).toBeGreaterThanOrEqual(firstFromPage2.getTime());
@@ -276,12 +276,12 @@ describe("API Ordering Integration Tests", () => {
             expect(res.statusCode).toBe(200);
             expect(res.body).toHaveProperty("results");
             expect(Array.isArray(res.body.results)).toBe(true);
-            
+
             // Verify each entry has the expected fields
             expect(res.body.results.length).toBeGreaterThan(0);
             const entry = res.body.results[0];
             const requiredFields = ['id', 'date', 'type', 'description', 'input', 'original'];
-            
+
             for (const field of requiredFields) {
                 expect(entry).toHaveProperty(field);
             }
@@ -305,7 +305,7 @@ describe("API Ordering Integration Tests", () => {
             expect(res.statusCode).toBe(200);
             expect(res.body).toHaveProperty("results");
             expect(Array.isArray(res.body.results)).toBe(true);
-            
+
             // Verify entries have original or input fields that phone script expects
             expect(res.body.results.length).toBeGreaterThan(0);
             const entry = res.body.results[0];
@@ -323,7 +323,7 @@ describe("API Ordering Integration Tests", () => {
             const requestBody = {
                 rawInput: "test [when 2023-06-15T14:30:00Z] - Entry with when modifier",
             };
-            
+
             const createRes = await request(app)
                 .post("/api/entries")
                 .send(requestBody)
@@ -331,7 +331,7 @@ describe("API Ordering Integration Tests", () => {
 
             expect(createRes.statusCode).toBe(201);
             expect(createRes.body.success).toBe(true);
-            
+
             // The created entry should use current time, not the when modifier
             // Parse the returned date and compare timestamps to avoid timezone issues
             const returnedDate = new Date(createRes.body.entry.date);
@@ -348,7 +348,7 @@ describe("API Ordering Integration Tests", () => {
                 rawInput: "test [when 2023-06-15T14:30:00Z] - Entry with both dates",
                 date: "2023-07-01T10:00:00Z"
             };
-            
+
             const createRes = await request(app)
                 .post("/api/entries")
                 .send(requestBody)
@@ -356,7 +356,7 @@ describe("API Ordering Integration Tests", () => {
 
             expect(createRes.statusCode).toBe(201);
             expect(createRes.body.success).toBe(true);
-            
+
             // The created entry should use current time, ignoring both the explicit date and when modifier
             // Parse the returned date and compare timestamps to avoid timezone issues
             const returnedDate = new Date(createRes.body.entry.date);
