@@ -37,16 +37,20 @@
  * - "task Important project details" (multi-word description without modifiers)
  */
 
-const { readConfig } = require("../config/storage");
-
 /**
  * Minimal capabilities needed for shortcut application and config reading
  * @typedef {object} ShortcutCapabilities
  * @property {import('../environment').Environment} environment - Environment to get repository path
  * @property {import('../filesystem/checker').FileChecker} checker - File checker for instantiating config files
  * @property {import('../filesystem/reader').FileReader} reader - File reader for reading config files
- * @property {import('../filesystem/writer').FileWriter} writer - File writer (required by config storage)
- * @property {import('../filesystem/creator').FileCreator} creator - File creator (required by config storage)
+ * @property {import('../filesystem/writer').FileWriter} writer - File writer (required by event log storage)
+ * @property {import('../filesystem/creator').FileCreator} creator - File creator (required by event log storage)
+ * @property {import('../filesystem/deleter').FileDeleter} deleter - File deleter (required by event log storage)
+ * @property {import('../filesystem/copier').FileCopier} copier - File copier (required by event log storage)
+ * @property {import('../filesystem/appender').FileAppender} appender - File appender (required by event log storage)
+ * @property {import('../subprocess/command').Command} git - Git command (required by event log storage)
+ * @property {import('../random/seed').NonDeterministicSeed} seed - Random seed (required by config API)
+ * @property {import('../datetime').Datetime} datetime - Datetime utilities (required by config API)
  * @property {import('../logger').Logger} logger - Logger for error reporting
  */
 
@@ -192,48 +196,20 @@ function parseStructuredInput(input) {
  * @returns {Promise<string>} - The transformed input
  */
 async function applyShortcuts(capabilities, input) {
-    // Load config from event log repository using path construction
-    const eventLogRepo = capabilities.environment.eventLogRepository();
-    const configPath = require("path").join(eventLogRepo, "config.json");
-    const config = require("../config");
+    const { getConfig } = require("../config_api");
 
     /** @type {import('../config/structure').Config | null} */
-    let configObj;
+    let configObj = null;
+    
     try {
-        const configFile = await capabilities.checker
-            .instantiate(configPath)
-            .catch(() => null);
-
-        if (!configFile) {
-            // No config file means no shortcuts to apply
-            return input;
-        }
-
-        const configResult = await readConfig(capabilities, configFile);
-        
-        // If readConfig returned an error object, it means the config is invalid
-        if (configResult instanceof config.TryDeserializeError) {
-            capabilities.logger.logInfo(
-                { 
-                    error: configResult.message,
-                    field: configResult.field,
-                    value: configResult.value,
-                    expectedType: configResult.expectedType,
-                    errorType: configResult.name
-                },
-                "Found invalid config object, proceeding without shortcuts"
-            );
-            return input;
-        }
-        
-        configObj = configResult;
+        configObj = await getConfig(capabilities);
     } catch (error) {
-        // If config doesn't exist or can't be read, return input unchanged
+        // If that fails, fall back to direct filesystem access for backward compatibility
         capabilities.logger.logInfo(
             { error: error instanceof Error ? error.message : String(error) },
-            "Could not load config for shortcuts, proceeding without transformation"
+            "Could not load config through transaction system, trying direct filesystem access"
         );
-        return input;
+        configObj = null;
     }
 
     if (!configObj || !configObj.shortcuts) {

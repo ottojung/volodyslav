@@ -233,15 +233,18 @@ describe("applyShortcuts", () => {
     });
 
     test("applies simple shortcut", async () => {
-        const capabilities = getTestCapabilities();
-        const configPath = capabilities.environment.eventLogRepository() + "/config.json";
-        await fs.mkdir(path.dirname(configPath), { recursive: true });
-        await fs.writeFile(configPath, JSON.stringify({
-            help: "test config",
-            shortcuts: [
-                ["\\bw\\b", "WORK"]
-            ]
-        }));
+        const capabilities = await getTestCapabilities();
+        
+        // Set up config through transaction system (proper way)
+        const { transaction } = require("../src/event_log_storage");
+        await transaction(capabilities, async (storage) => {
+            storage.setConfig({
+                help: "test config",
+                shortcuts: [
+                    ["\\bw\\b", "WORK"]
+                ]
+            });
+        });
 
         const result = await applyShortcuts(capabilities, "w [loc office]");
         expect(result).toBe("WORK [loc office]");
