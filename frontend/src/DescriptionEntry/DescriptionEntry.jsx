@@ -17,6 +17,7 @@ export default function DescriptionEntry() {
         pendingRequestIdentifier,
         setDescription,
         handleSubmit,
+        handleTakePhotos,
         handleClear,
         handleKeyUp,
     } = useDescriptionEntry(NUMBER_OF_RECENT_ENTRIES);
@@ -64,6 +65,7 @@ export default function DescriptionEntry() {
                     description={description}
                     onDescriptionChange={setDescription}
                     onSubmit={handleSubmit}
+                    onTakePhotos={handleTakePhotos}
                     onClear={handleClear}
                     onKeyUp={handleKeyUp}
                     isSubmitting={isSubmitting}

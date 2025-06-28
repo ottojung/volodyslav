@@ -25,6 +25,7 @@ import {
  * @param {(value: string) => void} props.onDescriptionChange - Description change handler
  * @param {() => void} props.onSubmit - Form submit handler
  * @param {() => void} props.onClear - Clear form handler
+ * @param {() => void} props.onTakePhotos - Take photos handler
  * @param {(e: React.KeyboardEvent) => void} props.onKeyUp - Key up handler
  * @param {boolean} props.isSubmitting - Whether form is submitting
  * @param {React.RefObject<HTMLInputElement>} props.inputRef - Input element ref
@@ -35,6 +36,7 @@ export const FormInputSection = ({
     onDescriptionChange,
     onSubmit,
     onClear,
+    onTakePhotos,
     onKeyUp,
     isSubmitting,
     inputRef,
@@ -67,6 +69,14 @@ export const FormInputSection = ({
                             )}
                         </HStack>
                         <HStack spacing={SPACING.sm}>
+                            <Button
+                                {...BUTTON_STYLES.secondary}
+                                onClick={onTakePhotos}
+                                size="sm"
+                                isDisabled={isSubmitting}
+                            >
+                                📸 Take Photos
+                            </Button>
                             <Button
                                 {...BUTTON_STYLES.secondary}
                                 onClick={onClear}

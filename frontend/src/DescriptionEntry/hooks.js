@@ -7,7 +7,6 @@ import {
 import { isValidDescription, createToastConfig } from "./utils.js";
 import { logger } from "./logger.js";
 import { 
-    requiresCamera, 
     generateRequestIdentifier, 
     navigateToCamera, 
     checkCameraReturn, 
@@ -45,14 +44,6 @@ export const useDescriptionEntry = (numberOfEntries = 10) => {
             return;
         }
 
-        // Check if camera is required
-        if (requiresCamera(description)) {
-            const requestIdentifier = generateRequestIdentifier();
-            setPendingRequestIdentifier(requestIdentifier);
-            navigateToCamera(requestIdentifier, description);
-            return;
-        }
-
         setIsSubmitting(true);
 
         try {
@@ -74,6 +65,12 @@ export const useDescriptionEntry = (numberOfEntries = 10) => {
         } finally {
             setIsSubmitting(false);
         }
+    };
+
+    const handleTakePhotos = () => {
+        const requestIdentifier = generateRequestIdentifier();
+        setPendingRequestIdentifier(requestIdentifier);
+        navigateToCamera(requestIdentifier, description);
     };
 
     const handleClear = () => {
@@ -131,6 +128,7 @@ export const useDescriptionEntry = (numberOfEntries = 10) => {
         // Actions
         setDescription,
         handleSubmit,
+        handleTakePhotos,
         handleClear,
         handleKeyUp,
         fetchRecentEntries,
