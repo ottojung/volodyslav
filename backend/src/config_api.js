@@ -34,10 +34,15 @@ const { transaction } = require("./event_log_storage");
  * @returns {Promise<import('./config/structure').Config | null>} - The current config or null if not found.
  */
 async function getConfig(capabilities) {
+    console.log('DEBUG getConfig: Starting transaction...');
     const config = await transaction(capabilities, async (storage) => {
-        return await storage.getExistingConfig();
+        console.log('DEBUG getConfig: Inside transaction, calling getExistingConfig...');
+        const result = await storage.getExistingConfig();
+        console.log('DEBUG getConfig: getExistingConfig returned:', result);
+        return result;
     });
 
+    console.log('DEBUG getConfig: Transaction completed, config:', config);
     capabilities.logger.logInfo(
         {
             configExists: config !== null,

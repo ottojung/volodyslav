@@ -221,14 +221,16 @@ describe("parseStructuredInput", () => {
 
 describe("applyShortcuts", () => {
     test("applies no shortcuts when config is empty", async () => {
-        // Mock empty config
-        const capabilities = getTestCapabilities();
-        const configPath = capabilities.environment.eventLogRepository() + "/config.json";
-        await fs.mkdir(path.dirname(configPath), { recursive: true });
-        await fs.writeFile(configPath, JSON.stringify({
-            help: "test config",
-            shortcuts: []
-        }));
+        const capabilities = await getTestCapabilities();
+        
+        // Set up config through transaction system (proper way)
+        const { transaction } = require("../src/event_log_storage");
+        await transaction(capabilities, async (storage) => {
+            storage.setConfig({
+                help: "test config",
+                shortcuts: []
+            });
+        });
 
         const result = await applyShortcuts(capabilities, "WORK [loc office]");
         expect(result).toBe("WORK [loc office]");
@@ -247,11 +249,6 @@ describe("applyShortcuts", () => {
                 ]
             });
         });
-
-        // Debug: Check what getConfig returns
-        const { getConfig } = require("../src/config_api");
-        const configObj = await getConfig(capabilities);
-        console.log("Config retrieved:", JSON.stringify(configObj, null, 2));
 
         const result = await applyShortcuts(capabilities, "w [loc office]");
         expect(result).toBe("WORK [loc office]");
