@@ -143,8 +143,8 @@ function parseStructuredInput(input) {
     // Match: TYPE [modifiers...] description
     // TYPE must be a single word (letters and digits only, starting with a letter)
     // modifiers are optional, description is optional
-    // We need to be careful to match modifiers first, then everything else is description
-    const pattern = /^\s*([A-Za-z][A-Za-z0-9]*)\s*((?:\[[^\]]+\]\s*)*)\s*(.*)$/;
+    // Only capture brackets that contain spaces (valid modifiers) immediately after type
+    const pattern = /^\s*([A-Za-z][A-Za-z0-9]*)\s*((?:\[[^\]]*\s+[^\]]*\]\s*)*)\s*(.*)$/;
     const match = input.match(pattern);
 
     if (!match) {
@@ -159,8 +159,15 @@ function parseStructuredInput(input) {
         throw new InputParseError("Type is required but not found in input", input);
     }
 
-    // Parse modifiers
-    const modifierMatches = modifiersStr.match(/\[[^\]]+\]/g) || [];
+    // Check if description contains patterns that look like modifiers (e.g., [key value])
+    // This prevents modifiers from appearing after the description has started
+    const modifierLikePattern = /\[[^\]]*\s+[^\]]*\]/;
+    if (modifierLikePattern.test(description)) {
+        throw new InputParseError("Modifiers must appear immediately after the type, before any description text", input);
+    }
+
+    // Parse modifiers - only match those with spaces (valid modifier format)
+    const modifierMatches = modifiersStr.match(/\[[^\]]*\s+[^\]]*\]/g) || [];
     /** @type {Record<string, string>} */
     const modifiers = {};
 

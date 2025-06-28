@@ -184,6 +184,37 @@ describe("parseStructuredInput", () => {
         expect(error).toBeInstanceOf(InputParseError);
         expect(error.input).toBe("123invalid");
     });
+
+    test("rejects modifier patterns in description", () => {
+        // Test cases that should be rejected
+        const invalidInputs = [
+            "food [mod1 val1] this is where description starts [unexpected modifier]",
+            "work [loc office] description with [another modifier] here",
+            "task [priority high] some text [status done]",
+            "meeting [with John] notes [duration 2h]"
+        ];
+
+        for (const input of invalidInputs) {
+            expect(() => parseStructuredInput(input)).toThrow(InputParseError);
+            expect(() => parseStructuredInput(input)).toThrow("Modifiers must appear immediately after the type, before any description text");
+        }
+    });
+
+    test("allows brackets in descriptions that don't look like modifiers", () => {
+        // Test cases that should be valid (brackets without modifier pattern)
+        const validInputs = [
+            { input: "work [unclosed bracket in description", expectedDesc: "[unclosed bracket in description" },
+            { input: "task description with [brackets] but no spaces", expectedDesc: "description with [brackets] but no spaces" },
+            { input: "note [123] numbers in brackets", expectedDesc: "[123] numbers in brackets" },
+            { input: "item description with ] standalone bracket", expectedDesc: "description with ] standalone bracket" }
+        ];
+
+        for (const testCase of validInputs) {
+            expect(() => parseStructuredInput(testCase.input)).not.toThrow();
+            const result = parseStructuredInput(testCase.input);
+            expect(result.description).toBe(testCase.expectedDesc);
+        }
+    });
 });
 
 describe("applyShortcuts", () => {
