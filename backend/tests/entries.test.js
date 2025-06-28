@@ -730,3 +730,417 @@ describe("GET /api/entries with ordering", () => {
         expect(res.body.next).toContain("order=dateAscending");
     });
 });
+
+describe("POST /api/entries - rawInput transformation and shortcuts", () => {
+    it("applies shortcuts from config when creating entries", async () => {
+        // Equivalent curl command:
+        // curl -X POST http://localhost:PORT/api/entries \
+        //   -H "Content-Type: application/json" \
+        //   -d '{"rawInput":"w [loc o] - Fixed the parser"}'
+
+        const { app, capabilities } = await makeTestApp();
+        const fixedTime = new Date("2025-05-23T12:00:00.000Z").getTime();
+        capabilities.datetime.now.mockReturnValue(fixedTime);
+
+        // Create a config file with shortcuts
+        const configPath = capabilities.environment.eventLogRepository() + "/config.json";
+        const fs = require("fs");
+        const path = require("path");
+        fs.mkdirSync(path.dirname(configPath), { recursive: true });
+        fs.writeFileSync(configPath, JSON.stringify({
+            help: "test config",
+            shortcuts: [
+                ["\\bw\\b", "WORK"],
+                ["\\bo\\b", "office"]
+            ]
+        }));
+
+        const requestBody = {
+            rawInput: "w [loc o] - Fixed the parser",
+        };
+
+        const res = await request(app)
+            .post("/api/entries")
+            .send(requestBody)
+            .set("Content-Type", "application/json");
+
+        expect(res.statusCode).toBe(201);
+        expect(res.body.success).toBe(true);
+        expect(res.body.entry).toMatchObject({
+            type: "WORK",
+            description: "- Fixed the parser",
+            modifiers: { loc: "office" },
+            input: "WORK [loc office] - Fixed the parser",
+            original: "w [loc o] - Fixed the parser"
+        });
+
+        // Clean up
+        fs.unlinkSync(configPath);
+    });
+
+    it("applies recursive shortcuts correctly", async () => {
+        const { app, capabilities } = await makeTestApp();
+        const fixedTime = new Date("2025-05-23T12:00:00.000Z").getTime();
+        capabilities.datetime.now.mockReturnValue(fixedTime);
+
+        // Create config with recursive shortcuts
+        const configPath = capabilities.environment.eventLogRepository() + "/config.json";
+        const fs = require("fs");
+        const path = require("path");
+        fs.mkdirSync(path.dirname(configPath), { recursive: true });
+        fs.writeFileSync(configPath, JSON.stringify({
+            help: "test config",
+            shortcuts: [
+                ["\\bw\\b", "WORK"],
+                ["\\bo\\b", "office"],
+                ["\\bwo\\b", "w [loc o]"]
+            ]
+        }));
+
+        const requestBody = {
+            rawInput: "wo - Fixed bug",
+        };
+
+        const res = await request(app)
+            .post("/api/entries")
+            .send(requestBody)
+            .set("Content-Type", "application/json");
+
+        expect(res.statusCode).toBe(201);
+        expect(res.body.success).toBe(true);
+        expect(res.body.entry).toMatchObject({
+            type: "WORK",
+            description: "- Fixed bug",
+            modifiers: { loc: "office" },
+            input: "WORK [loc office] - Fixed bug",
+            original: "wo - Fixed bug"
+        });
+
+        // Clean up
+        fs.unlinkSync(configPath);
+    });
+
+    it("works without shortcuts when config file doesn't exist", async () => {
+        const { app, capabilities } = await makeTestApp();
+        const fixedTime = new Date("2025-05-23T12:00:00.000Z").getTime();
+        capabilities.datetime.now.mockReturnValue(fixedTime);
+
+        const requestBody = {
+            rawInput: "WORK [loc office] - No shortcuts here",
+        };
+
+        const res = await request(app)
+            .post("/api/entries")
+            .send(requestBody)
+            .set("Content-Type", "application/json");
+
+        expect(res.statusCode).toBe(201);
+        expect(res.body.success).toBe(true);
+        expect(res.body.entry).toMatchObject({
+            type: "WORK",
+            description: "- No shortcuts here",
+            modifiers: { loc: "office" },
+            input: "WORK [loc office] - No shortcuts here",
+            original: "WORK [loc office] - No shortcuts here"
+        });
+    });
+
+    it("works with empty shortcuts config", async () => {
+        const { app, capabilities } = await makeTestApp();
+        const fixedTime = new Date("2025-05-23T12:00:00.000Z").getTime();
+        capabilities.datetime.now.mockReturnValue(fixedTime);
+
+        // Create config with empty shortcuts
+        const configPath = capabilities.environment.eventLogRepository() + "/config.json";
+        const fs = require("fs");
+        const path = require("path");
+        fs.mkdirSync(path.dirname(configPath), { recursive: true });
+        fs.writeFileSync(configPath, JSON.stringify({
+            help: "test config",
+            shortcuts: []
+        }));
+
+        const requestBody = {
+            rawInput: "EXERCISE [loc gym] - Weightlifting session",
+        };
+
+        const res = await request(app)
+            .post("/api/entries")
+            .send(requestBody)
+            .set("Content-Type", "application/json");
+
+        expect(res.statusCode).toBe(201);
+        expect(res.body.success).toBe(true);
+        expect(res.body.entry).toMatchObject({
+            type: "EXERCISE",
+            description: "- Weightlifting session",
+            modifiers: { loc: "gym" },
+            input: "EXERCISE [loc gym] - Weightlifting session",
+            original: "EXERCISE [loc gym] - Weightlifting session"
+        });
+
+        // Clean up
+        fs.unlinkSync(configPath);
+    });
+
+    it("handles malformed config gracefully", async () => {
+        const { app, capabilities } = await makeTestApp();
+        const fixedTime = new Date("2025-05-23T12:00:00.000Z").getTime();
+        capabilities.datetime.now.mockReturnValue(fixedTime);
+
+        // Create malformed config
+        const configPath = capabilities.environment.eventLogRepository() + "/config.json";
+        const fs = require("fs");
+        const path = require("path");
+        fs.mkdirSync(path.dirname(configPath), { recursive: true });
+        fs.writeFileSync(configPath, "invalid json content");
+
+        const requestBody = {
+            rawInput: "MEETING [with John] - Project discussion",
+        };
+
+        const res = await request(app)
+            .post("/api/entries")
+            .send(requestBody)
+            .set("Content-Type", "application/json");
+
+        expect(res.statusCode).toBe(201);
+        expect(res.body.success).toBe(true);
+        expect(res.body.entry).toMatchObject({
+            type: "MEETING",
+            description: "- Project discussion",
+            modifiers: { with: "John" },
+            input: "MEETING [with John] - Project discussion",
+            original: "MEETING [with John] - Project discussion"
+        });
+
+        // Clean up
+        fs.unlinkSync(configPath);
+    });
+
+    it("preserves word boundaries in shortcuts", async () => {
+        const { app, capabilities } = await makeTestApp();
+        const fixedTime = new Date("2025-05-23T12:00:00.000Z").getTime();
+        capabilities.datetime.now.mockReturnValue(fixedTime);
+
+        // Create config with word boundary shortcuts
+        const configPath = capabilities.environment.eventLogRepository() + "/config.json";
+        const fs = require("fs");
+        const path = require("path");
+        fs.mkdirSync(path.dirname(configPath), { recursive: true });
+        fs.writeFileSync(configPath, JSON.stringify({
+            help: "test config",
+            shortcuts: [
+                ["\\bw\\b", "WORK"]
+            ]
+        }));
+
+        const requestBody = {
+            rawInput: "working on project", // Should NOT be transformed to "WORKing"
+        };
+
+        const res = await request(app)
+            .post("/api/entries")
+            .send(requestBody)
+            .set("Content-Type", "application/json");
+
+        expect(res.statusCode).toBe(201);
+        expect(res.body.success).toBe(true);
+        expect(res.body.entry).toMatchObject({
+            type: "working",
+            description: "on project",
+            modifiers: {},
+            input: "working on project",
+            original: "working on project"
+        });
+
+        // Clean up
+        fs.unlinkSync(configPath);
+    });
+
+    it("applies shortcuts to modifiers as well as type", async () => {
+        const { app, capabilities } = await makeTestApp();
+        const fixedTime = new Date("2025-05-23T12:00:00.000Z").getTime();
+        capabilities.datetime.now.mockReturnValue(fixedTime);
+
+        // Create config with shortcuts for locations
+        const configPath = capabilities.environment.eventLogRepository() + "/config.json";
+        const fs = require("fs");
+        const path = require("path");
+        fs.mkdirSync(path.dirname(configPath), { recursive: true });
+        fs.writeFileSync(configPath, JSON.stringify({
+            help: "test config",
+            shortcuts: [
+                ["\\bm\\b", "MEETING"],
+                ["\\bhq\\b", "headquarters"],
+                ["\\bj\\b", "John Smith"]
+            ]
+        }));
+
+        const requestBody = {
+            rawInput: "m [loc hq] [with j] - Weekly standup",
+        };
+
+        const res = await request(app)
+            .post("/api/entries")
+            .send(requestBody)
+            .set("Content-Type", "application/json");
+
+        expect(res.statusCode).toBe(201);
+        expect(res.body.success).toBe(true);
+        expect(res.body.entry).toMatchObject({
+            type: "MEETING",
+            description: "- Weekly standup",
+            modifiers: {
+                loc: "headquarters",
+                with: "John Smith"
+            },
+            input: "MEETING [loc headquarters] [with John Smith] - Weekly standup",
+            original: "m [loc hq] [with j] - Weekly standup"
+        });
+
+        // Clean up
+        fs.unlinkSync(configPath);
+    });
+
+    it("normalizes whitespace during transformation", async () => {
+        const { app, capabilities } = await makeTestApp();
+        const fixedTime = new Date("2025-05-23T12:00:00.000Z").getTime();
+        capabilities.datetime.now.mockReturnValue(fixedTime);
+
+        const requestBody = {
+            rawInput: "    WORK   [loc    office]    -    Description with  extra   spaces  ",
+        };
+
+        const res = await request(app)
+            .post("/api/entries")
+            .send(requestBody)
+            .set("Content-Type", "application/json");
+
+        expect(res.statusCode).toBe(201);
+        expect(res.body.success).toBe(true);
+        expect(res.body.entry).toMatchObject({
+            type: "WORK",
+            description: "- Description with extra spaces",
+            modifiers: { loc: "office" },
+            input: "WORK [loc office] - Description with extra spaces",
+            original: "    WORK   [loc    office]    -    Description with  extra   spaces  "
+        });
+    });
+
+    it("returns correct error for invalid input after transformation", async () => {
+        const { app, capabilities } = await makeTestApp();
+
+        // Create config that could potentially create invalid input
+        const configPath = capabilities.environment.eventLogRepository() + "/config.json";
+        const fs = require("fs");
+        const path = require("path");
+        fs.mkdirSync(path.dirname(configPath), { recursive: true });
+        fs.writeFileSync(configPath, JSON.stringify({
+            help: "test config",
+            shortcuts: [
+                ["badtype", "123invalid"] // Creates invalid type name
+            ]
+        }));
+
+        const requestBody = {
+            rawInput: "badtype - Description",
+        };
+
+        const res = await request(app)
+            .post("/api/entries")
+            .send(requestBody)
+            .set("Content-Type", "application/json");
+
+        expect(res.statusCode).toBe(400);
+        expect(res.body.error).toContain("Bad structure of input");
+
+        // Clean up
+        fs.unlinkSync(configPath);
+    });
+
+    it("demonstrates complex multi-step transformation workflow", async () => {
+        // Test a real-world scenario with multiple recursive transformations
+        const { app, capabilities } = await makeTestApp();
+        const fixedTime = new Date("2025-05-23T12:00:00.000Z").getTime();
+        capabilities.datetime.now.mockReturnValue(fixedTime);
+
+        // Create complex config with shorthand expansions
+        const configPath = capabilities.environment.eventLogRepository() + "/config.json";
+        const fs = require("fs");
+        const path = require("path");
+        fs.mkdirSync(path.dirname(configPath), { recursive: true });
+        fs.writeFileSync(configPath, JSON.stringify({
+            help: "Complex shortcuts test config",
+            shortcuts: [
+                // Basic shortcuts
+                ["\\bw\\b", "WORK"],
+                ["\\bm\\b", "MEETING"],
+                ["\\be\\b", "EXERCISE"],
+
+                // Location shortcuts  
+                ["\\bhome\\b", "house"],
+                ["\\boff\\b", "office"],
+                ["\\bgym\\b", "fitness center"],
+
+                // Person shortcuts
+                ["\\bboss\\b", "manager Sarah"],
+                ["\\bteam\\b", "development team"],
+
+                // Compound shortcuts (these expand to use other shortcuts)
+                ["\\bwh\\b", "w [loc home]"],
+                ["\\bwo\\b", "w [loc off]"],
+                ["\\bmb\\b", "m [with boss]"],
+                ["\\bmt\\b", "m [with team]"],
+                ["\\beg\\b", "e [loc gym]"]
+            ]
+        }));
+
+        const testCases = [
+            {
+                rawInput: "wh - Working from home today",
+                expected: {
+                    type: "WORK",
+                    description: "- Working from house today", // "home" gets transformed to "house" 
+                    modifiers: { loc: "house" },
+                    input: "WORK [loc house] - Working from house today",
+                    original: "wh - Working from home today"
+                }
+            },
+            {
+                rawInput: "mb [duration 2h] - Project review",
+                expected: {
+                    type: "MEETING",
+                    description: "- Project review",
+                    modifiers: { with: "manager Sarah", duration: "2h" },
+                    input: "MEETING [with manager Sarah] [duration 2h] - Project review",
+                    original: "mb [duration 2h] - Project review"
+                }
+            },
+            {
+                rawInput: "eg [duration 45min] - Cardio workout",
+                expected: {
+                    type: "EXERCISE",
+                    description: "- Cardio workout",
+                    modifiers: { loc: "fitness center", duration: "45min" },
+                    input: "EXERCISE [loc fitness center] [duration 45min] - Cardio workout",
+                    original: "eg [duration 45min] - Cardio workout"
+                }
+            }
+        ];
+
+        for (const testCase of testCases) {
+            const res = await request(app)
+                .post("/api/entries")
+                .send({ rawInput: testCase.rawInput })
+                .set("Content-Type", "application/json");
+
+            expect(res.statusCode).toBe(201);
+            expect(res.body.success).toBe(true);
+            expect(res.body.entry).toMatchObject(testCase.expected);
+        }
+
+        // Clean up
+        fs.unlinkSync(configPath);
+    });
+});
