@@ -188,6 +188,7 @@ async function handleEntryPost(req, res, capabilities) {
  * @typedef {object} PaginationParams
  * @property {number} page - The current page number (1-based)
  * @property {number} limit - The number of items per page
+ * @property {'dateAscending'|'dateDescending'} order - The order to sort entries by date
  */
 
 /**
@@ -199,6 +200,7 @@ async function handleEntryPost(req, res, capabilities) {
 function parsePaginationParams(query) {
     const pageRaw = query["page"];
     const limitRaw = query["limit"];
+    const orderRaw = query["order"];
 
     const page = Math.max(
         1,
@@ -223,7 +225,15 @@ function parsePaginationParams(query) {
         )
     );
 
-    return { page, limit };
+    const orderStr = orderRaw !== undefined
+        ? String(Array.isArray(orderRaw) ? orderRaw[0] : orderRaw)
+        : "dateDescending";
+
+    const order = ['dateAscending', 'dateDescending'].includes(orderStr)
+        ? /** @type {'dateAscending'|'dateDescending'} */ (orderStr)
+        : 'dateDescending';
+
+    return { page, limit, order };
 }
 
 /**
@@ -244,6 +254,7 @@ function buildNextPageUrl(req, pagination, hasMore) {
     );
     url.searchParams.set("page", String(pagination.page + 1));
     url.searchParams.set("limit", String(pagination.limit));
+    url.searchParams.set("order", pagination.order);
 
     return url.toString();
 }

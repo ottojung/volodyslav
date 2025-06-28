@@ -33,7 +33,7 @@ import { logger } from "./logger.js";
  * @returns {Promise<Entry[]>} - Array of recent entries, or empty array if fetch fails.
  */
 export const fetchRecentEntries = async (limit = 10) => {
-    const response = await fetch(`${API_BASE_URL}/entries?limit=${limit}`);
+    const response = await fetch(`${API_BASE_URL}/entries?limit=${limit}&order=dateDescending`);
 
     if (response.ok) {
         const data = await response.json();

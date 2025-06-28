@@ -109,6 +109,7 @@ async function createEntry(capabilities, entryData, files = []) {
  * @typedef {object} PaginationParams
  * @property {number} page - The current page number (1-based)
  * @property {number} limit - The number of items per page
+ * @property {'dateAscending'|'dateDescending'} [order] - The order to sort entries by date
  */
 
 /**
@@ -118,6 +119,7 @@ async function createEntry(capabilities, entryData, files = []) {
  * @property {boolean} hasMore - Whether there are more pages available
  * @property {number} page - Current page number
  * @property {number} limit - Items per page
+ * @property {'dateAscending'|'dateDescending'} order - The order entries were sorted by
  */
 
 /**
@@ -128,7 +130,7 @@ async function createEntry(capabilities, entryData, files = []) {
  * @returns {Promise<PaginationResult>} - The paginated entries result.
  */
 async function getEntries(capabilities, pagination) {
-    const { page, limit } = pagination;
+    const { page, limit, order = 'dateDescending' } = pagination;
 
     if (!Number.isInteger(page) || page < 1) {
         throw new Error('page must be a positive integer');
@@ -136,17 +138,27 @@ async function getEntries(capabilities, pagination) {
     if (!Number.isInteger(limit) || limit < 1) {
         throw new Error('limit must be a positive integer');
     }
+    if (!['dateAscending', 'dateDescending'].includes(order)) {
+        throw new Error('order must be either "dateAscending" or "dateDescending"');
+    }
 
     // Fetch all entries from storage
     const entries = await transaction(capabilities, async (storage) => {
         return await storage.getExistingEntries();
     });
 
+    // Sort entries by date
+    const sortedEntries = [...entries].sort((a, b) => {
+        const dateA = new Date(a.date).getTime();
+        const dateB = new Date(b.date).getTime();
+        return order === 'dateAscending' ? dateA - dateB : dateB - dateA;
+    });
+
     // Apply pagination
-    const total = entries.length;
+    const total = sortedEntries.length;
     const start = (page - 1) * limit;
     const end = start + limit;
-    const results = entries.slice(start, end);
+    const results = sortedEntries.slice(start, end);
     const hasMore = end < total;
 
     capabilities.logger.logInfo(
@@ -154,10 +166,11 @@ async function getEntries(capabilities, pagination) {
             total,
             page,
             limit,
+            order,
             resultCount: results.length,
             hasMore,
         },
-        `Retrieved entries: page ${page}, ${results.length}/${total} entries`
+        `Retrieved entries: page ${page}, ${results.length}/${total} entries, order: ${order}`
     );
 
     return {
@@ -166,6 +179,7 @@ async function getEntries(capabilities, pagination) {
         hasMore,
         page,
         limit,
+        order,
     };
 }
 

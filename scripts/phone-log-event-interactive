@@ -65,10 +65,10 @@ def format_shortcuts(shortcuts: Sequence[Sequence[str]]) -> str:
 def get_last_entries() -> Sequence[str]:
     """Get last entries from the API"""
     try:
-        response = requests.get(f"{API_BASE_URL}/entries?page=1&limit=10")
+        response = requests.get(f"{API_BASE_URL}/entries?page=1&limit=10&order=dateDescending")
         if response.status_code == 200:
             data = response.json()
-            entries = data.get("entries", [])
+            entries = data.get("results", [])
             return tuple(
                 entry.get("original", entry.get("input", "")) for entry in entries
             )
