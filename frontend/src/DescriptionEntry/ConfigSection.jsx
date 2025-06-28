@@ -54,6 +54,7 @@ CopyIcon.displayName = "CopyIcon";
 
 import { fetchConfig } from "./api.js";
 import { CARD_STYLES, TEXT_STYLES, SPACING, COLORS } from "./styles.js";
+import { logger } from "./logger.js";
 
 /**
  * @typedef {import('./api.js').Config} Config
@@ -82,7 +83,7 @@ export const ConfigSection = ({ onShortcutClick, currentInput = "" }) => {
     }, []);
 
     const handleShortcutClick = (/** @type {Shortcut} */ shortcut) => {
-        onShortcutClick(shortcut.replacement);
+        onShortcutClick(shortcut[1]); // replacement is at index 1
     };
 
     const applyShortcut = (
@@ -90,10 +91,10 @@ export const ConfigSection = ({ onShortcutClick, currentInput = "" }) => {
         /** @type {Shortcut} */ shortcut
     ) => {
         try {
-            const regex = new RegExp(shortcut.pattern, "g");
-            return text.replace(regex, shortcut.replacement);
+            const regex = new RegExp(shortcut[0], "g"); // pattern is at index 0
+            return text.replace(regex, shortcut[1]); // replacement is at index 1
         } catch (error) {
-            console.warn("Invalid regex pattern:", shortcut.pattern);
+            logger.warn("Invalid regex pattern:", shortcut[0]); // pattern is at index 0
             return text;
         }
     };
@@ -102,7 +103,7 @@ export const ConfigSection = ({ onShortcutClick, currentInput = "" }) => {
         if (!currentInput.trim()) return null;
 
         try {
-            const regex = new RegExp(shortcut.pattern);
+            const regex = new RegExp(shortcut[0]); // pattern is at index 0
             if (regex.test(currentInput)) {
                 const transformed = applyShortcut(currentInput, shortcut);
                 if (transformed !== currentInput) {
@@ -311,7 +312,7 @@ export const ConfigSection = ({ onShortcutClick, currentInput = "" }) => {
                                                                                     fontSize="xs"
                                                                                 >
                                                                                     {
-                                                                                        shortcut.pattern
+                                                                                        shortcut[0]
                                                                                     }
                                                                                 </Code>
                                                                                 <Text color="gray.500">
@@ -322,7 +323,7 @@ export const ConfigSection = ({ onShortcutClick, currentInput = "" }) => {
                                                                                     fontSize="xs"
                                                                                 >
                                                                                     {
-                                                                                        shortcut.replacement
+                                                                                        shortcut[1]
                                                                                     }
                                                                                 </Code>
                                                                             </HStack>
@@ -336,13 +337,13 @@ export const ConfigSection = ({ onShortcutClick, currentInput = "" }) => {
                                                                                 }
                                                                             />
                                                                         </HStack>
-                                                                        {shortcut.description && (
+                                                                        {shortcut[2] && (
                                                                             <Text
                                                                                 fontSize="xs"
                                                                                 color="gray.600"
                                                                             >
                                                                                 {
-                                                                                    shortcut.description
+                                                                                    shortcut[2]
                                                                                 }
                                                                             </Text>
                                                                         )}

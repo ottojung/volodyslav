@@ -32,41 +32,13 @@ describe("DescriptionEntry", () => {
     const defaultMockConfig = {
         help: "Event logging help text\n\nSyntax: TYPE [MODIFIERS...] DESCRIPTION\n\nExamples:\n   food [certainty 9] earl gray tea, unsweetened\n   food [when now] [certainty 9] pizza capricciossa, medium size\n   sleep [when 5 hours ago] went to bed\n\nModifiers:\n   [when TIME] - specify when the event happened\n   [certainty LEVEL] - specify how certain you are (1-10)\n\nTypes available: food, sleep, exercise, work, social",
         shortcuts: [
-            {
-                pattern: "breakfast",
-                replacement: "food [when this morning]",
-                description: "Quick breakfast entry",
-            },
-            {
-                pattern: "lunch",
-                replacement: "food [when noon]", 
-                description: "Quick lunch entry",
-            },
-            {
-                pattern: "dinner",
-                replacement: "food [when evening]",
-                description: "Quick dinner entry",
-            },
-            {
-                pattern: "\\bcoffee\\b",
-                replacement: "food [certainty 10] coffee",
-                description: "Coffee shortcut",
-            },
-            {
-                pattern: "\\btea\\b", 
-                replacement: "food [certainty 10] tea",
-                description: "Tea shortcut",
-            },
-            {
-                pattern: "slept (\\d+)h",
-                replacement: "sleep [duration $1 hours]",
-                description: "Sleep duration shortcut",
-            },
-            {
-                pattern: "worked (\\d+)h",
-                replacement: "work [duration $1 hours]",
-                description: "Work duration shortcut",
-            },
+            ["breakfast", "food [when this morning]", "Quick breakfast entry"],
+            ["lunch", "food [when noon]", "Quick lunch entry"],
+            ["dinner", "food [when evening]", "Quick dinner entry"],
+            ["\\bcoffee\\b", "food [certainty 10] coffee", "Coffee shortcut"],
+            ["\\btea\\b", "food [certainty 10] tea", "Tea shortcut"],
+            ["slept (\\d+)h", "sleep [duration $1 hours]", "Sleep duration shortcut"],
+            ["worked (\\d+)h", "work [duration $1 hours]", "Work duration shortcut"],
         ],
     };
 
@@ -169,11 +141,7 @@ describe("DescriptionEntry", () => {
         const mockConfig = {
             help: "Custom help text",
             shortcuts: [
-                {
-                    pattern: "test",
-                    replacement: "TEST",
-                    description: "Test shortcut",
-                },
+                ["test", "TEST", "Test shortcut"],
             ],
         };
         fetchConfig.mockResolvedValue(mockConfig);
@@ -803,21 +771,9 @@ describe("DescriptionEntry", () => {
         const mockConfig = {
             help: "Custom help text",
             shortcuts: [
-                {
-                    pattern: "test1",
-                    replacement: "TEST1",
-                    description: "Test 1",
-                },
-                {
-                    pattern: "test2",
-                    replacement: "TEST2",
-                    description: "Test 2",
-                },
-                {
-                    pattern: "test3",
-                    replacement: "TEST3",
-                    description: "Test 3",
-                },
+                ["test1", "TEST1", "Test 1"],
+                ["test2", "TEST2", "Test 2"],
+                ["test3", "TEST3", "Test 3"],
             ],
         };
         fetchConfig.mockResolvedValue(mockConfig);

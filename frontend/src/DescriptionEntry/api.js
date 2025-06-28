@@ -1,4 +1,5 @@
 const API_BASE_URL = "/api";
+import { logger } from "./logger.js";
 
 /**
  * @typedef {Object} Entry
@@ -13,10 +14,11 @@ const API_BASE_URL = "/api";
  */
 
 /**
- * @typedef {Object} Shortcut
- * @property {string} pattern - Regex pattern to match
- * @property {string} replacement - Replacement string  
- * @property {string} [description] - Optional description
+ * @typedef {[string, string] | [string, string, string]} Shortcut
+ * A tuple representing a shortcut:
+ * - [0]: pattern - Regex pattern to match
+ * - [1]: replacement - Replacement string  
+ * - [2]: description - Optional description
  */
 
 /**
@@ -38,7 +40,7 @@ export const fetchRecentEntries = async (limit = 10) => {
         // data.results is any, cast to Entry[]
         return /** @type {Entry[]} */ (data.results || []);
     } else {
-        console.warn("Failed to fetch recent entries:", response.status);
+        logger.warn("Failed to fetch recent entries:", response.status);
         return [];
     }
 };
@@ -89,11 +91,11 @@ export const fetchConfig = async () => {
             const data = await response.json();
             return data.config;
         } else {
-            console.warn("Failed to fetch config:", response.status);
+            logger.warn("Failed to fetch config:", response.status);
             return null;
         }
     } catch (error) {
-        console.error("Error fetching config:", error);
+        logger.error("Error fetching config:", error);
         return null;
     }
 };
