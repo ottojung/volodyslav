@@ -198,19 +198,7 @@ function parseStructuredInput(input) {
 async function applyShortcuts(capabilities, input) {
     const { getConfig } = require("../config_api");
 
-    /** @type {import('../config/structure').Config | null} */
-    let configObj = null;
-    
-    try {
-        configObj = await getConfig(capabilities);
-    } catch (error) {
-        // If that fails, fall back to direct filesystem access for backward compatibility
-        capabilities.logger.logInfo(
-            { error: error instanceof Error ? error.message : String(error) },
-            "Could not load config through transaction system, trying direct filesystem access"
-        );
-        configObj = null;
-    }
+    const configObj = await getConfig(capabilities);
 
     if (!configObj || !configObj.shortcuts) {
         return input;

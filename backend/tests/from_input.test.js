@@ -11,12 +11,14 @@ const {
 } = require("../src/event/from_input");
 const { getMockedRootCapabilities } = require("./spies");
 const { stubEnvironment, stubLogger, stubDatetime } = require("./stubs");
+const { stubEventLogRepository } = require("./stub_event_log_repository");
 
-function getTestCapabilities() {
+async function getTestCapabilities() {
     const capabilities = getMockedRootCapabilities();
     stubEnvironment(capabilities);
     stubLogger(capabilities);
     stubDatetime(capabilities);
+    await stubEventLogRepository(capabilities);
     return capabilities;
 }
 
@@ -245,6 +247,11 @@ describe("applyShortcuts", () => {
                 ]
             });
         });
+
+        // Debug: Check what getConfig returns
+        const { getConfig } = require("../src/config_api");
+        const configObj = await getConfig(capabilities);
+        console.log("Config retrieved:", JSON.stringify(configObj, null, 2));
 
         const result = await applyShortcuts(capabilities, "w [loc office]");
         expect(result).toBe("WORK [loc office]");
