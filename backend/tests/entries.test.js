@@ -128,7 +128,7 @@ describe("POST /api/entries", () => {
             .attach("files", tmpFilePath2);
 
         if (res.statusCode !== 201) {
-            console.log("Response body:", res.body);
+            // Response body logged for debugging if needed
         }
         expect(res.statusCode).toBe(201);
         expect(res.body.success).toBe(true);
@@ -1122,10 +1122,6 @@ describe("POST /api/entries - rawInput transformation and shortcuts", () => {
         const fixedTime = new Date("2025-05-23T12:00:00.000Z").getTime();
         capabilities.datetime.now.mockReturnValue(fixedTime);
 
-        // First, let's log what the environment path is
-        const eventLogRepo = capabilities.environment.eventLogRepository();
-        console.log("Event log repository path:", eventLogRepo);
-
         // Create a config with a simple shortcut using transaction system
         const { transaction } = require("../src/event_log_storage");
         await transaction(capabilities, async (storage) => {
@@ -1137,8 +1133,6 @@ describe("POST /api/entries - rawInput transformation and shortcuts", () => {
             });
         });
 
-        console.log("Created config via transaction system");
-
         // Test the transformation
         const requestBody = { rawInput: "test - This should be transformed" };
 
@@ -1146,9 +1140,6 @@ describe("POST /api/entries - rawInput transformation and shortcuts", () => {
             .post("/api/entries")
             .send(requestBody)
             .set("Content-Type", "application/json");
-
-        console.log("Response status:", res.statusCode);
-        console.log("Response body:", JSON.stringify(res.body, null, 2));
 
         expect(res.statusCode).toBe(201);
         expect(res.body.success).toBe(true);
@@ -1180,9 +1171,6 @@ describe("POST /api/entries - rawInput transformation and shortcuts", () => {
             fs.unlinkSync(configPath);
         }
 
-        console.log("Config path:", configPath);
-        console.log("Config file exists:", fs.existsSync(configPath));
-
         // Test with input that would be transformed if shortcuts existed
         const requestBody = { rawInput: "w [loc o] - Should not be transformed" };
 
@@ -1190,8 +1178,6 @@ describe("POST /api/entries - rawInput transformation and shortcuts", () => {
             .post("/api/entries")
             .send(requestBody)
             .set("Content-Type", "application/json");
-
-        console.log("Response:", JSON.stringify(res.body, null, 2));
 
         expect(res.statusCode).toBe(201);
         expect(res.body.success).toBe(true);
@@ -1203,7 +1189,6 @@ describe("POST /api/entries - rawInput transformation and shortcuts", () => {
 
         // Test the config endpoint too
         const configRes = await request(app).get("/api/config");
-        console.log("Config endpoint response:", JSON.stringify(configRes.body, null, 2));
         expect(configRes.statusCode).toBe(200);
         expect(configRes.body.config).toBeNull(); // No config file means null config
     });
