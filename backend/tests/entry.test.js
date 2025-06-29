@@ -226,6 +226,62 @@ describe("createEntry (integration, with real capabilities)", () => {
             EntryValidationError
         );
     });
+
+    it("throws if original field is missing", async () => {
+        const capabilities = await getTestCapabilities();
+        const entryData = {
+            // no original field
+            input: "Missing original input",
+            type: "missing-original-type",
+            description: "Entry with no original.",
+        };
+
+        await expect(createEntry(capabilities, entryData)).rejects.toThrow(
+            EntryValidationError
+        );
+    });
+
+    it("throws if original field is not a string", async () => {
+        const capabilities = await getTestCapabilities();
+        const entryData = {
+            original: 123, // non-string original
+            input: "Invalid original input",
+            type: "invalid-original-type",
+            description: "Entry with invalid original.",
+        };
+
+        await expect(createEntry(capabilities, entryData)).rejects.toThrow(
+            EntryValidationError
+        );
+    });
+
+    it("throws if input field is missing", async () => {
+        const capabilities = await getTestCapabilities();
+        const entryData = {
+            original: "Missing input original",
+            // no input field
+            type: "missing-input-type",
+            description: "Entry with no input.",
+        };
+
+        await expect(createEntry(capabilities, entryData)).rejects.toThrow(
+            EntryValidationError
+        );
+    });
+
+    it("throws if input field is not a string", async () => {
+        const capabilities = await getTestCapabilities();
+        const entryData = {
+            original: "Invalid input original",
+            input: 123, // non-string input
+            type: "invalid-input-type",
+            description: "Entry with invalid input.",
+        };
+
+        await expect(createEntry(capabilities, entryData)).rejects.toThrow(
+            EntryValidationError
+        );
+    });
 });
 
 describe("getEntries pagination validation", () => {

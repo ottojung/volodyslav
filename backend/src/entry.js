@@ -100,6 +100,22 @@ async function createEntry(capabilities, entryData, files = []) {
         throw new EntryValidationError("type field must be a string");
     }
 
+    if (entryData.original === undefined) {
+        throw new EntryValidationError("original field is missing");
+    }
+    
+    if (typeof entryData.original !== "string") {
+        throw new EntryValidationError("original field must be a string");
+    }
+
+    if (entryData.input === undefined) {
+        throw new EntryValidationError("input field is missing");
+    }
+    
+    if (typeof entryData.input !== "string") {
+        throw new EntryValidationError("input field must be a string");
+    }
+
     if (entryData.modifiers !== undefined) {
         for (const [, v] of Object.entries(entryData.modifiers)) {
             if (typeof v !== "string") {
