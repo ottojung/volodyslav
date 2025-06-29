@@ -69,9 +69,9 @@ class RequestIdentifierClass {
 function fromRequest(req) {
     /** @type {any} */
     const query = req.query;
-    const reqId = query['request_identifier'];
-    const reqIdStr = String(reqId).trim();
-    if (reqId === null || reqId === undefined || reqIdStr === '') {
+    const rawReqId = query['request_identifier'];
+    const reqIdStr = String(rawReqId).trim();
+    if (rawReqId === null || rawReqId === undefined || reqIdStr === '') {
         throw new Error("Missing request_identifier field");
     }
     return new RequestIdentifierClass(reqIdStr);
