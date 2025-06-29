@@ -41,7 +41,7 @@ class WorkingRepositoryError extends Error {
 
 /**
  * Type guard for WorkingRepositoryError.
- * @param {unknown} object
+ * @param {unknown} object - The object to check.
  * @returns {object is WorkingRepositoryError}
  */
 function isWorkingRepositoryError(object) {
@@ -50,7 +50,7 @@ function isWorkingRepositoryError(object) {
 
 /**
  * Get local repository path.
- * @param {Capabilities} capabilities
+ * @param {Capabilities} capabilities - The capabilities object containing environment access.
  * @returns {string}
  */
 function pathToLocalRepository(capabilities) {

@@ -31,7 +31,7 @@ class ReaderError extends Error {
 
 /**
  * Checks if the error is a ReaderError.
- * @param {unknown} object
+ * @param {unknown} object - The object to check.
  * @returns {object is ReaderError}
  */
 function isReaderError(object) {
@@ -40,7 +40,7 @@ function isReaderError(object) {
 
 /**
  * Reads a file as a UTF-8 string.
- * @param {string} filePath
+ * @param {string} filePath - The path to the file to read.
  * @returns {Promise<string>}
  */
 async function readFileAsText(filePath) {
@@ -56,7 +56,7 @@ async function readFileAsText(filePath) {
 
 /**
  * Reads a file as a Buffer.
- * @param {string} filePath
+ * @param {string} filePath - The path to the file to read.
  * @returns {Promise<Buffer>}
  */
 async function readFileAsBuffer(filePath) {
@@ -72,7 +72,7 @@ async function readFileAsBuffer(filePath) {
 
 /**
  * Creates a readable stream for a file.
- * @param {import("./file").ExistingFile} file
+ * @param {import("./file").ExistingFile} file - The existing file to create a stream for.
  * @returns {import('fs').ReadStream}
  * @throws {ReaderError} - If the stream cannot be created (synchronously throws for missing file, etc.)
  */
