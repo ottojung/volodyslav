@@ -1,6 +1,6 @@
 const express = require("express");
 const upload = require("../storage");
-const { createEntry, getEntries, EntryValidationError, FileValidationError } = require("../entry");
+const { createEntry, getEntries, EntryValidationError } = require("../entry");
 const { random: randomRequestId } = require("../request_identifier");
 const { serialize } = require("../event");
 const { processUserInput, InputParseError } = require("../event/from_input");
@@ -34,6 +34,22 @@ const { processUserInput, InputParseError } = require("../event/from_input");
  * @property {import('../filesystem/reader').FileReader} reader - A file reader instance.
  * @property {import('../datetime').Datetime} datetime - Datetime utilities.
  */
+
+/**
+ * Error thrown when file processing fails due to user input issues.
+ * This should result in a 400 Bad Request response.
+ */
+class FileValidationError extends Error {
+    /**
+     * @param {string} message - The file validation error message
+     * @param {string} filePath - The path of the problematic file
+     */
+    constructor(message, filePath) {
+        super(message);
+        this.name = "FileValidationError";
+        this.filePath = filePath;
+    }
+}
 
 /**
  * Creates an Express router for entry-related endpoints.
@@ -293,7 +309,7 @@ async function handleEntryPost(req, res, capabilities, reqId) {
             );
             return res.status(400).json({ error: error.message });
         }
-        
+
         // Handle all other errors as internal server errors
         const errorResponse = handleEntryError(error, capabilities, reqId);
         capabilities.logger.logError(

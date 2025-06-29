@@ -17,22 +17,6 @@ class EntryValidationError extends Error {
     }
 }
 
-/**
- * Error thrown when file processing fails due to user input issues.
- * This should result in a 400 Bad Request response.
- */
-class FileValidationError extends Error {
-    /**
-     * @param {string} message - The file validation error message
-     * @param {string} filePath - The path of the problematic file
-     */
-    constructor(message, filePath) {
-        super(message);
-        this.name = "FileValidationError";
-        this.filePath = filePath;
-    }
-}
-
 /** @typedef {import('./event/asset').Asset} Asset */
 /** @typedef {import('./random/seed').NonDeterministicSeed} NonDeterministicSeed */
 /** @typedef {import('./filesystem/deleter').FileDeleter} FileDeleter */
@@ -192,4 +176,4 @@ async function getEntries(capabilities, pagination) {
     };
 }
 
-module.exports = { createEntry, getEntries, EntryValidationError, FileValidationError };
+module.exports = { createEntry, getEntries, EntryValidationError };
