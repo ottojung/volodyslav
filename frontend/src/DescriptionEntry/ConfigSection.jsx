@@ -147,9 +147,10 @@ export const ConfigSection = ({ onShortcutClick, currentInput = "", recentEntrie
                             </Heading>
                             {(config.shortcuts.length > 0 || recentEntries.length > 0) && (
                                 <Badge colorScheme="blue" variant="subtle">
-                                    {config.shortcuts.length > 0 && `${config.shortcuts.length} shortcuts`}
-                                    {config.shortcuts.length > 0 && recentEntries.length > 0 && " • "}
-                                    {recentEntries.length > 0 && `${recentEntries.length} recent`}
+                                    {[
+                                        config.shortcuts.length > 0 && `${config.shortcuts.length} shortcuts`,
+                                        recentEntries.length > 0 && `${recentEntries.length} recent`
+                                    ].filter(Boolean).join(" • ")}
                                 </Badge>
                             )}
                         </HStack>
@@ -170,11 +171,7 @@ export const ConfigSection = ({ onShortcutClick, currentInput = "", recentEntrie
                             <Tabs
                                 variant="soft-rounded"
                                 colorScheme="blue"
-                                defaultIndex={
-                                    recentEntries.length > 0 
-                                        ? (config.shortcuts.length > 0 ? 2 : 1) 
-                                        : (config.shortcuts.length > 0 ? 1 : 0)
-                                }
+                                defaultIndex={recentEntries.length > 0 ? (config.shortcuts.length > 0 ? 2 : 1) : 0}
                             >
                                 <TabList>
                                     <Tab>Syntax</Tab>
@@ -370,59 +367,32 @@ export const ConfigSection = ({ onShortcutClick, currentInput = "", recentEntrie
 
                                     {/* Recent Entries Tab */}
                                     <TabPanel px={0}>
-                                        <VStack
-                                            spacing={SPACING.md}
-                                            align="stretch"
-                                        >
-                                            {isLoadingEntries ? (
-                                                <>
-                                                    <Text
-                                                        fontSize="sm"
-                                                        color="gray.600"
+                                        {isLoadingEntries ? (
+                                            <VStack spacing={SPACING.md} align="stretch">
+                                                <Text fontSize="sm" color="gray.600">Loading recent entries...</Text>
+                                                {[...Array(3)].map((_, i) => <EntryItemSkeleton key={i} />)}
+                                            </VStack>
+                                        ) : recentEntries.length > 0 ? (
+                                            <VStack spacing={SPACING.md} align="stretch">
+                                                <Text fontSize="sm" color="gray.600">Click an entry to use it as a template:</Text>
+                                                {recentEntries.map((entry, index) => (
+                                                    <Box
+                                                        key={entry.id || index}
+                                                        cursor="pointer"
+                                                        onClick={() => onShortcutClick(entry.original || entry.input || "")}
+                                                        _hover={{ bg: "gray.50" }}
+                                                        p={2}
+                                                        borderRadius="md"
                                                     >
-                                                        Loading recent entries...
-                                                    </Text>
-                                                    {[...Array(3)].map((_, i) => (
-                                                        <EntryItemSkeleton key={i} />
-                                                    ))}
-                                                </>
-                                            ) : recentEntries.length > 0 ? (
-                                                <>
-                                                    <Text
-                                                        fontSize="sm"
-                                                        color="gray.600"
-                                                    >
-                                                        Click an entry to use it as a template:
-                                                    </Text>
-                                                    {recentEntries.map((entry, index) => (
-                                                        <Box
-                                                            key={entry.id || index}
-                                                            cursor="pointer"
-                                                            onClick={() => onShortcutClick(entry.original || entry.input || "")}
-                                                            _hover={{
-                                                                bg: "gray.50",
-                                                            }}
-                                                            p={2}
-                                                            borderRadius="md"
-                                                        >
-                                                            <EntryItem 
-                                                                entry={entry} 
-                                                                index={index} 
-                                                            />
-                                                        </Box>
-                                                    ))}
-                                                </>
-                                            ) : (
-                                                <Text
-                                                    fontSize="sm"
-                                                    color="gray.500"
-                                                    textAlign="center"
-                                                    py={4}
-                                                >
-                                                    No recent entries found
-                                                </Text>
-                                            )}
-                                        </VStack>
+                                                        <EntryItem entry={entry} index={index} />
+                                                    </Box>
+                                                ))}
+                                            </VStack>
+                                        ) : (
+                                            <Text fontSize="sm" color="gray.500" textAlign="center" py={4}>
+                                                No recent entries found
+                                            </Text>
+                                        )}
                                     </TabPanel>
 
                                     {/* Help Tab */}
