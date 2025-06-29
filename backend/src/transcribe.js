@@ -2,6 +2,8 @@ const path = require("path");
 const { makeDirectory, markDone } = require("./request_identifier");
 const creatorMake = require("./creator");
 
+/** @typedef {import("./filesystem/reader").FileReader} FileReader */
+
 /** @typedef {import('./filesystem/file').ExistingFile} ExistingFile */
 
 /** @typedef {import('./random/seed').NonDeterministicSeed} NonDeterministicSeed */

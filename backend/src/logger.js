@@ -4,16 +4,20 @@
 
 const pino = require("pino").default;
 const pinoHttp = require("pino-http").default;
-const fs = require("fs").promises;
-const path = require("path");
 
 /** @typedef {import('./environment').Environment} Environment */
 /** @typedef {import('./notifications').Notifier} Notifier */
+/** @typedef {import('./filesystem/creator').FileCreator} FileCreator */
+/** @typedef {import('./filesystem/appender').FileAppender} FileAppender */
+/** @typedef {import('./filesystem/checker').FileChecker} FileChecker */
 
 /**
  * @typedef {object} Capabilities
  * @property {Environment} environment - An environment instance.
  * @property {Notifier} notifier - A notifier instance.
+ * @property {FileCreator} creator - A file creator instance.
+ * @property {FileAppender} appender - A file appender instance.
+ * @property {FileChecker} checker - A file checker instance.
  */
 
 /**
@@ -83,11 +87,24 @@ async function createFileTarget(state, filePath, todos) {
     }
 
     try {
-        // Ensure the directory for the log file exists
-        await fs.mkdir(path.dirname(filePath), { recursive: true });
+        if (!state.capabilities) {
+            throw new Error("Capabilities not initialized");
+        }
 
-        // Try to write to the file to verify it's writable
-        await fs.appendFile(filePath, "");
+        const checker = state.capabilities.checker;
+        const creator = state.capabilities.creator;
+        const appender = state.capabilities.appender;
+
+        const proof = await checker.fileExists(filePath);
+        let file;
+        if (proof) {
+            file = await checker.instantiate(filePath);
+        } else {
+            file = await creator.createFile(filePath);
+        }
+
+        // Try to append empty string to verify writability
+        await appender.appendFile(file, "");
 
         // If we get here, the file is writable
         return {
