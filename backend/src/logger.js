@@ -213,7 +213,7 @@ function logError(state, obj, msg) {
     }
 
     // Send notification
-    state.capabilities?.notifier.notifyAboutError(msg).catch((error) => {
+    state.capabilities?.notifier?.notifyAboutError(msg).catch((error) => {
         if (state.logger !== null) {
             state.logger.error("Failed to send error notification", {
                 error,
@@ -238,7 +238,7 @@ function logWarning(state, obj, msg) {
     } else {
         // Fallback to console if logger is not initialized
         console.warn("Logger not initialized");
-        console.warn(msg, { obj });
+        console.warn(obj, msg);
     }
 }
 
@@ -254,7 +254,7 @@ function logInfo(state, obj, msg) {
     } else {
         // Fallback to console if logger is not initialized
         console.info("Logger not initialized");
-        console.info(msg, { obj });
+        console.info(obj, msg);
     }
 }
 
@@ -270,7 +270,7 @@ function logDebug(state, obj, msg) {
     } else {
         // Fallback to console if logger is not initialized
         console.debug("Logger not initialized");
-        console.debug(msg, { obj });
+        console.debug(obj, msg);
     }
 }
 
