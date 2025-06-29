@@ -49,6 +49,9 @@ class RequestIdentifierClass {
      * @param {string} identifier
      */
     constructor(identifier) {
+        if (typeof identifier !== 'string' || identifier.trim() === '') {
+            throw new Error("Request identifier must be a non-empty string");
+        }
         this.identifier = identifier;
         if (this.__brand !== undefined) {
             throw new Error();
