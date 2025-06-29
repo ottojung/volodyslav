@@ -109,12 +109,66 @@ module.exports = { makeWorkingRepository, isWorkingRepository };
 ```
 
 ## Error Handling
-- Create custom error classes that extend `Error`
-- Provide type guards for custom errors
-- Include relevant context in error messages
+This project follows strict error handling conventions that prioritize inspectability, locality, and type safety:
 
-Example:
+### Inspectability: Specific Error Classes
+Create custom error classes for every kind of failure instead of using generic `Error` classes:
+
 ```javascript
+// ✅ Correct: Specific error classes
+class MissingFieldError extends TryDeserializeError {
+    constructor(field) {
+        super(`Missing required field: ${field}`, field, undefined, "any");
+        this.name = "MissingFieldError";
+    }
+}
+
+class InvalidTypeError extends TryDeserializeError {
+    constructor(field, value, expectedType) {
+        const actualType = Array.isArray(value) ? 'array' : typeof value;
+        super(`Invalid type for field '${field}': expected ${expectedType}, got ${actualType}`, 
+              field, value, expectedType);
+        this.name = "InvalidTypeError";
+        this.actualType = actualType;
+    }
+}
+
+// ❌ Wrong: Generic error
+throw new Error("Something went wrong");
+```
+
+### Errors as Values
+Use `throw` only in truly exceptional situations. Prefer returning error objects directly:
+
+```javascript
+// ✅ Correct: Return errors as values
+function tryDeserialize(obj) {
+    if (!obj || typeof obj !== "object") {
+        return new InvalidStructureError("Object must be a non-null object", obj);
+    }
+    
+    if (!("id" in obj)) {
+        return new MissingFieldError("id");
+    }
+    
+    // ... validation continues
+    return validEvent; // Success case
+}
+
+// Usage
+const result = tryDeserialize(data);
+if (result instanceof TryDeserializeError) {
+    // Handle error
+    return;
+}
+// Use result as valid Event
+```
+
+### Error Locality
+Define and throw errors as close to their source as possible:
+
+```javascript
+// ✅ Correct: Error defined in same module where it's used
 class WorkingRepositoryError extends Error {
     constructor(message, repositoryPath) {
         super(message);
@@ -122,10 +176,67 @@ class WorkingRepositoryError extends Error {
     }
 }
 
-/**
- * @param {unknown} object
- * @returns {object is WorkingRepositoryError}
- */
+function synchronize(capabilities) {
+    try {
+        // ... git operations
+    } catch (err) {
+        throw new WorkingRepositoryError(
+            `Failed to synchronize repository: ${err}`,
+            repository
+        );
+    }
+}
+```
+
+### Make Impossible States Unrepresentable
+Use nominal types with `__brand` fields to prevent invalid states:
+
+```javascript
+// ✅ Correct: Nominal type prevents direct instantiation
+class ExistingFileClass {
+    /** @type {undefined} */
+    __brand = undefined; // nominal typing brand
+    
+    constructor(path) {
+        this.path = path;
+        if (this.__brand !== undefined) {
+            throw new Error("ExistingFile is a nominal type");
+        }
+    }
+}
+
+// Factory function ensures file actually exists
+async function makeEmpty(path) {
+    await fs.writeFile(path, "");
+    return new ExistingFileClass(path);
+}
+```
+
+### Validate, Don't Verify
+When creating typed instances, ensure parsing validates all guarantees. Once you have an instance, don't re-check:
+
+```javascript
+// ✅ Correct: Validate once during construction
+class Entry {
+    constructor(data) {
+        // Validate ALL constraints here
+        if (!data.id) throw new Error("ID required");
+        if (typeof data.description !== 'string') throw new Error("Description must be string");
+        
+        this.id = data.id;
+        this.description = data.description;
+    }
+}
+
+// Later in code - no need to re-validate
+function processEntry(entry) {
+    // Can safely use entry.id and entry.description
+    // No need to check if they exist or have correct types
+}
+```
+
+Always provide type guards for error classes:
+```javascript
 function isWorkingRepositoryError(object) {
     return object instanceof WorkingRepositoryError;
 }
