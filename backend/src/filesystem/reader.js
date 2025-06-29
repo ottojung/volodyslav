@@ -41,7 +41,7 @@ function isReaderError(object) {
 /**
  * Reads a file as a UTF-8 string.
  * @param {string} filePath - The path to the file to read.
- * @returns {Promise<string>}
+ * @returns {Promise<string>} - A promise that resolves to the file contents as a string.
  */
 async function readFileAsText(filePath) {
     try {
@@ -57,7 +57,7 @@ async function readFileAsText(filePath) {
 /**
  * Reads a file as a Buffer.
  * @param {string} filePath - The path to the file to read.
- * @returns {Promise<Buffer>}
+ * @returns {Promise<Buffer>} - A promise that resolves to the file contents as a Buffer.
  */
 async function readFileAsBuffer(filePath) {
     try {

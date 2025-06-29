@@ -51,7 +51,7 @@ function isWorkingRepositoryError(object) {
 /**
  * Get local repository path.
  * @param {Capabilities} capabilities - The capabilities object containing environment access.
- * @returns {string}
+ * @returns {string} - The absolute path to the local git repository.
  */
 function pathToLocalRepository(capabilities) {
     const wd = capabilities.environment.workingDirectory();
@@ -60,8 +60,8 @@ function pathToLocalRepository(capabilities) {
 
 /**
  * Get the path to the local repository's .git directory.
- * @param {Capabilities} capabilities
- * @returns {string}
+ * @param {Capabilities} capabilities - The capabilities object containing environment access.
+ * @returns {string} - The absolute path to the .git directory.
  */
 function pathToLocalRepositoryGitDir(capabilities) {
     return path.join(pathToLocalRepository(capabilities), ".git");
