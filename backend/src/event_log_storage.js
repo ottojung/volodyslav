@@ -259,7 +259,12 @@ class EventLogStorageClass {
                 return null;
             }
 
-            this.existingConfigCache = /** @type {import('./config/structure').Config} */ (configResult);
+            if (configResult instanceof Error) {
+                this.existingConfigCache = null;
+                return null;
+            }
+
+            this.existingConfigCache = configResult;
             return this.existingConfigCache;
         } catch (error) {
             this.existingConfigCache = null;

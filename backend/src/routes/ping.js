@@ -21,8 +21,7 @@ const runtimeIdentifier = require("../runtime_identifier");
  * @param {import('express').Response} res
  */
 async function handlePingRequest(capabilities, req, res) {
-    /** @type {any} */
-    const query = req.query;
+    const query = req.query || {};
     const id = query["runtime_identifier"];
 
     if (id !== undefined) {

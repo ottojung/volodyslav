@@ -158,6 +158,15 @@ function isNestedFieldError(object) {
 }
 
 /**
+ * Checks if a value is a plain object with string keys.
+ * @param {unknown} value
+ * @returns {value is Record<string, unknown>}
+ */
+function isStringRecord(value) {
+    return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+/**
  * @typedef Modifiers
  * @type {Record<string, string>}
  */
@@ -290,7 +299,10 @@ function tryDeserialize(obj) {
             return new InvalidTypeError("modifiers", rawModifiers, "object");
         }
         /** @type {Record<string, unknown>} */
-        const modifiers = hasModifiers ? /** @type {Record<string, unknown>} */ (rawModifiers) : {};
+        let modifiers = {};
+        if (hasModifiers && isStringRecord(rawModifiers)) {
+            modifiers = rawModifiers;
+        }
 
         // Manually validate and parse the date
         const dateObj = new Date(date);

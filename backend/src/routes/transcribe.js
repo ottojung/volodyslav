@@ -54,8 +54,7 @@ async function handleTranscribeRequest(capabilities, req, res) {
     }
 
     // pull input and output params
-    /** @type {any} */
-    const query = req.query;
+    const query = req.query || {};
     const rawIn = query["input"];
     // Log the transcription request
     capabilities.logger.logInfo(

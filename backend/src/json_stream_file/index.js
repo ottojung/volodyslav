@@ -27,9 +27,14 @@ async function readObjects(capabilities, file) {
         const jsonParser = parser({ jsonStreaming: true });
         const pipeline = rs.pipe(jsonParser).pipe(streamValues());
 
-        pipeline.on("data", (/** @type {{ value: unknown }} */ { value }) => {
-            objects.push(value);
-        });
+        /**
+         * @param {{ value: unknown }} chunk
+         */
+        function onData(chunk) {
+            objects.push(chunk.value);
+        }
+
+        pipeline.on("data", onData);
 
         pipeline.on("end", () => {
             resolve(objects);

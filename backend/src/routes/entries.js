@@ -372,9 +372,10 @@ function parsePaginationParams(query) {
         ? String(Array.isArray(orderRaw) ? orderRaw[0] : orderRaw)
         : "dateDescending";
 
-    const order = ['dateAscending', 'dateDescending'].includes(orderStr)
-        ? /** @type {'dateAscending'|'dateDescending'} */ (orderStr)
-        : 'dateDescending';
+    const order =
+        orderStr === 'dateAscending' || orderStr === 'dateDescending'
+            ? orderStr
+            : 'dateDescending';
 
     return { page, limit, order };
 }

@@ -109,8 +109,7 @@ class RequestIdentifierClass {
  * @returns {RequestIdentifier}
  */
 function fromRequest(req) {
-    /** @type {any} */
-    const query = req.query;
+    const query = req.query || {};
     const reqId = query['request_identifier'];
     const reqIdStr = String(reqId).trim();
     if (reqId === null || reqId === undefined || reqIdStr === '') {
