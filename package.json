@@ -8,7 +8,7 @@
     "docs"
   ],
   "scripts": {
-    "dev": "concurrently 'npm run dev -w frontend' 'sh scripts/backend-dev.sh'",
+    "dev": "sh scripts/run-development-server",
     "build": "tsc && npm run build -w frontend",
     "start": "npm run build && npm run start -w backend",
     "static-analysis": "tsc --noEmit && eslint .",

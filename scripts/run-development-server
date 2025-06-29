@@ -33,4 +33,4 @@ then
     fi
 fi
 
-npm run dev
+npx concurrently 'npm run dev -w frontend' 'sh scripts/backend-dev.sh'
