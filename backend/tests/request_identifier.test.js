@@ -39,6 +39,19 @@ describe("Request Identifier", () => {
                 "Missing request_identifier field"
             );
         });
+
+        it("trims whitespace from request_identifier", () => {
+            const req = { query: { request_identifier: "  test123  " } };
+            const reqId = fromRequest(req);
+            expect(reqId.identifier).toBe("test123");
+        });
+
+        it("throws error when request_identifier is only whitespace", () => {
+            const req = { query: { request_identifier: "   " } };
+            expect(() => fromRequest(req)).toThrow(
+                "Missing request_identifier field"
+            );
+        });
     });
 
     describe("makeDirectory", () => {

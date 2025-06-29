@@ -70,10 +70,11 @@ function fromRequest(req) {
     /** @type {any} */
     const query = req.query;
     const reqId = query['request_identifier'];
-    if (reqId === null || reqId === undefined || String(reqId).trim() === '') {
+    const reqIdStr = String(reqId).trim();
+    if (reqId === null || reqId === undefined || reqIdStr === '') {
         throw new Error("Missing request_identifier field");
     }
-    return new RequestIdentifierClass(String(reqId));
+    return new RequestIdentifierClass(reqIdStr);
 }
 
 /**
