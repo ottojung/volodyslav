@@ -1,8 +1,9 @@
 const express = require("express");
 const upload = require("../storage");
-const { createEntry, getEntries } = require("../entry");
+const { createEntry, getEntries, EntryValidationError } = require("../entry");
 const { random: randomRequestId } = require("../request_identifier");
 const { serialize } = require("../event");
+const { processUserInput, InputParseError } = require("../event/from_input");
 
 /**
  * @typedef {import('../environment').Environment} Environment
@@ -31,7 +32,24 @@ const { serialize } = require("../event");
  * @property {FileChecker} checker - A file checker instance.
  * @property {Command} git - A command instance for Git operations.
  * @property {import('../filesystem/reader').FileReader} reader - A file reader instance.
+ * @property {import('../datetime').Datetime} datetime - Datetime utilities.
  */
+
+/**
+ * Error thrown when file processing fails due to user input issues.
+ * This should result in a 400 Bad Request response.
+ */
+class FileValidationError extends Error {
+    /**
+     * @param {string} message - The file validation error message
+     * @param {string} filePath - The path of the problematic file
+     */
+    constructor(message, filePath) {
+        super(message);
+        this.name = "FileValidationError";
+        this.filePath = filePath;
+    }
+}
 
 /**
  * Creates an Express router for entry-related endpoints.
@@ -53,10 +71,33 @@ function makeRouter(capabilities) {
 
         // Call multer upload middleware for multiple files
         uploadMiddleware.array("files")(req, res, async (err) => {
-            if (err) return next(err);
+            if (err) {
+                capabilities.logger.logError(
+                    {
+                        request_identifier: reqId.identifier,
+                        error: err.message,
+                        error_name: err.name,
+                        error_code: err.code,
+                        error_stack: err.stack,
+                        client_ip: req.ip
+                    },
+                    "File upload middleware error during entry creation"
+                );
+                return next(err);
+            }
             try {
-                await handleEntryPost(req, res, capabilities);
+                await handleEntryPost(req, res, capabilities, reqId);
             } catch (error) {
+                capabilities.logger.logError(
+                    {
+                        request_identifier: reqId.identifier,
+                        error: error instanceof Error ? error.message : String(error),
+                        error_name: error instanceof Error ? error.name : "Unknown",
+                        error_stack: error instanceof Error ? error.stack : undefined,
+                        client_ip: req.ip
+                    },
+                    "Unhandled error during entry creation"
+                );
                 next(error);
             }
         });
@@ -66,7 +107,30 @@ function makeRouter(capabilities) {
      * GET /entries - List entries with pagination
      */
     router.get("/entries", async (req, res) => {
-        await handleEntriesGet(req, res, capabilities);
+        // Generate request ID for tracking
+        const reqId = randomRequestId(capabilities);
+
+        try {
+            await handleEntriesGet(req, res, capabilities, reqId);
+        } catch (error) {
+            capabilities.logger.logError(
+                {
+                    request_identifier: reqId.identifier,
+                    error: error instanceof Error ? error.message : String(error),
+                    error_name: error instanceof Error ? error.name : "Unknown",
+                    error_stack: error instanceof Error ? error.stack : undefined,
+                    client_ip: req.ip,
+                    query: req.query
+                },
+                "Unhandled error during entries list request"
+            );
+            // Let handleEntriesGet handle the response if it hasn't been sent yet
+            if (!res.headersSent) {
+                res.status(500).json({
+                    error: "Internal server error",
+                });
+            }
+        }
     });
 
     return router;
@@ -74,87 +138,45 @@ function makeRouter(capabilities) {
 
 /**
  * @typedef {object} EntryRequestBody
- * @property {string} type - The type of entry
- * @property {string} description - The description of the entry
- * @property {string} original - The original content
- * @property {string} input - The processed input
+ * @property {string} rawInput - The raw user input to parse
  * @property {string} [date] - Optional date string
- * @property {Record<string,string>|string} [modifiers] - Optional modifiers
  */
-
-/**
- * Validates that all required fields are present in the request body.
- *
- * @param {EntryRequestBody} body - The request body.
- * @returns {{isValid: boolean, error?: string}} - Validation result.
- */
-function validateEntryFields(body) {
-    const { type, description, original, input } = body;
-
-    if (!type || !description || !original || !input) {
-        return {
-            isValid: false,
-            error: "Missing required fields: type, description, original, and input",
-        };
-    }
-
-    return { isValid: true };
-}
-
-/**
- * Parses modifiers from string to object if needed.
- *
- * @param {Record<string,string>|string|undefined} modifiers - The modifiers to parse.
- * @returns {Record<string,string>|undefined} - Parsed modifiers.
- */
-function parseModifiers(modifiers) {
-    if (typeof modifiers !== "string") {
-        return modifiers;
-    }
-
-    try {
-        return JSON.parse(modifiers);
-    } catch {
-        return undefined;
-    }
-}
-
-/**
- * Creates an entry data object from request body.
- *
- * @param {EntryRequestBody} body - The request body.
- * @returns {import('../entry').EntryData} - The entry data.
- */
-function createEntryData(body) {
-    const { type, description, date, original, input } = body;
-    const parsedModifiers = parseModifiers(body.modifiers);
-
-    return {
-        type,
-        description,
-        date,
-        modifiers: parsedModifiers,
-        original,
-        input,
-    };
-}
 
 /**
  * Prepares the file objects for entry creation if files were uploaded.
  *
  * @param {Capabilities} capabilities - The capabilities.
  * @param {Express.Multer.File[]|undefined} files - The uploaded files.
+ * @param {import('../request_identifier').RequestIdentifier} reqId - Request identifier for tracking
  * @returns {Promise<import('../filesystem/file').ExistingFile[]>} - The file objects.
  */
-async function prepareFileObjects(capabilities, files) {
+async function prepareFileObjects(capabilities, files, reqId) {
     if (!files || !Array.isArray(files) || files.length === 0) {
         return [];
     }
 
     const fileObjects = [];
     for (const file of files) {
-        const existingFile = await capabilities.checker.instantiate(file.path);
-        fileObjects.push(existingFile);
+        try {
+            const existingFile = await capabilities.checker.instantiate(file.path);
+            fileObjects.push(existingFile);
+        } catch (error) {
+            capabilities.logger.logError(
+                {
+                    request_identifier: reqId.identifier,
+                    error: error instanceof Error ? error.message : String(error),
+                    file_path: file.path,
+                    file_name: file.originalname,
+                    error_stack: error instanceof Error ? error.stack : undefined
+                },
+                "Failed to prepare file object for entry creation"
+            );
+            // Treat file preparation errors as user errors (invalid uploads)
+            throw new FileValidationError(
+                `Invalid file upload: ${file.originalname}`,
+                file.path
+            );
+        }
     }
 
     return fileObjects;
@@ -165,14 +187,17 @@ async function prepareFileObjects(capabilities, files) {
  *
  * @param {Error|unknown} error - The error that occurred.
  * @param {Capabilities} capabilities - The capabilities.
+ * @param {import('../request_identifier').RequestIdentifier} reqId - Request identifier for tracking
  * @returns {object} - The error response.
  */
-function handleEntryError(error, capabilities) {
+function handleEntryError(error, capabilities, reqId) {
     const message = error instanceof Error ? error.message : String(error);
 
     capabilities.logger.logError(
         {
+            request_identifier: reqId.identifier,
             error: message,
+            error_name: error instanceof Error ? error.name : "Unknown",
             stack: error instanceof Error ? error.stack : undefined,
         },
         `Failed to create entry: ${message}`
@@ -188,32 +213,113 @@ function handleEntryError(error, capabilities) {
  * @param {import('express').Request} req
  * @param {import('express').Response} res - Responds with EntryCreateResponse on success or EntryCreateErrorResponse on error
  * @param {Capabilities} capabilities
+ * @param {import('../request_identifier').RequestIdentifier} reqId - Request identifier for tracking
  */
-async function handleEntryPost(req, res, capabilities) {
+async function handleEntryPost(req, res, capabilities, reqId) {
     try {
-        // Validate request fields
-        const validation = validateEntryFields(req.body);
-        if (!validation.isValid) {
-            return res.status(400).json({ error: validation.error });
+        // Handle req.files - multer can provide an object or array
+        /** @type {Express.Multer.File[]} */
+        let files = [];
+        if (Array.isArray(req.files)) {
+            files = req.files;
+        } else if (req.files && typeof req.files === 'object') {
+            // If req.files is an object, it might be { files: [file1, file2] }
+            files = req.files['files'] || [];
         }
 
-        // Create entry data and prepare files
-        const entryData = createEntryData(req.body);
-        const fileObjects = await prepareFileObjects(
-            capabilities,
-            /** @type {Express.Multer.File[]} */ (req.files)
-        );
+        // New API: rawInput
+        const { rawInput } = req.body;
+        if (typeof rawInput !== "string" || rawInput.trim() === "") {
+            capabilities.logger.logError(
+                {
+                    request_identifier: reqId.identifier,
+                    error: "Missing required field: rawInput",
+                    body: req.body,
+                    status_code: 400,
+                    client_ip: req.ip
+                },
+                "Entry creation failed - missing rawInput field"
+            );
+            return res.status(400).json({ error: "Missing required field: rawInput" });
+        }
 
-        // Create entry and return response
+        // Parse and process user input into structured event fields
+        let processed;
+        try {
+            processed = await processUserInput(capabilities, rawInput);
+        } catch (error) {
+            if (error instanceof InputParseError) {
+                capabilities.logger.logInfo(
+                    {
+                        request_identifier: reqId.identifier,
+                        error: error.message,
+                        raw_input: rawInput,
+                        status_code: 400,
+                        client_ip: req.ip
+                    },
+                    "Entry creation failed - input parse error (user error)"
+                );
+                return res.status(400).json({ error: error.message });
+            }
+            throw error;
+        }
+
+        const { original, input, parsed } = processed;
+
+        // Construct entry data from parsed input
+        const entryData = {
+            type: parsed.type,
+            description: parsed.description,
+            modifiers: parsed.modifiers,
+            original,
+            input,
+        };
+
+        // Prepare file attachments
+        const fileObjects = await prepareFileObjects(capabilities, files, reqId);
+
+        // Create entry event
         const event = await createEntry(capabilities, entryData, fileObjects);
 
-        return res.status(201).json({
-            success: true,
-            /** @type {import('../event/structure').SerializedEvent} */
-            entry: serialize(event),
-        });
+        capabilities.logger.logInfo(
+            {
+                request_identifier: reqId.identifier,
+                entry_type: event.type,
+                file_count: fileObjects.length,
+                has_modifiers: Object.keys(parsed.modifiers || {}).length > 0,
+                status_code: 201,
+                client_ip: req.ip
+            },
+            "Entry created successfully"
+        );
+
+        return res.status(201).json({ success: true, entry: serialize(event) });
     } catch (error) {
-        const errorResponse = handleEntryError(error, capabilities);
+        // Handle user validation errors with 400 status
+        if (error instanceof EntryValidationError || error instanceof FileValidationError) {
+            capabilities.logger.logInfo(
+                {
+                    request_identifier: reqId.identifier,
+                    error: error.message,
+                    error_name: error.name,
+                    status_code: 400,
+                    client_ip: req.ip
+                },
+                "Entry creation failed - validation error (user error)"
+            );
+            return res.status(400).json({ error: error.message });
+        }
+
+        // Handle all other errors as internal server errors
+        const errorResponse = handleEntryError(error, capabilities, reqId);
+        capabilities.logger.logError(
+            {
+                request_identifier: reqId.identifier,
+                status_code: 500,
+                client_ip: req.ip
+            },
+            "Entry creation request completed with status 500"
+        );
         return res.status(500).json(errorResponse);
     }
 }
@@ -222,6 +328,7 @@ async function handleEntryPost(req, res, capabilities) {
  * @typedef {object} PaginationParams
  * @property {number} page - The current page number (1-based)
  * @property {number} limit - The number of items per page
+ * @property {'dateAscending'|'dateDescending'} order - The order to sort entries by date
  */
 
 /**
@@ -233,6 +340,7 @@ async function handleEntryPost(req, res, capabilities) {
 function parsePaginationParams(query) {
     const pageRaw = query["page"];
     const limitRaw = query["limit"];
+    const orderRaw = query["order"];
 
     const page = Math.max(
         1,
@@ -257,7 +365,15 @@ function parsePaginationParams(query) {
         )
     );
 
-    return { page, limit };
+    const orderStr = orderRaw !== undefined
+        ? String(Array.isArray(orderRaw) ? orderRaw[0] : orderRaw)
+        : "dateDescending";
+
+    const order = ['dateAscending', 'dateDescending'].includes(orderStr)
+        ? /** @type {'dateAscending'|'dateDescending'} */ (orderStr)
+        : 'dateDescending';
+
+    return { page, limit, order };
 }
 
 /**
@@ -278,6 +394,7 @@ function buildNextPageUrl(req, pagination, hasMore) {
     );
     url.searchParams.set("page", String(pagination.page + 1));
     url.searchParams.set("limit", String(pagination.limit));
+    url.searchParams.set("order", pagination.order);
 
     return url.toString();
 }
@@ -287,8 +404,9 @@ function buildNextPageUrl(req, pagination, hasMore) {
  * @param {import('express').Request} req
  * @param {import('express').Response} res - Responds with EntriesListResponse on success or EntriesListErrorResponse on error
  * @param {Capabilities} capabilities
+ * @param {import('../request_identifier').RequestIdentifier} reqId - Request identifier for tracking
  */
-async function handleEntriesGet(req, res, capabilities) {
+async function handleEntriesGet(req, res, capabilities, reqId) {
     try {
         // Parse pagination parameters
         const pagination = parsePaginationParams(req.query);
@@ -298,6 +416,18 @@ async function handleEntriesGet(req, res, capabilities) {
 
         // Build next page URL
         const next = buildNextPageUrl(req, pagination, result.hasMore);
+
+        capabilities.logger.logInfo(
+            {
+                request_identifier: reqId.identifier,
+                results_count: result.results.length,
+                has_more: result.hasMore,
+                pagination: pagination,
+                status_code: 200,
+                client_ip: req.ip
+            },
+            "Entries list request completed successfully"
+        );
 
         // Return response
         res.json({
@@ -310,10 +440,23 @@ async function handleEntriesGet(req, res, capabilities) {
 
         capabilities.logger.logError(
             {
+                request_identifier: reqId.identifier,
                 error: message,
+                error_name: error instanceof Error ? error.name : "Unknown",
                 stack: error instanceof Error ? error.stack : undefined,
+                query: req.query,
+                client_ip: req.ip
             },
             `Failed to fetch entries: ${message}`
+        );
+
+        capabilities.logger.logError(
+            {
+                request_identifier: reqId.identifier,
+                status_code: 500,
+                client_ip: req.ip
+            },
+            "Entries list request completed with status 500"
         );
 
         res.status(500).json({

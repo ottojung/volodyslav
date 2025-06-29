@@ -6,6 +6,7 @@ const transcribeRouter = require("./routes/transcribe");
 const transcribeAllRouter = require("./routes/transcribe_all");
 const periodicRouter = require("./routes/periodic");
 const entriesRouter = require("./routes/entries");
+const configRouter = require("./routes/config");
 const expressApp = require("./express_app");
 const { scheduleAll } = require("./schedule/tasks");
 const workingRepository = require("./gitstore/working_repository");
@@ -42,6 +43,7 @@ const workingRepository = require("./gitstore/working_repository");
  * @property {Scheduler} scheduler - A scheduler instance.
  * @property {import('./filesystem/reader').FileReader} reader - A file reader instance.
  * @property {AITranscription} aiTranscription - An AI transcription instance.
+ * @property {import('./datetime').Datetime} datetime - Datetime utilities.
  */
 
 /**
@@ -59,6 +61,7 @@ function addRoutes(capabilities, app) {
     app.use("/api", transcribeAllRouter.makeRouter(capabilities));
     app.use("/api", periodicRouter.makeRouter(capabilities));
     app.use("/api", entriesRouter.makeRouter(capabilities));
+    app.use("/api", configRouter.makeRouter(capabilities));
     app.use("/", staticRouter.makeRouter(capabilities));
 }
 

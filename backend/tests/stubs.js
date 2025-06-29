@@ -95,11 +95,16 @@ function stubScheduler(capabilities) {
         });
 }
 
+function stubDatetime(capabilities) {
+    capabilities.datetime.now = jest.fn(() => Date.now());
+}
+
 module.exports = {
     stubEnvironment,
     stubLogger,
     stubAiTranscriber,
     stubNotifier,
     stubScheduler,
+    stubDatetime,
     stubEventLogRepository,
 };

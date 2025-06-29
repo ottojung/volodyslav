@@ -1,10 +1,12 @@
 const { createEntry, getEntries } = require("../src/entry");
 const { getMockedRootCapabilities } = require("./spies");
-const { stubEnvironment, stubEventLogRepository } = require("./stubs");
+const { stubEnvironment, stubEventLogRepository, stubDatetime, stubLogger } = require("./stubs");
 
 async function getTestCapabilities() {
     const capabilities = getMockedRootCapabilities();
     stubEnvironment(capabilities);
+    stubDatetime(capabilities);
+    stubLogger(capabilities);
     await stubEventLogRepository(capabilities);
     return capabilities;
 }
@@ -12,13 +14,15 @@ async function getTestCapabilities() {
 describe("createEntry (integration, with real capabilities)", () => {
     it("creates an event log entry with correct data (no file)", async () => {
         const capabilities = await getTestCapabilities();
+        const fixedTime = new Date("2023-10-26T10:00:00.000Z").getTime();
+        capabilities.datetime.now.mockReturnValue(fixedTime);
+        
         const entryData = {
             original: "Raw original text",
             input: "Processed input text",
             type: "test-type",
             description: "This is a test description.",
             modifiers: { custom: "value" },
-            date: "2023-10-26T10:00:00.000Z",
         };
 
         const event = await createEntry(capabilities, entryData);
@@ -27,7 +31,7 @@ describe("createEntry (integration, with real capabilities)", () => {
         expect(event.type).toBe(entryData.type);
         expect(event.description).toBe(entryData.description);
         expect(event.modifiers).toEqual(entryData.modifiers);
-        expect(event.date).toEqual(new Date(entryData.date));
+        expect(event.date).toEqual(new Date(fixedTime));
         expect(event.id).toBeDefined();
         expect(event.creator).toBeDefined();
         expect(capabilities.logger.logInfo).toHaveBeenCalledWith(
@@ -142,17 +146,17 @@ describe("createEntry (integration, with real capabilities)", () => {
         expect(event.modifiers).toEqual({});
     });
 
-    it("throws if description is missing", async () => {
+    it("allows empty descriptions", async () => {
         const capabilities = await getTestCapabilities();
         const entryData = {
-            original: "No description original",
-            input: "No description input",
-            type: "no-description-type",
-            // no description field
+            original: "Empty description original",
+            input: "Empty description input", 
+            type: "empty-description-type",
+            description: "", // Empty but present
         };
-        await expect(createEntry(capabilities, entryData)).rejects.toThrow(
-            /description field is required/
-        );
+        const event = await createEntry(capabilities, entryData);
+        expect(event.description).toBe("");
+        expect(event.type).toBe("empty-description-type");
     });
 
     it("creates an event log entry with custom type and verifies type is set", async () => {
@@ -165,22 +169,6 @@ describe("createEntry (integration, with real capabilities)", () => {
         };
         const event = await createEntry(capabilities, entryData);
         expect(event.type).toBe("custom-type-xyz");
-    });
-
-    it("creates an event log entry with a future date", async () => {
-        const capabilities = await getTestCapabilities();
-        const futureDate = new Date(
-            Date.now() + 1000 * 60 * 60 * 24 * 365
-        ).toISOString();
-        const entryData = {
-            original: "Future date original",
-            input: "Future date input",
-            type: "future-date-type",
-            description: "Entry with a future date.",
-            date: futureDate,
-        };
-        const event = await createEntry(capabilities, entryData);
-        expect(event.date).toEqual(new Date(futureDate));
     });
 });
 
@@ -200,5 +188,188 @@ describe("getEntries pagination validation", () => {
         await expect(
             getEntries(capabilities, { page: 1, limit: 0 })
         ).rejects.toThrow();
+    });
+});
+
+describe("getEntries ordering functionality", () => {
+    it("sorts entries by date descending by default", async () => {
+        const capabilities = await getTestCapabilities();
+        
+        // Create entries with different dates by controlling datetime.now()
+        const baseTime = new Date("2023-01-01T10:00:00Z").getTime();
+        
+        capabilities.datetime.now.mockReturnValueOnce(baseTime);
+        const entry1Data = {
+            original: "First entry",
+            input: "First entry",
+            type: "test",
+            description: "First entry description",
+        };
+        
+        capabilities.datetime.now.mockReturnValueOnce(baseTime + 24 * 60 * 60 * 1000); // +1 day
+        const entry2Data = {
+            original: "Second entry",
+            input: "Second entry", 
+            type: "test",
+            description: "Second entry description",
+        };
+        
+        capabilities.datetime.now.mockReturnValueOnce(baseTime + 2 * 24 * 60 * 60 * 1000); // +2 days
+        const entry3Data = {
+            original: "Third entry",
+            input: "Third entry",
+            type: "test", 
+            description: "Third entry description",
+        };
+
+        await createEntry(capabilities, entry1Data);
+        await createEntry(capabilities, entry2Data);
+        await createEntry(capabilities, entry3Data);
+
+        const result = await getEntries(capabilities, { page: 1, limit: 10 });
+        
+        expect(result.results).toHaveLength(3);
+        expect(result.order).toBe('dateDescending');
+        // Most recent (third) should be first
+        expect(result.results[0].description).toBe("Third entry description");
+        expect(result.results[1].description).toBe("Second entry description");
+        expect(result.results[2].description).toBe("First entry description");
+    });
+
+    it("sorts entries by date ascending when specified", async () => {
+        const capabilities = await getTestCapabilities();
+        
+        // Create entries with different dates by controlling datetime.now()
+        const baseTime = new Date("2023-01-01T10:00:00Z").getTime();
+        
+        capabilities.datetime.now.mockReturnValueOnce(baseTime);
+        const entry1Data = {
+            original: "First entry",
+            input: "First entry",
+            type: "test",
+            description: "First entry description",
+        };
+        
+        capabilities.datetime.now.mockReturnValueOnce(baseTime + 24 * 60 * 60 * 1000); // +1 day
+        const entry2Data = {
+            original: "Second entry",
+            input: "Second entry",
+            type: "test",
+            description: "Second entry description", 
+        };
+
+        await createEntry(capabilities, entry1Data);
+        await createEntry(capabilities, entry2Data);
+
+        const result = await getEntries(capabilities, { 
+            page: 1, 
+            limit: 10, 
+            order: 'dateAscending' 
+        });
+        
+        expect(result.results).toHaveLength(2);
+        expect(result.order).toBe('dateAscending');
+        // Oldest (first) should be first
+        expect(result.results[0].description).toBe("First entry description");
+        expect(result.results[1].description).toBe("Second entry description");
+    });
+
+    it("sorts entries by date descending when explicitly specified", async () => {
+        const capabilities = await getTestCapabilities();
+        
+        const baseTime = new Date("2023-01-01T10:00:00Z").getTime();
+        
+        capabilities.datetime.now.mockReturnValueOnce(baseTime);
+        const entry1Data = {
+            original: "First entry",
+            input: "First entry",
+            type: "test",
+            description: "First entry description",
+        };
+        
+        capabilities.datetime.now.mockReturnValueOnce(baseTime + 24 * 60 * 60 * 1000); // +1 day
+        const entry2Data = {
+            original: "Second entry", 
+            input: "Second entry",
+            type: "test",
+            description: "Second entry description",
+        };
+
+        await createEntry(capabilities, entry1Data);
+        await createEntry(capabilities, entry2Data);
+
+        const result = await getEntries(capabilities, { 
+            page: 1, 
+            limit: 10, 
+            order: 'dateDescending' 
+        });
+        
+        expect(result.results).toHaveLength(2);
+        expect(result.order).toBe('dateDescending');
+        // Most recent (second) should be first
+        expect(result.results[0].description).toBe("Second entry description");
+        expect(result.results[1].description).toBe("First entry description");
+    });
+
+    it("throws error for invalid order parameter", async () => {
+        const capabilities = await getTestCapabilities();
+        
+        const entryData = {
+            original: "Test entry",
+            input: "Test entry",
+            type: "test",
+            description: "Test entry description",
+        };
+        await createEntry(capabilities, entryData);
+
+        await expect(
+            getEntries(capabilities, { 
+                page: 1, 
+                limit: 10, 
+                order: 'invalidOrder' 
+            })
+        ).rejects.toThrow('order must be either "dateAscending" or "dateDescending"');
+    });
+
+    it("applies pagination correctly with ordering", async () => {
+        const capabilities = await getTestCapabilities();
+        
+        // Create 5 entries with different dates by controlling datetime.now()
+        const baseTime = new Date("2023-01-01T10:00:00Z").getTime();
+        for (let i = 1; i <= 5; i++) {
+            capabilities.datetime.now.mockReturnValueOnce(baseTime + (i - 1) * 24 * 60 * 60 * 1000);
+            await createEntry(capabilities, {
+                original: `Entry ${i}`,
+                input: `Entry ${i}`,
+                type: "test",
+                description: `Entry ${i} description`,
+            });
+        }
+
+        // Get page 1 with limit 2, descending order (newest first)
+        const result = await getEntries(capabilities, { 
+            page: 1, 
+            limit: 2, 
+            order: 'dateDescending' 
+        });
+        
+        expect(result.results).toHaveLength(2);
+        expect(result.hasMore).toBe(true);
+        expect(result.total).toBe(5);
+        // Should get entries 5 and 4 (newest first)
+        expect(result.results[0].description).toBe("Entry 5 description");
+        expect(result.results[1].description).toBe("Entry 4 description");
+
+        // Get page 2
+        const result2 = await getEntries(capabilities, { 
+            page: 2, 
+            limit: 2, 
+            order: 'dateDescending' 
+        });
+        
+        expect(result2.results).toHaveLength(2);
+        // Should get entries 3 and 2
+        expect(result2.results[0].description).toBe("Entry 3 description");
+        expect(result2.results[1].description).toBe("Entry 2 description");
     });
 });

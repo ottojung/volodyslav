@@ -34,7 +34,12 @@ describe('Camera component', () => {
         // Mock canvas methods
         HTMLCanvasElement.prototype.getContext = () => ({ drawImage: jest.fn() });
         HTMLCanvasElement.prototype.toBlob = function(callback) {
-            callback(new Blob(['dummy'], { type: 'image/jpeg' }));
+            const mockBlob = new Blob(['dummy'], { type: 'image/jpeg' });
+            // Add arrayBuffer method if it doesn't exist
+            if (!mockBlob.arrayBuffer) {
+                mockBlob.arrayBuffer = () => Promise.resolve(new ArrayBuffer(4));
+            }
+            callback(mockBlob);
         };
 
         // Mock URL APIs
@@ -56,6 +61,18 @@ describe('Camera component', () => {
     beforeEach(() => {
         // Make sure request_identifier is present
         window.history.replaceState({}, 'test', '/?request_identifier=TEST_ID');
+
+        // Mock sessionStorage
+        const mockSessionStorage = {
+            setItem: jest.fn(),
+            getItem: jest.fn(),
+            removeItem: jest.fn(),
+            clear: jest.fn(),
+        };
+        Object.defineProperty(window, 'sessionStorage', {
+            value: mockSessionStorage,
+            writable: true
+        });
 
         // Clear mocks
         mockToast.mockClear();
@@ -128,28 +145,33 @@ describe('Camera component', () => {
         });
     });
 
-    test('Done button with one photo uploads and shows success toast (and includes request_identifier)', async () => {
+    test('Done button with one photo stores in sessionStorage and shows success toast', async () => {
         render(<Camera />);
         await waitFor(() => expect(getUserMediaMock).toHaveBeenCalled());
 
         fireEvent.click(screen.getByText('Take Photo'));
         await waitFor(() => screen.getByAltText('Preview'));
+        
+        // Wait a bit for the blob to be processed
+        await new Promise(resolve => setTimeout(resolve, 100));
+        
         fireEvent.click(screen.getByText('Done'));
 
-        // Should call fetch once
-        await waitFor(() => expect(global.fetch).toHaveBeenCalledTimes(1));
+        // Should store photos in sessionStorage
+        await waitFor(() => {
+            expect(window.sessionStorage.setItem).toHaveBeenCalledWith(
+                'photos_TEST_ID',
+                expect.stringMatching(/^\[.*\]$/) // JSON array string
+            );
+        });
 
-        const [url, options] = global.fetch.mock.calls[0];
-        const called_url = new URL('/api/upload', window.location.origin)
-        called_url.searchParams.set('request_identifier', 'TEST_ID');
-        expect(String(url)).toBe(String(called_url));
-        expect(options.method).toBe('POST');
-        expect(options.body).toBeInstanceOf(FormData);
+        // Should not call fetch (no upload to backend)
+        expect(global.fetch).not.toHaveBeenCalled();
 
         await waitFor(() => {
             expect(mockToast).toHaveBeenCalledWith(
                 expect.objectContaining({
-                    title: 'Upload successful',
+                    title: 'Photos ready',
                     status: 'success',
                     duration: 3000,
                     isClosable: true,
@@ -159,34 +181,30 @@ describe('Camera component', () => {
         });
     });
 
-    test('Done button upload failure shows error toast', async () => {
-        // Simulate server error response
-        global.fetch.mockResolvedValueOnce({ ok: false, status: 500, json: () => Promise.resolve({}) });
-
+    test('Done button with no photos shows error toast', async () => {
         render(<Camera />);
         await waitFor(() => expect(getUserMediaMock).toHaveBeenCalled());
 
-        fireEvent.click(screen.getByText('Take Photo'));
-        await waitFor(() => screen.getByAltText('Preview'));
+        // Click done without taking any photos
         fireEvent.click(screen.getByText('Done'));
-
-        await waitFor(() => expect(global.fetch).toHaveBeenCalledTimes(1));
 
         await waitFor(() => {
             expect(mockToast).toHaveBeenCalledWith(
                 expect.objectContaining({
-                    title: 'Error uploading photos',
-                    description: 'Server responded with 500',
+                    title: 'No photos to upload',
                     status: 'error',
-                    duration: null,
+                    duration: 3000,
                     isClosable: true,
                     position: 'top',
                 })
             );
         });
+
+        // Should not store anything in sessionStorage
+        expect(window.sessionStorage.setItem).not.toHaveBeenCalled();
     });
 
-    test('Done button uploads multiple photos correctly and shows success toast', async () => {
+    test('Done button stores multiple photos correctly and shows success toast', async () => {
         render(<Camera />);
         await waitFor(() => expect(getUserMediaMock).toHaveBeenCalled());
 
@@ -201,17 +219,18 @@ describe('Camera component', () => {
         await waitFor(() => screen.getByAltText('Preview'));
         fireEvent.click(screen.getByText('Done'));
 
-        await waitFor(() => expect(global.fetch).toHaveBeenCalledTimes(1));
-
-        const fd = global.fetch.mock.calls[0][1].body;
-        // Check that exactly two photos were appended
-        const allPhotos = fd.getAll ? fd.getAll('photos') : Array.from(fd.entries()).filter(([n]) => n === 'photos');
-        expect(allPhotos.length).toBe(2);
+        // Should store both photos in sessionStorage
+        await waitFor(() => {
+            expect(window.sessionStorage.setItem).toHaveBeenCalledWith(
+                'photos_TEST_ID',
+                expect.stringMatching(/^\[.*\]$/) // JSON array with 2 photos
+            );
+        });
 
         await waitFor(() => {
             expect(mockToast).toHaveBeenCalledWith(
                 expect.objectContaining({
-                    title: 'Upload successful',
+                    title: 'Photos ready',
                     status: 'success',
                     duration: 3000,
                     isClosable: true,

@@ -3,6 +3,20 @@ const eventId = require("./event/id");
 const asset = require("./event/asset");
 const creatorMake = require("./creator");
 
+/**
+ * Error thrown when entry data validation fails due to user input issues.
+ * This should result in a 400 Bad Request response.
+ */
+class EntryValidationError extends Error {
+    /**
+     * @param {string} message - The validation error message
+     */
+    constructor(message) {
+        super(message);
+        this.name = "EntryValidationError";
+    }
+}
+
 /** @typedef {import('./event/asset').Asset} Asset */
 /** @typedef {import('./random/seed').NonDeterministicSeed} NonDeterministicSeed */
 /** @typedef {import('./filesystem/deleter').FileDeleter} FileDeleter */
@@ -29,15 +43,15 @@ const creatorMake = require("./creator");
  * @property {Environment} environment - An environment instance.
  * @property {Logger} logger - A logger instance.
  * @property {import('./filesystem/reader').FileReader} reader - A file reader instance.
+ * @property {import('./datetime').Datetime} datetime - Datetime utilities.
  */
 
 /**
  * @typedef {object} EntryData
- * @property {string} [date] - ISO date string, defaults to current time. Must be valid when provided.
  * @property {string} original - The original, raw input for the event
  * @property {string} input - The processed input for the event
  * @property {string} type - The type of entry (e.g., "note", "diary", "todo")
- * @property {string} description - The content/description of the entry (required)
+ * @property {string} description - The content/description of the entry (can be empty)
  * @property {Record<string, string>} [modifiers] - Additional key-value modifiers
  */
 
@@ -52,17 +66,7 @@ const creatorMake = require("./creator");
 async function createEntry(capabilities, entryData, files = []) {
     const creator = await creatorMake(capabilities);
     const id = eventId.make(capabilities);
-    const date = entryData.date ? new Date(entryData.date) : new Date();
-    if (isNaN(date.getTime())) {
-        throw new Error('Invalid date');
-    }
-
-    if (
-        typeof entryData.description !== "string" ||
-        entryData.description.trim() === ""
-    ) {
-        throw new Error("description field is required");
-    }
+    const date = new Date(capabilities.datetime.now());
 
     /** @type {import('./event/structure').Event} */
     const event = {
@@ -98,6 +102,7 @@ async function createEntry(capabilities, entryData, files = []) {
  * @typedef {object} PaginationParams
  * @property {number} page - The current page number (1-based)
  * @property {number} limit - The number of items per page
+ * @property {'dateAscending'|'dateDescending'} [order] - The order to sort entries by date
  */
 
 /**
@@ -107,6 +112,7 @@ async function createEntry(capabilities, entryData, files = []) {
  * @property {boolean} hasMore - Whether there are more pages available
  * @property {number} page - Current page number
  * @property {number} limit - Items per page
+ * @property {'dateAscending'|'dateDescending'} order - The order entries were sorted by
  */
 
 /**
@@ -117,13 +123,16 @@ async function createEntry(capabilities, entryData, files = []) {
  * @returns {Promise<PaginationResult>} - The paginated entries result.
  */
 async function getEntries(capabilities, pagination) {
-    const { page, limit } = pagination;
+    const { page, limit, order = 'dateDescending' } = pagination;
 
     if (!Number.isInteger(page) || page < 1) {
-        throw new Error('page must be a positive integer');
+        throw new EntryValidationError('page must be a positive integer');
     }
     if (!Number.isInteger(limit) || limit < 1) {
-        throw new Error('limit must be a positive integer');
+        throw new EntryValidationError('limit must be a positive integer');
+    }
+    if (!['dateAscending', 'dateDescending'].includes(order)) {
+        throw new EntryValidationError('order must be either "dateAscending" or "dateDescending"');
     }
 
     // Fetch all entries from storage
@@ -131,11 +140,18 @@ async function getEntries(capabilities, pagination) {
         return await storage.getExistingEntries();
     });
 
+    // Sort entries by date
+    const sortedEntries = [...entries].sort((a, b) => {
+        const dateA = new Date(a.date).getTime();
+        const dateB = new Date(b.date).getTime();
+        return order === 'dateAscending' ? dateA - dateB : dateB - dateA;
+    });
+
     // Apply pagination
-    const total = entries.length;
+    const total = sortedEntries.length;
     const start = (page - 1) * limit;
     const end = start + limit;
-    const results = entries.slice(start, end);
+    const results = sortedEntries.slice(start, end);
     const hasMore = end < total;
 
     capabilities.logger.logInfo(
@@ -143,10 +159,11 @@ async function getEntries(capabilities, pagination) {
             total,
             page,
             limit,
+            order,
             resultCount: results.length,
             hasMore,
         },
-        `Retrieved entries: page ${page}, ${results.length}/${total} entries`
+        `Retrieved entries: page ${page}, ${results.length}/${total} entries, order: ${order}`
     );
 
     return {
@@ -155,7 +172,8 @@ async function getEntries(capabilities, pagination) {
         hasMore,
         page,
         limit,
+        order,
     };
 }
 
-module.exports = { createEntry, getEntries };
+module.exports = { createEntry, getEntries, EntryValidationError };

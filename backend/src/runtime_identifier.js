@@ -13,6 +13,8 @@ const random = require("./random");
  * @property {import("./random/seed").NonDeterministicSeed} seed
  * @property {import("./subprocess/command").Command} git
  * @property {Logger} logger - A logger instance.
+ * @property {import("./filesystem/reader").FileReader} reader - A file reader instance.
+ * @property {import("./filesystem/checker").FileChecker} checker - A file checker instance.
  */
 
 /**
@@ -20,6 +22,20 @@ const random = require("./random");
  * @returns {Promise<string>}
  */
 async function getVersion(capabilities) {
+    const path = require('path');
+
+    // First, try to read version from VERSION file (for installed versions)
+    const versionFilePath = path.join(__dirname, '..', '..', 'VERSION');
+    try {
+        // Check if VERSION file exists and read it using capabilities
+        const versionFile = await capabilities.checker.instantiate(versionFilePath);
+        const version = await capabilities.reader.readFileAsText(versionFile.path);
+        return version.trim();
+    } catch {
+        // VERSION file doesn't exist, try git
+    }
+
+    // Fall back to git describe (for development versions)
     await capabilities.git.ensureAvailable();
     try {
         const repositoryPath = __dirname;

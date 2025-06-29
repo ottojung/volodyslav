@@ -28,6 +28,7 @@ class FileWriterError extends Error {
      */
     constructor(message, filePath) {
         super(message);
+        this.name = "FileWriterError";
         this.filePath = filePath;
     }
 }

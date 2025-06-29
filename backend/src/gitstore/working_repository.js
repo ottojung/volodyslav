@@ -34,13 +34,14 @@ class WorkingRepositoryError extends Error {
      */
     constructor(message, repositoryPath) {
         super(message);
+        this.name = "WorkingRepositoryError";
         this.repositoryPath = repositoryPath;
     }
 }
 
 /**
  * Type guard for WorkingRepositoryError.
- * @param {unknown} object
+ * @param {unknown} object - The object to check.
  * @returns {object is WorkingRepositoryError}
  */
 function isWorkingRepositoryError(object) {
@@ -49,8 +50,8 @@ function isWorkingRepositoryError(object) {
 
 /**
  * Get local repository path.
- * @param {Capabilities} capabilities
- * @returns {string}
+ * @param {Capabilities} capabilities - The capabilities object containing environment access.
+ * @returns {string} - The absolute path to the local git repository.
  */
 function pathToLocalRepository(capabilities) {
     const wd = capabilities.environment.workingDirectory();
@@ -59,8 +60,8 @@ function pathToLocalRepository(capabilities) {
 
 /**
  * Get the path to the local repository's .git directory.
- * @param {Capabilities} capabilities
- * @returns {string}
+ * @param {Capabilities} capabilities - The capabilities object containing environment access.
+ * @returns {string} - The absolute path to the .git directory.
  */
 function pathToLocalRepositoryGitDir(capabilities) {
     return path.join(pathToLocalRepository(capabilities), ".git");

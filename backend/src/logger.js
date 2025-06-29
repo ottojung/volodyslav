@@ -96,13 +96,12 @@ async function createFileTarget(state, filePath, todos) {
             options: { destination: filePath },
         };
     } catch (error) {
-        // Explicitly typing the error
-        const err = /** @type {Error} */ (error);
+        const message = error instanceof Error ? error.message : String(error);
         todos.push(() =>
             logWarning(
                 state,
                 {},
-                `Unable to write to log file ${filePath}: ${err.message}. Continuing with console logging only.`
+                `Unable to write to log file ${filePath}: ${message}. Continuing with console logging only.`
             )
         );
         return null;
@@ -122,9 +121,9 @@ function safeGetLogLevel(state, todos) {
         }
         return state.capabilities.environment.logLevel();
     } catch (error) {
-        const err = /** @type {Error} */ (error);
+        const message = error instanceof Error ? error.message : String(error);
         todos.push(() =>
-            logError(state, {}, `Unable to get log level: ${err.message}`)
+            logError(state, {}, `Unable to get log level: ${message}`)
         );
         return "debug";
     }
@@ -143,9 +142,9 @@ function safeGetLogFilePath(state, todos) {
         }
         return state.capabilities.environment.logFile();
     } catch (error) {
-        const err = /** @type {Error} */ (error);
+        const message = error instanceof Error ? error.message : String(error);
         todos.push(() =>
-            logError(state, {}, `Unable to get log file: ${err.message}`)
+            logError(state, {}, `Unable to get log file: ${message}`)
         );
         return null;
     }
@@ -214,15 +213,15 @@ function logError(state, obj, msg) {
     }
 
     // Send notification
-    state.capabilities?.notifier.notifyAboutError(msg).catch((err) => {
+    state.capabilities?.notifier?.notifyAboutError(msg).catch((error) => {
         if (state.logger !== null) {
             state.logger.error("Failed to send error notification", {
-                error: err,
+                error,
             });
         } else {
             // Fallback to console if logger is not initialized
             console.error("Logger not initialized");
-            console.error("Failed to send error notification", { error: err });
+            console.error("Failed to send error notification", { error });
         }
     });
 }
@@ -239,7 +238,7 @@ function logWarning(state, obj, msg) {
     } else {
         // Fallback to console if logger is not initialized
         console.warn("Logger not initialized");
-        console.warn(msg, { obj });
+        console.warn(obj, msg);
     }
 }
 
@@ -255,7 +254,7 @@ function logInfo(state, obj, msg) {
     } else {
         // Fallback to console if logger is not initialized
         console.info("Logger not initialized");
-        console.info(msg, { obj });
+        console.info(obj, msg);
     }
 }
 
@@ -271,7 +270,7 @@ function logDebug(state, obj, msg) {
     } else {
         // Fallback to console if logger is not initialized
         console.debug("Logger not initialized");
-        console.debug(msg, { obj });
+        console.debug(obj, msg);
     }
 }
 

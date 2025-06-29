@@ -7,11 +7,30 @@ const randomModule = require("./random");
 /** @typedef {import('./environment').Environment} Environment */
 
 /**
- * @typedef {object} Capabilities
- * @property {NonDeterministicSeed} seed - A random number generator instance.
- * @property {Creator} creator - A file system creator instance.
- * @property {Checker} checker - A file system checker instance.
- * @property {Environment} environment - An environment instance.
+ * Minimal capabilities needed for generating random identifiers
+ * @typedef {object} RandomCapabilities
+ * @property {NonDeterministicSeed} seed - A random number generator instance
+ */
+
+/**
+ * Minimal capabilities needed for marking requests as done
+ * @typedef {object} MarkDoneCapabilities
+ * @property {Creator} creator - A file system creator instance
+ * @property {Environment} environment - An environment instance
+ */
+
+/**
+ * Minimal capabilities needed for checking if request is done
+ * @typedef {object} IsDoneCapabilities
+ * @property {Checker} checker - A file system checker instance
+ * @property {Environment} environment - An environment instance
+ */
+
+/**
+ * Minimal capabilities needed for creating request directories
+ * @typedef {object} MakeDirectoryCapabilities
+ * @property {Creator} creator - A file system creator instance
+ * @property {Environment} environment - An environment instance
  */
 
 class RequestIdentifierClass {
@@ -30,9 +49,12 @@ class RequestIdentifierClass {
      * @param {string} identifier
      */
     constructor(identifier) {
+        if (typeof identifier !== 'string' || identifier.trim() === '') {
+            throw new Error("Request identifier must be a non-empty string");
+        }
         this.identifier = identifier;
         if (this.__brand !== undefined) {
-            throw new Error();
+            throw new Error("RequestIdentifier is a nominal type and should not be instantiated directly");
         }
     }
 }
@@ -48,15 +70,16 @@ function fromRequest(req) {
     /** @type {any} */
     const query = req.query;
     const reqId = query['request_identifier'];
-    if (reqId === null || reqId === undefined || String(reqId).trim() === '') {
+    const reqIdStr = String(reqId).trim();
+    if (reqId === null || reqId === undefined || reqIdStr === '') {
         throw new Error("Missing request_identifier field");
     }
-    return new RequestIdentifierClass(String(reqId));
+    return new RequestIdentifierClass(reqIdStr);
 }
 
 /**
  * Creates a random request identifier.
- * @param {Capabilities} capabilities
+ * @param {RandomCapabilities} capabilities
  * @returns {RequestIdentifier}
  */
 function random(capabilities) {
@@ -65,7 +88,7 @@ function random(capabilities) {
 }
 
 /**
- * @param {Capabilities} capabilities
+ * @param {MarkDoneCapabilities} capabilities
  * @param {RequestIdentifier} reqId
  * @returns {Promise<void>}
  */
@@ -77,7 +100,7 @@ async function markDone(capabilities, reqId) {
 }
 
 /**
- * @param {Capabilities} capabilities
+ * @param {IsDoneCapabilities} capabilities
  * @param {RequestIdentifier} reqId
  * @returns {Promise<boolean>}
  */
@@ -93,15 +116,16 @@ async function isDone(capabilities, reqId) {
 }
 
 /**
- * @param {Capabilities} capabilities
+ * Creates a directory for the request identifier.
+ * @param {MakeDirectoryCapabilities} capabilities
  * @param {RequestIdentifier} reqId
- * @returns {Promise<string>} - path to the target directory.
+ * @returns {Promise<string>} The path to the created directory
  */
 async function makeDirectory(capabilities, reqId) {
     const uploadDir = capabilities.environment.workingDirectory();
-    const ret = path.join(uploadDir, reqId.identifier);
-    await capabilities.creator.createDirectory(ret);
-    return ret;
+    const dirPath = path.join(uploadDir, reqId.identifier);
+    await capabilities.creator.createDirectory(dirPath);
+    return dirPath;
 }
 
 module.exports = {

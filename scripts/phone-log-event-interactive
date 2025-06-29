@@ -1,0 +1,253 @@
+#! /usr/bin/env phone-python
+
+#
+# EUID: hmbgfr6x7ux6fncupyo6eoottomcuj1b
+#
+
+import subprocess
+import sys
+import os
+from pathlib import Path
+import json
+from typing import Sequence, Optional
+from datetime import datetime
+import requests  # type: ignore
+
+
+TAKE_PHOTO_CONSTANT = "[phone_take_photo]"
+API_BASE_URL = os.environ.get("VOLODYSLAV_API_URL", "http://localhost:3000/api")
+
+
+try:
+    import colorama  # type: ignore
+    colorama.init()
+except BaseException:
+    pass
+
+
+def highlight(text: str) -> str:
+    try:
+        from colorama import Fore, Style  # type: ignore
+    except BaseException:
+        return text
+
+    return Fore.YELLOW + Style.BRIGHT + text + Style.RESET_ALL
+
+
+def downlight(text: str) -> str:
+    try:
+        from colorama import Style  # type: ignore
+        GREY = "\033[90m"
+    except BaseException:
+        return text
+
+    return GREY + Style.DIM + text + Style.RESET_ALL
+
+
+class APIError(Exception):
+    """Raised when the API returns an error"""
+
+    pass
+
+
+def format_shortcuts(shortcuts: Sequence[Sequence[str]]) -> str:
+    """Format shortcuts for display (simplified version since shortcuts are handled server-side)"""
+    ret = ""
+    for shortcut in shortcuts:
+        if len(shortcut) >= 2:
+            ret += highlight(shortcut[0])
+            ret += " -> "
+            ret += shortcut[1]
+            ret += "\n"
+    return ret
+
+
+def get_last_entries() -> Sequence[str]:
+    """Get last entries from the API"""
+    try:
+        response = requests.get(f"{API_BASE_URL}/entries?page=1&limit=10&order=dateDescending")
+        if response.status_code == 200:
+            data = response.json()
+            entries = data.get("results", [])
+            return tuple(
+                entry.get("original", entry.get("input", "")) for entry in entries
+            )
+        else:
+            # Fallback to file reading if API is not available
+            raise APIError(
+                f"Failed to fetch entries from API: {response.status_code} {response.text}"
+            )
+    except Exception as e:
+        raise APIError(
+            "Failed to fetch last entries from API or file. Please check your API connection."
+        ) from e
+
+
+def format_last_entries(inputs: Sequence[str]) -> str:
+    ret = ""
+
+    for inp in inputs:
+        ret += " " * 4
+        ret += inp
+        ret += "\n"
+
+    return ret
+
+
+event_log_root = Path(os.environ["VOLODYSLAV_EVENT_LOG_DIRECTORY"])
+assert event_log_root.exists(), (
+    f"Event log root must must exist at {repr(str(event_log_root))}."
+)
+
+assets_path = Path(os.environ["VOLODYSLAV_EVENT_LOG_ASSETS_DIRECTORY"])
+assets_path.mkdir(parents=True, exist_ok=True)
+
+log_path = event_log_root / "data.json"
+log_path.touch(exist_ok=True)
+
+config_path = event_log_root / "config.json"
+if config_path.exists():
+    with open(config_path, "r") as reader:
+        config = json.load(reader)
+else:
+    config = {
+        "types": [],
+        "shortcuts": [],
+    }
+
+print(
+    """\
+Syntax: TYPE [MODIFIERS...] DESCRIPTION
+Examples:
+   food [certainty 9] earl gray tea, unsweetened
+   food [when now] [certainty 9] pizza capricciossa, medium size
+   food[when 5 hours ago][certainty 7]ceasar salad with croutons and slide of bread
+   food earl gray tea, unsweetened
+
+{help}
+Shortcuts:
+{existing_shortcuts}
+Last entries:
+{last_entries}""".format(
+        last_entries=format_last_entries(get_last_entries()),
+        help=config.get("help", ""),
+        existing_shortcuts=format_shortcuts(config["shortcuts"]),
+    )
+)
+
+
+def normalize_input(s: str) -> str:
+    return " ".join(s.strip().split())
+
+
+def take_photo(date: str, user_input: str) -> list:
+    """Take photos and return list of file paths"""
+    safedate = date.replace(":", "-")
+    dirname = f"f{safedate}"
+    dirpath = assets_path / dirname
+    subprocess.call(["phone-take-multiple-photos", str(dirpath.absolute())])
+
+    # Return list of photo files created
+    if dirpath.exists():
+        return [str(f) for f in dirpath.glob("*") if f.is_file()]
+    return []
+
+
+def create_entry_via_api(user_input: str, photo_files: Optional[list] = None) -> bool:
+    """Send entry to backend API"""
+    try:
+        # Prepare the request
+        data = {"rawInput": user_input}
+        files = []
+
+        if photo_files:
+            for photo_file in photo_files:
+                if os.path.exists(photo_file):
+                    files.append(("files", open(photo_file, "rb")))
+
+        # Send the request
+        response = requests.post(f"{API_BASE_URL}/entries", data=data, files=files)
+
+        # Close file handles
+        for _, file_handle in files:
+            file_handle.close()
+
+        if response.status_code == 201:
+            result = response.json()
+            if result.get("success"):
+                entry = result.get("entry", {})
+                show_input = entry.get("input", user_input)
+                print(f"Written:\n{show_input}\n")
+                return True
+            else:
+                print(
+                    f"API Error: {result.get('error', 'Unknown error')}",
+                    file=sys.stderr,
+                )
+                return False
+        else:
+            error_data = (
+                response.json()
+                if response.headers.get("content-type", "").startswith(
+                    "application/json"
+                )
+                else {}
+            )
+            error_msg = error_data.get("error", f"HTTP {response.status_code}")
+            print(f"API Error: {error_msg}", file=sys.stderr)
+            return False
+
+    except Exception as e:
+        print(f"Error calling API: {e}", file=sys.stderr)
+        return False
+
+
+def process_user_input(original_user_input: str) -> None:
+    """Process user input by sending it to the API"""
+    date = datetime.now().astimezone().strftime("%Y-%m-%dT%H:%M:%S%z")
+
+    # Check if we need to take photos
+    photo_files = []
+    if TAKE_PHOTO_CONSTANT in original_user_input:
+        photo_files = take_photo(date=date, user_input=original_user_input)
+
+    # Send to API
+    success = create_entry_via_api(original_user_input, photo_files)
+
+    if not success:
+        print("Failed to create entry via API", file=sys.stderr)
+
+
+def loop() -> None:
+    while True:
+        try:
+            user_input = input("Event: ")
+        except KeyboardInterrupt:
+            print("Interrupted.", file=sys.stderr)
+            sys.exit(1)
+            break
+        except EOFError:
+            print("Could not read stdin. Exiting.", file=sys.stderr)
+            sys.exit(1)
+            break
+
+        original_user_input = normalize_input(user_input)
+
+        if not original_user_input:
+            print("Empty input. Exiting.", file=sys.stderr)
+            sys.exit(1)
+            return
+
+        print("Sending to API...")
+        process_user_input(original_user_input)
+
+
+try:
+    loop()
+finally:
+    subprocess.call(
+        [
+            "phone-commit-event-log",
+            "Wrote this from phone-log-interactive (EUID: hmbgfr6x7ux6fncupyo6eoottomcuj1b).",
+        ]
+    )

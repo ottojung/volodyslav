@@ -27,6 +27,7 @@ class FileCopierError extends Error {
      */
     constructor(message, sourcePath, destinationPath) {
         super(message);
+        this.name = "FileCopierError";
         this.sourcePath = sourcePath;
         this.destinationPath = destinationPath;
     }

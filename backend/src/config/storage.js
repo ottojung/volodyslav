@@ -23,55 +23,46 @@ const { fromExisting } = require("../filesystem/file");
  */
 
 /**
- * Reads and deserializes a config.json file
- * @param {Capabilities} capabilities - The capabilities object
- * @param {import("../filesystem/file").ExistingFile} file - The config.json file to read
- * @returns {Promise<import('./structure').Config | null>} The parsed config or null if invalid/missing
+ * Minimal capabilities needed for reading config files
+ * @typedef {object} ConfigReadCapabilities
+ * @property {FileReader} reader - A file reader instance
+ * @property {Logger} logger - A logger instance
  */
+
+/**
+ * Minimal capabilities needed for writing config files
+ * @typedef {object} ConfigWriteCapabilities
+ * @property {FileWriter} writer - A file writer instance
+ * @property {import('../filesystem/creator').FileCreator} creator - A file creator instance
+ * @property {import('../filesystem/checker').FileChecker} checker - A file checker instance
+ * @property {Logger} logger - A logger instance
+ */
+
+/**
+ * Reads and deserializes a config.json file
+ * @param {ConfigReadCapabilities} capabilities - The minimal capabilities needed for reading
+ * @param {import("../filesystem/file").ExistingFile} file - The config.json file to read
+ * @returns {Promise<import('./structure').Config | Error>} The parsed config or error object
+*/
 async function readConfig(capabilities, file) {
-    try {
-        const objects = await readObjects(capabilities, file);
+    const objects = await readObjects(capabilities, file);
 
-        if (objects.length === 0) {
-            capabilities.logger.logWarning(
-                { filepath: file },
-                "Config file is empty"
-            );
-            return null;
-        }
-
-        if (objects.length > 1) {
-            capabilities.logger.logWarning(
-                { filepath: file, objectCount: objects.length },
-                "Config file contains multiple objects, using first one"
-            );
-        }
-
-        const configObj = config.tryDeserialize(objects[0]);
-        if (configObj === null) {
-            capabilities.logger.logWarning(
-                { filepath: file, invalidObject: objects[0] },
-                "Found invalid config object in file"
-            );
-            return null;
-        }
-
-        return configObj;
-    } catch (error) {
-        capabilities.logger.logWarning(
-            {
-                filepath: file,
-                error: error instanceof Error ? error.message : String(error),
-            },
-            "Failed to read config file"
-        );
-        return null;
+    if (objects.length === 0) {
+        return config.makeInvalidStructureError("Config file is empty", []);
     }
+
+    if (objects.length > 1) {
+        // This is not necessarily an error, just use the first object
+        // Higher-level code can decide whether to log this or not
+    }
+
+    // Try to deserialize the config object and return the result (either Config or error)
+    return config.tryDeserialize(objects[0]);
 }
 
 /**
  * Serializes and writes a config object to a JSON file
- * @param {Capabilities} capabilities - The capabilities object
+ * @param {ConfigWriteCapabilities} capabilities - The minimal capabilities needed for writing
  * @param {string} filepath - Path to write the config.json file
  * @param {import('./structure').Config} configObj - The config object to write
  * @returns {Promise<void>}
@@ -87,7 +78,7 @@ async function writeConfig(capabilities, filepath, configObj) {
         if (!proof) {
             throw new Error(`Failed to create config file: ${filepath}`);
         }
-        const file = await fromExisting(filepath, proof);
+        const file = fromExisting(filepath, proof);
         await capabilities.writer.writeFile(file, configString + "\n");
 
         capabilities.logger.logInfo(

@@ -14,6 +14,7 @@ class FileCreatorError extends Error {
      */
     constructor(message, filePath) {
         super(message);
+        this.name = "FileCreatorError";
         this.filePath = filePath;
     }
 }
@@ -48,7 +49,7 @@ class ExistingFileClass {
     constructor(path) {
         this.path = path;
         if (this.__brand !== undefined) {
-            throw new Error();
+            throw new Error("ExistingFile is a nominal type and should not be instantiated directly");
         }
     }
 }
@@ -77,10 +78,10 @@ async function makeEmpty(path) {
  * Creates an ExistingFile instance from an existing file.
  * @param {string} path - The path to the file to create.
  * @param {FileExistenceProof} proof - A proof that the file exists.
- * @returns {Promise<ExistingFile>} - A promise that resolves when the file is created.
+ * @returns {ExistingFile} - A promise that resolves when the file is created.
  * @throws {FileCreatorError} - If the file does not exist.
  */
-async function fromExisting(path, proof) {
+function fromExisting(path, proof) {
     if (!proof) {
         throw new FileCreatorError(`No proof provided for file: ${path}`, path);
     }
@@ -92,7 +93,6 @@ async function fromExisting(path, proof) {
     }
 
     try {
-        await fs.access(path);
         return new ExistingFileClass(path);
     } catch {
         throw new FileCreatorError(`File does not exist: ${path}`, path);

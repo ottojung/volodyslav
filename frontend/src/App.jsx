@@ -79,11 +79,14 @@ function App() {
           </Box>
         )}
 
-        <Box>
+        <VStack spacing={3}>
           <Link to="/camera">
-            <Button colorScheme="teal">Open Camera</Button>
+            <Button colorScheme="teal" w="200px">Open Camera</Button>
           </Link>
-        </Box>
+          <Link to="/describe">
+            <Button colorScheme="blue" variant="outline" w="200px">Log an Event</Button>
+          </Link>
+        </VStack>
       </VStack>
     </Box>
   );

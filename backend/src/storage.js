@@ -7,16 +7,15 @@ const { fromRequest, makeDirectory } = require("./request_identifier");
 /** @typedef {import('./environment').Environment} Environment */
 
 /**
- * @typedef {object} Capabilities
- * @property {NonDeterministicSeed} seed - A random number generator instance.
- * @property {Creator} creator - A file system creator instance.
- * @property {Checker} checker - A file system checker instance.
- * @property {Environment} environment - An environment instance.
+ * Minimal capabilities needed for storage operations
+ * @typedef {object} StorageCapabilities
+ * @property {Creator} creator - A file system creator instance
+ * @property {Environment} environment - An environment instance
  */
 
 /**
  * Multer storage engine to save uploaded files to disk
- * @param {Capabilities} capabilities
+ * @param {StorageCapabilities} capabilities - The minimal capabilities needed for storage operations
  * @returns {import('multer').StorageEngine}
  */
 function makeStorage(capabilities) {
@@ -51,7 +50,7 @@ function makeStorage(capabilities) {
 }
 
 /**
- * @param {Capabilities} capabilities
+ * @param {StorageCapabilities} capabilities
  */
 function makeUpload(capabilities) {
     const storage = makeStorage(capabilities);

@@ -21,6 +21,7 @@ const { transcribeRequest, isInputNotFound } = require("../transcribe");
  * @property {Environment} environment - An environment instance.
  * @property {Logger} logger - A logger instance.
  * @property {AITranscription} aiTranscription - An AI transcription instance.
+ * @property {import('../filesystem/reader').FileReader} reader - A file reader instance.
  */
 
 /**

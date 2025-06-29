@@ -12,6 +12,172 @@
  */
 
 /**
+ * Base class for config deserialization errors
+ */
+class TryDeserializeError extends Error {
+    /**
+     * @param {string} message - Human readable error message
+     * @param {string} field - The field that caused the error
+     * @param {unknown} value - The invalid value
+     * @param {string} [expectedType] - The expected type/format
+     */
+    constructor(message, field, value, expectedType) {
+        super(message);
+        this.name = "TryDeserializeError";
+        this.field = field;
+        this.value = value;
+        this.expectedType = expectedType;
+    }
+}
+
+/**
+ * Error for missing required fields
+ */
+class MissingFieldError extends TryDeserializeError {
+    /**
+     * @param {string} field - The missing field name
+     */
+    constructor(field) {
+        super(`Missing required field: ${field}`, field, undefined, "any");
+        this.name = "MissingFieldError";
+    }
+}
+
+/**
+ * Error for invalid field types
+ */
+class InvalidTypeError extends TryDeserializeError {
+    /**
+     * @param {string} field - The field with invalid type
+     * @param {unknown} value - The invalid value
+     * @param {string} expectedType - The expected type
+     */
+    constructor(field, value, expectedType) {
+        const actualType = Array.isArray(value) ? 'array' : typeof value;
+        super(
+            `Invalid type for field '${field}': expected ${expectedType}, got ${actualType}`,
+            field,
+            value,
+            expectedType
+        );
+        this.name = "InvalidTypeError";
+        this.actualType = actualType;
+    }
+}
+
+/**
+ * Error for invalid field values
+ */
+class InvalidValueError extends TryDeserializeError {
+    /**
+     * @param {string} field - The field with invalid value
+     * @param {unknown} value - The invalid value
+     * @param {string} reason - Why the value is invalid
+     */
+    constructor(field, value, reason) {
+        super(`Invalid value for field '${field}': ${reason}`, field, value, undefined);
+        this.name = "InvalidValueError";
+        this.reason = reason;
+    }
+}
+
+/**
+ * Error for invalid object structure
+ */
+class InvalidStructureError extends TryDeserializeError {
+    /**
+     * @param {string} message - Error message
+     * @param {unknown} value - The invalid structure
+     */
+    constructor(message, value) {
+        super(message, "root", value, "object");
+        this.name = "InvalidStructureError";
+    }
+}
+
+/**
+ * Error for invalid array elements
+ */
+class InvalidArrayElementError extends TryDeserializeError {
+    /**
+     * @param {string} arrayField - The array field containing the invalid element
+     * @param {number} index - The index of the invalid element
+     * @param {unknown} value - The invalid element value
+     * @param {string} reason - Why the element is invalid
+     */
+    constructor(arrayField, index, value, reason) {
+        super(
+            `Invalid element at index ${index} in '${arrayField}': ${reason}`,
+            `${arrayField}[${index}]`,
+            value,
+            undefined
+        );
+        this.name = "InvalidArrayElementError";
+        this.arrayField = arrayField;
+        this.index = index;
+        this.reason = reason;
+    }
+}
+
+/**
+ * @param {unknown} object
+ * @returns {object is TryDeserializeError}
+ */
+function isTryDeserializeError(object) {
+    return object instanceof TryDeserializeError;
+}
+
+/**
+ * @param {unknown} object
+ * @returns {object is MissingFieldError}
+ */
+function isMissingFieldError(object) {
+    return object instanceof MissingFieldError;
+}
+
+/**
+ * @param {unknown} object
+ * @returns {object is InvalidTypeError}
+ */
+function isInvalidTypeError(object) {
+    return object instanceof InvalidTypeError;
+}
+
+/**
+ * @param {unknown} object
+ * @returns {object is InvalidValueError}
+ */
+function isInvalidValueError(object) {
+    return object instanceof InvalidValueError;
+}
+
+/**
+ * @param {unknown} object
+ * @returns {object is InvalidStructureError}
+ */
+function isInvalidStructureError(object) {
+    return object instanceof InvalidStructureError;
+}
+
+/**
+ * @param {unknown} object
+ * @returns {object is InvalidArrayElementError}
+ */
+function isInvalidArrayElementError(object) {
+    return object instanceof InvalidArrayElementError;
+}
+
+/**
+ * Factory for InvalidStructureError since it's used outside this module.
+ * @param {string} message
+ * @param {unknown} value
+ * @returns {InvalidStructureError}
+ */
+function makeInvalidStructureError(message, value) {
+    return new InvalidStructureError(message, value);
+}
+
+/**
  * @typedef Shortcut
  * @type {Object}
  * @property {RegexPattern} pattern - JavaScript regex pattern to match against input text
@@ -92,30 +258,33 @@ function deserialize(serializedConfig) {
 
 /**
  * Attempts to deserialize an unknown object into a Config.
- * Returns null if the object is not a valid SerializedConfig or if deserialization fails.
+ * Returns the Config on success, or a TryDeserializeError on failure.
  *
  * @param {unknown} obj - The object to attempt to deserialize
- * @returns {Config | null} - The deserialized Config or null if invalid
+ * @returns {Config | TryDeserializeError} - The deserialized Config or error object
  */
 function tryDeserialize(obj) {
     try {
         // Basic type and property checks
         if (!obj || typeof obj !== "object" || Array.isArray(obj)) {
-            return null;
+            return new InvalidStructureError(
+                "Object must be a non-null object and not an array",
+                obj
+            );
         }
 
         // Validate help field
-        if (!("help" in obj)) return null;
+        if (!("help" in obj)) return new MissingFieldError("help");
         const help = obj.help;
         if (typeof help !== "string") {
-            return null;
+            return new InvalidTypeError("help", help, "string");
         }
 
         // Validate shortcuts field
-        if (!("shortcuts" in obj)) return null;
+        if (!("shortcuts" in obj)) return new MissingFieldError("shortcuts");
         const shortcuts = obj.shortcuts;
         if (!Array.isArray(shortcuts)) {
-            return null;
+            return new InvalidTypeError("shortcuts", shortcuts, "array");
         }
 
         // Validate each shortcut
@@ -126,26 +295,26 @@ function tryDeserialize(obj) {
 
             // Each shortcut should be an array
             if (!Array.isArray(shortcut)) {
-                return null;
+                return new InvalidArrayElementError("shortcuts", i, shortcut, "expected array");
             }
 
             // Must have at least 2 elements (regex pattern and replacement)
             if (shortcut.length < 2) {
-                return null;
+                return new InvalidArrayElementError("shortcuts", i, shortcut, "must have at least 2 elements (pattern and replacement)");
             }
 
             // First two elements must be strings (regex pattern and replacement)
             const [pattern, replacement, description] = shortcut;
-            if (
-                typeof pattern !== "string" ||
-                typeof replacement !== "string"
-            ) {
-                return null;
+            if (typeof pattern !== "string") {
+                return new InvalidArrayElementError("shortcuts", i, shortcut, "first element (pattern) must be a string");
+            }
+            if (typeof replacement !== "string") {
+                return new InvalidArrayElementError("shortcuts", i, shortcut, "second element (replacement) must be a string");
             }
 
             // Third element (description) is optional but must be string if present
             if (description !== undefined && typeof description !== "string") {
-                return null;
+                return new InvalidArrayElementError("shortcuts", i, shortcut, "third element (description) must be a string if provided");
             }
 
             // Cast to proper type after validation
@@ -162,9 +331,13 @@ function tryDeserialize(obj) {
 
         // Deserialize and return
         return deserialize(validatedSerializedConfig);
-    } catch {
-        // Any error in deserialization returns null
-        return null;
+    } catch (error) {
+        // Wrap any other errors in InvalidValueError
+        return new InvalidValueError(
+            "unknown",
+            obj,
+            `Unexpected error during deserialization: ${error instanceof Error ? error.message : String(error)}`
+        );
     }
 }
 
@@ -174,4 +347,11 @@ module.exports = {
     tryDeserialize,
     serializeShortcut,
     deserializeShortcut,
+    makeInvalidStructureError,
+    isTryDeserializeError,
+    isMissingFieldError,
+    isInvalidTypeError,
+    isInvalidValueError,
+    isInvalidStructureError,
+    isInvalidArrayElementError,
 };

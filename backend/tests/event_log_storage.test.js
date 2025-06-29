@@ -8,6 +8,7 @@ const { targetPath } = require("../src/event/asset");
 const {
     stubEnvironment,
     stubLogger,
+    stubDatetime,
     stubEventLogRepository,
 } = require("./stubs");
 const { getMockedRootCapabilities } = require("./spies");
@@ -16,6 +17,7 @@ function getTestCapabilities() {
     const capabilities = getMockedRootCapabilities();
     stubEnvironment(capabilities);
     stubLogger(capabilities);
+    stubDatetime(capabilities);
     return capabilities;
 }
 

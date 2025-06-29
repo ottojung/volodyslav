@@ -44,6 +44,9 @@ module.exports = {
 
         // Ban non-null assertions (`foo!.bar`):
         "@typescript-eslint/no-non-null-assertion": "error",
+
+        // Disable prop-types validation since we use TypeScript
+        "react/prop-types": "off",
     },
     ignorePatterns: ["dist/", "node_modules/", "coverage/", "docs/build/"],
 };

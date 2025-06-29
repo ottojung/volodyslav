@@ -27,6 +27,7 @@ class FileAppenderError extends Error {
      */
     constructor(message, filePath) {
         super(message);
+        this.name = "FileAppenderError";
         this.filePath = filePath;
     }
 }

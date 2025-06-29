@@ -5,6 +5,7 @@ import { registerSW } from 'virtual:pwa-register';
 import App from './App.jsx';
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import Camera from './Camera/Camera.jsx';
+import DescriptionEntry from './DescriptionEntry/DescriptionEntry.jsx';
 import { ChakraProvider } from '@chakra-ui/react';
 
 const root = document.getElementById('root');
@@ -32,6 +33,7 @@ ReactDOM.createRoot(root).render(
           <Route path="/" element={<App />} />
           <Route path="/camera" element={<Camera />} />
           <Route path="/camera.html" element={<Camera />} />
+          <Route path="/describe" element={<DescriptionEntry />} />
           <Route path="*" element={<App />} />
         </Routes>
       </BrowserRouter>

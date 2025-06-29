@@ -1,6 +1,8 @@
+
 /**
- * @typedef {object} Capabilities
- * @property {import('../filesystem/reader').FileReader} reader
+ * Minimal capabilities needed for reading JSON stream files
+ * @typedef {object} JSONStreamCapabilities
+ * @property {import('../filesystem/reader').FileReader} reader - A file reader instance
  */
 
 const { parser } = require("stream-json");
@@ -8,7 +10,7 @@ const { streamValues } = require("stream-json/streamers/StreamValues");
 
 /**
  * Reads JSON objects from a file using streaming
- * @param {Capabilities} capabilities - The capabilities object
+ * @param {JSONStreamCapabilities} capabilities - The minimal capabilities needed for reading JSON streams
  * @param {import('../filesystem/file').ExistingFile} file - The JSON file to read
  * @returns {Promise<Array<unknown>>} Array of parsed JSON objects
  */

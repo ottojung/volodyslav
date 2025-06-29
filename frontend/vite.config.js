@@ -54,7 +54,7 @@ export default defineConfig({
     server: {
         proxy: {
             // Proxy upload API calls to backend.
-            "/api/upload": {
+            "/api": {
                 target: `http://localhost:${port}`,
                 changeOrigin: true,
             },

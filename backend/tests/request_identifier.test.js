@@ -8,12 +8,13 @@ const {
 } = require("../src/request_identifier");
 
 const { getMockedRootCapabilities } = require("./spies");
-const { stubEnvironment, stubLogger } = require("./stubs");
+const { stubEnvironment, stubLogger, stubDatetime } = require("./stubs");
 
 function getTestCapabilities() {
     const capabilities = getMockedRootCapabilities();
     stubEnvironment(capabilities);
     stubLogger(capabilities);
+    stubDatetime(capabilities);
     return capabilities;
 }
 
@@ -34,6 +35,19 @@ describe("Request Identifier", () => {
 
         it("throws error when request_identifier is empty", () => {
             const req = { query: { request_identifier: "" } };
+            expect(() => fromRequest(req)).toThrow(
+                "Missing request_identifier field"
+            );
+        });
+
+        it("trims whitespace from request_identifier", () => {
+            const req = { query: { request_identifier: "  test123  " } };
+            const reqId = fromRequest(req);
+            expect(reqId.identifier).toBe("test123");
+        });
+
+        it("throws error when request_identifier is only whitespace", () => {
+            const req = { query: { request_identifier: "   " } };
             expect(() => fromRequest(req)).toThrow(
                 "Missing request_identifier field"
             );
