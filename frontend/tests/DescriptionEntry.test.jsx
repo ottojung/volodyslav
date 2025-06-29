@@ -57,8 +57,16 @@ describe("DescriptionEntry", () => {
             ["dinner", "food [when evening]", "Quick dinner entry"],
             ["\\bcoffee\\b", "food [certainty 10] coffee", "Coffee shortcut"],
             ["\\btea\\b", "food [certainty 10] tea", "Tea shortcut"],
-            ["slept (\\d+)h", "sleep [duration $1 hours]", "Sleep duration shortcut"],
-            ["worked (\\d+)h", "work [duration $1 hours]", "Work duration shortcut"],
+            [
+                "slept (\\d+)h",
+                "sleep [duration $1 hours]",
+                "Sleep duration shortcut",
+            ],
+            [
+                "worked (\\d+)h",
+                "work [duration $1 hours]",
+                "Work duration shortcut",
+            ],
         ],
     };
 
@@ -67,7 +75,7 @@ describe("DescriptionEntry", () => {
         fetchRecentEntries.mockClear();
         submitEntry.mockClear();
         fetchConfig.mockClear();
-        
+
         // Reset camera mocks - use mockReset to clear all state
         generateRequestIdentifier.mockReset();
         navigateToCamera.mockReset();
@@ -86,19 +94,22 @@ describe("DescriptionEntry", () => {
         fetchConfig.mockResolvedValue(defaultMockConfig);
         // Set default camera mock implementations - ensure clean state
         generateRequestIdentifier.mockReturnValue("test-req-id-123");
-        checkCameraReturn.mockReturnValue({ isReturn: false, requestIdentifier: null });
+        checkCameraReturn.mockReturnValue({
+            isReturn: false,
+            requestIdentifier: null,
+        });
         restoreDescription.mockReturnValue(null);
         retrievePhotos.mockReturnValue([]);
-        
+
         // Clear sessionStorage to ensure clean state
-        Object.defineProperty(window, 'sessionStorage', {
+        Object.defineProperty(window, "sessionStorage", {
             value: {
                 getItem: jest.fn(),
                 setItem: jest.fn(),
                 removeItem: jest.fn(),
                 clear: jest.fn(),
             },
-            writable: true
+            writable: true,
         });
     });
 
@@ -168,7 +179,7 @@ describe("DescriptionEntry", () => {
     it("does not render config section when no config is available", async () => {
         // Override default mock to return null for this test
         fetchConfig.mockResolvedValue(null);
-        
+
         render(<DescriptionEntry />);
 
         // Wait for component to finish loading
@@ -177,16 +188,16 @@ describe("DescriptionEntry", () => {
         });
 
         // Should not show config section when no config is available
-        expect(screen.queryByText("Event Logging Help")).not.toBeInTheDocument();
+        expect(
+            screen.queryByText("Event Logging Help")
+        ).not.toBeInTheDocument();
         expect(screen.queryByText("shortcuts")).not.toBeInTheDocument();
     });
 
     it("renders config section with server data when available", async () => {
         const mockConfig = {
             help: "Custom help text",
-            shortcuts: [
-                ["test", "TEST", "Test shortcut"],
-            ],
+            shortcuts: [["test", "TEST", "Test shortcut"]],
         };
         fetchConfig.mockResolvedValue(mockConfig);
 
@@ -235,7 +246,11 @@ describe("DescriptionEntry", () => {
         fireEvent.click(logButton);
 
         await waitFor(() => {
-            expect(submitEntry).toHaveBeenCalledWith("test event", undefined, []);
+            expect(submitEntry).toHaveBeenCalledWith(
+                "test event",
+                undefined,
+                []
+            );
         });
     });
 
@@ -257,7 +272,11 @@ describe("DescriptionEntry", () => {
         fireEvent.keyUp(input, { key: "Enter", code: "Enter" });
 
         await waitFor(() => {
-            expect(submitEntry).toHaveBeenCalledWith("test event", undefined, []);
+            expect(submitEntry).toHaveBeenCalledWith(
+                "test event",
+                undefined,
+                []
+            );
         });
     });
 
@@ -390,7 +409,11 @@ describe("DescriptionEntry", () => {
         fireEvent.click(logButton);
 
         await waitFor(() => {
-            expect(submitEntry).toHaveBeenCalledWith("test event", undefined, []);
+            expect(submitEntry).toHaveBeenCalledWith(
+                "test event",
+                undefined,
+                []
+            );
         });
 
         // Input should not be cleared on error
@@ -606,7 +629,9 @@ describe("DescriptionEntry", () => {
         });
 
         // Should not show config section when no config is available
-        expect(screen.queryByText("Event Logging Help")).not.toBeInTheDocument();
+        expect(
+            screen.queryByText("Event Logging Help")
+        ).not.toBeInTheDocument();
         expect(screen.queryByText("shortcuts")).not.toBeInTheDocument();
     });
 
@@ -755,7 +780,11 @@ describe("DescriptionEntry", () => {
         fireEvent.click(logButton);
 
         await waitFor(() => {
-            expect(submitEntry).toHaveBeenCalledWith("test event", undefined, []);
+            expect(submitEntry).toHaveBeenCalledWith(
+                "test event",
+                undefined,
+                []
+            );
         });
 
         // Input should not be cleared on error
@@ -782,7 +811,11 @@ describe("DescriptionEntry", () => {
         fireEvent.click(logButton);
 
         await waitFor(() => {
-            expect(submitEntry).toHaveBeenCalledWith("test event", undefined, []);
+            expect(submitEntry).toHaveBeenCalledWith(
+                "test event",
+                undefined,
+                []
+            );
         });
     });
 
@@ -805,7 +838,11 @@ describe("DescriptionEntry", () => {
         fireEvent.keyUp(input, { key: "Enter", code: "Enter" });
 
         await waitFor(() => {
-            expect(submitEntry).toHaveBeenCalledWith("test event", undefined, []);
+            expect(submitEntry).toHaveBeenCalledWith(
+                "test event",
+                undefined,
+                []
+            );
         });
     });
 
@@ -880,7 +917,12 @@ describe("DescriptionEntry", () => {
         fireEvent.click(logButton);
 
         await waitFor(() => {
-            expect(submitEntry).toHaveBeenNthCalledWith(1, "first event", undefined, []);
+            expect(submitEntry).toHaveBeenNthCalledWith(
+                1,
+                "first event",
+                undefined,
+                []
+            );
             expect(input.value).toBe("");
         });
 
@@ -889,7 +931,12 @@ describe("DescriptionEntry", () => {
         fireEvent.click(logButton);
 
         await waitFor(() => {
-            expect(submitEntry).toHaveBeenNthCalledWith(2, "second event", undefined, []);
+            expect(submitEntry).toHaveBeenNthCalledWith(
+                2,
+                "second event",
+                undefined,
+                []
+            );
             expect(input.value).toBe("");
         });
 
@@ -941,7 +988,7 @@ describe("Camera Integration", () => {
         generateRequestIdentifier.mockReset();
         navigateToCamera.mockReset();
         checkCameraReturn.mockReset();
-        
+
         // Set specific mock values for this test
         generateRequestIdentifier.mockReturnValue("test-req-id-123");
         checkCameraReturn.mockReturnValue({ isReturn: false });
@@ -950,13 +997,19 @@ describe("Camera Integration", () => {
 
         // Wait for the component to settle
         await waitFor(() => {
-            expect(screen.getByPlaceholderText("Type your event description here...")).toBeInTheDocument();
+            expect(
+                screen.getByPlaceholderText(
+                    "Type your event description here..."
+                )
+            ).toBeInTheDocument();
         });
 
         const input = screen.getByPlaceholderText(
             "Type your event description here..."
         );
-        const takePhotosButton = screen.getByRole("button", { name: /take photos/i });
+        const takePhotosButton = screen.getByRole("button", {
+            name: /take photos/i,
+        });
 
         // Type a description
         const description = "Beautiful sunset at the beach";
@@ -967,236 +1020,279 @@ describe("Camera Integration", () => {
 
         // Should generate request identifier and navigate to camera
         expect(generateRequestIdentifier).toHaveBeenCalled();
-        expect(navigateToCamera).toHaveBeenCalledWith("test-req-id-123", description);
-        
+        expect(navigateToCamera).toHaveBeenCalledWith(
+            "test-req-id-123",
+            description
+        );
+
         // Should not call submitEntry since we're going to camera
         expect(submitEntry).not.toHaveBeenCalled();
     });
 
-        it("restores description when returning from camera", async () => {
-            // Mock returning from camera
-            checkCameraReturn.mockReturnValue({
-                isReturn: true,
-                requestIdentifier: "test-req-id-123"
-            });
-            restoreDescription.mockReturnValue("Take a photo [phone_take_photo] of the sunset");
-
-            render(<DescriptionEntry />);
-
-            await waitFor(() => {
-                expect(checkCameraReturn).toHaveBeenCalled();
-                expect(restoreDescription).toHaveBeenCalledWith("test-req-id-123");
-                expect(cleanupUrlParams).toHaveBeenCalled();
-            });
-
-            // The description should be restored
-            const input = screen.getByPlaceholderText(
-                "Type your event description here..."
-            );
-            expect(input.value).toBe("Take a photo [phone_take_photo] of the sunset");
-
-            // Should show photos attached indicator 
-            expect(screen.getByText(/Photos attached/)).toBeInTheDocument();
-        });
-
-        it("submits entry with photos when returning from camera", async () => {
-            // Reset and set up mocks for returning from camera
-            checkCameraReturn.mockReset();
-            restoreDescription.mockReset();
-            submitEntry.mockReset();
-            retrievePhotos.mockReset();
-            
-            // Mock returning from camera
-            checkCameraReturn.mockReturnValue({
-                isReturn: true,
-                requestIdentifier: "test-req-id-123"
-            });
-            restoreDescription.mockReturnValue("Take a photo [phone_take_photo] of the sunset");
-            
-            // Mock some photos being retrieved
-            const mockFile1 = new File(['fake content 1'], 'photo_01.jpeg', { type: 'image/jpeg' });
-            const mockFile2 = new File(['fake content 2'], 'photo_02.jpeg', { type: 'image/jpeg' });
-            retrievePhotos.mockReturnValue([mockFile1, mockFile2]);
-            
-            submitEntry.mockResolvedValue({
-                success: true,
-                entry: { input: "Take a photo [phone_take_photo] of the sunset" },
-            });
-
-            render(<DescriptionEntry />);
-
-            // Wait for the component to process the camera return
-            await waitFor(() => {
-                expect(restoreDescription).toHaveBeenCalledWith("test-req-id-123");
-            });
-
-            // Verify description is restored
-            const input = screen.getByPlaceholderText(
-                "Type your event description here..."
-            );
-            expect(input.value).toBe("Take a photo [phone_take_photo] of the sunset");
-
-            const logButton = screen.getByRole("button", { name: /log event/i });
-
-            // Click log event button to submit with photos
-            fireEvent.click(logButton);
-
-            await waitFor(() => {
-                // Should submit with request identifier for photos
-                expect(submitEntry).toHaveBeenCalledWith(
-                    "Take a photo [phone_take_photo] of the sunset",
-                    "test-req-id-123",
-                    [mockFile1, mockFile2]
-                );
-            });
-        });
-
-        it("does not navigate to camera for regular descriptions", async () => {
-            // Start fresh - explicitly reset all camera mocks for this test
-            generateRequestIdentifier.mockReset();
-            navigateToCamera.mockReset();
-            checkCameraReturn.mockReset();
-            
-            // Set specific mock values for this test
-            checkCameraReturn.mockReturnValue({ isReturn: false }); // Ensure no camera return state
-            
-            render(<DescriptionEntry />);
-
-            // Wait for the component to settle
-            await waitFor(() => {
-                expect(screen.getByPlaceholderText("Type your event description here...")).toBeInTheDocument();
-            });
-
-            const input = screen.getByPlaceholderText(
-                "Type your event description here..."
-            );
-            const logButton = screen.getByRole("button", { name: /log event/i });
-
-            // Type a regular description without camera trigger
-            const regularDescription = "Just had a great lunch";
-            fireEvent.change(input, { target: { value: regularDescription } });
-
-            // Click log event button
-            fireEvent.click(logButton);
-
-            await waitFor(() => {
-                // Should submit normally without camera and without request identifier
-                expect(submitEntry).toHaveBeenCalledWith(regularDescription, undefined, []);
-            });
-
-            // Should not navigate to camera
-            expect(navigateToCamera).not.toHaveBeenCalled();
-        });
-
-        it("preserves description text exactly as typed", async () => {
-            // Mock returning from camera
-            checkCameraReturn.mockReturnValue({
-                isReturn: true,
-                requestIdentifier: "test-req-id-123"
-            });
-            const originalDescription = "Meeting [phone_take_photo] with client about new project";
-            restoreDescription.mockReturnValue(originalDescription);
-            
-            // Mock some photos being retrieved
-            const mockFile = new File(['fake content'], 'photo_01.jpeg', { type: 'image/jpeg' });
-            retrievePhotos.mockReturnValue([mockFile]);
-
-            render(<DescriptionEntry />);
-
-            await waitFor(() => {
-                expect(restoreDescription).toHaveBeenCalledWith("test-req-id-123");
-            });
-
-            const input = screen.getByPlaceholderText(
-                "Type your event description here..."
-            );
-
-            // The description should be preserved exactly as typed
-            expect(input.value).toBe(originalDescription);
-
-            const logButton = screen.getByRole("button", { name: /log event/i });
-            fireEvent.click(logButton);
-
-            await waitFor(() => {
-                // Should submit with the exact original description and the photos
-                expect(submitEntry).toHaveBeenCalledWith(originalDescription, "test-req-id-123", [mockFile]);
-            });
-        });
-
-        it("take photos button works independently of description content", async () => {
-            // Reset and set up mocks specifically for this test
-            generateRequestIdentifier.mockReset();
-            navigateToCamera.mockReset();
-            submitEntry.mockReset();
-            checkCameraReturn.mockReset();
-            generateRequestIdentifier.mockReturnValue("test-req-id-123");
-            checkCameraReturn.mockReturnValue({ isReturn: false, requestIdentifier: null });
-            
-            render(<DescriptionEntry />);
-
-            // Wait for the component to settle
-            await waitFor(() => {
-                expect(screen.getByPlaceholderText("Type your event description here...")).toBeInTheDocument();
-            });
-
-            const input = screen.getByPlaceholderText(
-                "Type your event description here..."
-            );
-            const takePhotosButton = screen.getByRole("button", { name: /take photos/i });
-
-            // Type a regular description (no camera trigger pattern)
-            const description = "Regular meeting notes";
-            fireEvent.change(input, { target: { value: description } });
-
-            // The take photos button should still work
-            expect(takePhotosButton).toBeEnabled();
-            
-            // Click take photos button
-            fireEvent.click(takePhotosButton);
-
-            // Should navigate to camera with the description stored
-            expect(generateRequestIdentifier).toHaveBeenCalled();
-            expect(navigateToCamera).toHaveBeenCalledWith("test-req-id-123", description);
-            
-            // Should not submit the entry yet
-            expect(submitEntry).not.toHaveBeenCalled();
-        });
-    });
-    
-    it("ensures photos are submitted with correct field name to backend", async () => {
-        // This is a regression test for the field name mismatch bug
-        // Backend expects files under "files" field, not "photos"
-        
+    it("restores description when returning from camera", async () => {
         // Mock returning from camera
         checkCameraReturn.mockReturnValue({
             isReturn: true,
-            requestIdentifier: "test-field-name-123"
+            requestIdentifier: "test-req-id-123",
         });
-        
-        restoreDescription.mockReturnValue("Test with photos");
-        
-        // Mock photos being retrieved
-        const mockFile = new File(['test'], 'photo_01.jpeg', { type: 'image/jpeg' });
-        retrievePhotos.mockReturnValue([mockFile]);
-        
+        restoreDescription.mockReturnValue(
+            "Take a photo [phone_take_photo] of the sunset"
+        );
+
         render(<DescriptionEntry />);
-        
-        // Wait for camera return processing
+
         await waitFor(() => {
-            expect(restoreDescription).toHaveBeenCalledWith("test-field-name-123");
+            expect(checkCameraReturn).toHaveBeenCalled();
+            expect(restoreDescription).toHaveBeenCalledWith("test-req-id-123");
+            expect(cleanupUrlParams).toHaveBeenCalled();
         });
-        
-        // Submit entry
-        const submitButton = screen.getByRole("button", { name: /log event/i });
-        fireEvent.click(submitButton);
-        
-        // Verify API is called with correct parameters
+
+        // The description should be restored
+        const input = screen.getByPlaceholderText(
+            "Type your event description here..."
+        );
+        expect(input.value).toBe(
+            "Take a photo [phone_take_photo] of the sunset"
+        );
+
+        // Should show photos attached indicator
+        expect(screen.getByText(/Photos attached/)).toBeInTheDocument();
+    });
+
+    it("submits entry with photos when returning from camera", async () => {
+        // Reset and set up mocks for returning from camera
+        checkCameraReturn.mockReset();
+        restoreDescription.mockReset();
+        submitEntry.mockReset();
+        retrievePhotos.mockReset();
+
+        // Mock returning from camera
+        checkCameraReturn.mockReturnValue({
+            isReturn: true,
+            requestIdentifier: "test-req-id-123",
+        });
+        restoreDescription.mockReturnValue(
+            "Take a photo [phone_take_photo] of the sunset"
+        );
+
+        // Mock some photos being retrieved
+        const mockFile1 = new File(["fake content 1"], "photo_01.jpeg", {
+            type: "image/jpeg",
+        });
+        const mockFile2 = new File(["fake content 2"], "photo_02.jpeg", {
+            type: "image/jpeg",
+        });
+        retrievePhotos.mockReturnValue([mockFile1, mockFile2]);
+
+        submitEntry.mockResolvedValue({
+            success: true,
+            entry: { input: "Take a photo [phone_take_photo] of the sunset" },
+        });
+
+        render(<DescriptionEntry />);
+
+        // Wait for the component to process the camera return
         await waitFor(() => {
+            expect(restoreDescription).toHaveBeenCalledWith("test-req-id-123");
+        });
+
+        // Verify description is restored
+        const input = screen.getByPlaceholderText(
+            "Type your event description here..."
+        );
+        expect(input.value).toBe(
+            "Take a photo [phone_take_photo] of the sunset"
+        );
+
+        const logButton = screen.getByRole("button", { name: /log event/i });
+
+        // Click log event button to submit with photos
+        fireEvent.click(logButton);
+
+        await waitFor(() => {
+            // Should submit with request identifier for photos
             expect(submitEntry).toHaveBeenCalledWith(
-                "Test with photos",
-                "test-field-name-123", 
+                "Take a photo [phone_take_photo] of the sunset",
+                "test-req-id-123",
+                [mockFile1, mockFile2]
+            );
+        });
+    });
+
+    it("does not navigate to camera for regular descriptions", async () => {
+        // Start fresh - explicitly reset all camera mocks for this test
+        generateRequestIdentifier.mockReset();
+        navigateToCamera.mockReset();
+        checkCameraReturn.mockReset();
+
+        // Set specific mock values for this test
+        checkCameraReturn.mockReturnValue({ isReturn: false }); // Ensure no camera return state
+
+        render(<DescriptionEntry />);
+
+        // Wait for the component to settle
+        await waitFor(() => {
+            expect(
+                screen.getByPlaceholderText(
+                    "Type your event description here..."
+                )
+            ).toBeInTheDocument();
+        });
+
+        const input = screen.getByPlaceholderText(
+            "Type your event description here..."
+        );
+        const logButton = screen.getByRole("button", { name: /log event/i });
+
+        // Type a regular description without camera trigger
+        const regularDescription = "Just had a great lunch";
+        fireEvent.change(input, { target: { value: regularDescription } });
+
+        // Click log event button
+        fireEvent.click(logButton);
+
+        await waitFor(() => {
+            // Should submit normally without camera and without request identifier
+            expect(submitEntry).toHaveBeenCalledWith(
+                regularDescription,
+                undefined,
+                []
+            );
+        });
+
+        // Should not navigate to camera
+        expect(navigateToCamera).not.toHaveBeenCalled();
+    });
+
+    it("preserves description text exactly as typed", async () => {
+        // Mock returning from camera
+        checkCameraReturn.mockReturnValue({
+            isReturn: true,
+            requestIdentifier: "test-req-id-123",
+        });
+        const originalDescription =
+            "Meeting [phone_take_photo] with client about new project";
+        restoreDescription.mockReturnValue(originalDescription);
+
+        // Mock some photos being retrieved
+        const mockFile = new File(["fake content"], "photo_01.jpeg", {
+            type: "image/jpeg",
+        });
+        retrievePhotos.mockReturnValue([mockFile]);
+
+        render(<DescriptionEntry />);
+
+        await waitFor(() => {
+            expect(restoreDescription).toHaveBeenCalledWith("test-req-id-123");
+        });
+
+        const input = screen.getByPlaceholderText(
+            "Type your event description here..."
+        );
+
+        // The description should be preserved exactly as typed
+        expect(input.value).toBe(originalDescription);
+
+        const logButton = screen.getByRole("button", { name: /log event/i });
+        fireEvent.click(logButton);
+
+        await waitFor(() => {
+            // Should submit with the exact original description and the photos
+            expect(submitEntry).toHaveBeenCalledWith(
+                originalDescription,
+                "test-req-id-123",
                 [mockFile]
             );
         });
+    });
+
+    it("take photos button works independently of description content", async () => {
+        // Reset and set up mocks specifically for this test
+        generateRequestIdentifier.mockReset();
+        navigateToCamera.mockReset();
+        submitEntry.mockReset();
+        checkCameraReturn.mockReset();
+        generateRequestIdentifier.mockReturnValue("test-req-id-123");
+        checkCameraReturn.mockReturnValue({
+            isReturn: false,
+            requestIdentifier: null,
+        });
+
+        render(<DescriptionEntry />);
+
+        // Wait for the component to settle
+        await waitFor(() => {
+            expect(
+                screen.getByPlaceholderText(
+                    "Type your event description here..."
+                )
+            ).toBeInTheDocument();
+        });
+
+        const input = screen.getByPlaceholderText(
+            "Type your event description here..."
+        );
+        const takePhotosButton = screen.getByRole("button", {
+            name: /take photos/i,
+        });
+
+        // Type a regular description (no camera trigger pattern)
+        const description = "Regular meeting notes";
+        fireEvent.change(input, { target: { value: description } });
+
+        // The take photos button should still work
+        expect(takePhotosButton).toBeEnabled();
+
+        // Click take photos button
+        fireEvent.click(takePhotosButton);
+
+        // Should navigate to camera with the description stored
+        expect(generateRequestIdentifier).toHaveBeenCalled();
+        expect(navigateToCamera).toHaveBeenCalledWith(
+            "test-req-id-123",
+            description
+        );
+
+        // Should not submit the entry yet
+        expect(submitEntry).not.toHaveBeenCalled();
+    });
+});
+
+it("ensures photos are submitted with correct field name to backend", async () => {
+    // This is a regression test for the field name mismatch bug
+    // Backend expects files under "files" field, not "photos"
+
+    // Mock returning from camera
+    checkCameraReturn.mockReturnValue({
+        isReturn: true,
+        requestIdentifier: "test-field-name-123",
+    });
+
+    restoreDescription.mockReturnValue("Test with photos");
+
+    // Mock photos being retrieved
+    const mockFile = new File(["test"], "photo_01.jpeg", {
+        type: "image/jpeg",
+    });
+    retrievePhotos.mockReturnValue([mockFile]);
+
+    render(<DescriptionEntry />);
+
+    // Wait for camera return processing
+    await waitFor(() => {
+        expect(restoreDescription).toHaveBeenCalledWith("test-field-name-123");
+    });
+
+    // Submit entry
+    const submitButton = screen.getByRole("button", { name: /log event/i });
+    fireEvent.click(submitButton);
+
+    // Verify API is called with correct parameters
+    await waitFor(() => {
+        expect(submitEntry).toHaveBeenCalledWith(
+            "Test with photos",
+            "test-field-name-123",
+            [mockFile]
+        );
     });
 });
