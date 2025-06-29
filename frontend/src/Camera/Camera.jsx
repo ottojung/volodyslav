@@ -122,8 +122,12 @@ export default function Camera() {
                     (track) => track.stop()
                 );
             }
+            // Clean up object URL to prevent memory leak
+            if (previewUrl) {
+                URL.revokeObjectURL(previewUrl);
+            }
         };
-    }, []);
+    }, [previewUrl]);
 
     /**
      * Adds the current blob to the photos list
