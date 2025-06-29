@@ -5,6 +5,7 @@ const {
     makeDirectory,
     markDone,
     isDone,
+    MissingRequestIdentifierError,
 } = require("../src/request_identifier");
 
 const { getMockedRootCapabilities } = require("./spies");
@@ -28,16 +29,12 @@ describe("Request Identifier", () => {
 
         it("throws error when request_identifier is missing", () => {
             const req = { query: {} };
-            expect(() => fromRequest(req)).toThrow(
-                "Missing request_identifier field"
-            );
+            expect(() => fromRequest(req)).toThrow(MissingRequestIdentifierError);
         });
 
         it("throws error when request_identifier is empty", () => {
             const req = { query: { request_identifier: "" } };
-            expect(() => fromRequest(req)).toThrow(
-                "Missing request_identifier field"
-            );
+            expect(() => fromRequest(req)).toThrow(MissingRequestIdentifierError);
         });
 
         it("trims whitespace from request_identifier", () => {
@@ -48,9 +45,7 @@ describe("Request Identifier", () => {
 
         it("throws error when request_identifier is only whitespace", () => {
             const req = { query: { request_identifier: "   " } };
-            expect(() => fromRequest(req)).toThrow(
-                "Missing request_identifier field"
-            );
+            expect(() => fromRequest(req)).toThrow(MissingRequestIdentifierError);
         });
     });
 
