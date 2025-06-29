@@ -27,6 +27,48 @@ const randomModule = require("./random");
  */
 
 /**
+ * Error thrown when a request identifier is missing from the request.
+ */
+class MissingRequestIdentifierError extends Error {
+    constructor() {
+        super("Missing request_identifier field");
+        this.name = "MissingRequestIdentifierError";
+    }
+}
+
+/**
+ * Type guard for MissingRequestIdentifierError.
+ * @param {unknown} object
+ * @returns {object is MissingRequestIdentifierError}
+ */
+function isMissingRequestIdentifierError(object) {
+    return object instanceof MissingRequestIdentifierError;
+}
+
+/**
+ * Error thrown when a request identifier is invalid.
+ */
+class InvalidRequestIdentifierError extends Error {
+    /**
+     * @param {string} identifier
+     */
+    constructor(identifier) {
+        super("Request identifier must be a non-empty string");
+        this.name = "InvalidRequestIdentifierError";
+        this.identifier = identifier;
+    }
+}
+
+/**
+ * Type guard for InvalidRequestIdentifierError.
+ * @param {unknown} object
+ * @returns {object is InvalidRequestIdentifierError}
+ */
+function isInvalidRequestIdentifierError(object) {
+    return object instanceof InvalidRequestIdentifierError;
+}
+
+/**
  * Minimal capabilities needed for creating request directories
  * @typedef {object} MakeDirectoryCapabilities
  * @property {Creator} creator - A file system creator instance
@@ -50,11 +92,11 @@ class RequestIdentifierClass {
      */
     constructor(identifier) {
         if (typeof identifier !== 'string' || identifier.trim() === '') {
-            throw new Error("Request identifier must be a non-empty string");
+            throw new InvalidRequestIdentifierError(String(identifier));
         }
         this.identifier = identifier;
         if (this.__brand !== undefined) {
-            throw new Error("RequestIdentifier is a nominal type and should not be instantiated directly");
+            throw new InvalidRequestIdentifierError(String(identifier));
         }
     }
 }
@@ -72,7 +114,7 @@ function fromRequest(req) {
     const reqId = query['request_identifier'];
     const reqIdStr = String(reqId).trim();
     if (reqId === null || reqId === undefined || reqIdStr === '') {
-        throw new Error("Missing request_identifier field");
+        throw new MissingRequestIdentifierError();
     }
     return new RequestIdentifierClass(reqIdStr);
 }
@@ -134,4 +176,8 @@ module.exports = {
     markDone,
     isDone,
     makeDirectory,
+    MissingRequestIdentifierError,
+    isMissingRequestIdentifierError,
+    InvalidRequestIdentifierError,
+    isInvalidRequestIdentifierError,
 };
