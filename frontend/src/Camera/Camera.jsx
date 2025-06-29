@@ -174,9 +174,18 @@ export default function Camera() {
             // Store photos in sessionStorage for the describe page to retrieve
             const photosData = await Promise.all(
                 allPhotos.map(async (photo) => {
-                    // Convert blob to base64 for storage
+                    // Convert blob to base64 for storage using a more memory-efficient approach
                     const arrayBuffer = await photo.blob.arrayBuffer();
-                    const base64 = btoa(String.fromCharCode(...new Uint8Array(arrayBuffer)));
+                    const uint8Array = new Uint8Array(arrayBuffer);
+                    
+                    // Convert to base64 in chunks to avoid stack overflow
+                    let base64 = '';
+                    const chunkSize = 8192; // Process in 8KB chunks
+                    for (let i = 0; i < uint8Array.length; i += chunkSize) {
+                        const chunk = uint8Array.subarray(i, i + chunkSize);
+                        base64 += btoa(String.fromCharCode.apply(null, Array.from(chunk)));
+                    }
+                    
                     return {
                         name: photo.name,
                         data: base64,
@@ -187,16 +196,6 @@ export default function Camera() {
             
             // Store with request identifier as key
             sessionStorage.setItem(`photos_${request_identifier}`, JSON.stringify(photosData));
-            
-            toast({
-                title: 'Photos ready',
-                status: 'success',
-                duration: 3000,
-                isClosable: true,
-                position: 'top',
-            });
-            setPhotos([]);
-            setCurrentBlob(null);
             
             toast({
                 title: 'Photos ready',
