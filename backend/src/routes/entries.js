@@ -201,49 +201,15 @@ function handleEntryError(error, capabilities, reqId) {
  */
 async function handleEntryPost(req, res, capabilities, reqId) {
     try {
-        console.log("🔴 BACKEND DEBUG: handleEntryPost called", {
-            requestId: reqId.identifier,
-            hasBody: !!req.body,
-            hasFiles: !!req.files,
-            bodyKeys: req.body ? Object.keys(req.body) : [],
-            filesType: typeof req.files,
-            filesArray: Array.isArray(req.files),
-            filesLength: Array.isArray(req.files) ? req.files.length : 'N/A',
-        });
-        
         // Handle req.files - multer can provide an object or array
         /** @type {Express.Multer.File[]} */
         let files = [];
         if (Array.isArray(req.files)) {
             files = req.files;
-            console.log("🔴 BACKEND DEBUG: req.files is array", {
-                fileCount: files.length,
-                fileNames: files.map(f => f.originalname),
-                fileSizes: files.map(f => f.size),
-            });
         } else if (req.files && typeof req.files === 'object') {
             // If req.files is an object, it might be { files: [file1, file2] }
-            console.log("🔴 BACKEND DEBUG: req.files is object", {
-                keys: Object.keys(req.files),
-                files: req.files['files'],
-            });
             files = req.files['files'] || [];
-        } else {
-            console.log("🔴 BACKEND DEBUG: req.files is neither array nor object", {
-                reqFiles: req.files,
-                type: typeof req.files,
-            });
         }
-        
-        console.log("🔴 BACKEND DEBUG: Final files array", {
-            fileCount: files.length,
-            files: files.map(f => ({
-                originalname: f.originalname,
-                mimetype: f.mimetype,
-                size: f.size,
-                fieldname: f.fieldname,
-            })),
-        });
 
         // New API: rawInput
         const { rawInput } = req.body;

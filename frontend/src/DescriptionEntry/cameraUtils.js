@@ -77,42 +77,15 @@ export const restoreDescription = (requestIdentifier) => {
  */
 export const retrievePhotos = async (requestIdentifier) => {
     const key = `photos_${requestIdentifier}`;
-    
-    console.log("🟡 RETRIEVE DEBUG: Starting photo retrieval", {
-        requestIdentifier,
-        key,
-    });
-    
     const stored = sessionStorage.getItem(key);
-    
-    console.log("🟡 RETRIEVE DEBUG: SessionStorage lookup", {
-        key,
-        found: !!stored,
-        dataSize: stored ? stored.length : 0,
-        firstChars: stored ? stored.substring(0, 100) + '...' : null,
-    });
-    
     if (!stored) {
-        console.log("🟡 RETRIEVE DEBUG: No photos found in sessionStorage");
         return [];
     }
     
     try {
         const photosData = JSON.parse(stored);
         
-        console.log("🟡 RETRIEVE DEBUG: Parsed photos data", {
-            photoCount: photosData.length,
-            photoNames: photosData.map(/** @param {{name: string, data: string, type: string}} p */ p => p.name),
-            photoSizes: photosData.map(/** @param {{name: string, data: string, type: string}} p */ p => p.data.length),
-        });
-        
         const files = await Promise.all(photosData.map(async (/** @type {{name: string, data: string, type: string}} */ photo) => {
-            console.log("🟡 RETRIEVE DEBUG: Converting photo to File", {
-                name: photo.name,
-                type: photo.type,
-                base64Size: photo.data.length,
-            });
-            
             // Convert base64 back to blob, then to File
             // Create a data URL and fetch it to get the blob
             const dataUrl = `data:${photo.type};base64,${photo.data}`;
@@ -122,28 +95,14 @@ export const retrievePhotos = async (requestIdentifier) => {
             // Create File object from blob
             const file = new File([blob], photo.name, { type: photo.type });
             
-            console.log("🟡 RETRIEVE DEBUG: Created File object", {
-                name: file.name,
-                size: file.size,
-                type: file.type,
-            });
-            
             return file;
         }));
         
-        console.log("🟡 RETRIEVE DEBUG: All files converted", {
-            fileCount: files.length,
-            totalSize: files.reduce(/** @param {number} sum @param {File} f */ (sum, f) => sum + f.size, 0),
-        });
-        
         // Clean up the stored photos
         sessionStorage.removeItem(key);
-        
-        console.log("🟡 RETRIEVE DEBUG: Cleaned up sessionStorage");
-        
         return files;
     } catch (error) {
-        console.error('🔴 RETRIEVE DEBUG: Error retrieving photos:', error);
+        console.error('Error retrieving photos:', error);
         sessionStorage.removeItem(key);
         return [];
     }
