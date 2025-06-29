@@ -16,7 +16,7 @@ mkdir -p -- "$PREFIX"/share/volodyslav
 
 if command -v rsync >/dev/null 2>&1
 then
-    COPY="rsync --recursive --partial --delete"
+    COPY="rsync --recursive --partial --delete --links"
 else
     COPY="cp -r -T"
     rm -rf -- "$PREFIX"/share/volodyslav/source
