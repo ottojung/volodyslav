@@ -53,14 +53,6 @@ export default function DescriptionEntry() {
                     <Text {...TEXT_STYLES.subtitle}>What happened?</Text>
                 </Box>
 
-                {/* Configuration Section */}
-                <ConfigSection
-                    onShortcutClick={handleShortcutClick}
-                    currentInput={description}
-                    recentEntries={recentEntries}
-                    isLoadingEntries={isLoadingEntries}
-                />
-
                 {/* Main Input Form */}
                 <FormInputSection
                     description={description}
@@ -72,6 +64,14 @@ export default function DescriptionEntry() {
                     isSubmitting={isSubmitting}
                     inputRef={inputRef}
                     hasPhotos={!!pendingRequestIdentifier}
+                />
+
+                {/* Configuration Section */}
+                <ConfigSection
+                    onShortcutClick={handleShortcutClick}
+                    currentInput={description}
+                    recentEntries={recentEntries}
+                    isLoadingEntries={isLoadingEntries}
                 />
             </VStack>
         </Container>
