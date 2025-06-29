@@ -95,4 +95,3 @@ function isWorkingRepositoryError(object) {
 - Add comprehensive JSDoc documentation for new functions
 - Write tests for new functionality
 - Use the established error handling patterns
-- Respect the monorepo structure with separate backend/frontend packages

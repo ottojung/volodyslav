@@ -118,5 +118,3 @@ When working on a request from start to finish:
 - Add comprehensive JSDoc documentation for new functions
 - Write tests for new functionality
 - Use the established error handling patterns
-- Respect the monorepo structure with separate backend/frontend packages
-- Always verify your changes don't break existing functionality
