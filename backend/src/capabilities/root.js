@@ -19,6 +19,7 @@
 /** @typedef {import('../schedule').Scheduler} Scheduler */
 /** @typedef {import('../ai/transcription').AITranscription} AITranscription */
 /** @typedef {import('../datetime').Datetime} Datetime */
+/** @typedef {import('../exiter').Exiter} Exiter */
 
 
 /**
@@ -39,6 +40,7 @@
  * @property {Scheduler} scheduler - A scheduler instance.
  * @property {AITranscription} aiTranscription - An AI transcription instance.
  * @property {Datetime} datetime - Datetime utilities.
+ * @property {Exiter} exiter - Process exiting capability.
  */
 
 const memconst = require("../memconst");
@@ -59,6 +61,7 @@ const notifierCapability = require("../notifications");
 const schedulerCapability = require("../schedule");
 const aiTranscriptionCapability = require("../ai/transcription");
 const datetimeCapability = require("../datetime");
+const exiterCapability = require("../exiter");
 
 /**
  * This structure collects maximum capabilities that any part of Volodyslav can access.
@@ -87,6 +90,7 @@ const make = memconst(() => {
         notifier: notifierCapability.make(),
         scheduler: schedulerCapability.make(),
         aiTranscription: aiTranscriptionCapability.make({ environment }),
+        exiter: exiterCapability.make(),
     };
 
     return ret;
