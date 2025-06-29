@@ -34,6 +34,7 @@ class WorkingRepositoryError extends Error {
      */
     constructor(message, repositoryPath) {
         super(message);
+        this.name = "WorkingRepositoryError";
         this.repositoryPath = repositoryPath;
     }
 }

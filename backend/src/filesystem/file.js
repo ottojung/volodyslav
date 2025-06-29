@@ -14,6 +14,7 @@ class FileCreatorError extends Error {
      */
     constructor(message, filePath) {
         super(message);
+        this.name = "FileCreatorError";
         this.filePath = filePath;
     }
 }

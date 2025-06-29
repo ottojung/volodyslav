@@ -26,6 +26,7 @@ class FileDeleterError extends Error {
      */
     constructor(message, filePath) {
         super(message);
+        this.name = "FileDeleterError";
         this.filePath = filePath;
     }
 }
@@ -45,6 +46,7 @@ class FileNotFoundError extends Error {
      */
     constructor(filePath) {
         super(`File not found: ${filePath}`);
+        this.name = "FileNotFoundError";
         this.filePath = filePath;
     }
 }

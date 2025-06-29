@@ -24,6 +24,7 @@ class ReaderError extends Error {
      */
     constructor(message, filePath) {
         super(message);
+        this.name = "ReaderError";
         this.filePath = filePath;
     }
 }

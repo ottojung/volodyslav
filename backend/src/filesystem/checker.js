@@ -32,6 +32,7 @@ class FileCheckerError extends Error {
      */
     constructor(message, filePath) {
         super(message);
+        this.name = "FileCheckerError";
         this.filePath = filePath;
     }
 }

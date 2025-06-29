@@ -23,6 +23,7 @@ class DirScannerError extends Error {
      */
     constructor(message, dirPath) {
         super(message);
+        this.name = "DirScannerError";
         this.dirPath = dirPath;
     }
 }
