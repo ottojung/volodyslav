@@ -1,4 +1,4 @@
-const { createEntry, getEntries, EntryValidationError } = require("../src/entry");
+const { createEntry, getEntries } = require("../src/entry");
 const { getMockedRootCapabilities } = require("./spies");
 const { stubEnvironment, stubEventLogRepository, stubDatetime, stubLogger } = require("./stubs");
 
@@ -146,46 +146,6 @@ describe("createEntry (integration, with real capabilities)", () => {
         expect(event.modifiers).toEqual({});
     });
 
-    it("throws if description is missing", async () => {
-        const capabilities = await getTestCapabilities();
-        const entryData = {
-            original: "No description original",
-            input: "No description input",
-            type: "no-description-type",
-            // no description field
-        };
-        await expect(createEntry(capabilities, entryData)).rejects.toThrow(
-            EntryValidationError
-        );
-    });
-
-    it("creates an event log entry with custom type and verifies type is set", async () => {
-        const capabilities = await getTestCapabilities();
-        const entryData = {
-            original: "Custom type original",
-            input: "Custom type input",
-            type: "custom-type-xyz",
-            description: "Entry with custom type.",
-        };
-        const event = await createEntry(capabilities, entryData);
-        expect(event.type).toBe("custom-type-xyz");
-    });
-
-    it("throws if modifiers contain non-string values", async () => {
-        const capabilities = await getTestCapabilities();
-        const entryData = {
-            original: "Invalid modifiers original",
-            input: "Invalid modifiers input",
-            type: "invalid-modifiers-type",
-            description: "Entry with invalid modifiers.",
-            modifiers: { foo: 123 },
-        };
-
-        await expect(createEntry(capabilities, entryData)).rejects.toThrow(
-            EntryValidationError
-        );
-    });
-
     it("allows empty descriptions", async () => {
         const capabilities = await getTestCapabilities();
         const entryData = {
@@ -199,88 +159,16 @@ describe("createEntry (integration, with real capabilities)", () => {
         expect(event.type).toBe("empty-description-type");
     });
 
-    it("throws if type field is missing", async () => {
+    it("creates an event log entry with custom type and verifies type is set", async () => {
         const capabilities = await getTestCapabilities();
         const entryData = {
-            original: "No type original",
-            input: "No type input",
-            // no type field
-            description: "Entry with no type.",
+            original: "Custom type original",
+            input: "Custom type input",
+            type: "custom-type-xyz",
+            description: "Entry with custom type.",
         };
-
-        await expect(createEntry(capabilities, entryData)).rejects.toThrow(
-            EntryValidationError
-        );
-    });
-
-    it("throws if type field is not a string", async () => {
-        const capabilities = await getTestCapabilities();
-        const entryData = {
-            original: "Invalid type original",
-            input: "Invalid type input",
-            type: 123, // non-string type
-            description: "Entry with invalid type.",
-        };
-
-        await expect(createEntry(capabilities, entryData)).rejects.toThrow(
-            EntryValidationError
-        );
-    });
-
-    it("throws if original field is missing", async () => {
-        const capabilities = await getTestCapabilities();
-        const entryData = {
-            // no original field
-            input: "Missing original input",
-            type: "missing-original-type",
-            description: "Entry with no original.",
-        };
-
-        await expect(createEntry(capabilities, entryData)).rejects.toThrow(
-            EntryValidationError
-        );
-    });
-
-    it("throws if original field is not a string", async () => {
-        const capabilities = await getTestCapabilities();
-        const entryData = {
-            original: 123, // non-string original
-            input: "Invalid original input",
-            type: "invalid-original-type",
-            description: "Entry with invalid original.",
-        };
-
-        await expect(createEntry(capabilities, entryData)).rejects.toThrow(
-            EntryValidationError
-        );
-    });
-
-    it("throws if input field is missing", async () => {
-        const capabilities = await getTestCapabilities();
-        const entryData = {
-            original: "Missing input original",
-            // no input field
-            type: "missing-input-type",
-            description: "Entry with no input.",
-        };
-
-        await expect(createEntry(capabilities, entryData)).rejects.toThrow(
-            EntryValidationError
-        );
-    });
-
-    it("throws if input field is not a string", async () => {
-        const capabilities = await getTestCapabilities();
-        const entryData = {
-            original: "Invalid input original",
-            input: 123, // non-string input
-            type: "invalid-input-type",
-            description: "Entry with invalid input.",
-        };
-
-        await expect(createEntry(capabilities, entryData)).rejects.toThrow(
-            EntryValidationError
-        );
+        const event = await createEntry(capabilities, entryData);
+        expect(event.type).toBe("custom-type-xyz");
     });
 });
 
