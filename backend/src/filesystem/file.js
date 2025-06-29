@@ -49,7 +49,7 @@ class ExistingFileClass {
     constructor(path) {
         this.path = path;
         if (this.__brand !== undefined) {
-            throw new Error();
+            throw new Error("ExistingFile is a nominal type and should not be instantiated directly");
         }
     }
 }

@@ -54,7 +54,7 @@ class RequestIdentifierClass {
         }
         this.identifier = identifier;
         if (this.__brand !== undefined) {
-            throw new Error();
+            throw new Error("RequestIdentifier is a nominal type and should not be instantiated directly");
         }
     }
 }

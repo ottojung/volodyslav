@@ -33,7 +33,7 @@ class AssetClass {
         this.event = event;
         this.file = file;
         if (this.__brand !== undefined) {
-            throw new Error();
+            throw new Error("Asset is a nominal type and should not be instantiated directly");
         }
     }
 }
