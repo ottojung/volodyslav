@@ -198,6 +198,34 @@ describe("createEntry (integration, with real capabilities)", () => {
         expect(event.description).toBe("");
         expect(event.type).toBe("empty-description-type");
     });
+
+    it("throws if type field is missing", async () => {
+        const capabilities = await getTestCapabilities();
+        const entryData = {
+            original: "No type original",
+            input: "No type input",
+            // no type field
+            description: "Entry with no type.",
+        };
+
+        await expect(createEntry(capabilities, entryData)).rejects.toThrow(
+            EntryValidationError
+        );
+    });
+
+    it("throws if type field is not a string", async () => {
+        const capabilities = await getTestCapabilities();
+        const entryData = {
+            original: "Invalid type original",
+            input: "Invalid type input",
+            type: 123, // non-string type
+            description: "Entry with invalid type.",
+        };
+
+        await expect(createEntry(capabilities, entryData)).rejects.toThrow(
+            EntryValidationError
+        );
+    });
 });
 
 describe("getEntries pagination validation", () => {

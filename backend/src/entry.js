@@ -92,6 +92,14 @@ async function createEntry(capabilities, entryData, files = []) {
         throw new EntryValidationError("description field must be a string");
     }
 
+    if (entryData.type === undefined) {
+        throw new EntryValidationError("type field is missing");
+    }
+    
+    if (typeof entryData.type !== "string") {
+        throw new EntryValidationError("type field must be a string");
+    }
+
     if (entryData.modifiers !== undefined) {
         for (const [, v] of Object.entries(entryData.modifiers)) {
             if (typeof v !== "string") {
