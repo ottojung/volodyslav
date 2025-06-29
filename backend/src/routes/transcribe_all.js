@@ -52,8 +52,7 @@ async function handleTranscribeAllRequest(capabilities, req, res) {
         });
     }
 
-    /** @type {any} */
-    const query = req.query;
+    const query = req.query || {};
     const rawDir = query["input_dir"];
     capabilities.logger.logInfo(
         {

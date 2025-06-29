@@ -317,10 +317,8 @@ function tryDeserialize(obj) {
                 return new InvalidArrayElementError("shortcuts", i, shortcut, "third element (description) must be a string if provided");
             }
 
-            // Cast to proper type after validation
-            validatedShortcuts.push(
-                /** @type {SerializedShortcut} */ (shortcut)
-            );
+            // Build validated shortcut after validation
+            validatedShortcuts.push([pattern, replacement, description]);
         }
 
         // Create validated SerializedConfig object

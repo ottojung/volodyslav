@@ -39,8 +39,7 @@ const { everyHour } = require("../schedule/tasks");
  * @param {import('express').Response} res
  */
 async function handlePeriodicRequest(capabilities, req, res) {
-    /** @type {any} */
-    const query = req.query;
+    const query = req.query || {};
     const period = query['period'];
 
     capabilities.logger.logDebug(
