@@ -1,11 +1,8 @@
 import React, { useState, useEffect } from "react";
 import {
-    Box,
     VStack,
     HStack,
     Heading,
-    Text,
-    Code,
     Badge,
     Button,
     Collapse,
@@ -21,32 +18,14 @@ import {
     Skeleton,
 } from "@chakra-ui/react";
 
-// Using built-in Chakra icons or creating simple ones with forwardRef to avoid warnings
-const ChevronDownIcon = React.forwardRef((props, ref) => (
-    <span ref={ref} {...props}>
-        ▼
-    </span>
-));
-ChevronDownIcon.displayName = "ChevronDownIcon";
-
-const ChevronUpIcon = React.forwardRef((props, ref) => (
-    <span ref={ref} {...props}>
-        ▲
-    </span>
-));
-ChevronUpIcon.displayName = "ChevronUpIcon";
-
-const InfoIcon = React.forwardRef((props, ref) => (
-    <span ref={ref} {...props}>
-        ℹ️
-    </span>
-));
-InfoIcon.displayName = "InfoIcon";
-
 import { fetchConfig } from "./api.js";
 import { CARD_STYLES, TEXT_STYLES, SPACING, COLORS } from "./styles.js";
-import { logger } from "./logger.js";
-import { EntryItem, EntryItemSkeleton } from "./EntryItem.jsx";
+import { ChevronDownIcon, ChevronUpIcon, InfoIcon } from "./icons.jsx";
+import { SyntaxTab } from "./tabs/SyntaxTab.jsx";
+import { ShortcutsTab } from "./tabs/ShortcutsTab.jsx";
+import { RecentEntriesTab } from "./tabs/RecentEntriesTab.jsx";
+import { HelpTab } from "./tabs/HelpTab.jsx";
+import { generateBadgeText } from "./utils/badgeUtils.js";
 
 /**
  * @typedef {import('./api.js').Config} Config
@@ -76,40 +55,6 @@ export const ConfigSection = ({ onShortcutClick, currentInput = "", recentEntrie
         loadConfig();
     }, []);
 
-    const handleShortcutClick = (/** @type {Shortcut} */ shortcut) => {
-        onShortcutClick(shortcut[1]); // replacement is at index 1
-    };
-
-    const applyShortcut = (
-        /** @type {string} */ text,
-        /** @type {Shortcut} */ shortcut
-    ) => {
-        try {
-            const regex = new RegExp(shortcut[0], "g"); // pattern is at index 0
-            return text.replace(regex, shortcut[1]); // replacement is at index 1
-        } catch (error) {
-            logger.warn("Invalid regex pattern:", shortcut[0]); // pattern is at index 0
-            return text;
-        }
-    };
-
-    const getShortcutPreview = (/** @type {Shortcut} */ shortcut) => {
-        if (!currentInput.trim()) return null;
-
-        try {
-            const regex = new RegExp(shortcut[0]); // pattern is at index 0
-            if (regex.test(currentInput)) {
-                const transformed = applyShortcut(currentInput, shortcut);
-                if (transformed !== currentInput) {
-                    return transformed;
-                }
-            }
-        } catch (error) {
-            // Invalid regex, ignore
-        }
-        return null;
-    };
-
     if (isLoading) {
         return (
             <Card {...CARD_STYLES.main}>
@@ -128,13 +73,6 @@ export const ConfigSection = ({ onShortcutClick, currentInput = "", recentEntrie
         return null; // Don't show anything if no config
     }
 
-    const syntaxExamples = [
-        "food [certainty 9] earl gray tea, unsweetened",
-        "food [when now] [certainty 9] pizza capricciossa, medium size",
-        "food[when 5 hours ago][certainty 7]caesar salad with croutons",
-        "food earl gray tea, unsweetened",
-    ];
-
     return (
         <Card {...CARD_STYLES.main}>
             <CardBody p={SPACING.lg}>
@@ -147,10 +85,7 @@ export const ConfigSection = ({ onShortcutClick, currentInput = "", recentEntrie
                             </Heading>
                             {(config.shortcuts.length > 0 || recentEntries.length > 0) && (
                                 <Badge colorScheme="blue" variant="subtle">
-                                    {[
-                                        config.shortcuts.length > 0 && `${config.shortcuts.length} shortcuts`,
-                                        recentEntries.length > 0 && `${recentEntries.length} recent`
-                                    ].filter(Boolean).join(" • ")}
+                                    {generateBadgeText(config.shortcuts.length, recentEntries.length)}
                                 </Badge>
                             )}
                         </HStack>
@@ -158,9 +93,7 @@ export const ConfigSection = ({ onShortcutClick, currentInput = "", recentEntrie
                             variant="ghost"
                             size="sm"
                             onClick={onToggle}
-                            rightIcon={
-                                isOpen ? <ChevronUpIcon /> : <ChevronDownIcon />
-                            }
+                            rightIcon={isOpen ? <ChevronUpIcon /> : <ChevronDownIcon />}
                         >
                             {isOpen ? "Hide" : "Show"} Details
                         </Button>
@@ -175,243 +108,37 @@ export const ConfigSection = ({ onShortcutClick, currentInput = "", recentEntrie
                             >
                                 <TabList>
                                     <Tab>Syntax</Tab>
-                                    {config.shortcuts.length > 0 && (
-                                        <Tab>Shortcuts</Tab>
-                                    )}
+                                    {config.shortcuts.length > 0 && <Tab>Shortcuts</Tab>}
                                     <Tab>Recent Entries</Tab>
                                     {config.help && <Tab>Help</Tab>}
                                 </TabList>
 
                                 <TabPanels>
-                                    {/* Syntax Examples Tab */}
                                     <TabPanel px={0}>
-                                        <VStack
-                                            spacing={SPACING.md}
-                                            align="stretch"
-                                        >
-                                            <Text
-                                                {...TEXT_STYLES.helper}
-                                                fontWeight="medium"
-                                            >
-                                                Syntax: TYPE [MODIFIERS...]
-                                                DESCRIPTION
-                                            </Text>
-                                            <Text
-                                                fontSize="sm"
-                                                color="gray.600"
-                                            >
-                                                Examples:
-                                            </Text>
-                                            <VStack
-                                                spacing={SPACING.sm}
-                                                align="stretch"
-                                            >
-                                                {syntaxExamples.map(
-                                                    (example, index) => (
-                                                        <HStack
-                                                            key={index}
-                                                            spacing={SPACING.sm}
-                                                        >
-                                                            <Code
-                                                                fontSize="sm"
-                                                                px={3}
-                                                                py={2}
-                                                                flex={1}
-                                                                cursor="pointer"
-                                                                _hover={{
-                                                                    bg: "gray.100",
-                                                                }}
-                                                                onClick={() =>
-                                                                    onShortcutClick(
-                                                                        example
-                                                                    )
-                                                                }
-                                                            >
-                                                                {example}
-                                                            </Code>
-                                                        </HStack>
-                                                    )
-                                                )}
-                                            </VStack>
-                                        </VStack>
+                                        <SyntaxTab onShortcutClick={onShortcutClick} />
                                     </TabPanel>
 
-                                    {/* Shortcuts Tab */}
                                     {config.shortcuts.length > 0 && (
                                         <TabPanel px={0}>
-                                            <VStack
-                                                spacing={SPACING.md}
-                                                align="stretch"
-                                            >
-                                                <Text
-                                                    fontSize="sm"
-                                                    color="gray.600"
-                                                >
-                                                    Click a shortcut to use its
-                                                    pattern:
-                                                </Text>
-                                                {config.shortcuts.map(
-                                                    (shortcut, index) => {
-                                                        const preview =
-                                                            getShortcutPreview(
-                                                                shortcut
-                                                            );
-                                                        return (
-                                                            <Card
-                                                                key={index}
-                                                                variant="outline"
-                                                                size="sm"
-                                                            >
-                                                                <CardBody
-                                                                    p={
-                                                                        SPACING.md
-                                                                    }
-                                                                >
-                                                                    <VStack
-                                                                        spacing={
-                                                                            SPACING.sm
-                                                                        }
-                                                                        align="stretch"
-                                                                    >
-                                                                        <HStack
-                                                                            justify="space-between"
-                                                                            cursor="pointer"
-                                                                            onClick={() =>
-                                                                                handleShortcutClick(
-                                                                                    shortcut
-                                                                                )
-                                                                            }
-                                                                            _hover={{
-                                                                                bg: "gray.50",
-                                                                            }}
-                                                                            p={
-                                                                                2
-                                                                            }
-                                                                            borderRadius="md"
-                                                                        >
-                                                                            <HStack
-                                                                                spacing={
-                                                                                    SPACING.sm
-                                                                                }
-                                                                            >
-                                                                                <Code
-                                                                                    colorScheme="blue"
-                                                                                    fontSize="xs"
-                                                                                >
-                                                                                    {
-                                                                                        shortcut[0]
-                                                                                    }
-                                                                                </Code>
-                                                                                <Text color="gray.500">
-                                                                                    →
-                                                                                </Text>
-                                                                                <Code
-                                                                                    colorScheme="green"
-                                                                                    fontSize="xs"
-                                                                                >
-                                                                                    {
-                                                                                        shortcut[1]
-                                                                                    }
-                                                                                </Code>
-                                                                            </HStack>
-                                                                        </HStack>
-                                                                        {shortcut[2] && (
-                                                                            <Text
-                                                                                fontSize="xs"
-                                                                                color="gray.600"
-                                                                            >
-                                                                                {
-                                                                                    shortcut[2]
-                                                                                }
-                                                                            </Text>
-                                                                        )}
-                                                                        {preview && (
-                                                                            <Box
-                                                                                bg="blue.50"
-                                                                                p={
-                                                                                    2
-                                                                                }
-                                                                                borderRadius="md"
-                                                                                borderLeft="3px solid"
-                                                                                borderLeftColor="blue.300"
-                                                                            >
-                                                                                <Text
-                                                                                    fontSize="xs"
-                                                                                    color="blue.700"
-                                                                                    fontWeight="medium"
-                                                                                >
-                                                                                    Preview:
-                                                                                    &ldquo;
-                                                                                    {
-                                                                                        currentInput
-                                                                                    }
-                                                                                    &rdquo;
-                                                                                    →
-                                                                                    &ldquo;
-                                                                                    {
-                                                                                        preview
-                                                                                    }
-                                                                                    &rdquo;
-                                                                                </Text>
-                                                                            </Box>
-                                                                        )}
-                                                                    </VStack>
-                                                                </CardBody>
-                                                            </Card>
-                                                        );
-                                                    }
-                                                )}
-                                            </VStack>
+                                            <ShortcutsTab 
+                                                shortcuts={config.shortcuts}
+                                                onShortcutClick={onShortcutClick}
+                                                currentInput={currentInput}
+                                            />
                                         </TabPanel>
                                     )}
 
-                                    {/* Recent Entries Tab */}
                                     <TabPanel px={0}>
-                                        {isLoadingEntries ? (
-                                            <VStack spacing={SPACING.md} align="stretch">
-                                                <Text fontSize="sm" color="gray.600">Loading recent entries...</Text>
-                                                {[...Array(3)].map((_, i) => <EntryItemSkeleton key={i} />)}
-                                            </VStack>
-                                        ) : recentEntries.length > 0 ? (
-                                            <VStack spacing={SPACING.md} align="stretch">
-                                                <Text fontSize="sm" color="gray.600">Click an entry to use it as a template:</Text>
-                                                {recentEntries.map((entry, index) => (
-                                                    <Box
-                                                        key={entry.id || index}
-                                                        cursor="pointer"
-                                                        onClick={() => onShortcutClick(entry.original || entry.input || "")}
-                                                        _hover={{ bg: "gray.50" }}
-                                                        p={2}
-                                                        borderRadius="md"
-                                                    >
-                                                        <EntryItem entry={entry} index={index} />
-                                                    </Box>
-                                                ))}
-                                            </VStack>
-                                        ) : (
-                                            <Text fontSize="sm" color="gray.500" textAlign="center" py={4}>
-                                                No recent entries found
-                                            </Text>
-                                        )}
+                                        <RecentEntriesTab 
+                                            recentEntries={recentEntries}
+                                            isLoadingEntries={isLoadingEntries}
+                                            onShortcutClick={onShortcutClick}
+                                        />
                                     </TabPanel>
 
-                                    {/* Help Tab */}
                                     {config.help && (
                                         <TabPanel px={0}>
-                                            <Box
-                                                bg="gray.50"
-                                                p={SPACING.md}
-                                                borderRadius="md"
-                                                borderLeft="4px solid"
-                                                borderLeftColor="blue.400"
-                                            >
-                                                <Text
-                                                    fontSize="sm"
-                                                    whiteSpace="pre-wrap"
-                                                >
-                                                    {config.help}
-                                                </Text>
-                                            </Box>
+                                            <HelpTab helpText={config.help} />
                                         </TabPanel>
                                     )}
                                 </TabPanels>
