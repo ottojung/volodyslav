@@ -13,7 +13,7 @@ describe('event.tryDeserialize', () => {
       modifiers: 0
     };
     const result = event.tryDeserialize(obj);
-    expect(result).toBeInstanceOf(event.InvalidTypeError);
+    expect(event.isInvalidTypeError(result)).toBe(true);
     expect(result.message).toContain("Invalid type for field 'modifiers'");
     expect(result.field).toBe('modifiers');
     expect(result.value).toBe(0);
