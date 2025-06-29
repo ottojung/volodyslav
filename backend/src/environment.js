@@ -33,7 +33,7 @@ function isEnvironmentError(object) {
  */
 function getEnv(key) {
     const ret = process.env[key];
-    if (!ret) {
+    if (ret === undefined) {
         throw new EnvironmentError(key);
     }
     return ret;
