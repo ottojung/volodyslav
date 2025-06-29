@@ -1,7 +1,8 @@
-const fs = require("fs");
 const path = require("path");
 const { makeDirectory, markDone } = require("./request_identifier");
 const creatorMake = require("./creator");
+
+/** @typedef {import("./filesystem/reader").FileReader} FileReader */
 
 /** @typedef {import('./filesystem/file').ExistingFile} ExistingFile */
 
@@ -132,7 +133,7 @@ async function transcribeStream(capabilities, file_stream) {
  * @returns {Promise<ExistingFile>}
  */
 async function transcribeFile(capabilities, inputFile, outputPath) {
-    const file_stream = fs.createReadStream(inputFile.path);
+    const file_stream = capabilities.reader.createReadStream(inputFile);
     const transcription = await transcribeStream(capabilities, file_stream);
 
     // Persist full JSON to disk
