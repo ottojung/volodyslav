@@ -2,11 +2,12 @@
  * Camera integration utilities for DescriptionEntry
  */
 
-import { 
-    PhotoRetrievalError, 
-    PhotoConversionError, 
-    SessionStorageError 
+import {
+    PhotoRetrievalError,
+    PhotoConversionError,
+    SessionStorageError
 } from './errors.js';
+import { logger } from './logger.js';
 
 /**
  * Generates a unique request identifier for camera sessions
@@ -183,7 +184,7 @@ export const retrievePhotos = async (requestIdentifier) => {
             sessionStorage.removeItem(key);
         } catch (/** @type {unknown} */ error) {
             // Log but don't fail - photos were successfully retrieved
-            console.warn('Failed to clean up session storage:', error);
+            logger.warn('Failed to clean up session storage:', error);
         }
         
         return files;
@@ -281,37 +282,37 @@ export const validatePhotoData = (photoData, index) => {
             `photo_${index + 1}`
         );
     }
-    
-    const photo = /** @type {any} */ (photoData);
-    
-    if (!photo.name || typeof photo.name !== 'string') {
+
+    if (!('name' in photoData) || typeof photoData.name !== 'string') {
         throw new PhotoConversionError(
             `Photo ${index + 1} has invalid or missing name`,
-            photo.name || `photo_${index + 1}`
+            'name' in photoData && typeof photoData.name === 'string'
+                ? photoData.name
+                : `photo_${index + 1}`
         );
     }
-    
-    if (!photo.data || typeof photo.data !== 'string') {
+
+    if (!('data' in photoData) || typeof photoData.data !== 'string') {
         throw new PhotoConversionError(
-            `Photo ${photo.name} has invalid or missing data`,
-            photo.name
+            `Photo ${photoData.name} has invalid or missing data`,
+            photoData.name
         );
     }
-    
-    if (!photo.type || typeof photo.type !== 'string') {
+
+    if (!('type' in photoData) || typeof photoData.type !== 'string') {
         throw new PhotoConversionError(
-            `Photo ${photo.name} has invalid or missing type`,
-            photo.name
+            `Photo ${photoData.name} has invalid or missing type`,
+            photoData.name
         );
     }
-    
+
     // Validate that it looks like a base64 string
-    if (!/^[A-Za-z0-9+/]+=*$/.test(photo.data)) {
+    if (!/^[A-Za-z0-9+/]+=*$/.test(photoData.data)) {
         throw new PhotoConversionError(
-            `Photo ${photo.name} has invalid base64 data`,
-            photo.name
+            `Photo ${photoData.name} has invalid base64 data`,
+            photoData.name
         );
     }
-    
+
     return true;
 };
