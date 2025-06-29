@@ -1,4 +1,3 @@
-
 # Project Overview
 This is a JavaScript project with JSDoc typing for a personal event logging system. It consists of a Node.js backend and a React frontend in a monorepo structure.
 
@@ -65,6 +64,48 @@ Example:
 function pathToLocalRepository(capabilities) {
     // implementation
 }
+```
+
+### Encapsulation Convention
+Classes are never exported directly from modules to prevent external constructor calls and `instanceof` usage:
+
+- **Export factory functions**: Use `makeFoo` instead of exporting the class
+- **Export type guards**: Use `isFoo` instead of relying on `instanceof`
+- **Nominal typing**: Use `__brand: undefined` fields for type safety where beneficial
+
+Example:
+```javascript
+// ❌ Wrong: Exporting class directly
+class WorkingRepository {
+    constructor(path) { this.path = path; }
+}
+module.exports = { WorkingRepository };
+
+// ✅ Correct: Export factory and type guard
+class WorkingRepository {
+    /** @type {undefined} */
+    __brand = undefined; // nominal typing brand
+    
+    constructor(path) { this.path = path; }
+}
+
+/**
+ * @param {string} path
+ * @returns {WorkingRepository}
+ */
+function makeWorkingRepository(path) {
+    return new WorkingRepository(path);
+}
+
+/**
+ * @param {unknown} object
+ * @returns {object is WorkingRepository}
+ */
+function isWorkingRepository(object) {
+    return object instanceof WorkingRepository;
+}
+
+module.exports = { makeWorkingRepository, isWorkingRepository };
 ```
 
 ## Error Handling
