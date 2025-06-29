@@ -3,7 +3,10 @@ const upload = require("../storage");
 const { createEntry, getEntries, EntryValidationError } = require("../entry");
 const { random: randomRequestId } = require("../request_identifier");
 const { serialize } = require("../event");
-const { processUserInput, InputParseError } = require("../event/from_input");
+const {
+    processUserInput,
+    isInputParseError,
+} = require("../event/from_input");
 
 /**
  * @typedef {import('../environment').Environment} Environment
@@ -248,7 +251,7 @@ async function handleEntryPost(req, res, capabilities, reqId) {
         try {
             processed = await processUserInput(capabilities, rawInput);
         } catch (error) {
-            if (error instanceof InputParseError) {
+            if (isInputParseError(error)) {
                 capabilities.logger.logInfo(
                     {
                         request_identifier: reqId.identifier,

@@ -64,7 +64,7 @@
 /**
  * Error thrown when input cannot be parsed according to the expected structure.
  */
-class InputParseError extends Error {
+class InputParseErrorClass extends Error {
     /** @type {string} */
     input;
 
@@ -82,7 +82,7 @@ class InputParseError extends Error {
 /**
  * Error thrown when shortcut application fails.
  */
-class ShortcutApplicationError extends Error {
+class ShortcutApplicationErrorClass extends Error {
     /** @type {string} */
     input;
     /** @type {string} */
@@ -99,6 +99,45 @@ class ShortcutApplicationError extends Error {
         this.input = input;
         this.pattern = pattern;
     }
+}
+
+/**
+ * Factory for InputParseError.
+ * @param {string} message
+ * @param {string} input
+ * @returns {Error}
+ */
+function makeInputParseError(message, input) {
+    return new InputParseErrorClass(message, input);
+}
+
+/**
+ * Type guard for InputParseError.
+ * @param {unknown} object
+ * @returns {object is Error}
+ */
+function isInputParseError(object) {
+    return object instanceof InputParseErrorClass;
+}
+
+/**
+ * Factory for ShortcutApplicationError.
+ * @param {string} message
+ * @param {string} input
+ * @param {string} pattern
+ * @returns {Error}
+ */
+function makeShortcutApplicationError(message, input, pattern) {
+    return new ShortcutApplicationErrorClass(message, input, pattern);
+}
+
+/**
+ * Type guard for ShortcutApplicationError.
+ * @param {unknown} object
+ * @returns {object is Error}
+ */
+function isShortcutApplicationError(object) {
+    return object instanceof ShortcutApplicationErrorClass;
 }
 
 /**
@@ -120,19 +159,28 @@ function parseModifier(modifier) {
     const match = modifier.match(pattern);
 
     if (!match) {
-        throw new InputParseError(`Not a valid modifier: ${JSON.stringify(modifier)}`, modifier);
+        throw makeInputParseError(
+            `Not a valid modifier: ${JSON.stringify(modifier)}`,
+            modifier
+        );
     }
 
     const type = match[1];
     const description = (match[3] || "").trim();
 
     if (!type) {
-        throw new InputParseError(`Type is required but not found in modifier: ${JSON.stringify(modifier)}`, modifier);
+        throw makeInputParseError(
+            `Type is required but not found in modifier: ${JSON.stringify(modifier)}`,
+            modifier
+        );
     }
 
     // Reject modifiers that contain square brackets (invalid format)
     if (description.includes('[') || description.includes(']')) {
-        throw new InputParseError(`Not a valid modifier: ${JSON.stringify(modifier)}`, modifier);
+        throw makeInputParseError(
+            `Not a valid modifier: ${JSON.stringify(modifier)}`,
+            modifier
+        );
     }
 
     return { type, description };
@@ -152,7 +200,7 @@ function parseStructuredInput(input) {
     const match = input.match(pattern);
 
     if (!match) {
-        throw new InputParseError("Bad structure of input", input);
+        throw makeInputParseError("Bad structure of input", input);
     }
 
     const type = match[1];
@@ -160,14 +208,17 @@ function parseStructuredInput(input) {
     const description = (match[3] || "").trim();
 
     if (!type) {
-        throw new InputParseError("Type is required but not found in input", input);
+        throw makeInputParseError("Type is required but not found in input", input);
     }
 
     // Check if description contains patterns that look like modifiers (e.g., [key value])
     // This prevents modifiers from appearing after the description has started
     const modifierLikePattern = /\[[^\]]*\s+[^\]]*\]/;
     if (modifierLikePattern.test(description)) {
-        throw new InputParseError("Modifiers must appear immediately after the type, before any description text", input);
+        throw makeInputParseError(
+            "Modifiers must appear immediately after the type, before any description text",
+            input
+        );
     }
 
     // Parse modifiers - only match those with spaces (valid modifier format)
@@ -224,7 +275,7 @@ async function applyShortcuts(capabilities, input) {
                     return replaceLoop(newInput);
                 }
             } catch (error) {
-                throw new ShortcutApplicationError(
+                throw makeShortcutApplicationError(
                     `Invalid regex pattern in shortcut: ${error instanceof Error ? error.message : String(error)}`,
                     currentInput,
                     shortcut.pattern
@@ -259,8 +310,10 @@ async function processUserInput(capabilities, rawInput) {
 }
 
 module.exports = {
-    InputParseError,
-    ShortcutApplicationError,
+    makeInputParseError,
+    isInputParseError,
+    makeShortcutApplicationError,
+    isShortcutApplicationError,
     normalizeInput,
     parseModifier,
     parseStructuredInput,

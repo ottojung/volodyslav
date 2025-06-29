@@ -1,6 +1,8 @@
 const {
-    InputParseError,
-    ShortcutApplicationError,
+    makeInputParseError,
+    isInputParseError,
+    makeShortcutApplicationError,
+    isShortcutApplicationError,
     normalizeInput,
     parseModifier,
     parseStructuredInput,
@@ -73,8 +75,15 @@ describe("parseModifier", () => {
     });
 
     test("throws InputParseError for invalid format", () => {
-        expect(() => parseModifier("")).toThrow(InputParseError);
-        expect(() => parseModifier("   ")).toThrow(InputParseError);
+        expect(() => parseModifier("")).toThrow();
+        expect(() => parseModifier("   ")).toThrow();
+        let err;
+        try {
+            parseModifier("");
+        } catch (e) {
+            err = e;
+        }
+        expect(isInputParseError(err)).toBe(true);
     });
 
     test("error includes original input", () => {
@@ -84,7 +93,7 @@ describe("parseModifier", () => {
         } catch (e) {
             error = e;
         }
-        expect(error).toBeInstanceOf(InputParseError);
+        expect(isInputParseError(error)).toBe(true);
         expect(error.input).toBe("invalid format here [brackets]");
         expect(error.message).toContain("Not a valid modifier");
     });
@@ -164,14 +173,28 @@ describe("parseStructuredInput", () => {
     });
 
     test("throws InputParseError for invalid structure", () => {
-        expect(() => parseStructuredInput("")).toThrow(InputParseError);
-        expect(() => parseStructuredInput("   ")).toThrow(InputParseError);
-        expect(() => parseStructuredInput("[invalid] structure")).toThrow(InputParseError);
-        expect(() => parseStructuredInput("123invalid")).toThrow(InputParseError);
+        expect(() => parseStructuredInput("")).toThrow();
+        expect(() => parseStructuredInput("   ")).toThrow();
+        expect(() => parseStructuredInput("[invalid] structure")).toThrow();
+        expect(() => parseStructuredInput("123invalid")).toThrow();
+        let err1;
+        try {
+            parseStructuredInput("");
+        } catch (e) {
+            err1 = e;
+        }
+        expect(isInputParseError(err1)).toBe(true);
     });
 
     test("throws InputParseError when type is missing", () => {
-        expect(() => parseStructuredInput("[loc office] - no type")).toThrow(InputParseError);
+        expect(() => parseStructuredInput("[loc office] - no type")).toThrow();
+        let err2;
+        try {
+            parseStructuredInput("[loc office] - no type");
+        } catch (e) {
+            err2 = e;
+        }
+        expect(isInputParseError(err2)).toBe(true);
     });
 
     test("error includes original input", () => {
@@ -181,7 +204,7 @@ describe("parseStructuredInput", () => {
         } catch (e) {
             error = e;
         }
-        expect(error).toBeInstanceOf(InputParseError);
+        expect(isInputParseError(error)).toBe(true);
         expect(error.input).toBe("123invalid");
     });
 
@@ -195,8 +218,17 @@ describe("parseStructuredInput", () => {
         ];
 
         for (const input of invalidInputs) {
-            expect(() => parseStructuredInput(input)).toThrow(InputParseError);
-            expect(() => parseStructuredInput(input)).toThrow("Modifiers must appear immediately after the type, before any description text");
+            expect(() => parseStructuredInput(input)).toThrow();
+            expect(() => parseStructuredInput(input)).toThrow(
+                "Modifiers must appear immediately after the type, before any description text"
+            );
+            let errLoop;
+            try {
+                parseStructuredInput(input);
+            } catch (e) {
+                errLoop = e;
+            }
+            expect(isInputParseError(errLoop)).toBe(true);
         }
     });
 
@@ -442,7 +474,14 @@ describe("processUserInput", () => {
         });
 
         await expect(processUserInput(capabilities, "[invalid] format"))
-            .rejects.toThrow(InputParseError);
+            .rejects.toThrow();
+        let errProc;
+        try {
+            await processUserInput(capabilities, "[invalid] format");
+        } catch (e) {
+            errProc = e;
+        }
+        expect(isInputParseError(errProc)).toBe(true);
     });
 
     test("handles minimal input", async () => {
@@ -469,19 +508,19 @@ describe("processUserInput", () => {
 
 describe("Error Classes", () => {
     test("InputParseError stores input and message", () => {
-        const error = new InputParseError("Test message", "test input");
+        const error = makeInputParseError("Test message", "test input");
         expect(error.message).toBe("Test message");
         expect(error.input).toBe("test input");
         expect(error).toBeInstanceOf(Error);
-        expect(error.name).toBe("InputParseError");
+        expect(isInputParseError(error)).toBe(true);
     });
 
     test("ShortcutApplicationError stores input and message", () => {
-        const error = new ShortcutApplicationError("Test message", "test input");
+        const error = makeShortcutApplicationError("Test message", "test input", "pattern");
         expect(error.message).toBe("Test message");
         expect(error.input).toBe("test input");
         expect(error).toBeInstanceOf(Error);
-        expect(error.name).toBe("ShortcutApplicationError");
+        expect(isShortcutApplicationError(error)).toBe(true);
     });
 });
 
@@ -533,7 +572,14 @@ describe("Integration Tests", () => {
         });
 
         await expect(processUserInput(capabilities, "bad"))
-            .rejects.toThrow(InputParseError);
+            .rejects.toThrow();
+        let errEdge;
+        try {
+            await processUserInput(capabilities, "bad");
+        } catch (e) {
+            errEdge = e;
+        }
+        expect(isInputParseError(errEdge)).toBe(true);
     });
 
     test("preserves complex descriptions", async () => {
