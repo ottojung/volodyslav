@@ -42,13 +42,13 @@ const { fromExisting } = require("../filesystem/file");
  * Reads and deserializes a config.json file
  * @param {ConfigReadCapabilities} capabilities - The minimal capabilities needed for reading
  * @param {import("../filesystem/file").ExistingFile} file - The config.json file to read
- * @returns {Promise<import('./structure').Config | import('./structure').TryDeserializeError>} The parsed config or error object
- */
+ * @returns {Promise<import('./structure').Config | Error>} The parsed config or error object
+*/
 async function readConfig(capabilities, file) {
     const objects = await readObjects(capabilities, file);
 
     if (objects.length === 0) {
-        return new config.InvalidStructureError("Config file is empty", []);
+        return config.makeInvalidStructureError("Config file is empty", []);
     }
 
     if (objects.length > 1) {

@@ -15,6 +15,22 @@ const event = require("./event");
 const { readObjects } = require("./json_stream_file");
 const { targetPath } = require("./event/asset");
 const configStorage = require("./config/storage");
+/** @type {import('./config')} */
+const config = require("./config");
+
+/**
+ * Error object returned from config.tryDeserialize.
+ * @typedef {Error & {field?: string, value?: unknown, expectedType?: string}} ConfigParseError
+ */
+
+/**
+ * Type guard to check if an object is a Config rather than a config error.
+ * @param {import('./config').Config | ConfigParseError} value
+ * @returns {value is import('./config').Config}
+ */
+function isConfig(value) {
+    return !config.isTryDeserializeError(value);
+}
 
 /** @typedef {import('./filesystem/deleter').FileDeleter} FileDeleter */
 /** @typedef {import('./filesystem/copier').FileCopier} FileCopier */
@@ -234,18 +250,17 @@ class EventLogStorageClass {
         }
 
         try {
-            const configStorage = require("./config/storage");
-            const config = require("./config");
 
+            /** @type {import('./config').Config | ConfigParseError} */
             const configResult = await configStorage.readConfig(
                 this.capabilities,
                 this.configFile
             );
-            
+
             // If readConfig returned an error object, it means the config is invalid
-            if (configResult instanceof config.TryDeserializeError) {
+            if (!isConfig(configResult)) {
                 this.capabilities.logger.logWarning(
-                    { 
+                    {
                         filepath: this.configFile,
                         error: configResult.message,
                         field: configResult.field,
@@ -258,7 +273,7 @@ class EventLogStorageClass {
                 this.existingConfigCache = null;
                 return null;
             }
-            
+
             this.existingConfigCache = configResult;
             return this.existingConfigCache;
         } catch (error) {
@@ -298,9 +313,9 @@ class EventLogStorageClass {
 
             for (const obj of objects) {
                 const result = event.tryDeserialize(obj);
-                if (result instanceof event.TryDeserializeError) {
+                if (event.isTryDeserializeError(result)) {
                     this.capabilities.logger.logWarning(
-                        { 
+                        {
                             invalidObject: obj,
                             error: result.message,
                             field: result.field,
