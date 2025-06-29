@@ -66,7 +66,7 @@ export async function submitEntry(rawInput, requestIdentifier = undefined, files
         const formData = new FormData();
         formData.append('rawInput', rawInput);
         files.forEach(file => {
-            formData.append('photos', file);
+            formData.append('files', file);  // Changed from 'photos' to 'files' to match backend expectation
         });
         
         response = await fetch(url, {
