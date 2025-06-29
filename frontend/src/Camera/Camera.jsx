@@ -180,6 +180,12 @@ export default function Camera() {
             return;
         }
 
+        console.log("🔵 CAMERA DEBUG: About to store photos", {
+            photoCount: allPhotos.length,
+            requestIdentifier: request_identifier,
+            photoNames: allPhotos.map((p) => p.name),
+        });
+
         try {
             // Store photos in sessionStorage for the describe page to retrieve
             const photosData = await Promise.all(
@@ -190,13 +196,18 @@ export default function Camera() {
 
                     // Convert to base64 in chunks to avoid stack overflow
                     let base64 = "";
-                    const chunkSize = 8192; // Process in 8KB chunks
+                    const chunkSize = 1024; // Use smaller chunks to be safe
                     for (let i = 0; i < uint8Array.length; i += chunkSize) {
                         const chunk = uint8Array.subarray(i, i + chunkSize);
-                        base64 += btoa(
-                            String.fromCharCode.apply(null, Array.from(chunk))
-                        );
+                        base64 += btoa(String.fromCharCode(...chunk));
                     }
+
+                    console.log("🔵 CAMERA DEBUG: Converted photo to base64", {
+                        name: photo.name,
+                        originalSize: photo.blob.size,
+                        base64Length: base64.length,
+                        type: photo.blob.type,
+                    });
 
                     return {
                         name: photo.name,
@@ -206,11 +217,34 @@ export default function Camera() {
                 })
             );
 
+            const storageKey = `photos_${request_identifier}`;
+            const photosJson = JSON.stringify(photosData);
+
+            console.log("🔵 CAMERA DEBUG: Storing in sessionStorage", {
+                key: storageKey,
+                dataSize: photosJson.length,
+                photoCount: photosData.length,
+            });
+
             // Store with request identifier as key
-            sessionStorage.setItem(
-                `photos_${request_identifier}`,
-                JSON.stringify(photosData)
-            );
+            sessionStorage.setItem(storageKey, photosJson);
+
+            // Verify storage worked
+            const stored = sessionStorage.getItem(storageKey);
+            console.log("🔵 CAMERA DEBUG: Verification of storage", {
+                stored: !!stored,
+                storedSize: stored ? stored.length : 0,
+                parseable: stored
+                    ? (() => {
+                          try {
+                              const parsed = JSON.parse(stored);
+                              return { success: true, count: parsed.length };
+                          } catch (e) {
+                              return { success: false, error: e.message };
+                          }
+                      })()
+                    : null,
+            });
 
             toast({
                 title: "Photos ready",
@@ -231,7 +265,7 @@ export default function Camera() {
             );
             window.location.href = returnUrl.toString();
         } catch (/** @type {unknown} */ err) {
-            console.error(err);
+            console.error("🔴 CAMERA DEBUG: Error in handleDone", err);
             let description;
             if (err instanceof Error) {
                 description = err.message;

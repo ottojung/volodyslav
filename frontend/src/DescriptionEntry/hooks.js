@@ -45,11 +45,31 @@ export const useDescriptionEntry = (numberOfEntries = 10) => {
             return;
         }
 
+        console.log("🟢 SUBMIT DEBUG: Starting submission", {
+            description: description.trim(),
+            pendingRequestIdentifier,
+            hasPendingId: !!pendingRequestIdentifier,
+        });
+
         setIsSubmitting(true);
 
         try {
             // Retrieve photos if we have a pending request identifier
             const files = pendingRequestIdentifier ? retrievePhotos(pendingRequestIdentifier) : [];
+            
+            console.log("🟢 SUBMIT DEBUG: Retrieved files", {
+                pendingRequestIdentifier,
+                fileCount: files.length,
+                fileSizes: files.map(f => f.size),
+                fileNames: files.map(f => f.name),
+                fileTypes: files.map(f => f.type),
+            });
+            
+            console.log("🟢 SUBMIT DEBUG: About to call submitEntry", {
+                description: description.trim(),
+                requestIdentifier: pendingRequestIdentifier || undefined,
+                fileCount: files.length,
+            });
             
             const result = await submitEntry(description.trim(), pendingRequestIdentifier || undefined, files);
             const savedInput = result.entry?.input ?? description.trim();
@@ -101,30 +121,66 @@ export const useDescriptionEntry = (numberOfEntries = 10) => {
     // Handle return from camera
     useEffect(() => {
         const cameraReturn = checkCameraReturn();
+        
+        console.log("🟠 CAMERA RETURN DEBUG: Effect triggered", {
+            isReturn: cameraReturn.isReturn,
+            requestIdentifier: cameraReturn.requestIdentifier,
+            urlParams: window.location.search,
+        });
+        
         if (cameraReturn.isReturn && cameraReturn.requestIdentifier) {
+            console.log("🟠 CAMERA RETURN DEBUG: Processing camera return", {
+                requestIdentifier: cameraReturn.requestIdentifier,
+            });
+            
             // Restore the description that was stored before going to camera
             const restoredDescription = restoreDescription(cameraReturn.requestIdentifier);
+            console.log("🟠 CAMERA RETURN DEBUG: Description restoration", {
+                restored: !!restoredDescription,
+                description: restoredDescription,
+            });
+            
             if (restoredDescription) {
                 setDescription(restoredDescription);
             }
             
             // Set the request identifier for the next submission
             setPendingRequestIdentifier(cameraReturn.requestIdentifier);
+            console.log("🟠 CAMERA RETURN DEBUG: Set pending request identifier", {
+                pendingRequestIdentifier: cameraReturn.requestIdentifier,
+            });
             
             // Clean up URL parameters
             cleanupUrlParams();
             
             // Show a toast to let user know photos are ready
-            const photosDataString = sessionStorage.getItem(`photos_${cameraReturn.requestIdentifier}`);
+            const photosKey = `photos_${cameraReturn.requestIdentifier}`;
+            const photosDataString = sessionStorage.getItem(photosKey);
+            
+            console.log("🟠 CAMERA RETURN DEBUG: Checking photos in sessionStorage", {
+                key: photosKey,
+                found: !!photosDataString,
+                dataSize: photosDataString ? photosDataString.length : 0,
+            });
+            
             let photoCount = 0;
             if (photosDataString) {
                 try {
                     const photosData = JSON.parse(photosDataString);
                     photoCount = photosData.length;
+                    console.log("🟠 CAMERA RETURN DEBUG: Parsed photos for toast", {
+                        photoCount,
+                        photoNames: photosData.map(/** @param {{name: string}} p */ p => p.name),
+                    });
                 } catch (e) {
-                    console.warn('Error parsing photos data:', e);
+                    console.warn('🟠 CAMERA RETURN DEBUG: Error parsing photos data:', e);
                 }
             }
+            
+            console.log("🟠 CAMERA RETURN DEBUG: Showing toast", {
+                photoCount,
+                message: `${photoCount} photo(s) ready`,
+            });
             
             toast({
                 title: `${photoCount} photo(s) ready`,
@@ -133,6 +189,10 @@ export const useDescriptionEntry = (numberOfEntries = 10) => {
                 duration: 5000,
                 isClosable: true,
             });
+            
+            console.log("🟠 CAMERA RETURN DEBUG: Camera return processing complete");
+        } else {
+            console.log("🟠 CAMERA RETURN DEBUG: Not a camera return or missing identifier");
         }
     }, [toast]); // Remove description dependency to avoid running on every description change
 

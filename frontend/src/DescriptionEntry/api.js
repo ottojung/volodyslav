@@ -54,27 +54,54 @@ export const fetchRecentEntries = async (limit = 10) => {
  * @throws {Error} - Throws an error if the submission fails.
  */
 export async function submitEntry(rawInput, requestIdentifier = undefined, files = []) {
+    console.log("🟣 API DEBUG: submitEntry called", {
+        rawInput,
+        requestIdentifier,
+        fileCount: files ? files.length : 0,
+        files: files ? files.map(f => ({ name: f.name, size: f.size, type: f.type })) : [],
+    });
+    
     let url = `${API_BASE_URL}/entries`;
     if (requestIdentifier) {
         url += `?request_identifier=${encodeURIComponent(requestIdentifier)}`;
     }
 
+    console.log("🟣 API DEBUG: URL constructed", { url });
+
     let response;
     
     if (files && files.length > 0) {
         // If we have files, use FormData
+        console.log("🟣 API DEBUG: Using FormData for files", {
+            fileCount: files.length,
+        });
+        
         const formData = new FormData();
         formData.append('rawInput', rawInput);
-        files.forEach(file => {
+        
+        files.forEach((file, index) => {
+            console.log(`🟣 API DEBUG: Appending file ${index}`, {
+                name: file.name,
+                size: file.size,
+                type: file.type,
+            });
             formData.append('files', file);  // Changed from 'photos' to 'files' to match backend expectation
         });
+        
+        console.log("🟣 API DEBUG: FormData prepared, sending request");
         
         response = await fetch(url, {
             method: "POST",
             body: formData,
         });
+        
+        console.log("🟣 API DEBUG: Received response from FormData request", {
+            status: response.status,
+            statusText: response.statusText,
+        });
     } else {
         // No files, use JSON
+        console.log("🟣 API DEBUG: Using JSON (no files)");
         const requestBody = { rawInput };
         
         response = await fetch(url, {
