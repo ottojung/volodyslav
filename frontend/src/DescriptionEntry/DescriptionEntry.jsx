@@ -2,7 +2,6 @@ import React, { useRef, useEffect } from "react";
 import { Box, VStack, Heading, Text, Container } from "@chakra-ui/react";
 import { useDescriptionEntry } from "./hooks.js";
 import { FormInputSection } from "./FormInputSection.jsx";
-import { RecentEntriesSection } from "./RecentEntriesSection.jsx";
 import { ConfigSection } from "./ConfigSection.jsx";
 import { SPACING, SIZES, TEXT_STYLES } from "./styles.js";
 
@@ -58,6 +57,8 @@ export default function DescriptionEntry() {
                 <ConfigSection
                     onShortcutClick={handleShortcutClick}
                     currentInput={description}
+                    recentEntries={recentEntries}
+                    isLoadingEntries={isLoadingEntries}
                 />
 
                 {/* Main Input Form */}
@@ -71,12 +72,6 @@ export default function DescriptionEntry() {
                     isSubmitting={isSubmitting}
                     inputRef={inputRef}
                     hasPhotos={!!pendingRequestIdentifier}
-                />
-
-                {/* Recent Entries Section */}
-                <RecentEntriesSection
-                    entries={recentEntries}
-                    isLoading={isLoadingEntries}
                 />
             </VStack>
         </Container>

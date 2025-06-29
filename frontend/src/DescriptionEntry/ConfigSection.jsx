@@ -46,6 +46,7 @@ InfoIcon.displayName = "InfoIcon";
 import { fetchConfig } from "./api.js";
 import { CARD_STYLES, TEXT_STYLES, SPACING, COLORS } from "./styles.js";
 import { logger } from "./logger.js";
+import { EntryItem, EntryItemSkeleton } from "./EntryItem.jsx";
 
 /**
  * @typedef {import('./api.js').Config} Config
@@ -57,8 +58,10 @@ import { logger } from "./logger.js";
  * @param {Object} props
  * @param {(value: string) => void} props.onShortcutClick - Called when a shortcut is clicked
  * @param {string} props.currentInput - Current input value to show preview
+ * @param {Array<any>} [props.recentEntries] - Array of recent entries to display
+ * @param {boolean} [props.isLoadingEntries] - Whether entries are loading
  */
-export const ConfigSection = ({ onShortcutClick, currentInput = "" }) => {
+export const ConfigSection = ({ onShortcutClick, currentInput = "", recentEntries = [], isLoadingEntries = false }) => {
     const [config, setConfig] = useState(/** @type {Config|null} */ (null));
     const [isLoading, setIsLoading] = useState(true);
     const { isOpen, onToggle } = useDisclosure({ defaultIsOpen: true });
@@ -142,9 +145,11 @@ export const ConfigSection = ({ onShortcutClick, currentInput = "" }) => {
                             <Heading size="md" {...TEXT_STYLES.cardHeading}>
                                 Event Logging Help
                             </Heading>
-                            {config.shortcuts.length > 0 && (
+                            {(config.shortcuts.length > 0 || recentEntries.length > 0) && (
                                 <Badge colorScheme="blue" variant="subtle">
-                                    {config.shortcuts.length} shortcuts
+                                    {config.shortcuts.length > 0 && `${config.shortcuts.length} shortcuts`}
+                                    {config.shortcuts.length > 0 && recentEntries.length > 0 && " • "}
+                                    {recentEntries.length > 0 && `${recentEntries.length} recent`}
                                 </Badge>
                             )}
                         </HStack>
@@ -166,7 +171,9 @@ export const ConfigSection = ({ onShortcutClick, currentInput = "" }) => {
                                 variant="soft-rounded"
                                 colorScheme="blue"
                                 defaultIndex={
-                                    config.shortcuts.length > 0 ? 1 : 0
+                                    recentEntries.length > 0 
+                                        ? (config.shortcuts.length > 0 ? 2 : 1) 
+                                        : (config.shortcuts.length > 0 ? 1 : 0)
                                 }
                             >
                                 <TabList>
@@ -174,6 +181,7 @@ export const ConfigSection = ({ onShortcutClick, currentInput = "" }) => {
                                     {config.shortcuts.length > 0 && (
                                         <Tab>Shortcuts</Tab>
                                     )}
+                                    <Tab>Recent Entries</Tab>
                                     {config.help && <Tab>Help</Tab>}
                                 </TabList>
 
@@ -359,6 +367,63 @@ export const ConfigSection = ({ onShortcutClick, currentInput = "" }) => {
                                             </VStack>
                                         </TabPanel>
                                     )}
+
+                                    {/* Recent Entries Tab */}
+                                    <TabPanel px={0}>
+                                        <VStack
+                                            spacing={SPACING.md}
+                                            align="stretch"
+                                        >
+                                            {isLoadingEntries ? (
+                                                <>
+                                                    <Text
+                                                        fontSize="sm"
+                                                        color="gray.600"
+                                                    >
+                                                        Loading recent entries...
+                                                    </Text>
+                                                    {[...Array(3)].map((_, i) => (
+                                                        <EntryItemSkeleton key={i} />
+                                                    ))}
+                                                </>
+                                            ) : recentEntries.length > 0 ? (
+                                                <>
+                                                    <Text
+                                                        fontSize="sm"
+                                                        color="gray.600"
+                                                    >
+                                                        Click an entry to use it as a template:
+                                                    </Text>
+                                                    {recentEntries.map((entry, index) => (
+                                                        <Box
+                                                            key={entry.id || index}
+                                                            cursor="pointer"
+                                                            onClick={() => onShortcutClick(entry.original || entry.input || "")}
+                                                            _hover={{
+                                                                bg: "gray.50",
+                                                            }}
+                                                            p={2}
+                                                            borderRadius="md"
+                                                        >
+                                                            <EntryItem 
+                                                                entry={entry} 
+                                                                index={index} 
+                                                            />
+                                                        </Box>
+                                                    ))}
+                                                </>
+                                            ) : (
+                                                <Text
+                                                    fontSize="sm"
+                                                    color="gray.500"
+                                                    textAlign="center"
+                                                    py={4}
+                                                >
+                                                    No recent entries found
+                                                </Text>
+                                            )}
+                                        </VStack>
+                                    </TabPanel>
 
                                     {/* Help Tab */}
                                     {config.help && (

@@ -561,10 +561,13 @@ describe("DescriptionEntry", () => {
 
         render(<DescriptionEntry />);
 
-        // Wait for entries to load and be displayed
+        // Wait for entries to load and Recent Entries tab to be displayed
         await waitFor(() => {
-            expect(screen.getByText("Recent Events")).toBeInTheDocument();
+            expect(screen.getByText("Recent Entries")).toBeInTheDocument();
         });
+
+        // Click on the Recent Entries tab to make sure content is visible
+        fireEvent.click(screen.getByText("Recent Entries"));
 
         await waitFor(() => {
             expect(screen.getByText("processed entry 1")).toBeInTheDocument();
@@ -582,8 +585,15 @@ describe("DescriptionEntry", () => {
             expect(fetchRecentEntries).toHaveBeenCalled();
         });
 
-        // Recent Events section should not be visible
-        expect(screen.queryByText("Recent Events")).not.toBeInTheDocument();
+        // Recent Entries tab should still be visible but content should show "No recent entries"
+        expect(screen.getByText("Recent Entries")).toBeInTheDocument();
+        
+        // Click on the Recent Entries tab to check content
+        fireEvent.click(screen.getByText("Recent Entries"));
+        
+        await waitFor(() => {
+            expect(screen.getByText("No recent entries found")).toBeInTheDocument();
+        });
     });
 
     it("shows loading skeletons while recent entries are loading", async () => {
@@ -592,9 +602,17 @@ describe("DescriptionEntry", () => {
 
         render(<DescriptionEntry />);
 
-        // Should show Recent Events section with loading skeletons
+        // Should show Recent Entries tab
         await waitFor(() => {
-            expect(screen.getByText("Recent Events")).toBeInTheDocument();
+            expect(screen.getByText("Recent Entries")).toBeInTheDocument();
+        });
+
+        // Click on the Recent Entries tab to access loading content
+        fireEvent.click(screen.getByText("Recent Entries"));
+
+        // Should show loading text and skeleton elements
+        await waitFor(() => {
+            expect(screen.getByText("Loading recent entries...")).toBeInTheDocument();
         });
 
         // Should show multiple skeleton elements (from Chakra UI)
@@ -613,8 +631,15 @@ describe("DescriptionEntry", () => {
             expect(screen.getByText("Log an Event")).toBeInTheDocument();
         });
 
-        // Should not show Recent Events section when there's an error
-        expect(screen.queryByText("Recent Events")).not.toBeInTheDocument();
+        // Recent Entries tab should still be visible but show no entries message
+        expect(screen.getByText("Recent Entries")).toBeInTheDocument();
+        
+        // Click on the Recent Entries tab to check content
+        fireEvent.click(screen.getByText("Recent Entries"));
+        
+        await waitFor(() => {
+            expect(screen.getByText("No recent entries found")).toBeInTheDocument();
+        });
     });
 
     it("handles fetchConfig error gracefully", async () => {
