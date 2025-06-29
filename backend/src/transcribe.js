@@ -1,4 +1,3 @@
-const fs = require("fs");
 const path = require("path");
 const { makeDirectory, markDone } = require("./request_identifier");
 const creatorMake = require("./creator");
@@ -20,6 +19,7 @@ const creatorMake = require("./creator");
  * @property {FileCreator} creator - A file system creator instance.
  * @property {FileChecker} checker - A file system checker instance.
  * @property {FileWriter} writer - A file system writer instance.
+ * @property {import('./filesystem/reader').FileReader} reader - A file reader instance.
  * @property {Command} git - A command instance for Git operations (optional if not always used).
  * @property {Environment} environment - An environment instance.
  * @property {Logger} logger - A logger instance.
@@ -132,7 +132,7 @@ async function transcribeStream(capabilities, file_stream) {
  * @returns {Promise<ExistingFile>}
  */
 async function transcribeFile(capabilities, inputFile, outputPath) {
-    const file_stream = fs.createReadStream(inputFile.path);
+    const file_stream = capabilities.reader.createReadStream(inputFile);
     const transcription = await transcribeStream(capabilities, file_stream);
 
     // Persist full JSON to disk
