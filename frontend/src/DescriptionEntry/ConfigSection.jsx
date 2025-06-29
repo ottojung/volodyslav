@@ -17,7 +17,6 @@ import {
     TabPanels,
     Tab,
     TabPanel,
-    Tooltip,
     Icon,
     Skeleton,
 } from "@chakra-ui/react";
@@ -43,14 +42,6 @@ const InfoIcon = React.forwardRef((props, ref) => (
     </span>
 ));
 InfoIcon.displayName = "InfoIcon";
-
-const CopyIcon = React.forwardRef((props, ref) => (
-    <span ref={ref} {...props}>
-        📋
-    </span>
-));
-
-CopyIcon.displayName = "CopyIcon";
 
 import { fetchConfig } from "./api.js";
 import { CARD_STYLES, TEXT_STYLES, SPACING, COLORS } from "./styles.js";
@@ -233,15 +224,6 @@ export const ConfigSection = ({ onShortcutClick, currentInput = "" }) => {
                                                             >
                                                                 {example}
                                                             </Code>
-                                                            <Tooltip label="Click to use this example">
-                                                                <Icon
-                                                                    as={
-                                                                        CopyIcon
-                                                                    }
-                                                                    color="gray.400"
-                                                                    boxSize={3}
-                                                                />
-                                                            </Tooltip>
                                                         </HStack>
                                                     )
                                                 )}
@@ -260,8 +242,8 @@ export const ConfigSection = ({ onShortcutClick, currentInput = "" }) => {
                                                     fontSize="sm"
                                                     color="gray.600"
                                                 >
-                                                    Click a shortcut to copy its
-                                                    pattern to the input:
+                                                    Click a shortcut to use its
+                                                    pattern:
                                                 </Text>
                                                 {config.shortcuts.map(
                                                     (shortcut, index) => {
@@ -327,15 +309,6 @@ export const ConfigSection = ({ onShortcutClick, currentInput = "" }) => {
                                                                                     }
                                                                                 </Code>
                                                                             </HStack>
-                                                                            <Icon
-                                                                                as={
-                                                                                    CopyIcon
-                                                                                }
-                                                                                color="gray.400"
-                                                                                boxSize={
-                                                                                    3
-                                                                                }
-                                                                            />
                                                                         </HStack>
                                                                         {shortcut[2] && (
                                                                             <Text

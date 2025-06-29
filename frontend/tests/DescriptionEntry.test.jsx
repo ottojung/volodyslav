@@ -875,7 +875,7 @@ describe("DescriptionEntry", () => {
         // Default tab is Shortcuts (when shortcuts exist), so should show shortcuts content
         expect(
             screen.getByText(
-                "Click a shortcut to copy its pattern to the input:"
+                "Click a shortcut to use its pattern:"
             )
         ).toBeInTheDocument();
 
@@ -898,7 +898,7 @@ describe("DescriptionEntry", () => {
         await waitFor(() => {
             expect(
                 screen.getByText(
-                    "Click a shortcut to copy its pattern to the input:"
+                    "Click a shortcut to use its pattern:"
                 )
             ).toBeInTheDocument();
         });
