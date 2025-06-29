@@ -73,9 +73,9 @@ export const restoreDescription = (requestIdentifier) => {
 /**
  * Retrieves photos from sessionStorage and converts them back to File objects
  * @param {string} requestIdentifier - The request identifier
- * @returns {File[]} - Array of File objects, or empty array if not found
+ * @returns {Promise<File[]>} - Array of File objects, or empty array if not found
  */
-export const retrievePhotos = (requestIdentifier) => {
+export const retrievePhotos = async (requestIdentifier) => {
     const key = `photos_${requestIdentifier}`;
     
     console.log("🟡 RETRIEVE DEBUG: Starting photo retrieval", {
@@ -106,21 +106,21 @@ export const retrievePhotos = (requestIdentifier) => {
             photoSizes: photosData.map(/** @param {{name: string, data: string, type: string}} p */ p => p.data.length),
         });
         
-        const files = photosData.map(/** @param {{name: string, data: string, type: string}} photo */ photo => {
+        const files = await Promise.all(photosData.map(async (/** @type {{name: string, data: string, type: string}} */ photo) => {
             console.log("🟡 RETRIEVE DEBUG: Converting photo to File", {
                 name: photo.name,
                 type: photo.type,
                 base64Size: photo.data.length,
             });
             
-            // Convert base64 back to Uint8Array
-            const binaryString = atob(photo.data);
-            const bytes = new Uint8Array(binaryString.length);
-            for (let i = 0; i < binaryString.length; i++) {
-                bytes[i] = binaryString.charCodeAt(i);
-            }
-            // Create File object
-            const file = new File([bytes], photo.name, { type: photo.type });
+            // Convert base64 back to blob, then to File
+            // Create a data URL and fetch it to get the blob
+            const dataUrl = `data:${photo.type};base64,${photo.data}`;
+            const response = await fetch(dataUrl);
+            const blob = await response.blob();
+            
+            // Create File object from blob
+            const file = new File([blob], photo.name, { type: photo.type });
             
             console.log("🟡 RETRIEVE DEBUG: Created File object", {
                 name: file.name,
@@ -129,7 +129,7 @@ export const retrievePhotos = (requestIdentifier) => {
             });
             
             return file;
-        });
+        }));
         
         console.log("🟡 RETRIEVE DEBUG: All files converted", {
             fileCount: files.length,

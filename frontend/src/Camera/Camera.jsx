@@ -190,17 +190,23 @@ export default function Camera() {
             // Store photos in sessionStorage for the describe page to retrieve
             const photosData = await Promise.all(
                 allPhotos.map(async (photo) => {
-                    // Convert blob to base64 for storage using a more memory-efficient approach
-                    const arrayBuffer = await photo.blob.arrayBuffer();
-                    const uint8Array = new Uint8Array(arrayBuffer);
-
-                    // Convert to base64 in chunks to avoid stack overflow
-                    let base64 = "";
-                    const chunkSize = 1024; // Use smaller chunks to be safe
-                    for (let i = 0; i < uint8Array.length; i += chunkSize) {
-                        const chunk = uint8Array.subarray(i, i + chunkSize);
-                        base64 += btoa(String.fromCharCode(...chunk));
-                    }
+                    // Convert blob to base64 for storage using FileReader (more reliable)
+                    const base64 = await new Promise((resolve, reject) => {
+                        const reader = new FileReader();
+                        reader.onload = () => {
+                            // FileReader gives us a data URL like "data:image/jpeg;base64,..."
+                            // We need to extract just the base64 part
+                            const result = reader.result;
+                            if (typeof result === 'string') {
+                                const base64Data = result.split(',')[1]; // Remove the data URL prefix
+                                resolve(base64Data);
+                            } else {
+                                reject(new Error('FileReader did not return a string'));
+                            }
+                        };
+                        reader.onerror = () => reject(reader.error);
+                        reader.readAsDataURL(photo.blob);
+                    });
 
                     console.log("🔵 CAMERA DEBUG: Converted photo to base64", {
                         name: photo.name,
@@ -240,7 +246,7 @@ export default function Camera() {
                               const parsed = JSON.parse(stored);
                               return { success: true, count: parsed.length };
                           } catch (e) {
-                              return { success: false, error: e.message };
+                              return { success: false, error: e instanceof Error ? e.message : String(e) };
                           }
                       })()
                     : null,

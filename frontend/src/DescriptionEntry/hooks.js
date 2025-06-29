@@ -55,7 +55,7 @@ export const useDescriptionEntry = (numberOfEntries = 10) => {
 
         try {
             // Retrieve photos if we have a pending request identifier
-            const files = pendingRequestIdentifier ? retrievePhotos(pendingRequestIdentifier) : [];
+            const files = pendingRequestIdentifier ? await retrievePhotos(pendingRequestIdentifier) : [];
             
             console.log("🟢 SUBMIT DEBUG: Retrieved files", {
                 pendingRequestIdentifier,
