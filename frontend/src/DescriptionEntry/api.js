@@ -1,5 +1,6 @@
 const API_BASE_URL = "/api";
 import { logger } from "./logger.js";
+import { EntrySubmissionError } from "./errors.js";
 
 /**
  * @typedef {Object} Entry
@@ -61,47 +62,79 @@ export async function submitEntry(rawInput, requestIdentifier = undefined, files
 
     let response;
     
-    if (files && files.length > 0) {
-        // If we have files, use FormData
-        const formData = new FormData();
-        formData.append('rawInput', rawInput);
-        files.forEach(file => {
-            formData.append('files', file);  // Changed from 'photos' to 'files' to match backend expectation
-        });
-        
-        response = await fetch(url, {
-            method: "POST",
-            body: formData,
-        });
-    } else {
-        // No files, use JSON
-        const requestBody = { rawInput };
-        
-        response = await fetch(url, {
-            method: "POST",
-            headers: {
-                "Content-Type": "application/json",
-            },
-            body: JSON.stringify(requestBody),
-        });
+    try {
+        if (files && files.length > 0) {
+            // If we have files, use FormData
+            const formData = new FormData();
+            formData.append('rawInput', rawInput);
+            files.forEach(file => {
+                formData.append('files', file);  // Changed from 'photos' to 'files' to match backend expectation
+            });
+            
+            response = await fetch(url, {
+                method: "POST",
+                body: formData,
+            });
+        } else {
+            // No files, use JSON
+            const requestBody = { rawInput };
+            
+            response = await fetch(url, {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                },
+                body: JSON.stringify(requestBody),
+            });
+        }
+    } catch (error) {
+        // Network or fetch-level errors
+        if (error instanceof TypeError && error.message.includes('fetch')) {
+            throw new EntrySubmissionError(
+                "Unable to reach the server. Please check your internet connection.",
+                null,
+                error
+            );
+        }
+        throw new EntrySubmissionError(
+            "An unexpected error occurred during submission.",
+            null,
+            error instanceof Error ? error : new Error(String(error))
+        );
     }
 
     if (response.status === 201) {
-        const result = await response.json();
-        if (result.success) {
-            return result;
-        } else {
-            throw new Error(result.error || "API returned unsuccessful response");
+        try {
+            const result = await response.json();
+            if (result.success) {
+                return result;
+            } else {
+                throw new EntrySubmissionError(
+                    result.error || "API returned unsuccessful response",
+                    response.status
+                );
+            }
+        } catch (parseError) {
+            if (parseError instanceof EntrySubmissionError) {
+                throw parseError;
+            }
+            throw new EntrySubmissionError(
+                "Unable to parse server response",
+                response.status,
+                parseError instanceof Error ? parseError : new Error(String(parseError))
+            );
         }
     } else {
-        let errorMessage = `HTTP ${response.status}`;
+        let errorMessage = `Server error (${response.status})`;
+        
         try {
             const errorData = await response.json();
             errorMessage = errorData.error || errorMessage;
         } catch {
             errorMessage = `HTTP ${response.status} ${response.statusText}`;
         }
-        throw new Error(errorMessage);
+        
+        throw new EntrySubmissionError(errorMessage, response.status);
     }
 }
 

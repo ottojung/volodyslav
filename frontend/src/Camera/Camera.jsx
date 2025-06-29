@@ -8,6 +8,10 @@ import {
     controlsProps,
     buttonProps,
 } from "./Camera.styles";
+import {
+    PhotoStorageError,
+    PhotoConversionError
+} from "../DescriptionEntry/errors.js";
 
 /**
  * @typedef {{ blob: Blob; name: string }} Photo
@@ -80,14 +84,28 @@ export default function Camera() {
                  */
                 (err) => {
                     let description;
-                    if (err instanceof Object && "message" in err) {
-                        description = String(err.message);
+                    let title = "Error accessing camera";
+                    
+                    if (err instanceof Error) {
+                        if (err.name === 'NotAllowedError' || err.message.includes('Permission')) {
+                            title = "Camera permission denied";
+                            description = "Please enable camera permissions in your browser settings and refresh the page.";
+                        } else if (err.name === 'NotFoundError' || err.message.includes('device')) {
+                            title = "Camera not found";
+                            description = "No camera detected on this device. Please ensure your device has a working camera.";
+                        } else if (err.name === 'NotSupportedError') {
+                            title = "Camera not supported";
+                            description = "Your browser doesn't support camera access. Please try a different browser.";
+                        } else {
+                            description = err.message;
+                        }
                     } else {
                         description = String(err);
                     }
+                    
                     toast({
-                        title: "Error accessing camera",
-                        description: description,
+                        title,
+                        description,
                         status: "error",
                         duration: null,
                         isClosable: true,
@@ -184,36 +202,57 @@ export default function Camera() {
             // Store photos in sessionStorage for the describe page to retrieve
             const photosData = await Promise.all(
                 allPhotos.map(async (photo) => {
-                    // Convert blob to base64 for storage using FileReader (more reliable)
-                    const base64 = await new Promise((resolve, reject) => {
-                        const reader = new FileReader();
-                        reader.onload = () => {
-                            // FileReader gives us a data URL like "data:image/jpeg;base64,..."
-                            // We need to extract just the base64 part
-                            const result = reader.result;
-                            if (typeof result === 'string') {
-                                const base64Data = result.split(',')[1]; // Remove the data URL prefix
-                                resolve(base64Data);
-                            } else {
-                                reject(new Error('FileReader did not return a string'));
-                            }
-                        };
-                        reader.onerror = () => reject(reader.error);
-                        reader.readAsDataURL(photo.blob);
-                    });
+                    try {
+                        // Convert blob to base64 for storage using FileReader (more reliable)
+                        const base64 = await new Promise((resolve, reject) => {
+                            const reader = new FileReader();
+                            reader.onload = () => {
+                                // FileReader gives us a data URL like "data:image/jpeg;base64,..."
+                                // We need to extract just the base64 part
+                                const result = reader.result;
+                                if (typeof result === 'string') {
+                                    const base64Data = result.split(',')[1]; // Remove the data URL prefix
+                                    resolve(base64Data);
+                                } else {
+                                    reject(new PhotoConversionError('FileReader did not return a string', photo.name));
+                                }
+                            };
+                            reader.onerror = () => reject(new PhotoConversionError('FileReader failed', photo.name, reader.error));
+                            reader.readAsDataURL(photo.blob);
+                        });
 
-                    return {
-                        name: photo.name,
-                        data: base64,
-                        type: photo.blob.type || "image/jpeg",
-                    };
+                        return {
+                            name: photo.name,
+                            data: base64,
+                            type: photo.blob.type || "image/jpeg",
+                        };
+                    } catch (error) {
+                        throw new PhotoConversionError(
+                            `Failed to process photo ${photo.name}`,
+                            photo.name,
+                            error instanceof Error ? error : new Error(String(error))
+                        );
+                    }
                 })
             );
 
-            sessionStorage.setItem(
-                `photos_${request_identifier}`,
-                JSON.stringify(photosData)
-            );
+            try {
+                sessionStorage.setItem(
+                    `photos_${request_identifier}`,
+                    JSON.stringify(photosData)
+                );
+            } catch (storageError) {
+                if (storageError instanceof Error && storageError.name === 'QuotaExceededError') {
+                    throw new PhotoStorageError(
+                        'Not enough storage space. Please free up space and try again.',
+                        storageError
+                    );
+                }
+                throw new PhotoStorageError(
+                    'Failed to save photos. Please try again.',
+                    storageError instanceof Error ? storageError : new Error(String(storageError))
+                );
+            }
 
             toast({
                 title: "Photos ready",
@@ -234,16 +273,26 @@ export default function Camera() {
             );
             window.location.href = returnUrl.toString();
         } catch (/** @type {unknown} */ err) {
-            console.error(err);
-            let description;
-            if (err instanceof Error) {
+            console.error('Camera photo processing error:', err);
+            
+            let title = "Error processing photos";
+            let description = "An unexpected error occurred.";
+            
+            if (err instanceof PhotoConversionError) {
+                title = "Photo conversion failed";
+                description = `Failed to process ${err.photoName || 'one or more photos'}. Please try taking new photos.`;
+            } else if (err instanceof PhotoStorageError) {
+                title = "Storage error";
+                description = err.message;
+            } else if (err instanceof Error) {
                 description = err.message;
             } else {
                 description = String(err);
             }
+            
             toast({
-                title: "Error uploading photos",
-                description: description,
+                title,
+                description,
                 status: "error",
                 duration: null,
                 isClosable: true,

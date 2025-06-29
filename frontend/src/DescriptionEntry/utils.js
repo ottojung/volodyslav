@@ -62,4 +62,13 @@ export const createToastConfig = {
         isClosable: true,
         position: /** @type {"top"} */ ("top"),
     }),
+    
+    warning: (/** @type {string} */ warningMessage) => ({
+        title: "Warning",
+        description: warningMessage || "Please check and try again.",
+        status: /** @type {"warning"} */ ("warning"),
+        duration: 5000,
+        isClosable: true,
+        position: /** @type {"top"} */ ("top"),
+    }),
 };
