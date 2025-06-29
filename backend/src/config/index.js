@@ -1,13 +1,14 @@
-const { 
-    serialize, 
-    deserialize, 
+const {
+    serialize,
+    deserialize,
     tryDeserialize,
-    TryDeserializeError,
-    MissingFieldError,
-    InvalidTypeError,
-    InvalidValueError,
-    InvalidStructureError,
-    InvalidArrayElementError
+    makeInvalidStructureError,
+    isTryDeserializeError,
+    isMissingFieldError,
+    isInvalidTypeError,
+    isInvalidValueError,
+    isInvalidStructureError,
+    isInvalidArrayElementError
 } = require("./structure");
 
 /** @typedef {import('./structure').Config} Config */
@@ -18,10 +19,11 @@ module.exports = {
     serialize,
     deserialize,
     tryDeserialize,
-    TryDeserializeError,
-    MissingFieldError,
-    InvalidTypeError,
-    InvalidValueError,
-    InvalidStructureError,
-    InvalidArrayElementError,
+    makeInvalidStructureError,
+    isTryDeserializeError,
+    isMissingFieldError,
+    isInvalidTypeError,
+    isInvalidValueError,
+    isInvalidStructureError,
+    isInvalidArrayElementError,
 };

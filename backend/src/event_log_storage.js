@@ -241,11 +241,11 @@ class EventLogStorageClass {
                 this.capabilities,
                 this.configFile
             );
-            
+
             // If readConfig returned an error object, it means the config is invalid
-            if (configResult instanceof config.TryDeserializeError) {
+            if (config.isTryDeserializeError(configResult)) {
                 this.capabilities.logger.logWarning(
-                    { 
+                    {
                         filepath: this.configFile,
                         error: configResult.message,
                         field: configResult.field,
@@ -258,8 +258,8 @@ class EventLogStorageClass {
                 this.existingConfigCache = null;
                 return null;
             }
-            
-            this.existingConfigCache = configResult;
+
+            this.existingConfigCache = /** @type {import('./config/structure').Config} */ (configResult);
             return this.existingConfigCache;
         } catch (error) {
             this.existingConfigCache = null;
@@ -298,9 +298,9 @@ class EventLogStorageClass {
 
             for (const obj of objects) {
                 const result = event.tryDeserialize(obj);
-                if (result instanceof event.TryDeserializeError) {
+                if (event.isTryDeserializeError(result)) {
                     this.capabilities.logger.logWarning(
-                        { 
+                        {
                             invalidObject: obj,
                             error: result.message,
                             field: result.field,

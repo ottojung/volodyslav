@@ -120,6 +120,64 @@ class InvalidArrayElementError extends TryDeserializeError {
 }
 
 /**
+ * @param {unknown} object
+ * @returns {object is TryDeserializeError}
+ */
+function isTryDeserializeError(object) {
+    return object instanceof TryDeserializeError;
+}
+
+/**
+ * @param {unknown} object
+ * @returns {object is MissingFieldError}
+ */
+function isMissingFieldError(object) {
+    return object instanceof MissingFieldError;
+}
+
+/**
+ * @param {unknown} object
+ * @returns {object is InvalidTypeError}
+ */
+function isInvalidTypeError(object) {
+    return object instanceof InvalidTypeError;
+}
+
+/**
+ * @param {unknown} object
+ * @returns {object is InvalidValueError}
+ */
+function isInvalidValueError(object) {
+    return object instanceof InvalidValueError;
+}
+
+/**
+ * @param {unknown} object
+ * @returns {object is InvalidStructureError}
+ */
+function isInvalidStructureError(object) {
+    return object instanceof InvalidStructureError;
+}
+
+/**
+ * @param {unknown} object
+ * @returns {object is InvalidArrayElementError}
+ */
+function isInvalidArrayElementError(object) {
+    return object instanceof InvalidArrayElementError;
+}
+
+/**
+ * Factory for InvalidStructureError since it's used outside this module.
+ * @param {string} message
+ * @param {unknown} value
+ * @returns {InvalidStructureError}
+ */
+function makeInvalidStructureError(message, value) {
+    return new InvalidStructureError(message, value);
+}
+
+/**
  * @typedef Shortcut
  * @type {Object}
  * @property {RegexPattern} pattern - JavaScript regex pattern to match against input text
@@ -289,10 +347,11 @@ module.exports = {
     tryDeserialize,
     serializeShortcut,
     deserializeShortcut,
-    TryDeserializeError,
-    MissingFieldError,
-    InvalidTypeError,
-    InvalidValueError,
-    InvalidStructureError,
-    InvalidArrayElementError,
+    makeInvalidStructureError,
+    isTryDeserializeError,
+    isMissingFieldError,
+    isInvalidTypeError,
+    isInvalidValueError,
+    isInvalidStructureError,
+    isInvalidArrayElementError,
 };
