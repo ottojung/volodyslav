@@ -170,24 +170,36 @@ export default function Camera() {
             return;
         }
 
-        const url = new URL('/api/upload', window.location.origin);
-        url.searchParams.set('request_identifier', request_identifier);
-        const formData = new FormData();
-        allPhotos.forEach((p) => {
-            formData.append('photos', p.blob, p.name);
-        });
-
         try {
-            const response = await fetch(url, {
-                method: 'POST',
-                body: formData,
-            });
-            if (!response.ok) {
-                throw new Error(`Server responded with ${response.status}`);
-            }
-            await response.json();
+            // Store photos in sessionStorage for the describe page to retrieve
+            const photosData = await Promise.all(
+                allPhotos.map(async (photo) => {
+                    // Convert blob to base64 for storage
+                    const arrayBuffer = await photo.blob.arrayBuffer();
+                    const base64 = btoa(String.fromCharCode(...new Uint8Array(arrayBuffer)));
+                    return {
+                        name: photo.name,
+                        data: base64,
+                        type: photo.blob.type || 'image/jpeg'
+                    };
+                })
+            );
+            
+            // Store with request identifier as key
+            sessionStorage.setItem(`photos_${request_identifier}`, JSON.stringify(photosData));
+            
             toast({
-                title: 'Upload successful',
+                title: 'Photos ready',
+                status: 'success',
+                duration: 3000,
+                isClosable: true,
+                position: 'top',
+            });
+            setPhotos([]);
+            setCurrentBlob(null);
+            
+            toast({
+                title: 'Photos ready',
                 status: 'success',
                 duration: 3000,
                 isClosable: true,

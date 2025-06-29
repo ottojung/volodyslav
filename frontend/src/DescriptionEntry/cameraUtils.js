@@ -69,3 +69,38 @@ export const restoreDescription = (requestIdentifier) => {
     }
     return null;
 };
+
+/**
+ * Retrieves photos from sessionStorage and converts them back to File objects
+ * @param {string} requestIdentifier - The request identifier
+ * @returns {File[]} - Array of File objects, or empty array if not found
+ */
+export const retrievePhotos = (requestIdentifier) => {
+    const key = `photos_${requestIdentifier}`;
+    const stored = sessionStorage.getItem(key);
+    if (!stored) {
+        return [];
+    }
+    
+    try {
+        const photosData = JSON.parse(stored);
+        const files = photosData.map(/** @param {{name: string, data: string, type: string}} photo */ photo => {
+            // Convert base64 back to Uint8Array
+            const binaryString = atob(photo.data);
+            const bytes = new Uint8Array(binaryString.length);
+            for (let i = 0; i < binaryString.length; i++) {
+                bytes[i] = binaryString.charCodeAt(i);
+            }
+            // Create File object
+            return new File([bytes], photo.name, { type: photo.type });
+        });
+        
+        // Clean up the stored photos
+        sessionStorage.removeItem(key);
+        return files;
+    } catch (error) {
+        console.error('Error retrieving photos:', error);
+        sessionStorage.removeItem(key);
+        return [];
+    }
+};

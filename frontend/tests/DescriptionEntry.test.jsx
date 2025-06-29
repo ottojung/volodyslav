@@ -26,6 +26,7 @@ jest.mock("../src/DescriptionEntry/cameraUtils", () => ({
     checkCameraReturn: jest.fn(),
     cleanupUrlParams: jest.fn(),
     restoreDescription: jest.fn(),
+    retrievePhotos: jest.fn(),
 }));
 
 import DescriptionEntry from "../src/DescriptionEntry/DescriptionEntry.jsx";
@@ -43,6 +44,7 @@ import {
     checkCameraReturn,
     cleanupUrlParams,
     restoreDescription,
+    retrievePhotos,
 } from "../src/DescriptionEntry/cameraUtils";
 
 describe("DescriptionEntry", () => {
@@ -72,6 +74,7 @@ describe("DescriptionEntry", () => {
         checkCameraReturn.mockReset();
         cleanupUrlParams.mockReset();
         restoreDescription.mockReset();
+        retrievePhotos.mockReset();
 
         // Set default mock implementations that resolve immediately
         fetchRecentEntries.mockResolvedValue([]);
@@ -81,11 +84,11 @@ describe("DescriptionEntry", () => {
         });
         // Use default mock config instead of null
         fetchConfig.mockResolvedValue(defaultMockConfig);
-        
         // Set default camera mock implementations - ensure clean state
         generateRequestIdentifier.mockReturnValue("test-req-id-123");
         checkCameraReturn.mockReturnValue({ isReturn: false, requestIdentifier: null });
         restoreDescription.mockReturnValue(null);
+        retrievePhotos.mockReturnValue([]);
         
         // Clear sessionStorage to ensure clean state
         Object.defineProperty(window, 'sessionStorage', {
@@ -228,12 +231,11 @@ describe("DescriptionEntry", () => {
 
         // Type something
         fireEvent.change(input, { target: { value: "test event" } });
-
         // Click submit
         fireEvent.click(logButton);
 
         await waitFor(() => {
-            expect(submitEntry).toHaveBeenCalledWith("test event");
+            expect(submitEntry).toHaveBeenCalledWith("test event", undefined, []);
         });
     });
 
@@ -248,7 +250,6 @@ describe("DescriptionEntry", () => {
         const input = screen.getByPlaceholderText(
             "Type your event description here..."
         );
-
         // Type something
         fireEvent.change(input, { target: { value: "test event" } });
 
@@ -256,7 +257,7 @@ describe("DescriptionEntry", () => {
         fireEvent.keyUp(input, { key: "Enter", code: "Enter" });
 
         await waitFor(() => {
-            expect(submitEntry).toHaveBeenCalledWith("test event");
+            expect(submitEntry).toHaveBeenCalledWith("test event", undefined, []);
         });
     });
 
@@ -389,7 +390,7 @@ describe("DescriptionEntry", () => {
         fireEvent.click(logButton);
 
         await waitFor(() => {
-            expect(submitEntry).toHaveBeenCalledWith("test event");
+            expect(submitEntry).toHaveBeenCalledWith("test event", undefined, []);
         });
 
         // Input should not be cleared on error
@@ -754,7 +755,7 @@ describe("DescriptionEntry", () => {
         fireEvent.click(logButton);
 
         await waitFor(() => {
-            expect(submitEntry).toHaveBeenCalledWith("test event");
+            expect(submitEntry).toHaveBeenCalledWith("test event", undefined, []);
         });
 
         // Input should not be cleared on error
@@ -781,7 +782,7 @@ describe("DescriptionEntry", () => {
         fireEvent.click(logButton);
 
         await waitFor(() => {
-            expect(submitEntry).toHaveBeenCalledWith("test event");
+            expect(submitEntry).toHaveBeenCalledWith("test event", undefined, []);
         });
     });
 
@@ -804,7 +805,7 @@ describe("DescriptionEntry", () => {
         fireEvent.keyUp(input, { key: "Enter", code: "Enter" });
 
         await waitFor(() => {
-            expect(submitEntry).toHaveBeenCalledWith("test event");
+            expect(submitEntry).toHaveBeenCalledWith("test event", undefined, []);
         });
     });
 
@@ -879,7 +880,7 @@ describe("DescriptionEntry", () => {
         fireEvent.click(logButton);
 
         await waitFor(() => {
-            expect(submitEntry).toHaveBeenCalledWith("first event");
+            expect(submitEntry).toHaveBeenNthCalledWith(1, "first event", undefined, []);
             expect(input.value).toBe("");
         });
 
@@ -888,7 +889,7 @@ describe("DescriptionEntry", () => {
         fireEvent.click(logButton);
 
         await waitFor(() => {
-            expect(submitEntry).toHaveBeenCalledWith("second event");
+            expect(submitEntry).toHaveBeenNthCalledWith(2, "second event", undefined, []);
             expect(input.value).toBe("");
         });
 
@@ -1003,6 +1004,7 @@ describe("Camera Integration", () => {
             checkCameraReturn.mockReset();
             restoreDescription.mockReset();
             submitEntry.mockReset();
+            retrievePhotos.mockReset();
             
             // Mock returning from camera
             checkCameraReturn.mockReturnValue({
@@ -1010,6 +1012,12 @@ describe("Camera Integration", () => {
                 requestIdentifier: "test-req-id-123"
             });
             restoreDescription.mockReturnValue("Take a photo [phone_take_photo] of the sunset");
+            
+            // Mock some photos being retrieved
+            const mockFile1 = new File(['fake content 1'], 'photo_01.jpeg', { type: 'image/jpeg' });
+            const mockFile2 = new File(['fake content 2'], 'photo_02.jpeg', { type: 'image/jpeg' });
+            retrievePhotos.mockReturnValue([mockFile1, mockFile2]);
+            
             submitEntry.mockResolvedValue({
                 success: true,
                 entry: { input: "Take a photo [phone_take_photo] of the sunset" },
@@ -1037,7 +1045,8 @@ describe("Camera Integration", () => {
                 // Should submit with request identifier for photos
                 expect(submitEntry).toHaveBeenCalledWith(
                     "Take a photo [phone_take_photo] of the sunset",
-                    "test-req-id-123"
+                    "test-req-id-123",
+                    [mockFile1, mockFile2]
                 );
             });
         });
@@ -1072,7 +1081,7 @@ describe("Camera Integration", () => {
 
             await waitFor(() => {
                 // Should submit normally without camera and without request identifier
-                expect(submitEntry).toHaveBeenCalledWith(regularDescription);
+                expect(submitEntry).toHaveBeenCalledWith(regularDescription, undefined, []);
             });
 
             // Should not navigate to camera
@@ -1087,6 +1096,10 @@ describe("Camera Integration", () => {
             });
             const originalDescription = "Meeting [phone_take_photo] with client about new project";
             restoreDescription.mockReturnValue(originalDescription);
+            
+            // Mock some photos being retrieved
+            const mockFile = new File(['fake content'], 'photo_01.jpeg', { type: 'image/jpeg' });
+            retrievePhotos.mockReturnValue([mockFile]);
 
             render(<DescriptionEntry />);
 
@@ -1105,8 +1118,8 @@ describe("Camera Integration", () => {
             fireEvent.click(logButton);
 
             await waitFor(() => {
-                // Should submit with the exact original description
-                expect(submitEntry).toHaveBeenCalledWith(originalDescription, "test-req-id-123");
+                // Should submit with the exact original description and the photos
+                expect(submitEntry).toHaveBeenCalledWith(originalDescription, "test-req-id-123", [mockFile]);
             });
         });
 

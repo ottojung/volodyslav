@@ -11,7 +11,8 @@ import {
     navigateToCamera, 
     checkCameraReturn, 
     cleanupUrlParams,
-    restoreDescription
+    restoreDescription,
+    retrievePhotos
 } from "./cameraUtils.js";
 
 /**
@@ -47,15 +48,22 @@ export const useDescriptionEntry = (numberOfEntries = 10) => {
         setIsSubmitting(true);
 
         try {
-            const result = pendingRequestIdentifier 
-                ? await submitEntry(description.trim(), pendingRequestIdentifier)
-                : await submitEntry(description.trim());
+            // Retrieve photos if we have a pending request identifier
+            const files = pendingRequestIdentifier ? retrievePhotos(pendingRequestIdentifier) : [];
+            
+            const result = await submitEntry(description.trim(), pendingRequestIdentifier || undefined, files);
             const savedInput = result.entry?.input ?? description.trim();
 
             setDescription("");
             setPendingRequestIdentifier(null);
             fetchRecentEntries();
-            toast(createToastConfig.success(savedInput));
+            
+            // Show success message with file count if applicable
+            const fileCountMessage = files.length > 0 ? ` with ${files.length} photo(s)` : '';
+            toast({
+                ...createToastConfig.success(savedInput),
+                description: `Entry logged successfully${fileCountMessage}`,
+            });
         } catch (error) {
             logger.error("Error logging event:", error);
             const errorMessage = error instanceof Error 
@@ -107,8 +115,19 @@ export const useDescriptionEntry = (numberOfEntries = 10) => {
             cleanupUrlParams();
             
             // Show a toast to let user know photos are ready
+            const photosDataString = sessionStorage.getItem(`photos_${cameraReturn.requestIdentifier}`);
+            let photoCount = 0;
+            if (photosDataString) {
+                try {
+                    const photosData = JSON.parse(photosDataString);
+                    photoCount = photosData.length;
+                } catch (e) {
+                    console.warn('Error parsing photos data:', e);
+                }
+            }
+            
             toast({
-                title: 'Photos uploaded successfully',
+                title: `${photoCount} photo(s) ready`,
                 description: 'Complete your description and submit to create the entry.',
                 status: 'success',
                 duration: 5000,

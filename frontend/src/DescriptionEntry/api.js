@@ -49,25 +49,42 @@ export const fetchRecentEntries = async (limit = 10) => {
  * Submits a new entry to the API.
  * @param {string} rawInput - The raw input description for the entry.
  * @param {string} [requestIdentifier] - Optional request identifier for associated photos.
+ * @param {File[]} [files] - Optional array of files to upload with the entry.
  * @returns {Promise<{success: boolean, entry?: Entry, error?: string}>} - The API response object containing success status and entry data.
  * @throws {Error} - Throws an error if the submission fails.
  */
-export async function submitEntry(rawInput, requestIdentifier = undefined) {
-    const requestBody = { rawInput };
-    
-    // If we have a request identifier, include it in the request
+export async function submitEntry(rawInput, requestIdentifier = undefined, files = []) {
     let url = `${API_BASE_URL}/entries`;
     if (requestIdentifier) {
         url += `?request_identifier=${encodeURIComponent(requestIdentifier)}`;
     }
 
-    const response = await fetch(url, {
-        method: "POST",
-        headers: {
-            "Content-Type": "application/json",
-        },
-        body: JSON.stringify(requestBody),
-    });
+    let response;
+    
+    if (files && files.length > 0) {
+        // If we have files, use FormData
+        const formData = new FormData();
+        formData.append('rawInput', rawInput);
+        files.forEach(file => {
+            formData.append('photos', file);
+        });
+        
+        response = await fetch(url, {
+            method: "POST",
+            body: formData,
+        });
+    } else {
+        // No files, use JSON
+        const requestBody = { rawInput };
+        
+        response = await fetch(url, {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+            },
+            body: JSON.stringify(requestBody),
+        });
+    }
 
     if (response.status === 201) {
         const result = await response.json();
