@@ -29,7 +29,7 @@ async function entryTyped(capabilities) {
         .action(async (options) => {
             if (options.version) {
                 await printVersion(capabilities);
-                process.exit(0);
+                capabilities.exiter.exit(0);
             }
         });
 
