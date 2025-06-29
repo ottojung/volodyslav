@@ -71,6 +71,10 @@ class WorkingRepositoryError extends Error {
     }
 }
 
+/**
+ * @param {unknown} object
+ * @returns {object is WorkingRepositoryError}
+ */
 function isWorkingRepositoryError(object) {
     return object instanceof WorkingRepositoryError;
 }
