@@ -242,6 +242,20 @@ function isWorkingRepositoryError(object) {
 }
 ```
 
+## Avoid Type-Casting
+Since this project relies heavily on type checking for safety and correctness, **type-casting must not be used** under any circumstances.
+
+#### Examples:
+```javascript
+// ❌ Wrong: Type-casting
+const obj = /** @type {SomeType} */ (unknownObject);
+
+// ✅ Correct: Ensured correct type via type guard
+if (isSomeType(unknownObject)) {
+    const obj = unknownObject;
+}
+```
+
 # Testing and Validation
 
 ## Running Tests
