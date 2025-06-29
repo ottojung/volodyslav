@@ -189,7 +189,7 @@ describe("config structure", () => {
 
             invalidObjects.forEach((obj) => {
                 const result = config.tryDeserialize(obj);
-                expect(result).toBeInstanceOf(config.TryDeserializeError);
+                expect(config.isTryDeserializeError(result)).toBe(true);
             });
         });
 
@@ -229,7 +229,7 @@ describe("config structure", () => {
 
             invalidShortcuts.forEach((obj) => {
                 const result = config.tryDeserialize(obj);
-                expect(result).toBeInstanceOf(config.TryDeserializeError);
+                expect(config.isTryDeserializeError(result)).toBe(true);
             });
         });
     });
@@ -520,7 +520,7 @@ describe("config storage", () => {
                     file
                 );
 
-                expect(result).toBeInstanceOf(config.InvalidStructureError);
+                expect(config.isInvalidStructureError(result)).toBe(true);
                 expect(result.message).toBe("Config file is empty");
             });
 
@@ -537,7 +537,7 @@ describe("config storage", () => {
                     file
                 );
 
-                expect(result).toBeInstanceOf(config.MissingFieldError);
+                expect(config.isMissingFieldError(result)).toBe(true);
                 expect(result.field).toBe("help");
             });
 

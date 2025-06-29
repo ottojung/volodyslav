@@ -110,6 +110,54 @@ class NestedFieldError extends TryDeserializeError {
 }
 
 /**
+ * @param {unknown} object
+ * @returns {object is TryDeserializeError}
+ */
+function isTryDeserializeError(object) {
+    return object instanceof TryDeserializeError;
+}
+
+/**
+ * @param {unknown} object
+ * @returns {object is MissingFieldError}
+ */
+function isMissingFieldError(object) {
+    return object instanceof MissingFieldError;
+}
+
+/**
+ * @param {unknown} object
+ * @returns {object is InvalidTypeError}
+ */
+function isInvalidTypeError(object) {
+    return object instanceof InvalidTypeError;
+}
+
+/**
+ * @param {unknown} object
+ * @returns {object is InvalidValueError}
+ */
+function isInvalidValueError(object) {
+    return object instanceof InvalidValueError;
+}
+
+/**
+ * @param {unknown} object
+ * @returns {object is InvalidStructureError}
+ */
+function isInvalidStructureError(object) {
+    return object instanceof InvalidStructureError;
+}
+
+/**
+ * @param {unknown} object
+ * @returns {object is NestedFieldError}
+ */
+function isNestedFieldError(object) {
+    return object instanceof NestedFieldError;
+}
+
+/**
  * @typedef Modifiers
  * @type {Record<string, string>}
  */
@@ -337,10 +385,10 @@ module.exports = {
     serialize,
     deserialize,
     tryDeserialize,
-    TryDeserializeError,
-    MissingFieldError,
-    InvalidTypeError,
-    InvalidValueError,
-    InvalidStructureError,
-    NestedFieldError,
+    isTryDeserializeError,
+    isMissingFieldError,
+    isInvalidTypeError,
+    isInvalidValueError,
+    isInvalidStructureError,
+    isNestedFieldError,
 };

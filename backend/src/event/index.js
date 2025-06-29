@@ -1,14 +1,14 @@
 
-const { 
-    serialize, 
-    deserialize, 
+const {
+    serialize,
+    deserialize,
     tryDeserialize,
-    TryDeserializeError,
-    MissingFieldError,
-    InvalidTypeError,
-    InvalidValueError,
-    InvalidStructureError,
-    NestedFieldError
+    isTryDeserializeError,
+    isMissingFieldError,
+    isInvalidTypeError,
+    isInvalidValueError,
+    isInvalidStructureError,
+    isNestedFieldError
 } = require('./structure');
 
 /** @typedef {import('./structure').Event} Event */
@@ -20,10 +20,10 @@ module.exports = {
     serialize,
     deserialize,
     tryDeserialize,
-    TryDeserializeError,
-    MissingFieldError,
-    InvalidTypeError,
-    InvalidValueError,
-    InvalidStructureError,
-    NestedFieldError,
+    isTryDeserializeError,
+    isMissingFieldError,
+    isInvalidTypeError,
+    isInvalidValueError,
+    isInvalidStructureError,
+    isNestedFieldError,
 };
