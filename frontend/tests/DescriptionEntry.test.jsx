@@ -184,23 +184,6 @@ describe("DescriptionEntry", () => {
         expect(screen.queryByText("Help")).not.toBeInTheDocument();
     });
 
-    it("renders config section with server data when available", async () => {
-        const mockConfig = {
-            help: "Custom help text",
-            shortcuts: [["test", "TEST", "Test shortcut"]],
-        };
-        fetchConfig.mockResolvedValue(mockConfig);
-
-        render(<DescriptionEntry />);
-
-        // Wait for config to load
-        await waitFor(() => {
-            expect(screen.getByText("Event Logging Help")).toBeInTheDocument();
-        });
-
-        // Should show shortcuts count from server data
-        expect(screen.getByText("1 shortcuts")).toBeInTheDocument();
-    });
 
     it("loads recent entries on mount", async () => {
         const mockEntries = [
@@ -287,43 +270,6 @@ describe("DescriptionEntry", () => {
         });
     });
 
-    it("shows loading state on submit button during submission", async () => {
-        // Mock a slow submission
-        submitEntry.mockImplementation(
-            () =>
-                new Promise((resolve) =>
-                    setTimeout(
-                        () =>
-                            resolve({
-                                success: true,
-                                entry: { input: "test" },
-                            }),
-                        100
-                    )
-                )
-        );
-
-        render(<DescriptionEntry />);
-
-        const input = screen.getByPlaceholderText(
-            "Type your event description here..."
-        );
-        const logButton = screen.getByRole("button", { name: /log event/i });
-
-        // Type something
-        fireEvent.change(input, { target: { value: "test event" } });
-
-        // Click submit
-        fireEvent.click(logButton);
-
-        // Should show loading text
-        expect(screen.getByText("Logging...")).toBeInTheDocument();
-
-        // Wait for submission to complete
-        await waitFor(() => {
-            expect(screen.getByText("Log Event")).toBeInTheDocument();
-        });
-    });
 
     it("handles submission errors gracefully", async () => {
         submitEntry.mockRejectedValue(new Error("Network error"));
@@ -333,13 +279,11 @@ describe("DescriptionEntry", () => {
         const input = screen.getByPlaceholderText(
             "Type your event description here..."
         );
-        const logButton = screen.getByRole("button", { name: /log event/i });
-
         // Type something
         fireEvent.change(input, { target: { value: "test event" } });
 
-        // Submit
-        fireEvent.click(logButton);
+        // Submit using Enter key
+        fireEvent.keyUp(input, { key: "Enter", code: "Enter" });
 
         await waitFor(() => {
             expect(submitEntry).toHaveBeenCalledWith(
@@ -358,21 +302,19 @@ describe("DescriptionEntry", () => {
 
         // Wait for component to settle
         await waitFor(() => {
-            expect(screen.getByText("Event Logging Help")).toBeInTheDocument();
+            expect(screen.getByText("Syntax")).toBeInTheDocument();
         });
 
         const input = screen.getByPlaceholderText(
             "Type your event description here..."
         );
-        const logButton = screen.getByRole("button", { name: /log event/i });
-
         // Try to submit empty input
-        fireEvent.click(logButton);
+        fireEvent.keyUp(input, { key: "Enter", code: "Enter" });
         expect(submitEntry).not.toHaveBeenCalled();
 
         // Try to submit whitespace-only input
         fireEvent.change(input, { target: { value: "   " } });
-        fireEvent.click(logButton);
+        fireEvent.keyUp(input, { key: "Enter", code: "Enter" });
         expect(submitEntry).not.toHaveBeenCalled();
     });
 
@@ -397,7 +339,7 @@ describe("DescriptionEntry", () => {
 
         // Wait for config to load and find a shortcut to click
         await waitFor(() => {
-            expect(screen.getByText("Event Logging Help")).toBeInTheDocument();
+            expect(screen.getByText("Syntax")).toBeInTheDocument();
         });
 
         // Find and click the shortcuts tab
@@ -432,7 +374,7 @@ describe("DescriptionEntry", () => {
 
         // Wait for config to load
         await waitFor(() => {
-            expect(screen.getByText("Event Logging Help")).toBeInTheDocument();
+            expect(screen.getByText("Syntax")).toBeInTheDocument();
         });
 
         // Click on a syntax example
@@ -533,7 +475,9 @@ describe("DescriptionEntry", () => {
         // Should not crash and should eventually stop loading
         await waitFor(() => {
             // The component should still render normally
-            expect(screen.getByText("Log an Event")).toBeInTheDocument();
+            expect(
+                screen.getByPlaceholderText("Type your event description here...")
+            ).toBeInTheDocument();
         });
 
         // Recent Entries tab should still be visible but show no entries message
@@ -555,7 +499,9 @@ describe("DescriptionEntry", () => {
 
         // When config fetch returns null, no config section should be shown
         await waitFor(() => {
-            expect(screen.getByText("Log an Event")).toBeInTheDocument();
+            expect(
+                screen.getByPlaceholderText("Type your event description here...")
+            ).toBeInTheDocument();
         });
 
         // Should not show config section when no config is available
@@ -574,7 +520,7 @@ describe("DescriptionEntry", () => {
 
         // Wait for config to load
         await waitFor(() => {
-            expect(screen.getByText("Event Logging Help")).toBeInTheDocument();
+            expect(screen.getByText("Syntax")).toBeInTheDocument();
         });
 
         // Click shortcuts tab
@@ -617,13 +563,11 @@ describe("DescriptionEntry", () => {
         const input = screen.getByPlaceholderText(
             "Type your event description here..."
         );
-        const logButton = screen.getByRole("button", { name: /log event/i });
-
         // Type something
         fireEvent.change(input, { target: { value: "test event" } });
 
-        // Submit
-        fireEvent.click(logButton);
+        // Submit using Enter key
+        fireEvent.keyUp(input, { key: "Enter", code: "Enter" });
 
         await waitFor(() => {
             expect(submitEntry).toHaveBeenCalledWith(
@@ -642,19 +586,17 @@ describe("DescriptionEntry", () => {
 
         // Wait for component to settle
         await waitFor(() => {
-            expect(screen.getByText("Event Logging Help")).toBeInTheDocument();
+            expect(screen.getByText("Syntax")).toBeInTheDocument();
         });
 
         const input = screen.getByPlaceholderText(
             "Type your event description here..."
         );
-        const logButton = screen.getByRole("button", { name: /log event/i });
-
         // Type something with leading/trailing whitespace
         fireEvent.change(input, { target: { value: "  test event  " } });
 
-        // Submit
-        fireEvent.click(logButton);
+        // Submit using Enter key
+        fireEvent.keyUp(input, { key: "Enter", code: "Enter" });
 
         await waitFor(() => {
             expect(submitEntry).toHaveBeenCalledWith(
@@ -670,7 +612,7 @@ describe("DescriptionEntry", () => {
 
         // Wait for component to settle
         await waitFor(() => {
-            expect(screen.getByText("Event Logging Help")).toBeInTheDocument();
+            expect(screen.getByText("Syntax")).toBeInTheDocument();
         });
 
         const input = screen.getByPlaceholderText(
@@ -692,30 +634,13 @@ describe("DescriptionEntry", () => {
         });
     });
 
-    it("displays correct number of shortcuts in config section", async () => {
-        const mockConfig = {
-            help: "Custom help text",
-            shortcuts: [
-                ["test1", "TEST1", "Test 1"],
-                ["test2", "TEST2", "Test 2"],
-                ["test3", "TEST3", "Test 3"],
-            ],
-        };
-        fetchConfig.mockResolvedValue(mockConfig);
-
-        render(<DescriptionEntry />);
-
-        await waitFor(() => {
-            expect(screen.getByText("3 shortcuts")).toBeInTheDocument();
-        });
-    });
 
     it("handles config section tab switching", async () => {
         render(<DescriptionEntry />);
 
         // Wait for config to load
         await waitFor(() => {
-            expect(screen.getByText("Event Logging Help")).toBeInTheDocument();
+            expect(screen.getByText("Syntax")).toBeInTheDocument();
         });
 
         // Default tab is Shortcuts (when shortcuts exist), so should show shortcuts content
@@ -756,11 +681,9 @@ describe("DescriptionEntry", () => {
         const input = screen.getByPlaceholderText(
             "Type your event description here..."
         );
-        const logButton = screen.getByRole("button", { name: /log event/i });
-
         // First submission
         fireEvent.change(input, { target: { value: "first event" } });
-        fireEvent.click(logButton);
+        fireEvent.keyUp(input, { key: "Enter", code: "Enter" });
 
         await waitFor(() => {
             expect(submitEntry).toHaveBeenNthCalledWith(
@@ -774,7 +697,7 @@ describe("DescriptionEntry", () => {
 
         // Second submission
         fireEvent.change(input, { target: { value: "second event" } });
-        fireEvent.click(logButton);
+        fireEvent.keyUp(input, { key: "Enter", code: "Enter" });
 
         await waitFor(() => {
             expect(submitEntry).toHaveBeenNthCalledWith(
@@ -793,42 +716,18 @@ describe("DescriptionEntry", () => {
         expect(fetchRecentEntries).toHaveBeenCalledTimes(3);
     });
 
-    it("maintains correct button states after clear", async () => {
-        render(<DescriptionEntry />);
-
-        // Wait for component to settle
-        await waitFor(() => {
-            expect(screen.getByText("Event Logging Help")).toBeInTheDocument();
-        });
-
-        const input = screen.getByPlaceholderText(
-            "Type your event description here..."
-        );
-        const logButton = screen.getByRole("button", { name: /log event/i });
-        const clearButton = screen.getByRole("button", { name: /clear/i });
-
-        // Initially buttons should be disabled
-        expect(logButton).toBeDisabled();
-        expect(clearButton).toBeDisabled();
-
-        // Type something
-        fireEvent.change(input, { target: { value: "test event" } });
-
-        // Buttons should be enabled
-        expect(logButton).toBeEnabled();
-        expect(clearButton).toBeEnabled();
-
-        // Clear input
-        fireEvent.click(clearButton);
-
-        // Buttons should be disabled again
-        expect(logButton).toBeDisabled();
-        expect(clearButton).toBeDisabled();
-        expect(input.value).toBe("");
-    });
 });
 
 describe("Camera Integration", () => {
+    beforeEach(() => {
+        submitEntry.mockClear();
+        generateRequestIdentifier.mockReset();
+        navigateToCamera.mockReset();
+        checkCameraReturn.mockReset();
+        cleanupUrlParams.mockReset();
+        restoreDescription.mockReset();
+        retrievePhotos.mockReset();
+    });
     it("navigates to camera when take photos button is clicked", async () => {
         // Reset and set up mocks for camera navigation
         generateRequestIdentifier.mockReset();
@@ -950,10 +849,9 @@ describe("Camera Integration", () => {
             "Take a photo [phone_take_photo] of the sunset"
         );
 
-        const logButton = screen.getByRole("button", { name: /log event/i });
 
-        // Click log event button to submit with photos
-        fireEvent.click(logButton);
+        // Submit using Enter key to include photos
+        fireEvent.keyUp(input, { key: "Enter", code: "Enter" });
 
         await waitFor(() => {
             // Should submit with request identifier for photos
@@ -988,14 +886,12 @@ describe("Camera Integration", () => {
         const input = screen.getByPlaceholderText(
             "Type your event description here..."
         );
-        const logButton = screen.getByRole("button", { name: /log event/i });
-
         // Type a regular description without camera trigger
         const regularDescription = "Just had a great lunch";
         fireEvent.change(input, { target: { value: regularDescription } });
 
-        // Click log event button
-        fireEvent.click(logButton);
+        // Submit using Enter key
+        fireEvent.keyUp(input, { key: "Enter", code: "Enter" });
 
         await waitFor(() => {
             // Should submit normally without camera and without request identifier
@@ -1039,8 +935,7 @@ describe("Camera Integration", () => {
         // The description should be preserved exactly as typed
         expect(input.value).toBe(originalDescription);
 
-        const logButton = screen.getByRole("button", { name: /log event/i });
-        fireEvent.click(logButton);
+        fireEvent.keyUp(input, { key: "Enter", code: "Enter" });
 
         await waitFor(() => {
             // Should submit with the exact original description and the photos
@@ -1130,8 +1025,10 @@ it("ensures photos are submitted with correct field name to backend", async () =
     });
 
     // Submit entry
-    const submitButton = screen.getByRole("button", { name: /log event/i });
-    fireEvent.click(submitButton);
+    const input = screen.getByPlaceholderText(
+        "Type your event description here..."
+    );
+    fireEvent.keyUp(input, { key: "Enter", code: "Enter" });
 
     // Verify API is called with correct parameters
     await waitFor(() => {
