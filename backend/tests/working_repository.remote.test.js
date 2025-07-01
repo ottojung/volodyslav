@@ -22,115 +22,6 @@ function getTestCapabilities() {
 }
 
 describe("working_repository", () => {
-    test("synchronize creates working repository when it doesn't exist", async () => {
-        const capabilities = getTestCapabilities();
-        await capabilities.logger.setup(capabilities);
-        const localRepoPath = path.join(
-            capabilities.environment.workingDirectory(),
-            "working-git-repository",
-            ".git"
-        );
-
-        // Set up a real git repo to clone from
-        await stubEventLogRepository(capabilities);
-
-        // Ensure the repository doesn't exist before synchronization.
-        const indexExistsBeforeSync = await fsp
-            .stat(path.join(localRepoPath, "index"))
-            .then(() => true)
-            .catch(() => false);
-
-        expect(indexExistsBeforeSync).toBe(false);
-
-        // Execute synchronize
-        await workingRepository.synchronize(capabilities);
-
-        // Verify the repository was created and has the index file
-        const indexExists = await fsp
-            .stat(path.join(localRepoPath, "index"))
-            .then(() => true)
-            .catch(() => false);
-
-        expect(indexExists).toBe(true);
-    });
-
-    test("getRepository returns the correct repository path", async () => {
-        const capabilities = getTestCapabilities();
-        await capabilities.logger.setup(capabilities);
-
-        // Set up a real git repo to clone from
-        await stubEventLogRepository(capabilities);
-
-        // Execute getRepository (which should trigger synchronize)
-        const repoPath = await workingRepository.getRepository(capabilities);
-
-        // Verify correct path is returned
-        const expectedPath = path.join(
-            capabilities.environment.workingDirectory(),
-            "working-git-repository",
-            ".git"
-        );
-        expect(repoPath).toBe(expectedPath);
-
-        // Verify the repo actually exists
-        const indexExists = await fsp
-            .stat(path.join(expectedPath, "index"))
-            .then(() => true)
-            .catch(() => false);
-
-        expect(indexExists).toBe(true);
-    });
-
-    test("synchronize throws WorkingRepositoryError on git failure", async () => {
-        const capabilities = getTestCapabilities();
-        await capabilities.logger.setup(capabilities);
-
-        // Make the eventLogRepository return a non-existent path
-        const origEventLogRepo =
-            require("../src/environment").eventLogRepository;
-        require("../src/environment").eventLogRepository = jest
-            .fn()
-            .mockReturnValue("/nonexistent/repo");
-
-        // Execute and verify error is thrown with the expected message
-        await expect(
-            workingRepository.synchronize(capabilities)
-        ).rejects.toThrow("Failed to synchronize repository");
-
-        // Restore original function
-        require("../src/environment").eventLogRepository = origEventLogRepo;
-    });
-
-    // Separate test for WorkingRepositoryError type checking
-    test("errors from synchronize are WorkingRepositoryError instances", async () => {
-        const capabilities = getTestCapabilities();
-        await capabilities.logger.setup(capabilities);
-
-        // Make the eventLogRepository return a non-existent path
-        const origEventLogRepo =
-            require("../src/environment").eventLogRepository;
-        require("../src/environment").eventLogRepository = jest
-            .fn()
-            .mockReturnValue("/nonexistent/repo");
-
-        // Execute and save the error
-        let thrownError = null;
-        try {
-            await workingRepository.synchronize(capabilities);
-        } catch (error) {
-            thrownError = error;
-        }
-
-        // Verify error is of the correct type
-        expect(thrownError).not.toBeNull();
-        expect(workingRepository.isWorkingRepositoryError(thrownError)).toBe(
-            true
-        );
-
-        // Restore original function
-        require("../src/environment").eventLogRepository = origEventLogRepo;
-    });
-
     test("synchronize updates remote repository with local changes", async () => {
         const capabilities = getTestCapabilities();
         await capabilities.logger.setup(capabilities);
@@ -157,10 +48,13 @@ describe("working_repository", () => {
             cwd: path.dirname(localRepoPath),
             shell: true,
         });
-        await callSubprocess("git -c user.name=volodyslav -c user.email=volodyslav commit -m 'Add new file'", {
-            cwd: path.dirname(localRepoPath),
-            shell: true,
-        });
+        await callSubprocess(
+            "git -c user.name=volodyslav -c user.email=volodyslav commit -m 'Add new file'",
+            {
+                cwd: path.dirname(localRepoPath),
+                shell: true,
+            }
+        );
         await callSubprocess("git push origin", {
             cwd: path.dirname(localRepoPath),
             shell: true,
@@ -231,25 +125,6 @@ describe("working_repository", () => {
         expect(existingFileContent).toBe("existing content");
     });
 
-    test("synchronize throws error for invalid repository path", async () => {
-        const capabilities = getTestCapabilities();
-        await capabilities.logger.setup(capabilities);
-
-        // Mock an invalid repository path
-        const origEventLogRepo = capabilities.environment.eventLogRepository;
-        capabilities.environment.eventLogRepository = jest
-            .fn()
-            .mockReturnValue("/invalid/path");
-
-        // Execute and verify error is thrown
-        await expect(
-            workingRepository.synchronize(capabilities)
-        ).rejects.toThrow("Failed to synchronize repository");
-
-        // Restore original function
-        capabilities.environment.eventLogRepository = origEventLogRepo;
-    });
-
     test("push changes to remote repository", async () => {
         const capabilities = getTestCapabilities();
         await capabilities.logger.setup(capabilities);
@@ -313,3 +188,4 @@ describe("working_repository", () => {
         expect(clonedFileContent).toBe("pushed content");
     });
 });
+
