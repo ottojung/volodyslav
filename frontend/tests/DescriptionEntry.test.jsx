@@ -116,31 +116,27 @@ describe("DescriptionEntry", () => {
     it("renders the main elements", async () => {
         render(<DescriptionEntry />);
 
-        // Wait for async operations to complete first
-        await waitFor(() => {
-            expect(screen.getByText("Event Logging Help")).toBeInTheDocument();
-        });
-
-        expect(screen.getByText("Log an Event")).toBeInTheDocument();
-        expect(screen.getByText("What happened?")).toBeInTheDocument();
+        // Should render the input field
         expect(
             screen.getByPlaceholderText("Type your event description here...")
         ).toBeInTheDocument();
+
+        // Should render the Take Photos button
         expect(
-            screen.getByRole("button", { name: /log event/i })
+            screen.getByRole("button", { name: /take photos/i })
         ).toBeInTheDocument();
-        expect(
-            screen.getByRole("button", { name: /clear/i })
-        ).toBeInTheDocument();
+
+        // Should render configuration section tabs
+        await waitFor(() => {
+            expect(screen.getByText("Syntax")).toBeInTheDocument();
+            expect(screen.getByText("Shortcuts")).toBeInTheDocument();
+            expect(screen.getByText("Recent Entries")).toBeInTheDocument();
+            expect(screen.getByText("Help")).toBeInTheDocument();
+        });
     });
 
     it("updates input value when typing", async () => {
         render(<DescriptionEntry />);
-
-        // Wait for component to settle first
-        await waitFor(() => {
-            expect(screen.getByText("Event Logging Help")).toBeInTheDocument();
-        });
 
         const input = screen.getByPlaceholderText(
             "Type your event description here..."
@@ -150,30 +146,22 @@ describe("DescriptionEntry", () => {
         expect(input.value).toBe("test input");
     });
 
-    it("enables buttons when input has content", async () => {
+    it("renders Take Photos button correctly", async () => {
         render(<DescriptionEntry />);
-
-        // Wait for component to settle first
-        await waitFor(() => {
-            expect(screen.getByText("Event Logging Help")).toBeInTheDocument();
-        });
 
         const input = screen.getByPlaceholderText(
             "Type your event description here..."
         );
-        const logButton = screen.getByRole("button", { name: /log event/i });
-        const clearButton = screen.getByRole("button", { name: /clear/i });
+        const takePhotosButton = screen.getByRole("button", { name: /take photos/i });
 
-        // Initially disabled
-        expect(logButton).toBeDisabled();
-        expect(clearButton).toBeDisabled();
+        // Take Photos button should always be enabled
+        expect(takePhotosButton).toBeEnabled();
 
-        // Type something
+        // Type something 
         fireEvent.change(input, { target: { value: "some text" } });
 
-        // Now enabled
-        expect(logButton).toBeEnabled();
-        expect(clearButton).toBeEnabled();
+        // Take Photos button should still be enabled
+        expect(takePhotosButton).toBeEnabled();
     });
 
     it("does not render config section when no config is available", async () => {
@@ -184,14 +172,16 @@ describe("DescriptionEntry", () => {
 
         // Wait for component to finish loading
         await waitFor(() => {
-            expect(screen.getByText("Log an Event")).toBeInTheDocument();
+            expect(
+                screen.getByPlaceholderText("Type your event description here...")
+            ).toBeInTheDocument();
         });
 
         // Should not show config section when no config is available
-        expect(
-            screen.queryByText("Event Logging Help")
-        ).not.toBeInTheDocument();
-        expect(screen.queryByText("shortcuts")).not.toBeInTheDocument();
+        expect(screen.queryByText("Syntax")).not.toBeInTheDocument();
+        expect(screen.queryByText("Shortcuts")).not.toBeInTheDocument();
+        expect(screen.queryByText("Recent Entries")).not.toBeInTheDocument();
+        expect(screen.queryByText("Help")).not.toBeInTheDocument();
     });
 
     it("renders config section with server data when available", async () => {
@@ -227,40 +217,10 @@ describe("DescriptionEntry", () => {
         });
     });
 
-    it("submits entry when Log Event button is clicked", async () => {
-        render(<DescriptionEntry />);
 
-        // Wait for component to settle
-        await waitFor(() => {
-            expect(screen.getByText("Event Logging Help")).toBeInTheDocument();
-        });
-
-        const input = screen.getByPlaceholderText(
-            "Type your event description here..."
-        );
-        const logButton = screen.getByRole("button", { name: /log event/i });
-
-        // Type something
-        fireEvent.change(input, { target: { value: "test event" } });
-        // Click submit
-        fireEvent.click(logButton);
-
-        await waitFor(() => {
-            expect(submitEntry).toHaveBeenCalledWith(
-                "test event",
-                undefined,
-                []
-            );
-        });
-    });
 
     it("submits entry when Enter key is pressed", async () => {
         render(<DescriptionEntry />);
-
-        // Wait for component to settle
-        await waitFor(() => {
-            expect(screen.getByText("Event Logging Help")).toBeInTheDocument();
-        });
 
         const input = screen.getByPlaceholderText(
             "Type your event description here..."
@@ -283,11 +243,6 @@ describe("DescriptionEntry", () => {
     it("does not submit when Enter is pressed with Shift key", async () => {
         render(<DescriptionEntry />);
 
-        // Wait for component to settle
-        await waitFor(() => {
-            expect(screen.getByText("Event Logging Help")).toBeInTheDocument();
-        });
-
         const input = screen.getByPlaceholderText(
             "Type your event description here..."
         );
@@ -302,28 +257,7 @@ describe("DescriptionEntry", () => {
         expect(submitEntry).not.toHaveBeenCalled();
     });
 
-    it("clears input when Clear button is clicked", async () => {
-        render(<DescriptionEntry />);
 
-        // Wait for component to settle
-        await waitFor(() => {
-            expect(screen.getByText("Event Logging Help")).toBeInTheDocument();
-        });
-
-        const input = screen.getByPlaceholderText(
-            "Type your event description here..."
-        );
-        const clearButton = screen.getByRole("button", { name: /clear/i });
-
-        // Type something
-        fireEvent.change(input, { target: { value: "test event" } });
-        expect(input.value).toBe("test event");
-
-        // Click clear
-        fireEvent.click(clearButton);
-
-        expect(input.value).toBe("");
-    });
 
     it("clears input and refetches entries after successful submission", async () => {
         submitEntry.mockResolvedValue({
@@ -336,13 +270,12 @@ describe("DescriptionEntry", () => {
         const input = screen.getByPlaceholderText(
             "Type your event description here..."
         );
-        const logButton = screen.getByRole("button", { name: /log event/i });
 
         // Type something
         fireEvent.change(input, { target: { value: "test event" } });
 
-        // Submit
-        fireEvent.click(logButton);
+        // Submit using Enter key
+        fireEvent.keyUp(input, { key: "Enter", code: "Enter" });
 
         await waitFor(() => {
             expect(input.value).toBe("");
@@ -514,34 +447,6 @@ describe("DescriptionEntry", () => {
         );
     });
 
-    it("toggles config section visibility", async () => {
-        render(<DescriptionEntry />);
-
-        // Wait for config to load (should be open by default)
-        await waitFor(() => {
-            expect(screen.getByText("Event Logging Help")).toBeInTheDocument();
-        });
-
-        const hideButton = screen.getByText("Hide Details");
-
-        // Click to hide
-        fireEvent.click(hideButton);
-
-        // Should show "Show Details" now
-        await waitFor(() => {
-            expect(screen.getByText("Show Details")).toBeInTheDocument();
-        });
-
-        // Click to show again
-        const showButton = screen.getByText("Show Details");
-        fireEvent.click(showButton);
-
-        // Should show "Hide Details" again
-        await waitFor(() => {
-            expect(screen.getByText("Hide Details")).toBeInTheDocument();
-        });
-    });
-
     it("displays recent entries when data is available", async () => {
         const mockEntries = [
             {
@@ -692,93 +597,9 @@ describe("DescriptionEntry", () => {
         });
     });
 
-    it("disables submit button during submission", async () => {
-        // Mock slow submission to test disabled state
-        submitEntry.mockImplementation(
-            () =>
-                new Promise((resolve) =>
-                    setTimeout(
-                        () =>
-                            resolve({
-                                success: true,
-                                entry: { input: "test" },
-                            }),
-                        100
-                    )
-                )
-        );
 
-        render(<DescriptionEntry />);
 
-        const input = screen.getByPlaceholderText(
-            "Type your event description here..."
-        );
-        const logButton = screen.getByRole("button", { name: /log event/i });
 
-        // Type something
-        fireEvent.change(input, { target: { value: "test event" } });
-
-        // Button should be enabled initially
-        expect(logButton).toBeEnabled();
-
-        // Click submit
-        fireEvent.click(logButton);
-
-        // Button should be disabled during submission
-        expect(logButton).toBeDisabled();
-        expect(screen.getByText("Logging...")).toBeInTheDocument();
-
-        // Wait for submission to complete
-        await waitFor(() => {
-            expect(screen.getByText("Log Event")).toBeInTheDocument();
-        });
-
-        // After submission, input is cleared, so button should be disabled again
-        expect(logButton).toBeDisabled();
-        expect(input.value).toBe("");
-    });
-
-    it("disables clear button during submission", async () => {
-        // Mock slow submission
-        submitEntry.mockImplementation(
-            () =>
-                new Promise((resolve) =>
-                    setTimeout(
-                        () =>
-                            resolve({
-                                success: true,
-                                entry: { input: "test" },
-                            }),
-                        100
-                    )
-                )
-        );
-
-        render(<DescriptionEntry />);
-
-        const input = screen.getByPlaceholderText(
-            "Type your event description here..."
-        );
-        const clearButton = screen.getByRole("button", { name: /clear/i });
-
-        // Type something
-        fireEvent.change(input, { target: { value: "test event" } });
-
-        // Clear button should be enabled initially
-        expect(clearButton).toBeEnabled();
-
-        // Click submit
-        const logButton = screen.getByRole("button", { name: /log event/i });
-        fireEvent.click(logButton);
-
-        // Clear button should be disabled during submission
-        expect(clearButton).toBeDisabled();
-
-        // Wait for submission to complete
-        await waitFor(() => {
-            expect(screen.getByText("Log Event")).toBeInTheDocument();
-        });
-    });
 
     it("shows error toast on submission failure", async () => {
         const mockToast = jest.fn();
