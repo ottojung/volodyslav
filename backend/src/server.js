@@ -100,9 +100,17 @@ async function startWithCapabilities(capabilities) {
     capabilities.logger.enableHttpCallsLogging(app);
     await expressApp.run(capabilities, app, async (app, server) => {
         const address = server.address();
+        const addressString = (
+            typeof address === "string"
+                ? address
+                : address === null
+                    ? "unknown"
+                    : `${address.address}:${address.port}`
+        );
+
         capabilities.logger.logInfo(
-            { address },
-            `Server started on ${JSON.stringify(address)}`
+            { address: address },
+            `Server started on ${addressString}`
         );
         await initialize(capabilities, app);
     });
