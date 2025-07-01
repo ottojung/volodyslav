@@ -123,11 +123,6 @@ export const useDescriptionEntry = (numberOfEntries = 10) => {
         navigateToCamera(requestIdentifier, description);
     };
 
-    const handleClear = () => {
-        setDescription("");
-        setPendingRequestIdentifier(null);
-    };
-
     const handleKeyUp = (/** @type {any} */ e) => {
         if (e.key === "Enter" && !e.shiftKey) {
             e.preventDefault();
@@ -218,7 +213,6 @@ export const useDescriptionEntry = (numberOfEntries = 10) => {
         setDescription,
         handleSubmit,
         handleTakePhotos,
-        handleClear,
         handleKeyUp,
         fetchRecentEntries,
     };

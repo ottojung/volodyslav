@@ -1,12 +1,6 @@
 import React, { useState, useEffect } from "react";
 import {
     VStack,
-    HStack,
-    Heading,
-    Badge,
-    Button,
-    Collapse,
-    useDisclosure,
     Card,
     CardBody,
     Tabs,
@@ -14,18 +8,15 @@ import {
     TabPanels,
     Tab,
     TabPanel,
-    Icon,
     Skeleton,
 } from "@chakra-ui/react";
 
 import { fetchConfig } from "./api.js";
-import { CARD_STYLES, TEXT_STYLES, SPACING, COLORS } from "./styles.js";
-import { ChevronDownIcon, ChevronUpIcon, InfoIcon } from "./icons.jsx";
+import { CARD_STYLES, SPACING } from "./styles.js";
 import { SyntaxTab } from "./tabs/SyntaxTab.jsx";
 import { ShortcutsTab } from "./tabs/ShortcutsTab.jsx";
 import { RecentEntriesTab } from "./tabs/RecentEntriesTab.jsx";
 import { HelpTab } from "./tabs/HelpTab.jsx";
-import { generateBadgeText } from "./utils/badgeUtils.js";
 
 /**
  * @typedef {import('./api.js').Config} Config
@@ -43,7 +34,6 @@ import { generateBadgeText } from "./utils/badgeUtils.js";
 export const ConfigSection = ({ onShortcutClick, currentInput = "", recentEntries = [], isLoadingEntries = false }) => {
     const [config, setConfig] = useState(/** @type {Config|null} */ (null));
     const [isLoading, setIsLoading] = useState(true);
-    const { isOpen, onToggle } = useDisclosure({ defaultIsOpen: true });
 
     useEffect(() => {
         const loadConfig = async () => {
@@ -70,81 +60,55 @@ export const ConfigSection = ({ onShortcutClick, currentInput = "", recentEntrie
     }
 
     if (!config) {
-        return null; // Don't show anything if no config
+        return null;
     }
 
     return (
         <Card {...CARD_STYLES.main}>
             <CardBody p={SPACING.lg}>
-                <VStack spacing={SPACING.md} align="stretch">
-                    <HStack justify="space-between" align="center">
-                        <HStack>
-                            <Icon as={InfoIcon} color={COLORS.primary} />
-                            <Heading size="md" {...TEXT_STYLES.cardHeading}>
-                                Event Logging Help
-                            </Heading>
-                            {(config.shortcuts.length > 0 || recentEntries.length > 0) && (
-                                <Badge colorScheme="blue" variant="subtle">
-                                    {generateBadgeText(config.shortcuts.length, recentEntries.length)}
-                                </Badge>
+                <VStack spacing={SPACING.lg} align="stretch">
+                    <Tabs
+                        variant="soft-rounded"
+                        colorScheme="blue"
+                        defaultIndex={recentEntries.length > 0 ? (config.shortcuts.length > 0 ? 2 : 1) : 0}
+                    >
+                        <TabList>
+                            <Tab>Syntax</Tab>
+                            {config.shortcuts.length > 0 && <Tab>Shortcuts</Tab>}
+                            <Tab>Recent Entries</Tab>
+                            {config.help && <Tab>Help</Tab>}
+                        </TabList>
+
+                        <TabPanels>
+                            <TabPanel px={0}>
+                                <SyntaxTab onShortcutClick={onShortcutClick} />
+                            </TabPanel>
+
+                            {config.shortcuts.length > 0 && (
+                                <TabPanel px={0}>
+                                    <ShortcutsTab 
+                                        shortcuts={config.shortcuts}
+                                        onShortcutClick={onShortcutClick}
+                                        currentInput={currentInput}
+                                    />
+                                </TabPanel>
                             )}
-                        </HStack>
-                        <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={onToggle}
-                            rightIcon={isOpen ? <ChevronUpIcon /> : <ChevronDownIcon />}
-                        >
-                            {isOpen ? "Hide" : "Show"} Details
-                        </Button>
-                    </HStack>
 
-                    <Collapse in={isOpen} animateOpacity>
-                        <VStack spacing={SPACING.lg} align="stretch">
-                            <Tabs
-                                variant="soft-rounded"
-                                colorScheme="blue"
-                                defaultIndex={recentEntries.length > 0 ? (config.shortcuts.length > 0 ? 2 : 1) : 0}
-                            >
-                                <TabList>
-                                    <Tab>Syntax</Tab>
-                                    {config.shortcuts.length > 0 && <Tab>Shortcuts</Tab>}
-                                    <Tab>Recent Entries</Tab>
-                                    {config.help && <Tab>Help</Tab>}
-                                </TabList>
+                            <TabPanel px={0}>
+                                <RecentEntriesTab 
+                                    recentEntries={recentEntries}
+                                    isLoadingEntries={isLoadingEntries}
+                                    onShortcutClick={onShortcutClick}
+                                />
+                            </TabPanel>
 
-                                <TabPanels>
-                                    <TabPanel px={0}>
-                                        <SyntaxTab onShortcutClick={onShortcutClick} />
-                                    </TabPanel>
-
-                                    {config.shortcuts.length > 0 && (
-                                        <TabPanel px={0}>
-                                            <ShortcutsTab 
-                                                shortcuts={config.shortcuts}
-                                                onShortcutClick={onShortcutClick}
-                                                currentInput={currentInput}
-                                            />
-                                        </TabPanel>
-                                    )}
-
-                                    <TabPanel px={0}>
-                                        <RecentEntriesTab 
-                                            recentEntries={recentEntries}
-                                            isLoadingEntries={isLoadingEntries}
-                                            onShortcutClick={onShortcutClick}
-                                        />
-                                    </TabPanel>
-
-                                    {config.help && (
-                                        <TabPanel px={0}>
-                                            <HelpTab helpText={config.help} />
-                                        </TabPanel>
-                                    )}
-                                </TabPanels>
-                            </Tabs>
-                        </VStack>
-                    </Collapse>
+                            {config.help && (
+                                <TabPanel px={0}>
+                                    <HelpTab helpText={config.help} />
+                                </TabPanel>
+                            )}
+                        </TabPanels>
+                    </Tabs>
                 </VStack>
             </CardBody>
         </Card>

@@ -1,9 +1,9 @@
 import React, { useRef, useEffect } from "react";
-import { Box, VStack, Heading, Text, Container } from "@chakra-ui/react";
+import { VStack, Container } from "@chakra-ui/react";
 import { useDescriptionEntry } from "./hooks.js";
 import { FormInputSection } from "./FormInputSection.jsx";
 import { ConfigSection } from "./ConfigSection.jsx";
-import { SPACING, SIZES, TEXT_STYLES } from "./styles.js";
+import { SPACING, SIZES } from "./styles.js";
 
 const NUMBER_OF_RECENT_ENTRIES = 10;
 
@@ -15,9 +15,7 @@ export default function DescriptionEntry() {
         isLoadingEntries,
         pendingRequestIdentifier,
         setDescription,
-        handleSubmit,
         handleTakePhotos,
-        handleClear,
         handleKeyUp,
     } = useDescriptionEntry(NUMBER_OF_RECENT_ENTRIES);
 
@@ -47,19 +45,11 @@ export default function DescriptionEntry() {
                 justify="center"
                 minH="70vh"
             >
-                {/* Header */}
-                <Box textAlign="center">
-                    <Heading {...TEXT_STYLES.heading}>Log an Event</Heading>
-                    <Text {...TEXT_STYLES.subtitle}>What happened?</Text>
-                </Box>
-
                 {/* Main Input Form */}
                 <FormInputSection
                     description={description}
                     onDescriptionChange={setDescription}
-                    onSubmit={handleSubmit}
                     onTakePhotos={handleTakePhotos}
-                    onClear={handleClear}
                     onKeyUp={handleKeyUp}
                     isSubmitting={isSubmitting}
                     inputRef={inputRef}
