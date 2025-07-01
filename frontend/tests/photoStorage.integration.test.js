@@ -94,7 +94,7 @@ describe('Photo Storage Integration', () => {
 
     test('successfully handles multiple concurrent photo storage operations', async () => {
         const promises = [];
-        
+
         // Create multiple photo sessions simultaneously
         for (let session = 0; session < 5; session++) {
             const photosForSession = [];
@@ -106,7 +106,7 @@ describe('Photo Storage Integration', () => {
                     type: 'image/jpeg'
                 });
             }
-            
+
             promises.push(storePhotos(`session_${session}`, photosForSession));
         }
 
