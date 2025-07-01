@@ -13,7 +13,6 @@ import {
 
 import { fetchConfig } from "./api.js";
 import { CARD_STYLES, SPACING } from "./styles.js";
-import { SyntaxTab } from "./tabs/SyntaxTab.jsx";
 import { ShortcutsTab } from "./tabs/ShortcutsTab.jsx";
 import { RecentEntriesTab } from "./tabs/RecentEntriesTab.jsx";
 import { HelpTab } from "./tabs/HelpTab.jsx";
@@ -70,18 +69,21 @@ export const ConfigSection = ({ onShortcutClick, currentInput = "", recentEntrie
                     <Tabs
                         variant="soft-rounded"
                         colorScheme="blue"
-                        defaultIndex={recentEntries.length > 0 ? (config.shortcuts.length > 0 ? 2 : 1) : 0}
+                        defaultIndex={0}
                     >
                         <TabList>
-                            <Tab>Syntax</Tab>
-                            {config.shortcuts.length > 0 && <Tab>Shortcuts</Tab>}
                             <Tab>Recent Entries</Tab>
-                            {config.help && <Tab>Help</Tab>}
+                            {config.shortcuts.length > 0 && <Tab>Shortcuts</Tab>}
+                            <Tab>Help</Tab>
                         </TabList>
 
                         <TabPanels>
                             <TabPanel px={0}>
-                                <SyntaxTab onShortcutClick={onShortcutClick} />
+                                <RecentEntriesTab 
+                                    recentEntries={recentEntries}
+                                    isLoadingEntries={isLoadingEntries}
+                                    onShortcutClick={onShortcutClick}
+                                />
                             </TabPanel>
 
                             {config.shortcuts.length > 0 && (
@@ -95,18 +97,11 @@ export const ConfigSection = ({ onShortcutClick, currentInput = "", recentEntrie
                             )}
 
                             <TabPanel px={0}>
-                                <RecentEntriesTab 
-                                    recentEntries={recentEntries}
-                                    isLoadingEntries={isLoadingEntries}
+                                <HelpTab 
+                                    helpText={config.help}
                                     onShortcutClick={onShortcutClick}
                                 />
                             </TabPanel>
-
-                            {config.help && (
-                                <TabPanel px={0}>
-                                    <HelpTab helpText={config.help} />
-                                </TabPanel>
-                            )}
                         </TabPanels>
                     </Tabs>
                 </VStack>
