@@ -24,14 +24,7 @@ async function entryTyped(capabilities) {
 
     program.name("volodyslav").description("Volodyslav Media Service CLI");
 
-    program
-        .option("-v, --version", "Display the version")
-        .action(async (options) => {
-            if (options.version) {
-                await printVersion(capabilities);
-                process.exit(0);
-            }
-        });
+    program.option("-v, --version", "Display the version");
 
     program
         .command("start")
@@ -39,6 +32,13 @@ async function entryTyped(capabilities) {
         .action(start(capabilities));
 
     await program.parseAsync(process.argv);
+
+    const options = program.opts();
+
+    if (options["version"]) {
+        await printVersion(capabilities);
+        return;
+    }
 
     // If we made it here then no sub‐commands or flags were used
     // so show the help and exit
