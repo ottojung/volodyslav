@@ -26,10 +26,17 @@ async function entryTyped(capabilities) {
 
     program
         .option("-v, --version", "Display the version")
-        .action(async (options) => {
+        .argument("[cmd]", "Command to execute")
+        .action(async (cmd, options) => {
             if (options.version) {
                 await printVersion(capabilities);
                 process.exit(0);
+            }
+            if (cmd) {
+                console.error(`error: unknown command '${cmd}'`);
+                program.help({ error: true });
+            } else {
+                program.outputHelp();
             }
         });
 
@@ -39,12 +46,6 @@ async function entryTyped(capabilities) {
         .action(start(capabilities));
 
     await program.parseAsync(process.argv);
-
-    // If we made it here then no sub‐commands or flags were used
-    // so show the help and exit
-    if (process.argv.slice(2).length === 0) {
-        program.outputHelp(); // or .help() to print and exit
-    }
 }
 
 async function entry() {
