@@ -116,6 +116,12 @@ describe("DescriptionEntry", () => {
     it("renders the main elements", async () => {
         render(<DescriptionEntry />);
 
+        // Wait for all async operations to complete
+        await waitFor(() => {
+            expect(fetchConfig).toHaveBeenCalled();
+            expect(fetchRecentEntries).toHaveBeenCalled();
+        });
+
         // Should render the input field
         expect(
             screen.getByPlaceholderText("Type your event description here...")
@@ -127,15 +133,18 @@ describe("DescriptionEntry", () => {
         ).toBeInTheDocument();
 
         // Should render configuration section tabs
-        await waitFor(() => {
-            expect(screen.getByText("Help")).toBeInTheDocument();
-            expect(screen.getByText("Shortcuts")).toBeInTheDocument();
-            expect(screen.getByText("Recent Entries")).toBeInTheDocument();
-        });
+        expect(screen.getByText("Help")).toBeInTheDocument();
+        expect(screen.getByText("Shortcuts")).toBeInTheDocument();
+        expect(screen.getByText("Recent Entries")).toBeInTheDocument();
     });
 
     it("updates input value when typing", async () => {
         render(<DescriptionEntry />);
+
+        // Wait for component to be fully loaded
+        await waitFor(() => {
+            expect(fetchConfig).toHaveBeenCalled();
+        });
 
         const input = screen.getByPlaceholderText(
             "Type your event description here..."
@@ -147,6 +156,11 @@ describe("DescriptionEntry", () => {
 
     it("renders Take Photos button correctly", async () => {
         render(<DescriptionEntry />);
+
+        // Wait for component to be fully loaded
+        await waitFor(() => {
+            expect(fetchConfig).toHaveBeenCalled();
+        });
 
         const input = screen.getByPlaceholderText(
             "Type your event description here..."
@@ -171,10 +185,13 @@ describe("DescriptionEntry", () => {
 
         // Wait for component to finish loading
         await waitFor(() => {
-            expect(
-                screen.getByPlaceholderText("Type your event description here...")
-            ).toBeInTheDocument();
+            expect(fetchConfig).toHaveBeenCalled();
         });
+
+        // Should render the input field
+        expect(
+            screen.getByPlaceholderText("Type your event description here...")
+        ).toBeInTheDocument();
 
         // Should not show config section when no config is available
         expect(screen.queryByText("Help")).not.toBeInTheDocument();
@@ -203,6 +220,11 @@ describe("DescriptionEntry", () => {
     it("submits entry when Enter key is pressed", async () => {
         render(<DescriptionEntry />);
 
+        // Wait for component to be fully loaded
+        await waitFor(() => {
+            expect(fetchConfig).toHaveBeenCalled();
+        });
+
         const input = screen.getByPlaceholderText(
             "Type your event description here..."
         );
@@ -223,6 +245,11 @@ describe("DescriptionEntry", () => {
 
     it("does not submit when Enter is pressed with Shift key", async () => {
         render(<DescriptionEntry />);
+
+        // Wait for component to be fully loaded
+        await waitFor(() => {
+            expect(fetchConfig).toHaveBeenCalled();
+        });
 
         const input = screen.getByPlaceholderText(
             "Type your event description here..."
@@ -247,6 +274,11 @@ describe("DescriptionEntry", () => {
         });
 
         render(<DescriptionEntry />);
+
+        // Wait for component to be fully loaded
+        await waitFor(() => {
+            expect(fetchConfig).toHaveBeenCalled();
+        });
 
         const input = screen.getByPlaceholderText(
             "Type your event description here..."
@@ -273,6 +305,11 @@ describe("DescriptionEntry", () => {
         submitEntry.mockRejectedValue(new Error("Network error"));
 
         render(<DescriptionEntry />);
+
+        // Wait for component to be fully loaded
+        await waitFor(() => {
+            expect(fetchConfig).toHaveBeenCalled();
+        });
 
         const input = screen.getByPlaceholderText(
             "Type your event description here..."
@@ -319,13 +356,16 @@ describe("DescriptionEntry", () => {
     it("focuses input field on mount", async () => {
         render(<DescriptionEntry />);
 
+        // Wait for component to be fully loaded
+        await waitFor(() => {
+            expect(fetchConfig).toHaveBeenCalled();
+        });
+
         const input = screen.getByPlaceholderText(
             "Type your event description here..."
         );
 
-        await waitFor(() => {
-            expect(input).toHaveFocus();
-        });
+        expect(input).toHaveFocus();
     });
 
 });
