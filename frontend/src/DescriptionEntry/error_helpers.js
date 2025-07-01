@@ -79,10 +79,10 @@ export const ErrorMessages = {
         notFound: "No photos found for this session. They may have been cleared or expired.",
         corrupted: "Photo data appears to be corrupted. Please try taking new photos.",
         conversionFailed: "Failed to process one or more photos. Please try taking new photos.",
-        sessionStorage: "Unable to access stored photos. Your browser's storage may be full or restricted.",
+        sessionStorage: "Unable to access stored photos. Please try taking new photos.",
     },
     photoStorage: {
-        quotaExceeded: "Not enough storage space available. Please free up space and try again.",
+        quotaExceeded: "Storage space unavailable. Please try again or contact support if the issue persists.",
         accessDenied: "Unable to save photos. Please check your browser settings.",
         genericFailure: "Failed to save photos. Please try again.",
     },

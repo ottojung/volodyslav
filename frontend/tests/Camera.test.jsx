@@ -59,22 +59,64 @@ describe('Camera component', () => {
     });
 
     beforeEach(() => {
-        // Make sure request_identifier is present
-        window.history.replaceState({}, 'test', '/?request_identifier=TEST_ID');
-
-        // Mock sessionStorage
-        const mockSessionStorage = {
-            setItem: jest.fn(),
-            getItem: jest.fn(),
-            removeItem: jest.fn(),
-            clear: jest.fn(),
+        // Mock window.location to include request_identifier
+        delete window.location;
+        window.location = { 
+            search: '?request_identifier=TEST_ID',
+            origin: 'http://localhost:3000',
+            href: 'http://localhost:3000/?request_identifier=TEST_ID'
         };
-        Object.defineProperty(window, 'sessionStorage', {
-            value: mockSessionStorage,
+
+        // Mock IndexedDB
+        const mockStore = new Map();
+        const mockDB = {
+            transaction: jest.fn().mockImplementation(() => {
+                const transaction = {
+                    objectStore: jest.fn().mockImplementation(() => ({
+                        put: jest.fn().mockImplementation((data, key) => {
+                            mockStore.set(key, data);
+                            setTimeout(() => {
+                                if (typeof transaction.oncomplete === 'function') {
+                                    transaction.oncomplete();
+                                }
+                            }, 0);
+                        }),
+                        get: jest.fn().mockImplementation((key) => ({
+                            result: mockStore.get(key)
+                        })),
+                        delete: jest.fn().mockImplementation((key) => {
+                            mockStore.delete(key);
+                        })
+                    })),
+                    oncomplete: null,
+                    onerror: null
+                };
+                return transaction;
+            }),
+            objectStoreNames: {
+                contains: jest.fn().mockReturnValue(false)
+            },
+            createObjectStore: jest.fn()
+        };
+        const mockOpen = jest.fn().mockImplementation(() => {
+            const req = {};
+            setTimeout(() => {
+                if (typeof req.onupgradeneeded === 'function') {
+                    req.result = mockDB;
+                    req.onupgradeneeded({ target: req });
+                }
+                if (typeof req.onsuccess === 'function') {
+                    req.result = mockDB;
+                    req.onsuccess({ target: req });
+                }
+            }, 0);
+            return req;
+        });
+        Object.defineProperty(window, 'indexedDB', {
+            value: { open: mockOpen },
             writable: true
         });
-
-        // Clear mocks
+        window.mockPhotoStore = mockStore;
         mockToast.mockClear();
         global.fetch.mockClear();
     });
@@ -145,7 +187,7 @@ describe('Camera component', () => {
         });
     });
 
-    test('Done button with one photo stores in sessionStorage and shows success toast', async () => {
+    test('Done button with one photo stores photos and shows success toast', async () => {
         render(<Camera />);
         await waitFor(() => expect(getUserMediaMock).toHaveBeenCalled());
 
@@ -157,12 +199,12 @@ describe('Camera component', () => {
         
         fireEvent.click(screen.getByText('Done'));
 
-        // Should store photos in sessionStorage
+        // Should store photos
         await waitFor(() => {
-            expect(window.sessionStorage.setItem).toHaveBeenCalledWith(
-                'photos_TEST_ID',
-                expect.stringMatching(/^\[.*\]$/) // JSON array string
-            );
+            expect(window.mockPhotoStore.has('photos_TEST_ID')).toBe(true);
+            const storedData = window.mockPhotoStore.get('photos_TEST_ID');
+            expect(Array.isArray(storedData)).toBe(true);
+            expect(storedData).toHaveLength(1);
         });
 
         // Should not call fetch (no upload to backend)
@@ -200,8 +242,8 @@ describe('Camera component', () => {
             );
         });
 
-        // Should not store anything in sessionStorage
-        expect(window.sessionStorage.setItem).not.toHaveBeenCalled();
+        // Should not store anything
+        expect(window.mockPhotoStore.size).toBe(0);
     });
 
     test('Done button stores multiple photos correctly and shows success toast', async () => {
@@ -219,12 +261,12 @@ describe('Camera component', () => {
         await waitFor(() => screen.getByAltText('Preview'));
         fireEvent.click(screen.getByText('Done'));
 
-        // Should store both photos in sessionStorage
+        // Should store both photos
         await waitFor(() => {
-            expect(window.sessionStorage.setItem).toHaveBeenCalledWith(
-                'photos_TEST_ID',
-                expect.stringMatching(/^\[.*\]$/) // JSON array with 2 photos
-            );
+            expect(window.mockPhotoStore.has('photos_TEST_ID')).toBe(true);
+            const storedData = window.mockPhotoStore.get('photos_TEST_ID');
+            expect(Array.isArray(storedData)).toBe(true);
+            expect(storedData).toHaveLength(2);
         });
 
         await waitFor(() => {
