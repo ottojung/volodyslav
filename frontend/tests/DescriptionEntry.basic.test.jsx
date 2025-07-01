@@ -128,10 +128,9 @@ describe("DescriptionEntry", () => {
 
         // Should render configuration section tabs
         await waitFor(() => {
-            expect(screen.getByText("Syntax")).toBeInTheDocument();
+            expect(screen.getByText("Help")).toBeInTheDocument();
             expect(screen.getByText("Shortcuts")).toBeInTheDocument();
             expect(screen.getByText("Recent Entries")).toBeInTheDocument();
-            expect(screen.getByText("Help")).toBeInTheDocument();
         });
     });
 
@@ -178,10 +177,9 @@ describe("DescriptionEntry", () => {
         });
 
         // Should not show config section when no config is available
-        expect(screen.queryByText("Syntax")).not.toBeInTheDocument();
+        expect(screen.queryByText("Help")).not.toBeInTheDocument();
         expect(screen.queryByText("Shortcuts")).not.toBeInTheDocument();
         expect(screen.queryByText("Recent Entries")).not.toBeInTheDocument();
-        expect(screen.queryByText("Help")).not.toBeInTheDocument();
     });
 
 
@@ -302,7 +300,7 @@ describe("DescriptionEntry", () => {
 
         // Wait for component to settle
         await waitFor(() => {
-            expect(screen.getByText("Syntax")).toBeInTheDocument();
+            expect(screen.getByText("Help")).toBeInTheDocument();
         });
 
         const input = screen.getByPlaceholderText(

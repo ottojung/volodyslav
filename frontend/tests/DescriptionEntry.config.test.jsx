@@ -122,7 +122,7 @@ describe("DescriptionEntry", () => {
 
         // Wait for config to load and find a shortcut to click
         await waitFor(() => {
-            expect(screen.getByText("Syntax")).toBeInTheDocument();
+            expect(screen.getByText("Help")).toBeInTheDocument();
         });
 
         // Find and click the shortcuts tab
@@ -157,8 +157,12 @@ describe("DescriptionEntry", () => {
 
         // Wait for config to load
         await waitFor(() => {
-            expect(screen.getByText("Syntax")).toBeInTheDocument();
+            expect(screen.getByText("Help")).toBeInTheDocument();
         });
+
+        // Click on the Help tab to see syntax examples
+        const helpTab = screen.getByText("Help");
+        fireEvent.click(helpTab);
 
         // Click on a syntax example
         const syntaxExample = screen.getByText(
@@ -303,7 +307,7 @@ describe("DescriptionEntry", () => {
 
         // Wait for config to load
         await waitFor(() => {
-            expect(screen.getByText("Syntax")).toBeInTheDocument();
+            expect(screen.getByText("Help")).toBeInTheDocument();
         });
 
         // Click shortcuts tab

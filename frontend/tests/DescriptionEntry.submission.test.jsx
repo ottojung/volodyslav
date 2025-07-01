@@ -118,7 +118,7 @@ describe("DescriptionEntry", () => {
 
         // Wait for component to settle
         await waitFor(() => {
-            expect(screen.getByText("Syntax")).toBeInTheDocument();
+            expect(screen.getByText("Help")).toBeInTheDocument();
         });
 
         const input = screen.getByPlaceholderText(
@@ -144,7 +144,7 @@ describe("DescriptionEntry", () => {
 
         // Wait for component to settle
         await waitFor(() => {
-            expect(screen.getByText("Syntax")).toBeInTheDocument();
+            expect(screen.getByText("Help")).toBeInTheDocument();
         });
 
         const input = screen.getByPlaceholderText(
@@ -172,21 +172,19 @@ describe("DescriptionEntry", () => {
 
         // Wait for config to load
         await waitFor(() => {
-            expect(screen.getByText("Syntax")).toBeInTheDocument();
+            expect(screen.getByText("Help")).toBeInTheDocument();
         });
 
-        // Default tab is Shortcuts (when shortcuts exist), so should show shortcuts content
+        // Default tab is Recent Entries, so should show recent entries content
         expect(
-            screen.getByText(
-                "Click a shortcut to use its pattern:"
-            )
+            screen.getByText("No recent entries found")
         ).toBeInTheDocument();
 
-        // Click Syntax tab
-        const syntaxTab = screen.getByText("Syntax");
-        fireEvent.click(syntaxTab);
+        // Click Help tab
+        const helpTab = screen.getByText("Help");
+        fireEvent.click(helpTab);
 
-        // Should show syntax content
+        // Should show help content with syntax examples
         await waitFor(() => {
             expect(
                 screen.getByText("Syntax: TYPE [MODIFIERS...] DESCRIPTION")
