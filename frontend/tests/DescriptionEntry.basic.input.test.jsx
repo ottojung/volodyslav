@@ -113,32 +113,12 @@ describe("DescriptionEntry", () => {
         });
     });
 
-    it("renders the main elements", async () => {
-        render(<DescriptionEntry />);
-
-        // Wait for all async operations to complete
-        await waitFor(() => {
-            expect(fetchConfig).toHaveBeenCalled();
-            expect(fetchRecentEntries).toHaveBeenCalled();
+    it("clears input and refetches entries after successful submission", async () => {
+        submitEntry.mockResolvedValue({
+            success: true,
+            entry: { input: "processed test event" },
         });
 
-        // Should render the input field
-        expect(
-            screen.getByPlaceholderText("Type your event description here...")
-        ).toBeInTheDocument();
-
-        // Should render the Take Photos button
-        expect(
-            screen.getByRole("button", { name: /take photos/i })
-        ).toBeInTheDocument();
-
-        // Should render configuration section tabs
-        expect(screen.getByText("Help")).toBeInTheDocument();
-        expect(screen.getByText("Shortcuts")).toBeInTheDocument();
-        expect(screen.getByText("Recent Entries")).toBeInTheDocument();
-    });
-
-    it("updates input value when typing", async () => {
         render(<DescriptionEntry />);
 
         // Wait for component to be fully loaded
@@ -149,75 +129,27 @@ describe("DescriptionEntry", () => {
         const input = screen.getByPlaceholderText(
             "Type your event description here..."
         );
-        fireEvent.change(input, { target: { value: "test input" } });
 
-        expect(input.value).toBe("test input");
-    });
+        // Type something
+        fireEvent.change(input, { target: { value: "test event" } });
 
-    it("renders Take Photos button correctly", async () => {
-        render(<DescriptionEntry />);
+        // Submit using Enter key
+        fireEvent.keyUp(input, { key: "Enter", code: "Enter" });
 
-        // Wait for component to be fully loaded
         await waitFor(() => {
-            expect(fetchConfig).toHaveBeenCalled();
+            expect(input.value).toBe("");
         });
 
-        const input = screen.getByPlaceholderText(
-            "Type your event description here..."
-        );
-        const takePhotosButton = screen.getByRole("button", { name: /take photos/i });
-
-        // Take Photos button should always be enabled
-        expect(takePhotosButton).toBeEnabled();
-
-        // Type something 
-        fireEvent.change(input, { target: { value: "some text" } });
-
-        // Take Photos button should still be enabled
-        expect(takePhotosButton).toBeEnabled();
-    });
-
-    it("does not render config section when no config is available", async () => {
-        // Override default mock to return null for this test
-        fetchConfig.mockResolvedValue(null);
-
-        render(<DescriptionEntry />);
-
-        // Wait for component to finish loading
+        // Should refetch entries after submission
         await waitFor(() => {
-            expect(fetchConfig).toHaveBeenCalled();
-        });
-
-        // Should render the input field
-        expect(
-            screen.getByPlaceholderText("Type your event description here...")
-        ).toBeInTheDocument();
-
-        // Should not show config section when no config is available
-        expect(screen.queryByText("Help")).not.toBeInTheDocument();
-        expect(screen.queryByText("Shortcuts")).not.toBeInTheDocument();
-        expect(screen.queryByText("Recent Entries")).not.toBeInTheDocument();
-    });
-
-
-    it("loads recent entries on mount", async () => {
-        const mockEntries = [
-            { id: "1", original: "test entry 1", date: "2023-01-01" },
-            { id: "2", original: "test entry 2", date: "2023-01-02" },
-        ];
-        fetchRecentEntries.mockResolvedValue(mockEntries);
-
-        render(<DescriptionEntry />);
-
-        // Wait for entries to load
-        await waitFor(() => {
-            expect(fetchRecentEntries).toHaveBeenCalledWith(10);
+            expect(fetchRecentEntries).toHaveBeenCalledTimes(2); // Once on mount, once after submit
         });
     });
 
 
+    it("handles submission errors gracefully", async () => {
+        submitEntry.mockRejectedValue(new Error("Network error"));
 
-    it("submits entry when Enter key is pressed", async () => {
         render(<DescriptionEntry />);
 
         // Wait for component to be fully loaded
@@ -231,7 +163,7 @@ describe("DescriptionEntry", () => {
         // Type something
         fireEvent.change(input, { target: { value: "test event" } });
 
-        // Press Enter
+        // Submit using Enter key
         fireEvent.keyUp(input, { key: "Enter", code: "Enter" });
 
         await waitFor(() => {
@@ -241,9 +173,33 @@ describe("DescriptionEntry", () => {
                 []
             );
         });
+
+        // Input should not be cleared on error
+        expect(input.value).toBe("test event");
     });
 
-    it("does not submit when Enter is pressed with Shift key", async () => {
+    it("does not submit empty or whitespace-only input", async () => {
+        render(<DescriptionEntry />);
+
+        // Wait for component to settle
+        await waitFor(() => {
+            expect(screen.getByText("Help")).toBeInTheDocument();
+        });
+
+        const input = screen.getByPlaceholderText(
+            "Type your event description here..."
+        );
+        // Try to submit empty input
+        fireEvent.keyUp(input, { key: "Enter", code: "Enter" });
+        expect(submitEntry).not.toHaveBeenCalled();
+
+        // Try to submit whitespace-only input
+        fireEvent.change(input, { target: { value: "   " } });
+        fireEvent.keyUp(input, { key: "Enter", code: "Enter" });
+        expect(submitEntry).not.toHaveBeenCalled();
+    });
+
+    it("focuses input field on mount", async () => {
         render(<DescriptionEntry />);
 
         // Wait for component to be fully loaded
@@ -255,15 +211,7 @@ describe("DescriptionEntry", () => {
             "Type your event description here..."
         );
 
-        // Type something
-        fireEvent.change(input, { target: { value: "test event" } });
-
-        // Press Shift+Enter
-        fireEvent.keyUp(input, { key: "Enter", code: "Enter", shiftKey: true });
-
-        // Should not submit
-        expect(submitEntry).not.toHaveBeenCalled();
+        expect(input).toHaveFocus();
     });
-
 
 });
