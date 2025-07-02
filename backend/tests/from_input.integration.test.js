@@ -17,7 +17,7 @@ describe("Integration Tests", () => {
         const capabilities = await getTestCapabilities();
 
         // Set up config through transaction system (proper way)
-        const { transaction } = require("../src/event_log_storage");
+        const { transaction } = require("../src/event_log_storage/transaction");
         await transaction(capabilities, async (storage) => {
             storage.setConfig({
                 help: "test config",
@@ -49,7 +49,7 @@ describe("Integration Tests", () => {
         const capabilities = await getTestCapabilities();
 
         // Set up config through transaction system (proper way)
-        const { transaction } = require("../src/event_log_storage");
+        const { transaction } = require("../src/event_log_storage/transaction");
         await transaction(capabilities, async (storage) => {
             storage.setConfig({
                 help: "test config",
@@ -74,7 +74,7 @@ describe("Integration Tests", () => {
         const capabilities = await getTestCapabilities();
 
         // Set up config through transaction system (proper way)
-        const { transaction } = require("../src/event_log_storage");
+        const { transaction } = require("../src/event_log_storage/transaction");
         await transaction(capabilities, async (storage) => {
             storage.setConfig({
                 help: "test config",

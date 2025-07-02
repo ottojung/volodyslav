@@ -1,4 +1,4 @@
-const { transaction } = require("./event_log_storage");
+const { transaction } = require("./event_log_storage/transaction");
 
 /** @typedef {import('./filesystem/deleter').FileDeleter} FileDeleter */
 /** @typedef {import('./random/seed').NonDeterministicSeed} NonDeterministicSeed */

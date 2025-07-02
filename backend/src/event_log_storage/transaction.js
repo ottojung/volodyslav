@@ -10,24 +10,24 @@
  */
 
 const path = require("path");
-const gitstore = require("./gitstore");
-const event = require("./event");
-const { targetPath } = require("./event/asset");
-const configStorage = require("./config/storage");
-/** @typedef {import("./filesystem/file").ExistingFile} ExistingFile */
-/** @typedef {import("./event_log_storage_class").AppendCapabilities} AppendCapabilities */
-/** @typedef {import("./event_log_storage_class").CopyAssetCapabilities} CopyAssetCapabilities */
-/** @typedef {import("./event_log_storage_class").CleanupAssetCapabilities} CleanupAssetCapabilities */
-/** @typedef {import("./event_log_storage_class").EventLogStorageCapabilities} EventLogStorageCapabilities */
-/** @typedef {import("./event_log_storage_class").EventLogStorage} EventLogStorage */
-const { EventLogStorageClass } = require("./event_log_storage_class");
+const gitstore = require("../gitstore");
+const event = require("../event");
+const { targetPath } = require("../event/asset");
+const configStorage = require("../config/storage");
+/** @typedef {import("../filesystem/file").ExistingFile} ExistingFile */
+/** @typedef {import("./class").AppendCapabilities} AppendCapabilities */
+/** @typedef {import("./class").CopyAssetCapabilities} CopyAssetCapabilities */
+/** @typedef {import("./class").CleanupAssetCapabilities} CleanupAssetCapabilities */
+/** @typedef {import("./class").EventLogStorageCapabilities} EventLogStorageCapabilities */
+/** @typedef {import("./class").EventLogStorage} EventLogStorage */
+const { EventLogStorageClass } = require("./class");
 /**
  * Appends an array of entries to a specified file.
  * Each entry is serialized to JSON format and appended to the file with a newline.
  *
  * @param {AppendCapabilities} capabilities - The minimal capabilities needed for appending entries
  * @param {ExistingFile} file - The file where entries will be appended.
- * @param {Array<import('./event').Event>} entries - An array of objects to append to the file.
+ * @param {Array<import('../event').Event>} entries - An array of objects to append to the file.
  * @returns {Promise<void>} - A promise that resolves when all entries are appended.
  *
  * Notes and Gotchas:
@@ -47,7 +47,7 @@ async function appendEntriesToFile(capabilities, file, entries) {
  * New helper to copy all queued assets into the asset directory.
  * Ensures that the parent directory exists before copying files.
  * @param {CopyAssetCapabilities} capabilities - The minimal capabilities needed for copying assets
- * @param {import('./event').Asset[]} assets - An array of assets to copy.
+ * @param {import('../event').Asset[]} assets - An array of assets to copy.
  * @returns {Promise<void>} - A promise that resolves when all assets are copied.
  */
 async function copyAssets(capabilities, assets) {

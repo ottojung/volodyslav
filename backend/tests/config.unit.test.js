@@ -1,5 +1,5 @@
 const { getConfig } = require("../src/config_api");
-const { transaction } = require("../src/event_log_storage");
+const { transaction } = require("../src/event_log_storage/transaction");
 const { getMockedRootCapabilities } = require("./spies");
 const {
     stubEnvironment,

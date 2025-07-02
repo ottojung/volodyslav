@@ -1,17 +1,17 @@
-const event = require("./event");
-const { readObjects } = require("./json_stream_file");
+const event = require("../event");
+const { readObjects } = require("../json_stream_file");
 
 
-/** @typedef {import('./filesystem/deleter').FileDeleter} FileDeleter */
-/** @typedef {import('./filesystem/copier').FileCopier} FileCopier */
-/** @typedef {import('./filesystem/writer').FileWriter} FileWriter */
-/** @typedef {import('./filesystem/appender').FileAppender} FileAppender */
-/** @typedef {import('./filesystem/creator').FileCreator} FileCreator */
-/** @typedef {import('./filesystem/file').ExistingFile} ExistingFile */
-/** @typedef {import('./filesystem/checker').FileChecker} FileChecker */
-/** @typedef {import('./subprocess/command').Command} Command */
-/** @typedef {import('./environment').Environment} Environment */
-/** @typedef {import('./logger').Logger} Logger */
+/** @typedef {import('../filesystem/deleter').FileDeleter} FileDeleter */
+/** @typedef {import('../filesystem/copier').FileCopier} FileCopier */
+/** @typedef {import('../filesystem/writer').FileWriter} FileWriter */
+/** @typedef {import('../filesystem/appender').FileAppender} FileAppender */
+/** @typedef {import('../filesystem/creator').FileCreator} FileCreator */
+/** @typedef {import('../filesystem/file').ExistingFile} ExistingFile */
+/** @typedef {import('../filesystem/checker').FileChecker} FileChecker */
+/** @typedef {import('../subprocess/command').Command} Command */
+/** @typedef {import('../environment').Environment} Environment */
+/** @typedef {import('../logger').Logger} Logger */
 
 /**
  * @typedef {object} Capabilities
@@ -24,7 +24,7 @@ const { readObjects } = require("./json_stream_file");
  * @property {Command} git - A command instance for Git operations.
  * @property {Environment} environment - An environment instance.
  * @property {Logger} logger - A logger instance.
- * @property {import('./filesystem/reader').FileReader} reader - A file reader instance.
+ * @property {import('../filesystem/reader').FileReader} reader - A file reader instance.
  */
 
 /**
@@ -52,14 +52,14 @@ const { readObjects } = require("./json_stream_file");
 /**
  * Minimal capabilities needed for reading existing entries
  * @typedef {object} ReadEntriesCapabilities
- * @property {import('./filesystem/reader').FileReader} reader - A file reader instance
+ * @property {import('../filesystem/reader').FileReader} reader - A file reader instance
  * @property {Logger} logger - A logger instance
  */
 
 /**
  * Comprehensive capabilities needed for EventLogStorage operations and transactions
  * @typedef {object} EventLogStorageCapabilities
- * @property {import('./filesystem/reader').FileReader} reader - A file reader instance
+ * @property {import('../filesystem/reader').FileReader} reader - A file reader instance
  * @property {FileWriter} writer - A file writer instance
  * @property {FileCreator} creator - A file creator instance
  * @property {FileChecker} checker - A file checker instance
@@ -88,14 +88,14 @@ class EventLogStorageClass {
     /**
      * Entries to be added to the event log.
      * @private
-     * @type {Array<import('./event').Event>}
+     * @type {Array<import('../event').Event>}
      */
     newEntries;
 
     /**
      * Assets to be added to the store.
      * @private
-     * @type {Array<import('./event').Asset>}
+     * @type {Array<import('../event').Asset>}
      */
     newAssets;
 
@@ -114,21 +114,21 @@ class EventLogStorageClass {
     /**
      * Cache for existing entries loaded from data.json
      * @private
-     * @type {Array<import('./event/structure').Event>|null}
+     * @type {Array<import('../event/structure').Event>|null}
      */
     existingEntriesCache = null;
 
     /**
      * Cache for existing config loaded from config.json
      * @private
-     * @type {import('./config/structure').Config|null}
+     * @type {import('../config/structure').Config|null}
      */
     existingConfigCache = null;
 
     /**
      * New config to be written to config.json
      * @private
-     * @type {import('./config/structure').Config|null}
+     * @type {import('../config/structure').Config|null}
      */
     newConfig = null;
 
@@ -151,8 +151,8 @@ class EventLogStorageClass {
 
     /**
      * Adds an entry to the event log.
-     * @param {import('./event').Event} entry - The entry to add.
-     * @param {import('./event/asset').Asset[]} assets - Possible assets related to the entry.
+     * @param {import('../event').Event} entry - The entry to add.
+     * @param {import('../event/asset').Asset[]} assets - Possible assets related to the entry.
      */
     addEntry(entry, assets) {
         this.newEntries.push(entry);
@@ -161,7 +161,7 @@ class EventLogStorageClass {
 
     /**
      * Retrieves all new entries from the event log.
-     * @returns {Array<import('./event').Event>} - The list of entries.
+     * @returns {Array<import('../event').Event>} - The list of entries.
      */
     getNewEntries() {
         return this.newEntries;
@@ -169,7 +169,7 @@ class EventLogStorageClass {
 
     /**
      * Retrieves all new assets from the repository.
-     * @returns {Array<import('./event').Asset>} - The list of assets.
+     * @returns {Array<import('../event').Asset>} - The list of assets.
      */
     getNewAssets() {
         return this.newAssets;
@@ -177,7 +177,7 @@ class EventLogStorageClass {
 
     /**
      * Sets a new configuration to be written to config.json
-     * @param {import('./config/structure').Config} configObj - The config object to write
+     * @param {import('../config/structure').Config} configObj - The config object to write
      */
     setConfig(configObj) {
         this.newConfig = configObj;
@@ -185,7 +185,7 @@ class EventLogStorageClass {
 
     /**
      * Gets the new configuration to be written
-     * @returns {import('./config/structure').Config|null} - The config object or null if none set
+     * @returns {import('../config/structure').Config|null} - The config object or null if none set
      */
     getNewConfig() {
         return this.newConfig;
@@ -198,7 +198,7 @@ class EventLogStorageClass {
      *
      * Uses capabilities: reader, logger (via configStorage.readConfig)
      *
-     * @returns {Promise<import('./config/structure').Config|null>} - The existing config or null if not found/invalid
+     * @returns {Promise<import('../config/structure').Config|null>} - The existing config or null if not found/invalid
      * @throws {Error} - If called outside of a transaction.
      */
     async getExistingConfig() {
@@ -220,8 +220,8 @@ class EventLogStorageClass {
         }
 
         try {
-            const configStorage = require("./config/storage");
-            const config = require("./config");
+            const configStorage = require("../config/storage");
+            const config = require("../config");
 
             const configResult = await configStorage.readConfig(
                 this.capabilities,
@@ -265,7 +265,7 @@ class EventLogStorageClass {
      *
      * Uses capabilities: reader, logger (via readObjects)
      *
-     * @returns {Promise<Array<import('./event/structure').Event>>} - The list of existing entries from data.json.
+     * @returns {Promise<Array<import('../event/structure').Event>>} - The list of existing entries from data.json.
      * @throws {Error} - If called outside of a transaction.
      */
     async getExistingEntries() {
@@ -284,7 +284,7 @@ class EventLogStorageClass {
             const objects = await readObjects(this.capabilities, this.dataFile);
 
             // Use tryDeserialize to safely convert objects to Events
-            /** @type {Array<import('./event/structure').Event>} */
+            /** @type {Array<import('../event/structure').Event>} */
             const validEvents = [];
 
             for (const obj of objects) {

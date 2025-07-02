@@ -1,4 +1,4 @@
-const { transaction } = require("./event_log_storage");
+const { transaction } = require("./event_log_storage/transaction");
 const eventId = require("./event/id");
 const asset = require("./event/asset");
 const creatorMake = require("./creator");

@@ -1,5 +1,5 @@
 const path = require("path");
-const { transaction } = require("../src/event_log_storage");
+const { transaction } = require("../src/event_log_storage/transaction");
 const gitstore = require("../src/gitstore");
 const { readObjects } = require("../src/json_stream_file");
 const event = require("../src/event/structure");
