@@ -14,13 +14,15 @@ const gitstore = require("../gitstore");
 const event = require("../event");
 const { targetPath } = require("../event/asset");
 const configStorage = require("../config/storage");
+const { EventLogStorageClass } = require("./class");
+
 /** @typedef {import("../filesystem/file").ExistingFile} ExistingFile */
 /** @typedef {import("./class").AppendCapabilities} AppendCapabilities */
 /** @typedef {import("./class").CopyAssetCapabilities} CopyAssetCapabilities */
 /** @typedef {import("./class").CleanupAssetCapabilities} CleanupAssetCapabilities */
 /** @typedef {import("./class").EventLogStorageCapabilities} EventLogStorageCapabilities */
 /** @typedef {import("./class").EventLogStorage} EventLogStorage */
-const { EventLogStorageClass } = require("./class");
+
 /**
  * Appends an array of entries to a specified file.
  * Each entry is serialized to JSON format and appended to the file with a newline.
