@@ -1,22 +1,22 @@
 const express = require("express");
-const upload = require("../storage");
-const { random: randomRequestId } = require("../request_identifier");
-const { handleEntryPost } = require("./entries/post");
-const { handleEntriesGet } = require("./entries/list");
+const upload = require("../../storage");
+const { random: randomRequestId } = require("../../request_identifier");
+const { handleEntryPost } = require("./post");
+const { handleEntriesGet } = require("./list");
 
 /**
 /**
- * @typedef {import('../environment').Environment} Environment
- * @typedef {import('../logger').Logger} Logger
- * @typedef {import('../random/seed').NonDeterministicSeed} NonDeterministicSeed
- * @typedef {import('../filesystem/deleter').FileDeleter} FileDeleter
- * @typedef {import('../filesystem/copier').FileCopier} FileCopier
- * @typedef {import('../filesystem/writer').FileWriter} FileWriter
- * @typedef {import('../filesystem/appender').FileAppender} FileAppender
- * @typedef {import('../filesystem/creator').FileCreator} FileCreator
- * @typedef {import('../filesystem/checker').FileChecker} FileChecker
- * @typedef {import('../subprocess/command').Command} Command
- * @typedef {import('../event/structure').SerializedEvent} SerializedEvent
+ * @typedef {import('../../environment').Environment} Environment
+ * @typedef {import('../../logger').Logger} Logger
+ * @typedef {import('../../random/seed').NonDeterministicSeed} NonDeterministicSeed
+ * @typedef {import('../../filesystem/deleter').FileDeleter} FileDeleter
+ * @typedef {import('../../filesystem/copier').FileCopier} FileCopier
+ * @typedef {import('../../filesystem/writer').FileWriter} FileWriter
+ * @typedef {import('../../filesystem/appender').FileAppender} FileAppender
+ * @typedef {import('../../filesystem/creator').FileCreator} FileCreator
+ * @typedef {import('../../filesystem/checker').FileChecker} FileChecker
+ * @typedef {import('../../subprocess/command').Command} Command
+ * @typedef {import('../../event/structure').SerializedEvent} SerializedEvent
  */
 
 /**
@@ -31,8 +31,8 @@ const { handleEntriesGet } = require("./entries/list");
  * @property {FileCreator} creator - A directory creator instance.
  * @property {FileChecker} checker - A file checker instance.
  * @property {Command} git - A command instance for Git operations.
- * @property {import('../filesystem/reader').FileReader} reader - A file reader instance.
- * @property {import('../datetime').Datetime} datetime - Datetime utilities.
+ * @property {import('../../filesystem/reader').FileReader} reader - A file reader instance.
+ * @property {import('../../datetime').Datetime} datetime - Datetime utilities.
  */
 
 /**
