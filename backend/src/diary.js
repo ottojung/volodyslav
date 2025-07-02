@@ -1,6 +1,6 @@
 const path = require("path");
 const { formatFileTimestamp } = require("./format_time_stamp");
-const { transaction } = require("./event_log_storage/transaction");
+const { transaction } = require("./event_log_storage");
 const eventId = require("./event/id");
 const asset = require("./event/asset");
 const creatorMake = require("./creator");

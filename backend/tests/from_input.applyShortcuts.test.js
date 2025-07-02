@@ -17,7 +17,7 @@ describe("applyShortcuts", () => {
         const capabilities = await getTestCapabilities();
 
         // Set up config through transaction system (proper way)
-        const { transaction } = require("../src/event_log_storage/transaction");
+        const { transaction } = require("../src/event_log_storage");
         await transaction(capabilities, async (storage) => {
             storage.setConfig({
                 help: "test config",
@@ -33,7 +33,7 @@ describe("applyShortcuts", () => {
         const capabilities = await getTestCapabilities();
 
         // Set up config through transaction system (proper way)
-        const { transaction } = require("../src/event_log_storage/transaction");
+        const { transaction } = require("../src/event_log_storage");
         await transaction(capabilities, async (storage) => {
             storage.setConfig({
                 help: "test config",
@@ -51,7 +51,7 @@ describe("applyShortcuts", () => {
         const capabilities = await getTestCapabilities();
 
         // Set up config through transaction system (proper way)
-        const { transaction } = require("../src/event_log_storage/transaction");
+        const { transaction } = require("../src/event_log_storage");
         await transaction(capabilities, async (storage) => {
             storage.setConfig({
                 help: "test config",
@@ -70,7 +70,7 @@ describe("applyShortcuts", () => {
         const capabilities = await getTestCapabilities();
 
         // Set up config through transaction system (proper way)
-        const { transaction } = require("../src/event_log_storage/transaction");
+        const { transaction } = require("../src/event_log_storage");
         await transaction(capabilities, async (storage) => {
             storage.setConfig({
                 help: "test config",
@@ -97,7 +97,7 @@ describe("applyShortcuts", () => {
         const capabilities = await getTestCapabilities();
 
         // Set up config through transaction system (proper way)
-        const { transaction } = require("../src/event_log_storage/transaction");
+        const { transaction } = require("../src/event_log_storage");
         await transaction(capabilities, async (storage) => {
             storage.setConfig({
                 help: "config without any shortcuts",
@@ -113,7 +113,7 @@ describe("applyShortcuts", () => {
         const capabilities = await getTestCapabilities();
 
         // Set up config through transaction system (proper way)
-        const { transaction } = require("../src/event_log_storage/transaction");
+        const { transaction } = require("../src/event_log_storage");
         await transaction(capabilities, async (storage) => {
             storage.setConfig({
                 help: "test config",

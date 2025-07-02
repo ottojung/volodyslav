@@ -35,7 +35,7 @@ describe("POST /api/entries - rawInput transformation and shortcuts", () => {
         capabilities.datetime.now.mockReturnValue(fixedTime);
 
         // Create config with empty shortcuts using transaction system
-        const { transaction } = require("../src/event_log_storage/transaction");
+        const { transaction } = require("../src/event_log_storage");
         await transaction(capabilities, async (storage) => {
             storage.setConfig({
                 help: "test config",

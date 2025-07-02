@@ -13,7 +13,7 @@ describe("POST /api/entries - rawInput transformation and shortcuts", () => {
         capabilities.datetime.now.mockReturnValue(fixedTime);
 
         // Create a config with shortcuts using transaction system
-        const { transaction } = require("../src/event_log_storage/transaction");
+        const { transaction } = require("../src/event_log_storage");
         await transaction(capabilities, async (storage) => {
             storage.setConfig({
                 help: "test config",
@@ -50,7 +50,7 @@ describe("POST /api/entries - rawInput transformation and shortcuts", () => {
         capabilities.datetime.now.mockReturnValue(fixedTime);
 
         // Create config with recursive shortcuts using transaction system
-        const { transaction } = require("../src/event_log_storage/transaction");
+        const { transaction } = require("../src/event_log_storage");
         await transaction(capabilities, async (storage) => {
             storage.setConfig({
                 help: "test config",
@@ -88,7 +88,7 @@ describe("POST /api/entries - rawInput transformation and shortcuts", () => {
         capabilities.datetime.now.mockReturnValue(fixedTime);
 
         // Create config with word boundary shortcuts using transaction system
-        const { transaction } = require("../src/event_log_storage/transaction");
+        const { transaction } = require("../src/event_log_storage");
         await transaction(capabilities, async (storage) => {
             storage.setConfig({
                 help: "test config",
@@ -124,7 +124,7 @@ describe("POST /api/entries - rawInput transformation and shortcuts", () => {
         capabilities.datetime.now.mockReturnValue(fixedTime);
 
         // Create config with shortcuts for locations using transaction system
-        const { transaction } = require("../src/event_log_storage/transaction");
+        const { transaction } = require("../src/event_log_storage");
         await transaction(capabilities, async (storage) => {
             storage.setConfig({
                 help: "test config",
@@ -188,7 +188,7 @@ describe("POST /api/entries - rawInput transformation and shortcuts", () => {
         const { app, capabilities } = await makeTestApp();
 
         // Create config that could potentially create invalid input using transaction system
-        const { transaction } = require("../src/event_log_storage/transaction");
+        const { transaction } = require("../src/event_log_storage");
         await transaction(capabilities, async (storage) => {
             storage.setConfig({
                 help: "test config",
@@ -218,7 +218,7 @@ describe("POST /api/entries - rawInput transformation and shortcuts", () => {
         capabilities.datetime.now.mockReturnValue(fixedTime);
 
         // Create complex config with shorthand expansions using transaction system
-        const { transaction } = require("../src/event_log_storage/transaction");
+        const { transaction } = require("../src/event_log_storage");
         await transaction(capabilities, async (storage) => {
             storage.setConfig({
                 help: "Complex shortcuts test config",
@@ -299,7 +299,7 @@ describe("POST /api/entries - rawInput transformation and shortcuts", () => {
         capabilities.datetime.now.mockReturnValue(fixedTime);
 
         // Create a config with a simple shortcut using transaction system
-        const { transaction } = require("../src/event_log_storage/transaction");
+        const { transaction } = require("../src/event_log_storage");
         await transaction(capabilities, async (storage) => {
             storage.setConfig({
                 help: "End-to-end test config",
