@@ -63,6 +63,9 @@ Classes are never exported directly from modules to prevent external constructor
 - **Export factory functions**: Use `makeFoo` instead of exporting the class
 - **Export type guards**: Use `isFoo` instead of relying on `instanceof`
 - **Nominal typing**: Use `__brand: undefined` fields for type safety where beneficial
+- Access to private members is allowed:
+ - in the same module,
+ - between modules of the same subfolder (e.g. `backend/src/filesystem/reader.js` can access exports of `backend/src/filesystem/writer.js`, but `backend/src/storage.js` can only access `backend/src/filesystem/index.js`)
 
 Example:
 ```javascript
@@ -246,6 +249,10 @@ if (isSomeType(unknownObject)) {
     const obj = unknownObject;
 }
 ```
+
+## Size
+
+- **File size limit**: 300 lines of code per file.
 
 ## Testing
 
