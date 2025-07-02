@@ -72,44 +72,18 @@ Classes are never exported directly from modules to prevent external constructor
 - **Export factory functions**: Use `makeFoo` instead of exporting the class
 - **Export type guards**: Use `isFoo` instead of relying on `instanceof`
 - **Nominal typing**: Use `__brand: undefined` fields for type safety where beneficial
-- Access to private members is allowed:
- - in the same module,
- - between modules of the same subfolder (e.g. `backend/src/filesystem/reader.js` can access exports of `backend/src/filesystem/writer.js`, but `backend/src/storage.js` can only access `backend/src/filesystem/index.js`)
 
-Example:
-```javascript
-// ❌ Wrong: Exporting class directly
-class WorkingRepository {
-    constructor(path) { this.path = path; }
-}
-module.exports = { WorkingRepository };
+#### Encapsulation Levels
+This project achieves encapsulation in two ways:
 
-// ✅ Correct: Export factory and type guard
-class WorkingRepository {
-    /** @type {undefined} */
-    __brand = undefined; // nominal typing brand
-    
-    constructor(path) { this.path = path; }
-}
+1. **Module-Level Encapsulation**:
+   - Only chosen functions are exported from the module.
+   - Everything else is kept private within the module.
 
-/**
- * @param {string} path
- * @returns {WorkingRepository}
- */
-function makeWorkingRepository(path) {
-    return new WorkingRepository(path);
-}
-
-/**
- * @param {unknown} object
- * @returns {object is WorkingRepository}
- */
-function isWorkingRepository(object) {
-    return object instanceof WorkingRepository;
-}
-
-module.exports = { makeWorkingRepository, isWorkingRepository };
-```
+2. **Subfolder-Level Encapsulation**:
+   - Each subfolder has an `index.js` file that exports chosen functions.
+   - Between the files of the subfolder, imports/exports can be less restrictive.
+   - From the outside, only the `index.js` file can be imported, ensuring sensitive functionality remains encapsulated.
 
 ## Error Handling
 This project follows strict error handling conventions that prioritize inspectability, locality, and type safety:
