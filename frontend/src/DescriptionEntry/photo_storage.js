@@ -3,9 +3,11 @@
  */
 
 import {
-    PhotoRetrievalError,
-    PhotoConversionError,
-    SessionStorageError,
+    makePhotoRetrievalError,
+    makePhotoConversionError,
+    makeSessionStorageError,
+    isPhotoRetrievalError,
+    isPhotoConversionError,
 } from './errors.js';
 import { logger } from './logger.js';
 
@@ -19,7 +21,7 @@ export const retrievePhotos = async (requestIdentifier) => {
     const key = `photos_${requestIdentifier}`;
 
     if (!requestIdentifier?.trim()) {
-        throw new PhotoRetrievalError(
+        throw makePhotoRetrievalError(
             'Invalid request identifier provided',
             requestIdentifier
         );
@@ -29,7 +31,7 @@ export const retrievePhotos = async (requestIdentifier) => {
     try {
         stored = sessionStorage.getItem(key);
     } catch (/** @type {unknown} */ error) {
-        throw new SessionStorageError(
+        throw makeSessionStorageError(
             'Failed to access session storage',
             'get',
             error instanceof Error ? error : new Error(String(error))
@@ -46,7 +48,7 @@ export const retrievePhotos = async (requestIdentifier) => {
         photosData = JSON.parse(stored);
 
         if (!Array.isArray(photosData)) {
-            throw new PhotoRetrievalError(
+            throw makePhotoRetrievalError(
                 'Stored photo data is not in expected format',
                 requestIdentifier
             );
@@ -56,7 +58,7 @@ export const retrievePhotos = async (requestIdentifier) => {
             return [];
         }
     } catch (/** @type {unknown} */ error) {
-        throw new PhotoRetrievalError(
+        throw makePhotoRetrievalError(
             'Photo data appears to be corrupted or invalid',
             requestIdentifier,
             error instanceof Error ? error : new Error(String(error))
@@ -68,7 +70,7 @@ export const retrievePhotos = async (requestIdentifier) => {
             photosData.map(async (/** @type {{name: string, data: string, type: string}} */ photo, index) => {
                 // Validate photo data structure
                 if (!photo || typeof photo !== 'object' || !photo.name || !photo.data || !photo.type) {
-                    throw new PhotoConversionError(
+                    throw makePhotoConversionError(
                         `Photo ${index + 1} has invalid data structure`,
                         photo?.name || `photo_${index + 1}`
                     );
@@ -80,7 +82,7 @@ export const retrievePhotos = async (requestIdentifier) => {
                     const response = await fetch(dataUrl);
 
                     if (!response.ok) {
-                        throw new PhotoConversionError(
+                        throw makePhotoConversionError(
                             `Failed to decode photo data for ${photo.name}`,
                             photo.name
                         );
@@ -89,7 +91,7 @@ export const retrievePhotos = async (requestIdentifier) => {
                     const blob = await response.blob();
 
                     if (blob.size === 0) {
-                        throw new PhotoConversionError(
+                        throw makePhotoConversionError(
                             `Photo ${photo.name} appears to be empty or corrupted`,
                             photo.name
                         );
@@ -100,10 +102,10 @@ export const retrievePhotos = async (requestIdentifier) => {
 
                     return file;
                 } catch (/** @type {unknown} */ error) {
-                    if (error instanceof PhotoConversionError) {
+                    if (isPhotoConversionError(error)) {
                         throw error;
                     }
-                    throw new PhotoConversionError(
+                    throw makePhotoConversionError(
                         `Failed to convert photo ${photo.name} to file`,
                         photo.name,
                         error instanceof Error ? error : new Error(String(error))
@@ -123,12 +125,12 @@ export const retrievePhotos = async (requestIdentifier) => {
         return files;
     } catch (/** @type {unknown} */ error) {
         // If it's already one of our custom errors, re-throw it
-        if (error instanceof PhotoRetrievalError || error instanceof PhotoConversionError) {
+        if (isPhotoRetrievalError(error) || isPhotoConversionError(error)) {
             throw error;
         }
 
         // For any other unexpected errors
-        throw new PhotoRetrievalError(
+        throw makePhotoRetrievalError(
             'Unexpected error occurred while processing photos',
             requestIdentifier,
             error instanceof Error ? error : new Error(String(error))
@@ -150,7 +152,7 @@ export const safeSessionStorageGet = (key) => {
     try {
         return sessionStorage.getItem(key);
     } catch (/** @type {unknown} */ error) {
-        throw new SessionStorageError(
+        throw makeSessionStorageError(
             `Failed to read from session storage (key: ${key})`,
             'get',
             error instanceof Error ? error : new Error(String(error))
@@ -175,7 +177,7 @@ export const safeSessionStorageSet = (key, value) => {
                 error.message.includes('quota') ||
                 error.message.includes('storage'));
 
-        throw new SessionStorageError(
+        throw makeSessionStorageError(
             isQuotaError
                 ? 'Storage quota exceeded. Please free up space and try again.'
                 : `Failed to save to session storage (key: ${key})`,
@@ -194,7 +196,7 @@ export const safeSessionStorageRemove = (key) => {
     try {
         sessionStorage.removeItem(key);
     } catch (/** @type {unknown} */ error) {
-        throw new SessionStorageError(
+        throw makeSessionStorageError(
             `Failed to remove from session storage (key: ${key})`,
             'remove',
             error instanceof Error ? error : new Error(String(error))
@@ -211,14 +213,14 @@ export const safeSessionStorageRemove = (key) => {
  */
 export const validatePhotoData = (photoData, index) => {
     if (!photoData || typeof photoData !== 'object') {
-        throw new PhotoConversionError(
+        throw makePhotoConversionError(
             `Photo ${index + 1} is not a valid object`,
             `photo_${index + 1}`
         );
     }
 
     if (!('name' in photoData) || typeof photoData.name !== 'string') {
-        throw new PhotoConversionError(
+        throw makePhotoConversionError(
             `Photo ${index + 1} has invalid or missing name`,
             'name' in photoData && typeof photoData.name === 'string'
                 ? photoData.name
@@ -227,14 +229,14 @@ export const validatePhotoData = (photoData, index) => {
     }
 
     if (!('data' in photoData) || typeof photoData.data !== 'string') {
-        throw new PhotoConversionError(
+        throw makePhotoConversionError(
             `Photo ${photoData.name} has invalid or missing data`,
             photoData.name
         );
     }
 
     if (!('type' in photoData) || typeof photoData.type !== 'string') {
-        throw new PhotoConversionError(
+        throw makePhotoConversionError(
             `Photo ${photoData.name} has invalid or missing type`,
             photoData.name
         );
@@ -242,7 +244,7 @@ export const validatePhotoData = (photoData, index) => {
 
     // Validate that it looks like a base64 string
     if (!/^[A-Za-z0-9+/]+=*$/.test(photoData.data)) {
-        throw new PhotoConversionError(
+        throw makePhotoConversionError(
             `Photo ${photoData.name} has invalid base64 data`,
             photoData.name
         );
