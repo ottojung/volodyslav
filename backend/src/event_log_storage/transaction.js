@@ -17,10 +17,10 @@ const configStorage = require("../config/storage");
 const { EventLogStorageClass } = require("./class");
 
 /** @typedef {import("../filesystem/file").ExistingFile} ExistingFile */
-/** @typedef {import("./class").AppendCapabilities} AppendCapabilities */
-/** @typedef {import("./class").CopyAssetCapabilities} CopyAssetCapabilities */
-/** @typedef {import("./class").CleanupAssetCapabilities} CleanupAssetCapabilities */
-/** @typedef {import("./class").EventLogStorageCapabilities} EventLogStorageCapabilities */
+/** @typedef {import("./types").AppendCapabilities} AppendCapabilities */
+/** @typedef {import("./types").CopyAssetCapabilities} CopyAssetCapabilities */
+/** @typedef {import("./types").CleanupAssetCapabilities} CleanupAssetCapabilities */
+/** @typedef {import("./types").EventLogStorageCapabilities} EventLogStorageCapabilities */
 /** @typedef {import("./class").EventLogStorage} EventLogStorage */
 
 /**
