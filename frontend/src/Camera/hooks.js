@@ -4,6 +4,7 @@
 
 import { useState, useRef, useEffect } from "react";
 import { useToast } from "@chakra-ui/react";
+import { logger } from "../DescriptionEntry/logger.js";
 import {
     PhotoStorageError,
     PhotoConversionError,
@@ -17,6 +18,15 @@ import {
  * Hook for camera logic
  * @param {string} requestIdentifier
  * @param {string} returnTo
+ * @returns {{
+ *   videoRef: import('react').MutableRefObject<HTMLVideoElement|null>,
+ *   previewUrl: string|undefined,
+ *   mode: string,
+ *   handleTake: () => void,
+ *   handleMore: () => void,
+ *   handleRedo: () => void,
+ *   handleDone: () => Promise<void>
+ * }} Camera utilities
  */
 export const useCamera = (requestIdentifier, returnTo) => {
     const [currentBlob, setCurrentBlob] = useState(/** @type {Blob|null} */ (null));
@@ -27,6 +37,10 @@ export const useCamera = (requestIdentifier, returnTo) => {
     const videoRef = useRef(null);
     const toast = useToast();
 
+    /**
+     * Validate that a request identifier was provided.
+     * @returns {boolean} True if an identifier is present, false otherwise.
+     */
     function checkIdentifier() {
         if (!requestIdentifier) {
             toast({
@@ -113,8 +127,9 @@ export const useCamera = (requestIdentifier, returnTo) => {
     }, [previewUrl]);
 
     /**
-     * Adds the current blob to the photos list
+     * Adds the provided blob to the photo list if present.
      * @param {Blob|null} blob
+     * @returns {Photo[]} Updated photo list
      */
     const addLastPhoto = (blob) => {
         if (blob) {
@@ -129,6 +144,10 @@ export const useCamera = (requestIdentifier, returnTo) => {
         return photos;
     };
 
+    /**
+     * Capture a photo from the video stream and prepare a preview.
+     * @returns {void}
+     */
     const handleTake = () => {
         const video = videoRef.current;
         if (!video) return;
@@ -152,6 +171,10 @@ export const useCamera = (requestIdentifier, returnTo) => {
         );
     };
 
+    /**
+     * Reset preview state and return to camera mode.
+     * @returns {void}
+     */
     const resetCamera = () => {
         if (previewUrl) {
             URL.revokeObjectURL(previewUrl);
@@ -160,16 +183,28 @@ export const useCamera = (requestIdentifier, returnTo) => {
         setMode("camera");
     };
 
+    /**
+     * Save the current photo and prepare for the next one.
+     * @returns {void}
+     */
     const handleMore = () => {
         addLastPhoto(currentBlob);
         resetCamera();
     };
 
+    /**
+     * Discard the current photo and reset the camera.
+     * @returns {void}
+     */
     const handleRedo = () => {
         setCurrentBlob(null);
         resetCamera();
     };
 
+    /**
+     * Finalize photo capture and store all photos.
+     * @returns {Promise<void>}
+     */
     const handleDone = async () => {
         const allPhotos = addLastPhoto(currentBlob);
         resetCamera();
@@ -250,7 +285,7 @@ export const useCamera = (requestIdentifier, returnTo) => {
             returnUrl.searchParams.set("request_identifier", requestIdentifier);
             window.location.href = returnUrl.toString();
         } catch (/** @type {unknown} */ err) {
-            console.error("Camera photo processing error:", err);
+            logger.error("Camera photo processing error:", err);
 
             let title = "Error processing photos";
             let description = "An unexpected error occurred.";
