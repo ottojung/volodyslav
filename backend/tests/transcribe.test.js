@@ -1,5 +1,4 @@
 const path = require("path");
-const fs = require("fs");
 const request = require("supertest");
 const expressApp = require("../src/express_app");
 const { addRoutes } = require("../src/server");
@@ -63,7 +62,8 @@ describe("GET /api/transcribe", () => {
             capabilities
         );
         const inputPath = path.join(inputDir, "dummy.wav");
-        fs.writeFileSync(inputPath, "dummy content");
+        const inputFile = await capabilities.creator.createFile(inputPath);
+        await capabilities.writer.writeFile(inputFile, "dummy content");
 
         const reqId = "testreq";
         const outputFilename = "transcription.json";
@@ -78,8 +78,9 @@ describe("GET /api/transcribe", () => {
         // Verify file was written to uploadDir under the request identifier
         const uploadDir = capabilities.environment.workingDirectory();
         const savedPath = path.join(uploadDir, reqId, outputFilename);
-        expect(fs.existsSync(savedPath)).toBe(true);
-        const content = fs.readFileSync(savedPath, "utf8");
+        const savedFileProof = await capabilities.checker.fileExists(savedPath);
+        expect(savedFileProof).not.toBeNull();
+        const content = await capabilities.reader.readFileAsText(savedPath);
         // Parsed content should match the stubbed response
         expect(JSON.parse(content)).toEqual({
             text: "mocked transcription result",
