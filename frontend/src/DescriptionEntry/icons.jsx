@@ -1,6 +1,11 @@
 import React from "react";
 
-// Simple icon components using forwardRef to avoid warnings
+/**
+ * Simple icon components using forwardRef to avoid warnings
+ * @param {React.ComponentPropsWithoutRef<"span">} props
+ * @param {React.Ref<HTMLSpanElement>} ref
+ * @returns {JSX.Element}
+ */
 export const ChevronDownIcon = React.forwardRef((props, ref) => (
     <span ref={ref} {...props}>
         ▼
@@ -8,6 +13,11 @@ export const ChevronDownIcon = React.forwardRef((props, ref) => (
 ));
 ChevronDownIcon.displayName = "ChevronDownIcon";
 
+/**
+ * @param {React.ComponentPropsWithoutRef<"span">} props
+ * @param {React.Ref<HTMLSpanElement>} ref
+ * @returns {JSX.Element}
+ */
 export const ChevronUpIcon = React.forwardRef((props, ref) => (
     <span ref={ref} {...props}>
         ▲
@@ -15,6 +25,11 @@ export const ChevronUpIcon = React.forwardRef((props, ref) => (
 ));
 ChevronUpIcon.displayName = "ChevronUpIcon";
 
+/**
+ * @param {React.ComponentPropsWithoutRef<"span">} props
+ * @param {React.Ref<HTMLSpanElement>} ref
+ * @returns {JSX.Element}
+ */
 export const InfoIcon = React.forwardRef((props, ref) => (
     <span ref={ref} {...props}>
         ℹ️

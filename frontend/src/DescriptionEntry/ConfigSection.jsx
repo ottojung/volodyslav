@@ -29,6 +29,7 @@ import { HelpTab } from "./tabs/HelpTab.jsx";
  * @param {string} props.currentInput - Current input value to show preview
  * @param {Array<any>} [props.recentEntries] - Array of recent entries to display
  * @param {boolean} [props.isLoadingEntries] - Whether entries are loading
+ * @returns {JSX.Element|null}
  */
 export const ConfigSection = ({ onShortcutClick, currentInput = "", recentEntries = [], isLoadingEntries = false }) => {
     const [config, setConfig] = useState(/** @type {Config|null} */ (null));

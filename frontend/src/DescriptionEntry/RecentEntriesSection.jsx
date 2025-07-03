@@ -22,6 +22,7 @@ import { CARD_STYLES, TEXT_STYLES, SPACING } from "./styles.js";
  * @param {Object} props
  * @param {Entry[]} props.entries - Array of recent entries
  * @param {boolean} props.isLoading - Whether entries are loading
+ * @returns {JSX.Element|null}
  */
 export const RecentEntriesSection = ({ entries, isLoading }) => {
     if (isLoading) {

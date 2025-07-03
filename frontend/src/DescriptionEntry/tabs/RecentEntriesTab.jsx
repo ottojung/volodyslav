@@ -9,6 +9,7 @@ import { SPACING } from "../styles.js";
  * @param {Array<any>} props.recentEntries - Array of recent entries
  * @param {boolean} props.isLoadingEntries - Whether entries are loading
  * @param {(value: string) => void} props.onShortcutClick - Called when an entry is clicked
+ * @returns {JSX.Element}
  */
 export const RecentEntriesTab = ({ recentEntries, isLoadingEntries, onShortcutClick }) => {
     if (isLoadingEntries) {
