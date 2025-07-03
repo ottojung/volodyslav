@@ -28,7 +28,10 @@ export default function DescriptionEntry() {
         }
     }, []);
 
-    const handleShortcutClick = (/** @type {string} */ text) => {
+    /**
+     * @param {string} text
+     */
+    const handleShortcutClick = (text) => {
         setDescription(text);
         // Focus the input after setting the text
         if (inputRef.current) {

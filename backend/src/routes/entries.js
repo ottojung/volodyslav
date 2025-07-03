@@ -5,7 +5,6 @@ const { handleEntryPost } = require("./entries/post");
 const { handleEntriesGet } = require("./entries/list");
 
 /**
-/**
  * @typedef {import('../environment').Environment} Environment
  * @typedef {import('../logger').Logger} Logger
  * @typedef {import('../random/seed').NonDeterministicSeed} NonDeterministicSeed

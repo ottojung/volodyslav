@@ -317,4 +317,13 @@ class EventLogStorageClass {
 
 /** @typedef {EventLogStorageClass} EventLogStorage */
 
-module.exports = { EventLogStorageClass };
+/**
+ * Factory for {@link EventLogStorageClass}
+ * @param {EventLogStorageCapabilities} capabilities
+ * @returns {EventLogStorage}
+ */
+function makeEventLogStorage(capabilities) {
+    return new EventLogStorageClass(capabilities);
+}
+
+module.exports = { makeEventLogStorage };

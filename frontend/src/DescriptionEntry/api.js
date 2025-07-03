@@ -15,6 +15,25 @@ import { EntrySubmissionError } from "./errors.js";
  */
 
 /**
+ * @param {unknown} obj
+ * @returns {obj is Entry}
+ */
+export function isEntry(obj) {
+    return (
+        obj !== null &&
+        typeof obj === 'object' &&
+        'id' in obj && typeof obj.id === 'string' &&
+        'date' in obj && typeof obj.date === 'string' &&
+        'type' in obj && typeof obj.type === 'string' &&
+        'description' in obj && typeof obj.description === 'string' &&
+        'input' in obj && typeof obj.input === 'string' &&
+        'original' in obj && typeof obj.original === 'string' &&
+        'modifiers' in obj && typeof obj.modifiers === 'object' && obj.modifiers !== null &&
+        'creator' in obj && typeof obj.creator === 'object' && obj.creator !== null
+    );
+}
+
+/**
  * @typedef {[string, string] | [string, string, string]} Shortcut
  * A tuple representing a shortcut:
  * - [0]: pattern - Regex pattern to match
@@ -38,8 +57,10 @@ export const fetchRecentEntries = async (limit = 10) => {
 
     if (response.ok) {
         const data = await response.json();
-        // data.results is any, cast to Entry[]
-        return /** @type {Entry[]} */ (data.results || []);
+        if (Array.isArray(data.results)) {
+            return data.results.filter(isEntry);
+        }
+        return [];
     } else {
         logger.warn("Failed to fetch recent entries:", response.status);
         return [];
