@@ -10,6 +10,7 @@ const {
     logWarning,
     logInfo,
     logDebug,
+    printf,
 } = require('./logger/log_methods.js');
 
 /** @typedef {import('./environment').Environment} Environment */
@@ -94,6 +95,14 @@ function make(getCapabilities) {
         logDebug(state, obj, msg);
     }
 
+    /**
+     * @param {unknown} obj
+     * @param {string} msg
+     */
+    function printfWrapper(obj, msg) {
+        printf(state, obj, msg);
+    }
+
     return {
         enableHttpCallsLogging: enableWrapper,
         setup: setupWrapper,
@@ -101,6 +110,7 @@ function make(getCapabilities) {
         logWarning: warnWrapper,
         logInfo: infoWrapper,
         logDebug: debugWrapper,
+        printf: printfWrapper,
     };
 }
 

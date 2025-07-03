@@ -59,4 +59,19 @@ describe("logger capability", () => {
         expect(content).not.toMatch(/info should not appear/);
         expect(content).toMatch(/error should appear/);
     });
+
+    it("printf prints to stderr", () => {
+        let called = false;
+        const origError = console.error;
+        console.error = () => {
+            called = true;
+        };
+        try {
+            const logger = make();
+            logger.printf({ foo: 1 }, "hello");
+            expect(called).toBe(true);
+        } finally {
+            console.error = origError;
+        }
+    });
 });
