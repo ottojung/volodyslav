@@ -40,7 +40,7 @@ class ShortcutApplicationErrorClass extends Error {
  * Factory for InputParseError.
  * @param {string} message
  * @param {string} input
- * @returns {Error}
+ * @returns {InputParseErrorClass}
  */
 function makeInputParseError(message, input) {
     return new InputParseErrorClass(message, input);
@@ -49,7 +49,7 @@ function makeInputParseError(message, input) {
 /**
  * Type guard for InputParseError.
  * @param {unknown} object
- * @returns {object is Error}
+ * @returns {object is InputParseErrorClass}
  */
 function isInputParseError(object) {
     return object instanceof InputParseErrorClass;
@@ -60,7 +60,7 @@ function isInputParseError(object) {
  * @param {string} message
  * @param {string} input
  * @param {string} pattern
- * @returns {Error}
+ * @returns {ShortcutApplicationErrorClass}
  */
 function makeShortcutApplicationError(message, input, pattern) {
     return new ShortcutApplicationErrorClass(message, input, pattern);
@@ -69,7 +69,7 @@ function makeShortcutApplicationError(message, input, pattern) {
 /**
  * Type guard for ShortcutApplicationError.
  * @param {unknown} object
- * @returns {object is Error}
+ * @returns {object is ShortcutApplicationErrorClass}
  */
 function isShortcutApplicationError(object) {
     return object instanceof ShortcutApplicationErrorClass;
