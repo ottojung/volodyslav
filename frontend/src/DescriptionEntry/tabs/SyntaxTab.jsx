@@ -13,6 +13,7 @@ const syntaxExamples = [
  * Syntax examples tab component
  * @param {Object} props
  * @param {(value: string) => void} props.onShortcutClick - Called when an example is clicked
+ * @returns {JSX.Element}
  */
 export const SyntaxTab = ({ onShortcutClick }) => (
     <VStack spacing={SPACING.md} align="stretch">

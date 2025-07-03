@@ -23,6 +23,7 @@ import { CARD_STYLES, TEXT_STYLES, BADGE_STYLES } from "./styles.js";
  * @param {Object} props
  * @param {Entry} props.entry - The entry data
  * @param {number} props.index - Index for fallback key
+ * @returns {JSX.Element}
  */
 export const EntryItem = ({ entry, index }) => (
     <Box key={entry.id || index} {...CARD_STYLES.entry}>
@@ -46,6 +47,7 @@ export const EntryItem = ({ entry, index }) => (
 
 /**
  * Loading skeleton for entries
+ * @returns {JSX.Element}
  */
 export const EntryItemSkeleton = () => (
     <Box {...CARD_STYLES.entry}>

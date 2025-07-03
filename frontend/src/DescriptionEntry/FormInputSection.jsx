@@ -25,6 +25,7 @@ import {
  * @param {boolean} props.isSubmitting - Whether form is submitting
  * @param {React.RefObject<HTMLInputElement>} props.inputRef - Input element ref
  * @param {boolean} [props.hasPhotos] - Whether photos are attached
+ * @returns {JSX.Element}
  */
 export const FormInputSection = ({
     description,

@@ -22,8 +22,23 @@ import {
 } from "./errors.js";
 
 /**
+ * @typedef {object} DescriptionEntryHook
+ * @property {string} description
+ * @property {boolean} isSubmitting
+ * @property {any[]} recentEntries
+ * @property {boolean} isLoadingEntries
+ * @property {string|null} pendingRequestIdentifier
+ * @property {(value: string) => void} setDescription
+ * @property {() => Promise<void>} handleSubmit
+ * @property {() => void} handleTakePhotos
+ * @property {(e: React.KeyboardEvent) => void} handleKeyUp
+ * @property {() => Promise<void>} fetchRecentEntries
+ */
+
+/**
  * Custom hook for managing description entry form state and actions
  * @param {number} numberOfEntries - Number of recent entries to fetch
+ * @returns {DescriptionEntryHook}
  */
 export const useDescriptionEntry = (numberOfEntries = 10) => {
     const [description, setDescription] = useState("");
