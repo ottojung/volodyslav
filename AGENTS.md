@@ -233,6 +233,22 @@ if (isSomeType(unknownObject)) {
 }
 ```
 
+## Obvious type guards
+
+The ONLY acceptable form of type guards is one that checks if an object is of a specific type using `instanceof`. This ensures type safety.
+
+```javascript
+// ✅ Correct: Type guard using instanceof
+function isExistingFile(object) {
+    return object instanceof ExistingFileClass;
+}
+
+// ❌ Wrong: Using typeof or other checks
+function isPathLike(object) {
+    return typeof object === 'object' && object !== null && 'path' in object;
+}
+```
+
 ## Size
 
 - **File size limit**: 300 lines of code per file.
