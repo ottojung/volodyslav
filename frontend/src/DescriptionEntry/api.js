@@ -29,6 +29,43 @@ import { EntrySubmissionError } from "./errors.js";
  */
 
 /**
+ * Type guard for Entry objects.
+ * @param {any} value
+ * @returns {value is Entry}
+ */
+function isEntry(value) {
+    return (
+        value != null &&
+        typeof value === "object" &&
+        !Array.isArray(value) &&
+        typeof value.id === "string" &&
+        typeof value.date === "string" &&
+        typeof value.type === "string" &&
+        typeof value.description === "string" &&
+        typeof value.input === "string" &&
+        typeof value.original === "string" &&
+        typeof value.creator === "object"
+    );
+}
+
+/**
+ * Safely parses an array of unknown values into Entry objects.
+ * @param {unknown} results
+ * @returns {Entry[]}
+ */
+function parseEntries(results) {
+    if (!Array.isArray(results)) return [];
+    /** @type {Entry[]} */
+    const valid = [];
+    for (const item of results) {
+        if (isEntry(item)) {
+            valid.push(item);
+        }
+    }
+    return valid;
+}
+
+/**
  * Fetches recent entries from the API.
  * @param {number} [limit=10] - The maximum number of entries to fetch.
  * @returns {Promise<Entry[]>} - Array of recent entries, or empty array if fetch fails.
@@ -38,8 +75,7 @@ export const fetchRecentEntries = async (limit = 10) => {
 
     if (response.ok) {
         const data = await response.json();
-        // data.results is any, cast to Entry[]
-        return /** @type {Entry[]} */ (data.results || []);
+        return parseEntries(data.results);
     } else {
         logger.warn("Failed to fetch recent entries:", response.status);
         return [];
