@@ -45,8 +45,9 @@ sh scripts/run-development-server
 ## Production Mode
 
 ```bash
+sh scripts/install /usr/local
+
 # Set all required environment variables.
-sh scripts/update-and-install /usr/local
 volodyslav start
 ```
 
