@@ -58,6 +58,7 @@ function stubLogger(capabilities) {
     capabilities.logger.logWarning = jest.fn();
     capabilities.logger.logInfo = jest.fn();
     capabilities.logger.logDebug = jest.fn();
+    capabilities.logger.printf = jest.fn();
 }
 
 /**
