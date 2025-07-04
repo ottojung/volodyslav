@@ -96,11 +96,10 @@ function make(getCapabilities) {
     }
 
     /**
-     * @param {unknown} obj
      * @param {string} msg
      */
-    function printfWrapper(obj, msg) {
-        printf(state, obj, msg);
+    function printfWrapper(msg) {
+        printf(state, msg);
     }
 
     return {

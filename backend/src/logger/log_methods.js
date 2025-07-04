@@ -101,12 +101,11 @@ function logDebug(state, obj, msg) {
  * Prints the given arguments to stderr without any additional handling.
  *
  * @param {LoggerState} _state - The logger state (unused).
- * @param {unknown} obj The error object, message string, or object with error details
  * @param {string} msg
  * @returns {void}
  */
-function printf(_state, obj, msg) {
-    console.error(obj, msg);
+function printf(_state, msg) {
+    console.error(msg);
 }
 
 module.exports = {

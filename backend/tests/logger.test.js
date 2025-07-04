@@ -63,13 +63,13 @@ describe("logger capability", () => {
     it("printf prints to stderr", () => {
         let called = false;
         const origError = console.error;
-        console.error = () => {
-            called = true;
+        console.error = (...args) => {
+            called = args;
         };
         try {
             const logger = make();
-            logger.printf({ foo: 1 }, "hello");
-            expect(called).toBe(true);
+            logger.printf("hello");
+            expect(called).toEqual(["hello"]);
         } finally {
             console.error = origError;
         }
