@@ -13,7 +13,7 @@ const root = require("./capabilities/root");
  */
 async function printVersion(capabilities) {
     const { version } = await runtimeIdentifier(capabilities);
-    console.log(version);
+    capabilities.logger.printf(version);
 }
 
 /**
@@ -33,7 +33,7 @@ async function entryTyped(capabilities) {
                 process.exit(0);
             }
             if (cmd) {
-                console.error(`error: unknown command '${cmd}'`);
+                capabilities.logger.logError({ cmd }, `Unknown command ${JSON.stringify(cmd)}`);
                 program.help({ error: true });
             } else {
                 program.outputHelp();
