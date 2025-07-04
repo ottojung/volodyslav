@@ -62,8 +62,8 @@ describe("logger capability", () => {
 
     it("printf prints to stderr", () => {
         let called = false;
-        const origError = console.error;
-        console.error = (...args) => {
+        const origError = console.log;
+        console.log = (...args) => {
             called = args;
         };
         try {
@@ -71,7 +71,7 @@ describe("logger capability", () => {
             logger.printf("hello");
             expect(called).toEqual(["hello"]);
         } finally {
-            console.error = origError;
+            console.log = origError;
         }
     });
 });
