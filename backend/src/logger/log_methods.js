@@ -105,7 +105,7 @@ function logDebug(state, obj, msg) {
  * @returns {void}
  */
 function printf(_state, msg) {
-    console.error(msg);
+    console.log(msg);
 }
 
 module.exports = {
