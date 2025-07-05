@@ -2,6 +2,17 @@ import React from "react";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import "@testing-library/jest-dom";
 
+// Mock Chakra UI useToast
+const mockToast = jest.fn();
+jest.mock('@chakra-ui/react', () => {
+    const actual = jest.requireActual('@chakra-ui/react');
+    return {
+        __esModule: true,
+        ...actual,
+        useToast: () => mockToast,
+    };
+});
+
 // Mock the API module before any imports
 jest.mock("../src/DescriptionEntry/api", () => ({
     fetchRecentEntries: jest.fn(),
@@ -76,6 +87,7 @@ describe("Photo Count Display Bug Fix", () => {
         fetchRecentEntries.mockClear();
         submitEntry.mockClear();
         fetchConfig.mockClear();
+        mockToast.mockClear();
 
         // Reset camera mocks
         generateRequestIdentifier.mockReset();
@@ -122,9 +134,17 @@ describe("Photo Count Display Bug Fix", () => {
             expect(cleanupUrlParams).toHaveBeenCalled();
         });
 
-        // Wait for the toast to appear with correct photo count
+        // Wait for the toast to be called with correct photo count
         await waitFor(() => {
-            expect(screen.getByText("3 photo(s) ready")).toBeInTheDocument();
+            expect(mockToast).toHaveBeenCalledWith(
+                expect.objectContaining({
+                    title: "3 photo(s) ready",
+                    description: "Complete your description and submit to create the entry.",
+                    status: "success",
+                    duration: 5000,
+                    isClosable: true,
+                })
+            );
         });
 
         // Verify the IndexedDB retrieval was called correctly
@@ -160,9 +180,17 @@ describe("Photo Count Display Bug Fix", () => {
             expect(cleanupUrlParams).toHaveBeenCalled();
         });
 
-        // Wait for the toast to appear with correct photo count
+        // Wait for the toast to be called with correct photo count  
         await waitFor(() => {
-            expect(screen.getByText("0 photo(s) ready")).toBeInTheDocument();
+            expect(mockToast).toHaveBeenCalledWith(
+                expect.objectContaining({
+                    title: "0 photo(s) ready",
+                    description: "Complete your description and submit to create the entry.",
+                    status: "success",
+                    duration: 5000,
+                    isClosable: true,
+                })
+            );
         });
 
         // Verify the IndexedDB retrieval was called correctly
@@ -191,9 +219,17 @@ describe("Photo Count Display Bug Fix", () => {
             expect(cleanupUrlParams).toHaveBeenCalled();
         });
 
-        // Wait for the toast to appear with correct photo count
+        // Wait for the toast to be called with correct photo count
         await waitFor(() => {
-            expect(screen.getByText("0 photo(s) ready")).toBeInTheDocument();
+            expect(mockToast).toHaveBeenCalledWith(
+                expect.objectContaining({
+                    title: "0 photo(s) ready",
+                    description: "Complete your description and submit to create the entry.",
+                    status: "success",
+                    duration: 5000,
+                    isClosable: true,
+                })
+            );
         });
 
         // Verify the IndexedDB retrieval was called correctly
@@ -222,14 +258,30 @@ describe("Photo Count Display Bug Fix", () => {
             expect(cleanupUrlParams).toHaveBeenCalled();
         });
 
-        // Wait for the error toast to appear
+        // Wait for the error case to show 0 photos
         await waitFor(() => {
-            expect(screen.getByText("0 photo(s) ready")).toBeInTheDocument();
+            expect(mockToast).toHaveBeenCalledWith(
+                expect.objectContaining({
+                    title: "0 photo(s) ready",
+                    description: "Complete your description and submit to create the entry.",
+                    status: "success",
+                    duration: 5000,
+                    isClosable: true,
+                })
+            );
         });
 
         // Should also show a warning about photo data issue
         await waitFor(() => {
-            expect(screen.getByText("Photo data issue")).toBeInTheDocument();
+            expect(mockToast).toHaveBeenCalledWith(
+                expect.objectContaining({
+                    title: "Photo data issue",
+                    description: "There may be an issue with your photos. Please check if photos are attached before submitting.",
+                    status: "warning",
+                    duration: 6000,
+                    isClosable: true,
+                })
+            );
         });
 
         // Verify the IndexedDB retrieval was called correctly

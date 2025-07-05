@@ -33,10 +33,9 @@ const handlePhotoRetrieval = async (pendingRequestIdentifier, toast, setPendingR
         return await retrievePhotos(pendingRequestIdentifier);
     } catch (error) {
         logger.error("Photo retrieval error:", error);
+        const userMessage = getUserFriendlyErrorMessage(error);
 
         if (isPhotoRetrievalError(error) && error.isRecoverable) {
-            // Show warning but allow submission without photos
-            const userMessage = getUserFriendlyErrorMessage(error);
             toast({
                 title: "Photo issue",
                 description: `${userMessage} Your entry will be submitted without photos.`,
@@ -44,14 +43,11 @@ const handlePhotoRetrieval = async (pendingRequestIdentifier, toast, setPendingR
                 duration: 8000,
                 isClosable: true,
             });
-            // Reset pending identifier and continue with submission
             setPendingRequestIdentifier(null);
             return [];
         } else {
-            // Non-recoverable photo error - fail the submission
-            const userMessage = getUserFriendlyErrorMessage(error);
             toast(createToastConfig.error(userMessage));
-            throw error; // Re-throw to stop submission
+            throw error;
         }
     }
 };
@@ -68,12 +64,10 @@ const handlePhotoRetrieval = async (pendingRequestIdentifier, toast, setPendingR
  */
 const handleSubmissionSuccess = (result, description, files, setDescription, setPendingRequestIdentifier, fetchRecentEntries, toast) => {
     const savedInput = result.entry?.input ?? description.trim();
-
     setDescription("");
     setPendingRequestIdentifier(null);
     fetchRecentEntries();
 
-    // Show success message with file count if applicable
     const fileCountMessage = files.length > 0 ? ` with ${files.length} photo(s)` : '';
     toast({
         ...createToastConfig.success(savedInput),
@@ -89,12 +83,9 @@ const handleSubmissionSuccess = (result, description, files, setDescription, set
 const handleSubmissionError = (error, toast) => {
     logger.error("Entry submission error:", error);
 
-    // Use specialized error handling
     if (isEntrySubmissionError(error)) {
-        const userMessage = getUserFriendlyErrorMessage(error);
-        toast(createToastConfig.error(userMessage));
+        toast(createToastConfig.error(getUserFriendlyErrorMessage(error)));
     } else {
-        // Fallback for unexpected errors
         const errorMessage = error instanceof Error
             ? error.message
             : "Please check your connection and try again.";
@@ -133,21 +124,15 @@ const getPhotoCountFromStorage = async (requestIdentifier, toast) => {
  * @param {Function} toast - Toast notification function
  */
 const processCameraReturn = async (cameraReturn, setDescription, setPendingRequestIdentifier, toast) => {
-    // Restore the description that was stored before going to camera
     const restoredDescription = restoreDescription(cameraReturn.requestIdentifier);
     if (restoredDescription) {
         setDescription(restoredDescription);
     }
 
-    // Set the request identifier for the next submission
     setPendingRequestIdentifier(cameraReturn.requestIdentifier);
-
-    // Clean up URL parameters
     cleanupUrlParams();
 
-    // Show a toast to let user know photos are ready
     const photoCount = await getPhotoCountFromStorage(cameraReturn.requestIdentifier, toast);
-
     toast({
         title: `${photoCount} photo(s) ready`,
         description: 'Complete your description and submit to create the entry.',
@@ -205,21 +190,17 @@ export const useDescriptionEntry = (numberOfEntries = 10) => {
         setIsSubmitting(true);
 
         try {
-            // Retrieve photos if we have a pending request identifier
             /** @type {File[]} */
             let files = [];
-
             if (pendingRequestIdentifier) {
                 try {
                     files = await handlePhotoRetrieval(pendingRequestIdentifier, toast, setPendingRequestIdentifier);
                 } catch (error) {
-                    // Error was already handled in handlePhotoRetrieval, just return
                     return;
                 }
             }
 
             const result = await submitEntry(description.trim(), pendingRequestIdentifier || undefined, files);
-
             handleSubmissionSuccess(result, description, files, setDescription, setPendingRequestIdentifier, fetchRecentEntries, toast);
         } catch (error) {
             handleSubmissionError(error, toast);
@@ -250,10 +231,7 @@ export const useDescriptionEntry = (numberOfEntries = 10) => {
     useEffect(() => {
         const cameraReturn = checkCameraReturn();
         if (cameraReturn.isReturn && cameraReturn.requestIdentifier) {
-            // Use an immediately invoked async function to handle the promise
-            (async () => {
-                await processCameraReturn(cameraReturn, setDescription, setPendingRequestIdentifier, toast);
-            })();
+            processCameraReturn(cameraReturn, setDescription, setPendingRequestIdentifier, toast);
         }
     }, [toast]);
 
