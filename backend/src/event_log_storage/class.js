@@ -9,6 +9,7 @@ const { readObjects } = require("../json_stream_file");
 /** @typedef {import('./types').ReadEntriesCapabilities} ReadEntriesCapabilities */
 /** @typedef {import('./types').EventLogStorageCapabilities} EventLogStorageCapabilities */
 /** @typedef {import('./types').ExistingFile} ExistingFile */
+/** @typedef {import('../event/id').EventId} EventId */
 
 /**
  * A class to manage the storage of event log entries.
@@ -37,6 +38,13 @@ class EventLogStorageClass {
      * @type {Array<import('../event').Asset>}
      */
     newAssets;
+
+    /**
+     * Identifiers of entries queued for deletion.
+     * @private
+     * @type {Set<EventId>}
+     */
+    deletedIds;
 
     /**
      * Path to the data.json file, set during transaction
@@ -86,6 +94,7 @@ class EventLogStorageClass {
         this.capabilities = capabilities;
         this.newEntries = [];
         this.newAssets = [];
+        this.deletedIds = new Set();
     }
 
     /**
@@ -112,6 +121,27 @@ class EventLogStorageClass {
      */
     getNewAssets() {
         return this.newAssets;
+    }
+
+    /**
+     * Marks an entry for deletion by its ID.
+     * If the entry was queued in the same transaction, it will be removed.
+     *
+     * @param {import('../event/id').EventId} id - The identifier of the entry to delete.
+     */
+    deleteEntry(id) {
+        this.deletedIds.add(id);
+        this.newEntries = this.newEntries.filter(
+            (e) => e.id.identifier !== id.identifier
+        );
+    }
+
+    /**
+     * Retrieves identifiers of entries queued for deletion.
+     * @returns {Iterable<EventId>} - Iterator over identifiers to delete.
+     */
+    getDeletedIds() {
+        return this.deletedIds.values();
     }
 
     /**
