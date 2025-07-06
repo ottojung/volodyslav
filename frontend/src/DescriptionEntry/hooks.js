@@ -3,6 +3,7 @@ import { useToast } from "@chakra-ui/react";
 import {
     fetchRecentEntries as apiFetchRecentEntries,
     submitEntry,
+    deleteEntry as apiDeleteEntry,
 } from "./api";
 import { isValidDescription, createToastConfig } from "./utils.js";
 import { logger } from "./logger.js";
@@ -153,6 +154,7 @@ const processCameraReturn = async (cameraReturn, setDescription, setPendingReque
  * @property {() => Promise<void>} handleSubmit
  * @property {() => void} handleTakePhotos
  * @property {(e: React.KeyboardEvent) => void} handleKeyUp
+ * @property {(id: string) => Promise<void>} handleDeleteEntry
  * @property {() => Promise<void>} fetchRecentEntries
  */
 
@@ -222,6 +224,25 @@ export const useDescriptionEntry = (numberOfEntries = 10) => {
         }
     };
 
+    /**
+     * Deletes an entry and refreshes list.
+     * @param {string} id
+     * @returns {Promise<void>}
+     */
+    const handleDeleteEntry = async (id) => {
+        try {
+            const success = await apiDeleteEntry(id);
+            if (success) {
+                fetchRecentEntries();
+            } else {
+                toast(createToastConfig.error("Failed to delete entry"));
+            }
+        } catch (error) {
+            logger.error("Error deleting entry:", error);
+            toast(createToastConfig.error("Failed to delete entry"));
+        }
+    };
+
     // Fetch entries on mount
     useEffect(() => {
         fetchRecentEntries();
@@ -248,6 +269,7 @@ export const useDescriptionEntry = (numberOfEntries = 10) => {
         handleSubmit,
         handleTakePhotos,
         handleKeyUp,
+        handleDeleteEntry,
         fetchRecentEntries,
     };
 };

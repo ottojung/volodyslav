@@ -17,6 +17,7 @@ export default function DescriptionEntry() {
         setDescription,
         handleTakePhotos,
         handleKeyUp,
+        handleDeleteEntry,
     } = useDescriptionEntry(NUMBER_OF_RECENT_ENTRIES);
 
     const inputRef = useRef(null);
@@ -59,6 +60,7 @@ export default function DescriptionEntry() {
                 {/* Configuration Section */}
                 <ConfigSection
                     onShortcutClick={handleShortcutClick}
+                    onDeleteEntry={handleDeleteEntry}
                     currentInput={description}
                     recentEntries={recentEntries}
                     isLoadingEntries={isLoadingEntries}

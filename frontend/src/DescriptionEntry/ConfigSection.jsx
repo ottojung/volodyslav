@@ -26,12 +26,13 @@ import { HelpTab } from "./tabs/HelpTab.jsx";
  * Component that displays configuration help and shortcuts
  * @param {Object} props
  * @param {(value: string) => void} props.onShortcutClick - Called when a shortcut is clicked
+ * @param {(id: string) => void} props.onDeleteEntry - Called when an entry delete is requested
  * @param {string} props.currentInput - Current input value to show preview
  * @param {Array<any>} [props.recentEntries] - Array of recent entries to display
  * @param {boolean} [props.isLoadingEntries] - Whether entries are loading
  * @returns {JSX.Element|null}
  */
-export const ConfigSection = ({ onShortcutClick, currentInput = "", recentEntries = [], isLoadingEntries = false }) => {
+export const ConfigSection = ({ onShortcutClick, onDeleteEntry, currentInput = "", recentEntries = [], isLoadingEntries = false }) => {
     const [config, setConfig] = useState(/** @type {Config|null} */ (null));
     const [isLoading, setIsLoading] = useState(true);
 
@@ -80,10 +81,11 @@ export const ConfigSection = ({ onShortcutClick, currentInput = "", recentEntrie
 
                         <TabPanels>
                             <TabPanel px={0}>
-                                <RecentEntriesTab 
+                                <RecentEntriesTab
                                     recentEntries={recentEntries}
                                     isLoadingEntries={isLoadingEntries}
                                     onShortcutClick={onShortcutClick}
+                                    onDeleteEntry={onDeleteEntry}
                                 />
                             </TabPanel>
 
