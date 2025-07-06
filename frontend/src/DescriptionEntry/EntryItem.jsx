@@ -6,6 +6,7 @@ import {
     Text,
     Badge,
     Skeleton,
+    IconButton,
 } from "@chakra-ui/react";
 import { formatRelativeDate } from "./utils.js";
 import { CARD_STYLES, TEXT_STYLES, BADGE_STYLES } from "./styles.js";
@@ -23,9 +24,10 @@ import { CARD_STYLES, TEXT_STYLES, BADGE_STYLES } from "./styles.js";
  * @param {Object} props
  * @param {Entry} props.entry - The entry data
  * @param {number} props.index - Index for fallback key
+ * @param {(id: string) => void} [props.onDelete] - Called when delete button is clicked
  * @returns {JSX.Element}
  */
-export const EntryItem = ({ entry, index }) => (
+export const EntryItem = ({ entry, index, onDelete }) => (
     <Box key={entry.id || index} {...CARD_STYLES.entry}>
         <HStack justify="space-between" align="flex-start">
             <VStack align="flex-start" spacing={1} flex={1}>
@@ -41,6 +43,15 @@ export const EntryItem = ({ entry, index }) => (
                     {entry.description}
                 </Text>
             </VStack>
+            {onDelete && (
+                <IconButton
+                    aria-label="Delete entry"
+                    size="sm"
+                    variant="ghost"
+                    onClick={(e) => { e.stopPropagation(); onDelete(entry.id); }}
+                    icon={<span>&times;</span>}
+                />
+            )}
         </HStack>
     </Box>
 );

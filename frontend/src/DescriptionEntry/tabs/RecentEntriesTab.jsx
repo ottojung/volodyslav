@@ -9,9 +9,10 @@ import { SPACING } from "../styles.js";
  * @param {Array<any>} props.recentEntries - Array of recent entries
  * @param {boolean} props.isLoadingEntries - Whether entries are loading
  * @param {(value: string) => void} props.onShortcutClick - Called when an entry is clicked
+ * @param {(id: string) => void} props.onDeleteEntry - Called when delete button is clicked
  * @returns {JSX.Element}
  */
-export const RecentEntriesTab = ({ recentEntries, isLoadingEntries, onShortcutClick }) => {
+export const RecentEntriesTab = ({ recentEntries, isLoadingEntries, onShortcutClick, onDeleteEntry }) => {
     if (isLoadingEntries) {
         return (
             <VStack spacing={SPACING.md} align="stretch">
@@ -41,7 +42,7 @@ export const RecentEntriesTab = ({ recentEntries, isLoadingEntries, onShortcutCl
                     p={2}
                     borderRadius="md"
                 >
-                    <EntryItem entry={entry} index={index} />
+                    <EntryItem entry={entry} index={index} onDelete={() => onDeleteEntry(entry.id)} />
                 </Box>
             ))}
         </VStack>
