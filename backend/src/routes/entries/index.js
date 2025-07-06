@@ -3,6 +3,7 @@ const upload = require("../../storage");
 const { random: randomRequestId } = require("../../request_identifier");
 const { handleEntryPost } = require("./post");
 const { handleEntriesGet } = require("./list");
+const { handleEntryDelete } = require("./delete");
 
 /**
 /**
@@ -119,6 +120,32 @@ function makeRouter(capabilities) {
                 res.status(500).json({
                     error: "Internal server error",
                 });
+            }
+        }
+    });
+
+    /**
+     * DELETE /entries - Delete an entry by id
+     */
+    router.delete("/entries", async (req, res) => {
+        const reqId = randomRequestId(capabilities);
+
+        try {
+            await handleEntryDelete(req, res, capabilities, reqId);
+        } catch (error) {
+            capabilities.logger.logError(
+                {
+                    request_identifier: reqId.identifier,
+                    error: error instanceof Error ? error.message : String(error),
+                    error_name: error instanceof Error ? error.name : "Unknown",
+                    error_stack: error instanceof Error ? error.stack : undefined,
+                    client_ip: req.ip,
+                    query: req.query,
+                },
+                "Unhandled error during entry delete request",
+            );
+            if (!res.headersSent) {
+                res.status(500).json({ error: "Internal server error" });
             }
         }
     });

@@ -176,4 +176,22 @@ async function getEntries(capabilities, pagination) {
     };
 }
 
-module.exports = { createEntry, getEntries, EntryValidationError };
+/**
+ * Deletes an entry from the event log by its id.
+ *
+ * @param {Capabilities} capabilities - The capabilities to use.
+ * @param {import('./event/id').EventId} id - Identifier of the entry to delete.
+ * @returns {Promise<void>} - Resolves when deletion is complete.
+ */
+async function deleteEntry(capabilities, id) {
+    await transaction(capabilities, async (storage) => {
+        storage.deleteEntry(id);
+    });
+
+    capabilities.logger.logInfo(
+        { eventId: id },
+        'Entry deleted'
+    );
+}
+
+module.exports = { createEntry, getEntries, deleteEntry, EntryValidationError };
