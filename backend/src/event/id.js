@@ -43,14 +43,15 @@ function make(capabilities) {
 }
 
 /**
- * @param {import('./structure').SerializedEvent} serialized
+ * @param {string} id
  * @returns {EventId}
+ * @description Primary constructor for an EventId.
  */
-function deserialize(serialized) {
-    return new EventIdClass(serialized.id);
+function fromString(id) {
+    return new EventIdClass(id);
 }
 
 module.exports = {
     make,
-    deserialize,
+    fromString,
 };

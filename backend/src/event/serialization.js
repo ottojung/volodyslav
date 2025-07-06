@@ -9,21 +9,13 @@ const {
 } = require("./errors");
 
 /**
- * Checks if a value is a plain object with string keys.
- * @param {unknown} value
- * @returns {value is Record<string, unknown>}
- */
-function isStringRecord(value) {
-    return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-/**
  * @typedef {ReturnType<typeof makeMissingFieldError> |
  *           ReturnType<typeof makeInvalidTypeError> |
  *           ReturnType<typeof makeInvalidValueError> |
  *           ReturnType<typeof makeInvalidStructureError> |
  *           ReturnType<typeof makeNestedFieldError>} TryDeserializeError
  */
+
 /**
  * @typedef Modifiers
  * @type {Record<string, string>}
@@ -74,7 +66,7 @@ function serialize(event) {
 function deserialize(serializedEvent) {
     return {
         ...serializedEvent,
-        id: eventId.deserialize(serializedEvent),
+        id: eventId.fromString(serializedEvent.id),
         date: new Date(serializedEvent.date),
         modifiers: serializedEvent.modifiers || {},
     };
@@ -140,16 +132,17 @@ function tryDeserialize(obj) {
 
         const hasModifiers = "modifiers" in obj;
         const rawModifiers = hasModifiers ? obj.modifiers : {};
-        if (
-            hasModifiers &&
-            (rawModifiers === null || typeof rawModifiers !== "object" || Array.isArray(rawModifiers))
-        ) {
+        if (rawModifiers === null || typeof rawModifiers !== "object" || Array.isArray(rawModifiers)) {
             return makeInvalidTypeError("modifiers", rawModifiers, "object");
         }
+
         /** @type {Record<string, unknown>} */
         let modifiers = {};
-        if (hasModifiers && isStringRecord(rawModifiers)) {
-            modifiers = rawModifiers;
+        for (const [key, value] of Object.entries(rawModifiers)) {
+            if (typeof value !== "string") {
+                return makeNestedFieldError("modifiers", key, value, "expected string value");
+            }
+            modifiers[key] = value;
         }
 
         const dateObj = new Date(date);
@@ -215,7 +208,7 @@ function tryDeserialize(obj) {
             modifiers: validatedModifiers,
         };
 
-        const eventIdObj = eventId.deserialize(validatedSerializedEvent);
+        const eventIdObj = eventId.fromString(validatedSerializedEvent.id);
         if (!eventIdObj || !eventIdObj.identifier) {
             return makeInvalidValueError("id", id, "failed to deserialize event ID");
         }
