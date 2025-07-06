@@ -46,6 +46,21 @@ async function appendEntriesToFile(capabilities, file, entries) {
 }
 
 /**
+ * Overwrites a file with the provided entries serialized as JSON.
+ * @param {EventLogStorageCapabilities} capabilities
+ * @param {ExistingFile} file
+ * @param {Array<import('../event').Event>} entries
+ */
+async function writeEntriesToFile(capabilities, file, entries) {
+    const lines = entries.map((e) => {
+        const serialized = event.serialize(e);
+        return JSON.stringify(serialized, null, '\t');
+    });
+    const content = lines.join('\n') + (lines.length > 0 ? '\n' : '');
+    await capabilities.writer.writeFile(file, content);
+}
+
+/**
  * New helper to copy all queued assets into the asset directory.
  * Ensures that the parent directory exists before copying files.
  * @param {CopyAssetCapabilities} capabilities - The minimal capabilities needed for copying assets
@@ -97,18 +112,43 @@ async function performGitTransaction(
         // Run user-provided transformation to accumulate entries and config
         const result = await transformation(eventLogStorage);
 
-        // Get the new entries to persist
+        // Get queued updates
         const newEntries = eventLogStorage.getNewEntries();
+        const deletedIds = [...eventLogStorage.getDeletedIds()];
         const newConfig = eventLogStorage.getNewConfig();
 
         // Track if we need to commit
         let needsCommit = false;
 
-        // Persist and commit when we have new entries or configuration changes
-        if (newEntries.length > 0) {
-            // Persist queued entries
-            const existingDataFile = dataFile == null ? await capabilities.creator.createFile(dataPath) : dataFile;
-            await appendEntriesToFile(capabilities, existingDataFile, newEntries);
+        // Persist when we have new entries or deletions
+        if (newEntries.length > 0 || deletedIds.length > 0) {
+            const existingDataFile =
+                dataFile == null
+                    ? await capabilities.creator.createFile(dataPath)
+                    : dataFile;
+            if (deletedIds.length > 0) {
+                const existing = dataFile
+                    ? await eventLogStorage.getExistingEntries()
+                    : [];
+                const remaining = existing.filter(
+                    (e) =>
+                        !deletedIds.some(
+                            (id) => id.identifier === e.id.identifier
+                        )
+                );
+                remaining.push(...newEntries);
+                await writeEntriesToFile(
+                    capabilities,
+                    existingDataFile,
+                    remaining
+                );
+            } else {
+                await appendEntriesToFile(
+                    capabilities,
+                    existingDataFile,
+                    newEntries
+                );
+            }
             needsCommit = true;
         }
 
