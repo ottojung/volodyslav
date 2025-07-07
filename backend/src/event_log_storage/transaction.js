@@ -14,7 +14,7 @@ const gitstore = require("../gitstore");
 const event = require("../event");
 const { targetPath } = require("../event/asset");
 const configStorage = require("../config/storage");
-const { EventLogStorageClass } = require("./class");
+const { make: makeEventLogStorage } = require("./class");
 
 /** @typedef {import("../filesystem/file").ExistingFile} ExistingFile */
 /** @typedef {import("./types").AppendCapabilities} AppendCapabilities */
@@ -208,7 +208,7 @@ async function cleanupAssets(capabilities, eventLogStorage) {
  * @returns {Promise<T>}
  */
 async function transaction(capabilities, transformation) {
-    const eventLogStorage = new EventLogStorageClass(capabilities);
+    const eventLogStorage = makeEventLogStorage(capabilities);
     try {
         return await performGitTransaction(
             capabilities,
