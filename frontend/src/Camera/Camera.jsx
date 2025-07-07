@@ -13,6 +13,7 @@ import {
     PhotoConversionError
 } from "../DescriptionEntry/errors.js";
 import { storePhotos } from "../DescriptionEntry/photoStorage.js";
+import { logger } from "../DescriptionEntry/logger.js";
 
 /**
  * @typedef {{ blob: Blob; name: string }} Photo
@@ -276,7 +277,7 @@ export default function Camera() {
             );
             window.location.href = returnUrl.toString();
         } catch (/** @type {unknown} */ err) {
-            console.error('Camera photo processing error:', err);
+            logger.error('Camera photo processing error:', err);
             
             let title = "Error processing photos";
             let description = "An unexpected error occurred.";
