@@ -4,7 +4,7 @@ import {
     PhotoStorageError,
     PhotoConversionError,
 } from "../DescriptionEntry/errors.js";
-import { storePhotos } from "../DescriptionEntry/photoStorage.js";
+import { processPhotos } from "./process_photos.js";
 
 /**
  * @typedef {{ blob: Blob; name: string }} Photo
@@ -192,62 +192,14 @@ export function useCameraLogic(requestIdentifier, returnTo) {
         }
 
         try {
-            const photosData = await Promise.all(
-                allPhotos.map(async (photo) => {
-                    try {
-                        const base64 = await new Promise((resolve, reject) => {
-                            const reader = new FileReader();
-                            reader.onload = () => {
-                                const result = reader.result;
-                                if (typeof result === "string") {
-                                    const base64Data = result.split(",")[1];
-                                    resolve(base64Data);
-                                } else {
-                                    reject(
-                                        new PhotoConversionError(
-                                            "FileReader did not return a string",
-                                            photo.name,
-                                        ),
-                                    );
-                                }
-                            };
-                            reader.onerror = () =>
-                                reject(
-                                    new PhotoConversionError(
-                                        "FileReader failed",
-                                        photo.name,
-                                        reader.error,
-                                    ),
-                                );
-                            reader.readAsDataURL(photo.blob);
-                        });
-
-                        return {
-                            name: photo.name,
-                            data: base64,
-                            type: photo.blob.type || "image/jpeg",
-                        };
-                    } catch (error) {
-                        throw new PhotoConversionError(
-                            `Failed to process photo ${photo.name}`,
-                            photo.name,
-                            error instanceof Error ? error : new Error(String(error)),
-                        );
-                    }
-                }),
+            await processPhotos(
+                allPhotos,
+                requestIdentifier,
+                returnTo,
+                (url) => {
+                    window.location.href = url;
+                },
             );
-
-            try {
-                await storePhotos(`photos_${requestIdentifier}`, photosData);
-            } catch (storageError) {
-                if (storageError instanceof PhotoStorageError) {
-                    throw storageError;
-                }
-                throw new PhotoStorageError(
-                    "Failed to save photos. Please try again.",
-                    storageError instanceof Error ? storageError : new Error(String(storageError)),
-                );
-            }
 
             toast({
                 title: "Photos ready",
@@ -259,10 +211,6 @@ export function useCameraLogic(requestIdentifier, returnTo) {
             setPhotos([]);
             setCurrentBlob(null);
 
-            const returnUrl = new URL(returnTo, window.location.origin);
-            returnUrl.searchParams.set("from_camera", "true");
-            returnUrl.searchParams.set("request_identifier", requestIdentifier);
-            window.location.href = returnUrl.toString();
         } catch (/** @type {unknown} */ err) {
             console.error("Camera photo processing error:", err);
 
