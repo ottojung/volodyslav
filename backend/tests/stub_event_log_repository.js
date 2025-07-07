@@ -1,11 +1,7 @@
 const fs = require("fs/promises");
 const path = require("path");
-const { execFile } = require("child_process");
-const { promisify } = require("node:util");
 const temporary = require("./temporary");
 const defaultBranch = require("../src/gitstore/default_branch");
-
-const callSubprocess = promisify(execFile);
 
 /**
  * Creates a test repository for use in tests.
@@ -27,18 +23,18 @@ async function stubEventLogRepository(capabilities) {
     const gitDir = capabilities.environment.eventLogRepository();
 
     // Initialize a git repository
-    await callSubprocess("git", ["init", "--bare", "--", gitDir]);
+    await capabilities.git.call("init", "--bare", "--", gitDir);
 
     // Create a worktree
     const workTree = path.join(temporary.input(), "worktree");
     await fs.mkdir(workTree, { recursive: true });
-    await callSubprocess("git", [
+    await capabilities.git.call(
         "init",
         "--initial-branch",
         defaultBranch,
         "--",
-        workTree,
-    ]);
+        workTree
+    );
 
     // Create some content
     const testFile = path.join(workTree, "test.txt");
@@ -47,26 +43,36 @@ async function stubEventLogRepository(capabilities) {
     await fs.writeFile(dataFile, "");
 
     // Add and commit the content
-    await callSubprocess("git add --all", {
-        cwd: workTree,
-        shell: true,
-    });
-    await callSubprocess(
-        "git -c user.name=1 -c user.email=1 commit -m 'Initial commit'",
-        {
-            cwd: workTree,
-            shell: true,
-        }
+    await capabilities.git.call("-C", workTree, "add", "--all");
+    await capabilities.git.call(
+        "-C",
+        workTree,
+        "-c",
+        "user.name=1",
+        "-c",
+        "user.email=1",
+        "commit",
+        "-m",
+        "Initial commit"
     );
 
     // Push the content to the bare repository
-    await callSubprocess("git", ["remote", "add", "origin", "--", gitDir], {
-        cwd: workTree,
-    });
-    await callSubprocess("git", ["push", "origin", defaultBranch], {
-        cwd: workTree,
-        shell: true,
-    });
+    await capabilities.git.call(
+        "-C",
+        workTree,
+        "remote",
+        "add",
+        "origin",
+        "--",
+        gitDir
+    );
+    await capabilities.git.call(
+        "-C",
+        workTree,
+        "push",
+        "origin",
+        defaultBranch
+    );
 
     await fs.rm(workTree, { recursive: true, force: true });
 }
