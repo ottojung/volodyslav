@@ -1,4 +1,4 @@
-const { createEntry, EntryValidationError } = require("../../entry");
+const { createEntry, isEntryValidationError } = require("../../entry");
 const { serialize } = require("../../event");
 const {
     processUserInput,
@@ -201,7 +201,7 @@ async function handleEntryPost(req, res, capabilities, reqId) {
 
         return res.status(201).json({ success: true, entry: serialize(event) });
     } catch (error) {
-        if (error instanceof EntryValidationError || error instanceof FileValidationError) {
+        if (isEntryValidationError(error) || error instanceof FileValidationError) {
             capabilities.logger.logInfo(
                 {
                     request_identifier: reqId.identifier,

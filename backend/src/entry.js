@@ -17,6 +17,24 @@ class EntryValidationError extends Error {
     }
 }
 
+/**
+ * Factory for EntryValidationError.
+ * @param {string} message - The validation error message
+ * @returns {EntryValidationError}
+ */
+function makeEntryValidationError(message) {
+    return new EntryValidationError(message);
+}
+
+/**
+ * Type guard for EntryValidationError.
+ * @param {unknown} object
+ * @returns {object is EntryValidationError}
+ */
+function isEntryValidationError(object) {
+    return object instanceof EntryValidationError;
+}
+
 /** @typedef {import('./event/asset').Asset} Asset */
 /** @typedef {import('./random/seed').NonDeterministicSeed} NonDeterministicSeed */
 /** @typedef {import('./filesystem/deleter').FileDeleter} FileDeleter */
@@ -194,4 +212,10 @@ async function deleteEntry(capabilities, id) {
     );
 }
 
-module.exports = { createEntry, getEntries, deleteEntry, EntryValidationError };
+module.exports = {
+    createEntry,
+    getEntries,
+    deleteEntry,
+    makeEntryValidationError,
+    isEntryValidationError,
+};
