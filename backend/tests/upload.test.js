@@ -1,5 +1,4 @@
 const request = require("supertest");
-const fs = require("fs");
 const path = require("path");
 const expressApp = require("../src/express_app");
 const { addRoutes } = require("../src/server");
@@ -34,9 +33,10 @@ describe("POST /api/upload", () => {
 
         expect(res.statusCode).toBe(200);
         expect(res.body).toEqual({ success: true, files: ["test1.jpg"] });
-        expect(fs.existsSync(path.join(uploadDir, reqId, "test1.jpg"))).toBe(
-            true
+        const uploadedFile1 = await capabilities.checker.fileExists(
+            path.join(uploadDir, reqId, "test1.jpg"),
         );
+        expect(uploadedFile1).not.toBeNull();
     });
 
     it("uploads multiple files successfully", async () => {
@@ -51,9 +51,10 @@ describe("POST /api/upload", () => {
 
         expect(res1.statusCode).toBe(200);
         expect(res1.body).toEqual({ success: true, files: ["first.jpg"] });
-        expect(fs.existsSync(path.join(uploadDir, reqId1, "first.jpg"))).toBe(
-            true
+        const firstFile = await capabilities.checker.fileExists(
+            path.join(uploadDir, reqId1, "first.jpg"),
         );
+        expect(firstFile).not.toBeNull();
 
         // Upload second file with another unique request_identifier
         const reqId2 = "testreq2";
@@ -63,9 +64,10 @@ describe("POST /api/upload", () => {
 
         expect(res2.statusCode).toBe(200);
         expect(res2.body).toEqual({ success: true, files: ["second.jpg"] });
-        expect(fs.existsSync(path.join(uploadDir, reqId2, "second.jpg"))).toBe(
-            true
+        const secondFile = await capabilities.checker.fileExists(
+            path.join(uploadDir, reqId2, "second.jpg"),
         );
+        expect(secondFile).not.toBeNull();
     });
 
     it("responds with empty files array when no files are sent", async () => {
