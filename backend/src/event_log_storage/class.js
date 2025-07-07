@@ -1,7 +1,5 @@
 const event = require("../event");
 const { readObjects } = require("../json_stream_file");
-
-
 /** @typedef {import('./types').Capabilities} Capabilities */
 /** @typedef {import('./types').AppendCapabilities} AppendCapabilities */
 /** @typedef {import('./types').CopyAssetCapabilities} CopyAssetCapabilities */
@@ -12,17 +10,7 @@ const { readObjects } = require("../json_stream_file");
 /** @typedef {import('../event/id').EventId} EventId */
 
 /**
- * A class to manage the storage of event log entries.
- *
- * Class to accumulate event entries before persisting.
- *
- * Intuitive Usage:
- * 1. Create an instance implicitly via `transaction()`.
- * 2. Call `addEntry()` once or multiple times to queue up events.
- * 3. `getNewEntries()` returns the queued array without side effects.
- *
- * Internal Note:
- * - `newEntries` is a simple in-memory array and does not interact with Git or the filesystem directly.
+ * A class to accumulate event log entries before persisting them.
  */
 class EventLogStorageClass {
     /**
@@ -286,4 +274,25 @@ class EventLogStorageClass {
 
 /** @typedef {EventLogStorageClass} EventLogStorage */
 
-module.exports = { EventLogStorageClass };
+/**
+ * Creates a new EventLogStorage instance.
+ * @param {EventLogStorageCapabilities} capabilities
+ * @returns {EventLogStorage}
+ */
+function make(capabilities) {
+    return new EventLogStorageClass(capabilities);
+}
+
+/**
+ * Type guard for EventLogStorage.
+ * @param {unknown} object
+ * @returns {object is EventLogStorage}
+ */
+function isEventLogStorage(object) {
+    return object instanceof EventLogStorageClass;
+}
+
+module.exports = {
+    make,
+    isEventLogStorage,
+};
