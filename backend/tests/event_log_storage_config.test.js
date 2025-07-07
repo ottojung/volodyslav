@@ -1,6 +1,5 @@
 const path = require("path");
 const { transaction } = require("../src/event_log_storage");
-const fsp = require("fs/promises");
 const gitstore = require("../src/gitstore");
 const { readObjects } = require("../src/json_stream_file");
 const {
@@ -57,11 +56,10 @@ describe("event_log_storage", () => {
             const workTree = await store.getWorkTree();
             const configPath = path.join(workTree, "config.json");
 
-            const fileExists = await fsp
-                .access(configPath)
-                .then(() => true)
-                .catch(() => false);
-            expect(fileExists).toBe(true);
+            const fileExistsProof = await capabilities.checker.fileExists(
+                configPath
+            );
+            expect(fileExistsProof).not.toBeNull();
 
             const configFile = await capabilities.checker.instantiate(configPath);
             const configStorage = require("../src/config/storage");
