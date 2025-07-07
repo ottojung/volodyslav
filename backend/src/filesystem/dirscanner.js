@@ -119,5 +119,4 @@ function make() {
 module.exports = {
     isDirScannerError,
     make,
-    DirectoryMemberClass,
 };
