@@ -284,6 +284,24 @@ class EventLogStorageClass {
     }
 }
 
+/**
+ * Factory to create an EventLogStorage instance.
+ * @param {EventLogStorageCapabilities} capabilities
+ * @returns {EventLogStorage}
+ */
+function make(capabilities) {
+    return new EventLogStorageClass(capabilities);
+}
+
+/**
+ * Type guard for EventLogStorage instances.
+ * @param {unknown} value
+ * @returns {value is EventLogStorage}
+ */
+function isEventLogStorage(value) {
+    return value instanceof EventLogStorageClass;
+}
+
 /** @typedef {EventLogStorageClass} EventLogStorage */
 
-module.exports = { EventLogStorageClass };
+module.exports = { make, isEventLogStorage };
