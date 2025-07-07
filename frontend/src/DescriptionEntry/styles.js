@@ -19,6 +19,9 @@ export const SIZES = {
     buttonPadding: 8,
 };
 
+/** @type {'center'} */
+const ALIGN_CENTER = 'center';
+
 // Color scheme
 export const COLORS = {
     primary: "blue.500",
@@ -121,7 +124,7 @@ export const TEXT_STYLES = {
         fontSize: "sm",
         fontWeight: "semibold",
         color: COLORS.text.secondary,
-        textAlign: /** @type {"center"} */ ("center"),
+        textAlign: ALIGN_CENTER,
     },
     helper: {
         fontSize: "sm",
