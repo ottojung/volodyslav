@@ -30,12 +30,24 @@ async function openDatabase() {
         };
 
         request.onupgradeneeded = (event) => {
-            if (!event.target) return;
-            /** @type {IDBOpenDBRequest} */
-            const req = /** @type {IDBOpenDBRequest} */ (event.target);
-            const db = req.result;
-            if (!db.objectStoreNames.contains(STORE_NAME)) {
-                db.createObjectStore(STORE_NAME);
+            const target = event.target;
+            if (!target) {
+                return;
+            }
+            if (typeof IDBOpenDBRequest !== "undefined") {
+                if (!(target instanceof IDBOpenDBRequest)) {
+                    return;
+                }
+                const db = target.result;
+                if (!db.objectStoreNames.contains(STORE_NAME)) {
+                    db.createObjectStore(STORE_NAME);
+                }
+            } else {
+                // @ts-expect-error IDBOpenDBRequest is not available in this environment
+                const db = target.result;
+                if (!db.objectStoreNames.contains(STORE_NAME)) {
+                    db.createObjectStore(STORE_NAME);
+                }
             }
         };
     });

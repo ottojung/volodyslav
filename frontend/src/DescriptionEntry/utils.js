@@ -32,6 +32,15 @@ export const isValidDescription = (description) => {
     return Boolean(description && description.trim().length > 0);
 };
 
+/** @type {'top'} */
+const TOAST_POSITION_TOP = 'top';
+/** @type {'warning'} */
+const TOAST_WARNING = 'warning';
+/** @type {'success'} */
+const TOAST_SUCCESS = 'success';
+/** @type {'error'} */
+const TOAST_ERROR = 'error';
+
 /**
  * Creates toast notification configurations
  */
@@ -39,36 +48,36 @@ export const createToastConfig = {
     emptyDescription: () => ({
         title: "Empty description",
         description: "Please enter a description before saving.",
-        status: /** @type {"warning"} */ ("warning"),
+        status: TOAST_WARNING,
         duration: 3000,
         isClosable: true,
-        position: /** @type {"top"} */ ("top"),
+        position: TOAST_POSITION_TOP,
     }),
     
     success: (/** @type {string} */ savedInput) => ({
         title: "Event logged successfully",
         description: `Saved: ${savedInput}`,
-        status: /** @type {"success"} */ ("success"),
+        status: TOAST_SUCCESS,
         duration: 4000,
         isClosable: true,
-        position: /** @type {"top"} */ ("top"),
+        position: TOAST_POSITION_TOP,
     }),
     
     error: (/** @type {string} */ errorMessage) => ({
         title: "Error logging event",
         description: errorMessage || "Please check your connection and try again.",
-        status: /** @type {"error"} */ ("error"),
+        status: TOAST_ERROR,
         duration: 5000,
         isClosable: true,
-        position: /** @type {"top"} */ ("top"),
+        position: TOAST_POSITION_TOP,
     }),
     
     warning: (/** @type {string} */ warningMessage) => ({
         title: "Warning",
         description: warningMessage || "Please check and try again.",
-        status: /** @type {"warning"} */ ("warning"),
+        status: TOAST_WARNING,
         duration: 5000,
         isClosable: true,
-        position: /** @type {"top"} */ ("top"),
+        position: TOAST_POSITION_TOP,
     }),
 };
