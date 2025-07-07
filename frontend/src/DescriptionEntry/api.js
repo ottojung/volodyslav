@@ -1,6 +1,7 @@
 const API_BASE_URL = "/api";
 import { logger } from "./logger.js";
 import { EntrySubmissionError } from "./errors.js";
+import { makeEntry } from "./entry.js";
 
 /**
  * @typedef {Object} Entry
@@ -28,25 +29,6 @@ import { EntrySubmissionError } from "./errors.js";
  * @property {Shortcut[]} shortcuts - Array of shortcuts
  */
 
-/**
- * Type guard for Entry objects.
- * @param {any} value
- * @returns {value is Entry}
- */
-function isEntry(value) {
-    return (
-        value != null &&
-        typeof value === "object" &&
-        !Array.isArray(value) &&
-        typeof value.id === "string" &&
-        typeof value.date === "string" &&
-        typeof value.type === "string" &&
-        typeof value.description === "string" &&
-        typeof value.input === "string" &&
-        typeof value.original === "string" &&
-        typeof value.creator === "object"
-    );
-}
 
 /**
  * Safely parses an array of unknown values into Entry objects.
@@ -58,8 +40,11 @@ function parseEntries(results) {
     /** @type {Entry[]} */
     const valid = [];
     for (const item of results) {
-        if (isEntry(item)) {
-            valid.push(item);
+        try {
+            const entry = makeEntry(item);
+            valid.push(entry);
+        } catch (error) {
+            logger.warn("Invalid entry received:", error);
         }
     }
     return valid;
