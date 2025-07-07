@@ -1,9 +1,6 @@
 const path = require("path");
 const workingRepository = require("../src/gitstore/working_repository");
 const fsp = require("fs/promises");
-const { promisify } = require("util");
-const { execFile } = require("child_process");
-const callSubprocess = promisify(execFile);
 const { getMockedRootCapabilities } = require("./spies");
 const {
     stubEnvironment,
@@ -44,21 +41,29 @@ describe("working_repository", () => {
             "new-file.txt"
         );
         await fsp.writeFile(newFilePath, "new content");
-        await callSubprocess("git add new-file.txt", {
-            cwd: path.dirname(localRepoPath),
-            shell: true,
-        });
-        await callSubprocess(
-            "git -c user.name=volodyslav -c user.email=volodyslav commit -m 'Add new file'",
-            {
-                cwd: path.dirname(localRepoPath),
-                shell: true,
-            }
+        await capabilities.git.call(
+            "-C",
+            path.dirname(localRepoPath),
+            "add",
+            "new-file.txt"
         );
-        await callSubprocess("git push origin", {
-            cwd: path.dirname(localRepoPath),
-            shell: true,
-        });
+        await capabilities.git.call(
+            "-C",
+            path.dirname(localRepoPath),
+            "-c",
+            "user.name=volodyslav",
+            "-c",
+            "user.email=volodyslav",
+            "commit",
+            "-m",
+            "Add new file"
+        );
+        await capabilities.git.call(
+            "-C",
+            path.dirname(localRepoPath),
+            "push",
+            "origin"
+        );
 
         // Verify the remote repository contains the new file
         const remoteRepoPath = capabilities.environment.eventLogRepository();
@@ -66,11 +71,11 @@ describe("working_repository", () => {
         // Clone the bare remote repository as a non-bare repository
         const clonedRepoPath =
             await capabilities.creator.createTemporaryDirectory(capabilities);
-        await callSubprocess(
-            `git clone --branch ${defaultBranch} ${remoteRepoPath} ${clonedRepoPath}`,
-            {
-                shell: true,
-            }
+        await capabilities.git.call(
+            "clone",
+            `--branch=${defaultBranch}`,
+            remoteRepoPath,
+            clonedRepoPath
         );
 
         // Verify the new file exists in the cloned repository's working tree
@@ -105,16 +110,22 @@ describe("working_repository", () => {
             "existing-file.txt"
         );
         await fsp.writeFile(newFilePath, "existing content");
-        await callSubprocess("git add existing-file.txt", {
-            cwd: path.dirname(localRepoPath),
-            shell: true,
-        });
-        await callSubprocess(
-            "git -c user.name=volodyslav -c user.email=volodyslav commit -m 'Add existing file'",
-            {
-                cwd: path.dirname(localRepoPath),
-                shell: true,
-            }
+        await capabilities.git.call(
+            "-C",
+            path.dirname(localRepoPath),
+            "add",
+            "existing-file.txt"
+        );
+        await capabilities.git.call(
+            "-C",
+            path.dirname(localRepoPath),
+            "-c",
+            "user.name=volodyslav",
+            "-c",
+            "user.email=volodyslav",
+            "commit",
+            "-m",
+            "Add existing file"
         );
 
         // Execute synchronize again
@@ -147,31 +158,39 @@ describe("working_repository", () => {
             "pushed-file.txt"
         );
         await fsp.writeFile(newFilePath, "pushed content");
-        await callSubprocess("git add pushed-file.txt", {
-            cwd: path.dirname(localRepoPath),
-            shell: true,
-        });
-        await callSubprocess(
-            "git -c user.name=volodyslav -c user.email=volodyslav commit -m 'Add pushed file'",
-            {
-                cwd: path.dirname(localRepoPath),
-                shell: true,
-            }
+        await capabilities.git.call(
+            "-C",
+            path.dirname(localRepoPath),
+            "add",
+            "pushed-file.txt"
         );
-        await callSubprocess("git push origin", {
-            cwd: path.dirname(localRepoPath),
-            shell: true,
-        });
+        await capabilities.git.call(
+            "-C",
+            path.dirname(localRepoPath),
+            "-c",
+            "user.name=volodyslav",
+            "-c",
+            "user.email=volodyslav",
+            "commit",
+            "-m",
+            "Add pushed file"
+        );
+        await capabilities.git.call(
+            "-C",
+            path.dirname(localRepoPath),
+            "push",
+            "origin"
+        );
 
         // Clone the remote repository to verify the pushed changes
         const remoteRepoPath = capabilities.environment.eventLogRepository();
         const clonedRepoPath =
             await capabilities.creator.createTemporaryDirectory(capabilities);
-        await callSubprocess(
-            `git clone --branch ${defaultBranch} ${remoteRepoPath} ${clonedRepoPath}`,
-            {
-                shell: true,
-            }
+        await capabilities.git.call(
+            "clone",
+            `--branch=${defaultBranch}`,
+            remoteRepoPath,
+            clonedRepoPath
         );
 
         // Verify the pushed file exists in the cloned repository
