@@ -102,6 +102,15 @@ export const BUTTON_STYLES = {
     },
 };
 
+/** @type {{
+ *   heading: import('@chakra-ui/react').HeadingProps,
+ *   subtitle: import('@chakra-ui/react').TextProps,
+ *   cardHeading: import('@chakra-ui/react').TextProps,
+ *   sectionTitle: import('@chakra-ui/react').TextProps,
+ *   helper: import('@chakra-ui/react').TextProps,
+ *   entryText: import('@chakra-ui/react').TextProps,
+ *   entryMeta: import('@chakra-ui/react').TextProps,
+ * }} */
 export const TEXT_STYLES = {
     heading: {
         size: "xl",
@@ -121,7 +130,7 @@ export const TEXT_STYLES = {
         fontSize: "sm",
         fontWeight: "semibold",
         color: COLORS.text.secondary,
-        textAlign: /** @type {"center"} */ ("center"),
+        textAlign: "center",
     },
     helper: {
         fontSize: "sm",

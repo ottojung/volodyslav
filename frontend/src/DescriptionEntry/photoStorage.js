@@ -30,10 +30,9 @@ async function openDatabase() {
         };
 
         request.onupgradeneeded = (event) => {
-            if (!event.target) return;
-            /** @type {IDBOpenDBRequest} */
-            const req = /** @type {IDBOpenDBRequest} */ (event.target);
-            const db = req.result;
+            const target = event.target;
+            if (!target || !('result' in target)) return;
+            const db = /** @type {IDBDatabase} */ (target.result);
             if (!db.objectStoreNames.contains(STORE_NAME)) {
                 db.createObjectStore(STORE_NAME);
             }

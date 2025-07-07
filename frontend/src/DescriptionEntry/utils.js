@@ -36,39 +36,55 @@ export const isValidDescription = (description) => {
  * Creates toast notification configurations
  */
 export const createToastConfig = {
-    emptyDescription: () => ({
-        title: "Empty description",
-        description: "Please enter a description before saving.",
-        status: /** @type {"warning"} */ ("warning"),
-        duration: 3000,
-        isClosable: true,
-        position: /** @type {"top"} */ ("top"),
-    }),
-    
-    success: (/** @type {string} */ savedInput) => ({
-        title: "Event logged successfully",
-        description: `Saved: ${savedInput}`,
-        status: /** @type {"success"} */ ("success"),
-        duration: 4000,
-        isClosable: true,
-        position: /** @type {"top"} */ ("top"),
-    }),
-    
-    error: (/** @type {string} */ errorMessage) => ({
-        title: "Error logging event",
-        description: errorMessage || "Please check your connection and try again.",
-        status: /** @type {"error"} */ ("error"),
-        duration: 5000,
-        isClosable: true,
-        position: /** @type {"top"} */ ("top"),
-    }),
-    
-    warning: (/** @type {string} */ warningMessage) => ({
-        title: "Warning",
-        description: warningMessage || "Please check and try again.",
-        status: /** @type {"warning"} */ ("warning"),
-        duration: 5000,
-        isClosable: true,
-        position: /** @type {"top"} */ ("top"),
-    }),
+    emptyDescription: () => {
+        /** @type {import('@chakra-ui/react').UseToastOptions} */
+        const opts = {
+            title: "Empty description",
+            description: "Please enter a description before saving.",
+            status: "warning",
+            duration: 3000,
+            isClosable: true,
+            position: "top",
+        };
+        return opts;
+    },
+
+    success: (/** @type {string} */ savedInput) => {
+        /** @type {import('@chakra-ui/react').UseToastOptions} */
+        const opts = {
+            title: "Event logged successfully",
+            description: `Saved: ${savedInput}`,
+            status: "success",
+            duration: 4000,
+            isClosable: true,
+            position: "top",
+        };
+        return opts;
+    },
+
+    error: (/** @type {string} */ errorMessage) => {
+        /** @type {import('@chakra-ui/react').UseToastOptions} */
+        const opts = {
+            title: "Error logging event",
+            description: errorMessage || "Please check your connection and try again.",
+            status: "error",
+            duration: 5000,
+            isClosable: true,
+            position: "top",
+        };
+        return opts;
+    },
+
+    warning: (/** @type {string} */ warningMessage) => {
+        /** @type {import('@chakra-ui/react').UseToastOptions} */
+        const opts = {
+            title: "Warning",
+            description: warningMessage || "Please check and try again.",
+            status: "warning",
+            duration: 5000,
+            isClosable: true,
+            position: "top",
+        };
+        return opts;
+    },
 };
