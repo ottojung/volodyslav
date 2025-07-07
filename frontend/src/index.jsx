@@ -7,6 +7,7 @@ import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import Camera from './Camera/Camera.jsx';
 import DescriptionEntry from './DescriptionEntry/DescriptionEntry.jsx';
 import { ChakraProvider } from '@chakra-ui/react';
+import { logger } from './DescriptionEntry/logger.js';
 
 const root = document.getElementById('root');
 if (root === null) {
@@ -21,7 +22,7 @@ const updateSW = registerSW({
         }
     },
     onOfflineReady() {
-        console.log('App ready to work offline');
+        logger.info('App ready to work offline');
     },
 });
 

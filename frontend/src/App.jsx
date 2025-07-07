@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { Button, Box, VStack, Heading, Text } from '@chakra-ui/react';
+import { logger } from './DescriptionEntry/logger.js';
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 function App() {
@@ -18,7 +19,7 @@ function App() {
     };
 
     const handleAppInstalled = () => {
-      console.log('PWA was installed');
+      logger.info('PWA was installed');
       setIsInstallable(false);
       setDeferredPrompt(null);
     };
@@ -46,12 +47,12 @@ function App() {
       const outcome = result?.outcome;
       
       if (outcome === 'accepted') {
-        console.log('User accepted the install prompt');
+        logger.info('User accepted the install prompt');
       } else {
-        console.log('User dismissed the install prompt');
+        logger.info('User dismissed the install prompt');
       }
     } catch (error) {
-      console.log('Install prompt error:', error);
+      logger.error('Install prompt error:', error);
     }
 
     // Clear the deferredPrompt so it can only be used once
