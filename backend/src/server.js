@@ -25,6 +25,7 @@ const workingRepository = require("./gitstore/working_repository");
 /** @typedef {import('./notifications').Notifier} Notifier */
 /** @typedef {import('./schedule').Scheduler} Scheduler */
 /** @typedef {import('./ai/transcription').AITranscription} AITranscription */
+/** @typedef {import('./exiter').Exiter} Exiter */
 
 /**
  * @typedef {object} Capabilities
@@ -38,6 +39,7 @@ const workingRepository = require("./gitstore/working_repository");
  * @property {FileChecker} checker - A file checker instance.
  * @property {Command} git - A command instance for Git operations.
  * @property {Environment} environment - An environment instance.
+ * @property {Exiter} exiter - A process exit instance.
  * @property {Logger} logger - A logger instance.
  * @property {Notifier} notifier - A notifier instance.
  * @property {Scheduler} scheduler - A scheduler instance.

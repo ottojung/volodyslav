@@ -12,6 +12,7 @@
 /**
  * @typedef {object} Capabilities
  * @property {Logger} logger - A logger instance.
+ * @property {import('./exiter').Exiter} exiter - A process exit instance.
  */
 
 /**
@@ -38,7 +39,8 @@ async function gentleCall(capabilities, fn, errorsList) {
                     ? String(e.message)
                     : String(e);
             capabilities.logger.logError({}, message);
-            process.exit(1);
+            capabilities.exiter.exit(1);
+            return Promise.reject(e);
         } else {
             throw e;
         }
