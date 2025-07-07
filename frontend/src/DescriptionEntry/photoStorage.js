@@ -30,12 +30,15 @@ async function openDatabase() {
         };
 
         request.onupgradeneeded = (event) => {
-            if (!event.target) return;
-            /** @type {IDBOpenDBRequest} */
-            const req = /** @type {IDBOpenDBRequest} */ (event.target);
-            const db = req.result;
-            if (!db.objectStoreNames.contains(STORE_NAME)) {
-                db.createObjectStore(STORE_NAME);
+            const target = event.target;
+            if (
+                typeof IDBOpenDBRequest !== 'undefined' &&
+                target instanceof IDBOpenDBRequest
+            ) {
+                const db = target.result;
+                if (!db.objectStoreNames.contains(STORE_NAME)) {
+                    db.createObjectStore(STORE_NAME);
+                }
             }
         };
     });
@@ -69,7 +72,7 @@ export async function storePhotos(key, photosData) {
 
             store.put(photosData, key);
         });
-    } catch (/** @type {unknown} */ error) {
+    } catch (error) {
         // Fix error.name checks for unknown type
         if (error && typeof error === 'object' && 'name' in error && error.name === 'PhotoStorageError') {
             throw error;
@@ -108,7 +111,7 @@ export async function retrievePhotos(key) {
                 resolve(request.result || null);
             };
         });
-    } catch (/** @type {unknown} */ error) {
+    } catch (error) {
         if (error && typeof error === 'object' && 'name' in error && error.name === 'PhotoRetrievalError') {
             throw error;
         }
@@ -147,7 +150,7 @@ export async function removePhotos(key) {
 
             store.delete(key);
         });
-    } catch (/** @type {unknown} */ error) {
+    } catch (error) {
         if (error && typeof error === 'object' && 'name' in error && error.name === 'PhotoStorageError') {
             throw error;
         }
@@ -184,7 +187,7 @@ export async function clearAllPhotos() {
 
             store.clear();
         });
-    } catch (/** @type {unknown} */ error) {
+    } catch (error) {
         if (error && typeof error === 'object' && 'name' in error && error.name === 'PhotoStorageError') {
             throw error;
         }

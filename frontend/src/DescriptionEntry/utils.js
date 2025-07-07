@@ -36,39 +36,58 @@ export const isValidDescription = (description) => {
  * Creates toast notification configurations
  */
 export const createToastConfig = {
+    /**
+     * Toast shown when description is empty.
+     * @returns {import('@chakra-ui/react').UseToastOptions}
+     */
     emptyDescription: () => ({
         title: "Empty description",
         description: "Please enter a description before saving.",
-        status: /** @type {"warning"} */ ("warning"),
+        status: "warning",
         duration: 3000,
         isClosable: true,
-        position: /** @type {"top"} */ ("top"),
+        position: "top",
     }),
-    
-    success: (/** @type {string} */ savedInput) => ({
+
+    /**
+     * Toast shown on successful save.
+     * @param {string} savedInput
+     * @returns {import('@chakra-ui/react').UseToastOptions}
+     */
+    success: (savedInput) => ({
         title: "Event logged successfully",
         description: `Saved: ${savedInput}`,
-        status: /** @type {"success"} */ ("success"),
+        status: "success",
         duration: 4000,
         isClosable: true,
-        position: /** @type {"top"} */ ("top"),
+        position: "top",
     }),
-    
-    error: (/** @type {string} */ errorMessage) => ({
+
+    /**
+     * Toast shown when saving fails.
+     * @param {string} errorMessage
+     * @returns {import('@chakra-ui/react').UseToastOptions}
+     */
+    error: (errorMessage) => ({
         title: "Error logging event",
         description: errorMessage || "Please check your connection and try again.",
-        status: /** @type {"error"} */ ("error"),
+        status: "error",
         duration: 5000,
         isClosable: true,
-        position: /** @type {"top"} */ ("top"),
+        position: "top",
     }),
-    
-    warning: (/** @type {string} */ warningMessage) => ({
+
+    /**
+     * Generic warning toast.
+     * @param {string} warningMessage
+     * @returns {import('@chakra-ui/react').UseToastOptions}
+     */
+    warning: (warningMessage) => ({
         title: "Warning",
         description: warningMessage || "Please check and try again.",
-        status: /** @type {"warning"} */ ("warning"),
+        status: "warning",
         duration: 5000,
         isClosable: true,
-        position: /** @type {"top"} */ ("top"),
+        position: "top",
     }),
 };

@@ -4,16 +4,36 @@
  */
 
 export const logger = {
-    error: (/** @type {any} */ message, /** @type {any[]} */ ...args) => {
+    /**
+     * Log an error message.
+     * @param {*} message
+     * @param {...*} args
+     */
+    error: (message, ...args) => {
         console.error(message, ...args);
     },
-    warn: (/** @type {any} */ message, /** @type {any[]} */ ...args) => {
+    /**
+     * Log a warning message.
+     * @param {*} message
+     * @param {...*} args
+     */
+    warn: (message, ...args) => {
         console.warn(message, ...args);
     },
-    info: (/** @type {any} */ message, /** @type {any[]} */ ...args) => {
+    /**
+     * Log an info message.
+     * @param {*} message
+     * @param {...*} args
+     */
+    info: (message, ...args) => {
         console.info(message, ...args);
     },
-    debug: (/** @type {any} */ message, /** @type {any[]} */ ...args) => {
+    /**
+     * Log a debug message.
+     * @param {*} message
+     * @param {...*} args
+     */
+    debug: (message, ...args) => {
         console.debug(message, ...args);
     }
 };
