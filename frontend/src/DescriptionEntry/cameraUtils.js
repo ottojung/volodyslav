@@ -17,9 +17,6 @@ import { retrievePhotos as getStoredPhotos, removePhotos as deleteStoredPhotos }
 export const generateRequestIdentifier = () => {
     return `camera_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
 };
-
-
-
 /**
  * Navigates to the camera page with a request identifier
  * @param {string} requestIdentifier - The unique request identifier
@@ -209,7 +206,6 @@ export const safeSessionStorageGet = (key) => {
         );
     }
 };
-
 /**
  * Safely sets an item in sessionStorage
  * @param {string} key - The storage key
@@ -290,7 +286,6 @@ export const validatePhotoData = (photoData, index) => {
             photoData.name
         );
     }
-
     // Validate that it looks like a base64 string
     if (!/^[A-Za-z0-9+/]+=*$/.test(photoData.data)) {
         throw new PhotoConversionError(
@@ -298,6 +293,5 @@ export const validatePhotoData = (photoData, index) => {
             photoData.name
         );
     }
-
     return true;
 };
