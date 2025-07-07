@@ -12,7 +12,7 @@ import {
     PhotoStorageError,
     PhotoConversionError
 } from "../DescriptionEntry/errors.js";
-import { storePhotos } from "../DescriptionEntry/photoStorage.js";
+import { processPhotos } from "./process_photos.js";
 
 /**
  * @typedef {{ blob: Blob; name: string }} Photo
@@ -204,59 +204,14 @@ export default function Camera() {
         }
 
         try {
-            // Store photos in IndexedDB for the describe page to retrieve
-            const photosData = await Promise.all(
-                allPhotos.map(async (photo) => {
-                    try {
-                        // Convert blob to base64 for storage using FileReader (more reliable)
-                        const base64 = await new Promise((resolve, reject) => {
-                            const reader = new FileReader();
-                            reader.onload = () => {
-                                // FileReader gives us a data URL like "data:image/jpeg;base64,..."
-                                // We need to extract just the base64 part
-                                const result = reader.result;
-                                if (typeof result === 'string') {
-                                    const base64Data = result.split(',')[1]; // Remove the data URL prefix
-                                    resolve(base64Data);
-                                } else {
-                                    reject(new PhotoConversionError('FileReader did not return a string', photo.name));
-                                }
-                            };
-                            reader.onerror = () => reject(new PhotoConversionError('FileReader failed', photo.name, reader.error));
-                            reader.readAsDataURL(photo.blob);
-                        });
-
-                        return {
-                            name: photo.name,
-                            data: base64,
-                            type: photo.blob.type || "image/jpeg",
-                        };
-                    } catch (error) {
-                        throw new PhotoConversionError(
-                            `Failed to process photo ${photo.name}`,
-                            photo.name,
-                            error instanceof Error ? error : new Error(String(error))
-                        );
-                    }
-                })
-            );
-
-            try {
-                await storePhotos(
-                    `photos_${request_identifier}`,
-                    photosData
-                );
-            } catch (storageError) {
-                // Re-throw PhotoStorageError as-is, wrap others
-                if (storageError instanceof PhotoStorageError) {
-                    throw storageError;
+            await processPhotos(
+                allPhotos,
+                request_identifier,
+                return_to,
+                (url) => {
+                    window.location.href = url;
                 }
-                throw new PhotoStorageError(
-                    'Failed to save photos. Please try again.',
-                    storageError instanceof Error ? storageError : new Error(String(storageError))
-                );
-            }
-
+            );
             toast({
                 title: "Photos ready",
                 status: "success",
@@ -266,15 +221,6 @@ export default function Camera() {
             });
             setPhotos([]);
             setCurrentBlob(null);
-
-            // Navigate back to the originating page with camera info
-            const returnUrl = new URL(return_to, window.location.origin);
-            returnUrl.searchParams.set("from_camera", "true");
-            returnUrl.searchParams.set(
-                "request_identifier",
-                request_identifier
-            );
-            window.location.href = returnUrl.toString();
         } catch (/** @type {unknown} */ err) {
             console.error('Camera photo processing error:', err);
             
