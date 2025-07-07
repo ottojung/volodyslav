@@ -12,6 +12,7 @@
 /** @typedef {import('../filesystem/appender').FileAppender} FileAppender */
 /** @typedef {import('../filesystem/creator').FileCreator} FileCreator */
 /** @typedef {import('../filesystem/checker').FileChecker} FileChecker */
+/** @typedef {import('../exiter').Exiter} Exiter */
 /** @typedef {import('../subprocess/command').Command} Command */
 /** @typedef {import('../environment').Environment} Environment */
 /** @typedef {import('../logger').Logger} Logger */
@@ -34,6 +35,7 @@
  * @property {FileChecker} checker - A file checker instance.
  * @property {Command} git - A command instance for Git operations.
  * @property {Environment} environment - An environment instance.
+ * @property {Exiter} exiter - A process exit instance.
  * @property {Logger} logger - A logger instance.
  * @property {Notifier} notifier - A notifier instance.
  * @property {Scheduler} scheduler - A scheduler instance.
@@ -55,6 +57,7 @@ const checkerCapability = require("../filesystem/checker");
 const gitCapability = require("../executables").git;
 const environmentCapability = require("../environment");
 const loggingCapability = require("../logger");
+const exiterCapability = require("../exiter");
 const notifierCapability = require("../notifications");
 const schedulerCapability = require("../schedule");
 const aiTranscriptionCapability = require("../ai/transcription");
@@ -83,6 +86,7 @@ const make = memconst(() => {
         checker: checkerCapability.make({ datetime }),
         git: gitCapability,
         environment,
+        exiter: exiterCapability.make(),
         logger: loggingCapability.make(() => ret),
         notifier: notifierCapability.make(),
         scheduler: schedulerCapability.make(),

@@ -1,14 +1,7 @@
 const express = require("express");
 const { gentleWrap } = require("./gentlewrap");
 
-/** @typedef {import('./environment').Environment} Environment */
-/** @typedef {import('./logger').Logger} Logger */
-
-/**
- * @typedef {object} Capabilities
- * @property {Environment} environment - An environment instance.
- * @property {Logger} logger - A logger instance.
- */
+/** @typedef {import('./server').Capabilities} Capabilities */
 
 class ServerAddressAlreadyInUseError extends Error {
     constructor() {

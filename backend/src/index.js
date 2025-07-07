@@ -30,7 +30,7 @@ async function entryTyped(capabilities) {
         .action(async (cmd, options) => {
             if (options.version) {
                 await printVersion(capabilities);
-                process.exit(0);
+                capabilities.exiter.exit(0);
             }
             if (cmd) {
                 capabilities.logger.logError({ cmd }, `Unknown command ${JSON.stringify(cmd)}`);
