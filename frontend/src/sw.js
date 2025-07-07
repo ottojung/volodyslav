@@ -12,6 +12,7 @@
 // not the main browser context, so self, __WB_MANIFEST, etc. are available globally
 
 import { precacheAndRoute, cleanupOutdatedCaches } from "workbox-precaching";
+import { logger } from "./DescriptionEntry/logger.js";
 
 // Precache all static assets
 precacheAndRoute(self.__WB_MANIFEST);
@@ -21,11 +22,11 @@ cleanupOutdatedCaches();
 
 // Basic service worker events
 self.addEventListener("install", () => {
-    console.log("Service worker installing");
+    logger.info("Service worker installing");
     self.skipWaiting();
 });
 
 self.addEventListener("activate", (event) => {
-    console.log("Service worker activating");
+    logger.info("Service worker activating");
     event.waitUntil(self.clients.claim());
 });
