@@ -10,7 +10,7 @@
  * @param {() => number} nextFloat - A function that returns a pseudorandom float in (0, 1).
  * @returns {(min: number, max: number) => number} - A function that returns a pseudorandom integer in [min, max].
  */
-function from_float_generator(nextFloat) {
+function fromFloatGenerator(nextFloat) {
     /**
      * @param {number} min - Inclusive lower bound (integer)
      * @param {number} max - Inclusive upper bound (integer)
@@ -32,21 +32,21 @@ function from_float_generator(nextFloat) {
 }
 
 /**
- * @param {RNG | {nextFloat: () => number}} partially_initialized_rng
+ * @param {RNG | {nextFloat: () => number}} partiallyInitializedRng
  * @returns {RNG}
  * @description Takes a partially initialized RNG and returns a fully initialized RNG.
  */
-function make(partially_initialized_rng) {
+function make(partiallyInitializedRng) {
     function getNextFloat() {
-        return partially_initialized_rng.nextFloat;
+        return partiallyInitializedRng.nextFloat;
     }
 
     function getNextInt() {
-        if ('nextInt' in partially_initialized_rng) {
-            return partially_initialized_rng.nextInt;
+        if ('nextInt' in partiallyInitializedRng) {
+            return partiallyInitializedRng.nextInt;
         }
 
-        return from_float_generator(partially_initialized_rng.nextFloat);
+        return fromFloatGenerator(partiallyInitializedRng.nextFloat);
     }
 
     return {
