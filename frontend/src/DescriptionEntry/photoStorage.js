@@ -3,7 +3,12 @@
  * Replaces sessionStorage for photo data to avoid quota limitations
  */
 
-import { makePhotoStorageError, makePhotoRetrievalError } from './error_helpers.js';
+import {
+    makePhotoStorageError,
+    makePhotoRetrievalError,
+    isPhotoStorageError,
+    isPhotoRetrievalError,
+} from './error_helpers.js';
 
 const DB_NAME = 'PhotoStorage';
 const DB_VERSION = 1;
@@ -82,8 +87,7 @@ export async function storePhotos(key, photosData) {
             store.put(photosData, key);
         });
     } catch (/** @type {unknown} */ error) {
-        // Fix error.name checks for unknown type
-        if (error && typeof error === 'object' && 'name' in error && error.name === 'PhotoStorageError') {
+        if (isPhotoStorageError(error)) {
             throw error;
         }
         throw makePhotoStorageError(
@@ -121,7 +125,7 @@ export async function retrievePhotos(key) {
             };
         });
     } catch (/** @type {unknown} */ error) {
-        if (error && typeof error === 'object' && 'name' in error && error.name === 'PhotoRetrievalError') {
+        if (isPhotoRetrievalError(error)) {
             throw error;
         }
         throw makePhotoRetrievalError(
@@ -160,7 +164,7 @@ export async function removePhotos(key) {
             store.delete(key);
         });
     } catch (/** @type {unknown} */ error) {
-        if (error && typeof error === 'object' && 'name' in error && error.name === 'PhotoStorageError') {
+        if (isPhotoStorageError(error)) {
             throw error;
         }
         throw makePhotoStorageError(
@@ -197,7 +201,7 @@ export async function clearAllPhotos() {
             store.clear();
         });
     } catch (/** @type {unknown} */ error) {
-        if (error && typeof error === 'object' && 'name' in error && error.name === 'PhotoStorageError') {
+        if (isPhotoStorageError(error)) {
             throw error;
         }
         throw makePhotoStorageError(
