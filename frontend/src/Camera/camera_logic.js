@@ -1,8 +1,8 @@
 import { useState, useRef, useEffect } from "react";
 import { useToast } from "@chakra-ui/react";
 import {
-    PhotoStorageError,
-    PhotoConversionError,
+    isPhotoStorageError,
+    isPhotoConversionError,
 } from "../DescriptionEntry/errors.js";
 import { processPhotos } from "./process_photos.js";
 
@@ -217,10 +217,10 @@ export function useCameraLogic(requestIdentifier, returnTo) {
             let title = "Error processing photos";
             let description = "An unexpected error occurred.";
 
-            if (err instanceof PhotoConversionError) {
+            if (isPhotoConversionError(err)) {
                 title = "Photo conversion failed";
                 description = `Failed to process ${err.photoName || "one or more photos"}. Please try taking new photos.`;
-            } else if (err instanceof PhotoStorageError) {
+            } else if (isPhotoStorageError(err)) {
                 title = "Storage error";
                 description = err.message;
             } else if (err instanceof Error) {

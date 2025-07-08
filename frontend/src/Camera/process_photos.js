@@ -1,4 +1,8 @@
-import { PhotoStorageError, PhotoConversionError } from "../DescriptionEntry/errors.js";
+import {
+    makePhotoStorageError,
+    makePhotoConversionError,
+    isPhotoStorageError,
+} from "../DescriptionEntry/errors.js";
 import { storePhotos } from "../DescriptionEntry/photoStorage.js";
 
 /**
@@ -27,7 +31,7 @@ export async function processPhotos(photos, requestIdentifier, returnTo, navigat
                             resolve(base64Data);
                         } else {
                             reject(
-                                new PhotoConversionError(
+                                makePhotoConversionError(
                                     "FileReader did not return a string",
                                     photo.name
                                 )
@@ -36,7 +40,7 @@ export async function processPhotos(photos, requestIdentifier, returnTo, navigat
                     };
                     reader.onerror = () =>
                         reject(
-                            new PhotoConversionError(
+                            makePhotoConversionError(
                                 "FileReader failed",
                                 photo.name,
                                 reader.error
@@ -51,7 +55,7 @@ export async function processPhotos(photos, requestIdentifier, returnTo, navigat
                     type: photo.blob.type || "image/jpeg",
                 };
             } catch (error) {
-                throw new PhotoConversionError(
+                throw makePhotoConversionError(
                     `Failed to process photo ${photo.name}`,
                     photo.name,
                     error instanceof Error ? error : new Error(String(error))
@@ -63,10 +67,10 @@ export async function processPhotos(photos, requestIdentifier, returnTo, navigat
     try {
         await storePhotos(`photos_${requestIdentifier}`, photosData);
     } catch (storageError) {
-        if (storageError instanceof PhotoStorageError) {
+        if (isPhotoStorageError(storageError)) {
             throw storageError;
         }
-        throw new PhotoStorageError(
+        throw makePhotoStorageError(
             "Failed to save photos. Please try again.",
             storageError instanceof Error ? storageError : new Error(String(storageError))
         );
