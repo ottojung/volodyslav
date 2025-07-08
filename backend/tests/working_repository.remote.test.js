@@ -1,6 +1,5 @@
 const path = require("path");
 const workingRepository = require("../src/gitstore/working_repository");
-const fsp = require("fs/promises");
 const { getMockedRootCapabilities } = require("./spies");
 const {
     stubEnvironment,
@@ -40,7 +39,8 @@ describe("working_repository", () => {
             "working-git-repository",
             "new-file.txt"
         );
-        await fsp.writeFile(newFilePath, "new content");
+        const newFile = await capabilities.creator.createFile(newFilePath);
+        await capabilities.writer.writeFile(newFile, "new content");
         await capabilities.git.call(
             "-C",
             path.dirname(localRepoPath),
@@ -80,10 +80,8 @@ describe("working_repository", () => {
 
         // Verify the new file exists in the cloned repository's working tree
         const clonedFilePath = path.join(clonedRepoPath, "new-file.txt");
-        const clonedFileExists = await fsp
-            .stat(clonedFilePath)
-            .then(() => true)
-            .catch(() => false);
+        const clonedFileExists =
+            (await capabilities.checker.fileExists(clonedFilePath)) !== null;
 
         expect(clonedFileExists).toBe(true);
     });
@@ -109,7 +107,8 @@ describe("working_repository", () => {
             "working-git-repository",
             "existing-file.txt"
         );
-        await fsp.writeFile(newFilePath, "existing content");
+        const existingFile = await capabilities.creator.createFile(newFilePath);
+        await capabilities.writer.writeFile(existingFile, "existing content");
         await capabilities.git.call(
             "-C",
             path.dirname(localRepoPath),
@@ -132,7 +131,9 @@ describe("working_repository", () => {
         await workingRepository.synchronize(capabilities);
 
         // Verify the existing file is not overwritten
-        const existingFileContent = await fsp.readFile(newFilePath, "utf8");
+        const existingFileContent = await capabilities.reader.readFileAsText(
+            newFilePath
+        );
         expect(existingFileContent).toBe("existing content");
     });
 
@@ -157,7 +158,8 @@ describe("working_repository", () => {
             "working-git-repository",
             "pushed-file.txt"
         );
-        await fsp.writeFile(newFilePath, "pushed content");
+        const pushedFile = await capabilities.creator.createFile(newFilePath);
+        await capabilities.writer.writeFile(pushedFile, "pushed content");
         await capabilities.git.call(
             "-C",
             path.dirname(localRepoPath),
@@ -195,15 +197,15 @@ describe("working_repository", () => {
 
         // Verify the pushed file exists in the cloned repository
         const clonedFilePath = path.join(clonedRepoPath, "pushed-file.txt");
-        const clonedFileExists = await fsp
-            .stat(clonedFilePath)
-            .then(() => true)
-            .catch(() => false);
+        const clonedFileExists =
+            (await capabilities.checker.fileExists(clonedFilePath)) !== null;
 
         expect(clonedFileExists).toBe(true);
 
         // Verify the content of the pushed file
-        const clonedFileContent = await fsp.readFile(clonedFilePath, "utf8");
+        const clonedFileContent = await capabilities.reader.readFileAsText(
+            clonedFilePath
+        );
         expect(clonedFileContent).toBe("pushed content");
     });
 });
