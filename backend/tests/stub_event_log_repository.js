@@ -1,4 +1,3 @@
-const fs = require("fs/promises");
 const path = require("path");
 const temporary = require("./temporary");
 const defaultBranch = require("../src/gitstore/default_branch");
@@ -27,7 +26,7 @@ async function stubEventLogRepository(capabilities) {
 
     // Create a worktree
     const workTree = path.join(temporary.input(), "worktree");
-    await fs.mkdir(workTree, { recursive: true });
+    await capabilities.creator.createDirectory(workTree);
     await capabilities.git.call(
         "init",
         "--initial-branch",
@@ -38,9 +37,11 @@ async function stubEventLogRepository(capabilities) {
 
     // Create some content
     const testFile = path.join(workTree, "test.txt");
-    await fs.writeFile(testFile, "initial content");
+    const testFileObj = await capabilities.creator.createFile(testFile);
+    await capabilities.writer.writeFile(testFileObj, "initial content");
     const dataFile = path.join(workTree, "data.json");
-    await fs.writeFile(dataFile, "");
+    const dataFileObj = await capabilities.creator.createFile(dataFile);
+    await capabilities.writer.writeFile(dataFileObj, "");
 
     // Add and commit the content
     await capabilities.git.call("-C", workTree, "add", "--all");
@@ -74,7 +75,7 @@ async function stubEventLogRepository(capabilities) {
         defaultBranch
     );
 
-    await fs.rm(workTree, { recursive: true, force: true });
+    await capabilities.deleter.deleteDirectory(workTree);
 }
 
 module.exports = { stubEventLogRepository };
