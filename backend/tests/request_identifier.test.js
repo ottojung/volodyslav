@@ -1,5 +1,4 @@
 const path = require("path");
-const fs = require("fs");
 const {
     fromRequest,
     makeDirectory,
@@ -57,7 +56,9 @@ describe("Request Identifier", () => {
             const dirPath = await makeDirectory(capabilities, reqId);
             const uploadDir = capabilities.environment.workingDirectory();
 
-            expect(fs.existsSync(dirPath)).toBe(true);
+            expect(capabilities.creator.createDirectory).toHaveBeenCalledWith(
+                dirPath
+            );
             expect(dirPath).toBe(path.join(uploadDir, "test123"));
         });
 
@@ -68,7 +69,9 @@ describe("Request Identifier", () => {
             const dirPath = await makeDirectory(capabilities, reqId);
             const uploadDir = capabilities.environment.workingDirectory();
 
-            expect(fs.existsSync(dirPath)).toBe(true);
+            expect(capabilities.creator.createDirectory).toHaveBeenCalledWith(
+                dirPath
+            );
             expect(dirPath).toBe(path.join(uploadDir, "test#123"));
         });
     });
@@ -85,9 +88,11 @@ describe("Request Identifier", () => {
             await markDone(capabilities, reqId);
 
             await expect(isDone(capabilities, reqId)).resolves.toBe(true);
-            expect(fs.existsSync(path.join(uploadDir, "test123.done"))).toBe(
-                true
-            );
+            await expect(
+                capabilities.checker.fileExists(
+                    path.join(uploadDir, "test123.done")
+                )
+            ).resolves.not.toBeNull();
         });
 
         it("handles concurrent markDone calls", async () => {
