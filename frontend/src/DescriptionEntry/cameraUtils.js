@@ -94,7 +94,7 @@ export const retrievePhotos = async (requestIdentifier) => {
     let photosData;
     try {
         photosData = await getStoredPhotos(key);
-    } catch (/** @type {unknown} */ error) {
+    } catch (error) {
         throw new PhotoRetrievalError(
             "Failed to access stored photos",
             requestIdentifier,
@@ -149,7 +149,7 @@ export const retrievePhotos = async (requestIdentifier) => {
                 const file = new File([blob], photo.name, { type: photo.type });
                 
                 return file;
-            } catch (/** @type {unknown} */ error) {
+            } catch (error) {
                 if (error instanceof PhotoConversionError) {
                     throw error;
                 }
@@ -164,13 +164,13 @@ export const retrievePhotos = async (requestIdentifier) => {
         // Clean up the stored photos only after successful conversion
         try {
             await deleteStoredPhotos(key);
-        } catch (/** @type {unknown} */ error) {
+        } catch (error) {
             // Log but don't fail - photos were successfully retrieved
             logger.warn('Failed to clean up stored photos:', error);
         }
         
         return files;
-    } catch (/** @type {unknown} */ error) {
+    } catch (error) {
         // If it's already one of our custom errors, re-throw it
         if (error instanceof PhotoRetrievalError || error instanceof PhotoConversionError) {
             throw error;
@@ -198,7 +198,7 @@ export const retrievePhotos = async (requestIdentifier) => {
 export const safeSessionStorageGet = (key) => {
     try {
         return sessionStorage.getItem(key);
-    } catch (/** @type {unknown} */ error) {
+    } catch (error) {
         throw new SessionStorageError(
             `Failed to read from session storage (key: ${key})`,
             'get',
@@ -215,7 +215,7 @@ export const safeSessionStorageGet = (key) => {
 export const safeSessionStorageSet = (key, value) => {
     try {
         sessionStorage.setItem(key, value);
-    } catch (/** @type {unknown} */ error) {
+    } catch (error) {
         // Check if it's a quota exceeded error
         const isQuotaError = error instanceof Error && 
             (error.name === 'QuotaExceededError' || 
@@ -240,7 +240,7 @@ export const safeSessionStorageSet = (key, value) => {
 export const safeSessionStorageRemove = (key) => {
     try {
         sessionStorage.removeItem(key);
-    } catch (/** @type {unknown} */ error) {
+    } catch (error) {
         throw new SessionStorageError(
             `Failed to remove from session storage (key: ${key})`,
             'remove',

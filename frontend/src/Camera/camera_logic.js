@@ -211,7 +211,7 @@ export function useCameraLogic(requestIdentifier, returnTo) {
             setPhotos([]);
             setCurrentBlob(null);
 
-        } catch (/** @type {unknown} */ err) {
+        } catch (err) {
             console.error("Camera photo processing error:", err);
 
             let title = "Error processing photos";

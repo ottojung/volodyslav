@@ -103,7 +103,7 @@ async function handleTranscribeAllRequest(capabilities, req, res) {
             "Batch transcription successful"
         );
         return res.json({ success: true, result });
-    } catch (/** @type {unknown} */ error) {
+    } catch (error) {
         if (error instanceof InputDirectoryAccess) {
             capabilities.logger.logError(
                 {

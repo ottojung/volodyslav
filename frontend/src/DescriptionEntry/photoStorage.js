@@ -81,7 +81,7 @@ export async function storePhotos(key, photosData) {
 
             store.put(photosData, key);
         });
-    } catch (/** @type {unknown} */ error) {
+    } catch (error) {
         // Fix error.name checks for unknown type
         if (error && typeof error === 'object' && 'name' in error && error.name === 'PhotoStorageError') {
             throw error;
@@ -120,7 +120,7 @@ export async function retrievePhotos(key) {
                 resolve(request.result || null);
             };
         });
-    } catch (/** @type {unknown} */ error) {
+    } catch (error) {
         if (error && typeof error === 'object' && 'name' in error && error.name === 'PhotoRetrievalError') {
             throw error;
         }
@@ -159,7 +159,7 @@ export async function removePhotos(key) {
 
             store.delete(key);
         });
-    } catch (/** @type {unknown} */ error) {
+    } catch (error) {
         if (error && typeof error === 'object' && 'name' in error && error.name === 'PhotoStorageError') {
             throw error;
         }
@@ -196,7 +196,7 @@ export async function clearAllPhotos() {
 
             store.clear();
         });
-    } catch (/** @type {unknown} */ error) {
+    } catch (error) {
         if (error && typeof error === 'object' && 'name' in error && error.name === 'PhotoStorageError') {
             throw error;
         }
