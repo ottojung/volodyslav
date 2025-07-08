@@ -1,6 +1,9 @@
 const API_BASE_URL = "/api";
 import { logger } from "./logger.js";
-import { EntrySubmissionError } from "./errors.js";
+import {
+    makeEntrySubmissionError,
+    isEntrySubmissionError,
+} from "./errors.js";
 import { makeEntry } from "./entry.js";
 
 /**
@@ -111,13 +114,13 @@ export async function submitEntry(rawInput, requestIdentifier = undefined, files
     } catch (error) {
         // Network or fetch-level errors
         if (error instanceof TypeError && error.message.includes('fetch')) {
-            throw new EntrySubmissionError(
+            throw makeEntrySubmissionError(
                 "Unable to reach the server. Please check your internet connection.",
                 null,
                 error
             );
         }
-        throw new EntrySubmissionError(
+        throw makeEntrySubmissionError(
             "An unexpected error occurred during submission.",
             null,
             error instanceof Error ? error : new Error(String(error))
@@ -130,16 +133,16 @@ export async function submitEntry(rawInput, requestIdentifier = undefined, files
             if (result.success) {
                 return result;
             } else {
-                throw new EntrySubmissionError(
+                throw makeEntrySubmissionError(
                     result.error || "API returned unsuccessful response",
                     response.status
                 );
             }
         } catch (parseError) {
-            if (parseError instanceof EntrySubmissionError) {
+            if (isEntrySubmissionError(parseError)) {
                 throw parseError;
             }
-            throw new EntrySubmissionError(
+            throw makeEntrySubmissionError(
                 "Unable to parse server response",
                 response.status,
                 parseError instanceof Error ? parseError : new Error(String(parseError))
@@ -155,7 +158,7 @@ export async function submitEntry(rawInput, requestIdentifier = undefined, files
             errorMessage = `HTTP ${response.status} ${response.statusText}`;
         }
         
-        throw new EntrySubmissionError(errorMessage, response.status);
+        throw makeEntrySubmissionError(errorMessage, response.status);
     }
 }
 

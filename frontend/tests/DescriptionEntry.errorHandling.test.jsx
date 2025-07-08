@@ -3,8 +3,8 @@
  */
 
 import {
-    PhotoRetrievalError,
-    EntrySubmissionError,
+    makePhotoRetrievalError,
+    makeEntrySubmissionError,
     getUserFriendlyErrorMessage,
     isPhotoRetrievalError,
     isEntrySubmissionError
@@ -13,7 +13,7 @@ import {
 describe('Error Handling System', () => {
     describe('Error Classes', () => {
         it('creates PhotoRetrievalError with correct properties', () => {
-            const error = new PhotoRetrievalError(
+            const error = makePhotoRetrievalError(
                 'Photo data corrupted',
                 'test-request-id'
             );
@@ -26,7 +26,7 @@ describe('Error Handling System', () => {
         });
 
         it('creates EntrySubmissionError with correct properties', () => {
-            const error = new EntrySubmissionError(
+            const error = makeEntrySubmissionError(
                 'Server error',
                 500
             );
@@ -41,19 +41,19 @@ describe('Error Handling System', () => {
 
     describe('Error Message Generation', () => {
         it('generates appropriate message for photo retrieval errors', () => {
-            const error = new PhotoRetrievalError('JSON parse failed');
+            const error = makePhotoRetrievalError('JSON parse failed');
             const message = getUserFriendlyErrorMessage(error);
             expect(message).toContain('corrupted');
         });
 
         it('generates appropriate message for network errors', () => {
-            const error = new EntrySubmissionError('fetch failed');
+            const error = makeEntrySubmissionError('fetch failed');
             const message = getUserFriendlyErrorMessage(error);
             expect(message).toContain('Network');
         });
 
         it('generates appropriate message for validation errors', () => {
-            const error = new EntrySubmissionError('Invalid input', 400);
+            const error = makeEntrySubmissionError('Invalid input', 400);
             const message = getUserFriendlyErrorMessage(error);
             expect(message).toContain('Invalid data');
         });
@@ -67,13 +67,13 @@ describe('Error Handling System', () => {
 
     describe('Type Guards', () => {
         it('correctly identifies PhotoRetrievalError', () => {
-            const error = new PhotoRetrievalError('test');
+            const error = makePhotoRetrievalError('test');
             expect(isPhotoRetrievalError(error)).toBe(true);
             expect(isEntrySubmissionError(error)).toBe(false);
         });
 
         it('correctly identifies EntrySubmissionError', () => {
-            const error = new EntrySubmissionError('test');
+            const error = makeEntrySubmissionError('test');
             expect(isEntrySubmissionError(error)).toBe(true);
             expect(isPhotoRetrievalError(error)).toBe(false);
         });
