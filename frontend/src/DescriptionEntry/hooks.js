@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useReducer } from "react";
 import { useToast } from "@chakra-ui/react";
 import {
     fetchRecentEntries as apiFetchRecentEntries,
@@ -149,7 +149,7 @@ const processCameraReturn = async (cameraReturn, setDescription, setPendingReque
  * @property {boolean} isSubmitting
  * @property {any[]} recentEntries
  * @property {boolean} isLoadingEntries
- * @property {string|null} pendingRequestIdentifier
+ * @property {string|undefined} pendingRequestIdentifier
  * @property {(value: string) => void} setDescription
  * @property {() => Promise<void>} handleSubmit
  * @property {() => void} handleTakePhotos
@@ -166,9 +166,21 @@ const processCameraReturn = async (cameraReturn, setDescription, setPendingReque
 export const useDescriptionEntry = (numberOfEntries = 10) => {
     const [description, setDescription] = useState("");
     const [isSubmitting, setIsSubmitting] = useState(false);
-    const [recentEntries, setRecentEntries] = useState(/** @type {any[]} */([]));
+    /** @type {any[]} */
+    const INITIAL_RECENT_ENTRIES = [];
+    const [recentEntries, setRecentEntries] = useState(INITIAL_RECENT_ENTRIES);
     const [isLoadingEntries, setIsLoadingEntries] = useState(true);
-    const [pendingRequestIdentifier, setPendingRequestIdentifier] = useState(/** @type {string|null} */(null));
+    /**
+     * Reducer to store the pending request identifier for photo capture.
+     * @param {string | undefined} _state
+     * @param {string | undefined} value
+     * @returns {string | undefined}
+     */
+    const pendingRequestReducer = (_state, value) => value;
+    const [pendingRequestIdentifier, setPendingRequestIdentifier] = useReducer(
+        pendingRequestReducer,
+        undefined
+    );
     const toast = useToast();
 
     const fetchRecentEntries = async () => {
@@ -217,7 +229,11 @@ export const useDescriptionEntry = (numberOfEntries = 10) => {
         navigateToCamera(requestIdentifier, description);
     };
 
-    const handleKeyUp = (/** @type {any} */ e) => {
+    /**
+     * Handles Enter key submission shortcut.
+     * @param {import('react').KeyboardEvent} e
+     */
+    const handleKeyUp = (e) => {
         if (e.key === "Enter" && !e.shiftKey) {
             e.preventDefault();
             handleSubmit();
