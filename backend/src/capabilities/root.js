@@ -21,6 +21,7 @@
 /** @typedef {import('../ai/transcription').AITranscription} AITranscription */
 /** @typedef {import('../datetime').Datetime} Datetime */
 /** @typedef {import('../sleeper').Sleeper} Sleeper */
+/** @typedef {import('../wifi/connection_checker').WifiConnectionChecker} WifiConnectionChecker */
 
 
 /**
@@ -43,6 +44,7 @@
  * @property {AITranscription} aiTranscription - An AI transcription instance.
  * @property {Datetime} datetime - Datetime utilities.
  * @property {Sleeper} sleeper - A sleeper instance.
+ * @property {WifiConnectionChecker} wifiChecker - A WiFi connection checker instance.
  */
 
 const memconst = require("../memconst");
@@ -65,6 +67,7 @@ const schedulerCapability = require("../schedule");
 const aiTranscriptionCapability = require("../ai/transcription");
 const datetimeCapability = require("../datetime");
 const sleeperCapability = require("../sleeper");
+const wifiCapability = require("../wifi");
 
 /**
  * This structure collects maximum capabilities that any part of Volodyslav can access.
@@ -96,6 +99,7 @@ const make = memconst(() => {
         scheduler: schedulerCapability.make(),
         aiTranscription: aiTranscriptionCapability.make({ environment }),
         sleeper,
+        wifiChecker: wifiCapability.makeWifiConnectionChecker(),
     };
 
     return ret;
