@@ -1,5 +1,6 @@
 const { format } = require("./date");
 const eventId = require("./id");
+const datetime = require("../datetime");
 const {
     makeMissingFieldError,
     makeInvalidTypeError,
@@ -27,7 +28,7 @@ const {
  * @typedef Event
  * @type {Object}
  * @property {import('./id').EventId} id - Unique identifier for the event.
- * @property {Date} date - The date of the event.
+ * @property {import('../datetime').DateTime} date - The date of the event.
  * @property {string} original - The original input of the event.
  * @property {string} input - The processed input of the event.
  * @property {Modifiers} modifiers - Modifiers applied to the event.
@@ -67,7 +68,7 @@ function deserialize(serializedEvent) {
     return {
         ...serializedEvent,
         id: eventId.fromString(serializedEvent.id),
-        date: new Date(serializedEvent.date),
+        date: datetime.make().fromISOString(serializedEvent.date),
         modifiers: serializedEvent.modifiers || {},
     };
 }
@@ -145,8 +146,9 @@ function tryDeserialize(obj) {
             modifiers[key] = value;
         }
 
-        const dateObj = new Date(date);
-        if (isNaN(dateObj.getTime())) {
+        const dtCap = datetime.make();
+        const dateObj = dtCap.fromISOString(date);
+        if (isNaN(dtCap.toEpochMs(dateObj))) {
             return makeInvalidValueError("date", date, "not a valid date string");
         }
 

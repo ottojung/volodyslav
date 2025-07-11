@@ -15,7 +15,9 @@ describe("createEntry (integration, with real capabilities)", () => {
     it("creates an event log entry with correct data (no file)", async () => {
         const capabilities = await getTestCapabilities();
         const fixedTime = new Date("2023-10-26T10:00:00.000Z").getTime();
-        capabilities.datetime.now.mockReturnValue(fixedTime);
+        capabilities.datetime.now.mockReturnValue(
+            capabilities.datetime.fromEpochMs(fixedTime)
+        );
         
         const entryData = {
             original: "Raw original text",
@@ -31,7 +33,7 @@ describe("createEntry (integration, with real capabilities)", () => {
         expect(event.type).toBe(entryData.type);
         expect(event.description).toBe(entryData.description);
         expect(event.modifiers).toEqual(entryData.modifiers);
-        expect(event.date).toEqual(new Date(fixedTime));
+        expect(capabilities.datetime.toEpochMs(event.date)).toBe(fixedTime);
         expect(event.id).toBeDefined();
         expect(event.creator).toBeDefined();
         expect(capabilities.logger.logInfo).toHaveBeenCalledWith(
@@ -129,8 +131,9 @@ describe("createEntry (integration, with real capabilities)", () => {
         const before = Date.now();
         const event = await createEntry(capabilities, entryData);
         const after = Date.now();
-        expect(event.date.getTime()).toBeGreaterThanOrEqual(before);
-        expect(event.date.getTime()).toBeLessThanOrEqual(after);
+        const eventTime = capabilities.datetime.toEpochMs(event.date);
+        expect(eventTime).toBeGreaterThanOrEqual(before);
+        expect(eventTime).toBeLessThanOrEqual(after);
     });
 
     it("creates an event log entry with empty modifiers if not provided", async () => {

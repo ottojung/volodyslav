@@ -97,7 +97,9 @@ function stubScheduler(capabilities) {
 }
 
 function stubDatetime(capabilities) {
-    capabilities.datetime.now = jest.fn(() => Date.now());
+    capabilities.datetime.now = jest.fn(() =>
+        capabilities.datetime.fromEpochMs(Date.now())
+    );
 }
 
 module.exports = {

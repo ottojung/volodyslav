@@ -143,7 +143,7 @@ async function isFileStable(datetime, file, options = {}) {
     try {
         // First check: get initial file stats
         const initialStats = await fs.stat(file.path);
-        const now = datetime.now();
+        const now = datetime.toEpochMs(datetime.now());
         const fileModifiedTime = initialStats.mtime.getTime();
         const ageMs = now - fileModifiedTime;
 

@@ -29,7 +29,7 @@ describe("event_log_storage", () => {
         await stubEventLogRepository(capabilities);
         const testEvent = {
             id: { identifier: "assetEvent" },
-            date: new Date("2025-05-13"),
+            date: capabilities.datetime.fromISOString("2025-05-13"),
         };
 
         // Create a temporary asset file.
@@ -69,7 +69,7 @@ describe("event_log_storage", () => {
         await stubEventLogRepository(capabilities);
         const testEvent = {
             id: { identifier: "cleanupEvent" },
-            date: new Date("2025-05-14"),
+            date: capabilities.datetime.fromISOString("2025-05-14"),
         };
         const assetPath = "/some/failure.txt";
         const asset = {
@@ -97,7 +97,7 @@ describe("event_log_storage", () => {
 
         const testEvent = {
             id: { identifier: "assetEventWithDirs" },
-            date: new Date("2025-05-13"),
+            date: capabilities.datetime.fromISOString("2025-05-13"),
         };
 
         // Create a temporary asset file.
@@ -140,7 +140,7 @@ describe("event_log_storage", () => {
 
         const testEvent = {
             id: { identifier: "mixedAssetsEvent" },
-            date: new Date("2025-05-13"),
+            date: capabilities.datetime.fromISOString("2025-05-13"),
             type: "test_event",
             description: "Mixed assets test event",
         };

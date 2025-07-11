@@ -74,7 +74,7 @@ describe("processDiaryAudios", () => {
             const objects = await readObjects(capabilities, dataFile);
             expect(objects).toHaveLength(filenames.length);
             objects.forEach((obj, i) => {
-                const date = formatFileTimestamp(filenames[i]);
+                const date = formatFileTimestamp(filenames[i], capabilities.datetime);
                 expect(obj).toEqual({
                     id: obj.id,
                     date: dateFormatter.format(date),
@@ -91,10 +91,11 @@ describe("processDiaryAudios", () => {
         // Assets copied into correct structure
         const assetsBase = capabilities.environment.eventLogAssetsDirectory();
         for (const name of filenames) {
-            const date = formatFileTimestamp(name);
-            const year = date.getFullYear();
-            const month = String(date.getMonth() + 1).padStart(2, "0");
-            const day = String(date.getDate()).padStart(2, "0");
+            const date = formatFileTimestamp(name, capabilities.datetime);
+            const native = capabilities.datetime.toNativeDate(date);
+            const year = native.getFullYear();
+            const month = String(native.getMonth() + 1).padStart(2, "0");
+            const day = String(native.getDate()).padStart(2, "0");
             // Expect one id directory under the date folder
             const idDirs = await fs.readdir(
                 path.join(assetsBase, `${year}-${month}`, day)

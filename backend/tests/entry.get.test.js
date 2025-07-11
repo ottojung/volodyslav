@@ -35,9 +35,11 @@ describe("getEntries ordering functionality", () => {
         const capabilities = await getTestCapabilities();
         
         // Create entries with different dates by controlling datetime.now()
-        const baseTime = new Date("2023-01-01T10:00:00Z").getTime();
+        const baseTime = capabilities.datetime.fromISOString("2023-01-01T10:00:00Z").getTime();
         
-        capabilities.datetime.now.mockReturnValueOnce(baseTime);
+        capabilities.datetime.now.mockReturnValueOnce(
+            capabilities.datetime.fromEpochMs(baseTime)
+        );
         const entry1Data = {
             original: "First entry",
             input: "First entry",
@@ -45,7 +47,9 @@ describe("getEntries ordering functionality", () => {
             description: "First entry description",
         };
         
-        capabilities.datetime.now.mockReturnValueOnce(baseTime + 24 * 60 * 60 * 1000); // +1 day
+        capabilities.datetime.now.mockReturnValueOnce(
+            capabilities.datetime.fromEpochMs(baseTime + 24 * 60 * 60 * 1000)
+        ); // +1 day
         const entry2Data = {
             original: "Second entry",
             input: "Second entry", 
@@ -53,7 +57,9 @@ describe("getEntries ordering functionality", () => {
             description: "Second entry description",
         };
         
-        capabilities.datetime.now.mockReturnValueOnce(baseTime + 2 * 24 * 60 * 60 * 1000); // +2 days
+        capabilities.datetime.now.mockReturnValueOnce(
+            capabilities.datetime.fromEpochMs(baseTime + 2 * 24 * 60 * 60 * 1000)
+        ); // +2 days
         const entry3Data = {
             original: "Third entry",
             input: "Third entry",
@@ -79,9 +85,11 @@ describe("getEntries ordering functionality", () => {
         const capabilities = await getTestCapabilities();
         
         // Create entries with different dates by controlling datetime.now()
-        const baseTime = new Date("2023-01-01T10:00:00Z").getTime();
+        const baseTime = capabilities.datetime.fromISOString("2023-01-01T10:00:00Z").getTime();
         
-        capabilities.datetime.now.mockReturnValueOnce(baseTime);
+        capabilities.datetime.now.mockReturnValueOnce(
+            capabilities.datetime.fromEpochMs(baseTime)
+        );
         const entry1Data = {
             original: "First entry",
             input: "First entry",
@@ -89,7 +97,9 @@ describe("getEntries ordering functionality", () => {
             description: "First entry description",
         };
         
-        capabilities.datetime.now.mockReturnValueOnce(baseTime + 24 * 60 * 60 * 1000); // +1 day
+        capabilities.datetime.now.mockReturnValueOnce(
+            capabilities.datetime.fromEpochMs(baseTime + 24 * 60 * 60 * 1000)
+        ); // +1 day
         const entry2Data = {
             original: "Second entry",
             input: "Second entry",
@@ -116,9 +126,11 @@ describe("getEntries ordering functionality", () => {
     it("sorts entries by date descending when explicitly specified", async () => {
         const capabilities = await getTestCapabilities();
         
-        const baseTime = new Date("2023-01-01T10:00:00Z").getTime();
+        const baseTime = capabilities.datetime.fromISOString("2023-01-01T10:00:00Z").getTime();
         
-        capabilities.datetime.now.mockReturnValueOnce(baseTime);
+        capabilities.datetime.now.mockReturnValueOnce(
+            capabilities.datetime.fromEpochMs(baseTime)
+        );
         const entry1Data = {
             original: "First entry",
             input: "First entry",
@@ -126,7 +138,9 @@ describe("getEntries ordering functionality", () => {
             description: "First entry description",
         };
         
-        capabilities.datetime.now.mockReturnValueOnce(baseTime + 24 * 60 * 60 * 1000); // +1 day
+        capabilities.datetime.now.mockReturnValueOnce(
+            capabilities.datetime.fromEpochMs(baseTime + 24 * 60 * 60 * 1000)
+        ); // +1 day
         const entry2Data = {
             original: "Second entry", 
             input: "Second entry",
@@ -174,9 +188,11 @@ describe("getEntries ordering functionality", () => {
         const capabilities = await getTestCapabilities();
         
         // Create 5 entries with different dates by controlling datetime.now()
-        const baseTime = new Date("2023-01-01T10:00:00Z").getTime();
+        const baseTime = capabilities.datetime.fromISOString("2023-01-01T10:00:00Z").getTime();
         for (let i = 1; i <= 5; i++) {
-            capabilities.datetime.now.mockReturnValueOnce(baseTime + (i - 1) * 24 * 60 * 60 * 1000);
+            capabilities.datetime.now.mockReturnValueOnce(
+                capabilities.datetime.fromEpochMs(baseTime + (i - 1) * 24 * 60 * 60 * 1000)
+            );
             await createEntry(capabilities, {
                 original: `Entry ${i}`,
                 input: `Entry ${i}`,

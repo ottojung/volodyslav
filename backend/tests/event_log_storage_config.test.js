@@ -130,7 +130,7 @@ describe("event_log_storage", () => {
 
         const testEvent = {
             id: { identifier: "config-and-event" },
-            date: new Date("2025-05-20"),
+            date: capabilities.datetime.fromISOString("2025-05-20"),
             original: "test with config",
             input: "test with config",
             type: "config_test",
