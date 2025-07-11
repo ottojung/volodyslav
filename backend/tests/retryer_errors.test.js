@@ -36,12 +36,12 @@ describe("Retryer - Error handling", () => {
         expect(caughtError.message).toContain("Callback failed on attempt 1");
         expect(caughtError.details).toBe(testError);
 
-        expect(capabilities.logger.logError).toHaveBeenCalledWith(
+        expect(capabilities.logger.logDebug).toHaveBeenCalledWith(
             expect.objectContaining({
                 attempt: 1,
                 error: "Test error"
             }),
-            "Callback threw an error, stopping retry loop"
+            "Retryer stopping retry loop due to callback error"
         );
     });
 
@@ -55,11 +55,11 @@ describe("Retryer - Error handling", () => {
         // Should be able to run again (not stuck in running set)
         await expect(withRetry(capabilities, callback)).rejects.toThrow();
 
-        expect(capabilities.logger.logInfo).toHaveBeenCalledWith(
+        expect(capabilities.logger.logDebug).toHaveBeenCalledWith(
             expect.objectContaining({
                 callbackName: expect.any(String)
             }),
-            "Callback removed from running set"
+            "Retryer removed callback from running set"
         );
     });
 
@@ -76,12 +76,12 @@ describe("Retryer - Error handling", () => {
         await expect(withRetry(capabilities, callback)).rejects.toThrow();
 
         expect(callCount).toBe(2);
-        expect(capabilities.logger.logError).toHaveBeenCalledWith(
+        expect(capabilities.logger.logDebug).toHaveBeenCalledWith(
             expect.objectContaining({
                 attempt: 2,
                 error: "Error on retry"
             }),
-            "Callback threw an error, stopping retry loop"
+            "Retryer stopping retry loop due to callback error"
         );
     });
 });

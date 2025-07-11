@@ -68,15 +68,15 @@ describe("Retryer - Timing and logging", () => {
 
             await withRetry(capabilities, callback);
 
-            expect(capabilities.logger.logInfo).toHaveBeenCalledWith(
+            expect(capabilities.logger.logDebug).toHaveBeenCalledWith(
                 expect.objectContaining({ attempt: 1 }),
                 "Executing callback (attempt 1)"
             );
-            expect(capabilities.logger.logInfo).toHaveBeenCalledWith(
+            expect(capabilities.logger.logDebug).toHaveBeenCalledWith(
                 expect.objectContaining({ attempt: 2 }),
                 "Executing callback (attempt 2)"
             );
-            expect(capabilities.logger.logInfo).toHaveBeenCalledWith(
+            expect(capabilities.logger.logDebug).toHaveBeenCalledWith(
                 expect.objectContaining({ attempt: 3 }),
                 "Executing callback (attempt 3)"
             );
@@ -89,7 +89,7 @@ describe("Retryer - Timing and logging", () => {
 
             await withRetry(capabilities, namedCallback);
 
-            expect(capabilities.logger.logInfo).toHaveBeenCalledWith(
+            expect(capabilities.logger.logDebug).toHaveBeenCalledWith(
                 expect.objectContaining({
                     callbackName: "namedCallback"
                 }),
@@ -104,7 +104,7 @@ describe("Retryer - Timing and logging", () => {
             await withRetry(capabilities, callback);
 
             // Check if any call used "anonymous" or the actual function name
-            const logCalls = capabilities.logger.logInfo.mock.calls;
+            const logCalls = capabilities.logger.logDebug.mock.calls;
             const hasAnonymousOrFunctionName = logCalls.some(call =>
                 call[0].callbackName === "anonymous" ||
                 call[0].callbackName === "callback" ||
@@ -119,18 +119,18 @@ describe("Retryer - Timing and logging", () => {
 
             await withRetry(capabilities, callback);
 
-            expect(capabilities.logger.logInfo).toHaveBeenCalledWith(
+            expect(capabilities.logger.logDebug).toHaveBeenCalledWith(
                 expect.objectContaining({
                     runningCount: 1
                 }),
                 expect.stringContaining("Executing callback")
             );
 
-            expect(capabilities.logger.logInfo).toHaveBeenCalledWith(
+            expect(capabilities.logger.logDebug).toHaveBeenCalledWith(
                 expect.objectContaining({
                     runningCount: 0
                 }),
-                "Callback removed from running set"
+                "Retryer removed callback from running set"
             );
         });
     });
@@ -149,7 +149,7 @@ describe("Retryer - Timing and logging", () => {
             await withRetry(capabilities, callback);
 
             expect(callCount).toBe(5);
-            expect(capabilities.logger.logInfo).toHaveBeenCalledTimes(
+            expect(capabilities.logger.logDebug).toHaveBeenCalledTimes(
                 5 + // Execution attempts
                 4 + // Retry requests 
                 1 + // Success message
@@ -174,11 +174,11 @@ describe("Retryer - Timing and logging", () => {
             await new Promise(resolve => setTimeout(resolve, 50));
 
             expect(callCount).toBe(1);
-            expect(capabilities.logger.logInfo).toHaveBeenCalledWith(
+            expect(capabilities.logger.logDebug).toHaveBeenCalledWith(
                 expect.objectContaining({
                     retryDelay: "1s"
                 }),
-                "Callback requested retry after 1s"
+                "Retryer scheduling retry after 1s"
             );
 
             // Don't wait for the actual retry to complete

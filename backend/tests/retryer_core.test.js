@@ -57,7 +57,7 @@ describe("Retryer - Core functionality", () => {
             await withRetry(capabilities, callback);
 
             expect(callCount).toBe(1);
-            expect(capabilities.logger.logInfo).toHaveBeenCalledWith(
+            expect(capabilities.logger.logDebug).toHaveBeenCalledWith(
                 expect.objectContaining({
                     attempt: 1,
                     totalAttempts: 1
@@ -93,12 +93,12 @@ describe("Retryer - Core functionality", () => {
 
             await withRetry(capabilities, callback);
 
-            expect(capabilities.logger.logInfo).toHaveBeenCalledWith(
+            expect(capabilities.logger.logDebug).toHaveBeenCalledWith(
                 expect.objectContaining({
                     attempt: 1,
                     retryDelay: "50ms"
                 }),
-                "Callback requested retry after 50ms"
+                "Retryer scheduling retry after 50ms"
             );
         });
     });
