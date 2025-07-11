@@ -10,7 +10,6 @@ const configRouter = require("./routes/config");
 const expressApp = require("./express_app");
 const { scheduleAll } = require("./schedule/tasks");
 const workingRepository = require("./gitstore/working_repository");
-const { Server } = require("http");
 
 /** @typedef {import('./filesystem/deleter').FileDeleter} FileDeleter */
 /** @typedef {import('./random/seed').NonDeterministicSeed} NonDeterministicSeed */
