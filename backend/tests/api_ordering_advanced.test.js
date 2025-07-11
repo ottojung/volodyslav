@@ -36,7 +36,7 @@ describe("API Ordering Integration Tests", () => {
             const { app, capabilities } = await makeTestApp();
 
             // Create entries with different dates by controlling datetime.now()
-            const baseTime = new Date("2023-01-01T10:00:00Z").getTime();
+            const baseTime = capabilities.datetime.fromISOString("2023-01-01T10:00:00Z").getTime();
             const entries = [
                 { rawInput: "test - Entry 1" },
                 { rawInput: "test - Entry 2" },
@@ -46,7 +46,9 @@ describe("API Ordering Integration Tests", () => {
 
             // Create entries with incrementing timestamps
             for (let i = 0; i < entries.length; i++) {
-                capabilities.datetime.now.mockReturnValueOnce(baseTime + i * 24 * 60 * 60 * 1000);
+                capabilities.datetime.now.mockReturnValueOnce(
+                    capabilities.datetime.fromEpochMs(baseTime + i * 24 * 60 * 60 * 1000)
+                );
                 await request(app)
                     .post("/api/entries")
                     .send(entries[i])
@@ -66,8 +68,8 @@ describe("API Ordering Integration Tests", () => {
             expect(page1.body.results.length).toBeGreaterThan(0);
             expect(page2.body.results.length).toBeGreaterThan(0);
 
-            const lastFromPage1 = new Date(page1.body.results[page1.body.results.length - 1].date);
-            const firstFromPage2 = new Date(page2.body.results[0].date);
+            const lastFromPage1 = capabilities.datetime.fromISOString(page1.body.results[page1.body.results.length - 1].date);
+            const firstFromPage2 = capabilities.datetime.fromISOString(page2.body.results[0].date);
             expect(lastFromPage1.getTime()).toBeGreaterThanOrEqual(firstFromPage2.getTime());
         });
     });
@@ -132,8 +134,10 @@ describe("API Ordering Integration Tests", () => {
         it("ignores when modifiers and uses current time", async () => {
             const { app, capabilities } = await makeTestApp();
 
-            const fixedTime = new Date("2025-06-28T10:00:00Z").getTime();
-            capabilities.datetime.now.mockReturnValue(fixedTime);
+            const fixedTime = capabilities.datetime.fromISOString("2025-06-28T10:00:00Z").getTime();
+            capabilities.datetime.now.mockReturnValue(
+                capabilities.datetime.fromEpochMs(fixedTime)
+            );
 
             const requestBody = {
                 rawInput: "test [when 2023-06-15T14:30:00Z] - Entry with when modifier",
@@ -149,15 +153,17 @@ describe("API Ordering Integration Tests", () => {
 
             // The created entry should use current time, not the when modifier
             // Parse the returned date and compare timestamps to avoid timezone issues
-            const returnedDate = new Date(createRes.body.entry.date);
+            const returnedDate = capabilities.datetime.fromISOString(createRes.body.entry.date);
             expect(returnedDate.getTime()).toBe(fixedTime);
         });
 
         it("ignores explicit date parameter and uses current time", async () => {
             const { app, capabilities } = await makeTestApp();
 
-            const fixedTime = new Date("2025-06-28T12:00:00Z").getTime();
-            capabilities.datetime.now.mockReturnValue(fixedTime);
+            const fixedTime = capabilities.datetime.fromISOString("2025-06-28T12:00:00Z").getTime();
+            capabilities.datetime.now.mockReturnValue(
+                capabilities.datetime.fromEpochMs(fixedTime)
+            );
 
             const requestBody = {
                 rawInput: "test [when 2023-06-15T14:30:00Z] - Entry with both dates",
@@ -174,7 +180,7 @@ describe("API Ordering Integration Tests", () => {
 
             // The created entry should use current time, ignoring both the explicit date and when modifier
             // Parse the returned date and compare timestamps to avoid timezone issues
-            const returnedDate = new Date(createRes.body.entry.date);
+            const returnedDate = capabilities.datetime.fromISOString(createRes.body.entry.date);
             expect(returnedDate.getTime()).toBe(fixedTime);
         });
     });

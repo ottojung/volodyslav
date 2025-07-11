@@ -32,8 +32,8 @@ describe("POST /api/entries", () => {
         //   -d '{"rawInput":"httptype [foo bar] HTTP description"}'
 
         const { app, capabilities } = await makeTestApp();
-        const fixedTime = new Date("2025-05-23T12:00:00.000Z").getTime();
-        capabilities.datetime.now.mockReturnValue(fixedTime);
+        const fixedTime = capabilities.datetime.fromISOString("2025-05-23T12:00:00.000Z").getTime();
+        capabilities.datetime.now.mockReturnValue(capabilities.datetime.fromEpochMs(fixedTime));
 
         const requestBody = {
             rawInput: "httptype [foo bar] HTTP description",

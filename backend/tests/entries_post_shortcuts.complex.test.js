@@ -5,8 +5,8 @@ describe("POST /api/entries - rawInput transformation and shortcuts", () => {
     it("demonstrates complex multi-step transformation workflow", async () => {
         // Test a real-world scenario with multiple recursive transformations
         const { app, capabilities } = await makeTestApp();
-        const fixedTime = new Date("2025-05-23T12:00:00.000Z").getTime();
-        capabilities.datetime.now.mockReturnValue(fixedTime);
+        const fixedTime = capabilities.datetime.fromISOString("2025-05-23T12:00:00.000Z").getTime();
+        capabilities.datetime.now.mockReturnValue(capabilities.datetime.fromEpochMs(fixedTime));
 
         // Create complex config with shorthand expansions using transaction system
         const { transaction } = require("../src/event_log_storage");
@@ -86,8 +86,8 @@ describe("POST /api/entries - rawInput transformation and shortcuts", () => {
     it("verifies end-to-end transformation with real application setup", async () => {
         // This test simulates the real application environment to check if transformations work
         const { app, capabilities } = await makeTestApp();
-        const fixedTime = new Date("2025-05-23T12:00:00.000Z").getTime();
-        capabilities.datetime.now.mockReturnValue(fixedTime);
+        const fixedTime = capabilities.datetime.fromISOString("2025-05-23T12:00:00.000Z").getTime();
+        capabilities.datetime.now.mockReturnValue(capabilities.datetime.fromEpochMs(fixedTime));
 
         // Create a config with a simple shortcut using transaction system
         const { transaction } = require("../src/event_log_storage");

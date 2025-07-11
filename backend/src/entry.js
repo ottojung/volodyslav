@@ -84,7 +84,7 @@ function isEntryValidationError(object) {
 async function createEntry(capabilities, entryData, files = []) {
     const creator = await creatorMake(capabilities);
     const id = eventId.make(capabilities);
-    const date = new Date(capabilities.datetime.now());
+    const date = capabilities.datetime.now();
 
     /** @type {import('./event/structure').Event} */
     const event = {
@@ -160,8 +160,8 @@ async function getEntries(capabilities, pagination) {
 
     // Sort entries by date
     const sortedEntries = [...entries].sort((a, b) => {
-        const dateA = new Date(a.date).getTime();
-        const dateB = new Date(b.date).getTime();
+        const dateA = capabilities.datetime.toEpochMs(a.date);
+        const dateB = capabilities.datetime.toEpochMs(b.date);
         return order === 'dateAscending' ? dateA - dateB : dateB - dateA;
     });
 

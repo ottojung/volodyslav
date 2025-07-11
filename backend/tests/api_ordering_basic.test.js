@@ -29,7 +29,7 @@ describe("API Ordering Integration Tests", () => {
             const { app, capabilities } = await makeTestApp();
 
             // Create entries with different dates by controlling datetime.now()
-            const baseTime = new Date("2023-01-01T10:00:00Z").getTime();
+            const baseTime = capabilities.datetime.fromISOString("2023-01-01T10:00:00Z").getTime();
             const entries = [
                 { rawInput: "test - Oldest entry" },
                 { rawInput: "test - Newest entry" },
@@ -37,19 +37,25 @@ describe("API Ordering Integration Tests", () => {
             ];
 
             // Mock datetime to return different times for each entry
-            capabilities.datetime.now.mockReturnValueOnce(baseTime); // Oldest
+            capabilities.datetime.now.mockReturnValueOnce(
+                capabilities.datetime.fromEpochMs(baseTime)
+            ); // Oldest
             await request(app)
                 .post("/api/entries")
                 .send(entries[0])
                 .set("Content-Type", "application/json");
 
-            capabilities.datetime.now.mockReturnValueOnce(baseTime + 2 * 24 * 60 * 60 * 1000); // Newest
+            capabilities.datetime.now.mockReturnValueOnce(
+                capabilities.datetime.fromEpochMs(baseTime + 2 * 24 * 60 * 60 * 1000)
+            ); // Newest
             await request(app)
                 .post("/api/entries")
                 .send(entries[1])
                 .set("Content-Type", "application/json");
 
-            capabilities.datetime.now.mockReturnValueOnce(baseTime + 24 * 60 * 60 * 1000); // Middle
+            capabilities.datetime.now.mockReturnValueOnce(
+                capabilities.datetime.fromEpochMs(baseTime + 24 * 60 * 60 * 1000)
+            ); // Middle
             await request(app)
                 .post("/api/entries")
                 .send(entries[2])
@@ -61,7 +67,7 @@ describe("API Ordering Integration Tests", () => {
             expect(res.body.results).toHaveLength(3);
 
             // Verify the order is descending (newest first)
-            const dates = res.body.results.map(entry => new Date(entry.date));
+            const dates = res.body.results.map(entry => capabilities.datetime.fromISOString(entry.date));
             for (let i = 1; i < dates.length; i++) {
                 expect(dates[i - 1].getTime()).toBeGreaterThanOrEqual(dates[i].getTime());
             }
@@ -73,19 +79,23 @@ describe("API Ordering Integration Tests", () => {
             const { app, capabilities } = await makeTestApp();
 
             // Create entries with different dates by controlling datetime.now()
-            const baseTime = new Date("2023-01-01T10:00:00Z").getTime();
+            const baseTime = capabilities.datetime.fromISOString("2023-01-01T10:00:00Z").getTime();
             const entries = [
                 { rawInput: "test - First" },
                 { rawInput: "test - Second" },
             ];
 
-            capabilities.datetime.now.mockReturnValueOnce(baseTime);
+            capabilities.datetime.now.mockReturnValueOnce(
+                capabilities.datetime.fromEpochMs(baseTime)
+            );
             await request(app)
                 .post("/api/entries")
                 .send(entries[0])
                 .set("Content-Type", "application/json");
 
-            capabilities.datetime.now.mockReturnValueOnce(baseTime + 24 * 60 * 60 * 1000);
+            capabilities.datetime.now.mockReturnValueOnce(
+                capabilities.datetime.fromEpochMs(baseTime + 24 * 60 * 60 * 1000)
+            );
             await request(app)
                 .post("/api/entries")
                 .send(entries[1])
@@ -97,8 +107,8 @@ describe("API Ordering Integration Tests", () => {
 
             // Verify entries are in descending order
             for (let i = 1; i < res.body.results.length; i++) {
-                const currentDate = new Date(res.body.results[i].date);
-                const previousDate = new Date(res.body.results[i - 1].date);
+                const currentDate = capabilities.datetime.fromISOString(res.body.results[i].date);
+                const previousDate = capabilities.datetime.fromISOString(res.body.results[i - 1].date);
                 expect(previousDate.getTime()).toBeGreaterThanOrEqual(currentDate.getTime());
             }
         });
@@ -107,19 +117,23 @@ describe("API Ordering Integration Tests", () => {
             const { app, capabilities } = await makeTestApp();
 
             // Create entries with different dates by controlling datetime.now()
-            const baseTime = new Date("2023-01-01T10:00:00Z").getTime();
+            const baseTime = capabilities.datetime.fromISOString("2023-01-01T10:00:00Z").getTime();
             const entries = [
                 { rawInput: "test - Second" },
                 { rawInput: "test - First" },
             ];
 
-            capabilities.datetime.now.mockReturnValueOnce(baseTime + 24 * 60 * 60 * 1000); // Second (newer)
+            capabilities.datetime.now.mockReturnValueOnce(
+                capabilities.datetime.fromEpochMs(baseTime + 24 * 60 * 60 * 1000)
+            ); // Second (newer)
             await request(app)
                 .post("/api/entries")
                 .send(entries[0])
                 .set("Content-Type", "application/json");
 
-            capabilities.datetime.now.mockReturnValueOnce(baseTime); // First (older)
+            capabilities.datetime.now.mockReturnValueOnce(
+                capabilities.datetime.fromEpochMs(baseTime)
+            ); // First (older)
             await request(app)
                 .post("/api/entries")
                 .send(entries[1])
@@ -131,14 +145,14 @@ describe("API Ordering Integration Tests", () => {
 
             // Verify entries are in ascending order
             for (let i = 1; i < res.body.results.length; i++) {
-                const currentDate = new Date(res.body.results[i].date);
-                const previousDate = new Date(res.body.results[i - 1].date);
+                const currentDate = capabilities.datetime.fromISOString(res.body.results[i].date);
+                const previousDate = capabilities.datetime.fromISOString(res.body.results[i - 1].date);
                 expect(currentDate.getTime()).toBeGreaterThanOrEqual(previousDate.getTime());
             }
         });
 
         it("defaults to dateDescending for invalid order parameter", async () => {
-            const { app } = await makeTestApp();
+            const { app, capabilities } = await makeTestApp();
 
             // Create a test entry
             const requestBody = {
@@ -158,7 +172,7 @@ describe("API Ordering Integration Tests", () => {
             expect(res.body.results.length).toBeGreaterThan(0);
 
             // Extract all dates and verify they are in descending order
-            const dates = res.body.results.map(entry => new Date(entry.date));
+            const dates = res.body.results.map(entry => capabilities.datetime.fromISOString(entry.date));
             for (let i = 1; i < dates.length; i++) {
                 expect(dates[i - 1].getTime()).toBeGreaterThanOrEqual(dates[i].getTime());
             }
