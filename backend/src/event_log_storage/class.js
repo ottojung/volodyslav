@@ -245,7 +245,10 @@ class EventLogStorageClass {
             const validEvents = [];
 
             for (const obj of objects) {
-                const result = event.tryDeserialize(obj);
+                const result = event.tryDeserialize(
+                    { datetime: this.capabilities.datetime },
+                    obj
+                );
                 if (event.isTryDeserializeError(result)) {
                     this.capabilities.logger.logWarning(
                         {

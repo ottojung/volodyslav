@@ -33,6 +33,7 @@ const creatorMake = require("./creator");
  * @property {Environment} environment - An environment instance.
  * @property {Logger} logger - A logger instance.
  * @property {import('./filesystem/reader').FileReader} reader - A file reader instance.
+ * @property {import('./datetime').Datetime} datetime - Datetime utilities.
  */
 
 /**
@@ -95,7 +96,10 @@ async function processDiaryAudios(capabilities) {
     function makeAsset(file) {
         const filepath = file.path;
         const filename = path.basename(filepath);
-        const date = formatFileTimestamp(filename);
+        const date = formatFileTimestamp(
+            { datetime: capabilities.datetime },
+            filename
+        );
         const id = eventId.make(capabilities);
 
         /** @type {import('./event/structure').Event} */

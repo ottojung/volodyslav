@@ -12,7 +12,7 @@ describe('event.tryDeserialize', () => {
       creator: { name: 'n', uuid: 'u', version: 'v' },
       modifiers: 0
     };
-    const result = event.tryDeserialize(obj);
+    const result = event.tryDeserialize({ datetime: require('../src/datetime').make() }, obj);
     expect(event.isInvalidTypeError(result)).toBe(true);
     expect(result.message).toContain("Invalid type for field 'modifiers'");
     expect(result.field).toBe('modifiers');

@@ -97,7 +97,11 @@ function stubScheduler(capabilities) {
 }
 
 function stubDatetime(capabilities) {
+    const real = require("../src/date_value");
     capabilities.datetime.now = jest.fn(() => Date.now());
+    capabilities.datetime.fromTimestamp = real.fromTimestamp;
+    capabilities.datetime.fromString = real.fromISOString;
+    capabilities.datetime.isDate = real.isDateValue;
 }
 
 module.exports = {

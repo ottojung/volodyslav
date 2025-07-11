@@ -24,10 +24,17 @@ function isFilenameDoesNotEncodeDate(object) {
 }
 
 /**
- * @param {string} filename
- * @returns {Date}
+/**
+ * @typedef {import('./date_value').DateValue} DateValue
+ * @typedef {import('./datetime').Datetime} Datetime
  */
-function formatFileTimestamp(filename) {
+
+/**
+ * @param {{ datetime: Datetime }} capabilities
+ * @param {string} filename
+ * @returns {DateValue}
+ */
+function formatFileTimestamp(capabilities, filename) {
     // 1) extract the basic‐ISO timestamp (YYYYMMDDThhmmssZ)
     const m = filename.match(/^(\d{8}T\d{6}Z)[.].*/);
     if (!m)
@@ -40,8 +47,8 @@ function formatFileTimestamp(filename) {
 
     const basic = m[1];
 
-    // 2) get Date object from basic timestamp
-    const dateObject = format_time_stamp(basic);
+    // 2) get DateValue from basic timestamp
+    const dateObject = format_time_stamp(capabilities, basic);
 
     if (dateObject === undefined) {
         // This should ideally not be hit if 'basic' is from the regex match above
@@ -55,10 +62,11 @@ function formatFileTimestamp(filename) {
 }
 
 /**
+ * @param {{ datetime: Datetime }} capabilities
  * @param {string | undefined} basic - String in YYYYMMDDThhmmssZ format
- * @returns {Date | undefined}
+ * @returns {DateValue | undefined}
  */
-function format_time_stamp(basic) {
+function format_time_stamp(capabilities, basic) {
     if (basic === undefined) {
         return undefined;
     }
@@ -75,7 +83,7 @@ function format_time_stamp(basic) {
     }
 
     const match = isoUTC.match(/(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})Z/);
-    const d = new Date(isoUTC);
+    const d = capabilities.datetime.fromString(isoUTC);
     if (
         !match ||
         isNaN(d.getTime()) ||

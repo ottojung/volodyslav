@@ -27,7 +27,7 @@ const {
  * @typedef Event
  * @type {Object}
  * @property {import('./id').EventId} id - Unique identifier for the event.
- * @property {Date} date - The date of the event.
+ * @property {import('../date_value').DateValue} date - The date of the event.
  * @property {string} original - The original input of the event.
  * @property {string} input - The processed input of the event.
  * @property {Modifiers} modifiers - Modifiers applied to the event.
@@ -60,14 +60,15 @@ function serialize(event) {
 }
 
 /**
+ * @param {{ datetime: import('../datetime').Datetime }} capabilities
  * @param {SerializedEvent} serializedEvent - The serialized event object from JSON.
  * @returns {Event} - The deserialized event object.
  */
-function deserialize(serializedEvent) {
+function deserialize(capabilities, serializedEvent) {
     return {
         ...serializedEvent,
         id: eventId.fromString(serializedEvent.id),
-        date: new Date(serializedEvent.date),
+        date: capabilities.datetime.fromString(serializedEvent.date),
         modifiers: serializedEvent.modifiers || {},
     };
 }
@@ -79,7 +80,12 @@ function deserialize(serializedEvent) {
  * @param {unknown} obj - The object to attempt to deserialize
  * @returns {Event | TryDeserializeError} - The deserialized Event or error object
  */
-function tryDeserialize(obj) {
+/**
+ * @param {{ datetime: import('../datetime').Datetime }} capabilities
+ * @param {unknown} obj - The object to attempt to deserialize
+ * @returns {Event | TryDeserializeError}
+ */
+function tryDeserialize(capabilities, obj) {
     try {
         if (!obj || typeof obj !== "object" || Array.isArray(obj)) {
             return makeInvalidStructureError(
@@ -145,7 +151,7 @@ function tryDeserialize(obj) {
             modifiers[key] = value;
         }
 
-        const dateObj = new Date(date);
+        const dateObj = capabilities.datetime.fromString(date);
         if (isNaN(dateObj.getTime())) {
             return makeInvalidValueError("date", date, "not a valid date string");
         }

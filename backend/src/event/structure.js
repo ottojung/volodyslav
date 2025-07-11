@@ -19,7 +19,7 @@ const {
  * @typedef Event
  * @type {Object}
  * @property {import('./id').EventId} id - Unique identifier for the event.
- * @property {Date} date - The date of the event.
+ * @property {import('../date_value').DateValue} date - The date of the event.
  * @property {string} original - The original input of the event.
  * @property {string} input - The processed input of the event.
  * @property {Modifiers} modifiers - Modifiers applied to the event.

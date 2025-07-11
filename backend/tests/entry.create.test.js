@@ -31,7 +31,7 @@ describe("createEntry (integration, with real capabilities)", () => {
         expect(event.type).toBe(entryData.type);
         expect(event.description).toBe(entryData.description);
         expect(event.modifiers).toEqual(entryData.modifiers);
-        expect(event.date).toEqual(new Date(fixedTime));
+        expect(event.date.getTime()).toBe(fixedTime);
         expect(event.id).toBeDefined();
         expect(event.creator).toBeDefined();
         expect(capabilities.logger.logInfo).toHaveBeenCalledWith(

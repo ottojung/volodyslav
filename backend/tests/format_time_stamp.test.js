@@ -1,28 +1,35 @@
 const { formatFileTimestamp } = require('../src/format_time_stamp');
+const datetime = require('../src/datetime');
 
 describe('formatFileTimestamp', () => {
   it('returns a Date object for valid filename', () => {
     const filename = '20250503T203813Z.txt';
-    const date = formatFileTimestamp(filename);
-    expect(date).toBeInstanceOf(Date);
+    const dt = datetime.make();
+    const date = formatFileTimestamp({ datetime: dt }, filename);
+    expect(dt.isDate(date)).toBe(true);
     expect(date.toISOString()).toBe('2025-05-03T20:38:13.000Z');
   });
 
   it('handles midnight UTC correctly', () => {
     const filename = '20200101T000000Z.txt';
-    const date = formatFileTimestamp(filename);
+    const date = formatFileTimestamp({ datetime: datetime.make() }, filename);
     expect(date.toISOString()).toBe('2020-01-01T00:00:00.000Z');
   });
 
   it('throws an error for filename without valid prefix', async () => {
-    await expect(async () => formatFileTimestamp('invalidfile.txt')).rejects.toThrow(
+    await expect(async () =>
+      formatFileTimestamp({ datetime: datetime.make() }, 'invalidfile.txt')
+    ).rejects.toThrow(
       'Filename "invalidfile.txt" does not start with YYYYMMDDThhmmssZ'
     );
   });
 
   it('throws an error for invalid calendar date', async () => {
     await expect(async () =>
-      formatFileTimestamp('20250230T000000Z.txt')
+      formatFileTimestamp(
+        { datetime: datetime.make() },
+        '20250230T000000Z.txt'
+      )
     ).rejects.toThrow('Failed to parse valid Date from timestamp string: 20250230T000000Z');
   });
 });

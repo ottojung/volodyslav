@@ -25,6 +25,7 @@
  * @property {Environment} environment - An environment instance.
  * @property {Logger} logger - A logger instance.
  * @property {import('../filesystem/reader').FileReader} reader - A file reader instance.
+ * @property {import('../datetime').Datetime} datetime - Datetime utilities.
  */
 
 /**
@@ -47,6 +48,7 @@
  * @property {FileDeleter} deleter - A file deleter instance
  * @property {Environment} environment - An environment instance (for targetPath)
  * @property {Logger} logger - A logger instance
+ * @property {import('../datetime').Datetime} datetime - Datetime utilities
  */
 
 /**
@@ -69,6 +71,7 @@
  * @property {Command} git - A Git command instance
  * @property {Environment} environment - An environment instance
  * @property {Logger} logger - A logger instance
+ * @property {import('../datetime').Datetime} datetime - Datetime utilities
  */
 
 module.exports = {};
