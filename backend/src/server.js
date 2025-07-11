@@ -10,6 +10,7 @@ const configRouter = require("./routes/config");
 const expressApp = require("./express_app");
 const { scheduleAll } = require("./schedule/tasks");
 const workingRepository = require("./gitstore/working_repository");
+const { Server } = require("http");
 
 /** @typedef {import('./filesystem/deleter').FileDeleter} FileDeleter */
 /** @typedef {import('./random/seed').NonDeterministicSeed} NonDeterministicSeed */
@@ -93,6 +94,21 @@ async function initialize(capabilities, app) {
 }
 
 /**
+ * Converts an address object to a string representation.
+ * @param {ReturnType<import("http").Server["address"]>} address - The address object.
+ * @returns {string} - The string representation of the address.
+ */
+function addressToString(address) {
+    if (typeof address === "string") {
+        return address;
+    }
+    if (address === null) {
+        return "unknown";
+    }
+    return `${address.address}:${address.port}`;
+}
+
+/**
  * @param {Capabilities} capabilities
  */
 async function startWithCapabilities(capabilities) {
@@ -101,14 +117,7 @@ async function startWithCapabilities(capabilities) {
     capabilities.logger.enableHttpCallsLogging(app);
     await expressApp.run(capabilities, app, async (app, server) => {
         const address = server.address();
-        const addressString = (
-            typeof address === "string"
-                ? address
-                : address === null
-                    ? "unknown"
-                    : `${address.address}:${address.port}`
-        );
-
+        const addressString = addressToString(address);
         capabilities.logger.logInfo(
             { address: address },
             `Server started on ${addressString}`
