@@ -114,7 +114,7 @@ async function withRetry(capabilities, callback) {
     if (globalProcessManager.isRunning(callback)) {
         capabilities.logger.logInfo(
             { callbackName: callback.name || 'anonymous', runningCount: globalProcessManager.getRunningCount() },
-            "Callback is already running, skipping execution"
+            "Retryer skipping execution - callback already running"
         );
         return;
     }
@@ -127,7 +127,7 @@ async function withRetry(capabilities, callback) {
 
         // eslint-disable-next-line no-constant-condition
         while (true) {
-            capabilities.logger.logInfo(
+            capabilities.logger.logDebug(
                 {
                     callbackName: callback.name || 'anonymous',
                     attempt,
@@ -142,7 +142,7 @@ async function withRetry(capabilities, callback) {
 
                 // Step 3: If returns null, we're done
                 if (result === null) {
-                    capabilities.logger.logInfo(
+                    capabilities.logger.logDebug(
                         {
                             callbackName: callback.name || 'anonymous',
                             attempt,
@@ -154,13 +154,13 @@ async function withRetry(capabilities, callback) {
                 }
 
                 // Step 4: If returns duration, sleep and retry
-                capabilities.logger.logInfo(
+                capabilities.logger.logDebug(
                     {
                         callbackName: callback.name || 'anonymous',
                         attempt,
                         retryDelay: result.toString()
                     },
-                    `Callback requested retry after ${result.toString()}`
+                    `Retryer scheduling retry after ${result.toString()}`
                 );
 
                 await sleep(result);
@@ -169,13 +169,13 @@ async function withRetry(capabilities, callback) {
             } catch (error) {
                 // If callback throws, we stop retrying and propagate the error
                 const errorMessage = error instanceof Error ? error.message : String(error);
-                capabilities.logger.logError(
+                capabilities.logger.logDebug(
                     {
                         callbackName: callback.name || 'anonymous',
                         attempt,
                         error: errorMessage
                     },
-                    "Callback threw an error, stopping retry loop"
+                    "Retryer stopping retry loop due to callback error"
                 );
                 throw new RetryerError(`Callback failed on attempt ${attempt}: ${errorMessage}`, error);
             }
@@ -184,12 +184,12 @@ async function withRetry(capabilities, callback) {
     } finally {
         // Always remove from running set, even if an error occurred
         globalProcessManager.markAsComplete(callback);
-        capabilities.logger.logInfo(
+        capabilities.logger.logDebug(
             {
                 callbackName: callback.name || 'anonymous',
                 runningCount: globalProcessManager.getRunningCount()
             },
-            "Callback removed from running set"
+            "Retryer removed callback from running set"
         );
     }
 }
