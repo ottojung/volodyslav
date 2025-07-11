@@ -104,9 +104,11 @@ describe('memconst', () => {
 
   test('should work with real async functions and delays', async () => {
     // Setup
-    const delayedFn = jest.fn(
-      () => new Promise(resolve => setTimeout(() => resolve('delayed-value'), 100))
-    );
+    const sleeper = require('../src/sleeper').make();
+    const delayedFn = jest.fn(async () => {
+      await sleeper.sleep(100);
+      return 'delayed-value';
+    });
     const memoized = memconst(delayedFn);
 
     // Execute

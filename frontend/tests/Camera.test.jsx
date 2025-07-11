@@ -1,6 +1,9 @@
 import React from 'react';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import '@testing-library/jest-dom';
+import { make as makeSleeper } from '../../backend/src/sleeper.js';
+
+const sleeper = makeSleeper();
 
 // Mock Chakra UI useToast
 const mockToast = jest.fn();
@@ -75,11 +78,11 @@ describe('Camera component', () => {
                     objectStore: jest.fn().mockImplementation(() => ({
                         put: jest.fn().mockImplementation((data, key) => {
                             mockStore.set(key, data);
-                            setTimeout(() => {
+                            sleeper.sleep(0).then(() => {
                                 if (typeof transaction.oncomplete === 'function') {
                                     transaction.oncomplete();
                                 }
-                            }, 0);
+                            });
                         }),
                         get: jest.fn().mockImplementation((key) => ({
                             result: mockStore.get(key)
@@ -100,7 +103,7 @@ describe('Camera component', () => {
         };
         const mockOpen = jest.fn().mockImplementation(() => {
             const req = {};
-            setTimeout(() => {
+            sleeper.sleep(0).then(() => {
                 if (typeof req.onupgradeneeded === 'function') {
                     req.result = mockDB;
                     req.onupgradeneeded({ target: req });
@@ -109,7 +112,7 @@ describe('Camera component', () => {
                     req.result = mockDB;
                     req.onsuccess({ target: req });
                 }
-            }, 0);
+            });
             return req;
         });
         Object.defineProperty(window, 'indexedDB', {
@@ -195,7 +198,7 @@ describe('Camera component', () => {
         await waitFor(() => screen.getByAltText('Preview'));
         
         // Wait a bit for the blob to be processed
-        await new Promise(resolve => setTimeout(resolve, 100));
+        await sleeper.sleep(100);
         
         fireEvent.click(screen.getByText('Done'));
 

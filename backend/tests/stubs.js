@@ -96,6 +96,12 @@ function stubScheduler(capabilities) {
         });
 }
 
+function stubSleeper(capabilities) {
+    capabilities.sleeper.sleep = jest.fn((ms) =>
+        new Promise((resolve) => setTimeout(resolve, ms))
+    );
+}
+
 function stubDatetime(capabilities) {
     capabilities.datetime.now = jest.fn(() =>
         capabilities.datetime.fromEpochMs(Date.now())
@@ -108,6 +114,7 @@ module.exports = {
     stubAiTranscriber,
     stubNotifier,
     stubScheduler,
+    stubSleeper,
     stubDatetime,
     stubEventLogRepository,
 };

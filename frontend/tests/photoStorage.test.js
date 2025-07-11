@@ -3,6 +3,9 @@
  */
 
 import { storePhotos, retrievePhotos, removePhotos, clearAllPhotos } from '../src/DescriptionEntry/photoStorage.js';
+import { make as makeSleeper } from '../../backend/src/sleeper.js';
+
+const sleeper = makeSleeper();
 
 // Mock IndexedDB
 const mockIndexedDB = (() => {
@@ -13,38 +16,38 @@ const mockIndexedDB = (() => {
                 objectStore: jest.fn().mockImplementation(() => ({
                     put: jest.fn().mockImplementation((data, key) => {
                         mockStore.set(key, data);
-                        setTimeout(() => {
+                        sleeper.sleep(0).then(() => {
                             if (typeof transaction.oncomplete === 'function') {
                                 transaction.oncomplete();
                             }
-                        }, 0);
+                        });
                     }),
                     get: jest.fn().mockImplementation((key) => {
                         const request = {
                             result: mockStore.get(key)
                         };
-                        setTimeout(() => {
+                        sleeper.sleep(0).then(() => {
                             if (typeof request.onsuccess === 'function') {
                                 request.onsuccess();
                             }
-                        }, 0);
+                        });
                         return request;
                     }),
                     delete: jest.fn().mockImplementation((key) => {
                         mockStore.delete(key);
-                        setTimeout(() => {
+                        sleeper.sleep(0).then(() => {
                             if (typeof transaction.oncomplete === 'function') {
                                 transaction.oncomplete();
                             }
-                        }, 0);
+                        });
                     }),
                     clear: jest.fn().mockImplementation(() => {
                         mockStore.clear();
-                        setTimeout(() => {
+                        sleeper.sleep(0).then(() => {
                             if (typeof transaction.oncomplete === 'function') {
                                 transaction.oncomplete();
                             }
-                        }, 0);
+                        });
                     })
                 })),
                 oncomplete: null,
@@ -61,7 +64,7 @@ const mockIndexedDB = (() => {
     return {
         open: jest.fn().mockImplementation(() => {
             const req = {};
-            setTimeout(() => {
+            sleeper.sleep(0).then(() => {
                 if (typeof req.onupgradeneeded === 'function') {
                     req.result = mockDB;
                     req.onupgradeneeded({ target: req });
@@ -70,7 +73,7 @@ const mockIndexedDB = (() => {
                     req.result = mockDB;
                     req.onsuccess({ target: req });
                 }
-            }, 0);
+            });
             return req;
         }),
         mockStore

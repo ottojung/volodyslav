@@ -24,6 +24,7 @@ const fs = require("fs").promises;
 
 /** @typedef {import('./file').ExistingFile} ExistingFile */
 /** @typedef {import('../datetime').Datetime} Datetime */
+/** @typedef {import('../sleeper').Sleeper} Sleeper */
 
 class FileCheckerError extends Error {
     /**
@@ -131,13 +132,14 @@ async function instantiate(path) {
  * 2. Its size hasn't changed between two checks separated by a delay
  *
  * @param {Datetime} datetime - Datetime capability.
+ * @param {Sleeper} sleeper - Sleeper capability for pausing.
  * @param {ExistingFile} file - The path to the file to check.
  * @param {object} options - Stability check options.
  * @param {number} [options.minAgeMs=300000] - Minimum age in milliseconds (default: 5 minutes).
  * @param {number} [options.sizeCheckDelayMs=30000] - Delay between size checks in milliseconds (default: 30 seconds).
  * @returns {Promise<boolean>} - A promise that resolves with true if the file is stable, false otherwise.
  */
-async function isFileStable(datetime, file, options = {}) {
+async function isFileStable(datetime, sleeper, file, options = {}) {
     const { minAgeMs = 300000, sizeCheckDelayMs = 30000 } = options; // 5 minutes, 30 seconds default
 
     try {
@@ -155,7 +157,7 @@ async function isFileStable(datetime, file, options = {}) {
         const initialSize = initialStats.size;
 
         // Wait a short time and check size again
-        await new Promise((resolve) => setTimeout(resolve, sizeCheckDelayMs));
+        await sleeper.sleep(sizeCheckDelayMs);
 
         const finalStats = await fs.stat(file.path);
         const finalSize = finalStats.size;
@@ -184,15 +186,15 @@ async function isFileStable(datetime, file, options = {}) {
  * @returns {FileChecker} - A FileChecker instance.
  */
 /**
- * @param {{ datetime: import('../datetime').Datetime }} deps
- */
+ * @param {{ datetime: import('../datetime').Datetime, sleeper: Sleeper }} deps
+*/
 function make(deps) {
     return {
         fileExists,
         instantiate,
         /** @type {(file: ExistingFile, options?: {minAgeMs?: number, sizeCheckDelayMs?: number}) => Promise<boolean>} */
         isFileStable: (file, options = {}) =>
-            isFileStable(deps.datetime, file, options),
+            isFileStable(deps.datetime, deps.sleeper, file, options),
     };
 }
 

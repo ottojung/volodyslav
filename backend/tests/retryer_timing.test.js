@@ -171,7 +171,7 @@ describe("Retryer - Timing and logging", () => {
             withRetry(capabilities, callback);
 
             // Give it a moment to process and log
-            await new Promise(resolve => setTimeout(resolve, 50));
+            await capabilities.sleeper.sleep(50);
 
             expect(callCount).toBe(1);
             expect(capabilities.logger.logDebug).toHaveBeenCalledWith(
