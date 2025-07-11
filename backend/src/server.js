@@ -55,7 +55,6 @@ const workingRepository = require("./gitstore/working_repository");
  * @description Adds routes to the Express application.
  */
 function addRoutes(capabilities, app) {
-    // Mount upload and API routers
     app.use("/api", uploadRouter.makeRouter(capabilities));
     app.use("/api", rootRouter.makeRouter(capabilities));
     app.use("/api", pingRouter.makeRouter(capabilities));
