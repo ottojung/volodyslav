@@ -119,7 +119,7 @@ async function startWithCapabilities(capabilities) {
         const address = server.address();
         const addressString = addressToString(address);
         capabilities.logger.logInfo(
-            { address: address },
+            { address },
             `Server started on ${addressString}`
         );
         await initialize(capabilities, app);
