@@ -1,4 +1,5 @@
 const memconst = require('../src/memconst');
+const { make: makeTimer } = require('../src/timer');
 
 describe('memconst', () => {
   test('should memoize a synchronous function call', () => {
@@ -104,8 +105,9 @@ describe('memconst', () => {
 
   test('should work with real async functions and delays', async () => {
     // Setup
+    const timer = makeTimer();
     const delayedFn = jest.fn(
-      () => new Promise(resolve => setTimeout(() => resolve('delayed-value'), 100))
+      () => new Promise(resolve => timer.setTimeout(() => resolve('delayed-value'), 100))
     );
     const memoized = memconst(delayedFn);
 

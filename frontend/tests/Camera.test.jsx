@@ -1,6 +1,7 @@
 import React from 'react';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import '@testing-library/jest-dom';
+import { make as makeTimer } from '../src/timer.js';
 
 // Mock Chakra UI useToast
 const mockToast = jest.fn();
@@ -17,6 +18,7 @@ import Camera from '../src/Camera/Camera.jsx';
 
 describe('Camera component', () => {
     let getUserMediaMock;
+    const timer = makeTimer();
 
     beforeAll(() => {
         // Mock navigator.mediaDevices.getUserMedia
@@ -75,7 +77,7 @@ describe('Camera component', () => {
                     objectStore: jest.fn().mockImplementation(() => ({
                         put: jest.fn().mockImplementation((data, key) => {
                             mockStore.set(key, data);
-                            setTimeout(() => {
+                            timer.setTimeout(() => {
                                 if (typeof transaction.oncomplete === 'function') {
                                     transaction.oncomplete();
                                 }
@@ -100,7 +102,7 @@ describe('Camera component', () => {
         };
         const mockOpen = jest.fn().mockImplementation(() => {
             const req = {};
-            setTimeout(() => {
+            timer.setTimeout(() => {
                 if (typeof req.onupgradeneeded === 'function') {
                     req.result = mockDB;
                     req.onupgradeneeded({ target: req });
@@ -195,7 +197,7 @@ describe('Camera component', () => {
         await waitFor(() => screen.getByAltText('Preview'));
         
         // Wait a bit for the blob to be processed
-        await new Promise(resolve => setTimeout(resolve, 100));
+        await timer.wait(100);
         
         fireEvent.click(screen.getByText('Done'));
 

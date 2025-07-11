@@ -3,6 +3,9 @@
  */
 
 import { storePhotos, retrievePhotos, removePhotos, clearAllPhotos } from '../src/DescriptionEntry/photoStorage.js';
+import { make as makeTimer } from '../src/timer.js';
+
+const timer = makeTimer();
 
 // Mock IndexedDB
 const mockIndexedDB = (() => {
@@ -13,7 +16,7 @@ const mockIndexedDB = (() => {
                 objectStore: jest.fn().mockImplementation(() => ({
                     put: jest.fn().mockImplementation((data, key) => {
                         mockStore.set(key, data);
-                        setTimeout(() => {
+                        timer.setTimeout(() => {
                             if (typeof transaction.oncomplete === 'function') {
                                 transaction.oncomplete();
                             }
@@ -23,7 +26,7 @@ const mockIndexedDB = (() => {
                         const request = {
                             result: mockStore.get(key)
                         };
-                        setTimeout(() => {
+                        timer.setTimeout(() => {
                             if (typeof request.onsuccess === 'function') {
                                 request.onsuccess();
                             }
@@ -32,7 +35,7 @@ const mockIndexedDB = (() => {
                     }),
                     delete: jest.fn().mockImplementation((key) => {
                         mockStore.delete(key);
-                        setTimeout(() => {
+                        timer.setTimeout(() => {
                             if (typeof transaction.oncomplete === 'function') {
                                 transaction.oncomplete();
                             }
@@ -40,7 +43,7 @@ const mockIndexedDB = (() => {
                     }),
                     clear: jest.fn().mockImplementation(() => {
                         mockStore.clear();
-                        setTimeout(() => {
+                        timer.setTimeout(() => {
                             if (typeof transaction.oncomplete === 'function') {
                                 transaction.oncomplete();
                             }
@@ -61,7 +64,7 @@ const mockIndexedDB = (() => {
     return {
         open: jest.fn().mockImplementation(() => {
             const req = {};
-            setTimeout(() => {
+            timer.setTimeout(() => {
                 if (typeof req.onupgradeneeded === 'function') {
                     req.result = mockDB;
                     req.onupgradeneeded({ target: req });

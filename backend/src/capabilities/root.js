@@ -20,6 +20,7 @@
 /** @typedef {import('../schedule').Scheduler} Scheduler */
 /** @typedef {import('../ai/transcription').AITranscription} AITranscription */
 /** @typedef {import('../datetime').Datetime} Datetime */
+/** @typedef {import('../timer').Timer} Timer */
 
 
 /**
@@ -41,6 +42,7 @@
  * @property {Scheduler} scheduler - A scheduler instance.
  * @property {AITranscription} aiTranscription - An AI transcription instance.
  * @property {Datetime} datetime - Datetime utilities.
+ * @property {Timer} timer - Timer utilities.
  */
 
 const memconst = require("../memconst");
@@ -62,6 +64,7 @@ const notifierCapability = require("../notifications");
 const schedulerCapability = require("../schedule");
 const aiTranscriptionCapability = require("../ai/transcription");
 const datetimeCapability = require("../datetime");
+const timerCapability = require("../timer");
 
 /**
  * This structure collects maximum capabilities that any part of Volodyslav can access.
@@ -72,10 +75,12 @@ const datetimeCapability = require("../datetime");
 const make = memconst(() => {
     const environment = environmentCapability.make();
     const datetime = datetimeCapability.make();
+    const timer = timerCapability.make();
     /** @type {Capabilities} */
     const ret = {
         seed: random.seed.make(),
         datetime,
+        timer,
         deleter: deleterCapability.make(),
         scanner: dirscanner.make(),
         copier: copierCapability.make(),
@@ -83,7 +88,7 @@ const make = memconst(() => {
         writer: writerCapability.make(),
         reader: readerCapability.make(),
         appender: appendCapability.make(),
-        checker: checkerCapability.make({ datetime }),
+        checker: checkerCapability.make({ datetime, timer }),
         git: gitCapability,
         environment,
         exiter: exiterCapability.make(),

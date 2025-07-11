@@ -4,24 +4,24 @@
 
 /**
  * Sleeps for the specified duration.
+ * @param {import('../timer').Timer} timer - Timer capability.
  * @param {import('./structure').TimeDuration} duration - How long to sleep
  * @returns {Promise<void>}
  */
-function sleep(duration) {
-    return new Promise(resolve => {
-        setTimeout(resolve, duration.toMilliseconds());
-    });
+function sleep(timer, duration) {
+    return timer.wait(duration.toMilliseconds());
 }
 
 /**
  * Creates a timeout promise that rejects after the specified duration.
+ * @param {import('../timer').Timer} timer - Timer capability.
  * @param {import('./structure').TimeDuration} duration - How long to wait before timeout
  * @param {string} [message] - Optional timeout message
  * @returns {Promise<never>}
  */
-function timeout(duration, message = "Operation timed out") {
+function timeout(timer, duration, message = "Operation timed out") {
     return new Promise((_, reject) => {
-        setTimeout(() => {
+        timer.setTimeout(() => {
             reject(new Error(message));
         }, duration.toMilliseconds());
     });
@@ -31,14 +31,15 @@ function timeout(duration, message = "Operation timed out") {
  * Races a promise against a timeout.
  * @template T
  * @param {Promise<T>} promise - The promise to race
+ * @param {import('../timer').Timer} timer - Timer capability.
  * @param {import('./structure').TimeDuration} duration - Timeout duration
  * @param {string} [message] - Optional timeout message
  * @returns {Promise<T>}
  */
-function withTimeout(promise, duration, message) {
+function withTimeout(promise, timer, duration, message) {
     return Promise.race([
         promise,
-        timeout(duration, message)
+        timeout(timer, duration, message)
     ]);
 }
 

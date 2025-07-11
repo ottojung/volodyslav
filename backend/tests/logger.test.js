@@ -3,6 +3,7 @@ const path = require("path");
 const { make } = require("../src/logger");
 const { getMockedRootCapabilities } = require("./spies");
 const { stubEnvironment, stubDatetime } = require("./stubs");
+const { make: makeTimer } = require("../src/timer");
 
 describe("logger capability", () => {
     it("writes info, warn, error, and debug to file", async () => {
@@ -19,7 +20,7 @@ describe("logger capability", () => {
         logger.logWarning({ bar: 2 }, "warn message");
         logger.logError({ baz: 3 }, "error message");
         logger.logDebug({ qux: 4 }, "debug message");
-        await new Promise((r) => setTimeout(r, 1000));
+        await capabilities.timer.wait(1000);
         const content = fs.readFileSync(logFilePath, "utf8");
         expect(content).toMatch(/info message/);
         expect(content).toMatch(/warn message/);
@@ -35,8 +36,9 @@ describe("logger capability", () => {
         };
         try {
             const logger = make();
+            const timer = makeTimer();
             logger.logError({}, "should fallback");
-            await new Promise((r) => setTimeout(r, 50));
+            await timer.wait(50);
             expect(called).toBe(true);
         } finally {
             console.error = origError;
@@ -54,7 +56,7 @@ describe("logger capability", () => {
         await logger.setup();
         logger.logInfo({}, "info should not appear");
         logger.logError({}, "error should appear");
-        await new Promise((r) => setTimeout(r, 1000));
+        await capabilities.timer.wait(1000);
         const content = fs.readFileSync(logFilePath, "utf8");
         expect(content).not.toMatch(/info should not appear/);
         expect(content).toMatch(/error should appear/);

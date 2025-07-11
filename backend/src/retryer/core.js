@@ -5,7 +5,6 @@
  * of the same callback while allowing for retry with configurable delays.
  */
 
-const { sleep } = require("../time_duration");
 
 /**
  * Error thrown when retryer operations fail.
@@ -37,6 +36,7 @@ function isRetryerError(object) {
 /**
  * @typedef {object} RetryerCapabilities
  * @property {import('../logger').Logger} logger - Logger for retry operations
+ * @property {import('../timer').Timer} timer - Timer utilities
  */
 
 /**
@@ -163,7 +163,7 @@ async function withRetry(capabilities, callback) {
                     `Callback requested retry after ${result.toString()}`
                 );
                 
-                await sleep(result);
+                await capabilities.timer.wait(result.toMilliseconds());
                 attempt++;
                 
             } catch (error) {
