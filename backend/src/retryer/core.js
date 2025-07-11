@@ -121,15 +121,15 @@ async function withRetry(capabilities, callback) {
 
     // Step 1: Mark callback as running
     globalProcessManager.markAsRunning(callback);
-    
+
     try {
         let attempt = 1;
-        
+
         // eslint-disable-next-line no-constant-condition
         while (true) {
             capabilities.logger.logInfo(
-                { 
-                    callbackName: callback.name || 'anonymous', 
+                {
+                    callbackName: callback.name || 'anonymous',
                     attempt,
                     runningCount: globalProcessManager.getRunningCount()
                 },
@@ -139,12 +139,12 @@ async function withRetry(capabilities, callback) {
             try {
                 // Step 2: Call callback
                 const result = await callback();
-                
+
                 // Step 3: If returns null, we're done
                 if (result === null) {
                     capabilities.logger.logInfo(
-                        { 
-                            callbackName: callback.name || 'anonymous', 
+                        {
+                            callbackName: callback.name || 'anonymous',
                             attempt,
                             totalAttempts: attempt
                         },
@@ -152,26 +152,26 @@ async function withRetry(capabilities, callback) {
                     );
                     break;
                 }
-                
+
                 // Step 4: If returns duration, sleep and retry
                 capabilities.logger.logInfo(
-                    { 
-                        callbackName: callback.name || 'anonymous', 
+                    {
+                        callbackName: callback.name || 'anonymous',
                         attempt,
                         retryDelay: result.toString()
                     },
                     `Callback requested retry after ${result.toString()}`
                 );
-                
+
                 await sleep(result);
                 attempt++;
-                
+
             } catch (error) {
                 // If callback throws, we stop retrying and propagate the error
                 const errorMessage = error instanceof Error ? error.message : String(error);
                 capabilities.logger.logError(
-                    { 
-                        callbackName: callback.name || 'anonymous', 
+                    {
+                        callbackName: callback.name || 'anonymous',
                         attempt,
                         error: errorMessage
                     },
@@ -180,12 +180,12 @@ async function withRetry(capabilities, callback) {
                 throw new RetryerError(`Callback failed on attempt ${attempt}: ${errorMessage}`, error);
             }
         }
-        
+
     } finally {
         // Always remove from running set, even if an error occurred
         globalProcessManager.markAsComplete(callback);
         capabilities.logger.logInfo(
-            { 
+            {
                 callbackName: callback.name || 'anonymous',
                 runningCount: globalProcessManager.getRunningCount()
             },

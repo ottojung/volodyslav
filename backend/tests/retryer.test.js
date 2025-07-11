@@ -33,7 +33,7 @@ describe("Retryer", () => {
 
         test("rejects non-RetryerError objects", () => {
             const regularError = new Error("Test");
-            
+
             expect(isRetryerError(regularError)).toBe(false);
             expect(isRetryerError(null)).toBe(false);
             expect(isRetryerError(undefined)).toBe(false);
@@ -116,7 +116,7 @@ describe("Retryer", () => {
 
             // Callback should only be called twice (once + one retry), not four times
             expect(callCount).toBe(2);
-            
+
             expect(capabilities.logger.logInfo).toHaveBeenCalledWith(
                 expect.objectContaining({
                     callbackName: "callback"
@@ -314,18 +314,18 @@ describe("Retryer", () => {
 
         test("logs anonymous for unnamed callbacks", async () => {
             // Create truly anonymous callback
-            const callback = async function() { return null; };
+            const callback = async function () { return null; };
 
             await withRetry(capabilities, callback);
 
             // Check if any call used "anonymous" or the actual function name
             const logCalls = capabilities.logger.logInfo.mock.calls;
-            const hasAnonymousOrFunctionName = logCalls.some(call => 
-                call[0].callbackName === "anonymous" || 
+            const hasAnonymousOrFunctionName = logCalls.some(call =>
+                call[0].callbackName === "anonymous" ||
                 call[0].callbackName === "callback" ||
                 call[0].callbackName === ""
             );
-            
+
             expect(hasAnonymousOrFunctionName).toBe(true);
         });
 
@@ -383,11 +383,11 @@ describe("Retryer", () => {
             };
 
             // Start the retry but don't wait for completion
-            const retryPromise = withRetry(capabilities, callback);
-            
+            withRetry(capabilities, callback);
+
             // Give it a moment to process and log
             await new Promise(resolve => setTimeout(resolve, 50));
-            
+
             expect(callCount).toBe(1);
             expect(capabilities.logger.logInfo).toHaveBeenCalledWith(
                 expect.objectContaining({
@@ -395,7 +395,7 @@ describe("Retryer", () => {
                 }),
                 "Callback requested retry after 1s"
             );
-            
+
             // Don't wait for the actual retry to complete
         });
     });
