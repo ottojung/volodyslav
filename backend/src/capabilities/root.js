@@ -20,6 +20,7 @@
 /** @typedef {import('../schedule').Scheduler} Scheduler */
 /** @typedef {import('../ai/transcription').AITranscription} AITranscription */
 /** @typedef {import('../datetime').Datetime} Datetime */
+/** @typedef {import('../sleeper').Sleeper} Sleeper */
 
 
 /**
@@ -41,6 +42,7 @@
  * @property {Scheduler} scheduler - A scheduler instance.
  * @property {AITranscription} aiTranscription - An AI transcription instance.
  * @property {Datetime} datetime - Datetime utilities.
+ * @property {Sleeper} sleeper - A sleeper instance.
  */
 
 const memconst = require("../memconst");
@@ -62,6 +64,7 @@ const notifierCapability = require("../notifications");
 const schedulerCapability = require("../schedule");
 const aiTranscriptionCapability = require("../ai/transcription");
 const datetimeCapability = require("../datetime");
+const sleeperCapability = require("../sleeper");
 
 /**
  * This structure collects maximum capabilities that any part of Volodyslav can access.
@@ -72,6 +75,7 @@ const datetimeCapability = require("../datetime");
 const make = memconst(() => {
     const environment = environmentCapability.make();
     const datetime = datetimeCapability.make();
+    const sleeper = sleeperCapability.make();
     /** @type {Capabilities} */
     const ret = {
         seed: random.seed.make(),
@@ -83,7 +87,7 @@ const make = memconst(() => {
         writer: writerCapability.make(),
         reader: readerCapability.make(),
         appender: appendCapability.make(),
-        checker: checkerCapability.make({ datetime }),
+        checker: checkerCapability.make({ datetime, sleeper }),
         git: gitCapability,
         environment,
         exiter: exiterCapability.make(),
@@ -91,6 +95,7 @@ const make = memconst(() => {
         notifier: notifierCapability.make(),
         scheduler: schedulerCapability.make(),
         aiTranscription: aiTranscriptionCapability.make({ environment }),
+        sleeper,
     };
 
     return ret;
