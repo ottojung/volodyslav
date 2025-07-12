@@ -105,15 +105,16 @@ function parseWifiConnectionInfo(jsonOutput) {
     try {
         const data = JSON.parse(jsonOutput);
 
-        // Check if we have the expected structure
-        if (data && typeof data === 'object' && 'ssid' in data) {
+        // Check if we have the expected structure and bssid is not null
+        if (data && typeof data === 'object' && 'bssid' in data && data.bssid !== null) {
             const ssid = data.ssid || null;
-            const bssid = data.bssid || null;
+            const bssid = data.bssid;
             const rssi = typeof data.rssi === 'number' ? data.rssi : null;
 
             return makeConnectedStatus(ssid, bssid, rssi);
         }
 
+        // If bssid is null or missing, we're not connected
         return makeDisconnectedStatus();
     } catch (error) {
         // If JSON parsing fails, assume disconnected
@@ -150,16 +151,10 @@ class WifiConnectionCheckerClass {
     async checkConnection() {
         try {
             const result = await this.termuxWifiCommand.call();
-            // If the command succeeds, we're connected
+            // Parse the JSON output to determine connection status
             return parseWifiConnectionInfo(result.stdout);
         } catch (error) {
-            // Check if this is a "no connection" error (exit code 1)
-            if (error && typeof error === 'object' && 'code' in error && error.code === 1) {
-                // Exit code 1 means no WiFi connection, which is expected
-                return makeDisconnectedStatus();
-            }
-
-            // Any other error is a system issue
+            // Any error is a system issue
             const stderr = error && typeof error === 'object' && 'stderr' in error ? String(error.stderr) : '';
             const message = error && typeof error === 'object' && 'message' in error ? String(error.message) : String(error);
             throw new WifiCheckError(

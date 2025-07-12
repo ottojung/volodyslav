@@ -17,18 +17,17 @@ jest.mock("../src/subprocess", () => {
         ...originalModule,
         registerCommand: jest.fn(() => mockCommand),
         __setMockBehavior: (behavior) => {
-            if (behavior === 'success') {
+            if (behavior === 'connected') {
                 mockCommand.call.mockResolvedValue({
                     stdout: '{"ssid":"TestWiFi","bssid":"aa:bb:cc:dd:ee:ff","rssi":-45}',
                     stderr: ''
                 });
-            } else if (behavior === 'exit1') {
-                const error = new Error('Command failed: termux-wifi-connectioninfo');
-                error.code = 1;
-                error.stderr = '';
-                error.stdout = '';
-                mockCommand.call.mockRejectedValue(error);
-            } else if (behavior === 'exit2') {
+            } else if (behavior === 'disconnected') {
+                mockCommand.call.mockResolvedValue({
+                    stdout: '{"ssid":null,"bssid":null,"rssi":null}',
+                    stderr: ''
+                });
+            } else if (behavior === 'error') {
                 const error = new Error('Command failed: termux-wifi-connectioninfo');
                 error.code = 2;
                 error.stderr = 'Permission denied';
@@ -44,9 +43,9 @@ describe("WiFi Connection Checker Integration", () => {
         jest.clearAllMocks();
     });
 
-    test("returns connected status when command succeeds", async () => {
+    test("returns connected status when bssid is not null", async () => {
         const subprocess = require("../src/subprocess");
-        subprocess.__setMockBehavior('success');
+        subprocess.__setMockBehavior('connected');
 
         const checker = makeWifiConnectionChecker();
         const status = await checker.checkConnection();
@@ -57,9 +56,9 @@ describe("WiFi Connection Checker Integration", () => {
         expect(status.rssi).toBe(-45);
     });
 
-    test("returns disconnected status when command exits with code 1", async () => {
+    test("returns disconnected status when bssid is null", async () => {
         const subprocess = require("../src/subprocess");
-        subprocess.__setMockBehavior('exit1');
+        subprocess.__setMockBehavior('disconnected');
 
         const checker = makeWifiConnectionChecker();
         const status = await checker.checkConnection();
@@ -70,9 +69,32 @@ describe("WiFi Connection Checker Integration", () => {
         expect(status.rssi).toBeNull();
     });
 
-    test("throws WifiCheckError when command fails with other exit codes", async () => {
+    test("returns disconnected status when JSON is malformed", async () => {
         const subprocess = require("../src/subprocess");
-        subprocess.__setMockBehavior('exit2');
+
+        // Directly mock the command call for this test
+        const mockCommand = {
+            call: jest.fn().mockResolvedValue({
+                stdout: 'invalid json',
+                stderr: ''
+            }),
+            ensureAvailable: jest.fn().mockResolvedValue(undefined),
+        };
+
+        subprocess.registerCommand.mockReturnValueOnce(mockCommand);
+
+        const checker = makeWifiConnectionChecker();
+        const status = await checker.checkConnection();
+
+        expect(status.connected).toBe(false);
+        expect(status.ssid).toBeNull();
+        expect(status.bssid).toBeNull();
+        expect(status.rssi).toBeNull();
+    });
+
+    test("throws WifiCheckError when command fails", async () => {
+        const subprocess = require("../src/subprocess");
+        subprocess.__setMockBehavior('error');
 
         const checker = makeWifiConnectionChecker();
 

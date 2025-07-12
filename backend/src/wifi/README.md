@@ -100,8 +100,8 @@ Represents the current WiFi connection status.
 The module handles several error conditions:
 
 1. **Command Not Available**: If `termux-wifi-connectioninfo` is not installed
-2. **No WiFi Connection**: Exit code 1 from the command (handled gracefully)
-3. **System Errors**: Other exit codes indicate system issues
+2. **No WiFi Connection**: When `bssid` is `null` in the JSON response (handled gracefully)
+3. **System Errors**: Command execution failures indicate system issues
 
 ```javascript
 try {
@@ -141,20 +141,19 @@ npm test -- --testPathPattern="wifi.capabilities.test.js"
 
 ## Implementation Details
 
-### Exit Code Handling
+### Connection Status Detection
 
-The `termux-wifi-connectioninfo` command returns exit code 1 when there's no WiFi connection. This is handled specially in the `checkConnection()` method:
+The `termux-wifi-connectioninfo` command returns a JSON object with WiFi information. The connection status is determined by checking the `bssid` field:
+
+- **Connected**: `bssid` is not `null`
+- **Disconnected**: `bssid` is `null`
 
 ```javascript
 try {
     const result = await this.termuxWifiCommand.call();
     return parseWifiConnectionInfo(result.stdout);
 } catch (error) {
-    if (error.code === 1) {
-        // Exit code 1 means no WiFi connection
-        return makeDisconnectedStatus();
-    }
-    // Other errors are system issues
+    // Command execution failures are system issues
     throw new WifiCheckError(error.message, error.stderr);
 }
 ```
@@ -164,10 +163,18 @@ try {
 The module parses the JSON output from `termux-wifi-connectioninfo` and extracts relevant information:
 
 ```javascript
+// Connected example:
 {
     "ssid": "MyWiFi",
     "bssid": "aa:bb:cc:dd:ee:ff",
     "rssi": -45
+}
+
+// Disconnected example:
+{
+    "ssid": null,
+    "bssid": null,
+    "rssi": null
 }
 ```
 
