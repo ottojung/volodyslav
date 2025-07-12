@@ -46,6 +46,7 @@ const workingRepository = require("./gitstore/working_repository");
  * @property {import('./filesystem/reader').FileReader} reader - A file reader instance.
  * @property {AITranscription} aiTranscription - An AI transcription instance.
  * @property {import('./datetime').Datetime} datetime - Datetime utilities.
+ * @property {import('./wifi/connection_checker').WifiConnectionChecker} wifiChecker - A WiFi connection checker instance.
  */
 
 /**
@@ -79,6 +80,7 @@ async function ensureStartupDependencies(capabilities, app) {
     );
     await capabilities.notifier.ensureNotificationsAvailable();
     await capabilities.git.ensureAvailable();
+    await capabilities.wifiChecker.ensureAvailable();
     await workingRepository.ensureAccessible(capabilities);
 }
 
