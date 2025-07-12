@@ -1,9 +1,10 @@
 /**
+ * @module
  * WiFi connection checking module for Termux environment.
  * Uses termux-wifi-connectioninfo to check WiFi connection status.
  */
 
-const { registerCommand } = require("../subprocess");
+const { termuxWifiCommand } = require("../executables");
 
 /**
  * Error thrown when WiFi connection check fails due to system issues.
@@ -191,7 +192,6 @@ function isWifiConnectionChecker(object) {
  * @returns {WifiConnectionChecker}
  */
 function makeWifiConnectionChecker() {
-    const termuxWifiCommand = registerCommand("termux-wifi-connectioninfo");
     return new WifiConnectionCheckerClass(termuxWifiCommand);
 }
 
