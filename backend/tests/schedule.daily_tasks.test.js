@@ -71,10 +71,16 @@ describe("Daily Tasks", () => {
             expect(typeof ensureDailyTasksAvailable).toBe("function");
         });
 
-        test("returns a promise", () => {
+        test("returns a promise", async () => {
             const result = ensureDailyTasksAvailable();
             expect(result).toBeInstanceOf(Promise);
-            result.catch(() => { }); // Prevent unhandled rejection
+
+            // Properly handle the promise to prevent unhandled rejection warnings
+            try {
+                await result;
+            } catch (error) {
+                // Expected to possibly throw, just catching to prevent unhandled rejection
+            }
         });
     });
 
@@ -83,11 +89,17 @@ describe("Daily Tasks", () => {
             expect(typeof executeDailyTasks).toBe("function");
         });
 
-        test("returns a promise when called with capabilities", () => {
+        test("returns a promise when called with capabilities", async () => {
             const capabilities = getTestCapabilities();
             const result = executeDailyTasks(capabilities);
             expect(result).toBeInstanceOf(Promise);
-            result.catch(() => { }); // Prevent unhandled rejection
+
+            // Properly handle the promise to prevent unhandled rejection warnings
+            try {
+                await result;
+            } catch (error) {
+                // Expected to possibly throw, just catching to prevent unhandled rejection
+            }
         });
 
         test("calls logger functions during execution", async () => {
