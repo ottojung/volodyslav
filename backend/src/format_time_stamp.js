@@ -44,7 +44,7 @@ function formatFileTimestamp(filename, dt = datetime.make()) {
     const basic = m[1];
 
     // 2) get Date object from basic timestamp
-    const dateObject = format_time_stamp(basic, dt);
+    const dateObject = formatTimeStamp(basic, dt);
 
     if (dateObject === undefined) {
         // This should ideally not be hit if 'basic' is from the regex match above
@@ -62,7 +62,7 @@ function formatFileTimestamp(filename, dt = datetime.make()) {
  * @param {import('./datetime').Datetime} dt
  * @returns {import('./datetime').DateTime | undefined}
 */
-function format_time_stamp(basic, dt) {
+function formatTimeStamp(basic, dt) {
     if (basic === undefined) {
         return undefined;
     }
