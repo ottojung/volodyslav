@@ -120,20 +120,8 @@ async function getRepository(capabilities, workingPath, remotePath) {
     return gitDir;
 }
 
-/**
- * Ensure the repository is present locally.
- * @param {Capabilities} capabilities
- * @returns {Promise<void>}
- */
-async function ensureAccessible(capabilities) {
-    const workingPath = "working-git-repository";
-    const remotePath = capabilities.environment.eventLogRepository();
-    await getRepository(capabilities, workingPath, remotePath);
-}
-
 module.exports = {
     synchronize,
     getRepository,
-    ensureAccessible,
     isWorkingRepositoryError,
 };

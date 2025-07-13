@@ -1,4 +1,4 @@
 const { transaction } = require("./transaction");
-const { synchronize } = require("./synchronize");
+const { synchronize, ensureAccessible } = require("./synchronize");
 
-module.exports = { transaction, synchronize };
+module.exports = { transaction, synchronize, ensureAccessible };

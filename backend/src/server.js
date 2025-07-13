@@ -9,7 +9,7 @@ const entriesRouter = require("./routes/entries");
 const configRouter = require("./routes/config");
 const expressApp = require("./express_app");
 const { scheduleAll } = require("./schedule/tasks");
-const workingRepository = require("./gitstore/working_repository");
+const eventLogStorage = require("./event_log_storage");
 
 /** @typedef {import('./filesystem/deleter').FileDeleter} FileDeleter */
 /** @typedef {import('./random/seed').NonDeterministicSeed} NonDeterministicSeed */
@@ -62,7 +62,7 @@ async function ensureStartupDependencies(capabilities, app) {
     );
     await capabilities.notifier.ensureNotificationsAvailable();
     await capabilities.git.ensureAvailable();
-    await workingRepository.ensureAccessible(capabilities);
+    await eventLogStorage.ensureAccessible(capabilities);
 }
 
 /**

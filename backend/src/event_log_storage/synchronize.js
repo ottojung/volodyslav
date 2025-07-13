@@ -1,4 +1,3 @@
-
 const workingRepository = require("../gitstore/working_repository");
 
 /** @typedef {import('../gitstore/working_repository').Capabilities} Capabilities */
@@ -16,4 +15,17 @@ async function synchronize(capabilities) {
     return await workingRepository.synchronize(capabilities, workingPath, remotePath);
 }
 
-module.exports = { synchronize };
+/**
+ * Ensures the event log repository is accessible locally.
+ * This is a specialized wrapper around workingRepository.getRepository
+ * with the standard event log repository parameters.
+ * @param {Capabilities} capabilities
+ * @returns {Promise<string>} The path to the .git directory
+ */
+async function ensureAccessible(capabilities) {
+    const workingPath = "working-git-repository";
+    const remotePath = capabilities.environment.eventLogRepository();
+    return await workingRepository.getRepository(capabilities, workingPath, remotePath);
+}
+
+module.exports = { synchronize, ensureAccessible };
