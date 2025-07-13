@@ -1,4 +1,4 @@
-const { withRetry } = require("../src/retryer");
+const { withRetry, makeRetryableCallback } = require("../src/retryer");
 const { fromMilliseconds } = require("../src/time_duration");
 const { getMockedRootCapabilities } = require("./spies");
 const { stubLogger } = require("./stubs");
@@ -26,8 +26,10 @@ describe("Retryer - Process deduplication", () => {
             return null;
         };
 
-        const promise1 = withRetry(capabilities, callback);
-        const promise2 = withRetry(capabilities, callback);
+        const retryableCallback = makeRetryableCallback("duplicate-test-callback", callback);
+
+        const promise1 = withRetry(capabilities, retryableCallback);
+        const promise2 = withRetry(capabilities, retryableCallback);
 
         await Promise.all([promise1, promise2]);
 
@@ -36,7 +38,7 @@ describe("Retryer - Process deduplication", () => {
 
         expect(capabilities.logger.logInfo).toHaveBeenCalledWith(
             expect.objectContaining({
-                callbackName: "callback"
+                callbackName: "duplicate-test-callback"
             }),
             "Retryer skipping execution - callback already running"
         );
@@ -56,8 +58,11 @@ describe("Retryer - Process deduplication", () => {
             return null;
         };
 
-        const promise1 = withRetry(capabilities, callback1);
-        const promise2 = withRetry(capabilities, callback2);
+        const retryableCallback1 = makeRetryableCallback("callback1", callback1);
+        const retryableCallback2 = makeRetryableCallback("callback2", callback2);
+
+        const promise1 = withRetry(capabilities, retryableCallback1);
+        const promise2 = withRetry(capabilities, retryableCallback2);
 
         await Promise.all([promise1, promise2]);
 
@@ -72,8 +77,10 @@ describe("Retryer - Process deduplication", () => {
             return null;
         };
 
-        await withRetry(capabilities, callback);
-        await withRetry(capabilities, callback);
+        const retryableCallback = makeRetryableCallback("re-execution-test-callback", callback);
+
+        await withRetry(capabilities, retryableCallback);
+        await withRetry(capabilities, retryableCallback);
 
         expect(callCount).toBe(2);
     });

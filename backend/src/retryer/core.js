@@ -40,14 +40,14 @@ function isRetryerError(object) {
  */
 
 /**
- * @typedef {() => Promise<import('../time_duration/structure').TimeDuration | null>} RetryableCallback
+ * @typedef {RetryableCallbackClass} RetryableCallback
  */
 
 /**
  * Manages running processes to prevent duplicate executions.
  */
 class ProcessManager {
-    /** @type {Set<RetryableCallback>} */
+    /** @type {Set<string>} */
     #runningProcesses;
 
     constructor() {
@@ -56,27 +56,27 @@ class ProcessManager {
 
     /**
      * Checks if a callback is currently running.
-     * @param {RetryableCallback} callback
+     * @param {RetryableCallback} retryableCallback
      * @returns {boolean}
      */
-    isRunning(callback) {
-        return this.#runningProcesses.has(callback);
+    isRunning(retryableCallback) {
+        return this.#runningProcesses.has(retryableCallback.name);
     }
 
     /**
      * Adds a callback to the running set.
-     * @param {RetryableCallback} callback
+     * @param {RetryableCallback} retryableCallback
      */
-    markAsRunning(callback) {
-        this.#runningProcesses.add(callback);
+    markAsRunning(retryableCallback) {
+        this.#runningProcesses.add(retryableCallback.name);
     }
 
     /**
      * Removes a callback from the running set.
-     * @param {RetryableCallback} callback
+     * @param {RetryableCallback} retryableCallback
      */
-    markAsComplete(callback) {
-        this.#runningProcesses.delete(callback);
+    markAsComplete(retryableCallback) {
+        this.#runningProcesses.delete(retryableCallback.name);
     }
 
     /**
@@ -98,7 +98,7 @@ const globalProcessManager = new ProcessManager();
  * Executes a callback with retry logic based on its return value.
  * 
  * @param {RetryerCapabilities} capabilities - Required capabilities
- * @param {RetryableCallback} callback - The callback to execute
+ * @param {RetryableCallback} retryableCallback - The retryable callback structure to execute
  * @returns {Promise<void>}
  * 
  * @description
@@ -109,18 +109,18 @@ const globalProcessManager = new ProcessManager();
  * 3. If returns null -> remove callback from set -> full stop (done)
  * 4. If it returns a duration, sleep for that much, then try again
  */
-async function withRetry(capabilities, callback) {
+async function withRetry(capabilities, retryableCallback) {
     // Step 0: Check if callback is already running
-    if (globalProcessManager.isRunning(callback)) {
+    if (globalProcessManager.isRunning(retryableCallback)) {
         capabilities.logger.logInfo(
-            { callbackName: callback.name || 'anonymous', runningCount: globalProcessManager.getRunningCount() },
+            { callbackName: retryableCallback.name, runningCount: globalProcessManager.getRunningCount() },
             "Retryer skipping execution - callback already running"
         );
         return;
     }
 
     // Step 1: Mark callback as running
-    globalProcessManager.markAsRunning(callback);
+    globalProcessManager.markAsRunning(retryableCallback);
 
     try {
         let attempt = 1;
@@ -129,7 +129,7 @@ async function withRetry(capabilities, callback) {
         while (true) {
             capabilities.logger.logDebug(
                 {
-                    callbackName: callback.name || 'anonymous',
+                    callbackName: retryableCallback.name,
                     attempt,
                     runningCount: globalProcessManager.getRunningCount()
                 },
@@ -138,13 +138,13 @@ async function withRetry(capabilities, callback) {
 
             try {
                 // Step 2: Call callback
-                const result = await callback();
+                const result = await retryableCallback.callback();
 
                 // Step 3: If returns null, we're done
                 if (result === null) {
                     capabilities.logger.logDebug(
                         {
-                            callbackName: callback.name || 'anonymous',
+                            callbackName: retryableCallback.name,
                             attempt,
                             totalAttempts: attempt
                         },
@@ -156,7 +156,7 @@ async function withRetry(capabilities, callback) {
                 // Step 4: If returns duration, sleep and retry
                 capabilities.logger.logDebug(
                     {
-                        callbackName: callback.name || 'anonymous',
+                        callbackName: retryableCallback.name,
                         attempt,
                         retryDelay: result.toString()
                     },
@@ -171,7 +171,7 @@ async function withRetry(capabilities, callback) {
                 const errorMessage = error instanceof Error ? error.message : String(error);
                 capabilities.logger.logDebug(
                     {
-                        callbackName: callback.name || 'anonymous',
+                        callbackName: retryableCallback.name,
                         attempt,
                         error: errorMessage
                     },
@@ -183,10 +183,10 @@ async function withRetry(capabilities, callback) {
 
     } finally {
         // Always remove from running set, even if an error occurred
-        globalProcessManager.markAsComplete(callback);
+        globalProcessManager.markAsComplete(retryableCallback);
         capabilities.logger.logDebug(
             {
-                callbackName: callback.name || 'anonymous',
+                callbackName: retryableCallback.name,
                 runningCount: globalProcessManager.getRunningCount()
             },
             "Retryer removed callback from running set"
@@ -194,7 +194,55 @@ async function withRetry(capabilities, callback) {
     }
 }
 
+/**
+ * Creates a RetryableCallback structure.
+ * 
+ * @param {string} name - A unique name identifier for the callback
+ * @param {() => Promise<import('../time_duration/structure').TimeDuration | null>} callback - The callback function to execute
+ * @returns {RetryableCallback}
+ */
+function makeRetryableCallback(name, callback) {
+    return new RetryableCallbackClass(name, callback);
+}
+
+/**
+ * RetryableCallback class for nominal typing.
+ */
+class RetryableCallbackClass {
+    /** @type {undefined} */
+    __brand = undefined; // nominal typing brand
+    
+    /** @type {string} */
+    name;
+    
+    /** @type {() => Promise<import('../time_duration/structure').TimeDuration | null>} */
+    callback;
+
+    /**
+     * @param {string} name
+     * @param {() => Promise<import('../time_duration/structure').TimeDuration | null>} callback
+     */
+    constructor(name, callback) {
+        if (this.__brand !== undefined) {
+            throw new Error("RetryableCallback is a nominal type");
+        }
+        this.name = name;
+        this.callback = callback;
+    }
+}
+
+/**
+ * Type guard for RetryableCallback.
+ * @param {unknown} object
+ * @returns {object is RetryableCallbackClass}
+ */
+function isRetryableCallback(object) {
+    return object instanceof RetryableCallbackClass;
+}
+
 module.exports = {
     withRetry,
     isRetryerError,
+    makeRetryableCallback,
+    isRetryableCallback,
 };

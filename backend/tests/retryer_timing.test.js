@@ -1,5 +1,5 @@
-const { withRetry } = require("../src/retryer");
-const { fromSeconds, fromMilliseconds } = require("../src/time_duration");
+const { withRetry, makeRetryableCallback } = require("../src/retryer");
+const { fromMilliseconds } = require("../src/time_duration");
 const { getMockedRootCapabilities } = require("./spies");
 const { stubLogger } = require("./stubs");
 
@@ -27,8 +27,10 @@ describe("Retryer - Timing and logging", () => {
                 return null;
             };
 
+            const retryableCallback = makeRetryableCallback("test-delay-callback", callback);
+
             const startTime = Date.now();
-            await withRetry(capabilities, callback);
+            await withRetry(capabilities, retryableCallback);
             const endTime = Date.now();
 
             expect(callCount).toBe(2);
@@ -46,8 +48,10 @@ describe("Retryer - Timing and logging", () => {
                 return null;
             };
 
+            const retryableCallback = makeRetryableCallback("test-zero-delay-callback", callback);
+
             const startTime = Date.now();
-            await withRetry(capabilities, callback);
+            await withRetry(capabilities, retryableCallback);
             const endTime = Date.now();
 
             expect(callCount).toBe(2);
@@ -66,7 +70,9 @@ describe("Retryer - Timing and logging", () => {
                 return null;
             };
 
-            await withRetry(capabilities, callback);
+            const retryableCallback = makeRetryableCallback("test-logging-callback", callback);
+
+            await withRetry(capabilities, retryableCallback);
 
             expect(capabilities.logger.logDebug).toHaveBeenCalledWith(
                 expect.objectContaining({ attempt: 1 }),
@@ -87,7 +93,9 @@ describe("Retryer - Timing and logging", () => {
                 return null;
             }
 
-            await withRetry(capabilities, namedCallback);
+            const retryableCallback = makeRetryableCallback("namedCallback", namedCallback);
+
+            await withRetry(capabilities, retryableCallback);
 
             expect(capabilities.logger.logDebug).toHaveBeenCalledWith(
                 expect.objectContaining({
@@ -97,27 +105,28 @@ describe("Retryer - Timing and logging", () => {
             );
         });
 
-        test("logs anonymous for unnamed callbacks", async () => {
-            // Create truly anonymous callback
+        test("logs custom name for callbacks", async () => {
+            // Create callback with custom name
             const callback = async function () { return null; };
 
-            await withRetry(capabilities, callback);
+            const retryableCallback = makeRetryableCallback("custom-named-callback", callback);
 
-            // Check if any call used "anonymous" or the actual function name
-            const logCalls = capabilities.logger.logDebug.mock.calls;
-            const hasAnonymousOrFunctionName = logCalls.some(call =>
-                call[0].callbackName === "anonymous" ||
-                call[0].callbackName === "callback" ||
-                call[0].callbackName === ""
+            await withRetry(capabilities, retryableCallback);
+
+            expect(capabilities.logger.logDebug).toHaveBeenCalledWith(
+                expect.objectContaining({
+                    callbackName: "custom-named-callback"
+                }),
+                expect.any(String)
             );
-
-            expect(hasAnonymousOrFunctionName).toBe(true);
         });
 
         test("logs running count correctly", async () => {
             const callback = async () => null;
 
-            await withRetry(capabilities, callback);
+            const retryableCallback = makeRetryableCallback("test-running-count-callback", callback);
+
+            await withRetry(capabilities, retryableCallback);
 
             expect(capabilities.logger.logDebug).toHaveBeenCalledWith(
                 expect.objectContaining({
@@ -146,7 +155,9 @@ describe("Retryer - Timing and logging", () => {
                 return null;
             };
 
-            await withRetry(capabilities, callback);
+            const retryableCallback = makeRetryableCallback("test-rapid-succession-callback", callback);
+
+            await withRetry(capabilities, retryableCallback);
 
             expect(callCount).toBe(5);
             expect(capabilities.logger.logDebug).toHaveBeenCalledTimes(
@@ -162,26 +173,23 @@ describe("Retryer - Timing and logging", () => {
             const callback = async () => {
                 callCount++;
                 if (callCount === 1) {
-                    return fromSeconds(1); // 1 second delay
+                    return fromMilliseconds(50); // Short delay for testing
                 }
                 return null;
             };
 
-            // Start the retry but don't wait for completion
-            withRetry(capabilities, callback);
+            const retryableCallback = makeRetryableCallback("test-longer-delay-callback", callback);
 
-            // Give it a moment to process and log
-            await capabilities.sleeper.sleep(50);
+            // Execute and wait for completion to avoid hanging
+            await withRetry(capabilities, retryableCallback);
 
-            expect(callCount).toBe(1);
+            expect(callCount).toBe(2);
             expect(capabilities.logger.logDebug).toHaveBeenCalledWith(
                 expect.objectContaining({
-                    retryDelay: "1s"
+                    retryDelay: "50ms"
                 }),
-                "Retryer scheduling retry after 1s"
+                "Retryer scheduling retry after 50ms"
             );
-
-            // Don't wait for the actual retry to complete
         });
     });
 });

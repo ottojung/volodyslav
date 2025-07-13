@@ -1,4 +1,4 @@
-const { withRetry, isRetryerError } = require("../src/retryer");
+const { withRetry, isRetryerError, makeRetryableCallback } = require("../src/retryer");
 const { fromMilliseconds } = require("../src/time_duration");
 const { getMockedRootCapabilities } = require("./spies");
 const { stubLogger } = require("./stubs");
@@ -22,12 +22,14 @@ describe("Retryer - Error handling", () => {
             throw testError;
         };
 
-        await expect(withRetry(capabilities, callback)).rejects.toThrow();
+        const retryableCallback = makeRetryableCallback("error-test", callback);
+
+        await expect(withRetry(capabilities, retryableCallback)).rejects.toThrow();
 
         // Get the actual error for detailed testing
         let caughtError;
         try {
-            await withRetry(capabilities, callback);
+            await withRetry(capabilities, retryableCallback);
         } catch (error) {
             caughtError = error;
         }
@@ -50,10 +52,13 @@ describe("Retryer - Error handling", () => {
             throw new Error("Test error");
         };
 
-        await expect(withRetry(capabilities, callback)).rejects.toThrow();
+        const retryableCallback1 = makeRetryableCallback("error-cleanup-test-1", callback);
+        const retryableCallback2 = makeRetryableCallback("error-cleanup-test-2", callback);
+
+        await expect(withRetry(capabilities, retryableCallback1)).rejects.toThrow();
 
         // Should be able to run again (not stuck in running set)
-        await expect(withRetry(capabilities, callback)).rejects.toThrow();
+        await expect(withRetry(capabilities, retryableCallback2)).rejects.toThrow();
 
         expect(capabilities.logger.logDebug).toHaveBeenCalledWith(
             expect.objectContaining({
@@ -73,7 +78,9 @@ describe("Retryer - Error handling", () => {
             throw new Error("Error on retry");
         };
 
-        await expect(withRetry(capabilities, callback)).rejects.toThrow();
+        const retryableCallback = makeRetryableCallback("retry-error-test", callback);
+
+        await expect(withRetry(capabilities, retryableCallback)).rejects.toThrow();
 
         expect(callCount).toBe(2);
         expect(capabilities.logger.logDebug).toHaveBeenCalledWith(

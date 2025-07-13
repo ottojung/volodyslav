@@ -1,4 +1,4 @@
-const { withRetry, isRetryerError } = require("../src/retryer");
+const { withRetry, isRetryerError, makeRetryableCallback } = require("../src/retryer");
 const { fromMilliseconds } = require("../src/time_duration");
 const { getMockedRootCapabilities } = require("./spies");
 const { stubLogger } = require("./stubs");
@@ -22,12 +22,14 @@ describe("Retryer - Core functionality", () => {
                 throw new Error("Test error");
             };
 
-            await expect(withRetry(capabilities, callback)).rejects.toThrow();
+            const retryableCallback = makeRetryableCallback("error-test", callback);
+
+            await expect(withRetry(capabilities, retryableCallback)).rejects.toThrow();
             
             // Get the actual error that was thrown
             let caughtError;
             try {
-                await withRetry(capabilities, callback);
+                await withRetry(capabilities, retryableCallback);
             } catch (error) {
                 caughtError = error;
             }
@@ -54,7 +56,9 @@ describe("Retryer - Core functionality", () => {
                 return null;
             };
 
-            await withRetry(capabilities, callback);
+            const retryableCallback = makeRetryableCallback("immediate-success-test", callback);
+
+            await withRetry(capabilities, retryableCallback);
 
             expect(callCount).toBe(1);
             expect(capabilities.logger.logDebug).toHaveBeenCalledWith(
@@ -76,7 +80,9 @@ describe("Retryer - Core functionality", () => {
                 return null;
             };
 
-            await withRetry(capabilities, callback);
+            const retryableCallback = makeRetryableCallback("retry-success-test", callback);
+
+            await withRetry(capabilities, retryableCallback);
 
             expect(callCount).toBe(3);
         });
@@ -91,7 +97,9 @@ describe("Retryer - Core functionality", () => {
                 return null;
             };
 
-            await withRetry(capabilities, callback);
+            const retryableCallback = makeRetryableCallback("logging-test", callback);
+
+            await withRetry(capabilities, retryableCallback);
 
             expect(capabilities.logger.logDebug).toHaveBeenCalledWith(
                 expect.objectContaining({
