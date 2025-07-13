@@ -65,8 +65,24 @@ describe("GET /api/periodic", () => {
     it("returns 400 for unknown period", async () => {
         const capabilities = getTestCapabilities();
         const app = makeApp(capabilities);
-        const res = await request(app).get("/api/periodic?period=daily");
+        const res = await request(app).get("/api/periodic?period=weekly");
         expect(res.statusCode).toBe(400);
         expect(res.text).toBe("Bad Request: unknown period");
+    });
+
+    it("responds with done for period=daily", async () => {
+        const capabilities = getTestCapabilities();
+        const app = makeApp(capabilities);
+        const res = await request(app).get("/api/periodic?period=daily");
+        expect(res.statusCode).toBe(200);
+        expect(res.text).toBe("done");
+    });
+
+    it("responds with done for period=day", async () => {
+        const capabilities = getTestCapabilities();
+        const app = makeApp(capabilities);
+        const res = await request(app).get("/api/periodic?period=day");
+        expect(res.statusCode).toBe(200);
+        expect(res.text).toBe("done");
     });
 });

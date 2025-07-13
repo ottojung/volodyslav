@@ -1,5 +1,6 @@
 const workingRepository = require("../gitstore/working_repository");
 const { processDiaryAudios } = require("../diary");
+const { executeDailyTasks } = require("./daily_tasks");
 
 /** @typedef {import('../filesystem/deleter').FileDeleter} FileDeleter */
 /** @typedef {import('../random/seed').NonDeterministicSeed} NonDeterministicSeed */
@@ -15,21 +16,7 @@ const { processDiaryAudios } = require("../diary");
 /** @typedef {import('../logger').Logger} Logger */
 
 /**
- * @typedef {object} Capabilities
- * @property {NonDeterministicSeed} seed - A random number generator instance.
- * @property {FileDeleter} deleter - A file deleter instance.
- * @property {DirScanner} scanner - A directory scanner instance.
- * @property {FileCopier} copier - A file copier instance.
- * @property {FileWriter} writer - A file writer instance.
- * @property {FileAppender} appender - A file appender instance.
- * @property {FileCreator} creator - A directory creator instance.
- * @property {FileChecker} checker - A file system checker instance.
- * @property {Command} git - A command instance for Git operations.
- * @property {Environment} environment - An environment instance.
- * @property {Scheduler} scheduler - A scheduler instance.
- * @property {Logger} logger - A logger instance.
- * @property {import('../filesystem/reader').FileReader} reader - A file reader instance.
- * @property {import('../datetime').Datetime} datetime - Datetime utilities.
+ * @typedef {import('../capabilities/root').Capabilities} Capabilities
  */
 
 /**
@@ -52,6 +39,19 @@ async function everyHour(capabilities) {
 }
 
 /**
+ * Daily tasks that run at 2AM.
+ * @param {Capabilities} capabilities
+ * @returns {Promise<void>}
+ */
+async function daily(capabilities) {
+    capabilities.logger.logInfo({}, "Running daily tasks");
+
+    await executeDailyTasks(capabilities).catch((error) => {
+        capabilities.logger.logError({ error }, "Error in daily tasks");
+    });
+}
+
+/**
  * @param {Capabilities} capabilities
  * @returns {Promise<void>}
  */
@@ -67,10 +67,12 @@ async function allTasks(capabilities) {
  */
 function scheduleAll(capabilities) {
     capabilities.scheduler.schedule("0 * * * *", () => everyHour(capabilities));
+    capabilities.scheduler.schedule("0 2 * * *", () => daily(capabilities));
 }
 
 module.exports = {
     everyHour,
+    daily,
     allTasks,
     scheduleAll,
 };

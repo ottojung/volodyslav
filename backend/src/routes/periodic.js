@@ -1,5 +1,5 @@
 const express = require("express");
-const { everyHour } = require("../schedule/tasks");
+const { everyHour, daily } = require("../schedule/tasks");
 
 /** @typedef {import('../filesystem/deleter').FileDeleter} FileDeleter */
 /** @typedef {import('../random/seed').NonDeterministicSeed} NonDeterministicSeed */
@@ -15,21 +15,7 @@ const { everyHour } = require("../schedule/tasks");
 /** @typedef {import('../schedule').Scheduler} Scheduler */
 
 /**
- * @typedef {object} Capabilities
- * @property {NonDeterministicSeed} seed
- * @property {FileDeleter} deleter
- * @property {DirScanner} scanner
- * @property {FileCopier} copier
- * @property {FileWriter} writer
- * @property {FileAppender} appender
- * @property {FileCreator} creator
- * @property {FileChecker} checker
- * @property {Command} git
- * @property {Environment} environment - An environment instance.
- * @property {Logger} logger - A logger instance.
- * @property {Scheduler} scheduler - A scheduler instance.
- * @property {import('../filesystem/reader').FileReader} reader - A file reader instance.
- * @property {import('../datetime').Datetime} datetime - Datetime utilities.
+ * @typedef {import('../capabilities/root').Capabilities} Capabilities
  */
 
 /**
@@ -55,6 +41,10 @@ async function handlePeriodicRequest(capabilities, req, res) {
         case "hour":
         case "hourly":
             await everyHour(capabilities);
+            return res.send("done");
+        case "day":
+        case "daily":
+            await daily(capabilities);
             return res.send("done");
         default:
             return res.status(400).send("Bad Request: unknown period");
