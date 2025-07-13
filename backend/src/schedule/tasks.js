@@ -30,7 +30,7 @@ async function everyHour(capabilities) {
         capabilities.logger.logError({ error }, "Error in processDiaryAudios");
     });
 
-    await workingRepository.synchronize(capabilities).catch((error) => {
+    await workingRepository.synchronize(capabilities, "working-git-repository", capabilities.environment.eventLogRepository()).catch((error) => {
         capabilities.logger.logError(
             { error },
             "Error during workingRepository synchronization"
