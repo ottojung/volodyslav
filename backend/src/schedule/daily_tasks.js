@@ -3,7 +3,7 @@
  */
 
 const { isCommandUnavailable } = require("../subprocess");
-const { volodyslav_daily_tasks } = require("../executables");
+const { volodyslavDailyTasks } = require("../executables");
 
 /**
  * Custom error class for daily tasks executable.
@@ -32,7 +32,7 @@ function isDailyTasksUnavailable(object) {
  */
 async function ensureDailyTasksAvailable() {
     try {
-        await volodyslav_daily_tasks.ensureAvailable();
+        await volodyslavDailyTasks.ensureAvailable();
     } catch (error) {
         if (isCommandUnavailable(error)) {
             throw new DailyTasksUnavailable();
@@ -50,7 +50,7 @@ async function ensureDailyTasksAvailable() {
 async function executeDailyTasks(capabilities) {
     try {
         await ensureDailyTasksAvailable();
-        const result = await volodyslav_daily_tasks.call();
+        const result = await volodyslavDailyTasks.call();
         
         if (result.stdout) {
             capabilities.logger.logInfo({}, `Daily tasks output: ${result.stdout.trim()}`);

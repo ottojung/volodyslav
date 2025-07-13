@@ -1,7 +1,7 @@
 /**
  * Tests for daily tasks functionality.
  * 
- * This module wraps the volodyslav_daily_tasks executable and provides:
+ * This module wraps the volodyslavDailyTasks executable and provides:
  * 1. Error handling for unavailable executables
  * 2. Logging of stdout/stderr output
  * 3. Graceful degradation when executable is missing
