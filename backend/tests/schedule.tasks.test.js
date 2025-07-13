@@ -4,7 +4,13 @@
 
 const { everyHour, daily, allTasks, scheduleAll } = require("../src/schedule/tasks");
 const { getMockedRootCapabilities } = require("./spies");
-const { stubLogger, stubEnvironment, stubAiTranscriber, stubNotifier } = require("./stubs");
+const {
+    stubLogger,
+    stubEnvironment,
+    stubAiTranscriber,
+    stubNotifier,
+    stubScheduler,
+} = require("./stubs");
 
 function getTestCapabilities() {
     const capabilities = getMockedRootCapabilities();
@@ -12,6 +18,7 @@ function getTestCapabilities() {
     stubEnvironment(capabilities);
     stubAiTranscriber(capabilities);
     stubNotifier(capabilities);
+    stubScheduler(capabilities);
     return capabilities;
 }
 
