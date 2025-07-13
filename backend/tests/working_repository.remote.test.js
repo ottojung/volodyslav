@@ -31,7 +31,7 @@ describe("working_repository", () => {
         await stubEventLogRepository(capabilities);
 
         // Execute synchronize
-        await workingRepository.synchronize(capabilities, "working-git-repository", capabilities.environment.eventLogRepository());
+        await workingRepository.synchronize(capabilities, "working-git-repository", { url: capabilities.environment.eventLogRepository() });
 
         // Modify the local repository
         const newFilePath = path.join(
@@ -99,7 +99,7 @@ describe("working_repository", () => {
         await stubEventLogRepository(capabilities);
 
         // Execute synchronize to create the repository
-        await workingRepository.synchronize(capabilities, "working-git-repository", capabilities.environment.eventLogRepository());
+        await workingRepository.synchronize(capabilities, "working-git-repository", { url: capabilities.environment.eventLogRepository() });
 
         // Modify the local repository
         const newFilePath = path.join(
@@ -128,7 +128,7 @@ describe("working_repository", () => {
         );
 
         // Execute synchronize again
-        await workingRepository.synchronize(capabilities, "working-git-repository", capabilities.environment.eventLogRepository());
+        await workingRepository.synchronize(capabilities, "working-git-repository", { url: capabilities.environment.eventLogRepository() });
 
         // Verify the existing file is not overwritten
         const existingFileContent = await capabilities.reader.readFileAsText(
@@ -150,7 +150,7 @@ describe("working_repository", () => {
         await stubEventLogRepository(capabilities);
 
         // Execute synchronize
-        await workingRepository.synchronize(capabilities, "working-git-repository", capabilities.environment.eventLogRepository());
+        await workingRepository.synchronize(capabilities, "working-git-repository", { url: capabilities.environment.eventLogRepository() });
 
         // Modify the local repository
         const newFilePath = path.join(

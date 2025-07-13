@@ -11,8 +11,14 @@ const gitmethod = require("./wrappers");
 /** @typedef {import('../filesystem/creator').FileCreator} FileCreator */
 /** @typedef {import('../filesystem/deleter').FileDeleter} FileDeleter */
 /** @typedef {import('../filesystem/checker').FileChecker} FileChecker */
+/** @typedef {import('../filesystem/writer').FileWriter} FileWriter */
 /** @typedef {import('../environment').Environment} Environment */
 /** @typedef {import('../logger').Logger} Logger */
+
+/**
+ * @typedef {object} RemoteLocation
+ * @property {string} url - The URL or path to the remote repository
+ */
 
 /**
  * @typedef {object} Capabilities
@@ -20,6 +26,7 @@ const gitmethod = require("./wrappers");
  * @property {FileCreator} creator - A file creator instance.
  * @property {FileDeleter} deleter - A file deleter instance.
  * @property {FileChecker} checker - A file checker instance.
+ * @property {FileWriter} writer - A file writer instance.
  * @property {Environment} environment - An environment instance.
  * @property {Logger} logger - A logger instance.
  */
@@ -70,32 +77,90 @@ function pathToLocalRepositoryGitDir(capabilities, workingPath) {
 }
 
 /**
- * Synchronize the local repository with remote: pull if exists, else clone.
- * Then push the changes as well.
+ * Initialize an empty local repository.
  * @param {Capabilities} capabilities
- * @param {string} workingPath - The path to the working directory.
- * @param {string} remotePath - The path to the remote repository.
+ * @param {string} workDir - The path to the working directory.
  * @returns {Promise<void>}
  * @throws {WorkingRepositoryError}
  */
-async function synchronize(capabilities, workingPath, remotePath) {
+async function initializeEmptyRepository(capabilities, workDir) {
+    try {
+        await capabilities.creator.createDirectory(workDir);
+        await gitmethod.init(capabilities, workDir);
+        
+        // Configure the repository to allow pushing to the current branch
+        await capabilities.git.call(
+            "-C",
+            workDir,
+            "config",
+            "receive.denyCurrentBranch",
+            "updateInstead"
+        );
+        
+        // Create an initial commit so the repository has a master branch
+        const readmeFile = path.join(workDir, "README.md");
+        const file = await capabilities.creator.createFile(readmeFile);
+        await capabilities.writer.writeFile(
+            file,
+            "# Local Repository\n\nThis is a local-only git repository."
+        );
+        
+        // Add and commit the initial file
+        await capabilities.git.call("-C", workDir, "add", "--all");
+        await capabilities.git.call(
+            "-C",
+            workDir,
+            "-c",
+            "user.name=volodyslav",
+            "-c",
+            "user.email=volodyslav",
+            "commit",
+            "-m",
+            "Initial commit"
+        );
+    } catch (err) {
+        throw new WorkingRepositoryError(
+            `Failed to initialize empty repository: ${err}`,
+            workDir
+        );
+    }
+}
+
+/**
+ * Synchronize the local repository with remote: pull if exists, else clone.
+ * Then push the changes as well. For "empty" initial_state, initialize an empty repository.
+ * @param {Capabilities} capabilities
+ * @param {string} workingPath - The path to the working directory.
+ * @param {RemoteLocation | "empty"} initial_state - Remote location to sync with, or "empty" for local-only
+ * @returns {Promise<void>}
+ * @throws {WorkingRepositoryError}
+ */
+async function synchronize(capabilities, workingPath, initial_state) {
     const gitDir = pathToLocalRepositoryGitDir(capabilities, workingPath);
     const workDir = pathToLocalRepository(capabilities, workingPath);
     const indexFile = path.join(gitDir, "index");
+    
     try {
-        capabilities.logger.logInfo({ repository: remotePath }, "Synchronizing repository");
-        if (await capabilities.checker.fileExists(indexFile)) {
-            await gitmethod.pull(capabilities, workDir);
-            await gitmethod.push(capabilities, workDir);
+        if (initial_state === "empty") {
+            capabilities.logger.logInfo({ repository: workDir }, "Initializing empty repository");
+            await initializeEmptyRepository(capabilities, workDir);
         } else {
-            // TODO: rollback if any of the following operations fail.
-            await gitmethod.clone(capabilities, remotePath, workDir);
-            await gitmethod.makePushable(capabilities, workDir);
+            const remotePath = initial_state.url;
+            capabilities.logger.logInfo({ repository: remotePath }, "Synchronizing repository");
+            if (await capabilities.checker.fileExists(indexFile)) {
+                await gitmethod.pull(capabilities, workDir);
+                await gitmethod.push(capabilities, workDir);
+            } else {
+                // TODO: rollback if any of the following operations fail.
+                await gitmethod.clone(capabilities, remotePath, workDir);
+                await gitmethod.makePushable(capabilities, workDir);
+            }
         }
     } catch (err) {
+        const repoPath = initial_state === "empty" ? workDir : initial_state.url;
         throw new WorkingRepositoryError(
             `Failed to synchronize repository: ${err}`,
-            remotePath
+            repoPath
         );
     }
 }
@@ -105,16 +170,16 @@ async function synchronize(capabilities, workingPath, remotePath) {
  * Note: returns the path to the `.git` directory.
  * @param {Capabilities} capabilities
  * @param {string} workingPath - The path to the working directory.
- * @param {string} remotePath - The path to the remote repository.
+ * @param {RemoteLocation | "empty"} initial_state - Remote location to sync with, or "empty" for local-only
  * @returns {Promise<string>}
  * @throws {WorkingRepositoryError}
  */
-async function getRepository(capabilities, workingPath, remotePath) {
+async function getRepository(capabilities, workingPath, initial_state) {
     const gitDir = pathToLocalRepositoryGitDir(capabilities, workingPath);
     const indexFile = path.join(gitDir, "index");
 
     if (!(await capabilities.checker.fileExists(indexFile))) {
-        await synchronize(capabilities, workingPath, remotePath);
+        await synchronize(capabilities, workingPath, initial_state);
     }
 
     return gitDir;

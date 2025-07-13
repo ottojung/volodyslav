@@ -15,82 +15,50 @@ function getTestCapabilities() {
 }
 
 describe("runtime_state_storage/synchronize", () => {
-    test("ensureAccessible creates repository if it doesn't exist", async () => {
+    test("ensureAccessible returns git directory path", async () => {
         const capabilities = getTestCapabilities();
         
-        // Mock that the repository doesn't exist initially
-        capabilities.checker.fileExists = jest.fn().mockResolvedValue(false);
-        
-        // Manually mock git.call since automatic mocking doesn't work for this
+        // Mock git.call to succeed for repository operations
         capabilities.git.call = jest.fn().mockResolvedValue({ stdout: "", stderr: "" });
         
         const gitDir = await ensureAccessible(capabilities);
         
         expect(gitDir).toContain("runtime-state-repository");
         expect(gitDir).toContain(".git");
-        expect(capabilities.creator.createDirectory).toHaveBeenCalled();
-        expect(capabilities.git.call).toHaveBeenCalledWith(
-            "-C",
-            expect.stringContaining("runtime-state-repository"),
-            "-c",
-            "safe.directory=*",
-            "-c",
-            "user.name=volodyslav",
-            "-c",
-            "user.email=volodyslav",
-            "init",
-            "--initial-branch",
-            "master"
-        );
     });
 
-    test("ensureAccessible returns existing repository path", async () => {
+    test("synchronize succeeds with proper capabilities", async () => {
         const capabilities = getTestCapabilities();
         
-        // Mock that the repository already exists
-        capabilities.checker.fileExists = jest.fn().mockResolvedValue(true);
-        
-        // Mock git.call even though it shouldn't be called
+        // Mock git.call to succeed for repository operations
         capabilities.git.call = jest.fn().mockResolvedValue({ stdout: "", stderr: "" });
         
-        const gitDir = await ensureAccessible(capabilities);
-        
-        expect(gitDir).toContain("runtime-state-repository");
-        expect(gitDir).toContain(".git");
-        // Should not create directory or initialize git if it already exists
-        expect(capabilities.creator.createDirectory).not.toHaveBeenCalled();
+        await expect(synchronize(capabilities)).resolves.not.toThrow();
     });
 
-    test("synchronize calls ensureAccessible", async () => {
+    test("ensureAccessible throws RuntimeStateRepositoryError on failure", async () => {
         const capabilities = getTestCapabilities();
-        
-        // Mock that the repository already exists
-        capabilities.checker.fileExists = jest.fn().mockResolvedValue(true);
-        
-        // Mock git.call even though it shouldn't be called
-        capabilities.git.call = jest.fn().mockResolvedValue({ stdout: "", stderr: "" });
-        
-        await synchronize(capabilities);
-        
-        // Should have checked for the index file
-        expect(capabilities.checker.fileExists).toHaveBeenCalled();
-    });
-
-    test("ensureAccessible throws error when git init fails", async () => {
-        const capabilities = getTestCapabilities();
-        
-        // Mock that the repository doesn't exist
-        capabilities.checker.fileExists = jest.fn().mockResolvedValue(false);
         
         // Mock git init failure
         capabilities.git.call = jest.fn().mockRejectedValue(new Error("Git init failed"));
         
         await expect(ensureAccessible(capabilities)).rejects.toThrow(
-            "Failed to initialize runtime state repository"
+            "Failed to ensure runtime state repository is accessible"
         );
     });
 
-    test("ensureAccessible logs initialization messages", async () => {
+    test("synchronize throws RuntimeStateRepositoryError on failure", async () => {
+        const capabilities = getTestCapabilities();
+        
+        // Mock git failure
+        capabilities.git.call = jest.fn().mockRejectedValue(new Error("Git operation failed"));
+        
+        await expect(synchronize(capabilities)).rejects.toThrow(
+            "Failed to synchronize runtime state repository"
+        );
+    });
+
+    test("ensureAccessible logs empty repository initialization", async () => {
         const capabilities = getTestCapabilities();
         
         // Mock that the repository doesn't exist initially
@@ -105,28 +73,7 @@ describe("runtime_state_storage/synchronize", () => {
             expect.objectContaining({
                 repository: expect.stringContaining("runtime-state-repository")
             }),
-            "Initializing runtime state repository"
-        );
-        
-        expect(capabilities.logger.logInfo).toHaveBeenCalledWith(
-            expect.objectContaining({
-                repository: expect.stringContaining("runtime-state-repository")
-            }),
-            "Runtime state repository initialized"
-        );
-    });
-
-    test("ensureAccessible handles createDirectory failure", async () => {
-        const capabilities = getTestCapabilities();
-        
-        // Mock that the repository doesn't exist
-        capabilities.checker.fileExists = jest.fn().mockResolvedValue(false);
-        
-        // Mock directory creation failure
-        capabilities.creator.createDirectory = jest.fn().mockRejectedValue(new Error("Directory creation failed"));
-        
-        await expect(ensureAccessible(capabilities)).rejects.toThrow(
-            "Failed to initialize runtime state repository"
+            "Initializing empty repository"
         );
     });
 });

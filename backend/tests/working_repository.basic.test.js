@@ -39,7 +39,7 @@ describe("working_repository", () => {
         expect(indexExistsBeforeSync).toBe(false);
 
         // Execute synchronize
-        await workingRepository.synchronize(capabilities, "working-git-repository", capabilities.environment.eventLogRepository());
+        await workingRepository.synchronize(capabilities, "working-git-repository", { url: capabilities.environment.eventLogRepository() });
 
         // Verify the repository was created and has the index file
         const indexExists = await fsp
@@ -58,7 +58,7 @@ describe("working_repository", () => {
         await stubEventLogRepository(capabilities);
 
         // Execute getRepository (which should trigger synchronize)
-        const repoPath = await workingRepository.getRepository(capabilities, "working-git-repository", capabilities.environment.eventLogRepository());
+        const repoPath = await workingRepository.getRepository(capabilities, "working-git-repository", { url: capabilities.environment.eventLogRepository() });
 
         // Verify correct path is returned
         const expectedPath = path.join(
