@@ -168,6 +168,28 @@ async function push(capabilities, workDirectory) {
     );
 }
 
+/**
+ * Initialize a new git repository.
+ * @param {Capabilities} capabilities - The capabilities object containing the git command.
+ * @param {string} workDirectory - The directory to initialize as a git repository
+ * @returns {Promise<void>}
+ */
+async function init(capabilities, workDirectory) {
+    await capabilities.git.call(
+        "-C",
+        workDirectory,
+        "-c",
+        "safe.directory=*",
+        "-c",
+        "user.name=volodyslav",
+        "-c",
+        "user.email=volodyslav",
+        "init",
+        "--initial-branch",
+        defaultBranch
+    );
+}
+
 module.exports = {
     ensureGitAvailable,
     commit,
@@ -175,4 +197,5 @@ module.exports = {
     clone,
     pull,
     push,
+    init,
 };
