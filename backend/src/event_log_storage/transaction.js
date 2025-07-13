@@ -94,7 +94,7 @@ async function performGitTransaction(
     eventLogStorage,
     transformation
 ) {
-    return await gitstore.transaction(capabilities, async (store) => {
+    return await gitstore.transaction(capabilities, "working-git-repository", capabilities.environment.eventLogRepository(), async (store) => {
         const workTree = await store.getWorkTree();
         const dataPath = path.join(workTree, "data.json");
         const configPath = path.join(workTree, "config.json");

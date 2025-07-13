@@ -19,7 +19,7 @@ describe("gitstore", () => {
     test("transaction allows reading and writing files", async () => {
         const capabilities = getTestCapabilities();
         await stubEventLogRepository(capabilities);
-        await transaction(capabilities, async (store) => {
+        await transaction(capabilities, "working-git-repository", capabilities.environment.eventLogRepository(), async (store) => {
             const workTree = await store.getWorkTree();
             const testFile = path.join(workTree, "test.txt");
 
@@ -33,7 +33,7 @@ describe("gitstore", () => {
         });
 
         // Verify the changes were committed by reading directly from the repo
-        const gitDir = await workingRepository.getRepository(capabilities);
+        const gitDir = await workingRepository.getRepository(capabilities, "working-git-repository", capabilities.environment.eventLogRepository());
         const output = execFileSync("git", [
             "--git-dir",
             gitDir,
@@ -47,7 +47,7 @@ describe("gitstore", () => {
     test("transaction allows multiple commits", async () => {
         const capabilities = getTestCapabilities();
         await stubEventLogRepository(capabilities);
-        await transaction(capabilities, async (store) => {
+        await transaction(capabilities, "working-git-repository", capabilities.environment.eventLogRepository(), async (store) => {
             const workTree = await store.getWorkTree();
             const testFile = path.join(workTree, "test.txt");
 
@@ -61,7 +61,7 @@ describe("gitstore", () => {
         });
 
         // Verify the changes were committed by reading directly from the repo
-        const gitDir = await workingRepository.getRepository(capabilities);
+        const gitDir = await workingRepository.getRepository(capabilities, "working-git-repository", capabilities.environment.eventLogRepository());
         const commitCount = execFileSync("git", [
             "--git-dir",
             gitDir,
@@ -88,7 +88,7 @@ describe("gitstore", () => {
         let temporaryWorkTree;
 
         await expect(
-            transaction(capabilities, async (store) => {
+            transaction(capabilities, "working-git-repository", capabilities.environment.eventLogRepository(), async (store) => {
                 temporaryWorkTree = await store.getWorkTree(); // Get the work tree to create it
                 await expect(
                     fs.access(temporaryWorkTree)
@@ -108,7 +108,7 @@ describe("gitstore", () => {
         let temporaryWorkTree;
 
         await expect(
-            transaction(capabilities, async (store) => {
+            transaction(capabilities, "working-git-repository", capabilities.environment.eventLogRepository(), async (store) => {
                 temporaryWorkTree = await store.getWorkTree(); // Get the work tree to create it
                 await expect(
                     fs.access(temporaryWorkTree)

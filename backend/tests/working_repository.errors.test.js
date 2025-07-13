@@ -27,7 +27,7 @@ describe("working_repository", () => {
 
         // Execute and verify error is thrown with the expected message
         await expect(
-            workingRepository.synchronize(capabilities)
+            workingRepository.synchronize(capabilities, "working-git-repository", capabilities.environment.eventLogRepository())
         ).rejects.toThrow("Failed to synchronize repository");
 
         // Restore original function
@@ -48,7 +48,7 @@ describe("working_repository", () => {
         // Execute and save the error
         let thrownError = null;
         try {
-            await workingRepository.synchronize(capabilities);
+            await workingRepository.synchronize(capabilities, "working-git-repository", capabilities.environment.eventLogRepository());
         } catch (error) {
             thrownError = error;
         }
@@ -73,7 +73,7 @@ describe("working_repository", () => {
 
         // Execute and verify error is thrown
         await expect(
-            workingRepository.synchronize(capabilities)
+            workingRepository.synchronize(capabilities, "working-git-repository", capabilities.environment.eventLogRepository())
         ).rejects.toThrow("Failed to synchronize repository");
 
         // Restore original function

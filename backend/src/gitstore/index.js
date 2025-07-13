@@ -72,14 +72,16 @@ class GitStoreClass {
  *
  * @template T
  * @param {Capabilities} capabilities - An object containing the capabilities.
+ * @param {string} workingPath - Path to the working directory (local repository)
+ * @param {string} remotePath - Path to the remote repository
  * @param {function(GitStore): Promise<T>} transformation - A function that takes a directory path and performs some operations on it
  * @returns {Promise<T>}
  */
-async function transaction(capabilities, transformation) {
+async function transaction(capabilities, workingPath, remotePath, transformation) {
     // TODO: retry several times if the repository is busy.
     const workTree = await makeTemporaryWorkTree(capabilities);
     try {
-        const git_directory = await workingRepository.getRepository(capabilities);
+        const git_directory = await workingRepository.getRepository(capabilities, workingPath, remotePath);
         const store = new GitStoreClass(workTree, capabilities);
         await clone(capabilities, git_directory, workTree);
         const result = await transformation(store);

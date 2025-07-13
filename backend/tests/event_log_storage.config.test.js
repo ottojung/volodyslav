@@ -50,7 +50,7 @@ describe("event_log_storage", () => {
         });
 
         // Verify config persisted in git repository
-        await gitstore.transaction(capabilities, async (store) => {
+        await gitstore.transaction(capabilities, "working-git-repository", capabilities.environment.eventLogRepository(), async (store) => {
             const workTree = await store.getWorkTree();
             const configPath = path.join(workTree, "config.json");
 
@@ -145,7 +145,7 @@ describe("event_log_storage", () => {
         });
 
         // Verify both were persisted
-        await gitstore.transaction(capabilities, async (store) => {
+        await gitstore.transaction(capabilities, "working-git-repository", capabilities.environment.eventLogRepository(), async (store) => {
             const workTree = await store.getWorkTree();
 
             // Check data.json

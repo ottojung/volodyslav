@@ -50,49 +50,52 @@ function isWorkingRepositoryError(object) {
 
 /**
  * Get local repository path.
- * @param {Capabilities} capabilities - The capabilities object containing environment access.
+ * @param {Capabilities} capabilities - The capabilities object.
+ * @param {string} workingPath - The path to the working directory.
  * @returns {string} - The absolute path to the local git repository.
  */
-function pathToLocalRepository(capabilities) {
+function pathToLocalRepository(capabilities, workingPath) {
     const wd = capabilities.environment.workingDirectory();
-    return path.join(wd, "working-git-repository");
+    return path.join(wd, workingPath);
 }
 
 /**
  * Get the path to the local repository's .git directory.
- * @param {Capabilities} capabilities - The capabilities object containing environment access.
+ * @param {Capabilities} capabilities - The capabilities object.
+ * @param {string} workingPath - The path to the working directory.
  * @returns {string} - The absolute path to the .git directory.
  */
-function pathToLocalRepositoryGitDir(capabilities) {
-    return path.join(pathToLocalRepository(capabilities), ".git");
+function pathToLocalRepositoryGitDir(capabilities, workingPath) {
+    return path.join(pathToLocalRepository(capabilities, workingPath), ".git");
 }
 
 /**
  * Synchronize the local repository with remote: pull if exists, else clone.
  * Then push the changes as well.
  * @param {Capabilities} capabilities
+ * @param {string} workingPath - The path to the working directory.
+ * @param {string} remotePath - The path to the remote repository.
  * @returns {Promise<void>}
  * @throws {WorkingRepositoryError}
  */
-async function synchronize(capabilities) {
-    const gitDir = pathToLocalRepositoryGitDir(capabilities);
-    const workDir = pathToLocalRepository(capabilities);
+async function synchronize(capabilities, workingPath, remotePath) {
+    const gitDir = pathToLocalRepositoryGitDir(capabilities, workingPath);
+    const workDir = pathToLocalRepository(capabilities, workingPath);
     const indexFile = path.join(gitDir, "index");
-    const repository = capabilities.environment.eventLogRepository();
     try {
-        capabilities.logger.logInfo({ repository }, "Synchronizing repository");
+        capabilities.logger.logInfo({ repository: remotePath }, "Synchronizing repository");
         if (await capabilities.checker.fileExists(indexFile)) {
             await gitmethod.pull(capabilities, workDir);
             await gitmethod.push(capabilities, workDir);
         } else {
             // TODO: rollback if any of the following operations fail.
-            await gitmethod.clone(capabilities, repository, workDir);
+            await gitmethod.clone(capabilities, remotePath, workDir);
             await gitmethod.makePushable(capabilities, workDir);
         }
     } catch (err) {
         throw new WorkingRepositoryError(
             `Failed to synchronize repository: ${err}`,
-            repository
+            remotePath
         );
     }
 }
@@ -101,15 +104,17 @@ async function synchronize(capabilities) {
  * Ensure the repository is present locally and return its path.
  * Note: returns the path to the `.git` directory.
  * @param {Capabilities} capabilities
+ * @param {string} workingPath - The path to the working directory.
+ * @param {string} remotePath - The path to the remote repository.
  * @returns {Promise<string>}
  * @throws {WorkingRepositoryError}
  */
-async function getRepository(capabilities) {
-    const gitDir = pathToLocalRepositoryGitDir(capabilities);
+async function getRepository(capabilities, workingPath, remotePath) {
+    const gitDir = pathToLocalRepositoryGitDir(capabilities, workingPath);
     const indexFile = path.join(gitDir, "index");
 
     if (!(await capabilities.checker.fileExists(indexFile))) {
-        await synchronize(capabilities);
+        await synchronize(capabilities, workingPath, remotePath);
     }
 
     return gitDir;
@@ -121,7 +126,9 @@ async function getRepository(capabilities) {
  * @returns {Promise<void>}
  */
 async function ensureAccessible(capabilities) {
-    await getRepository(capabilities);
+    const workingPath = "working-git-repository";
+    const remotePath = capabilities.environment.eventLogRepository();
+    await getRepository(capabilities, workingPath, remotePath);
 }
 
 module.exports = {
