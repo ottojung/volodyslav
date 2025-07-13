@@ -1,4 +1,4 @@
-const workingRepository = require("../gitstore/working_repository");
+const eventLogStorage = require("../event_log_storage");
 const { processDiaryAudios } = require("../diary");
 const { executeDailyTasks } = require("./daily_tasks");
 
@@ -30,10 +30,10 @@ async function everyHour(capabilities) {
         capabilities.logger.logError({ error }, "Error in processDiaryAudios");
     });
 
-    await workingRepository.synchronize(capabilities, "working-git-repository", capabilities.environment.eventLogRepository()).catch((error) => {
+    await eventLogStorage.synchronize(capabilities).catch((error) => {
         capabilities.logger.logError(
             { error },
-            "Error during workingRepository synchronization"
+            "Error during event log repository synchronization"
         );
     });
 }
