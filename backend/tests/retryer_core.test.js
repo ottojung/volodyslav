@@ -66,7 +66,7 @@ describe("Retryer - Core functionality", () => {
                     attempt: 1,
                     totalAttempts: 1
                 }),
-                "Callback completed successfully, no retry needed"
+                "Callback \"immediate-success-test\" completed successfully"
             );
         });
 
@@ -106,7 +106,7 @@ describe("Retryer - Core functionality", () => {
                     attempt: 1,
                     retryDelay: "50ms"
                 }),
-                "Retryer scheduling retry after 50ms"
+                "Retryer scheduling retry of \"logging-test\" after 50ms"
             );
         });
     });

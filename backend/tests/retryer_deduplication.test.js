@@ -40,7 +40,7 @@ describe("Retryer - Process deduplication", () => {
             expect.objectContaining({
                 callbackName: "duplicate-test-callback"
             }),
-            "Retryer skipping execution - callback already running"
+            "Retryer skipping execution - callback \"duplicate-test-callback\" already running"
         );
     });
 

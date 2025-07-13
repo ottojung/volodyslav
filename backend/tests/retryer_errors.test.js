@@ -43,7 +43,7 @@ describe("Retryer - Error handling", () => {
                 attempt: 1,
                 error: "Test error"
             }),
-            "Retryer stopping retry loop due to callback error"
+            "Retryer stopping retry loop due to callback error in \"error-test\""
         );
     });
 
@@ -64,7 +64,7 @@ describe("Retryer - Error handling", () => {
             expect.objectContaining({
                 callbackName: expect.any(String)
             }),
-            "Retryer removed callback from running set"
+            expect.stringContaining("Retryer removed callback")
         );
     });
 
@@ -88,7 +88,7 @@ describe("Retryer - Error handling", () => {
                 attempt: 2,
                 error: "Error on retry"
             }),
-            "Retryer stopping retry loop due to callback error"
+            "Retryer stopping retry loop due to callback error in \"retry-error-test\""
         );
     });
 });

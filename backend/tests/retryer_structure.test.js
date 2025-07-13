@@ -101,7 +101,7 @@ describe("Retryer - RetryableCallback structure", () => {
                 expect.objectContaining({
                     callbackName: "same-name"
                 }),
-                "Retryer skipping execution - callback already running"
+                "Retryer skipping execution - callback \"same-name\" already running"
             );
         });
 
@@ -160,7 +160,7 @@ describe("Retryer - RetryableCallback structure", () => {
                     callbackName: "error-test-callback",
                     error: "Test error"
                 }),
-                "Retryer stopping retry loop due to callback error"
+                "Retryer stopping retry loop due to callback error in \"error-test-callback\""
             );
         });
 
@@ -182,7 +182,7 @@ describe("Retryer - RetryableCallback structure", () => {
                     callbackName: "cleanup-test-callback",
                     runningCount: 0
                 }),
-                "Retryer removed callback from running set"
+                "Retryer removed callback \"cleanup-test-callback\" from running set"
             );
         });
     });
@@ -207,22 +207,22 @@ describe("Retryer - RetryableCallback structure", () => {
             // Verify all the expected log calls
             expect(capabilities.logger.logDebug).toHaveBeenCalledWith(
                 expect.objectContaining({ callbackName: "integration-test", attempt: 1 }),
-                "Executing callback (attempt 1)"
+                "Executing callback \"integration-test\" (attempt 1)"
             );
 
             expect(capabilities.logger.logDebug).toHaveBeenCalledWith(
                 expect.objectContaining({ callbackName: "integration-test", retryDelay: "10ms" }),
-                "Retryer scheduling retry after 10ms"
+                "Retryer scheduling retry of \"integration-test\" after 10ms"
             );
 
             expect(capabilities.logger.logDebug).toHaveBeenCalledWith(
                 expect.objectContaining({ callbackName: "integration-test", totalAttempts: 3 }),
-                "Callback completed successfully, no retry needed"
+                "Callback \"integration-test\" completed successfully"
             );
 
             expect(capabilities.logger.logDebug).toHaveBeenCalledWith(
                 expect.objectContaining({ callbackName: "integration-test", runningCount: 0 }),
-                "Retryer removed callback from running set"
+                "Retryer removed callback \"integration-test\" from running set"
             );
         });
     });

@@ -76,15 +76,15 @@ describe("Retryer - Timing and logging", () => {
 
             expect(capabilities.logger.logDebug).toHaveBeenCalledWith(
                 expect.objectContaining({ attempt: 1 }),
-                "Executing callback (attempt 1)"
+                "Executing callback \"test-logging-callback\" (attempt 1)"
             );
             expect(capabilities.logger.logDebug).toHaveBeenCalledWith(
                 expect.objectContaining({ attempt: 2 }),
-                "Executing callback (attempt 2)"
+                "Executing callback \"test-logging-callback\" (attempt 2)"
             );
             expect(capabilities.logger.logDebug).toHaveBeenCalledWith(
                 expect.objectContaining({ attempt: 3 }),
-                "Executing callback (attempt 3)"
+                "Executing callback \"test-logging-callback\" (attempt 3)"
             );
         });
 
@@ -139,7 +139,7 @@ describe("Retryer - Timing and logging", () => {
                 expect.objectContaining({
                     runningCount: 0
                 }),
-                "Retryer removed callback from running set"
+                "Retryer removed callback \"test-running-count-callback\" from running set"
             );
         });
     });
@@ -188,7 +188,7 @@ describe("Retryer - Timing and logging", () => {
                 expect.objectContaining({
                     retryDelay: "50ms"
                 }),
-                "Retryer scheduling retry after 50ms"
+                "Retryer scheduling retry of \"test-longer-delay-callback\" after 50ms"
             );
         });
     });
