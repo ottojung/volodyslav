@@ -108,18 +108,6 @@ function stubDatetime(capabilities) {
     );
 }
 
-function stubWifiChecker(capabilities) {
-    capabilities.wifiChecker.ensureAvailable = jest.fn();
-    capabilities.wifiChecker.isConnected = jest.fn().mockResolvedValue(true);
-    capabilities.wifiChecker.getConnectionInfo = jest
-        .fn()
-        .mockResolvedValue({
-            ssid: "MockedSSID",
-            bssid: "00:11:22:33:44:55",
-            ipAddress: "192.168.1.1",
-        });
-}
-
 module.exports = {
     stubEnvironment,
     stubLogger,
@@ -129,5 +117,4 @@ module.exports = {
     stubSleeper,
     stubDatetime,
     stubEventLogRepository,
-    stubWifiChecker,
 };

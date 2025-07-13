@@ -62,7 +62,6 @@ async function ensureStartupDependencies(capabilities, app) {
     );
     await capabilities.notifier.ensureNotificationsAvailable();
     await capabilities.git.ensureAvailable();
-    await capabilities.wifiChecker.ensureAvailable();
     await workingRepository.ensureAccessible(capabilities);
 }
 
