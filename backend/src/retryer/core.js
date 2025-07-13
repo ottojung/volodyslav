@@ -110,11 +110,14 @@ const globalProcessManager = new ProcessManager();
  * 4. If it returns a duration, sleep for that much, then try again
  */
 async function withRetry(capabilities, retryableCallback) {
+    const callbackName = retryableCallback.name;
+    const quotedCallbackName = JSON.stringify(callbackName);
+
     // Step 0: Check if callback is already running
     if (globalProcessManager.isRunning(retryableCallback)) {
         capabilities.logger.logInfo(
-            { callbackName: retryableCallback.name, runningCount: globalProcessManager.getRunningCount() },
-            "Retryer skipping execution - callback already running"
+            { callbackName, runningCount: globalProcessManager.getRunningCount() },
+            `Retryer skipping execution - callback ${quotedCallbackName} already running`
         );
         return;
     }
@@ -129,11 +132,11 @@ async function withRetry(capabilities, retryableCallback) {
         while (true) {
             capabilities.logger.logDebug(
                 {
-                    callbackName: retryableCallback.name,
+                    callbackName,
                     attempt,
                     runningCount: globalProcessManager.getRunningCount()
                 },
-                `Executing callback (attempt ${attempt})`
+                `Executing callback ${quotedCallbackName} (attempt ${attempt})`
             );
 
             try {
@@ -144,11 +147,11 @@ async function withRetry(capabilities, retryableCallback) {
                 if (result === null) {
                     capabilities.logger.logDebug(
                         {
-                            callbackName: retryableCallback.name,
+                            callbackName,
                             attempt,
                             totalAttempts: attempt
                         },
-                        "Callback completed successfully, no retry needed"
+                        `Callback ${quotedCallbackName} completed successfully`
                     );
                     break;
                 }
@@ -156,11 +159,11 @@ async function withRetry(capabilities, retryableCallback) {
                 // Step 4: If returns duration, sleep and retry
                 capabilities.logger.logDebug(
                     {
-                        callbackName: retryableCallback.name,
+                        callbackName,
                         attempt,
                         retryDelay: result.toString()
                     },
-                    `Retryer scheduling retry after ${result.toString()}`
+                    `Retryer scheduling retry of ${quotedCallbackName} after ${result.toString()}`
                 );
 
                 await capabilities.sleeper.sleep(result.toMilliseconds());
@@ -171,11 +174,11 @@ async function withRetry(capabilities, retryableCallback) {
                 const errorMessage = error instanceof Error ? error.message : String(error);
                 capabilities.logger.logDebug(
                     {
-                        callbackName: retryableCallback.name,
+                        callbackName,
                         attempt,
                         error: errorMessage
                     },
-                    "Retryer stopping retry loop due to callback error"
+                    `Retryer stopping retry loop due to callback error in ${quotedCallbackName}`
                 );
                 throw new RetryerError(`Callback failed on attempt ${attempt}: ${errorMessage}`, error);
             }
@@ -186,10 +189,10 @@ async function withRetry(capabilities, retryableCallback) {
         globalProcessManager.markAsComplete(retryableCallback);
         capabilities.logger.logDebug(
             {
-                callbackName: retryableCallback.name,
+                callbackName,
                 runningCount: globalProcessManager.getRunningCount()
             },
-            "Retryer removed callback from running set"
+            `Retryer removed callback ${quotedCallbackName} from running set`
         );
     }
 }
@@ -211,10 +214,10 @@ function makeRetryableCallback(name, callback) {
 class RetryableCallbackClass {
     /** @type {undefined} */
     __brand = undefined; // nominal typing brand
-    
+
     /** @type {string} */
     name;
-    
+
     /** @type {() => Promise<import('../time_duration/structure').TimeDuration | null>} */
     callback;
 
