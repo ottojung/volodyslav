@@ -45,6 +45,7 @@
  * @property {Datetime} datetime - Datetime utilities.
  * @property {Sleeper} sleeper - A sleeper instance.
  * @property {WifiConnectionChecker} wifiChecker - A WiFi connection checker instance.
+ * @property {Command} volodyslavDailyTasks - A command instance for daily tasks.
  */
 
 const memconst = require("../memconst");
@@ -68,6 +69,7 @@ const aiTranscriptionCapability = require("../ai/transcription");
 const datetimeCapability = require("../datetime");
 const sleeperCapability = require("../sleeper");
 const wifiCapability = require("../wifi");
+const volodyslavDailyTasks = require("../executables").volodyslavDailyTasks;
 
 /**
  * This structure collects maximum capabilities that any part of Volodyslav can access.
@@ -100,6 +102,7 @@ const make = memconst(() => {
         aiTranscription: aiTranscriptionCapability.make({ environment }),
         sleeper,
         wifiChecker: wifiCapability.makeWifiConnectionChecker(),
+        volodyslavDailyTasks,
     };
 
     return ret;

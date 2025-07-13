@@ -3,7 +3,12 @@
  */
 
 const { isCommandUnavailable } = require("../subprocess");
-const { volodyslavDailyTasks } = require("../executables");
+
+/**
+ * @typedef {object} Capabilities
+ * @property {import('../logger').Logger} logger - The logger instance.
+ * @property {import('../subprocess/command').Command} volodyslavDailyTasks - The volodyslav-daily-tasks command instance.
+ */
 
 /**
  * Custom error class for daily tasks executable.
@@ -27,12 +32,13 @@ function isDailyTasksUnavailable(object) {
 
 /**
  * Ensures that the volodyslav-daily-tasks executable exists in the PATH.
+ * @param {Capabilities} capabilities - The capabilities object.
  * @returns {Promise<void>}
  * @throws {DailyTasksUnavailable} - If the executable is not available.
  */
-async function ensureDailyTasksAvailable() {
+async function ensureDailyTasksAvailable(capabilities) {
     try {
-        await volodyslavDailyTasks.ensureAvailable();
+        await capabilities.volodyslavDailyTasks.ensureAvailable();
     } catch (error) {
         if (isCommandUnavailable(error)) {
             throw new DailyTasksUnavailable();
@@ -43,14 +49,14 @@ async function ensureDailyTasksAvailable() {
 
 /**
  * Executes the daily tasks program.
- * @param {import('../capabilities/root').Capabilities} capabilities - The capabilities object.
+ * @param {Capabilities} capabilities - The capabilities object.
  * @returns {Promise<void>}
  * @throws {DailyTasksUnavailable} - If the executable is not available.
  */
 async function executeDailyTasks(capabilities) {
     try {
-        await ensureDailyTasksAvailable();
-        const result = await volodyslavDailyTasks.call();
+        await ensureDailyTasksAvailable(capabilities);
+        const result = await capabilities.volodyslavDailyTasks.call();
 
         if (result.stdout) {
             const output = result.stdout.trim();
