@@ -51,15 +51,19 @@ async function executeDailyTasks(capabilities) {
     try {
         await ensureDailyTasksAvailable();
         const result = await volodyslavDailyTasks.call();
-        
+
         if (result.stdout) {
-            capabilities.logger.logInfo({}, `Daily tasks output: ${result.stdout.trim()}`);
+            const output = result.stdout.trim();
+            const lineCount = output.split("\n").length;
+            capabilities.logger.logInfo({ output, lineCount }, `Daily tasks produced ${lineCount} lines of output.`);
         }
-        
+
         if (result.stderr) {
-            capabilities.logger.logWarning({}, `Daily tasks stderr: ${result.stderr.trim()}`);
+            const output = result.stderr.trim();
+            const lineCount = output.split("\n").length;
+            capabilities.logger.logWarning({ output, lineCount }, `Daily tasks produced ${lineCount} lines of stderr.`);
         }
-        
+
         capabilities.logger.logInfo({}, "Daily tasks completed successfully");
     } catch (error) {
         if (isDailyTasksUnavailable(error)) {
