@@ -57,7 +57,17 @@ const {
 function serialize(event) {
     const date = format(event.date);
     const id = event.id.identifier;
-    return { ...event, date, id };
+    const { original, input, modifiers, type, description, creator } = event;
+    return {
+        date,
+        id,
+        original,
+        input,
+        modifiers,
+        type,
+        description,
+        creator,
+    };
 }
 
 /**
