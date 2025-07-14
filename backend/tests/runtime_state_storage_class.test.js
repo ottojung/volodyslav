@@ -38,15 +38,6 @@ describe("runtime_state_storage/class", () => {
         expect(storage.getNewState()).toBeNull();
     });
 
-    test("getExistingState throws error outside transaction", async () => {
-        const capabilities = getTestCapabilities();
-        const storage = makeRuntimeStateStorage(capabilities);
-        
-        await expect(storage.getExistingState()).rejects.toThrow(
-            "getExistingState() called outside of a transaction"
-        );
-    });
-
     test("getExistingState returns null when no state file exists", async () => {
         const capabilities = getTestCapabilities();
         const storage = makeRuntimeStateStorage(capabilities);

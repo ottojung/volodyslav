@@ -17,9 +17,9 @@ class RuntimeStateStorageClass {
 
     /**
      * Path to the state.json file, set during transaction
-     * @type {ExistingFile|null|undefined}
+     * @type {ExistingFile}
      */
-    stateFile = undefined;
+    stateFile;
 
     /**
      * Cache for existing state loaded from state.json
@@ -38,9 +38,11 @@ class RuntimeStateStorageClass {
      * @constructor
      * Initializes runtime state storage.
      * @param {RuntimeStateStorageCapabilities} capabilities - The capabilities object for file operations.
+     * @param {ExistingFile} stateFile - The state file object for the transaction.
      */
-    constructor(capabilities) {
+    constructor(capabilities, stateFile) {
         this.capabilities = capabilities;
+        this.stateFile = stateFile;
     }
 
     /**
@@ -70,12 +72,6 @@ class RuntimeStateStorageClass {
      * @throws {Error} - If called outside of a transaction.
      */
     async getExistingState() {
-        if (this.stateFile === undefined) {
-            throw new Error(
-                "getExistingState() called outside of a transaction"
-            );
-        }
-
         // Return cached results if available
         if (this.existingStateCache !== null) {
             return this.existingStateCache;
@@ -151,10 +147,11 @@ class RuntimeStateStorageClass {
 /**
  * Creates a new RuntimeStateStorage instance.
  * @param {RuntimeStateStorageCapabilities} capabilities
+ * @param {ExistingFile} stateFile - The state file object for the transaction.
  * @returns {RuntimeStateStorage}
  */
-function make(capabilities) {
-    return new RuntimeStateStorageClass(capabilities);
+function make(capabilities, stateFile) {
+    return new RuntimeStateStorageClass(capabilities, stateFile);
 }
 
 /**

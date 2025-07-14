@@ -36,20 +36,20 @@ async function transaction(capabilities, transformation) {
         "runtime-state-repository",
         "empty",
         async (store) => {
-            const runtimeStateStorage = makeRuntimeStateStorage(capabilities);
             const workTree = await store.getWorkTree();
-            
+
             // Set up the state file path
             const statePath = require("path").join(workTree, "state.json");
-            const stateFile = await capabilities.checker
+            const existingStateFile = await capabilities.checker
                 .instantiate(statePath)
                 .catch(() => null);
-            
-            runtimeStateStorage.stateFile = stateFile;
-            
+
+            const stateFile = existingStateFile || await capabilities.creator.createFile(statePath);
+            const runtimeStateStorage = makeRuntimeStateStorage(capabilities, stateFile);
+
             // Run the transformation
             const result = await transformation(runtimeStateStorage);
-            
+
             // Handle state changes
             const newState = runtimeStateStorage.getNewState();
             if (newState !== null) {
@@ -57,11 +57,11 @@ async function transaction(capabilities, transformation) {
                 const stateString = JSON.stringify(serialized, null, '\t');
                 const file = await capabilities.creator.createFile(statePath);
                 await capabilities.writer.writeFile(file, stateString);
-                
+
                 // Commit the changes
                 await store.commit("Runtime state update");
             }
-            
+
             return result;
         }
     );
