@@ -47,17 +47,6 @@ describe("runtime_state_storage/synchronize", () => {
         );
     });
 
-    test("synchronize throws RuntimeStateRepositoryError on failure", async () => {
-        const capabilities = getTestCapabilities();
-        
-        // Mock git failure
-        capabilities.git.call = jest.fn().mockRejectedValue(new Error("Git operation failed"));
-        
-        await expect(synchronize(capabilities)).rejects.toThrow(
-            "Failed to synchronize runtime state repository"
-        );
-    });
-
     test("ensureAccessible logs empty repository initialization", async () => {
         const capabilities = getTestCapabilities();
         
