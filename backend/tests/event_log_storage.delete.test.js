@@ -91,7 +91,7 @@ describe("event_log_storage deletion", () => {
             s.deleteEntry(e1.id);
         });
 
-        await gitstore.transaction(capabilities, "working-git-repository", capabilities.environment.eventLogRepository(), async (store) => {
+        await gitstore.transaction(capabilities, "working-git-repository", { url: capabilities.environment.eventLogRepository() }, async (store) => {
             const workTree = await store.getWorkTree();
             const dataPath = path.join(workTree, "data.json");
             const dataFile = await capabilities.checker.instantiate(dataPath);
