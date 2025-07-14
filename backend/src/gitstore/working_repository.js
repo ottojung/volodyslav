@@ -77,58 +77,8 @@ function pathToLocalRepositoryGitDir(capabilities, workingPath) {
 }
 
 /**
- * Initialize an empty local repository.
- * @param {Capabilities} capabilities
- * @param {string} workDir - The path to the working directory.
- * @returns {Promise<void>}
- * @throws {WorkingRepositoryError}
- */
-async function initializeEmptyRepository(capabilities, workDir) {
-    try {
-        await capabilities.creator.createDirectory(workDir);
-        await gitmethod.init(capabilities, workDir);
-        
-        // Configure the repository to allow pushing to the current branch
-        await capabilities.git.call(
-            "-C",
-            workDir,
-            "config",
-            "receive.denyCurrentBranch",
-            "updateInstead"
-        );
-        
-        // Create an initial commit so the repository has a master branch
-        const readmeFile = path.join(workDir, "README.md");
-        const file = await capabilities.creator.createFile(readmeFile);
-        await capabilities.writer.writeFile(
-            file,
-            "# Local Repository\n\nThis is a local-only git repository."
-        );
-        
-        // Add and commit the initial file
-        await capabilities.git.call("-C", workDir, "add", "--all");
-        await capabilities.git.call(
-            "-C",
-            workDir,
-            "-c",
-            "user.name=volodyslav",
-            "-c",
-            "user.email=volodyslav",
-            "commit",
-            "-m",
-            "Initial commit"
-        );
-    } catch (err) {
-        throw new WorkingRepositoryError(
-            `Failed to initialize empty repository: ${err}`,
-            workDir
-        );
-    }
-}
-
-/**
  * Synchronize the local repository with remote: pull if exists, else clone.
- * Then push the changes as well. For "empty" initial_state, initialize an empty repository.
+ * Then push the changes as well. For "empty" initial_state, this is a NOOP.
  * @param {Capabilities} capabilities
  * @param {string} workingPath - The path to the working directory.
  * @param {RemoteLocation | "empty"} initial_state - Remote location to sync with, or "empty" for local-only
@@ -136,31 +86,29 @@ async function initializeEmptyRepository(capabilities, workDir) {
  * @throws {WorkingRepositoryError}
  */
 async function synchronize(capabilities, workingPath, initial_state) {
+    if (initial_state === "empty") {
+        return;
+    }
+
     const gitDir = pathToLocalRepositoryGitDir(capabilities, workingPath);
     const workDir = pathToLocalRepository(capabilities, workingPath);
     const indexFile = path.join(gitDir, "index");
-    
+
     try {
-        if (initial_state === "empty") {
-            capabilities.logger.logInfo({ repository: workDir }, "Initializing empty repository");
-            await initializeEmptyRepository(capabilities, workDir);
+        const remotePath = initial_state.url;
+        capabilities.logger.logInfo({ repository: remotePath }, "Synchronizing repository");
+        if (await capabilities.checker.fileExists(indexFile)) {
+            await gitmethod.pull(capabilities, workDir);
+            await gitmethod.push(capabilities, workDir);
         } else {
-            const remotePath = initial_state.url;
-            capabilities.logger.logInfo({ repository: remotePath }, "Synchronizing repository");
-            if (await capabilities.checker.fileExists(indexFile)) {
-                await gitmethod.pull(capabilities, workDir);
-                await gitmethod.push(capabilities, workDir);
-            } else {
-                // TODO: rollback if any of the following operations fail.
-                await gitmethod.clone(capabilities, remotePath, workDir);
-                await gitmethod.makePushable(capabilities, workDir);
-            }
+            // TODO: rollback if any of the following operations fail.
+            await gitmethod.clone(capabilities, remotePath, workDir);
+            await gitmethod.makePushable(capabilities, workDir);
         }
     } catch (err) {
-        const repoPath = initial_state === "empty" ? workDir : initial_state.url;
         throw new WorkingRepositoryError(
             `Failed to synchronize repository: ${err}`,
-            repoPath
+            initial_state.url
         );
     }
 }
@@ -179,7 +127,46 @@ async function getRepository(capabilities, workingPath, initial_state) {
     const indexFile = path.join(gitDir, "index");
 
     if (!(await capabilities.checker.fileExists(indexFile))) {
-        await synchronize(capabilities, workingPath, initial_state);
+        if (initial_state === "empty") {
+            // Initialize empty repository directly
+            const workDir = pathToLocalRepository(capabilities, workingPath);
+            capabilities.logger.logInfo({ repository: workDir }, "Initializing empty repository");
+            try {
+                await capabilities.creator.createDirectory(workDir);
+                await gitmethod.init(capabilities, workDir);
+
+                // Configure the repository to allow pushing to the current branch
+                await capabilities.git.call(
+                    "-C",
+                    workDir,
+                    "config",
+                    "receive.denyCurrentBranch",
+                    "updateInstead"
+                );
+
+                // Create an empty initial commit so the repository has a master branch
+                // This is required for the transaction system to work (clone operations need a branch)
+                await capabilities.git.call(
+                    "-C",
+                    workDir,
+                    "-c",
+                    "user.name=volodyslav",
+                    "-c",
+                    "user.email=volodyslav",
+                    "commit",
+                    "--allow-empty",
+                    "-m",
+                    "Initial empty commit"
+                );
+            } catch (err) {
+                throw new WorkingRepositoryError(
+                    `Failed to initialize empty repository: ${err}`,
+                    workDir
+                );
+            }
+        } else {
+            await synchronize(capabilities, workingPath, initial_state);
+        }
     }
 
     return gitDir;
