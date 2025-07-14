@@ -1,4 +1,4 @@
-const path = require("path");
+
 const workingRepository = require("../gitstore/working_repository");
 
 /** @typedef {import('./types').Capabilities} Capabilities */

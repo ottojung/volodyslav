@@ -12,7 +12,8 @@ const workingRepository = require("../gitstore/working_repository");
 async function synchronize(capabilities) {
     const workingPath = "working-git-repository";
     const remotePath = capabilities.environment.eventLogRepository();
-    return await workingRepository.synchronize(capabilities, workingPath, remotePath);
+    const remoteLocation = { url: remotePath };
+    return await workingRepository.synchronize(capabilities, workingPath, remoteLocation);
 }
 
 /**
@@ -25,7 +26,8 @@ async function synchronize(capabilities) {
 async function ensureAccessible(capabilities) {
     const workingPath = "working-git-repository";
     const remotePath = capabilities.environment.eventLogRepository();
-    return await workingRepository.getRepository(capabilities, workingPath, remotePath);
+    const remoteLocation = { url: remotePath };
+    return await workingRepository.getRepository(capabilities, workingPath, remoteLocation);
 }
 
 module.exports = { synchronize, ensureAccessible };
