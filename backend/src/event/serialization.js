@@ -59,8 +59,8 @@ function serialize(event) {
     const id = event.id.identifier;
     const { original, input, modifiers, type, description, creator } = event;
     return {
-        date,
         id,
+        date,
         original,
         input,
         modifiers,
