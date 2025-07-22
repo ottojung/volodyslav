@@ -29,7 +29,7 @@ describe("POST /api/upload", () => {
         const reqId = "testreq";
         const res = await request(app)
             .post(`/api/upload?request_identifier=${reqId}`)
-            .attach("photos", Buffer.from("test content"), "test1.jpg");
+            .attach("files", Buffer.from("test content"), "test1.jpg");
 
         expect(res.statusCode).toBe(200);
         expect(res.body).toEqual({ success: true, files: ["test1.jpg"] });
@@ -47,7 +47,7 @@ describe("POST /api/upload", () => {
         const reqId1 = "testreq1";
         const res1 = await request(app)
             .post(`/api/upload?request_identifier=${reqId1}`)
-            .attach("photos", Buffer.from("first"), "first.jpg");
+            .attach("files", Buffer.from("first"), "first.jpg");
 
         expect(res1.statusCode).toBe(200);
         expect(res1.body).toEqual({ success: true, files: ["first.jpg"] });
@@ -60,7 +60,7 @@ describe("POST /api/upload", () => {
         const reqId2 = "testreq2";
         const res2 = await request(app)
             .post(`/api/upload?request_identifier=${reqId2}`)
-            .attach("photos", Buffer.from("second"), "second.jpg");
+            .attach("files", Buffer.from("second"), "second.jpg");
 
         expect(res2.statusCode).toBe(200);
         expect(res2.body).toEqual({ success: true, files: ["second.jpg"] });
