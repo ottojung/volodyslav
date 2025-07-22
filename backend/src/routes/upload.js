@@ -24,7 +24,7 @@ const { fromRequest, markDone } = require('../request_identifier');
 function makeRouter(capabilities) {
     const uploadMiddleware = upload.makeUpload(capabilities);
     const router = express.Router();
-    router.post('/upload', uploadMiddleware.array('photos'), async (req, res) => {
+    router.post('/upload', uploadMiddleware.array('files'), async (req, res) => {
         let reqId;
         try {
             reqId = fromRequest(req);
