@@ -15,7 +15,7 @@ const datetime = require("../datetime");
 function make() {
     const scheduler = makeCronScheduler();
     const dt = datetime.make();
-    
+
     return {
         /**
          * Schedules a task with the given cron expression.
@@ -27,7 +27,7 @@ function make() {
         schedule(cronExpression, callback) {
             return scheduler.schedule(cronExpression, callback);
         },
-        
+
         /**
          * Cancels a scheduled task.
          * @param {import('./task_id').TaskIdClass | string} taskId - The task ID to cancel
@@ -38,7 +38,7 @@ function make() {
             const taskIdObj = typeof taskId === "string" ? makeTaskId(taskId) : taskId;
             return scheduler.cancel(taskIdObj);
         },
-        
+
         /**
          * Cancels all scheduled tasks.
          * @returns {number} Number of tasks that were cancelled
@@ -46,7 +46,7 @@ function make() {
         cancelAll() {
             return scheduler.cancelAll();
         },
-        
+
         /**
          * Gets information about all scheduled tasks.
          * @returns {Array<{id: import('./task_id').TaskIdClass, cronExpression: string, nextExecution: Date}>}
