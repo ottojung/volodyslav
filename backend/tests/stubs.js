@@ -86,14 +86,19 @@ function stubNotifier(capabilities) {
 
 /**
  * Stubs the scheduler capabilities for testing.
- * Mocks the schedule function to immediately execute the task.
+ * Mocks the schedule function to prevent real timers from being created.
  */
 function stubScheduler(capabilities) {
-    capabilities.scheduler.schedule = jest
-        .fn()
-        .mockImplementation((_cronExpression, taskFn) => {
-            taskFn();
-        });
+    // Mock scheduler instance methods
+    const mockSchedulerInstance = {
+        schedule: jest.fn().mockReturnValue({ toString: () => 'test-task-id' }),
+        cancel: jest.fn().mockReturnValue(true),
+        cancelAll: jest.fn().mockReturnValue(0),
+        getTasks: jest.fn().mockReturnValue([])
+    };
+    
+    // Attach the mock to capabilities for testing
+    capabilities.scheduler = mockSchedulerInstance;
 }
 
 function stubSleeper(capabilities) {

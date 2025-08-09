@@ -2,8 +2,6 @@
  * Tests for schedule tasks functionality.
  */
 
-const { everyHour, daily, allTasks, scheduleAll } = require("../src/schedule/tasks");
-const { getMockedRootCapabilities } = require("./spies");
 const {
     stubLogger,
     stubEnvironment,
@@ -11,6 +9,9 @@ const {
     stubNotifier,
     stubScheduler,
 } = require("./stubs");
+
+const { everyHour, daily, allTasks, scheduleAll } = require("../src/schedule/tasks");
+const { getMockedRootCapabilities } = require("./spies");
 
 function getTestCapabilities() {
     const capabilities = getMockedRootCapabilities();
@@ -69,9 +70,10 @@ describe("Schedule Tasks", () => {
 
             scheduleAll(capabilities);
 
+            // Should call the scheduler from capabilities with both tasks
             expect(capabilities.scheduler.schedule).toHaveBeenCalledTimes(2);
-            expect(capabilities.scheduler.schedule).toHaveBeenCalledWith("0 * * * *", expect.any(Function));
-            expect(capabilities.scheduler.schedule).toHaveBeenCalledWith("0 2 * * *", expect.any(Function));
+            expect(capabilities.scheduler.schedule).toHaveBeenCalledWith("0 * * * *", expect.any(Function), expect.any(Object));
+            expect(capabilities.scheduler.schedule).toHaveBeenCalledWith("0 2 * * *", expect.any(Function), expect.any(Object));
         });
     });
 });

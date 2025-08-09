@@ -6,14 +6,26 @@ const { makeCronScheduler } = require("../src/cron/scheduler");
 const { isSchedulerError } = require("../src/cron/scheduler_errors");
 const { isTaskId } = require("../src/cron/task_id");
 const datetime = require("../src/datetime");
+const { fromMinutes } = require("../src/time_duration");
 
 describe("Cron Scheduler", () => {
     let scheduler;
     let dt;
+    let mockCapabilities;
+    let retryDelay;
 
     beforeEach(() => {
-        scheduler = makeCronScheduler();
+        mockCapabilities = {
+            logger: {
+                logError: jest.fn(),
+                logWarning: jest.fn(),
+                logInfo: jest.fn(),
+                logDebug: jest.fn(),
+            }
+        };
+        scheduler = makeCronScheduler(mockCapabilities);
         dt = datetime.make();
+        retryDelay = fromMinutes(5); // 5 minute retry delay for tests
         jest.useFakeTimers();
     });
 
@@ -25,7 +37,7 @@ describe("Cron Scheduler", () => {
     describe("schedule", () => {
         test("schedules a task with valid cron expression", () => {
             const callback = jest.fn();
-            const taskId = scheduler.schedule("* * * * *", callback);
+            const taskId = scheduler.schedule("* * * * *", callback, retryDelay);
             
             expect(isTaskId(taskId)).toBe(true);
             expect(taskId.toString()).toMatch(/^task_\d+$/);
@@ -36,7 +48,7 @@ describe("Cron Scheduler", () => {
             
             let thrownError;
             try {
-                scheduler.schedule("invalid", callback);
+                scheduler.schedule("invalid", callback, retryDelay);
             } catch (error) {
                 thrownError = error;
             }
@@ -51,7 +63,7 @@ describe("Cron Scheduler", () => {
             const now = dt.fromEpochMs(new Date(2024, 0, 1, 14, 59, 30).getTime()); // 2:59:30 PM
             jest.spyOn(scheduler.datetime, 'now').mockReturnValue(now);
             
-            scheduler.schedule("0 15 * * *", callback); // 3:00 PM
+            scheduler.schedule("0 15 * * *", callback, retryDelay); // 3:00 PM
             
             // Advance time to 3:00 PM
             jest.advanceTimersByTime(30 * 1000); // 30 seconds
@@ -66,7 +78,7 @@ describe("Cron Scheduler", () => {
                 .mockReturnValueOnce(now)
                 .mockReturnValue(dt.fromEpochMs(new Date(2024, 0, 1, 15, 0, 0).getTime()));
             
-            scheduler.schedule("0 * * * *", callback); // Every hour
+            scheduler.schedule("0 * * * *", callback, retryDelay); // Every hour
             
             // First execution at 3:00 PM
             jest.advanceTimersByTime(30 * 1000);
@@ -82,7 +94,7 @@ describe("Cron Scheduler", () => {
             const now = dt.fromEpochMs(new Date(2024, 0, 1, 14, 59, 30).getTime());
             jest.spyOn(scheduler.datetime, 'now').mockReturnValue(now);
             
-            scheduler.schedule("0 15 * * *", callback);
+            scheduler.schedule("0 15 * * *", callback, retryDelay);
             
             jest.advanceTimersByTime(30 * 1000);
             
@@ -93,35 +105,35 @@ describe("Cron Scheduler", () => {
             const callback = jest.fn().mockImplementation(() => {
                 throw new Error("Task error");
             });
-            const consoleSpy = jest.spyOn(console, "error").mockImplementation(() => {});
             
             const now = dt.fromEpochMs(new Date(2024, 0, 1, 14, 59, 30).getTime());
             jest.spyOn(scheduler.datetime, 'now')
                 .mockReturnValueOnce(now)
                 .mockReturnValue(dt.fromEpochMs(new Date(2024, 0, 1, 15, 0, 0).getTime()));
             
-            scheduler.schedule("0 * * * *", callback);
+            scheduler.schedule("0 * * * *", callback, retryDelay);
             
-            // First execution
+            // First execution should trigger error and retry
             jest.advanceTimersByTime(30 * 1000);
             expect(callback).toHaveBeenCalledTimes(1);
-            expect(consoleSpy).toHaveBeenCalledWith(
-                expect.stringContaining("Error executing scheduled task"),
-                expect.any(Error)
+            expect(mockCapabilities.logger.logError).toHaveBeenCalledWith(
+                expect.objectContaining({
+                    error: "Task error",
+                    retryDelay: expect.any(String)
+                }),
+                expect.stringContaining("failed, retrying")
             );
             
-            // Second execution should still happen
-            jest.advanceTimersByTime(60 * 60 * 1000);
+            // After retry delay, should retry the same execution
+            jest.advanceTimersByTime(retryDelay.toMilliseconds());
             expect(callback).toHaveBeenCalledTimes(2);
-            
-            consoleSpy.mockRestore();
         });
     });
 
     describe("cancel", () => {
         test("cancels a scheduled task", () => {
             const callback = jest.fn();
-            const taskId = scheduler.schedule("* * * * *", callback);
+            const taskId = scheduler.schedule("* * * * *", callback, retryDelay);
             
             const result = scheduler.cancel(taskId);
             expect(result).toBe(true);
@@ -142,8 +154,8 @@ describe("Cron Scheduler", () => {
             const callback1 = jest.fn();
             const callback2 = jest.fn();
             
-            const taskId1 = scheduler.schedule("* * * * *", callback1);
-            scheduler.schedule("* * * * *", callback2);
+            const taskId1 = scheduler.schedule("* * * * *", callback1, retryDelay);
+            scheduler.schedule("* * * * *", callback2, retryDelay);
             
             scheduler.cancel(taskId1);
             
@@ -159,8 +171,8 @@ describe("Cron Scheduler", () => {
             const callback1 = jest.fn();
             const callback2 = jest.fn();
             
-            scheduler.schedule("* * * * *", callback1);
-            scheduler.schedule("* * * * *", callback2);
+            scheduler.schedule("* * * * *", callback1, retryDelay);
+            scheduler.schedule("* * * * *", callback2, retryDelay);
             
             const result = scheduler.cancelAll();
             expect(result).toBe(2);
@@ -190,8 +202,8 @@ describe("Cron Scheduler", () => {
             const now = dt.fromEpochMs(new Date(2024, 0, 1, 14, 30, 0).getTime());
             jest.spyOn(scheduler.datetime, 'now').mockReturnValue(now);
             
-            scheduler.schedule("0 15 * * *", callback1);
-            scheduler.schedule("30 16 * * *", callback2);
+            scheduler.schedule("0 15 * * *", callback1, retryDelay);
+            scheduler.schedule("30 16 * * *", callback2, retryDelay);
             
             const tasks = scheduler.getTasks();
             
@@ -206,7 +218,7 @@ describe("Cron Scheduler", () => {
 
         test("does not expose internal callback functions", () => {
             const callback = jest.fn();
-            scheduler.schedule("* * * * *", callback);
+            scheduler.schedule("* * * * *", callback, retryDelay);
             
             const tasks = scheduler.getTasks();
             expect(tasks[0]).not.toHaveProperty("callback");
@@ -221,7 +233,7 @@ describe("Cron Scheduler", () => {
                 .mockReturnValueOnce(now)
                 .mockReturnValue(dt.fromEpochMs(new Date(2024, 0, 1, 14, 31, 0).getTime()));
             
-            scheduler.schedule("* * * * *", callback);
+            scheduler.schedule("* * * * *", callback, retryDelay);
             
             // Should execute at 2:31:00 PM (next minute)
             jest.advanceTimersByTime(30 * 1000); // 30 seconds to get to 2:31:00
@@ -239,7 +251,7 @@ describe("Cron Scheduler", () => {
                 .mockReturnValueOnce(now)
                 .mockReturnValue(dt.fromEpochMs(new Date(2024, 0, 1, 2, 0, 0).getTime()));
             
-            scheduler.schedule("0 2 * * *", callback); // 2:00 AM daily
+            scheduler.schedule("0 2 * * *", callback, retryDelay); // 2:00 AM daily
             
             // Should execute at 2:00 AM
             jest.advanceTimersByTime(30 * 60 * 1000); // 30 minutes

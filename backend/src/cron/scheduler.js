@@ -9,6 +9,12 @@ const { SchedulerError } = require("./scheduler_errors");
 const datetime = require("../datetime");
 
 /** @typedef {import('./task_id').TaskIdClass} TaskId */
+/** @typedef {import('../logger').Logger} Logger */
+
+/**
+ * @typedef {object} SchedulerCapabilities
+ * @property {Logger} logger - A logger instance
+ */
 
 /**
  * Represents a scheduled task.
@@ -23,8 +29,9 @@ class ScheduledTaskClass {
      * @param {() => Promise<void> | void} callback
      * @param {NodeJS.Timeout} timeout
      * @param {import('../datetime').DateTime} nextExecution
+     * @param {import('../time_duration/structure').TimeDuration} retryDelay
      */
-    constructor(id, cronExpression, callback, timeout, nextExecution) {
+    constructor(id, cronExpression, callback, timeout, nextExecution, retryDelay) {
         if (this.__brand !== undefined) {
             throw new Error("ScheduledTask is a nominal type");
         }
@@ -33,6 +40,7 @@ class ScheduledTaskClass {
         this.callback = callback;
         this.timeout = timeout;
         this.nextExecution = nextExecution;
+        this.retryDelay = retryDelay;
     }
 }
 
@@ -51,7 +59,10 @@ class CronSchedulerClass {
     /** @type {undefined} */
     __brand = undefined; // nominal typing brand
 
-    constructor() {
+    /**
+     * @param {SchedulerCapabilities} capabilities
+     */
+    constructor(capabilities) {
         if (this.__brand !== undefined) {
             throw new Error("CronScheduler is a nominal type");
         }
@@ -59,21 +70,23 @@ class CronSchedulerClass {
         this.tasks = new Map();
         this.taskCounter = 0;
         this.datetime = datetime.make();
+        this.capabilities = capabilities;
     }
 
     /**
      * Schedules a task with the given cron expression.
      * @param {string} cronExpression - The cron expression
      * @param {() => Promise<void> | void} callback - The callback function to execute
+     * @param {import('../time_duration/structure').TimeDuration} retryDelay - The delay before retrying on error
      * @returns {TaskId} Task ID that can be used to cancel the task
      * @throws {SchedulerError} If the cron expression is invalid
      */
-    schedule(cronExpression, callback) {
+    schedule(cronExpression, callback, retryDelay) {
         try {
             const parsedCron = parseCronExpression(cronExpression);
             const taskId = generateTaskId(++this.taskCounter);
             
-            this._scheduleTask(taskId, cronExpression, parsedCron, callback);
+            this._scheduleTask(taskId, cronExpression, parsedCron, callback, retryDelay);
             return taskId;
         } catch (error) {
             throw new SchedulerError(
@@ -135,14 +148,15 @@ class CronSchedulerClass {
      * @param {string} cronExpression
      * @param {import('./expression').CronExpressionClass} parsedCron
      * @param {() => Promise<void> | void} callback
+     * @param {import('../time_duration/structure').TimeDuration} retryDelay
      */
-    _scheduleTask(taskId, cronExpression, parsedCron, callback) {
+    _scheduleTask(taskId, cronExpression, parsedCron, callback, retryDelay) {
         const now = this.datetime.now();
         const nextExecution = getNextExecution(parsedCron, now);
         const delay = this.datetime.toEpochMs(nextExecution) - this.datetime.toEpochMs(now);
 
         const timeout = setTimeout(() => {
-            this._executeTask(taskId, cronExpression, parsedCron, callback);
+            this._executeTask(taskId, cronExpression, parsedCron, callback, retryDelay);
         }, delay);
 
         const task = new ScheduledTaskClass(
@@ -150,7 +164,8 @@ class CronSchedulerClass {
             cronExpression,
             callback,
             timeout,
-            nextExecution
+            nextExecution,
+            retryDelay
         );
 
         this.tasks.set(taskId.toString(), task);
@@ -163,8 +178,9 @@ class CronSchedulerClass {
      * @param {string} cronExpression
      * @param {import('./expression').CronExpressionClass} parsedCron
      * @param {() => Promise<void> | void} callback
+     * @param {import('../time_duration/structure').TimeDuration} retryDelay
      */
-    async _executeTask(taskId, cronExpression, parsedCron, callback) {
+    async _executeTask(taskId, cronExpression, parsedCron, callback, retryDelay) {
         try {
             // Execute the callback
             const result = callback();
@@ -172,13 +188,37 @@ class CronSchedulerClass {
                 await result;
             }
         } catch (error) {
-            // Log error but don't stop the scheduler
-            console.error(`Error executing scheduled task ${taskId.toString()}:`, error);
+            // Log error and schedule retry
+            const errorMessage = error instanceof Error ? error.message : String(error);
+            const errorStack = error instanceof Error ? error.stack : undefined;
+            
+            // We need capabilities for logging - get them from the state
+            if (this.capabilities && this.capabilities.logger) {
+                this.capabilities.logger.logError(
+                    {
+                        taskId: taskId.toString(),
+                        cronExpression,
+                        error: errorMessage,
+                        errorStack,
+                        retryDelay: retryDelay.toString()
+                    },
+                    `Scheduled task ${taskId.toString()} failed, retrying in ${retryDelay.toString()}: ${errorMessage}`
+                );
+            } else {
+                console.error(`Error executing scheduled task ${taskId.toString()}:`, error);
+            }
+
+            // Schedule retry after the specified delay
+            setTimeout(() => {
+                this._executeTask(taskId, cronExpression, parsedCron, callback, retryDelay);
+            }, retryDelay.toMilliseconds());
+            
+            return; // Don't reschedule the normal execution
         }
 
         // Reschedule the task for the next execution
         if (this.tasks.has(taskId.toString())) {
-            this._scheduleTask(taskId, cronExpression, parsedCron, callback);
+            this._scheduleTask(taskId, cronExpression, parsedCron, callback, retryDelay);
         }
     }
 }
@@ -193,10 +233,11 @@ function isCronScheduler(object) {
 
 /**
  * Factory function to create a new cron scheduler.
+ * @param {SchedulerCapabilities} capabilities
  * @returns {CronSchedulerClass}
  */
-function makeCronScheduler() {
-    return new CronSchedulerClass();
+function makeCronScheduler(capabilities) {
+    return new CronSchedulerClass(capabilities);
 }
 
 module.exports = {

@@ -1,6 +1,8 @@
 const eventLogStorage = require("../event_log_storage");
 const { processDiaryAudios } = require("../diary");
 const { executeDailyTasks } = require("./daily_tasks");
+const { schedule } = require("./runner");
+const { COMMON } = require("../time_duration");
 
 /** @typedef {import('../filesystem/deleter').FileDeleter} FileDeleter */
 /** @typedef {import('../random/seed').NonDeterministicSeed} NonDeterministicSeed */
@@ -66,8 +68,11 @@ async function allTasks(capabilities) {
  * @param {Capabilities} capabilities
  */
 function scheduleAll(capabilities) {
-    capabilities.scheduler.schedule("0 * * * *", () => everyHour(capabilities));
-    capabilities.scheduler.schedule("0 2 * * *", () => daily(capabilities));
+    // Use a reasonable retry delay for scheduled tasks - 5 minutes
+    const retryDelay = COMMON.FIVE_MINUTES;
+    
+    schedule(capabilities, "0 * * * *", () => everyHour(capabilities), retryDelay);
+    schedule(capabilities, "0 2 * * *", () => daily(capabilities), retryDelay);
 }
 
 module.exports = {

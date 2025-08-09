@@ -11,9 +11,10 @@ const datetime = require("../datetime");
 /**
  * Creates a new cron scheduler with a simple schedule function.
  * Compatible with the existing node-cron interface.
+ * @param {import('./scheduler').SchedulerCapabilities} capabilities
  */
-function make() {
-    const scheduler = makeCronScheduler();
+function make(capabilities) {
+    const scheduler = makeCronScheduler(capabilities);
     const dt = datetime.make();
 
     return {
@@ -21,11 +22,12 @@ function make() {
          * Schedules a task with the given cron expression.
          * @param {string} cronExpression - The cron expression
          * @param {() => Promise<void> | void} callback - The callback function to execute
+         * @param {import('../time_duration/structure').TimeDuration} retryDelay - The delay before retrying on error
          * @returns {import('./task_id').TaskIdClass} Task ID that can be used to cancel the task
          * @throws {Error} If the cron expression is invalid
          */
-        schedule(cronExpression, callback) {
-            return scheduler.schedule(cronExpression, callback);
+        schedule(cronExpression, callback, retryDelay) {
+            return scheduler.schedule(cronExpression, callback, retryDelay);
         },
 
         /**

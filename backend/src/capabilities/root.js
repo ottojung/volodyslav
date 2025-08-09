@@ -95,11 +95,14 @@ const make = memconst(() => {
         exiter: exiterCapability.make(),
         logger: loggingCapability.make(() => ret),
         notifier: notifierCapability.make(),
-        scheduler: schedulerCapability.make(),
+        scheduler: /** @type {any} */ (null), // Will be set below
         aiTranscription: aiTranscriptionCapability.make({ environment }),
         sleeper,
         volodyslavDailyTasks,
     };
+
+    // Create scheduler with capabilities after ret is defined
+    ret.scheduler = schedulerCapability.make(ret);
 
     return ret;
 });

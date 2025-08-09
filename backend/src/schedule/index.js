@@ -3,9 +3,18 @@ const { schedule } = require("./runner");
 
 /** @typedef {ReturnType<make>} Scheduler */
 
-function make() {
+/**
+ * @param {import("./tasks").Capabilities} capabilities
+ */
+function make(capabilities) {
     return {
-        schedule,
+        /**
+         * @param {string} cronExpression
+         * @param {() => Promise<void>} callback
+         * @param {import('../time_duration/structure').TimeDuration} retryDelay
+         * @returns {string}
+         */
+        schedule: (cronExpression, callback, retryDelay) => schedule(capabilities, cronExpression, callback, retryDelay),
     };
 }
 

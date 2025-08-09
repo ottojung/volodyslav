@@ -5,13 +5,26 @@
 const { make, validate, parseCronExpression, isInvalidCronExpressionError } = require("../src/cron");
 const { isTaskId } = require("../src/cron/task_id");
 const datetime = require("../src/datetime");
+const { fromMinutes } = require("../src/time_duration");
+const { stubLogger } = require("./stubs");
 
 describe("Cron Module", () => {
     let dt;
+    let mockCapabilities;
+    let retryDelay;
 
     beforeEach(() => {
         dt = datetime.make();
         jest.useFakeTimers();
+        
+        // Create mock capabilities for the scheduler
+        mockCapabilities = {
+            logger: {}
+        };
+        stubLogger(mockCapabilities);
+        
+        // Create a standard retry delay for tests
+        retryDelay = fromMinutes(5);
     });
 
     afterEach(() => {
@@ -20,7 +33,7 @@ describe("Cron Module", () => {
 
     describe("make", () => {
         test("creates a scheduler with schedule function", () => {
-            const cron = make();
+            const cron = make(mockCapabilities);
             
             expect(typeof cron.schedule).toBe("function");
             expect(typeof cron.cancel).toBe("function");
@@ -29,45 +42,45 @@ describe("Cron Module", () => {
         });
 
         test("schedule function works with valid cron expressions", () => {
-            const cron = make();
+            const cron = make(mockCapabilities);
             const callback = jest.fn();
             
-            const taskId = cron.schedule("0 * * * *", callback);
+            const taskId = cron.schedule("0 * * * *", callback, retryDelay);
             expect(isTaskId(taskId)).toBe(true);
         });
 
         test("schedule function throws on invalid cron expressions", () => {
-            const cron = make();
+            const cron = make(mockCapabilities);
             const callback = jest.fn();
             
             expect(() => {
-                cron.schedule("invalid", callback);
+                cron.schedule("invalid", callback, retryDelay);
             }).toThrow();
         });
 
         test("cancel function works", () => {
-            const cron = make();
+            const cron = make(mockCapabilities);
             const callback = jest.fn();
             
-            const taskId = cron.schedule("* * * * *", callback);
+            const taskId = cron.schedule("* * * * *", callback, retryDelay);
             const result = cron.cancel(taskId);
             
             expect(result).toBe(true);
         });
 
         test("cancelAll function works", () => {
-            const cron = make();
+            const cron = make(mockCapabilities);
             const callback = jest.fn();
             
-            cron.schedule("* * * * *", callback);
-            cron.schedule("0 * * * *", callback);
+            cron.schedule("* * * * *", callback, retryDelay);
+            cron.schedule("0 * * * *", callback, retryDelay);
             
             const result = cron.cancelAll();
             expect(result).toBe(2);
         });
 
         test("getTasks function works", () => {
-            const cron = make();
+            const cron = make(mockCapabilities);
             const callback = jest.fn();
             
             expect(cron.getTasks()).toEqual([]);
@@ -75,7 +88,7 @@ describe("Cron Module", () => {
             const now = dt.fromEpochMs(new Date(2024, 0, 1, 14, 30, 0).getTime());
             jest.spyOn(Date, 'now').mockReturnValue(now.epochMs);
             
-            cron.schedule("0 * * * *", callback);
+            cron.schedule("0 * * * *", callback, retryDelay);
             const tasks = cron.getTasks();
             
             expect(tasks).toHaveLength(1);
@@ -144,7 +157,7 @@ describe("Cron Module", () => {
 
     describe("compatibility with node-cron interface", () => {
         test("provides same basic interface as node-cron", () => {
-            const cron = make();
+            const cron = make(mockCapabilities);
             
             // node-cron basic interface
             expect(typeof cron.schedule).toBe("function");
@@ -156,11 +169,11 @@ describe("Cron Module", () => {
         });
 
         test("schedule function signature matches node-cron", () => {
-            const cron = make();
+            const cron = make(mockCapabilities);
             const callback = jest.fn();
             
-            // Should work with same parameters as node-cron
-            const result = cron.schedule("0 * * * *", callback);
+            // Should work with same parameters as node-cron plus retry delay
+            const result = cron.schedule("0 * * * *", callback, retryDelay);
             expect(isTaskId(result)).toBe(true); // Returns TaskId instead of task object
         });
     });
