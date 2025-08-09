@@ -5,7 +5,6 @@
 
 const { makeCronScheduler } = require("./scheduler");
 const { parseCronExpression, isInvalidCronExpressionError } = require("./parser");
-const { makeTaskId } = require("./task_id");
 const datetime = require("../datetime");
 
 /**
@@ -32,13 +31,12 @@ function make(capabilities) {
 
         /**
          * Cancels a scheduled task.
-         * @param {import('./task_id').TaskIdClass | string} taskId - The task ID to cancel
+         * @param {import('./task_id').TaskIdClass} taskId - The task ID to cancel
          * @returns {boolean} True if the task was found and cancelled
          */
         cancel(taskId) {
             // Handle both TaskId objects and strings for compatibility
-            const taskIdObj = typeof taskId === "string" ? makeTaskId(taskId) : taskId;
-            return scheduler.cancel(taskIdObj);
+            return scheduler.cancel(taskId);
         },
 
         /**
