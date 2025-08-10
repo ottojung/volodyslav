@@ -28,11 +28,9 @@ function make(capabilities, options = {}) {
          * @returns {string}
          */
         schedule(name, cronExpression, callback, retryDelay) {
-            if (typeof cronExpression !== "string") {
-                throw new ScheduleInvalidNameError(name);
-            }
             return scheduler.schedule(name, cronExpression, callback, retryDelay);
         },
+
         /**
          * Cancel a task by name.
          * @param {string} name
