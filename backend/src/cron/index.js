@@ -1,75 +1,85 @@
 /**
- * Custom cron implementation with expression parsing and task scheduling.
- * This module provides a complete replacement for node-cron with validation.
+ * Polling cron scheduler public interface.
  */
 
-const { makeCronScheduler } = require("./scheduler");
+const { makePollingScheduler } = require("./polling_scheduler");
 const { parseCronExpression, isInvalidCronExpressionError } = require("./parser");
-const datetime = require("../datetime");
+const {
+    ScheduleDuplicateTaskError,
+    isScheduleDuplicateTaskError,
+    ScheduleInvalidNameError,
+    isScheduleInvalidNameError,
+} = require("./polling_scheduler_errors");
 
 /**
- * Creates a new cron scheduler with a simple schedule function.
- * Compatible with the existing node-cron interface.
- * @param {import('./scheduler').SchedulerCapabilities} capabilities
+ * Creates a new polling scheduler instance.
+ * @param {import('../capabilities/root').Capabilities} capabilities
+ * @param {{pollIntervalMs?: number}} [options]
  */
-function make(capabilities) {
-    const scheduler = makeCronScheduler(capabilities);
-    const dt = datetime.make();
-
+function make(capabilities, options = {}) {
+    const scheduler = makePollingScheduler(capabilities, options);
     return {
         /**
-         * Schedules a task with the given cron expression.
-         * @param {string} cronExpression - The cron expression
-         * @param {() => Promise<void> | void} callback - The callback function to execute
-         * @param {import('../time_duration/structure').TimeDuration} retryDelay - The delay before retrying on error
-         * @returns {import('./task_id').TaskIdClass} Task ID that can be used to cancel the task
-         * @throws {Error} If the cron expression is invalid
+         * Schedule a task.
+         * @param {string} name
+         * @param {string} cronExpression
+         * @param {() => Promise<void> | void} callback
+         * @param {import('../time_duration/structure').TimeDuration} retryDelay
+         * @returns {string}
          */
-        schedule(cronExpression, callback, retryDelay) {
-            return scheduler.schedule(cronExpression, callback, retryDelay);
+        schedule(name, cronExpression, callback, retryDelay) {
+            if (typeof cronExpression !== "string") {
+                throw new ScheduleInvalidNameError(name);
+            }
+            return scheduler.schedule(name, cronExpression, callback, retryDelay);
         },
-
         /**
-         * Cancels a scheduled task.
-         * @param {import('./task_id').TaskIdClass} taskId - The task ID to cancel
-         * @returns {boolean} True if the task was found and cancelled
+         * Cancel a task by name.
+         * @param {string} name
+         * @returns {boolean}
          */
-        cancel(taskId) {
-            // Handle both TaskId objects and strings for compatibility
-            return scheduler.cancel(taskId);
+        cancel(name) {
+            return scheduler.cancel(name);
         },
-
         /**
-         * Cancels all scheduled tasks.
-         * @returns {number} Number of tasks that were cancelled
+         * Cancel all tasks and stop polling.
+         * @returns {number}
          */
         cancelAll() {
             return scheduler.cancelAll();
         },
-
         /**
-         * Gets information about all scheduled tasks.
-         * @returns {Array<{id: import('./task_id').TaskIdClass, cronExpression: string, nextExecution: Date}>}
+         * Get info about tasks.
          */
         getTasks() {
-            return scheduler.getTasks().map(task => ({
-                ...task,
-                nextExecution: dt.toNativeDate(task.nextExecution)
-            }));
-        }
+            return scheduler.getTasks();
+        },
+        /**
+         * Validate a cron expression.
+         * @param {string} cronExpression
+         * @returns {boolean}
+         */
+        validate(cronExpression) {
+            try {
+                parseCronExpression(cronExpression);
+                return true;
+            } catch {
+                return false;
+            }
+        },
     };
 }
 
 /**
- * Validates a cron expression without scheduling it.
- * @param {string} cronExpression - The cron expression to validate
- * @returns {boolean} True if the expression is valid
+ * Validate a cron expression without creating a scheduler.
+ * @param {string} cronExpression
+ * @returns {boolean}
  */
 function validate(cronExpression) {
     try {
         parseCronExpression(cronExpression);
         return true;
-    } catch (error) {
+    } catch {
         return false;
     }
 }
@@ -79,4 +89,9 @@ module.exports = {
     validate,
     parseCronExpression,
     isInvalidCronExpressionError,
+    ScheduleDuplicateTaskError,
+    isScheduleDuplicateTaskError,
+    ScheduleInvalidNameError,
+    isScheduleInvalidNameError,
 };
+

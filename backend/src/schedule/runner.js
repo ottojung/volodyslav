@@ -1,16 +1,17 @@
 /**
  * @param {import('../capabilities/root').Capabilities} capabilities
+ * @param {string} name
  * @param {string} cronExpression
  * @param {() => Promise<void>} callback
  * @param {import('../time_duration/structure').TimeDuration} retryDelay
- * @returns {string} Task ID as string for compatibility
+ * @returns {string} Task name
  */
-function schedule(capabilities, cronExpression, callback, retryDelay) {
-    // Use the scheduler from capabilities instead of creating a new one
-    const taskId = capabilities.scheduler.schedule(cronExpression, callback, retryDelay);
-    return taskId.toString();
+function schedule(capabilities, name, cronExpression, callback, retryDelay) {
+    capabilities.scheduler.schedule(name, cronExpression, callback, retryDelay);
+    return name;
 }
 
 module.exports = {
     schedule,
 };
+

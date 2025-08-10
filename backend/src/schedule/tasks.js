@@ -71,8 +71,8 @@ function scheduleAll(capabilities) {
     // Use a reasonable retry delay for scheduled tasks - 5 minutes
     const retryDelay = COMMON.FIVE_MINUTES;
 
-    schedule(capabilities, "0 * * * *", () => everyHour(capabilities), retryDelay);
-    schedule(capabilities, "0 2 * * *", () => daily(capabilities), retryDelay);
+    schedule(capabilities, "every-hour", "0 * * * *", () => everyHour(capabilities), retryDelay);
+    schedule(capabilities, "daily-2am", "0 2 * * *", () => daily(capabilities), retryDelay);
 }
 
 module.exports = {
