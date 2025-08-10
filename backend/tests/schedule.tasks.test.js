@@ -72,8 +72,8 @@ describe("Schedule Tasks", () => {
 
             // Should call the scheduler from capabilities with both tasks
             expect(capabilities.scheduler.schedule).toHaveBeenCalledTimes(2);
-            expect(capabilities.scheduler.schedule).toHaveBeenCalledWith("0 * * * *", expect.any(Function), expect.any(Object));
-            expect(capabilities.scheduler.schedule).toHaveBeenCalledWith("0 2 * * *", expect.any(Function), expect.any(Object));
+            expect(capabilities.scheduler.schedule).toHaveBeenCalledWith("every-hour", "0 * * * *", expect.any(Function), expect.any(Object));
+            expect(capabilities.scheduler.schedule).toHaveBeenCalledWith("daily-2am", "0 2 * * *", expect.any(Function), expect.any(Object));
         });
     });
 });

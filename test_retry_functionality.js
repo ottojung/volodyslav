@@ -41,8 +41,8 @@ async function testRetryFunctionality() {
     const retryDelay = fromSeconds(2);
     console.log('Scheduling task with 2-second retry delay...');
 
-    const taskId = cron.schedule("* * * * *", flakyCallback, retryDelay);
-    console.log(`Task scheduled with ID: ${taskId.toString()}`);
+    cron.schedule("test", "* * * * *", flakyCallback, retryDelay);
+    
 
     // Let it run for a bit
     console.log('Waiting 10 seconds to observe retry behavior...');

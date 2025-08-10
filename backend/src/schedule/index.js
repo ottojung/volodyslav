@@ -9,12 +9,14 @@ const { schedule } = require("./runner");
 function make(capabilities) {
     return {
         /**
+         * @param {string} name
          * @param {string} cronExpression
          * @param {() => Promise<void>} callback
          * @param {import('../time_duration/structure').TimeDuration} retryDelay
          * @returns {string}
          */
-        schedule: (cronExpression, callback, retryDelay) => schedule(capabilities, cronExpression, callback, retryDelay),
+        schedule: (name, cronExpression, callback, retryDelay) =>
+            schedule(capabilities, name, cronExpression, callback, retryDelay),
     };
 }
 
@@ -34,3 +36,4 @@ module.exports = {
     make,
     runAllTasks,
 };
+

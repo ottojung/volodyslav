@@ -91,7 +91,7 @@ function stubNotifier(capabilities) {
 function stubScheduler(capabilities) {
     // Mock scheduler instance methods
     const mockSchedulerInstance = {
-        schedule: jest.fn().mockReturnValue({ toString: () => 'test-task-id' }),
+        schedule: jest.fn((name) => name),
         cancel: jest.fn().mockReturnValue(true),
         cancelAll: jest.fn().mockReturnValue(0),
         getTasks: jest.fn().mockReturnValue([])
