@@ -28,7 +28,21 @@
 /**
  * Runtime state stored in the persistent storage.
  * @typedef {object} RuntimeState
+ * @property {number} version - Schema version
  * @property {import('../datetime').DateTime} startTime - When the Volodyslav process started
+ * @property {TaskRecord[]} tasks - Persisted task records
+ */
+
+/**
+ * A record describing a scheduled task persisted in runtime state.
+ * @typedef {object} TaskRecord
+ * @property {string} name - Task name (unique)
+ * @property {string} cronExpression - Cron expression string
+ * @property {number} retryDelayMs - Retry delay in milliseconds
+ * @property {import('../datetime').DateTime} [lastSuccessTime]
+ * @property {import('../datetime').DateTime} [lastFailureTime]
+ * @property {import('../datetime').DateTime} [lastAttemptTime]
+ * @property {import('../datetime').DateTime} [pendingRetryUntil]
  */
 
 /**

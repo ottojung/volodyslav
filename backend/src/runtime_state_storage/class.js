@@ -89,7 +89,6 @@ class RuntimeStateStorageClass {
 
             const result = structure.tryDeserialize(obj);
 
-            // If deserialization returned an error object, it means the state is invalid
             if (structure.isTryDeserializeError(result)) {
                 this.capabilities.logger.logWarning(
                     {
@@ -98,15 +97,35 @@ class RuntimeStateStorageClass {
                         field: result.field,
                         value: result.value,
                         expectedType: result.expectedType,
-                        errorType: result.name
+                        errorType: result.name,
                     },
-                    "Found invalid runtime state object in file"
+                    "Found invalid runtime state object in file",
                 );
                 this.existingStateCache = null;
                 return null;
             }
 
-            this.existingStateCache = result;
+            for (const err of result.taskErrors) {
+                this.capabilities.logger.logWarning(
+                    {
+                        index: err.taskIndex,
+                        error: err.message,
+                        field: err.field,
+                        value: err.value,
+                        expectedType: err.expectedType,
+                        errorType: err.name,
+                    },
+                    "SkippedInvalidTask",
+                );
+            }
+            if (result.migrated) {
+                this.capabilities.logger.logInfo(
+                    { fromVersion: 1, toVersion: structure.RUNTIME_STATE_VERSION },
+                    "RuntimeStateMigrated",
+                );
+            }
+
+            this.existingStateCache = result.state;
             return this.existingStateCache;
         } catch (error) {
             this.capabilities.logger.logWarning(

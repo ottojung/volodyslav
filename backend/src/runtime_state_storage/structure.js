@@ -2,141 +2,217 @@
  * Runtime state structure and validation.
  */
 
-/**
- * @typedef {import('./types').RuntimeState} RuntimeState
- */
+const {
+    TryDeserializeError,
+    MissingFieldError,
+    InvalidTypeError,
+    InvalidStructureError,
+    TasksFieldInvalidStructureError,
+    UnsupportedVersionError,
+    TryDeserializeTaskError,
+    TaskMissingFieldError,
+    TaskInvalidTypeError,
+    TaskInvalidValueError,
+    isTryDeserializeError,
+    isTryDeserializeTaskError,
+} = require("./errors");
+
+/** @typedef {import('./types').RuntimeState} RuntimeState */
+/** @typedef {import('./types').TaskRecord} TaskRecord */
+
+/** Current runtime state schema version */
+const RUNTIME_STATE_VERSION = 2;
 
 /**
- * Base class for runtime state deserialization errors.
+ * @typedef {object} DeserializeOk
+ * @property {RuntimeState} state
+ * @property {TryDeserializeTaskError[]} taskErrors
+ * @property {boolean} migrated
  */
-class TryDeserializeError extends Error {
-    /**
-     * @param {string} message
-     * @param {string} field
-     * @param {unknown} value
-     * @param {string} expectedType
-     */
-    constructor(message, field, value, expectedType) {
-        super(message);
-        this.name = "TryDeserializeError";
-        this.field = field;
-        this.value = value;
-        this.expectedType = expectedType;
-    }
-}
-
-/**
- * Error thrown when a required field is missing from the runtime state.
- */
-class MissingFieldError extends TryDeserializeError {
-    /**
-     * @param {string} field
-     */
-    constructor(field) {
-        super(`Missing required field: ${field}`, field, undefined, "any");
-        this.name = "MissingFieldError";
-    }
-}
-
-/**
- * Error thrown when a field has an invalid type.
- */
-class InvalidTypeError extends TryDeserializeError {
-    /**
-     * @param {string} field
-     * @param {unknown} value
-     * @param {string} expectedType
-     */
-    constructor(field, value, expectedType) {
-        const actualType = Array.isArray(value) ? 'array' : typeof value;
-        super(`Invalid type for field '${field}': expected ${expectedType}, got ${actualType}`, 
-              field, value, expectedType);
-        this.name = "InvalidTypeError";
-        this.actualType = actualType;
-    }
-}
-
-/**
- * Error thrown when the runtime state structure is invalid.
- */
-class InvalidStructureError extends TryDeserializeError {
-    /**
-     * @param {string} message
-     * @param {unknown} value
-     */
-    constructor(message, value) {
-        super(message, "root", value, "object");
-        this.name = "InvalidStructureError";
-    }
-}
-
-/**
- * Type guard for TryDeserializeError.
- * @param {unknown} object
- * @returns {object is TryDeserializeError}
- */
-function isTryDeserializeError(object) {
-    return object instanceof TryDeserializeError;
-}
 
 /**
  * Attempts to deserialize an object into a RuntimeState.
- * @param {unknown} obj - The object to deserialize.
- * @returns {RuntimeState | TryDeserializeError}
+ * @param {Record<string, unknown>} obj
+ * @returns {DeserializeOk | TryDeserializeError}
  */
 function tryDeserialize(obj) {
     if (!obj || typeof obj !== "object") {
         return new InvalidStructureError("Runtime state must be a non-null object", obj);
     }
-    
+
+    const datetimeMod = require("../datetime");
+    const dt = datetimeMod.make();
+
+    const versionRaw = "version" in obj ? obj["version"] : 1;
+    if (typeof versionRaw !== "number" || !Number.isInteger(versionRaw)) {
+        return new InvalidTypeError("version", versionRaw, "integer");
+    }
+    if (versionRaw > RUNTIME_STATE_VERSION) {
+        return new UnsupportedVersionError(versionRaw);
+    }
+    const migrated = versionRaw < RUNTIME_STATE_VERSION;
+
     if (!("startTime" in obj)) {
         return new MissingFieldError("startTime");
     }
-    
-    if (typeof obj.startTime !== "string") {
-        return new InvalidTypeError("startTime", obj.startTime, "string");
+    const startTimeRaw = obj["startTime"];
+    if (typeof startTimeRaw !== "string") {
+        return new InvalidTypeError("startTime", startTimeRaw, "string");
     }
-    
-    try {
-        const datetime = require("../datetime");
-        const datetimeCaps = datetime.make();
-        const startTime = datetimeCaps.fromISOString(obj.startTime);
-        
-        // Check if the parsed DateTime is valid
-        if (isNaN(startTime.getTime())) {
-            return new InvalidTypeError("startTime", obj.startTime, "valid ISO string");
+    const startTime = dt.fromISOString(startTimeRaw);
+    if (isNaN(startTime.getTime())) {
+        return new InvalidTypeError("startTime", startTimeRaw, "valid ISO string");
+    }
+
+    /** @type {TaskRecord[]} */
+    const tasks = [];
+    /** @type {TryDeserializeTaskError[]} */
+    const taskErrors = [];
+
+    if (!migrated) {
+        const rawTasks = obj["tasks"] ?? [];
+        if (!Array.isArray(rawTasks)) {
+            return new TasksFieldInvalidStructureError(rawTasks);
         }
-        
-        return {
-            startTime: startTime
-        };
-    } catch (error) {
-        return new InvalidTypeError("startTime", obj.startTime, "valid ISO string");
+        const seenNames = new Set();
+        for (let i = 0; i < rawTasks.length; i++) {
+            const t = rawTasks[i];
+            if (!t || typeof t !== "object") {
+                taskErrors.push(new TaskInvalidTypeError("task", t, "object", i));
+                continue;
+            }
+            if (!("name" in t)) {
+                taskErrors.push(new TaskMissingFieldError("name", i));
+                continue;
+            }
+            if (typeof t.name !== "string") {
+                taskErrors.push(new TaskInvalidTypeError("name", t.name, "string", i));
+                continue;
+            }
+            if (seenNames.has(t.name)) {
+                taskErrors.push(new TaskInvalidValueError("name", t.name, "unique", i));
+                continue;
+            }
+            seenNames.add(t.name);
+            if (!("cronExpression" in t)) {
+                taskErrors.push(new TaskMissingFieldError("cronExpression", i));
+                continue;
+            }
+            if (typeof t.cronExpression !== "string") {
+                taskErrors.push(new TaskInvalidTypeError("cronExpression", t.cronExpression, "string", i));
+                continue;
+            }
+            if (!("retryDelayMs" in t)) {
+                taskErrors.push(new TaskMissingFieldError("retryDelayMs", i));
+                continue;
+            }
+            if (typeof t.retryDelayMs !== "number" || !Number.isInteger(t.retryDelayMs)) {
+                taskErrors.push(new TaskInvalidTypeError("retryDelayMs", t.retryDelayMs, "integer", i));
+                continue;
+            }
+            if (t.retryDelayMs < 0) {
+                taskErrors.push(new TaskInvalidValueError("retryDelayMs", t.retryDelayMs, "non-negative", i));
+                continue;
+            }
+            /** @type {TaskRecord} */
+            const rec = {
+                name: t.name,
+                cronExpression: t.cronExpression,
+                retryDelayMs: t.retryDelayMs,
+            };
+            if (t.lastSuccessTime !== undefined) {
+                if (typeof t.lastSuccessTime !== "string") {
+                    taskErrors.push(new TaskInvalidTypeError("lastSuccessTime", t.lastSuccessTime, "string", i));
+                } else {
+                    const d = dt.fromISOString(t.lastSuccessTime);
+                    if (isNaN(d.getTime())) {
+                        taskErrors.push(new TaskInvalidValueError("lastSuccessTime", t.lastSuccessTime, "valid ISO", i));
+                    } else {
+                        rec.lastSuccessTime = d;
+                    }
+                }
+            }
+            if (t.lastFailureTime !== undefined) {
+                if (typeof t.lastFailureTime !== "string") {
+                    taskErrors.push(new TaskInvalidTypeError("lastFailureTime", t.lastFailureTime, "string", i));
+                } else {
+                    const d = dt.fromISOString(t.lastFailureTime);
+                    if (isNaN(d.getTime())) {
+                        taskErrors.push(new TaskInvalidValueError("lastFailureTime", t.lastFailureTime, "valid ISO", i));
+                    } else {
+                        rec.lastFailureTime = d;
+                    }
+                }
+            }
+            if (t.lastAttemptTime !== undefined) {
+                if (typeof t.lastAttemptTime !== "string") {
+                    taskErrors.push(new TaskInvalidTypeError("lastAttemptTime", t.lastAttemptTime, "string", i));
+                } else {
+                    const d = dt.fromISOString(t.lastAttemptTime);
+                    if (isNaN(d.getTime())) {
+                        taskErrors.push(new TaskInvalidValueError("lastAttemptTime", t.lastAttemptTime, "valid ISO", i));
+                    } else {
+                        rec.lastAttemptTime = d;
+                    }
+                }
+            }
+            if (t.pendingRetryUntil !== undefined) {
+                if (typeof t.pendingRetryUntil !== "string") {
+                    taskErrors.push(new TaskInvalidTypeError("pendingRetryUntil", t.pendingRetryUntil, "string", i));
+                } else {
+                    const d = dt.fromISOString(t.pendingRetryUntil);
+                    if (isNaN(d.getTime())) {
+                        taskErrors.push(new TaskInvalidValueError("pendingRetryUntil", t.pendingRetryUntil, "valid ISO", i));
+                    } else {
+                        rec.pendingRetryUntil = d;
+                    }
+                }
+            }
+            tasks.push(rec);
+        }
     }
+
+    return { state: { version: RUNTIME_STATE_VERSION, startTime, tasks }, taskErrors, migrated };
 }
 
 /**
- * Serializes a RuntimeState object to a plain object.
- * @param {RuntimeState} state - The runtime state to serialize.
+ * Serializes a RuntimeState object.
+ * @param {RuntimeState} state
  * @returns {object}
  */
 function serialize(state) {
-    const datetime = require("../datetime");
-    const datetimeCaps = datetime.make();
+    const datetimeMod = require("../datetime");
+    const dt = datetimeMod.make();
+    const tasks = state.tasks
+        .slice()
+        .sort((a, b) => a.name.localeCompare(b.name))
+        .map((t) => {
+            /** @type {any} */
+            const rec = {
+                name: t.name,
+                cronExpression: t.cronExpression,
+                retryDelayMs: t.retryDelayMs,
+            };
+            if (t.lastSuccessTime) rec.lastSuccessTime = dt.toISOString(t.lastSuccessTime);
+            if (t.lastFailureTime) rec.lastFailureTime = dt.toISOString(t.lastFailureTime);
+            if (t.lastAttemptTime) rec.lastAttemptTime = dt.toISOString(t.lastAttemptTime);
+            if (t.pendingRetryUntil) rec.pendingRetryUntil = dt.toISOString(t.pendingRetryUntil);
+            return rec;
+        });
     return {
-        startTime: datetimeCaps.toISOString(state.startTime)
+        version: RUNTIME_STATE_VERSION,
+        startTime: dt.toISOString(state.startTime),
+        tasks,
     };
 }
 
 /**
- * Creates a new RuntimeState with the current time as start time.
- * @param {import('../datetime').Datetime} datetime - Datetime capabilities.
+ * Creates a default RuntimeState
+ * @param {import('../datetime').Datetime} datetime
  * @returns {RuntimeState}
  */
 function makeDefault(datetime) {
-    return {
-        startTime: datetime.now()
-    };
+    return { version: RUNTIME_STATE_VERSION, startTime: datetime.now(), tasks: [] };
 }
 
 module.exports = {
@@ -144,8 +220,16 @@ module.exports = {
     serialize,
     makeDefault,
     isTryDeserializeError,
+    isTryDeserializeTaskError,
     TryDeserializeError,
     MissingFieldError,
     InvalidTypeError,
-    InvalidStructureError
+    InvalidStructureError,
+    TasksFieldInvalidStructureError,
+    UnsupportedVersionError,
+    TryDeserializeTaskError,
+    TaskMissingFieldError,
+    TaskInvalidTypeError,
+    TaskInvalidValueError,
+    RUNTIME_STATE_VERSION,
 };
