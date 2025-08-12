@@ -15,13 +15,17 @@ describe("runtime_state_storage/structure", () => {
     describe("tryDeserialize", () => {
         test("deserializes valid runtime state object", () => {
             const validObject = {
-                startTime: "2025-01-01T10:00:00.000Z"
+                version: structure.RUNTIME_STATE_VERSION,
+                startTime: "2025-01-01T10:00:00.000Z",
+                tasks: []
             };
 
             const result = structure.tryDeserialize(validObject);
             expect(structure.isTryDeserializeError(result)).toBe(false);
-            expect(result).toMatchObject({
-                startTime: expect.any(Object)
+            expect(result.state).toMatchObject({
+                version: structure.RUNTIME_STATE_VERSION,
+                startTime: expect.any(Object),
+                tasks: []
             });
         });
 
@@ -47,9 +51,7 @@ describe("runtime_state_storage/structure", () => {
         });
 
         test("returns error for non-string startTime", () => {
-            const invalidObject = {
-                startTime: 123
-            };
+            const invalidObject = { startTime: 123 };
             const result = structure.tryDeserialize(invalidObject);
             expect(structure.isTryDeserializeError(result)).toBe(true);
             expect(result).toBeInstanceOf(structure.InvalidTypeError);
@@ -58,9 +60,7 @@ describe("runtime_state_storage/structure", () => {
         });
 
         test("returns error for invalid ISO string", () => {
-            const invalidObject = {
-                startTime: "not-a-valid-date"
-            };
+            const invalidObject = { startTime: "not-a-valid-date" };
             const result = structure.tryDeserialize(invalidObject);
             expect(structure.isTryDeserializeError(result)).toBe(true);
             expect(result).toBeInstanceOf(structure.InvalidTypeError);
@@ -72,11 +72,13 @@ describe("runtime_state_storage/structure", () => {
     describe("serialize", () => {
         test("serializes runtime state to plain object", () => {
             const startTime = datetime.fromISOString("2025-01-01T10:00:00.000Z");
-            const state = { startTime };
+            const state = { version: structure.RUNTIME_STATE_VERSION, startTime, tasks: [] };
 
             const result = structure.serialize(state);
             expect(result).toEqual({
-                startTime: "2025-01-01T10:00:00.000Z"
+                version: structure.RUNTIME_STATE_VERSION,
+                startTime: "2025-01-01T10:00:00.000Z",
+                tasks: []
             });
         });
     });
@@ -88,7 +90,9 @@ describe("runtime_state_storage/structure", () => {
 
             const result = structure.makeDefault(datetime);
             expect(result).toEqual({
-                startTime: now
+                version: structure.RUNTIME_STATE_VERSION,
+                startTime: now,
+                tasks: []
             });
             expect(datetime.now).toHaveBeenCalledTimes(1);
         });

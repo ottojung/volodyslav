@@ -3,6 +3,7 @@
  */
 
 const { transaction } = require("../src/runtime_state_storage");
+const { RUNTIME_STATE_VERSION } = require("../src/runtime_state_storage/structure");
 const { getMockedRootCapabilities } = require("./spies");
 const { stubEnvironment, stubLogger, stubDatetime } = require("./stubs");
 
@@ -23,7 +24,7 @@ describe("runtime_state_storage/transaction", () => {
         const capabilities = getTestCapabilities();
 
         const startTime = capabilities.datetime.fromISOString("2025-01-01T10:00:00.000Z");
-        const testState = { startTime };
+        const testState = { version: RUNTIME_STATE_VERSION, startTime, tasks: [] };
 
         await transaction(capabilities, async (runtimeStateStorage) => {
             runtimeStateStorage.setState(testState);
@@ -33,7 +34,9 @@ describe("runtime_state_storage/transaction", () => {
         await transaction(capabilities, async (runtimeStateStorage) => {
             const storedState = await runtimeStateStorage.getExistingState();
             expect(storedState).toMatchObject({
-                startTime: expect.any(Object)
+                version: RUNTIME_STATE_VERSION,
+                startTime: expect.any(Object),
+                tasks: []
             });
             // Check that the stored time matches what we set
             expect(capabilities.datetime.toISOString(storedState.startTime)).toBe("2025-01-01T10:00:00.000Z");
@@ -47,7 +50,7 @@ describe("runtime_state_storage/transaction", () => {
         capabilities.git.call = jest.fn().mockRejectedValue(new Error("Git operation failed"));
 
         const startTime = capabilities.datetime.now();
-        const testState = { startTime };
+        const testState = { version: RUNTIME_STATE_VERSION, startTime, tasks: [] };
 
         await expect(
             transaction(capabilities, async (runtimeStateStorage) => {
@@ -73,7 +76,7 @@ describe("runtime_state_storage/transaction", () => {
 
         const result = await transaction(capabilities, async (runtimeStateStorage) => {
             const startTime = capabilities.datetime.now();
-            runtimeStateStorage.setState({ startTime });
+            runtimeStateStorage.setState({ version: RUNTIME_STATE_VERSION, startTime, tasks: [] });
             return expectedResult;
         });
 
@@ -84,7 +87,7 @@ describe("runtime_state_storage/transaction", () => {
         const capabilities = getTestCapabilities();
 
         const startTime = capabilities.datetime.fromISOString("2025-01-01T10:00:00.000Z");
-        const initialState = { startTime };
+        const initialState = { version: RUNTIME_STATE_VERSION, startTime, tasks: [] };
 
         // First transaction: set initial state
         await transaction(capabilities, async (runtimeStateStorage) => {
@@ -98,7 +101,9 @@ describe("runtime_state_storage/transaction", () => {
         });
 
         expect(result).toMatchObject({
-            startTime: expect.any(Object)
+            version: RUNTIME_STATE_VERSION,
+            startTime: expect.any(Object),
+            tasks: []
         });
         expect(capabilities.datetime.toISOString(result.startTime)).toBe("2025-01-01T10:00:00.000Z");
     });
@@ -114,7 +119,9 @@ describe("runtime_state_storage/transaction", () => {
 
         expect(result.existing).toBeNull();
         expect(result.current).toMatchObject({
-            startTime: expect.any(Object)
+            version: RUNTIME_STATE_VERSION,
+            startTime: expect.any(Object),
+            tasks: []
         });
     });
 
@@ -126,12 +133,12 @@ describe("runtime_state_storage/transaction", () => {
 
         // Set initial state
         await transaction(capabilities, async (runtimeStateStorage) => {
-            runtimeStateStorage.setState({ startTime: initialTime });
+            runtimeStateStorage.setState({ version: RUNTIME_STATE_VERSION, startTime: initialTime, tasks: [] });
         });
 
         // Update state
         await transaction(capabilities, async (runtimeStateStorage) => {
-            runtimeStateStorage.setState({ startTime: updatedTime });
+            runtimeStateStorage.setState({ version: RUNTIME_STATE_VERSION, startTime: updatedTime, tasks: [] });
         });
 
         // Verify update
@@ -150,12 +157,12 @@ describe("runtime_state_storage/transaction", () => {
 
         // Set initial state
         await transaction(capabilities, async (runtimeStateStorage) => {
-            runtimeStateStorage.setState({ startTime: existingTime });
+            runtimeStateStorage.setState({ version: RUNTIME_STATE_VERSION, startTime: existingTime, tasks: [] });
         });
 
         // In new transaction, getCurrentState should return new state when set
         const result = await transaction(capabilities, async (runtimeStateStorage) => {
-            runtimeStateStorage.setState({ startTime: newTime });
+            runtimeStateStorage.setState({ version: RUNTIME_STATE_VERSION, startTime: newTime, tasks: [] });
             return await runtimeStateStorage.getCurrentState();
         });
 

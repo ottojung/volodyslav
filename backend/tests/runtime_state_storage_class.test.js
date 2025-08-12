@@ -3,6 +3,7 @@
  */
 
 const { make: makeRuntimeStateStorage } = require("../src/runtime_state_storage/class");
+const { RUNTIME_STATE_VERSION } = require("../src/runtime_state_storage/structure");
 const { getMockedRootCapabilities } = require("./spies");
 const { stubEnvironment, stubLogger, stubDatetime } = require("./stubs");
 
@@ -26,7 +27,7 @@ describe("runtime_state_storage/class", () => {
         const capabilities = getTestCapabilities();
         const storage = makeRuntimeStateStorage(capabilities);
         const startTime = capabilities.datetime.now();
-        const state = { startTime };
+        const state = { version: RUNTIME_STATE_VERSION, startTime, tasks: [] };
 
         storage.setState(state);
         expect(storage.getNewState()).toEqual(state);
@@ -110,7 +111,9 @@ describe("runtime_state_storage/class", () => {
         storage.stateFile = mockFile;
         
         const validState = {
-            startTime: "2025-01-01T10:00:00.000Z"
+            version: RUNTIME_STATE_VERSION,
+            startTime: "2025-01-01T10:00:00.000Z",
+            tasks: []
         };
         
         capabilities.reader.readFileAsText = jest.fn().mockResolvedValue(
@@ -119,7 +122,9 @@ describe("runtime_state_storage/class", () => {
         
         const result = await storage.getExistingState();
         expect(result).toMatchObject({
-            startTime: expect.any(Object)
+            version: RUNTIME_STATE_VERSION,
+            startTime: expect.any(Object),
+            tasks: []
         });
     });
 
@@ -128,7 +133,7 @@ describe("runtime_state_storage/class", () => {
         const storage = makeRuntimeStateStorage(capabilities);
         
         const startTime = capabilities.datetime.now();
-        const state = { startTime };
+        const state = { version: RUNTIME_STATE_VERSION, startTime, tasks: [] };
         storage.setState(state);
         
         const result = await storage.getCurrentState();
@@ -144,7 +149,9 @@ describe("runtime_state_storage/class", () => {
         storage.stateFile = mockFile;
         
         const existingState = {
-            startTime: "2025-01-01T10:00:00.000Z"
+            version: RUNTIME_STATE_VERSION,
+            startTime: "2025-01-01T10:00:00.000Z",
+            tasks: []
         };
         
         capabilities.reader.readFileAsText = jest.fn().mockResolvedValue(
@@ -153,7 +160,9 @@ describe("runtime_state_storage/class", () => {
         
         const result = await storage.getCurrentState();
         expect(result).toMatchObject({
-            startTime: expect.any(Object)
+            version: RUNTIME_STATE_VERSION,
+            startTime: expect.any(Object),
+            tasks: []
         });
     });
 
@@ -166,7 +175,9 @@ describe("runtime_state_storage/class", () => {
         
         const result = await storage.getCurrentState();
         expect(result).toMatchObject({
-            startTime: expect.any(Object)
+            version: RUNTIME_STATE_VERSION,
+            startTime: expect.any(Object),
+            tasks: []
         });
     });
 });
