@@ -13,7 +13,7 @@ function caps() {
 }
 
 describe("polling scheduler validate() and getTasks()", () => {
-    test("validate exposes parser and returns booleans", () => {
+    test("validate exposes parser and returns booleans", async () => {
         expect(validate("* * * * *")).toBe(true);
         expect(validate("0 2 * * *")).toBe(true);
         expect(validate("60 * * * *")).toBe(false); // invalid minute
@@ -25,7 +25,7 @@ describe("polling scheduler validate() and getTasks()", () => {
         const retryDelay = fromMilliseconds(0);
         await expect(cron.schedule("", "* * * * *", () => {}, retryDelay)).rejects.toThrow(ScheduleInvalidNameError);
         await expect(cron.schedule("   ", "* * * * *", () => {}, retryDelay)).rejects.toThrow(ScheduleInvalidNameError);
-        await cron.cancelAll();
+        await await cron.cancelAll();
     });
 
     test("getTasks modeHint shows cron when due, idle otherwise", async () => {
@@ -33,7 +33,7 @@ describe("polling scheduler validate() and getTasks()", () => {
         const cron = make(caps(), { pollIntervalMs: 10 });
         const retryDelay = COMMON.ONE_MINUTE;
         const cb = jest.fn();
-        await cron.schedule("t", "* * * * *", cb, retryDelay);
+        await await cron.schedule("t", "* * * * *", cb, retryDelay);
 
         // before first poll, not run yet -> after first poll it should run once
         jest.advanceTimersByTime(10);
@@ -57,7 +57,7 @@ describe("polling scheduler validate() and getTasks()", () => {
         await cron.cancelAll();
     });
 
-    test("getTasks modeHint shows retry when pending and due", () => {
+    test("getTasks modeHint shows retry when pending and due", async () => {
         jest.useFakeTimers().setSystemTime(new Date("2020-01-01T00:00:00Z"));
         const cron = make(caps(), { pollIntervalMs: 10 });
         const retryDelay = fromMilliseconds(100);
@@ -65,35 +65,35 @@ describe("polling scheduler validate() and getTasks()", () => {
         const cb = jest.fn(() => {
             if (first) { first = false; throw new Error("boom"); }
         });
-        cron.schedule("t", "* * * * *", cb, retryDelay);
+        await cron.schedule("t", "* * * * *", cb, retryDelay);
 
         // First poll -> fails and schedules retry
         jest.advanceTimersByTime(10);
         expect(cb).toHaveBeenCalledTimes(1);
-        expect(cron.getTasks()[0].modeHint).toBe("idle"); // retry not yet due
+        expect((await cron.getTasks())[0].modeHint).toBe("idle"); // retry not yet due
 
         // Before retry due
         jest.advanceTimersByTime(90);
-        expect(cron.getTasks()[0].modeHint).toBe("idle");
+        expect((await cron.getTasks())[0].modeHint).toBe("idle");
 
         // After retry due, but before the poll tick executes it, the hint should be retry
         jest.setSystemTime(new Date("2020-01-01T00:00:00.200Z"));
-        expect(cron.getTasks()[0].modeHint).toBe("retry");
+        expect((await cron.getTasks())[0].modeHint).toBe("retry");
 
         // Next poll triggers retry and succeeds
         jest.advanceTimersByTime(10);
         expect(cb).toHaveBeenCalledTimes(2);
-        expect(cron.getTasks()[0].modeHint).toBe("idle");
+        expect((await cron.getTasks())[0].modeHint).toBe("idle");
 
-        cron.cancelAll();
+        await cron.cancelAll();
     });
 
-    test("cancel of non-existent task returns false and keeps others", () => {
+    test("cancel of non-existent task returns false and keeps others", async () => {
         const cron = make(caps(), { pollIntervalMs: 10 });
         const retryDelay = fromMilliseconds(0);
-        cron.schedule("a", "* * * * *", () => {}, retryDelay);
-        expect(cron.cancel("missing")).toBe(false);
-        expect(cron.getTasks().length).toBe(1);
-        cron.cancelAll();
+        await cron.schedule("a", "* * * * *", () => {}, retryDelay);
+        expect(await cron.cancel("missing")).toBe(false);
+        expect((await cron.getTasks()).length).toBe(1);
+        await cron.cancelAll();
     });
 });

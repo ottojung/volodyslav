@@ -19,7 +19,7 @@ describe("polling scheduler skip running", () => {
         const retryDelay = fromMilliseconds(0);
         let resolve;
         const cb = jest.fn(() => new Promise(r => { resolve = r; }));
-        cron.schedule("t", "* * * * *", cb, retryDelay);
+        await cron.schedule("t", "* * * * *", cb, retryDelay);
 
         jest.advanceTimersByTime(10);
         jest.advanceTimersByTime(10);
@@ -27,7 +27,7 @@ describe("polling scheduler skip running", () => {
 
         resolve();
         await Promise.resolve();
-        cron.cancelAll();
+        await cron.cancelAll();
     });
 });
 

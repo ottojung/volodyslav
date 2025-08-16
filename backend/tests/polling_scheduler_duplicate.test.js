@@ -13,14 +13,12 @@ function caps() {
 }
 
 describe("polling scheduler duplicate", () => {
-    test("throws on duplicate name", () => {
+    test("throws on duplicate name", async () => {
         const cron = make(caps(), { pollIntervalMs: 10 });
         const retryDelay = fromMilliseconds(0);
-        cron.schedule("a", "* * * * *", () => {}, retryDelay);
-        expect(() =>
-            cron.schedule("a", "* * * * *", () => {}, retryDelay)
-        ).toThrow(ScheduleDuplicateTaskError);
-        cron.cancelAll();
+        await cron.schedule("a", "* * * * *", () => {}, retryDelay);
+        await expect(cron.schedule("a", "* * * * *", () => {}, retryDelay)).rejects.toThrow(ScheduleDuplicateTaskError);
+        await cron.cancelAll();
     });
 });
 

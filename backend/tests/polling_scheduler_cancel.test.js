@@ -13,18 +13,18 @@ function caps() {
 }
 
 describe("polling scheduler cancel", () => {
-    test("cancel and cancelAll remove tasks", () => {
+    test("cancel and cancelAll remove tasks", async () => {
         jest.useFakeTimers();
         const cron = make(caps(), { pollIntervalMs: 10 });
         const retryDelay = fromMilliseconds(0);
-        cron.schedule("a", "* * * * *", () => {}, retryDelay);
-        cron.schedule("b", "* * * * *", () => {}, retryDelay);
-        expect(cron.getTasks().length).toBe(2);
-        expect(cron.cancel("a")).toBe(true);
-        expect(cron.getTasks().length).toBe(1);
-        cron.schedule("c", "* * * * *", () => {}, retryDelay);
-        expect(cron.cancelAll()).toBe(2);
-        expect(cron.getTasks().length).toBe(0);
+        await cron.schedule("a", "* * * * *", () => {}, retryDelay);
+        await cron.schedule("b", "* * * * *", () => {}, retryDelay);
+        expect((await cron.getTasks()).length).toBe(2);
+        expect(await cron.cancel("a")).toBe(true);
+        expect((await cron.getTasks()).length).toBe(1);
+        await cron.schedule("c", "* * * * *", () => {}, retryDelay);
+        expect(await cron.cancelAll()).toBe(2);
+        expect((await cron.getTasks()).length).toBe(0);
     });
 });
 

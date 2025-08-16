@@ -13,7 +13,7 @@ function caps() {
 }
 
 describe("polling scheduler retry", () => {
-    test("retries after delay and ignores cron", () => {
+    test("retries after delay and ignores cron", async () => {
         jest.useFakeTimers().setSystemTime(new Date("2020-01-01T00:00:00Z"));
         const cron = make(caps(), { pollIntervalMs: 10 });
         const retryDelay = fromMilliseconds(100);
@@ -24,7 +24,7 @@ describe("polling scheduler retry", () => {
                 throw new Error("fail");
             }
         });
-        cron.schedule("t", "* * * * *", cb, retryDelay);
+        await cron.schedule("t", "* * * * *", cb, retryDelay);
 
         jest.advanceTimersByTime(10);
         expect(cb).toHaveBeenCalledTimes(1);
@@ -35,7 +35,7 @@ describe("polling scheduler retry", () => {
         jest.advanceTimersByTime(20);
         expect(cb).toHaveBeenCalledTimes(2);
 
-        cron.cancelAll();
+        await cron.cancelAll();
     });
 });
 
