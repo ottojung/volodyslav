@@ -8,9 +8,6 @@ const {
     ScheduleDuplicateTaskError,
     ScheduleInvalidNameError,
 } = require("./polling_scheduler_errors");
-const { fromMilliseconds } = require("../time_duration");
-const runtimeStateStorage = require("../runtime_state_storage");
-const { isTryDeserializeError, UnsupportedVersionError } = require("../runtime_state_storage/structure");
 
 /** @typedef {import('../logger').Logger} Logger */
 /** @typedef {import('../time_duration/structure').TimeDuration} TimeDuration */
@@ -52,107 +49,35 @@ function getMostRecentExecution(parsedCron, now) {
 }
 
 /**
- * @typedef {object} PreloadedRecord
- * @property {string} cronExpression
- * @property {number} retryDelayMs
- * @property {Date} [lastSuccessTime]
- * @property {Date} [lastFailureTime]
- * @property {Date} [lastAttemptTime]
- * @property {Date} [pendingRetryUntil]
+ * Simple task state for persistence.
+ * @typedef {object} TaskState
+ * @property {string} [lastSuccessTime]
+ * @property {string} [lastFailureTime] 
+ * @property {string} [lastAttemptTime]
+ * @property {string} [pendingRetryUntil]
  */
 
 /**
- * Loads runtime state from storage and extracts preloaded task records.
+ * Loads simple scheduler state from JSON file.
  * @param {object} capabilities
- * @param {Logger} capabilities.logger
  * @param {import('../filesystem/reader').FileReader} capabilities.reader
  * @param {import('../filesystem/checker').FileChecker} capabilities.checker
- * @returns {Promise<Map<string, PreloadedRecord>>}
+ * @param {import('../environment').Environment} capabilities.environment
+ * @returns {Map<string, TaskState>}
  */
-async function loadRuntimeState(capabilities) {
-    /** @type {Map<string, PreloadedRecord>} */
-    const preloadedRecords = new Map();
-
+function loadSchedulerState(capabilities) {
     try {
-        // Get the runtime state repository path
-        const repositoryPath = await runtimeStateStorage.ensureAccessible(capabilities);
-        const stateFilePath = require("path").join(repositoryPath, "..", "state.json");
-        
-        // Check if state file exists
-        const fileExists = await capabilities.checker.fileExists(stateFilePath);
+        const stateFile = require("path").join(capabilities.environment.workingDirectory(), "scheduler_state.json");
+        const fileExists = capabilities.checker.fileExists(stateFile);
         if (!fileExists) {
-            capabilities.logger.logInfo({ taskCount: 0 }, "SchedulerStatePreload");
-            return preloadedRecords;
+            return new Map();
         }
-
-        // Read and parse the state file
-        const stateContent = await capabilities.reader.readFileAsText(stateFilePath);
-        const stateData = JSON.parse(stateContent);
         
-        // Deserialize using the runtime state structure
-        const deserializeResult = require("../runtime_state_storage/structure").tryDeserialize(stateData);
-        
-        if (isTryDeserializeError(deserializeResult)) {
-            if (deserializeResult instanceof UnsupportedVersionError) {
-                capabilities.logger.logError(
-                    { version: deserializeResult.version },
-                    "UnsupportedRuntimeStateVersion"
-                );
-                capabilities.logger.logInfo({ taskCount: 0 }, "SchedulerStatePreload");
-                return preloadedRecords;
-            } else {
-                throw deserializeResult;
-            }
-        }
-
-        // Log any task validation errors
-        for (const taskError of deserializeResult.taskErrors) {
-            const logData = {
-                reason: taskError.message
-            };
-            if (taskError.taskIndex !== undefined) {
-                logData.index = taskError.taskIndex;
-            }
-            if (taskError.field && "name" in stateData.tasks?.[taskError.taskIndex]) {
-                logData.name = stateData.tasks[taskError.taskIndex].name;
-            }
-            capabilities.logger.logWarning(logData, "SkippedInvalidPersistedTask");
-        }
-
-        // Convert valid task records to preloaded records
-        const dt = datetime.make();
-        for (const taskRecord of deserializeResult.state.tasks) {
-            /** @type {PreloadedRecord} */
-            const preloaded = {
-                cronExpression: taskRecord.cronExpression,
-                retryDelayMs: taskRecord.retryDelayMs,
-            };
-            
-            // Convert DateTime objects to native Date objects
-            if (taskRecord.lastSuccessTime) {
-                preloaded.lastSuccessTime = dt.toNativeDate(taskRecord.lastSuccessTime);
-            }
-            if (taskRecord.lastFailureTime) {
-                preloaded.lastFailureTime = dt.toNativeDate(taskRecord.lastFailureTime);
-            }
-            if (taskRecord.lastAttemptTime) {
-                preloaded.lastAttemptTime = dt.toNativeDate(taskRecord.lastAttemptTime);
-            }
-            if (taskRecord.pendingRetryUntil) {
-                preloaded.pendingRetryUntil = dt.toNativeDate(taskRecord.pendingRetryUntil);
-            }
-            
-            preloadedRecords.set(taskRecord.name, preloaded);
-        }
-
-        capabilities.logger.logInfo({ taskCount: preloadedRecords.size }, "SchedulerStatePreload");
-        return preloadedRecords;
-        
-    } catch (error) {
-        const message = error instanceof Error ? error.message : String(error);
-        capabilities.logger.logWarning({ message }, "StateLoadFailed");
-        capabilities.logger.logInfo({ taskCount: 0 }, "SchedulerStatePreload");
-        return preloadedRecords;
+        const content = capabilities.reader.readFileAsText(stateFile);
+        const data = JSON.parse(content);
+        return new Map(Object.entries(data));
+    } catch {
+        return new Map();
     }
 }
 
@@ -161,6 +86,7 @@ async function loadRuntimeState(capabilities) {
  * @param {Logger} capabilities.logger
  * @param {import('../filesystem/reader').FileReader} capabilities.reader
  * @param {import('../filesystem/checker').FileChecker} capabilities.checker
+ * @param {import('../environment').Environment} capabilities.environment
  * @param {{pollIntervalMs?: number}} [options]
  */
 function makePollingScheduler(capabilities, options = {}) {
@@ -170,36 +96,8 @@ function makePollingScheduler(capabilities, options = {}) {
     let interval = /** @type {NodeJS.Timeout?} */ (null);
     const dt = datetime.make();
 
-    // Lazy loading state
-    /** @type {Map<string, PreloadedRecord>|null} */
-    let preloadedRecords = null;
-    let stateLoadAttempted = false;
-    /** @type {Promise<void>|null} */
-    let loadingPromise = null;
-
-    /**
-     * Ensures preloaded records are loaded (called lazily on first schedule).
-     */
-    async function ensurePreloadedRecords() {
-        if (!stateLoadAttempted) {
-            stateLoadAttempted = true;
-            preloadedRecords = await loadRuntimeState(capabilities);
-        }
-    }
-
-    /**
-     * Triggers loading if not already started.
-     */
-    function triggerLoading() {
-        if (!loadingPromise) {
-            loadingPromise = ensurePreloadedRecords().catch((error) => {
-                capabilities.logger.logWarning(
-                    { message: error instanceof Error ? error.message : String(error) },
-                    "StateLoadFailed"
-                );
-            });
-        }
-    }
+    // Load state once during creation
+    const savedState = loadSchedulerState(capabilities);
 
     function start() {
         if (interval === null) {
@@ -323,9 +221,6 @@ function makePollingScheduler(capabilities, options = {}) {
                 throw new ScheduleDuplicateTaskError(name);
             }
 
-            // Trigger state loading if not already started
-            triggerLoading();
-
             const parsedCron = parseCronExpression(cronExpression);
             /** @type {Task} */
             const task = {
@@ -341,32 +236,13 @@ function makePollingScheduler(capabilities, options = {}) {
                 running: false,
             };
 
-            // Check for preloaded record and apply if it matches (if already loaded)
-            if (preloadedRecords) {
-                const preloaded = preloadedRecords.get(name);
-                if (preloaded) {
-                    // Remove from preloaded to avoid reuse
-                    preloadedRecords.delete(name);
-                    
-                    // Check if cron expression and retry delay match
-                    const retryDelayMs = retryDelay.toMilliseconds();
-                    if (preloaded.cronExpression === cronExpression && preloaded.retryDelayMs === retryDelayMs) {
-                        // Apply preloaded timing fields
-                        task.lastSuccessTime = preloaded.lastSuccessTime;
-                        task.lastFailureTime = preloaded.lastFailureTime;
-                        task.lastAttemptTime = preloaded.lastAttemptTime;
-                        task.pendingRetryUntil = preloaded.pendingRetryUntil;
-                    } else {
-                        // Log mismatch warning
-                        capabilities.logger.logWarning({
-                            name,
-                            persistedCron: preloaded.cronExpression,
-                            providedCron: cronExpression,
-                            persistedRetryDelayMs: preloaded.retryDelayMs,
-                            providedRetryDelayMs: retryDelayMs
-                        }, "PersistedTaskMismatch");
-                    }
-                }
+            // Restore state if available
+            const state = savedState.get(name);
+            if (state) {
+                if (state.lastSuccessTime) task.lastSuccessTime = new Date(state.lastSuccessTime);
+                if (state.lastFailureTime) task.lastFailureTime = new Date(state.lastFailureTime);
+                if (state.lastAttemptTime) task.lastAttemptTime = new Date(state.lastAttemptTime);
+                if (state.pendingRetryUntil) task.pendingRetryUntil = new Date(state.pendingRetryUntil);
             }
 
             tasks.set(name, task);

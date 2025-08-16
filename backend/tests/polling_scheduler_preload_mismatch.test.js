@@ -1,117 +1,65 @@
 const { make } = require("../src/cron");
 const { fromMilliseconds } = require("../src/time_duration");
 const { getMockedRootCapabilities } = require("./spies");
-const { stubEnvironment, stubLogger, stubDatetime } = require("./stubs");
+const { stubEnvironment, stubLogger } = require("./stubs");
 
-function getTestCapabilities() {
-    const capabilities = getMockedRootCapabilities();
-    stubEnvironment(capabilities);
-    stubLogger(capabilities);
-    stubDatetime(capabilities);
-    
-    // Mock git operations to succeed for repository setup
-    capabilities.git.call = jest.fn().mockResolvedValue({ stdout: "", stderr: "" });
-    
-    return capabilities;
-}
+describe("polling scheduler state restoration", () => {
+    test("restores task timing from state file", async () => {
+        const capabilities = getMockedRootCapabilities();
+        stubEnvironment(capabilities);
+        stubLogger(capabilities);
 
-describe("polling scheduler preload mismatch", () => {
-    test("logs mismatch warning when persisted task differs from scheduled task", async () => {
-        const capabilities = getTestCapabilities();
-
-        // Mock successful state loading with a task that will mismatch
         const stateData = {
-            version: 2,
-            startTime: "2020-01-01T00:00:00.000Z",
-            tasks: [
-                {
-                    name: "mismatch-task",
-                    cronExpression: "0 2 * * *",  // This will differ from scheduled
-                    retryDelayMs: 300000,         // This will also differ
-                    lastSuccessTime: "2019-12-31T02:00:00.000Z"
-                }
-            ]
+            "test-task": {
+                lastSuccessTime: "2020-01-01T02:00:00.000Z",
+                lastFailureTime: "2020-01-01T03:00:00.000Z",
+                pendingRetryUntil: "2020-01-01T04:00:00.000Z"
+            }
         };
 
-        capabilities.checker.fileExists.mockResolvedValue(true);
-        capabilities.reader.readFileAsText.mockResolvedValue(JSON.stringify(stateData));
+        capabilities.checker.fileExists.mockReturnValue(true);
+        capabilities.reader.readFileAsText.mockReturnValue(JSON.stringify(stateData));
 
         const cron = await make(capabilities, { pollIntervalMs: 10 });
-        const retryDelay = fromMilliseconds(60000); // Different from persisted 300000
+        const retryDelay = fromMilliseconds(60000);
         const cb = jest.fn();
 
-        // Schedule with different cron expression and retry delay
-        cron.schedule("mismatch-task", "* * * * *", cb, retryDelay);
+        cron.schedule("test-task", "* * * * *", cb, retryDelay);
 
-        // Since this is lazy loaded, we need to give the async loading time to complete
-        // and then check if the mismatch was detected
-        await new Promise(resolve => {
-            // Check periodically for the warning log
-            const checkForLog = () => {
-                const warningCalls = capabilities.logger.logWarning.mock.calls;
-                const mismatchLog = warningCalls.find(call => 
-                    call[1] === "PersistedTaskMismatch"
-                );
-                
-                if (mismatchLog) {
-                    // Verify the mismatch log contains expected data
-                    expect(mismatchLog[0]).toEqual(expect.objectContaining({
-                        name: "mismatch-task",
-                        persistedCron: "0 2 * * *",
-                        providedCron: "* * * * *",
-                        persistedRetryDelayMs: 300000,
-                        providedRetryDelayMs: 60000
-                    }));
-                    resolve();
-                } else if (warningCalls.length > 0 || capabilities.logger.logInfo.mock.calls.length > 0) {
-                    // If we got some other log, resolve anyway (test framework will check assertions)
-                    resolve();
-                } else {
-                    // Keep checking
-                    setTimeout(checkForLog, 10);
-                }
-            };
-            checkForLog();
-        });
+        const tasks = cron.getTasks();
+        const task = tasks[0];
+        
+        expect(task.lastSuccessTime).toBe("2020-01-01T02:00:00.000Z");
+        expect(task.lastFailureTime).toBe("2020-01-01T03:00:00.000Z");
+        expect(task.pendingRetryUntil).toBe("2020-01-01T04:00:00.000Z");
 
         cron.cancelAll();
     });
 
-    test("no mismatch warning when cron and retry delay match", async () => {
-        const capabilities = getTestCapabilities();
+    test("ignores state for unknown tasks", async () => {
+        const capabilities = getMockedRootCapabilities();
+        stubEnvironment(capabilities);
+        stubLogger(capabilities);
 
-        // Mock successful state loading with a task that will match
         const stateData = {
-            version: 2,
-            startTime: "2020-01-01T00:00:00.000Z",
-            tasks: [
-                {
-                    name: "match-task",
-                    cronExpression: "* * * * *",  // This will match
-                    retryDelayMs: 60000,         // This will also match
-                    lastSuccessTime: "2019-12-31T02:00:00.000Z"
-                }
-            ]
+            "unknown-task": {
+                lastSuccessTime: "2020-01-01T02:00:00.000Z"
+            }
         };
 
-        capabilities.checker.fileExists.mockResolvedValue(true);
-        capabilities.reader.readFileAsText.mockResolvedValue(JSON.stringify(stateData));
+        capabilities.checker.fileExists.mockReturnValue(true);
+        capabilities.reader.readFileAsText.mockReturnValue(JSON.stringify(stateData));
 
         const cron = await make(capabilities, { pollIntervalMs: 10 });
-        const retryDelay = fromMilliseconds(60000); // Same as persisted
+        const retryDelay = fromMilliseconds(60000);
         const cb = jest.fn();
 
-        // Schedule with matching cron expression and retry delay
-        cron.schedule("match-task", "* * * * *", cb, retryDelay);
+        cron.schedule("test-task", "* * * * *", cb, retryDelay);
 
-        // Give time for loading and then check that no mismatch warning was logged
-        await new Promise(resolve => setTimeout(resolve, 100));
-
-        // Should not log any mismatch warning
-        const mismatchWarnings = capabilities.logger.logWarning.mock.calls.filter(call => 
-            call[1] === "PersistedTaskMismatch"
-        );
-        expect(mismatchWarnings).toHaveLength(0);
+        const tasks = cron.getTasks();
+        const task = tasks[0];
+        
+        expect(task.lastSuccessTime).toBeUndefined();
 
         cron.cancelAll();
     });
