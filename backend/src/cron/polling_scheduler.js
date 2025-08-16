@@ -34,10 +34,10 @@ const POLL_INTERVAL_MS = 600000;
 /**
  * @param {import('./parser').CronExpressionClass} parsedCron
  * @param {Date} now
+ * @param {import('../datetime').DateTime} dt
  * @returns {Date | undefined}
  */
-function getMostRecentExecution(parsedCron, now) {
-    const dt = datetime.make();
+function getMostRecentExecution(parsedCron, now, dt) {
     const candidate = new Date(now.getTime());
     candidate.setSeconds(0, 0);
     const max = 366 * 24 * 60;
@@ -206,7 +206,7 @@ function makePollingScheduler(capabilities, options = {}) {
     /** @type {Map<string, Task>} */
     const tasks = new Map();
     let interval = /** @type {NodeJS.Timeout?} */ (null);
-    const dt = datetime.make();
+    const dt = capabilities.datetime; // Use capabilities datetime instead of creating new instance
     let stateLoadAttempted = false;
 
     // Lazy load state when first needed
@@ -269,7 +269,7 @@ function makePollingScheduler(capabilities, options = {}) {
                 }
                 continue;
             }
-            const lastFire = getMostRecentExecution(task.parsedCron, now);
+            const lastFire = getMostRecentExecution(task.parsedCron, now, dt);
             const shouldRun = lastFire &&
                 (!task.lastAttemptTime || (task.lastSuccessTime !== undefined && task.lastSuccessTime < lastFire));
             
@@ -458,7 +458,7 @@ function makePollingScheduler(capabilities, options = {}) {
                 if (t.pendingRetryUntil) {
                     modeHint = now.getTime() >= t.pendingRetryUntil.getTime() ? "retry" : "idle";
                 } else {
-                    const lastFire = getMostRecentExecution(t.parsedCron, now);
+                    const lastFire = getMostRecentExecution(t.parsedCron, now, dt);
                     if (
                         lastFire &&
                         (!t.lastAttemptTime || (t.lastSuccessTime !== undefined && t.lastSuccessTime < lastFire))

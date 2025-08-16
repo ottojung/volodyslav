@@ -108,9 +108,12 @@ function stubSleeper(capabilities) {
 }
 
 function stubDatetime(capabilities) {
-    capabilities.datetime.now = jest.fn(() =>
-        capabilities.datetime.fromEpochMs(Date.now())
-    );
+    // Create a full datetime mock but override the now method to use fake timers
+    const originalDatetime = capabilities.datetime;
+    capabilities.datetime = {
+        ...originalDatetime,
+        now: jest.fn(() => originalDatetime.fromEpochMs(Date.now()))
+    };
 }
 
 module.exports = {
