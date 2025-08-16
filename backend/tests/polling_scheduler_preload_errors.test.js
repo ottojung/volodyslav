@@ -1,35 +1,25 @@
 const { make } = require("../src/cron");
 const { fromMilliseconds } = require("../src/time_duration");
+const { getMockedRootCapabilities } = require("./spies");
+const { stubEnvironment, stubLogger, stubDatetime } = require("./stubs");
 
-// Mock the runtime state storage to simulate various error conditions
-jest.mock("../src/runtime_state_storage", () => ({
-    ensureAccessible: jest.fn(),
-}));
+function getTestCapabilities() {
+    const capabilities = getMockedRootCapabilities();
+    stubEnvironment(capabilities);
+    stubLogger(capabilities);
+    stubDatetime(capabilities);
+    
+    // Mock git operations to succeed for repository setup
+    capabilities.git.call = jest.fn().mockResolvedValue({ stdout: "", stderr: "" });
+    
+    return capabilities;
+}
 
 describe("polling scheduler preload error handling", () => {
     test("handles missing state file gracefully", async () => {
-        const runtimeStateStorage = require("../src/runtime_state_storage");
-        
-        const capabilities = {
-            logger: {
-                logInfo: jest.fn(),
-                logDebug: jest.fn(),
-                logWarning: jest.fn(),
-                logError: jest.fn(),
-            },
-            reader: {
-                readFileAsText: jest.fn(),
-            },
-            checker: {
-                fileExists: jest.fn(),
-            },
-            environment: {
-                workingDirectory: () => "/tmp/test",
-            }
-        };
+        const capabilities = getTestCapabilities();
 
         // Mock no state file found
-        runtimeStateStorage.ensureAccessible.mockResolvedValue("/tmp/test/runtime-state-repository");
         capabilities.checker.fileExists.mockResolvedValue(false);
 
         const cron = await make(capabilities, { pollIntervalMs: 10 });
@@ -51,28 +41,9 @@ describe("polling scheduler preload error handling", () => {
     });
 
     test("handles file read errors gracefully", async () => {
-        const runtimeStateStorage = require("../src/runtime_state_storage");
-        
-        const capabilities = {
-            logger: {
-                logInfo: jest.fn(),
-                logDebug: jest.fn(),
-                logWarning: jest.fn(),
-                logError: jest.fn(),
-            },
-            reader: {
-                readFileAsText: jest.fn(),
-            },
-            checker: {
-                fileExists: jest.fn(),
-            },
-            environment: {
-                workingDirectory: () => "/tmp/test",
-            }
-        };
+        const capabilities = getTestCapabilities();
 
         // Mock file exists but read fails
-        runtimeStateStorage.ensureAccessible.mockResolvedValue("/tmp/test/runtime-state-repository");
         capabilities.checker.fileExists.mockResolvedValue(true);
         capabilities.reader.readFileAsText.mockRejectedValue(new Error("File read failed"));
 
@@ -101,28 +72,9 @@ describe("polling scheduler preload error handling", () => {
     });
 
     test("handles invalid JSON gracefully", async () => {
-        const runtimeStateStorage = require("../src/runtime_state_storage");
-        
-        const capabilities = {
-            logger: {
-                logInfo: jest.fn(),
-                logDebug: jest.fn(),
-                logWarning: jest.fn(),
-                logError: jest.fn(),
-            },
-            reader: {
-                readFileAsText: jest.fn(),
-            },
-            checker: {
-                fileExists: jest.fn(),
-            },
-            environment: {
-                workingDirectory: () => "/tmp/test",
-            }
-        };
+        const capabilities = getTestCapabilities();
 
         // Mock file with invalid JSON
-        runtimeStateStorage.ensureAccessible.mockResolvedValue("/tmp/test/runtime-state-repository");
         capabilities.checker.fileExists.mockResolvedValue(true);
         capabilities.reader.readFileAsText.mockResolvedValue("invalid json content");
 
@@ -147,25 +99,7 @@ describe("polling scheduler preload error handling", () => {
     });
 
     test("handles unsupported version gracefully", async () => {
-        const runtimeStateStorage = require("../src/runtime_state_storage");
-        
-        const capabilities = {
-            logger: {
-                logInfo: jest.fn(),
-                logDebug: jest.fn(),
-                logWarning: jest.fn(),
-                logError: jest.fn(),
-            },
-            reader: {
-                readFileAsText: jest.fn(),
-            },
-            checker: {
-                fileExists: jest.fn(),
-            },
-            environment: {
-                workingDirectory: () => "/tmp/test",
-            }
-        };
+        const capabilities = getTestCapabilities();
 
         // Mock file with unsupported version
         const stateData = {
@@ -174,7 +108,6 @@ describe("polling scheduler preload error handling", () => {
             tasks: []
         };
 
-        runtimeStateStorage.ensureAccessible.mockResolvedValue("/tmp/test/runtime-state-repository");
         capabilities.checker.fileExists.mockResolvedValue(true);
         capabilities.reader.readFileAsText.mockResolvedValue(JSON.stringify(stateData));
 

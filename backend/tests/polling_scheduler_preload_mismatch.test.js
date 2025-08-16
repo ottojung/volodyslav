@@ -1,32 +1,23 @@
 const { make } = require("../src/cron");
 const { fromMilliseconds } = require("../src/time_duration");
+const { getMockedRootCapabilities } = require("./spies");
+const { stubEnvironment, stubLogger, stubDatetime } = require("./stubs");
 
-// Mock the runtime state storage to provide predictable data
-jest.mock("../src/runtime_state_storage", () => ({
-    ensureAccessible: jest.fn(),
-}));
+function getTestCapabilities() {
+    const capabilities = getMockedRootCapabilities();
+    stubEnvironment(capabilities);
+    stubLogger(capabilities);
+    stubDatetime(capabilities);
+    
+    // Mock git operations to succeed for repository setup
+    capabilities.git.call = jest.fn().mockResolvedValue({ stdout: "", stderr: "" });
+    
+    return capabilities;
+}
 
 describe("polling scheduler preload mismatch", () => {
     test("logs mismatch warning when persisted task differs from scheduled task", async () => {
-        const runtimeStateStorage = require("../src/runtime_state_storage");
-        
-        const capabilities = {
-            logger: {
-                logInfo: jest.fn(),
-                logDebug: jest.fn(),
-                logWarning: jest.fn(),
-                logError: jest.fn(),
-            },
-            reader: {
-                readFileAsText: jest.fn(),
-            },
-            checker: {
-                fileExists: jest.fn(),
-            },
-            environment: {
-                workingDirectory: () => "/tmp/test",
-            }
-        };
+        const capabilities = getTestCapabilities();
 
         // Mock successful state loading with a task that will mismatch
         const stateData = {
@@ -42,7 +33,6 @@ describe("polling scheduler preload mismatch", () => {
             ]
         };
 
-        runtimeStateStorage.ensureAccessible.mockResolvedValue("/tmp/test/runtime-state-repository");
         capabilities.checker.fileExists.mockResolvedValue(true);
         capabilities.reader.readFileAsText.mockResolvedValue(JSON.stringify(stateData));
 
@@ -88,25 +78,7 @@ describe("polling scheduler preload mismatch", () => {
     });
 
     test("no mismatch warning when cron and retry delay match", async () => {
-        const runtimeStateStorage = require("../src/runtime_state_storage");
-        
-        const capabilities = {
-            logger: {
-                logInfo: jest.fn(),
-                logDebug: jest.fn(),
-                logWarning: jest.fn(),
-                logError: jest.fn(),
-            },
-            reader: {
-                readFileAsText: jest.fn(),
-            },
-            checker: {
-                fileExists: jest.fn(),
-            },
-            environment: {
-                workingDirectory: () => "/tmp/test",
-            }
-        };
+        const capabilities = getTestCapabilities();
 
         // Mock successful state loading with a task that will match
         const stateData = {
@@ -122,7 +94,6 @@ describe("polling scheduler preload mismatch", () => {
             ]
         };
 
-        runtimeStateStorage.ensureAccessible.mockResolvedValue("/tmp/test/runtime-state-repository");
         capabilities.checker.fileExists.mockResolvedValue(true);
         capabilities.reader.readFileAsText.mockResolvedValue(JSON.stringify(stateData));
 
