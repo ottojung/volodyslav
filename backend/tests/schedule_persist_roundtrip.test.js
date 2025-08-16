@@ -25,12 +25,12 @@ describe("schedule persist roundtrip", () => {
         const retryDelay = fromMilliseconds(5000);
         const callback = jest.fn();
         
-        scheduler1.schedule("hourly-task", "0 * * * *", callback, retryDelay);
+        await scheduler1.schedule("hourly-task", "0 * * * *", callback, retryDelay);
         
         // Allow sufficient time for persistence to complete
         await new Promise(resolve => setTimeout(resolve, 200));
         
-        scheduler1.cancelAll();
+        await scheduler1.cancelAll();
         
         // Allow time for cancel persistence  
         await new Promise(resolve => setTimeout(resolve, 200));
@@ -40,13 +40,13 @@ describe("schedule persist roundtrip", () => {
         
         // Re-schedule the same task with a callback (as would happen on restart)
         const newCallback = jest.fn();
-        scheduler2.schedule("hourly-task", "0 * * * *", newCallback, retryDelay);
+        await scheduler2.schedule("hourly-task", "0 * * * *", newCallback, retryDelay);
         
         // Allow time for persistence
         await new Promise(resolve => setTimeout(resolve, 200));
         
         // Verify task is active and persisted
-        const tasks = scheduler2.getTasks();
+        const tasks = await scheduler2.getTasks();
         expect(tasks).toHaveLength(1);
         expect(tasks[0]).toMatchObject({
             name: "hourly-task",
@@ -66,7 +66,7 @@ describe("schedule persist roundtrip", () => {
             });
         });
         
-        scheduler2.cancelAll();
+        await scheduler2.cancelAll();
         
         // Allow cleanup time
         await new Promise(resolve => setTimeout(resolve, 100));
