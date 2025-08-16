@@ -1,6 +1,7 @@
 const eventLogStorage = require("../event_log_storage");
 const { processDiaryAudios } = require("../diary");
 const { executeDailyTasks } = require("./daily_tasks");
+const { executeScheduledTranscription } = require("./scheduled_transcription");
 const { schedule } = require("./runner");
 const { COMMON } = require("../time_duration");
 
@@ -50,6 +51,10 @@ async function daily(capabilities) {
 
     await executeDailyTasks(capabilities).catch((error) => {
         capabilities.logger.logError({ error }, "Error in daily tasks");
+    });
+
+    await executeScheduledTranscription(capabilities).catch((error) => {
+        capabilities.logger.logError({ error }, "Error in scheduled transcription");
     });
 }
 
