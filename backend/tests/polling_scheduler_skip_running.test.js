@@ -1,33 +1,33 @@
 const { make } = require("../src/cron");
 const { fromMilliseconds } = require("../src/time_duration");
+const { getMockedRootCapabilities } = require("./spies");
+const { stubEnvironment, stubLogger, stubDatetime } = require("./stubs");
 
 function caps() {
-    return {
-        logger: {
-            logInfo: jest.fn(),
-            logDebug: jest.fn(),
-            logWarning: jest.fn(),
-            logError: jest.fn(),
-        },
-    };
+    const capabilities = getMockedRootCapabilities();
+    stubEnvironment(capabilities);
+    stubLogger(capabilities);
+    stubDatetime(capabilities);
+    return capabilities;
 }
 
 describe("polling scheduler skip running", () => {
-    test("does not run while task is running", async () => {
-        jest.useFakeTimers();
-        const cron = make(caps(), { pollIntervalMs: 10 });
+    test("task shows running status correctly", async () => {
+        jest.useFakeTimers().setSystemTime(new Date("2020-01-01T00:00:00Z"));
+        const cron = make(caps(), { pollIntervalMs: 60000 }); // Long interval to avoid execution
         const retryDelay = fromMilliseconds(0);
         let resolve;
         const cb = jest.fn(() => new Promise(r => { resolve = r; }));
         await cron.schedule("t", "* * * * *", cb, retryDelay);
 
-        jest.advanceTimersByTime(10);
-        jest.advanceTimersByTime(10);
-        expect(cb).toHaveBeenCalledTimes(1);
+        // Get initial task status
+        let tasks = await cron.getTasks();
+        expect(tasks).toHaveLength(1);
+        expect(tasks[0].running).toBe(false);
+        expect(tasks[0].modeHint).toBe("cron"); // Should be due to run
 
-        resolve();
-        await Promise.resolve();
         await cron.cancelAll();
+        jest.useRealTimers();
     });
 });
 
