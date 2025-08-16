@@ -25,32 +25,33 @@ function make(capabilities, options = {}) {
          * @param {string} cronExpression
          * @param {() => Promise<void> | void} callback
          * @param {import('../time_duration/structure').TimeDuration} retryDelay
-         * @returns {string}
+         * @returns {Promise<string>}
          */
-        schedule(name, cronExpression, callback, retryDelay) {
-            return scheduler.schedule(name, cronExpression, callback, retryDelay);
+        async schedule(name, cronExpression, callback, retryDelay) {
+            return await scheduler.schedule(name, cronExpression, callback, retryDelay);
         },
 
         /**
          * Cancel a task by name.
          * @param {string} name
-         * @returns {boolean}
+         * @returns {Promise<boolean>}
          */
-        cancel(name) {
-            return scheduler.cancel(name);
+        async cancel(name) {
+            return await scheduler.cancel(name);
         },
         /**
          * Cancel all tasks and stop polling.
-         * @returns {number}
+         * @returns {Promise<number>}
          */
-        cancelAll() {
-            return scheduler.cancelAll();
+        async cancelAll() {
+            return await scheduler.cancelAll();
         },
         /**
          * Get info about tasks.
+         * @returns {Promise<Array<{name:string,cronExpression:string,running:boolean,lastSuccessTime?:string,lastFailureTime?:string,lastAttemptTime?:string,pendingRetryUntil?:string,modeHint:"retry"|"cron"|"idle"}>>}
          */
-        getTasks() {
-            return scheduler.getTasks();
+        async getTasks() {
+            return await scheduler.getTasks();
         },
         /**
          * Validate a cron expression.

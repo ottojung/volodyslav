@@ -27,7 +27,7 @@ describe("success persistence", () => {
         const retryDelay = fromMilliseconds(1000);
         const callback = jest.fn();
         
-        scheduler1.schedule("test-task", "* * * * *", callback, retryDelay);
+        await scheduler1.schedule("test-task", "* * * * *", callback, retryDelay);
         
         // Allow first poll to run the task
         jest.advanceTimersByTime(10);
@@ -36,7 +36,7 @@ describe("success persistence", () => {
         // Allow time for persistence
         await Promise.resolve();
         
-        scheduler1.cancelAll();
+        await scheduler1.cancelAll();
         
         // Advance time to next minute
         jest.setSystemTime(new Date("2020-01-01T00:01:00Z"));
@@ -49,10 +49,10 @@ describe("success persistence", () => {
         
         // Re-schedule the task with a new callback
         const newCallback = jest.fn();
-        scheduler2.schedule("test-task", "* * * * *", newCallback, retryDelay);
+        await scheduler2.schedule("test-task", "* * * * *", newCallback, retryDelay);
         
         // Verify task has lastSuccessTime from before restart
-        const tasks = scheduler2.getTasks();
+        const tasks = await scheduler2.getTasks();
         expect(tasks).toHaveLength(1);
         expect(tasks[0].lastSuccessTime).toBeTruthy();
         expect(tasks[0].modeHint).toBe("cron"); // Should be due for next run
@@ -63,7 +63,7 @@ describe("success persistence", () => {
             expect(currentState.tasks[0].lastSuccessTime).toBeTruthy();
         });
         
-        scheduler2.cancelAll();
+        await scheduler2.cancelAll();
         jest.useRealTimers();
     });
 });

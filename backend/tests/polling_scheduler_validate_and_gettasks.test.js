@@ -20,41 +20,41 @@ describe("polling scheduler validate() and getTasks()", () => {
         expect(validate(/** @type any */(null))).toBe(false);
     });
 
-    test("throws on invalid task name (empty/whitespace)", () => {
+    test("throws on invalid task name (empty/whitespace)", async () => {
         const cron = make(caps(), { pollIntervalMs: 10 });
         const retryDelay = fromMilliseconds(0);
-        expect(() => cron.schedule("", "* * * * *", () => {}, retryDelay)).toThrow(ScheduleInvalidNameError);
-        expect(() => cron.schedule("   ", "* * * * *", () => {}, retryDelay)).toThrow(ScheduleInvalidNameError);
-        cron.cancelAll();
+        await expect(cron.schedule("", "* * * * *", () => {}, retryDelay)).rejects.toThrow(ScheduleInvalidNameError);
+        await expect(cron.schedule("   ", "* * * * *", () => {}, retryDelay)).rejects.toThrow(ScheduleInvalidNameError);
+        await cron.cancelAll();
     });
 
-    test("getTasks modeHint shows cron when due, idle otherwise", () => {
+    test("getTasks modeHint shows cron when due, idle otherwise", async () => {
         jest.useFakeTimers().setSystemTime(new Date("2020-01-01T00:00:00Z"));
         const cron = make(caps(), { pollIntervalMs: 10 });
         const retryDelay = COMMON.ONE_MINUTE;
         const cb = jest.fn();
-        cron.schedule("t", "* * * * *", cb, retryDelay);
+        await cron.schedule("t", "* * * * *", cb, retryDelay);
 
         // before first poll, not run yet -> after first poll it should run once
         jest.advanceTimersByTime(10);
         expect(cb).toHaveBeenCalledTimes(1);
-        const tasksAfterRun = cron.getTasks();
+        const tasksAfterRun = await cron.getTasks();
         expect(tasksAfterRun[0].modeHint).toBe("idle"); // just ran and success
 
         // advance less than a minute -> still idle
         jest.advanceTimersByTime(20000);
-        expect(cron.getTasks()[0].modeHint).toBe("idle");
+        expect((await cron.getTasks())[0].modeHint).toBe("idle");
 
         // Jump system time to the next minute without ticking the poller yet
         jest.setSystemTime(new Date("2020-01-01T00:01:00Z"));
-        expect(cron.getTasks()[0].modeHint).toBe("cron");
+        expect((await cron.getTasks())[0].modeHint).toBe("cron");
 
         // Next poll triggers the cron execution
         jest.advanceTimersByTime(10);
         expect(cb).toHaveBeenCalledTimes(2);
-        expect(cron.getTasks()[0].modeHint).toBe("idle");
+        expect((await cron.getTasks())[0].modeHint).toBe("idle");
 
-        cron.cancelAll();
+        await cron.cancelAll();
     });
 
     test("getTasks modeHint shows retry when pending and due", () => {

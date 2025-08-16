@@ -321,11 +321,7 @@ function makePollingScheduler(capabilities, options = {}) {
                 "TaskRunSuccess"
             );
             // Persist state after success
-            persistState().catch(err => {
-                // Log error but don't block
-                const message = err instanceof Error ? err.message : String(err);
-                capabilities.logger.logError({ message }, "StateWriteFailed");
-            });
+            await persistState();
         } catch (error) {
             const end = dt.toNativeDate(dt.now());
             task.lastFailureTime = end;
@@ -337,11 +333,7 @@ function makePollingScheduler(capabilities, options = {}) {
                 "TaskRunFailure"
             );
             // Persist state after failure
-            persistState().catch(err => {
-                // Log error but don't block
-                const message = err instanceof Error ? err.message : String(err);
-                capabilities.logger.logError({ message }, "StateWriteFailed");
-            });
+            await persistState();
         } finally {
             task.running = false;
         }
@@ -354,18 +346,15 @@ function makePollingScheduler(capabilities, options = {}) {
          * @param {string} cronExpression
          * @param {() => Promise<void> | void} callback
          * @param {TimeDuration} retryDelay
-         * @returns {string}
+         * @returns {Promise<string>}
          */
-        schedule(name, cronExpression, callback, retryDelay) {
+        async schedule(name, cronExpression, callback, retryDelay) {
             if (typeof name !== "string" || name.trim() === "") {
                 throw new ScheduleInvalidNameError(name);
             }
             
             // Load state first to check for existing tasks from persistence
-            ensureStateLoaded().catch(err => {
-                const message = err instanceof Error ? err.message : String(err);
-                capabilities.logger.logError({ message }, "StateLoadFailed");
-            });
+            await ensureStateLoaded();
             
             // Check if task exists
             const existingTask = tasks.get(name);
@@ -378,10 +367,7 @@ function makePollingScheduler(capabilities, options = {}) {
                     existingTask.retryDelay = retryDelay;
                     
                     // Persist updated task
-                    persistState().catch(err => {
-                        const message = err instanceof Error ? err.message : String(err);
-                        capabilities.logger.logError({ message }, "StateWriteFailed");
-                    });
+                    await persistState();
                     
                     start();
                     return name;
@@ -408,11 +394,8 @@ function makePollingScheduler(capabilities, options = {}) {
             };
             tasks.set(name, task);
             
-            // Persist state after adding task (async, non-blocking)
-            persistState().catch(err => {
-                const message = err instanceof Error ? err.message : String(err);
-                capabilities.logger.logError({ message }, "StateWriteFailed");
-            });
+            // Persist state after adding task
+            await persistState();
             
             start();
             return name;
@@ -421,16 +404,13 @@ function makePollingScheduler(capabilities, options = {}) {
         /**
          * Cancel a scheduled task.
          * @param {string} name
-         * @returns {boolean}
+         * @returns {Promise<boolean>}
          */
-        cancel(name) {
+        async cancel(name) {
             const existed = tasks.delete(name);
             if (existed) {
-                // Persist state after removing task (async, non-blocking)
-                persistState().catch(err => {
-                    const message = err instanceof Error ? err.message : String(err);
-                    capabilities.logger.logError({ message }, "StateWriteFailed");
-                });
+                // Persist state after removing task
+                await persistState();
             }
             if (tasks.size === 0) {
                 stop();
@@ -440,19 +420,15 @@ function makePollingScheduler(capabilities, options = {}) {
 
         /**
          * Cancel all tasks and stop polling.
-         * @returns {number}
+         * @returns {Promise<number>}
          */
-        cancelAll() {
+        async cancelAll() {
             const count = tasks.size;
             tasks.clear();
             if (count > 0) {
-                // Persist state after clearing tasks (async, non-blocking) 
-                persistState().catch(err => {
-                    const message = err instanceof Error ? err.message : String(err);
-                    capabilities.logger.logError({ message }, "StateWriteFailed");
-                }).then(() => {
-                    capabilities.logger.logDebug({ clearedTasks: count }, "CancelAllPersisted");
-                });
+                // Persist state after clearing tasks
+                await persistState();
+                capabilities.logger.logDebug({ clearedTasks: count }, "CancelAllPersisted");
             }
             stop();
             return count;
@@ -460,9 +436,12 @@ function makePollingScheduler(capabilities, options = {}) {
 
         /**
          * Get information about scheduled tasks.
-         * @returns {Array<{name:string,cronExpression:string,running:boolean,lastSuccessTime?:string,lastFailureTime?:string,lastAttemptTime?:string,pendingRetryUntil?:string,modeHint:"retry"|"cron"|"idle"}>}
+         * @returns {Promise<Array<{name:string,cronExpression:string,running:boolean,lastSuccessTime?:string,lastFailureTime?:string,lastAttemptTime?:string,pendingRetryUntil?:string,modeHint:"retry"|"cron"|"idle"}>>}
          */
-        getTasks() {
+        async getTasks() {
+            // Ensure state is loaded before returning task info
+            await ensureStateLoaded();
+            
             const now = dt.toNativeDate(dt.now());
             return Array.from(tasks.values()).map((t) => {
                 /** @type {"retry"|"cron"|"idle"} */
