@@ -4,6 +4,9 @@
 
 const { parseCronExpression, matchesCronExpression } = require("./parser");
 const datetime = require("../datetime");
+const { transaction } = require("../runtime_state_storage");
+const structure = require("../runtime_state_storage/structure");
+const time_duration = require("../time_duration");
 const {
     ScheduleDuplicateTaskError,
     ScheduleInvalidNameError,
@@ -49,6 +52,63 @@ function getMostRecentExecution(parsedCron, now) {
 }
 
 /**
+ * Persists current task state to storage
+ * @param {import('../capabilities/root').Capabilities} capabilities
+ * @param {Map<string, Task>} tasks
+ * @returns {Promise<void>}
+ */
+async function persistCurrentState(capabilities, tasks) {
+    try {
+        await transaction(capabilities, async (storage) => {
+            const currentState = await storage.getCurrentState();
+            
+            // Convert in-memory tasks to TaskRecord format
+            const taskRecords = Array.from(tasks.values()).map(task => {
+                /** @type {import('../runtime_state_storage/types').TaskRecord} */
+                const record = {
+                    name: task.name,
+                    cronExpression: task.cronExpression,
+                    retryDelayMs: task.retryDelay.toMilliseconds(),
+                };
+
+                // Convert Date objects to DateTime and then to ISO strings
+                if (task.lastSuccessTime) {
+                    record.lastSuccessTime = capabilities.datetime.fromEpochMs(task.lastSuccessTime.getTime());
+                }
+                if (task.lastFailureTime) {
+                    record.lastFailureTime = capabilities.datetime.fromEpochMs(task.lastFailureTime.getTime());
+                }
+                if (task.lastAttemptTime) {
+                    record.lastAttemptTime = capabilities.datetime.fromEpochMs(task.lastAttemptTime.getTime());
+                }
+                if (task.pendingRetryUntil) {
+                    record.pendingRetryUntil = capabilities.datetime.fromEpochMs(task.pendingRetryUntil.getTime());
+                }
+
+                return record;
+            });
+
+            // Update state with new task records
+            const newState = {
+                version: currentState.version,
+                startTime: currentState.startTime,
+                tasks: taskRecords,
+            };
+
+            storage.setState(newState);
+            
+            const serialized = structure.serialize(newState);
+            const bytes = JSON.stringify(serialized).length;
+            capabilities.logger.logDebug({ taskCount: tasks.size, bytes }, "StatePersisted");
+        });
+    } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        capabilities.logger.logError({ message }, "StateWriteFailed");
+        // Continue running - write failures are non-fatal
+    }
+}
+
+/**
  * @param {object} capabilities
  * @param {Logger} capabilities.logger
  * @param {{pollIntervalMs?: number}} [options]
@@ -59,6 +119,11 @@ function makePollingScheduler(capabilities, options = {}) {
     const tasks = new Map();
     let interval = /** @type {NodeJS.Timeout?} */ (null);
     const dt = datetime.make();
+
+    // Persist current state
+    async function persistState() {
+        await persistCurrentState(capabilities, tasks);
+    }
 
     function start() {
         if (interval === null) {
@@ -149,6 +214,12 @@ function makePollingScheduler(capabilities, options = {}) {
                 { name: task.name, mode, durationMs: end.getTime() - startTime.getTime() },
                 "TaskRunSuccess"
             );
+            // Persist state after success
+            persistState().catch(err => {
+                // Log error but don't block
+                const message = err instanceof Error ? err.message : String(err);
+                capabilities.logger.logError({ message }, "StateWriteFailed");
+            });
         } catch (error) {
             const end = dt.toNativeDate(dt.now());
             task.lastFailureTime = end;
@@ -159,6 +230,12 @@ function makePollingScheduler(capabilities, options = {}) {
                 { name: task.name, mode, errorMessage: message, retryAtISO: retryAt.toISOString() },
                 "TaskRunFailure"
             );
+            // Persist state after failure
+            persistState().catch(err => {
+                // Log error but don't block
+                const message = err instanceof Error ? err.message : String(err);
+                capabilities.logger.logError({ message }, "StateWriteFailed");
+            });
         } finally {
             task.running = false;
         }
@@ -196,6 +273,13 @@ function makePollingScheduler(capabilities, options = {}) {
                 running: false,
             };
             tasks.set(name, task);
+            
+            // Persist state after adding task (async, non-blocking)
+            persistState().catch(err => {
+                const message = err instanceof Error ? err.message : String(err);
+                capabilities.logger.logError({ message }, "StateWriteFailed");
+            });
+            
             start();
             return name;
         },
@@ -207,6 +291,13 @@ function makePollingScheduler(capabilities, options = {}) {
          */
         cancel(name) {
             const existed = tasks.delete(name);
+            if (existed) {
+                // Persist state after removing task (async, non-blocking)
+                persistState().catch(err => {
+                    const message = err instanceof Error ? err.message : String(err);
+                    capabilities.logger.logError({ message }, "StateWriteFailed");
+                });
+            }
             if (tasks.size === 0) {
                 stop();
             }
@@ -220,6 +311,13 @@ function makePollingScheduler(capabilities, options = {}) {
         cancelAll() {
             const count = tasks.size;
             tasks.clear();
+            if (count > 0) {
+                // Persist state after clearing tasks (async, non-blocking) 
+                persistState().catch(err => {
+                    const message = err instanceof Error ? err.message : String(err);
+                    capabilities.logger.logError({ message }, "StateWriteFailed");
+                });
+            }
             stop();
             return count;
         },
