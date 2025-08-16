@@ -49,8 +49,44 @@ function getMostRecentExecution(parsedCron, now) {
 }
 
 /**
+ * Simple task state for persistence.
+ * @typedef {object} TaskState
+ * @property {string} [lastSuccessTime]
+ * @property {string} [lastFailureTime] 
+ * @property {string} [lastAttemptTime]
+ * @property {string} [pendingRetryUntil]
+ */
+
+/**
+ * Loads simple scheduler state from JSON file.
+ * @param {object} capabilities
+ * @param {import('../filesystem/reader').FileReader} capabilities.reader
+ * @param {import('../filesystem/checker').FileChecker} capabilities.checker
+ * @param {import('../environment').Environment} capabilities.environment
+ * @returns {Map<string, TaskState>}
+ */
+function loadSchedulerState(capabilities) {
+    try {
+        const stateFile = require("path").join(capabilities.environment.workingDirectory(), "scheduler_state.json");
+        const fileExists = capabilities.checker.fileExists(stateFile);
+        if (!fileExists) {
+            return new Map();
+        }
+        
+        const content = capabilities.reader.readFileAsText(stateFile);
+        const data = JSON.parse(content);
+        return new Map(Object.entries(data));
+    } catch {
+        return new Map();
+    }
+}
+
+/**
  * @param {object} capabilities
  * @param {Logger} capabilities.logger
+ * @param {import('../filesystem/reader').FileReader} capabilities.reader
+ * @param {import('../filesystem/checker').FileChecker} capabilities.checker
+ * @param {import('../environment').Environment} capabilities.environment
  * @param {{pollIntervalMs?: number}} [options]
  */
 function makePollingScheduler(capabilities, options = {}) {
@@ -59,6 +95,9 @@ function makePollingScheduler(capabilities, options = {}) {
     const tasks = new Map();
     let interval = /** @type {NodeJS.Timeout?} */ (null);
     const dt = datetime.make();
+
+    // Load state once during creation
+    const savedState = loadSchedulerState(capabilities);
 
     function start() {
         if (interval === null) {
@@ -181,6 +220,7 @@ function makePollingScheduler(capabilities, options = {}) {
                 capabilities.logger.logWarning({ name }, "Duplicate registration attempt");
                 throw new ScheduleDuplicateTaskError(name);
             }
+
             const parsedCron = parseCronExpression(cronExpression);
             /** @type {Task} */
             const task = {
@@ -195,6 +235,16 @@ function makePollingScheduler(capabilities, options = {}) {
                 pendingRetryUntil: undefined,
                 running: false,
             };
+
+            // Restore state if available
+            const state = savedState.get(name);
+            if (state) {
+                if (state.lastSuccessTime) task.lastSuccessTime = new Date(state.lastSuccessTime);
+                if (state.lastFailureTime) task.lastFailureTime = new Date(state.lastFailureTime);
+                if (state.lastAttemptTime) task.lastAttemptTime = new Date(state.lastAttemptTime);
+                if (state.pendingRetryUntil) task.pendingRetryUntil = new Date(state.pendingRetryUntil);
+            }
+
             tasks.set(name, task);
             start();
             return name;
