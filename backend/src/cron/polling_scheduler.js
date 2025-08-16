@@ -52,11 +52,99 @@ function getMostRecentExecution(parsedCron, now) {
 }
 
 /**
- * Persists current task state to storage
+ * Loads persisted task state and builds in-memory tasks map
  * @param {import('../capabilities/root').Capabilities} capabilities
  * @param {Map<string, Task>} tasks
  * @returns {Promise<void>}
  */
+async function loadPersistedState(capabilities, tasks) {
+    try {
+        await transaction(capabilities, async (storage) => {
+            const existingState = await storage.getExistingState();
+            let taskCount = 0;
+            
+            if (existingState === null) {
+                // No existing state - start fresh
+                capabilities.logger.logInfo({ taskCount: 0 }, "SchedulerStateLoaded");
+                return;
+            }
+
+            // Handle migration logging
+            if (existingState.version === 1) {
+                capabilities.logger.logInfo(
+                    { from: 1, to: 2 },
+                    "RuntimeStateMigrated"
+                );
+            }
+
+            // Build in-memory tasks from persisted state
+            for (const record of existingState.tasks) {
+                try {
+                    // Parse cron expression
+                    const parsedCron = parseCronExpression(record.cronExpression);
+                    
+                    // Convert retryDelayMs to TimeDuration
+                    const retryDelay = time_duration.fromMilliseconds(record.retryDelayMs);
+                    
+                    // Convert ISO strings to Date objects
+                    const lastSuccessTime = record.lastSuccessTime 
+                        ? capabilities.datetime.toNativeDate(capabilities.datetime.fromISOString(record.lastSuccessTime))
+                        : undefined;
+                    const lastFailureTime = record.lastFailureTime 
+                        ? capabilities.datetime.toNativeDate(capabilities.datetime.fromISOString(record.lastFailureTime))
+                        : undefined;
+                    const lastAttemptTime = record.lastAttemptTime 
+                        ? capabilities.datetime.toNativeDate(capabilities.datetime.fromISOString(record.lastAttemptTime))
+                        : undefined;
+                    const pendingRetryUntil = record.pendingRetryUntil 
+                        ? capabilities.datetime.toNativeDate(capabilities.datetime.fromISOString(record.pendingRetryUntil))
+                        : undefined;
+
+                    // Check for duplicates
+                    if (tasks.has(record.name)) {
+                        capabilities.logger.logWarning(
+                            { name: record.name },
+                            "DuplicateTaskSkipped"
+                        );
+                        continue;
+                    }
+
+                    // Create task object (callback will be set when scheduled)
+                    /** @type {Task} */
+                    const task = {
+                        name: record.name,
+                        cronExpression: record.cronExpression,
+                        parsedCron,
+                        callback: null, // Will be set when task is re-scheduled
+                        retryDelay,
+                        lastSuccessTime,
+                        lastFailureTime,
+                        lastAttemptTime,
+                        pendingRetryUntil,
+                        running: false,
+                    };
+
+                    tasks.set(record.name, task);
+                    taskCount++;
+                    
+                } catch (error) {
+                    const message = error instanceof Error ? error.message : String(error);
+                    capabilities.logger.logWarning(
+                        { name: record.name || "unknown", reason: message },
+                        "SkippedInvalidTask"
+                    );
+                }
+            }
+
+            capabilities.logger.logInfo({ taskCount }, "SchedulerStateLoaded");
+        });
+    } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        capabilities.logger.logError({ message }, "StateReadFailed");
+        // Continue running with empty task set
+        capabilities.logger.logInfo({ taskCount: 0 }, "SchedulerStateLoaded");
+    }
+}
 async function persistCurrentState(capabilities, tasks) {
     try {
         await transaction(capabilities, async (storage) => {
@@ -119,6 +207,15 @@ function makePollingScheduler(capabilities, options = {}) {
     const tasks = new Map();
     let interval = /** @type {NodeJS.Timeout?} */ (null);
     const dt = datetime.make();
+    let stateLoadAttempted = false;
+
+    // Lazy load state when first needed
+    async function ensureStateLoaded() {
+        if (!stateLoadAttempted) {
+            stateLoadAttempted = true;
+            await loadPersistedState(capabilities, tasks);
+        }
+    }
 
     // Persist current state
     async function persistState() {
@@ -146,6 +243,10 @@ function makePollingScheduler(capabilities, options = {}) {
         let skippedRetryFuture = 0;
         let skippedNotDue = 0;
         for (const task of tasks.values()) {
+            // Skip tasks that don't have a callback yet (loaded from persistence)
+            if (task.callback === null) {
+                continue;
+            }
             if (task.running) {
                 skippedRunning++;
                 capabilities.logger.logDebug({ name: task.name, reason: "running" }, "TaskSkip");
@@ -197,6 +298,11 @@ function makePollingScheduler(capabilities, options = {}) {
      * @param {"retry"|"cron"} mode
      */
     async function runTask(task, mode) {
+        if (task.callback === null) {
+            capabilities.logger.logWarning({ name: task.name }, "TaskSkippedNoCallback");
+            return;
+        }
+        
         task.running = true;
         const startTime = dt.toNativeDate(dt.now());
         task.lastAttemptTime = startTime;
@@ -254,10 +360,38 @@ function makePollingScheduler(capabilities, options = {}) {
             if (typeof name !== "string" || name.trim() === "") {
                 throw new ScheduleInvalidNameError(name);
             }
-            if (tasks.has(name)) {
-                capabilities.logger.logWarning({ name }, "Duplicate registration attempt");
-                throw new ScheduleDuplicateTaskError(name);
+            
+            // Load state first to check for existing tasks from persistence
+            ensureStateLoaded().catch(err => {
+                const message = err instanceof Error ? err.message : String(err);
+                capabilities.logger.logError({ message }, "StateLoadFailed");
+            });
+            
+            // Check if task exists
+            const existingTask = tasks.get(name);
+            if (existingTask) {
+                // If task exists from persistence without callback, update it
+                if (existingTask.callback === null) {
+                    existingTask.callback = callback;
+                    existingTask.cronExpression = cronExpression;
+                    existingTask.parsedCron = parseCronExpression(cronExpression);
+                    existingTask.retryDelay = retryDelay;
+                    
+                    // Persist updated task
+                    persistState().catch(err => {
+                        const message = err instanceof Error ? err.message : String(err);
+                        capabilities.logger.logError({ message }, "StateWriteFailed");
+                    });
+                    
+                    start();
+                    return name;
+                } else {
+                    // Task already has a callback - this is a duplicate
+                    capabilities.logger.logWarning({ name }, "Duplicate registration attempt");
+                    throw new ScheduleDuplicateTaskError(name);
+                }
             }
+            
             const parsedCron = parseCronExpression(cronExpression);
             /** @type {Task} */
             const task = {

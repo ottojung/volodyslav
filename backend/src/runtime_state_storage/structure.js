@@ -183,7 +183,7 @@ function tryDeserialize(obj) {
 function serialize(state) {
     const datetimeMod = require("../datetime");
     const dt = datetimeMod.make();
-    const tasks = state.tasks
+    const tasks = (state.tasks || [])
         .slice()
         .sort((a, b) => a.name.localeCompare(b.name))
         .map((t) => {
