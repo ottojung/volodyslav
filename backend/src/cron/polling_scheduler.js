@@ -450,6 +450,8 @@ function makePollingScheduler(capabilities, options = {}) {
                 persistState().catch(err => {
                     const message = err instanceof Error ? err.message : String(err);
                     capabilities.logger.logError({ message }, "StateWriteFailed");
+                }).then(() => {
+                    capabilities.logger.logDebug({ clearedTasks: count }, "CancelAllPersisted");
                 });
             }
             stop();
