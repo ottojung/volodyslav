@@ -1,0 +1,120 @@
+
+> volodyslav@0.1.0 test
+> jest
+
+[2025-08-16 17:17:39.688 +0000] [32mINFO[39m: [36mLog level set to: debug[39m
+[2025-08-16 17:17:39.689 +0000] [32mINFO[39m: [36mLog file path set to: /tmp/jest-aWdDrb/output/results/tmp-IB0RnO/test.log[39m
+[2025-08-16 17:17:39.689 +0000] [32mINFO[39m: [36minfo message[39m
+    foo: 1
+[2025-08-16 17:17:39.689 +0000] [33mWARN[39m: [36mwarn message[39m
+    bar: 2
+[2025-08-16 17:17:39.689 +0000] [31mERROR[39m: [36merror message[39m
+    baz: 3
+[2025-08-16 17:17:39.696 +0000] [34mDEBUG[39m: [36mdebug message[39m
+    qux: 4
+[2025-08-16 17:17:39.700 +0000] [31mERROR[39m: [36mFailed to send error notification[39m
+[2025-08-16 17:17:40.755 +0000] [31mERROR[39m: [36merror should appear[39m
+[2025-08-16 17:17:40.755 +0000] [31mERROR[39m: [36mFailed to send error notification[39m
+PASS backend/tests/api_ordering_advanced.test.js
+PASS backend/tests/logger.test.js
+PASS backend/tests/entries_get.test.js
+PASS backend/tests/entries_post.basic.test.js
+PASS backend/tests/api_ordering_basic.test.js
+PASS backend/tests/entries_post.validation.test.js
+PASS backend/tests/entries_post_shortcuts.transform.test.js
+PASS backend/tests/entry.get.test.js
+PASS frontend frontend/tests/DescriptionEntry.basic.test.jsx
+PASS frontend frontend/tests/DescriptionEntry.config.test.jsx
+PASS frontend frontend/tests/DescriptionEntry.submission.test.jsx
+PASS frontend frontend/tests/Camera.test.jsx
+PASS frontend frontend/tests/DescriptionEntry.basic.input.test.jsx
+PASS backend/tests/schedule_persist_roundtrip.test.js
+PASS backend/tests/entries_delete.test.js
+PASS frontend frontend/tests/DescriptionEntry.camera.test.jsx
+PASS frontend frontend/tests/DescriptionEntry.photocount.bugfix.test.jsx
+PASS backend/tests/entries_post_shortcuts.config.test.js
+PASS frontend frontend/tests/DescriptionEntry.config.extra.test.jsx
+PASS backend/tests/from_input.applyShortcuts.test.js
+PASS backend/tests/entries_post_shortcuts.complex.test.js
+PASS backend/tests/event_log_storage.delete.test.js
+PASS frontend frontend/tests/DescriptionEntry.delete.test.jsx
+PASS backend/tests/diary.test.js
+PASS frontend frontend/tests/DescriptionEntry.camera.fieldname.test.jsx
+PASS backend/tests/entry.create.test.js
+PASS backend/tests/event_log_storage.config.test.js
+PASS backend/tests/from_input.processUserInput.test.js
+PASS backend/tests/event_log_storage_config.test.js
+PASS backend/tests/config_api.test.js
+PASS backend/tests/runtime_state_storage_transactions.test.js
+PASS backend/tests/event_log_storage_assets.test.js
+PASS backend/tests/from_input.integration.test.js
+PASS backend/tests/polling_scheduler_validate_and_gettasks.test.js
+PASS backend/tests/gitstore.test.js
+PASS backend/tests/event_log_storage.transactions.test.js
+PASS backend/tests/event_log_storage_entries.test.js
+PASS backend/tests/event_log_storage_get_entries.test.js
+PASS backend/tests/periodic.test.js
+PASS backend/tests/runtime_state_migration.test.js
+PASS backend/tests/server.test.js
+PASS backend/tests/polling_scheduler_cancel.test.js
+PASS backend/tests/config.unit.test.js
+PASS backend/tests/ping.test.js
+PASS backend/tests/missed_cron_catchup_persistence.test.js
+PASS backend/tests/working_repository.remote.test.js
+PASS backend/tests/transcribe_all.test.js
+PASS backend/tests/retryer_core.test.js
+PASS backend/tests/transcribe.test.js
+PASS backend/tests/upload.test.js
+PASS backend/tests/cli.test.js
+PASS backend/tests/static.test.js
+PASS backend/tests/index.test.js
+PASS frontend frontend/tests/photoStorage.integration.test.js
+PASS backend/tests/retryer_timing.test.js
+PASS backend/tests/polling_scheduler_retry.test.js
+PASS frontend frontend/tests/photoStorage.test.js
+PASS frontend frontend/tests/DescriptionEntry.hooks.errorHandling.test.jsx
+PASS backend/tests/failure_retry_persistence.test.js
+PASS backend/tests/polling_scheduler_runs_cron.test.js
+PASS frontend frontend/tests/DescriptionEntry.errorHandling.test.jsx
+PASS backend/tests/event_log_storage.assets.test.js
+PASS backend/tests/polling_scheduler_skip_running.test.js
+PASS frontend frontend/tests/utils.test.js
+PASS backend/tests/retryer_deduplication.test.js
+PASS backend/tests/success_persistence.test.js
+PASS backend/tests/working_repository.basic.test.js
+PASS backend/tests/retryer_structure.test.js
+PASS backend/tests/duplicate_in_state_skipped.test.js
+PASS backend/tests/config_storage_fileio.test.js
+PASS backend/tests/retryer_errors.test.js
+PASS backend/tests/working_repository.errors.test.js
+PASS backend/tests/schedule.tasks.test.js
+PASS backend/tests/request_identifier.test.js
+PASS backend/tests/schedule.daily_tasks.test.js
+PASS backend/tests/runtime_state_storage_class.test.js
+PASS backend/tests/config_storage_integration.test.js
+PASS backend/tests/event_log_storage.entries.test.js
+PASS backend/tests/runtime_state_storage_synchronize.test.js
+PASS backend/tests/polling_scheduler_duplicate.test.js
+PASS backend/tests/cron.parser.test.js
+PASS backend/tests/json_stream_file.test.js
+PASS backend/tests/memconst.test.js
+PASS backend/tests/runtime_state_storage_structure.test.js
+PASS backend/tests/time_duration.test.js
+PASS backend/tests/config_storage_utility.test.js
+PASS backend/tests/random.test.js
+PASS backend/tests/from_input.parseModifier.test.js
+PASS backend/tests/config_structure.test.js
+PASS backend/tests/from_input.parseStructuredInput.test.js
+PASS backend/tests/event_structure.test.js
+PASS backend/tests/format_time_stamp.test.js
+PASS backend/tests/random_string.test.js
+PASS backend/tests/environment.test.js
+PASS backend/tests/deleter.test.js
+PASS backend/tests/from_input.errorClasses.test.js
+PASS backend/tests/from_input.normalizeInput.test.js
+
+Test Suites: 97 passed, 97 total
+Tests:       491 passed, 491 total
+Snapshots:   0 total
+Time:        19.718 s, estimated 24 s
+Ran all test suites in 2 projects.

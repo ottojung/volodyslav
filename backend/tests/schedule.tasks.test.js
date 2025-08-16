@@ -65,10 +65,10 @@ describe("Schedule Tasks", () => {
     });
 
     describe("scheduleAll", () => {
-        test("schedules both hourly and daily tasks", () => {
+        test("schedules both hourly and daily tasks", async () => {
             const capabilities = getTestCapabilities();
 
-            scheduleAll(capabilities);
+            await scheduleAll(capabilities);
 
             // Should call the scheduler from capabilities with both tasks
             expect(capabilities.scheduler.schedule).toHaveBeenCalledTimes(2);

@@ -89,12 +89,12 @@ function stubNotifier(capabilities) {
  * Mocks the schedule function to prevent real timers from being created.
  */
 function stubScheduler(capabilities) {
-    // Mock scheduler instance methods
+    // Mock scheduler instance methods - all operations are now async
     const mockSchedulerInstance = {
-        schedule: jest.fn((name) => name),
-        cancel: jest.fn().mockReturnValue(true),
-        cancelAll: jest.fn().mockReturnValue(0),
-        getTasks: jest.fn().mockReturnValue([])
+        schedule: jest.fn((name) => Promise.resolve(name)),
+        cancel: jest.fn().mockResolvedValue(true),
+        cancelAll: jest.fn().mockResolvedValue(0),
+        getTasks: jest.fn().mockResolvedValue([])
     };
     
     // Attach the mock to capabilities for testing
@@ -108,9 +108,12 @@ function stubSleeper(capabilities) {
 }
 
 function stubDatetime(capabilities) {
-    capabilities.datetime.now = jest.fn(() =>
-        capabilities.datetime.fromEpochMs(Date.now())
-    );
+    // Create a full datetime mock but override the now method to use fake timers
+    const originalDatetime = capabilities.datetime;
+    capabilities.datetime = {
+        ...originalDatetime,
+        now: jest.fn(() => originalDatetime.fromEpochMs(Date.now()))
+    };
 }
 
 module.exports = {

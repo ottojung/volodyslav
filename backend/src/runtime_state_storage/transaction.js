@@ -55,8 +55,9 @@ async function transaction(capabilities, transformation) {
             if (newState !== null) {
                 const serialized = structure.serialize(newState);
                 const stateString = JSON.stringify(serialized, null, '\t');
-                const file = await capabilities.creator.createFile(statePath);
-                await capabilities.writer.writeFile(file, stateString);
+                
+                // Write atomically to the state file
+                await capabilities.writer.writeFile(stateFile, stateString);
 
                 // Commit the changes
                 await store.commit("Runtime state update");
