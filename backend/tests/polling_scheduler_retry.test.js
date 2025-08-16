@@ -1,15 +1,14 @@
 const { make } = require("../src/cron");
 const { fromMilliseconds } = require("../src/time_duration");
+const { getMockedRootCapabilities } = require("./spies");
+const { stubEnvironment, stubLogger, stubDatetime } = require("./stubs");
 
 function caps() {
-    return {
-        logger: {
-            logInfo: jest.fn(),
-            logDebug: jest.fn(),
-            logWarning: jest.fn(),
-            logError: jest.fn(),
-        },
-    };
+    const capabilities = getMockedRootCapabilities();
+    stubEnvironment(capabilities);
+    stubLogger(capabilities);
+    stubDatetime(capabilities);
+    return capabilities;
 }
 
 describe("polling scheduler retry", () => {

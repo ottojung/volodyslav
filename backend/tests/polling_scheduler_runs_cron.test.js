@@ -1,40 +1,14 @@
 const { make } = require("../src/cron");
 const { fromMilliseconds } = require("../src/time_duration");
+const { getMockedRootCapabilities } = require("./spies");
+const { stubEnvironment, stubLogger, stubDatetime } = require("./stubs");
 
 function createCapabilities() {
-    return {
-        logger: {
-            logInfo: jest.fn(),
-            logDebug: jest.fn(),
-            logWarning: jest.fn(),
-            logError: jest.fn(),
-        },
-        datetime: {
-            fromEpochMs: (ms) => ({ epochMs: ms }),
-            fromISOString: (iso) => ({ epochMs: new Date(iso).getTime() }),
-            toNativeDate: (dt) => new Date(dt.epochMs),
-        },
-        // Mock storage capabilities to prevent transaction failures
-        environment: {
-            get: jest.fn().mockReturnValue('/tmp/test'),
-        },
-        creator: {
-            createFile: jest.fn(),
-            createDirectory: jest.fn(),
-        },
-        checker: {
-            fileExists: jest.fn().mockResolvedValue(false),
-        },
-        writer: {
-            writeFile: jest.fn(),
-        },
-        reader: {
-            readFile: jest.fn().mockResolvedValue('{}'),
-        },
-        git: {
-            run: jest.fn().mockResolvedValue({ success: true }),
-        },
-    };
+    const capabilities = getMockedRootCapabilities();
+    stubEnvironment(capabilities);
+    stubLogger(capabilities);
+    stubDatetime(capabilities);
+    return capabilities;
 }
 
 describe("polling scheduler runs cron", () => {

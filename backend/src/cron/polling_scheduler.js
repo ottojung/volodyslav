@@ -146,9 +146,12 @@ async function loadPersistedState(capabilities, tasks) {
     }
 }
 async function persistCurrentState(capabilities, tasks) {
+    console.log('persistCurrentState called with', tasks.size, 'tasks');
     try {
         await transaction(capabilities, async (storage) => {
+            console.log('Inside transaction');
             const currentState = await storage.getCurrentState();
+            console.log('Got current state');
             
             // Convert in-memory tasks to TaskRecord format
             const taskRecords = Array.from(tasks.values()).map(task => {
@@ -188,9 +191,11 @@ async function persistCurrentState(capabilities, tasks) {
             const serialized = structure.serialize(newState);
             const bytes = JSON.stringify(serialized).length;
             capabilities.logger.logDebug({ taskCount: tasks.size, bytes }, "StatePersisted");
+            console.log('Persistence completed');
         });
     } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
+        console.log('persistCurrentState failed:', message);
         capabilities.logger.logError({ message }, "StateWriteFailed");
         // Continue running - write failures are non-fatal
     }
@@ -237,6 +242,12 @@ function makePollingScheduler(capabilities, options = {}) {
 
     function poll() {
         const now = dt.toNativeDate(dt.now());
+        console.log('Poll started at', now.toISOString(), 'with', tasks.size, 'tasks');
+        capabilities.logger.logDebug({ 
+            now: now.toISOString(), 
+            taskCount: tasks.size 
+        }, "PollStarted");
+        
         let dueRetry = 0;
         let dueCron = 0;
         let skippedRunning = 0;
@@ -245,14 +256,17 @@ function makePollingScheduler(capabilities, options = {}) {
         for (const task of tasks.values()) {
             // Skip tasks that don't have a callback yet (loaded from persistence)
             if (task.callback === null) {
+                console.log('Skipping task', task.name, 'no callback');
                 continue;
             }
             if (task.running) {
                 skippedRunning++;
+                console.log('Skipping task', task.name, 'already running');
                 capabilities.logger.logDebug({ name: task.name, reason: "running" }, "TaskSkip");
                 continue;
             }
             if (task.pendingRetryUntil) {
+                console.log('Task', task.name, 'has pending retry until', task.pendingRetryUntil.toISOString());
                 if (now.getTime() >= task.pendingRetryUntil.getTime()) {
                     dueRetry++;
                     runTask(task, "retry").catch((error) => {
@@ -265,11 +279,30 @@ function makePollingScheduler(capabilities, options = {}) {
                 }
                 continue;
             }
+            console.log('Evaluating task', task.name, 'for cron execution');
             const lastFire = getMostRecentExecution(task.parsedCron, now);
-            if (
-                lastFire &&
-                (!task.lastAttemptTime || (task.lastSuccessTime !== undefined && task.lastSuccessTime < lastFire))
-            ) {
+            const shouldRun = lastFire &&
+                (!task.lastAttemptTime || (task.lastSuccessTime !== undefined && task.lastSuccessTime < lastFire));
+            
+            console.log('Task evaluation:', {
+                name: task.name,
+                now: now.toISOString(),
+                lastFire: lastFire?.toISOString(),
+                lastAttemptTime: task.lastAttemptTime?.toISOString(),
+                lastSuccessTime: task.lastSuccessTime?.toISOString(),
+                shouldRun
+            });
+            
+            capabilities.logger.logDebug({
+                name: task.name,
+                now: now.toISOString(),
+                lastFire: lastFire?.toISOString(),
+                lastAttemptTime: task.lastAttemptTime?.toISOString(),
+                lastSuccessTime: task.lastSuccessTime?.toISOString(),
+                shouldRun
+            }, "TaskEvaluation");
+            
+            if (shouldRun) {
                 dueCron++;
                 runTask(task, "cron").catch((error) => {
                     const message = error instanceof Error ? error.message : String(error);
@@ -321,7 +354,11 @@ function makePollingScheduler(capabilities, options = {}) {
                 "TaskRunSuccess"
             );
             // Persist state after success
-            await persistState();
+            try {
+                await persistState();
+            } catch (err) {
+                capabilities.logger.logError({ message: err.message }, "StateWriteFailedAfterSuccess");
+            }
         } catch (error) {
             const end = dt.toNativeDate(dt.now());
             task.lastFailureTime = end;
@@ -333,7 +370,11 @@ function makePollingScheduler(capabilities, options = {}) {
                 "TaskRunFailure"
             );
             // Persist state after failure
-            await persistState();
+            try {
+                await persistState();
+            } catch (err) {
+                capabilities.logger.logError({ message: err.message }, "StateWriteFailedAfterFailure");
+            }
         } finally {
             task.running = false;
         }
