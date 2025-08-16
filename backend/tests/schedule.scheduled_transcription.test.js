@@ -4,8 +4,6 @@
  * This module tests the implementation of Issue #7: "Implement scheduled transcription"
  */
 
-const path = require("path");
-const fs = require("fs").promises;
 const {
     executeScheduledTranscription,
     isScheduledTranscriptionError,
@@ -123,14 +121,6 @@ describe("Scheduled Transcription", () => {
             ];
             
             capabilities.scanner.scanDirectory.mockResolvedValue(mockFiles);
-            
-            // Mock fs.stat calls
-            const mockFs = require("fs").promises;
-            jest.doMock("fs", () => ({
-                promises: {
-                    stat: jest.fn(),
-                },
-            }));
             
             // Create new mock that we can control
             const statMock = jest.fn();
