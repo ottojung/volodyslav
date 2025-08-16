@@ -3,7 +3,6 @@
  */
 
 const { parseCronExpression, matchesCronExpression } = require("./parser");
-const datetime = require("../datetime");
 const { transaction } = require("../runtime_state_storage");
 const structure = require("../runtime_state_storage/structure");
 const time_duration = require("../time_duration");
@@ -22,7 +21,7 @@ const POLL_INTERVAL_MS = 600000;
  * @property {string} name
  * @property {string} cronExpression
  * @property {import('./expression').CronExpressionClass} parsedCron
- * @property {() => Promise<void> | void} callback
+ * @property {(() => Promise<void> | void) | null} callback
  * @property {TimeDuration} retryDelay
  * @property {Date|undefined} lastSuccessTime
  * @property {Date|undefined} lastFailureTime
@@ -34,7 +33,7 @@ const POLL_INTERVAL_MS = 600000;
 /**
  * @param {import('./parser').CronExpressionClass} parsedCron
  * @param {Date} now
- * @param {import('../datetime').DateTime} dt
+ * @param {import('../datetime').Datetime} dt
  * @returns {Date | undefined}
  */
 function getMostRecentExecution(parsedCron, now, dt) {
@@ -86,18 +85,18 @@ async function loadPersistedState(capabilities, tasks) {
                     // Convert retryDelayMs to TimeDuration
                     const retryDelay = time_duration.fromMilliseconds(record.retryDelayMs);
                     
-                    // Convert ISO strings to Date objects
+                    // Convert DateTime objects to native Date objects
                     const lastSuccessTime = record.lastSuccessTime 
-                        ? capabilities.datetime.toNativeDate(capabilities.datetime.fromISOString(record.lastSuccessTime))
+                        ? capabilities.datetime.toNativeDate(record.lastSuccessTime)
                         : undefined;
                     const lastFailureTime = record.lastFailureTime 
-                        ? capabilities.datetime.toNativeDate(capabilities.datetime.fromISOString(record.lastFailureTime))
+                        ? capabilities.datetime.toNativeDate(record.lastFailureTime)
                         : undefined;
                     const lastAttemptTime = record.lastAttemptTime 
-                        ? capabilities.datetime.toNativeDate(capabilities.datetime.fromISOString(record.lastAttemptTime))
+                        ? capabilities.datetime.toNativeDate(record.lastAttemptTime)
                         : undefined;
                     const pendingRetryUntil = record.pendingRetryUntil 
-                        ? capabilities.datetime.toNativeDate(capabilities.datetime.fromISOString(record.pendingRetryUntil))
+                        ? capabilities.datetime.toNativeDate(record.pendingRetryUntil)
                         : undefined;
 
                     // Check for duplicates
@@ -145,6 +144,12 @@ async function loadPersistedState(capabilities, tasks) {
         capabilities.logger.logInfo({ taskCount: 0 }, "SchedulerStateLoaded");
     }
 }
+/**
+ * Persist current task state
+ * @param {import('../capabilities/root').Capabilities} capabilities
+ * @param {Map<string, Task>} tasks
+ * @returns {Promise<void>}
+ */
 async function persistCurrentState(capabilities, tasks) {
     try {
         await transaction(capabilities, async (storage) => {
@@ -197,15 +202,15 @@ async function persistCurrentState(capabilities, tasks) {
 }
 
 /**
- * @param {object} capabilities
- * @param {Logger} capabilities.logger
+ * @param {import('../capabilities/root').Capabilities} capabilities
  * @param {{pollIntervalMs?: number}} [options]
  */
 function makePollingScheduler(capabilities, options = {}) {
     const pollIntervalMs = options.pollIntervalMs ?? POLL_INTERVAL_MS;
     /** @type {Map<string, Task>} */
     const tasks = new Map();
-    let interval = /** @type {NodeJS.Timeout?} */ (null);
+    /** @type {any} */
+    let interval = null;
     const dt = capabilities.datetime; // Use capabilities datetime instead of creating new instance
     let stateLoadAttempted = false;
 
@@ -325,7 +330,8 @@ function makePollingScheduler(capabilities, options = {}) {
             try {
                 await persistState();
             } catch (err) {
-                capabilities.logger.logError({ message: err.message }, "StateWriteFailedAfterSuccess");
+                const message = err instanceof Error ? err.message : String(err);
+                capabilities.logger.logError({ message }, "StateWriteFailedAfterSuccess");
             }
         } catch (error) {
             const end = dt.toNativeDate(dt.now());
@@ -341,7 +347,8 @@ function makePollingScheduler(capabilities, options = {}) {
             try {
                 await persistState();
             } catch (err) {
-                capabilities.logger.logError({ message: err.message }, "StateWriteFailedAfterFailure");
+                const message = err instanceof Error ? err.message : String(err);
+                capabilities.logger.logError({ message }, "StateWriteFailedAfterFailure");
             }
         } finally {
             task.running = false;
