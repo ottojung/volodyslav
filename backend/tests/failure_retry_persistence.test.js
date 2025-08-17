@@ -3,7 +3,6 @@
  */
 
 const { makePollingScheduler } = require("../src/cron/polling_scheduler");
-const { transaction } = require("../src/runtime_state_storage");
 const { fromMilliseconds } = require("../src/time_duration");
 const { getMockedRootCapabilities } = require("./spies");
 const { stubEnvironment, stubLogger, stubDatetime } = require("./stubs");

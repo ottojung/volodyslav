@@ -50,9 +50,11 @@ describe("runtime state migration", () => {
         const migrationCalls = capabilities.logger.logInfo.mock.calls.filter(
             call => call.length === 2 && call[1] === "RuntimeStateMigrated"
         );
-        if (migrationCalls.length > 0) {
-            expect(migrationCalls[0][0]).toEqual({ from: 1, to: 2 });
-        }
+        // If migration occurred, verify the migration parameters
+        expect(migrationCalls.length).toBeLessThanOrEqual(1);
+        migrationCalls.forEach(call => {
+            expect(call[0]).toEqual({ from: 1, to: 2 });
+        });
         
         // Verify that new state is v2 with tasks
         await transaction(capabilities, async (storage) => {

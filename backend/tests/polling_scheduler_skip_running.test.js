@@ -16,8 +16,7 @@ describe("polling scheduler skip running", () => {
         jest.useFakeTimers().setSystemTime(new Date("2020-01-01T00:00:00Z"));
         const cron = make(caps(), { pollIntervalMs: 60000 }); // Long interval to avoid execution
         const retryDelay = fromMilliseconds(0);
-        let resolve;
-        const cb = jest.fn(() => new Promise(r => { resolve = r; }));
+        const cb = jest.fn(() => new Promise(() => {})); // Promise that never resolves
         await cron.schedule("t", "* * * * *", cb, retryDelay);
 
         // Get initial task status
