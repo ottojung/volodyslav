@@ -45,101 +45,31 @@ const executionCache = new Map();
  * @returns {Date | undefined}
  */
 function getMostRecentExecution(parsedCron, now, dt) {
-    const cronKey = `${parsedCron.minute}_${parsedCron.hour}_${parsedCron.day}_${parsedCron.month}_${parsedCron.weekday}`;
-    const nowTime = now.getTime();
-    
-    // Check cache first
-    const cached = executionCache.get(cronKey);
-    if (cached && Math.abs(nowTime - cached.lastCalculationTime) < 60000) { // Cache valid for 1 minute
-        // If we have a cached next execution, check if it's now in the past
-        if (cached.nextExecution && cached.nextExecution.getTime() <= nowTime) {
-            return cached.nextExecution;
-        }
-    }
-    
     try {
-        // Use forward calculation instead of backward scanning
-        // Start from beginning of current minute
+        // For efficiency, check if current minute matches first
         const currentMinute = new Date(now);
         currentMinute.setSeconds(0, 0);
         
-        // Check if current minute matches
         const currentDt = dt.fromEpochMs(currentMinute.getTime());
         if (matchesCronExpression(parsedCron, currentDt)) {
-            // Update cache
-            executionCache.set(cronKey, {
-                lastCalculationTime: nowTime,
-                nextExecution: currentMinute
-            });
             return currentMinute;
         }
         
-        // Look for next execution and work backwards to find most recent
-        const nextExecution = getNextExecution(parsedCron, currentDt);
-        if (!nextExecution) {
-            // Clear cache if no execution found
-            executionCache.delete(cronKey);
-            return undefined;
-        }
-        
-        const nextTime = dt.toNativeDate(nextExecution);
-        
-        // Calculate interval and work backwards to find most recent past execution
-        // This is much more efficient than scanning minute by minute
-        let candidate = new Date(nextTime);
-        
-        // Try common intervals first (most cron jobs use these)
-        const commonIntervals = [
-            60 * 1000,        // every minute
-            5 * 60 * 1000,    // every 5 minutes
-            15 * 60 * 1000,   // every 15 minutes
-            30 * 60 * 1000,   // every 30 minutes
-            60 * 60 * 1000,   // every hour
-            24 * 60 * 60 * 1000, // daily
-        ];
-        
-        for (const interval of commonIntervals) {
-            candidate = new Date(nextTime.getTime() - interval);
-            if (candidate.getTime() <= nowTime) {
-                const candidateDt = dt.fromEpochMs(candidate.getTime());
-                if (matchesCronExpression(parsedCron, candidateDt)) {
-                    // Update cache
-                    executionCache.set(cronKey, {
-                        lastCalculationTime: nowTime,
-                        nextExecution: candidate
-                    });
-                    return candidate;
-                }
-            }
-        }
-        
-        // If common intervals don't work, fall back to limited backward scan
-        // but with much smaller limit
-        candidate = new Date(nextTime);
-        const maxIterations = Math.min(1440, Math.floor((nextTime.getTime() - nowTime) / (60 * 1000)) + 1); // Max 1 day or until now
+        // Look backward minute by minute for the most recent match
+        // Use a reasonable limit to avoid infinite loops
+        const maxIterations = 60; // Look back 1 hour max
         
         for (let i = 1; i <= maxIterations; i++) {
-            candidate = new Date(nextTime.getTime() - (i * 60 * 1000));
-            if (candidate.getTime() <= nowTime) {
-                const candidateDt = dt.fromEpochMs(candidate.getTime());
-                if (matchesCronExpression(parsedCron, candidateDt)) {
-                    // Update cache
-                    executionCache.set(cronKey, {
-                        lastCalculationTime: nowTime,
-                        nextExecution: candidate
-                    });
-                    return candidate;
-                }
+            const candidate = new Date(currentMinute.getTime() - (i * 60 * 1000));
+            const candidateDt = dt.fromEpochMs(candidate.getTime());
+            if (matchesCronExpression(parsedCron, candidateDt)) {
+                return candidate;
             }
         }
         
-        // No recent execution found
-        executionCache.delete(cronKey);
         return undefined;
         
     } catch (error) {
-        // If calculation fails, clear cache and return undefined
-        executionCache.delete(cronKey);
         return undefined;
     }
 }
@@ -361,6 +291,7 @@ function makePollingScheduler(capabilities, options = {}) {
     let stateLoadAttempted = false;
     let pollInProgress = false; // Guard against re-entrant polls
     let runningTasksCount = 0; // Track concurrent executions
+    let pollCallCount = 0; // Debug counter
 
     // Lazy load state when first needed
     async function ensureStateLoaded() {
@@ -416,6 +347,8 @@ function makePollingScheduler(capabilities, options = {}) {
             /** @type {Array<{task: Task, mode: "retry"|"cron"}>} */
             const dueTasks = [];
             
+            console.log(`Poll: checking ${tasks.size} tasks`);
+            
             for (const task of tasks.values()) {
                 // Skip tasks that don't have a callback yet (loaded from persistence)
                 if (task.callback === null) {
@@ -429,10 +362,12 @@ function makePollingScheduler(capabilities, options = {}) {
                 
                 // Check both cron schedule and retry timing
                 const lastFire = getMostRecentExecution(task.parsedCron, now, dt);
-                const shouldRunCron = lastFire &&
-                    (!task.lastAttemptTime || (task.lastSuccessTime !== undefined && task.lastSuccessTime < lastFire));
+                const shouldRunCron = lastFire && 
+                    (!task.lastAttemptTime || task.lastAttemptTime < lastFire);
                 
                 const shouldRunRetry = task.pendingRetryUntil && now.getTime() >= task.pendingRetryUntil.getTime();
+                
+                console.log(`Task ${task.name}: lastFire=${lastFire?.toISOString()}, lastAttemptTime=${task.lastAttemptTime?.toISOString()}, shouldRunCron=${shouldRunCron}, shouldRunRetry=${shouldRunRetry}`);
                 
                 if (shouldRunRetry && shouldRunCron) {
                     // Both are due - choose the mode based on which comes first
@@ -700,7 +635,7 @@ function makePollingScheduler(capabilities, options = {}) {
                 
                 const lastFire = getMostRecentExecution(t.parsedCron, now, dt);
                 const shouldRunCron = lastFire &&
-                    (!t.lastAttemptTime || (t.lastSuccessTime !== undefined && t.lastSuccessTime < lastFire));
+                    (!t.lastAttemptTime || t.lastAttemptTime < lastFire);
                 const shouldRunRetry = t.pendingRetryUntil && now.getTime() >= t.pendingRetryUntil.getTime();
                 
                 if (shouldRunRetry && shouldRunCron) {
