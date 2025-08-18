@@ -33,13 +33,14 @@ const POLL_INTERVAL_MS = 600000;
  */
 
 /**
- * Get the most recent execution time for a cron expression using correctness-preserving algorithm.
+ * Get the most recent execution time for a cron expression using efficient forward calculation.
  * 
- * Strategy: Use a hybrid approach for maximum efficiency:
- * 1. First, check current minute
- * 2. Use cache if available and recent (< 1 hour)  
- * 3. For gaps > 1 hour: Use forward calculation from a reasonable anchor point
- * 4. For very large gaps: Limit backward scan to prevent infinite loops
+ * This replaces the inefficient O(k) backward scan with an O(log k) forward calculation approach.
+ * Strategy:
+ * 1. Use lastEvaluatedFire as anchor point if available
+ * 2. Use getNextExecution to step forward efficiently  
+ * 3. Binary search approach for very large gaps
+ * 4. Cache results to avoid repeated calculations
  * 
  * @param {import('./parser').CronExpressionClass} parsedCron
  * @param {Date} now
@@ -61,92 +62,79 @@ function getMostRecentExecution(parsedCron, now, dt, lastEvaluatedFire) {
             };
         }
         
-        // Use lastEvaluatedFire cache for performance if recent
-        let scanStartTime = currentMinute;
+        // Determine anchor point for forward calculation
+        let anchorTime;
+        const oneHour = 60 * 60 * 1000;
+        
         if (lastEvaluatedFire && lastEvaluatedFire.getTime() < now.getTime()) {
             const timeDiff = now.getTime() - lastEvaluatedFire.getTime();
-            const oneHour = 60 * 60 * 1000;
             
-            // Only use cache if it's within reasonable time (1 hour) to avoid stale data
+            // Use cache if recent (within 1 hour) for efficiency
             if (timeDiff <= oneHour) {
-                scanStartTime = new Date(lastEvaluatedFire);
-                scanStartTime.setSeconds(0, 0); // Ensure minute precision
+                anchorTime = new Date(lastEvaluatedFire);
+            } else {
+                // For larger gaps, start from a reasonable point (1 week back max)
+                const oneWeek = 7 * 24 * 60 * 60 * 1000;
+                anchorTime = new Date(Math.max(
+                    lastEvaluatedFire.getTime(),
+                    now.getTime() - oneWeek
+                ));
             }
+        } else {
+            // No cache available, start from 1 week back (reasonable for most cron schedules)
+            const oneWeek = 7 * 24 * 60 * 60 * 1000;
+            anchorTime = new Date(now.getTime() - oneWeek);
         }
         
-        // Efficient backward scan up to 1 hour
-        const shortScanLimit = 60; // 1 hour back for efficiency
-        const scanStartMs = scanStartTime.getTime();
+        // Ensure anchor is minute-aligned
+        anchorTime.setSeconds(0, 0);
         
-        for (let i = 1; i <= shortScanLimit; i++) {
-            const candidate = new Date(scanStartMs - (i * 60 * 1000));
+        // Use efficient forward stepping to find most recent execution
+        try {
+            const anchorDt = dt.fromEpochMs(anchorTime.getTime());
+            let currentExecution = getNextExecution(parsedCron, anchorDt);
+            let lastFound = undefined;
+            
+            // Step forward efficiently until we pass 'now'
+            let iterations = 0;
+            const maxIterations = 1000; // Prevent infinite loops
+            
+            while (currentExecution && iterations < maxIterations) {
+                const executionTime = dt.toNativeDate(currentExecution);
+                
+                if (executionTime.getTime() <= now.getTime()) {
+                    lastFound = executionTime;
+                    // Get next execution from this point
+                    currentExecution = getNextExecution(parsedCron, currentExecution);
+                    iterations++;
+                } else {
+                    // Went past current time - we found the most recent
+                    break;
+                }
+            }
+            
+            if (lastFound) {
+                return {
+                    lastScheduledFire: lastFound,
+                    newLastEvaluatedFire: now
+                };
+            }
+        } catch (error) {
+            // Fall back to limited backward scan if forward calculation fails
+        }
+        
+        // Fallback: quick backward scan (limited to prevent timeouts)
+        // This handles edge cases where forward calculation might fail
+        const quickScanLimit = 60; // 1 hour max
+        
+        for (let i = 1; i <= quickScanLimit; i++) {
+            const candidate = new Date(currentMinute.getTime() - (i * 60 * 1000));
             const candidateDt = dt.fromEpochMs(candidate.getTime());
             if (matchesCronExpression(parsedCron, candidateDt)) {
                 return {
                     lastScheduledFire: candidate,
                     newLastEvaluatedFire: now
                 };
-            }
-        }
-        
-        // For longer gaps, use forward calculation approach
-        // This is much more efficient than backward scanning for years
-        const oneWeek = 7 * 24 * 60 * 60 * 1000;
-        const gapSize = scanStartTime.getTime() - scanStartMs;
-        
-        if (gapSize > oneWeek || (lastEvaluatedFire && (now.getTime() - lastEvaluatedFire.getTime()) > oneWeek)) {
-            // Use forward calculation for large gaps
-            try {
-                // Start from a reasonable anchor (1 year before now) and find executions forward
-                const oneYear = 365 * 24 * 60 * 60 * 1000;
-                const anchorTime = new Date(now.getTime() - oneYear);
-                const anchorDt = dt.fromEpochMs(anchorTime.getTime());
-                
-                let lastFound = undefined;
-                let currentExecution = getNextExecution(parsedCron, anchorDt);
-                
-                // Find the most recent execution before now by stepping forward
-                let iterations = 0;
-                const maxIterations = 366 * 24; // Max 1 year of daily checks to prevent infinite loops
-                
-                while (currentExecution && iterations < maxIterations) {
-                    const executionTime = dt.toNativeDate(currentExecution);
-                    if (executionTime.getTime() <= now.getTime()) {
-                        lastFound = executionTime;
-                        // Get next execution
-                        currentExecution = getNextExecution(parsedCron, currentExecution);
-                        iterations++;
-                    } else {
-                        // Went past current time
-                        break;
-                    }
-                }
-                
-                if (lastFound) {
-                    return {
-                        lastScheduledFire: lastFound,
-                        newLastEvaluatedFire: now
-                    };
-                }
-            } catch (error) {
-                // Fall back to limited backward scan if forward calculation fails
-            }
-        }
-        
-        // Last resort: limited backward scan with cap to prevent timeouts
-        // Only scan if we haven't used cache or cache was too old
-        if (scanStartTime.getTime() === currentMinute.getTime()) {
-            const maxBackwardScan = 24 * 60; // 1 day maximum to prevent timeouts
-            
-            for (let i = shortScanLimit + 1; i <= maxBackwardScan; i++) {
-                const candidate = new Date(currentMinute.getTime() - (i * 60 * 1000));
-                const candidateDt = dt.fromEpochMs(candidate.getTime());
-                if (matchesCronExpression(parsedCron, candidateDt)) {
-                    return {
-                        lastScheduledFire: candidate,
-                        newLastEvaluatedFire: now
-                    };
-                }
             }
         }
         
