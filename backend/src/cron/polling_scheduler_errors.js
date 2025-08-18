@@ -57,7 +57,7 @@ class ScheduleFrequencyError extends Error {
     constructor(taskFrequencyMs, pollFrequencyMs) {
         const taskMinutes = Math.floor(taskFrequencyMs / (60 * 1000));
         const pollMinutes = Math.floor(pollFrequencyMs / (60 * 1000));
-        
+
         super(
             `Task frequency (${taskMinutes} minute${taskMinutes !== 1 ? 's' : ''}) is higher than ` +
             `polling frequency (${pollMinutes} minute${pollMinutes !== 1 ? 's' : ''}). ` +

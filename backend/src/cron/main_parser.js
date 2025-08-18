@@ -36,7 +36,7 @@ function parseCronExpression(expression) {
     const dayStr = fields[2];
     const monthStr = fields[3];
     const weekdayStr = fields[4];
-    
+
     if (!minuteStr || !hourStr || !dayStr || !monthStr || !weekdayStr) {
         throw new InvalidCronExpressionError(expression, "expression", "contains empty fields");
     }
@@ -63,7 +63,7 @@ function parseCronExpression(expression) {
                 else if (configKey === "month") config = FIELD_CONFIGS.month;
                 else if (configKey === "weekday") config = FIELD_CONFIGS.weekday;
                 else return false;
-                
+
                 parseField(field, config);
                 return false;
             } catch {
@@ -73,7 +73,7 @@ function parseCronExpression(expression) {
 
         const fieldName = fieldNames[fieldIndex] || "unknown";
         let errorMessage = "unknown error";
-        
+
         if (isFieldParseError(error)) {
             errorMessage = error.message;
         } else if (error instanceof Error) {
@@ -81,7 +81,7 @@ function parseCronExpression(expression) {
         } else {
             errorMessage = String(error);
         }
-        
+
         throw new InvalidCronExpressionError(expression, fieldName, errorMessage);
     }
 }
