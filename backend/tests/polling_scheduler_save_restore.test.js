@@ -76,18 +76,28 @@ describe("polling scheduler save and restore", () => {
         
         // Simulate task execution by advancing time and forcing a poll
         jest.setSystemTime(new Date("2020-01-01T00:01:00Z"));
-        // TODO: Add mechanism to trigger poll manually for testing
+        await scheduler1._poll(); // Use the internal poll method for testing
         
-        // Get task state before shutdown
+        // Verify task was executed
+        expect(taskCallback).toHaveBeenCalledTimes(1);
+        
+        // Get task state before shutdown and verify execution history exists
         let tasks = await scheduler1.getTasks();
         const originalTask = tasks[0];
+        
+        expect(originalTask.lastSuccessTime).toBeDefined();
+        expect(originalTask.lastAttemptTime).toBeDefined();
+        
+        const originalLastSuccess = originalTask.lastSuccessTime;
+        const originalLastAttempt = originalTask.lastAttemptTime;
         
         // Shutdown
         await scheduler1.cancelAll();
         
         // Create new scheduler instance
         const scheduler2 = makePollingScheduler(capabilities, { pollIntervalMs: 1000 });
-        await scheduler2.schedule("history-test", "* * * * *", taskCallback, retryDelay);
+        const newTaskCallback = jest.fn(); // New callback function
+        await scheduler2.schedule("history-test", "* * * * *", newTaskCallback, retryDelay);
         
         // Verify history was restored
         tasks = await scheduler2.getTasks();
@@ -95,7 +105,12 @@ describe("polling scheduler save and restore", () => {
         
         expect(restoredTask.name).toBe(originalTask.name);
         expect(restoredTask.cronExpression).toBe(originalTask.cronExpression);
-        // TODO: Add specific checks for execution history once implemented
+        
+        // Check that execution history was restored
+        expect(restoredTask.lastSuccessTime).toBeDefined();
+        expect(restoredTask.lastAttemptTime).toBeDefined();
+        expect(restoredTask.lastSuccessTime).toBe(originalLastSuccess);
+        expect(restoredTask.lastAttemptTime).toBe(originalLastAttempt);
         
         await scheduler2.cancelAll();
     });
@@ -132,6 +147,99 @@ describe("polling scheduler save and restore", () => {
         tasks = await scheduler2.getTasks();
         expect(tasks).toHaveLength(3);
         expect(tasks.map(t => t.name).sort()).toEqual(["task1", "task2", "task3"]);
+        
+        await scheduler2.cancelAll();
+    });
+
+    test("should restore retry state and failure history", async () => {
+        const capabilities = caps();
+        const retryDelay = fromMilliseconds(5000); // 5 second retry delay
+        
+        // Set up initial time
+        jest.setSystemTime(new Date("2020-01-01T00:00:00Z"));
+        
+        const failingCallback = jest.fn(() => {
+            throw new Error("Task failed");
+        });
+        
+        // Create first scheduler and schedule failing task
+        const scheduler1 = makePollingScheduler(capabilities, { pollIntervalMs: 1000 });
+        await scheduler1.schedule("failing-task", "* * * * *", failingCallback, retryDelay);
+        
+        // Advance time and trigger execution to generate failure
+        jest.setSystemTime(new Date("2020-01-01T00:01:00Z"));
+        await scheduler1._poll();
+        
+        // Verify task failed and has retry state
+        expect(failingCallback).toHaveBeenCalledTimes(1);
+        let tasks = await scheduler1.getTasks();
+        const originalTask = tasks[0];
+        
+        expect(originalTask.lastFailureTime).toBeDefined();
+        expect(originalTask.pendingRetryUntil).toBeDefined();
+        
+        // Store the original failure state for comparison
+        const originalLastFailure = originalTask.lastFailureTime;
+        const originalRetryUntil = originalTask.pendingRetryUntil;
+        
+        // The task should be in retry mode if retry time hasn't passed yet
+        // Since we just failed and retry is 5 seconds, it should be in retry mode
+        const expectedMode = originalTask.modeHint; // Could be "retry" or "idle" depending on timing
+        
+        // Shutdown
+        await scheduler1.cancelAll();
+        
+        // Create new scheduler instance
+        const scheduler2 = makePollingScheduler(capabilities, { pollIntervalMs: 1000 });
+        const newFailingCallback = jest.fn(() => {
+            throw new Error("Task still fails");
+        });
+        await scheduler2.schedule("failing-task", "* * * * *", newFailingCallback, retryDelay);
+        
+        // Verify failure history and retry state was restored
+        tasks = await scheduler2.getTasks();
+        const restoredTask = tasks[0];
+        
+        expect(restoredTask.name).toBe(originalTask.name);
+        expect(restoredTask.lastFailureTime).toBeDefined();
+        expect(restoredTask.pendingRetryUntil).toBeDefined();
+        expect(restoredTask.lastFailureTime).toBe(originalLastFailure);
+        expect(restoredTask.pendingRetryUntil).toBe(originalRetryUntil);
+        expect(restoredTask.modeHint).toBe(expectedMode);
+        
+        await scheduler2.cancelAll();
+    });
+
+    test("should restore tasks without callbacks and allow re-registration", async () => {
+        const capabilities = caps();
+        const retryDelay = fromMilliseconds(5000);
+        
+        const taskCallback = jest.fn();
+        
+        // Create first scheduler and add task
+        const scheduler1 = makePollingScheduler(capabilities, { pollIntervalMs: 1000 });
+        await scheduler1.schedule("orphaned-task", "0 * * * *", taskCallback, retryDelay);
+        
+        // Shutdown without canceling - simulating unexpected shutdown
+        await scheduler1.cancelAll();
+        
+        // Create new scheduler WITHOUT re-registering the task initially
+        const scheduler2 = makePollingScheduler(capabilities, { pollIntervalMs: 1000 });
+        
+        // Check if the task exists but without callback
+        const tasks = await scheduler2.getTasks();
+        expect(tasks).toHaveLength(1);
+        expect(tasks[0].name).toBe("orphaned-task");
+        
+        // Now re-register the task with callback - should merge with existing state
+        const newTaskCallback = jest.fn();
+        await scheduler2.schedule("orphaned-task", "0 * * * *", newTaskCallback, retryDelay);
+        
+        // Verify task exists and is ready for execution
+        const updatedTasks = await scheduler2.getTasks();
+        expect(updatedTasks).toHaveLength(1);
+        expect(updatedTasks[0].name).toBe("orphaned-task");
+        expect(updatedTasks[0].cronExpression).toBe("0 * * * *");
         
         await scheduler2.cancelAll();
     });

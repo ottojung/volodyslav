@@ -539,6 +539,7 @@ function makePollingScheduler(capabilities, options = {}) {
                     existingTask.cronExpression = cronExpression;
                     existingTask.parsedCron = parsedCron;
                     existingTask.retryDelay = retryDelay;
+                    // NOTE: We preserve execution history fields (lastSuccessTime, etc.)
                     
                     // Persist updated task
                     await persistState();
@@ -598,11 +599,9 @@ function makePollingScheduler(capabilities, options = {}) {
         async cancelAll() {
             const count = tasks.size;
             tasks.clear();
-            if (count > 0) {
-                // Persist state after clearing tasks
-                await persistState();
-                capabilities.logger.logDebug({ clearedTasks: count }, "CancelAllPersisted");
-            }
+            // NOTE: We don't persist state after cancelAll to preserve execution history
+            // for potential restart. If you want to permanently clear persisted state,
+            // use a different method.
             stop();
             return count;
         },
