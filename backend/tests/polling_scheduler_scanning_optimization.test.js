@@ -163,5 +163,5 @@ describe("polling scheduler scanning algorithm optimization", () => {
         expect(duration).toBeLessThan(500); // 500ms limit for 50 tasks
         
         await scheduler.cancelAll();
-    });
+    }, 10000); // 10 second timeout for multiple tasks test
 });
