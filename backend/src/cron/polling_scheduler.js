@@ -32,12 +32,6 @@ const POLL_INTERVAL_MS = 600000;
  */
 
 /**
- * Cache for execution time calculations to avoid repeated expensive operations
- * @type {Map<string, {lastCalculationTime: number, nextExecution?: Date}>}
- */
-const executionCache = new Map();
-
-/**
  * Get the most recent execution time for a cron expression using efficient forward calculation
  * @param {import('./parser').CronExpressionClass} parsedCron
  * @param {Date} now
@@ -291,7 +285,6 @@ function makePollingScheduler(capabilities, options = {}) {
     let stateLoadAttempted = false;
     let pollInProgress = false; // Guard against re-entrant polls
     let runningTasksCount = 0; // Track concurrent executions
-    let pollCallCount = 0; // Debug counter
 
     // Lazy load state when first needed
     async function ensureStateLoaded() {
@@ -347,8 +340,6 @@ function makePollingScheduler(capabilities, options = {}) {
             /** @type {Array<{task: Task, mode: "retry"|"cron"}>} */
             const dueTasks = [];
             
-            console.log(`Poll: checking ${tasks.size} tasks`);
-            
             for (const task of tasks.values()) {
                 // Skip tasks that don't have a callback yet (loaded from persistence)
                 if (task.callback === null) {
@@ -366,8 +357,6 @@ function makePollingScheduler(capabilities, options = {}) {
                     (!task.lastAttemptTime || task.lastAttemptTime < lastFire);
                 
                 const shouldRunRetry = task.pendingRetryUntil && now.getTime() >= task.pendingRetryUntil.getTime();
-                
-                console.log(`Task ${task.name}: lastFire=${lastFire?.toISOString()}, lastAttemptTime=${task.lastAttemptTime?.toISOString()}, shouldRunCron=${shouldRunCron}, shouldRunRetry=${shouldRunRetry}`);
                 
                 if (shouldRunRetry && shouldRunCron) {
                     // Both are due - choose the mode based on which comes first
@@ -428,36 +417,34 @@ function makePollingScheduler(capabilities, options = {}) {
             return;
         }
         
-        // Use concurrency control for larger sets or when tasks are already running
-        /** @type {Array<Promise<void>>} */
-        const executing = [];
-        let index = 0;
-        
-        while (index < dueTasks.length || executing.length > 0) {
-            // Fill up to concurrency limit
-            while (executing.length < maxConcurrent && index < dueTasks.length) {
-                const dueTask = dueTasks[index++];
-                if (!dueTask) continue;
-                
-                const { task, mode } = dueTask;
-                const promise = runTask(task, mode)
-                    .then(() => {
-                        // Remove from executing array when done
-                        const idx = executing.indexOf(promise);
-                        if (idx > -1) executing.splice(idx, 1);
-                    })
-                    .catch(() => {
-                        // Remove from executing array on error too
-                        const idx = executing.indexOf(promise);
-                        if (idx > -1) executing.splice(idx, 1);
-                        // Error already handled in runTask
-                    });
-                executing.push(promise);
-            }
+        // Use concurrency control
+        if (dueTasks.length <= maxConcurrent) {
+            // If we have fewer tasks than the limit, just run them all in parallel
+            const promises = dueTasks.map(({ task, mode }) => runTask(task, mode));
+            await Promise.all(promises);
+        } else {
+            // Use proper concurrency control for more tasks than the limit
+            let index = 0;
+            const executing = new Set();
             
-            // Wait for at least one task to complete before continuing
-            if (executing.length > 0) {
-                await Promise.race(executing);
+            while (index < dueTasks.length || executing.size > 0) {
+                // Start tasks up to the concurrency limit
+                while (executing.size < maxConcurrent && index < dueTasks.length) {
+                    const dueTask = dueTasks[index++];
+                    if (!dueTask) continue;
+                    
+                    const { task, mode } = dueTask;
+                    const promise = runTask(task, mode);
+                    executing.add(promise);
+                    
+                    // Remove promise when it completes
+                    promise.finally(() => executing.delete(promise));
+                }
+                
+                // Wait for at least one task to complete before continuing
+                if (executing.size > 0) {
+                    await Promise.race(Array.from(executing));
+                }
             }
         }
     }
@@ -664,6 +651,14 @@ function makePollingScheduler(capabilities, options = {}) {
                     modeHint,
                 };
             });
+        },
+        
+        /**
+         * Manual poll function for testing
+         * @internal
+         */
+        async _poll() {
+            return await poll();
         },
     };
 }

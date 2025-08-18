@@ -70,15 +70,13 @@ describe("polling scheduler re-entrancy protection", () => {
         const scheduler = makePollingScheduler(capabilities, { pollIntervalMs: 1000 });
         await scheduler.schedule("quick-task", "* * * * *", quickTask, retryDelay);
         
-        // Advance time to trigger first poll
-        jest.advanceTimersByTime(1000);
-        await Promise.resolve();
+        // Trigger first poll
+        await scheduler._poll();
         expect(taskExecutionCount).toBe(1);
         
-        // Advance time to trigger second poll (should work since first completed)
+        // Advance time to new minute and trigger second poll
         jest.setSystemTime(new Date("2020-01-01T00:01:00Z")); // New minute to be due again
-        jest.advanceTimersByTime(1000);
-        await Promise.resolve();
+        await scheduler._poll();
         expect(taskExecutionCount).toBe(2);
         
         await scheduler.cancelAll();
@@ -124,13 +122,12 @@ describe("polling scheduler re-entrancy protection", () => {
         await scheduler.schedule("error-task", "* * * * *", errorTask, retryDelay);
         
         // First poll should fail
-        jest.advanceTimersByTime(1000);
-        await Promise.resolve();
+        await scheduler._poll();
         expect(taskExecutionCount).toBe(1);
         
-        // After retry delay, second poll should succeed
-        jest.advanceTimersByTime(5000); // Wait for retry delay
-        await Promise.resolve();
+        // Advance time by retry delay and trigger poll again
+        jest.setSystemTime(new Date("2020-01-01T00:05:01Z")); // After retry delay
+        await scheduler._poll();
         
         // Should allow next poll despite previous error
         expect(taskExecutionCount).toBe(2);

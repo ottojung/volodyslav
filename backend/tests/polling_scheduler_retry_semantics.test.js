@@ -45,16 +45,14 @@ describe("polling scheduler retry semantics", () => {
         await scheduler.schedule("retry-test", "* * * * *", task, retryDelay);
         
         // First execution at 00:00 - fails
-        jest.advanceTimersByTime(30000);
-        await new Promise(resolve => setTimeout(resolve, 100)); // Give more time for async operations
+        await scheduler._poll();
         expect(executionCount).toBe(1);
         
         // Advance to the next minute and trigger another poll
         jest.setSystemTime(new Date("2020-01-01T00:01:00Z"));
         
-        // Advance timers to trigger the next poll cycle  
-        jest.advanceTimersByTime(30000);
-        await new Promise(resolve => setTimeout(resolve, 100)); // Give more time for async operations
+        // Second poll at 00:01 - should execute again due to cron schedule
+        await scheduler._poll();
         
         expect(executionCount).toBe(2); // Should execute again due to cron schedule
         
@@ -79,14 +77,12 @@ describe("polling scheduler retry semantics", () => {
         await scheduler.schedule("timing-test", "*/2 * * * *", task, retryDelay);
         
         // First execution at 00:00 - fails, retry scheduled for 00:03
-        jest.advanceTimersByTime(30000);
-        await Promise.resolve();
+        await scheduler._poll();
         expect(executionTimes).toHaveLength(1);
         
         // At 00:02, cron schedule should trigger before retry at 00:03
         jest.setSystemTime(new Date("2020-01-01T00:02:00Z"));
-        jest.advanceTimersByTime(30000);
-        await Promise.resolve();
+        await scheduler._poll();
         
         expect(executionTimes).toHaveLength(2);
         expect(executionTimes[1]).toBe("2020-01-01T00:02:00.000Z");
@@ -109,14 +105,12 @@ describe("polling scheduler retry semantics", () => {
         await scheduler.schedule("retry-priority-test", "*/5 * * * *", task, retryDelay);
         
         // First execution at 00:00 - fails, retry scheduled for 00:00:30
-        jest.advanceTimersByTime(15000);
-        await Promise.resolve();
+        await scheduler._poll();
         expect(executionTimes).toHaveLength(1);
         
         // At 00:00:30, retry should trigger before next cron at 00:05
         jest.setSystemTime(new Date("2020-01-01T00:00:30Z"));
-        jest.advanceTimersByTime(15000);
-        await Promise.resolve();
+        await scheduler._poll();
         
         expect(executionTimes).toHaveLength(2);
         expect(executionTimes[1]).toBe("2020-01-01T00:00:30.000Z");
@@ -137,8 +131,7 @@ describe("polling scheduler retry semantics", () => {
         await scheduler.schedule("mode-test", "* * * * *", task, retryDelay);
         
         // First execution fails
-        jest.advanceTimersByTime(30000);
-        await Promise.resolve();
+        await scheduler._poll();
         
         // At 00:01, both cron and retry could be applicable
         jest.setSystemTime(new Date("2020-01-01T00:01:00Z"));
@@ -167,13 +160,11 @@ describe("polling scheduler retry semantics", () => {
         await scheduler.schedule("clear-retry-test", "* * * * *", task, retryDelay);
         
         // First execution at 00:00 - fails
-        jest.advanceTimersByTime(30000);
-        await Promise.resolve();
+        await scheduler._poll();
         
         // Second execution at 00:01 - succeeds due to cron
         jest.setSystemTime(new Date("2020-01-01T00:01:00Z"));
-        jest.advanceTimersByTime(30000);
-        await Promise.resolve();
+        await scheduler._poll();
         
         // Check that retry state is cleared
         const tasks = await scheduler.getTasks();
