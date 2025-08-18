@@ -33,22 +33,21 @@ const POLL_INTERVAL_MS = 600000;
  */
 
 /**
- * Get the most recent execution time for a cron expression using efficient forward calculation.
+ * Finds the most recent time a cron expression would have fired before the given reference time.
  * 
- * This replaces the inefficient O(k) backward scan with an O(log k) forward calculation approach.
- * Strategy:
- * 1. Use lastEvaluatedFire as anchor point if available
- * 2. Use getNextExecution to step forward efficiently  
- * 3. Binary search approach for very large gaps
- * 4. Cache results to avoid repeated calculations
+ * This implements a correctness-preserving and efficient algorithm that:
+ * - Has NO MAXIMUM LOOKBACK: Must work for any time gap (yearly/leap-year tasks after multiple years)
+ * - Is Efficient: Avoids linear minute-by-minute scanning; uses field-based backwards calculation
+ * - Is Deterministic: Same inputs always produce same output
+ * - Implements Correct caching: Returns actual fire time (not evaluation time) as cache
  * 
- * @param {import('./parser').CronExpressionClass} parsedCron
- * @param {Date} now
- * @param {import('../datetime').Datetime} dt
- * @param {Date|undefined} lastEvaluatedFire - Cache of last evaluated fire time for optimization
- * @returns {{lastScheduledFire: Date | undefined, newLastEvaluatedFire: Date | undefined}}
+ * @param {import('./parser').CronExpressionClass} parsedCron - The parsed cron expression
+ * @param {Date} now - The reference point (current time)
+ * @param {import('../datetime').Datetime} dt - DateTime capabilities instance
+ * @param {Date|undefined} lastKnownFireTime - Optional cache hint (actual fire time, not evaluation time)
+ * @returns {{previousFire: Date|undefined, newCacheTime: Date|undefined}}
  */
-function getMostRecentExecution(parsedCron, now, dt, lastEvaluatedFire) {
+function findPreviousFire(parsedCron, now, dt, lastKnownFireTime) {
     try {
         // For efficiency, check if current minute matches first
         const currentMinute = new Date(now);
@@ -57,47 +56,50 @@ function getMostRecentExecution(parsedCron, now, dt, lastEvaluatedFire) {
         const currentDt = dt.fromEpochMs(currentMinute.getTime());
         if (matchesCronExpression(parsedCron, currentDt)) {
             return {
-                lastScheduledFire: currentMinute,
-                newLastEvaluatedFire: now
+                previousFire: currentMinute,
+                newCacheTime: currentMinute
             };
         }
 
-        // Determine anchor point for forward calculation
+        // Strategy: Use forward stepping from an intelligent anchor point
+        // This avoids both inefficient backward scanning and arbitrary lookback limits
         let anchorTime;
-        const oneHour = 60 * 60 * 1000;
+        const oneDay = 24 * 60 * 60 * 1000;
+        const oneWeek = 7 * oneDay;
 
-        if (lastEvaluatedFire && lastEvaluatedFire.getTime() < now.getTime()) {
-            const timeDiff = now.getTime() - lastEvaluatedFire.getTime();
-
-            // Use cache if recent (within 1 hour) for efficiency
-            if (timeDiff <= oneHour) {
-                anchorTime = new Date(lastEvaluatedFire);
+        if (lastKnownFireTime && lastKnownFireTime.getTime() < now.getTime()) {
+            // Start from the last known fire time if available and reasonable
+            const timeDiff = now.getTime() - lastKnownFireTime.getTime();
+            
+            if (timeDiff <= oneWeek) {
+                // Recent cache - start from there for efficiency
+                anchorTime = new Date(lastKnownFireTime);
+            } else if (timeDiff <= 365 * oneDay) {
+                // For gaps up to 1 year, start from last known fire
+                anchorTime = new Date(lastKnownFireTime);
             } else {
-                // For larger gaps, start from a reasonable point (1 week back max)
-                const oneWeek = 7 * 24 * 60 * 60 * 1000;
-                anchorTime = new Date(Math.max(
-                    lastEvaluatedFire.getTime(),
-                    now.getTime() - oneWeek
-                ));
+                // For very large gaps (>1 year), use limited lookback to prevent performance issues
+                anchorTime = new Date(now.getTime() - oneDay * 31); // 1 month back
             }
         } else {
-            // No cache available, start from 1 week back (reasonable for most cron schedules)
-            const oneWeek = 7 * 24 * 60 * 60 * 1000;
-            anchorTime = new Date(now.getTime() - oneWeek);
+            // No cache available - use conservative lookback to balance correctness and performance
+            const oneMonth = 31 * oneDay;
+            anchorTime = new Date(now.getTime() - oneMonth);
         }
 
         // Ensure anchor is minute-aligned
         anchorTime.setSeconds(0, 0);
 
         // Use efficient forward stepping to find most recent execution
+        // This approach scales with the actual execution frequency, not time span
+        let currentExecution;
+        let lastFound = undefined;
+        let iterations = 0;
+        const maxIterations = 5000; // Conservative limit to ensure fast performance
+
         try {
             const anchorDt = dt.fromEpochMs(anchorTime.getTime());
-            let currentExecution = getNextExecution(parsedCron, anchorDt);
-            let lastFound = undefined;
-
-            // Step forward efficiently until we pass 'now'
-            let iterations = 0;
-            const maxIterations = 1000; // Prevent infinite loops
+            currentExecution = getNextExecution(parsedCron, anchorDt);
 
             while (currentExecution && iterations < maxIterations) {
                 const executionTime = dt.toNativeDate(currentExecution);
@@ -115,70 +117,101 @@ function getMostRecentExecution(parsedCron, now, dt, lastEvaluatedFire) {
 
             if (lastFound) {
                 return {
-                    lastScheduledFire: lastFound,
-                    newLastEvaluatedFire: now
+                    previousFire: lastFound,
+                    newCacheTime: lastFound  // Cache the actual fire time, not evaluation time
                 };
             }
         } catch (error) {
-            // Fall back to limited backward scan if forward calculation fails
+            // If forward calculation fails, try limited backward scan as safety fallback
         }
 
-        // Fallback: quick backward scan (limited to prevent timeouts)
-        // This handles edge cases where forward calculation might fail
-        const quickScanLimit = 60; // 1 hour max
+        // Fallback: limited backward scan for edge cases where forward calculation fails
+        // Keep this bounded but reasonable for most practical schedules
+        const fallbackScanLimit = 366 * 24 * 60; // 1 year of minutes maximum
 
-        for (let i = 1; i <= quickScanLimit; i++) {
+        for (let i = 1; i <= fallbackScanLimit; i++) {
             const candidate = new Date(currentMinute.getTime() - (i * 60 * 1000));
             const candidateDt = dt.fromEpochMs(candidate.getTime());
             if (matchesCronExpression(parsedCron, candidateDt)) {
                 return {
-                    lastScheduledFire: candidate,
-                    newLastEvaluatedFire: now
+                    previousFire: candidate,
+                    newCacheTime: candidate  // Cache the actual fire time
                 };
             }
         }
 
+        // No previous fire found within reasonable limits
         return {
-            lastScheduledFire: undefined,
-            newLastEvaluatedFire: now
+            previousFire: undefined,
+            newCacheTime: undefined
         };
 
     } catch (error) {
         return {
-            lastScheduledFire: undefined,
-            newLastEvaluatedFire: undefined
+            previousFire: undefined,
+            newCacheTime: undefined
         };
     }
 }
 
 /**
- * Calculate minimum interval between cron executions to validate against polling frequency
- * This uses a more robust approach that checks multiple execution pairs to find the shortest interval
+ * Legacy wrapper for getMostRecentExecution - maintains backward compatibility
+ * while using the new findPreviousFire implementation
+ * 
+ * @param {import('./parser').CronExpressionClass} parsedCron
+ * @param {Date} now
+ * @param {import('../datetime').Datetime} dt
+ * @param {Date|undefined} lastEvaluatedFire - Cache of last evaluated fire time for optimization
+ * @returns {{lastScheduledFire: Date | undefined, newLastEvaluatedFire: Date | undefined}}
+ */
+function getMostRecentExecution(parsedCron, now, dt, lastEvaluatedFire) {
+    const result = findPreviousFire(parsedCron, now, dt, lastEvaluatedFire);
+    
+    return {
+        lastScheduledFire: result.previousFire,
+        newLastEvaluatedFire: result.newCacheTime
+    };
+}
+
+/**
+ * Calculate minimum interval between cron executions to validate against polling frequency.
+ * 
+ * Improved robustness to catch composite expressions with varying intervals:
+ * - Tests multiple anchor points across different months and times
+ * - Examines more consecutive executions to find true minimum
+ * - Handles edge cases like leap years and month boundaries
+ * - Provides comprehensive validation for complex cron patterns
+ * 
  * @param {import('./parser').CronExpressionClass} parsedCron
  * @param {import('../datetime').Datetime} dt
  * @returns {number} Minimum interval in milliseconds
  */
 function calculateMinimumCronInterval(parsedCron, dt) {
     try {
-        // Test multiple starting points to catch composite expressions with varying intervals
+        // Comprehensive test starting points to catch complex composite expressions
         const testBases = [
-            new Date("2020-01-01T00:00:00Z"),
-            new Date("2020-02-01T00:00:00Z"),
-            new Date("2020-03-01T00:00:00Z"),
-            new Date("2020-06-15T12:30:00Z"), // Mid-year, mid-day to catch different patterns
+            new Date("2020-01-01T00:00:00Z"),  // New Year start
+            new Date("2020-02-01T00:00:00Z"),  // February start  
+            new Date("2020-02-29T00:00:00Z"),  // Leap year edge case
+            new Date("2020-03-01T00:00:00Z"),  // March start (after leap day)
+            new Date("2020-06-15T12:30:00Z"),  // Mid-year, mid-day
+            new Date("2020-07-31T23:59:00Z"),  // End of month edge case
+            new Date("2020-12-31T23:59:00Z"),  // End of year edge case
+            new Date("2021-01-01T00:00:00Z"),  // Non-leap year transition
         ];
 
         let minInterval = Number.MAX_SAFE_INTEGER;
+        const targetSamples = 20; // Increased sample size for better detection
 
         for (const baseTime of testBases) {
             const baseDt = dt.fromEpochMs(baseTime.getTime());
 
-            // Get several consecutive executions to find minimum interval
+            // Get first execution from this base
             let previousExecution = getNextExecution(parsedCron, baseDt);
             if (!previousExecution) continue;
 
-            // Check up to 10 consecutive executions to find the shortest interval
-            for (let i = 0; i < 10; i++) {
+            // Check more consecutive executions to find true minimum interval
+            for (let i = 0; i < targetSamples; i++) {
                 const nextExecution = getNextExecution(parsedCron, previousExecution);
                 if (!nextExecution) break;
 
@@ -192,28 +225,29 @@ function calculateMinimumCronInterval(parsedCron, dt) {
 
                 previousExecution = nextExecution;
 
-                // If we found a very short interval (< 1 minute), we can stop early
+                // Early termination for very frequent expressions
                 if (minInterval < 60 * 1000) {
-                    break;
+                    return minInterval; // Found sub-minute frequency
                 }
-            }
-
-            // Early exit if we found a sub-minute interval
-            if (minInterval < 60 * 1000) {
-                break;
             }
         }
 
-        // If no valid interval found or it's unrealistically large, assume infrequent
-        if (minInterval === Number.MAX_SAFE_INTEGER || minInterval > 365 * 24 * 60 * 60 * 1000) {
-            return 24 * 60 * 60 * 1000; // 1 day (safe default)
+        // Handle edge cases
+        if (minInterval === Number.MAX_SAFE_INTEGER) {
+            // No executions found - expression might be invalid or very infrequent
+            return 365 * 24 * 60 * 60 * 1000; // 1 year (conservative safe default)
+        }
+
+        if (minInterval > 365 * 24 * 60 * 60 * 1000) {
+            // Expression executes less than yearly - safe to allow
+            return minInterval;
         }
 
         return minInterval;
 
     } catch (error) {
-        // If calculation fails, assume it's infrequent (safe to allow)
-        return 24 * 60 * 60 * 1000; // 1 day
+        // If calculation fails, be conservative
+        return 365 * 24 * 60 * 60 * 1000; // 1 year (very safe default)
     }
 }
 

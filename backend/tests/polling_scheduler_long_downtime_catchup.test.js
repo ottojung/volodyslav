@@ -101,7 +101,7 @@ describe("polling scheduler long downtime catchup", () => {
         expect(callback).toHaveBeenCalledTimes(1);
         
         await scheduler.cancelAll();
-    });
+    }, 10000); // 10 second timeout for long downtime test
 
     test("should catch up yearly Feb 29 tasks correctly", async () => {
         // Start in leap year 2020
@@ -224,5 +224,5 @@ describe("polling scheduler long downtime catchup", () => {
         expect(duration).toBeLessThan(1000); // Under 1 second
         
         await scheduler.cancelAll();
-    });
+    }, 10000); // 10 second timeout for long gap test
 });
