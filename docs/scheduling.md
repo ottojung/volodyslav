@@ -20,7 +20,7 @@ Key properties:
 
 These are deliberate tradeoffs accepted for simplicity, clarity, and operational expectations:
 
-1. Minute Precision Only: Expressions are standard 5-field (minute hour day-of-month month weekday) cron; no seconds field; sub-minute scheduling is out of scope.
+1. Minute Precision Only: Expressions are standard 5-field (minute hour day-of-month month weekday) cron; no seconds field; sub-minute scheduling will be detected and rejected.
 2. No Time Zone Abstraction: System local time is used directly. There is no explicit UTC or configurable timezone layer to reduce complexity. Daylight saving anomalies may shift perceived execution; this risk is accepted.
 3. No Disabled State: A task is either present (scheduled) or absent (cancelled and persisted as removed). Feature flags or “pause” semantics are intentionally excluded.
 4. Strict Persistence Semantics: Cancellations are persisted; cancelled tasks must not reappear after restart. No partial or lossy persistence is tolerated.
