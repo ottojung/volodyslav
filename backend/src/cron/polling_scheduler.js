@@ -2,13 +2,14 @@
  * Polling based cron scheduler.
  */
 
-const { parseCronExpression, matchesCronExpression } = require("./parser");
+const { parseCronExpression, matchesCronExpression, getNextExecution } = require("./parser");
 const { transaction } = require("../runtime_state_storage");
 const structure = require("../runtime_state_storage/structure");
 const time_duration = require("../time_duration");
 const {
     ScheduleDuplicateTaskError,
     ScheduleInvalidNameError,
+    ScheduleFrequencyError,
 } = require("./polling_scheduler_errors");
 
 /** @typedef {import('../logger').Logger} Logger */
@@ -48,6 +49,57 @@ function getMostRecentExecution(parsedCron, now, dt) {
         candidate.setMinutes(candidate.getMinutes() - 1);
     }
     return undefined;
+}
+
+/**
+ * Calculate minimum interval between cron executions to validate against polling frequency
+ * @param {import('./parser').CronExpressionClass} parsedCron
+ * @param {import('../datetime').Datetime} dt
+ * @returns {number} Minimum interval in milliseconds
+ */
+function calculateMinimumCronInterval(parsedCron, dt) {
+    try {
+        // Start from a known time
+        const baseTime = dt.fromEpochMs(new Date("2020-01-01T00:00:00Z").getTime());
+        
+        // Get first execution from base time
+        const firstExecution = getNextExecution(parsedCron, baseTime);
+        if (!firstExecution) {
+            // If no execution found, assume it's very infrequent (safe to allow)
+            return 24 * 60 * 60 * 1000; // 1 day
+        }
+        
+        // Get second execution
+        const secondExecution = getNextExecution(parsedCron, firstExecution);
+        if (!secondExecution) {
+            // Only one execution possible, assume infrequent
+            return 24 * 60 * 60 * 1000; // 1 day
+        }
+        
+        // Calculate difference
+        const firstMs = dt.toNativeDate(firstExecution).getTime();
+        const secondMs = dt.toNativeDate(secondExecution).getTime();
+        
+        return secondMs - firstMs;
+    } catch (error) {
+        // If calculation fails (e.g., yearly schedules), assume it's infrequent (safe to allow)
+        return 24 * 60 * 60 * 1000; // 1 day
+    }
+}
+
+/**
+ * Validate that task frequency is not higher than polling frequency
+ * @param {import('./parser').CronExpressionClass} parsedCron
+ * @param {number} pollIntervalMs
+ * @param {import('../datetime').Datetime} dt
+ * @throws {ScheduleFrequencyError}
+ */
+function validateTaskFrequency(parsedCron, pollIntervalMs, dt) {
+    const minCronInterval = calculateMinimumCronInterval(parsedCron, dt);
+    
+    if (minCronInterval < pollIntervalMs) {
+        throw new ScheduleFrequencyError(minCronInterval, pollIntervalMs);
+    }
 }
 
 /**
@@ -213,6 +265,7 @@ function makePollingScheduler(capabilities, options = {}) {
     let interval = null;
     const dt = capabilities.datetime; // Use capabilities datetime instead of creating new instance
     let stateLoadAttempted = false;
+    let pollInProgress = false; // Guard against re-entrant polls
 
     // Lazy load state when first needed
     async function ensureStateLoaded() {
@@ -248,55 +301,75 @@ function makePollingScheduler(capabilities, options = {}) {
     }
 
     async function poll() {
-        const now = dt.toNativeDate(dt.now());
-        let dueRetry = 0;
-        let dueCron = 0;
-        let skippedRunning = 0;
-        let skippedRetryFuture = 0;
-        let skippedNotDue = 0;
-        for (const task of tasks.values()) {
-            // Skip tasks that don't have a callback yet (loaded from persistence)
-            if (task.callback === null) {
-                continue;
-            }
-            if (task.running) {
-                skippedRunning++;
-                capabilities.logger.logDebug({ name: task.name, reason: "running" }, "TaskSkip");
-                continue;
-            }
-            if (task.pendingRetryUntil) {
-                if (now.getTime() >= task.pendingRetryUntil.getTime()) {
+        // Guard against re-entrant polls
+        if (pollInProgress) {
+            capabilities.logger.logDebug({ reason: "pollInProgress" }, "PollSkipped");
+            return;
+        }
+        
+        pollInProgress = true;
+        try {
+            const now = dt.toNativeDate(dt.now());
+            let dueRetry = 0;
+            let dueCron = 0;
+            let skippedRunning = 0;
+            let skippedRetryFuture = 0;
+            let skippedNotDue = 0;
+            for (const task of tasks.values()) {
+                // Skip tasks that don't have a callback yet (loaded from persistence)
+                if (task.callback === null) {
+                    continue;
+                }
+                if (task.running) {
+                    skippedRunning++;
+                    capabilities.logger.logDebug({ name: task.name, reason: "running" }, "TaskSkip");
+                    continue;
+                }
+                
+                // Check both cron schedule and retry timing
+                const lastFire = getMostRecentExecution(task.parsedCron, now, dt);
+                const shouldRunCron = lastFire &&
+                    (!task.lastAttemptTime || (task.lastSuccessTime !== undefined && task.lastSuccessTime < lastFire));
+                
+                const shouldRunRetry = task.pendingRetryUntil && now.getTime() >= task.pendingRetryUntil.getTime();
+                
+                if (shouldRunRetry && shouldRunCron) {
+                    // Both are due - choose the mode based on which comes first
+                    if (task.pendingRetryUntil && lastFire && task.pendingRetryUntil.getTime() <= lastFire.getTime()) {
+                        dueRetry++;
+                        await runTask(task, "retry");
+                    } else {
+                        dueCron++;
+                        await runTask(task, "cron");
+                    }
+                } else if (shouldRunCron) {
+                    dueCron++;
+                    await runTask(task, "cron");
+                } else if (shouldRunRetry) {
                     dueRetry++;
                     await runTask(task, "retry");
-                } else {
+                } else if (task.pendingRetryUntil) {
                     skippedRetryFuture++;
                     capabilities.logger.logDebug({ name: task.name, reason: "retryNotDue" }, "TaskSkip");
+                } else {
+                    skippedNotDue++;
+                    capabilities.logger.logDebug({ name: task.name, reason: "notDue" }, "TaskSkip");
                 }
-                continue;
             }
-            const lastFire = getMostRecentExecution(task.parsedCron, now, dt);
-            const shouldRun = lastFire &&
-                (!task.lastAttemptTime || (task.lastSuccessTime !== undefined && task.lastSuccessTime < lastFire));
-            
-            if (shouldRun) {
-                dueCron++;
-                await runTask(task, "cron");
-            } else {
-                skippedNotDue++;
-                capabilities.logger.logDebug({ name: task.name, reason: "notDue" }, "TaskSkip");
-            }
+            capabilities.logger.logDebug(
+                {
+                    total: tasks.size,
+                    dueRetry,
+                    dueCron,
+                    skippedRunning,
+                    skippedRetryFuture,
+                    skippedNotDue,
+                },
+                "PollSummary"
+            );
+        } finally {
+            pollInProgress = false;
         }
-        capabilities.logger.logDebug(
-            {
-                total: tasks.size,
-                dueRetry,
-                dueCron,
-                skippedRunning,
-                skippedRetryFuture,
-                skippedNotDue,
-            },
-            "PollSummary"
-        );
     }
 
     /**
@@ -369,6 +442,12 @@ function makePollingScheduler(capabilities, options = {}) {
                 throw new ScheduleInvalidNameError(name);
             }
             
+            // Parse and validate cron expression
+            const parsedCron = parseCronExpression(cronExpression);
+            
+            // Validate task frequency against polling frequency
+            validateTaskFrequency(parsedCron, pollIntervalMs, dt);
+            
             // Load state first to check for existing tasks from persistence
             await ensureStateLoaded();
             
@@ -379,7 +458,7 @@ function makePollingScheduler(capabilities, options = {}) {
                 if (existingTask.callback === null) {
                     existingTask.callback = callback;
                     existingTask.cronExpression = cronExpression;
-                    existingTask.parsedCron = parseCronExpression(cronExpression);
+                    existingTask.parsedCron = parsedCron;
                     existingTask.retryDelay = retryDelay;
                     
                     // Persist updated task
@@ -394,7 +473,6 @@ function makePollingScheduler(capabilities, options = {}) {
                 }
             }
             
-            const parsedCron = parseCronExpression(cronExpression);
             /** @type {Task} */
             const task = {
                 name,
@@ -462,19 +540,27 @@ function makePollingScheduler(capabilities, options = {}) {
             return Array.from(tasks.values()).map((t) => {
                 /** @type {"retry"|"cron"|"idle"} */
                 let modeHint = "idle";
-                if (t.pendingRetryUntil) {
-                    modeHint = now.getTime() >= t.pendingRetryUntil.getTime() ? "retry" : "idle";
-                } else {
-                    const lastFire = getMostRecentExecution(t.parsedCron, now, dt);
-                    if (
-                        lastFire &&
-                        (!t.lastAttemptTime || (t.lastSuccessTime !== undefined && t.lastSuccessTime < lastFire))
-                    ) {
-                        modeHint = "cron";
+                
+                const lastFire = getMostRecentExecution(t.parsedCron, now, dt);
+                const shouldRunCron = lastFire &&
+                    (!t.lastAttemptTime || (t.lastSuccessTime !== undefined && t.lastSuccessTime < lastFire));
+                const shouldRunRetry = t.pendingRetryUntil && now.getTime() >= t.pendingRetryUntil.getTime();
+                
+                if (shouldRunRetry && shouldRunCron) {
+                    // Both are due - choose mode based on which comes first
+                    if (t.pendingRetryUntil && lastFire && t.pendingRetryUntil.getTime() <= lastFire.getTime()) {
+                        modeHint = "retry";
                     } else {
-                        modeHint = "idle";
+                        modeHint = "cron";
                     }
+                } else if (shouldRunCron) {
+                    modeHint = "cron";
+                } else if (shouldRunRetry) {
+                    modeHint = "retry";
+                } else {
+                    modeHint = "idle";
                 }
+                
                 return {
                     name: t.name,
                     cronExpression: t.cronExpression,
