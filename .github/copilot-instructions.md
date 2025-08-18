@@ -256,6 +256,11 @@ function isPathLike(object) {
 - Test files are located in `backend/tests/` and `frontend/tests/`
 - Mock external dependencies using the patterns established in `backend/tests/stubs.js`
 
+## Backwards compatibility
+
+- When an AI agent finds issues with legacy code or has a clearly better suggestion for any programming interface, it SHOULD prioritize correctness and improvement and SHOULD disregard backwards compatibility.
+- Exception: If a change affects data or formats that live outside this repository (for example database schemas, on-disk file formats, or other persisted storage), backwards compatibility SHOULD be preserved. Changes that would break external storage or require coordinated migrations need explicit consideration and coordination.
+
 ## Additional Guidelines
 
 - Follow existing naming conventions (snake_case for files, camelCase for functions)
