@@ -32,23 +32,116 @@ const POLL_INTERVAL_MS = 600000;
  */
 
 /**
+ * Cache for execution time calculations to avoid repeated expensive operations
+ * @type {Map<string, {lastCalculationTime: number, nextExecution?: Date}>}
+ */
+const executionCache = new Map();
+
+/**
+ * Get the most recent execution time for a cron expression using efficient forward calculation
  * @param {import('./parser').CronExpressionClass} parsedCron
  * @param {Date} now
  * @param {import('../datetime').Datetime} dt
  * @returns {Date | undefined}
  */
 function getMostRecentExecution(parsedCron, now, dt) {
-    const candidate = new Date(now.getTime());
-    candidate.setSeconds(0, 0);
-    const max = 366 * 24 * 60;
-    for (let i = 0; i < max; i++) {
-        const candidateDt = dt.fromEpochMs(candidate.getTime());
-        if (candidate.getTime() <= now.getTime() && matchesCronExpression(parsedCron, candidateDt)) {
-            return new Date(candidate.getTime());
+    const cronKey = `${parsedCron.minute}_${parsedCron.hour}_${parsedCron.day}_${parsedCron.month}_${parsedCron.weekday}`;
+    const nowTime = now.getTime();
+    
+    // Check cache first
+    const cached = executionCache.get(cronKey);
+    if (cached && Math.abs(nowTime - cached.lastCalculationTime) < 60000) { // Cache valid for 1 minute
+        // If we have a cached next execution, check if it's now in the past
+        if (cached.nextExecution && cached.nextExecution.getTime() <= nowTime) {
+            return cached.nextExecution;
         }
-        candidate.setMinutes(candidate.getMinutes() - 1);
     }
-    return undefined;
+    
+    try {
+        // Use forward calculation instead of backward scanning
+        // Start from beginning of current minute
+        const currentMinute = new Date(now);
+        currentMinute.setSeconds(0, 0);
+        
+        // Check if current minute matches
+        const currentDt = dt.fromEpochMs(currentMinute.getTime());
+        if (matchesCronExpression(parsedCron, currentDt)) {
+            // Update cache
+            executionCache.set(cronKey, {
+                lastCalculationTime: nowTime,
+                nextExecution: currentMinute
+            });
+            return currentMinute;
+        }
+        
+        // Look for next execution and work backwards to find most recent
+        const nextExecution = getNextExecution(parsedCron, currentDt);
+        if (!nextExecution) {
+            // Clear cache if no execution found
+            executionCache.delete(cronKey);
+            return undefined;
+        }
+        
+        const nextTime = dt.toNativeDate(nextExecution);
+        
+        // Calculate interval and work backwards to find most recent past execution
+        // This is much more efficient than scanning minute by minute
+        let candidate = new Date(nextTime);
+        
+        // Try common intervals first (most cron jobs use these)
+        const commonIntervals = [
+            60 * 1000,        // every minute
+            5 * 60 * 1000,    // every 5 minutes
+            15 * 60 * 1000,   // every 15 minutes
+            30 * 60 * 1000,   // every 30 minutes
+            60 * 60 * 1000,   // every hour
+            24 * 60 * 60 * 1000, // daily
+        ];
+        
+        for (const interval of commonIntervals) {
+            candidate = new Date(nextTime.getTime() - interval);
+            if (candidate.getTime() <= nowTime) {
+                const candidateDt = dt.fromEpochMs(candidate.getTime());
+                if (matchesCronExpression(parsedCron, candidateDt)) {
+                    // Update cache
+                    executionCache.set(cronKey, {
+                        lastCalculationTime: nowTime,
+                        nextExecution: candidate
+                    });
+                    return candidate;
+                }
+            }
+        }
+        
+        // If common intervals don't work, fall back to limited backward scan
+        // but with much smaller limit
+        candidate = new Date(nextTime);
+        const maxIterations = Math.min(1440, Math.floor((nextTime.getTime() - nowTime) / (60 * 1000)) + 1); // Max 1 day or until now
+        
+        for (let i = 1; i <= maxIterations; i++) {
+            candidate = new Date(nextTime.getTime() - (i * 60 * 1000));
+            if (candidate.getTime() <= nowTime) {
+                const candidateDt = dt.fromEpochMs(candidate.getTime());
+                if (matchesCronExpression(parsedCron, candidateDt)) {
+                    // Update cache
+                    executionCache.set(cronKey, {
+                        lastCalculationTime: nowTime,
+                        nextExecution: candidate
+                    });
+                    return candidate;
+                }
+            }
+        }
+        
+        // No recent execution found
+        executionCache.delete(cronKey);
+        return undefined;
+        
+    } catch (error) {
+        // If calculation fails, clear cache and return undefined
+        executionCache.delete(cronKey);
+        return undefined;
+    }
 }
 
 /**
@@ -255,10 +348,11 @@ async function persistCurrentState(capabilities, tasks) {
 
 /**
  * @param {import('../capabilities/root').Capabilities} capabilities
- * @param {{pollIntervalMs?: number}} [options]
+ * @param {{pollIntervalMs?: number, maxConcurrentTasks?: number}} [options]
  */
 function makePollingScheduler(capabilities, options = {}) {
     const pollIntervalMs = options.pollIntervalMs ?? POLL_INTERVAL_MS;
+    const maxConcurrentTasks = options.maxConcurrentTasks ?? 10; // Default concurrency limit
     /** @type {Map<string, Task>} */
     const tasks = new Map();
     /** @type {any} */
@@ -266,6 +360,7 @@ function makePollingScheduler(capabilities, options = {}) {
     const dt = capabilities.datetime; // Use capabilities datetime instead of creating new instance
     let stateLoadAttempted = false;
     let pollInProgress = false; // Guard against re-entrant polls
+    let runningTasksCount = 0; // Track concurrent executions
 
     // Lazy load state when first needed
     async function ensureStateLoaded() {
@@ -315,6 +410,12 @@ function makePollingScheduler(capabilities, options = {}) {
             let skippedRunning = 0;
             let skippedRetryFuture = 0;
             let skippedNotDue = 0;
+            let skippedConcurrency = 0;
+            
+            // Collect all due tasks for parallel execution
+            /** @type {Array<{task: Task, mode: "retry"|"cron"}>} */
+            const dueTasks = [];
+            
             for (const task of tasks.values()) {
                 // Skip tasks that don't have a callback yet (loaded from persistence)
                 if (task.callback === null) {
@@ -336,18 +437,18 @@ function makePollingScheduler(capabilities, options = {}) {
                 if (shouldRunRetry && shouldRunCron) {
                     // Both are due - choose the mode based on which comes first
                     if (task.pendingRetryUntil && lastFire && task.pendingRetryUntil.getTime() <= lastFire.getTime()) {
+                        dueTasks.push({ task, mode: "retry" });
                         dueRetry++;
-                        await runTask(task, "retry");
                     } else {
+                        dueTasks.push({ task, mode: "cron" });
                         dueCron++;
-                        await runTask(task, "cron");
                     }
                 } else if (shouldRunCron) {
+                    dueTasks.push({ task, mode: "cron" });
                     dueCron++;
-                    await runTask(task, "cron");
                 } else if (shouldRunRetry) {
+                    dueTasks.push({ task, mode: "retry" });
                     dueRetry++;
-                    await runTask(task, "retry");
                 } else if (task.pendingRetryUntil) {
                     skippedRetryFuture++;
                     capabilities.logger.logDebug({ name: task.name, reason: "retryNotDue" }, "TaskSkip");
@@ -356,6 +457,10 @@ function makePollingScheduler(capabilities, options = {}) {
                     capabilities.logger.logDebug({ name: task.name, reason: "notDue" }, "TaskSkip");
                 }
             }
+            
+            // Execute due tasks in parallel with concurrency control
+            await executeTasksWithConcurrencyLimit(dueTasks, maxConcurrentTasks);
+            
             capabilities.logger.logDebug(
                 {
                     total: tasks.size,
@@ -364,11 +469,61 @@ function makePollingScheduler(capabilities, options = {}) {
                     skippedRunning,
                     skippedRetryFuture,
                     skippedNotDue,
+                    skippedConcurrency,
                 },
                 "PollSummary"
             );
         } finally {
             pollInProgress = false;
+        }
+    }
+    
+    /**
+     * Execute tasks in parallel with concurrency limit
+     * @param {Array<{task: Task, mode: "retry"|"cron"}>} dueTasks
+     * @param {number} maxConcurrent
+     */
+    async function executeTasksWithConcurrencyLimit(dueTasks, maxConcurrent) {
+        if (dueTasks.length === 0) return;
+        
+        // Execute all tasks in parallel if within limit
+        if (dueTasks.length <= maxConcurrent && runningTasksCount === 0) {
+            const promises = dueTasks.map(({ task, mode }) => runTask(task, mode));
+            await Promise.all(promises);
+            return;
+        }
+        
+        // Use concurrency control for larger sets or when tasks are already running
+        /** @type {Array<Promise<void>>} */
+        const executing = [];
+        let index = 0;
+        
+        while (index < dueTasks.length || executing.length > 0) {
+            // Fill up to concurrency limit
+            while (executing.length < maxConcurrent && index < dueTasks.length) {
+                const dueTask = dueTasks[index++];
+                if (!dueTask) continue;
+                
+                const { task, mode } = dueTask;
+                const promise = runTask(task, mode)
+                    .then(() => {
+                        // Remove from executing array when done
+                        const idx = executing.indexOf(promise);
+                        if (idx > -1) executing.splice(idx, 1);
+                    })
+                    .catch(() => {
+                        // Remove from executing array on error too
+                        const idx = executing.indexOf(promise);
+                        if (idx > -1) executing.splice(idx, 1);
+                        // Error already handled in runTask
+                    });
+                executing.push(promise);
+            }
+            
+            // Wait for at least one task to complete before continuing
+            if (executing.length > 0) {
+                await Promise.race(executing);
+            }
         }
     }
 
@@ -383,6 +538,7 @@ function makePollingScheduler(capabilities, options = {}) {
         }
         
         task.running = true;
+        runningTasksCount++;
         const startTime = dt.toNativeDate(dt.now());
         task.lastAttemptTime = startTime;
         capabilities.logger.logInfo({ name: task.name, mode }, "TaskRunStarted");
@@ -425,6 +581,7 @@ function makePollingScheduler(capabilities, options = {}) {
             }
         } finally {
             task.running = false;
+            runningTasksCount--;
         }
     }
 

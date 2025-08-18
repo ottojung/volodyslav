@@ -99,13 +99,11 @@ describe("polling scheduler frequency validation", () => {
         // Create scheduler with 5-minute polling interval
         const scheduler = makePollingScheduler(capabilities, { pollIntervalMs: 5 * 60 * 1000 });
         
-        try {
-            await scheduler.schedule("detailed-error-test", "* * * * *", taskCallback, retryDelay);
-            expect(true).toBe(false); // Should not reach here
-        } catch (error) {
-            expect(error.message).toMatch(/task.*frequency.*1.*minute/i);
-            expect(error.message).toMatch(/polling.*frequency.*5.*minute/i);
-        }
+        await expect(scheduler.schedule("detailed-error-test", "* * * * *", taskCallback, retryDelay))
+            .rejects.toThrow(/task.*frequency.*1.*minute/i);
+        
+        await expect(scheduler.schedule("detailed-error-test", "* * * * *", taskCallback, retryDelay))
+            .rejects.toThrow(/polling.*frequency.*5.*minute/i);
         
         await scheduler.cancelAll();
     });

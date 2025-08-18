@@ -29,11 +29,8 @@ describe("polling scheduler save and restore", () => {
     test("should restore callbacks after restart", async () => {
         const capabilities = caps();
         const retryDelay = fromMilliseconds(5000);
-        let taskExecutionCount = 0;
         
-        const taskCallback = jest.fn(() => {
-            taskExecutionCount++;
-        });
+        const taskCallback = jest.fn();
 
         // Create first scheduler instance and add task
         const scheduler1 = makePollingScheduler(capabilities, { pollIntervalMs: 1000 });

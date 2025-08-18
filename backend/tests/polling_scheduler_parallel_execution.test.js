@@ -31,20 +31,16 @@ describe("polling scheduler parallel execution", () => {
         const retryDelay = fromMilliseconds(5000);
         
         let task1StartTime = null;
-        let task1EndTime = null;
         let task2StartTime = null;
-        let task2EndTime = null;
         
         const task1 = jest.fn(async () => {
             task1StartTime = Date.now();
             await new Promise(resolve => setTimeout(resolve, 1000));
-            task1EndTime = Date.now();
         });
         
         const task2 = jest.fn(async () => {
             task2StartTime = Date.now();
             await new Promise(resolve => setTimeout(resolve, 1000));
-            task2EndTime = Date.now();
         });
         
         const scheduler = makePollingScheduler(capabilities, { pollIntervalMs: 5000 });
