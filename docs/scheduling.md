@@ -28,9 +28,8 @@ These are deliberate tradeoffs accepted for simplicity, clarity, and operational
 6. Minimal Concurrency Fairness: The scheduler does not implement sophisticated prioritization, starvation detection, or aging. Tasks are expected to be polite and brief; misbehaving tasks may delay others.
 7. Retry Strategy Simplicity: Single fixed delay per task. No exponential backoff, jitter, or capped retries; complexity deliberately avoided.
 8. Expression Frequency Guard: Frequency validation rejects schedules that would require observation more frequently than the polling loop can guarantee. This imposes an upper bound on task cadence tied to the configured poll interval.
-9. No Serialization of Callbacks: Functions are never persisted. Re-registration after restart is required to attach executable logic to restored task state.
+9. No Serialization of Callbacks: Functions are never persisted. Re-registration after restart is required to attach executable logic to restored task state. Mismatches during re-registration are checked to ensure correctness.
 10. Logging Severity Model: Using `logInfo` for both success and failure of task executions keeps the severity channel (`logError`) reserved for systemic scheduler malfunctions only.
-11. Simplicity Over Micro-Optimizations: Algorithmic optimizations are welcomed only when they do not risk correctness. The mandate is: correctness first, then performance.
+11. Frequent state writes: The scheduler writes state changes to disk after each task execution. This ensures durability but may impact performance due to high I/O overhead. We hope that this won't happen.
 
 Anything beyond the above (priority queues, time zone parametrization, paused states, exponential backoff, task tagging, metrics export, etc.) is intentionally left out to keep the scheduler minimal and predictable.
-
