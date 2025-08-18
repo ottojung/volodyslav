@@ -35,17 +35,19 @@ const POLL_INTERVAL_MS = 600000;
 /**
  * Get the most recent execution time for a cron expression using correctness-preserving algorithm.
  * 
- * Strategy: Start with efficient backward scan (like original), but extend the limit for long downtimes.
- * For most cases, we check 60 minutes back for efficiency. For longer gaps, we extend up to 1 year.
- * This ensures we never miss executions for daily, weekly, monthly, yearly schedules.
+ * Strategy: Use a hybrid approach for maximum efficiency:
+ * 1. First, check current minute
+ * 2. Use cache if available and recent (< 1 hour)  
+ * 3. For gaps > 1 hour: Use forward calculation from a reasonable anchor point
+ * 4. For very large gaps: Limit backward scan to prevent infinite loops
  * 
  * @param {import('./parser').CronExpressionClass} parsedCron
  * @param {Date} now
  * @param {import('../datetime').Datetime} dt
- * @param {Date|undefined} _lastEvaluatedFire - Reserved for future optimization, currently unused
+ * @param {Date|undefined} lastEvaluatedFire - Cache of last evaluated fire time for optimization
  * @returns {{lastScheduledFire: Date | undefined, newLastEvaluatedFire: Date | undefined}}
  */
-function getMostRecentExecution(parsedCron, now, dt, _lastEvaluatedFire) {
+function getMostRecentExecution(parsedCron, now, dt, lastEvaluatedFire) {
     try {
         // For efficiency, check if current minute matches first
         const currentMinute = new Date(now);
@@ -59,12 +61,25 @@ function getMostRecentExecution(parsedCron, now, dt, _lastEvaluatedFire) {
             };
         }
         
-        // Look backward minute by minute for the most recent match
-        // First try limited scan for efficiency (like original)
+        // Use lastEvaluatedFire cache for performance if recent
+        let scanStartTime = currentMinute;
+        if (lastEvaluatedFire && lastEvaluatedFire.getTime() < now.getTime()) {
+            const timeDiff = now.getTime() - lastEvaluatedFire.getTime();
+            const oneHour = 60 * 60 * 1000;
+            
+            // Only use cache if it's within reasonable time (1 hour) to avoid stale data
+            if (timeDiff <= oneHour) {
+                scanStartTime = new Date(lastEvaluatedFire);
+                scanStartTime.setSeconds(0, 0); // Ensure minute precision
+            }
+        }
+        
+        // Efficient backward scan up to 1 hour
         const shortScanLimit = 60; // 1 hour back for efficiency
+        const scanStartMs = scanStartTime.getTime();
         
         for (let i = 1; i <= shortScanLimit; i++) {
-            const candidate = new Date(currentMinute.getTime() - (i * 60 * 1000));
+            const candidate = new Date(scanStartMs - (i * 60 * 1000));
             const candidateDt = dt.fromEpochMs(candidate.getTime());
             if (matchesCronExpression(parsedCron, candidateDt)) {
                 return {
@@ -74,19 +89,64 @@ function getMostRecentExecution(parsedCron, now, dt, _lastEvaluatedFire) {
             }
         }
         
-        // If no match found in short scan, this could be a long-downtime case
-        // or a task that runs less frequently than hourly.
-        // Extend the search for correctness, but with reasonable limits.
-        const extendedScanLimit = 366 * 24 * 60; // 1 year of minutes
+        // For longer gaps, use forward calculation approach
+        // This is much more efficient than backward scanning for years
+        const oneWeek = 7 * 24 * 60 * 60 * 1000;
+        const gapSize = scanStartTime.getTime() - scanStartMs;
         
-        for (let i = shortScanLimit + 1; i <= extendedScanLimit; i++) {
-            const candidate = new Date(currentMinute.getTime() - (i * 60 * 1000));
-            const candidateDt = dt.fromEpochMs(candidate.getTime());
-            if (matchesCronExpression(parsedCron, candidateDt)) {
-                return {
-                    lastScheduledFire: candidate,
-                    newLastEvaluatedFire: now
-                };
+        if (gapSize > oneWeek || (lastEvaluatedFire && (now.getTime() - lastEvaluatedFire.getTime()) > oneWeek)) {
+            // Use forward calculation for large gaps
+            try {
+                // Start from a reasonable anchor (1 year before now) and find executions forward
+                const oneYear = 365 * 24 * 60 * 60 * 1000;
+                const anchorTime = new Date(now.getTime() - oneYear);
+                const anchorDt = dt.fromEpochMs(anchorTime.getTime());
+                
+                let lastFound = undefined;
+                let currentExecution = getNextExecution(parsedCron, anchorDt);
+                
+                // Find the most recent execution before now by stepping forward
+                let iterations = 0;
+                const maxIterations = 366 * 24; // Max 1 year of daily checks to prevent infinite loops
+                
+                while (currentExecution && iterations < maxIterations) {
+                    const executionTime = dt.toNativeDate(currentExecution);
+                    if (executionTime.getTime() <= now.getTime()) {
+                        lastFound = executionTime;
+                        // Get next execution
+                        currentExecution = getNextExecution(parsedCron, currentExecution);
+                        iterations++;
+                    } else {
+                        // Went past current time
+                        break;
+                    }
+                }
+                
+                if (lastFound) {
+                    return {
+                        lastScheduledFire: lastFound,
+                        newLastEvaluatedFire: now
+                    };
+                }
+            } catch (error) {
+                // Fall back to limited backward scan if forward calculation fails
+            }
+        }
+        
+        // Last resort: limited backward scan with cap to prevent timeouts
+        // Only scan if we haven't used cache or cache was too old
+        if (scanStartTime.getTime() === currentMinute.getTime()) {
+            const maxBackwardScan = 24 * 60; // 1 day maximum to prevent timeouts
+            
+            for (let i = shortScanLimit + 1; i <= maxBackwardScan; i++) {
+                const candidate = new Date(currentMinute.getTime() - (i * 60 * 1000));
+                const candidateDt = dt.fromEpochMs(candidate.getTime());
+                if (matchesCronExpression(parsedCron, candidateDt)) {
+                    return {
+                        lastScheduledFire: candidate,
+                        newLastEvaluatedFire: now
+                    };
+                }
             }
         }
         
@@ -105,36 +165,66 @@ function getMostRecentExecution(parsedCron, now, dt, _lastEvaluatedFire) {
 
 /**
  * Calculate minimum interval between cron executions to validate against polling frequency
+ * This uses a more robust approach that checks multiple execution pairs to find the shortest interval
  * @param {import('./parser').CronExpressionClass} parsedCron
  * @param {import('../datetime').Datetime} dt
  * @returns {number} Minimum interval in milliseconds
  */
 function calculateMinimumCronInterval(parsedCron, dt) {
     try {
-        // Start from a known time
-        const baseTime = dt.fromEpochMs(new Date("2020-01-01T00:00:00Z").getTime());
+        // Test multiple starting points to catch composite expressions with varying intervals
+        const testBases = [
+            new Date("2020-01-01T00:00:00Z"),
+            new Date("2020-02-01T00:00:00Z"), 
+            new Date("2020-03-01T00:00:00Z"),
+            new Date("2020-06-15T12:30:00Z"), // Mid-year, mid-day to catch different patterns
+        ];
         
-        // Get first execution from base time
-        const firstExecution = getNextExecution(parsedCron, baseTime);
-        if (!firstExecution) {
-            // If no execution found, assume it's very infrequent (safe to allow)
-            return 24 * 60 * 60 * 1000; // 1 day
+        let minInterval = Number.MAX_SAFE_INTEGER;
+        
+        for (const baseTime of testBases) {
+            const baseDt = dt.fromEpochMs(baseTime.getTime());
+            
+            // Get several consecutive executions to find minimum interval
+            let previousExecution = getNextExecution(parsedCron, baseDt);
+            if (!previousExecution) continue;
+            
+            // Check up to 10 consecutive executions to find the shortest interval
+            for (let i = 0; i < 10; i++) {
+                const nextExecution = getNextExecution(parsedCron, previousExecution);
+                if (!nextExecution) break;
+                
+                const prevMs = dt.toNativeDate(previousExecution).getTime();
+                const nextMs = dt.toNativeDate(nextExecution).getTime();
+                const interval = nextMs - prevMs;
+                
+                if (interval > 0 && interval < minInterval) {
+                    minInterval = interval;
+                }
+                
+                previousExecution = nextExecution;
+                
+                // If we found a very short interval (< 1 minute), we can stop early
+                if (minInterval < 60 * 1000) {
+                    break;
+                }
+            }
+            
+            // Early exit if we found a sub-minute interval
+            if (minInterval < 60 * 1000) {
+                break;
+            }
         }
         
-        // Get second execution
-        const secondExecution = getNextExecution(parsedCron, firstExecution);
-        if (!secondExecution) {
-            // Only one execution possible, assume infrequent
-            return 24 * 60 * 60 * 1000; // 1 day
+        // If no valid interval found or it's unrealistically large, assume infrequent
+        if (minInterval === Number.MAX_SAFE_INTEGER || minInterval > 365 * 24 * 60 * 60 * 1000) {
+            return 24 * 60 * 60 * 1000; // 1 day (safe default)
         }
         
-        // Calculate difference
-        const firstMs = dt.toNativeDate(firstExecution).getTime();
-        const secondMs = dt.toNativeDate(secondExecution).getTime();
+        return minInterval;
         
-        return secondMs - firstMs;
     } catch (error) {
-        // If calculation fails (e.g., yearly schedules), assume it's infrequent (safe to allow)
+        // If calculation fails, assume it's infrequent (safe to allow)
         return 24 * 60 * 60 * 1000; // 1 day
     }
 }
@@ -394,7 +484,12 @@ function makePollingScheduler(capabilities, options = {}) {
                 }
                 
                 // Check both cron schedule and retry timing
-                const { lastScheduledFire } = getMostRecentExecution(task.parsedCron, now, dt, task.lastEvaluatedFire);
+                const { lastScheduledFire, newLastEvaluatedFire } = getMostRecentExecution(task.parsedCron, now, dt, task.lastEvaluatedFire);
+                
+                // Update lastEvaluatedFire cache for performance optimization
+                if (newLastEvaluatedFire) {
+                    task.lastEvaluatedFire = newLastEvaluatedFire;
+                }
                 
                 const shouldRunCron = lastScheduledFire && 
                     (!task.lastAttemptTime || task.lastAttemptTime < lastScheduledFire);
@@ -402,8 +497,8 @@ function makePollingScheduler(capabilities, options = {}) {
                 const shouldRunRetry = task.pendingRetryUntil && now.getTime() >= task.pendingRetryUntil.getTime();
                 
                 if (shouldRunRetry && shouldRunCron) {
-                    // Both are due - choose the mode based on which is more recent
-                    if (task.pendingRetryUntil && lastScheduledFire && task.pendingRetryUntil.getTime() > lastScheduledFire.getTime()) {
+                    // Both are due - choose the mode based on which is earlier (chronologically smaller)
+                    if (task.pendingRetryUntil && lastScheduledFire && task.pendingRetryUntil.getTime() < lastScheduledFire.getTime()) {
                         dueTasks.push({ task, mode: "retry" });
                         dueRetry++;
                     } else {
@@ -654,9 +749,8 @@ function makePollingScheduler(capabilities, options = {}) {
         async cancelAll() {
             const count = tasks.size;
             tasks.clear();
-            // NOTE: We don't persist state after cancelAll to preserve execution history
-            // for potential restart. If you want to permanently clear persisted state,
-            // use a different method.
+            // Persist the clearing of all tasks to ensure cancelled tasks don't reappear after restart
+            await persistState();
             stop();
             return count;
         },
@@ -674,14 +768,19 @@ function makePollingScheduler(capabilities, options = {}) {
                 /** @type {"retry"|"cron"|"idle"} */
                 let modeHint = "idle";
                 
-                const { lastScheduledFire } = getMostRecentExecution(t.parsedCron, now, dt, t.lastEvaluatedFire);
+                const { lastScheduledFire, newLastEvaluatedFire } = getMostRecentExecution(t.parsedCron, now, dt, t.lastEvaluatedFire);
+                
+                // Update cache for performance (don't persist here as it's just for reading)
+                if (newLastEvaluatedFire) {
+                    t.lastEvaluatedFire = newLastEvaluatedFire;
+                }
                 const shouldRunCron = lastScheduledFire &&
                     (!t.lastAttemptTime || t.lastAttemptTime < lastScheduledFire);
                 const shouldRunRetry = t.pendingRetryUntil && now.getTime() >= t.pendingRetryUntil.getTime();
                 
                 if (shouldRunRetry && shouldRunCron) {
-                    // Both are due - choose mode based on which is more recent
-                    if (t.pendingRetryUntil && lastScheduledFire && t.pendingRetryUntil.getTime() > lastScheduledFire.getTime()) {
+                    // Both are due - choose mode based on which is earlier (chronologically smaller)
+                    if (t.pendingRetryUntil && lastScheduledFire && t.pendingRetryUntil.getTime() < lastScheduledFire.getTime()) {
                         modeHint = "retry";
                     } else {
                         modeHint = "cron";

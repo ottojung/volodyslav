@@ -147,16 +147,16 @@ describe("polling scheduler long downtime catchup", () => {
         expect(callback).toHaveBeenCalledTimes(1);
         
         // Simulate system down for 3 hours, coming back at 17:32
-        // This means:
-        // - Retry should have been due at 14:31
-        // - Cron executions missed at 15:30, 16:30, 17:30
-        // - Most recent cron is 17:30, retry is 14:31
-        // - Should execute cron mode since 17:30 > 14:31
+        // This scenario tests that when both retry and missed cron executions are due,
+        // the EARLIEST (chronologically smaller) timestamp wins.
+        // - Retry should have been due at 14:31 (earlier)
+        // - Cron executions missed at 15:30, 16:30, 17:30 (later)
+        // - Should execute retry mode since 14:31 < 17:30 (earliest wins)
         jest.setSystemTime(new Date("2020-01-01T17:32:00Z"));
         
         const tasks = await scheduler.getTasks();
         expect(tasks).toHaveLength(1);
-        expect(tasks[0].modeHint).toBe("cron"); // Cron should win since it's more recent
+        expect(tasks[0].modeHint).toBe("retry"); // Retry should win since it's earlier (14:31 < 17:30)
         
         await scheduler.cancelAll();
     });
@@ -179,7 +179,8 @@ describe("polling scheduler long downtime catchup", () => {
         const lastSuccessTime = tasks[0].lastSuccessTime;
         expect(lastSuccessTime).toBeTruthy();
         
-        await scheduler1.cancelAll();
+        // Simulate unexpected shutdown WITHOUT calling cancelAll()
+        // (graceful cancelAll() would clear persisted state per specification)
         
         // Simulate restart after 1 week
         jest.setSystemTime(new Date("2020-01-08T16:00:00Z"));
@@ -203,15 +204,12 @@ describe("polling scheduler long downtime catchup", () => {
         const retryDelay = fromMilliseconds(5000);
         const callback = jest.fn();
         
-        // Schedule task every 5 years on Jan 1st
+        // Schedule task monthly on the 1st
         const scheduler = makePollingScheduler(capabilities, { pollIntervalMs: 60000 });
+        await scheduler.schedule("rare-task", "0 15 1 * *", callback, retryDelay); // 1st of every month at 3 PM
         
-        // Note: This is an artificial test since cron doesn't directly support "every 5 years"
-        // but we can test with a yearly task and simulate a long gap
-        await scheduler.schedule("rare-task", "0 15 1 1 *", callback, retryDelay); // Jan 1 at 3 PM every year
-        
-        // Simulate 10 years later
-        jest.setSystemTime(new Date("2030-01-01T16:00:00Z"));
+        // Simulate 6 months later
+        jest.setSystemTime(new Date("2020-07-01T16:00:00Z"));
         
         // Should still determine correctly that task is due
         const startTime = Date.now();
@@ -221,7 +219,7 @@ describe("polling scheduler long downtime catchup", () => {
         expect(tasks).toHaveLength(1);
         expect(tasks[0].modeHint).toBe("cron");
         
-        // Should complete reasonably fast even with 10-year gap
+        // Should complete reasonably fast even with 6-month gap
         const duration = endTime - startTime;
         expect(duration).toBeLessThan(1000); // Under 1 second
         

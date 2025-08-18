@@ -91,8 +91,8 @@ describe("polling scheduler save and restore", () => {
         const originalLastSuccess = originalTask.lastSuccessTime;
         const originalLastAttempt = originalTask.lastAttemptTime;
         
-        // Shutdown
-        await scheduler1.cancelAll();
+        // Simulate unexpected shutdown WITHOUT calling cancelAll()
+        // (graceful cancelAll() would properly clear persisted state per specification)
         
         // Create new scheduler instance
         const scheduler2 = makePollingScheduler(capabilities, { pollIntervalMs: 1000 });
@@ -186,8 +186,8 @@ describe("polling scheduler save and restore", () => {
         // Since we just failed and retry is 5 seconds, it should be in retry mode
         const expectedMode = originalTask.modeHint; // Could be "retry" or "idle" depending on timing
         
-        // Shutdown
-        await scheduler1.cancelAll();
+        // Simulate unexpected shutdown WITHOUT calling cancelAll()
+        // (graceful cancelAll() would properly clear persisted state per specification)
         
         // Create new scheduler instance
         const scheduler2 = makePollingScheduler(capabilities, { pollIntervalMs: 1000 });
@@ -220,8 +220,8 @@ describe("polling scheduler save and restore", () => {
         const scheduler1 = makePollingScheduler(capabilities, { pollIntervalMs: 1000 });
         await scheduler1.schedule("orphaned-task", "0 * * * *", taskCallback, retryDelay);
         
-        // Shutdown without canceling - simulating unexpected shutdown
-        await scheduler1.cancelAll();
+        // Simulate unexpected shutdown WITHOUT calling cancelAll()
+        // This leaves the task in persisted state but without active callback
         
         // Create new scheduler WITHOUT re-registering the task initially
         const scheduler2 = makePollingScheduler(capabilities, { pollIntervalMs: 1000 });
@@ -240,6 +240,41 @@ describe("polling scheduler save and restore", () => {
         expect(updatedTasks).toHaveLength(1);
         expect(updatedTasks[0].name).toBe("orphaned-task");
         expect(updatedTasks[0].cronExpression).toBe("0 * * * *");
+        
+        await scheduler2.cancelAll();
+    });
+
+    test("should ensure cancelled tasks don't reappear after restart", async () => {
+        const capabilities = caps();
+        const retryDelay = fromMilliseconds(5000);
+        const taskCallback = jest.fn();
+        
+        // Create scheduler and add task
+        const scheduler1 = makePollingScheduler(capabilities, { pollIntervalMs: 1000 });
+        await scheduler1.schedule("will-be-cancelled", "0 * * * *", taskCallback, retryDelay);
+        
+        // Verify task exists
+        let tasks = await scheduler1.getTasks();
+        expect(tasks).toHaveLength(1);
+        expect(tasks[0].name).toBe("will-be-cancelled");
+        
+        // Gracefully cancel all tasks - this should persist the cancellation
+        await scheduler1.cancelAll();
+        
+        // Create new scheduler instance (simulating restart)
+        const scheduler2 = makePollingScheduler(capabilities, { pollIntervalMs: 1000 });
+        
+        // Verify no tasks exist (cancelled tasks don't reappear)
+        tasks = await scheduler2.getTasks();
+        expect(tasks).toHaveLength(0);
+        
+        // Verify we can still schedule new tasks normally
+        const newTaskCallback = jest.fn();
+        await scheduler2.schedule("new-task", "0 * * * *", newTaskCallback, retryDelay);
+        
+        tasks = await scheduler2.getTasks();
+        expect(tasks).toHaveLength(1);
+        expect(tasks[0].name).toBe("new-task");
         
         await scheduler2.cancelAll();
     });
