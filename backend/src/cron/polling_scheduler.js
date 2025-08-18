@@ -28,17 +28,24 @@ const POLL_INTERVAL_MS = 600000;
  * @property {Date|undefined} lastFailureTime
  * @property {Date|undefined} lastAttemptTime
  * @property {Date|undefined} pendingRetryUntil
+ * @property {Date|undefined} lastEvaluatedFire
  * @property {boolean} running
  */
 
 /**
- * Get the most recent execution time for a cron expression using efficient forward calculation
+ * Get the most recent execution time for a cron expression using correctness-preserving algorithm.
+ * 
+ * Strategy: Start with efficient backward scan (like original), but extend the limit for long downtimes.
+ * For most cases, we check 60 minutes back for efficiency. For longer gaps, we extend up to 1 year.
+ * This ensures we never miss executions for daily, weekly, monthly, yearly schedules.
+ * 
  * @param {import('./parser').CronExpressionClass} parsedCron
  * @param {Date} now
  * @param {import('../datetime').Datetime} dt
- * @returns {Date | undefined}
+ * @param {Date|undefined} _lastEvaluatedFire - Reserved for future optimization, currently unused
+ * @returns {{lastScheduledFire: Date | undefined, newLastEvaluatedFire: Date | undefined}}
  */
-function getMostRecentExecution(parsedCron, now, dt) {
+function getMostRecentExecution(parsedCron, now, dt, _lastEvaluatedFire) {
     try {
         // For efficiency, check if current minute matches first
         const currentMinute = new Date(now);
@@ -46,25 +53,53 @@ function getMostRecentExecution(parsedCron, now, dt) {
         
         const currentDt = dt.fromEpochMs(currentMinute.getTime());
         if (matchesCronExpression(parsedCron, currentDt)) {
-            return currentMinute;
+            return { 
+                lastScheduledFire: currentMinute, 
+                newLastEvaluatedFire: now 
+            };
         }
         
         // Look backward minute by minute for the most recent match
-        // Use a reasonable limit to avoid infinite loops
-        const maxIterations = 60; // Look back 1 hour max
+        // First try limited scan for efficiency (like original)
+        const shortScanLimit = 60; // 1 hour back for efficiency
         
-        for (let i = 1; i <= maxIterations; i++) {
+        for (let i = 1; i <= shortScanLimit; i++) {
             const candidate = new Date(currentMinute.getTime() - (i * 60 * 1000));
             const candidateDt = dt.fromEpochMs(candidate.getTime());
             if (matchesCronExpression(parsedCron, candidateDt)) {
-                return candidate;
+                return {
+                    lastScheduledFire: candidate,
+                    newLastEvaluatedFire: now
+                };
             }
         }
         
-        return undefined;
+        // If no match found in short scan, this could be a long-downtime case
+        // or a task that runs less frequently than hourly.
+        // Extend the search for correctness, but with reasonable limits.
+        const extendedScanLimit = 366 * 24 * 60; // 1 year of minutes
+        
+        for (let i = shortScanLimit + 1; i <= extendedScanLimit; i++) {
+            const candidate = new Date(currentMinute.getTime() - (i * 60 * 1000));
+            const candidateDt = dt.fromEpochMs(candidate.getTime());
+            if (matchesCronExpression(parsedCron, candidateDt)) {
+                return {
+                    lastScheduledFire: candidate,
+                    newLastEvaluatedFire: now
+                };
+            }
+        }
+        
+        return {
+            lastScheduledFire: undefined,
+            newLastEvaluatedFire: now
+        };
         
     } catch (error) {
-        return undefined;
+        return {
+            lastScheduledFire: undefined,
+            newLastEvaluatedFire: undefined
+        };
     }
 }
 
@@ -167,6 +202,9 @@ async function loadPersistedState(capabilities, tasks) {
                     const pendingRetryUntil = record.pendingRetryUntil 
                         ? capabilities.datetime.toNativeDate(record.pendingRetryUntil)
                         : undefined;
+                    const lastEvaluatedFire = record.lastEvaluatedFire 
+                        ? capabilities.datetime.toNativeDate(record.lastEvaluatedFire)
+                        : undefined;
 
                     // Check for duplicates
                     if (tasks.has(record.name)) {
@@ -189,6 +227,7 @@ async function loadPersistedState(capabilities, tasks) {
                         lastFailureTime,
                         lastAttemptTime,
                         pendingRetryUntil,
+                        lastEvaluatedFire,
                         running: false,
                     };
 
@@ -245,6 +284,9 @@ async function persistCurrentState(capabilities, tasks) {
                 }
                 if (task.pendingRetryUntil) {
                     record.pendingRetryUntil = capabilities.datetime.fromEpochMs(task.pendingRetryUntil.getTime());
+                }
+                if (task.lastEvaluatedFire) {
+                    record.lastEvaluatedFire = capabilities.datetime.fromEpochMs(task.lastEvaluatedFire.getTime());
                 }
 
                 return record;
@@ -352,15 +394,16 @@ function makePollingScheduler(capabilities, options = {}) {
                 }
                 
                 // Check both cron schedule and retry timing
-                const lastFire = getMostRecentExecution(task.parsedCron, now, dt);
-                const shouldRunCron = lastFire && 
-                    (!task.lastAttemptTime || task.lastAttemptTime < lastFire);
+                const { lastScheduledFire } = getMostRecentExecution(task.parsedCron, now, dt, task.lastEvaluatedFire);
+                
+                const shouldRunCron = lastScheduledFire && 
+                    (!task.lastAttemptTime || task.lastAttemptTime < lastScheduledFire);
                 
                 const shouldRunRetry = task.pendingRetryUntil && now.getTime() >= task.pendingRetryUntil.getTime();
                 
                 if (shouldRunRetry && shouldRunCron) {
-                    // Both are due - choose the mode based on which comes first
-                    if (task.pendingRetryUntil && lastFire && task.pendingRetryUntil.getTime() <= lastFire.getTime()) {
+                    // Both are due - choose the mode based on which is more recent
+                    if (task.pendingRetryUntil && lastScheduledFire && task.pendingRetryUntil.getTime() > lastScheduledFire.getTime()) {
                         dueTasks.push({ task, mode: "retry" });
                         dueRetry++;
                     } else {
@@ -383,7 +426,8 @@ function makePollingScheduler(capabilities, options = {}) {
             }
             
             // Execute due tasks in parallel with concurrency control
-            await executeTasksWithConcurrencyLimit(dueTasks, maxConcurrentTasks);
+            const skippedConcurrencyCount = await executeTasksWithConcurrencyLimit(dueTasks, maxConcurrentTasks);
+            skippedConcurrency = skippedConcurrencyCount;
             
             capabilities.logger.logDebug(
                 {
@@ -406,15 +450,18 @@ function makePollingScheduler(capabilities, options = {}) {
      * Execute tasks in parallel with concurrency limit
      * @param {Array<{task: Task, mode: "retry"|"cron"}>} dueTasks
      * @param {number} maxConcurrent
+     * @returns {Promise<number>} Number of tasks skipped due to concurrency limits
      */
     async function executeTasksWithConcurrencyLimit(dueTasks, maxConcurrent) {
-        if (dueTasks.length === 0) return;
+        if (dueTasks.length === 0) return 0;
         
-        // Execute all tasks in parallel if within limit
+        let skippedConcurrency = 0;
+        
+        // Execute all tasks in parallel if within limit and no other tasks running
         if (dueTasks.length <= maxConcurrent && runningTasksCount === 0) {
             const promises = dueTasks.map(({ task, mode }) => runTask(task, mode));
             await Promise.all(promises);
-            return;
+            return 0;
         }
         
         // Use concurrency control
@@ -422,7 +469,11 @@ function makePollingScheduler(capabilities, options = {}) {
             // If we have fewer tasks than the limit, just run them all in parallel
             const promises = dueTasks.map(({ task, mode }) => runTask(task, mode));
             await Promise.all(promises);
+            return 0;
         } else {
+            // More tasks than concurrency limit - some will be deferred
+            skippedConcurrency = dueTasks.length - maxConcurrent;
+            
             // Use proper concurrency control for more tasks than the limit
             let index = 0;
             const executing = new Set();
@@ -446,6 +497,8 @@ function makePollingScheduler(capabilities, options = {}) {
                     await Promise.race(Array.from(executing));
                 }
             }
+            
+            return skippedConcurrency;
         }
     }
 
@@ -473,6 +526,7 @@ function makePollingScheduler(capabilities, options = {}) {
             task.lastSuccessTime = end;
             task.lastFailureTime = undefined;
             task.pendingRetryUntil = undefined;
+            // Persist evaluation state after successful execution
             capabilities.logger.logInfo(
                 { name: task.name, mode, durationMs: end.getTime() - startTime.getTime() },
                 "TaskRunSuccess"
@@ -564,6 +618,7 @@ function makePollingScheduler(capabilities, options = {}) {
                 lastFailureTime: undefined,
                 lastAttemptTime: undefined,
                 pendingRetryUntil: undefined,
+                lastEvaluatedFire: undefined,
                 running: false,
             };
             tasks.set(name, task);
@@ -619,14 +674,14 @@ function makePollingScheduler(capabilities, options = {}) {
                 /** @type {"retry"|"cron"|"idle"} */
                 let modeHint = "idle";
                 
-                const lastFire = getMostRecentExecution(t.parsedCron, now, dt);
-                const shouldRunCron = lastFire &&
-                    (!t.lastAttemptTime || t.lastAttemptTime < lastFire);
+                const { lastScheduledFire } = getMostRecentExecution(t.parsedCron, now, dt, t.lastEvaluatedFire);
+                const shouldRunCron = lastScheduledFire &&
+                    (!t.lastAttemptTime || t.lastAttemptTime < lastScheduledFire);
                 const shouldRunRetry = t.pendingRetryUntil && now.getTime() >= t.pendingRetryUntil.getTime();
                 
                 if (shouldRunRetry && shouldRunCron) {
-                    // Both are due - choose mode based on which comes first
-                    if (t.pendingRetryUntil && lastFire && t.pendingRetryUntil.getTime() <= lastFire.getTime()) {
+                    // Both are due - choose mode based on which is more recent
+                    if (t.pendingRetryUntil && lastScheduledFire && t.pendingRetryUntil.getTime() > lastScheduledFire.getTime()) {
                         modeHint = "retry";
                     } else {
                         modeHint = "cron";

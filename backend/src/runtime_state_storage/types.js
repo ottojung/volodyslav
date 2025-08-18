@@ -43,6 +43,7 @@
  * @property {import('../datetime').DateTime} [lastFailureTime]
  * @property {import('../datetime').DateTime} [lastAttemptTime]
  * @property {import('../datetime').DateTime} [pendingRetryUntil]
+ * @property {import('../datetime').DateTime} [lastEvaluatedFire]
  */
 
 /**
