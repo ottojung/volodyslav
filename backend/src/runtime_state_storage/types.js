@@ -39,10 +39,11 @@
  * @property {string} name - Task name (unique)
  * @property {string} cronExpression - Cron expression string
  * @property {number} retryDelayMs - Retry delay in milliseconds
- * @property {import('../datetime').DateTime} [lastSuccessTime]
- * @property {import('../datetime').DateTime} [lastFailureTime]
- * @property {import('../datetime').DateTime} [lastAttemptTime]
- * @property {import('../datetime').DateTime} [pendingRetryUntil]
+ * @property {import('../datetime').DateTime} [lastSuccessTime] - Last successful execution time
+ * @property {import('../datetime').DateTime} [lastFailureTime] - Last failed execution time
+ * @property {import('../datetime').DateTime} [lastAttemptTime] - Last execution attempt time (success or failure)
+ * @property {import('../datetime').DateTime} [pendingRetryUntil] - Retry deadline for failed tasks
+ * @property {import('../datetime').DateTime} [lastEvaluatedFire] - Cache of last evaluated cron fire time for performance optimization. This stores the actual fire time (not evaluation time) to enable efficient forward-stepping algorithm that avoids minute-by-minute backward scanning.
  */
 
 /**

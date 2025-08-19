@@ -14,7 +14,7 @@ const datetime = require("../datetime");
 function matchesCronExpression(cronExpr, dateTime) {
     const dt = datetime.make();
     const nativeDate = dt.toNativeDate(dateTime);
-    
+
     const minute = nativeDate.getMinutes();
     const hour = nativeDate.getHours();
     const day = nativeDate.getDate();

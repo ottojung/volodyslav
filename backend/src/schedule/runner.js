@@ -4,10 +4,10 @@
  * @param {string} cronExpression
  * @param {() => Promise<void>} callback
  * @param {import('../time_duration/structure').TimeDuration} retryDelay
- * @returns {string} Task name
+ * @returns {Promise<string>} Task name
  */
-function schedule(capabilities, name, cronExpression, callback, retryDelay) {
-    capabilities.scheduler.schedule(name, cronExpression, callback, retryDelay);
+async function schedule(capabilities, name, cronExpression, callback, retryDelay) {
+    await capabilities.scheduler.schedule(name, cronExpression, callback, retryDelay);
     return name;
 }
 

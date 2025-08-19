@@ -4,8 +4,8 @@
  */
 
 // Export everything from sub-modules
-const { 
-    InvalidCronExpressionError, 
+const {
+    InvalidCronExpressionError,
     isInvalidCronExpressionError,
     FieldParseError,
     isFieldParseError,
@@ -22,18 +22,18 @@ module.exports = {
     parseCronExpression,
     matchesCronExpression,
     getNextExecution,
-    
+
     // Type guards
     isCronExpression,
     isInvalidCronExpressionError,
     isFieldParseError,
     isCronCalculationError,
-    
+
     // Error classes
     InvalidCronExpressionError,
     FieldParseError,
     CronCalculationError,
-    
+
     // Data types
     CronExpressionClass,
 };
