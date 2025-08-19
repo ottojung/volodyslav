@@ -31,7 +31,7 @@ const timeDuration = require("../time_duration");
 /**
  * @typedef {object} RetryOptions
  * @property {number} maxAttempts - Maximum number of retry attempts
- * @property {number} delayMs - Base delay in milliseconds for exponential backoff
+ * @property {number} delayMs - Delay in milliseconds
  */
 
 /**
@@ -40,7 +40,7 @@ const timeDuration = require("../time_duration");
  */
 const DEFAULT_RETRY_OPTIONS = {
     maxAttempts: 5,
-    delayMs: 1000,
+    delayMs: 0,
 };
 
 /**
@@ -187,9 +187,8 @@ async function transaction(capabilities, workingPath, initial_state, transformat
                 );
                 break;
             }
-            
-            // Calculate backoff delay (exponential backoff)
-            const delayMs = options.delayMs * Math.pow(2, attempt - 1);
+
+            const delayMs = options.delayMs;
             const delay = timeDuration.fromMilliseconds(delayMs);
             
             capabilities.logger.logInfo(
