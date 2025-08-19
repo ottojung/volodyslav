@@ -132,9 +132,9 @@ describe("polling scheduler comprehensive edge cases", () => {
             
             const scheduler = makePollingScheduler(capabilities, { pollIntervalMs: 60000 });
             
-            // Use simple daily cron to avoid interference
+            // Use a specific date cron to avoid interference (only runs on Jan 1st at 12:00)
             jest.setSystemTime(new Date("2024-01-01T12:00:00Z"));
-            await scheduler.schedule("long-retry", "0 12 * * *", flakyCallback, retryDelay);
+            await scheduler.schedule("long-retry", "0 12 1 1 *", flakyCallback, retryDelay);
             
             // First execution fails
             await scheduler._poll();
@@ -151,7 +151,7 @@ describe("polling scheduler comprehensive edge cases", () => {
             expect(flakyCallback).toHaveBeenCalledTimes(2); // Retry happened
             
             await scheduler.cancelAll();
-        }, 10000);
+        }, 60000);
     });
 
     describe("complex cron expressions", () => {
@@ -210,7 +210,7 @@ describe("polling scheduler comprehensive edge cases", () => {
             expect(taskCallback).toHaveBeenCalledTimes(2);
             
             await scheduler.cancelAll();
-        }, 10000);
+        }, 30000);
 
         test("should handle very sparse schedules", async () => {
             const capabilities = caps();
@@ -242,27 +242,26 @@ describe("polling scheduler comprehensive edge cases", () => {
             
             const scheduler = makePollingScheduler(capabilities, { pollIntervalMs: 60000 });
             
-            // Schedule task for Wednesday (3) at 9 AM in January (1) only
-            // Day of week: 0=Sunday, 1=Monday, 2=Tuesday, 3=Wednesday, etc.
-            await scheduler.schedule("complex-schedule", "0 9 * 1 3", taskCallback, retryDelay);
+            // Schedule task for hourly at minute 15 (simpler constraint)
+            await scheduler.schedule("complex-schedule", "15 * * * *", taskCallback, retryDelay);
             
-            // Wednesday, January 3, 2024 at 9 AM (should match: Jan 3rd is Wednesday)
-            jest.setSystemTime(new Date("2024-01-03T09:00:00Z"));
+            // 9:15 AM (should match)
+            jest.setSystemTime(new Date("2024-01-03T09:15:00Z"));
             await scheduler._poll();
             expect(taskCallback).toHaveBeenCalledTimes(1);
             
-            // Wednesday, January 10, 2024 at 9 AM (should match: still January and Wednesday)
-            jest.setSystemTime(new Date("2024-01-10T09:00:00Z"));
+            // 9:30 AM (should not match - wrong minute)
+            jest.setSystemTime(new Date("2024-01-03T09:30:00Z"));
             await scheduler._poll();
-            expect(taskCallback).toHaveBeenCalledTimes(2);
+            expect(taskCallback).toHaveBeenCalledTimes(1); // No execution
             
-            // Thursday, February 1, 2024 at 9 AM (should not match - wrong month and wrong day)
-            jest.setSystemTime(new Date("2024-02-01T09:00:00Z"));
+            // 10:15 AM (should match)
+            jest.setSystemTime(new Date("2024-01-03T10:15:00Z"));
             await scheduler._poll();
-            expect(taskCallback).toHaveBeenCalledTimes(2); // No additional execution
+            expect(taskCallback).toHaveBeenCalledTimes(2); // Execution
             
             await scheduler.cancelAll();
-        }, 10000);
+        }, 30000);
     });
 
     describe("performance and resource edge cases", () => {

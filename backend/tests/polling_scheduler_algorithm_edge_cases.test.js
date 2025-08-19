@@ -197,15 +197,11 @@ describe("polling scheduler algorithm edge cases", () => {
             
             // Expression that runs at specific times with varying intervals (0, 15, 45 minutes)
             // Min interval is 15 minutes (0->15, 15->45, 45->60+0), which is > 10 min polling
-            try {
-                await scheduler.schedule("varying-interval", "0,15,45 * * * *", taskCallback, retryDelay);
-                // If it succeeds, frequency validation isn't working as expected
-                // This might indicate a bug in calculateMinimumCronInterval
-                capabilities.logger.logWarning({}, "FrequencyValidationNotWorking");
-            } catch (error) {
-                // Expected behavior - should fail
-                expect(error).toBeInstanceOf(Error);
-            }
+            // This should pass validation since min interval (15 min) > polling interval (10 min)
+            await scheduler.schedule("varying-interval", "0,15,45 * * * *", taskCallback, retryDelay);
+            
+            const tasks = await scheduler.getTasks();
+            expect(tasks).toHaveLength(1);
             
             await scheduler.cancelAll();
         });
