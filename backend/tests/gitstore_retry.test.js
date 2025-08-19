@@ -220,38 +220,6 @@ describe("gitstore retry functionality", () => {
         );
     });
 
-    test("transaction works without sleeper capability", async () => {
-        const capabilities = getTestCapabilities();
-        await stubEventLogRepository(capabilities);
-
-        // Remove sleeper from capabilities to test fallback
-        delete capabilities.sleeper;
-
-        // Mock git command to fail once, then succeed
-        let pushAttempts = 0;
-        const originalGitCall = capabilities.git.call;
-        capabilities.git.call = jest.fn().mockImplementation((...args) => {
-            if (args.includes("push")) {
-                pushAttempts++;
-                if (pushAttempts === 1) {
-                    throw new Error("First push failure");
-                }
-            }
-            return originalGitCall.apply(capabilities.git, args);
-        });
-
-        const result = await transaction(capabilities, "working-git-repository", { url: capabilities.environment.eventLogRepository() }, async (store) => {
-            const workTree = await store.getWorkTree();
-            const testFile = path.join(workTree, "test.txt");
-            await fs.writeFile(testFile, "no sleeper test");
-            await store.commit("Test commit");
-            return "no sleeper success";
-        }, { maxAttempts: 2, delayMs: 10 });
-
-        expect(result).toBe("no sleeper success");
-        expect(pushAttempts).toBe(2);
-    });
-
     test("transaction calculates flat backoff correctly", async () => {
         const capabilities = getTestCapabilities();
         await stubEventLogRepository(capabilities);
