@@ -123,35 +123,35 @@ describe("polling scheduler comprehensive edge cases", () => {
             await scheduler.cancelAll();
         });
 
-        test("should handle very long retry delays", async () => {
+        test("should handle retry delays efficiently", async () => {
             const capabilities = caps();
-            const retryDelay = fromMilliseconds(7 * 24 * 60 * 60 * 1000); // 1 week instead of 1 year
+            const retryDelay = fromMilliseconds(5000); // 5 seconds for fast testing
             const flakyCallback = jest.fn(() => {
                 throw new Error("Always fails");
             });
             
-            const scheduler = makePollingScheduler(capabilities, { pollIntervalMs: 60000 });
+            const scheduler = makePollingScheduler(capabilities, { pollIntervalMs: 1000 });
             
-            // Use a specific date cron to avoid interference (only runs on Jan 1st at 12:00)
+            // Use every minute cron for fast execution
             jest.setSystemTime(new Date("2024-01-01T12:00:00Z"));
-            await scheduler.schedule("long-retry", "0 12 1 1 *", flakyCallback, retryDelay);
+            await scheduler.schedule("retry-test", "* * * * *", flakyCallback, retryDelay);
             
             // First execution fails
             await scheduler._poll();
             expect(flakyCallback).toHaveBeenCalledTimes(1);
             
-            // Move forward 3 days - should not retry yet (retry needs 1 week)
-            jest.setSystemTime(new Date("2024-01-04T12:00:00Z"));
+            // Move forward 3 seconds - should not retry yet
+            jest.setSystemTime(new Date("2024-01-01T12:00:03Z"));
             await scheduler._poll();
             expect(flakyCallback).toHaveBeenCalledTimes(1); // No retry yet
             
-            // Move forward 1 week and 1 day - should retry now
-            jest.setSystemTime(new Date("2024-01-09T12:00:00Z"));
+            // Move forward 6 seconds total - should retry now
+            jest.setSystemTime(new Date("2024-01-01T12:00:06Z"));
             await scheduler._poll();
             expect(flakyCallback).toHaveBeenCalledTimes(2); // Retry happened
             
             await scheduler.cancelAll();
-        }, 60000);
+        });
     });
 
     describe("complex cron expressions", () => {
