@@ -41,7 +41,7 @@ describe("polling scheduler persistence and error handling", () => {
             return Promise.resolve();
         });
 
-        const scheduler = makePollingScheduler(capabilities, { pollIntervalMs: 60000 });
+        const scheduler = makePollingScheduler(capabilities, { pollIntervalMs: 10 });
 
         // Schedule task that will fail initially
         await scheduler.schedule("flaky-task", "* * * * *", flakyCallback, retryDelay);
@@ -66,7 +66,8 @@ describe("polling scheduler persistence and error handling", () => {
         const capabilities = caps();
         const retryDelay = fromMilliseconds(5000);
 
-        const scheduler = makePollingScheduler(capabilities, { pollIntervalMs: 60000 });
+        // Use fast poll interval to speed up test
+        const scheduler = makePollingScheduler(capabilities, { pollIntervalMs: 10 });
 
         // Test various error types
         const errors = [
@@ -110,7 +111,7 @@ describe("polling scheduler persistence and error handling", () => {
         const successCallback = jest.fn().mockResolvedValue(undefined);
         const failureCallback = jest.fn().mockRejectedValue(new Error("Always fails"));
 
-        const scheduler = makePollingScheduler(capabilities, { pollIntervalMs: 60000 });
+        const scheduler = makePollingScheduler(capabilities, { pollIntervalMs: 10 });
 
         // Schedule both successful and failing tasks
         await scheduler.schedule("success-task", "*/2 * * * *", successCallback, retryDelay);
@@ -141,7 +142,7 @@ describe("polling scheduler persistence and error handling", () => {
 
         // Create scheduler with low concurrency limit
         const scheduler = makePollingScheduler(capabilities, {
-            pollIntervalMs: 60000,
+            pollIntervalMs: 10,
             maxConcurrentTasks: 2
         });
 
@@ -161,7 +162,8 @@ describe("polling scheduler persistence and error handling", () => {
         const capabilities = caps();
         const retryDelay = fromMilliseconds(1000);
 
-        const scheduler = makePollingScheduler(capabilities, { pollIntervalMs: 60000 });
+        // Use fast poll interval to speed up test
+        const scheduler = makePollingScheduler(capabilities, { pollIntervalMs: 10 });
 
         // Schedule moderate number of tasks to avoid timeout
         const callbacks = [];
@@ -193,7 +195,7 @@ describe("polling scheduler persistence and error handling", () => {
         const callback = jest.fn().mockResolvedValue(undefined);
 
         // Create first scheduler instance
-        const scheduler1 = makePollingScheduler(capabilities, { pollIntervalMs: 60000 });
+        const scheduler1 = makePollingScheduler(capabilities, { pollIntervalMs: 10 });
         await scheduler1.schedule("persistent-task", "0 */3 * * *", callback, retryDelay);
 
         let tasks = await scheduler1.getTasks();
@@ -204,7 +206,7 @@ describe("polling scheduler persistence and error handling", () => {
         await scheduler1.cancelAll();
 
         // Create new scheduler instance (simulating restart)
-        const scheduler2 = makePollingScheduler(capabilities, { pollIntervalMs: 60000 });
+        const scheduler2 = makePollingScheduler(capabilities, { pollIntervalMs: 10 });
 
         // New scheduler should start fresh
         tasks = await scheduler2.getTasks();
@@ -218,7 +220,7 @@ describe("polling scheduler persistence and error handling", () => {
         const retryDelay = fromMilliseconds(5000);
         const callback = jest.fn().mockResolvedValue(undefined);
 
-        const scheduler = makePollingScheduler(capabilities, { pollIntervalMs: 60000 });
+        const scheduler = makePollingScheduler(capabilities, { pollIntervalMs: 10 });
         await scheduler.schedule("time-test-task", "0 12 * * *", callback, retryDelay);
 
         // Test various time manipulations
@@ -249,7 +251,8 @@ describe("polling scheduler persistence and error handling", () => {
         const retryDelay = fromMilliseconds(5000);
         const callback = jest.fn().mockResolvedValue(undefined);
 
-        const scheduler = makePollingScheduler(capabilities, { pollIntervalMs: 60000 });
+        // Use fast poll interval to speed up test
+        const scheduler = makePollingScheduler(capabilities, { pollIntervalMs: 10 });
 
         // Schedule and cancel fewer tasks to avoid timeout
         const cancelledTasks = [];
@@ -280,7 +283,7 @@ describe("polling scheduler persistence and error handling", () => {
         const capabilities = caps();
         const retryDelay = fromMilliseconds(5000);
 
-        const scheduler = makePollingScheduler(capabilities, { pollIntervalMs: 60000 });
+        const scheduler = makePollingScheduler(capabilities, { pollIntervalMs: 10 });
 
         // Test various invalid callback scenarios
         const validCallback = jest.fn().mockResolvedValue(undefined);
@@ -306,7 +309,8 @@ describe("polling scheduler persistence and error handling", () => {
         const callback2 = jest.fn().mockResolvedValue(undefined);
         const callback3 = jest.fn().mockResolvedValue(undefined);
 
-        const scheduler = makePollingScheduler(capabilities, { pollIntervalMs: 60000 });
+        // Use fast poll interval to speed up test
+        const scheduler = makePollingScheduler(capabilities, { pollIntervalMs: 10 });
 
         // Schedule tasks in specific order
         await scheduler.schedule("task-a", "0 10 * * *", callback1, retryDelay);

@@ -6,13 +6,14 @@
 const { makePollingScheduler } = require("../src/cron/polling_scheduler");
 const { fromMilliseconds } = require("../src/time_duration");
 const { getMockedRootCapabilities } = require("./spies");
-const { stubEnvironment, stubLogger, stubDatetime } = require("./stubs");
+const { stubEnvironment, stubLogger, stubDatetime, stubSleeper } = require("./stubs");
 
 function caps() {
     const capabilities = getMockedRootCapabilities();
     stubEnvironment(capabilities);
     stubLogger(capabilities);
     stubDatetime(capabilities);
+    stubSleeper(capabilities);
     return capabilities;
 }
 
@@ -33,7 +34,7 @@ describe("polling scheduler long downtime catchup", () => {
         const callback = jest.fn();
         
         // Schedule daily task at 8:00 AM
-        const scheduler = makePollingScheduler(capabilities, { pollIntervalMs: 60000 });
+        const scheduler = makePollingScheduler(capabilities, { pollIntervalMs: 10 });
         await scheduler.schedule("daily-task", "0 8 * * *", callback, retryDelay);
         
         // Simulate 5 days later (missed 4 executions)
@@ -59,7 +60,7 @@ describe("polling scheduler long downtime catchup", () => {
         const callback = jest.fn();
         
         // Schedule weekly task on Wednesdays at 9:00 AM (Jan 1, 2020 is a Wednesday)
-        const scheduler = makePollingScheduler(capabilities, { pollIntervalMs: 60000 });
+        const scheduler = makePollingScheduler(capabilities, { pollIntervalMs: 10 });
         await scheduler.schedule("weekly-task", "0 9 * * 3", callback, retryDelay);
         
         // Simulate 1 month later (missed ~4 weekly executions)
@@ -85,7 +86,7 @@ describe("polling scheduler long downtime catchup", () => {
         const callback = jest.fn();
         
         // Schedule monthly task on 1st at 11:00 AM
-        const scheduler = makePollingScheduler(capabilities, { pollIntervalMs: 60000 });
+        const scheduler = makePollingScheduler(capabilities, { pollIntervalMs: 10 });
         await scheduler.schedule("monthly-task", "0 11 1 * *", callback, retryDelay);
         
         // Simulate 1 year later (missed 12 monthly executions)
@@ -112,7 +113,7 @@ describe("polling scheduler long downtime catchup", () => {
         const callback = jest.fn();
         
         // Schedule task for Feb 29 at 12:00 PM
-        const scheduler = makePollingScheduler(capabilities, { pollIntervalMs: 60000 });
+        const scheduler = makePollingScheduler(capabilities, { pollIntervalMs: 10 });
         await scheduler.schedule("leap-day-task", "0 12 29 2 *", callback, retryDelay);
         
         // Simulate 4 years later to next leap year (2024)
@@ -138,7 +139,7 @@ describe("polling scheduler long downtime catchup", () => {
         const callback = jest.fn().mockRejectedValueOnce(new Error("First failure"));
         
         // Schedule hourly task at :30 minutes
-        const scheduler = makePollingScheduler(capabilities, { pollIntervalMs: 60000 });
+        const scheduler = makePollingScheduler(capabilities, { pollIntervalMs: 10 });
         await scheduler.schedule("retry-cron-task", "30 * * * *", callback, retryDelay);
         
         // Run at 14:30 and fail
@@ -169,7 +170,7 @@ describe("polling scheduler long downtime catchup", () => {
         const callback = jest.fn();
         
         // Schedule and run a task successfully
-        const scheduler1 = makePollingScheduler(capabilities, { pollIntervalMs: 60000 });
+        const scheduler1 = makePollingScheduler(capabilities, { pollIntervalMs: 10 });
         await scheduler1.schedule("history-task", "0 15 * * *", callback, retryDelay);
         
         await scheduler1._poll();
@@ -185,7 +186,7 @@ describe("polling scheduler long downtime catchup", () => {
         // Simulate restart after 1 week
         jest.setSystemTime(new Date("2020-01-08T16:00:00Z"));
         
-        const scheduler2 = makePollingScheduler(capabilities, { pollIntervalMs: 60000 });
+        const scheduler2 = makePollingScheduler(capabilities, { pollIntervalMs: 10 });
         await scheduler2.schedule("history-task", "0 15 * * *", callback, retryDelay);
         
         // Verify execution history is preserved
@@ -205,7 +206,7 @@ describe("polling scheduler long downtime catchup", () => {
         const callback = jest.fn();
         
         // Schedule task monthly on the 1st
-        const scheduler = makePollingScheduler(capabilities, { pollIntervalMs: 60000 });
+        const scheduler = makePollingScheduler(capabilities, { pollIntervalMs: 10 });
         await scheduler.schedule("rare-task", "0 15 1 * *", callback, retryDelay); // 1st of every month at 3 PM
         
         // Simulate 6 months later

@@ -54,7 +54,7 @@ describe("polling scheduler comprehensive edge cases", () => {
             const callback2 = jest.fn();
             const callback3 = jest.fn();
             
-            const scheduler = makePollingScheduler(capabilities, { pollIntervalMs: 60000 });
+            const scheduler = makePollingScheduler(capabilities, { pollIntervalMs: 10 });
             
             // Schedule multiple tasks with identical cron expressions
             await scheduler.schedule("task1", "0 * * * *", callback1, retryDelay); // Hourly
@@ -79,7 +79,7 @@ describe("polling scheduler comprehensive edge cases", () => {
             const retryDelay = fromMilliseconds(5000);
             const taskCallback = jest.fn();
             
-            const scheduler = makePollingScheduler(capabilities, { pollIntervalMs: 60000 });
+            const scheduler = makePollingScheduler(capabilities, { pollIntervalMs: 10 });
             
             // Set time to 12:30
             jest.setSystemTime(new Date("2024-02-29T12:30:00Z"));
@@ -108,7 +108,7 @@ describe("polling scheduler comprehensive edge cases", () => {
                 }
             });
             
-            const scheduler = makePollingScheduler(capabilities, { pollIntervalMs: 60000 });
+            const scheduler = makePollingScheduler(capabilities, { pollIntervalMs: 10 });
             
             await scheduler.schedule("short-retry", "* * * * *", flakyCallback, retryDelay);
             
@@ -161,7 +161,7 @@ describe("polling scheduler comprehensive edge cases", () => {
             const retryDelay = fromMilliseconds(5000);
             const taskCallback = jest.fn();
             
-            const scheduler = makePollingScheduler(capabilities, { pollIntervalMs: 60000 });
+            const scheduler = makePollingScheduler(capabilities, { pollIntervalMs: 10 });
             
             // Schedule task for Feb 29th only
             await scheduler.schedule("leap-year-task", "0 12 29 2 *", taskCallback, retryDelay);
@@ -190,7 +190,7 @@ describe("polling scheduler comprehensive edge cases", () => {
             const retryDelay = fromMilliseconds(5000);
             const taskCallback = jest.fn();
             
-            const scheduler = makePollingScheduler(capabilities, { pollIntervalMs: 60000 });
+            const scheduler = makePollingScheduler(capabilities, { pollIntervalMs: 10 });
             
             // Schedule task for 31st of every month at noon (only months with 31 days)
             await scheduler.schedule("month-end-task", "0 12 31 * *", taskCallback, retryDelay);
@@ -218,7 +218,7 @@ describe("polling scheduler comprehensive edge cases", () => {
             const retryDelay = fromMilliseconds(5000);
             const taskCallback = jest.fn();
             
-            const scheduler = makePollingScheduler(capabilities, { pollIntervalMs: 60000 });
+            const scheduler = makePollingScheduler(capabilities, { pollIntervalMs: 10 });
             
             // Schedule task for monthly instead of yearly (1st of each month)
             await scheduler.schedule("monthly-task", "0 0 1 * *", taskCallback, retryDelay);
@@ -241,7 +241,7 @@ describe("polling scheduler comprehensive edge cases", () => {
             const retryDelay = fromMilliseconds(5000);
             const taskCallback = jest.fn();
             
-            const scheduler = makePollingScheduler(capabilities, { pollIntervalMs: 60000 });
+            const scheduler = makePollingScheduler(capabilities, { pollIntervalMs: 10 });
             
             // Schedule task for hourly at minute 15 (simpler constraint)
             await scheduler.schedule("complex-schedule", "15 * * * *", taskCallback, retryDelay);
@@ -271,7 +271,7 @@ describe("polling scheduler comprehensive edge cases", () => {
             const retryDelay = fromMilliseconds(5000);
             const taskCallback = jest.fn();
             
-            const scheduler = makePollingScheduler(capabilities, { pollIntervalMs: 60000 });
+            const scheduler = makePollingScheduler(capabilities, { pollIntervalMs: 10 });
             
             // Schedule monthly task (1st of each month)  
             await scheduler.schedule("gap-test", "0 0 1 * *", taskCallback, retryDelay);
@@ -300,7 +300,7 @@ describe("polling scheduler comprehensive edge cases", () => {
             const capabilities = caps();
             const retryDelay = fromMilliseconds(5000);
             const scheduler = makePollingScheduler(capabilities, { 
-                pollIntervalMs: 60000,
+                pollIntervalMs: 10,
                 maxConcurrentTasks: 5
             });
             
@@ -400,7 +400,7 @@ describe("polling scheduler comprehensive edge cases", () => {
                 })
             }));
             
-            const scheduler = makePollingScheduler(capabilities, { pollIntervalMs: 60000 });
+            const scheduler = makePollingScheduler(capabilities, { pollIntervalMs: 10 });
             
             // Should handle corrupted state gracefully
             const tasks = await scheduler.getTasks();
@@ -460,7 +460,7 @@ describe("polling scheduler comprehensive edge cases", () => {
                 })
             }));
             
-            const scheduler = makePollingScheduler(capabilities, { pollIntervalMs: 60000 });
+            const scheduler = makePollingScheduler(capabilities, { pollIntervalMs: 10 });
             
             // Should handle incomplete records gracefully
             const tasks = await scheduler.getTasks();
@@ -485,7 +485,7 @@ describe("polling scheduler comprehensive edge cases", () => {
         test("should handle callbacks that throw specific error types", async () => {
             const capabilities = caps();
             const retryDelay = fromMilliseconds(5000); // 5 second retry delay
-            const scheduler = makePollingScheduler(capabilities, { pollIntervalMs: 60000 });
+            const scheduler = makePollingScheduler(capabilities, { pollIntervalMs: 10 });
             
             const customError = new TypeError("Custom error type");
             const callback = jest.fn(() => {
@@ -513,7 +513,7 @@ describe("polling scheduler comprehensive edge cases", () => {
         test("should handle callbacks that return both promises and sync values", async () => {
             const capabilities = caps();
             const retryDelay = fromMilliseconds(5000);
-            const scheduler = makePollingScheduler(capabilities, { pollIntervalMs: 60000 });
+            const scheduler = makePollingScheduler(capabilities, { pollIntervalMs: 10 });
             
             const syncCallback = jest.fn(() => "sync result");
             const asyncCallback = jest.fn(() => Promise.resolve("async result"));
@@ -536,7 +536,7 @@ describe("polling scheduler comprehensive edge cases", () => {
         test("should handle null callback gracefully", async () => {
             const capabilities = caps();
             const retryDelay = fromMilliseconds(5000);
-            const scheduler = makePollingScheduler(capabilities, { pollIntervalMs: 60000 });
+            const scheduler = makePollingScheduler(capabilities, { pollIntervalMs: 10 });
             
             await scheduler.schedule("test-task", "* * * * *", jest.fn(), retryDelay);
             

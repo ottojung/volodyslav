@@ -33,7 +33,7 @@ describe("polling scheduler skippedConcurrency metric", () => {
         
         // Set low concurrency limit
         const scheduler = makePollingScheduler(capabilities, { 
-            pollIntervalMs: 60000, 
+            pollIntervalMs: 10, 
             maxConcurrentTasks: 2 
         });
         
@@ -75,7 +75,7 @@ describe("polling scheduler skippedConcurrency metric", () => {
         
         // Set higher concurrency limit
         const scheduler = makePollingScheduler(capabilities, { 
-            pollIntervalMs: 60000, 
+            pollIntervalMs: 10, 
             maxConcurrentTasks: 10 
         });
         
@@ -115,7 +115,7 @@ describe("polling scheduler skippedConcurrency metric", () => {
         
         // Set concurrency limit to 3
         const scheduler = makePollingScheduler(capabilities, { 
-            pollIntervalMs: 60000, 
+            pollIntervalMs: 10, 
             maxConcurrentTasks: 3 
         });
         
@@ -161,7 +161,7 @@ describe("polling scheduler skippedConcurrency metric", () => {
         const retryDelay = fromMilliseconds(5000);
         
         const scheduler = makePollingScheduler(capabilities, { 
-            pollIntervalMs: 60000, 
+            pollIntervalMs: 10, 
             maxConcurrentTasks: 1 
         });
         
@@ -204,7 +204,7 @@ describe("polling scheduler skippedConcurrency metric", () => {
         const capabilities = caps();
         
         const scheduler = makePollingScheduler(capabilities, { 
-            pollIntervalMs: 60000, 
+            pollIntervalMs: 10, 
             maxConcurrentTasks: 2 
         });
         

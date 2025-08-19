@@ -186,7 +186,7 @@ describe("polling scheduler integration and system edge cases", () => {
             };
             
             const taskCallback = jest.fn();
-            const scheduler = makePollingScheduler(capabilities, { pollIntervalMs: 60000 });
+            const scheduler = makePollingScheduler(capabilities, { pollIntervalMs: 10 });
             
             // Schedule task and run multiple times
             await scheduler.schedule("permission-test", "* * * * *", taskCallback, retryDelay);
@@ -222,7 +222,7 @@ describe("polling scheduler integration and system edge cases", () => {
                 await Promise.resolve();
             });
             
-            const scheduler = makePollingScheduler(capabilities, { pollIntervalMs: 60000 });
+            const scheduler = makePollingScheduler(capabilities, { pollIntervalMs: 10 });
             
             await scheduler.schedule("network-task", "* * * * *", networkTaskCallback, retryDelay);
             
@@ -258,7 +258,7 @@ describe("polling scheduler integration and system edge cases", () => {
             const retryDelay = fromMilliseconds(5000);
             const taskCallback = jest.fn();
             
-            const scheduler = makePollingScheduler(capabilities, { pollIntervalMs: 60000 });
+            const scheduler = makePollingScheduler(capabilities, { pollIntervalMs: 10 });
             
             await scheduler.schedule("clock-test", "* * * * *", taskCallback, retryDelay);
             
@@ -299,7 +299,7 @@ describe("polling scheduler integration and system edge cases", () => {
             });
             
             const scheduler = makePollingScheduler(capabilities, { 
-                pollIntervalMs: 60000,
+                pollIntervalMs: 10,
                 maxConcurrentTasks: 50 // High concurrency to stress memory
             });
             
@@ -332,7 +332,7 @@ describe("polling scheduler integration and system edge cases", () => {
                 throw new ReferenceError("undefined variable access");
             });
             
-            const scheduler = makePollingScheduler(capabilities, { pollIntervalMs: 60000 });
+            const scheduler = makePollingScheduler(capabilities, { pollIntervalMs: 10 });
             
             await scheduler.schedule("normal-task", "* * * * *", normalCallback, retryDelay);
             await scheduler.schedule("crashing-task", "* * * * *", crashingCallback, retryDelay);
@@ -357,7 +357,7 @@ describe("polling scheduler integration and system edge cases", () => {
         test("should handle corrupted task callbacks", async () => {
             const capabilities = caps();
             const retryDelay = fromMilliseconds(5000);
-            const scheduler = makePollingScheduler(capabilities, { pollIntervalMs: 60000 });
+            const scheduler = makePollingScheduler(capabilities, { pollIntervalMs: 10 });
             
             const goodCallback = jest.fn();
             await scheduler.schedule("good-task", "* * * * *", goodCallback, retryDelay);
@@ -386,7 +386,7 @@ describe("polling scheduler integration and system edge cases", () => {
             
             // Rapidly create and destroy schedulers
             for (let cycle = 0; cycle < 10; cycle++) {
-                const scheduler = makePollingScheduler(capabilities, { pollIntervalMs: 60000 });
+                const scheduler = makePollingScheduler(capabilities, { pollIntervalMs: 10 });
                 
                 await scheduler.schedule(`cycle-task-${cycle}`, "* * * * *", taskCallback, retryDelay);
                 await scheduler._poll();
@@ -408,7 +408,7 @@ describe("polling scheduler integration and system edge cases", () => {
                 await Promise.resolve();
             });
             
-            const scheduler = makePollingScheduler(capabilities, { pollIntervalMs: 60000 });
+            const scheduler = makePollingScheduler(capabilities, { pollIntervalMs: 10 });
             
             await scheduler.schedule("long-task", "* * * * *", longRunningCallback, retryDelay);
             
@@ -455,7 +455,7 @@ describe("polling scheduler integration and system edge cases", () => {
         test("should handle burst task scheduling", async () => {
             const capabilities = caps();
             const retryDelay = fromMilliseconds(5000);
-            const scheduler = makePollingScheduler(capabilities, { pollIntervalMs: 60000 });
+            const scheduler = makePollingScheduler(capabilities, { pollIntervalMs: 10 });
             
             // Schedule fewer tasks to avoid timeout (100 -> 20)
             const callbacks = [];
@@ -491,7 +491,7 @@ describe("polling scheduler integration and system edge cases", () => {
             const capabilities = caps();
             const retryDelay = fromMilliseconds(5000);
             const scheduler = makePollingScheduler(capabilities, { 
-                pollIntervalMs: 60000,
+                pollIntervalMs: 10,
                 maxConcurrentTasks: 10
             });
             
@@ -534,7 +534,7 @@ describe("polling scheduler integration and system edge cases", () => {
     describe("edge cases in scheduler lifecycle", () => {
         test("should handle getTasks called before any scheduling", async () => {
             const capabilities = caps();
-            const scheduler = makePollingScheduler(capabilities, { pollIntervalMs: 60000 });
+            const scheduler = makePollingScheduler(capabilities, { pollIntervalMs: 10 });
             
             // Should return empty array without error
             const tasks = await scheduler.getTasks();
@@ -546,7 +546,7 @@ describe("polling scheduler integration and system edge cases", () => {
             const retryDelay = fromMilliseconds(5000);
             const taskCallback = jest.fn();
             
-            const scheduler = makePollingScheduler(capabilities, { pollIntervalMs: 60000 });
+            const scheduler = makePollingScheduler(capabilities, { pollIntervalMs: 10 });
             
             await scheduler.schedule("test-task", "* * * * *", taskCallback, retryDelay);
             
@@ -565,7 +565,7 @@ describe("polling scheduler integration and system edge cases", () => {
             const retryDelay = fromMilliseconds(5000);
             const taskCallback = jest.fn();
             
-            const scheduler = makePollingScheduler(capabilities, { pollIntervalMs: 60000 });
+            const scheduler = makePollingScheduler(capabilities, { pollIntervalMs: 10 });
             
             await scheduler.schedule("test-task", "* * * * *", taskCallback, retryDelay);
             await scheduler.cancelAll();
@@ -582,7 +582,7 @@ describe("polling scheduler integration and system edge cases", () => {
 
         test("should handle cancel of non-existent task", async () => {
             const capabilities = caps();
-            const scheduler = makePollingScheduler(capabilities, { pollIntervalMs: 60000 });
+            const scheduler = makePollingScheduler(capabilities, { pollIntervalMs: 10 });
             
             // Should return false for non-existent task
             const result = await scheduler.cancel("non-existent");
