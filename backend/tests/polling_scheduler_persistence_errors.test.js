@@ -143,14 +143,14 @@ describe("polling scheduler persistence and error handling", () => {
         const retryDelay = fromMilliseconds(1000);
 
         const scheduler = makePollingScheduler(capabilities, { pollIntervalMs: 10 });
-        
+
         // Simple test for resource constraint handling
         const task = jest.fn();
         await scheduler.schedule("resource-test", "* * * * *", task, retryDelay);
-        
+
         const tasks = await scheduler.getTasks();
         expect(tasks).toHaveLength(1);
-        
+
         await scheduler.cancelAll();
     });
 
@@ -250,10 +250,10 @@ describe("polling scheduler persistence and error handling", () => {
         // Simple rapid operations test
         await scheduler.schedule("rapid-task", "* * * * *", callback, retryDelay);
         await scheduler.cancel("rapid-task");
-        
+
         const tasks = await scheduler.getTasks();
         expect(tasks).toHaveLength(0);
-        
+
         await scheduler.cancelAll();
     });
 
@@ -291,12 +291,12 @@ describe("polling scheduler persistence and error handling", () => {
         // Simple ordering test
         await scheduler.schedule("task1", "* * * * *", callback1, retryDelay);
         await scheduler.schedule("task2", "* * * * *", callback2, retryDelay);
-        
+
         const tasks = await scheduler.getTasks();
         expect(tasks).toHaveLength(2);
         expect(tasks[0].name).toBe("task1");
         expect(tasks[1].name).toBe("task2");
-        
+
         await scheduler.cancelAll();
     });
 
