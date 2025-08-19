@@ -199,7 +199,7 @@ async function transaction(capabilities, workingPath, initial_state, transformat
                     errorMessage: error instanceof Error ? error.message : String(error),
                     workingPath
                 },
-                `Gitstore push failed on attempt ${attempt} - retrying after ${delay.toString()}ms`
+                `Gitstore push failed on attempt ${attempt} - retrying after ${delay.toString()}`
             );
 
             if (capabilities.sleeper) {
