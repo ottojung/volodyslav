@@ -2,6 +2,7 @@
  * Runtime state structure and validation.
  */
 
+const datetimeMod = require("../datetime");
 const {
     TryDeserializeError,
     MissingFieldError,
@@ -40,7 +41,6 @@ function tryDeserialize(obj) {
         return new InvalidStructureError("Runtime state must be a non-null object", obj);
     }
 
-    const datetimeMod = require("../datetime");
     const dt = datetimeMod.make();
 
     const versionRaw = "version" in obj ? obj["version"] : 1;
@@ -181,7 +181,6 @@ function tryDeserialize(obj) {
  * @returns {object}
  */
 function serialize(state) {
-    const datetimeMod = require("../datetime");
     const dt = datetimeMod.make();
     const tasks = (state.tasks || [])
         .slice()
