@@ -165,7 +165,7 @@ describe("gitstore retry functionality", () => {
         await stubEventLogRepository(capabilities);
         
         await expect(
-            transaction(capabilities, "working-git-repository", { url: capabilities.environment.eventLogRepository() }, async (store) => {
+            transaction(capabilities, "working-git-repository", { url: capabilities.environment.eventLogRepository() }, async (_store) => {
                 throw new Error("Non-push error");
             })
         ).rejects.toThrow("Non-push error");
