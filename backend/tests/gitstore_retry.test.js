@@ -246,7 +246,7 @@ describe("gitstore retry functionality", () => {
             await fs.writeFile(testFile, "no sleeper test");
             await store.commit("Test commit");
             return "no sleeper success";
-        }, { maxAttempts: 2, baseDelayMs: 10 });
+        }, { maxAttempts: 2, delayMs: 10 });
 
         expect(result).toBe("no sleeper success");
         expect(pushAttempts).toBe(2);
@@ -283,7 +283,7 @@ describe("gitstore retry functionality", () => {
             await fs.writeFile(testFile, "backoff test");
             await store.commit("Test commit");
             return "backoff success";
-        }, { maxAttempts: 5, baseDelayMs });
+        }, { maxAttempts: 5, delayMs: baseDelayMs });
 
         // Verify exponential backoff: 100ms, 200ms, 400ms
         expect(sleepDelays).toEqual([100, 200, 400]);
