@@ -10,6 +10,7 @@ const timeDuration = require("../time_duration");
 /** @typedef {import('../filesystem/writer').FileWriter} FileWriter */
 /** @typedef {import('../environment').Environment} Environment */
 /** @typedef {import('../logger').Logger} Logger */
+/** @typedef {import('../sleeper').Sleeper} Sleeper */
 
 /**
  * @typedef {object} RemoteLocation
@@ -25,7 +26,7 @@ const timeDuration = require("../time_duration");
  * @property {FileWriter} writer - A file writer instance.
  * @property {Environment} environment - An environment instance.
  * @property {Logger} logger - A logger instance.
- * @property {import('../sleeper').Sleeper} [sleeper] - A sleeper instance (optional, defaults to no-op).
+ * @property {Sleeper} sleeper - A sleeper instance.
  */
 
 /**
@@ -202,12 +203,7 @@ async function transaction(capabilities, workingPath, initial_state, transformat
                 `Gitstore push failed on attempt ${attempt} - retrying after ${delay.toString()}`
             );
 
-            if (capabilities.sleeper) {
-                await capabilities.sleeper.sleep(delayMs);
-            } else {
-                // Fallback: use setTimeout when sleeper is not available
-                await new Promise(resolve => setTimeout(resolve, delayMs));
-            }
+            await capabilities.sleeper.sleep(delayMs);
         }
     }
 
