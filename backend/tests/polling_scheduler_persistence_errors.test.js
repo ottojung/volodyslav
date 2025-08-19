@@ -154,6 +154,11 @@ describe("polling scheduler persistence and error handling", () => {
         await scheduler.cancelAll();
     });
 
+    test("should handle rapid schedule/cancel operations with many tasks", async () => {
+        const capabilities = caps();
+        const retryDelay = fromMilliseconds(5000);
+        const scheduler = makePollingScheduler(capabilities, { pollIntervalMs: 10 });
+
         // Schedule moderate number of tasks to avoid timeout
         const callbacks = [];
         for (let i = 0; i < 20; i++) {
@@ -252,31 +257,6 @@ describe("polling scheduler persistence and error handling", () => {
         await scheduler.cancelAll();
     });
 
-        // Schedule and cancel fewer tasks to avoid timeout
-        const cancelledTasks = [];
-        for (let i = 0; i < 15; i++) {
-            const taskName = `rapid-task-${i}`;
-
-            await scheduler.schedule(taskName, "*/10 * * * *", callback, retryDelay);
-
-            // Cancel some tasks immediately
-            if (i % 3 === 0) {
-                const cancelled = await scheduler.cancel(taskName);
-                cancelledTasks.push(cancelled);
-            }
-        }
-
-        // All cancellations should have succeeded
-        expect(cancelledTasks.every(c => c === true)).toBe(true);
-
-        const tasks = await scheduler.getTasks();
-        // Should have ~2/3 of tasks remaining
-        expect(tasks.length).toBeGreaterThan(5);
-        expect(tasks.length).toBeLessThan(15);
-
-        await scheduler.cancelAll();
-    });
-
     test("should handle invalid callback types gracefully", async () => {
         const capabilities = caps();
         const retryDelay = fromMilliseconds(5000);
@@ -319,6 +299,15 @@ describe("polling scheduler persistence and error handling", () => {
         
         await scheduler.cancelAll();
     });
+
+    test("should maintain task order when scheduled at different times", async () => {
+        const capabilities = caps();
+        const retryDelay = fromMilliseconds(5000);
+        const scheduler = makePollingScheduler(capabilities, { pollIntervalMs: 10 });
+
+        const callback1 = jest.fn().mockResolvedValue(undefined);
+        const callback2 = jest.fn().mockResolvedValue(undefined);
+        const callback3 = jest.fn().mockResolvedValue(undefined);
 
         // Schedule tasks in specific order
         await scheduler.schedule("task-a", "0 10 * * *", callback1, retryDelay);
