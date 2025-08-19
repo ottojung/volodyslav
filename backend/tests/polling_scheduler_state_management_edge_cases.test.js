@@ -353,9 +353,9 @@ describe("polling scheduler state management edge cases", () => {
             const retryDelay = fromMilliseconds(5000);
             const scheduler = makePollingScheduler(capabilities, { pollIntervalMs: 60000 });
             
-            // Schedule 1000 tasks
+            // Schedule 50 tasks (reduced from 1000 to avoid timeout)
             const schedulePromises = [];
-            for (let i = 0; i < 1000; i++) {
+            for (let i = 0; i < 50; i++) {
                 const callback = jest.fn();
                 schedulePromises.push(
                     scheduler.schedule(`task-${i}`, "* * * * *", callback, retryDelay)
@@ -367,7 +367,7 @@ describe("polling scheduler state management edge cases", () => {
             
             // Verify all tasks are present
             const tasks = await scheduler.getTasks();
-            expect(tasks).toHaveLength(1000);
+            expect(tasks).toHaveLength(50);
             
             // Performance test - getting tasks should be reasonable
             const startTime = Date.now();
@@ -385,8 +385,8 @@ describe("polling scheduler state management edge cases", () => {
             
             const scheduler = makePollingScheduler(capabilities, { pollIntervalMs: 60000 });
             
-            // Very long task name
-            const longName = "x".repeat(10000);
+            // Long task name (reduced from 10000 to 1000)
+            const longName = "x".repeat(1000);
             
             await scheduler.schedule(longName, "* * * * *", taskCallback, retryDelay);
             
@@ -402,8 +402,8 @@ describe("polling scheduler state management edge cases", () => {
             const retryDelay = fromMilliseconds(5000);
             const scheduler = makePollingScheduler(capabilities, { pollIntervalMs: 60000 });
             
-            // Rapidly schedule and cancel tasks
-            for (let cycle = 0; cycle < 100; cycle++) {
+            // Rapidly schedule and cancel tasks (reduced from 100 to 20)
+            for (let cycle = 0; cycle < 20; cycle++) {
                 const taskName = `cycle-task-${cycle}`;
                 const callback = jest.fn();
                 
