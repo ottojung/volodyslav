@@ -18,6 +18,32 @@ class GitUnavailable extends Error {
 }
 
 /**
+ * Error thrown when git push operation fails.
+ */
+class PushError extends Error {
+    /**
+     * @param {string} message - Error message
+     * @param {string} workDirectory - The directory where push failed
+     * @param {Error|null} cause - Underlying cause of the error
+     */
+    constructor(message, workDirectory, cause = null) {
+        super(message);
+        this.name = "PushError";
+        this.workDirectory = workDirectory;
+        this.cause = cause;
+    }
+}
+
+/**
+ * Type guard for PushError.
+ * @param {unknown} object - The object to check.
+ * @returns {object is PushError}
+ */
+function isPushError(object) {
+    return object instanceof PushError;
+}
+
+/**
  * Ensures that the git executable exists in the PATH.
  * @returns {Promise<void>}
  */
@@ -151,21 +177,31 @@ async function pull(capabilities, workDirectory) {
  * @param {Capabilities} capabilities - The capabilities object containing the git command.
  * @param {string} workDirectory - The repository directory to push from
  * @returns {Promise<void>}
+ * @throws {PushError} When push operation fails
  */
 async function push(capabilities, workDirectory) {
-    await capabilities.git.call(
-        "-C",
-        workDirectory,
-        "-c",
-        "safe.directory=*",
-        "-c",
-        "user.name=volodyslav",
-        "-c",
-        "user.email=volodyslav",
-        "push",
-        "origin",
-        defaultBranch
-    );
+    try {
+        await capabilities.git.call(
+            "-C",
+            workDirectory,
+            "-c",
+            "safe.directory=*",
+            "-c",
+            "user.name=volodyslav",
+            "-c",
+            "user.email=volodyslav",
+            "push",
+            "origin",
+            defaultBranch
+        );
+    } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        throw new PushError(
+            `Failed to push to remote repository: ${errorMessage}`,
+            workDirectory,
+            error instanceof Error ? error : null
+        );
+    }
 }
 
 /**
@@ -198,4 +234,6 @@ module.exports = {
     pull,
     push,
     init,
+    PushError,
+    isPushError,
 };

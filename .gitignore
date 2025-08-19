@@ -3,3 +3,4 @@ dist/
 vol*-*e
 docs/.docusaurus/
 docs/build/
+backend/tests/manual_retry_demo.js
