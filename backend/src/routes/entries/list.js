@@ -13,6 +13,7 @@ const { serialize } = require("../../event");
  * @typedef {import('../../filesystem/checker').FileChecker} FileChecker
  * @typedef {import('../../subprocess/command').Command} Command
  * @typedef {import('../../event/structure').SerializedEvent} SerializedEvent
+ * @typedef {import('../../sleeper').Sleeper} Sleeper
  */
 
 /**
@@ -29,6 +30,7 @@ const { serialize } = require("../../event");
  * @property {Command} git - A command instance for Git operations.
  * @property {import('../../filesystem/reader').FileReader} reader - A file reader instance.
  * @property {import('../../datetime').Datetime} datetime - Datetime utilities.
+ * @property {Sleeper} sleeper - A sleeper instance for delays.
  */
 
 /**
