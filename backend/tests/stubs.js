@@ -108,11 +108,17 @@ function stubSleeper(capabilities) {
 }
 
 function stubDatetime(capabilities) {
-    // Create a full datetime mock but override the now method to use fake timers
+    // Create a full datetime mock that works with Jest fake timers
     const originalDatetime = capabilities.datetime;
     capabilities.datetime = {
         ...originalDatetime,
-        now: jest.fn(() => originalDatetime.fromEpochMs(Date.now()))
+        // Use Jest's mocked Date constructor directly instead of Date.now()
+        now: jest.fn(() => originalDatetime.fromEpochMs(new Date().getTime())),
+        fromEpochMs: originalDatetime.fromEpochMs,
+        fromISOString: originalDatetime.fromISOString,
+        toEpochMs: originalDatetime.toEpochMs,
+        toISOString: originalDatetime.toISOString,
+        toNativeDate: originalDatetime.toNativeDate,
     };
 }
 

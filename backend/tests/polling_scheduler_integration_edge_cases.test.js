@@ -207,7 +207,7 @@ describe("polling scheduler integration and system edge cases", () => {
 
         test("should handle network connectivity issues", async () => {
             const capabilities = caps();
-            const retryDelay = fromMilliseconds(20000);
+            const retryDelay = fromMilliseconds(30000);
             
             let networkCallCount = 0;
             const networkTaskCallback = jest.fn(async () => {
@@ -243,12 +243,11 @@ describe("polling scheduler integration and system edge cases", () => {
             // Final retry should succeed 
             jest.advanceTimersByTime(30000);
             await scheduler._poll();
-            // Note: May be 3 or 4 depending on retry timing - check that task eventually succeeds
-            expect(networkTaskCallback).toHaveBeenCalledTimes(3);
+            expect(networkTaskCallback).toHaveBeenCalledTimes(4);
             
-            // Verify task has recorded failures but will retry
+            // Verify task has recorded success
             const tasks = await scheduler.getTasks();
-            expect(tasks[0].lastFailureTime).toBeTruthy();
+            expect(tasks[0].lastSuccessTime).toBeTruthy();
             
             await scheduler.cancelAll();
         });
