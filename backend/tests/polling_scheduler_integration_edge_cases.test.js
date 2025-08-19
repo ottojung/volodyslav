@@ -207,7 +207,7 @@ describe("polling scheduler integration and system edge cases", () => {
 
         test("should handle network connectivity issues", async () => {
             const capabilities = caps();
-            const retryDelay = fromMilliseconds(30000);
+            const retryDelay = fromMilliseconds(20000);
             
             let networkCallCount = 0;
             const networkTaskCallback = jest.fn(async () => {

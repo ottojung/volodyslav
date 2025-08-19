@@ -126,7 +126,7 @@ describe("polling scheduler comprehensive edge cases", () => {
 
         test("should handle retry delays efficiently", async () => {
             const capabilities = caps();
-            const retryDelay = fromMilliseconds(1000); // 5 seconds for fast testing
+            const retryDelay = fromMilliseconds(5000);
             const flakyCallback = jest.fn(() => {
                 throw new Error("Always fails");
             });
