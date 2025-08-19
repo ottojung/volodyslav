@@ -61,11 +61,11 @@ function findPreviousFire(parsedCron, now, dt, lastKnownFireTime) {
             };
         }
 
-        // Strategy: Use cached fire time if recent, otherwise use bounded forward stepping
+        // Strategy: Use cached fire time when available and recent, otherwise use limited search
         let anchorTime;
-        const oneDay = 24 * 60 * 60 * 1000;
+        const oneHour = 60 * 60 * 1000;
+        const oneDay = 24 * oneHour;
         const oneWeek = 7 * oneDay;
-        const oneMonth = 31 * oneDay;
 
         if (lastKnownFireTime && lastKnownFireTime.getTime() < now.getTime()) {
             // Start from the last known fire time if available and reasonable
@@ -74,27 +74,23 @@ function findPreviousFire(parsedCron, now, dt, lastKnownFireTime) {
             if (timeDiff <= oneWeek) {
                 // Recent cache - start from there for efficiency
                 anchorTime = new Date(lastKnownFireTime);
-            } else if (timeDiff <= oneMonth) {
-                // For gaps up to 1 month, start from last known fire
-                anchorTime = new Date(lastKnownFireTime);
             } else {
-                // For larger gaps, use conservative lookback to prevent performance issues
-                anchorTime = new Date(now.getTime() - oneMonth);
+                // For larger gaps, use very conservative lookback to prevent performance issues
+                anchorTime = new Date(now.getTime() - oneWeek);
             }
         } else {
             // No cache available - use conservative lookback
-            anchorTime = new Date(now.getTime() - oneMonth);
+            anchorTime = new Date(now.getTime() - oneWeek);
         }
 
         // Ensure anchor is minute-aligned
         anchorTime.setSeconds(0, 0);
 
-        // Use efficient forward stepping to find most recent execution
-        // This approach scales with the actual execution frequency, not time span
+        // Use efficient forward stepping with aggressive limits
         let currentExecution;
         let lastFound = undefined;
         let iterations = 0;
-        const maxIterations = 1000; // Conservative limit to ensure fast performance
+        const maxIterations = 500; // Aggressive limit to ensure fast performance
 
         try {
             const anchorDt = dt.fromEpochMs(anchorTime.getTime());
@@ -124,9 +120,9 @@ function findPreviousFire(parsedCron, now, dt, lastKnownFireTime) {
             // If forward calculation fails, try limited backward scan as safety fallback
         }
 
-        // Fallback: limited backward scan for edge cases where forward calculation fails
-        // Keep this bounded but reasonable for most practical schedules
-        const fallbackScanLimit = Math.min(366 * 24 * 60, 50000); // 1 year of minutes or 50k max
+        // Fallback: very limited backward scan for edge cases where forward calculation fails
+        // Keep this small for performance
+        const fallbackScanLimit = Math.min(60 * 24, 10000); // 1 day or 10k max
 
         for (let i = 1; i <= fallbackScanLimit; i++) {
             const candidate = new Date(currentMinute.getTime() - (i * 60 * 1000));

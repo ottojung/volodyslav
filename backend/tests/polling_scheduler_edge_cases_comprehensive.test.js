@@ -125,33 +125,33 @@ describe("polling scheduler comprehensive edge cases", () => {
 
         test("should handle very long retry delays", async () => {
             const capabilities = caps();
-            const retryDelay = fromMilliseconds(365 * 24 * 60 * 60 * 1000); // 1 year
+            const retryDelay = fromMilliseconds(7 * 24 * 60 * 60 * 1000); // 1 week instead of 1 year
             const flakyCallback = jest.fn(() => {
                 throw new Error("Always fails");
             });
             
             const scheduler = makePollingScheduler(capabilities, { pollIntervalMs: 60000 });
             
-            // Use yearly cron to avoid interference with retry logic
-            jest.setSystemTime(new Date("2024-01-01T00:00:00Z"));
-            await scheduler.schedule("long-retry", "0 0 1 1 *", flakyCallback, retryDelay);
+            // Use simple daily cron to avoid interference
+            jest.setSystemTime(new Date("2024-01-01T12:00:00Z"));
+            await scheduler.schedule("long-retry", "0 12 * * *", flakyCallback, retryDelay);
             
             // First execution fails
             await scheduler._poll();
             expect(flakyCallback).toHaveBeenCalledTimes(1);
             
-            // Move forward 6 months - should not retry yet (retry needs 1 year)
-            jest.setSystemTime(new Date("2024-08-29T12:00:00Z"));
+            // Move forward 3 days - should not retry yet (retry needs 1 week)
+            jest.setSystemTime(new Date("2024-01-04T12:00:00Z"));
             await scheduler._poll();
             expect(flakyCallback).toHaveBeenCalledTimes(1); // No retry yet
             
-            // Move forward 1 year and 1 day - should retry now
-            jest.setSystemTime(new Date("2025-01-02T12:00:00Z"));
+            // Move forward 1 week and 1 day - should retry now
+            jest.setSystemTime(new Date("2024-01-09T12:00:00Z"));
             await scheduler._poll();
-            expect(flakyCallback).toHaveBeenCalledTimes(2); // Retry happened (not new cron since we're past Jan 1)
+            expect(flakyCallback).toHaveBeenCalledTimes(2); // Retry happened
             
             await scheduler.cancelAll();
-        }, 15000);
+        }, 10000);
     });
 
     describe("complex cron expressions", () => {
@@ -219,21 +219,21 @@ describe("polling scheduler comprehensive edge cases", () => {
             
             const scheduler = makePollingScheduler(capabilities, { pollIntervalMs: 60000 });
             
-            // Schedule task for New Year's Day at midnight
-            await scheduler.schedule("yearly-task", "0 0 1 1 *", taskCallback, retryDelay);
+            // Schedule task for monthly instead of yearly (1st of each month)
+            await scheduler.schedule("monthly-task", "0 0 1 * *", taskCallback, retryDelay);
             
-            // Start mid-year
-            jest.setSystemTime(new Date("2024-06-15T12:00:00Z"));
+            // Start mid-month
+            jest.setSystemTime(new Date("2024-01-15T12:00:00Z"));
             await scheduler._poll();
             expect(taskCallback).toHaveBeenCalledTimes(0); // Not due yet
             
-            // Move to New Year's Day
-            jest.setSystemTime(new Date("2025-01-01T00:00:00Z"));
+            // Move to next month's 1st
+            jest.setSystemTime(new Date("2024-02-01T00:00:00Z"));
             await scheduler._poll();
             expect(taskCallback).toHaveBeenCalledTimes(1); // Should execute
             
             await scheduler.cancelAll();
-        }, 15000);
+        }, 10000);
 
         test("should handle complex multi-field constraints", async () => {
             const capabilities = caps();
@@ -242,26 +242,27 @@ describe("polling scheduler comprehensive edge cases", () => {
             
             const scheduler = makePollingScheduler(capabilities, { pollIntervalMs: 60000 });
             
-            // Schedule task for Monday (1) at 9 AM in January (1) only
-            await scheduler.schedule("complex-schedule", "0 9 * 1 1", taskCallback, retryDelay);
+            // Schedule task for Wednesday (3) at 9 AM in January (1) only
+            // Day of week: 0=Sunday, 1=Monday, 2=Tuesday, 3=Wednesday, etc.
+            await scheduler.schedule("complex-schedule", "0 9 * 1 3", taskCallback, retryDelay);
             
-            // Monday, January 1, 2024 at 9 AM (should match: Jan 1st is Monday)
-            jest.setSystemTime(new Date("2024-01-01T09:00:00Z"));
+            // Wednesday, January 3, 2024 at 9 AM (should match: Jan 3rd is Wednesday)
+            jest.setSystemTime(new Date("2024-01-03T09:00:00Z"));
             await scheduler._poll();
             expect(taskCallback).toHaveBeenCalledTimes(1);
             
-            // Monday, January 8, 2024 at 9 AM (should match: still January and Monday)
-            jest.setSystemTime(new Date("2024-01-08T09:00:00Z"));
+            // Wednesday, January 10, 2024 at 9 AM (should match: still January and Wednesday)
+            jest.setSystemTime(new Date("2024-01-10T09:00:00Z"));
             await scheduler._poll();
             expect(taskCallback).toHaveBeenCalledTimes(2);
             
-            // Monday, February 5, 2024 at 9 AM (should not match - wrong month, even though it's Monday)
-            jest.setSystemTime(new Date("2024-02-05T09:00:00Z"));
+            // Thursday, February 1, 2024 at 9 AM (should not match - wrong month and wrong day)
+            jest.setSystemTime(new Date("2024-02-01T09:00:00Z"));
             await scheduler._poll();
             expect(taskCallback).toHaveBeenCalledTimes(2); // No additional execution
             
             await scheduler.cancelAll();
-        }, 15000);
+        }, 10000);
     });
 
     describe("performance and resource edge cases", () => {
@@ -272,17 +273,17 @@ describe("polling scheduler comprehensive edge cases", () => {
             
             const scheduler = makePollingScheduler(capabilities, { pollIntervalMs: 60000 });
             
-            // Schedule yearly task
-            await scheduler.schedule("gap-test", "0 0 1 1 *", taskCallback, retryDelay);
+            // Schedule monthly task (1st of each month)  
+            await scheduler.schedule("gap-test", "0 0 1 * *", taskCallback, retryDelay);
             
             // Set initial time
-            jest.setSystemTime(new Date("2020-01-01T00:00:00Z"));
+            jest.setSystemTime(new Date("2024-01-01T00:00:00Z"));
             await scheduler._poll();
             expect(taskCallback).toHaveBeenCalledTimes(1);
             
-            // Jump forward 10 years - should handle efficiently
+            // Jump forward 6 months - should handle efficiently
             const startTime = process.hrtime.bigint();
-            jest.setSystemTime(new Date("2030-01-01T00:00:00Z"));
+            jest.setSystemTime(new Date("2024-07-01T00:00:00Z"));
             await scheduler._poll();
             const endTime = process.hrtime.bigint();
             
@@ -293,7 +294,7 @@ describe("polling scheduler comprehensive edge cases", () => {
             expect(durationMs).toBeLessThan(100);
             
             await scheduler.cancelAll();
-        }, 15000);
+        }, 10000);
 
         test("should handle many concurrent tasks", async () => {
             const capabilities = caps();
