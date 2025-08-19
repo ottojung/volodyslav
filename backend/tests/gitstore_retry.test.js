@@ -17,7 +17,7 @@ describe("gitstore retry functionality", () => {
     test("PushError type guard works correctly", () => {
         const pushError = new PushError("test error", "/test/path");
         const regularError = new Error("regular error");
-        
+
         expect(isPushError(pushError)).toBe(true);
         expect(isPushError(regularError)).toBe(false);
         expect(isPushError(null)).toBe(false);
@@ -28,7 +28,7 @@ describe("gitstore retry functionality", () => {
     test("PushError contains expected properties", () => {
         const cause = new Error("underlying error");
         const pushError = new PushError("test error", "/test/path", cause);
-        
+
         expect(pushError.name).toBe("PushError");
         expect(pushError.message).toBe("test error");
         expect(pushError.workDirectory).toBe("/test/path");
@@ -38,7 +38,7 @@ describe("gitstore retry functionality", () => {
     test("transaction succeeds on first attempt without retry", async () => {
         const capabilities = getTestCapabilities();
         await stubEventLogRepository(capabilities);
-        
+
         const result = await transaction(capabilities, "working-git-repository", { url: capabilities.environment.eventLogRepository() }, async (store) => {
             const workTree = await store.getWorkTree();
             const testFile = path.join(workTree, "test.txt");
@@ -48,7 +48,7 @@ describe("gitstore retry functionality", () => {
         });
 
         expect(result).toBe("success");
-        
+
         // Verify logger was called for attempt 1 but not for retries
         expect(capabilities.logger.logDebug).toHaveBeenCalledWith(
             expect.objectContaining({
@@ -57,7 +57,7 @@ describe("gitstore retry functionality", () => {
             }),
             expect.stringContaining("Gitstore transaction attempt 1/5")
         );
-        
+
         // Should not log retry messages
         expect(capabilities.logger.logInfo).not.toHaveBeenCalledWith(
             expect.anything(),
@@ -68,7 +68,7 @@ describe("gitstore retry functionality", () => {
     test("transaction retries on push failure and eventually succeeds", async () => {
         const capabilities = getTestCapabilities();
         await stubEventLogRepository(capabilities);
-        
+
         // Mock git command to fail on first two push attempts, succeed on third
         let pushAttempts = 0;
         const originalGitCall = capabilities.git.call;
@@ -94,7 +94,7 @@ describe("gitstore retry functionality", () => {
 
         expect(result).toBe("retry success");
         expect(pushAttempts).toBe(3);
-        
+
         // Verify retry logging
         expect(capabilities.logger.logInfo).toHaveBeenCalledWith(
             expect.objectContaining({
@@ -103,7 +103,7 @@ describe("gitstore retry functionality", () => {
             }),
             expect.stringContaining("Gitstore push failed on attempt 1 - retrying after")
         );
-        
+
         expect(capabilities.logger.logInfo).toHaveBeenCalledWith(
             expect.objectContaining({
                 attempt: 2,
@@ -111,7 +111,7 @@ describe("gitstore retry functionality", () => {
             }),
             expect.stringContaining("Gitstore push failed on attempt 2 - retrying after")
         );
-        
+
         expect(capabilities.logger.logInfo).toHaveBeenCalledWith(
             expect.objectContaining({
                 attempt: 3,
@@ -124,7 +124,7 @@ describe("gitstore retry functionality", () => {
     test("transaction fails after exhausting all retry attempts", async () => {
         const capabilities = getTestCapabilities();
         await stubEventLogRepository(capabilities);
-        
+
         // Mock git command to always fail on push
         const originalGitCall = capabilities.git.call;
         capabilities.git.call = jest.fn().mockImplementation((...args) => {
@@ -135,7 +135,7 @@ describe("gitstore retry functionality", () => {
         });
 
         const retryOptions = { maxAttempts: 3, baseDelayMs: 10 }; // Fast test
-        
+
         await expect(
             transaction(capabilities, "working-git-repository", { url: capabilities.environment.eventLogRepository() }, async (store) => {
                 const workTree = await store.getWorkTree();
@@ -147,7 +147,7 @@ describe("gitstore retry functionality", () => {
         ).rejects.toThrow(PushError);
 
         // Verify all attempts were made and logged
-        const retryLogCalls = capabilities.logger.logInfo.mock.calls.filter(call => 
+        const retryLogCalls = capabilities.logger.logInfo.mock.calls.filter(call =>
             call[1] && call[1].includes("retrying after")
         );
         expect(retryLogCalls).toHaveLength(2); // 2 retry messages
@@ -163,7 +163,7 @@ describe("gitstore retry functionality", () => {
     test("transaction does not retry non-push errors", async () => {
         const capabilities = getTestCapabilities();
         await stubEventLogRepository(capabilities);
-        
+
         await expect(
             transaction(capabilities, "working-git-repository", { url: capabilities.environment.eventLogRepository() }, async (_store) => {
                 throw new Error("Non-push error");
@@ -178,7 +178,7 @@ describe("gitstore retry functionality", () => {
             }),
             expect.stringContaining("Gitstore transaction failed with non-push error - not retrying")
         );
-        
+
         expect(capabilities.logger.logInfo).not.toHaveBeenCalledWith(
             expect.anything(),
             expect.stringContaining("retrying after")
@@ -188,7 +188,7 @@ describe("gitstore retry functionality", () => {
     test("transaction uses custom retry options", async () => {
         const capabilities = getTestCapabilities();
         await stubEventLogRepository(capabilities);
-        
+
         // Mock git command to always fail on push
         const originalGitCall = capabilities.git.call;
         capabilities.git.call = jest.fn().mockImplementation((...args) => {
@@ -199,7 +199,7 @@ describe("gitstore retry functionality", () => {
         });
 
         const customRetryOptions = { maxAttempts: 2, baseDelayMs: 50 };
-        
+
         await expect(
             transaction(capabilities, "working-git-repository", { url: capabilities.environment.eventLogRepository() }, async (store) => {
                 const workTree = await store.getWorkTree();
@@ -223,10 +223,10 @@ describe("gitstore retry functionality", () => {
     test("transaction works without sleeper capability", async () => {
         const capabilities = getTestCapabilities();
         await stubEventLogRepository(capabilities);
-        
+
         // Remove sleeper from capabilities to test fallback
         delete capabilities.sleeper;
-        
+
         // Mock git command to fail once, then succeed
         let pushAttempts = 0;
         const originalGitCall = capabilities.git.call;
@@ -255,14 +255,14 @@ describe("gitstore retry functionality", () => {
     test("transaction calculates flat backoff correctly", async () => {
         const capabilities = getTestCapabilities();
         await stubEventLogRepository(capabilities);
-        
+
         // Mock sleeper to capture delay values
         const sleepDelays = [];
         capabilities.sleeper.sleep = jest.fn().mockImplementation((delayMs) => {
             sleepDelays.push(delayMs);
             return Promise.resolve();
         });
-        
+
         // Mock git command to fail multiple times
         let pushAttempts = 0;
         const originalGitCall = capabilities.git.call;
