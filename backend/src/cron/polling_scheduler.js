@@ -469,13 +469,17 @@ function makePollingScheduler(capabilities, options = {}) {
     }
 
     async function poll() {
+        console.log("DEBUG: poll() called");
+        
         // Guard against re-entrant polls
         if (pollInProgress) {
+            console.log("DEBUG: poll skipped - pollInProgress =", pollInProgress);
             capabilities.logger.logDebug({ reason: "pollInProgress" }, "PollSkipped");
             return;
         }
 
         pollInProgress = true;
+        console.log("DEBUG: poll starting, setting pollInProgress = true");
         try {
             const now = dt.toNativeDate(dt.now());
             let dueRetry = 0;
@@ -512,6 +516,17 @@ function makePollingScheduler(capabilities, options = {}) {
                     (!task.lastAttemptTime || task.lastAttemptTime < lastScheduledFire);
 
                 const shouldRunRetry = task.pendingRetryUntil && now.getTime() >= task.pendingRetryUntil.getTime();
+
+                // Debug logging for the failing test
+                if (task.name === "network-task") {
+                    console.log("DEBUG poll - task:", task.name);
+                    console.log("DEBUG poll - now:", now.toISOString(), "(" + now.getTime() + ")");
+                    console.log("DEBUG poll - pendingRetryUntil:", task.pendingRetryUntil?.toISOString(), "(" + task.pendingRetryUntil?.getTime() + ")");
+                    console.log("DEBUG poll - shouldRunRetry:", shouldRunRetry);
+                    console.log("DEBUG poll - shouldRunCron:", shouldRunCron);
+                    console.log("DEBUG poll - callback exists:", !!task.callback);
+                    console.log("DEBUG poll - running:", task.running);
+                }
 
                 if (shouldRunRetry && shouldRunCron) {
                     // Both are due - choose the mode based on which is earlier (chronologically smaller)
@@ -554,6 +569,7 @@ function makePollingScheduler(capabilities, options = {}) {
                 "PollSummary"
             );
         } finally {
+            console.log("DEBUG: poll finally block - setting pollInProgress = false");
             pollInProgress = false;
         }
     }

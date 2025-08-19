@@ -112,8 +112,12 @@ function stubDatetime(capabilities) {
     const originalDatetime = capabilities.datetime;
     capabilities.datetime = {
         ...originalDatetime,
-        // Use Jest's mocked Date constructor directly instead of Date.now()
-        now: jest.fn(() => originalDatetime.fromEpochMs(new Date().getTime())),
+        // Use a regular function instead of jest.fn() to ensure fresh Date() calls
+        now: () => {
+            const time = new Date().getTime();
+            console.log("DEBUG stubDatetime.now() called, returning:", new Date(time).toISOString(), "(" + time + ")");
+            return originalDatetime.fromEpochMs(time);
+        },
         fromEpochMs: originalDatetime.fromEpochMs,
         fromISOString: originalDatetime.fromISOString,
         toEpochMs: originalDatetime.toEpochMs,
