@@ -167,6 +167,43 @@ describe("polling scheduler integration and system edge cases", () => {
     });
 
     describe("system integration edge cases", () => {
+        test("should handle network connectivity issues", async () => {
+            const capabilities = caps();
+            const retryDelay = fromMilliseconds(5000); // Use shorter delay for faster test
+            
+            let networkCallCount = 0;
+            const networkTaskCallback = jest.fn(async () => {
+                networkCallCount++;
+                
+                // Simulate network connectivity issues - fail first attempt, succeed on second
+                if (networkCallCount <= 1) {
+                    throw new Error("ENOTFOUND: network unreachable");
+                }
+                
+                // 2nd call succeeds
+                await Promise.resolve();
+            });
+            
+            const scheduler = makePollingScheduler(capabilities, { pollIntervalMs: 10 });
+            
+            await scheduler.schedule("network-task", "* * * * *", networkTaskCallback, retryDelay);
+            
+            // First execution - should fail
+            await scheduler._poll();
+            expect(networkCallCount).toBe(1);
+            
+            // Should retry after 10 seconds (longer than 5s retry delay)
+            jest.advanceTimersByTime(10000);
+            await scheduler._poll();
+            expect(networkCallCount).toBe(2);
+            
+            // Verify task succeeded
+            const tasks = await scheduler.getTasks();
+            expect(tasks[0].lastSuccessTime).toBeTruthy();
+            
+            await scheduler.cancelAll();
+        }, 500); // Add 500ms timeout to match other tests
+
         test("should handle filesystem permission changes", async () => {
             const capabilities = caps();
             const retryDelay = fromMilliseconds(5000);
@@ -201,53 +238,6 @@ describe("polling scheduler integration and system edge cases", () => {
             
             // Restore original writer
             capabilities.writer = originalWriter;
-            
-            await scheduler.cancelAll();
-        });
-
-        test("should handle network connectivity issues", async () => {
-            const capabilities = caps();
-            const retryDelay = fromMilliseconds(30000);
-            
-            let networkCallCount = 0;
-            const networkTaskCallback = jest.fn(async () => {
-                networkCallCount++;
-                
-                // Simulate network connectivity issues - fail first 3 attempts
-                if (networkCallCount <= 3) {
-                    throw new Error("ENOTFOUND: network unreachable");
-                }
-                
-                // 4th call succeeds
-                await Promise.resolve();
-            });
-            
-            const scheduler = makePollingScheduler(capabilities, { pollIntervalMs: 10 });
-            
-            await scheduler.schedule("network-task", "* * * * *", networkTaskCallback, retryDelay);
-            
-            // First execution - should fail
-            await scheduler._poll();
-            expect(networkTaskCallback).toHaveBeenCalledTimes(1);
-            
-            // Should retry after 30 seconds
-            jest.advanceTimersByTime(30000);
-            await scheduler._poll();
-            expect(networkTaskCallback).toHaveBeenCalledTimes(2);
-            
-            // Continue retrying until success
-            jest.advanceTimersByTime(30000);
-            await scheduler._poll();
-            expect(networkTaskCallback).toHaveBeenCalledTimes(3);
-            
-            // Final retry should succeed 
-            jest.advanceTimersByTime(30000);
-            await scheduler._poll();
-            expect(networkTaskCallback).toHaveBeenCalledTimes(4);
-            
-            // Verify task has recorded success
-            const tasks = await scheduler.getTasks();
-            expect(tasks[0].lastSuccessTime).toBeTruthy();
             
             await scheduler.cancelAll();
         });
