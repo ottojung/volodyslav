@@ -252,7 +252,7 @@ describe("gitstore retry functionality", () => {
         expect(pushAttempts).toBe(2);
     });
 
-    test("transaction calculates exponential backoff correctly", async () => {
+    test("transaction calculates flat backoff correctly", async () => {
         const capabilities = getTestCapabilities();
         await stubEventLogRepository(capabilities);
         
@@ -285,7 +285,6 @@ describe("gitstore retry functionality", () => {
             return "backoff success";
         }, { maxAttempts: 5, delayMs: baseDelayMs });
 
-        // Verify exponential backoff: 100ms, 200ms, 400ms
-        expect(sleepDelays).toEqual([100, 200, 400]);
+        expect(sleepDelays).toEqual([100, 100, 100]);
     });
 });
