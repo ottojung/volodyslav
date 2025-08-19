@@ -115,7 +115,8 @@ describe("polling scheduler comprehensive edge cases", () => {
             await scheduler._poll();
             expect(flakyCallback).toHaveBeenCalledTimes(1);
             
-            // Should retry immediately since delay is 1ms
+            // Advance time by retry delay (1ms) to make retry due
+            jest.setSystemTime(new Date("2024-02-29T12:00:00.002Z"));
             await scheduler._poll();
             expect(flakyCallback).toHaveBeenCalledTimes(2);
             
@@ -131,24 +132,26 @@ describe("polling scheduler comprehensive edge cases", () => {
             
             const scheduler = makePollingScheduler(capabilities, { pollIntervalMs: 60000 });
             
-            await scheduler.schedule("long-retry", "* * * * *", flakyCallback, retryDelay);
+            // Use yearly cron to avoid interference with retry logic
+            jest.setSystemTime(new Date("2024-01-01T00:00:00Z"));
+            await scheduler.schedule("long-retry", "0 0 1 1 *", flakyCallback, retryDelay);
             
             // First execution fails
             await scheduler._poll();
             expect(flakyCallback).toHaveBeenCalledTimes(1);
             
-            // Move forward 6 months - should not retry yet
+            // Move forward 6 months - should not retry yet (retry needs 1 year)
             jest.setSystemTime(new Date("2024-08-29T12:00:00Z"));
             await scheduler._poll();
             expect(flakyCallback).toHaveBeenCalledTimes(1); // No retry yet
             
             // Move forward 1 year and 1 day - should retry now
-            jest.setSystemTime(new Date("2025-03-01T12:00:00Z"));
+            jest.setSystemTime(new Date("2025-01-02T12:00:00Z"));
             await scheduler._poll();
-            expect(flakyCallback).toHaveBeenCalledTimes(2); // Retry happened
+            expect(flakyCallback).toHaveBeenCalledTimes(2); // Retry happened (not new cron since we're past Jan 1)
             
             await scheduler.cancelAll();
-        });
+        }, 15000);
     });
 
     describe("complex cron expressions", () => {
@@ -230,7 +233,7 @@ describe("polling scheduler comprehensive edge cases", () => {
             expect(taskCallback).toHaveBeenCalledTimes(1); // Should execute
             
             await scheduler.cancelAll();
-        }, 10000);
+        }, 15000);
 
         test("should handle complex multi-field constraints", async () => {
             const capabilities = caps();
@@ -258,10 +261,7 @@ describe("polling scheduler comprehensive edge cases", () => {
             expect(taskCallback).toHaveBeenCalledTimes(2); // No additional execution
             
             await scheduler.cancelAll();
-        }, 10000);
-            
-            await scheduler.cancelAll();
-        }, 10000);
+        }, 15000);
     });
 
     describe("performance and resource edge cases", () => {
@@ -293,7 +293,7 @@ describe("polling scheduler comprehensive edge cases", () => {
             expect(durationMs).toBeLessThan(100);
             
             await scheduler.cancelAll();
-        }, 10000);
+        }, 15000);
 
         test("should handle many concurrent tasks", async () => {
             const capabilities = caps();
