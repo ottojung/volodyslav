@@ -184,7 +184,7 @@ describe("polling scheduler integration and system edge cases", () => {
                 await Promise.resolve();
             });
             
-            const scheduler = makePollingScheduler(capabilities, { pollIntervalMs: 10 });
+            const scheduler = makePollingScheduler(capabilities, { pollIntervalMs: 60000 }); // Use 1 minute to avoid timer conflicts
             
             await scheduler.schedule("network-task", "* * * * *", networkTaskCallback, retryDelay);
             
@@ -192,27 +192,8 @@ describe("polling scheduler integration and system edge cases", () => {
             await scheduler._poll();
             expect(networkCallCount).toBe(1);
             
-            // Debug the exact timing values
-            const tasksAfterFailure = await scheduler.getTasks();
-            const pendingRetryTime = new Date(tasksAfterFailure[0].pendingRetryUntil).getTime();
-            console.log("Pending retry time:", tasksAfterFailure[0].pendingRetryUntil, "(" + pendingRetryTime + ")");
-            
             // Should retry after 10 seconds (longer than 5s retry delay)
-            console.log("Before advancing time - test context:", new Date().toISOString());
             jest.advanceTimersByTime(10000);
-            console.log("After advancing time - test context:", new Date().toISOString());
-            
-            // Check what the stubbed datetime sees vs test context
-            const testContextTime = new Date().getTime();
-            const schedulerTime = capabilities.datetime.toEpochMs(capabilities.datetime.now());
-            console.log("Test context time:", testContextTime, "(" + new Date(testContextTime).toISOString() + ")");
-            console.log("Scheduler time:", schedulerTime, "(" + new Date(schedulerTime).toISOString() + ")");
-            console.log("Times match?", testContextTime === schedulerTime);
-            
-            const currentTime = new Date().getTime();
-            console.log("Current time after advance:", new Date().toISOString(), "(" + currentTime + ")");
-            console.log("Should retry?", currentTime >= pendingRetryTime);
-            
             await scheduler._poll();
             expect(networkCallCount).toBe(2);
             
