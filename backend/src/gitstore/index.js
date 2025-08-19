@@ -104,7 +104,7 @@ async function executeTransactionAttempt(capabilities, workingPath, initial_stat
         await push(capabilities, workTree);
         return result;
     } finally {
-        await capabilities.deleter.deleteDirectory(workTree);    
+        await capabilities.deleter.deleteDirectory(workTree);
     }
 }
 
@@ -131,40 +131,40 @@ async function executeTransactionAttempt(capabilities, workingPath, initial_stat
 async function transaction(capabilities, workingPath, initial_state, transformation, retryOptions = DEFAULT_RETRY_OPTIONS) {
     const options = { ...DEFAULT_RETRY_OPTIONS, ...retryOptions };
     let lastError = null;
-    
+
     for (let attempt = 1; attempt <= options.maxAttempts; attempt++) {
         try {
             capabilities.logger.logDebug(
-                { 
-                    attempt, 
+                {
+                    attempt,
                     maxAttempts: options.maxAttempts,
                     workingPath,
                     initialState: initial_state === "empty" ? "empty" : initial_state.url
                 },
                 `Gitstore transaction attempt ${attempt}/${options.maxAttempts}`
             );
-            
+
             const result = await executeTransactionAttempt(capabilities, workingPath, initial_state, transformation);
-            
+
             if (attempt > 1) {
                 capabilities.logger.logInfo(
-                    { 
-                        attempt, 
+                    {
+                        attempt,
                         totalAttempts: attempt,
-                        workingPath 
+                        workingPath
                     },
                     `Gitstore transaction succeeded on attempt ${attempt} after previous failures`
                 );
             }
-            
+
             return result;
         } catch (error) {
             lastError = error;
-            
+
             // Only retry push errors
             if (!isPushError(error)) {
                 capabilities.logger.logDebug(
-                    { 
+                    {
                         attempt,
                         errorType: error instanceof Error ? error.name : 'Unknown',
                         errorMessage: error instanceof Error ? error.message : String(error),
@@ -174,10 +174,10 @@ async function transaction(capabilities, workingPath, initial_state, transformat
                 );
                 throw error;
             }
-            
+
             if (attempt === options.maxAttempts) {
                 capabilities.logger.logError(
-                    { 
+                    {
                         attempt,
                         maxAttempts: options.maxAttempts,
                         errorMessage: error instanceof Error ? error.message : String(error),
@@ -190,9 +190,9 @@ async function transaction(capabilities, workingPath, initial_state, transformat
 
             const delayMs = options.delayMs;
             const delay = timeDuration.fromMilliseconds(delayMs);
-            
+
             capabilities.logger.logInfo(
-                { 
+                {
                     attempt,
                     maxAttempts: options.maxAttempts,
                     retryDelay: delay.toString(),
@@ -201,7 +201,7 @@ async function transaction(capabilities, workingPath, initial_state, transformat
                 },
                 `Gitstore push failed on attempt ${attempt} - retrying after ${delay.toString()}`
             );
-            
+
             if (capabilities.sleeper) {
                 await capabilities.sleeper.sleep(delayMs);
             } else {
@@ -210,7 +210,7 @@ async function transaction(capabilities, workingPath, initial_state, transformat
             }
         }
     }
-    
+
     // If we get here, all retries failed
     throw lastError;
 }
