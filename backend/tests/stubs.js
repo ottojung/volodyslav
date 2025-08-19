@@ -102,9 +102,9 @@ function stubScheduler(capabilities) {
 }
 
 function stubSleeper(capabilities) {
-    capabilities.sleeper.sleep = jest.fn((ms) =>
-        new Promise((resolve) => setTimeout(resolve, ms))
-    );
+    capabilities.sleeper.sleep = jest.fn().mockImplementation((_ms) => {
+        return Promise.resolve(); // Immediately resolve when stubbed
+    });
 }
 
 function stubDatetime(capabilities) {
