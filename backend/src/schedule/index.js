@@ -177,13 +177,11 @@ function validateTasksAgainstPersistedStateInner(registrations, persistedTasks) 
  * 
  * @param {Capabilities} capabilities - The capabilities object
  * @param {Registration[]} registrations - Array of [name, cronExpression, callback, retryDelay] tuples
- * @param {{pollIntervalMs?: number, returnSchedulerForTesting?: boolean}} [options] - Optional configuration for the underlying scheduler
- * @returns {Promise<void | object>} - Resolves when initialization and validation complete, optionally returns scheduler for testing
+ * @param {{pollIntervalMs?: number}} [options] - Optional configuration for the underlying scheduler
+ * @returns {Promise<void>} - Resolves when initialization and validation complete
  * @throws {TaskListMismatchError} if registrations don't match persisted runtime state
  */
 async function initialize(capabilities, registrations, options = {}) {
-    let pollingScheduler = null;
-    
     await transaction(capabilities, async (storage) => {
         const currentState = await storage.getCurrentState();
         const persistedTasks = currentState.tasks;
@@ -199,12 +197,11 @@ async function initialize(capabilities, registrations, options = {}) {
             validateTasksAgainstPersistedStateInner(registrations, persistedTasks);
         }
         
-        // Create polling scheduler with testing options
+        // Create polling scheduler
         const cronOptions = {
             pollIntervalMs: options.pollIntervalMs,
-            exposeInternalForTesting: options.returnSchedulerForTesting
         };
-        pollingScheduler = cronScheduler.make(capabilities, cronOptions);
+        const pollingScheduler = cronScheduler.make(capabilities, cronOptions);
         
         // Schedule all tasks - the cron scheduler will handle idempotency naturally
         // If a task is already scheduled, it will either update it (if loaded from persistence)
@@ -225,17 +222,33 @@ async function initialize(capabilities, registrations, options = {}) {
                 }
             }
         }
+        
+        // Store scheduler instance for testing access
+        // @ts-expect-error - Adding _testScheduler property for testing purposes
+        capabilities._testScheduler = pollingScheduler;
     });
-    
-    // Return scheduler for testing if requested
-    if (options.returnSchedulerForTesting) {
-        // @ts-expect-error - Returning scheduler for testing
-        return pollingScheduler;
+}
+
+/**
+ * Get the scheduler instance for testing purposes only.
+ * This should only be used in tests.
+ * 
+ * @param {Capabilities} capabilities - The capabilities object that was used for initialization
+ * @returns {object} The scheduler instance with testing methods
+ */
+function getSchedulerForTesting(capabilities) {
+    // @ts-expect-error - Accessing _testScheduler property for testing purposes
+    if (!capabilities._testScheduler) {
+        throw new Error("getSchedulerForTesting can only be used after initialize() has been called with test capabilities");
     }
+    
+    // @ts-expect-error - Accessing _testScheduler property for testing purposes
+    return capabilities._testScheduler;
 }
 
 module.exports = {
     initialize,
+    getSchedulerForTesting,
     TaskListMismatchError,
     isTaskListMismatchError,
 };

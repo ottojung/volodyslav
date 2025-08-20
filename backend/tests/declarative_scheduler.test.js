@@ -4,6 +4,7 @@
 
 const { 
     initialize, 
+    getSchedulerForTesting,
     TaskListMismatchError, 
     isTaskListMismatchError,
 } = require("../src/schedule");
@@ -240,7 +241,6 @@ describe("Declarative Scheduler", () => {
             // Set initial time to ensure both tasks have run once first
             jest.setSystemTime(new Date("2020-01-01T12:00:00Z"));
             
-            const capabilities = getTestCapabilities();
             const task1Callback = jest.fn();
             const task2Callback = jest.fn();
             
@@ -251,14 +251,18 @@ describe("Declarative Scheduler", () => {
                 ["quarter-past-task", "15 * * * *", task2Callback, COMMON.FIVE_MINUTES],
             ];
 
-            // Get scheduler for testing
-            const scheduler = await initialize(capabilities, registrations, { 
+            const capabilities = getTestCapabilities();
+
+            // Initialize the scheduler
+            await initialize(capabilities, registrations, { 
                 pollIntervalMs: 10, 
-                returnSchedulerForTesting: true 
             });
             
+            // Get scheduler for testing and trigger polling
+            const scheduler = getSchedulerForTesting(capabilities);
+            
             // First polling at 12:00 - both tasks will run to establish execution history
-            await scheduler._internal._poll();
+            await scheduler._poll();
             expect(task1Callback).toHaveBeenCalledTimes(1); // Runs at 12:00
             expect(task2Callback).toHaveBeenCalledTimes(1); // Catches up to 12:00 as first run
             
@@ -268,7 +272,7 @@ describe("Declarative Scheduler", () => {
             jest.setSystemTime(new Date("2020-01-01T12:15:00Z"));
             
             // Poll again - now only the quarter-past task should be due
-            await scheduler._internal._poll();
+            await scheduler._poll();
             
             // Only quarter-past task should have been executed
             expect(task1Callback).not.toHaveBeenCalled(); // Not due until 13:00
@@ -279,7 +283,6 @@ describe("Declarative Scheduler", () => {
             // Set system time to 2020-01-01 12:30:00 (middle of hour)
             jest.setSystemTime(new Date("2020-01-01T12:15:00Z"));
             
-            const capabilities = getTestCapabilities();
             const task1Callback = jest.fn();
             const task2Callback = jest.fn();
             
@@ -290,14 +293,17 @@ describe("Declarative Scheduler", () => {
                 ["quarter-to", "45 * * * *", task2Callback, COMMON.FIVE_MINUTES],
             ];
 
+            const capabilities = getTestCapabilities();
+
             // Get scheduler for testing
-            const scheduler = await initialize(capabilities, registrations, { 
+            await initialize(capabilities, registrations, { 
                 pollIntervalMs: 10, 
-                returnSchedulerForTesting: true 
             });
             
+            const scheduler = getSchedulerForTesting(capabilities);
+            
             // First poll to establish execution history
-            await scheduler._internal._poll();
+            await scheduler._poll();
             
             // Reset and move to a time where neither should be due (12:20)
             task1Callback.mockClear();
@@ -305,7 +311,7 @@ describe("Declarative Scheduler", () => {
             jest.setSystemTime(new Date("2020-01-01T12:20:00Z"));
             
             // Poll again
-            await scheduler._internal._poll();
+            await scheduler._poll();
             
             // Neither task should have been executed (not due until 12:30 and 12:45)
             expect(task1Callback).not.toHaveBeenCalled();
@@ -317,18 +323,20 @@ describe("Declarative Scheduler", () => {
             // Set system time to top of minute
             jest.setSystemTime(new Date("2020-01-01T12:00:00Z"));
             
-            const capabilities = getTestCapabilities();
             const fastCallback = jest.fn();
             
             const registrations = [
                 ["fast-task", "* * * * *", fastCallback, COMMON.FIVE_MINUTES], // Every minute
             ];
 
+            const capabilities = getTestCapabilities();
+
             // Get scheduler for testing
-            const scheduler = await initialize(capabilities, registrations, { 
+            await initialize(capabilities, registrations, { 
                 pollIntervalMs: 10, 
-                returnSchedulerForTesting: true 
             });
+            
+            const scheduler = getSchedulerForTesting(capabilities);
             
             // Check initial state - task should be considered due
             const tasksInitial = await scheduler.getTasks();
@@ -336,7 +344,7 @@ describe("Declarative Scheduler", () => {
             expect(tasksInitial[0].running).toBe(false);
             
             // Poll to execute the task
-            await scheduler._internal._poll();
+            await scheduler._poll();
             
             // Task should have been executed
             expect(fastCallback).toHaveBeenCalledTimes(1);
@@ -350,7 +358,7 @@ describe("Declarative Scheduler", () => {
             jest.setSystemTime(new Date("2020-01-01T12:01:00Z"));
             
             // Poll again - task should be due again
-            await scheduler._internal._poll();
+            await scheduler._poll();
             
             // Task should have been executed again
             expect(fastCallback).toHaveBeenCalledTimes(2);
@@ -360,7 +368,6 @@ describe("Declarative Scheduler", () => {
             // Set system time to a specific time (Wednesday, January 1, 2020 at 12:30)
             jest.setSystemTime(new Date("2020-01-01T12:30:00Z"));
             
-            const capabilities = getTestCapabilities();
             const task1Callback = jest.fn();
             const task2Callback = jest.fn();
             const task3Callback = jest.fn();
@@ -374,14 +381,17 @@ describe("Declarative Scheduler", () => {
                 ["february-only", "30 12 * 2 *", task3Callback, COMMON.FIVE_MINUTES],
             ];
 
+            const capabilities = getTestCapabilities();
+
             // Get scheduler for testing
-            const scheduler = await initialize(capabilities, registrations, { 
+            await initialize(capabilities, registrations, { 
                 pollIntervalMs: 10, 
-                returnSchedulerForTesting: true 
             });
             
+            const scheduler = getSchedulerForTesting(capabilities);
+            
             // First poll to establish execution history
-            await scheduler._internal._poll();
+            await scheduler._poll();
             
             // Reset call counts and stay at same time where none should be due
             task1Callback.mockClear();
@@ -389,7 +399,7 @@ describe("Declarative Scheduler", () => {
             task3Callback.mockClear();
             
             // Poll again at the same time
-            await scheduler._internal._poll();
+            await scheduler._poll();
             
             // None of these tasks should run at this specific time
             expect(task1Callback).not.toHaveBeenCalled(); // Due at minute 27, not 30
@@ -401,7 +411,6 @@ describe("Declarative Scheduler", () => {
             // Set system time to top of hour when tasks should be due
             jest.setSystemTime(new Date("2020-01-01T12:00:00Z"));
             
-            const capabilities = getTestCapabilities();
             const task1Callback = jest.fn();
             const task2Callback = jest.fn();
             
@@ -410,14 +419,17 @@ describe("Declarative Scheduler", () => {
                 ["hourly-task-2", "0 * * * *", task2Callback, COMMON.FIVE_MINUTES],
             ];
 
+            const capabilities = getTestCapabilities();
+
             // First call to initialize
-            const scheduler1 = await initialize(capabilities, registrations, { 
+            await initialize(capabilities, registrations, { 
                 pollIntervalMs: 10, 
-                returnSchedulerForTesting: true 
             });
             
+            const scheduler1 = getSchedulerForTesting(capabilities);
+            
             // Poll to run tasks
-            await scheduler1._internal._poll();
+            await scheduler1._poll();
             
             const task1CallCount = task1Callback.mock.calls.length;
             const task2CallCount = task2Callback.mock.calls.length;
@@ -428,25 +440,27 @@ describe("Declarative Scheduler", () => {
             
             // Second call to initialize with same capabilities - should be idempotent
             // This should not create duplicate tasks or run them again
-            const scheduler2 = await initialize(capabilities, registrations, { 
+            await initialize(capabilities, registrations, { 
                 pollIntervalMs: 10, 
-                returnSchedulerForTesting: true 
             });
             
+            const scheduler2 = getSchedulerForTesting(capabilities);
+            
             // Poll again - tasks should not run again (they already ran in this time period)
-            await scheduler2._internal._poll();
+            await scheduler2._poll();
             
             // Tasks should not have been called again (idempotent behavior)
             expect(task1Callback).toHaveBeenCalledTimes(task1CallCount);
             expect(task2Callback).toHaveBeenCalledTimes(task2CallCount);
             
             // Third call to initialize - should still be idempotent
-            const scheduler3 = await initialize(capabilities, registrations, { 
+            await initialize(capabilities, registrations, { 
                 pollIntervalMs: 10, 
-                returnSchedulerForTesting: true 
             });
             
-            await scheduler3._internal._poll();
+            const scheduler3 = getSchedulerForTesting(capabilities);
+            
+            await scheduler3._poll();
             
             // Tasks should still not have been called again
             expect(task1Callback).toHaveBeenCalledTimes(task1CallCount);
@@ -457,7 +471,6 @@ describe("Declarative Scheduler", () => {
             // Set system time to 2020-01-01 12:15:00
             jest.setSystemTime(new Date("2020-01-01T12:15:00Z"));
             
-            const capabilities = getTestCapabilities();
             const dueTask1 = jest.fn();
             const dueTask2 = jest.fn(); 
             const notDueTask1 = jest.fn();
@@ -472,14 +485,17 @@ describe("Declarative Scheduler", () => {
                 ["not-due-2", "15 13 * * *", notDueTask2, COMMON.FIVE_MINUTES], // Due at 13:15
             ];
 
+            const capabilities = getTestCapabilities();
+
             // Get scheduler for testing
-            const scheduler = await initialize(capabilities, registrations, { 
+            await initialize(capabilities, registrations, { 
                 pollIntervalMs: 10, 
-                returnSchedulerForTesting: true 
             });
             
+            const scheduler = getSchedulerForTesting(capabilities);
+            
             // First poll to establish execution history for all tasks
-            await scheduler._internal._poll();
+            await scheduler._poll();
             
             // All tasks will run on first poll, so reset and move time to test proper behavior
             dueTask1.mockClear();
@@ -491,7 +507,7 @@ describe("Declarative Scheduler", () => {
             jest.setSystemTime(new Date("2020-01-01T12:30:00Z"));
             
             // Poll again
-            await scheduler._internal._poll();
+            await scheduler._poll();
             
             // Only the 30-minute task should have been executed at 12:30
             expect(dueTask1).not.toHaveBeenCalled(); // Due at 12:15, already ran

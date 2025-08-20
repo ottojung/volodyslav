@@ -14,11 +14,11 @@ const {
 /**
  * Creates a new polling scheduler instance.
  * @param {import('../capabilities/root').Capabilities} capabilities
- * @param {{pollIntervalMs?: number, exposeInternalForTesting?: boolean}} [options]
+ * @param {{pollIntervalMs?: number}} [options]
  */
 function make(capabilities, options = {}) {
     const scheduler = makePollingScheduler(capabilities, options);
-    const publicAPI = {
+    return {
         /**
          * Schedule a task.
          * @param {string} name
@@ -66,15 +66,16 @@ function make(capabilities, options = {}) {
                 return false;
             }
         },
+
+        /**
+         * Manual poll function for testing purposes only.
+         * @internal
+         * @returns {Promise<void>}
+         */
+        async _poll() {
+            return await scheduler._poll();
+        },
     };
-    
-    // Expose internal scheduler for testing if requested
-    if (options.exposeInternalForTesting) {
-        // @ts-expect-error - Adding internal scheduler for testing
-        publicAPI._internal = scheduler;
-    }
-    
-    return publicAPI;
 }
 
 /**
