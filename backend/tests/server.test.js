@@ -5,7 +5,6 @@ const {
     stubEnvironment,
     stubLogger,
     stubNotifier,
-    stubScheduler,
     stubDatetime,
     stubEventLogRepository,
 } = require("./stubs");
@@ -16,7 +15,6 @@ function getTestCapabilities() {
     stubEnvironment(capabilities);
     stubLogger(capabilities);
     stubNotifier(capabilities);
-    stubScheduler(capabilities);
     stubDatetime(capabilities);
     return capabilities;
 }

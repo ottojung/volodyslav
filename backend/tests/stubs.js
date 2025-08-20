@@ -84,16 +84,6 @@ function stubNotifier(capabilities) {
     capabilities.notifier.notifyAboutWarning = jest.fn();
 }
 
-/**
- * Stubs the scheduler capabilities for testing.
- * Note: The declarative scheduler doesn't add scheduler to capabilities anymore.
- * This function is kept for backward compatibility but does nothing.
- */
-function stubScheduler(capabilities) {
-    // No longer needed for the declarative scheduler
-    // The initialize function is tested directly instead
-}
-
 function stubSleeper(capabilities) {
     capabilities.sleeper.sleep = jest.fn().mockImplementation((_ms) => {
         return Promise.resolve(); // Immediately resolve when stubbed
@@ -120,7 +110,6 @@ module.exports = {
     stubLogger,
     stubAiTranscriber,
     stubNotifier,
-    stubScheduler,
     stubSleeper,
     stubDatetime,
     stubEventLogRepository,

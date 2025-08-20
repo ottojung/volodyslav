@@ -6,7 +6,50 @@
 
 const cronScheduler = require("../cron");
 const { transaction } = require("../runtime_state_storage");
-const { TaskListMismatchError, MultipleInitializationsError, isTaskListMismatchError, isMultipleInitializationsError } = require("../user_errors");
+
+/**
+ * Error thrown when the task list provided to initialize() differs from persisted runtime state.
+ */
+class TaskListMismatchError extends Error {
+    /**
+     * @param {string} message
+     * @param {object} mismatchDetails
+     * @param {string[]} mismatchDetails.missing - Tasks in persisted state but not in registrations
+     * @param {string[]} mismatchDetails.extra - Tasks in registrations but not in persisted state
+     * @param {Array<{name: string, field: string, expected: any, actual: any}>} mismatchDetails.differing - Tasks with differing properties
+     */
+    constructor(message, mismatchDetails) {
+        super(message);
+        this.name = "TaskListMismatchError";
+        this.mismatchDetails = mismatchDetails;
+    }
+}
+
+/**
+ * Error thrown when initialize() is called multiple times.
+ */
+class MultipleInitializationsError extends Error {
+    constructor() {
+        super("Scheduler has already been initialized. initialize() calls must be idempotent.");
+        this.name = "MultipleInitializationsError";
+    }
+}
+
+/**
+ * @param {unknown} object
+ * @returns {object is TaskListMismatchError}
+ */
+function isTaskListMismatchError(object) {
+    return object instanceof TaskListMismatchError;
+}
+
+/**
+ * @param {unknown} object
+ * @returns {object is MultipleInitializationsError}
+ */
+function isMultipleInitializationsError(object) {
+    return object instanceof MultipleInitializationsError;
+}
 
 /** @typedef {import('../time_duration/structure').TimeDuration} TimeDuration */
 /** @typedef {import('./tasks').Capabilities} Capabilities */
@@ -14,15 +57,6 @@ const { TaskListMismatchError, MultipleInitializationsError, isTaskListMismatchE
 // Module-level state to track initialization
 let isInitialized = false;
 let pollingScheduler = null;
-
-/**
- * Reset the module state (for testing purposes only)
- * @private
- */
-function resetState() {
-    isInitialized = false;
-    pollingScheduler = null;
-}
 
 /**
  * Registration tuple: [name, cronExpression, callback, retryDelay]
@@ -87,6 +121,16 @@ async function validateTasksAgainstPersistedState(capabilities, registrations) {
     await transaction(capabilities, async (storage) => {
         const currentState = await storage.getCurrentState();
         const persistedTasks = currentState.tasks;
+        
+        // Handle first-time initialization: if persisted state has no tasks,
+        // allow any registrations (this covers the initial setup case)
+        if (persistedTasks.length === 0 && registrations.length > 0) {
+            capabilities.logger.logInfo(
+                { registeredTaskCount: registrations.length }, 
+                "First-time scheduler initialization: registering initial tasks"
+            );
+            return; // Skip validation for first-time setup
+        }
         
         // Convert to comparable identities
         const registrationIdentities = registrations.map(registrationToTaskIdentity);
@@ -200,7 +244,5 @@ module.exports = {
     MultipleInitializationsError,
     isTaskListMismatchError,
     isMultipleInitializationsError,
-    // For testing only
-    _resetState: resetState,
 };
 
