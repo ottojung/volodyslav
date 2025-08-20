@@ -83,16 +83,13 @@ describe("Declarative Scheduler", () => {
             ];
             await initialize(capabilities, initialRegistrations);
 
-            // Now try to initialize with different tasks - this should fail
+            // Now try to initialize with different tasks using SAME capabilities (same working directory)
             const differentRegistrations = [
                 ["task1", "0 * * * *", jest.fn(), COMMON.FIVE_MINUTES], // same
                 ["task3", "0 0 * * *", jest.fn(), COMMON.TEN_MINUTES], // different name
             ];
 
-            // Create fresh capabilities for a new "process" simulation
-            const newCapabilities = getTestCapabilities();
-            
-            await expect(initialize(newCapabilities, differentRegistrations)).rejects.toThrow(TaskListMismatchError);
+            await expect(initialize(capabilities, differentRegistrations)).rejects.toThrow(TaskListMismatchError);
         });
 
         test("throws TaskListMismatchError when cron expression differs", async () => {
@@ -104,13 +101,12 @@ describe("Declarative Scheduler", () => {
             ];
             await initialize(capabilities, initialRegistrations);
 
-            // Try with different cron expression
+            // Try with different cron expression using same capabilities
             const changedRegistrations = [
                 ["task1", "0 0 * * *", jest.fn(), COMMON.FIVE_MINUTES], // different cron
             ];
 
-            const newCapabilities = getTestCapabilities();
-            await expect(initialize(newCapabilities, changedRegistrations)).rejects.toThrow(TaskListMismatchError);
+            await expect(initialize(capabilities, changedRegistrations)).rejects.toThrow(TaskListMismatchError);
         });
 
         test("throws TaskListMismatchError when retry delay differs", async () => {
@@ -122,13 +118,12 @@ describe("Declarative Scheduler", () => {
             ];
             await initialize(capabilities, initialRegistrations);
 
-            // Try with different retry delay
+            // Try with different retry delay using same capabilities
             const changedRegistrations = [
                 ["task1", "0 * * * *", jest.fn(), COMMON.TEN_MINUTES], // different retry delay
             ];
 
-            const newCapabilities = getTestCapabilities();
-            await expect(initialize(newCapabilities, changedRegistrations)).rejects.toThrow(TaskListMismatchError);
+            await expect(initialize(capabilities, changedRegistrations)).rejects.toThrow(TaskListMismatchError);
         });
 
         test("throws TaskListMismatchError when task is missing from registrations", async () => {
@@ -141,13 +136,12 @@ describe("Declarative Scheduler", () => {
             ];
             await initialize(capabilities, initialRegistrations);
 
-            // Try with only one task (missing task2)
+            // Try with only one task (missing task2) using same capabilities
             const missingTaskRegistrations = [
                 ["task1", "0 * * * *", jest.fn(), COMMON.FIVE_MINUTES],
             ];
 
-            const newCapabilities = getTestCapabilities();
-            const error = await initialize(newCapabilities, missingTaskRegistrations).catch(e => e);
+            const error = await initialize(capabilities, missingTaskRegistrations).catch(e => e);
             
             expect(error).toBeInstanceOf(TaskListMismatchError);
             expect(error.mismatchDetails.missing).toContain("task2");
@@ -162,14 +156,13 @@ describe("Declarative Scheduler", () => {
             ];
             await initialize(capabilities, initialRegistrations);
 
-            // Try with extra task
+            // Try with extra task using same capabilities
             const extraTaskRegistrations = [
                 ["task1", "0 * * * *", jest.fn(), COMMON.FIVE_MINUTES],
                 ["task2", "0 0 * * *", jest.fn(), COMMON.TEN_MINUTES], // extra task
             ];
 
-            const newCapabilities = getTestCapabilities();
-            const error = await initialize(newCapabilities, extraTaskRegistrations).catch(e => e);
+            const error = await initialize(capabilities, extraTaskRegistrations).catch(e => e);
             
             expect(error).toBeInstanceOf(TaskListMismatchError);
             expect(error.mismatchDetails.extra).toContain("task2");
@@ -185,14 +178,13 @@ describe("Declarative Scheduler", () => {
             ];
             await initialize(capabilities, initialRegistrations);
 
-            // Create complex mismatch scenario
+            // Create complex mismatch scenario using same capabilities
             const mismatchedRegistrations = [
                 ["task1", "0 */2 * * *", jest.fn(), COMMON.THIRTY_MINUTES], // different cron + retry delay
                 ["task3", "0 0 * * *", jest.fn(), COMMON.TEN_MINUTES], // extra task (task2 is missing)
             ];
 
-            const newCapabilities = getTestCapabilities();
-            const error = await initialize(newCapabilities, mismatchedRegistrations).catch(e => e);
+            const error = await initialize(capabilities, mismatchedRegistrations).catch(e => e);
             
             expect(error).toBeInstanceOf(TaskListMismatchError);
             expect(error.mismatchDetails.missing).toEqual(["task2"]);

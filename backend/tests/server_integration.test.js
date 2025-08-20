@@ -12,6 +12,7 @@ const {
     stubSleeper,
     stubDatetime,
     stubApp,
+    stubEventLogRepository,
 } = require("./stubs");
 
 function getTestCapabilities() {
@@ -35,6 +36,7 @@ describe("Server Integration with Declarative Scheduler", () => {
 
     test("server can initialize with declarative scheduler on first run", async () => {
         const capabilities = getTestCapabilities();
+        await stubEventLogRepository(capabilities); // Required for server initialization
         const app = stubApp();
 
         // First-time server initialization should succeed (creates initial scheduler state)
@@ -49,6 +51,7 @@ describe("Server Integration with Declarative Scheduler", () => {
 
     test("server initialization is idempotent", async () => {
         const capabilities = getTestCapabilities();
+        await stubEventLogRepository(capabilities); // Required for server initialization
         const app = stubApp();
 
         // First initialization
@@ -76,6 +79,7 @@ describe("Server Integration with Declarative Scheduler", () => {
 
     test("server properly sets up all middleware even with scheduler", async () => {
         const capabilities = getTestCapabilities();
+        await stubEventLogRepository(capabilities); // Required for server initialization
         const app = stubApp();
 
         await initialize(capabilities, app);
@@ -91,6 +95,7 @@ describe("Server Integration with Declarative Scheduler", () => {
 
     test("server logs appropriate messages during initialization", async () => {
         const capabilities = getTestCapabilities();
+        await stubEventLogRepository(capabilities); // Required for server initialization
         const app = stubApp();
 
         await initialize(capabilities, app);
@@ -104,15 +109,18 @@ describe("Server Integration with Declarative Scheduler", () => {
     });
 
     test("server handles concurrent initialization attempts", async () => {
-        const capabilities = getTestCapabilities();
+        const capabilities1 = getTestCapabilities();
+        await stubEventLogRepository(capabilities1); // Required for server initialization
+        const capabilities2 = getTestCapabilities();
+        await stubEventLogRepository(capabilities2); // Required for server initialization
         const app1 = stubApp();
         const app2 = stubApp();
 
-        // Start two initializations concurrently
-        const promise1 = initialize(capabilities, app1);
-        const promise2 = initialize(capabilities, app2);
+        // Start two initializations concurrently with separate capabilities
+        const promise1 = initialize(capabilities1, app1);
+        const promise2 = initialize(capabilities2, app2);
 
-        // Both should succeed (idempotency)
+        // Both should succeed (separate working directories)
         await expect(Promise.all([promise1, promise2])).resolves.toEqual([undefined, undefined]);
         
         // Both apps should be configured

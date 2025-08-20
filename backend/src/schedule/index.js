@@ -108,13 +108,12 @@ function taskIdentitiesEqual(a, b) {
 
 /**
  * Validates that registrations match persisted runtime state (inner implementation)
- * @param {Capabilities} capabilities
  * @param {Registration[]} registrations
  * @param {import('../runtime_state_storage/types').TaskRecord[]} persistedTasks
- * @returns {Promise<void>}
+ * @returns {void}
  * @throws {TaskListMismatchError} if tasks don't match
  */
-async function validateTasksAgainstPersistedStateInner(capabilities, registrations, persistedTasks) {
+function validateTasksAgainstPersistedStateInner(registrations, persistedTasks) {
     // Convert to comparable identities
     const registrationIdentities = registrations.map(registrationToTaskIdentity);
     const persistedIdentities = persistedTasks.map(taskRecordToTaskIdentity);
@@ -191,32 +190,6 @@ async function validateTasksAgainstPersistedStateInner(capabilities, registratio
 }
 
 /**
- * Validates that registrations match persisted runtime state
- * @param {Capabilities} capabilities
- * @param {Registration[]} registrations
- * @returns {Promise<void>}
- * @throws {TaskListMismatchError} if tasks don't match
- */
-async function validateTasksAgainstPersistedState(capabilities, registrations) {
-    await transaction(capabilities, async (storage) => {
-        const currentState = await storage.getCurrentState();
-        const persistedTasks = currentState.tasks;
-        
-        // Handle first-time initialization: if persisted state has no tasks,
-        // allow any registrations (this covers the initial setup case)
-        if (persistedTasks.length === 0 && registrations.length > 0) {
-            capabilities.logger.logInfo(
-                { registeredTaskCount: registrations.length }, 
-                "First-time scheduler initialization: registering initial tasks"
-            );
-            return; // Skip validation for first-time setup
-        }
-        
-        await validateTasksAgainstPersistedStateInner(capabilities, registrations, persistedTasks);
-    });
-}
-
-/**
  * Initialize the scheduler with the given registrations.
  * This function is idempotent - calling it multiple times has no additional effect.
  * 
@@ -230,24 +203,22 @@ async function initialize(capabilities, registrations) {
     
     await transaction(capabilities, async (storage) => {
         const currentState = await storage.getCurrentState();
-        
-        // Check if already initialized for idempotency
-        if (currentState.schedulerInitialized) {
-            return; // Already initialized, do nothing
-        }
-        
         const persistedTasks = currentState.tasks;
         
-        // Handle first-time initialization: if persisted state has no tasks,
-        // allow any registrations (this covers the initial setup case)
+        // Always validate registrations against persisted state (unless first-time with empty state)
         if (persistedTasks.length === 0 && registrations.length > 0) {
             capabilities.logger.logInfo(
                 { registeredTaskCount: registrations.length }, 
                 "First-time scheduler initialization: registering initial tasks"
             );
         } else {
-            // Validate registrations match persisted state for subsequent runs
-            await validateTasksAgainstPersistedStateInner(capabilities, registrations, persistedTasks);
+            // Validate registrations match persisted state
+            validateTasksAgainstPersistedStateInner(registrations, persistedTasks);
+        }
+        
+        // Check if already initialized for idempotency (after validation)
+        if (currentState.schedulerInitialized) {
+            return; // Already initialized, validation passed, do nothing more
         }
         
         // Create polling scheduler
