@@ -22,17 +22,17 @@ const POLL_INTERVAL_MS = 600000;
 
 /**
  * @typedef {object} Task
- * @property {string} name
- * @property {string} cronExpression
- * @property {import('./expression').CronExpressionClass} parsedCron
- * @property {(() => Promise<void> | void) | null} callback
- * @property {TimeDuration} retryDelay
- * @property {Date|undefined} lastSuccessTime
- * @property {Date|undefined} lastFailureTime
- * @property {Date|undefined} lastAttemptTime
- * @property {Date|undefined} pendingRetryUntil
- * @property {Date|undefined} lastEvaluatedFire
- * @property {boolean} running
+ * @property {readonly string} name
+ * @property {readonly string} cronExpression
+ * @property {readonly import('./expression').CronExpressionClass} parsedCron
+ * @property {readonly (() => Promise<void> | void) | null} callback
+ * @property {readonly TimeDuration} retryDelay
+ * @property {readonly Date|undefined} lastSuccessTime
+ * @property {readonly Date|undefined} lastFailureTime
+ * @property {readonly Date|undefined} lastAttemptTime
+ * @property {readonly Date|undefined} pendingRetryUntil
+ * @property {readonly Date|undefined} lastEvaluatedFire
+ * @property {readonly boolean} running
  */
 
 
@@ -56,8 +56,38 @@ function makePollingScheduler(capabilities, options = {}) {
     let stateLoadAttempted = false;
     let pollInProgress = false; // Guard against re-entrant polls
 
+    /**
+     * Atomically update a specific task with partial updates
+     * @param {Task} taskToUpdate
+     * @param {Partial<Task>} updates
+     * @returns {Promise<void>}
+     */
+    async function updateTask(taskToUpdate, updates) {
+        await modifyTasks((tasks) => {
+            const currentTask = tasks.get(taskToUpdate.name);
+            if (currentTask) {
+                // Create new task object with updates
+                /** @type {Task} */
+                const updatedTask = {
+                    name: currentTask.name,
+                    cronExpression: currentTask.cronExpression,
+                    parsedCron: currentTask.parsedCron,
+                    callback: currentTask.callback,
+                    retryDelay: currentTask.retryDelay,
+                    lastSuccessTime: 'lastSuccessTime' in updates ? updates.lastSuccessTime : currentTask.lastSuccessTime,
+                    lastFailureTime: 'lastFailureTime' in updates ? updates.lastFailureTime : currentTask.lastFailureTime,
+                    lastAttemptTime: 'lastAttemptTime' in updates ? updates.lastAttemptTime : currentTask.lastAttemptTime,
+                    pendingRetryUntil: 'pendingRetryUntil' in updates ? updates.pendingRetryUntil : currentTask.pendingRetryUntil,
+                    lastEvaluatedFire: 'lastEvaluatedFire' in updates ? updates.lastEvaluatedFire : currentTask.lastEvaluatedFire,
+                    running: 'running' in updates ? updates.running : currentTask.running,
+                };
+                tasks.set(taskToUpdate.name, updatedTask);
+            }
+        });
+    }
+
     // Create task executor for handling task execution with concurrency limits
-    const taskExecutor = makeTaskExecutor(capabilities, maxConcurrentTasks, persistState);
+    const taskExecutor = makeTaskExecutor(capabilities, maxConcurrentTasks, updateTask);
 
     // Lazy load state when first needed
     async function ensureStateLoaded() {
@@ -70,6 +100,25 @@ function makePollingScheduler(capabilities, options = {}) {
     // Persist current state
     async function persistState() {
         await persistCurrentState(capabilities, tasks);
+    }
+
+    /**
+     * Atomically modify tasks with transactional persistence
+     * @template T
+     * @param {(tasks: Map<string, Task>) => T} transformation
+     * @returns {Promise<T>}
+     */
+    async function modifyTasks(transformation) {
+        // Ensure state is loaded before modifying
+        await ensureStateLoaded();
+        
+        // Apply transformation and get result
+        const result = transformation(tasks);
+        
+        // Persist the changes atomically
+        await persistState();
+        
+        return result;
     }
 
     function start() {
@@ -202,50 +251,53 @@ function makePollingScheduler(capabilities, options = {}) {
             // Validate task frequency against polling frequency
             validateTaskFrequency(parsedCron, pollIntervalMs, dt);
 
-            // Load state first to check for existing tasks from persistence
-            await ensureStateLoaded();
-
-            // Check if task exists
-            const existingTask = tasks.get(name);
-            if (existingTask) {
-                // If task exists from persistence without callback, update it
-                if (existingTask.callback === null) {
-                    existingTask.callback = callback;
-                    existingTask.cronExpression = cronExpression;
-                    existingTask.parsedCron = parsedCron;
-                    existingTask.retryDelay = retryDelay;
-                    // NOTE: We preserve execution history fields (lastSuccessTime, etc.)
-
-                    // Persist updated task
-                    await persistState();
-
-                    start();
-                    return name;
-                } else {
-                    // Task already has a callback - this is a duplicate
-                    capabilities.logger.logWarning({ name }, "Duplicate registration attempt");
-                    throw new ScheduleDuplicateTaskError(name);
+            // Use modifyTasks for atomic state checking and modification
+            await modifyTasks((tasks) => {
+                const existingTask = tasks.get(name);
+                if (existingTask) {
+                    // If task exists from persistence without callback, update it
+                    if (existingTask.callback === null) {
+                        // Create new task object with updated properties, preserving execution history
+                        /** @type {Task} */
+                        const updatedTask = {
+                            name: existingTask.name,
+                            cronExpression,
+                            parsedCron,
+                            callback,
+                            retryDelay,
+                            lastSuccessTime: existingTask.lastSuccessTime,
+                            lastFailureTime: existingTask.lastFailureTime,
+                            lastAttemptTime: existingTask.lastAttemptTime,
+                            pendingRetryUntil: existingTask.pendingRetryUntil,
+                            lastEvaluatedFire: existingTask.lastEvaluatedFire,
+                            running: existingTask.running,
+                        };
+                        tasks.set(name, updatedTask);
+                        return; // Success case
+                    } else {
+                        // Task already has a callback - this is a duplicate
+                        capabilities.logger.logWarning({ name }, "Duplicate registration attempt");
+                        throw new ScheduleDuplicateTaskError(name);
+                    }
                 }
-            }
 
-            /** @type {Task} */
-            const task = {
-                name,
-                cronExpression,
-                parsedCron,
-                callback,
-                retryDelay,
-                lastSuccessTime: undefined,
-                lastFailureTime: undefined,
-                lastAttemptTime: undefined,
-                pendingRetryUntil: undefined,
-                lastEvaluatedFire: undefined,
-                running: false,
-            };
-            tasks.set(name, task);
-
-            // Persist state after adding task
-            await persistState();
+                // Create new task
+                /** @type {Task} */
+                const task = {
+                    name,
+                    cronExpression,
+                    parsedCron,
+                    callback,
+                    retryDelay,
+                    lastSuccessTime: undefined,
+                    lastFailureTime: undefined,
+                    lastAttemptTime: undefined,
+                    pendingRetryUntil: undefined,
+                    lastEvaluatedFire: undefined,
+                    running: false,
+                };
+                tasks.set(name, task);
+            });
 
             start();
             return name;
@@ -257,11 +309,9 @@ function makePollingScheduler(capabilities, options = {}) {
          * @returns {Promise<boolean>}
          */
         async cancel(name) {
-            const existed = tasks.delete(name);
-            if (existed) {
-                // Persist state after removing task
-                await persistState();
-            }
+            const existed = await modifyTasks((tasks) => {
+                return tasks.delete(name);
+            });
             if (tasks.size === 0) {
                 stop();
             }
@@ -273,10 +323,11 @@ function makePollingScheduler(capabilities, options = {}) {
          * @returns {Promise<number>}
          */
         async cancelAll() {
-            const count = tasks.size;
-            tasks.clear();
-            // Persist the clearing of all tasks to ensure cancelled tasks don't reappear after restart
-            await persistState();
+            const count = await modifyTasks((tasks) => {
+                const count = tasks.size;
+                tasks.clear();
+                return count;
+            });
             stop();
             return count;
         },
