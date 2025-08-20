@@ -52,7 +52,6 @@ describe("scheduler atomic modifyTasks", () => {
         // Get the task before modification
         const tasksBefore = await scheduler.getTasks();
         expect(tasksBefore).toHaveLength(1);
-        const taskBefore = tasksBefore[0];
 
         // Cancel the task atomically
         const cancelled = await scheduler.cancel("test-task");
@@ -96,9 +95,6 @@ describe("scheduler atomic modifyTasks", () => {
     test("readonly task properties prevent external mutations", () => {
         // This test verifies that the Task typedef has readonly properties
         // The actual type checking happens at compile time, but we can test the structure
-        
-        const capabilities = caps();
-        const scheduler = make(capabilities, { pollIntervalMs: 10 });
         
         // This test mainly serves as documentation that Task properties should be readonly
         // The real protection is in the TypeScript/JSDoc typedef and the modifyTasks pattern
