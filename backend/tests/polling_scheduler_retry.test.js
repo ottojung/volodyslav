@@ -15,7 +15,7 @@ function caps() {
 describe("polling scheduler retry", () => {
     test("task with retry delay shows correct mode hints", async () => {
         jest.useFakeTimers().setSystemTime(new Date("2020-01-01T00:00:00Z"));
-        const cron = makePollingScheduler(caps(), { pollIntervalMs: 10 });
+        const cron = makePollingScheduler(caps(), { pollIntervalMs: 60000 }); // Long interval to avoid automatic execution
         const retryDelay = fromMilliseconds(5000); // 5 second delay for clear testing
         let count = 0;
         const cb = jest.fn(() => {

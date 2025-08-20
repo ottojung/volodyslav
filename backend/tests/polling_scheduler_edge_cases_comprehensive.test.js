@@ -300,7 +300,7 @@ describe("polling scheduler comprehensive edge cases", () => {
             const capabilities = caps();
             const retryDelay = fromMilliseconds(1000);
             const scheduler = makePollingScheduler(capabilities, {
-                pollIntervalMs: 10,
+                pollIntervalMs: 60000, // Long interval to avoid automatic execution
                 maxConcurrentTasks: 5
             });
 
@@ -327,7 +327,7 @@ describe("polling scheduler comprehensive edge cases", () => {
         test("should handle task execution that takes longer than polling interval", async () => {
             const capabilities = caps();
             const retryDelay = fromMilliseconds(1000);
-            const scheduler = makePollingScheduler(capabilities, { pollIntervalMs: 10 });
+            const scheduler = makePollingScheduler(capabilities, { pollIntervalMs: 60000 }); // Long interval to avoid automatic execution
 
             let taskStarted = false;
             let taskFinished = false;
@@ -345,8 +345,10 @@ describe("polling scheduler comprehensive edge cases", () => {
 
             await scheduler.schedule("long-task", "* * * * *", longRunningTask, retryDelay);
 
-            // Start task execution
-            const pollPromise = scheduler._poll();
+            // Start task execution  
+            console.log("About to call _poll()");
+            const pollPromise = scheduler._poll(); // Don't await yet!
+            console.log("_poll() returned, checking taskStarted:", taskStarted);
 
             // Task should start immediately
             expect(taskStarted).toBe(true);

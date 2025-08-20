@@ -23,7 +23,7 @@ describe("failure retry persistence", () => {
         const capabilities = getTestCapabilities();
         
         // Create scheduler and schedule a failing task
-        const scheduler = makePollingScheduler(capabilities, { pollIntervalMs: 1000 });
+        const scheduler = makePollingScheduler(capabilities, { pollIntervalMs: 60000 }); // Long interval to avoid automatic execution
         const retryDelay = fromMilliseconds(5000); // 5 second retry delay
         const callback = jest.fn(() => {
             throw new Error("Task failed");
