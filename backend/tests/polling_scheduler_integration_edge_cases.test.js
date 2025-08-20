@@ -46,8 +46,7 @@ describe("polling scheduler integration and system edge cases", () => {
             });
             
             const scheduler = makePollingScheduler(capabilities, { 
-                pollIntervalMs: 5 * 60 * 1000, // 5 minute polling
-                maxConcurrentTasks: 1 // Only one backup at a time
+                pollIntervalMs: 5 * 60 * 1000 // 5 minute polling
             });
             
             // Schedule daily backup at 2 AM
@@ -95,8 +94,7 @@ describe("polling scheduler integration and system edge cases", () => {
             });
             
             const scheduler = makePollingScheduler(capabilities, { 
-                pollIntervalMs: 30 * 1000, // 30 second polling
-                maxConcurrentTasks: 5
+                pollIntervalMs: 30 * 1000 // 30 second polling
             });
             
             // Schedule health check every 2 minutes
@@ -137,8 +135,7 @@ describe("polling scheduler integration and system edge cases", () => {
             });
             
             const scheduler = makePollingScheduler(capabilities, { 
-                pollIntervalMs: 60 * 1000, // 1 minute polling
-                maxConcurrentTasks: 3
+                pollIntervalMs: 60 * 1000 // 1 minute polling
             });
             
             // Schedule log rotation every hour
@@ -288,8 +285,7 @@ describe("polling scheduler integration and system edge cases", () => {
             });
             
             const scheduler = makePollingScheduler(capabilities, { 
-                pollIntervalMs: 10,
-                maxConcurrentTasks: 50 // High concurrency to stress memory
+                pollIntervalMs: 10
             });
             
             // Schedule multiple memory-intensive tasks
@@ -480,8 +476,7 @@ describe("polling scheduler integration and system edge cases", () => {
             const capabilities = caps();
             const retryDelay = fromMilliseconds(5000);
             const scheduler = makePollingScheduler(capabilities, { 
-                pollIntervalMs: 10,
-                maxConcurrentTasks: 10
+                pollIntervalMs: 10
             });
             
             // Mix of different task types
