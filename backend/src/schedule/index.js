@@ -26,29 +26,11 @@ class TaskListMismatchError extends Error {
 }
 
 /**
- * Error thrown when initialize() is called multiple times.
- */
-class MultipleInitializationsError extends Error {
-    constructor() {
-        super("Scheduler has already been initialized. initialize() calls must be idempotent.");
-        this.name = "MultipleInitializationsError";
-    }
-}
-
-/**
  * @param {unknown} object
  * @returns {object is TaskListMismatchError}
  */
 function isTaskListMismatchError(object) {
     return object instanceof TaskListMismatchError;
-}
-
-/**
- * @param {unknown} object
- * @returns {object is MultipleInitializationsError}
- */
-function isMultipleInitializationsError(object) {
-    return object instanceof MultipleInitializationsError;
 }
 
 /** @typedef {import('../time_duration/structure').TimeDuration} TimeDuration */
@@ -216,33 +198,34 @@ async function initialize(capabilities, registrations) {
             validateTasksAgainstPersistedStateInner(registrations, persistedTasks);
         }
         
-        // Check if already initialized for idempotency (after validation)
-        if (currentState.schedulerInitialized) {
-            return; // Already initialized, validation passed, do nothing more
-        }
-        
         // Create polling scheduler
         pollingScheduler = cronScheduler.make(capabilities);
         
-        // Schedule all tasks
+        // Schedule all tasks - the cron scheduler will handle idempotency naturally
+        // If a task is already scheduled, it will either update it (if loaded from persistence)
+        // or throw ScheduleDuplicateTaskError (if already actively scheduled)
         for (const [name, cronExpression, callback, retryDelay] of registrations) {
-            await pollingScheduler.schedule(name, cronExpression, callback, retryDelay);
+            try {
+                await pollingScheduler.schedule(name, cronExpression, callback, retryDelay);
+            } catch (error) {
+                // If the task is already scheduled with a callback, that's fine for idempotency
+                if (cronScheduler.isScheduleDuplicateTaskError(error)) {
+                    capabilities.logger.logDebug(
+                        { taskName: name },
+                        "Task already scheduled - scheduler already initialized"
+                    );
+                } else {
+                    // Re-throw any other errors
+                    throw error;
+                }
+            }
         }
-        
-        // Mark as initialized in persistent state
-        const newState = {
-            ...currentState,
-            schedulerInitialized: true,
-        };
-        storage.setState(newState);
     });
 }
 
 module.exports = {
     initialize,
     TaskListMismatchError,
-    MultipleInitializationsError,
     isTaskListMismatchError,
-    isMultipleInitializationsError,
 };
 

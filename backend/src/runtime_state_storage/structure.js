@@ -172,16 +172,7 @@ function tryDeserialize(obj) {
         }
     }
 
-    // Handle schedulerInitialized field for newer versions
-    let schedulerInitialized = false;
-    if (!migrated && "schedulerInitialized" in obj) {
-        const schedulerInitializedRaw = obj["schedulerInitialized"];
-        if (typeof schedulerInitializedRaw === "boolean") {
-            schedulerInitialized = schedulerInitializedRaw;
-        }
-    }
-
-    return { state: { version: RUNTIME_STATE_VERSION, startTime, tasks, schedulerInitialized }, taskErrors, migrated };
+    return { state: { version: RUNTIME_STATE_VERSION, startTime, tasks }, taskErrors, migrated };
 }
 
 /**
@@ -211,7 +202,6 @@ function serialize(state) {
         version: RUNTIME_STATE_VERSION,
         startTime: dt.toISOString(state.startTime),
         tasks,
-        schedulerInitialized: state.schedulerInitialized || false,
     };
 }
 
@@ -221,7 +211,7 @@ function serialize(state) {
  * @returns {RuntimeState}
  */
 function makeDefault(datetime) {
-    return { version: RUNTIME_STATE_VERSION, startTime: datetime.now(), tasks: [], schedulerInitialized: false };
+    return { version: RUNTIME_STATE_VERSION, startTime: datetime.now(), tasks: [] };
 }
 
 module.exports = {

@@ -23,14 +23,6 @@ function getTestCapabilities() {
     stubSleeper(capabilities);
     stubDatetime(capabilities);
     
-    // Ensure each test gets a unique working directory to avoid shared state
-    const uniqueSuffix = Math.random().toString(36).substring(7);
-    const originalWorkingDir = capabilities.environment.workingDirectory;
-    capabilities.environment.workingDirectory = jest.fn().mockImplementation(() => {
-        const baseDir = originalWorkingDir();
-        return `${baseDir}-${uniqueSuffix}`;
-    });
-    
     return capabilities;
 }
 
