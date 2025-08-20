@@ -17,7 +17,7 @@ function caps() {
     return capabilities;
 }
 
-describe.skip("polling scheduler comprehensive edge cases", () => {
+describe("polling scheduler comprehensive edge cases", () => {
     beforeEach(() => {
         jest.useFakeTimers();
         jest.setSystemTime(new Date("2024-02-29T12:00:00Z")); // Leap year
@@ -27,7 +27,7 @@ describe.skip("polling scheduler comprehensive edge cases", () => {
         jest.useRealTimers();
     });
 
-    describe.skip("boundary conditions", () => {
+    describe("boundary conditions", () => {
         test("should handle task scheduled exactly at polling interval", async () => {
             const capabilities = caps();
             const retryDelay = fromMilliseconds(1000);
@@ -155,7 +155,7 @@ describe.skip("polling scheduler comprehensive edge cases", () => {
         });
     });
 
-    describe.skip("complex cron expressions", () => {
+    describe("complex cron expressions", () => {
         test("should handle leap year specific schedules", async () => {
             const capabilities = caps();
             const retryDelay = fromMilliseconds(1000);
@@ -265,7 +265,7 @@ describe.skip("polling scheduler comprehensive edge cases", () => {
         }, 30000);
     });
 
-    describe.skip("performance and resource edge cases", () => {
+    describe("performance and resource edge cases", () => {
         test("should handle large gaps efficiently", async () => {
             const capabilities = caps();
             const retryDelay = fromMilliseconds(1000);
@@ -368,7 +368,7 @@ describe.skip("polling scheduler comprehensive edge cases", () => {
         });
     });
 
-    describe.skip("state corruption and recovery", () => {
+    describe("state corruption and recovery", () => {
         test("should handle corrupted datetime objects gracefully", async () => {
             const capabilities = caps();
 
@@ -480,7 +480,7 @@ describe.skip("polling scheduler comprehensive edge cases", () => {
         });
     });
 
-    describe.skip("callback edge cases", () => {
+    describe("callback edge cases", () => {
         test("should handle callbacks that throw specific error types", async () => {
             const capabilities = caps();
             const retryDelay = fromMilliseconds(1000); // 5 second retry delay
@@ -560,7 +560,7 @@ describe.skip("polling scheduler comprehensive edge cases", () => {
         });
     });
 
-    describe.skip("timing precision edge cases", () => {
+    describe("timing precision edge cases", () => {
         test("should handle minute boundary precision", async () => {
             const capabilities = caps();
             const retryDelay = fromMilliseconds(1000);

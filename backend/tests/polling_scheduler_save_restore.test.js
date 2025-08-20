@@ -17,7 +17,7 @@ function caps() {
     return capabilities;
 }
 
-describe.skip("polling scheduler save and restore", () => {
+describe("polling scheduler save and restore", () => {
     beforeEach(() => {
         jest.useFakeTimers();
         jest.setSystemTime(new Date("2020-01-01T00:00:00Z"));

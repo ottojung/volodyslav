@@ -20,7 +20,7 @@ function caps() {
     return capabilities;
 }
 
-describe.skip("polling scheduler DST transitions", () => {
+describe("polling scheduler DST transitions", () => {
     beforeEach(() => {
         jest.useFakeTimers();
         // Start with a clear UTC time to avoid timezone confusion

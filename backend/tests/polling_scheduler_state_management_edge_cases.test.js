@@ -17,7 +17,7 @@ function caps() {
     return capabilities;
 }
 
-describe.skip("polling scheduler state management edge cases", () => {
+describe("polling scheduler state management edge cases", () => {
     beforeEach(() => {
         jest.useFakeTimers();
         jest.setSystemTime(new Date("2024-01-15T12:00:00Z"));
@@ -27,7 +27,7 @@ describe.skip("polling scheduler state management edge cases", () => {
         jest.useRealTimers();
     });
 
-    describe.skip("transaction edge cases", () => {
+    describe("transaction edge cases", () => {
         test("should handle transaction failures during state persistence", async () => {
             const capabilities = caps();
             const retryDelay = fromMilliseconds(5000);
@@ -186,7 +186,7 @@ describe.skip("polling scheduler state management edge cases", () => {
         });
     });
 
-    describe.skip("state corruption recovery", () => {
+    describe("state corruption recovery", () => {
         test("should recover from completely corrupted state file", async () => {
             const capabilities = caps();
             const retryDelay = fromMilliseconds(5000);
@@ -296,7 +296,7 @@ describe.skip("polling scheduler state management edge cases", () => {
         });
     });
 
-    describe.skip("large state scenarios", () => {
+    describe("large state scenarios", () => {
         test("should handle very large number of tasks", async () => {
             const capabilities = caps();
             const retryDelay = fromMilliseconds(5000);
@@ -411,7 +411,7 @@ describe.skip("polling scheduler state management edge cases", () => {
         });
     });
 
-    describe.skip("memory and resource management", () => {
+    describe("memory and resource management", () => {
         test("should not leak memory with frequent operations", async () => {
             const capabilities = caps();
             const retryDelay = fromMilliseconds(5000);
@@ -509,7 +509,7 @@ describe.skip("polling scheduler state management edge cases", () => {
         });
     });
 
-    describe.skip("edge cases in state transitions", () => {
+    describe("edge cases in state transitions", () => {
         test("should handle task state changes during polling", async () => {
             const capabilities = caps();
             const retryDelay = fromMilliseconds(5000);

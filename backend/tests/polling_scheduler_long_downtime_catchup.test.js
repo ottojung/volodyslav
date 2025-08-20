@@ -17,7 +17,7 @@ function caps() {
     return capabilities;
 }
 
-describe.skip("polling scheduler long downtime catchup", () => {
+describe("polling scheduler long downtime catchup", () => {
     beforeEach(() => {
         jest.useFakeTimers();
     });

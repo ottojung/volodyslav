@@ -17,7 +17,7 @@ function caps() {
     return capabilities;
 }
 
-describe.skip("polling scheduler parallel execution", () => {
+describe("polling scheduler parallel execution", () => {
     beforeEach(() => {
         jest.useFakeTimers();
         jest.setSystemTime(new Date("2020-01-01T00:00:00Z"));
