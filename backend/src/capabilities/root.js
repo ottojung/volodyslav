@@ -17,7 +17,6 @@
 /** @typedef {import('../environment').Environment} Environment */
 /** @typedef {import('../logger').Logger} Logger */
 /** @typedef {import('../notifications').Notifier} Notifier */
-/** @typedef {import('../schedule').Scheduler} Scheduler */
 /** @typedef {import('../ai/transcription').AITranscription} AITranscription */
 /** @typedef {import('../datetime').Datetime} Datetime */
 /** @typedef {import('../sleeper').Sleeper} Sleeper */
@@ -39,11 +38,10 @@
  * @property {Exiter} exiter - A process exit instance.
  * @property {Logger} logger - A logger instance.
  * @property {Notifier} notifier - A notifier instance.
- * @property {Scheduler} scheduler - A scheduler instance.
  * @property {AITranscription} aiTranscription - An AI transcription instance.
  * @property {Datetime} datetime - Datetime utilities.
  * @property {Sleeper} sleeper - A sleeper instance.
-  * @property {Command} volodyslavDailyTasks - A command instance for daily tasks.
+ * @property {Command} volodyslavDailyTasks - A command instance for daily tasks.
  */
 
 const memconst = require("../memconst");
@@ -62,7 +60,6 @@ const environmentCapability = require("../environment");
 const loggingCapability = require("../logger");
 const exiterCapability = require("../exiter");
 const notifierCapability = require("../notifications");
-const schedulerCapability = require("../schedule");
 const aiTranscriptionCapability = require("../ai/transcription");
 const datetimeCapability = require("../datetime");
 const sleeperCapability = require("../sleeper");
@@ -95,14 +92,10 @@ const make = memconst(() => {
         exiter: exiterCapability.make(),
         logger: loggingCapability.make(() => ret),
         notifier: notifierCapability.make(),
-        scheduler: /** @type {any} */ (null), // Will be set below
         aiTranscription: aiTranscriptionCapability.make({ environment }),
         sleeper,
         volodyslavDailyTasks,
     };
-
-    // Create scheduler with capabilities after ret is defined
-    ret.scheduler = schedulerCapability.make(ret);
 
     return ret;
 });

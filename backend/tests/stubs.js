@@ -86,19 +86,12 @@ function stubNotifier(capabilities) {
 
 /**
  * Stubs the scheduler capabilities for testing.
- * Mocks the schedule function to prevent real timers from being created.
+ * Note: The declarative scheduler doesn't add scheduler to capabilities anymore.
+ * This function is kept for backward compatibility but does nothing.
  */
 function stubScheduler(capabilities) {
-    // Mock scheduler instance methods - all operations are now async
-    const mockSchedulerInstance = {
-        schedule: jest.fn((name) => Promise.resolve(name)),
-        cancel: jest.fn().mockResolvedValue(true),
-        cancelAll: jest.fn().mockResolvedValue(0),
-        getTasks: jest.fn().mockResolvedValue([])
-    };
-    
-    // Attach the mock to capabilities for testing
-    capabilities.scheduler = mockSchedulerInstance;
+    // No longer needed for the declarative scheduler
+    // The initialize function is tested directly instead
 }
 
 function stubSleeper(capabilities) {

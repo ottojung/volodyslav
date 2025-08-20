@@ -12,6 +12,14 @@ const {
 
 const { everyHour, daily, allTasks, scheduleAll } = require("../src/schedule/tasks");
 const { getMockedRootCapabilities } = require("./spies");
+const { _resetState } = require("../src/schedule");
+
+// Mock the runtime state storage
+jest.mock("../src/runtime_state_storage", () => ({
+    transaction: jest.fn(),
+}));
+
+const { transaction } = require("../src/runtime_state_storage");
 
 function getTestCapabilities() {
     const capabilities = getMockedRootCapabilities();
@@ -24,6 +32,34 @@ function getTestCapabilities() {
 }
 
 describe("Schedule Tasks", () => {
+    beforeEach(() => {
+        jest.clearAllMocks();
+        _resetState();
+        
+        // Mock transaction to return matching state for the expected tasks
+        transaction.mockImplementation(async (caps, callback) => {
+            const mockStorage = {
+                getCurrentState: jest.fn().mockResolvedValue({
+                    version: 2,
+                    startTime: "2023-01-01T00:00:00Z",
+                    tasks: [
+                        {
+                            name: "every-hour",
+                            cronExpression: "0 * * * *",
+                            retryDelayMs: 300000,
+                        },
+                        {
+                            name: "daily-2am",
+                            cronExpression: "0 2 * * *",
+                            retryDelayMs: 300000,
+                        },
+                    ],
+                }),
+            };
+            return await callback(mockStorage);
+        });
+    });
+
     describe("daily", () => {
         test("logs info message when starting", async () => {
             const capabilities = getTestCapabilities();
@@ -65,15 +101,13 @@ describe("Schedule Tasks", () => {
     });
 
     describe("scheduleAll", () => {
-        test("schedules both hourly and daily tasks", async () => {
+        test("initializes the declarative scheduler with both tasks", async () => {
             const capabilities = getTestCapabilities();
 
-            await scheduleAll(capabilities);
-
-            // Should call the scheduler from capabilities with both tasks
-            expect(capabilities.scheduler.schedule).toHaveBeenCalledTimes(2);
-            expect(capabilities.scheduler.schedule).toHaveBeenCalledWith("every-hour", "0 * * * *", expect.any(Function), expect.any(Object));
-            expect(capabilities.scheduler.schedule).toHaveBeenCalledWith("daily-2am", "0 2 * * *", expect.any(Function), expect.any(Object));
+            await expect(scheduleAll(capabilities)).resolves.toBeUndefined();
+            
+            // Should call transaction to validate state
+            expect(transaction).toHaveBeenCalled();
         });
     });
 });
