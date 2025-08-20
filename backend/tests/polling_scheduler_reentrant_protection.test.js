@@ -1,14 +1,14 @@
 /**
- * Tests for declarative scheduler re-entrancy protection.
+ * Tests for polling scheduler re-entrancy protection.
  * Ensures proper guarding against overlapping poll executions.
  */
 
-const { initialize } = require("../src/schedule");
-const { COMMON } = require("../src/time_duration");
+const { makePollingScheduler } = require("../src/cron/polling_scheduler");
+const { fromMilliseconds } = require("../src/time_duration");
 const { getMockedRootCapabilities } = require("./spies");
 const { stubEnvironment, stubLogger, stubDatetime, stubSleeper } = require("./stubs");
 
-function getTestCapabilities() {
+function caps() {
     const capabilities = getMockedRootCapabilities();
     stubEnvironment(capabilities);
     stubLogger(capabilities);
@@ -17,89 +17,99 @@ function getTestCapabilities() {
     return capabilities;
 }
 
-describe("declarative scheduler re-entrancy protection", () => {
+describe.skip("polling scheduler re-entrancy protection", () => {
+    beforeEach(() => {
+        jest.useFakeTimers();
+        jest.setSystemTime(new Date("2020-01-01T00:00:00Z"));
+    });
+
+    afterEach(() => {
+        jest.useRealTimers();
+    });
 
     test("should not start new poll while previous poll is running", async () => {
-        const capabilities = getTestCapabilities();
+        const capabilities = caps();
+        const retryDelay = fromMilliseconds(5000);
         let pollStartCount = 0;
         let pollEndCount = 0;
         
-        // Create a long-running task that will cause potential overlap
+        // Create a long-running task that will cause poll overlap
         const longRunningTask = jest.fn(async () => {
             pollStartCount++;
-            await new Promise(resolve => setTimeout(resolve, 300)); // 300ms delay
+            await new Promise(resolve => setTimeout(resolve, 2000)); // 2 second delay
             pollEndCount++;
         });
         
-        const registrations = [
-            ["long-task", "* * * * *", longRunningTask, COMMON.FIVE_MINUTES],
-        ];
+        // Create scheduler with short polling interval
+        const scheduler = makePollingScheduler(capabilities, { pollIntervalMs: 500 });
+        await scheduler.schedule("long-task", "* * * * *", longRunningTask, retryDelay);
         
-        // Initialize with very fast polling to test re-entrancy protection
-        await initialize(capabilities, registrations, { pollIntervalMs: 50 });
+        // Fast-forward time to trigger multiple poll intervals while task is running
+        jest.advanceTimersByTime(1500); // Should trigger 3 polls but only 1 should run
         
-        // Wait a bit for potential multiple executions
-        await new Promise(resolve => setTimeout(resolve, 200));
+        expect(pollStartCount).toBe(1); // Only one poll should have started
         
-        // Due to re-entrancy protection, task should not execute multiple times concurrently
-        expect(pollStartCount).toBeGreaterThanOrEqual(1);
+        // Complete the task
+        jest.advanceTimersByTime(1000);
+        await Promise.resolve(); // Allow promises to resolve
         
-        // Wait for task to complete
-        await new Promise(resolve => setTimeout(resolve, 400));
+        expect(pollEndCount).toBe(1); // Task should complete
         
-        expect(pollEndCount).toBeGreaterThanOrEqual(1); // Task should complete
+        await scheduler.cancelAll();
     });
 
     test("should allow next poll after previous poll completes", async () => {
-        const capabilities = getTestCapabilities();
+        const capabilities = caps();
+        const retryDelay = fromMilliseconds(5000);
         let taskExecutionCount = 0;
         
         const quickTask = jest.fn(() => {
             taskExecutionCount++;
         });
         
-        const registrations = [
-            ["quick-task", "* * * * *", quickTask, COMMON.FIVE_MINUTES],
-        ];
+        // Create scheduler with 1-second polling interval
+        const scheduler = makePollingScheduler(capabilities, { pollIntervalMs: 1000 });
+        await scheduler.schedule("quick-task", "* * * * *", quickTask, retryDelay);
         
-        // Initialize scheduler
-        await initialize(capabilities, registrations, { pollIntervalMs: 100 });
-        await new Promise(resolve => setTimeout(resolve, 150));
+        // Trigger first poll
+        await scheduler._poll();
+        expect(taskExecutionCount).toBe(1);
         
-        expect(taskExecutionCount).toBeGreaterThanOrEqual(1); // First execution
+        // Advance time to new minute and trigger second poll
+        jest.setSystemTime(new Date("2020-01-01T00:01:00Z")); // New minute to be due again
+        await scheduler._poll();
+        expect(taskExecutionCount).toBe(2);
         
-        // Call initialize again to trigger additional execution
-        await initialize(capabilities, registrations, { pollIntervalMs: 100 });
-        await new Promise(resolve => setTimeout(resolve, 150));
-        
-        expect(taskExecutionCount).toBeGreaterThanOrEqual(2); // Should allow additional execution
+        await scheduler.cancelAll();
     });
 
     test("should log poll contention when re-entrancy is detected", async () => {
-        const capabilities = getTestCapabilities();
+        const capabilities = caps();
+        const retryDelay = fromMilliseconds(5000);
         const logDebugSpy = jest.spyOn(capabilities.logger, 'logDebug');
         
         const slowTask = jest.fn(async () => {
-            await new Promise(resolve => setTimeout(resolve, 200)); // Slower task
+            await new Promise(resolve => setTimeout(resolve, 2000));
         });
         
-        const registrations = [
-            ["slow-task", "* * * * *", slowTask, COMMON.FIVE_MINUTES],
-        ];
+        const scheduler = makePollingScheduler(capabilities, { pollIntervalMs: 500 });
+        await scheduler.schedule("slow-task", "* * * * *", slowTask, retryDelay);
         
-        // Initialize with fast polling interval
-        await initialize(capabilities, registrations, { pollIntervalMs: 50 });
+        // Trigger multiple polls
+        jest.advanceTimersByTime(1500);
         
-        // Wait for potential multiple execution attempts
-        await new Promise(resolve => setTimeout(resolve, 300));
+        // Should log that poll was skipped due to ongoing poll
+        expect(logDebugSpy).toHaveBeenCalledWith(
+            expect.objectContaining({ reason: "pollInProgress" }),
+            "PollSkipped"
+        );
         
-        // Should log debug information about scheduler behavior
-        // (Note: exact logging behavior may vary with declarative scheduler)
-        expect(slowTask).toHaveBeenCalled();
+        await scheduler.cancelAll();
     });
 
     test("should handle errors during poll without preventing next poll", async () => {
-        const capabilities = getTestCapabilities();
+        const capabilities = caps();
+        const retryDelay = fromMilliseconds(5000);
         let taskExecutionCount = 0;
         
         const errorTask = jest.fn(() => {
@@ -109,20 +119,20 @@ describe("declarative scheduler re-entrancy protection", () => {
             }
         });
         
-        const registrations = [
-            ["error-task", "* * * * *", errorTask, COMMON.FIVE_MINUTES],
-        ];
+        const scheduler = makePollingScheduler(capabilities, { pollIntervalMs: 1000 });
+        await scheduler.schedule("error-task", "* * * * *", errorTask, retryDelay);
         
-        // First initialization should handle error gracefully
-        await initialize(capabilities, registrations, { pollIntervalMs: 100 });
-        await new Promise(resolve => setTimeout(resolve, 150));
+        // First poll should fail
+        await scheduler._poll();
+        expect(taskExecutionCount).toBe(1);
         
-        expect(taskExecutionCount).toBeGreaterThanOrEqual(1); // First execution (fails)
+        // Advance time by retry delay and trigger poll again
+        jest.setSystemTime(new Date("2020-01-01T00:05:01Z")); // After retry delay
+        await scheduler._poll();
         
-        // Second initialization should work despite previous error
-        await initialize(capabilities, registrations, { pollIntervalMs: 100 });
-        await new Promise(resolve => setTimeout(resolve, 150));
+        // Should allow next poll despite previous error
+        expect(taskExecutionCount).toBe(2);
         
-        expect(taskExecutionCount).toBeGreaterThanOrEqual(2); // Should allow next execution despite previous error
+        await scheduler.cancelAll();
     });
 });

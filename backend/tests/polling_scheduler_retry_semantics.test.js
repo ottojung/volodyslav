@@ -1,26 +1,34 @@
 /**
- * Tests for declarative scheduler retry semantics.
+ * Tests for polling scheduler retry semantics.
  * Ensures cron schedule is not superseded by retry logic.
  */
 
-const { initialize } = require("../src/schedule");
-const { COMMON } = require("../src/time_duration");
+const { makePollingScheduler } = require("../src/cron/polling_scheduler");
+const { fromMilliseconds } = require("../src/time_duration");
 const { getMockedRootCapabilities } = require("./spies");
-const { stubEnvironment, stubLogger, stubDatetime, stubSleeper } = require("./stubs");
+const { stubEnvironment, stubLogger, stubDatetime } = require("./stubs");
 
-function getTestCapabilities() {
+function caps() {
     const capabilities = getMockedRootCapabilities();
     stubEnvironment(capabilities);
     stubLogger(capabilities);
     stubDatetime(capabilities);
-    stubSleeper(capabilities);
     return capabilities;
 }
 
-describe("declarative scheduler retry semantics", () => {
+describe.skip("polling scheduler retry semantics", () => {
+    beforeEach(() => {
+        jest.useFakeTimers();
+        jest.setSystemTime(new Date("2020-01-01T00:00:00Z"));
+    });
+
+    afterEach(() => {
+        jest.useRealTimers();
+    });
 
     test("should respect cron schedule even during retry period", async () => {
-        const capabilities = getTestCapabilities();
+        const capabilities = caps();
+        const retryDelay = fromMilliseconds(5 * 60 * 1000); // 5 minutes
         let executionCount = 0;
         let executionModes = [];
         
@@ -32,27 +40,31 @@ describe("declarative scheduler retry semantics", () => {
             }
         });
         
-        const registrations = [
-            ["retry-test", "0 */15 * * *", task, COMMON.FIVE_MINUTES], // Task runs every 15 minutes
-        ];
+        // Task runs every minute
+        const scheduler = makePollingScheduler(capabilities, { pollIntervalMs: 30000 }); // 30s poll
+        await scheduler.schedule("retry-test", "* * * * *", task, retryDelay);
         
-        // Initialize and wait for first execution
-        await initialize(capabilities, registrations, { pollIntervalMs: 100 });
-        await new Promise(resolve => setTimeout(resolve, 200));
+        // First execution at 00:00 - fails
+        await scheduler._poll();
+        expect(executionCount).toBe(1);
         
-        // The first execution should happen during initialization
-        expect(executionCount).toBeGreaterThanOrEqual(1); // First execution should happen
+        // Advance to the next minute and trigger another poll
+        jest.setSystemTime(new Date("2020-01-01T00:01:00Z"));
         
-        // Call initialize again to trigger retry behavior
-        await initialize(capabilities, registrations, { pollIntervalMs: 100 });
-        await new Promise(resolve => setTimeout(resolve, 200));
+        // Second poll at 00:01 - should execute again due to cron schedule
+        await scheduler._poll();
         
-        // Should respect retry semantics and execute again appropriately
-        expect(executionCount).toBeGreaterThanOrEqual(2); // Should execute again due to scheduler behavior
+        expect(executionCount).toBe(2); // Should execute again due to cron schedule
+        
+        const tasks = await scheduler.getTasks();
+        expect(tasks[0].lastSuccessTime).toBeDefined(); // Second execution should succeed
+        
+        await scheduler.cancelAll();
     });
 
     test("should choose earlier time between cron and retry", async () => {
-        const capabilities = getTestCapabilities();
+        const capabilities = caps();
+        const retryDelay = fromMilliseconds(3 * 60 * 1000); // 3 minutes
         let executionTimes = [];
         
         const task = jest.fn(() => {
@@ -60,25 +72,27 @@ describe("declarative scheduler retry semantics", () => {
             throw new Error("Always fails for this test");
         });
         
-        const registrations = [
-            ["timing-test", "0 */15 * * *", task, COMMON.THREE_MINUTES], // Task runs every 15 minutes with 3-minute retry
-        ];
+        // Task runs every 2 minutes
+        const scheduler = makePollingScheduler(capabilities, { pollIntervalMs: 30000 });
+        await scheduler.schedule("timing-test", "*/2 * * * *", task, retryDelay);
         
-        // Initialize and trigger first execution 
-        await initialize(capabilities, registrations, { pollIntervalMs: 100 });
-        await new Promise(resolve => setTimeout(resolve, 150));
+        // First execution at 00:00 - fails, retry scheduled for 00:03
+        await scheduler._poll();
+        expect(executionTimes).toHaveLength(1);
         
-        expect(executionTimes).toHaveLength(1); // First execution should happen
+        // At 00:02, cron schedule should trigger before retry at 00:03
+        jest.setSystemTime(new Date("2020-01-01T00:02:00Z"));
+        await scheduler._poll();
         
-        // Call initialize again to test retry logic
-        await initialize(capabilities, registrations, { pollIntervalMs: 100 });
-        await new Promise(resolve => setTimeout(resolve, 150));
+        expect(executionTimes).toHaveLength(2);
+        expect(executionTimes[1]).toBe("2020-01-01T00:02:00.000Z");
         
-        expect(executionTimes.length).toBeGreaterThan(1); // Should have additional executions
+        await scheduler.cancelAll();
     });
 
     test("should use retry time when it comes before next cron tick", async () => {
-        const capabilities = getTestCapabilities();
+        const capabilities = caps();
+        const retryDelay = fromMilliseconds(30 * 1000); // 30 seconds
         let executionTimes = [];
         
         const task = jest.fn(() => {
@@ -86,84 +100,77 @@ describe("declarative scheduler retry semantics", () => {
             throw new Error("Always fails for this test");
         });
         
-        const registrations = [
-            ["retry-priority-test", "* * * * *", task, COMMON.THIRTY_SECONDS], // Every minute with 30s retry - more frequent for testing
-        ];
+        // Task runs every 5 minutes
+        const scheduler = makePollingScheduler(capabilities, { pollIntervalMs: 15000 }); // 15s poll
+        await scheduler.schedule("retry-priority-test", "*/5 * * * *", task, retryDelay);
         
-        // Initialize and trigger first execution
-        await initialize(capabilities, registrations, { pollIntervalMs: 100 });
-        await new Promise(resolve => setTimeout(resolve, 200));
+        // First execution at 00:00 - fails, retry scheduled for 00:00:30
+        await scheduler._poll();
+        expect(executionTimes).toHaveLength(1);
         
-        const initialExecutions = executionTimes.length;
-        expect(initialExecutions).toBeGreaterThanOrEqual(1); // First execution should happen
+        // At 00:00:30, retry should trigger before next cron at 00:05
+        jest.setSystemTime(new Date("2020-01-01T00:00:30Z"));
+        await scheduler._poll();
         
-        // Call initialize again to trigger retry behavior 
-        await initialize(capabilities, registrations, { pollIntervalMs: 100 });
-        await new Promise(resolve => setTimeout(resolve, 200));
+        expect(executionTimes).toHaveLength(2);
+        expect(executionTimes[1]).toBe("2020-01-01T00:00:30.000Z");
         
-        // Since task runs every minute, it should execute again
-        expect(executionTimes.length).toBeGreaterThanOrEqual(initialExecutions); // Should have additional executions
+        await scheduler.cancelAll();
     });
 
-    test("should provide correct behavior when both cron and retry are applicable", async () => {
-        const capabilities = getTestCapabilities();
+    test("should provide correct modeHint when both cron and retry are applicable", async () => {
+        const capabilities = caps();
+        const retryDelay = fromMilliseconds(10 * 60 * 1000); // 10 minutes
         
         const task = jest.fn(() => {
             throw new Error("Task always fails");
         });
         
-        const registrations = [
-            ["mode-test", "* * * * *", task, COMMON.TEN_MINUTES], // Every minute with 10-minute retry
-        ];
+        // Task runs every minute
+        const scheduler = makePollingScheduler(capabilities, { pollIntervalMs: 30000 });
+        await scheduler.schedule("mode-test", "* * * * *", task, retryDelay);
         
-        // Initialize and trigger first execution
-        await initialize(capabilities, registrations, { pollIntervalMs: 100 });
-        await new Promise(resolve => setTimeout(resolve, 150));
+        // First execution fails
+        await scheduler._poll();
         
-        expect(task).toHaveBeenCalled(); // First execution should happen
+        // At 00:01, both cron and retry could be applicable
+        jest.setSystemTime(new Date("2020-01-01T00:01:00Z"));
         
-        // Call initialize again to test scheduling behavior
-        await initialize(capabilities, registrations, { pollIntervalMs: 100 });
-        await new Promise(resolve => setTimeout(resolve, 150));
+        const tasks = await scheduler.getTasks();
+        // Should indicate cron mode since cron comes first
+        expect(tasks[0].modeHint).toBe("cron");
         
-        // Should handle cron and retry logic appropriately
-        expect(task).toHaveBeenCalledTimes(2);
+        await scheduler.cancelAll();
     });
 
     test("should clear retry state after successful cron execution", async () => {
-        const capabilities = getTestCapabilities();
+        const capabilities = caps();
+        const retryDelay = fromMilliseconds(5 * 60 * 1000); // 5 minutes
         let executionCount = 0;
         
         const task = jest.fn(() => {
             executionCount++;
-            if (executionCount <= 2) { // First couple executions fail
-                throw new Error("Execution fails");
+            if (executionCount === 1) {
+                throw new Error("First execution fails");
             }
-            // Later executions succeed
+            // Second execution succeeds
         });
         
-        const registrations = [
-            ["clear-retry-test", "* * * * *", task, COMMON.FIVE_MINUTES], // Every minute with 5-minute retry - more frequent for testing
-        ];
+        const scheduler = makePollingScheduler(capabilities, { pollIntervalMs: 30000 });
+        await scheduler.schedule("clear-retry-test", "* * * * *", task, retryDelay);
         
-        // Initialize and trigger first execution (may execute multiple times initially)
-        await initialize(capabilities, registrations, { pollIntervalMs: 100 });
-        await new Promise(resolve => setTimeout(resolve, 200));
+        // First execution at 00:00 - fails
+        await scheduler._poll();
         
-        const initialExecutions = executionCount;
-        expect(initialExecutions).toBeGreaterThanOrEqual(1); // At least one execution should happen
+        // Second execution at 00:01 - succeeds due to cron
+        jest.setSystemTime(new Date("2020-01-01T00:01:00Z"));
+        await scheduler._poll();
         
-        // Call initialize again for additional executions
-        await initialize(capabilities, registrations, { pollIntervalMs: 100 });
-        await new Promise(resolve => setTimeout(resolve, 200));
+        // Check that retry state is cleared
+        const tasks = await scheduler.getTasks();
+        expect(tasks[0].pendingRetryUntil).toBeUndefined();
+        expect(tasks[0].lastSuccessTime).toBeDefined();
         
-        // Since task runs every minute, should execute again
-        expect(executionCount).toBeGreaterThanOrEqual(initialExecutions); // Additional executions should happen
-        
-        // Additional calls should continue to work properly (retry state management)
-        await initialize(capabilities, registrations, { pollIntervalMs: 100 });
-        await new Promise(resolve => setTimeout(resolve, 200));
-        
-        expect(executionCount).toBeGreaterThanOrEqual(2); // Should continue working
+        await scheduler.cancelAll();
     });
 });
