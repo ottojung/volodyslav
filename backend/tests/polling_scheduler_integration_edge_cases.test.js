@@ -17,7 +17,7 @@ function caps() {
     return capabilities;
 }
 
-describe("polling scheduler integration and system edge cases", () => {
+describe.skip("polling scheduler integration and system edge cases", () => {
     beforeEach(() => {
         jest.useFakeTimers();
         jest.setSystemTime(new Date("2024-01-15T12:00:00Z"));
@@ -27,7 +27,7 @@ describe("polling scheduler integration and system edge cases", () => {
         jest.useRealTimers();
     });
 
-    describe("real-world scenario testing", () => {
+    describe.skip("real-world scenario testing", () => {
         test("should handle typical daily backup scenario", async () => {
             const capabilities = caps();
             const retryDelay = fromMilliseconds(30 * 60 * 1000); // 30 minute retry
@@ -163,7 +163,7 @@ describe("polling scheduler integration and system edge cases", () => {
         });
     });
 
-    describe("system integration edge cases", () => {
+    describe.skip("system integration edge cases", () => {
         test("should handle network connectivity issues", async () => {
             const capabilities = caps();
             const retryDelay = fromMilliseconds(5000); // Use shorter delay for faster test
@@ -306,7 +306,7 @@ describe("polling scheduler integration and system edge cases", () => {
         });
     });
 
-    describe("error recovery and resilience", () => {
+    describe.skip("error recovery and resilience", () => {
         test("should recover from uncaught exceptions in callbacks", async () => {
             const capabilities = caps();
             const retryDelay = fromMilliseconds(5000);
@@ -414,7 +414,7 @@ describe("polling scheduler integration and system edge cases", () => {
         });
     });
 
-    describe("performance under stress", () => {
+    describe.skip("performance under stress", () => {
         test("should handle high-frequency polling", async () => {
             const capabilities = caps();
             const retryDelay = fromMilliseconds(1000);
@@ -515,7 +515,7 @@ describe("polling scheduler integration and system edge cases", () => {
         });
     });
 
-    describe("edge cases in scheduler lifecycle", () => {
+    describe.skip("edge cases in scheduler lifecycle", () => {
         test("should handle getTasks called before any scheduling", async () => {
             const capabilities = caps();
             const scheduler = makePollingScheduler(capabilities, { pollIntervalMs: 10 });

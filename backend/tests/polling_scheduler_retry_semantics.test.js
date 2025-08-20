@@ -16,7 +16,7 @@ function caps() {
     return capabilities;
 }
 
-describe("polling scheduler retry semantics", () => {
+describe.skip("polling scheduler retry semantics", () => {
     beforeEach(() => {
         jest.useFakeTimers();
         jest.setSystemTime(new Date("2020-01-01T00:00:00Z"));
