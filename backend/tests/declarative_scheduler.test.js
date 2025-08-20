@@ -4,7 +4,6 @@
 
 const { 
     initialize,
-    TaskListMismatchError, 
     isTaskListMismatchError,
 } = require("../src/schedule");
 const { 
@@ -81,7 +80,7 @@ describe("Declarative Scheduler", () => {
                 ["task3", "0 0 * * *", jest.fn(), COMMON.TEN_MINUTES], // different name
             ];
 
-            await expect(initialize(capabilities, differentRegistrations)).rejects.toThrow(TaskListMismatchError);
+            await expect(initialize(capabilities, differentRegistrations)).rejects.toThrow(/Task list mismatch detected/);
         });
 
         test("throws TaskListMismatchError when cron expression differs", async () => {
@@ -98,7 +97,7 @@ describe("Declarative Scheduler", () => {
                 ["task1", "0 0 * * *", jest.fn(), COMMON.FIVE_MINUTES], // different cron
             ];
 
-            await expect(initialize(capabilities, changedRegistrations)).rejects.toThrow(TaskListMismatchError);
+            await expect(initialize(capabilities, changedRegistrations)).rejects.toThrow(/Task list mismatch detected/);
         });
 
         test("throws TaskListMismatchError when retry delay differs", async () => {
@@ -115,7 +114,7 @@ describe("Declarative Scheduler", () => {
                 ["task1", "0 * * * *", jest.fn(), COMMON.TEN_MINUTES], // different retry delay
             ];
 
-            await expect(initialize(capabilities, changedRegistrations)).rejects.toThrow(TaskListMismatchError);
+            await expect(initialize(capabilities, changedRegistrations)).rejects.toThrow(/Task list mismatch detected/);
         });
 
         test("throws TaskListMismatchError when task is missing from registrations", async () => {
@@ -134,8 +133,8 @@ describe("Declarative Scheduler", () => {
             ];
 
             const error = await initialize(capabilities, missingTaskRegistrations).catch(e => e);
-            
-            expect(error).toBeInstanceOf(TaskListMismatchError);
+
+            expect(isTaskListMismatchError(error)).toBe(true);
             expect(error.mismatchDetails.missing).toContain("task2");
         });
 
@@ -156,7 +155,7 @@ describe("Declarative Scheduler", () => {
 
             const error = await initialize(capabilities, extraTaskRegistrations).catch(e => e);
             
-            expect(error).toBeInstanceOf(TaskListMismatchError);
+            expect(isTaskListMismatchError(error)).toBe(true);
             expect(error.mismatchDetails.extra).toContain("task2");
         });
 
@@ -178,7 +177,7 @@ describe("Declarative Scheduler", () => {
 
             const error = await initialize(capabilities, mismatchedRegistrations).catch(e => e);
             
-            expect(error).toBeInstanceOf(TaskListMismatchError);
+            expect(isTaskListMismatchError(error)).toBe(true);
             expect(error.mismatchDetails.missing).toEqual(["task2"]);
             expect(error.mismatchDetails.extra).toEqual(["task3"]);
             expect(error.mismatchDetails.differing).toHaveLength(2); // task1 has 2 differing fields
@@ -297,23 +296,6 @@ describe("Declarative Scheduler", () => {
             
             // Task should execute on first run
             expect(taskCallback).toHaveBeenCalled();
-        });
-    });
-
-    describe("TaskListMismatchError", () => {
-        test("has proper structure and type guard", () => {
-            const mismatchDetails = {
-                missing: ["task1"],
-                extra: ["task2"],
-                differing: [],
-            };
-            const error = new TaskListMismatchError("Test message", mismatchDetails);
-            
-            expect(error.name).toBe("TaskListMismatchError");
-            expect(error.message).toBe("Test message");
-            expect(error.mismatchDetails).toBe(mismatchDetails);
-            expect(isTaskListMismatchError(error)).toBe(true);
-            expect(isTaskListMismatchError(new Error())).toBe(false);
         });
     });
 });
