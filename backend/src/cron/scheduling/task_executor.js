@@ -9,16 +9,13 @@
  * Create a task executor with concurrency management.
  * @param {import('../../capabilities/root').Capabilities} capabilities
  * @param {number} maxConcurrentTasks
- * @param {(task: Task, updates: Partial<Task>) => Promise<void>} updateTask
- * @returns {{executeTasks: (dueTasks: Array<{task: Task, mode: "retry"|"cron"}>) => Promise<number>, runTask: (task: Task, mode: "retry"|"cron") => Promise<void>}}
+ * @param {(taskName: string) => Promise<void>} executeTask
+ * @returns {{executeTasks: (dueTasks: Array<{name: string, mode: "retry"|"cron"}>) => Promise<number>}}
  */
-function makeTaskExecutor(capabilities, maxConcurrentTasks, updateTask) {
-    const dt = capabilities.datetime;
-    let runningTasksCount = 0;
-
+function makeTaskExecutor(capabilities, maxConcurrentTasks, executeTask) {
     /**
      * Execute multiple tasks with concurrency control.
-     * @param {Array<{task: Task, mode: "retry"|"cron"}>} dueTasks
+     * @param {Array<{name: string, mode: "retry"|"cron"}>} dueTasks
      * @returns {Promise<number>} Number of tasks skipped due to concurrency limits
      */
     async function executeTasks(dueTasks) {
@@ -26,17 +23,9 @@ function makeTaskExecutor(capabilities, maxConcurrentTasks, updateTask) {
 
         let skippedConcurrency = 0;
 
-        // Execute all tasks in parallel if within limit and no other tasks running
-        if (dueTasks.length <= maxConcurrentTasks && runningTasksCount === 0) {
-            const promises = dueTasks.map(({ task, mode }) => runTask(task, mode));
-            await Promise.all(promises);
-            return 0;
-        }
-
-        // Use concurrency control
+        // Execute all tasks in parallel if within limit
         if (dueTasks.length <= maxConcurrentTasks) {
-            // If we have fewer tasks than the limit, just run them all in parallel
-            const promises = dueTasks.map(({ task, mode }) => runTask(task, mode));
+            const promises = dueTasks.map(({ name, mode }) => executeTask(name));
             await Promise.all(promises);
             return 0;
         } else {
@@ -53,8 +42,8 @@ function makeTaskExecutor(capabilities, maxConcurrentTasks, updateTask) {
                     const dueTask = dueTasks[index++];
                     if (!dueTask) continue;
 
-                    const { task, mode } = dueTask;
-                    const promise = runTask(task, mode);
+                    const { name, mode } = dueTask;
+                    const promise = executeTask(name);
                     executing.add(promise);
 
                     // Remove promise when it completes
@@ -71,72 +60,8 @@ function makeTaskExecutor(capabilities, maxConcurrentTasks, updateTask) {
         }
     }
 
-    /**
-     * Execute a single task.
-     * @param {Task} task
-     * @param {"retry"|"cron"} mode
-     */
-    async function runTask(task, mode) {
-        if (task.callback === null) {
-            capabilities.logger.logWarning({ name: task.name }, "TaskSkippedNoCallback");
-            return;
-        }
-
-        // Start task execution - batch all updates into a single transaction
-        runningTasksCount++;
-        const startTime = dt.toNativeDate(dt.now());
-        
-        // Mark running and set attempt time atomically
-        await updateTask(task, { 
-            running: true,
-            lastAttemptTime: startTime
-        });
-        
-        capabilities.logger.logInfo({ name: task.name, mode }, "TaskRunStarted");
-        
-        try {
-            const result = task.callback();
-            if (result instanceof Promise) {
-                await result;
-            }
-            const end = dt.toNativeDate(dt.now());
-            
-            // Update task state on success - single atomic transaction
-            await updateTask(task, {
-                lastSuccessTime: end,
-                lastFailureTime: undefined,
-                pendingRetryUntil: undefined,
-                running: false,
-            });
-            
-            capabilities.logger.logInfo(
-                { name: task.name, mode, durationMs: end.getTime() - startTime.getTime() },
-                "TaskRunSuccess"
-            );
-        } catch (error) {
-            const end = dt.toNativeDate(dt.now());
-            const retryAt = new Date(end.getTime() + task.retryDelay.toMilliseconds());
-            const message = error instanceof Error ? error.message : String(error);
-            
-            // Update task state on failure - single atomic transaction
-            await updateTask(task, {
-                lastFailureTime: end,
-                pendingRetryUntil: retryAt,
-                running: false,
-            });
-            
-            capabilities.logger.logInfo(
-                { name: task.name, mode, errorMessage: message, retryAtISO: retryAt.toISOString() },
-                "TaskRunFailure"
-            );
-        } finally {
-            runningTasksCount--;
-        }
-    }
-
     return {
         executeTasks,
-        runTask,
     };
 }
 

@@ -57,15 +57,84 @@ function makePollingScheduler(capabilities, options = {}) {
     let pollInProgress = false; // Guard against re-entrant polls
 
     // Create task executor for handling task execution with concurrency limits
-    // Provide a callback-based update function instead of write-only persistState
-    const taskExecutor = makeTaskExecutor(capabilities, maxConcurrentTasks, async (task, updates) => {
-        // Apply updates to the specific task
-        const currentTask = tasks.get(task.name);
-        if (currentTask) {
-            // Apply partial updates to the current task
-            Object.assign(currentTask, updates);
-            // Persist the entire state after the update
-            await persistState();
+    // The updateTask function handles task execution by name following the user requirement
+    const taskExecutor = makeTaskExecutor(capabilities, maxConcurrentTasks, async (taskName) => {
+        // This function handles the entire task execution flow for the given task name
+        // Following the requirement that the interface should be "string => Promise<void>"
+        
+        let callback = null;
+        let retryDelay = null;
+        const startTime = dt.toNativeDate(dt.now());
+        
+        // Start the task execution - mark as running and get callback info
+        await modifyTasks((tasks) => {
+            const task = tasks.get(taskName);
+            if (!task) {
+                capabilities.logger.logWarning({ name: taskName }, "TaskNotFound");
+                return;
+            }
+            
+            if (task.callback === null) {
+                capabilities.logger.logWarning({ name: taskName }, "TaskSkippedNoCallback");
+                return;
+            }
+
+            callback = task.callback;
+            retryDelay = task.retryDelay;
+            
+            // Mark running and set attempt time
+            task.running = true;
+            task.lastAttemptTime = startTime;
+        });
+        
+        if (!callback) {
+            return; // Task not found or no callback
+        }
+
+        capabilities.logger.logInfo({ name: taskName }, "TaskRunStarted");
+        
+        try {
+            // Execute the callback outside of the transaction
+            const result = callback();
+            if (result instanceof Promise) {
+                await result;
+            }
+            const end = dt.toNativeDate(dt.now());
+            
+            // Update task state on success in separate transaction
+            await modifyTasks((tasks) => {
+                const currentTask = tasks.get(taskName);
+                if (currentTask) {
+                    currentTask.lastSuccessTime = end;
+                    currentTask.lastFailureTime = undefined;
+                    currentTask.pendingRetryUntil = undefined;
+                    currentTask.running = false;
+                }
+            });
+            
+            capabilities.logger.logInfo(
+                { name: taskName, durationMs: end.getTime() - startTime.getTime() },
+                "TaskRunSuccess"
+            );
+        } catch (error) {
+            const end = dt.toNativeDate(dt.now());
+            const message = error instanceof Error ? error.message : String(error);
+            
+            // Update task state on failure in separate transaction
+            await modifyTasks((tasks) => {
+                const currentTask = tasks.get(taskName);
+                if (currentTask && retryDelay) {
+                    const retryAt = new Date(end.getTime() + retryDelay.toMilliseconds());
+                    currentTask.lastFailureTime = end;
+                    currentTask.pendingRetryUntil = retryAt;
+                    currentTask.running = false;
+                }
+            });
+            
+            capabilities.logger.logInfo(
+                { name: taskName, errorMessage: message },
+                "TaskRunFailure"
+            );
         }
     });
 
@@ -130,6 +199,9 @@ function makePollingScheduler(capabilities, options = {}) {
 
         pollInProgress = true;
         try {
+            // Ensure state is loaded before processing tasks
+            await ensureStateLoaded();
+            
             const now = dt.toNativeDate(dt.now());
             let dueRetry = 0;
             let dueCron = 0;
@@ -139,7 +211,7 @@ function makePollingScheduler(capabilities, options = {}) {
             let skippedConcurrency = 0;
 
             // Collect all due tasks for parallel execution
-            /** @type {Array<{task: Task, mode: "retry"|"cron"}>} */
+            /** @type {Array<{name: string, mode: "retry"|"cron"}>} */
             const dueTasks = [];
 
             for (const task of tasks.values()) {
@@ -169,17 +241,17 @@ function makePollingScheduler(capabilities, options = {}) {
                 if (shouldRunRetry && shouldRunCron) {
                     // Both are due - choose the mode based on which is earlier (chronologically smaller)
                     if (task.pendingRetryUntil && lastScheduledFire && task.pendingRetryUntil.getTime() < lastScheduledFire.getTime()) {
-                        dueTasks.push({ task, mode: "retry" });
+                        dueTasks.push({ name: task.name, mode: "retry" });
                         dueRetry++;
                     } else {
-                        dueTasks.push({ task, mode: "cron" });
+                        dueTasks.push({ name: task.name, mode: "cron" });
                         dueCron++;
                     }
                 } else if (shouldRunCron) {
-                    dueTasks.push({ task, mode: "cron" });
+                    dueTasks.push({ name: task.name, mode: "cron" });
                     dueCron++;
                 } else if (shouldRunRetry) {
-                    dueTasks.push({ task, mode: "retry" });
+                    dueTasks.push({ name: task.name, mode: "retry" });
                     dueRetry++;
                 } else if (task.pendingRetryUntil) {
                     skippedRetryFuture++;
@@ -270,7 +342,6 @@ function makePollingScheduler(capabilities, options = {}) {
 
             start();
             return name;
-        },
         },
 
         /**
