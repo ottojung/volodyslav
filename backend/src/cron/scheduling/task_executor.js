@@ -7,12 +7,12 @@
 
 /**
  * Create a task executor with concurrency management.
- * @param {import('../../capabilities/root').Capabilities} capabilities
+ * @param {import('../../capabilities/root').Capabilities} _capabilities
  * @param {number} maxConcurrentTasks
  * @param {(taskName: string) => Promise<void>} executeTask
  * @returns {{executeTasks: (dueTasks: Array<{name: string, mode: "retry"|"cron"}>) => Promise<number>}}
  */
-function makeTaskExecutor(capabilities, maxConcurrentTasks, executeTask) {
+function makeTaskExecutor(_capabilities, maxConcurrentTasks, executeTask) {
     /**
      * Execute multiple tasks with concurrency control.
      * @param {Array<{name: string, mode: "retry"|"cron"}>} dueTasks
@@ -25,7 +25,7 @@ function makeTaskExecutor(capabilities, maxConcurrentTasks, executeTask) {
 
         // Execute all tasks in parallel if within limit
         if (dueTasks.length <= maxConcurrentTasks) {
-            const promises = dueTasks.map(({ name, mode }) => executeTask(name));
+            const promises = dueTasks.map(({ name }) => executeTask(name));
             await Promise.all(promises);
             return 0;
         } else {
@@ -42,7 +42,7 @@ function makeTaskExecutor(capabilities, maxConcurrentTasks, executeTask) {
                     const dueTask = dueTasks[index++];
                     if (!dueTask) continue;
 
-                    const { name, mode } = dueTask;
+                    const { name } = dueTask;
                     const promise = executeTask(name);
                     executing.add(promise);
 

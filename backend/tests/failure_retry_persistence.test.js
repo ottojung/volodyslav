@@ -33,6 +33,11 @@ describe("failure retry persistence", () => {
         
         // Advance time to trigger cron execution (1 second should be enough)
         jest.advanceTimersByTime(1000);
+        // Manual poll since timer advancement doesn't work reliably in tests
+        await scheduler._poll();
+        
+        // Give task execution time to complete
+        jest.advanceTimersByTime(100);
         
         // Check that task was executed and failed properly
         let tasks = await scheduler.getTasks();

@@ -62,11 +62,49 @@ function makePollingScheduler(capabilities, options = {}) {
         // This function handles the entire task execution flow for the given task name
         // Following the requirement that the interface should be "string => Promise<void>"
         
-        let callback = null;
-        let retryDelay = null;
         const startTime = dt.toNativeDate(dt.now());
         
-        // Start the task execution - mark as running and get callback info
+        try {
+            // Get task and execute it, handling all state within the execution
+            await executeTaskByName(taskName, startTime);
+        } catch (error) {
+            console.log(`Error in task execution for ${taskName}:`, error);
+            throw error;
+        }
+    });
+
+    /**
+     * Get callback function from task if available
+     * @param {string} taskName
+     * @returns {Promise<(() => Promise<void> | void) | null>}
+     */
+    async function getTaskCallback(taskName) {
+        /** @type {(() => Promise<void> | void) | null} */
+        let callback = null;
+        
+        await modifyTasks((tasks) => {
+            const task = tasks.get(taskName);
+            if (task && task.callback !== null) {
+                callback = task.callback;
+            }
+        });
+        
+        console.log(`getTaskCallback for ${taskName}: ${!!callback}`);
+        return callback;
+    }
+
+    /**
+     * Execute a task by name with proper state management
+     * @param {string} taskName
+     * @param {Date} startTime
+     */
+    async function executeTaskByName(taskName, startTime) {
+        // Get task info and mark as running
+        /** @type {TimeDuration | null} */
+        let retryDelay = null;
+        /** @type {boolean} */
+        let taskFound = false;
+        
         await modifyTasks((tasks) => {
             const task = tasks.get(taskName);
             if (!task) {
@@ -79,23 +117,31 @@ function makePollingScheduler(capabilities, options = {}) {
                 return;
             }
 
-            callback = task.callback;
             retryDelay = task.retryDelay;
+            taskFound = true;
             
             // Mark running and set attempt time
             task.running = true;
             task.lastAttemptTime = startTime;
         });
         
-        if (!callback) {
+        if (!taskFound) {
             return; // Task not found or no callback
+        }
+
+        // Get the callback outside the transaction for execution
+        const callback = await getTaskCallback(taskName);
+        if (!callback) {
+            return; // Callback was removed after we checked
         }
 
         capabilities.logger.logInfo({ name: taskName }, "TaskRunStarted");
         
         try {
             // Execute the callback outside of the transaction
+            console.log(`About to call callback for ${taskName}`);
             const result = callback();
+            console.log(`Called callback for ${taskName}, result:`, result);
             if (result instanceof Promise) {
                 await result;
             }
@@ -136,7 +182,7 @@ function makePollingScheduler(capabilities, options = {}) {
                 "TaskRunFailure"
             );
         }
-    });
+    }
 
     // Lazy load state when first needed
     async function ensureStateLoaded() {
