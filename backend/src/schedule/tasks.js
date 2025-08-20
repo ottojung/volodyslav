@@ -72,6 +72,7 @@ async function scheduleAll(capabilities) {
     const retryDelay = COMMON.FIVE_MINUTES;
 
     // Define all task registrations
+    /** @type {Array<[string, string, () => Promise<void>, import('../time_duration/structure').TimeDuration]>} */
     const registrations = [
         ["every-hour", "0 * * * *", () => everyHour(capabilities), retryDelay],
         ["daily-2am", "0 2 * * *", () => daily(capabilities), retryDelay],

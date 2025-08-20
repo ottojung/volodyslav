@@ -6,7 +6,7 @@
 
 const cronScheduler = require("../cron");
 const { transaction } = require("../runtime_state_storage");
-const { TaskListMismatchError, MultipleInitializationsError } = require("../user_errors");
+const { TaskListMismatchError, MultipleInitializationsError, isTaskListMismatchError, isMultipleInitializationsError } = require("../user_errors");
 
 /** @typedef {import('../time_duration/structure').TimeDuration} TimeDuration */
 /** @typedef {import('./tasks').Capabilities} Capabilities */
@@ -168,31 +168,12 @@ async function validateTasksAgainstPersistedState(capabilities, registrations) {
  * Initialize the scheduler with the given registrations.
  * This function is idempotent - calling it multiple times has no additional effect.
  * 
- * @param {Registration[]} registrations - Array of [name, cronExpression, callback, retryDelay] tuples
- * @returns {Promise<void>} - Resolves when initialization and validation complete
- * @throws {TaskListMismatchError} if registrations don't match persisted runtime state
- */
-async function initialize(registrations) {
-    // Idempotent behavior - do nothing if already initialized
-    if (isInitialized) {
-        return;
-    }
-    
-    // Get capabilities from the first callback (they should all have the same signature)
-    // Since this is a bit of a hack, we'll need to pass capabilities explicitly
-    throw new Error("initialize() must be called with capabilities. This implementation needs to be updated.");
-}
-
-/**
- * Initialize the scheduler with the given registrations.
- * This function is idempotent - calling it multiple times has no additional effect.
- * 
  * @param {Capabilities} capabilities - The capabilities object
  * @param {Registration[]} registrations - Array of [name, cronExpression, callback, retryDelay] tuples
  * @returns {Promise<void>} - Resolves when initialization and validation complete
  * @throws {TaskListMismatchError} if registrations don't match persisted runtime state
  */
-async function initializeWithCapabilities(capabilities, registrations) {
+async function initialize(capabilities, registrations) {
     // Idempotent behavior - do nothing if already initialized
     if (isInitialized) {
         return;
@@ -214,11 +195,11 @@ async function initializeWithCapabilities(capabilities, registrations) {
 }
 
 module.exports = {
-    initialize: initializeWithCapabilities,
+    initialize,
     TaskListMismatchError,
     MultipleInitializationsError,
-    isTaskListMismatchError: require("../user_errors").isTaskListMismatchError,
-    isMultipleInitializationsError: require("../user_errors").isMultipleInitializationsError,
+    isTaskListMismatchError,
+    isMultipleInitializationsError,
     // For testing only
     _resetState: resetState,
 };

@@ -12,11 +12,7 @@ const { everyHour, daily } = require("../schedule/tasks");
 /** @typedef {import('../subprocess/command').Command} Command */
 /** @typedef {import('../environment').Environment} Environment */
 /** @typedef {import('../logger').Logger} Logger */
-/** @typedef {import('../schedule').Scheduler} Scheduler */
-
-/**
- * @typedef {import('../capabilities/root').Capabilities} Capabilities
- */
+/** @typedef {import('../capabilities/root').Capabilities} Capabilities */
 
 /**
  * Handles the periodic task execution request.

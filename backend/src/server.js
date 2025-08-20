@@ -23,13 +23,9 @@ const eventLogStorage = require("./event_log_storage");
 /** @typedef {import('./environment').Environment} Environment */
 /** @typedef {import('./logger').Logger} Logger */
 /** @typedef {import('./notifications').Notifier} Notifier */
-/** @typedef {import('./schedule').Scheduler} Scheduler */
+/** @typedef {import('./capabilities/root').Capabilities} Capabilities */
 /** @typedef {import('./ai/transcription').AITranscription} AITranscription */
 /** @typedef {import('./exiter').Exiter} Exiter */
-
-/**
- * @typedef {import('./capabilities/root').Capabilities} Capabilities
- */
 
 /**
  * @param {Capabilities} capabilities
