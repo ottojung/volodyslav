@@ -46,6 +46,7 @@ const POLL_INTERVAL_MS = 600000;
  */
 function makePollingScheduler(capabilities, options = {}) {
     const pollIntervalMs = options.pollIntervalMs ?? POLL_INTERVAL_MS;
+    const maxConcurrentTasks = options.maxConcurrentTasks ?? 10; // Default concurrency limit
     /** @type {Map<string, Task>} */
     const tasks = new Map();
     /** @type {any} */
@@ -119,14 +120,25 @@ function makePollingScheduler(capabilities, options = {}) {
             await ensureStateLoaded();
             
             const now = dt.toNativeDate(dt.now());
+            let dueRetry = 0;
+            let dueCron = 0;
+            let skippedRunning = 0;
+            let skippedRetryFuture = 0;
+            let skippedNotDue = 0;
+            let skippedConcurrency = 0;
             
-            // Find due tasks and execute them directly without extracting callbacks
+            // Collect due tasks for concurrency management
+            /** @type {Array<Task>} */
+            const dueTasks = [];
+            
+            // Find due tasks
             for (const task of tasks.values()) {
                 // Skip tasks that don't have a callback yet (loaded from persistence)
                 if (task.callback === null) {
                     continue;
                 }
                 if (task.running) {
+                    skippedRunning++;
                     capabilities.logger.logDebug({ name: task.name, reason: "running" }, "TaskSkip");
                     continue;
                 }
@@ -144,18 +156,57 @@ function makePollingScheduler(capabilities, options = {}) {
 
                 const shouldRunRetry = task.pendingRetryUntil && now.getTime() >= task.pendingRetryUntil.getTime();
 
-                if (shouldRunCron || shouldRunRetry) {
-                    await executeTaskDirectly(task);
+                if (shouldRunRetry && shouldRunCron) {
+                    // Both are due - choose the mode based on which is earlier (chronologically smaller)
+                    if (task.pendingRetryUntil && lastScheduledFire && task.pendingRetryUntil.getTime() < lastScheduledFire.getTime()) {
+                        dueTasks.push(task);
+                        dueRetry++;
+                    } else {
+                        dueTasks.push(task);
+                        dueCron++;
+                    }
+                } else if (shouldRunCron) {
+                    dueTasks.push(task);
+                    dueCron++;
+                } else if (shouldRunRetry) {
+                    dueTasks.push(task);
+                    dueRetry++;
                 } else if (task.pendingRetryUntil) {
+                    skippedRetryFuture++;
                     capabilities.logger.logDebug({ name: task.name, reason: "retryNotDue" }, "TaskSkip");
                 } else {
+                    skippedNotDue++;
                     capabilities.logger.logDebug({ name: task.name, reason: "notDue" }, "TaskSkip");
                 }
             }
 
+            // Execute tasks with concurrency control
+            const tasksToExecute = dueTasks.slice(0, maxConcurrentTasks);
+            skippedConcurrency = Math.max(0, dueTasks.length - maxConcurrentTasks);
+            
+            // Start all tasks in parallel but don't wait for them to complete
+            // This allows poll() to return while tasks are still running
+            const taskPromises = tasksToExecute.map(task => executeTaskDirectly(task));
+            
+            // Start all promises but don't await them - let them run in background
+            // This ensures poll() returns quickly while tasks continue executing
+            taskPromises.forEach(promise => {
+                promise.catch(error => {
+                    // Log any unexpected errors in background task execution
+                    const message = error instanceof Error ? error.message : String(error);
+                    capabilities.logger.logError({ error: message }, "BackgroundTaskError");
+                });
+            });
+
             capabilities.logger.logDebug(
                 {
                     total: tasks.size,
+                    dueRetry,
+                    dueCron,
+                    skippedRunning,
+                    skippedRetryFuture,
+                    skippedNotDue,
+                    skippedConcurrency,
                 },
                 "PollSummary"
             );
@@ -179,9 +230,11 @@ function makePollingScheduler(capabilities, options = {}) {
         
         try {
             // Execute callback directly from task
-            const result = task.callback();
-            if (result instanceof Promise) {
-                await result;
+            if (task.callback) {
+                const result = task.callback();
+                if (result instanceof Promise) {
+                    await result;
+                }
             }
             const end = dt.toNativeDate(dt.now());
             
