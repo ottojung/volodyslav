@@ -171,6 +171,11 @@ function validateTasksAgainstPersistedStateInner(registrations, persistedTasks) 
     }
 }
 
+/** 
+ * @typedef {object} Runner
+ * @property {() => Promise<void>} stop - Stop the main loop
+ */
+
 /**
  * Initialize the scheduler with the given registrations.
  * This function is idempotent - calling it multiple times has no additional effect.
@@ -178,11 +183,16 @@ function validateTasksAgainstPersistedStateInner(registrations, persistedTasks) 
  * @param {Capabilities} capabilities - The capabilities object
  * @param {Registration[]} registrations - Descriptions of tasks to run
  * @param {{pollIntervalMs?: number}} [options] - Optional configuration for the underlying scheduler
- * @returns {Promise<void>} - Resolves when initialization and validation complete
+ * @returns {Promise<Runner>} - Resolves when initialization and validation complete
  * @throws {TaskListMismatchError} if registrations don't match persisted runtime state
  */
 async function initialize(capabilities, registrations, options = {}) {
-    await transaction(capabilities, async (storage) => {
+    /**
+     * Start the scheduler.
+     * @param {import('../runtime_state_storage/class').RuntimeStateStorage} storage
+     * @returns {Promise<Runner>}
+     */
+    async function start(storage) {
         const currentState = await storage.getCurrentState();
         const persistedTasks = currentState.tasks;
         
@@ -203,9 +213,6 @@ async function initialize(capabilities, registrations, options = {}) {
         };
         const pollingScheduler = cronScheduler.make(capabilities, cronOptions);
         
-        // Schedule all tasks - the cron scheduler will handle idempotency naturally
-        // If a task is already scheduled, it will either update it (if loaded from persistence)
-        // or throw ScheduleDuplicateTaskError (if already actively scheduled)
         for (const [name, cronExpression, callback, retryDelay] of registrations) {
             try {
                 await pollingScheduler.schedule(name, cronExpression, callback, retryDelay);
@@ -222,7 +229,13 @@ async function initialize(capabilities, registrations, options = {}) {
                 }
             }
         }
-    });
+
+        return {
+            stop: () => pollingScheduler.stop(),
+        };
+    }
+
+    return await transaction(capabilities, start);
 }
 
 module.exports = {

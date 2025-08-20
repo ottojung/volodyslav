@@ -55,13 +55,13 @@ describe("Declarative Scheduler", () => {
             ];
 
             // First call should succeed
-            await expect(initialize(capabilities, registrations)).resolves.toBeUndefined();
-            
+            await expect(initialize(capabilities, registrations)).resolves.toBeDefined();
+
             // Second call should also succeed and do nothing
-            await expect(initialize(capabilities, registrations)).resolves.toBeUndefined();
-            
+            await expect(initialize(capabilities, registrations)).resolves.toBeDefined();
+
             // Third call should also succeed and do nothing
-            await expect(initialize(capabilities, registrations)).resolves.toBeUndefined();
+            await expect(initialize(capabilities, registrations)).resolves.toBeDefined();
         });
 
         test("throws TaskListMismatchError when tasks differ from persisted state", async () => {

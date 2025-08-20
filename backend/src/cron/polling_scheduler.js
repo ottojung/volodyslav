@@ -263,6 +263,11 @@ function makePollingScheduler(capabilities, options = {}) {
             return existed;
         },
 
+        async stopLoop() {
+            await ensureStateLoaded();
+            stop();
+        },
+
         /**
          * Cancel all tasks and stop polling.
          * @returns {Promise<number>}

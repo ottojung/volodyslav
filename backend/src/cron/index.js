@@ -46,6 +46,15 @@ function make(capabilities, options = {}) {
         async cancelAll() {
             return await scheduler.cancelAll();
         },
+
+        /**
+         * Stop the main loop.
+         * @returns {Promise<void>}
+         */
+        async stop() {
+            return await scheduler.stopLoop();
+        },
+
         /**
          * Get info about tasks.
          * @returns {Promise<Array<{name:string,cronExpression:string,running:boolean,lastSuccessTime?:string,lastFailureTime?:string,lastAttemptTime?:string,pendingRetryUntil?:string,modeHint:"retry"|"cron"|"idle"}>>}
