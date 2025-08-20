@@ -51,7 +51,7 @@ function makePollingScheduler(capabilities, options = {}) {
     const tasks = new Map();
     /** @type {any} */
     let interval = null;
-    const dt = capabilities.datetime; // Use capabilities datetime instead of creating new instance
+    const dt = capabilities.datetime;
     let stateLoadAttempted = false;
     let pollInProgress = false; // Guard against re-entrant polls
 
