@@ -6,15 +6,14 @@ const { parseCronExpression } = require("./parser");
 const {
     getMostRecentExecution,
     validateTaskFrequency,
+    loadPersistedState,
+    persistCurrentState,
     makeTaskExecutor,
 } = require("./scheduling");
 const {
     ScheduleDuplicateTaskError,
     ScheduleInvalidNameError,
 } = require("./polling_scheduler_errors");
-const { transaction } = require("../runtime_state_storage");
-const structure = require("../runtime_state_storage/structure");
-const time_duration = require("../time_duration");
 
 /** @typedef {import('../logger').Logger} Logger */
 /** @typedef {import('../time_duration/structure').TimeDuration} TimeDuration */
@@ -54,198 +53,53 @@ function makePollingScheduler(capabilities, options = {}) {
     /** @type {any} */
     let interval = null;
     const dt = capabilities.datetime; // Use capabilities datetime instead of creating new instance
+    let stateLoadAttempted = false;
     let pollInProgress = false; // Guard against re-entrant polls
 
-    /**
-     * Helper function to convert persisted task record to in-memory Task object
-     * @param {any} record - Persisted task record
-     * @returns {Task}
-     */
-    function convertPersistedTaskToTask(record) {
-        // Parse cron expression
-        const parsedCron = parseCronExpression(record.cronExpression);
+    // Create task executor for handling task execution with concurrency limits
+    // Provide a callback-based update function instead of write-only persistState
+    const taskExecutor = makeTaskExecutor(capabilities, maxConcurrentTasks, async (task, updates) => {
+        // Apply updates to the specific task
+        const currentTask = tasks.get(task.name);
+        if (currentTask) {
+            // Apply partial updates to the current task
+            Object.assign(currentTask, updates);
+            // Persist the entire state after the update
+            await persistState();
+        }
+    });
 
-        // Convert retryDelayMs to TimeDuration
-        const retryDelay = time_duration.fromMilliseconds(record.retryDelayMs);
+    // Lazy load state when first needed
+    async function ensureStateLoaded() {
+        if (!stateLoadAttempted) {
+            stateLoadAttempted = true;
+            await loadPersistedState(capabilities, tasks);
+        }
+    }
 
-        // Convert DateTime objects to native Date objects
-        const lastSuccessTime = record.lastSuccessTime
-            ? capabilities.datetime.toNativeDate(record.lastSuccessTime)
-            : undefined;
-
-        const lastFailureTime = record.lastFailureTime
-            ? capabilities.datetime.toNativeDate(record.lastFailureTime)
-            : undefined;
-
-        const lastAttemptTime = record.lastAttemptTime
-            ? capabilities.datetime.toNativeDate(record.lastAttemptTime)
-            : undefined;
-
-        const pendingRetryUntil = record.pendingRetryUntil
-            ? capabilities.datetime.toNativeDate(record.pendingRetryUntil)
-            : undefined;
-
-        const lastEvaluatedFire = record.lastEvaluatedFire
-            ? capabilities.datetime.toNativeDate(record.lastEvaluatedFire)
-            : undefined;
-
-        /** @type {Task} */
-        const task = {
-            name: record.name,
-            cronExpression: record.cronExpression,
-            parsedCron,
-            callback: null, // Will be set when task is re-registered
-            retryDelay,
-            lastSuccessTime,
-            lastFailureTime,
-            lastAttemptTime,
-            pendingRetryUntil,
-            lastEvaluatedFire,
-            running: false, // Never restore running state
-        };
-
-        return task;
+    // Persist current state
+    async function persistState() {
+        await persistCurrentState(capabilities, tasks);
     }
 
     /**
-     * Helper function to convert in-memory Task to persisted task record
-     * @param {Task} task - In-memory task
-     * @returns {any} Persisted task record
-     */
-    function convertTaskToPersistedRecord(task) {
-        return {
-            name: task.name,
-            cronExpression: task.cronExpression,
-            retryDelayMs: task.retryDelay.toMilliseconds(),
-            lastSuccessTime: task.lastSuccessTime
-                ? capabilities.datetime.fromEpochMs(task.lastSuccessTime.getTime())
-                : undefined,
-            lastFailureTime: task.lastFailureTime
-                ? capabilities.datetime.fromEpochMs(task.lastFailureTime.getTime())
-                : undefined,
-            lastAttemptTime: task.lastAttemptTime
-                ? capabilities.datetime.fromEpochMs(task.lastAttemptTime.getTime())
-                : undefined,
-            pendingRetryUntil: task.pendingRetryUntil
-                ? capabilities.datetime.fromEpochMs(task.pendingRetryUntil.getTime())
-                : undefined,
-            lastEvaluatedFire: task.lastEvaluatedFire
-                ? capabilities.datetime.fromEpochMs(task.lastEvaluatedFire.getTime())
-                : undefined,
-        };
-    }
-
-    /**
-     * Atomically modify tasks with transactional persistence
+     * Atomically modify tasks with atomic persistence
      * @template T
      * @param {(tasks: Map<string, Task>) => T} transformation
      * @returns {Promise<T>}
      */
     async function modifyTasks(transformation) {
-        return await transaction(capabilities, async (storage) => {
-            // Load current state from storage within the transaction
-            const existingState = await storage.getExistingState();
-            
-            // Build in-memory tasks map from persisted state
-            /** @type {Map<string, Task>} */
-            const currentTasks = new Map();
-            
-            if (existingState !== null) {
-                // Handle migration logging
-                if (existingState.version === 1) {
-                    capabilities.logger.logInfo(
-                        { from: 1, to: 2 },
-                        "RuntimeStateMigrated"
-                    );
-                }
-
-                // Build in-memory tasks from persisted state
-                for (const record of existingState.tasks) {
-                    try {
-                        const task = convertPersistedTaskToTask(record);
-                        currentTasks.set(record.name, task);
-                    } catch (error) {
-                        const message = error instanceof Error ? error.message : String(error);
-                        capabilities.logger.logError(
-                            { taskName: record.name, error: message },
-                            "FailedToLoadPersistedTask"
-                        );
-                        // Continue loading other tasks
-                    }
-                }
-            }
-
-            // Merge with any callbacks that exist in memory for these tasks
-            for (const task of currentTasks.values()) {
-                const existingTask = tasks.get(task.name);
-                if (existingTask && existingTask.callback) {
-                    task.callback = existingTask.callback;
-                }
-            }
-
-            // Apply the transformation within the transaction
-            const result = transformation(currentTasks);
-
-            // Update the in-memory tasks map with the results
-            tasks.clear();
-            for (const [name, task] of currentTasks) {
-                tasks.set(name, task);
-            }
-
-            // Convert tasks back to persistable format and save
-            const currentState = await storage.getCurrentState();
-            const taskRecords = Array.from(currentTasks.values()).map(convertTaskToPersistedRecord);
-
-            // Update state with new task records
-            const newState = {
-                version: currentState.version,
-                startTime: currentState.startTime,
-                tasks: taskRecords,
-            };
-
-            storage.setState(newState);
-
-            // Log the persistence
-            const serialized = structure.serialize(newState);
-            const bytes = JSON.stringify(serialized).length;
-            capabilities.logger.logDebug({ taskCount: currentTasks.size, bytes }, "StatePersisted");
-
-            return result;
-        });
+        // Ensure state is loaded before modifying
+        await ensureStateLoaded();
+        
+        // Apply transformation to in-memory tasks
+        const result = transformation(tasks);
+        
+        // Persist the changes atomically
+        await persistState();
+        
+        return result;
     }
-
-    // Create task executor for handling task execution with concurrency limits
-    // Create an adapter that converts the task executor's expected interface
-    // from updateTask(task, partialUpdates) to our callback-based approach
-    /**
-     * @param {Task} task
-     * @param {Partial<Task>} updates
-     */
-    async function updateTaskAdapter(task, updates) {
-        await modifyTasks((currentTasks) => {
-            const currentTask = currentTasks.get(task.name);
-            if (currentTask) {
-                // Apply partial updates to create updated task
-                /** @type {Task} */
-                const updatedTask = {
-                    name: currentTask.name,
-                    cronExpression: currentTask.cronExpression,
-                    parsedCron: currentTask.parsedCron,
-                    callback: currentTask.callback,
-                    retryDelay: currentTask.retryDelay,
-                    lastSuccessTime: 'lastSuccessTime' in updates ? updates.lastSuccessTime : currentTask.lastSuccessTime,
-                    lastFailureTime: 'lastFailureTime' in updates ? updates.lastFailureTime : currentTask.lastFailureTime,
-                    lastAttemptTime: 'lastAttemptTime' in updates ? updates.lastAttemptTime : currentTask.lastAttemptTime,
-                    pendingRetryUntil: 'pendingRetryUntil' in updates ? updates.pendingRetryUntil : currentTask.pendingRetryUntil,
-                    lastEvaluatedFire: 'lastEvaluatedFire' in updates ? updates.lastEvaluatedFire : currentTask.lastEvaluatedFire,
-                    running: 'running' in updates ? (updates.running ?? currentTask.running) : currentTask.running,
-                };
-                currentTasks.set(task.name, updatedTask);
-            }
-        });
-    }
-
-    const taskExecutor = makeTaskExecutor(capabilities, maxConcurrentTasks, updateTaskAdapter);
 
     function start() {
         if (interval === null) {
@@ -276,87 +130,82 @@ function makePollingScheduler(capabilities, options = {}) {
 
         pollInProgress = true;
         try {
-            // Load current state and determine what tasks to execute
-            const dueTasks = await modifyTasks((currentTasks) => {
-                const now = dt.toNativeDate(dt.now());
-                let dueRetry = 0;
-                let dueCron = 0;
-                let skippedRunning = 0;
-                let skippedRetryFuture = 0;
-                let skippedNotDue = 0;
+            const now = dt.toNativeDate(dt.now());
+            let dueRetry = 0;
+            let dueCron = 0;
+            let skippedRunning = 0;
+            let skippedRetryFuture = 0;
+            let skippedNotDue = 0;
+            let skippedConcurrency = 0;
 
-                // Collect all due tasks for parallel execution
-                /** @type {Array<{task: Task, mode: "retry"|"cron"}>} */
-                const dueTasks = [];
+            // Collect all due tasks for parallel execution
+            /** @type {Array<{task: Task, mode: "retry"|"cron"}>} */
+            const dueTasks = [];
 
-                for (const task of currentTasks.values()) {
-                    // Skip tasks that don't have a callback yet (loaded from persistence)
-                    if (task.callback === null) {
-                        continue;
-                    }
-                    if (task.running) {
-                        skippedRunning++;
-                        capabilities.logger.logDebug({ name: task.name, reason: "running" }, "TaskSkip");
-                        continue;
-                    }
-
-                    // Check both cron schedule and retry timing
-                    const { lastScheduledFire, newLastEvaluatedFire } = getMostRecentExecution(task.parsedCron, now, dt, task.lastEvaluatedFire);
-
-                    // Update lastEvaluatedFire cache for performance optimization
-                    if (newLastEvaluatedFire) {
-                        task.lastEvaluatedFire = newLastEvaluatedFire;
-                    }
-
-                    const shouldRunCron = lastScheduledFire &&
-                        (!task.lastAttemptTime || task.lastAttemptTime < lastScheduledFire);
-
-                    const shouldRunRetry = task.pendingRetryUntil && now.getTime() >= task.pendingRetryUntil.getTime();
-
-                    if (shouldRunRetry && shouldRunCron) {
-                        // Both are due - choose the mode based on which is earlier (chronologically smaller)
-                        if (task.pendingRetryUntil && lastScheduledFire && task.pendingRetryUntil.getTime() < lastScheduledFire.getTime()) {
-                            dueTasks.push({ task, mode: "retry" });
-                            dueRetry++;
-                        } else {
-                            dueTasks.push({ task, mode: "cron" });
-                            dueCron++;
-                        }
-                    } else if (shouldRunCron) {
-                        dueTasks.push({ task, mode: "cron" });
-                        dueCron++;
-                    } else if (shouldRunRetry) {
-                        dueTasks.push({ task, mode: "retry" });
-                        dueRetry++;
-                    } else if (task.pendingRetryUntil) {
-                        skippedRetryFuture++;
-                        capabilities.logger.logDebug({ name: task.name, reason: "retryNotDue" }, "TaskSkip");
-                    } else {
-                        skippedNotDue++;
-                        capabilities.logger.logDebug({ name: task.name, reason: "notDue" }, "TaskSkip");
-                    }
+            for (const task of tasks.values()) {
+                // Skip tasks that don't have a callback yet (loaded from persistence)
+                if (task.callback === null) {
+                    continue;
+                }
+                if (task.running) {
+                    skippedRunning++;
+                    capabilities.logger.logDebug({ name: task.name, reason: "running" }, "TaskSkip");
+                    continue;
                 }
 
-                capabilities.logger.logDebug(
-                    {
-                        total: currentTasks.size,
-                        dueRetry,
-                        dueCron,
-                        skippedRunning,
-                        skippedRetryFuture,
-                        skippedNotDue,
-                        skippedConcurrency: 0, // Will be updated after task execution
-                    },
-                    "PollSummary"
-                );
+                // Check both cron schedule and retry timing
+                const { lastScheduledFire, newLastEvaluatedFire } = getMostRecentExecution(task.parsedCron, now, dt, task.lastEvaluatedFire);
 
-                return dueTasks;
-            });
+                // Update lastEvaluatedFire cache for performance optimization
+                if (newLastEvaluatedFire) {
+                    task.lastEvaluatedFire = newLastEvaluatedFire;
+                }
+
+                const shouldRunCron = lastScheduledFire &&
+                    (!task.lastAttemptTime || task.lastAttemptTime < lastScheduledFire);
+
+                const shouldRunRetry = task.pendingRetryUntil && now.getTime() >= task.pendingRetryUntil.getTime();
+
+                if (shouldRunRetry && shouldRunCron) {
+                    // Both are due - choose the mode based on which is earlier (chronologically smaller)
+                    if (task.pendingRetryUntil && lastScheduledFire && task.pendingRetryUntil.getTime() < lastScheduledFire.getTime()) {
+                        dueTasks.push({ task, mode: "retry" });
+                        dueRetry++;
+                    } else {
+                        dueTasks.push({ task, mode: "cron" });
+                        dueCron++;
+                    }
+                } else if (shouldRunCron) {
+                    dueTasks.push({ task, mode: "cron" });
+                    dueCron++;
+                } else if (shouldRunRetry) {
+                    dueTasks.push({ task, mode: "retry" });
+                    dueRetry++;
+                } else if (task.pendingRetryUntil) {
+                    skippedRetryFuture++;
+                    capabilities.logger.logDebug({ name: task.name, reason: "retryNotDue" }, "TaskSkip");
+                } else {
+                    skippedNotDue++;
+                    capabilities.logger.logDebug({ name: task.name, reason: "notDue" }, "TaskSkip");
+                }
+            }
 
             // Execute due tasks in parallel with concurrency control
-            if (dueTasks.length > 0) {
-                await taskExecutor.executeTasks(dueTasks);
-            }
+            const skippedConcurrencyCount = await taskExecutor.executeTasks(dueTasks);
+            skippedConcurrency = skippedConcurrencyCount;
+
+            capabilities.logger.logDebug(
+                {
+                    total: tasks.size,
+                    dueRetry,
+                    dueCron,
+                    skippedRunning,
+                    skippedRetryFuture,
+                    skippedNotDue,
+                    skippedConcurrency,
+                },
+                "PollSummary"
+            );
         } finally {
             pollInProgress = false;
         }
@@ -383,12 +232,11 @@ function makePollingScheduler(capabilities, options = {}) {
             validateTaskFrequency(parsedCron, pollIntervalMs, dt);
 
             // Use modifyTasks for atomic state checking and modification
-            await modifyTasks((currentTasks) => {
-                const existingTask = currentTasks.get(name);
+            await modifyTasks((tasks) => {
+                const existingTask = tasks.get(name);
                 if (existingTask) {
                     // If task exists from persistence without callback, update it
                     if (existingTask.callback === null) {
-                        // Update existing task with new callback and settings
                         existingTask.callback = callback;
                         existingTask.cronExpression = cronExpression;
                         existingTask.parsedCron = parsedCron;
@@ -417,11 +265,12 @@ function makePollingScheduler(capabilities, options = {}) {
                     lastEvaluatedFire: undefined,
                     running: false,
                 };
-                currentTasks.set(name, task);
+                tasks.set(name, task);
             });
 
             start();
             return name;
+        },
         },
 
         /**
@@ -430,9 +279,9 @@ function makePollingScheduler(capabilities, options = {}) {
          * @returns {Promise<boolean>}
          */
         async cancel(name) {
-            const result = await modifyTasks((currentTasks) => {
-                const existed = currentTasks.delete(name);
-                return { existed, size: currentTasks.size };
+            const result = await modifyTasks((tasks) => {
+                const existed = tasks.delete(name);
+                return { existed, size: tasks.size };
             });
             
             if (result.size === 0) {
@@ -446,9 +295,9 @@ function makePollingScheduler(capabilities, options = {}) {
          * @returns {Promise<number>}
          */
         async cancelAll() {
-            const count = await modifyTasks((currentTasks) => {
-                const count = currentTasks.size;
-                currentTasks.clear();
+            const count = await modifyTasks((tasks) => {
+                const count = tasks.size;
+                tasks.clear();
                 return count;
             });
             stop();
@@ -460,48 +309,49 @@ function makePollingScheduler(capabilities, options = {}) {
          * @returns {Promise<Array<{name:string,cronExpression:string,running:boolean,lastSuccessTime?:string,lastFailureTime?:string,lastAttemptTime?:string,pendingRetryUntil?:string,modeHint:"retry"|"cron"|"idle"}>>}
          */
         async getTasks() {
-            return await modifyTasks((currentTasks) => {
-                const now = dt.toNativeDate(dt.now());
-                return Array.from(currentTasks.values()).map((t) => {
-                    /** @type {"retry"|"cron"|"idle"} */
-                    let modeHint = "idle";
+            // Ensure state is loaded before returning task info
+            await ensureStateLoaded();
 
-                    const { lastScheduledFire, newLastEvaluatedFire } = getMostRecentExecution(t.parsedCron, now, dt, t.lastEvaluatedFire);
+            const now = dt.toNativeDate(dt.now());
+            return Array.from(tasks.values()).map((t) => {
+                /** @type {"retry"|"cron"|"idle"} */
+                let modeHint = "idle";
 
-                    // Update cache for performance (this will be persisted since we're in modifyTasks)
-                    if (newLastEvaluatedFire) {
-                        t.lastEvaluatedFire = newLastEvaluatedFire;
-                    }
-                    const shouldRunCron = lastScheduledFire &&
-                        (!t.lastAttemptTime || t.lastAttemptTime < lastScheduledFire);
-                    const shouldRunRetry = t.pendingRetryUntil && now.getTime() >= t.pendingRetryUntil.getTime();
+                const { lastScheduledFire, newLastEvaluatedFire } = getMostRecentExecution(t.parsedCron, now, dt, t.lastEvaluatedFire);
 
-                    if (shouldRunRetry && shouldRunCron) {
-                        // Both are due - choose mode based on which is earlier (chronologically smaller)
-                        if (t.pendingRetryUntil && lastScheduledFire && t.pendingRetryUntil.getTime() < lastScheduledFire.getTime()) {
-                            modeHint = "retry";
-                        } else {
-                            modeHint = "cron";
-                        }
-                    } else if (shouldRunCron) {
-                        modeHint = "cron";
-                    } else if (shouldRunRetry) {
+                // Update cache for performance (don't persist here as it's just for reading)
+                if (newLastEvaluatedFire) {
+                    t.lastEvaluatedFire = newLastEvaluatedFire;
+                }
+                const shouldRunCron = lastScheduledFire &&
+                    (!t.lastAttemptTime || t.lastAttemptTime < lastScheduledFire);
+                const shouldRunRetry = t.pendingRetryUntil && now.getTime() >= t.pendingRetryUntil.getTime();
+
+                if (shouldRunRetry && shouldRunCron) {
+                    // Both are due - choose mode based on which is earlier (chronologically smaller)
+                    if (t.pendingRetryUntil && lastScheduledFire && t.pendingRetryUntil.getTime() < lastScheduledFire.getTime()) {
                         modeHint = "retry";
                     } else {
-                        modeHint = "idle";
+                        modeHint = "cron";
                     }
+                } else if (shouldRunCron) {
+                    modeHint = "cron";
+                } else if (shouldRunRetry) {
+                    modeHint = "retry";
+                } else {
+                    modeHint = "idle";
+                }
 
-                    return {
-                        name: t.name,
-                        cronExpression: t.cronExpression,
-                        running: t.running,
-                        lastSuccessTime: t.lastSuccessTime?.toISOString(),
-                        lastFailureTime: t.lastFailureTime?.toISOString(),
-                        lastAttemptTime: t.lastAttemptTime?.toISOString(),
-                        pendingRetryUntil: t.pendingRetryUntil?.toISOString(),
-                        modeHint,
-                    };
-                });
+                return {
+                    name: t.name,
+                    cronExpression: t.cronExpression,
+                    running: t.running,
+                    lastSuccessTime: t.lastSuccessTime?.toISOString(),
+                    lastFailureTime: t.lastFailureTime?.toISOString(),
+                    lastAttemptTime: t.lastAttemptTime?.toISOString(),
+                    pendingRetryUntil: t.pendingRetryUntil?.toISOString(),
+                    modeHint,
+                };
             });
         },
 
