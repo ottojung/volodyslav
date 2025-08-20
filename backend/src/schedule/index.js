@@ -176,7 +176,7 @@ function validateTasksAgainstPersistedStateInner(registrations, persistedTasks) 
  * This function is idempotent - calling it multiple times has no additional effect.
  * 
  * @param {Capabilities} capabilities - The capabilities object
- * @param {Registration[]} registrations - Array of [name, cronExpression, callback, retryDelay] tuples
+ * @param {Registration[]} registrations - Descriptions of tasks to run
  * @param {{pollIntervalMs?: number}} [options] - Optional configuration for the underlying scheduler
  * @returns {Promise<void>} - Resolves when initialization and validation complete
  * @throws {TaskListMismatchError} if registrations don't match persisted runtime state
