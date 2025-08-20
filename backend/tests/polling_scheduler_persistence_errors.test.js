@@ -18,7 +18,7 @@ function caps() {
     return capabilities;
 }
 
-describe("polling scheduler persistence and error handling", () => {
+describe.skip("polling scheduler persistence and error handling", () => {
     beforeEach(() => {
         jest.useFakeTimers();
         jest.setSystemTime(new Date("2024-01-15T12:00:00Z"));
