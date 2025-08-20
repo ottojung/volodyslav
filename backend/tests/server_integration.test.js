@@ -11,12 +11,8 @@ const {
     stubNotifier,
     stubSleeper,
     stubDatetime,
+    stubApp,
 } = require("./stubs");
-
-// Mock express app
-const mockApp = {
-    use: jest.fn(),
-};
 
 function getTestCapabilities() {
     const capabilities = getMockedRootCapabilities();
@@ -36,16 +32,14 @@ function getTestCapabilities() {
 }
 
 describe("Server Integration with Declarative Scheduler", () => {
-    beforeEach(() => {
-        jest.clearAllMocks();
-    });
 
     test("server can initialize with declarative scheduler", async () => {
         const capabilities = getTestCapabilities();
+        const app = stubApp();
 
         // This test will expect an error since there's no matching persisted state
         // in the test environment, but we can verify the error is related to task validation
-        await expect(initialize(capabilities, mockApp)).rejects.toThrow();
+        await expect(initialize(capabilities, app)).rejects.toThrow();
         
         // Should have attempted to log initialization  
         expect(capabilities.logger.logInfo).toHaveBeenCalled();

@@ -105,6 +105,12 @@ function stubDatetime(capabilities) {
     };
 }
 
+function stubApp() {
+    return {
+        use: jest.fn(),
+    };
+}
+
 module.exports = {
     stubEnvironment,
     stubLogger,
@@ -113,4 +119,5 @@ module.exports = {
     stubSleeper,
     stubDatetime,
     stubEventLogRepository,
+    stubApp,
 };

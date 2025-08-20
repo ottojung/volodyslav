@@ -26,9 +26,6 @@ function getTestCapabilities() {
 }
 
 describe("Declarative Scheduler", () => {
-    beforeEach(() => {
-        jest.clearAllMocks();
-    });
 
     describe("initialize", () => {
         test("succeeds with non-empty registrations for first-time initialization", async () => {

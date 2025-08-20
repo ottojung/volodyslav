@@ -23,9 +23,6 @@ function getTestCapabilities() {
 }
 
 describe("Schedule Tasks", () => {
-    beforeEach(() => {
-        jest.clearAllMocks();
-    });
 
     describe("daily", () => {
         test("logs info message when starting", async () => {
