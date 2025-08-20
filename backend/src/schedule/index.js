@@ -177,10 +177,11 @@ function validateTasksAgainstPersistedStateInner(registrations, persistedTasks) 
  * 
  * @param {Capabilities} capabilities - The capabilities object
  * @param {Registration[]} registrations - Array of [name, cronExpression, callback, retryDelay] tuples
- * @returns {Promise<void>} - Resolves when initialization and validation complete
+ * @param {{pollIntervalMs?: number, returnSchedulerForTesting?: boolean}} [options] - Optional configuration for the underlying scheduler
+ * @returns {Promise<void | object>} - Resolves when initialization and validation complete, optionally returns scheduler for testing
  * @throws {TaskListMismatchError} if registrations don't match persisted runtime state
  */
-async function initialize(capabilities, registrations) {
+async function initialize(capabilities, registrations, options = {}) {
     let pollingScheduler = null;
     
     await transaction(capabilities, async (storage) => {
@@ -198,8 +199,12 @@ async function initialize(capabilities, registrations) {
             validateTasksAgainstPersistedStateInner(registrations, persistedTasks);
         }
         
-        // Create polling scheduler
-        pollingScheduler = cronScheduler.make(capabilities);
+        // Create polling scheduler with testing options
+        const cronOptions = {
+            pollIntervalMs: options.pollIntervalMs,
+            exposeInternalForTesting: options.returnSchedulerForTesting
+        };
+        pollingScheduler = cronScheduler.make(capabilities, cronOptions);
         
         // Schedule all tasks - the cron scheduler will handle idempotency naturally
         // If a task is already scheduled, it will either update it (if loaded from persistence)
@@ -221,10 +226,17 @@ async function initialize(capabilities, registrations) {
             }
         }
     });
+    
+    // Return scheduler for testing if requested
+    if (options.returnSchedulerForTesting) {
+        // @ts-expect-error - Returning scheduler for testing
+        return pollingScheduler;
+    }
 }
 
 module.exports = {
     initialize,
+    TaskListMismatchError,
     isTaskListMismatchError,
 };
 
