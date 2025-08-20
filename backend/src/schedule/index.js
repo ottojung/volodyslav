@@ -222,33 +222,11 @@ async function initialize(capabilities, registrations, options = {}) {
                 }
             }
         }
-        
-        // Store scheduler instance for testing access
-        // @ts-expect-error - Adding _testScheduler property for testing purposes
-        capabilities._testScheduler = pollingScheduler;
     });
-}
-
-/**
- * Get the scheduler instance for testing purposes only.
- * This should only be used in tests.
- * 
- * @param {Capabilities} capabilities - The capabilities object that was used for initialization
- * @returns {object} The scheduler instance with testing methods
- */
-function getSchedulerForTesting(capabilities) {
-    // @ts-expect-error - Accessing _testScheduler property for testing purposes
-    if (!capabilities._testScheduler) {
-        throw new Error("getSchedulerForTesting can only be used after initialize() has been called with test capabilities");
-    }
-    
-    // @ts-expect-error - Accessing _testScheduler property for testing purposes
-    return capabilities._testScheduler;
 }
 
 module.exports = {
     initialize,
-    getSchedulerForTesting,
     TaskListMismatchError,
     isTaskListMismatchError,
 };

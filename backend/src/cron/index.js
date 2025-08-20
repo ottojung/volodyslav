@@ -67,14 +67,7 @@ function make(capabilities, options = {}) {
             }
         },
 
-        /**
-         * Manual poll function for testing purposes only.
-         * @internal
-         * @returns {Promise<void>}
-         */
-        async _poll() {
-            return await scheduler._poll();
-        },
+
     };
 }
 

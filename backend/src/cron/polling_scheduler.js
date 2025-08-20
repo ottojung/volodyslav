@@ -327,13 +327,7 @@ function makePollingScheduler(capabilities, options = {}) {
             });
         },
 
-        /**
-         * Manual poll function for testing
-         * @internal
-         */
-        async _poll() {
-            return await poll();
-        },
+
     };
 }
 
