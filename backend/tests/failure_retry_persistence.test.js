@@ -26,23 +26,16 @@ describe("failure retry persistence", () => {
         const scheduler = makePollingScheduler(capabilities, { pollIntervalMs: 1000 });
         const retryDelay = fromMilliseconds(5000); // 5 second retry delay
         const callback = jest.fn(() => {
-            console.log("CALLBACK EXECUTED");
             throw new Error("Task failed");
         });
         
-        console.log("Scheduling task...");
         await scheduler.schedule("failing-task", "* * * * *", callback, retryDelay);
         
-        console.log("Calling manual poll...");
-        await scheduler._poll();
+        // Advance time to trigger cron execution (1 second should be enough)
+        jest.advanceTimersByTime(1000);
         
-        console.log("Getting tasks after poll...");
-        let tasks = await scheduler.getTasks();
-        console.log("Tasks after poll:", tasks.length, tasks[0] ? tasks[0].modeHint : "no tasks");
-        console.log("Callback call count:", callback.mock.calls.length);
-        
-        // Original test logic
         // Check that task was executed and failed properly
+        let tasks = await scheduler.getTasks();
         expect(tasks).toHaveLength(1);
         expect(callback).toHaveBeenCalledTimes(1);
         expect(tasks[0].pendingRetryUntil).toBeTruthy();
