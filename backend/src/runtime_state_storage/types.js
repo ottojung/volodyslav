@@ -32,6 +32,7 @@
  * @property {number} version - Schema version
  * @property {import('../datetime').DateTime} startTime - When the Volodyslav process started
  * @property {TaskRecord[]} tasks - Persisted task records
+ * @property {boolean} [schedulerInitialized] - Whether the scheduler has been initialized (for idempotency)
  */
 
 /**

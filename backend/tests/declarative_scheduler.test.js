@@ -22,6 +22,15 @@ function getTestCapabilities() {
     stubEnvironment(capabilities);
     stubSleeper(capabilities);
     stubDatetime(capabilities);
+    
+    // Ensure each test gets a unique working directory to avoid shared state
+    const uniqueSuffix = Math.random().toString(36).substring(7);
+    const originalWorkingDir = capabilities.environment.workingDirectory;
+    capabilities.environment.workingDirectory = jest.fn().mockImplementation(() => {
+        const baseDir = originalWorkingDir();
+        return `${baseDir}-${uniqueSuffix}`;
+    });
+    
     return capabilities;
 }
 
@@ -46,6 +55,190 @@ describe("Declarative Scheduler", () => {
 
             // Empty registrations should succeed (idempotent call does nothing)
             await expect(initialize(capabilities, registrations)).resolves.toBeUndefined();
+        });
+
+        test("is idempotent - multiple calls have no additional effect", async () => {
+            const capabilities = getTestCapabilities();
+            const registrations = [
+                ["task1", "0 * * * *", jest.fn(), COMMON.FIVE_MINUTES],
+            ];
+
+            // First call should succeed
+            await expect(initialize(capabilities, registrations)).resolves.toBeUndefined();
+            
+            // Second call should also succeed and do nothing
+            await expect(initialize(capabilities, registrations)).resolves.toBeUndefined();
+            
+            // Third call should also succeed and do nothing
+            await expect(initialize(capabilities, registrations)).resolves.toBeUndefined();
+        });
+
+        test("throws TaskListMismatchError when tasks differ from persisted state", async () => {
+            const capabilities = getTestCapabilities();
+            
+            // First, set up some initial persisted state by calling initialize
+            const initialRegistrations = [
+                ["task1", "0 * * * *", jest.fn(), COMMON.FIVE_MINUTES],
+                ["task2", "0 0 * * *", jest.fn(), COMMON.TEN_MINUTES],
+            ];
+            await initialize(capabilities, initialRegistrations);
+
+            // Now try to initialize with different tasks - this should fail
+            const differentRegistrations = [
+                ["task1", "0 * * * *", jest.fn(), COMMON.FIVE_MINUTES], // same
+                ["task3", "0 0 * * *", jest.fn(), COMMON.TEN_MINUTES], // different name
+            ];
+
+            // Create fresh capabilities for a new "process" simulation
+            const newCapabilities = getTestCapabilities();
+            
+            await expect(initialize(newCapabilities, differentRegistrations)).rejects.toThrow(TaskListMismatchError);
+        });
+
+        test("throws TaskListMismatchError when cron expression differs", async () => {
+            const capabilities = getTestCapabilities();
+            
+            // Set up initial state
+            const initialRegistrations = [
+                ["task1", "0 * * * *", jest.fn(), COMMON.FIVE_MINUTES],
+            ];
+            await initialize(capabilities, initialRegistrations);
+
+            // Try with different cron expression
+            const changedRegistrations = [
+                ["task1", "0 0 * * *", jest.fn(), COMMON.FIVE_MINUTES], // different cron
+            ];
+
+            const newCapabilities = getTestCapabilities();
+            await expect(initialize(newCapabilities, changedRegistrations)).rejects.toThrow(TaskListMismatchError);
+        });
+
+        test("throws TaskListMismatchError when retry delay differs", async () => {
+            const capabilities = getTestCapabilities();
+            
+            // Set up initial state
+            const initialRegistrations = [
+                ["task1", "0 * * * *", jest.fn(), COMMON.FIVE_MINUTES],
+            ];
+            await initialize(capabilities, initialRegistrations);
+
+            // Try with different retry delay
+            const changedRegistrations = [
+                ["task1", "0 * * * *", jest.fn(), COMMON.TEN_MINUTES], // different retry delay
+            ];
+
+            const newCapabilities = getTestCapabilities();
+            await expect(initialize(newCapabilities, changedRegistrations)).rejects.toThrow(TaskListMismatchError);
+        });
+
+        test("throws TaskListMismatchError when task is missing from registrations", async () => {
+            const capabilities = getTestCapabilities();
+            
+            // Set up initial state with two tasks
+            const initialRegistrations = [
+                ["task1", "0 * * * *", jest.fn(), COMMON.FIVE_MINUTES],
+                ["task2", "0 0 * * *", jest.fn(), COMMON.TEN_MINUTES],
+            ];
+            await initialize(capabilities, initialRegistrations);
+
+            // Try with only one task (missing task2)
+            const missingTaskRegistrations = [
+                ["task1", "0 * * * *", jest.fn(), COMMON.FIVE_MINUTES],
+            ];
+
+            const newCapabilities = getTestCapabilities();
+            const error = await initialize(newCapabilities, missingTaskRegistrations).catch(e => e);
+            
+            expect(error).toBeInstanceOf(TaskListMismatchError);
+            expect(error.mismatchDetails.missing).toContain("task2");
+        });
+
+        test("throws TaskListMismatchError when extra task is in registrations", async () => {
+            const capabilities = getTestCapabilities();
+            
+            // Set up initial state with one task
+            const initialRegistrations = [
+                ["task1", "0 * * * *", jest.fn(), COMMON.FIVE_MINUTES],
+            ];
+            await initialize(capabilities, initialRegistrations);
+
+            // Try with extra task
+            const extraTaskRegistrations = [
+                ["task1", "0 * * * *", jest.fn(), COMMON.FIVE_MINUTES],
+                ["task2", "0 0 * * *", jest.fn(), COMMON.TEN_MINUTES], // extra task
+            ];
+
+            const newCapabilities = getTestCapabilities();
+            const error = await initialize(newCapabilities, extraTaskRegistrations).catch(e => e);
+            
+            expect(error).toBeInstanceOf(TaskListMismatchError);
+            expect(error.mismatchDetails.extra).toContain("task2");
+        });
+
+        test("provides detailed mismatch information in error", async () => {
+            const capabilities = getTestCapabilities();
+            
+            // Set up initial state
+            const initialRegistrations = [
+                ["task1", "0 * * * *", jest.fn(), COMMON.FIVE_MINUTES],
+                ["task2", "0 0 * * *", jest.fn(), COMMON.TEN_MINUTES],
+            ];
+            await initialize(capabilities, initialRegistrations);
+
+            // Create complex mismatch scenario
+            const mismatchedRegistrations = [
+                ["task1", "0 */2 * * *", jest.fn(), COMMON.THIRTY_MINUTES], // different cron + retry delay
+                ["task3", "0 0 * * *", jest.fn(), COMMON.TEN_MINUTES], // extra task (task2 is missing)
+            ];
+
+            const newCapabilities = getTestCapabilities();
+            const error = await initialize(newCapabilities, mismatchedRegistrations).catch(e => e);
+            
+            expect(error).toBeInstanceOf(TaskListMismatchError);
+            expect(error.mismatchDetails.missing).toEqual(["task2"]);
+            expect(error.mismatchDetails.extra).toEqual(["task3"]);
+            expect(error.mismatchDetails.differing).toHaveLength(2); // task1 has 2 differing fields
+            
+            // Check that differing details are specific
+            const cronDiff = error.mismatchDetails.differing.find(d => d.field === 'cronExpression');
+            const retryDiff = error.mismatchDetails.differing.find(d => d.field === 'retryDelayMs');
+            
+            expect(cronDiff).toBeDefined();
+            expect(cronDiff.name).toBe("task1");
+            expect(cronDiff.expected).toBe("0 * * * *");
+            expect(cronDiff.actual).toBe("0 */2 * * *");
+            
+            expect(retryDiff).toBeDefined();
+            expect(retryDiff.name).toBe("task1");
+            expect(retryDiff.expected).toBe(COMMON.FIVE_MINUTES.toMilliseconds());
+            expect(retryDiff.actual).toBe(COMMON.THIRTY_MINUTES.toMilliseconds());
+        });
+
+        test("handles empty registrations with empty persisted state", async () => {
+            const capabilities = getTestCapabilities();
+            const registrations = [];
+
+            // Should succeed with no tasks
+            await expect(initialize(capabilities, registrations)).resolves.toBeUndefined();
+            
+            // Should be idempotent
+            await expect(initialize(capabilities, registrations)).resolves.toBeUndefined();
+        });
+
+        test("logs appropriate messages for first-time initialization", async () => {
+            const capabilities = getTestCapabilities();
+            const registrations = [
+                ["task1", "0 * * * *", jest.fn(), COMMON.FIVE_MINUTES],
+                ["task2", "0 0 * * *", jest.fn(), COMMON.TEN_MINUTES],
+            ];
+
+            await initialize(capabilities, registrations);
+
+            // Should log first-time initialization message
+            expect(capabilities.logger.logInfo).toHaveBeenCalledWith(
+                { registeredTaskCount: 2 }, 
+                "First-time scheduler initialization: registering initial tasks"
+            );
         });
     });
 
