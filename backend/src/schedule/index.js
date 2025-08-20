@@ -225,7 +225,6 @@ async function initialize(capabilities, registrations) {
 
 module.exports = {
     initialize,
-    TaskListMismatchError,
     isTaskListMismatchError,
 };
 
