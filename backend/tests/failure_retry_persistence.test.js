@@ -36,9 +36,6 @@ describe("failure retry persistence", () => {
         // Manual poll since timer advancement doesn't work reliably in tests
         await scheduler._poll();
         
-        // Give task execution time to complete
-        jest.advanceTimersByTime(100);
-        
         // Check that task was executed and failed properly
         let tasks = await scheduler.getTasks();
         expect(tasks).toHaveLength(1);

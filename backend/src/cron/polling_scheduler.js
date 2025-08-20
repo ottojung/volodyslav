@@ -8,7 +8,6 @@ const {
     validateTaskFrequency,
     loadPersistedState,
     persistCurrentState,
-    makeTaskExecutor,
 } = require("./scheduling");
 const {
     ScheduleDuplicateTaskError,
@@ -47,7 +46,6 @@ const POLL_INTERVAL_MS = 600000;
  */
 function makePollingScheduler(capabilities, options = {}) {
     const pollIntervalMs = options.pollIntervalMs ?? POLL_INTERVAL_MS;
-    const maxConcurrentTasks = options.maxConcurrentTasks ?? 10; // Default concurrency limit
     /** @type {Map<string, Task>} */
     const tasks = new Map();
     /** @type {any} */
@@ -55,134 +53,6 @@ function makePollingScheduler(capabilities, options = {}) {
     const dt = capabilities.datetime; // Use capabilities datetime instead of creating new instance
     let stateLoadAttempted = false;
     let pollInProgress = false; // Guard against re-entrant polls
-
-    // Create task executor for handling task execution with concurrency limits
-    // The updateTask function handles task execution by name following the user requirement
-    const taskExecutor = makeTaskExecutor(capabilities, maxConcurrentTasks, async (taskName) => {
-        // This function handles the entire task execution flow for the given task name
-        // Following the requirement that the interface should be "string => Promise<void>"
-        
-        const startTime = dt.toNativeDate(dt.now());
-        
-        try {
-            // Get task and execute it, handling all state within the execution
-            await executeTaskByName(taskName, startTime);
-        } catch (error) {
-            console.log(`Error in task execution for ${taskName}:`, error);
-            throw error;
-        }
-    });
-
-    /**
-     * Get callback function from task if available
-     * @param {string} taskName
-     * @returns {Promise<(() => Promise<void> | void) | null>}
-     */
-    async function getTaskCallback(taskName) {
-        /** @type {(() => Promise<void> | void) | null} */
-        let callback = null;
-        
-        await modifyTasks((tasks) => {
-            const task = tasks.get(taskName);
-            if (task && task.callback !== null) {
-                callback = task.callback;
-            }
-        });
-        
-        console.log(`getTaskCallback for ${taskName}: ${!!callback}`);
-        return callback;
-    }
-
-    /**
-     * Execute a task by name with proper state management
-     * @param {string} taskName
-     * @param {Date} startTime
-     */
-    async function executeTaskByName(taskName, startTime) {
-        // Get task info and mark as running
-        /** @type {TimeDuration | null} */
-        let retryDelay = null;
-        /** @type {boolean} */
-        let taskFound = false;
-        
-        await modifyTasks((tasks) => {
-            const task = tasks.get(taskName);
-            if (!task) {
-                capabilities.logger.logWarning({ name: taskName }, "TaskNotFound");
-                return;
-            }
-            
-            if (task.callback === null) {
-                capabilities.logger.logWarning({ name: taskName }, "TaskSkippedNoCallback");
-                return;
-            }
-
-            retryDelay = task.retryDelay;
-            taskFound = true;
-            
-            // Mark running and set attempt time
-            task.running = true;
-            task.lastAttemptTime = startTime;
-        });
-        
-        if (!taskFound) {
-            return; // Task not found or no callback
-        }
-
-        // Get the callback outside the transaction for execution
-        const callback = await getTaskCallback(taskName);
-        if (!callback) {
-            return; // Callback was removed after we checked
-        }
-
-        capabilities.logger.logInfo({ name: taskName }, "TaskRunStarted");
-        
-        try {
-            // Execute the callback outside of the transaction
-            console.log(`About to call callback for ${taskName}`);
-            const result = callback();
-            console.log(`Called callback for ${taskName}, result:`, result);
-            if (result instanceof Promise) {
-                await result;
-            }
-            const end = dt.toNativeDate(dt.now());
-            
-            // Update task state on success in separate transaction
-            await modifyTasks((tasks) => {
-                const currentTask = tasks.get(taskName);
-                if (currentTask) {
-                    currentTask.lastSuccessTime = end;
-                    currentTask.lastFailureTime = undefined;
-                    currentTask.pendingRetryUntil = undefined;
-                    currentTask.running = false;
-                }
-            });
-            
-            capabilities.logger.logInfo(
-                { name: taskName, durationMs: end.getTime() - startTime.getTime() },
-                "TaskRunSuccess"
-            );
-        } catch (error) {
-            const end = dt.toNativeDate(dt.now());
-            const message = error instanceof Error ? error.message : String(error);
-            
-            // Update task state on failure in separate transaction
-            await modifyTasks((tasks) => {
-                const currentTask = tasks.get(taskName);
-                if (currentTask && retryDelay) {
-                    const retryAt = new Date(end.getTime() + retryDelay.toMilliseconds());
-                    currentTask.lastFailureTime = end;
-                    currentTask.pendingRetryUntil = retryAt;
-                    currentTask.running = false;
-                }
-            });
-            
-            capabilities.logger.logInfo(
-                { name: taskName, errorMessage: message },
-                "TaskRunFailure"
-            );
-        }
-    }
 
     // Lazy load state when first needed
     async function ensureStateLoaded() {
@@ -249,24 +119,14 @@ function makePollingScheduler(capabilities, options = {}) {
             await ensureStateLoaded();
             
             const now = dt.toNativeDate(dt.now());
-            let dueRetry = 0;
-            let dueCron = 0;
-            let skippedRunning = 0;
-            let skippedRetryFuture = 0;
-            let skippedNotDue = 0;
-            let skippedConcurrency = 0;
-
-            // Collect all due tasks for parallel execution
-            /** @type {Array<{name: string, mode: "retry"|"cron"}>} */
-            const dueTasks = [];
-
+            
+            // Find due tasks and execute them directly without extracting callbacks
             for (const task of tasks.values()) {
                 // Skip tasks that don't have a callback yet (loaded from persistence)
                 if (task.callback === null) {
                     continue;
                 }
                 if (task.running) {
-                    skippedRunning++;
                     capabilities.logger.logDebug({ name: task.name, reason: "running" }, "TaskSkip");
                     continue;
                 }
@@ -284,48 +144,77 @@ function makePollingScheduler(capabilities, options = {}) {
 
                 const shouldRunRetry = task.pendingRetryUntil && now.getTime() >= task.pendingRetryUntil.getTime();
 
-                if (shouldRunRetry && shouldRunCron) {
-                    // Both are due - choose the mode based on which is earlier (chronologically smaller)
-                    if (task.pendingRetryUntil && lastScheduledFire && task.pendingRetryUntil.getTime() < lastScheduledFire.getTime()) {
-                        dueTasks.push({ name: task.name, mode: "retry" });
-                        dueRetry++;
-                    } else {
-                        dueTasks.push({ name: task.name, mode: "cron" });
-                        dueCron++;
-                    }
-                } else if (shouldRunCron) {
-                    dueTasks.push({ name: task.name, mode: "cron" });
-                    dueCron++;
-                } else if (shouldRunRetry) {
-                    dueTasks.push({ name: task.name, mode: "retry" });
-                    dueRetry++;
+                if (shouldRunCron || shouldRunRetry) {
+                    await executeTaskDirectly(task);
                 } else if (task.pendingRetryUntil) {
-                    skippedRetryFuture++;
                     capabilities.logger.logDebug({ name: task.name, reason: "retryNotDue" }, "TaskSkip");
                 } else {
-                    skippedNotDue++;
                     capabilities.logger.logDebug({ name: task.name, reason: "notDue" }, "TaskSkip");
                 }
             }
 
-            // Execute due tasks in parallel with concurrency control
-            const skippedConcurrencyCount = await taskExecutor.executeTasks(dueTasks);
-            skippedConcurrency = skippedConcurrencyCount;
-
             capabilities.logger.logDebug(
                 {
                     total: tasks.size,
-                    dueRetry,
-                    dueCron,
-                    skippedRunning,
-                    skippedRetryFuture,
-                    skippedNotDue,
-                    skippedConcurrency,
                 },
                 "PollSummary"
             );
         } finally {
             pollInProgress = false;
+        }
+    }
+
+    /**
+     * Execute a task directly from the tasks map without extracting references
+     * @param {Task} task
+     */
+    async function executeTaskDirectly(task) {
+        const startTime = dt.toNativeDate(dt.now());
+        
+        // Mark as running before execution
+        task.running = true;
+        task.lastAttemptTime = startTime;
+
+        capabilities.logger.logInfo({ name: task.name }, "TaskRunStarted");
+        
+        try {
+            // Execute callback directly from task
+            const result = task.callback();
+            if (result instanceof Promise) {
+                await result;
+            }
+            const end = dt.toNativeDate(dt.now());
+            
+            // Update task state directly and persist
+            task.lastSuccessTime = end;
+            task.lastFailureTime = undefined;
+            task.pendingRetryUntil = undefined;
+            task.running = false;
+            
+            // Persist state changes
+            await persistState();
+            
+            capabilities.logger.logInfo(
+                { name: task.name, durationMs: end.getTime() - startTime.getTime() },
+                "TaskRunSuccess"
+            );
+        } catch (error) {
+            const end = dt.toNativeDate(dt.now());
+            const message = error instanceof Error ? error.message : String(error);
+            
+            // Update task state directly and persist
+            const retryAt = new Date(end.getTime() + task.retryDelay.toMilliseconds());
+            task.lastFailureTime = end;
+            task.pendingRetryUntil = retryAt;
+            task.running = false;
+            
+            // Persist state changes
+            await persistState();
+            
+            capabilities.logger.logInfo(
+                { name: task.name, errorMessage: message },
+                "TaskRunFailure"
+            );
         }
     }
 
