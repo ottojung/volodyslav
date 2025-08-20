@@ -6,7 +6,6 @@ const { parseCronExpression } = require("./parser");
 const {
     getMostRecentExecution,
     validateTaskFrequency,
-    makeTaskExecutor,
 } = require("./scheduling");
 const {
     ScheduleDuplicateTaskError,
@@ -50,11 +49,214 @@ function makePollingScheduler(capabilities, options = {}) {
     const pollIntervalMs = options.pollIntervalMs ?? POLL_INTERVAL_MS;
     const maxConcurrentTasks = options.maxConcurrentTasks ?? 10; // Default concurrency limit
     /** @type {Map<string, (() => Promise<void> | void)>} */
-    const taskCallbacks = new Map(); // In-memory callback registry
+    const taskCallbacks = new Map(); // In-memory callback registry only
     /** @type {any} */
     let interval = null;
     const dt = capabilities.datetime; // Use capabilities datetime instead of creating new instance
     let pollInProgress = false; // Guard against re-entrant polls
+
+    /**
+     * Apply task updates in a batched transaction
+     * @param {Array<{taskName: string, updates: Partial<Task>}>} updates
+     * @returns {Promise<void>}
+     */
+    async function batchUpdateTasks(updates) {
+        if (updates.length === 0) return;
+        
+        await transaction(capabilities, async (storage) => {
+            // Load current state from storage within the transaction
+            const existingState = await storage.getExistingState();
+            
+            // Build in-memory tasks map from persisted state
+            /** @type {Map<string, Task>} */
+            const tasks = new Map();
+            
+            if (existingState !== null) {
+                // Build in-memory tasks from persisted state
+                for (const record of existingState.tasks) {
+                    try {
+                        const task = convertPersistedTaskToTask(record);
+                        tasks.set(record.name, task);
+                    } catch (error) {
+                        const message = error instanceof Error ? error.message : String(error);
+                        capabilities.logger.logError(
+                            { taskName: record.name, error: message },
+                            "FailedToLoadPersistedTask"
+                        );
+                        // Continue loading other tasks
+                    }
+                }
+            }
+
+            // Apply all updates
+            for (const { taskName, updates: taskUpdates } of updates) {
+                const currentTask = tasks.get(taskName);
+                if (currentTask) {
+                    /** @type {Task} */
+                    const updatedTask = {
+                        name: currentTask.name,
+                        cronExpression: currentTask.cronExpression,
+                        parsedCron: currentTask.parsedCron,
+                        callback: currentTask.callback,
+                        retryDelay: currentTask.retryDelay,
+                        lastSuccessTime: 'lastSuccessTime' in taskUpdates ? taskUpdates.lastSuccessTime : currentTask.lastSuccessTime,
+                        lastFailureTime: 'lastFailureTime' in taskUpdates ? taskUpdates.lastFailureTime : currentTask.lastFailureTime,
+                        lastAttemptTime: 'lastAttemptTime' in taskUpdates ? taskUpdates.lastAttemptTime : currentTask.lastAttemptTime,
+                        pendingRetryUntil: 'pendingRetryUntil' in taskUpdates ? taskUpdates.pendingRetryUntil : currentTask.pendingRetryUntil,
+                        lastEvaluatedFire: 'lastEvaluatedFire' in taskUpdates ? taskUpdates.lastEvaluatedFire : currentTask.lastEvaluatedFire,
+                        running: 'running' in taskUpdates ? (taskUpdates.running ?? currentTask.running) : currentTask.running,
+                    };
+                    tasks.set(taskName, updatedTask);
+                }
+            }
+
+            // Convert tasks back to persistable format and save
+            const currentState = await storage.getCurrentState();
+            const taskRecords = Array.from(tasks.values()).map(convertTaskToPersistedRecord);
+
+            // Update state with new task records
+            const newState = {
+                version: currentState.version,
+                startTime: currentState.startTime,
+                tasks: taskRecords,
+            };
+
+            storage.setState(newState);
+
+            // Log the persistence
+            const serialized = structure.serialize(newState);
+            const bytes = JSON.stringify(serialized).length;
+            capabilities.logger.logDebug({ taskCount: tasks.size, bytes }, "StatePersisted");
+        });
+    }
+
+    /**
+     * Simple task executor that collects updates and applies them in batch
+     * @param {import('../capabilities/root').Capabilities} capabilities
+     * @param {number} maxConcurrentTasks
+     * @returns {{executeTasks: (dueTasks: Array<{task: Task, mode: "retry"|"cron"}>) => Promise<void>}}
+     */
+    function makeBatchingTaskExecutor(capabilities, maxConcurrentTasks) {
+        const dt = capabilities.datetime;
+
+        /**
+         * Execute multiple tasks with concurrency control.
+         * @param {Array<{task: Task, mode: "retry"|"cron"}>} dueTasks
+         * @returns {Promise<void>}
+         */
+        async function executeTasks(dueTasks) {
+            if (dueTasks.length === 0) return;
+
+            /** @type {Array<{taskName: string, updates: Partial<Task>}>} */
+            const batchedUpdates = [];
+
+            /**
+             * @param {Task} task
+             * @param {"retry"|"cron"} mode
+             */
+            const executeTask = async (task, mode) => {
+                if (task.callback === null) {
+                    capabilities.logger.logWarning({ name: task.name }, "TaskSkippedNoCallback");
+                    return;
+                }
+
+                // Start task execution
+                const startTime = dt.toNativeDate(dt.now());
+                
+                // Mark running and set attempt time
+                batchedUpdates.push({ 
+                    taskName: task.name,
+                    updates: { 
+                        running: true,
+                        lastAttemptTime: startTime
+                    }
+                });
+                
+                capabilities.logger.logInfo({ name: task.name, mode }, "TaskRunStarted");
+                
+                try {
+                    const result = task.callback();
+                    if (result instanceof Promise) {
+                        await result;
+                    }
+                    const end = dt.toNativeDate(dt.now());
+                    
+                    // Update task state on success
+                    batchedUpdates.push({
+                        taskName: task.name,
+                        updates: {
+                            lastSuccessTime: end,
+                            lastFailureTime: undefined,
+                            pendingRetryUntil: undefined,
+                            running: false,
+                        }
+                    });
+                    
+                    capabilities.logger.logInfo(
+                        { name: task.name, mode, durationMs: end.getTime() - startTime.getTime() },
+                        "TaskRunSuccess"
+                    );
+                } catch (error) {
+                    const end = dt.toNativeDate(dt.now());
+                    const retryAt = new Date(end.getTime() + task.retryDelay.toMilliseconds());
+                    const message = error instanceof Error ? error.message : String(error);
+                    
+                    // Update task state on failure
+                    batchedUpdates.push({
+                        taskName: task.name,
+                        updates: {
+                            lastFailureTime: end,
+                            pendingRetryUntil: retryAt,
+                            running: false,
+                        }
+                    });
+                    
+                    capabilities.logger.logInfo(
+                        { name: task.name, mode, errorMessage: message, retryAtISO: retryAt.toISOString() },
+                        "TaskRunFailure"
+                    );
+                }
+            };
+
+            // Execute all tasks with proper concurrency control
+            if (dueTasks.length <= maxConcurrentTasks) {
+                // If we have fewer tasks than the limit, just run them all in parallel
+                const promises = dueTasks.map(({ task, mode }) => executeTask(task, mode));
+                await Promise.all(promises);
+            } else {
+                // More tasks than concurrency limit - batch execution
+                let index = 0;
+                const executing = new Set();
+
+                while (index < dueTasks.length || executing.size > 0) {
+                    // Start new tasks up to the concurrency limit
+                    while (executing.size < maxConcurrentTasks && index < dueTasks.length) {
+                        const currentTask = dueTasks[index++];
+                        if (currentTask) {
+                            const { task, mode } = currentTask;
+                            const promise = executeTask(task, mode).finally(() => {
+                                executing.delete(promise);
+                            });
+                            executing.add(promise);
+                        }
+                    }
+
+                    // Wait for at least one task to complete
+                    if (executing.size > 0) {
+                        await Promise.race(executing);
+                    }
+                }
+            }
+
+            // Apply all updates in a single batch transaction
+            await batchUpdateTasks(batchedUpdates);
+        }
+
+        return { executeTasks };
+    }
+
+    // Create task executor
+    const taskExecutor = makeBatchingTaskExecutor(capabilities, maxConcurrentTasks);
 
     /**
      * Helper function to convert persisted task record to in-memory Task object
@@ -203,51 +405,6 @@ function makePollingScheduler(capabilities, options = {}) {
         });
     }
 
-    /**
-     * Callback-based task update function for task executor
-     * @param {string} taskName
-     * @param {(currentTask: Task) => Task} updateCallback
-     * @returns {Promise<void>}
-     */
-    async function updateTaskCallback(taskName, updateCallback) {
-        await modifyTasks((tasks) => {
-            const currentTask = tasks.get(taskName);
-            if (currentTask) {
-                const updatedTask = updateCallback(currentTask);
-                tasks.set(taskName, updatedTask);
-            }
-        });
-    }
-
-    /**
-     * Legacy update task function for task executor compatibility
-     * @param {Task} task
-     * @param {Partial<Task>} updates
-     * @returns {Promise<void>}
-     */
-    async function updateTask(task, updates) {
-        await updateTaskCallback(task.name, (currentTask) => {
-            /** @type {Task} */
-            const updatedTask = {
-                name: currentTask.name,
-                cronExpression: currentTask.cronExpression,
-                parsedCron: currentTask.parsedCron,
-                callback: currentTask.callback,
-                retryDelay: currentTask.retryDelay,
-                lastSuccessTime: 'lastSuccessTime' in updates ? updates.lastSuccessTime : currentTask.lastSuccessTime,
-                lastFailureTime: 'lastFailureTime' in updates ? updates.lastFailureTime : currentTask.lastFailureTime,
-                lastAttemptTime: 'lastAttemptTime' in updates ? updates.lastAttemptTime : currentTask.lastAttemptTime,
-                pendingRetryUntil: 'pendingRetryUntil' in updates ? updates.pendingRetryUntil : currentTask.pendingRetryUntil,
-                lastEvaluatedFire: 'lastEvaluatedFire' in updates ? updates.lastEvaluatedFire : currentTask.lastEvaluatedFire,
-                running: 'running' in updates ? (updates.running ?? currentTask.running) : currentTask.running,
-            };
-            return updatedTask;
-        });
-    }
-
-    // Create task executor for handling task execution with concurrency limits
-    const taskExecutor = makeTaskExecutor(capabilities, maxConcurrentTasks, updateTask);
-
     function start() {
         if (interval === null) {
             interval = setInterval(async () => {
@@ -277,8 +434,8 @@ function makePollingScheduler(capabilities, options = {}) {
 
         pollInProgress = true;
         try {
-            // Load current state from storage and determine what to execute
-            const { dueTasks, totalTasks } = await transaction(capabilities, async (storage) => {
+            // Step 1: Load current state and determine what to execute - separate transaction
+            const { dueTasks } = await transaction(capabilities, async (storage) => {
                 // Load current state from storage within the transaction
                 const existingState = await storage.getExistingState();
                 
@@ -309,6 +466,7 @@ function makePollingScheduler(capabilities, options = {}) {
                 let skippedRunning = 0;
                 let skippedRetryFuture = 0;
                 let skippedNotDue = 0;
+                let hasUpdates = false;
 
                 // Collect all due tasks for parallel execution
                 /** @type {Array<{task: Task, mode: "retry"|"cron"}>} */
@@ -329,8 +487,9 @@ function makePollingScheduler(capabilities, options = {}) {
                     const { lastScheduledFire, newLastEvaluatedFire } = getMostRecentExecution(task.parsedCron, now, dt, task.lastEvaluatedFire);
 
                     // Update lastEvaluatedFire cache for performance optimization
-                    if (newLastEvaluatedFire) {
+                    if (newLastEvaluatedFire && (!task.lastEvaluatedFire || newLastEvaluatedFire.getTime() !== task.lastEvaluatedFire.getTime())) {
                         task.lastEvaluatedFire = newLastEvaluatedFire;
+                        hasUpdates = true;
                     }
 
                     const shouldRunCron = lastScheduledFire &&
@@ -362,8 +521,8 @@ function makePollingScheduler(capabilities, options = {}) {
                     }
                 }
 
-                // Save any cache updates back to storage
-                if (dueTasks.length > 0) {
+                // Save any cache updates back to storage only if needed
+                if (hasUpdates) {
                     const currentState = await storage.getCurrentState();
                     const taskRecords = Array.from(tasks.values()).map(convertTaskToPersistedRecord);
 
@@ -390,10 +549,10 @@ function makePollingScheduler(capabilities, options = {}) {
                     "PollSummary"
                 );
 
-                return { dueTasks, totalTasks: tasks.size };
+                return { dueTasks };
             });
 
-            // Execute due tasks outside the storage transaction to avoid conflicts
+            // Step 2: Execute due tasks completely outside any storage transaction
             if (dueTasks.length > 0) {
                 await taskExecutor.executeTasks(dueTasks);
             }

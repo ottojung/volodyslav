@@ -33,15 +33,11 @@ describe("failure retry persistence", () => {
         console.log("Scheduling task...");
         await scheduler.schedule("failing-task", "* * * * *", callback, retryDelay);
         
-        console.log("Getting tasks before poll...");
-        let tasks = await scheduler.getTasks();
-        console.log("Tasks before poll:", tasks.length, tasks[0] ? tasks[0].modeHint : "no tasks");
-        
         console.log("Calling manual poll...");
         await scheduler._poll();
         
         console.log("Getting tasks after poll...");
-        tasks = await scheduler.getTasks();
+        let tasks = await scheduler.getTasks();
         console.log("Tasks after poll:", tasks.length, tasks[0] ? tasks[0].modeHint : "no tasks");
         console.log("Callback call count:", callback.mock.calls.length);
         
