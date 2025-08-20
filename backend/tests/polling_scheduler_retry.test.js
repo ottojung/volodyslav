@@ -29,14 +29,11 @@ describe("polling scheduler retry", () => {
         // Advance timers to trigger first execution
         jest.advanceTimersByTime(10);
         // Manual poll since timer advancement doesn't work reliably in tests
-        console.log("About to call _poll");
-        console.log("Tasks before poll:", await cron.getTasks());
         await cron._poll();
-        console.log("_poll completed");
-        console.log("Tasks after poll:", await cron.getTasks());
         
         // Verify task failed and retry is scheduled
         let tasks = await cron.getTasks();
+        console.log("Task state after poll:", tasks[0]);
         expect(tasks).toHaveLength(1);
         expect(cb).toHaveBeenCalledTimes(1);
         expect(tasks[0].pendingRetryUntil).toBeTruthy();
