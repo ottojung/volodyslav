@@ -63,7 +63,7 @@ describe("polling scheduler parallel execution", () => {
         await scheduler.cancelAll();
     });
 
-    test("should respect concurrency limits", async () => {
+    test("should execute many tasks in parallel without limits", async () => {
         const capabilities = caps();
         const retryDelay = fromMilliseconds(5000);
         
@@ -83,10 +83,9 @@ describe("polling scheduler parallel execution", () => {
             concurrentExecutions--;
         });
         
-        // Create scheduler with concurrency limit of 2
+        // Create scheduler without concurrency limits
         const scheduler = makePollingScheduler(capabilities, { 
-            pollIntervalMs: 5000,
-            maxConcurrentTasks: 2 
+            pollIntervalMs: 5000
         });
         
         // Schedule 4 tasks all due at the same time, each with unique ID
@@ -98,43 +97,9 @@ describe("polling scheduler parallel execution", () => {
         // Trigger poll
         await scheduler._poll();
         
-        // Should not exceed concurrency limit and execute all tasks
-        expect(maxConcurrentExecutions).toBeLessThanOrEqual(2);
+        // Should execute all tasks and allow all to run concurrently
+        expect(maxConcurrentExecutions).toBe(4); // All 4 tasks should run at once
         expect(concurrencyTask).toHaveBeenCalledTimes(4);
-        
-        await scheduler.cancelAll();
-    });
-
-    test("should queue tasks when concurrency limit is reached", async () => {
-        const capabilities = caps();
-        const retryDelay = fromMilliseconds(5000);
-        
-        let executionOrder = [];
-        
-        const queuedTask = jest.fn(async (taskName) => {
-            executionOrder.push(`${taskName}-start`);
-            // Immediate resolution to ensure deterministic ordering
-            await Promise.resolve();
-            executionOrder.push(`${taskName}-end`);
-        });
-        
-        const scheduler = makePollingScheduler(capabilities, { 
-            pollIntervalMs: 5000,
-            maxConcurrentTasks: 1 // Only 1 task at a time
-        });
-        
-        await scheduler.schedule("queued-1", "* * * * *", () => queuedTask("task1"), retryDelay);
-        await scheduler.schedule("queued-2", "* * * * *", () => queuedTask("task2"), retryDelay);
-        await scheduler.schedule("queued-3", "* * * * *", () => queuedTask("task3"), retryDelay);
-        
-        // Trigger poll
-        await scheduler._poll();
-        
-        // With concurrency limit of 1, tasks should execute in sequence
-        // (though the exact order may vary, each task should complete before the next starts)
-        expect(executionOrder).toHaveLength(6);
-        expect(executionOrder.filter(item => item.endsWith('-start'))).toHaveLength(3);
-        expect(executionOrder.filter(item => item.endsWith('-end'))).toHaveLength(3);
         
         await scheduler.cancelAll();
     });
@@ -159,8 +124,7 @@ describe("polling scheduler parallel execution", () => {
         });
         
         const scheduler = makePollingScheduler(capabilities, { 
-            pollIntervalMs: 5000,
-            maxConcurrentTasks: 2 // Allow 2 concurrent tasks
+            pollIntervalMs: 5000
         });
         
         await scheduler.schedule("slow-task", "* * * * *", slowTask, retryDelay);
@@ -169,7 +133,7 @@ describe("polling scheduler parallel execution", () => {
         // Trigger poll
         await scheduler._poll();
         
-        // Both tasks should complete since we allow concurrency
+        // Both tasks should complete since they run in parallel
         expect(slowTaskStarted).toBe(true);
         expect(fastTaskCompleted).toBe(true);
         

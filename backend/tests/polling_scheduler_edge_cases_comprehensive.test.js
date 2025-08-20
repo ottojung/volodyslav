@@ -300,8 +300,7 @@ describe("polling scheduler comprehensive edge cases", () => {
             const capabilities = caps();
             const retryDelay = fromMilliseconds(1000);
             const scheduler = makePollingScheduler(capabilities, {
-                pollIntervalMs: 10,
-                maxConcurrentTasks: 5
+                pollIntervalMs: 10
             });
 
             // Schedule 20 tasks all due at the same time

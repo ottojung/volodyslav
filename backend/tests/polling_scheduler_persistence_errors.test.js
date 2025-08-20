@@ -120,10 +120,9 @@ describe("polling scheduler persistence and error handling", () => {
 
         const simpleCallback = jest.fn().mockResolvedValue(undefined);
 
-        // Create scheduler with low concurrency limit
+        // Create scheduler
         const scheduler = makePollingScheduler(capabilities, {
-            pollIntervalMs: 10,
-            maxConcurrentTasks: 2
+            pollIntervalMs: 10
         });
 
         // Schedule fewer tasks to avoid timeout

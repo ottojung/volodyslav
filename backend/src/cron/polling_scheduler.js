@@ -43,11 +43,10 @@ const POLL_INTERVAL_MS = 600000;
 
 /**
  * @param {import('../capabilities/root').Capabilities} capabilities
- * @param {{pollIntervalMs?: number, maxConcurrentTasks?: number}} [options]
+ * @param {{pollIntervalMs?: number}} [options]
  */
 function makePollingScheduler(capabilities, options = {}) {
     const pollIntervalMs = options.pollIntervalMs ?? POLL_INTERVAL_MS;
-    const maxConcurrentTasks = options.maxConcurrentTasks ?? 10; // Default concurrency limit
     /** @type {Map<string, Task>} */
     const tasks = new Map();
     /** @type {any} */
@@ -56,8 +55,8 @@ function makePollingScheduler(capabilities, options = {}) {
     let stateLoadAttempted = false;
     let pollInProgress = false; // Guard against re-entrant polls
 
-    // Create task executor for handling task execution with concurrency limits
-    const taskExecutor = makeTaskExecutor(capabilities, maxConcurrentTasks, persistState);
+    // Create task executor for handling task execution
+    const taskExecutor = makeTaskExecutor(capabilities, persistState);
 
     // Lazy load state when first needed
     async function ensureStateLoaded() {
@@ -107,8 +106,6 @@ function makePollingScheduler(capabilities, options = {}) {
             let skippedRunning = 0;
             let skippedRetryFuture = 0;
             let skippedNotDue = 0;
-            let skippedConcurrency = 0;
-
             // Collect all due tasks for parallel execution
             /** @type {Array<{task: Task, mode: "retry"|"cron"}>} */
             const dueTasks = [];
@@ -161,9 +158,8 @@ function makePollingScheduler(capabilities, options = {}) {
                 }
             }
 
-            // Execute due tasks in parallel with concurrency control
-            const skippedConcurrencyCount = await taskExecutor.executeTasks(dueTasks);
-            skippedConcurrency = skippedConcurrencyCount;
+            // Execute all due tasks in parallel
+            await taskExecutor.executeTasks(dueTasks);
 
             capabilities.logger.logDebug(
                 {
@@ -173,7 +169,6 @@ function makePollingScheduler(capabilities, options = {}) {
                     skippedRunning,
                     skippedRetryFuture,
                     skippedNotDue,
-                    skippedConcurrency,
                 },
                 "PollSummary"
             );
