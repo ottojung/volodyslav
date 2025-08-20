@@ -4,13 +4,10 @@ const { isNotificationsUnavailable } = require("./notifications");
 const { isCommandUnavailable } = require("./subprocess");
 const { isTaskListMismatchError } = require("./schedule");
 
-// Export as array for backward compatibility with gentlewrap
-const errorCheckers = [
+module.exports = [
     isEnvironmentError,
     isNotificationsUnavailable,
     isCommandUnavailable,
     isServerAddressAlreadyInUseError,
     isTaskListMismatchError,
 ];
-
-module.exports = errorCheckers;
