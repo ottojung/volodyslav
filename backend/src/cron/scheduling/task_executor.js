@@ -82,14 +82,15 @@ function makeTaskExecutor(capabilities, maxConcurrentTasks, updateTask) {
             return;
         }
 
-        // Mark task as running
-        await updateTask(task, { running: true });
+        // Start task execution - batch all updates into a single transaction
         runningTasksCount++;
-        
         const startTime = dt.toNativeDate(dt.now());
         
-        // Update last attempt time
-        await updateTask(task, { lastAttemptTime: startTime });
+        // Mark running and set attempt time atomically
+        await updateTask(task, { 
+            running: true,
+            lastAttemptTime: startTime
+        });
         
         capabilities.logger.logInfo({ name: task.name, mode }, "TaskRunStarted");
         
@@ -100,11 +101,12 @@ function makeTaskExecutor(capabilities, maxConcurrentTasks, updateTask) {
             }
             const end = dt.toNativeDate(dt.now());
             
-            // Update task state on success
+            // Update task state on success - single atomic transaction
             await updateTask(task, {
                 lastSuccessTime: end,
                 lastFailureTime: undefined,
                 pendingRetryUntil: undefined,
+                running: false,
             });
             
             capabilities.logger.logInfo(
@@ -116,10 +118,11 @@ function makeTaskExecutor(capabilities, maxConcurrentTasks, updateTask) {
             const retryAt = new Date(end.getTime() + task.retryDelay.toMilliseconds());
             const message = error instanceof Error ? error.message : String(error);
             
-            // Update task state on failure
+            // Update task state on failure - single atomic transaction
             await updateTask(task, {
                 lastFailureTime: end,
                 pendingRetryUntil: retryAt,
+                running: false,
             });
             
             capabilities.logger.logInfo(
@@ -127,8 +130,6 @@ function makeTaskExecutor(capabilities, maxConcurrentTasks, updateTask) {
                 "TaskRunFailure"
             );
         } finally {
-            // Mark task as not running
-            await updateTask(task, { running: false });
             runningTasksCount--;
         }
     }

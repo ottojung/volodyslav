@@ -150,6 +150,9 @@ function makePollingScheduler(capabilities, options = {}) {
 
         pollInProgress = true;
         try {
+            // Ensure state is loaded before polling
+            await ensureStateLoaded();
+            
             const now = dt.toNativeDate(dt.now());
             let dueRetry = 0;
             let dueCron = 0;
