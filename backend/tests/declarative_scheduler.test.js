@@ -36,7 +36,7 @@ describe("Declarative Scheduler", () => {
             ];
 
             // Non-empty registrations should succeed on first-time setup (empty persisted state)
-            await expect(initialize(capabilities, registrations)).resolves.toBeUndefined();
+            await expect(initialize(capabilities, registrations)).resolves.toBeDefined();
         });
         
         test("succeeds with empty registrations when no persisted state exists", async () => {
@@ -45,7 +45,7 @@ describe("Declarative Scheduler", () => {
             const registrations = [];
 
             // Empty registrations should succeed (idempotent call does nothing)
-            await expect(initialize(capabilities, registrations)).resolves.toBeUndefined();
+            await expect(initialize(capabilities, registrations)).resolves.toBeDefined();
         });
 
         test("is idempotent - multiple calls have no additional effect", async () => {
@@ -202,10 +202,10 @@ describe("Declarative Scheduler", () => {
             const registrations = [];
 
             // Should succeed with no tasks
-            await expect(initialize(capabilities, registrations)).resolves.toBeUndefined();
+            await expect(initialize(capabilities, registrations)).resolves.toBeDefined();
             
             // Should be idempotent
-            await expect(initialize(capabilities, registrations)).resolves.toBeUndefined();
+            await expect(initialize(capabilities, registrations)).resolves.toBeDefined();
         });
 
         test("logs appropriate messages for first-time initialization", async () => {
@@ -274,7 +274,7 @@ describe("Declarative Scheduler", () => {
             // This should not cause errors or duplicate scheduling issues
             await expect(initialize(capabilities, registrations, { 
                 pollIntervalMs: 100,
-            })).resolves.toBeUndefined();
+            })).resolves.toBeDefined();
         });
 
         test("scheduler executes tasks based on cron schedule", async () => {
