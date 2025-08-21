@@ -51,7 +51,7 @@ function makePollingScheduler(capabilities, options = {}) {
     const tasks = new Map();
     /** @type {any} */
     let interval = null;
-    const dt = capabilities.datetime; // Use capabilities datetime instead of creating new instance
+    const dt = capabilities.datetime;
     let stateLoadAttempted = false;
     let pollInProgress = false; // Guard against re-entrant polls
 
@@ -263,6 +263,11 @@ function makePollingScheduler(capabilities, options = {}) {
             return existed;
         },
 
+        async stopLoop() {
+            await ensureStateLoaded();
+            stop();
+        },
+
         /**
          * Cancel all tasks and stop polling.
          * @returns {Promise<number>}
@@ -327,13 +332,7 @@ function makePollingScheduler(capabilities, options = {}) {
             });
         },
 
-        /**
-         * Manual poll function for testing
-         * @internal
-         */
-        async _poll() {
-            return await poll();
-        },
+
     };
 }
 

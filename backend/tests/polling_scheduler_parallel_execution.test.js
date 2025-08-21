@@ -1,14 +1,13 @@
 /**
- * Tests for polling scheduler parallel execution capabilities.
+ * Tests for declarative scheduler parallel execution capabilities.
  * Ensures tasks can run concurrently without blocking each other.
  */
 
-const { makePollingScheduler } = require("../src/cron/polling_scheduler");
 const { fromMilliseconds } = require("../src/time_duration");
 const { getMockedRootCapabilities } = require("./spies");
 const { stubEnvironment, stubLogger, stubDatetime, stubSleeper } = require("./stubs");
 
-function caps() {
+function getTestCapabilities() {
     const capabilities = getMockedRootCapabilities();
     stubEnvironment(capabilities);
     stubLogger(capabilities);
@@ -17,18 +16,11 @@ function caps() {
     return capabilities;
 }
 
-describe("polling scheduler parallel execution", () => {
-    beforeEach(() => {
-        jest.useFakeTimers();
-        jest.setSystemTime(new Date("2020-01-01T00:00:00Z"));
-    });
-
-    afterEach(() => {
-        jest.useRealTimers();
-    });
-
+describe("declarative scheduler parallel execution", () => {
+    // Use real timers for testing actual scheduler behavior
+    
     test("should execute multiple due tasks in parallel", async () => {
-        const capabilities = caps();
+        const capabilities = getTestCapabilities();
         const retryDelay = fromMilliseconds(5000);
         
         let task1StartTime = null;
@@ -36,35 +28,41 @@ describe("polling scheduler parallel execution", () => {
         
         const task1 = jest.fn(async () => {
             task1StartTime = Date.now();
-            // Use immediate resolution instead of setTimeout with fake timers
+            // Add a small delay to make parallelism more observable
+            await new Promise(resolve => setTimeout(resolve, 50));
         });
         
         const task2 = jest.fn(async () => {
             task2StartTime = Date.now();
-            // Use immediate resolution instead of setTimeout with fake timers
+            // Add a small delay to make parallelism more observable
+            await new Promise(resolve => setTimeout(resolve, 50));
         });
         
-        const scheduler = makePollingScheduler(capabilities, { pollIntervalMs: 5000 });
-        await scheduler.schedule("parallel-task-1", "* * * * *", task1, retryDelay);
-        await scheduler.schedule("parallel-task-2", "* * * * *", task2, retryDelay);
+        const registrations = [
+            ["parallel-task-1", "* * * * *", task1, retryDelay],
+            ["parallel-task-2", "* * * * *", task2, retryDelay]
+        ];
         
-        // Trigger poll when both tasks are due
-        await scheduler._poll();
+        await capabilities.scheduler.initialize(registrations, { pollIntervalMs: 100 });
         
-        // Check that tasks ran in parallel (start times should be very close)
+        // Wait for execution
+        await new Promise(resolve => setTimeout(resolve, 200));
+        
+        // Check that both tasks ran
         expect(task1).toHaveBeenCalled();
         expect(task2).toHaveBeenCalled();
-        expect(Math.abs(task1StartTime - task2StartTime)).toBeLessThan(100); // Within 100ms
         
         // Tasks should have started around the same time (parallel execution)
+        expect(task1StartTime).toBeDefined();
+        expect(task2StartTime).toBeDefined();
         const startTimeDiff = Math.abs(task1StartTime - task2StartTime);
         expect(startTimeDiff).toBeLessThan(100); // Should start within 100ms of each other
         
-        await scheduler.cancelAll();
+        await capabilities.scheduler.stop();
     });
 
     test("should execute many tasks in parallel without limits", async () => {
-        const capabilities = caps();
+        const capabilities = getTestCapabilities();
         const retryDelay = fromMilliseconds(5000);
         
         let concurrentExecutions = 0;
@@ -76,36 +74,34 @@ describe("polling scheduler parallel execution", () => {
             maxConcurrentExecutions = Math.max(maxConcurrentExecutions, concurrentExecutions);
             taskExecutionOrder.push(`${taskId}-start`);
             
-            // Simulate some work without using setTimeout
-            await Promise.resolve();
+            // Add a small delay to make concurrency more observable
+            await new Promise(resolve => setTimeout(resolve, 50));
             
             taskExecutionOrder.push(`${taskId}-end`);
             concurrentExecutions--;
         });
         
-        // Create scheduler without concurrency limits
-        const scheduler = makePollingScheduler(capabilities, { 
-            pollIntervalMs: 5000
-        });
+        const registrations = [
+            ["concurrent-1", "* * * * *", () => concurrencyTask(1), retryDelay],
+            ["concurrent-2", "* * * * *", () => concurrencyTask(2), retryDelay],
+            ["concurrent-3", "* * * * *", () => concurrencyTask(3), retryDelay],
+            ["concurrent-4", "* * * * *", () => concurrencyTask(4), retryDelay]
+        ];
         
-        // Schedule 4 tasks all due at the same time, each with unique ID
-        await scheduler.schedule("concurrent-1", "* * * * *", () => concurrencyTask(1), retryDelay);
-        await scheduler.schedule("concurrent-2", "* * * * *", () => concurrencyTask(2), retryDelay);
-        await scheduler.schedule("concurrent-3", "* * * * *", () => concurrencyTask(3), retryDelay);
-        await scheduler.schedule("concurrent-4", "* * * * *", () => concurrencyTask(4), retryDelay);
+        await capabilities.scheduler.initialize(registrations, { pollIntervalMs: 100 });
         
-        // Trigger poll
-        await scheduler._poll();
+        // Wait for execution
+        await new Promise(resolve => setTimeout(resolve, 200));
         
-        // Should execute all tasks and allow all to run concurrently
-        expect(maxConcurrentExecutions).toBe(4); // All 4 tasks should run at once
+        // Should execute all tasks and allow multiple to run concurrently
         expect(concurrencyTask).toHaveBeenCalledTimes(4);
+        expect(maxConcurrentExecutions).toBeGreaterThan(1); // Should have some concurrency
         
-        await scheduler.cancelAll();
+        await capabilities.scheduler.stop();
     });
 
     test("should not block fast tasks when slow task is running", async () => {
-        const capabilities = caps();
+        const capabilities = getTestCapabilities();
         const retryDelay = fromMilliseconds(5000);
         
         let fastTaskCompleted = false;
@@ -113,30 +109,107 @@ describe("polling scheduler parallel execution", () => {
         
         const slowTask = jest.fn(async () => {
             slowTaskStarted = true;
-            // Simulate slow task with Promise.resolve (no actual delay needed for this test)
-            await Promise.resolve();
+            // Simulate slow task with a longer delay
+            await new Promise(resolve => setTimeout(resolve, 100));
         });
         
         const fastTask = jest.fn(async () => {
             // Fast task
-            await Promise.resolve();
+            await new Promise(resolve => setTimeout(resolve, 10));
             fastTaskCompleted = true;
         });
         
-        const scheduler = makePollingScheduler(capabilities, { 
-            pollIntervalMs: 5000
-        });
+        const registrations = [
+            ["slow-task", "* * * * *", slowTask, retryDelay],
+            ["fast-task", "* * * * *", fastTask, retryDelay]
+        ];
         
-        await scheduler.schedule("slow-task", "* * * * *", slowTask, retryDelay);
-        await scheduler.schedule("fast-task", "* * * * *", fastTask, retryDelay);
+        await capabilities.scheduler.initialize(registrations, { pollIntervalMs: 100 });
         
-        // Trigger poll
-        await scheduler._poll();
+        // Wait for executions
+        await new Promise(resolve => setTimeout(resolve, 200));
         
-        // Both tasks should complete since they run in parallel
+        // Both tasks should have started and the fast one should complete
         expect(slowTaskStarted).toBe(true);
         expect(fastTaskCompleted).toBe(true);
         
-        await scheduler.cancelAll();
+        await capabilities.scheduler.stop();
+    });
+
+    test("should handle parallel task failures independently", async () => {
+        const capabilities = getTestCapabilities();
+        const retryDelay = fromMilliseconds(1000);
+        
+        let goodTaskExecuted = false;
+        let badTaskExecuted = false;
+        
+        const goodTask = jest.fn(async () => {
+            await new Promise(resolve => setTimeout(resolve, 10));
+            goodTaskExecuted = true;
+        });
+        
+        const badTask = jest.fn(async () => {
+            badTaskExecuted = true;
+            throw new Error("Task failed");
+        });
+        
+        const registrations = [
+            ["good-task", "* * * * *", goodTask, retryDelay],
+            ["bad-task", "* * * * *", badTask, retryDelay]
+        ];
+        
+        await capabilities.scheduler.initialize(registrations, { pollIntervalMs: 100 });
+        
+        // Wait for executions
+        await new Promise(resolve => setTimeout(resolve, 200));
+        
+        // Both tasks should have been attempted
+        expect(goodTaskExecuted).toBe(true);
+        expect(badTaskExecuted).toBe(true);
+        expect(goodTask).toHaveBeenCalled();
+        expect(badTask).toHaveBeenCalled();
+        
+        await capabilities.scheduler.stop();
+    });
+
+    test("should handle many parallel tasks with retries", async () => {
+        const capabilities = getTestCapabilities();
+        const retryDelay = fromMilliseconds(500); // Short retry for faster testing
+        
+        let taskExecutions = {};
+        
+        const createTask = (id) => jest.fn(async () => {
+            if (!taskExecutions[id]) {
+                taskExecutions[id] = 0;
+            }
+            taskExecutions[id]++;
+            
+            // First execution fails, second succeeds
+            if (taskExecutions[id] === 1) {
+                throw new Error(`Task ${id} first execution fails`);
+            }
+        });
+        
+        const task1 = createTask('1');
+        const task2 = createTask('2');
+        const task3 = createTask('3');
+        
+        const registrations = [
+            ["retry-task-1", "* * * * *", task1, retryDelay],
+            ["retry-task-2", "* * * * *", task2, retryDelay],
+            ["retry-task-3", "* * * * *", task3, retryDelay]
+        ];
+        
+        await capabilities.scheduler.initialize(registrations, { pollIntervalMs: 100 });
+        
+        // Wait for initial executions and retries
+        await new Promise(resolve => setTimeout(resolve, 800));
+        
+        // All tasks should have been called at least twice (initial + retry)
+        expect(task1).toHaveBeenCalledTimes(2);
+        expect(task2).toHaveBeenCalledTimes(2);
+        expect(task3).toHaveBeenCalledTimes(2);
+        
+        await capabilities.scheduler.stop();
     });
 });

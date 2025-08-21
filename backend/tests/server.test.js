@@ -5,7 +5,6 @@ const {
     stubEnvironment,
     stubLogger,
     stubNotifier,
-    stubScheduler,
     stubDatetime,
     stubEventLogRepository,
 } = require("./stubs");
@@ -16,7 +15,6 @@ function getTestCapabilities() {
     stubEnvironment(capabilities);
     stubLogger(capabilities);
     stubNotifier(capabilities);
-    stubScheduler(capabilities);
     stubDatetime(capabilities);
     return capabilities;
 }
@@ -32,6 +30,8 @@ describe("Startup Dependencies", () => {
         const res = await request(app).get("/api/ping");
         expect(res.status).toBe(200);
         expect(res.text).toBe("pong");
+
+        capabilities.scheduler.stop();
     });
 
     it("throws if notifications are not available", async () => {

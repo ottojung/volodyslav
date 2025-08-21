@@ -54,6 +54,7 @@ function stubEnvironment(capabilities) {
  * Silences all logging functions.
  */
 function stubLogger(capabilities) {
+    capabilities.logger = {};
     capabilities.logger.setup = jest.fn();
     capabilities.logger.enableHttpCallsLogging = jest.fn();
     capabilities.logger.logError = jest.fn();
@@ -86,23 +87,6 @@ function stubNotifier(capabilities) {
     capabilities.notifier.notifyAboutWarning = jest.fn();
 }
 
-/**
- * Stubs the scheduler capabilities for testing.
- * Mocks the schedule function to prevent real timers from being created.
- */
-function stubScheduler(capabilities) {
-    // Mock scheduler instance methods - all operations are now async
-    const mockSchedulerInstance = {
-        schedule: jest.fn((name) => Promise.resolve(name)),
-        cancel: jest.fn().mockResolvedValue(true),
-        cancelAll: jest.fn().mockResolvedValue(0),
-        getTasks: jest.fn().mockResolvedValue([])
-    };
-
-    // Attach the mock to capabilities for testing
-    capabilities.scheduler = mockSchedulerInstance;
-}
-
 function stubSleeper(capabilities) {
     capabilities.sleeper.sleep = jest.fn().mockImplementation((_ms) => {
         return Promise.resolve(); // Immediately resolve when stubbed
@@ -124,10 +108,23 @@ function stubDatetime(capabilities) {
     };
 }
 
+function stubApp() {
+    return {
+        use: jest.fn(),
+    };
+}
+
 function stubGit(capabilities, call) {
     capabilities.git = {
         ...capabilities.git,
         call: jest.fn().mockImplementation(call),
+    };
+}
+
+function stubTranscription(capabilities, transcribeFileImpl) {
+    capabilities.aiTranscription = {
+        ...capabilities.aiTranscription,
+        transcribeFile: jest.fn().mockImplementation(transcribeFileImpl || (() => Promise.resolve())),
     };
 }
 
@@ -136,9 +133,10 @@ module.exports = {
     stubLogger,
     stubAiTranscriber,
     stubNotifier,
-    stubScheduler,
     stubSleeper,
     stubDatetime,
     stubEventLogRepository,
+    stubApp,
     stubGit,
+    stubTranscription,
 };

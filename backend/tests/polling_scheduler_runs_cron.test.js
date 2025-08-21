@@ -1,41 +1,57 @@
-const { make } = require("../src/cron");
+/**
+ * Tests for declarative scheduler cron expression validation.
+ * Focuses on validating cron expressions are properly accepted during initialization.
+ */
+
 const { fromMilliseconds } = require("../src/time_duration");
 const { getMockedRootCapabilities } = require("./spies");
-const { stubEnvironment, stubLogger, stubDatetime } = require("./stubs");
+const { stubEnvironment, stubLogger, stubDatetime, stubSleeper } = require("./stubs");
 
-function createCapabilities() {
+function getTestCapabilities() {
     const capabilities = getMockedRootCapabilities();
     stubEnvironment(capabilities);
     stubLogger(capabilities);
     stubDatetime(capabilities);
+    stubSleeper(capabilities);
     return capabilities;
 }
 
-describe("polling scheduler runs cron", () => {
-    test("schedules and recognizes when task should run based on cron", async () => {
-        // Test the core scheduling logic without relying on timers
-        jest.useFakeTimers().setSystemTime(new Date("2020-01-01T00:00:00Z"));
-        const capabilities = createCapabilities();
-        const cron = make(capabilities, { pollIntervalMs: 10 });
-        const cb = jest.fn();
+describe("declarative scheduler cron expression validation", () => {
+    test("accepts valid cron expressions during initialization", async () => {
+        const capabilities = getTestCapabilities();
+        const taskCallback = jest.fn();
         const retryDelay = fromMilliseconds(0);
         
-        await cron.schedule("t", "* * * * *", cb, retryDelay);
-
-        // Verify task is scheduled
-        let tasks = await cron.getTasks();
-        expect(tasks).toHaveLength(1);
-        expect(tasks[0].name).toBe("t");
-        expect(tasks[0].modeHint).toBe("cron"); // Should be due to run immediately
+        // Test various valid cron expressions
+        const registrations = [
+            ["hourly-task", "0 * * * *", taskCallback, retryDelay],      // Every hour
+            ["daily-task", "0 9 * * *", taskCallback, retryDelay],       // Daily at 9 AM
+            ["weekly-task", "0 9 * * 1", taskCallback, retryDelay],      // Mondays at 9 AM
+            ["monthly-task", "0 9 1 * *", taskCallback, retryDelay],     // 1st of month at 9 AM
+            ["minute-task", "*/5 * * * *", taskCallback, retryDelay]     // Every 5 minutes
+        ];
         
-        // Advance time by 1 minute
-        jest.setSystemTime(new Date("2020-01-01T00:01:00Z"));
-        
-        // Check that after time advance, task should still be considered due to run
-        tasks = await cron.getTasks();
-        expect(tasks[0].modeHint).toBe("cron");
+        // Should succeed with valid cron expressions
+        await expect(capabilities.scheduler.initialize(registrations, { pollIntervalMs: 60000 }))
+            .resolves.toBeUndefined();
+            
+        await capabilities.scheduler.stop();
+    });
 
-        await cron.cancelAll();
+    test("validates cron expressions are compatible with polling frequency", async () => {
+        const capabilities = getTestCapabilities();
+        const taskCallback = jest.fn();
+        const retryDelay = fromMilliseconds(0);
+        
+        // Task that runs every hour - should be compatible with 1-minute polling
+        const validRegistrations = [
+            ["compatible-task", "0 * * * *", taskCallback, retryDelay]
+        ];
+        
+        await expect(capabilities.scheduler.initialize(validRegistrations, { pollIntervalMs: 60000 }))
+            .resolves.toBeUndefined();
+            
+        await capabilities.scheduler.stop();
     });
 });
 

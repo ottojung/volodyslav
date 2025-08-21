@@ -13,8 +13,8 @@ const { COMMON } = require("../time_duration");
 /** @typedef {import('../filesystem/checker').FileChecker} FileChecker */
 /** @typedef {import('../subprocess/command').Command} Command */
 /** @typedef {import('../environment').Environment} Environment */
-/** @typedef {import('../schedule').Scheduler} Scheduler */
 /** @typedef {import('../logger').Logger} Logger */
+/** @typedef {import('./index').Registration} Registration */
 
 /**
  * @typedef {import('../capabilities/root').Capabilities} Capabilities
@@ -63,7 +63,7 @@ async function allTasks(capabilities) {
 }
 
 /**
- * Schedules all tasks.
+ * Schedules all tasks using the new declarative scheduler.
  * @param {Capabilities} capabilities
  * @returns {Promise<void>}
  */
@@ -71,8 +71,27 @@ async function scheduleAll(capabilities) {
     // Use a reasonable retry delay for scheduled tasks - 5 minutes
     const retryDelay = COMMON.FIVE_MINUTES;
 
-    await capabilities.scheduler.schedule("every-hour", "0 * * * *", () => everyHour(capabilities), retryDelay);
-    await capabilities.scheduler.schedule("daily-2am", "0 2 * * *", () => daily(capabilities), retryDelay);
+    // Define all task registrations
+    /** @type {Registration[]} */
+    const registrations = [
+        ["every-hour", "0 * * * *", () => everyHour(capabilities), retryDelay],
+        ["daily-2am", "0 2 * * *", () => daily(capabilities), retryDelay],
+    ];
+
+    // Initialize the scheduler with all registrations
+    await capabilities.scheduler.initialize(registrations);
+}
+
+/**
+ * @param {Capabilities} capabilities
+ */
+function runAllTasks(capabilities) {
+    return async () => {
+        await capabilities.logger.setup();
+        capabilities.logger.logInfo({}, "Running all periodic tasks now");
+        await allTasks(capabilities);
+        capabilities.logger.logInfo({}, "All periodic tasks have been run.");
+    };
 }
 
 module.exports = {
@@ -80,4 +99,5 @@ module.exports = {
     daily,
     allTasks,
     scheduleAll,
+    runAllTasks,
 };
