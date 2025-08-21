@@ -18,7 +18,7 @@ const {
 /** @typedef {import('../logger').Logger} Logger */
 /** @typedef {import('../time_duration/structure').TimeDuration} TimeDuration */
 
-const POLL_INTERVAL_MS = 600000;
+const POLL_INTERVAL_MS = 60000;
 
 /**
  * @typedef {object} Task
