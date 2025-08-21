@@ -428,15 +428,6 @@ function make(getCapabilities) {
                 } else {
                     // Enhanced error context for debugging
                     const errorObj = error instanceof Error ? error : new Error(String(error));
-                    capabilities.logger.logError(
-                        { 
-                            taskName: name,
-                            cronExpression,
-                            errorType: errorObj.constructor.name,
-                            errorMessage: errorObj.message
-                        },
-                        "Failed to schedule task"
-                    );
                     throw new ScheduleTaskError(`Failed to schedule task '${name}': ${errorObj.message}`, { name, cronExpression, cause: errorObj });
                 }
             }
@@ -472,18 +463,9 @@ function make(getCapabilities) {
                 capabilities.logger.logInfo({}, "Scheduler stopped successfully");
             } catch (err) {
                 const error = err instanceof Error ? err : new Error(String(err));
-                capabilities.logger.logError(
-                    { 
-                        errorType: error.constructor.name,
-                        errorMessage: error.message
-                    },
-                    "Error occurred while stopping scheduler"
-                );
-                
                 // Still clean up state even if stop failed
                 pollingScheduler = null;
                 currentPollIntervalMs = undefined;
-                
                 throw new StopSchedulerError(`Failed to stop scheduler: ${error.message}`, { cause: error });
             }
         } else {
