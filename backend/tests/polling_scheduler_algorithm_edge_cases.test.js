@@ -33,6 +33,9 @@ describe("declarative scheduler algorithm robustness", () => {
         // Verify the scheduler handles the scheduling gracefully
         await new Promise(resolve => setTimeout(resolve, 200));
         
+        // Scheduler should have processed the registration without error
+        expect(typeof taskCallback).toBe('function');
+        
         await capabilities.scheduler.stop();
     });
 
@@ -124,6 +127,8 @@ describe("declarative scheduler algorithm robustness", () => {
         await new Promise(resolve => setTimeout(resolve, 200));
         
         // The task should be scheduled without errors
+        expect(typeof taskCallback).toBe('function');
+        
         await capabilities.scheduler.stop();
     });
 

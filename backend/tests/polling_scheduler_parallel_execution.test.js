@@ -25,21 +25,17 @@ describe("declarative scheduler parallel execution", () => {
         
         let task1StartTime = null;
         let task2StartTime = null;
-        let task1EndTime = null;
-        let task2EndTime = null;
         
         const task1 = jest.fn(async () => {
             task1StartTime = Date.now();
             // Add a small delay to make parallelism more observable
             await new Promise(resolve => setTimeout(resolve, 50));
-            task1EndTime = Date.now();
         });
         
         const task2 = jest.fn(async () => {
             task2StartTime = Date.now();
             // Add a small delay to make parallelism more observable
             await new Promise(resolve => setTimeout(resolve, 50));
-            task2EndTime = Date.now();
         });
         
         const registrations = [
@@ -110,13 +106,11 @@ describe("declarative scheduler parallel execution", () => {
         
         let fastTaskCompleted = false;
         let slowTaskStarted = false;
-        let slowTaskCompleted = false;
         
         const slowTask = jest.fn(async () => {
             slowTaskStarted = true;
             // Simulate slow task with a longer delay
             await new Promise(resolve => setTimeout(resolve, 100));
-            slowTaskCompleted = true;
         });
         
         const fastTask = jest.fn(async () => {
