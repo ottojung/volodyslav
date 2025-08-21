@@ -18,7 +18,7 @@ const {
 /** @typedef {import('../logger').Logger} Logger */
 /** @typedef {import('../time_duration/structure').TimeDuration} TimeDuration */
 
-const POLL_INTERVAL_MS = 60000;
+const POLL_INTERVAL_MS = 600000;
 
 /**
  * @typedef {object} Task
@@ -332,6 +332,13 @@ function makePollingScheduler(capabilities, options = {}) {
             });
         },
 
+        /**
+         * Manually trigger a poll cycle (for testing).
+         * @returns {Promise<void>}
+         */
+        async pollNow() {
+            await poll();
+        },
 
     };
 }
