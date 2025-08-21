@@ -183,17 +183,18 @@ function validateTasksAgainstPersistedStateInner(registrations, persistedTasks) 
  */
 
 /**
- * @typedef {(capabilities: Capabilities, registrations: Array<Registration>, options?: PollerOptions) => Promise<void>} Initialize
- * @typedef {(capabilities: Capabilities) => Promise<void>} Stop
+ * @typedef {(registrations: Array<Registration>, options?: PollerOptions) => Promise<void>} Initialize
+ * @typedef {() => Promise<void>} Stop
  */
 
 /**
  * Initialize the scheduler with the given registrations.
  * 
+ * @param {Capabilities} capabilities
  * @returns {Scheduler}
  * @throws {TaskListMismatchError} if registrations don't match persisted runtime state
  */
-function make() {
+function make(capabilities) {
     /** @type {ReturnType<cronScheduler.make> | null} */
     let pollingScheduler = null;
 
@@ -201,7 +202,7 @@ function make() {
      * Initialize the scheduler with the given registrations.
      * @type {Initialize}
      */
-    async function initialize(capabilities, registrations, options = {}) {
+    async function initialize(registrations, options = {}) {
 
         /**
          * @param {import('../runtime_state_storage/class').RuntimeStateStorage} storage
@@ -258,7 +259,7 @@ function make() {
      * Stop the scheduler.
      * @type {Stop}
      */
-    async function stop(_capabilities) {
+    async function stop() {
         if (pollingScheduler !== null) {
             await pollingScheduler.stop();
             pollingScheduler = null;

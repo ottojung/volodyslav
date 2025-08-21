@@ -79,7 +79,7 @@ async function scheduleAll(capabilities) {
     ];
 
     // Initialize the scheduler with all registrations
-    await capabilities.scheduler.initialize(capabilities, registrations);
+    await capabilities.scheduler.initialize(registrations);
 }
 
 /**
