@@ -1,9 +1,13 @@
-const { make } = require("../src/cron");
+/**
+ * Tests for declarative scheduler retry behavior.
+ * Focuses on observable retry execution rather than internal state inspection.
+ */
+
 const { fromMilliseconds } = require("../src/time_duration");
 const { getMockedRootCapabilities } = require("./spies");
 const { stubEnvironment, stubLogger, stubDatetime, stubSleeper } = require("./stubs");
 
-function caps() {
+function getTestCapabilities() {
     const capabilities = getMockedRootCapabilities();
     stubEnvironment(capabilities);
     stubLogger(capabilities);
@@ -12,38 +16,59 @@ function caps() {
     return capabilities;
 }
 
-describe("polling scheduler retry", () => {
-    test("task with retry delay shows correct mode hints", async () => {
+describe("declarative scheduler retry behavior", () => {
+    test("task with retry executes callback multiple times on failure", async () => {
         jest.useFakeTimers().setSystemTime(new Date("2020-01-01T00:00:00Z"));
-        const cron = make(caps(), { pollIntervalMs: 10 });
-        const retryDelay = fromMilliseconds(5000); // 5 second delay for clear testing
-        let count = 0;
-        const cb = jest.fn(() => {
-            count++;
-            if (count === 1) {
-                throw new Error("fail");
+        
+        const capabilities = getTestCapabilities();
+        const retryDelay = fromMilliseconds(100); // Short delay for testing
+        let callCount = 0;
+        const taskCallback = jest.fn(() => {
+            callCount++;
+            if (callCount <= 2) {
+                throw new Error("simulated failure");
             }
+            // Success on 3rd try
         });
-        await cron.schedule("t", "* * * * *", cb, retryDelay);
-
-        // Advance timers to trigger first execution
-        jest.advanceTimersByTime(10);
         
-        // Verify task failed and retry is scheduled
-        let tasks = await cron.getTasks();
-        expect(tasks).toHaveLength(1);
-        expect(cb).toHaveBeenCalledTimes(1);
-        expect(tasks[0].pendingRetryUntil).toBeTruthy();
-        expect(tasks[0].modeHint).toBe("idle"); // Retry not due yet
-
-        // Advance time beyond retry delay
-        jest.advanceTimersByTime(5000);
+        const registrations = [
+            ["retry-task", "* * * * *", taskCallback, retryDelay]
+        ];
         
-        // Verify retry is now due
-        tasks = await cron.getTasks();
-        expect(tasks[0].modeHint).toBe("retry"); // Should be due for retry
+        // Initialize with fast polling to observe retry behavior
+        await capabilities.scheduler.initialize(registrations, { pollIntervalMs: 50 });
+        
+        // Wait for initial execution and retries
+        await new Promise(resolve => setTimeout(resolve, 400));
+        
+        // Should have been called multiple times due to retries
+        expect(taskCallback).toHaveBeenCalledTimes(3);
+        
+        await capabilities.scheduler.stop();
+        jest.useRealTimers();
+    });
 
-        await cron.cancelAll();
+    test("successful task execution does not trigger retries", async () => {
+        jest.useFakeTimers().setSystemTime(new Date("2020-01-01T00:00:00Z"));
+        
+        const capabilities = getTestCapabilities();
+        const retryDelay = fromMilliseconds(100);
+        const taskCallback = jest.fn(); // Always succeeds
+        
+        const registrations = [
+            ["success-task", "* * * * *", taskCallback, retryDelay]
+        ];
+        
+        await capabilities.scheduler.initialize(registrations, { pollIntervalMs: 50 });
+        
+        // Wait for one execution cycle
+        await new Promise(resolve => setTimeout(resolve, 200));
+        
+        // Should have been called once on schedule, but no retries
+        expect(taskCallback).toHaveBeenCalledTimes(1);
+        
+        await capabilities.scheduler.stop();
+        jest.useRealTimers();
     });
 });
 
