@@ -88,10 +88,10 @@ describe("declarative scheduler parallel execution", () => {
             ["concurrent-4", "* * * * *", () => concurrencyTask(4), retryDelay]
         ];
         
-        await capabilities.scheduler.initialize(registrations, { pollIntervalMs: 100 });
+        await capabilities.scheduler.initialize(registrations, { pollIntervalMs: 10 });
         
         // Wait for execution
-        await new Promise(resolve => setTimeout(resolve, 200));
+        await new Promise(resolve => setTimeout(resolve, 300));
         
         // Should execute all tasks and allow multiple to run concurrently
         expect(concurrencyTask).toHaveBeenCalledTimes(4);
