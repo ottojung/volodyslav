@@ -46,8 +46,6 @@
  * @property {Scheduler} scheduler - A scheduler instance.
  */
 
-const memconst = require("../memconst");
-
 const random = require("../random");
 const deleterCapability = require("../filesystem/deleter");
 const dirscanner = require("../filesystem/dirscanner");
@@ -74,7 +72,7 @@ const schedule = require('../schedule')
  * It should be a pure, well-behaved, non-throwing function,
  * because it is required for everything else in Volodyslav to work, including error reporting.
  */
-const make = memconst(() => {
+const make = () => {
     const environment = environmentCapability.make();
     const datetime = datetimeCapability.make();
     const sleeper = sleeperCapability.make();
@@ -90,20 +88,20 @@ const make = memconst(() => {
         writer: writerCapability.make(),
         reader: readerCapability.make(),
         appender: appendCapability.make(),
-        checker: checkerCapability.make({ datetime, sleeper }),
+        checker: checkerCapability.make(() => ({ datetime, sleeper })),
         git: gitCapability,
         environment,
         exiter: exiterCapability.make(),
         logger: loggingCapability.make(() => ret),
         notifier: notifierCapability.make(),
-        aiTranscription: aiTranscriptionCapability.make({ environment }),
+        aiTranscription: aiTranscriptionCapability.make(() => ({ environment })),
         sleeper,
         volodyslavDailyTasks,
         scheduler: schedule.make(() => ret),
     };
 
     return ret;
-});
+};
 
 module.exports = {
     make,

@@ -1,6 +1,7 @@
 const path = require("path");
-const temporary = require("./temporary");
 const defaultBranch = require("../src/gitstore/default_branch");
+const os = require("os");
+const fs = require("fs").promises;
 
 /**
  * Creates a test repository for use in tests.
@@ -25,7 +26,7 @@ async function stubEventLogRepository(capabilities) {
     await capabilities.git.call("init", "--bare", "--", gitDir);
 
     // Create a worktree
-    const workTree = path.join(temporary.input(), "worktree");
+    const workTree = await fs.mkdtemp(path.join(os.tmpdir(), "jest-worktree-"));
     await capabilities.creator.createDirectory(workTree);
     await capabilities.git.call(
         "init",

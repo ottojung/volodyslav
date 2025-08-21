@@ -18,6 +18,7 @@
  */
 
 const { OpenAI } = require("openai");
+const memconst = require("../memconst");
 const memoize = require("@emotion/memoize").default;
 
 /** @typedef {import('../environment').Environment} Environment */
@@ -98,13 +99,14 @@ function getTranscriberInfo() {
 
 /**
  * Creates an AITranscription capability.
- * @param {Capabilities} capabilities - The capabilities object.
+ * @param {() => Capabilities} getCapabilities - The capabilities object.
  * @returns {AITranscription} - The AI transcription interface.
  */
-function make(capabilities) {
+function make(getCapabilities) {
+    const getCapabilitiesMemo = memconst(getCapabilities);
     const openai = memoize((apiKey) => new OpenAI({ apiKey }));
     return {
-        transcribeStream: (fileStream) => transcribeStream(openai, capabilities, fileStream),
+        transcribeStream: (fileStream) => transcribeStream(openai, getCapabilitiesMemo(), fileStream),
         getTranscriberInfo,
     };
 }

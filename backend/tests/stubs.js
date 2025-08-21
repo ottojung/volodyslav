@@ -12,6 +12,7 @@ function stubEnvironment(capabilities) {
     const input = path.join(tmpDir, "input");
     const output = path.join(tmpDir, "output");
 
+    capabilities.environment = {};
     capabilities.environment.logLevel = jest.fn().mockReturnValue("debug");
     capabilities.environment.logFile = jest.fn().mockImplementation(() => {
         const dir = output;
@@ -45,6 +46,7 @@ function stubEnvironment(capabilities) {
         .fn()
         .mockReturnValue("mocked-openai-key");
     capabilities.environment.myServerPort = jest.fn().mockReturnValue(1234);
+    capabilities.environment.ensureEnvironmentIsInitialized = jest.fn();
 }
 
 /**
@@ -111,6 +113,13 @@ function stubApp() {
     };
 }
 
+function stubGit(capabilities, call) {
+    capabilities.git = {
+        ...capabilities.git,
+        call: jest.fn().mockImplementation(call),
+    };
+}
+
 module.exports = {
     stubEnvironment,
     stubLogger,
@@ -120,4 +129,5 @@ module.exports = {
     stubDatetime,
     stubEventLogRepository,
     stubApp,
+    stubGit,
 };
