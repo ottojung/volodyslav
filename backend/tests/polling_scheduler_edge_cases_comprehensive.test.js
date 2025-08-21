@@ -55,9 +55,10 @@ describe("declarative scheduler comprehensive edge cases", () => {
             // Wait for scheduler to process
             await new Promise(resolve => setTimeout(resolve, 300));
 
-            // At least some tasks should execute with every-minute cron
-            const executedCount = [callback1, callback2, callback3].filter(cb => cb.mock.calls.length > 0).length;
-            expect(executedCount).toBeGreaterThan(0);
+            // All tasks should execute
+            expect(callback1).toHaveBeenCalledTimes(1);
+            expect(callback2).toHaveBeenCalledTimes(1);
+            expect(callback3).toHaveBeenCalledTimes(1);
 
             await capabilities.scheduler.stop(capabilities);
         });
