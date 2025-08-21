@@ -12,6 +12,7 @@ function stubEnvironment(capabilities) {
     const input = path.join(tmpDir, "input");
     const output = path.join(tmpDir, "output");
 
+    capabilities.environment = {};
     capabilities.environment.logLevel = jest.fn().mockReturnValue("debug");
     capabilities.environment.logFile = jest.fn().mockImplementation(() => {
         const dir = output;
@@ -96,7 +97,7 @@ function stubScheduler(capabilities) {
         cancelAll: jest.fn().mockResolvedValue(0),
         getTasks: jest.fn().mockResolvedValue([])
     };
-    
+
     // Attach the mock to capabilities for testing
     capabilities.scheduler = mockSchedulerInstance;
 }
@@ -122,6 +123,13 @@ function stubDatetime(capabilities) {
     };
 }
 
+function stubGit(capabilities, call) {
+    capabilities.git = {
+        ...capabilities.git,
+        call: jest.fn().mockImplementation(call),
+    };
+}
+
 module.exports = {
     stubEnvironment,
     stubLogger,
@@ -131,4 +139,5 @@ module.exports = {
     stubSleeper,
     stubDatetime,
     stubEventLogRepository,
+    stubGit,
 };
