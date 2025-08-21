@@ -37,6 +37,12 @@ function isTaskListMismatchError(object) {
 /** @typedef {import('./tasks').Capabilities} Capabilities */
 
 /**
+ * @typedef {object} Scheduler
+ * @property {Initialize} initialize - Initializes the scheduler
+ * @property {Stop} stop - Stops the scheduler
+ */
+
+/**
  * Registration tuple: [name, cronExpression, callback, retryDelay]
  * @typedef {[string, string, () => Promise<void>, TimeDuration]} Registration
  */
@@ -83,9 +89,9 @@ function taskRecordToTaskIdentity(taskRecord) {
  * @returns {boolean}
  */
 function taskIdentitiesEqual(a, b) {
-    return a.name === b.name && 
-           a.cronExpression === b.cronExpression && 
-           a.retryDelayMs === b.retryDelayMs;
+    return (a.name === b.name &&
+        a.cronExpression === b.cronExpression &&
+        a.retryDelayMs === b.retryDelayMs);
 }
 
 /**
@@ -99,33 +105,33 @@ function validateTasksAgainstPersistedStateInner(registrations, persistedTasks) 
     // Convert to comparable identities
     const registrationIdentities = registrations.map(registrationToTaskIdentity);
     const persistedIdentities = persistedTasks.map(taskRecordToTaskIdentity);
-    
+
     // Sort by name for deterministic comparison
     registrationIdentities.sort((a, b) => a.name.localeCompare(b.name));
     persistedIdentities.sort((a, b) => a.name.localeCompare(b.name));
-    
+
     // Find mismatches
     const registrationMap = new Map(registrationIdentities.map(t => [t.name, t]));
     const persistedMap = new Map(persistedIdentities.map(t => [t.name, t]));
-    
+
     const missing = [];
     const extra = [];
     const differing = [];
-    
+
     // Find tasks in persisted state but not in registrations
     for (const persistedTask of persistedIdentities) {
         if (!registrationMap.has(persistedTask.name)) {
             missing.push(persistedTask.name);
         }
     }
-    
+
     // Find tasks in registrations but not in persisted state
     for (const regTask of registrationIdentities) {
         if (!persistedMap.has(regTask.name)) {
             extra.push(regTask.name);
         }
     }
-    
+
     // Find tasks with differing properties
     for (const regTask of registrationIdentities) {
         const persistedTask = persistedMap.get(regTask.name);
@@ -148,12 +154,12 @@ function validateTasksAgainstPersistedStateInner(registrations, persistedTasks) 
             }
         }
     }
-    
+
     // If any mismatches found, throw error
     if (missing.length > 0 || extra.length > 0 || differing.length > 0) {
         const mismatchDetails = { missing, extra, differing };
         let message = "Task list mismatch detected:";
-        
+
         if (missing.length > 0) {
             message += `\n  Missing tasks (in persisted state but not in registrations): ${missing.join(', ')}`;
         }
@@ -166,53 +172,70 @@ function validateTasksAgainstPersistedStateInner(registrations, persistedTasks) 
                 message += `\n    ${diff.name}.${diff.field}: expected ${diff.expected}, got ${diff.actual}`;
             }
         }
-        
+
         throw new TaskListMismatchError(message, mismatchDetails);
     }
 }
 
-/** 
- * @typedef {object} Runner
- * @property {() => Promise<void>} stop - Stop the main loop
+/**
+ * @typedef {object} PollerOptions
+ * @property {number} [pollIntervalMs] - The polling interval in milliseconds.
+ */
+
+/**
+ * @typedef {(capabilities: Capabilities, registrations: Array<Registration>, options: PollerOptions) => Promise<void>} Initialize
+ * @typedef {(capabilities: Capabilities) => Promise<void>} Stop
  */
 
 /**
  * Initialize the scheduler with the given registrations.
- * This function is idempotent - calling it multiple times has no additional effect.
  * 
- * @param {Capabilities} capabilities - The capabilities object
- * @param {Registration[]} registrations - Descriptions of tasks to run
- * @param {{pollIntervalMs?: number}} [options] - Optional configuration for the underlying scheduler
- * @returns {Promise<Runner>} - Resolves when initialization and validation complete
+ * @returns {Scheduler}
  * @throws {TaskListMismatchError} if registrations don't match persisted runtime state
  */
-async function initialize(capabilities, registrations, options = {}) {
+function make() {
+    /** @type {ReturnType<cronScheduler.make> | null} */
+    let pollingScheduler = null;
+
     /**
-     * Start the scheduler.
-     * @param {import('../runtime_state_storage/class').RuntimeStateStorage} storage
-     * @returns {Promise<Runner>}
+     * Initialize the scheduler with the given registrations.
+     * @type {Initialize}
      */
-    async function start(storage) {
-        const currentState = await storage.getCurrentState();
+    async function initialize(capabilities, registrations, options = {}) {
+
+        /**
+         * @param {import('../runtime_state_storage/class').RuntimeStateStorage} storage
+         */
+        async function getStorage(storage) {
+            return await storage.getCurrentState();
+        }
+
+        const currentState = await transaction(capabilities, getStorage);
         const persistedTasks = currentState.tasks;
-        
+
         // Always validate registrations against persisted state (unless first-time with empty state)
         if (persistedTasks.length === 0 && registrations.length > 0) {
             capabilities.logger.logInfo(
-                { registeredTaskCount: registrations.length }, 
+                { registeredTaskCount: registrations.length },
                 "First-time scheduler initialization: registering initial tasks"
             );
         } else {
             // Validate registrations match persisted state
             validateTasksAgainstPersistedStateInner(registrations, persistedTasks);
         }
-        
+
+        if (pollingScheduler !== null) {
+            // FIXME: change the polling interval if different requested via `options`.
+            return;
+        }
+
         // Create polling scheduler
         const cronOptions = {
             pollIntervalMs: options.pollIntervalMs,
         };
-        const pollingScheduler = cronScheduler.make(capabilities, cronOptions);
-        
+
+        pollingScheduler = cronScheduler.make(capabilities, cronOptions);
+
         for (const [name, cronExpression, callback, retryDelay] of registrations) {
             try {
                 await pollingScheduler.schedule(name, cronExpression, callback, retryDelay);
@@ -229,17 +252,26 @@ async function initialize(capabilities, registrations, options = {}) {
                 }
             }
         }
-
-        return {
-            stop: () => pollingScheduler.stop(),
-        };
     }
 
-    return await transaction(capabilities, start);
+    /**
+     * Stop the scheduler.
+     * @type {Stop}
+     */
+    async function stop(_capabilities) {
+        if (pollingScheduler !== null) {
+            await pollingScheduler.stop();
+            pollingScheduler = null;
+        }
+    }
+
+    return {
+        initialize,
+        stop,
+    }
 }
 
 module.exports = {
-    initialize,
+    make,
     isTaskListMismatchError,
 };
-

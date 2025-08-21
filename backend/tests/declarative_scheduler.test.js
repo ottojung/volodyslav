@@ -36,7 +36,7 @@ describe("Declarative Scheduler", () => {
             ];
 
             // Non-empty registrations should succeed on first-time setup (empty persisted state)
-            await expect(initialize(capabilities, registrations)).resolves.toBeDefined();
+            await expect(initialize(capabilities, registrations)).resolves.toBeUndefined();
         });
         
         test("succeeds with empty registrations when no persisted state exists", async () => {
@@ -45,7 +45,7 @@ describe("Declarative Scheduler", () => {
             const registrations = [];
 
             // Empty registrations should succeed (idempotent call does nothing)
-            await expect(initialize(capabilities, registrations)).resolves.toBeDefined();
+            await expect(initialize(capabilities, registrations)).resolves.toBeUndefined();
         });
 
         test("is idempotent - multiple calls have no additional effect", async () => {
@@ -55,13 +55,13 @@ describe("Declarative Scheduler", () => {
             ];
 
             // First call should succeed
-            await expect(initialize(capabilities, registrations)).resolves.toBeDefined();
+            await expect(initialize(capabilities, registrations)).resolves.toBeUndefined();
 
             // Second call should also succeed and do nothing
-            await expect(initialize(capabilities, registrations)).resolves.toBeDefined();
+            await expect(initialize(capabilities, registrations)).resolves.toBeUndefined();
 
             // Third call should also succeed and do nothing
-            await expect(initialize(capabilities, registrations)).resolves.toBeDefined();
+            await expect(initialize(capabilities, registrations)).resolves.toBeUndefined();
         });
 
         test("throws TaskListMismatchError when tasks differ from persisted state", async () => {
@@ -186,12 +186,12 @@ describe("Declarative Scheduler", () => {
             const cronDiff = error.mismatchDetails.differing.find(d => d.field === 'cronExpression');
             const retryDiff = error.mismatchDetails.differing.find(d => d.field === 'retryDelayMs');
             
-            expect(cronDiff).toBeDefined();
+            expect(cronDiff).toBeUndefined();
             expect(cronDiff.name).toBe("task1");
             expect(cronDiff.expected).toBe("0 * * * *");
             expect(cronDiff.actual).toBe("0 */2 * * *");
             
-            expect(retryDiff).toBeDefined();
+            expect(retryDiff).toBeUndefined();
             expect(retryDiff.name).toBe("task1");
             expect(retryDiff.expected).toBe(COMMON.FIVE_MINUTES.toMilliseconds());
             expect(retryDiff.actual).toBe(COMMON.THIRTY_MINUTES.toMilliseconds());
@@ -202,10 +202,10 @@ describe("Declarative Scheduler", () => {
             const registrations = [];
 
             // Should succeed with no tasks
-            await expect(initialize(capabilities, registrations)).resolves.toBeDefined();
+            await expect(initialize(capabilities, registrations)).resolves.toBeUndefined();
             
             // Should be idempotent
-            await expect(initialize(capabilities, registrations)).resolves.toBeDefined();
+            await expect(initialize(capabilities, registrations)).resolves.toBeUndefined();
         });
 
         test("logs appropriate messages for first-time initialization", async () => {
@@ -274,7 +274,7 @@ describe("Declarative Scheduler", () => {
             // This should not cause errors or duplicate scheduling issues
             await expect(initialize(capabilities, registrations, { 
                 pollIntervalMs: 100,
-            })).resolves.toBeDefined();
+            })).resolves.toBeUndefined();
         });
 
         test("scheduler executes tasks based on cron schedule", async () => {

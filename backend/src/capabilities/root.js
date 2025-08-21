@@ -20,6 +20,7 @@
 /** @typedef {import('../ai/transcription').AITranscription} AITranscription */
 /** @typedef {import('../datetime').Datetime} Datetime */
 /** @typedef {import('../sleeper').Sleeper} Sleeper */
+/** @typedef {import('../schedule').Scheduler} Scheduler */
 
 
 /**
@@ -42,6 +43,7 @@
  * @property {Datetime} datetime - Datetime utilities.
  * @property {Sleeper} sleeper - A sleeper instance.
  * @property {Command} volodyslavDailyTasks - A command instance for daily tasks.
+ * @property {Scheduler} scheduler - A scheduler instance.
  */
 
 const memconst = require("../memconst");
@@ -64,6 +66,7 @@ const aiTranscriptionCapability = require("../ai/transcription");
 const datetimeCapability = require("../datetime");
 const sleeperCapability = require("../sleeper");
 const volodyslavDailyTasks = require("../executables").volodyslavDailyTasks;
+const schedule = require('../schedule')
 
 /**
  * This structure collects maximum capabilities that any part of Volodyslav can access.
@@ -75,6 +78,8 @@ const make = memconst(() => {
     const environment = environmentCapability.make();
     const datetime = datetimeCapability.make();
     const sleeper = sleeperCapability.make();
+    const scheduler = schedule.make();
+
     /** @type {Capabilities} */
     const ret = {
         seed: random.seed.make(),
@@ -95,6 +100,7 @@ const make = memconst(() => {
         aiTranscription: aiTranscriptionCapability.make({ environment }),
         sleeper,
         volodyslavDailyTasks,
+        scheduler,
     };
 
     return ret;
