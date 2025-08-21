@@ -168,31 +168,31 @@ function validateRegistrations(registrations, capabilities) {
         }
 
         if (typeof cronExpression !== 'string' || cronExpression.trim() === '') {
-            throw new InvalidCronExpressionTypeError(`Registration at index ${i} (${name}): cronExpression must be a non-empty string, got: ${typeof cronExpression}`, { index: i, name, value: cronExpression });
+            throw new InvalidCronExpressionTypeError(`Registration at index ${i} (${qname}): cronExpression must be a non-empty string, got: ${typeof cronExpression}`, { index: i, name, value: cronExpression });
         }
 
         // Basic cron expression validation using the cron module
         if (!cronScheduler.validate(cronExpression)) {
-            throw new CronExpressionInvalidError(`Registration at index ${i} (${name}): invalid cron expression '${cronExpression}'`, { index: i, name, value: cronExpression });
+            throw new CronExpressionInvalidError(`Registration at index ${i} (${qname}): invalid cron expression '${cronExpression}'`, { index: i, name, value: cronExpression });
         }
 
         if (typeof callback !== 'function') {
-            throw new CallbackTypeError(`Registration at index ${i} (${name}): callback must be a function, got: ${typeof callback}`, { index: i, name, value: callback });
+            throw new CallbackTypeError(`Registration at index ${i} (${qname}): callback must be a function, got: ${typeof callback}`, { index: i, name, value: callback });
         }
 
         if (!retryDelay || typeof retryDelay.toMilliseconds !== 'function') {
-            throw new RetryDelayTypeError(`Registration at index ${i} (${name}): retryDelay must be a TimeDuration object with toMilliseconds() method`, { index: i, name, value: retryDelay });
+            throw new RetryDelayTypeError(`Registration at index ${i} (${qname}): retryDelay must be a TimeDuration object with toMilliseconds() method`, { index: i, name, value: retryDelay });
         }
 
         // Validate retry delay is reasonable (warn for very large delays but don't block)
         const retryMs = retryDelay.toMilliseconds();
         if (retryMs < 0) {
-            throw new NegativeRetryDelayError(`Registration at index ${i} (${name}): retryDelay cannot be negative`, { index: i, name, retryMs });
+            throw new NegativeRetryDelayError(`Registration at index ${i} (${qname}): retryDelay cannot be negative`, { index: i, name, retryMs });
         }
         if (retryMs > 24 * 60 * 60 * 1000) { // 24 hours
             capabilities.logger.logWarning(
                 { name, retryDelayMs: retryMs, retryDelayHours: Math.round(retryMs / (60 * 60 * 1000)) },
-                `Task '${qname}' has a very large retry delay of ${retryMs}ms (${Math.round(retryMs / (60 * 60 * 1000))} hours). Consider using a smaller delay.`
+                `Task ${qname} has a very large retry delay of ${retryMs}ms (${Math.round(retryMs / (60 * 60 * 1000))} hours). Consider using a smaller delay.`
             );
         }
     }
