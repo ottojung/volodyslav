@@ -9,31 +9,7 @@ const memconst = require("../memconst");
 const { transaction } = require("../runtime_state_storage");
 const { ScheduleInvalidNameError } = require("../cron/polling_scheduler_errors");
 
-/**
- * Error thrown when the task list provided to initialize() differs from persisted runtime state.
- */
-class TaskListMismatchError extends Error {
-    /**
-     * @param {string} message
-     * @param {object} mismatchDetails
-     * @param {string[]} mismatchDetails.missing - Tasks in persisted state but not in registrations
-     * @param {string[]} mismatchDetails.extra - Tasks in registrations but not in persisted state
-     * @param {Array<{name: string, field: string, expected: any, actual: any}>} mismatchDetails.differing - Tasks with differing properties
-     */
-    constructor(message, mismatchDetails) {
-        super(message);
-        this.name = "TaskListMismatchError";
-        this.mismatchDetails = mismatchDetails;
-    }
-}
-
-/**
- * @param {unknown} object
- * @returns {object is TaskListMismatchError}
- */
-function isTaskListMismatchError(object) {
-    return object instanceof TaskListMismatchError;
-}
+const { TaskListMismatchError, isTaskListMismatchError } = require("./errors");
 
 /** @typedef {import('../time_duration/structure').TimeDuration} TimeDuration */
 /** @typedef {import('./tasks').Capabilities} Capabilities */
@@ -275,11 +251,13 @@ function make(getCapabilities) {
             if (typeof name !== 'string' || name.trim() === '') {
                 throw new ScheduleInvalidNameError(name || '(empty)');
             }
+            
+            const qname = JSON.stringify(name);
 
             // Check for duplicate task names (but allow them for backwards compatibility)
             if (seenNames.has(name)) {
                 // FIXME: make this a hard error, and test for it.
-                capabilities.logger.logWarning({name, i, registrations}, `Duplicate task name '${name}' found at registration index ${i}. This may cause unpredictable behavior.`);
+                capabilities.logger.logWarning({name, i, registrations}, `Duplicate task name ${qname} found at registration index ${i}. This may cause unpredictable behavior.`);
             }
             seenNames.add(name);
 
@@ -287,36 +265,36 @@ function make(getCapabilities) {
             if (name.includes(' ')) {
                 capabilities.logger.logWarning(
                     { name, index: i },
-                    `Task name '${name}' contains spaces. Consider using hyphens or underscores instead.`
+                    `Task name ${qname} contains spaces. Consider using hyphens or underscores instead.`
                 );
             }
 
             if (typeof cronExpression !== 'string' || cronExpression.trim() === '') {
-                throw new Error(`Registration at index ${i} (${name}): cronExpression must be a non-empty string, got: ${typeof cronExpression}`);
+                throw new Error(`Registration at index ${i} (${qname}): cronExpression must be a non-empty string, got: ${typeof cronExpression}`);
             }
 
             // Basic cron expression validation using the cron module
             if (!cronScheduler.validate(cronExpression)) {
-                throw new Error(`Registration at index ${i} (${name}): invalid cron expression '${cronExpression}'`);
+                throw new Error(`Registration at index ${i} (${qname}): invalid cron expression '${cronExpression}'`);
             }
 
             if (typeof callback !== 'function') {
-                throw new Error(`Registration at index ${i} (${name}): callback must be a function, got: ${typeof callback}`);
+                throw new Error(`Registration at index ${i} (${qname}): callback must be a function, got: ${typeof callback}`);
             }
 
             if (!retryDelay || typeof retryDelay.toMilliseconds !== 'function') {
-                throw new Error(`Registration at index ${i} (${name}): retryDelay must be a TimeDuration object with toMilliseconds() method`);
+                throw new Error(`Registration at index ${i} (${qname}): retryDelay must be a TimeDuration object with toMilliseconds() method`);
             }
 
             // Validate retry delay is reasonable (warn for very large delays but don't block)
             const retryMs = retryDelay.toMilliseconds();
             if (retryMs < 0) {
-                throw new Error(`Registration at index ${i} (${name}): retryDelay cannot be negative`);
+                throw new Error(`Registration at index ${i} (${qname}): retryDelay cannot be negative`);
             }
             if (retryMs > 24 * 60 * 60 * 1000) { // 24 hours
                 capabilities.logger.logWarning(
                     { name, retryDelayMs: retryMs, retryDelayHours: Math.round(retryMs / (60 * 60 * 1000)) },
-                    `Task '${name}' has a very large retry delay of ${retryMs}ms (${Math.round(retryMs / (60 * 60 * 1000))} hours). Consider using a smaller delay.`
+                    `Task '${qname}' has a very large retry delay of ${retryMs}ms (${Math.round(retryMs / (60 * 60 * 1000))} hours). Consider using a smaller delay.`
                 );
             }
         }
