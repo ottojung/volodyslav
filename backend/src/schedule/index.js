@@ -5,6 +5,7 @@
  */
 
 const cronScheduler = require("../cron");
+const memconst = require("../memconst");
 const { transaction } = require("../runtime_state_storage");
 
 /**
@@ -190,13 +191,15 @@ function validateTasksAgainstPersistedStateInner(registrations, persistedTasks) 
 /**
  * Initialize the scheduler with the given registrations.
  * 
- * @param {Capabilities} capabilities
+ * @param {() => Capabilities} getCapabilities
  * @returns {Scheduler}
  * @throws {TaskListMismatchError} if registrations don't match persisted runtime state
  */
-function make(capabilities) {
+function make(getCapabilities) {
     /** @type {ReturnType<cronScheduler.make> | null} */
     let pollingScheduler = null;
+
+    const getCapabilitiesMemo = memconst(getCapabilities);
 
     /**
      * Initialize the scheduler with the given registrations.
@@ -211,6 +214,7 @@ function make(capabilities) {
             return await storage.getCurrentState();
         }
 
+        const capabilities = getCapabilitiesMemo();
         const currentState = await transaction(capabilities, getStorage);
         const persistedTasks = currentState.tasks;
 

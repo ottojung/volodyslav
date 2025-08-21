@@ -78,7 +78,6 @@ const make = memconst(() => {
     const environment = environmentCapability.make();
     const datetime = datetimeCapability.make();
     const sleeper = sleeperCapability.make();
-    const scheduler = schedule.make();
 
     /** @type {Capabilities} */
     const ret = {
@@ -100,7 +99,7 @@ const make = memconst(() => {
         aiTranscription: aiTranscriptionCapability.make({ environment }),
         sleeper,
         volodyslavDailyTasks,
-        scheduler,
+        scheduler: schedule.make(() => ret),
     };
 
     return ret;
