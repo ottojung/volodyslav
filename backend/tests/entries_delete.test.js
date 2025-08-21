@@ -89,4 +89,16 @@ describe("DELETE /api/entries", () => {
         );
     });
 
+    it("returns 500 when deletion throws", async () => {
+        const { app } = await makeTestApp();
+        const entryModule = require("../src/entry");
+        jest.spyOn(entryModule, "deleteEntry").mockRejectedValueOnce(
+            new Error("boom")
+        );
+        const res = await request(app).delete(
+            "/api/entries?id=someid"
+        );
+        expect(res.statusCode).toBe(500);
+        jest.restoreAllMocks();
+    });
 });
