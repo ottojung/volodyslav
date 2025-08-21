@@ -23,12 +23,12 @@ function getTestCapabilities() {
     stubNotifier(capabilities);
     stubSleeper(capabilities);
     stubDatetime(capabilities);
-    
+
     // Mock the necessary methods that server initialization needs
     capabilities.environment.ensureEnvironmentIsInitialized = jest.fn().mockResolvedValue(undefined);
     capabilities.notifier.ensureNotificationsAvailable = jest.fn().mockResolvedValue(undefined);
     capabilities.git.ensureAvailable = jest.fn().mockResolvedValue(undefined);
-    
+
     return capabilities;
 }
 
@@ -41,10 +41,10 @@ describe("Server Integration with Declarative Scheduler", () => {
 
         // First-time server initialization should succeed (creates initial scheduler state)
         await expect(initialize(capabilities, app)).resolves.toBeUndefined();
-        
+
         // Should have logged various initialization steps
         expect(capabilities.logger.logInfo).toHaveBeenCalled();
-        
+
         // App should have been configured with middleware
         expect(app.use).toHaveBeenCalled();
         capabilities.scheduler.stop();
@@ -57,10 +57,10 @@ describe("Server Integration with Declarative Scheduler", () => {
 
         // First initialization
         await expect(initialize(capabilities, app)).resolves.toBeUndefined();
-        
+
         // Second initialization should also succeed (idempotent)
         await expect(initialize(capabilities, app)).resolves.toBeUndefined();
-        
+
         // Should have configured app at least once
         expect(app.use).toHaveBeenCalled();
         capabilities.scheduler.stop();
@@ -69,7 +69,7 @@ describe("Server Integration with Declarative Scheduler", () => {
     test("server handles scheduler initialization errors gracefully", async () => {
         const capabilities = getTestCapabilities();
         const app = stubApp();
-        
+
         // Simulate a scheduler error by making environment setup fail
         capabilities.environment.ensureEnvironmentIsInitialized.mockRejectedValue(
             new Error("Environment setup failed")
@@ -91,7 +91,7 @@ describe("Server Integration with Declarative Scheduler", () => {
         expect(capabilities.environment.ensureEnvironmentIsInitialized).toHaveBeenCalled();
         expect(capabilities.notifier.ensureNotificationsAvailable).toHaveBeenCalled();
         expect(capabilities.git.ensureAvailable).toHaveBeenCalled();
-        
+
         // App configuration should have been set up
         expect(app.use).toHaveBeenCalled();
         capabilities.scheduler.stop();
@@ -106,7 +106,7 @@ describe("Server Integration with Declarative Scheduler", () => {
 
         // Should have logged initialization progress
         expect(capabilities.logger.logInfo).toHaveBeenCalled();
-        
+
         // Check that logger was properly configured  
         const logInfoCalls = capabilities.logger.logInfo.mock.calls;
         expect(logInfoCalls.length).toBeGreaterThan(0);
@@ -127,7 +127,7 @@ describe("Server Integration with Declarative Scheduler", () => {
 
         // Both should succeed (separate working directories)
         await expect(Promise.all([promise1, promise2])).resolves.toEqual([undefined, undefined]);
-        
+
         // Both apps should be configured
         expect(app1.use).toHaveBeenCalled();
         expect(app2.use).toHaveBeenCalled();
