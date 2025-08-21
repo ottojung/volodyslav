@@ -78,6 +78,7 @@ const make = memconst(() => {
     const environment = environmentCapability.make();
     const datetime = datetimeCapability.make();
     const sleeper = sleeperCapability.make();
+
     /** @type {Capabilities} */
     const ret = {
         seed: random.seed.make(),
@@ -89,20 +90,18 @@ const make = memconst(() => {
         writer: writerCapability.make(),
         reader: readerCapability.make(),
         appender: appendCapability.make(),
-        checker: checkerCapability.make({ datetime, sleeper }),
+        checker: checkerCapability.make(() => ({ datetime, sleeper })),
         git: gitCapability,
         environment,
         exiter: exiterCapability.make(),
         logger: loggingCapability.make(() => ret),
         notifier: notifierCapability.make(),
-        scheduler: /** @type {any} */ (null), // Will be set below
-        aiTranscription: aiTranscriptionCapability.make({ environment }),
+        scheduler: schedulerCapability.make(() => ret),
+        aiTranscription: aiTranscriptionCapability.make(() => ({ environment })),
         sleeper,
         volodyslavDailyTasks,
     };
 
-    // Create scheduler with capabilities after ret is defined
-    ret.scheduler = schedulerCapability.make(ret);
 
     return ret;
 });

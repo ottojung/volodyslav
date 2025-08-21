@@ -1,15 +1,16 @@
 const { allTasks } = require("./tasks");
 const cronScheduler = require("../cron");
+const memconst = require("../memconst");
 
 /** @typedef {ReturnType<make>} Scheduler */
 
 /**
- * @param {import("./tasks").Capabilities} capabilities
+ * @param {() => import("./tasks").Capabilities} getCapabilities
  */
-function make(capabilities) {
+function make(getCapabilities) {
     // Create a polling scheduler instance
-    const pollingScheduler = cronScheduler.make(capabilities);
-    
+    const getPollingScheduler = memconst(() => cronScheduler.make(getCapabilities()));
+
     return {
         /**
          * @param {string} name
@@ -19,7 +20,7 @@ function make(capabilities) {
          * @returns {Promise<string>}
          */
         schedule: async (name, cronExpression, callback, retryDelay) => {
-            await pollingScheduler.schedule(name, cronExpression, callback, retryDelay);
+            await getPollingScheduler().schedule(name, cronExpression, callback, retryDelay);
             return name;
         },
         
@@ -29,7 +30,7 @@ function make(capabilities) {
          * @returns {Promise<boolean>}
          */
         cancel: async (name) => {
-            return await pollingScheduler.cancel(name);
+            return await getPollingScheduler().cancel(name);
         },
         
         /**
@@ -37,7 +38,7 @@ function make(capabilities) {
          * @returns {Promise<number>}
          */
         cancelAll: async () => {
-            return await pollingScheduler.cancelAll();
+            return await getPollingScheduler().cancelAll();
         },
         
         /**
@@ -45,7 +46,7 @@ function make(capabilities) {
          * @returns {Promise<Array<{name:string,cronExpression:string,running:boolean,lastSuccessTime?:string,lastFailureTime?:string,lastAttemptTime?:string,pendingRetryUntil?:string,modeHint:"retry"|"cron"|"idle"}>>}
          */
         getTasks: async () => {
-            return await pollingScheduler.getTasks();
+            return await getPollingScheduler().getTasks();
         },
         
         /**
@@ -54,7 +55,7 @@ function make(capabilities) {
          * @returns {boolean}
          */
         validate: (cronExpression) => {
-            return pollingScheduler.validate(cronExpression);
+            return getPollingScheduler().validate(cronExpression);
         },
     };
 }
