@@ -262,6 +262,7 @@ function make(getCapabilities) {
         }
 
         const seenNames = new Set();
+        const capabilities = getCapabilitiesMemo();
 
         for (let i = 0; i < registrations.length; i++) {
             const registration = registrations[i];
@@ -277,9 +278,8 @@ function make(getCapabilities) {
 
             // Check for duplicate task names (but allow them for backwards compatibility)
             if (seenNames.has(name)) {
-                // Log a warning instead of throwing an error for backwards compatibility
-                // In a future version, this could become an error
-                console.warn(`Warning: duplicate task name '${name}' found at registration index ${i}. This may cause unpredictable behavior.`);
+                // FIXME: make this a hard error, and test for it.
+                capabilities.logger.logWarning({name, i, registrations}, `Duplicate task name '${name}' found at registration index ${i}. This may cause unpredictable behavior.`);
             }
             seenNames.add(name);
 
