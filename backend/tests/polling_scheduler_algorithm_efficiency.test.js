@@ -11,13 +11,16 @@ describe.skip("polling scheduler algorithm efficiency", () => {
     
     test.skip("should handle monthly schedules efficiently across large gaps", async () => {
         // Algorithm efficiency testing - not applicable to declarative approach
+        expect(true).toBe(true); // Placeholder assertion for skipped test
     });
 
     test.skip("should efficiently handle yearly schedules with very large gaps", async () => {
-        // Algorithm efficiency testing - not applicable to declarative approach  
+        // Algorithm efficiency testing - not applicable to declarative approach
+        expect(true).toBe(true); // Placeholder assertion for skipped test
     });
 
     test.skip("should use caching effectively for repeated calls", async () => {
         // Caching implementation details - not applicable to declarative approach
+        expect(true).toBe(true); // Placeholder assertion for skipped test
     });
 });

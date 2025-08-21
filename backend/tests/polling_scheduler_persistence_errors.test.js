@@ -143,11 +143,13 @@ describe("declarative scheduler persistence and error handling", () => {
     test.skip("should handle rapid schedule/cancel operations with many tasks", async () => {
         // SKIPPED: This test uses cancel operations which are not part of the declarative API
         // Will be addressed later when procedural APIs are implemented
+        expect(true).toBe(true); // Placeholder assertion for skipped test
     });
 
     test.skip("should handle scheduler restart scenarios", async () => {
         // SKIPPED: This test uses cancel operations and restart logic which are not part of the declarative API
-        // Will be addressed later when procedural APIs are implemented  
+        // Will be addressed later when procedural APIs are implemented
+        expect(true).toBe(true); // Placeholder assertion for skipped test
     });
 
     test("should handle time manipulation edge cases", async () => {
@@ -190,6 +192,7 @@ describe("declarative scheduler persistence and error handling", () => {
     test.skip("should handle rapid schedule/cancel operations", async () => {
         // SKIPPED: This test uses cancel operations which are not part of the declarative API
         // Will be addressed later when procedural APIs are implemented
+        expect(true).toBe(true); // Placeholder assertion for skipped test
     });
 
     test("should handle invalid callback types gracefully", async () => {

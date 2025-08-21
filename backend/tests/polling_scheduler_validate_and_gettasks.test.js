@@ -45,14 +45,17 @@ describe("declarative scheduler validation", () => {
         
         test.skip("getTasks modeHint shows cron when due, idle otherwise", async () => {
             // Tests procedural getTasks API - skipped
+            expect(true).toBe(true); // Placeholder assertion for skipped test
         });
 
         test.skip("getTasks modeHint shows retry when pending and due", async () => {
             // Tests procedural getTasks API - skipped
+            expect(true).toBe(true); // Placeholder assertion for skipped test
         });
 
         test.skip("cancel of non-existent task returns false and keeps others", async () => {
             // Tests procedural cancel API - skipped
+            expect(true).toBe(true); // Placeholder assertion for skipped test
         });
     });
 });
