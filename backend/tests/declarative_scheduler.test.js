@@ -235,7 +235,10 @@ describe("Declarative Scheduler", () => {
 
             // Should log first-time initialization message
             expect(capabilities.logger.logInfo).toHaveBeenCalledWith(
-                { registeredTaskCount: 2 },
+                { 
+                    registeredTaskCount: 2,
+                    taskNames: ["task1", "task2"]
+                },
                 "First-time scheduler initialization: registering initial tasks"
             );
 

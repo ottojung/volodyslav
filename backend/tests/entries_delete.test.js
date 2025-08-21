@@ -89,10 +89,4 @@ describe("DELETE /api/entries", () => {
         );
     });
 
-    /* eslint-disable jest/no-disabled-tests */
-    it.skip("returns 500 when deletion throws", async () => {
-        // SKIPPED: This test uses jest.spyOn which violates AGENTS.md
-        // TODO: Refactor to test error handling without mocking
-        expect(true).toBe(true); // Placeholder assertion for skipped test
-    });
 });

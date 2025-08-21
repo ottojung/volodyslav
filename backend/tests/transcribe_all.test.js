@@ -71,16 +71,4 @@ describe("GET /api/transcribe_all", () => {
         });
     });
 
-    /* eslint-disable jest/no-disabled-tests */
-    it.skip("aggregates successes and failures and returns 500", async () => {
-        // SKIPPED: This test requires mocking transcribeFile which violates AGENTS.md
-        // TODO: Refactor to test error handling through capabilities pattern
-        expect(true).toBe(true); // Placeholder assertion for skipped test
-    });
-
-    it.skip("succeeds when all files transcribe", async () => {
-        // SKIPPED: This test requires mocking transcribeFile which violates AGENTS.md
-        // TODO: Refactor to test success case through capabilities pattern
-        expect(true).toBe(true); // Placeholder assertion for skipped test
-    });
 });

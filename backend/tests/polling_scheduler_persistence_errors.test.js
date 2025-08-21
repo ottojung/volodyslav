@@ -140,19 +140,6 @@ describe("declarative scheduler persistence and error handling", () => {
         await capabilities.scheduler.stop(capabilities);
     });
 
-    /* eslint-disable jest/no-disabled-tests */
-    test.skip("should handle rapid schedule/cancel operations with many tasks", async () => {
-        // SKIPPED: This test uses cancel operations which are not part of the declarative API
-        // Will be addressed later when procedural APIs are implemented
-        expect(true).toBe(true); // Placeholder assertion for skipped test
-    });
-
-    test.skip("should handle scheduler restart scenarios", async () => {
-        // SKIPPED: This test uses cancel operations and restart logic which are not part of the declarative API
-        // Will be addressed later when procedural APIs are implemented
-        expect(true).toBe(true); // Placeholder assertion for skipped test
-    });
-
     test("should handle time manipulation edge cases", async () => {
         // This test specifically needs fake timers for time manipulation
         jest.useFakeTimers();
@@ -188,12 +175,6 @@ describe("declarative scheduler persistence and error handling", () => {
         } finally {
             jest.useRealTimers();
         }
-    });
-
-    test.skip("should handle rapid schedule/cancel operations", async () => {
-        // SKIPPED: This test uses cancel operations which are not part of the declarative API
-        // Will be addressed later when procedural APIs are implemented
-        expect(true).toBe(true); // Placeholder assertion for skipped test
     });
 
     test("should handle invalid callback types gracefully", async () => {
@@ -235,7 +216,8 @@ describe("declarative scheduler persistence and error handling", () => {
     });
 
     test("should maintain task order when scheduled at different times", async () => {
-        const capabilities = getTestCapabilities();
+        const capabilities1 = getTestCapabilities();
+        const capabilities2 = getTestCapabilities();
         const retryDelay = fromMilliseconds(5000);
 
         const callback1 = jest.fn().mockResolvedValue(undefined);
@@ -249,11 +231,12 @@ describe("declarative scheduler persistence and error handling", () => {
             ["task-m", "0 12 * * *", callback3, retryDelay]
         ];
 
-        await expect(capabilities.scheduler.initialize(registrations, { pollIntervalMs: 100 })).resolves.toBeUndefined();
+        await expect(capabilities1.scheduler.initialize(registrations, { pollIntervalMs: 100 })).resolves.toBeUndefined();
 
-        // Tasks should be schedulable regardless of their scheduled times
-        await capabilities.scheduler.initialize(registrations, { pollIntervalMs: 100 });
+        // Tasks should be schedulable regardless of their scheduled times (test with separate instance)
+        await expect(capabilities2.scheduler.initialize(registrations, { pollIntervalMs: 100 })).resolves.toBeUndefined();
 
-        await capabilities.scheduler.stop(capabilities);
+        await capabilities1.scheduler.stop(capabilities1);
+        await capabilities2.scheduler.stop(capabilities2);
     });
 });

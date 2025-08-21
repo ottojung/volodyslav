@@ -39,24 +39,4 @@ describe("declarative scheduler validation", () => {
             .rejects.toThrow(ScheduleInvalidNameError);
     });
 
-    /* eslint-disable jest/no-disabled-tests */
-    describe.skip("procedural API tests", () => {
-        // These tests exercise strictly procedural parts (getTasks, cancel APIs).
-        // They will be handled later when procedural APIs are addressed.
-        
-        test.skip("getTasks modeHint shows cron when due, idle otherwise", async () => {
-            // Tests procedural getTasks API - skipped
-            expect(true).toBe(true); // Placeholder assertion for skipped test
-        });
-
-        test.skip("getTasks modeHint shows retry when pending and due", async () => {
-            // Tests procedural getTasks API - skipped
-            expect(true).toBe(true); // Placeholder assertion for skipped test
-        });
-
-        test.skip("cancel of non-existent task returns false and keeps others", async () => {
-            // Tests procedural cancel API - skipped
-            expect(true).toBe(true); // Placeholder assertion for skipped test
-        });
-    });
 });
