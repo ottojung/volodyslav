@@ -24,8 +24,13 @@ function mockCapabilities(real) {
     return real;
 }
 
-const getMockedRootCapabilities = () =>
-    mockCapabilities(rootCapabilities.make());
+function getMockedRootCapabilities() {
+    const original = rootCapabilities.make();
+    const mocked = mockCapabilities(original);
+    const enhanced = rootCapabilities.setCapabilities(mocked);
+    const mockedTwice = mockCapabilities(enhanced);
+    return mockedTwice;
+}
 
 module.exports = {
     getMockedRootCapabilities,
