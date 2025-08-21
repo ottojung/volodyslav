@@ -56,6 +56,7 @@ class ScheduleFrequencyError extends Error {
      */
     constructor(taskFrequencyMs, pollFrequencyMs) {
         // Format frequency display for better readability
+        /** @param {number} ms */
         const formatFrequency = (ms) => {
             if (ms < 60 * 1000) {
                 const seconds = Math.floor(ms / 1000);

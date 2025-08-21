@@ -151,7 +151,6 @@ describe("sub-minute scheduler jobs support", () => {
     });
 
     test("should demonstrate practical sub-minute scheduling scenarios", async () => {
-        const capabilities = getTestCapabilities();
         const retryDelay = fromMilliseconds(1000);
         const taskCallback = jest.fn();
         
