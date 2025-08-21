@@ -2,7 +2,6 @@ const eventLogStorage = require("../event_log_storage");
 const { processDiaryAudios } = require("../diary");
 const { executeDailyTasks } = require("./daily_tasks");
 const { COMMON } = require("../time_duration");
-const { initialize } = require("./index");
 
 /** @typedef {import('../filesystem/deleter').FileDeleter} FileDeleter */
 /** @typedef {import('../random/seed').NonDeterministicSeed} NonDeterministicSeed */
@@ -80,7 +79,7 @@ async function scheduleAll(capabilities) {
     ];
 
     // Initialize the scheduler with all registrations
-    await initialize(capabilities, registrations);
+    await capabilities.scheduler.initialize(capabilities, registrations);
 }
 
 /**

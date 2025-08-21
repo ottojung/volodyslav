@@ -183,7 +183,7 @@ function validateTasksAgainstPersistedStateInner(registrations, persistedTasks) 
  */
 
 /**
- * @typedef {(capabilities: Capabilities, registrations: Array<Registration>, options: PollerOptions) => Promise<void>} Initialize
+ * @typedef {(capabilities: Capabilities, registrations: Array<Registration>, options?: PollerOptions) => Promise<void>} Initialize
  * @typedef {(capabilities: Capabilities) => Promise<void>} Stop
  */
 
