@@ -5,17 +5,13 @@
 const { transaction } = require("../src/runtime_state_storage");
 const { RUNTIME_STATE_VERSION } = require("../src/runtime_state_storage/structure");
 const { getMockedRootCapabilities } = require("./spies");
-const { stubEnvironment, stubLogger, stubDatetime } = require("./stubs");
+const { stubEnvironment, stubLogger, stubDatetime, stubGit } = require("./stubs");
 
 function getTestCapabilities() {
     const capabilities = getMockedRootCapabilities();
     stubEnvironment(capabilities);
     stubLogger(capabilities);
     stubDatetime(capabilities);
-    
-    // Don't mock git.call - let it work with real git operations
-    // The repository will be initialized automatically
-    
     return capabilities;
 }
 
@@ -47,7 +43,9 @@ describe("runtime_state_storage/transaction", () => {
         const capabilities = getTestCapabilities();
         
         // Mock git.call to fail for this specific test
-        capabilities.git.call = jest.fn().mockRejectedValue(new Error("Git operation failed"));
+        stubGit(capabilities, (..._args) => {
+            throw new Error("Git operation failed");
+        });
 
         const startTime = capabilities.datetime.now();
         const testState = { version: RUNTIME_STATE_VERSION, startTime, tasks: [] };
