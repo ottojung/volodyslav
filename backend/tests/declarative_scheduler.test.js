@@ -2,12 +2,12 @@
  * Tests for the new declarative scheduler functionality.
  */
 
-const { 
+const {
     initialize,
     isTaskListMismatchError,
 } = require("../src/schedule");
-const { 
-    stubLogger, 
+const {
+    stubLogger,
     stubEnvironment,
     stubSleeper,
     stubDatetime,
@@ -21,7 +21,7 @@ function getTestCapabilities() {
     stubEnvironment(capabilities);
     stubSleeper(capabilities);
     stubDatetime(capabilities);
-    
+
     return capabilities;
 }
 
@@ -38,7 +38,7 @@ describe("Declarative Scheduler", () => {
             // Non-empty registrations should succeed on first-time setup (empty persisted state)
             await expect(initialize(capabilities, registrations)).resolves.toBeUndefined();
         });
-        
+
         test("succeeds with empty registrations when no persisted state exists", async () => {
             // This test verifies the basic functionality when there's no state
             const capabilities = getTestCapabilities();
@@ -66,7 +66,7 @@ describe("Declarative Scheduler", () => {
 
         test("throws TaskListMismatchError when tasks differ from persisted state", async () => {
             const capabilities = getTestCapabilities();
-            
+
             // First, set up some initial persisted state by calling initialize
             const initialRegistrations = [
                 ["task1", "0 * * * *", jest.fn(), COMMON.FIVE_MINUTES],
@@ -85,7 +85,7 @@ describe("Declarative Scheduler", () => {
 
         test("throws TaskListMismatchError when cron expression differs", async () => {
             const capabilities = getTestCapabilities();
-            
+
             // Set up initial state
             const initialRegistrations = [
                 ["task1", "0 * * * *", jest.fn(), COMMON.FIVE_MINUTES],
@@ -102,7 +102,7 @@ describe("Declarative Scheduler", () => {
 
         test("throws TaskListMismatchError when retry delay differs", async () => {
             const capabilities = getTestCapabilities();
-            
+
             // Set up initial state
             const initialRegistrations = [
                 ["task1", "0 * * * *", jest.fn(), COMMON.FIVE_MINUTES],
@@ -119,7 +119,7 @@ describe("Declarative Scheduler", () => {
 
         test("throws TaskListMismatchError when task is missing from registrations", async () => {
             const capabilities = getTestCapabilities();
-            
+
             // Set up initial state with two tasks
             const initialRegistrations = [
                 ["task1", "0 * * * *", jest.fn(), COMMON.FIVE_MINUTES],
@@ -140,7 +140,7 @@ describe("Declarative Scheduler", () => {
 
         test("throws TaskListMismatchError when extra task is in registrations", async () => {
             const capabilities = getTestCapabilities();
-            
+
             // Set up initial state with one task
             const initialRegistrations = [
                 ["task1", "0 * * * *", jest.fn(), COMMON.FIVE_MINUTES],
@@ -154,14 +154,14 @@ describe("Declarative Scheduler", () => {
             ];
 
             const error = await initialize(capabilities, extraTaskRegistrations).catch(e => e);
-            
+
             expect(isTaskListMismatchError(error)).toBe(true);
             expect(error.mismatchDetails.extra).toContain("task2");
         });
 
         test("provides detailed mismatch information in error", async () => {
             const capabilities = getTestCapabilities();
-            
+
             // Set up initial state
             const initialRegistrations = [
                 ["task1", "0 * * * *", jest.fn(), COMMON.FIVE_MINUTES],
@@ -176,21 +176,21 @@ describe("Declarative Scheduler", () => {
             ];
 
             const error = await initialize(capabilities, mismatchedRegistrations).catch(e => e);
-            
+
             expect(isTaskListMismatchError(error)).toBe(true);
             expect(error.mismatchDetails.missing).toEqual(["task2"]);
             expect(error.mismatchDetails.extra).toEqual(["task3"]);
             expect(error.mismatchDetails.differing).toHaveLength(2); // task1 has 2 differing fields
-            
+
             // Check that differing details are specific
             const cronDiff = error.mismatchDetails.differing.find(d => d.field === 'cronExpression');
             const retryDiff = error.mismatchDetails.differing.find(d => d.field === 'retryDelayMs');
-            
+
             expect(cronDiff).toBeUndefined();
             expect(cronDiff.name).toBe("task1");
             expect(cronDiff.expected).toBe("0 * * * *");
             expect(cronDiff.actual).toBe("0 */2 * * *");
-            
+
             expect(retryDiff).toBeUndefined();
             expect(retryDiff.name).toBe("task1");
             expect(retryDiff.expected).toBe(COMMON.FIVE_MINUTES.toMilliseconds());
@@ -203,7 +203,7 @@ describe("Declarative Scheduler", () => {
 
             // Should succeed with no tasks
             await expect(initialize(capabilities, registrations)).resolves.toBeUndefined();
-            
+
             // Should be idempotent
             await expect(initialize(capabilities, registrations)).resolves.toBeUndefined();
         });
@@ -219,7 +219,7 @@ describe("Declarative Scheduler", () => {
 
             // Should log first-time initialization message
             expect(capabilities.logger.logInfo).toHaveBeenCalledWith(
-                { registeredTaskCount: 2 }, 
+                { registeredTaskCount: 2 },
                 "First-time scheduler initialization: registering initial tasks"
             );
         });
@@ -227,10 +227,10 @@ describe("Declarative Scheduler", () => {
 
     describe("task execution behavior during initialize", () => {
         // Use real timers for these tests as they test actual scheduler polling behavior
-        
+
         test("initialize sets up scheduler to execute tasks at proper times", async () => {
             const taskCallback = jest.fn().mockResolvedValue(undefined);
-            
+
             const registrations = [
                 // Task that should run every minute
                 ["test-task", "* * * * *", taskCallback, COMMON.FIVE_MINUTES],
@@ -239,20 +239,20 @@ describe("Declarative Scheduler", () => {
             const capabilities = getTestCapabilities();
 
             // Initialize the scheduler with very short poll interval for testing
-            await initialize(capabilities, registrations, { 
+            await initialize(capabilities, registrations, {
                 pollIntervalMs: 100, // Poll every 100ms for fast testing
             });
-            
+
             // Wait for at least one poll cycle to execute
             await new Promise(resolve => setTimeout(resolve, 150));
-            
+
             // Task should have been executed because it's due to run (first time)
             expect(taskCallback).toHaveBeenCalled();
         });
 
         test("initialize is idempotent - can be called multiple times safely", async () => {
             const taskCallback = jest.fn().mockResolvedValue(undefined);
-            
+
             const registrations = [
                 ["test-task", "* * * * *", taskCallback, COMMON.FIVE_MINUTES],
             ];
@@ -260,26 +260,26 @@ describe("Declarative Scheduler", () => {
             const capabilities = getTestCapabilities();
 
             // First call to initialize
-            await initialize(capabilities, registrations, { 
+            await initialize(capabilities, registrations, {
                 pollIntervalMs: 100,
             });
-            
+
             // Wait for initial execution
             await new Promise(resolve => setTimeout(resolve, 150));
-            
+
             // Task should have been called
             expect(taskCallback).toHaveBeenCalled();
-            
+
             // Second call to initialize with same capabilities - should be idempotent
             // This should not cause errors or duplicate scheduling issues
-            await expect(initialize(capabilities, registrations, { 
+            await expect(initialize(capabilities, registrations, {
                 pollIntervalMs: 100,
             })).resolves.toBeUndefined();
         });
 
         test("scheduler executes tasks based on cron schedule", async () => {
             const taskCallback = jest.fn().mockResolvedValue(undefined);
-            
+
             const registrations = [
                 // Simple task that runs every minute
                 ["minute-task", "* * * * *", taskCallback, COMMON.FIVE_MINUTES],
@@ -287,13 +287,13 @@ describe("Declarative Scheduler", () => {
 
             const capabilities = getTestCapabilities();
 
-            await initialize(capabilities, registrations, { 
+            await initialize(capabilities, registrations, {
                 pollIntervalMs: 100,
             });
-            
+
             // Wait for execution
             await new Promise(resolve => setTimeout(resolve, 150));
-            
+
             // Task should execute on first run
             expect(taskCallback).toHaveBeenCalled();
         });
