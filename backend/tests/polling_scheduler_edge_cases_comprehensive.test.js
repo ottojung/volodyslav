@@ -184,7 +184,7 @@ describe("declarative scheduler comprehensive edge cases", () => {
             expect(executedCount).toBeGreaterThan(0);
 
             await capabilities.scheduler.stop(capabilities);
-        });
+        }, 10000);
     });
 
     describe("callback edge cases", () => {

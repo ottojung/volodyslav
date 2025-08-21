@@ -11,6 +11,7 @@ function caps() {
     return capabilities;
 }
 
+/* eslint-disable jest/no-disabled-tests */
 describe.skip("polling scheduler cancel", () => {
     // These tests exercise strictly procedural parts (cancel API).
     // They will be handled later when procedural APIs are addressed.

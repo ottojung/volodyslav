@@ -39,6 +39,7 @@ describe("declarative scheduler validation", () => {
             .rejects.toThrow(ScheduleInvalidNameError);
     });
 
+    /* eslint-disable jest/no-disabled-tests */
     describe.skip("procedural API tests", () => {
         // These tests exercise strictly procedural parts (getTasks, cancel APIs).
         // They will be handled later when procedural APIs are addressed.

@@ -140,6 +140,7 @@ describe("declarative scheduler persistence and error handling", () => {
         await capabilities.scheduler.stop(capabilities);
     });
 
+    /* eslint-disable jest/no-disabled-tests */
     test.skip("should handle rapid schedule/cancel operations with many tasks", async () => {
         // SKIPPED: This test uses cancel operations which are not part of the declarative API
         // Will be addressed later when procedural APIs are implemented

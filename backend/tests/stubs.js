@@ -120,6 +120,13 @@ function stubGit(capabilities, call) {
     };
 }
 
+function stubTranscription(capabilities, transcribeFileImpl) {
+    capabilities.aiTranscription = {
+        ...capabilities.aiTranscription,
+        transcribeFile: jest.fn().mockImplementation(transcribeFileImpl || (() => Promise.resolve())),
+    };
+}
+
 module.exports = {
     stubEnvironment,
     stubLogger,
@@ -130,4 +137,5 @@ module.exports = {
     stubEventLogRepository,
     stubApp,
     stubGit,
+    stubTranscription,
 };

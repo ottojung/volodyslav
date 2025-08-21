@@ -4,6 +4,7 @@
  * better than the old O(k) backward minute scan for large time gaps.
  */
 
+/* eslint-disable jest/no-disabled-tests */
 describe.skip("polling scheduler algorithm efficiency", () => {
     // These tests check algorithm efficiency and implementation details
     // that are not relevant to the declarative scheduler approach.

@@ -11,6 +11,7 @@ function caps() {
     return capabilities;
 }
 
+/* eslint-disable jest/no-disabled-tests */
 describe.skip("polling scheduler skip running", () => {
     // These tests exercise strictly procedural parts (checking running status via getTasks).
     // They will be handled later when procedural APIs are addressed.

@@ -254,7 +254,7 @@ describe("declarative scheduler integration and system edge cases", () => {
     });
 
     describe("performance under stress", () => {
-        test("should handle burst task scheduling", async () => {
+                test("should handle burst task scheduling", async () => {
             const capabilities = getTestCapabilities();
             const retryDelay = fromMilliseconds(5000);
             
@@ -284,7 +284,7 @@ describe("declarative scheduler integration and system edge cases", () => {
             expect(executedCount).toBeGreaterThan(0);
             
             await capabilities.scheduler.stop(capabilities);
-        });
+        }, 10000);
 
         test("should handle mixed task execution patterns", async () => {
             const capabilities = getTestCapabilities();

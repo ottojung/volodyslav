@@ -3,6 +3,7 @@
  * Ensures efficient forward calculation instead of backward scanning.
  */
 
+/* eslint-disable jest/no-disabled-tests */
 describe.skip("polling scheduler scanning algorithm optimization", () => {
     // These tests check scanning algorithm optimization and implementation details
     // that are not relevant to the declarative scheduler approach.
