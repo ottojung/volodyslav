@@ -285,7 +285,10 @@ function make(getCapabilities) {
 
             // Validate name format (helpful for avoiding common mistakes)
             if (name.includes(' ')) {
-                console.warn(`Warning: task name '${name}' contains spaces. Consider using hyphens or underscores instead.`);
+                capabilities.logger.logWarning(
+                    { name, index: i },
+                    `Task name '${name}' contains spaces. Consider using hyphens or underscores instead.`
+                );
             }
 
             if (typeof cronExpression !== 'string' || cronExpression.trim() === '') {
@@ -311,7 +314,10 @@ function make(getCapabilities) {
                 throw new Error(`Registration at index ${i} (${name}): retryDelay cannot be negative`);
             }
             if (retryMs > 24 * 60 * 60 * 1000) { // 24 hours
-                console.warn(`Warning: task '${name}' has a very large retry delay of ${retryMs}ms (${Math.round(retryMs / (60 * 60 * 1000))} hours). Consider using a smaller delay.`);
+                capabilities.logger.logWarning(
+                    { name, retryDelayMs: retryMs, retryDelayHours: Math.round(retryMs / (60 * 60 * 1000)) },
+                    `Task '${name}' has a very large retry delay of ${retryMs}ms (${Math.round(retryMs / (60 * 60 * 1000))} hours). Consider using a smaller delay.`
+                );
             }
         }
     }
