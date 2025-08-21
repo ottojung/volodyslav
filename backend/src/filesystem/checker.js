@@ -18,6 +18,7 @@
  *   • Factory Pattern - Exposes a make() function for easy dependency injection or mocking.
  */
 
+const memconst = require("../memconst");
 const { fromExisting } = require("./file");
 
 const fs = require("fs").promises;
@@ -181,20 +182,28 @@ async function isFileStable(datetime, sleeper, file, options = {}) {
     }
 }
 
+/** 
+ * @typedef {object} Capabilities
+ * @property {import('../datetime').Datetime} datetime - Datetime capabilities.
+ * @property {import('../sleeper').Sleeper} sleeper - Sleeper capabilities.
+ */
+
 /**
  * Creates a FileChecker instance.
  * @returns {FileChecker} - A FileChecker instance.
  */
 /**
- * @param {{ datetime: import('../datetime').Datetime, sleeper: Sleeper }} deps
+ * @param {() => Capabilities} getCapabilities
 */
-function make(deps) {
+function make(getCapabilities) {
+    const deps = memconst(getCapabilities);
+
     return {
         fileExists,
         instantiate,
         /** @type {(file: ExistingFile, options?: {minAgeMs?: number, sizeCheckDelayMs?: number}) => Promise<boolean>} */
         isFileStable: (file, options = {}) =>
-            isFileStable(deps.datetime, deps.sleeper, file, options),
+            isFileStable(deps().datetime, deps().sleeper, file, options),
     };
 }
 

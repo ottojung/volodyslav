@@ -3,7 +3,7 @@ const path = require("path");
 const { transaction } = require("../src/gitstore");
 const { PushError, isPushError } = require("../src/gitstore/wrappers");
 const { getMockedRootCapabilities } = require("./spies");
-const { stubEnvironment, stubEventLogRepository, stubDatetime, stubLogger } = require("./stubs");
+const { stubEnvironment, stubEventLogRepository, stubDatetime, stubLogger, stubGit } = require("./stubs");
 
 function getTestCapabilities() {
     const capabilities = getMockedRootCapabilities();
@@ -72,7 +72,7 @@ describe("gitstore retry functionality", () => {
         // Mock git command to fail on first two push attempts, succeed on third
         let pushAttempts = 0;
         const originalGitCall = capabilities.git.call;
-        capabilities.git.call = jest.fn().mockImplementation((...args) => {
+        stubGit(capabilities, (...args) => {
             // Check if this is a push command
             if (args.includes("push")) {
                 pushAttempts++;
@@ -80,6 +80,7 @@ describe("gitstore retry functionality", () => {
                     throw new Error("Simulated push failure");
                 }
             }
+
             // For all other git commands, use original behavior
             return originalGitCall.apply(capabilities.git, args);
         });
@@ -127,7 +128,7 @@ describe("gitstore retry functionality", () => {
 
         // Mock git command to always fail on push
         const originalGitCall = capabilities.git.call;
-        capabilities.git.call = jest.fn().mockImplementation((...args) => {
+        stubGit(capabilities, (...args) => {
             if (args.includes("push")) {
                 throw new Error("Persistent push failure");
             }
@@ -191,12 +192,15 @@ describe("gitstore retry functionality", () => {
 
         // Mock git command to always fail on push
         const originalGitCall = capabilities.git.call;
-        capabilities.git.call = jest.fn().mockImplementation((...args) => {
-            if (args.includes("push")) {
-                throw new Error("Custom retry test failure");
-            }
-            return originalGitCall.apply(capabilities.git, args);
-        });
+        capabilities.git = {
+            ...capabilities.git,
+            call: jest.fn().mockImplementation((...args) => {
+                if (args.includes("push")) {
+                    throw new Error("Custom retry test failure");
+                }
+                return originalGitCall.apply(capabilities.git, args);
+            }),
+        };
 
         const customRetryOptions = { maxAttempts: 2, baseDelayMs: 50 };
 
@@ -234,13 +238,14 @@ describe("gitstore retry functionality", () => {
         // Mock git command to fail multiple times
         let pushAttempts = 0;
         const originalGitCall = capabilities.git.call;
-        capabilities.git.call = jest.fn().mockImplementation((...args) => {
+        stubGit(capabilities, (...args) => {
             if (args.includes("push")) {
                 pushAttempts++;
                 if (pushAttempts <= 3) {
                     throw new Error("Backoff test failure");
                 }
             }
+
             return originalGitCall.apply(capabilities.git, args);
         });
 

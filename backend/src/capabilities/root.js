@@ -46,8 +46,6 @@
   * @property {Command} volodyslavDailyTasks - A command instance for daily tasks.
  */
 
-const memconst = require("../memconst");
-
 const random = require("../random");
 const deleterCapability = require("../filesystem/deleter");
 const dirscanner = require("../filesystem/dirscanner");
@@ -74,10 +72,11 @@ const volodyslavDailyTasks = require("../executables").volodyslavDailyTasks;
  * It should be a pure, well-behaved, non-throwing function,
  * because it is required for everything else in Volodyslav to work, including error reporting.
  */
-const make = memconst(() => {
+const make = () => {
     const environment = environmentCapability.make();
     const datetime = datetimeCapability.make();
     const sleeper = sleeperCapability.make();
+
     /** @type {Capabilities} */
     const ret = {
         seed: random.seed.make(),
@@ -89,23 +88,21 @@ const make = memconst(() => {
         writer: writerCapability.make(),
         reader: readerCapability.make(),
         appender: appendCapability.make(),
-        checker: checkerCapability.make({ datetime, sleeper }),
+        checker: checkerCapability.make(() => ({ datetime, sleeper })),
         git: gitCapability,
         environment,
         exiter: exiterCapability.make(),
         logger: loggingCapability.make(() => ret),
         notifier: notifierCapability.make(),
-        scheduler: /** @type {any} */ (null), // Will be set below
-        aiTranscription: aiTranscriptionCapability.make({ environment }),
+        scheduler: schedulerCapability.make(() => ret),
+        aiTranscription: aiTranscriptionCapability.make(() => ({ environment })),
         sleeper,
         volodyslavDailyTasks,
     };
 
-    // Create scheduler with capabilities after ret is defined
-    ret.scheduler = schedulerCapability.make(ret);
 
     return ret;
-});
+};
 
 module.exports = {
     make,
