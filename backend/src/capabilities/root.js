@@ -74,43 +74,37 @@ const schedule = require('../schedule')
  * It should be a pure, well-behaved, non-throwing function,
  * because it is required for everything else in Volodyslav to work, including error reporting.
  */
-
-/** @type {() => Capabilities} */
-const make = memconst(() => setCapabilities({}));
-
-/**
- * @param {Record<string, object>} ret
- * @returns {Capabilities}
- */
-function setCapabilities(ret) {
+const make = memconst(() => {
     const environment = environmentCapability.make();
     const datetime = datetimeCapability.make();
     const sleeper = sleeperCapability.make();
 
-    ret['seed'] = random.seed.make();
-    ret['datetime'] = datetime;
-    ret['deleter'] = deleterCapability.make();
-    ret['scanner'] = dirscanner.make();
-    ret['copier'] = copierCapability.make();
-    ret['creator'] = creatorCapability.make();
-    ret['writer'] = writerCapability.make();
-    ret['reader'] = readerCapability.make();
-    ret['appender'] = appendCapability.make();
-    ret['checker'] = checkerCapability.make({ datetime, sleeper });
-    ret['git'] = gitCapability;
-    ret['environment'] = environment;
-    ret['exiter'] = exiterCapability.make();
-    ret['logger'] = loggingCapability.make(() => /** @type {Capabilities} */(ret));
-    ret['notifier'] = notifierCapability.make();
-    ret['aiTranscription'] = aiTranscriptionCapability.make({ environment });
-    ret['sleeper'] = sleeper;
-    ret['volodyslavDailyTasks'] = volodyslavDailyTasks;
-    ret['scheduler'] = schedule.make(() => /** @type {Capabilities} */(ret));
+    /** @type {Capabilities} */
+    const ret = {
+        seed: random.seed.make(),
+        datetime,
+        deleter: deleterCapability.make(),
+        scanner: dirscanner.make(),
+        copier: copierCapability.make(),
+        creator: creatorCapability.make(),
+        writer: writerCapability.make(),
+        reader: readerCapability.make(),
+        appender: appendCapability.make(),
+        checker: checkerCapability.make({ datetime, sleeper }),
+        git: gitCapability,
+        environment,
+        exiter: exiterCapability.make(),
+        logger: loggingCapability.make(() => ret),
+        notifier: notifierCapability.make(),
+        aiTranscription: aiTranscriptionCapability.make({ environment }),
+        sleeper,
+        volodyslavDailyTasks,
+        scheduler: schedule.make(() => ret),
+    };
 
-    return /** @type {Capabilities} */ (ret);
-}
+    return ret;
+});
 
 module.exports = {
     make,
-    setCapabilities,
 };
