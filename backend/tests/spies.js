@@ -11,9 +11,13 @@ function mockCapabilities(real) {
         return jest.fn((...args) => real(...args));
     }
     if (real && typeof real === "object") {
+        const mocked = Array.isArray(real)
+            ? []
+            : Object.create(Object.getPrototypeOf(real));
         for (const key of Object.keys(real)) {
-            real[key] = mockCapabilities(real[key]);
+            mocked[key] = mockCapabilities(real[key]);
         }
+        return mocked;
     }
 
     return real;

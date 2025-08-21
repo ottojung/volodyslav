@@ -1,7 +1,7 @@
 const { make } = require("../src/cron");
 const { fromMilliseconds } = require("../src/time_duration");
 const { getMockedRootCapabilities } = require("./spies");
-const { stubEnvironment, stubLogger, stubDatetime, stubSleeper } = require("./stubs");
+const { stubEnvironment, stubLogger, stubDatetime, stubSleeper, stubGit } = require("./stubs");
 
 function caps() {
     const capabilities = getMockedRootCapabilities();
@@ -9,6 +9,7 @@ function caps() {
     stubLogger(capabilities);
     stubDatetime(capabilities);
     stubSleeper(capabilities);
+    stubGit(capabilities);
     return capabilities;
 }
 

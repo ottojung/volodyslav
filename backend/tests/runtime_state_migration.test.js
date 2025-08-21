@@ -35,7 +35,7 @@ describe("runtime state migration", () => {
         
         // Schedule a task to trigger state loading and persistence
         const retryDelay = fromMilliseconds(1000);
-        scheduler.schedule("test-task", "0 * * * *", () => {}, retryDelay);
+        await scheduler.schedule("test-task", "0 * * * *", () => {}, retryDelay);
         
         // Allow sufficient time for async operations to complete
         await new Promise(resolve => setTimeout(resolve, 200));

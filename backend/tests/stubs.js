@@ -122,6 +122,20 @@ function stubDatetime(capabilities) {
     };
 }
 
+/**
+ * Stubs git-related capabilities to avoid real subprocess execution.
+ */
+function stubGit(capabilities) {
+    if (capabilities.git) {
+        capabilities.git.call = jest.fn().mockResolvedValue({ stdout: "", stderr: "" });
+        capabilities.git.ensureAvailable = jest.fn().mockResolvedValue(undefined);
+    }
+    if (capabilities.volodyslavDailyTasks) {
+        capabilities.volodyslavDailyTasks.call = jest.fn().mockResolvedValue({ stdout: "", stderr: "" });
+        capabilities.volodyslavDailyTasks.ensureAvailable = jest.fn().mockResolvedValue(undefined);
+    }
+}
+
 module.exports = {
     stubEnvironment,
     stubLogger,
@@ -131,4 +145,5 @@ module.exports = {
     stubSleeper,
     stubDatetime,
     stubEventLogRepository,
+    stubGit,
 };
