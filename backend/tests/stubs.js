@@ -54,6 +54,7 @@ function stubEnvironment(capabilities) {
  * Silences all logging functions.
  */
 function stubLogger(capabilities) {
+    capabilities.logger = {};
     capabilities.logger.setup = jest.fn();
     capabilities.logger.enableHttpCallsLogging = jest.fn();
     capabilities.logger.logError = jest.fn();
