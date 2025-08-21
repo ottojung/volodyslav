@@ -46,8 +46,6 @@
   * @property {Command} volodyslavDailyTasks - A command instance for daily tasks.
  */
 
-const memconst = require("../memconst");
-
 const random = require("../random");
 const deleterCapability = require("../filesystem/deleter");
 const dirscanner = require("../filesystem/dirscanner");
@@ -74,7 +72,7 @@ const volodyslavDailyTasks = require("../executables").volodyslavDailyTasks;
  * It should be a pure, well-behaved, non-throwing function,
  * because it is required for everything else in Volodyslav to work, including error reporting.
  */
-const make = memconst(() => {
+const make = () => {
     const environment = environmentCapability.make();
     const datetime = datetimeCapability.make();
     const sleeper = sleeperCapability.make();
@@ -104,7 +102,7 @@ const make = memconst(() => {
 
 
     return ret;
-});
+};
 
 module.exports = {
     make,
