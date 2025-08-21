@@ -9,7 +9,22 @@ const memconst = require("../memconst");
 const { transaction } = require("../runtime_state_storage");
 const { ScheduleInvalidNameError } = require("../cron/polling_scheduler_errors");
 
-const { TaskListMismatchError, isTaskListMismatchError } = require("./errors");
+const {
+    TaskListMismatchError,
+    isTaskListMismatchError,
+    InvalidRegistrationError,
+    RegistrationsNotArrayError,
+    RegistrationShapeError,
+    InvalidCronExpressionTypeError,
+    CronExpressionInvalidError,
+    CallbackTypeError,
+    RetryDelayTypeError,
+    NegativeRetryDelayError,
+    OptionsTypeError,
+    InvalidPollIntervalError,
+    ScheduleTaskError,
+    StopSchedulerError,
+} = require("./errors");
 
 /** @typedef {import('../time_duration/structure').TimeDuration} TimeDuration */
 /** @typedef {import('./tasks').Capabilities} Capabilities */
@@ -99,7 +114,7 @@ function validateTasksAgainstPersistedStateInner(registrations, persistedTasks) 
             return registrationToTaskIdentity(registration);
         } catch (err) {
             const error = err instanceof Error ? err : new Error(String(err));
-            throw new Error(`Invalid registration at index ${index}: ${error.message}`);
+            throw new InvalidRegistrationError(`Invalid registration at index ${index}: ${error.message}`, { index, cause: error });
         }
     });
     
@@ -234,7 +249,7 @@ function make(getCapabilities) {
      */
     function validateRegistrations(registrations) {
         if (!Array.isArray(registrations)) {
-            throw new Error("Registrations must be an array");
+            throw new RegistrationsNotArrayError("Registrations must be an array");
         }
 
         const seenNames = new Set();
@@ -243,7 +258,7 @@ function make(getCapabilities) {
         for (let i = 0; i < registrations.length; i++) {
             const registration = registrations[i];
             if (!Array.isArray(registration) || registration.length !== 4) {
-                throw new Error(`Registration at index ${i} must be an array of length 4: [name, cronExpression, callback, retryDelay]`);
+                throw new RegistrationShapeError(`Registration at index ${i} must be an array of length 4: [name, cronExpression, callback, retryDelay]`, { index: i, registration });
             }
 
             const [name, cronExpression, callback, retryDelay] = registration;
@@ -270,26 +285,26 @@ function make(getCapabilities) {
             }
 
             if (typeof cronExpression !== 'string' || cronExpression.trim() === '') {
-                throw new Error(`Registration at index ${i} (${qname}): cronExpression must be a non-empty string, got: ${typeof cronExpression}`);
+                throw new InvalidCronExpressionTypeError(`Registration at index ${i} (${name}): cronExpression must be a non-empty string, got: ${typeof cronExpression}`, { index: i, name, value: cronExpression });
             }
 
             // Basic cron expression validation using the cron module
             if (!cronScheduler.validate(cronExpression)) {
-                throw new Error(`Registration at index ${i} (${qname}): invalid cron expression '${cronExpression}'`);
+                throw new CronExpressionInvalidError(`Registration at index ${i} (${name}): invalid cron expression '${cronExpression}'`, { index: i, name, value: cronExpression });
             }
 
             if (typeof callback !== 'function') {
-                throw new Error(`Registration at index ${i} (${qname}): callback must be a function, got: ${typeof callback}`);
+                throw new CallbackTypeError(`Registration at index ${i} (${name}): callback must be a function, got: ${typeof callback}`, { index: i, name, value: callback });
             }
 
             if (!retryDelay || typeof retryDelay.toMilliseconds !== 'function') {
-                throw new Error(`Registration at index ${i} (${qname}): retryDelay must be a TimeDuration object with toMilliseconds() method`);
+                throw new RetryDelayTypeError(`Registration at index ${i} (${name}): retryDelay must be a TimeDuration object with toMilliseconds() method`, { index: i, name, value: retryDelay });
             }
 
             // Validate retry delay is reasonable (warn for very large delays but don't block)
             const retryMs = retryDelay.toMilliseconds();
             if (retryMs < 0) {
-                throw new Error(`Registration at index ${i} (${qname}): retryDelay cannot be negative`);
+                throw new NegativeRetryDelayError(`Registration at index ${i} (${name}): retryDelay cannot be negative`, { index: i, name, retryMs });
             }
             if (retryMs > 24 * 60 * 60 * 1000) { // 24 hours
                 capabilities.logger.logWarning(
@@ -309,12 +324,12 @@ function make(getCapabilities) {
         validateRegistrations(registrations);
         
         if (options && typeof options !== 'object') {
-            throw new Error("Options must be an object");
+            throw new OptionsTypeError("Options must be an object");
         }
 
         const requestedPollIntervalMs = options.pollIntervalMs;
         if (requestedPollIntervalMs !== undefined && (typeof requestedPollIntervalMs !== 'number' || requestedPollIntervalMs <= 0)) {
-            throw new Error("pollIntervalMs must be a positive number");
+            throw new InvalidPollIntervalError("pollIntervalMs must be a positive number");
         }
 
         /**
@@ -422,7 +437,7 @@ function make(getCapabilities) {
                         },
                         "Failed to schedule task"
                     );
-                    throw new Error(`Failed to schedule task '${name}': ${errorObj.message}`);
+                    throw new ScheduleTaskError(`Failed to schedule task '${name}': ${errorObj.message}`, { name, cronExpression, cause: errorObj });
                 }
             }
         }
@@ -469,7 +484,7 @@ function make(getCapabilities) {
                 pollingScheduler = null;
                 currentPollIntervalMs = undefined;
                 
-                throw new Error(`Failed to stop scheduler: ${error.message}`);
+                throw new StopSchedulerError(`Failed to stop scheduler: ${error.message}`, { cause: error });
             }
         } else {
             const capabilities = getCapabilitiesMemo();
