@@ -1,4 +1,4 @@
-const { withRetry, isRetryerError, makeRetryableCallback } = require("../src/retryer");
+const { withRetry } = require("../src/retryer");
 const { fromMilliseconds } = require("../src/time_duration");
 const { getMockedRootCapabilities } = require("./spies");
 const { stubLogger } = require("./stubs");
@@ -16,35 +16,13 @@ describe("Retryer - Core functionality", () => {
         jest.clearAllTimers();
     });
 
-    describe("isRetryerError type guard", () => {
-        test("identifies RetryerError correctly", async () => {
-            const callback = async () => {
+    describe("error handling", () => {
+        test("propagates callback errors", async () => {
+            const retryableCallback = async () => {
                 throw new Error("Test error");
             };
 
-            const retryableCallback = makeRetryableCallback("error-test", callback);
-
-            await expect(withRetry(capabilities, retryableCallback)).rejects.toThrow();
-            
-            // Get the actual error that was thrown
-            let caughtError;
-            try {
-                await withRetry(capabilities, retryableCallback);
-            } catch (error) {
-                caughtError = error;
-            }
-
-            expect(isRetryerError(caughtError)).toBe(true);
-            expect(caughtError.message).toContain("Callback failed on attempt 1");
-        });
-
-        test("rejects non-RetryerError objects", () => {
-            const regularError = new Error("Test");
-
-            expect(isRetryerError(regularError)).toBe(false);
-            expect(isRetryerError(null)).toBe(false);
-            expect(isRetryerError(undefined)).toBe(false);
-            expect(isRetryerError({})).toBe(false);
+            await expect(withRetry(capabilities, "error-test", retryableCallback)).rejects.toThrow("Test error");
         });
     });
 
@@ -53,16 +31,16 @@ describe("Retryer - Core functionality", () => {
             let callCount = 0;
             const callback = async () => {
                 callCount++;
-                return null;
+                return "ok";
             };
 
-            const retryableCallback = makeRetryableCallback("immediate-success-test", callback);
-
-            await withRetry(capabilities, retryableCallback);
+            const result = await withRetry(capabilities, "immediate-success-test", callback);
 
             expect(callCount).toBe(1);
+            expect(result).toBe("ok");
             expect(capabilities.logger.logDebug).toHaveBeenCalledWith(
                 expect.objectContaining({
+                    callbackName: "immediate-success-test",
                     attempt: 1,
                     totalAttempts: 1
                 }),
@@ -72,41 +50,51 @@ describe("Retryer - Core functionality", () => {
 
         test("executes callback that succeeds after retries", async () => {
             let callCount = 0;
-            const callback = async () => {
+            const callback = async ({ attempt, retry }) => {
                 callCount++;
                 if (callCount < 3) {
-                    return fromMilliseconds(100);
+                    // signal that we want another attempt
+                    retry();
+                    return undefined;
                 }
-                return null;
+                return "done";
             };
 
-            const retryableCallback = makeRetryableCallback("retry-success-test", callback);
-
-            await withRetry(capabilities, retryableCallback);
+            const result = await withRetry(capabilities, "retry-success-test", callback);
 
             expect(callCount).toBe(3);
+            expect(result).toBe("done");
         });
 
-        test("logs retry attempts correctly", async () => {
+        test("logs execution attempts correctly", async () => {
             let callCount = 0;
-            const callback = async () => {
+            const callback = async ({ attempt, retry }) => {
                 callCount++;
                 if (callCount === 1) {
-                    return fromMilliseconds(50);
+                    retry();
+                    return undefined;
                 }
-                return null;
+                return "ok";
             };
 
-            const retryableCallback = makeRetryableCallback("logging-test", callback);
+            await withRetry(capabilities, "logging-test", callback);
 
-            await withRetry(capabilities, retryableCallback);
-
+            // First call should log the "Executing callback" message for attempt 1
             expect(capabilities.logger.logDebug).toHaveBeenCalledWith(
                 expect.objectContaining({
-                    attempt: 1,
-                    retryDelay: "50ms"
+                    callbackName: "logging-test",
+                    attempt: 1
                 }),
-                "Retryer scheduling retry of \"logging-test\" after 50ms"
+                'Executing callback "logging-test" (attempt 1)'
+            );
+            // Final success log must also be present
+            expect(capabilities.logger.logDebug).toHaveBeenCalledWith(
+                expect.objectContaining({
+                    callbackName: "logging-test",
+                    attempt: 2,
+                    totalAttempts: 2
+                }),
+                'Callback "logging-test" completed successfully'
             );
         });
     });
