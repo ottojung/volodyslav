@@ -7,6 +7,7 @@
 const path = require("path");
 const gitmethod = require("./wrappers");
 const { git } = require("../executables");
+const { withRetry } = require("../retryer");
 
 /** @typedef {import('../subprocess/command').Command} Command */
 /** @typedef {import('../filesystem/creator').FileCreator} FileCreator */
@@ -15,6 +16,7 @@ const { git } = require("../executables");
 /** @typedef {import('../filesystem/writer').FileWriter} FileWriter */
 /** @typedef {import('../environment').Environment} Environment */
 /** @typedef {import('../logger').Logger} Logger */
+/** @typedef {import('../datetime').Datetime} Datetime */
 
 /**
  * @typedef {object} RemoteLocation
@@ -30,6 +32,7 @@ const { git } = require("../executables");
  * @property {FileWriter} writer - A file writer instance.
  * @property {Environment} environment - An environment instance.
  * @property {Logger} logger - A logger instance.
+ * @property {Datetime} datetime - Datetime utilities.
  */
 
 /**
@@ -118,25 +121,48 @@ async function synchronize(capabilities, workingPath, origin) {
 async function initializeEmptyRepository(capabilities, workingPath) {
     const workDir = pathToLocalRepository(capabilities, workingPath);
     capabilities.logger.logInfo({ repository: workDir }, "Initializing empty repository");
+
+    /**
+     * Retry initialization of the empty repository.
+     * @param {{ attempt: number, retry: () => void }} args
+     */
+    async function initializeEmptyRepositoryRetry({ attempt, retry }) {
+        try {
+            await gitmethod.init(capabilities, workDir);
+        } catch {
+            capabilities.logger.logInfo({ repository: workDir }, "Init command failed");
+        }
+
+        try {
+            // Configure the repository to allow pushing to the current branch
+            await gitmethod.makePushable(capabilities, workDir);
+
+            // Create an empty initial commit so the repository has a master branch
+            // This is required for the transaction system to work (clone operations need a branch)
+            await git.call(
+                "-C", workDir,
+                "-c", "safe.directory=*",
+                "-c", "user.name=volodyslav",
+                "-c", "user.email=volodyslav",
+                "commit",
+                "--allow-empty",
+                "--message",
+                "Initial empty commit",
+            );
+        } catch (err) {
+            capabilities.logger.logInfo({ repository: workDir }, "Repository initialization did not succeed sucessfully");
+            if (attempt < 100) {
+                await new Promise(resolve => setTimeout(resolve, 0));
+                return retry();
+            }
+
+            throw err;
+        }
+    }
+
     try {
         await capabilities.creator.createDirectory(workDir);
-        await gitmethod.init(capabilities, workDir);
-
-        // Configure the repository to allow pushing to the current branch
-        await gitmethod.makePushable(capabilities, workDir);
-
-        // Create an empty initial commit so the repository has a master branch
-        // This is required for the transaction system to work (clone operations need a branch)
-        await git.call(
-            "-C", workDir,
-            "-c", "safe.directory=*",
-            "-c", "user.name=volodyslav",
-            "-c", "user.email=volodyslav",
-            "commit",
-            "--allow-empty",
-            "--message",
-            "Initial empty commit",
-        );
+        await withRetry(capabilities, "initialize empty repository: " + workDir, initializeEmptyRepositoryRetry);
     } catch (err) {
         throw new WorkingRepositoryError(
             `Failed to initialize empty repository: ${err}`,
