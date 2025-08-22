@@ -17,6 +17,7 @@ class RuntimeStateStorageClass {
 
     /**
      * Path to the state.json file, set during transaction
+     * @private
      * @type {ExistingFile}
      */
     stateFile;
@@ -30,6 +31,7 @@ class RuntimeStateStorageClass {
 
     /**
      * Capabilities object for file operations.
+     * @private
      * @type {RuntimeStateStorageCapabilities}
      */
     capabilities;
