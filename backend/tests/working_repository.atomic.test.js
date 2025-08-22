@@ -62,7 +62,7 @@ describe("working_repository (atomic initialize)", () => {
         expect(parseInt(commitCount, 10)).toBeGreaterThanOrEqual(1);
     });
 
-    test.skip("initializeRemoteRepository remains atomic under parallel calls", async () => {
+    test("initializeRemoteRepository remains atomic under parallel calls", async () => {
         const capabilities = getTestCapabilities();
         await capabilities.logger.setup(capabilities);
 

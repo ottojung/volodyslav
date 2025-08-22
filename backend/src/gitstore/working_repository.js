@@ -93,18 +93,36 @@ async function synchronize(capabilities, workingPath, origin) {
     const gitDir = pathToLocalRepositoryGitDir(capabilities, workingPath);
     const workDir = pathToLocalRepository(capabilities, workingPath);
     const headFile = path.join(gitDir, "HEAD");
+    const remotePath = origin.url;
+
+    /**
+     * @param {{ attempt: number, retry: () => void }} args
+     */
+    async function synchronizeRetry({ attempt, retry }) {
+        const exists = await capabilities.checker.fileExists(headFile);
+
+        try {
+            if (exists) {
+                await gitmethod.pull(capabilities, workDir);
+                await gitmethod.push(capabilities, workDir);
+            } else {
+                await gitmethod.clone(capabilities, remotePath, workDir);
+                await gitmethod.makePushable(capabilities, workDir);
+            }
+        } catch (err) {
+            capabilities.logger.logInfo({ repository: remotePath }, "Failed to synchronize repository");
+            if (attempt < 100) {
+                await new Promise(resolve => setTimeout(resolve, 0));
+                return retry();
+            }
+
+            throw err;
+        }
+    }
 
     try {
-        const remotePath = origin.url;
         capabilities.logger.logInfo({ repository: remotePath }, "Synchronizing repository");
-        if (await capabilities.checker.fileExists(headFile)) {
-            await gitmethod.pull(capabilities, workDir);
-            await gitmethod.push(capabilities, workDir);
-        } else {
-            // TODO: rollback if any of the following operations fail.
-            await gitmethod.clone(capabilities, remotePath, workDir);
-            await gitmethod.makePushable(capabilities, workDir);
-        }
+        await withRetry(capabilities, "synchronize", synchronizeRetry);
     } catch (err) {
         throw new WorkingRepositoryError(
             `Failed to synchronize repository: ${err}`,
