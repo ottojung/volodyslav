@@ -33,10 +33,10 @@ describe("getEntries pagination validation", () => {
 describe("getEntries ordering functionality", () => {
     it("sorts entries by date descending by default", async () => {
         const capabilities = await getTestCapabilities();
-        
+
         // Create entries with different dates by controlling datetime.now()
         const baseTime = capabilities.datetime.fromISOString("2023-01-01T10:00:00Z").getTime();
-        
+
         capabilities.datetime.now.mockReturnValueOnce(
             capabilities.datetime.fromEpochMs(baseTime)
         );
@@ -47,17 +47,17 @@ describe("getEntries ordering functionality", () => {
             description: "First entry description",
         };
         await createEntry(capabilities, entry1Data);
-        
+
         capabilities.datetime.now.mockReturnValueOnce(
             capabilities.datetime.fromEpochMs(baseTime + 24 * 60 * 60 * 1000)
         ); // +1 day
         const entry2Data = {
             original: "Second entry",
-            input: "Second entry", 
+            input: "Second entry",
             type: "test",
             description: "Second entry description",
         };
-        
+
         await createEntry(capabilities, entry2Data);
 
         capabilities.datetime.now.mockReturnValueOnce(
@@ -66,14 +66,14 @@ describe("getEntries ordering functionality", () => {
         const entry3Data = {
             original: "Third entry",
             input: "Third entry",
-            type: "test", 
+            type: "test",
             description: "Third entry description",
         };
 
         await createEntry(capabilities, entry3Data);
 
         const result = await getEntries(capabilities, { page: 1, limit: 10 });
-        
+
         expect(result.results).toHaveLength(3);
         expect(result.order).toBe('dateDescending');
         // Most recent (third) should be first
@@ -84,10 +84,10 @@ describe("getEntries ordering functionality", () => {
 
     it("sorts entries by date ascending when specified", async () => {
         const capabilities = await getTestCapabilities();
-        
+
         // Create entries with different dates by controlling datetime.now()
         const baseTime = capabilities.datetime.fromISOString("2023-01-01T10:00:00Z").getTime();
-        
+
         capabilities.datetime.now.mockReturnValueOnce(
             capabilities.datetime.fromEpochMs(baseTime)
         );
@@ -97,7 +97,7 @@ describe("getEntries ordering functionality", () => {
             type: "test",
             description: "First entry description",
         };
-        
+
         capabilities.datetime.now.mockReturnValueOnce(
             capabilities.datetime.fromEpochMs(baseTime + 24 * 60 * 60 * 1000)
         ); // +1 day
@@ -105,18 +105,18 @@ describe("getEntries ordering functionality", () => {
             original: "Second entry",
             input: "Second entry",
             type: "test",
-            description: "Second entry description", 
+            description: "Second entry description",
         };
 
         await createEntry(capabilities, entry1Data);
         await createEntry(capabilities, entry2Data);
 
-        const result = await getEntries(capabilities, { 
-            page: 1, 
-            limit: 10, 
-            order: 'dateAscending' 
+        const result = await getEntries(capabilities, {
+            page: 1,
+            limit: 10,
+            order: 'dateAscending'
         });
-        
+
         expect(result.results).toHaveLength(2);
         expect(result.order).toBe('dateAscending');
         // Oldest (first) should be first
@@ -126,9 +126,9 @@ describe("getEntries ordering functionality", () => {
 
     it("sorts entries by date descending when explicitly specified", async () => {
         const capabilities = await getTestCapabilities();
-        
+
         const baseTime = capabilities.datetime.fromISOString("2023-01-01T10:00:00Z").getTime();
-        
+
         capabilities.datetime.now.mockReturnValueOnce(
             capabilities.datetime.fromEpochMs(baseTime)
         );
@@ -138,12 +138,12 @@ describe("getEntries ordering functionality", () => {
             type: "test",
             description: "First entry description",
         };
-        
+
         capabilities.datetime.now.mockReturnValueOnce(
             capabilities.datetime.fromEpochMs(baseTime + 24 * 60 * 60 * 1000)
         ); // +1 day
         const entry2Data = {
-            original: "Second entry", 
+            original: "Second entry",
             input: "Second entry",
             type: "test",
             description: "Second entry description",
@@ -152,12 +152,12 @@ describe("getEntries ordering functionality", () => {
         await createEntry(capabilities, entry1Data);
         await createEntry(capabilities, entry2Data);
 
-        const result = await getEntries(capabilities, { 
-            page: 1, 
-            limit: 10, 
-            order: 'dateDescending' 
+        const result = await getEntries(capabilities, {
+            page: 1,
+            limit: 10,
+            order: 'dateDescending'
         });
-        
+
         expect(result.results).toHaveLength(2);
         expect(result.order).toBe('dateDescending');
         // Most recent (second) should be first
@@ -167,7 +167,7 @@ describe("getEntries ordering functionality", () => {
 
     it("throws error for invalid order parameter", async () => {
         const capabilities = await getTestCapabilities();
-        
+
         const entryData = {
             original: "Test entry",
             input: "Test entry",
@@ -177,17 +177,17 @@ describe("getEntries ordering functionality", () => {
         await createEntry(capabilities, entryData);
 
         await expect(
-            getEntries(capabilities, { 
-                page: 1, 
-                limit: 10, 
-                order: 'invalidOrder' 
+            getEntries(capabilities, {
+                page: 1,
+                limit: 10,
+                order: 'invalidOrder'
             })
         ).rejects.toThrow('order must be either "dateAscending" or "dateDescending"');
     });
 
     it("applies pagination correctly with ordering", async () => {
         const capabilities = await getTestCapabilities();
-        
+
         // Create 5 entries with different dates by controlling datetime.now()
         const baseTime = capabilities.datetime.fromISOString("2023-01-01T10:00:00Z").getTime();
         for (let i = 1; i <= 5; i++) {
@@ -203,12 +203,12 @@ describe("getEntries ordering functionality", () => {
         }
 
         // Get page 1 with limit 2, descending order (newest first)
-        const result = await getEntries(capabilities, { 
-            page: 1, 
-            limit: 2, 
-            order: 'dateDescending' 
+        const result = await getEntries(capabilities, {
+            page: 1,
+            limit: 2,
+            order: 'dateDescending'
         });
-        
+
         expect(result.results).toHaveLength(2);
         expect(result.hasMore).toBe(true);
         expect(result.total).toBe(5);
@@ -217,12 +217,12 @@ describe("getEntries ordering functionality", () => {
         expect(result.results[1].description).toBe("Entry 4 description");
 
         // Get page 2
-        const result2 = await getEntries(capabilities, { 
-            page: 2, 
-            limit: 2, 
-            order: 'dateDescending' 
+        const result2 = await getEntries(capabilities, {
+            page: 2,
+            limit: 2,
+            order: 'dateDescending'
         });
-        
+
         expect(result2.results).toHaveLength(2);
         // Should get entries 3 and 2
         expect(result2.results[0].description).toBe("Entry 3 description");
