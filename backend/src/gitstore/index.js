@@ -12,7 +12,6 @@ const { transactionWithRetry } = require("./transaction_retry");
  * and allows you to perform a transformation on it.
  *
  * It is atomic: if the transformation fails, the changes are not committed.
- * Caveat: if you are calling commit() multiple times, they won't necessarily be consecutive.
  *
  * When push fails, the entire workflow will be retried up to the configured number of attempts.
  * Non-push failures are not retried.

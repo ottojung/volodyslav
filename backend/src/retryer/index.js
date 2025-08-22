@@ -3,11 +3,8 @@
  * Follows the project's encapsulation pattern where only specific functions are exported.
  */
 
-const { withRetry, isRetryerError, makeRetryableCallback, isRetryableCallback } = require("./core");
+const { withRetry } = require("./core");
 
 module.exports = {
     withRetry,
-    isRetryerError,
-    makeRetryableCallback,
-    isRetryableCallback,
 };

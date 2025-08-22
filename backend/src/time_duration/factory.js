@@ -101,6 +101,19 @@ const COMMON = {
     ONE_DAY: fromDays(1),
 };
 
+/**
+ * @typedef {import('../datetime').DateTime} DateTime
+ */
+
+/**
+ * @param {DateTime} later
+ * @param {DateTime} earlier
+ */
+function fromDifference(later, earlier) {
+    const diff = later.getTime() - earlier.getTime();
+    return fromMilliseconds(diff);
+}
+
 module.exports = {
     fromMilliseconds,
     fromSeconds,
@@ -109,4 +122,5 @@ module.exports = {
     fromDays,
     zero,
     COMMON,
+    fromDifference,
 };
