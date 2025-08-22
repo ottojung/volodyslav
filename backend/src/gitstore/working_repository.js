@@ -81,21 +81,17 @@ function pathToLocalRepositoryGitDir(capabilities, workingPath) {
  * Then push the changes as well. For "empty" initial_state, this is a NOOP.
  * @param {Capabilities} capabilities
  * @param {string} workingPath - The path to the working directory.
- * @param {RemoteLocation | "empty"} initial_state - Remote location to sync with, or "empty" for local-only
+ * @param {RemoteLocation} origin - Remote location or local location to sync with.
  * @returns {Promise<void>}
  * @throws {WorkingRepositoryError}
  */
-async function synchronize(capabilities, workingPath, initial_state) {
-    if (initial_state === "empty") {
-        return;
-    }
-
+async function synchronize(capabilities, workingPath, origin) {
     const gitDir = pathToLocalRepositoryGitDir(capabilities, workingPath);
     const workDir = pathToLocalRepository(capabilities, workingPath);
     const indexFile = path.join(gitDir, "index");
 
     try {
-        const remotePath = initial_state.url;
+        const remotePath = origin.url;
         capabilities.logger.logInfo({ repository: remotePath }, "Synchronizing repository");
         if (await capabilities.checker.fileExists(indexFile)) {
             await gitmethod.pull(capabilities, workDir);
@@ -108,7 +104,50 @@ async function synchronize(capabilities, workingPath, initial_state) {
     } catch (err) {
         throw new WorkingRepositoryError(
             `Failed to synchronize repository: ${err}`,
-            initial_state.url
+            origin.url
+        );
+    }
+}
+
+/**
+ * Initialize an empty Git repository.
+ * @param {Capabilities} capabilities - The capabilities object.
+ * @param {string} workingPath - The path to the working directory.
+ */
+async function initializeEmptyRepository(capabilities, workingPath) {
+    const workDir = pathToLocalRepository(capabilities, workingPath);
+    capabilities.logger.logInfo({ repository: workDir }, "Initializing empty repository");
+    try {
+        await capabilities.creator.createDirectory(workDir);
+        await gitmethod.init(capabilities, workDir);
+
+        // Configure the repository to allow pushing to the current branch
+        await capabilities.git.call(
+            "-C",
+            workDir,
+            "config",
+            "receive.denyCurrentBranch",
+            "updateInstead"
+        );
+
+        // Create an empty initial commit so the repository has a master branch
+        // This is required for the transaction system to work (clone operations need a branch)
+        await capabilities.git.call(
+            "-C",
+            workDir,
+            "-c",
+            "user.name=volodyslav",
+            "-c",
+            "user.email=volodyslav",
+            "commit",
+            "--allow-empty",
+            "-m",
+            "Initial empty commit"
+        );
+    } catch (err) {
+        throw new WorkingRepositoryError(
+            `Failed to initialize empty repository: ${err}`,
+            workDir
         );
     }
 }
@@ -128,41 +167,7 @@ async function getRepository(capabilities, workingPath, initial_state) {
 
     if (!(await capabilities.checker.fileExists(indexFile))) {
         if (initial_state === "empty") {
-            const workDir = pathToLocalRepository(capabilities, workingPath);
-            capabilities.logger.logInfo({ repository: workDir }, "Initializing empty repository");
-            try {
-                await capabilities.creator.createDirectory(workDir);
-                await gitmethod.init(capabilities, workDir);
-
-                // Configure the repository to allow pushing to the current branch
-                await capabilities.git.call(
-                    "-C",
-                    workDir,
-                    "config",
-                    "receive.denyCurrentBranch",
-                    "updateInstead"
-                );
-
-                // Create an empty initial commit so the repository has a master branch
-                // This is required for the transaction system to work (clone operations need a branch)
-                await capabilities.git.call(
-                    "-C",
-                    workDir,
-                    "-c",
-                    "user.name=volodyslav",
-                    "-c",
-                    "user.email=volodyslav",
-                    "commit",
-                    "--allow-empty",
-                    "-m",
-                    "Initial empty commit"
-                );
-            } catch (err) {
-                throw new WorkingRepositoryError(
-                    `Failed to initialize empty repository: ${err}`,
-                    workDir
-                );
-            }
+            await initializeEmptyRepository(capabilities, workingPath);
         } else {
             await synchronize(capabilities, workingPath, initial_state);
         }

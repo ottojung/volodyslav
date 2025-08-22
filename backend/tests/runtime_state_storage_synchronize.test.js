@@ -2,7 +2,7 @@
  * Tests for runtime state storage synchronize module.
  */
 
-const { synchronize, ensureAccessible } = require("../src/runtime_state_storage/synchronize");
+const { ensureAccessible } = require("../src/runtime_state_storage/synchronize");
 const { getMockedRootCapabilities } = require("./spies");
 const { stubEnvironment, stubLogger, stubDatetime } = require("./stubs");
 
@@ -25,15 +25,6 @@ describe("runtime_state_storage/synchronize", () => {
         
         expect(gitDir).toContain("runtime-state-repository");
         expect(gitDir).toContain(".git");
-    });
-
-    test("synchronize succeeds with proper capabilities", async () => {
-        const capabilities = getTestCapabilities();
-        
-        // Mock git.call to succeed for repository operations
-        capabilities.git.call = jest.fn().mockResolvedValue({ stdout: "", stderr: "" });
-        
-        await expect(synchronize(capabilities)).resolves.not.toThrow();
     });
 
     test("ensureAccessible throws RuntimeStateRepositoryError on failure", async () => {
