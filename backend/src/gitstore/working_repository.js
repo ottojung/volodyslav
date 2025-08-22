@@ -124,6 +124,20 @@ async function initializeEmptyRepository(capabilities, workingPath) {
         // Configure the repository to allow pushing to the current branch
         await gitmethod.makePushable(capabilities, workDir);
 
+        // FIXME: make this atomic (ensure only one commit), by executing this instead:
+        // # 1) Create an empty tree object
+        // empty_tree=$(printf '' | git mktree)
+
+        // # 2) Create a root commit that points to that tree
+        // commit=$(GIT_AUTHOR_NAME=init GIT_AUTHOR_EMAIL=init@example \
+        //          GIT_COMMITTER_NAME=init GIT_COMMITTER_EMAIL=init@example \
+        //          git commit-tree -m "Initial empty commit" "$empty_tree")
+
+        // # 3) Atomically create the branch ref (only if it doesn't exist)
+        // git update-ref --new "refs/heads/main" "$commit" \
+        //   && echo "Created refs/heads/main at $commit" \
+        //   || echo "refs/heads/main already exists; not touching it"
+
         // Create an empty initial commit so the repository has a master branch
         // This is required for the transaction system to work (clone operations need a branch)
         await capabilities.git.call(
