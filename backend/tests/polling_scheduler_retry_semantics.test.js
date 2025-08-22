@@ -17,7 +17,8 @@ function getTestCapabilities() {
 }
 
 describe("declarative scheduler retry semantics", () => {
-    // Use real timers for testing actual scheduler behavior
+    // Helper function to wait for scheduler polling to occur
+    const waitForPolling = () => new Promise(resolve => setTimeout(resolve, 50));
     
     test("should execute tasks according to cron schedule", async () => {
         const capabilities = getTestCapabilities();
@@ -38,12 +39,12 @@ describe("declarative scheduler retry semantics", () => {
         const startTime = new Date("2024-01-01T00:00:00Z").getTime();
         timeControl.setTime(startTime);
 
-        // Initialize with default polling
-        await capabilities.scheduler.initialize(registrations);
+        // Initialize with fast polling for tests
+        await capabilities.scheduler.initialize(registrations, { pollIntervalMs: 10 });
         
         // Trigger execution by advancing to 15-minute mark
         timeControl.advanceTime(15 * 60 * 1000); // 15 minutes
-        await capabilities.scheduler.pollNow();
+        await waitForPolling();
         expect(executionCount).toBe(1);
         
         await capabilities.scheduler.stop();
@@ -72,17 +73,17 @@ describe("declarative scheduler retry semantics", () => {
         const startTime = new Date("2024-01-01T00:00:00Z").getTime();
         timeControl.setTime(startTime);
 
-        // Initialize scheduler with default polling (10 minutes)
-        await capabilities.scheduler.initialize(registrations);
+        // Initialize scheduler with fast polling for tests
+        await capabilities.scheduler.initialize(registrations, { pollIntervalMs: 10 });
         
         // Trigger initial execution by advancing to 15-minute mark
         timeControl.advanceTime(15 * 60 * 1000); // 15 minutes
-        await capabilities.scheduler.pollNow();
+        await waitForPolling();
         expect(executionCount).toBeGreaterThanOrEqual(1);
         
         // Advance time by retry delay (5 minutes) to trigger retry
         timeControl.advanceTime(5 * 60 * 1000); // 5 minutes
-        await capabilities.scheduler.pollNow();
+        await waitForPolling();
         
         // Should have retried the failed task
         expect(executionCount).toBeGreaterThan(1);
@@ -112,17 +113,17 @@ describe("declarative scheduler retry semantics", () => {
         const startTime = new Date("2024-01-01T00:00:00Z").getTime();
         timeControl.setTime(startTime);
 
-        // Initialize scheduler with default polling
-        await capabilities.scheduler.initialize(registrations);
+        // Initialize scheduler with fast polling
+        await capabilities.scheduler.initialize(registrations, { pollIntervalMs: 10 });
         
         // Trigger initial execution by advancing to 15-minute mark
         timeControl.advanceTime(15 * 60 * 1000); // 15 minutes
-        await capabilities.scheduler.pollNow();
+        await waitForPolling();
         expect(executionCount).toBe(1);
         
         // Advance time by retry delay to trigger retry
         timeControl.advanceTime(5 * 60 * 1000); // 5 minutes
-        await capabilities.scheduler.pollNow();
+        await waitForPolling();
         
         // Should have executed successfully
         expect(executionCount).toBe(2);
@@ -163,18 +164,18 @@ describe("declarative scheduler retry semantics", () => {
         const startTime = new Date("2024-01-01T00:00:00Z").getTime();
         timeControl.setTime(startTime);
 
-        // Initialize scheduler
-        await capabilities.scheduler.initialize(registrations);
+        // Initialize scheduler with fast polling
+        await capabilities.scheduler.initialize(registrations, { pollIntervalMs: 10 });
         
         // Trigger initial executions by advancing to 15-minute mark
         timeControl.advanceTime(15 * 60 * 1000); // 15 minutes
-        await capabilities.scheduler.pollNow();
+        await waitForPolling();
         expect(task1Count).toBe(1);
         expect(task2Count).toBe(1);
         
         // Advance time by short retry delay (3 minutes) but not long retry delay (8 minutes)
         timeControl.advanceTime(3 * 60 * 1000); // 3 minutes
-        await capabilities.scheduler.pollNow();
+        await waitForPolling();
         
         // Task1 should have retried, task2 should not yet
         expect(task1Count).toBe(2);

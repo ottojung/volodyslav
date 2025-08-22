@@ -76,15 +76,6 @@ function make(capabilities, options = {}) {
             }
         },
 
-        /**
-         * Manually trigger a poll cycle (for testing).
-         * @returns {Promise<void>}
-         */
-        async pollNow() {
-            return await scheduler.pollNow();
-        },
-
-
     };
 }
 

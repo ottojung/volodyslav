@@ -17,6 +17,9 @@ function getTestCapabilities() {
 }
 
 describe("failure retry persistence", () => {
+    // Helper function to wait for scheduler polling to occur
+    const waitForPolling = () => new Promise(resolve => setTimeout(resolve, 50));
+
     test("task failure sets pendingRetryUntil correctly", async () => {
         const capabilities = getTestCapabilities();
         const timeControl = getDatetimeControl(capabilities);
@@ -25,8 +28,8 @@ describe("failure retry persistence", () => {
         const startTime = new Date("2020-01-01T00:00:00Z").getTime();
         timeControl.setTime(startTime);
         
-        // Create scheduler and schedule a failing task
-        const scheduler = makePollingScheduler(capabilities, { pollIntervalMs: 1000 });
+        // Create scheduler and schedule a failing task with fast polling
+        const scheduler = makePollingScheduler(capabilities, { pollIntervalMs: 10 });
         const retryDelay = fromMilliseconds(5000); // 5 second retry delay
         const callback = jest.fn(() => {
             throw new Error("Task failed");
@@ -34,9 +37,9 @@ describe("failure retry persistence", () => {
         
         await scheduler.schedule("failing-task", "* * * * *", callback, retryDelay);
         
-        // Trigger cron execution by advancing time slightly (to next minute boundary) and polling
+        // Trigger cron execution by advancing time slightly (to next minute boundary) and wait for polling
         timeControl.advanceTime(60 * 1000); // 1 minute
-        await scheduler.pollNow(); // Manually trigger polling
+        await waitForPolling();
         
         // Check that task was executed and failed properly
         let tasks = await scheduler.getTasks();
@@ -46,9 +49,9 @@ describe("failure retry persistence", () => {
         expect(tasks[0].lastFailureTime).toBeTruthy();
         expect(tasks[0].modeHint).toBe("idle"); // Retry not due yet (5 seconds delay)
         
-        // Advance time to make retry due and poll again
+        // Advance time to make retry due and wait for polling to check retry state
         timeControl.advanceTime(5000); // 5 seconds
-        await scheduler.pollNow(); // Manually trigger polling to check retry state
+        await waitForPolling();
         
         tasks = await scheduler.getTasks();
         expect(tasks[0].modeHint).toBe("retry"); // Now retry should be due

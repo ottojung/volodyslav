@@ -332,13 +332,7 @@ function makePollingScheduler(capabilities, options = {}) {
             });
         },
 
-        /**
-         * Manually trigger a poll cycle (for testing).
-         * @returns {Promise<void>}
-         */
-        async pollNow() {
-            await poll();
-        },
+
 
     };
 }

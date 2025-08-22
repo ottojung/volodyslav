@@ -9,7 +9,6 @@
  * @typedef {object} Scheduler
  * @property {Initialize} initialize - Initializes the scheduler with task registrations
  * @property {Stop} stop - Stops the scheduler and cleans up resources
- * @property {PollNow} pollNow - Manually triggers a poll cycle (for testing)
  */
 
 /**
@@ -66,13 +65,7 @@
  * await scheduler.stop();
  */
 
-/**
- * Poll now function that manually triggers a poll cycle (for testing).
- * @typedef {() => Promise<void>} PollNow
- * @example
- * // Manually trigger polling
- * await scheduler.pollNow();
- */
+
 
 module.exports = {
     // This module only contains type definitions, no runtime exports needed

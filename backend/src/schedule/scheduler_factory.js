@@ -22,7 +22,6 @@ const {
 /** @typedef {import('./types').PollerOptions} PollerOptions */
 /** @typedef {import('./types').Initialize} Initialize */
 /** @typedef {import('./types').Stop} Stop */
-/** @typedef {import('./types').PollNow} PollNow */
 /** @typedef {import('./types').Capabilities} Capabilities */
 
 /**
@@ -194,23 +193,11 @@ function make(getCapabilities) {
         }
     }
 
-    /**
-     * Manually trigger a poll cycle (for testing).
-     * @type {PollNow}
-     */
-    async function pollNow() {
-        if (pollingScheduler !== null) {
-            await pollingScheduler.pollNow();
-        } else {
-            const capabilities = getCapabilitiesMemo();
-            capabilities.logger.logDebug({}, "Cannot poll: scheduler not initialized");
-        }
-    }
+
 
     return {
         initialize,
         stop,
-        pollNow,
     };
 }
 
