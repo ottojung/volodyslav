@@ -50,14 +50,14 @@ describe("Retryer - Core functionality", () => {
 
         test("executes callback that succeeds after retries", async () => {
             let callCount = 0;
-            const callback = async ({ attempt, retry }) => {
+            const callback = async ({ _attempt, retry }) => {
                 callCount++;
-                if (callCount < 3) {
-                    // signal that we want another attempt
-                    retry();
-                    return undefined;
-                }
-                return "done";
+                    if (callCount < 3) {
+                        // signal that we want another attempt
+                        retry();
+                        return undefined;
+                    }
+                    return "done";
             };
 
             const result = await withRetry(capabilities, "retry-success-test", callback);
@@ -68,13 +68,13 @@ describe("Retryer - Core functionality", () => {
 
         test("logs execution attempts correctly", async () => {
             let callCount = 0;
-            const callback = async ({ attempt, retry }) => {
+            const callback = async ({ _attempt, retry }) => {
                 callCount++;
-                if (callCount === 1) {
-                    retry();
-                    return undefined;
-                }
-                return "ok";
+                    if (callCount === 1) {
+                        retry();
+                        return undefined;
+                    }
+                    return "ok";
             };
 
             await withRetry(capabilities, "logging-test", callback);
