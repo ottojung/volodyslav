@@ -5,7 +5,7 @@
 const { makePollingScheduler } = require("../src/cron/polling_scheduler");
 const { fromMilliseconds } = require("../src/time_duration");
 const { getMockedRootCapabilities } = require("./spies");
-const { stubEnvironment, stubLogger, stubDatetime, stubSleeper } = require("./stubs");
+const { stubEnvironment, stubLogger, stubDatetime, stubSleeper, getDatetimeControl } = require("./stubs");
 
 function getTestCapabilities() {
     const capabilities = getMockedRootCapabilities();
@@ -18,12 +18,15 @@ function getTestCapabilities() {
 
 describe("failure retry persistence", () => {
     test("task failure sets pendingRetryUntil correctly", async () => {
-        jest.useFakeTimers().setSystemTime(new Date("2020-01-01T00:00:00Z"));
-        
         const capabilities = getTestCapabilities();
+        const timeControl = getDatetimeControl(capabilities);
         
-        // Create scheduler and schedule a failing task
-        const scheduler = makePollingScheduler(capabilities, { pollIntervalMs: 1000 });
+        // Set a fixed starting time 
+        const startTime = new Date("2020-01-01T00:00:30Z").getTime();
+        timeControl.setTime(startTime);
+        
+        // Create scheduler and schedule a failing task with fast polling
+        const scheduler = makePollingScheduler(capabilities, { pollIntervalMs: 50 });
         const retryDelay = fromMilliseconds(5000); // 5 second retry delay
         const callback = jest.fn(() => {
             throw new Error("Task failed");
@@ -31,8 +34,8 @@ describe("failure retry persistence", () => {
         
         await scheduler.schedule("failing-task", "* * * * *", callback, retryDelay);
         
-        // Advance time to trigger cron execution (1 second should be enough)
-        jest.advanceTimersByTime(1000);
+        // Wait for scheduler to start and catch up (will execute for 00:00:00)
+        await new Promise(resolve => setTimeout(resolve, 100));
         
         // Check that task was executed and failed properly
         let tasks = await scheduler.getTasks();
@@ -42,13 +45,15 @@ describe("failure retry persistence", () => {
         expect(tasks[0].lastFailureTime).toBeTruthy();
         expect(tasks[0].modeHint).toBe("idle"); // Retry not due yet (5 seconds delay)
         
-        // Advance time to make retry due
-        jest.advanceTimersByTime(5000);
+        // Advance time just enough to make retry due (but not trigger next cron)
+        timeControl.advanceTime(10 * 1000); // 10 seconds (past the 5-second retry delay)
+        await new Promise(resolve => setTimeout(resolve, 100));
         
         tasks = await scheduler.getTasks();
-        expect(tasks[0].modeHint).toBe("retry"); // Now retry should be due
+        // The task should either be in "retry" mode or have already executed the retry
+        // Since the task keeps failing, check that it has executed more times
+        expect(callback).toHaveBeenCalledTimes(2); // Should have retried once
         
         await scheduler.cancelAll();
-        jest.useRealTimers();
     }, 10000);
 });

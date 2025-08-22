@@ -55,12 +55,29 @@ class ScheduleFrequencyError extends Error {
      * @param {number} pollFrequencyMs
      */
     constructor(taskFrequencyMs, pollFrequencyMs) {
-        const taskMinutes = Math.floor(taskFrequencyMs / (60 * 1000));
-        const pollMinutes = Math.floor(pollFrequencyMs / (60 * 1000));
+        // Format frequency display for better readability
+        /** @param {number} ms */
+        const formatFrequency = (ms) => {
+            if (ms < 60 * 1000) {
+                const seconds = Math.floor(ms / 1000);
+                return `${seconds} second${seconds !== 1 ? 's' : ''}`;
+            } else if (ms % (60 * 1000) === 0) {
+                // Exact minutes
+                const minutes = Math.floor(ms / (60 * 1000));
+                return `${minutes} minute${minutes !== 1 ? 's' : ''}`;
+            } else {
+                // Mixed minutes and seconds
+                const totalSeconds = Math.floor(ms / 1000);
+                return `${totalSeconds} second${totalSeconds !== 1 ? 's' : ''}`;
+            }
+        };
+
+        const taskFreq = formatFrequency(taskFrequencyMs);
+        const pollFreq = formatFrequency(pollFrequencyMs);
 
         super(
-            `Task frequency (${taskMinutes} minute${taskMinutes !== 1 ? 's' : ''}) is higher than ` +
-            `polling frequency (${pollMinutes} minute${pollMinutes !== 1 ? 's' : ''}). ` +
+            `Task frequency (${taskFreq}) is higher than ` +
+            `polling frequency (${pollFreq}). ` +
             `Tasks cannot execute more frequently than the polling interval.`
         );
         this.name = "ScheduleFrequencyError";

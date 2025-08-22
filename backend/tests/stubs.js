@@ -94,17 +94,45 @@ function stubSleeper(capabilities) {
 }
 
 function stubDatetime(capabilities) {
-    // Create a full datetime mock that works with Jest fake timers
-    const originalDatetime = capabilities.datetime;
-    capabilities.datetime = {
-        ...originalDatetime,
-        // Use Jest's mocked Date constructor directly instead of Date.now()
-        now: jest.fn(() => originalDatetime.fromEpochMs(new Date().getTime())),
-        fromEpochMs: originalDatetime.fromEpochMs,
-        fromISOString: originalDatetime.fromISOString,
-        toEpochMs: originalDatetime.toEpochMs,
-        toISOString: originalDatetime.toISOString,
-        toNativeDate: originalDatetime.toNativeDate,
+    // Store the original datetime methods that are already jest mocks
+    const originalNow = capabilities.datetime.now;
+    
+    // Initialize with current real time, but this can be overridden
+    let currentTimeMs = Date.now();
+    
+    // Override the now method to return the controlled time
+    originalNow.mockImplementation(() => capabilities.datetime.fromEpochMs(currentTimeMs));
+    
+    // Add time control methods to the datetime object
+    capabilities.datetime.setTime = (ms) => {
+        currentTimeMs = ms;
+    };
+    
+    capabilities.datetime.advanceTime = (ms) => {
+        currentTimeMs += ms;
+    };
+    
+    capabilities.datetime.getCurrentTime = () => {
+        return currentTimeMs;
+    };
+    
+    // Mark it as mocked for type guard
+    capabilities.datetime.__isMockedDatetime = true;
+}
+
+/**
+ * Provides access to datetime manipulation functions when datetime is stubbed.
+ * @param {any} capabilities - The capabilities object with stubbed datetime
+ * @returns {{setTime: (ms: number) => void, advanceTime: (ms: number) => void, getCurrentTime: () => number}}
+ */
+function getDatetimeControl(capabilities) {
+    if (!capabilities.datetime.__isMockedDatetime) {
+        throw new Error("Datetime must be stubbed with stubDatetime() to use datetime control");
+    }
+    return {
+        setTime: (ms) => capabilities.datetime.setTime(ms),
+        advanceTime: (ms) => capabilities.datetime.advanceTime(ms),
+        getCurrentTime: () => capabilities.datetime.getCurrentTime(),
     };
 }
 
@@ -139,4 +167,5 @@ module.exports = {
     stubApp,
     stubGit,
     stubTranscription,
+    getDatetimeControl,
 };

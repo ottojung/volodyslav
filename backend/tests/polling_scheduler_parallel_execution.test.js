@@ -5,7 +5,7 @@
 
 const { fromMilliseconds } = require("../src/time_duration");
 const { getMockedRootCapabilities } = require("./spies");
-const { stubEnvironment, stubLogger, stubDatetime, stubSleeper } = require("./stubs");
+const { stubEnvironment, stubLogger, stubDatetime, stubSleeper, getDatetimeControl } = require("./stubs");
 
 function getTestCapabilities() {
     const capabilities = getMockedRootCapabilities();
@@ -174,6 +174,7 @@ describe("declarative scheduler parallel execution", () => {
 
     test("should handle many parallel tasks with retries", async () => {
         const capabilities = getTestCapabilities();
+        const timeControl = getDatetimeControl(capabilities);
         const retryDelay = fromMilliseconds(500); // Short retry for faster testing
         
         let taskExecutions = {};
@@ -194,18 +195,29 @@ describe("declarative scheduler parallel execution", () => {
         const task2 = createTask('2');
         const task3 = createTask('3');
         
+        // Set initial time to trigger immediate execution (start of minute)
+        const startTime = new Date("2021-01-01T00:00:00.000Z").getTime();
+        timeControl.setTime(startTime);
+        
         const registrations = [
             ["retry-task-1", "* * * * *", task1, retryDelay],
             ["retry-task-2", "* * * * *", task2, retryDelay],
             ["retry-task-3", "* * * * *", task3, retryDelay]
         ];
         
-        await capabilities.scheduler.initialize(registrations, { pollIntervalMs: 100 });
+        await capabilities.scheduler.initialize(registrations, { pollIntervalMs: 50 });
         
-        // Wait for initial executions and retries
-        await new Promise(resolve => setTimeout(resolve, 800));
+        // Wait for initial executions
+        await new Promise(resolve => setTimeout(resolve, 100));
+        expect(task1).toHaveBeenCalledTimes(1);
+        expect(task2).toHaveBeenCalledTimes(1);
+        expect(task3).toHaveBeenCalledTimes(1);
         
-        // All tasks should have been called at least twice (initial + retry)
+        // Advance time by retry delay to trigger retries
+        timeControl.advanceTime(500); // 500ms retry delay
+        await new Promise(resolve => setTimeout(resolve, 100)); // Wait for polling
+        
+        // All tasks should have been called twice (initial + retry)
         expect(task1).toHaveBeenCalledTimes(2);
         expect(task2).toHaveBeenCalledTimes(2);
         expect(task3).toHaveBeenCalledTimes(2);

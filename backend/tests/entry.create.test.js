@@ -128,9 +128,15 @@ describe("createEntry (integration, with real capabilities)", () => {
             description: "Entry without a specific date.",
         };
 
-        const before = Date.now();
+        // Use datetime capability instead of Date.now() for consistent time
+        const beforeDateTime = capabilities.datetime.now();
+        const before = capabilities.datetime.toEpochMs(beforeDateTime);
+        
         const event = await createEntry(capabilities, entryData);
-        const after = Date.now();
+        
+        const afterDateTime = capabilities.datetime.now();
+        const after = capabilities.datetime.toEpochMs(afterDateTime);
+        
         const eventTime = capabilities.datetime.toEpochMs(event.date);
         expect(eventTime).toBeGreaterThanOrEqual(before);
         expect(eventTime).toBeLessThanOrEqual(after);
