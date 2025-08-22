@@ -128,7 +128,6 @@ async function getRepository(capabilities, workingPath, initial_state) {
 
     if (!(await capabilities.checker.fileExists(indexFile))) {
         if (initial_state === "empty") {
-            // Initialize empty repository directly
             const workDir = pathToLocalRepository(capabilities, workingPath);
             capabilities.logger.logInfo({ repository: workDir }, "Initializing empty repository");
             try {
