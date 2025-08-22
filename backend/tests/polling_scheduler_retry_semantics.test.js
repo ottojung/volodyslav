@@ -5,7 +5,7 @@
 
 const { fromMilliseconds } = require("../src/time_duration");
 const { getMockedRootCapabilities } = require("./spies");
-const { stubEnvironment, stubLogger, stubDatetime, stubSleeper } = require("./stubs");
+const { stubEnvironment, stubLogger, stubDatetime, stubSleeper, getDatetimeControl } = require("./stubs");
 
 function getTestCapabilities() {
     const capabilities = getMockedRootCapabilities();
@@ -21,6 +21,7 @@ describe("declarative scheduler retry semantics", () => {
     
     test("should execute tasks according to cron schedule", async () => {
         const capabilities = getTestCapabilities();
+        const timeControl = getDatetimeControl(capabilities);
         const retryDelay = fromMilliseconds(5 * 60 * 1000); // 5 minutes
         let executionCount = 0;
         
@@ -29,15 +30,20 @@ describe("declarative scheduler retry semantics", () => {
         });
         
         const registrations = [
-            // Task runs every minute
-            ["retry-test", "* * * * *", task, retryDelay]
+            // Task runs every 15 minutes (compatible with 10-minute polling)
+            ["retry-test", "*/15 * * * *", task, retryDelay]
         ];
 
-        // Initialize with fast polling for testing
-        await capabilities.scheduler.initialize(registrations, { pollIntervalMs: 100 });
+        // Set a fixed starting time
+        const startTime = new Date("2024-01-01T00:00:00Z").getTime();
+        timeControl.setTime(startTime);
+
+        // Initialize with default polling
+        await capabilities.scheduler.initialize(registrations);
         
-        // Wait for first execution
-        await new Promise(resolve => setTimeout(resolve, 200));
+        // Trigger execution by advancing to 15-minute mark
+        timeControl.advanceTime(15 * 60 * 1000); // 15 minutes
+        await capabilities.scheduler.pollNow();
         expect(executionCount).toBe(1);
         
         await capabilities.scheduler.stop();
@@ -45,7 +51,8 @@ describe("declarative scheduler retry semantics", () => {
 
     test("should handle retry logic when task fails", async () => {
         const capabilities = getTestCapabilities();
-        const retryDelay = fromMilliseconds(1000); // 1 second for quick testing
+        const timeControl = getDatetimeControl(capabilities);
+        const retryDelay = fromMilliseconds(5 * 60 * 1000); // 5 minutes
         let executionCount = 0;
         
         const task = jest.fn(() => {
@@ -57,19 +64,25 @@ describe("declarative scheduler retry semantics", () => {
         });
         
         const registrations = [
-            // Task runs every minute
-            ["retry-test", "* * * * *", task, retryDelay]
+            // Task runs every 15 minutes (compatible with 10-minute polling)
+            ["retry-test", "*/15 * * * *", task, retryDelay]
         ];
 
-        // Initialize scheduler
-        await capabilities.scheduler.initialize(registrations, { pollIntervalMs: 100 });
+        // Set a fixed starting time
+        const startTime = new Date("2024-01-01T00:00:00Z").getTime();
+        timeControl.setTime(startTime);
+
+        // Initialize scheduler with default polling (10 minutes)
+        await capabilities.scheduler.initialize(registrations);
         
-        // Wait for first execution and retry
-        await new Promise(resolve => setTimeout(resolve, 300));
+        // Trigger initial execution by advancing to 15-minute mark
+        timeControl.advanceTime(15 * 60 * 1000); // 15 minutes
+        await capabilities.scheduler.pollNow();
         expect(executionCount).toBeGreaterThanOrEqual(1);
         
-        // Wait a bit more for potential retry
-        await new Promise(resolve => setTimeout(resolve, 1100));
+        // Advance time by retry delay (5 minutes) to trigger retry
+        timeControl.advanceTime(5 * 60 * 1000); // 5 minutes
+        await capabilities.scheduler.pollNow();
         
         // Should have retried the failed task
         expect(executionCount).toBeGreaterThan(1);
@@ -79,7 +92,8 @@ describe("declarative scheduler retry semantics", () => {
 
     test("should handle successful execution clearing retry state", async () => {
         const capabilities = getTestCapabilities();
-        const retryDelay = fromMilliseconds(1000); // 1 second for quick testing
+        const timeControl = getDatetimeControl(capabilities);
+        const retryDelay = fromMilliseconds(5 * 60 * 1000); // 5 minutes
         let executionCount = 0;
         
         const task = jest.fn(() => {
@@ -91,18 +105,24 @@ describe("declarative scheduler retry semantics", () => {
         });
         
         const registrations = [
-            ["clear-retry-test", "* * * * *", task, retryDelay]
+            ["clear-retry-test", "*/15 * * * *", task, retryDelay]
         ];
 
-        // Initialize scheduler
-        await capabilities.scheduler.initialize(registrations, { pollIntervalMs: 100 });
+        // Set a fixed starting time
+        const startTime = new Date("2024-01-01T00:00:00Z").getTime();
+        timeControl.setTime(startTime);
+
+        // Initialize scheduler with default polling
+        await capabilities.scheduler.initialize(registrations);
         
-        // Wait for first execution and successful retry
-        await new Promise(resolve => setTimeout(resolve, 300));
+        // Trigger initial execution by advancing to 15-minute mark
+        timeControl.advanceTime(15 * 60 * 1000); // 15 minutes
+        await capabilities.scheduler.pollNow();
         expect(executionCount).toBe(1);
         
-        // Wait for retry execution
-        await new Promise(resolve => setTimeout(resolve, 1100));
+        // Advance time by retry delay to trigger retry
+        timeControl.advanceTime(5 * 60 * 1000); // 5 minutes
+        await capabilities.scheduler.pollNow();
         
         // Should have executed successfully
         expect(executionCount).toBe(2);
@@ -113,8 +133,9 @@ describe("declarative scheduler retry semantics", () => {
 
     test("should handle multiple tasks with different retry delays", async () => {
         const capabilities = getTestCapabilities();
-        const shortRetryDelay = fromMilliseconds(500);
-        const longRetryDelay = fromMilliseconds(2000);
+        const timeControl = getDatetimeControl(capabilities);
+        const shortRetryDelay = fromMilliseconds(3 * 60 * 1000); // 3 minutes
+        const longRetryDelay = fromMilliseconds(8 * 60 * 1000); // 8 minutes
         
         let task1Count = 0;
         let task2Count = 0;
@@ -134,20 +155,26 @@ describe("declarative scheduler retry semantics", () => {
         });
         
         const registrations = [
-            ["task1", "* * * * *", task1, shortRetryDelay],
-            ["task2", "* * * * *", task2, longRetryDelay]
+            ["task1", "*/15 * * * *", task1, shortRetryDelay],
+            ["task2", "*/15 * * * *", task2, longRetryDelay]
         ];
 
+        // Set a fixed starting time
+        const startTime = new Date("2024-01-01T00:00:00Z").getTime();
+        timeControl.setTime(startTime);
+
         // Initialize scheduler
-        await capabilities.scheduler.initialize(registrations, { pollIntervalMs: 100 });
+        await capabilities.scheduler.initialize(registrations);
         
-        // Wait for first executions
-        await new Promise(resolve => setTimeout(resolve, 300));
+        // Trigger initial executions by advancing to 15-minute mark
+        timeControl.advanceTime(15 * 60 * 1000); // 15 minutes
+        await capabilities.scheduler.pollNow();
         expect(task1Count).toBe(1);
         expect(task2Count).toBe(1);
         
-        // Wait for short retry but not long retry
-        await new Promise(resolve => setTimeout(resolve, 700));
+        // Advance time by short retry delay (3 minutes) but not long retry delay (8 minutes)
+        timeControl.advanceTime(3 * 60 * 1000); // 3 minutes
+        await capabilities.scheduler.pollNow();
         
         // Task1 should have retried, task2 should not yet
         expect(task1Count).toBe(2);
