@@ -92,12 +92,12 @@ function pathToLocalRepositoryGitDir(capabilities, workingPath) {
 async function synchronize(capabilities, workingPath, origin) {
     const gitDir = pathToLocalRepositoryGitDir(capabilities, workingPath);
     const workDir = pathToLocalRepository(capabilities, workingPath);
-    const indexFile = path.join(gitDir, "index");
+    const headFile = path.join(gitDir, "HEAD");
 
     try {
         const remotePath = origin.url;
         capabilities.logger.logInfo({ repository: remotePath }, "Synchronizing repository");
-        if (await capabilities.checker.fileExists(indexFile)) {
+        if (await capabilities.checker.fileExists(headFile)) {
             await gitmethod.pull(capabilities, workDir);
             await gitmethod.push(capabilities, workDir);
         } else {
