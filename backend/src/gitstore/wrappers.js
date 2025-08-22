@@ -121,7 +121,7 @@ async function makePushable(capabilities, workDirectory) {
         "user.email=volodyslav",
         "config",
         "receive.denyCurrentBranch",
-        "updateInstead"
+        "ignore"
     );
 }
 
