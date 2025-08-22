@@ -27,25 +27,6 @@ function isRuntimeStateRepositoryError(object) {
     return object instanceof RuntimeStateRepositoryError;
 }
 
-/**
- * Synchronizes the runtime state repository.
- * Since this is a local-only repository, we use "empty" initial state.
- * @param {Capabilities} capabilities
- * @returns {Promise<void>}
- */
-async function synchronize(capabilities) {
-    try {
-        await workingRepository.synchronize(capabilities, "runtime-state-repository", "empty");
-    } catch (error) {
-        if (workingRepository.isWorkingRepositoryError(error)) {
-            throw new RuntimeStateRepositoryError(
-                `Failed to synchronize runtime state repository: ${error.message}`,
-                error.repositoryPath
-            );
-        }
-        throw error;
-    }
-}
 
 /**
  * Ensures the runtime state repository is accessible locally.
@@ -66,4 +47,4 @@ async function ensureAccessible(capabilities) {
     }
 }
 
-module.exports = { synchronize, ensureAccessible, isRuntimeStateRepositoryError };
+module.exports = { ensureAccessible, isRuntimeStateRepositoryError };

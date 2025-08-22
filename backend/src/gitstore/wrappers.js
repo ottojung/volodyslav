@@ -121,7 +121,7 @@ async function makePushable(capabilities, workDirectory) {
         "user.email=volodyslav",
         "config",
         "receive.denyCurrentBranch",
-        "updateInstead"
+        "ignore"
     );
 }
 
@@ -221,6 +221,8 @@ async function init(capabilities, workDirectory) {
         "-c",
         "user.email=volodyslav",
         "init",
+        "--template",
+        "/proc/some/non/existant/path",
         "--initial-branch",
         defaultBranch
     );

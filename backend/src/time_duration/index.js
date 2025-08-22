@@ -10,7 +10,8 @@ const {
     fromHours,
     fromDays,
     zero,
-    COMMON
+    COMMON,
+    fromDifference,
 } = require("./factory");
 
 const {
@@ -26,6 +27,10 @@ const {
     max,
 } = require("./utils");
 
+/**
+ * @typedef {import('./structure').TimeDuration} TimeDuration
+ */
+
 module.exports = {
     // Factory functions
     fromMilliseconds,
@@ -35,6 +40,7 @@ module.exports = {
     fromDays,
     zero,
     COMMON,
+    fromDifference,
 
     // Type guards
     isTimeDuration,
