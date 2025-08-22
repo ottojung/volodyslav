@@ -12,6 +12,7 @@ const {
     logRetryAttempt,
     logFinalFailure,
 } = require("./transaction_logging");
+const { withRetry } = require("../retryer");
 
 /** @typedef {import('./transaction_logging').TransactionLoggingContext} TransactionLoggingContext */
 
@@ -23,6 +24,7 @@ const {
 /** @typedef {import('../environment').Environment} Environment */
 /** @typedef {import('../logger').Logger} Logger */
 /** @typedef {import('../sleeper').Sleeper} Sleeper */
+/** @typedef {import('../datetime').Datetime} Datetime */
 /** @typedef {import('./transaction_attempt').GitStore} GitStore */
 
 /**
@@ -39,6 +41,7 @@ const {
  * @property {FileWriter} writer - A file writer instance.
  * @property {Environment} environment - An environment instance.
  * @property {Logger} logger - A logger instance.
+ * @property {Datetime} datetime - Datetime utilities.
  * @property {Sleeper} sleeper - A sleeper instance.
  */
 
@@ -106,14 +109,16 @@ function createLoggingContext(attempt, maxAttempts, workingPath, initial_state) 
  */
 async function transactionWithRetry(capabilities, workingPath, initial_state, transformation, retryOptions = DEFAULT_RETRY_OPTIONS) {
     const options = { ...DEFAULT_RETRY_OPTIONS, ...retryOptions };
-    let lastError = null;
+    const delayMs = options.delayMs;
+    const delay = timeDuration.fromMilliseconds(delayMs);
+    const callbackName = `transaction:${workingPath}`;
 
-    for (let attempt = 1; attempt <= options.maxAttempts; attempt++) {
+    return withRetry(capabilities, callbackName, async ({ attempt, retry }) => {
         const loggingContext = createLoggingContext(attempt, options.maxAttempts, workingPath, initial_state);
-        
-        try {
-            logTransactionAttemptStart(capabilities.logger, loggingContext);
 
+        logTransactionAttemptStart(capabilities.logger, loggingContext);
+
+        try {
             const result = await executeTransactionAttempt(capabilities, workingPath, initial_state, transformation);
 
             if (attempt > 1) {
@@ -122,30 +127,21 @@ async function transactionWithRetry(capabilities, workingPath, initial_state, tr
 
             return result;
         } catch (error) {
-            lastError = error;
-
-            // Only retry push errors
             if (!isPushError(error)) {
                 logNonRetryableError(capabilities.logger, loggingContext, error);
                 throw error;
             }
 
-            if (attempt === options.maxAttempts) {
+            if (attempt >= options.maxAttempts) {
                 logFinalFailure(capabilities.logger, loggingContext, error);
-                break;
+                throw error;
             }
 
-            const delayMs = options.delayMs;
-            const delay = timeDuration.fromMilliseconds(delayMs);
-
             logRetryAttempt(capabilities.logger, loggingContext, delay.toString(), error);
-
             await capabilities.sleeper.sleep(delayMs);
+            return retry();
         }
-    }
-
-    // If we get here, all retries failed
-    throw lastError;
+    });
 }
 
 module.exports = {
