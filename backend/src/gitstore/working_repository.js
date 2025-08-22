@@ -127,7 +127,7 @@ async function initializeEmptyRepository(capabilities, workingPath) {
             workDir,
             "config",
             "receive.denyCurrentBranch",
-            "updateInstead"
+            "ignore"
         );
 
         // Create an empty initial commit so the repository has a master branch
