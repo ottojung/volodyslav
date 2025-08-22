@@ -1,23 +1,18 @@
 const { withRetry } = require("../src/retryer");
-const { fromMilliseconds } = require("../src/time_duration");
 const { getMockedRootCapabilities } = require("./spies");
 const { stubLogger } = require("./stubs");
 
+function getTestCapabilities() {
+    const capabilities = getMockedRootCapabilities();
+    stubLogger(capabilities);
+    return capabilities;
+}
+
 describe("Retryer - Core functionality", () => {
-    /** @type {import('../src/retryer/core').RetryerCapabilities} */
-    let capabilities;
-
-    beforeEach(() => {
-        capabilities = getMockedRootCapabilities();
-        stubLogger(capabilities);
-    });
-
-    afterEach(() => {
-        jest.clearAllTimers();
-    });
-
     describe("error handling", () => {
         test("propagates callback errors", async () => {
+            const capabilities = getTestCapabilities();
+    
             const retryableCallback = async () => {
                 throw new Error("Test error");
             };
@@ -28,6 +23,8 @@ describe("Retryer - Core functionality", () => {
 
     describe("withRetry - Success scenarios", () => {
         test("executes callback that succeeds immediately", async () => {
+            const capabilities = getTestCapabilities();
+
             let callCount = 0;
             const callback = async () => {
                 callCount++;
@@ -49,6 +46,8 @@ describe("Retryer - Core functionality", () => {
         });
 
         test("executes callback that succeeds after retries", async () => {
+            const capabilities = getTestCapabilities();
+
             let callCount = 0;
             const callback = async ({ _attempt, retry }) => {
                 callCount++;
@@ -67,6 +66,8 @@ describe("Retryer - Core functionality", () => {
         });
 
         test("logs execution attempts correctly", async () => {
+            const capabilities = getTestCapabilities();
+
             let callCount = 0;
             const callback = async ({ _attempt, retry }) => {
                 callCount++;
