@@ -13,7 +13,7 @@ function getTestCapabilities() {
     return capabilities;
 }
 
-describe.skip("working_repository (atomic initialize)", () => {
+describe("working_repository (atomic initialize)", () => {
     test("initializeEmptyRepository remains atomic under parallel calls", async () => {
         const capabilities = getTestCapabilities();
         await capabilities.logger.setup(capabilities);
