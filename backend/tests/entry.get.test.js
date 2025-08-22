@@ -46,6 +46,7 @@ describe("getEntries ordering functionality", () => {
             type: "test",
             description: "First entry description",
         };
+        await createEntry(capabilities, entry1Data);
         
         capabilities.datetime.now.mockReturnValueOnce(
             capabilities.datetime.fromEpochMs(baseTime + 24 * 60 * 60 * 1000)
@@ -57,6 +58,8 @@ describe("getEntries ordering functionality", () => {
             description: "Second entry description",
         };
         
+        await createEntry(capabilities, entry2Data);
+
         capabilities.datetime.now.mockReturnValueOnce(
             capabilities.datetime.fromEpochMs(baseTime + 2 * 24 * 60 * 60 * 1000)
         ); // +2 days
@@ -67,8 +70,6 @@ describe("getEntries ordering functionality", () => {
             description: "Third entry description",
         };
 
-        await createEntry(capabilities, entry1Data);
-        await createEntry(capabilities, entry2Data);
         await createEntry(capabilities, entry3Data);
 
         const result = await getEntries(capabilities, { page: 1, limit: 10 });
