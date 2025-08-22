@@ -78,7 +78,7 @@ function pathToLocalRepositoryGitDir(capabilities, workingPath) {
 
 /**
  * Synchronize the local repository with remote: pull if exists, else clone.
- * Then push the changes as well. For "empty" initial_state, this is a NOOP.
+ * Then push the changes as well.
  * @param {Capabilities} capabilities
  * @param {string} workingPath - The path to the working directory.
  * @param {RemoteLocation} origin - Remote location or local location to sync with.
