@@ -5,7 +5,7 @@
 
 const { fromMilliseconds } = require("../src/time_duration");
 const { getMockedRootCapabilities } = require("./spies");
-const { stubEnvironment, stubLogger, stubDatetime, stubSleeper } = require("./stubs");
+const { stubEnvironment, stubLogger, stubDatetime, stubSleeper, getDatetimeControl } = require("./stubs");
 
 function getTestCapabilities() {
     const capabilities = getMockedRootCapabilities();
@@ -84,6 +84,7 @@ describe("declarative scheduler algorithm robustness", () => {
 
     test("should handle retry timing precision correctly", async () => {
         const capabilities = getTestCapabilities();
+        const timeControl = getDatetimeControl(capabilities);
         const retryDelay = fromMilliseconds(1000); // 1 second
         let callCount = 0;
         
@@ -94,18 +95,23 @@ describe("declarative scheduler algorithm robustness", () => {
             }
         });
         
+        // Set initial time to trigger immediate execution (start of minute)
+        const startTime = new Date("2021-01-01T00:00:00.000Z").getTime();
+        timeControl.setTime(startTime);
+        
         const registrations = [
             ["precision-test", "* * * * *", precisionCallback, retryDelay]
         ];
         
-        await capabilities.scheduler.initialize(registrations, { pollIntervalMs: 100 });
+        await capabilities.scheduler.initialize(registrations, { pollIntervalMs: 50 });
         
-        // Wait for first execution and retry
-        await new Promise(resolve => setTimeout(resolve, 300));
+        // Wait for scheduler to start and execute initial task
+        await new Promise(resolve => setTimeout(resolve, 100));
         expect(precisionCallback).toHaveBeenCalledTimes(1);
         
-        // Wait for retry
-        await new Promise(resolve => setTimeout(resolve, 1100));
+        // Advance time by retry delay to trigger retry
+        timeControl.advanceTime(1000); // 1 second retry delay
+        await new Promise(resolve => setTimeout(resolve, 100)); // Wait for polling
         expect(precisionCallback).toHaveBeenCalledTimes(2);
         
         await capabilities.scheduler.stop();

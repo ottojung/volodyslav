@@ -5,7 +5,7 @@
 
 const { fromMilliseconds } = require("../src/time_duration");
 const { getMockedRootCapabilities } = require("./spies");
-const { stubEnvironment, stubLogger, stubDatetime, stubSleeper } = require("./stubs");
+const { stubEnvironment, stubLogger, stubDatetime, stubSleeper, getDatetimeControl } = require("./stubs");
 
 function getTestCapabilities() {
     const capabilities = getMockedRootCapabilities();
@@ -63,6 +63,7 @@ describe("declarative scheduler task execution behavior", () => {
 
     test("should handle task execution with retries correctly", async () => {
         const capabilities = getTestCapabilities();
+        const timeControl = getDatetimeControl(capabilities);
         const retryDelay = fromMilliseconds(500); // Short retry for testing
         let executionCount = 0;
         
@@ -73,18 +74,23 @@ describe("declarative scheduler task execution behavior", () => {
             }
         });
         
+        // Set initial time to trigger immediate execution (start of minute)
+        const startTime = new Date("2021-01-01T00:00:00.000Z").getTime();
+        timeControl.setTime(startTime);
+        
         const registrations = [
             ["retry-task", "* * * * *", callback, retryDelay]
         ];
         
-        await capabilities.scheduler.initialize(registrations, { pollIntervalMs: 100 });
+        await capabilities.scheduler.initialize(registrations, { pollIntervalMs: 50 });
         
-        // Wait for first execution and retry
-        await new Promise(resolve => setTimeout(resolve, 300));
+        // Wait for first execution
+        await new Promise(resolve => setTimeout(resolve, 100));
         expect(callback).toHaveBeenCalledTimes(1);
         
-        // Wait for retry
-        await new Promise(resolve => setTimeout(resolve, 600));
+        // Advance time by retry delay to trigger retry
+        timeControl.advanceTime(500); // 500ms retry delay
+        await new Promise(resolve => setTimeout(resolve, 100)); // Wait for polling
         expect(callback).toHaveBeenCalledTimes(2);
         
         await capabilities.scheduler.stop();
