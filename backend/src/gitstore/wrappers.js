@@ -221,6 +221,8 @@ async function init(capabilities, workDirectory) {
         "-c",
         "user.email=volodyslav",
         "init",
+        "--template",
+        "/proc/some/non/existant/path",
         "--initial-branch",
         defaultBranch
     );
