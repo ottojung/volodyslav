@@ -96,17 +96,12 @@ function stubSleeper(capabilities) {
 function stubDatetime(capabilities) {
     // Store the original datetime methods that are already jest mocks
     const originalNow = capabilities.datetime.now;
-    const originalFromEpochMs = capabilities.datetime.fromEpochMs;
-    const originalFromISOString = capabilities.datetime.fromISOString;
-    const originalToEpochMs = capabilities.datetime.toEpochMs;
-    const originalToISOString = capabilities.datetime.toISOString;
-    const originalToNativeDate = capabilities.datetime.toNativeDate;
     
     // Initialize with current real time, but this can be overridden
     let currentTimeMs = Date.now();
     
     // Override the now method to return the controlled time
-    originalNow.mockImplementation(() => originalFromEpochMs(currentTimeMs));
+    originalNow.mockImplementation(() => capabilities.datetime.fromEpochMs(currentTimeMs));
     
     // Add time control methods to the datetime object
     capabilities.datetime.setTime = (ms) => {
