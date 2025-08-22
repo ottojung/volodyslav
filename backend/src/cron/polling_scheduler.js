@@ -333,7 +333,6 @@ function makePollingScheduler(capabilities, options = {}) {
         },
 
 
-
     };
 }
 

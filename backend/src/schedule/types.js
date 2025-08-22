@@ -65,8 +65,6 @@
  * await scheduler.stop();
  */
 
-
-
 module.exports = {
     // This module only contains type definitions, no runtime exports needed
 };

@@ -193,8 +193,6 @@ function make(getCapabilities) {
         }
     }
 
-
-
     return {
         initialize,
         stop,
