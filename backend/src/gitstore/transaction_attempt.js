@@ -14,6 +14,7 @@ const workingRepository = require("./working_repository");
 /** @typedef {import('../environment').Environment} Environment */
 /** @typedef {import('../logger').Logger} Logger */
 /** @typedef {import('../sleeper').Sleeper} Sleeper */
+/** @typedef {import('../datetime').Datetime} Datetime */
 
 /**
  * @typedef {object} RemoteLocation
@@ -30,6 +31,7 @@ const workingRepository = require("./working_repository");
  * @property {Environment} environment - An environment instance.
  * @property {Logger} logger - A logger instance.
  * @property {Sleeper} sleeper - A sleeper instance.
+ * @property {Datetime} datetime - A datetime instance.
  */
 
 /**
