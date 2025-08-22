@@ -6,6 +6,7 @@
 
 const path = require("path");
 const gitmethod = require("./wrappers");
+const defaultBranch = require("./default_branch");
 
 /** @typedef {import('../subprocess/command').Command} Command */
 /** @typedef {import('../filesystem/creator').FileCreator} FileCreator */
@@ -124,33 +125,55 @@ async function initializeEmptyRepository(capabilities, workingPath) {
         // Configure the repository to allow pushing to the current branch
         await gitmethod.makePushable(capabilities, workDir);
 
-        // FIXME: make this atomic (ensure only one commit), by executing this instead:
-        // # 1) Create an empty tree object
-        // empty_tree=$(printf '' | git mktree)
+        const { execFileSync } = require("child_process");
+        // 1) Create an empty tree
+        const emptyTree = execFileSync(
+            "git",
+            ["-C", workDir, "-c", "safe.directory=*", "mktree"],
+            { input: "" }
+        )
+            .toString()
+            .trim();
 
-        // # 2) Create a root commit that points to that tree
-        // commit=$(GIT_AUTHOR_NAME=init GIT_AUTHOR_EMAIL=init@example \
-        //          GIT_COMMITTER_NAME=init GIT_COMMITTER_EMAIL=init@example \
-        //          git commit-tree -m "Initial empty commit" "$empty_tree")
+        // 2) Create a root commit that points to that tree
+        const env = {
+            ...process.env,
+            GIT_AUTHOR_NAME: "init",
+            GIT_AUTHOR_EMAIL: "init@example",
+            GIT_COMMITTER_NAME: "init",
+            GIT_COMMITTER_EMAIL: "init@example",
+        };
 
-        // # 3) Atomically create the branch ref (only if it doesn't exist)
-        // git update-ref --new "refs/heads/main" "$commit" \
-        //   && echo "Created refs/heads/main at $commit" \
-        //   || echo "refs/heads/main already exists; not touching it"
+        const commit = execFileSync(
+            "git",
+            [
+                "-C",
+                workDir,
+                "-c",
+                "safe.directory=*",
+                "commit-tree",
+                emptyTree,
+                "-m",
+                "Initial empty commit",
+            ],
+            { env }
+        )
+            .toString()
+            .trim();
 
-        // Create an empty initial commit so the repository has a master branch
-        // This is required for the transaction system to work (clone operations need a branch)
-        await capabilities.git.call(
-            "-C",
-            workDir,
-            "-c",
-            "user.name=volodyslav",
-            "-c",
-            "user.email=volodyslav",
-            "commit",
-            "--allow-empty",
-            "-m",
-            "Initial empty commit"
+        execFileSync(
+            "git",
+            [
+                "-C",
+                workDir,
+                "-c",
+                "safe.directory=*",
+                "update-ref",
+                "--no-deref",
+                `refs/heads/${defaultBranch}`,
+                commit,
+            ],
+            { env: process.env }
         );
     } catch (err) {
         throw new WorkingRepositoryError(
