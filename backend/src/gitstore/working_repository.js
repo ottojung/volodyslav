@@ -6,7 +6,6 @@
 
 const path = require("path");
 const gitmethod = require("./wrappers");
-const defaultBranch = require("./default_branch");
 const { git } = require("../executables");
 
 /** @typedef {import('../subprocess/command').Command} Command */
