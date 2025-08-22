@@ -171,9 +171,9 @@ async function initializeEmptyRepository(capabilities, workingPath) {
  */
 async function getRepository(capabilities, workingPath, initial_state) {
     const gitDir = pathToLocalRepositoryGitDir(capabilities, workingPath);
-    const indexFile = path.join(gitDir, "index");
+    const headFile = path.join(gitDir, "HEAD");
 
-    if (!(await capabilities.checker.fileExists(indexFile))) {
+    if (!(await capabilities.checker.fileExists(headFile))) {
         if (initial_state === "empty") {
             await initializeEmptyRepository(capabilities, workingPath);
         } else {
