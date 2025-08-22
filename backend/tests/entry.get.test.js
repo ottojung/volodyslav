@@ -139,6 +139,8 @@ describe("getEntries ordering functionality", () => {
             description: "First entry description",
         };
 
+        await createEntry(capabilities, entry1Data);
+
         capabilities.datetime.now.mockReturnValueOnce(
             capabilities.datetime.fromEpochMs(baseTime + 24 * 60 * 60 * 1000)
         ); // +1 day
@@ -148,8 +150,6 @@ describe("getEntries ordering functionality", () => {
             type: "test",
             description: "Second entry description",
         };
-
-        await createEntry(capabilities, entry1Data);
         await createEntry(capabilities, entry2Data);
 
         const result = await getEntries(capabilities, {
