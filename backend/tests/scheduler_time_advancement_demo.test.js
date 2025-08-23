@@ -5,7 +5,7 @@
 
 const { fromMilliseconds } = require("../src/time_duration");
 const { getMockedRootCapabilities } = require("./spies");
-const { stubEnvironment, stubLogger, stubDatetime, stubSleeper, getDatetimeControl } = require("./stubs");
+const { stubEnvironment, stubLogger, stubDatetime, stubSleeper, getDatetimeControl, stubRuntimeStateStorage } = require("./stubs");
 
 function getTestCapabilities() {
     const capabilities = getMockedRootCapabilities();
@@ -13,6 +13,7 @@ function getTestCapabilities() {
     stubLogger(capabilities);
     stubDatetime(capabilities);
     stubSleeper(capabilities);
+    stubRuntimeStateStorage(capabilities);
     return capabilities;
 }
 
@@ -176,10 +177,10 @@ describe("scheduler time advancement demo", () => {
             ["time-check-task", "0 * * * *", taskCallback, retryDelay] // Every hour at 0 minutes
         ];
         
-        await capabilities.scheduler.initialize(registrations, { pollIntervalMs: 50 });
+        await capabilities.scheduler.initialize(registrations, { pollIntervalMs: 1 });
         
         // Wait for scheduler to start
-        await new Promise(resolve => setTimeout(resolve, 100));
+        await new Promise(resolve => setTimeout(resolve, 10));
         
         // The scheduler will catch up and execute the 00:00:00 occurrence from 15 minutes ago
         expect(taskCallback.executionTimes).toHaveLength(1);
@@ -187,7 +188,7 @@ describe("scheduler time advancement demo", () => {
         
         // Advance to next execution (01:00:00)
         timeControl.advanceTime(45 * 60 * 1000); // 45 minutes to reach 01:00:00
-        await new Promise(resolve => setTimeout(resolve, 100));
+        await new Promise(resolve => setTimeout(resolve, 10));
         
         expect(taskCallback.executionTimes).toHaveLength(2);
         expect(taskCallback.executionTimes[1]).toBe(startTime + 45 * 60 * 1000);
