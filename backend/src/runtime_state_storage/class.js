@@ -110,10 +110,11 @@ class RuntimeStateStorageClass {
                 obj = JSON.parse(fileContent);
             } catch (parseError) {
                 // File exists but contains invalid JSON - this is corruption
+                const error = parseError instanceof Error ? parseError : new Error(String(parseError));
                 throw new structure.RuntimeStateFileParseError(
-                    `Failed to parse runtime state file as JSON: ${parseError.message}`,
+                    `Failed to parse runtime state file as JSON: ${error.message}`,
                     this.stateFile.path,
-                    parseError
+                    error
                 );
             }
 
@@ -153,11 +154,9 @@ class RuntimeStateStorageClass {
                 throw error;
             }
 
-            // Handle file not found and other I/O errors - these are not corruption
-            // File not existing is a normal case, not an error
-            this.existingStateCache = null;
-            this.existingStateCacheLoaded = true;
-            return null;
+            // Any other error (including I/O errors) should be re-thrown as exceptional
+            // Since we have an ExistingFile, the file should exist and be readable
+            throw error;
         }
     }
 

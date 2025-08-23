@@ -42,33 +42,28 @@ describe("runtime_state_storage/class", () => {
         expect(storage.getNewState()).toBeNull();
     });
 
-    test("getExistingState returns null when no state file exists", async () => {
+    test("getExistingState returns null when state file is empty", async () => {
         const capabilities = getTestCapabilities();
         
-        // Mock file path and simulate file not found error
+        // Mock file path and simulate empty file
         const mockFile = { path: "/mock/state.json" };
         const storage = makeRuntimeStateStorage(capabilities, mockFile);
         
-        capabilities.reader.readFileAsText = jest.fn().mockImplementation(() => {
-            throw new Error("File not found");
-        });
+        capabilities.reader.readFileAsText = jest.fn().mockResolvedValue("");
         
         const result = await storage.getExistingState();
         expect(result).toBeNull();
-        // File not found is no longer logged as a warning - it's a normal case
         expect(capabilities.logger.logWarning).not.toHaveBeenCalled();
     });
 
-    test("getExistingState caches results", async () => {
+    test("getExistingState caches results for empty files", async () => {
         const capabilities = getTestCapabilities();
         
-        // Mock file path and simulate file not found error
+        // Mock file path and simulate empty file
         const mockFile = { path: "/mock/state.json" };
         const storage = makeRuntimeStateStorage(capabilities, mockFile);
         
-        capabilities.reader.readFileAsText = jest.fn().mockImplementation(() => {
-            throw new Error("File not found");
-        });
+        capabilities.reader.readFileAsText = jest.fn().mockResolvedValue("");
         
         const result1 = await storage.getExistingState();
         const result2 = await storage.getExistingState();
@@ -176,16 +171,14 @@ describe("runtime_state_storage/class", () => {
         });
     });
 
-    test("getCurrentState creates default state when none exists", async () => {
+    test("getCurrentState creates default state when file is empty", async () => {
         const capabilities = getTestCapabilities();
         
-        // Mock file path and simulate file not found error
+        // Mock file path and simulate empty file
         const mockFile = { path: "/mock/state.json" };
         const storage = makeRuntimeStateStorage(capabilities, mockFile);
         
-        capabilities.reader.readFileAsText = jest.fn().mockImplementation(() => {
-            throw new Error("File not found");
-        });
+        capabilities.reader.readFileAsText = jest.fn().mockResolvedValue("");
         
         const result = await storage.getCurrentState();
         expect(result).toMatchObject({
