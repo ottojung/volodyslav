@@ -56,11 +56,25 @@ async function transaction(capabilities, transformation) {
                 const serialized = structure.serialize(newState);
                 const stateString = JSON.stringify(serialized, null, '\t');
                 
-                // Write atomically to the state file
-                await capabilities.writer.writeFile(stateFile, stateString);
+                // Check if content has actually changed before writing and committing
+                let hasChanges = true;
+                if (existingStateFile !== null) {
+                    try {
+                        const existingContent = await capabilities.reader.readFileAsText(existingStateFile.path);
+                        hasChanges = existingContent !== stateString;
+                    } catch (error) {
+                        // If we can't read the existing file, assume there are changes
+                        hasChanges = true;
+                    }
+                }
+                
+                if (hasChanges) {
+                    // Write atomically to the state file
+                    await capabilities.writer.writeFile(stateFile, stateString);
 
-                // Commit the changes
-                await store.commit("Runtime state update");
+                    // Commit the changes
+                    await store.commit("Runtime state update");
+                }
             }
 
             return result;
