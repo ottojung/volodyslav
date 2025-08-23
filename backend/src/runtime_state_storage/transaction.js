@@ -60,7 +60,7 @@ async function transaction(capabilities, transformation) {
                 let hasChanges = true;
                 if (existingStateFile !== null) {
                     try {
-                        const existingContent = await capabilities.reader.readFileAsText(existingStateFile.path);
+                        const existingContent = await runtimeStateStorage.getFileContent();
                         hasChanges = existingContent !== stateString;
                     } catch (error) {
                         // If we can't read the existing file, assume there are changes
