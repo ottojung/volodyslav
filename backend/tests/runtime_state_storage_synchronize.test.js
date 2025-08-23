@@ -15,7 +15,7 @@ function getTestCapabilities() {
 }
 
 describe("runtime_state_storage/synchronize", () => {
-    test("ensureAccessible returns git directory path", async () => {
+    test("ensureAccessible returns void", async () => {
         const capabilities = getTestCapabilities();
         
         // Mock git.call to succeed for repository operations
@@ -23,8 +23,7 @@ describe("runtime_state_storage/synchronize", () => {
         
         const gitDir = await ensureAccessible(capabilities);
         
-        expect(gitDir).toContain("runtime-state-repository");
-        expect(gitDir).toContain(".git");
+        expect(gitDir).toBeUndefined();
     });
 
     test("ensureAccessible throws RuntimeStateRepositoryError on failure", async () => {
