@@ -197,24 +197,7 @@ function validateRegistrations(registrations, capabilities) {
     }
 }
 
-/**
- * Validates options parameter for initialization
- * @param {PollerOptions} options
- * @throws {Error} if options are invalid
- */
-function validateOptions(options) {
-    if (options && typeof options !== 'object') {
-        throw new OptionsTypeError("Options must be an object");
-    }
-
-    const requestedPollIntervalMs = options.pollIntervalMs;
-    if (requestedPollIntervalMs !== undefined && (typeof requestedPollIntervalMs !== 'number' || requestedPollIntervalMs <= 0)) {
-        throw new InvalidPollIntervalError("pollIntervalMs must be a positive number");
-    }
-}
-
 module.exports = {
     validateTasksAgainstPersistedStateInner,
     validateRegistrations,
-    validateOptions,
 };

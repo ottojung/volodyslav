@@ -33,28 +33,13 @@
  */
 
 /**
- * Configuration options for scheduler initialization.
- * @typedef {object} PollerOptions
- * @property {number} [pollIntervalMs] - The polling interval in milliseconds (default varies by implementation)
- * @example
- * // Initialize with fast polling for testing
- * await scheduler.initialize(registrations, { pollIntervalMs: 100 });
- * 
- * // Initialize with slow polling for production
- * await scheduler.initialize(registrations, { pollIntervalMs: 60000 });
- */
-
-/**
  * Initialize function that registers tasks with the scheduler.
- * @typedef {(registrations: Array<Registration>, options?: PollerOptions) => Promise<void>} Initialize
+ * @typedef {(registrations: Array<Registration>) => Promise<void>} Initialize
  * @example
- * // Basic initialization
+ * // Initialize the scheduler
  * await scheduler.initialize([
  *   ["task1", "0 * * * *", async () => { console.log("hourly"); }, fromMinutes(5)]
  * ]);
- * 
- * // With options
- * await scheduler.initialize(registrations, { pollIntervalMs: 30000 });
  */
 
 /**

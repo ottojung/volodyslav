@@ -43,10 +43,8 @@ const POLL_INTERVAL_MS = 600000;
 
 /**
  * @param {import('../capabilities/root').Capabilities} capabilities
- * @param {{pollIntervalMs?: number}} [options]
  */
-function makePollingScheduler(capabilities, options = {}) {
-    const pollIntervalMs = options.pollIntervalMs ?? POLL_INTERVAL_MS;
+function makePollingScheduler(capabilities) {
     /** @type {Map<string, Task>} */
     const tasks = new Map();
     /** @type {any} */
@@ -80,7 +78,7 @@ function makePollingScheduler(capabilities, options = {}) {
                     const message = error instanceof Error ? error.message : String(error);
                     capabilities.logger.logError({ errorMessage: message }, "UnexpectedPollError");
                 }
-            }, pollIntervalMs);
+            }, POLL_INTERVAL_MS);
         }
     }
 
@@ -195,7 +193,7 @@ function makePollingScheduler(capabilities, options = {}) {
             const parsedCron = parseCronExpression(cronExpression);
 
             // Validate task frequency against polling frequency
-            validateTaskFrequency(parsedCron, pollIntervalMs, dt);
+            validateTaskFrequency(parsedCron, POLL_INTERVAL_MS, dt);
 
             // Load state first to check for existing tasks from persistence
             await ensureStateLoaded();

@@ -14,10 +14,9 @@ const {
 /**
  * Creates a new polling scheduler instance.
  * @param {import('../capabilities/root').Capabilities} capabilities
- * @param {{pollIntervalMs?: number}} [options]
  */
-function make(capabilities, options = {}) {
-    const scheduler = makePollingScheduler(capabilities, options);
+function make(capabilities) {
+    const scheduler = makePollingScheduler(capabilities);
     return {
         /**
          * Schedule a task.
