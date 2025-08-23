@@ -106,7 +106,7 @@ describe("Cron Parser", () => {
         });
 
         test("matches wildcard expressions", () => {
-            const expr = parseCronExpression("0 * * * *");
+            const expr = parseCronExpression("* * * * *");
             const dateTime = dt.fromEpochMs(new Date(2024, 0, 1, 14, 30, 0).getTime());
             expect(matchesCronExpression(expr, dateTime)).toBe(true);
         });
