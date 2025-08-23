@@ -31,7 +31,7 @@ describe("declarative scheduler algorithm robustness", () => {
         await capabilities.scheduler.initialize(registrations);
 
         // Verify the scheduler handles the scheduling gracefully
-        await new Promise(resolve => setTimeout(resolve, 200));
+        await new Promise(resolve => setTimeout(resolve, 10));
 
         // Scheduler should have processed the registration without error
         expect(typeof taskCallback).toBe('function');
@@ -51,7 +51,7 @@ describe("declarative scheduler algorithm robustness", () => {
         await capabilities.scheduler.initialize(registrations);
 
         // Wait for execution
-        await new Promise(resolve => setTimeout(resolve, 200));
+        await new Promise(resolve => setTimeout(resolve, 10));
         expect(taskCallback).toHaveBeenCalled();
 
         await capabilities.scheduler.stop();
@@ -74,7 +74,7 @@ describe("declarative scheduler algorithm robustness", () => {
         await capabilities.scheduler.initialize(registrations);
 
         // Wait for execution
-        await new Promise(resolve => setTimeout(resolve, 200));
+        await new Promise(resolve => setTimeout(resolve, 10));
 
         // At least the minute task should execute
         expect(minuteTask).toHaveBeenCalled();
@@ -106,12 +106,12 @@ describe("declarative scheduler algorithm robustness", () => {
         await capabilities.scheduler.initialize(registrations);
 
         // Wait for scheduler to start and execute initial task
-        await new Promise(resolve => setTimeout(resolve, 100));
+        await new Promise(resolve => setTimeout(resolve, 10));
         expect(precisionCallback).toHaveBeenCalledTimes(1);
 
         // Advance time by retry delay to trigger retry
         timeControl.advanceTime(1000); // 1 second retry delay
-        await new Promise(resolve => setTimeout(resolve, 100)); // Wait for polling
+        await new Promise(resolve => setTimeout(resolve, 10)); // Wait for polling
         expect(precisionCallback).toHaveBeenCalledTimes(2);
 
         await capabilities.scheduler.stop();
@@ -130,7 +130,7 @@ describe("declarative scheduler algorithm robustness", () => {
         await capabilities.scheduler.initialize(registrations);
 
         // Wait for initialization
-        await new Promise(resolve => setTimeout(resolve, 200));
+        await new Promise(resolve => setTimeout(resolve, 10));
 
         // The task should be scheduled without errors
         expect(typeof taskCallback).toBe('function');
@@ -154,7 +154,7 @@ describe("declarative scheduler algorithm robustness", () => {
         await capabilities.scheduler.initialize(registrations);
 
         // Wait for executions
-        await new Promise(resolve => setTimeout(resolve, 200));
+        await new Promise(resolve => setTimeout(resolve, 10));
 
         // At least the minute task should execute
         expect(task1).toHaveBeenCalled();
@@ -179,7 +179,7 @@ describe("declarative scheduler algorithm robustness", () => {
         await capabilities.scheduler.initialize(registrations);
 
         // Wait for executions
-        await new Promise(resolve => setTimeout(resolve, 200));
+        await new Promise(resolve => setTimeout(resolve, 10));
 
         // Both tasks should have been attempted
         expect(badTask).toHaveBeenCalled();
@@ -218,7 +218,7 @@ describe("declarative scheduler algorithm robustness", () => {
         await capabilities.scheduler.initialize(registrations);
 
         // Wait for execution
-        await new Promise(resolve => setTimeout(resolve, 200));
+        await new Promise(resolve => setTimeout(resolve, 10));
 
         // Should only execute once despite multiple initializations
         expect(taskCallback).toHaveBeenCalledTimes(1);
