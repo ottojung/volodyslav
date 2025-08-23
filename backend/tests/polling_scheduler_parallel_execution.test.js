@@ -31,13 +31,13 @@ describe("declarative scheduler parallel execution", () => {
         const task1 = jest.fn(async () => {
             task1StartTime = Date.now();
             // Add a small delay to make parallelism more observable
-            await new Promise(resolve => setTimeout(resolve, 50));
+            await new Promise(resolve => setTimeout(resolve, 10));
         });
 
         const task2 = jest.fn(async () => {
             task2StartTime = Date.now();
             // Add a small delay to make parallelism more observable
-            await new Promise(resolve => setTimeout(resolve, 50));
+            await new Promise(resolve => setTimeout(resolve, 10));
         });
 
         const registrations = [
@@ -48,7 +48,7 @@ describe("declarative scheduler parallel execution", () => {
         await capabilities.scheduler.initialize(registrations);
 
         // Wait for execution
-        await new Promise(resolve => setTimeout(resolve, 200));
+        await new Promise(resolve => setTimeout(resolve, 10));
 
         // Check that both tasks ran
         expect(task1).toHaveBeenCalled();
@@ -77,7 +77,7 @@ describe("declarative scheduler parallel execution", () => {
             taskExecutionOrder.push(`${taskId}-start`);
 
             // Add a small delay to make concurrency more observable
-            await new Promise(resolve => setTimeout(resolve, 50));
+            await new Promise(resolve => setTimeout(resolve, 10));
 
             taskExecutionOrder.push(`${taskId}-end`);
             concurrentExecutions--;
@@ -93,7 +93,7 @@ describe("declarative scheduler parallel execution", () => {
         await capabilities.scheduler.initialize(registrations);
 
         // Wait for execution
-        await new Promise(resolve => setTimeout(resolve, 300));
+        await new Promise(resolve => setTimeout(resolve, 100));
 
         // Should execute all tasks and allow multiple to run concurrently
         expect(concurrencyTask).toHaveBeenCalledTimes(4);
@@ -112,7 +112,7 @@ describe("declarative scheduler parallel execution", () => {
         const slowTask = jest.fn(async () => {
             slowTaskStarted = true;
             // Simulate slow task with a longer delay
-            await new Promise(resolve => setTimeout(resolve, 100));
+            await new Promise(resolve => setTimeout(resolve, 10));
         });
 
         const fastTask = jest.fn(async () => {
@@ -129,7 +129,7 @@ describe("declarative scheduler parallel execution", () => {
         await capabilities.scheduler.initialize(registrations);
 
         // Wait for executions
-        await new Promise(resolve => setTimeout(resolve, 200));
+        await new Promise(resolve => setTimeout(resolve, 100));
 
         // Both tasks should have started and the fast one should complete
         expect(slowTaskStarted).toBe(true);
@@ -163,7 +163,7 @@ describe("declarative scheduler parallel execution", () => {
         await capabilities.scheduler.initialize(registrations);
 
         // Wait for executions
-        await new Promise(resolve => setTimeout(resolve, 200));
+        await new Promise(resolve => setTimeout(resolve, 100));
 
         // Both tasks should have been attempted
         expect(goodTaskExecuted).toBe(true);
@@ -210,14 +210,14 @@ describe("declarative scheduler parallel execution", () => {
         await capabilities.scheduler.initialize(registrations);
 
         // Wait for initial executions
-        await new Promise(resolve => setTimeout(resolve, 100));
+        await new Promise(resolve => setTimeout(resolve, 10));
         expect(task1).toHaveBeenCalledTimes(1);
         expect(task2).toHaveBeenCalledTimes(1);
         expect(task3).toHaveBeenCalledTimes(1);
 
         // Advance time by retry delay to trigger retries
         timeControl.advanceTime(500); // 500ms retry delay
-        await new Promise(resolve => setTimeout(resolve, 100)); // Wait for polling
+        await new Promise(resolve => setTimeout(resolve, 10)); // Wait for polling
 
         // All tasks should have been called twice (initial + retry)
         expect(task1).toHaveBeenCalledTimes(2);
