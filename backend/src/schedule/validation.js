@@ -47,7 +47,7 @@ function validateTasksAgainstPersistedStateInner(registrations, persistedTasks) 
             throw new InvalidRegistrationError(`Invalid registration at index ${index}: ${error.message}`, { index, cause: error });
         }
     });
-    
+
     const persistedIdentities = persistedTasks.map(taskRecordToTaskIdentity);
 
     // Use Set for faster lookup operations  
@@ -67,10 +67,10 @@ function validateTasksAgainstPersistedStateInner(registrations, persistedTasks) 
 
     // Find tasks in registrations but not in persisted state, and check for differences
     const persistedMap = new Map(persistedIdentities.map(t => [t.name, t]));
-    
+
     for (const regTask of registrationIdentities) {
         const persistedTask = persistedMap.get(regTask.name);
-        
+
         if (!persistedTask) {
             extra.push(regTask.name);
         } else if (!taskIdentitiesEqual(regTask, persistedTask)) {
@@ -142,11 +142,11 @@ function validateRegistrations(registrations, capabilities) {
         }
 
         const [name, cronExpression, callback, retryDelay] = registration;
-        
+
         if (typeof name !== 'string' || name.trim() === '') {
             throw new ScheduleInvalidNameError(name || '(empty)');
         }
-        
+
         const qname = JSON.stringify(name);
 
         // Check for duplicate task names - this is now a hard error
