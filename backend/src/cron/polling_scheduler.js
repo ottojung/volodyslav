@@ -47,7 +47,7 @@ const POLL_INTERVAL_MS = 600000;
 function makePollingScheduler(capabilities) {
     /** @type {Map<string, Task>} */
     const tasks = new Map();
-    /** @type {any} */
+    /** @type {NodeJS.Timeout | null} */
     let interval = null;
     const dt = capabilities.datetime;
     let stateLoadAttempted = false;
