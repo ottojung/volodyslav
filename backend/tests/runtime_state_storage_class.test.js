@@ -55,13 +55,8 @@ describe("runtime_state_storage/class", () => {
         
         const result = await storage.getExistingState();
         expect(result).toBeNull();
-        expect(capabilities.logger.logWarning).toHaveBeenCalledWith(
-            expect.objectContaining({
-                filepath: "/mock/state.json",
-                error: "File not found"
-            }),
-            "Failed to read runtime state file"
-        );
+        // File not found is no longer logged as a warning - it's a normal case
+        expect(capabilities.logger.logWarning).not.toHaveBeenCalled();
     });
 
     test("getExistingState caches results", async () => {
@@ -84,7 +79,7 @@ describe("runtime_state_storage/class", () => {
         expect(capabilities.reader.readFileAsText).toHaveBeenCalledTimes(1);
     });
 
-    test("getExistingState handles invalid JSON", async () => {
+    test("getExistingState throws on invalid JSON", async () => {
         const capabilities = getTestCapabilities();
         
         // Mock file that exists but contains invalid JSON
@@ -93,12 +88,14 @@ describe("runtime_state_storage/class", () => {
         
         capabilities.reader.readFileAsText = jest.fn().mockResolvedValue("invalid json");
         
-        const result = await storage.getExistingState();
-        expect(result).toBeNull();
-        expect(capabilities.logger.logWarning).toHaveBeenCalled();
+        await expect(storage.getExistingState()).rejects.toThrow("Failed to parse runtime state file as JSON");
+        const error = await storage.getExistingState().catch(e => e);
+        expect(error.name).toBe("RuntimeStateFileParseError");
+        expect(error.filepath).toBe("/mock/state.json");
+        expect(error.cause).toBeInstanceOf(SyntaxError);
     });
 
-    test("getExistingState handles invalid state structure", async () => {
+    test("getExistingState throws on invalid state structure", async () => {
         const capabilities = getTestCapabilities();
         
         // Mock file that exists but contains invalid state structure
@@ -109,15 +106,11 @@ describe("runtime_state_storage/class", () => {
             JSON.stringify({ invalid: "structure" })
         );
         
-        const result = await storage.getExistingState();
-        expect(result).toBeNull();
-        expect(capabilities.logger.logWarning).toHaveBeenCalledWith(
-            expect.objectContaining({
-                filepath: "/mock/state.json",
-                error: expect.stringContaining("Missing required field: startTime")
-            }),
-            "Found invalid runtime state object in file"
-        );
+        await expect(storage.getExistingState()).rejects.toThrow("Runtime state file is corrupted");
+        const error = await storage.getExistingState().catch(e => e);
+        expect(error.name).toBe("RuntimeStateCorruptedError");
+        expect(error.filepath).toBe("/mock/state.json");
+        expect(error.deserializeError.message).toContain("Missing required field: startTime");
     });
 
     test("getExistingState parses valid state", async () => {
@@ -200,5 +193,31 @@ describe("runtime_state_storage/class", () => {
             startTime: expect.any(Object),
             tasks: []
         });
+    });
+
+    test("getCurrentState throws on invalid JSON in state file", async () => {
+        const capabilities = getTestCapabilities();
+        
+        // Mock file that exists but contains invalid JSON
+        const mockFile = { path: "/mock/state.json" };
+        const storage = makeRuntimeStateStorage(capabilities, mockFile);
+        
+        capabilities.reader.readFileAsText = jest.fn().mockResolvedValue("invalid json");
+        
+        await expect(storage.getCurrentState()).rejects.toThrow("Failed to parse runtime state file as JSON");
+    });
+
+    test("getCurrentState throws on corrupted state file", async () => {
+        const capabilities = getTestCapabilities();
+        
+        // Mock file that exists but contains invalid state structure
+        const mockFile = { path: "/mock/state.json" };
+        const storage = makeRuntimeStateStorage(capabilities, mockFile);
+        
+        capabilities.reader.readFileAsText = jest.fn().mockResolvedValue(
+            JSON.stringify({ invalid: "structure" })
+        );
+        
+        await expect(storage.getCurrentState()).rejects.toThrow("Runtime state file is corrupted");
     });
 });

@@ -14,8 +14,12 @@ const {
     TaskMissingFieldError,
     TaskInvalidTypeError,
     TaskInvalidValueError,
+    RuntimeStateFileParseError,
+    RuntimeStateCorruptedError,
     isTryDeserializeError,
     isTryDeserializeTaskError,
+    isRuntimeStateFileParseError,
+    isRuntimeStateCorruptedError,
 } = require("./errors");
 
 /** @typedef {import('./types').RuntimeState} RuntimeState */
@@ -230,5 +234,9 @@ module.exports = {
     TaskMissingFieldError,
     TaskInvalidTypeError,
     TaskInvalidValueError,
+    RuntimeStateFileParseError,
+    RuntimeStateCorruptedError,
+    isRuntimeStateFileParseError,
+    isRuntimeStateCorruptedError,
     RUNTIME_STATE_VERSION,
 };

@@ -137,5 +137,27 @@ describe("runtime_state_storage/structure", () => {
             expect(error.field).toBe("root");
             expect(error.value).toBe("value");
         });
+
+        test("RuntimeStateFileParseError has correct properties", () => {
+            const cause = new SyntaxError("Invalid JSON");
+            const error = new structure.RuntimeStateFileParseError("Parse failed", "/path/file.json", cause);
+            expect(structure.isRuntimeStateFileParseError(error)).toBe(true);
+            expect(error.name).toBe("RuntimeStateFileParseError");
+            expect(error.message).toBe("Parse failed");
+            expect(error.filepath).toBe("/path/file.json");
+            expect(error.cause).toBe(cause);
+            expect(structure.isRuntimeStateFileParseError(new Error("regular error"))).toBe(false);
+        });
+
+        test("RuntimeStateCorruptedError has correct properties", () => {
+            const deserializeError = new structure.MissingFieldError("startTime");
+            const error = new structure.RuntimeStateCorruptedError(deserializeError, "/path/file.json");
+            expect(structure.isRuntimeStateCorruptedError(error)).toBe(true);
+            expect(error.name).toBe("RuntimeStateCorruptedError");
+            expect(error.message).toContain("Runtime state file is corrupted");
+            expect(error.filepath).toBe("/path/file.json");
+            expect(error.deserializeError).toBe(deserializeError);
+            expect(structure.isRuntimeStateCorruptedError(new Error("regular error"))).toBe(false);
+        });
     });
 });

@@ -144,6 +144,49 @@ function isTryDeserializeTaskError(object) {
     return object instanceof TryDeserializeTaskError;
 }
 
+class RuntimeStateFileParseError extends Error {
+    /**
+     * @param {string} message
+     * @param {string} filepath
+     * @param {Error} cause
+     */
+    constructor(message, filepath, cause) {
+        super(message);
+        this.name = "RuntimeStateFileParseError";
+        this.filepath = filepath;
+        this.cause = cause;
+    }
+}
+
+class RuntimeStateCorruptedError extends Error {
+    /**
+     * @param {TryDeserializeError} deserializeError
+     * @param {string} filepath
+     */
+    constructor(deserializeError, filepath) {
+        super(`Runtime state file is corrupted: ${deserializeError.message}`);
+        this.name = "RuntimeStateCorruptedError";
+        this.filepath = filepath;
+        this.deserializeError = deserializeError;
+    }
+}
+
+/**
+ * @param {unknown} object
+ * @returns {object is RuntimeStateFileParseError}
+ */
+function isRuntimeStateFileParseError(object) {
+    return object instanceof RuntimeStateFileParseError;
+}
+
+/**
+ * @param {unknown} object
+ * @returns {object is RuntimeStateCorruptedError}
+ */
+function isRuntimeStateCorruptedError(object) {
+    return object instanceof RuntimeStateCorruptedError;
+}
+
 module.exports = {
     TryDeserializeError,
     MissingFieldError,
@@ -155,6 +198,10 @@ module.exports = {
     TaskMissingFieldError,
     TaskInvalidTypeError,
     TaskInvalidValueError,
+    RuntimeStateFileParseError,
+    RuntimeStateCorruptedError,
     isTryDeserializeError,
     isTryDeserializeTaskError,
+    isRuntimeStateFileParseError,
+    isRuntimeStateCorruptedError,
 };
