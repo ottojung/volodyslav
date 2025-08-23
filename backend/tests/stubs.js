@@ -306,14 +306,9 @@ function stubRuntimeStateStorage(capabilities) {
  * @param {number} [period=1] - The polling period in milliseconds
  */
 const stubPollInterval = (period = 1) => {
-    // Mock the POLL_INTERVAL_MS constant in the polling_scheduler module
-    jest.doMock('../src/cron/polling_scheduler', () => {
-        const actualModule = jest.requireActual('../src/cron/polling_scheduler');
-        return {
-            ...actualModule,
-            POLL_INTERVAL_MS: period,
-        };
-    });
+    // Direct module constant override 
+    const pollingSchedulerModule = require('../src/cron/polling_scheduler');
+    pollingSchedulerModule.POLL_INTERVAL_MS = period;
 };
 
 module.exports = {

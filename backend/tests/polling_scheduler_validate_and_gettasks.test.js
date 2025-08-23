@@ -1,7 +1,7 @@
 const { validate, ScheduleInvalidNameError } = require("../src/cron");
 const { fromMilliseconds } = require("../src/time_duration");
 const { getMockedRootCapabilities } = require("./spies");
-const { stubEnvironment, stubLogger, stubDatetime, stubSleeper, stubPollInterval } = require("./stubs");
+const { stubEnvironment, stubLogger, stubDatetime, stubSleeper } = require("./stubs");
 
 function getTestCapabilities() {
     const capabilities = getMockedRootCapabilities();
@@ -13,9 +13,6 @@ function getTestCapabilities() {
 }
 
 describe("declarative scheduler validation", () => {
-    beforeEach(() => {
-        jest.resetModules();
-    });
 
     test("validate exposes parser and returns booleans", async () => {
         expect(validate("* * * * *")).toBe(true);
@@ -25,8 +22,6 @@ describe("declarative scheduler validation", () => {
     });
 
     test("throws on invalid task name (empty/whitespace)", async () => {
-        stubPollInterval(60000); // 1 minute polling for these tests
-        
         const capabilities1 = getTestCapabilities();
         const capabilities2 = getTestCapabilities();
         const retryDelay = fromMilliseconds(0);

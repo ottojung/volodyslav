@@ -78,7 +78,7 @@ function makePollingScheduler(capabilities) {
                     const message = error instanceof Error ? error.message : String(error);
                     capabilities.logger.logError({ errorMessage: message }, "UnexpectedPollError");
                 }
-            }, POLL_INTERVAL_MS);
+            }, module.exports.POLL_INTERVAL_MS);
         }
     }
 
@@ -193,7 +193,7 @@ function makePollingScheduler(capabilities) {
             const parsedCron = parseCronExpression(cronExpression);
 
             // Validate task frequency against polling frequency
-            validateTaskFrequency(parsedCron, POLL_INTERVAL_MS, dt);
+            validateTaskFrequency(parsedCron, module.exports.POLL_INTERVAL_MS, dt);
 
             // Load state first to check for existing tasks from persistence
             await ensureStateLoaded();
