@@ -264,7 +264,7 @@ describe("Declarative Scheduler", () => {
             await capabilities.scheduler.initialize(registrations);
 
             // Wait for at least one poll cycle to execute
-            await new Promise(resolve => setTimeout(resolve, 150));
+            await new Promise(resolve => setTimeout(resolve, 10));
 
             // Task should have been executed because it's due to run (first time)
             expect(taskCallback).toHaveBeenCalled();
@@ -284,7 +284,7 @@ describe("Declarative Scheduler", () => {
             await capabilities.scheduler.initialize(registrations);
 
             // Wait for initial execution
-            await new Promise(resolve => setTimeout(resolve, 150));
+            await new Promise(resolve => setTimeout(resolve, 10));
 
             // Task should have been called
             expect(taskCallback).toHaveBeenCalled();
@@ -308,7 +308,7 @@ describe("Declarative Scheduler", () => {
             await capabilities.scheduler.initialize(registrations);
 
             // Wait for execution
-            await new Promise(resolve => setTimeout(resolve, 150));
+            await new Promise(resolve => setTimeout(resolve, 10));
 
             // Task should execute on first run
             expect(taskCallback).toHaveBeenCalled();
