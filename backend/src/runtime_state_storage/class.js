@@ -30,6 +30,13 @@ class RuntimeStateStorageClass {
     existingStateCache = null;
 
     /**
+     * Cache for the raw contents of the state.json file as text
+     * @private
+     * @type {string|null}
+     */
+    existingFileContent = null;
+
+    /**
      * Capabilities object for file operations.
      * @private
      * @type {RuntimeStateStorageCapabilities}
@@ -85,8 +92,9 @@ class RuntimeStateStorageClass {
             return null;
         }
 
+        const fileContent = await this.getFileContent();
+
         try {
-            const fileContent = await this.capabilities.reader.readFileAsText(this.stateFile.path);
             const obj = JSON.parse(fileContent);
 
             const result = structure.tryDeserialize(obj);
@@ -160,6 +168,19 @@ class RuntimeStateStorageClass {
 
         // Create default state if none exists
         return structure.makeDefault(this.capabilities.datetime);
+    }
+
+    /**
+     * @returns {Promise<string>}
+     */
+    async getFileContent() {
+        if (this.existingFileContent) {
+            return this.existingFileContent;
+        }
+
+        const fileContent = await this.capabilities.reader.readFileAsText(this.stateFile.path);
+        this.existingFileContent = fileContent;
+        return fileContent;
     }
 }
 
