@@ -86,12 +86,6 @@ class RuntimeStateStorageClass {
             return this.existingStateCache;
         }
 
-        // If state file doesn't exist, return null
-        if (this.stateFile === null) {
-            this.existingStateCache = null;
-            return null;
-        }
-
         const fileContent = await this.getFileContent();
 
         try {
