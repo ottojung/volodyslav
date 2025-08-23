@@ -36,23 +36,21 @@ describe("declarative scheduler duplicate task handling", () => {
         await capabilities.scheduler.stop();
     });
 
-    test("allows duplicate task names within registration set for idempotency", async () => {
+    test("throws ScheduleDuplicateTaskError for duplicate task names within registration set", async () => {
         const capabilities = getTestCapabilities();
         const retryDelay = fromMilliseconds(0);
         const taskCallback = jest.fn();
         
-        // The declarative scheduler is designed to be idempotent, so duplicate names
-        // within the same registration array should be handled gracefully
+        // The declarative scheduler now strictly prohibits duplicate names
+        // within the same registration array
         const registrationsWithDuplicate = [
             ["task-a", "0 * * * *", taskCallback, retryDelay],
-            ["task-a", "0 * * * *", taskCallback, retryDelay]  // Duplicate name for idempotency
+            ["task-a", "0 * * * *", taskCallback, retryDelay]  // Duplicate name - should throw error
         ];
         
-        // This should succeed because the declarative scheduler is idempotent
+        // This should throw ScheduleDuplicateTaskError for duplicate names
         await expect(capabilities.scheduler.initialize(registrationsWithDuplicate, { pollIntervalMs: 60000 }))
-            .resolves.toBeUndefined();
-            
-        await capabilities.scheduler.stop();
+            .rejects.toThrow("Task with name \"task-a\" is already scheduled");
     });
 });
 
