@@ -299,7 +299,7 @@ function stubRuntimeStateStorage(capabilities) {
     // Mock the state capability to use our in-memory implementation
     capabilities.state = {
         transaction: jest.fn().mockImplementation((transformation) => mockRuntimeStateTransaction(capabilities, transformation)),
-        ensureAccessible: jest.fn().mockResolvedValue("/mock/runtime-state-repository"),
+        ensureAccessible: jest.fn().mockResolvedValue(undefined),
     };
 }
 
