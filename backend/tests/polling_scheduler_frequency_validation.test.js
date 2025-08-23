@@ -13,6 +13,7 @@ function getTestCapabilities() {
     stubLogger(capabilities);
     stubDatetime(capabilities);
     stubSleeper(capabilities);
+    // Don't stub poll interval for validation tests - they need to test against real 10-minute interval
     return capabilities;
 }
 
@@ -24,9 +25,9 @@ describe("declarative scheduler frequency validation", () => {
         const retryDelay = fromMilliseconds(5000);
         const taskCallback = jest.fn();
         
-        // Try to initialize with task that runs every minute with 10-minute polling interval
+        // Try to initialize with task that runs every minute (higher frequency than 10-minute polling interval)
         const registrations = [
-            ["high-freq-task", "0 * * * *", taskCallback, retryDelay]
+            ["high-freq-task", "* * * * *", taskCallback, retryDelay]
         ];
         
         await expect(capabilities.scheduler.initialize(registrations))
@@ -70,9 +71,9 @@ describe("declarative scheduler frequency validation", () => {
         const retryDelay = fromMilliseconds(5000);
         const taskCallback = jest.fn();
         
-        // Try to initialize with task that runs every 5 minutes (higher than 10-minute polling)
+        // Try to initialize with task that runs every 5 minutes (higher frequency than 10-minute polling)
         const invalidRegistrations = [
-            ["complex-high-freq", "*/15 * * * *", taskCallback, retryDelay]
+            ["complex-high-freq", "*/5 * * * *", taskCallback, retryDelay]
         ];
         
         await expect(capabilities.scheduler.initialize(invalidRegistrations))
@@ -95,9 +96,9 @@ describe("declarative scheduler frequency validation", () => {
         const retryDelay = fromMilliseconds(5000);
         const taskCallback = jest.fn();
         
-        // Try to initialize with task that runs every minute with 10-minute polling interval
+        // Try to initialize with task that runs every minute (higher frequency than 10-minute polling interval)
         const registrations = [
-            ["detailed-error-test", "0 * * * *", taskCallback, retryDelay]
+            ["detailed-error-test", "* * * * *", taskCallback, retryDelay]
         ];
         
         await expect(capabilities1.scheduler.initialize(registrations))
