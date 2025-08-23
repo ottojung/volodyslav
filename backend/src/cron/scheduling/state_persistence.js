@@ -3,7 +3,6 @@
  * Handles saving and restoring task state to/from disk.
  */
 
-const { transaction } = require("../../runtime_state_storage");
 const structure = require("../../runtime_state_storage/structure");
 const time_duration = require("../../time_duration");
 const { parseCronExpression } = require("../parser");
@@ -18,7 +17,7 @@ const { parseCronExpression } = require("../parser");
  */
 async function loadPersistedState(capabilities, tasks) {
     try {
-        await transaction(capabilities, async (storage) => {
+        await capabilities.state.transaction(async (storage) => {
             const existingState = await storage.getExistingState();
             let taskCount = 0;
 
@@ -110,7 +109,7 @@ async function loadPersistedState(capabilities, tasks) {
  */
 async function persistCurrentState(capabilities, tasks) {
     try {
-        await transaction(capabilities, async (storage) => {
+        await capabilities.state.transaction(async (storage) => {
             const currentState = await storage.getCurrentState();
 
             // Convert tasks to serializable format

@@ -3,7 +3,6 @@
  */
 
 const { makePollingScheduler } = require("../src/cron/polling_scheduler");
-const { transaction } = require("../src/runtime_state_storage");
 const { fromMilliseconds } = require("../src/time_duration");
 const { getMockedRootCapabilities } = require("./spies");
 const { stubEnvironment, stubLogger, stubDatetime, stubRuntimeStateStorage } = require("./stubs");
@@ -56,7 +55,7 @@ describe("schedule persist roundtrip", () => {
         });
         
         // Verify task was persisted
-        await transaction(capabilities, async (storage) => {
+        await capabilities.state.transaction(async (storage) => {
             const currentState = await storage.getExistingState();
             expect(currentState).not.toBeNull();
             expect(currentState.tasks).toHaveLength(1);

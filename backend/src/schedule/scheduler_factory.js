@@ -4,7 +4,6 @@
 
 const cronScheduler = require("../cron");
 const memconst = require("../memconst");
-const { transaction } = require("../runtime_state_storage");
 
 const {
     ScheduleTaskError,
@@ -59,7 +58,7 @@ function make(getCapabilities) {
             return await storage.getCurrentState();
         }
 
-        const currentState = await transaction(capabilities, getStorage);
+        const currentState = await capabilities.state.transaction(getStorage);
         const persistedTasks = currentState.tasks;
 
         // Always validate registrations against persisted state (unless first-time with empty state)

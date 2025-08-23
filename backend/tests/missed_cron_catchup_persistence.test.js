@@ -3,7 +3,6 @@
  */
 
 const { makePollingScheduler } = require("../src/cron/polling_scheduler");
-const { transaction } = require("../src/runtime_state_storage");
 const { fromMilliseconds } = require("../src/time_duration");
 const { getMockedRootCapabilities } = require("./spies");
 const { stubEnvironment, stubLogger, stubDatetime, stubRuntimeStateStorage } = require("./stubs");
@@ -31,7 +30,7 @@ describe("missed cron catchup persistence", () => {
         await scheduler1.schedule("hourly-task", "0 * * * *", callback, retryDelay); // Every hour at minute 0
         
         // Manually set lastSuccessTime to a previous hour to simulate missed execution
-        await transaction(capabilities, async (storage) => {
+        await capabilities.state.transaction(async (storage) => {
             const currentState = await storage.getCurrentState();
             // Since the task was just scheduled, there should be one task
             if (currentState.tasks.length > 0) {

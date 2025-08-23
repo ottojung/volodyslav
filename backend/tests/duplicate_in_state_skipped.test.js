@@ -2,7 +2,6 @@
  * Tests for duplicate task handling in persisted state.
  */
 
-const { transaction } = require("../src/runtime_state_storage");
 const { getMockedRootCapabilities } = require("./spies");
 const { stubEnvironment, stubLogger, stubDatetime, stubRuntimeStateStorage } = require("./stubs");
 
@@ -20,7 +19,7 @@ describe("duplicate in state skipped", () => {
         const capabilities = getTestCapabilities();
         
         // Test the duplicate detection logic directly through state storage
-        await transaction(capabilities, async (storage) => {
+        await capabilities.state.transaction(async (storage) => {
             const currentState = await storage.getCurrentState();
             const duplicateState = {
                 version: 2,
@@ -47,7 +46,7 @@ describe("duplicate in state skipped", () => {
         });
         
         // Verify duplicate was logged as skipped during state deserialization
-        await transaction(capabilities, async (storage) => {
+        await capabilities.state.transaction(async (storage) => {
             await storage.getExistingState(); // This triggers deserialization and duplicate detection
         });
         

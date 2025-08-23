@@ -292,13 +292,15 @@ function isMockRuntimeStateStorage(object) {
  * 
  * @param {any} capabilities - Capabilities object to modify
  */
-function stubRuntimeStateStorage(_capabilities) {
+function stubRuntimeStateStorage(capabilities) {
     // Clear any previous mock state
     mockRuntimeStateStorage.clear();
     
-    // Mock the transaction function to use our in-memory implementation
-    const runtimeStateStorage = require("../src/runtime_state_storage");
-    runtimeStateStorage.transaction = jest.fn().mockImplementation(mockRuntimeStateTransaction);
+    // Mock the state capability to use our in-memory implementation
+    capabilities.state = {
+        transaction: jest.fn().mockImplementation((transformation) => mockRuntimeStateTransaction(capabilities, transformation)),
+        ensureAccessible: jest.fn().mockResolvedValue("/mock/runtime-state-repository"),
+    };
 }
 
 module.exports = {
