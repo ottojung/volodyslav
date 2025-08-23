@@ -30,6 +30,13 @@ class RuntimeStateStorageClass {
     existingStateCache = null;
 
     /**
+     * Whether we've attempted to load the existing state cache
+     * @private
+     * @type {boolean}
+     */
+    existingStateCacheLoaded = false;
+
+    /**
      * Cache for the raw contents of the state.json file as text
      * @private
      * @type {string|null}
@@ -82,13 +89,12 @@ class RuntimeStateStorageClass {
      */
     async getExistingState() {
         // Return cached results if available
-        if (this.existingStateCache !== null) {
+        if (this.existingStateCacheLoaded) {
             return this.existingStateCache;
         }
 
-        const fileContent = await this.getFileContent();
-
         try {
+            const fileContent = await this.getFileContent();
             const obj = JSON.parse(fileContent);
 
             const result = structure.tryDeserialize(obj);
@@ -106,6 +112,7 @@ class RuntimeStateStorageClass {
                     "Found invalid runtime state object in file",
                 );
                 this.existingStateCache = null;
+                this.existingStateCacheLoaded = true;
                 return null;
             }
 
@@ -130,6 +137,7 @@ class RuntimeStateStorageClass {
             }
 
             this.existingStateCache = result.state;
+            this.existingStateCacheLoaded = true;
             return this.existingStateCache;
         } catch (error) {
             this.capabilities.logger.logWarning(
@@ -140,6 +148,7 @@ class RuntimeStateStorageClass {
                 "Failed to read runtime state file"
             );
             this.existingStateCache = null;
+            this.existingStateCacheLoaded = true;
             return null;
         }
     }
