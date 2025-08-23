@@ -27,7 +27,7 @@ describe("success persistence", () => {
                 tasks: [
                     {
                         name: "test-task",
-                        cronExpression: "0 * * * *",
+                        cronExpression: "* * * * *",
                         retryDelayMs: 1000,
                         lastSuccessTime: capabilities.datetime.fromISOString("2020-01-01T00:00:00Z"),
                         lastAttemptTime: capabilities.datetime.fromISOString("2020-01-01T00:00:00Z")
