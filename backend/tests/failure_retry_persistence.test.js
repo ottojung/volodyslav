@@ -5,7 +5,7 @@
 const { makePollingScheduler } = require("../src/cron/polling_scheduler");
 const { fromMilliseconds } = require("../src/time_duration");
 const { getMockedRootCapabilities } = require("./spies");
-const { stubEnvironment, stubLogger, stubDatetime, stubSleeper, getDatetimeControl } = require("./stubs");
+const { stubEnvironment, stubLogger, stubDatetime, stubSleeper, getDatetimeControl, stubRuntimeStateStorage } = require("./stubs");
 
 function getTestCapabilities() {
     const capabilities = getMockedRootCapabilities();
@@ -13,6 +13,7 @@ function getTestCapabilities() {
     stubLogger(capabilities);
     stubDatetime(capabilities);
     stubSleeper(capabilities);
+    stubRuntimeStateStorage(capabilities);
     return capabilities;
 }
 
