@@ -25,6 +25,14 @@ function makeTaskExecutor(capabilities, persistState) {
         // Execute all tasks in parallel
         const promises = dueTasks.map(({ task, mode }) => runTask(task, mode));
         await Promise.all(promises);
+        
+        // Persist state once after all tasks complete (atomic persistence)
+        try {
+            await persistState();
+        } catch (err) {
+            const message = err instanceof Error ? err.message : String(err);
+            capabilities.logger.logError({ message }, "StateWriteFailedAfterBatchExecution");
+        }
     }
 
     /**
@@ -58,13 +66,7 @@ function makeTaskExecutor(capabilities, persistState) {
                 "TaskRunSuccess"
             );
             
-            // Persist state after success
-            try {
-                await persistState();
-            } catch (err) {
-                const message = err instanceof Error ? err.message : String(err);
-                capabilities.logger.logError({ message }, "StateWriteFailedAfterSuccess");
-            }
+            // State will be persisted atomically after all tasks in batch complete
         } catch (error) {
             const end = dt.toNativeDate(dt.now());
             task.lastFailureTime = end;
@@ -77,13 +79,7 @@ function makeTaskExecutor(capabilities, persistState) {
                 "TaskRunFailure"
             );
             
-            // Persist state after failure
-            try {
-                await persistState();
-            } catch (err) {
-                const message = err instanceof Error ? err.message : String(err);
-                capabilities.logger.logError({ message }, "StateWriteFailedAfterFailure");
-            }
+            // State will be persisted atomically after all tasks in batch complete
         } finally {
             task.running = false;
         }
