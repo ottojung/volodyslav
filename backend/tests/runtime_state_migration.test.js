@@ -5,14 +5,13 @@
 const { makePollingScheduler } = require("../src/cron/polling_scheduler");
 const { fromMilliseconds } = require("../src/time_duration");
 const { getMockedRootCapabilities } = require("./spies");
-const { stubEnvironment, stubLogger, stubDatetime, stubRuntimeStateStorage } = require("./stubs");
+const { stubEnvironment, stubLogger, stubDatetime } = require("./stubs");
 
 function getTestCapabilities() {
     const capabilities = getMockedRootCapabilities();
     stubEnvironment(capabilities);
     stubLogger(capabilities);
     stubDatetime(capabilities);
-    stubRuntimeStateStorage(capabilities);
     return capabilities;
 }
 
