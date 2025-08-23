@@ -4,14 +4,13 @@
 
 const { RUNTIME_STATE_VERSION } = require("../src/runtime_state_storage/structure");
 const { getMockedRootCapabilities } = require("./spies");
-const { stubEnvironment, stubLogger, stubDatetime, stubGit, stubRuntimeStateStorage } = require("./stubs");
+const { stubEnvironment, stubLogger, stubDatetime, stubGit } = require("./stubs");
 
 function getTestCapabilities() {
     const capabilities = getMockedRootCapabilities();
     stubEnvironment(capabilities);
     stubLogger(capabilities);
     stubDatetime(capabilities);
-    stubRuntimeStateStorage(capabilities);
     return capabilities;
 }
 
@@ -40,10 +39,6 @@ describe("runtime_state_storage/transaction", () => {
     });
 
     test("transaction fails if git operations fail", async () => {
-        // Note: This test doesn't actually test git failures because 
-        // stubRuntimeStateStorage completely mocks the transaction function
-        // to use in-memory storage instead of git. This test is kept for
-        // backward compatibility but doesn't actually test git failure handling.
         const capabilities = getTestCapabilities();
         
         // Mock git.call to fail for this specific test
@@ -54,10 +49,9 @@ describe("runtime_state_storage/transaction", () => {
         const startTime = capabilities.datetime.now();
         const testState = { version: RUNTIME_STATE_VERSION, startTime, tasks: [] };
 
-        // This will succeed because the mock doesn't use git
-        await capabilities.state.transaction(async (runtimeStateStorage) => {
+        await expect(capabilities.state.transaction(async (runtimeStateStorage) => {
             runtimeStateStorage.setState(testState);
-        });
+        })).rejects.toThrow(/Failed to initialize empty repository/);
     });
 
     test("transaction with no state changes succeeds without committing", async () => {
