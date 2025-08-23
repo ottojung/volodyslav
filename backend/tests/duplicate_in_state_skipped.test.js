@@ -4,13 +4,14 @@
 
 const { transaction } = require("../src/runtime_state_storage");
 const { getMockedRootCapabilities } = require("./spies");
-const { stubEnvironment, stubLogger, stubDatetime } = require("./stubs");
+const { stubEnvironment, stubLogger, stubDatetime, stubRuntimeStateStorage } = require("./stubs");
 
 function getTestCapabilities() {
     const capabilities = getMockedRootCapabilities();
     stubEnvironment(capabilities);
     stubLogger(capabilities);
     stubDatetime(capabilities);
+    stubRuntimeStateStorage(capabilities);
     return capabilities;
 }
 

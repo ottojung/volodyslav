@@ -156,6 +156,151 @@ function stubTranscription(capabilities, transcribeFileImpl) {
     };
 }
 
+/**
+ * In-memory implementation of RuntimeStateStorage for testing.
+ * Provides the same interface but keeps state in memory instead of persisting to disk.
+ */
+class MockRuntimeStateStorageClass {
+    /**
+     * New runtime state to be written.
+     * @private
+     * @type {import('../src/runtime_state_storage/types').RuntimeState|null}
+     */
+    newState = null;
+
+    /**
+     * Capabilities object for operations.
+     * @private
+     * @type {import('../src/runtime_state_storage/types').RuntimeStateStorageCapabilities}
+     */
+    capabilities;
+
+    /**
+     * In-memory storage reference.
+     * @private
+     * @type {Map<string, import('../src/runtime_state_storage/types').RuntimeState>}
+     */
+    storage;
+
+    /**
+     * Storage key for this instance.
+     * @private
+     * @type {string}
+     */
+    storageKey;
+
+    /**
+     * @constructor
+     * @param {import('../src/runtime_state_storage/types').RuntimeStateStorageCapabilities} capabilities
+     * @param {Map<string, import('../src/runtime_state_storage/types').RuntimeState>} storage
+     * @param {string} storageKey
+     */
+    constructor(capabilities, storage, storageKey) {
+        this.capabilities = capabilities;
+        this.storage = storage;
+        this.storageKey = storageKey;
+    }
+
+    /**
+     * Sets a new runtime state to be written
+     * @param {import('../src/runtime_state_storage/types').RuntimeState} state
+     */
+    setState(state) {
+        this.newState = state;
+    }
+
+    /**
+     * Gets the new runtime state to be written
+     * @returns {import('../src/runtime_state_storage/types').RuntimeState|null}
+     */
+    getNewState() {
+        return this.newState;
+    }
+
+    /**
+     * Gets the existing runtime state from in-memory storage
+     * @returns {Promise<import('../src/runtime_state_storage/types').RuntimeState|null>}
+     */
+    async getExistingState() {
+        return this.storage.get(this.storageKey) || null;
+    }
+
+    /**
+     * Gets the current runtime state, either from what's been set in this transaction
+     * or from the existing state. If neither exists, creates a default state.
+     * @returns {Promise<import('../src/runtime_state_storage/types').RuntimeState>}
+     */
+    async getCurrentState() {
+        if (this.newState !== null) {
+            return this.newState;
+        }
+
+        const existing = await this.getExistingState();
+        if (existing !== null) {
+            return existing;
+        }
+
+        // Create default state if none exists
+        const structure = require("../src/runtime_state_storage/structure");
+        return structure.makeDefault(this.capabilities.datetime);
+    }
+}
+
+/**
+ * Global in-memory storage for mock runtime state.
+ * @type {Map<string, import('../src/runtime_state_storage/types').RuntimeState>}
+ */
+const mockRuntimeStateStorage = new Map();
+
+/**
+ * Mock implementation of runtime state storage transaction.
+ * Provides the same interface as the real transaction but keeps everything in memory.
+ * 
+ * @template T
+ * @param {import('../src/runtime_state_storage/types').RuntimeStateStorageCapabilities} capabilities
+ * @param {(storage: any) => Promise<T>} transformation
+ * @returns {Promise<T>}
+ */
+async function mockRuntimeStateTransaction(capabilities, transformation) {
+    const storageKey = "mock-runtime-state";
+    const mockStorage = new MockRuntimeStateStorageClass(capabilities, mockRuntimeStateStorage, storageKey);
+    
+    // Run the transformation
+    const result = await transformation(mockStorage);
+    
+    // Handle state changes - persist to in-memory storage
+    const newState = mockStorage.getNewState();
+    if (newState !== null) {
+        mockRuntimeStateStorage.set(storageKey, newState);
+    }
+    
+    return result;
+}
+
+/**
+ * Type guard for mock RuntimeStateStorage.
+ * @param {unknown} object
+ * @returns {object is MockRuntimeStateStorageClass}
+ */
+function isMockRuntimeStateStorage(object) {
+    return object instanceof MockRuntimeStateStorageClass;
+}
+
+/**
+ * Stubs the runtime state storage with in-memory implementation.
+ * This replaces expensive git operations with fast in-memory operations.
+ * 
+ * @param {any} capabilities - Capabilities object to modify
+ */
+function stubRuntimeStateStorage(_capabilities) {
+    // Clear any previous mock state
+    mockRuntimeStateStorage.clear();
+    
+    // Mock the transaction function to use our in-memory implementation
+    const runtimeStateStorage = require("../src/runtime_state_storage");
+    runtimeStateStorage.transaction = jest.fn().mockImplementation(mockRuntimeStateTransaction);
+}
+
 module.exports = {
     stubEnvironment,
     stubLogger,
@@ -167,5 +312,8 @@ module.exports = {
     stubApp,
     stubGit,
     stubTranscription,
+    stubRuntimeStateStorage,
     getDatetimeControl,
+    mockRuntimeStateTransaction,
+    isMockRuntimeStateStorage,
 };
