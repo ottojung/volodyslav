@@ -5,7 +5,7 @@
 const { makePollingScheduler } = require("../src/cron/polling_scheduler");
 const { fromMilliseconds } = require("../src/time_duration");
 const { getMockedRootCapabilities } = require("./spies");
-const { stubEnvironment, stubLogger, stubDatetime, stubSleeper, getDatetimeControl, stubRuntimeStateStorage } = require("./stubs");
+const { stubEnvironment, stubLogger, stubDatetime, stubSleeper, getDatetimeControl, stubRuntimeStateStorage, stubPollInterval } = require("./stubs");
 
 function getTestCapabilities() {
     const capabilities = getMockedRootCapabilities();
@@ -18,6 +18,10 @@ function getTestCapabilities() {
 }
 
 describe("failure retry persistence", () => {
+    beforeEach(() => {
+        // Use fast polling for these tests
+        stubPollInterval(1);
+    });
     test("task failure sets pendingRetryUntil correctly", async () => {
         const capabilities = getTestCapabilities();
         const timeControl = getDatetimeControl(capabilities);
@@ -27,13 +31,13 @@ describe("failure retry persistence", () => {
         timeControl.setTime(startTime);
 
         // Create scheduler and schedule a failing task with fast polling
-        const scheduler = makePollingScheduler(capabilities, { pollIntervalMs: 1 });
+        const scheduler = makePollingScheduler(capabilities);
         const retryDelay = fromMilliseconds(5000); // 5 second retry delay
         const callback = jest.fn(() => {
             throw new Error("Task failed");
         });
 
-        await scheduler.schedule("failing-task", "* * * * *", callback, retryDelay);
+        await scheduler.schedule("failing-task", "0 * * * *", callback, retryDelay);
 
         // Wait for scheduler to start and catch up (will execute for 00:00:00)
         await new Promise(resolve => setTimeout(resolve, 10));

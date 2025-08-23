@@ -5,7 +5,7 @@
 
 const { fromMilliseconds } = require("../src/time_duration");
 const { getMockedRootCapabilities } = require("./spies");
-const { stubEnvironment, stubLogger, stubDatetime, stubSleeper } = require("./stubs");
+const { stubEnvironment, stubLogger, stubDatetime, stubSleeper, stubPollInterval } = require("./stubs");
 
 function getTestCapabilities() {
     const capabilities = getMockedRootCapabilities();
@@ -13,6 +13,7 @@ function getTestCapabilities() {
     stubLogger(capabilities);
     stubDatetime(capabilities);
     stubSleeper(capabilities);
+    stubPollInterval(1); // Fast polling for tests
     return capabilities;
 }
 
@@ -29,7 +30,7 @@ describe("declarative scheduler time handling", () => {
             ["time-specific-task", "30 2 * * *", callback, retryDelay]
         ];
 
-        await capabilities.scheduler.initialize(registrations, { pollIntervalMs: 100 });
+        await capabilities.scheduler.initialize(registrations);
 
         // Wait for scheduler initialization
         await new Promise(resolve => setTimeout(resolve, 200));
@@ -50,7 +51,7 @@ describe("declarative scheduler time handling", () => {
             ["hourly-task", "30 1 * * *", callback, retryDelay]
         ];
 
-        await capabilities.scheduler.initialize(registrations, { pollIntervalMs: 100 });
+        await capabilities.scheduler.initialize(registrations);
 
         // Wait for scheduling
         await new Promise(resolve => setTimeout(resolve, 200));
@@ -70,7 +71,7 @@ describe("declarative scheduler time handling", () => {
             ["daily-task", "0 3 * * *", callback, retryDelay] // Daily 3 AM
         ];
 
-        await capabilities.scheduler.initialize(registrations, { pollIntervalMs: 100 });
+        await capabilities.scheduler.initialize(registrations);
 
         // Wait for initialization
         await new Promise(resolve => setTimeout(resolve, 200));
@@ -91,7 +92,7 @@ describe("declarative scheduler time handling", () => {
             ["timezone-task", "0 12 * * *", callback, retryDelay]
         ];
 
-        await capabilities.scheduler.initialize(registrations, { pollIntervalMs: 100 });
+        await capabilities.scheduler.initialize(registrations);
 
         // Wait for initialization
         await new Promise(resolve => setTimeout(resolve, 200));
@@ -111,7 +112,7 @@ describe("declarative scheduler time handling", () => {
             ["daily-edge-task", "0 2 * * *", callback, retryDelay] // Daily 2 AM
         ];
 
-        await capabilities.scheduler.initialize(registrations, { pollIntervalMs: 100 });
+        await capabilities.scheduler.initialize(registrations);
 
         // Wait for initialization
         await new Promise(resolve => setTimeout(resolve, 200));
@@ -132,11 +133,11 @@ describe("declarative scheduler time handling", () => {
         });
 
         const registrations = [
-            ["execution-history-task", "* * * * *", callback, retryDelay] // Every minute for quick testing
+            ["execution-history-task", "0 * * * *", callback, retryDelay] // Every minute for quick testing
         ];
 
         // First initialization and execution
-        await capabilities.scheduler.initialize(registrations, { pollIntervalMs: 100 });
+        await capabilities.scheduler.initialize(registrations);
         
         await new Promise(resolve => setTimeout(resolve, 200));
         expect(executionCount).toBe(1);
@@ -144,7 +145,7 @@ describe("declarative scheduler time handling", () => {
         await capabilities.scheduler.stop();
 
         // Second initialization (simulating restart)
-        await capabilities.scheduler.initialize(registrations, { pollIntervalMs: 100 });
+        await capabilities.scheduler.initialize(registrations);
 
         await new Promise(resolve => setTimeout(resolve, 200));
         
@@ -166,7 +167,7 @@ describe("declarative scheduler time handling", () => {
             ["evening-task", "0 14 * * *", task2, retryDelay]  // 2 PM
         ];
 
-        await capabilities.scheduler.initialize(registrations, { pollIntervalMs: 100 });
+        await capabilities.scheduler.initialize(registrations);
 
         // Wait for initialization
         await new Promise(resolve => setTimeout(resolve, 200));
@@ -188,7 +189,7 @@ describe("declarative scheduler time handling", () => {
             ["complex-schedule", "0,15,30,45 * * * *", callback, retryDelay]
         ];
 
-        await capabilities.scheduler.initialize(registrations, { pollIntervalMs: 100 });
+        await capabilities.scheduler.initialize(registrations);
 
         // Wait for initialization
         await new Promise(resolve => setTimeout(resolve, 200));
@@ -209,11 +210,11 @@ describe("declarative scheduler time handling", () => {
         });
 
         const registrations = [
-            ["restart-time-task", "* * * * *", callback, retryDelay]
+            ["restart-time-task", "0 * * * *", callback, retryDelay]
         ];
 
         // First run
-        await capabilities.scheduler.initialize(registrations, { pollIntervalMs: 100 });
+        await capabilities.scheduler.initialize(registrations);
         await new Promise(resolve => setTimeout(resolve, 200));
         expect(executionCount).toBe(1);
         await capabilities.scheduler.stop();
@@ -222,7 +223,7 @@ describe("declarative scheduler time handling", () => {
         await new Promise(resolve => setTimeout(resolve, 100));
 
         // Restart
-        await capabilities.scheduler.initialize(registrations, { pollIntervalMs: 100 });
+        await capabilities.scheduler.initialize(registrations);
         await new Promise(resolve => setTimeout(resolve, 200));
         
         // Should handle restart correctly

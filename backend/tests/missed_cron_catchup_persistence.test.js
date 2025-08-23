@@ -23,7 +23,7 @@ describe("missed cron catchup persistence", () => {
         const capabilities = getTestCapabilities();
         
         // Create scheduler and schedule a task
-        const scheduler1 = makePollingScheduler(capabilities, { pollIntervalMs: 60000 }); // Longer interval to avoid race conditions
+        const scheduler1 = makePollingScheduler(capabilities); // Longer interval to avoid race conditions
         const retryDelay = fromMilliseconds(1000);
         const callback = jest.fn();
         
@@ -45,7 +45,7 @@ describe("missed cron catchup persistence", () => {
         jest.setSystemTime(new Date("2020-01-01T01:05:00Z"));
         
         // Create new scheduler (simulating restart)
-        const scheduler2 = makePollingScheduler(capabilities, { pollIntervalMs: 60000 });
+        const scheduler2 = makePollingScheduler(capabilities);
         
         // Re-schedule the task with same name to load persisted state
         const newCallback = jest.fn();

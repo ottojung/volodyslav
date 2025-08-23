@@ -30,7 +30,7 @@ describe("runtime state migration", () => {
         });
         
         // Create scheduler which should load and migrate the state
-        const scheduler = makePollingScheduler(capabilities, { pollIntervalMs: 10 });
+        const scheduler = makePollingScheduler(capabilities);
         
         // Schedule a task to trigger state loading and persistence
         const retryDelay = fromMilliseconds(1000);

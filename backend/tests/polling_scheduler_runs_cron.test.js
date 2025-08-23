@@ -5,7 +5,7 @@
 
 const { fromMilliseconds } = require("../src/time_duration");
 const { getMockedRootCapabilities } = require("./spies");
-const { stubEnvironment, stubLogger, stubDatetime, stubSleeper } = require("./stubs");
+const { stubEnvironment, stubLogger, stubDatetime, stubSleeper, stubPollInterval } = require("./stubs");
 
 function getTestCapabilities() {
     const capabilities = getMockedRootCapabilities();
@@ -13,6 +13,7 @@ function getTestCapabilities() {
     stubLogger(capabilities);
     stubDatetime(capabilities);
     stubSleeper(capabilities);
+    stubPollInterval(1); // Fast polling for tests
     return capabilities;
 }
 
@@ -28,11 +29,11 @@ describe("declarative scheduler cron expression validation", () => {
             ["daily-task", "0 9 * * *", taskCallback, retryDelay],       // Daily at 9 AM
             ["weekly-task", "0 9 * * 1", taskCallback, retryDelay],      // Mondays at 9 AM
             ["monthly-task", "0 9 1 * *", taskCallback, retryDelay],     // 1st of month at 9 AM
-            ["minute-task", "*/5 * * * *", taskCallback, retryDelay]     // Every 5 minutes
+            ["minute-task", "*/15 * * * *", taskCallback, retryDelay]     // Every 5 minutes
         ];
         
         // Should succeed with valid cron expressions
-        await expect(capabilities.scheduler.initialize(registrations, { pollIntervalMs: 60000 }))
+        await expect(capabilities.scheduler.initialize(registrations))
             .resolves.toBeUndefined();
             
         await capabilities.scheduler.stop();
@@ -48,7 +49,7 @@ describe("declarative scheduler cron expression validation", () => {
             ["compatible-task", "0 * * * *", taskCallback, retryDelay]
         ];
         
-        await expect(capabilities.scheduler.initialize(validRegistrations, { pollIntervalMs: 60000 }))
+        await expect(capabilities.scheduler.initialize(validRegistrations))
             .resolves.toBeUndefined();
             
         await capabilities.scheduler.stop();

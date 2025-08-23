@@ -10,6 +10,7 @@ const {
     stubEnvironment,
     stubSleeper,
     stubDatetime,
+    stubPollInterval,
 } = require("./stubs");
 const { getMockedRootCapabilities } = require("./spies");
 const { COMMON } = require("../src/time_duration");
@@ -20,7 +21,7 @@ function getTestCapabilities() {
     stubEnvironment(capabilities);
     stubSleeper(capabilities);
     stubDatetime(capabilities);
-
+    stubPollInterval(1);
     return capabilities;
 }
 
@@ -235,7 +236,7 @@ describe("Declarative Scheduler", () => {
 
             // Should log first-time initialization message
             expect(capabilities.logger.logInfo).toHaveBeenCalledWith(
-                { 
+                {
                     registeredTaskCount: 2,
                     taskNames: ["task1", "task2"]
                 },
@@ -260,12 +261,10 @@ describe("Declarative Scheduler", () => {
             const capabilities = getTestCapabilities();
 
             // Initialize the scheduler with very short poll interval for testing
-            await capabilities.scheduler.initialize(registrations, {
-                pollIntervalMs: 100, // Poll every 100ms for fast testing
-            });
+            await capabilities.scheduler.initialize(registrations);
 
             // Wait for at least one poll cycle to execute
-            await new Promise(resolve => setTimeout(resolve, 150));
+            await new Promise(resolve => setTimeout(resolve, 10));
 
             // Task should have been executed because it's due to run (first time)
             expect(taskCallback).toHaveBeenCalled();
@@ -282,21 +281,17 @@ describe("Declarative Scheduler", () => {
             const capabilities = getTestCapabilities();
 
             // First call to initialize
-            await capabilities.scheduler.initialize(registrations, {
-                pollIntervalMs: 100,
-            });
+            await capabilities.scheduler.initialize(registrations);
 
             // Wait for initial execution
-            await new Promise(resolve => setTimeout(resolve, 150));
+            await new Promise(resolve => setTimeout(resolve, 10));
 
             // Task should have been called
             expect(taskCallback).toHaveBeenCalled();
 
             // Second call to initialize with same capabilities - should be idempotent
             // This should not cause errors or duplicate scheduling issues
-            await expect(capabilities.scheduler.initialize(registrations, {
-                pollIntervalMs: 100,
-            })).resolves.toBeUndefined();
+            await expect(capabilities.scheduler.initialize(registrations)).resolves.toBeUndefined();
             await capabilities.scheduler.stop(capabilities);
         });
 
@@ -310,12 +305,10 @@ describe("Declarative Scheduler", () => {
 
             const capabilities = getTestCapabilities();
 
-            await capabilities.scheduler.initialize(registrations, {
-                pollIntervalMs: 100,
-            });
+            await capabilities.scheduler.initialize(registrations);
 
             // Wait for execution
-            await new Promise(resolve => setTimeout(resolve, 150));
+            await new Promise(resolve => setTimeout(resolve, 10));
 
             // Task should execute on first run
             expect(taskCallback).toHaveBeenCalled();

@@ -13,12 +13,10 @@ const {
 const {
     validateTasksAgainstPersistedStateInner,
     validateRegistrations,
-    validateOptions,
 } = require("./validation");
 
 /** @typedef {import('./types').Scheduler} Scheduler */
 /** @typedef {import('./types').Registration} Registration */
-/** @typedef {import('./types').PollerOptions} PollerOptions */
 /** @typedef {import('./types').Initialize} Initialize */
 /** @typedef {import('./types').Stop} Stop */
 /** @typedef {import('./types').Capabilities} Capabilities */
@@ -33,9 +31,6 @@ const {
 function make(getCapabilities) {
     /** @type {ReturnType<cronScheduler.make> | null} */
     let pollingScheduler = null;
-    
-    /** @type {number | undefined} */
-    let currentPollIntervalMs = undefined;
 
     const getCapabilitiesMemo = memconst(getCapabilities);
 
@@ -43,13 +38,10 @@ function make(getCapabilities) {
      * Initialize the scheduler with the given registrations.
      * @type {Initialize}
      */
-    async function initialize(registrations, options = {}) {
+    async function initialize(registrations) {
         // Validate input parameters
         const capabilities = getCapabilitiesMemo();
         validateRegistrations(registrations, capabilities);
-        validateOptions(options);
-
-        const requestedPollIntervalMs = options.pollIntervalMs;
 
         /**
          * @param {import('../runtime_state_storage/class').RuntimeStateStorage} storage
@@ -82,43 +74,23 @@ function make(getCapabilities) {
             validateTasksAgainstPersistedStateInner(registrations, persistedTasks);
         }
 
-        // Handle polling scheduler lifecycle with interval change support
+        // Handle polling scheduler lifecycle
         if (pollingScheduler !== null) {
-            // Check if polling interval needs to be changed
-            if (requestedPollIntervalMs !== undefined && requestedPollIntervalMs !== currentPollIntervalMs) {
-                capabilities.logger.logInfo(
-                    { 
-                        oldInterval: currentPollIntervalMs,
-                        newInterval: requestedPollIntervalMs 
-                    },
-                    "Polling interval change requested: stopping current scheduler"
-                );
-                
-                await pollingScheduler.stop();
-                pollingScheduler = null;
-                currentPollIntervalMs = undefined;
-            } else {
-                // Scheduler already running with correct interval
-                capabilities.logger.logDebug(
-                    { pollIntervalMs: currentPollIntervalMs },
-                    "Scheduler already initialized with requested configuration"
-                );
-                return;
-            }
+            // Scheduler already running
+            capabilities.logger.logDebug(
+                {},
+                "Scheduler already initialized"
+            );
+            return;
         }
 
         // Create polling scheduler
-        const cronOptions = {
-            pollIntervalMs: requestedPollIntervalMs,
-        };
-
         capabilities.logger.logInfo(
-            { pollIntervalMs: requestedPollIntervalMs || "default" },
+            {},
             "Creating new polling scheduler"
         );
 
-        pollingScheduler = cronScheduler.make(capabilities, cronOptions);
-        currentPollIntervalMs = requestedPollIntervalMs;
+        pollingScheduler = cronScheduler.make(capabilities);
 
         let scheduledCount = 0;
         let skippedCount = 0;
@@ -170,20 +142,18 @@ function make(getCapabilities) {
             const capabilities = getCapabilitiesMemo();
             try {
                 capabilities.logger.logInfo(
-                    { pollIntervalMs: currentPollIntervalMs },
+                    {},
                     "Stopping scheduler gracefully"
                 );
                 
                 await pollingScheduler.stop();
                 pollingScheduler = null;
-                currentPollIntervalMs = undefined;
                 
                 capabilities.logger.logInfo({}, "Scheduler stopped successfully");
             } catch (err) {
                 const error = err instanceof Error ? err : new Error(String(err));
                 // Still clean up state even if stop failed
                 pollingScheduler = null;
-                currentPollIntervalMs = undefined;
                 throw new StopSchedulerError(`Failed to stop scheduler: ${error.message}`, { cause: error });
             }
         } else {

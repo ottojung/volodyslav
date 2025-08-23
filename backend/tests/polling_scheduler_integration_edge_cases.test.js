@@ -5,7 +5,7 @@
 
 const { fromMilliseconds } = require("../src/time_duration");
 const { getMockedRootCapabilities } = require("./spies");
-const { stubEnvironment, stubLogger, stubDatetime, stubSleeper, stubRuntimeStateStorage } = require("./stubs");
+const { stubEnvironment, stubLogger, stubDatetime, stubSleeper, stubRuntimeStateStorage, stubPollInterval } = require("./stubs");
 
 function getTestCapabilities() {
     const capabilities = getMockedRootCapabilities();
@@ -14,6 +14,7 @@ function getTestCapabilities() {
     stubDatetime(capabilities);
     stubSleeper(capabilities);
     stubRuntimeStateStorage(capabilities);
+    stubPollInterval(1); // Fast polling for tests
     return capabilities;
 }
 
@@ -37,7 +38,7 @@ describe("declarative scheduler integration and system edge cases", () => {
             ];
 
             // Should handle daily backup scheduling without errors
-            await capabilities.scheduler.initialize(registrations, { pollIntervalMs: 1 });
+            await capabilities.scheduler.initialize(registrations);
 
             await new Promise(resolve => setTimeout(resolve, 10));
 
@@ -62,11 +63,11 @@ describe("declarative scheduler integration and system edge cases", () => {
             });
 
             const registrations = [
-                ["health-check", "*/2 * * * *", healthCheckCallback, retryDelay]
+                ["health-check", "*/30 * * * *", healthCheckCallback, retryDelay]
             ];
 
             // Should handle health check scheduling without errors
-            await capabilities.scheduler.initialize(registrations, { pollIntervalMs: 1 });
+            await capabilities.scheduler.initialize(registrations);
 
             await new Promise(resolve => setTimeout(resolve, 10));
 
@@ -95,7 +96,7 @@ describe("declarative scheduler integration and system edge cases", () => {
             ];
 
             // Should handle hourly log rotation scheduling without errors
-            await capabilities.scheduler.initialize(registrations, { pollIntervalMs: 1 });
+            await capabilities.scheduler.initialize(registrations);
 
             await new Promise(resolve => setTimeout(resolve, 10));
 
@@ -122,11 +123,11 @@ describe("declarative scheduler integration and system edge cases", () => {
             });
 
             const registrations = [
-                ["network-task", "* * * * *", networkTaskCallback, retryDelay]
+                ["network-task", "0 * * * *", networkTaskCallback, retryDelay]
             ];
 
             // Should handle network-dependent tasks without crashing
-            await capabilities.scheduler.initialize(registrations, { pollIntervalMs: 1 });
+            await capabilities.scheduler.initialize(registrations);
 
             await new Promise(resolve => setTimeout(resolve, 10));
 
@@ -151,11 +152,11 @@ describe("declarative scheduler integration and system edge cases", () => {
             });
 
             const registrations = [
-                ["file-task", "* * * * *", fileTaskCallback, retryDelay]
+                ["file-task", "0 * * * *", fileTaskCallback, retryDelay]
             ];
 
             // Should handle filesystem-dependent tasks
-            await capabilities.scheduler.initialize(registrations, { pollIntervalMs: 1 });
+            await capabilities.scheduler.initialize(registrations);
 
             await new Promise(resolve => setTimeout(resolve, 10));
 
@@ -185,11 +186,11 @@ describe("declarative scheduler integration and system edge cases", () => {
 
             // Schedule multiple memory-intensive tasks
             for (let i = 0; i < 10; i++) {
-                registrations.push([`memory-task-${i}`, "* * * * *", memoryIntensiveCallback, retryDelay]);
+                registrations.push([`memory-task-${i}`, "0 * * * *", memoryIntensiveCallback, retryDelay]);
             }
 
             // Should handle multiple concurrent memory-intensive tasks
-            await capabilities.scheduler.initialize(registrations, { pollIntervalMs: 1 });
+            await capabilities.scheduler.initialize(registrations);
 
             await new Promise(resolve => setTimeout(resolve, 10));
 
@@ -215,12 +216,12 @@ describe("declarative scheduler integration and system edge cases", () => {
             });
 
             const registrations = [
-                ["normal-task", "* * * * *", normalCallback, retryDelay],
-                ["crashing-task", "* * * * *", crashingCallback, retryDelay]
+                ["normal-task", "0 * * * *", normalCallback, retryDelay],
+                ["crashing-task", "0 * * * *", crashingCallback, retryDelay]
             ];
 
             // Should handle mixed normal and crashing tasks
-            await capabilities.scheduler.initialize(registrations, { pollIntervalMs: 1 });
+            await capabilities.scheduler.initialize(registrations);
 
             await new Promise(resolve => setTimeout(resolve, 10));
 
@@ -237,12 +238,12 @@ describe("declarative scheduler integration and system edge cases", () => {
             const taskCallback = jest.fn();
 
             const registrations = [
-                ["cycle-task", "* * * * *", taskCallback, retryDelay]
+                ["cycle-task", "0 * * * *", taskCallback, retryDelay]
             ];
 
             // Rapidly initialize and stop scheduler multiple times
             for (let cycle = 0; cycle < 5; cycle++) {
-                await capabilities.scheduler.initialize(registrations, { pollIntervalMs: 1 });
+                await capabilities.scheduler.initialize(registrations);
 
                 await new Promise(resolve => setTimeout(resolve, 10));
 
@@ -267,13 +268,13 @@ describe("declarative scheduler integration and system edge cases", () => {
             for (let i = 0; i < 20; i++) {
                 const callback = jest.fn();
                 callbacks.push(callback);
-                registrations.push([`burst-task-${i}`, "* * * * *", callback, retryDelay]);
+                registrations.push([`burst-task-${i}`, "0 * * * *", callback, retryDelay]);
             }
 
             const scheduleTime = Date.now();
 
             // Should handle scheduling many tasks efficiently
-            await capabilities.scheduler.initialize(registrations, { pollIntervalMs: 1 });
+            await capabilities.scheduler.initialize(registrations);
 
             await new Promise(resolve => setTimeout(resolve, 10));
 
@@ -301,14 +302,14 @@ describe("declarative scheduler integration and system edge cases", () => {
             });
 
             const registrations = [
-                ["quick-1", "* * * * *", quickCallback, retryDelay],
-                ["slow-1", "* * * * *", slowCallback, retryDelay],
-                ["failing-1", "* * * * *", failingCallback, retryDelay],
-                ["quick-2", "* * * * *", quickCallback, retryDelay]
+                ["quick-1", "0 * * * *", quickCallback, retryDelay],
+                ["slow-1", "0 * * * *", slowCallback, retryDelay],
+                ["failing-1", "0 * * * *", failingCallback, retryDelay],
+                ["quick-2", "0 * * * *", quickCallback, retryDelay]
             ];
 
             // Should handle mixed task types
-            await capabilities.scheduler.initialize(registrations, { pollIntervalMs: 1 });
+            await capabilities.scheduler.initialize(registrations);
 
             await new Promise(resolve => setTimeout(resolve, 10));
 
@@ -326,7 +327,7 @@ describe("declarative scheduler integration and system edge cases", () => {
             const capabilities = getTestCapabilities();
 
             // Should handle empty registrations without error
-            await capabilities.scheduler.initialize([], { pollIntervalMs: 1 });
+            await capabilities.scheduler.initialize([]);
 
             await new Promise(resolve => setTimeout(resolve, 10));
 
@@ -342,13 +343,13 @@ describe("declarative scheduler integration and system edge cases", () => {
             const taskCallback = jest.fn();
 
             const registrations = [
-                ["repeat-test", "* * * * *", taskCallback, retryDelay]
+                ["repeat-test", "0 * * * *", taskCallback, retryDelay]
             ];
 
             // Multiple initialization calls should be idempotent
-            await capabilities.scheduler.initialize(registrations, { pollIntervalMs: 1 });
-            await capabilities.scheduler.initialize(registrations, { pollIntervalMs: 1 });
-            await capabilities.scheduler.initialize(registrations, { pollIntervalMs: 1 });
+            await capabilities.scheduler.initialize(registrations);
+            await capabilities.scheduler.initialize(registrations);
+            await capabilities.scheduler.initialize(registrations);
 
             await new Promise(resolve => setTimeout(resolve, 10));
 

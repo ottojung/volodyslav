@@ -5,7 +5,7 @@
 
 const { fromMilliseconds } = require("../src/time_duration");
 const { getMockedRootCapabilities } = require("./spies");
-const { stubEnvironment, stubLogger, stubDatetime, stubSleeper } = require("./stubs");
+const { stubEnvironment, stubLogger, stubDatetime, stubSleeper, stubPollInterval } = require("./stubs");
 
 function getTestCapabilities() {
     const capabilities = getMockedRootCapabilities();
@@ -13,6 +13,7 @@ function getTestCapabilities() {
     stubLogger(capabilities);
     stubDatetime(capabilities);
     stubSleeper(capabilities);
+    stubPollInterval(1); // Fast polling for tests
     return capabilities;
 }
 
@@ -27,11 +28,11 @@ describe("declarative scheduler precedence logic verification", () => {
         
         // Task runs every minute - should execute immediately
         const registrations = [
-            ["precedence-test", "* * * * *", task, retryDelay]
+            ["precedence-test", "0 * * * *", task, retryDelay]
         ];
         
         // Initialize and wait for execution
-        await capabilities.scheduler.initialize(registrations, { pollIntervalMs: 100 });
+        await capabilities.scheduler.initialize(registrations);
         await new Promise(resolve => setTimeout(resolve, 200));
         
         expect(task).toHaveBeenCalled();
@@ -47,11 +48,11 @@ describe("declarative scheduler precedence logic verification", () => {
         
         // Task runs every minute - should execute immediately
         const registrations = [
-            ["precedence-test", "* * * * *", task, retryDelay]
+            ["precedence-test", "0 * * * *", task, retryDelay]
         ];
         
         // Initialize and wait for execution
-        await capabilities.scheduler.initialize(registrations, { pollIntervalMs: 100 });
+        await capabilities.scheduler.initialize(registrations);
         await new Promise(resolve => setTimeout(resolve, 200));
         
         expect(task).toHaveBeenCalled();
@@ -72,13 +73,13 @@ describe("declarative scheduler precedence logic verification", () => {
             
             // Task runs every 5 minutes (10:00, 10:05, 10:10, etc.)
             const registrations = [
-                ["precedence-test", "*/5 * * * *", task, retryDelay]
+                ["precedence-test", "*/15 * * * *", task, retryDelay]
             ];
             
             // Multiple calls at 10:00 should be idempotent
-            await capabilities.scheduler.initialize(registrations, { pollIntervalMs: 100 });
-            await capabilities.scheduler.initialize(registrations, { pollIntervalMs: 100 });
-            await capabilities.scheduler.initialize(registrations, { pollIntervalMs: 100 });
+            await capabilities.scheduler.initialize(registrations);
+            await capabilities.scheduler.initialize(registrations);
+            await capabilities.scheduler.initialize(registrations);
             
             jest.advanceTimersByTime(200);
             

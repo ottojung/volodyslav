@@ -5,7 +5,7 @@
 
 const { fromMilliseconds } = require("../src/time_duration");
 const { getMockedRootCapabilities } = require("./spies");
-const { stubEnvironment, stubLogger, stubDatetime, stubSleeper } = require("./stubs");
+const { stubEnvironment, stubLogger, stubDatetime, stubSleeper, stubPollInterval } = require("./stubs");
 
 function getTestCapabilities() {
     const capabilities = getMockedRootCapabilities();
@@ -13,6 +13,7 @@ function getTestCapabilities() {
     stubLogger(capabilities);
     stubDatetime(capabilities);
     stubSleeper(capabilities);
+    stubPollInterval(1); // Fast polling for tests
     return capabilities;
 }
 
@@ -31,14 +32,14 @@ describe("declarative scheduler re-entrancy protection", () => {
         });
         
         const registrations = [
-            ["long-task", "* * * * *", longRunningTask, retryDelay]
+            ["long-task", "0 * * * *", longRunningTask, retryDelay]
         ];
         
         // Call initialize multiple times concurrently
         const promises = [
-            capabilities.scheduler.initialize(registrations, { pollIntervalMs: 100 }),
-            capabilities.scheduler.initialize(registrations, { pollIntervalMs: 100 }),
-            capabilities.scheduler.initialize(registrations, { pollIntervalMs: 100 }),
+            capabilities.scheduler.initialize(registrations),
+            capabilities.scheduler.initialize(registrations),
+            capabilities.scheduler.initialize(registrations),
         ];
         
         await Promise.all(promises);
@@ -63,17 +64,17 @@ describe("declarative scheduler re-entrancy protection", () => {
         });
         
         const registrations = [
-            ["quick-task", "* * * * *", quickTask, retryDelay]
+            ["quick-task", "0 * * * *", quickTask, retryDelay]
         ];
         
         // First initialize call
-        await capabilities.scheduler.initialize(registrations, { pollIntervalMs: 100 });
+        await capabilities.scheduler.initialize(registrations);
         await new Promise(resolve => setTimeout(resolve, 200));
         
         expect(taskExecutionCount).toBe(1);
         
         // Second initialize call should be idempotent
-        await capabilities.scheduler.initialize(registrations, { pollIntervalMs: 100 });
+        await capabilities.scheduler.initialize(registrations);
         await new Promise(resolve => setTimeout(resolve, 200));
         
         // Task should not execute again on idempotent call
@@ -93,11 +94,11 @@ describe("declarative scheduler re-entrancy protection", () => {
         });
         
         const registrations = [
-            ["error-task", "* * * * *", errorTask, retryDelay]
+            ["error-task", "0 * * * *", errorTask, retryDelay]
         ];
         
         // Should not throw despite task errors
-        await expect(capabilities.scheduler.initialize(registrations, { pollIntervalMs: 100 })).resolves.toBeUndefined();
+        await expect(capabilities.scheduler.initialize(registrations)).resolves.toBeUndefined();
         
         // Wait for execution
         await new Promise(resolve => setTimeout(resolve, 200));
@@ -105,7 +106,7 @@ describe("declarative scheduler re-entrancy protection", () => {
         expect(taskExecutionCount).toBe(1);
         
         // Should allow subsequent initialize calls despite previous error
-        await expect(capabilities.scheduler.initialize(registrations, { pollIntervalMs: 100 })).resolves.toBeUndefined();
+        await expect(capabilities.scheduler.initialize(registrations)).resolves.toBeUndefined();
         
         await capabilities.scheduler.stop(capabilities);
     });
@@ -117,18 +118,18 @@ describe("declarative scheduler re-entrancy protection", () => {
         const validTask = jest.fn().mockResolvedValue(undefined);
         
         const registrations = [
-            ["valid-task", "* * * * *", validTask, retryDelay]
+            ["valid-task", "0 * * * *", validTask, retryDelay]
         ];
         
         // First call to establish state
-        await capabilities.scheduler.initialize(registrations, { pollIntervalMs: 100 });
+        await capabilities.scheduler.initialize(registrations);
         
         // Different registrations should cause validation error
         const differentRegistrations = [
-            ["different-task", "* * * * *", validTask, retryDelay]
+            ["different-task", "0 * * * *", validTask, retryDelay]
         ];
         
-        await expect(capabilities.scheduler.initialize(differentRegistrations, { pollIntervalMs: 100 }))
+        await expect(capabilities.scheduler.initialize(differentRegistrations))
             .rejects.toThrow(/Task list mismatch detected/);
         
         await capabilities.scheduler.stop(capabilities);

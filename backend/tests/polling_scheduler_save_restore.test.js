@@ -5,7 +5,7 @@
 
 const { fromMilliseconds } = require("../src/time_duration");
 const { getMockedRootCapabilities } = require("./spies");
-const { stubEnvironment, stubLogger, stubDatetime, stubSleeper } = require("./stubs");
+const { stubEnvironment, stubLogger, stubDatetime, stubSleeper, stubPollInterval } = require("./stubs");
 
 function getTestCapabilities() {
     const capabilities = getMockedRootCapabilities();
@@ -13,6 +13,7 @@ function getTestCapabilities() {
     stubLogger(capabilities);
     stubDatetime(capabilities);
     stubSleeper(capabilities);
+    stubPollInterval(1); // Fast polling for tests
     return capabilities;
 }
 
@@ -24,13 +25,13 @@ describe("declarative scheduler persistence and idempotency", () => {
         const taskCallback = jest.fn();
 
         const registrations = [
-            ["test-task", "* * * * *", taskCallback, retryDelay]
+            ["test-task", "0 * * * *", taskCallback, retryDelay]
         ];
 
         // Multiple initializations should be idempotent
-        await capabilities.scheduler.initialize(registrations, { pollIntervalMs: 100 });
-        await capabilities.scheduler.initialize(registrations, { pollIntervalMs: 100 });
-        await capabilities.scheduler.initialize(registrations, { pollIntervalMs: 100 });
+        await capabilities.scheduler.initialize(registrations);
+        await capabilities.scheduler.initialize(registrations);
+        await capabilities.scheduler.initialize(registrations);
         
         // Allow for task execution
         await new Promise(resolve => setTimeout(resolve, 300));
@@ -48,16 +49,16 @@ describe("declarative scheduler persistence and idempotency", () => {
         const taskCallback1 = jest.fn();
 
         const registrations = [
-            ["persistent-task", "* * * * *", taskCallback1, retryDelay]
+            ["persistent-task", "0 * * * *", taskCallback1, retryDelay]
         ];
 
         // First "session" - initialize and run
-        await capabilities.scheduler.initialize(registrations, { pollIntervalMs: 100 });
+        await capabilities.scheduler.initialize(registrations);
         await new Promise(resolve => setTimeout(resolve, 200));
         await capabilities.scheduler.stop(capabilities);
         
         // "Restart" - same task with same callback (simulating app restart)
-        await capabilities.scheduler.initialize(registrations, { pollIntervalMs: 100 });
+        await capabilities.scheduler.initialize(registrations);
         await new Promise(resolve => setTimeout(resolve, 200));
         
         // Callback should be executed in both sessions
@@ -79,7 +80,7 @@ describe("declarative scheduler persistence and idempotency", () => {
         ];
 
         // Should handle multiple task registration and persistence
-        await capabilities.scheduler.initialize(registrations, { pollIntervalMs: 100 });
+        await capabilities.scheduler.initialize(registrations);
         
         await new Promise(resolve => setTimeout(resolve, 200));
         
@@ -104,11 +105,11 @@ describe("declarative scheduler persistence and idempotency", () => {
         });
         
         const registrations = [
-            ["failing-task", "* * * * *", failingCallback, retryDelay]
+            ["failing-task", "0 * * * *", failingCallback, retryDelay]
         ];
 
         // Should handle failing tasks and retries
-        await capabilities.scheduler.initialize(registrations, { pollIntervalMs: 100 });
+        await capabilities.scheduler.initialize(registrations);
         
         // Wait for multiple attempts including retries
         await new Promise(resolve => setTimeout(resolve, 600));
@@ -123,7 +124,7 @@ describe("declarative scheduler persistence and idempotency", () => {
         const capabilities = getTestCapabilities();
         
         // Should handle initialization with no tasks
-        await capabilities.scheduler.initialize([], { pollIntervalMs: 100 });
+        await capabilities.scheduler.initialize([]);
         
         await new Promise(resolve => setTimeout(resolve, 200));
         
@@ -132,10 +133,10 @@ describe("declarative scheduler persistence and idempotency", () => {
         // Follow up with actual tasks should work
         const taskCallback = jest.fn();
         const registrations = [
-            ["new-task", "* * * * *", taskCallback, fromMilliseconds(5000)]
+            ["new-task", "0 * * * *", taskCallback, fromMilliseconds(5000)]
         ];
         
-        await capabilities.scheduler.initialize(registrations, { pollIntervalMs: 100 });
+        await capabilities.scheduler.initialize(registrations);
         await new Promise(resolve => setTimeout(resolve, 200));
         
         expect(taskCallback).toHaveBeenCalled();
@@ -152,22 +153,22 @@ describe("declarative scheduler persistence and idempotency", () => {
 
         // Define a consistent task list
         const registrations = [
-            ["task1", "* * * * *", callback1, retryDelay],
-            ["task2", "* * * * *", callback2, retryDelay]
+            ["task1", "0 * * * *", callback1, retryDelay],
+            ["task2", "0 * * * *", callback2, retryDelay]
         ];
         
         // First session
-        await capabilities.scheduler.initialize(registrations, { pollIntervalMs: 100 });
+        await capabilities.scheduler.initialize(registrations);
         await new Promise(resolve => setTimeout(resolve, 200));
         await capabilities.scheduler.stop(capabilities);
         
         // Second session with same task list (should work)
-        await capabilities.scheduler.initialize(registrations, { pollIntervalMs: 100 });
+        await capabilities.scheduler.initialize(registrations);
         await new Promise(resolve => setTimeout(resolve, 200));
         await capabilities.scheduler.stop(capabilities);
         
         // Third session with same task list
-        await capabilities.scheduler.initialize(registrations, { pollIntervalMs: 100 });
+        await capabilities.scheduler.initialize(registrations);
         await new Promise(resolve => setTimeout(resolve, 300));
         
         // Both callbacks should be called
@@ -183,12 +184,12 @@ describe("declarative scheduler persistence and idempotency", () => {
         const taskCallback = jest.fn();
         
         const registrations = [
-            ["cycle-task", "* * * * *", taskCallback, retryDelay]
+            ["cycle-task", "0 * * * *", taskCallback, retryDelay]
         ];
 
         // Multiple start/stop cycles
         for (let cycle = 0; cycle < 3; cycle++) {
-            await capabilities.scheduler.initialize(registrations, { pollIntervalMs: 100 });
+            await capabilities.scheduler.initialize(registrations);
             await new Promise(resolve => setTimeout(resolve, 150));
             await capabilities.scheduler.stop(capabilities);
         }

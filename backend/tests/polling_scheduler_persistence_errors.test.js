@@ -6,7 +6,7 @@
 
 const { fromMilliseconds } = require("../src/time_duration");
 const { getMockedRootCapabilities } = require("./spies");
-const { stubEnvironment, stubLogger, stubDatetime, stubSleeper } = require("./stubs");
+const { stubEnvironment, stubLogger, stubDatetime, stubSleeper, stubPollInterval } = require("./stubs");
 
 function getTestCapabilities() {
     const capabilities = getMockedRootCapabilities();
@@ -14,6 +14,7 @@ function getTestCapabilities() {
     stubLogger(capabilities);
     stubDatetime(capabilities);
     stubSleeper(capabilities);
+    stubPollInterval(1); // Fast polling for tests
     return capabilities;
 }
 
@@ -42,11 +43,11 @@ describe("declarative scheduler persistence and error handling", () => {
 
         const registrations = [
             // Use a cron that runs immediately (every minute)
-            ["flaky-task", "* * * * *", flakyCallback, retryDelay]
+            ["flaky-task", "0 * * * *", flakyCallback, retryDelay]
         ];
 
         // Initialize with fast polling for testing
-        await capabilities.scheduler.initialize(registrations, { pollIntervalMs: 100 });
+        await capabilities.scheduler.initialize(registrations);
 
         // Wait for the scheduler to execute the task at least once
         await new Promise(resolve => setTimeout(resolve, 300));
@@ -67,17 +68,17 @@ describe("declarative scheduler persistence and error handling", () => {
         });
 
         const registrations = [
-            ["error-task", "* * * * *", errorCallback, retryDelay]
+            ["error-task", "0 * * * *", errorCallback, retryDelay]
         ];
 
         // Initialize scheduler with error-throwing callback
-        await capabilities.scheduler.initialize(registrations, { pollIntervalMs: 100 });
+        await capabilities.scheduler.initialize(registrations);
 
         // Wait for execution
         await new Promise(resolve => setTimeout(resolve, 200));
 
         // Verify the scheduler handles error callbacks gracefully by not throwing
-        await expect(capabilities.scheduler.initialize(registrations, { pollIntervalMs: 100 })).resolves.toBeUndefined();
+        await expect(capabilities.scheduler.initialize(registrations)).resolves.toBeUndefined();
 
         await capabilities.scheduler.stop(capabilities);
     });
@@ -90,12 +91,12 @@ describe("declarative scheduler persistence and error handling", () => {
         const failureCallback = jest.fn().mockRejectedValue(new Error("Always fails"));
 
         const registrations = [
-            ["success-task", "* * * * *", successCallback, retryDelay],
-            ["failure-task", "* * * * *", failureCallback, retryDelay]
+            ["success-task", "0 * * * *", successCallback, retryDelay],
+            ["failure-task", "0 * * * *", failureCallback, retryDelay]
         ];
 
         // Initialize with both successful and failing tasks
-        await capabilities.scheduler.initialize(registrations, { pollIntervalMs: 100 });
+        await capabilities.scheduler.initialize(registrations);
 
         // Wait for task execution
         await new Promise(resolve => setTimeout(resolve, 300));
@@ -116,11 +117,11 @@ describe("declarative scheduler persistence and error handling", () => {
         // Schedule fewer tasks to avoid timeout
         const registrations = [];
         for (let i = 0; i < 3; i++) {
-            registrations.push([`simple-task-${i}`, "* * * * *", simpleCallback, retryDelay]);
+            registrations.push([`simple-task-${i}`, "0 * * * *", simpleCallback, retryDelay]);
         }
 
         // Should be able to initialize with multiple tasks without issue
-        await expect(capabilities.scheduler.initialize(registrations, { pollIntervalMs: 100 })).resolves.toBeUndefined();
+        await expect(capabilities.scheduler.initialize(registrations)).resolves.toBeUndefined();
 
         await capabilities.scheduler.stop(capabilities);
     });
@@ -132,10 +133,10 @@ describe("declarative scheduler persistence and error handling", () => {
         // Simple test for resource constraint handling
         const task = jest.fn();
         const registrations = [
-            ["resource-test", "* * * * *", task, retryDelay]
+            ["resource-test", "0 * * * *", task, retryDelay]
         ];
 
-        await expect(capabilities.scheduler.initialize(registrations, { pollIntervalMs: 100 })).resolves.toBeUndefined();
+        await expect(capabilities.scheduler.initialize(registrations)).resolves.toBeUndefined();
 
         await capabilities.scheduler.stop(capabilities);
     });
@@ -168,7 +169,7 @@ describe("declarative scheduler persistence and error handling", () => {
                 jest.setSystemTime(new Date(timeStr));
 
                 // Should be able to initialize at any time
-                await expect(capabilities.scheduler.initialize(registrations, { pollIntervalMs: 100 })).resolves.toBeUndefined();
+                await expect(capabilities.scheduler.initialize(registrations)).resolves.toBeUndefined();
             }
 
             await capabilities.scheduler.stop(capabilities);
@@ -189,7 +190,7 @@ describe("declarative scheduler persistence and error handling", () => {
             ["valid-task", "0 */4 * * *", validCallback, retryDelay]
         ];
 
-        await expect(capabilities.scheduler.initialize(registrations, { pollIntervalMs: 100 })).resolves.toBeUndefined();
+        await expect(capabilities.scheduler.initialize(registrations)).resolves.toBeUndefined();
 
         await capabilities.scheduler.stop(capabilities);
     });
@@ -203,14 +204,14 @@ describe("declarative scheduler persistence and error handling", () => {
 
         // Tasks should be processed in the order they are registered
         const registrations = [
-            ["task1", "* * * * *", callback1, retryDelay],
-            ["task2", "* * * * *", callback2, retryDelay]
+            ["task1", "0 * * * *", callback1, retryDelay],
+            ["task2", "0 * * * *", callback2, retryDelay]
         ];
 
-        await expect(capabilities.scheduler.initialize(registrations, { pollIntervalMs: 100 })).resolves.toBeUndefined();
+        await expect(capabilities.scheduler.initialize(registrations)).resolves.toBeUndefined();
 
         // Both callbacks should be scheduled and available for execution
-        await capabilities.scheduler.initialize(registrations, { pollIntervalMs: 100 });
+        await capabilities.scheduler.initialize(registrations);
 
         await capabilities.scheduler.stop(capabilities);
     });
@@ -231,10 +232,10 @@ describe("declarative scheduler persistence and error handling", () => {
             ["task-m", "0 12 * * *", callback3, retryDelay]
         ];
 
-        await expect(capabilities1.scheduler.initialize(registrations, { pollIntervalMs: 100 })).resolves.toBeUndefined();
+        await expect(capabilities1.scheduler.initialize(registrations)).resolves.toBeUndefined();
 
         // Tasks should be schedulable regardless of their scheduled times (test with separate instance)
-        await expect(capabilities2.scheduler.initialize(registrations, { pollIntervalMs: 100 })).resolves.toBeUndefined();
+        await expect(capabilities2.scheduler.initialize(registrations)).resolves.toBeUndefined();
 
         await capabilities1.scheduler.stop(capabilities1);
         await capabilities2.scheduler.stop(capabilities2);

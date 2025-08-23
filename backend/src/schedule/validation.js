@@ -15,8 +15,6 @@ const {
     CallbackTypeError,
     RetryDelayTypeError,
     NegativeRetryDelayError,
-    OptionsTypeError,
-    InvalidPollIntervalError,
 } = require("./errors");
 
 const {
@@ -26,7 +24,6 @@ const {
 } = require("./task_identity");
 
 /** @typedef {import('./types').Registration} Registration */
-/** @typedef {import('./types').PollerOptions} PollerOptions */
 
 /**
  * Validates that registrations match persisted runtime state (inner implementation)
@@ -50,7 +47,7 @@ function validateTasksAgainstPersistedStateInner(registrations, persistedTasks) 
             throw new InvalidRegistrationError(`Invalid registration at index ${index}: ${error.message}`, { index, cause: error });
         }
     });
-    
+
     const persistedIdentities = persistedTasks.map(taskRecordToTaskIdentity);
 
     // Use Set for faster lookup operations  
@@ -70,10 +67,10 @@ function validateTasksAgainstPersistedStateInner(registrations, persistedTasks) 
 
     // Find tasks in registrations but not in persisted state, and check for differences
     const persistedMap = new Map(persistedIdentities.map(t => [t.name, t]));
-    
+
     for (const regTask of registrationIdentities) {
         const persistedTask = persistedMap.get(regTask.name);
-        
+
         if (!persistedTask) {
             extra.push(regTask.name);
         } else if (!taskIdentitiesEqual(regTask, persistedTask)) {
@@ -145,11 +142,11 @@ function validateRegistrations(registrations, capabilities) {
         }
 
         const [name, cronExpression, callback, retryDelay] = registration;
-        
+
         if (typeof name !== 'string' || name.trim() === '') {
             throw new ScheduleInvalidNameError(name || '(empty)');
         }
-        
+
         const qname = JSON.stringify(name);
 
         // Check for duplicate task names - this is now a hard error
@@ -197,24 +194,7 @@ function validateRegistrations(registrations, capabilities) {
     }
 }
 
-/**
- * Validates options parameter for initialization
- * @param {PollerOptions} options
- * @throws {Error} if options are invalid
- */
-function validateOptions(options) {
-    if (options && typeof options !== 'object') {
-        throw new OptionsTypeError("Options must be an object");
-    }
-
-    const requestedPollIntervalMs = options.pollIntervalMs;
-    if (requestedPollIntervalMs !== undefined && (typeof requestedPollIntervalMs !== 'number' || requestedPollIntervalMs <= 0)) {
-        throw new InvalidPollIntervalError("pollIntervalMs must be a positive number");
-    }
-}
-
 module.exports = {
     validateTasksAgainstPersistedStateInner,
     validateRegistrations,
-    validateOptions,
 };

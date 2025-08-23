@@ -5,7 +5,7 @@
 
 const { fromMilliseconds } = require("../src/time_duration");
 const { getMockedRootCapabilities } = require("./spies");
-const { stubEnvironment, stubLogger, stubDatetime, stubSleeper, getDatetimeControl } = require("./stubs");
+const { stubEnvironment, stubLogger, stubDatetime, stubSleeper, getDatetimeControl, stubPollInterval } = require("./stubs");
 
 function getTestCapabilities() {
     const capabilities = getMockedRootCapabilities();
@@ -13,6 +13,7 @@ function getTestCapabilities() {
     stubLogger(capabilities);
     stubDatetime(capabilities);
     stubSleeper(capabilities);
+    stubPollInterval(1); // Fast polling for tests
     return capabilities;
 }
 
@@ -38,7 +39,7 @@ describe("declarative scheduler retry semantics", () => {
         timeControl.setTime(startTime);
 
         // Initialize with fast polling for tests
-        await capabilities.scheduler.initialize(registrations, { pollIntervalMs: 50 });
+        await capabilities.scheduler.initialize(registrations);
         
         // Wait for scheduler to start and catch up (will execute for 00:00:00)
         await new Promise(resolve => setTimeout(resolve, 100));
@@ -71,7 +72,7 @@ describe("declarative scheduler retry semantics", () => {
         timeControl.setTime(startTime);
 
         // Initialize scheduler with fast polling for tests
-        await capabilities.scheduler.initialize(registrations, { pollIntervalMs: 50 });
+        await capabilities.scheduler.initialize(registrations);
         
         // Wait for initial execution and catch-up
         await new Promise(resolve => setTimeout(resolve, 100));
@@ -110,7 +111,7 @@ describe("declarative scheduler retry semantics", () => {
         timeControl.setTime(startTime);
 
         // Initialize scheduler with fast polling
-        await capabilities.scheduler.initialize(registrations, { pollIntervalMs: 50 });
+        await capabilities.scheduler.initialize(registrations);
         
         // Wait for initial execution (catch up for 00:00:00)
         await new Promise(resolve => setTimeout(resolve, 100));
@@ -160,7 +161,7 @@ describe("declarative scheduler retry semantics", () => {
         timeControl.setTime(startTime);
 
         // Initialize scheduler with fast polling
-        await capabilities.scheduler.initialize(registrations, { pollIntervalMs: 50 });
+        await capabilities.scheduler.initialize(registrations);
         
         // Wait for initial executions (catch up for 00:00:00)
         await new Promise(resolve => setTimeout(resolve, 100));
@@ -188,13 +189,13 @@ describe("declarative scheduler retry semantics", () => {
         });
         
         const registrations = [
-            ["idempotent-test", "* * * * *", task, retryDelay]
+            ["idempotent-test", "0 * * * *", task, retryDelay]
         ];
 
         // Multiple initialize calls should be idempotent
-        await capabilities.scheduler.initialize(registrations, { pollIntervalMs: 100 });
-        await capabilities.scheduler.initialize(registrations, { pollIntervalMs: 100 });
-        await capabilities.scheduler.initialize(registrations, { pollIntervalMs: 100 });
+        await capabilities.scheduler.initialize(registrations);
+        await capabilities.scheduler.initialize(registrations);
+        await capabilities.scheduler.initialize(registrations);
         
         // Wait for execution
         await new Promise(resolve => setTimeout(resolve, 300));

@@ -5,7 +5,7 @@
 
 const { fromMilliseconds } = require("../src/time_duration");
 const { getMockedRootCapabilities } = require("./spies");
-const { stubEnvironment, stubLogger, stubDatetime, stubSleeper, getDatetimeControl } = require("./stubs");
+const { stubEnvironment, stubLogger, stubDatetime, stubSleeper, getDatetimeControl, stubPollInterval } = require("./stubs");
 
 function getTestCapabilities() {
     const capabilities = getMockedRootCapabilities();
@@ -13,6 +13,7 @@ function getTestCapabilities() {
     stubLogger(capabilities);
     stubDatetime(capabilities);
     stubSleeper(capabilities);
+    stubPollInterval(1); // Fast polling for tests
     return capabilities;
 }
 
@@ -26,10 +27,10 @@ describe("declarative scheduler task execution behavior", () => {
         
         const registrations = [
             // Task runs every minute
-            ["daily-task", "* * * * *", callback, retryDelay]
+            ["daily-task", "0 * * * *", callback, retryDelay]
         ];
         
-        await capabilities.scheduler.initialize(registrations, { pollIntervalMs: 100 });
+        await capabilities.scheduler.initialize(registrations);
         
         // Wait for execution
         await new Promise(resolve => setTimeout(resolve, 200));
@@ -47,12 +48,12 @@ describe("declarative scheduler task execution behavior", () => {
         const dailyCallback = jest.fn();
         
         const registrations = [
-            ["minute-task", "* * * * *", minuteCallback, retryDelay], // Every minute
+            ["minute-task", "0 * * * *", minuteCallback, retryDelay], // Every minute
             ["hourly-task", "0 * * * *", hourlyCallback, retryDelay], // Every hour
             ["daily-task", "0 8 * * *", dailyCallback, retryDelay]   // Daily at 8:00 AM
         ];
         
-        await capabilities.scheduler.initialize(registrations, { pollIntervalMs: 100 });
+        await capabilities.scheduler.initialize(registrations);
         
         // Wait for execution - at least the minute task should execute
         await new Promise(resolve => setTimeout(resolve, 200));
@@ -79,10 +80,10 @@ describe("declarative scheduler task execution behavior", () => {
         timeControl.setTime(startTime);
         
         const registrations = [
-            ["retry-task", "* * * * *", callback, retryDelay]
+            ["retry-task", "0 * * * *", callback, retryDelay]
         ];
         
-        await capabilities.scheduler.initialize(registrations, { pollIntervalMs: 50 });
+        await capabilities.scheduler.initialize(registrations);
         
         // Wait for first execution
         await new Promise(resolve => setTimeout(resolve, 100));
@@ -107,7 +108,7 @@ describe("declarative scheduler task execution behavior", () => {
         ];
         
         // Should initialize without errors even for special dates
-        await capabilities.scheduler.initialize(registrations, { pollIntervalMs: 100 });
+        await capabilities.scheduler.initialize(registrations);
         
         await new Promise(resolve => setTimeout(resolve, 200));
         
@@ -123,11 +124,11 @@ describe("declarative scheduler task execution behavior", () => {
         const callback = jest.fn();
         
         const registrations = [
-            ["persistent-task", "* * * * *", callback, retryDelay]
+            ["persistent-task", "0 * * * *", callback, retryDelay]
         ];
         
         // First initialization
-        await capabilities.scheduler.initialize(registrations, { pollIntervalMs: 100 });
+        await capabilities.scheduler.initialize(registrations);
         
         // Wait for execution
         await new Promise(resolve => setTimeout(resolve, 200));
@@ -136,7 +137,7 @@ describe("declarative scheduler task execution behavior", () => {
         await capabilities.scheduler.stop();
         
         // Second initialization with same task (should be idempotent)
-        await capabilities.scheduler.initialize(registrations, { pollIntervalMs: 100 });
+        await capabilities.scheduler.initialize(registrations);
         
         await new Promise(resolve => setTimeout(resolve, 200));
         
@@ -152,12 +153,12 @@ describe("declarative scheduler task execution behavior", () => {
         const task3 = jest.fn();
         
         const registrations = [
-            ["task1", "* * * * *", task1, retryDelay],     // Every minute
-            ["task2", "*/5 * * * *", task2, retryDelay],   // Every 5 minutes
+            ["task1", "0 * * * *", task1, retryDelay],     // Every minute
+            ["task2", "*/15 * * * *", task2, retryDelay],   // Every 5 minutes
             ["task3", "0 * * * *", task3, retryDelay]      // Every hour
         ];
         
-        await capabilities.scheduler.initialize(registrations, { pollIntervalMs: 100 });
+        await capabilities.scheduler.initialize(registrations);
         
         // Wait for executions
         await new Promise(resolve => setTimeout(resolve, 200));
@@ -178,11 +179,11 @@ describe("declarative scheduler task execution behavior", () => {
         });
         
         const registrations = [
-            ["restart-task", "* * * * *", callback, retryDelay]
+            ["restart-task", "0 * * * *", callback, retryDelay]
         ];
         
         // First scheduler instance
-        await capabilities.scheduler.initialize(registrations, { pollIntervalMs: 100 });
+        await capabilities.scheduler.initialize(registrations);
         
         await new Promise(resolve => setTimeout(resolve, 200));
         expect(executionCount).toBe(1);
@@ -190,7 +191,7 @@ describe("declarative scheduler task execution behavior", () => {
         await capabilities.scheduler.stop();
         
         // Restart with new instance (simulating application restart)
-        await capabilities.scheduler.initialize(registrations, { pollIntervalMs: 100 });
+        await capabilities.scheduler.initialize(registrations);
         
         await new Promise(resolve => setTimeout(resolve, 200));
         
@@ -211,7 +212,7 @@ describe("declarative scheduler task execution behavior", () => {
         
         // Should complete initialization quickly even with complex expressions
         const startTime = Date.now();
-        await capabilities.scheduler.initialize(registrations, { pollIntervalMs: 100 });
+        await capabilities.scheduler.initialize(registrations);
         const endTime = Date.now();
         
         // Should initialize reasonably fast

@@ -5,7 +5,7 @@
 
 const { fromMilliseconds } = require("../src/time_duration");
 const { getMockedRootCapabilities } = require("./spies");
-const { stubEnvironment, stubLogger, stubDatetime, stubSleeper, stubRuntimeStateStorage } = require("./stubs");
+const { stubEnvironment, stubLogger, stubDatetime, stubSleeper, stubRuntimeStateStorage, stubPollInterval } = require("./stubs");
 
 function getTestCapabilities() {
     const capabilities = getMockedRootCapabilities();
@@ -14,6 +14,7 @@ function getTestCapabilities() {
     stubDatetime(capabilities);
     stubSleeper(capabilities);
     stubRuntimeStateStorage(capabilities);
+    stubPollInterval(1); // Fast polling for tests
     return capabilities;
 }
 
@@ -29,7 +30,7 @@ describe("declarative scheduler comprehensive edge cases", () => {
             ];
 
             // Initialize scheduler should not throw errors
-            await capabilities.scheduler.initialize(registrations, { pollIntervalMs: 1 });
+            await capabilities.scheduler.initialize(registrations);
 
             // Allow for scheduler setup
             await new Promise(resolve => setTimeout(resolve, 10));
@@ -48,13 +49,13 @@ describe("declarative scheduler comprehensive edge cases", () => {
             const callback3 = jest.fn();
 
             const registrations = [
-                ["task1", "* * * * *", callback1, retryDelay], // Every minute
-                ["task2", "* * * * *", callback2, retryDelay], // Every minute
-                ["task3", "* * * * *", callback3, retryDelay]  // Every minute
+                ["task1", "0 * * * *", callback1, retryDelay], // Every minute
+                ["task2", "0 * * * *", callback2, retryDelay], // Every minute
+                ["task3", "0 * * * *", callback3, retryDelay]  // Every minute
             ];
 
             // Should handle multiple identical schedules without errors
-            await capabilities.scheduler.initialize(registrations, { pollIntervalMs: 1 });
+            await capabilities.scheduler.initialize(registrations);
 
             // Wait for scheduler to process
             await new Promise(resolve => setTimeout(resolve, 10));
@@ -79,11 +80,11 @@ describe("declarative scheduler comprehensive edge cases", () => {
             });
 
             const registrations = [
-                ["short-retry", "* * * * *", flakyCallback, retryDelay]
+                ["short-retry", "0 * * * *", flakyCallback, retryDelay]
             ];
 
             // Should handle short retry delays without errors
-            await capabilities.scheduler.initialize(registrations, { pollIntervalMs: 1 });
+            await capabilities.scheduler.initialize(registrations);
 
             // Wait for potential execution and retry
             await new Promise(resolve => setTimeout(resolve, 10));
@@ -106,7 +107,7 @@ describe("declarative scheduler comprehensive edge cases", () => {
             ];
 
             // Should parse and handle leap year cron without errors
-            await capabilities.scheduler.initialize(registrations, { pollIntervalMs: 1 });
+            await capabilities.scheduler.initialize(registrations);
 
             await new Promise(resolve => setTimeout(resolve, 10));
 
@@ -126,7 +127,7 @@ describe("declarative scheduler comprehensive edge cases", () => {
             ];
 
             // Should handle monthly schedules without errors
-            await capabilities.scheduler.initialize(registrations, { pollIntervalMs: 1 });
+            await capabilities.scheduler.initialize(registrations);
 
             await new Promise(resolve => setTimeout(resolve, 10));
 
@@ -146,7 +147,7 @@ describe("declarative scheduler comprehensive edge cases", () => {
             ];
 
             // Should handle hourly at specific minute without errors
-            await capabilities.scheduler.initialize(registrations, { pollIntervalMs: 1 });
+            await capabilities.scheduler.initialize(registrations);
 
             await new Promise(resolve => setTimeout(resolve, 10));
 
@@ -168,11 +169,11 @@ describe("declarative scheduler comprehensive edge cases", () => {
             for (let i = 0; i < 15; i++) {
                 const callback = jest.fn();
                 callbacks.push(callback);
-                registrations.push([`task-${i}`, "* * * * *", callback, retryDelay]);
+                registrations.push([`task-${i}`, "0 * * * *", callback, retryDelay]);
             }
 
             // Should handle multiple concurrent tasks without errors
-            await capabilities.scheduler.initialize(registrations, { pollIntervalMs: 1 });
+            await capabilities.scheduler.initialize(registrations);
 
             // Wait for potential execution
             await new Promise(resolve => setTimeout(resolve, 10));
@@ -199,11 +200,11 @@ describe("declarative scheduler comprehensive edge cases", () => {
             });
 
             const registrations = [
-                ["error-task", "* * * * *", callback, retryDelay]
+                ["error-task", "0 * * * *", callback, retryDelay]
             ];
 
             // Should handle error-throwing callbacks gracefully
-            await capabilities.scheduler.initialize(registrations, { pollIntervalMs: 1 });
+            await capabilities.scheduler.initialize(registrations);
             
             await new Promise(resolve => setTimeout(resolve, 10));
             
@@ -221,12 +222,12 @@ describe("declarative scheduler comprehensive edge cases", () => {
             const asyncCallback = jest.fn(() => Promise.resolve("async result"));
 
             const registrations = [
-                ["sync-task", "* * * * *", syncCallback, retryDelay],
-                ["async-task", "* * * * *", asyncCallback, retryDelay]
+                ["sync-task", "0 * * * *", syncCallback, retryDelay],
+                ["async-task", "0 * * * *", asyncCallback, retryDelay]
             ];
 
             // Should handle both sync and async callbacks
-            await capabilities.scheduler.initialize(registrations, { pollIntervalMs: 1 });
+            await capabilities.scheduler.initialize(registrations);
 
             await new Promise(resolve => setTimeout(resolve, 10));
 
@@ -249,7 +250,7 @@ describe("declarative scheduler comprehensive edge cases", () => {
             ];
 
             // Should handle precise timing without errors
-            await capabilities.scheduler.initialize(registrations, { pollIntervalMs: 1 });
+            await capabilities.scheduler.initialize(registrations);
 
             await new Promise(resolve => setTimeout(resolve, 10));
 
@@ -269,7 +270,7 @@ describe("declarative scheduler comprehensive edge cases", () => {
             ];
 
             // Should handle specific minute scheduling
-            await capabilities.scheduler.initialize(registrations, { pollIntervalMs: 1 });
+            await capabilities.scheduler.initialize(registrations);
 
             await new Promise(resolve => setTimeout(resolve, 10));
 

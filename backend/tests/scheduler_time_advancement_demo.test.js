@@ -5,7 +5,7 @@
 
 const { fromMilliseconds } = require("../src/time_duration");
 const { getMockedRootCapabilities } = require("./spies");
-const { stubEnvironment, stubLogger, stubDatetime, stubSleeper, getDatetimeControl, stubRuntimeStateStorage } = require("./stubs");
+const { stubEnvironment, stubLogger, stubDatetime, stubSleeper, getDatetimeControl, stubRuntimeStateStorage, stubPollInterval } = require("./stubs");
 
 function getTestCapabilities() {
     const capabilities = getMockedRootCapabilities();
@@ -14,6 +14,7 @@ function getTestCapabilities() {
     stubDatetime(capabilities);
     stubSleeper(capabilities);
     stubRuntimeStateStorage(capabilities);
+    stubPollInterval(1); // Fast polling for tests
     return capabilities;
 }
 
@@ -33,7 +34,7 @@ describe("scheduler time advancement demo", () => {
             ["half-hour-task", "30 * * * *", taskCallback, retryDelay] // Runs at minute 30 of each hour
         ];
 
-        await capabilities.scheduler.initialize(registrations, { pollIntervalMs: 1 });
+        await capabilities.scheduler.initialize(registrations);
 
         // Wait to ensure scheduler has started and performed catch-up
         await new Promise(resolve => setTimeout(resolve, 10));
@@ -83,7 +84,7 @@ describe("scheduler time advancement demo", () => {
             ["daily-task", "0 0 * * *", dailyTask, retryDelay],    // Every day at midnight (0:00)
         ];
 
-        await capabilities.scheduler.initialize(registrations, { pollIntervalMs: 1 });
+        await capabilities.scheduler.initialize(registrations);
 
         // Wait for scheduler to start up
         await new Promise(resolve => setTimeout(resolve, 10));
@@ -131,7 +132,7 @@ describe("scheduler time advancement demo", () => {
             ["every-minute", "* * * * *", taskCallback, retryDelay] // Every minute
         ];
 
-        await capabilities.scheduler.initialize(registrations, { pollIntervalMs: 1 });
+        await capabilities.scheduler.initialize(registrations);
 
         // Wait for scheduler to start
         await new Promise(resolve => setTimeout(resolve, 10));
@@ -177,7 +178,7 @@ describe("scheduler time advancement demo", () => {
             ["time-check-task", "0 * * * *", taskCallback, retryDelay] // Every hour at 0 minutes
         ];
 
-        await capabilities.scheduler.initialize(registrations, { pollIntervalMs: 1 });
+        await capabilities.scheduler.initialize(registrations);
 
         // Wait for scheduler to start
         await new Promise(resolve => setTimeout(resolve, 10));
@@ -210,7 +211,7 @@ describe("scheduler time advancement demo", () => {
             ["hourly-task", "0 * * * *", taskCallback, retryDelay] // Every hour at 0 minutes
         ];
 
-        await capabilities.scheduler.initialize(registrations, { pollIntervalMs: 1 });
+        await capabilities.scheduler.initialize(registrations);
 
         // Wait for scheduler to start
         await new Promise(resolve => setTimeout(resolve, 10));

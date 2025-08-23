@@ -21,7 +21,7 @@ describe("schedule persist roundtrip", () => {
         const capabilities = getTestCapabilities();
         
         // Create first scheduler with longer poll interval to avoid conflicts
-        const scheduler1 = makePollingScheduler(capabilities, { pollIntervalMs: 60000 });
+        const scheduler1 = makePollingScheduler(capabilities);
         const retryDelay = fromMilliseconds(5000);
         const callback = jest.fn();
         
@@ -36,7 +36,7 @@ describe("schedule persist roundtrip", () => {
         await new Promise(resolve => setTimeout(resolve, 200));
         
         // Create a new scheduler and schedule the same task (simulating restart)
-        const scheduler2 = makePollingScheduler(capabilities, { pollIntervalMs: 60000 });
+        const scheduler2 = makePollingScheduler(capabilities);
         
         // Re-schedule the same task with a callback (as would happen on restart)
         const newCallback = jest.fn();

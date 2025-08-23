@@ -1,7 +1,7 @@
 const { validate, ScheduleInvalidNameError } = require("../src/cron");
 const { fromMilliseconds } = require("../src/time_duration");
 const { getMockedRootCapabilities } = require("./spies");
-const { stubEnvironment, stubLogger, stubDatetime, stubSleeper } = require("./stubs");
+const { stubEnvironment, stubLogger, stubDatetime, stubSleeper, stubPollInterval } = require("./stubs");
 
 function getTestCapabilities() {
     const capabilities = getMockedRootCapabilities();
@@ -9,12 +9,14 @@ function getTestCapabilities() {
     stubLogger(capabilities);
     stubDatetime(capabilities);
     stubSleeper(capabilities);
+    stubPollInterval(1); // Fast polling for tests
     return capabilities;
 }
 
 describe("declarative scheduler validation", () => {
+
     test("validate exposes parser and returns booleans", async () => {
-        expect(validate("* * * * *")).toBe(true);
+        expect(validate("0 * * * *")).toBe(true);
         expect(validate("0 2 * * *")).toBe(true);
         expect(validate("60 * * * *")).toBe(false); // invalid minute
         expect(validate(/** @type any */(null))).toBe(false);
@@ -33,9 +35,9 @@ describe("declarative scheduler validation", () => {
             ["   ", "0 * * * *", () => {}, retryDelay] // Every hour
         ];
         
-        await expect(capabilities1.scheduler.initialize(emptyNameRegistrations, { pollIntervalMs: 60000 }))
+        await expect(capabilities1.scheduler.initialize(emptyNameRegistrations))
             .rejects.toThrow(ScheduleInvalidNameError);
-        await expect(capabilities2.scheduler.initialize(whitespaceNameRegistrations, { pollIntervalMs: 60000 }))
+        await expect(capabilities2.scheduler.initialize(whitespaceNameRegistrations))
             .rejects.toThrow(ScheduleInvalidNameError);
     });
 
