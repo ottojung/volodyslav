@@ -27,7 +27,7 @@ describe("declarative scheduler precedence logic verification", () => {
         
         // Task runs every minute - should execute immediately
         const registrations = [
-            ["precedence-test", "* * * * *", task, retryDelay]
+            ["precedence-test", "0 * * * *", task, retryDelay]
         ];
         
         // Initialize and wait for execution
@@ -47,7 +47,7 @@ describe("declarative scheduler precedence logic verification", () => {
         
         // Task runs every minute - should execute immediately
         const registrations = [
-            ["precedence-test", "* * * * *", task, retryDelay]
+            ["precedence-test", "0 * * * *", task, retryDelay]
         ];
         
         // Initialize and wait for execution
@@ -72,7 +72,7 @@ describe("declarative scheduler precedence logic verification", () => {
             
             // Task runs every 5 minutes (10:00, 10:05, 10:10, etc.)
             const registrations = [
-                ["precedence-test", "*/5 * * * *", task, retryDelay]
+                ["precedence-test", "*/15 * * * *", task, retryDelay]
             ];
             
             // Multiple calls at 10:00 should be idempotent

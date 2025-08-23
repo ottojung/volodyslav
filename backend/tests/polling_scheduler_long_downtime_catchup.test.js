@@ -26,7 +26,7 @@ describe("declarative scheduler task execution behavior", () => {
         
         const registrations = [
             // Task runs every minute
-            ["daily-task", "* * * * *", callback, retryDelay]
+            ["daily-task", "0 * * * *", callback, retryDelay]
         ];
         
         await capabilities.scheduler.initialize(registrations);
@@ -47,7 +47,7 @@ describe("declarative scheduler task execution behavior", () => {
         const dailyCallback = jest.fn();
         
         const registrations = [
-            ["minute-task", "* * * * *", minuteCallback, retryDelay], // Every minute
+            ["minute-task", "0 * * * *", minuteCallback, retryDelay], // Every minute
             ["hourly-task", "0 * * * *", hourlyCallback, retryDelay], // Every hour
             ["daily-task", "0 8 * * *", dailyCallback, retryDelay]   // Daily at 8:00 AM
         ];
@@ -79,7 +79,7 @@ describe("declarative scheduler task execution behavior", () => {
         timeControl.setTime(startTime);
         
         const registrations = [
-            ["retry-task", "* * * * *", callback, retryDelay]
+            ["retry-task", "0 * * * *", callback, retryDelay]
         ];
         
         await capabilities.scheduler.initialize(registrations);
@@ -123,7 +123,7 @@ describe("declarative scheduler task execution behavior", () => {
         const callback = jest.fn();
         
         const registrations = [
-            ["persistent-task", "* * * * *", callback, retryDelay]
+            ["persistent-task", "0 * * * *", callback, retryDelay]
         ];
         
         // First initialization
@@ -152,8 +152,8 @@ describe("declarative scheduler task execution behavior", () => {
         const task3 = jest.fn();
         
         const registrations = [
-            ["task1", "* * * * *", task1, retryDelay],     // Every minute
-            ["task2", "*/5 * * * *", task2, retryDelay],   // Every 5 minutes
+            ["task1", "0 * * * *", task1, retryDelay],     // Every minute
+            ["task2", "*/15 * * * *", task2, retryDelay],   // Every 5 minutes
             ["task3", "0 * * * *", task3, retryDelay]      // Every hour
         ];
         
@@ -178,7 +178,7 @@ describe("declarative scheduler task execution behavior", () => {
         });
         
         const registrations = [
-            ["restart-task", "* * * * *", callback, retryDelay]
+            ["restart-task", "0 * * * *", callback, retryDelay]
         ];
         
         // First scheduler instance

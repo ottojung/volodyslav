@@ -132,7 +132,7 @@ describe("declarative scheduler time handling", () => {
         });
 
         const registrations = [
-            ["execution-history-task", "* * * * *", callback, retryDelay] // Every minute for quick testing
+            ["execution-history-task", "0 * * * *", callback, retryDelay] // Every minute for quick testing
         ];
 
         // First initialization and execution
@@ -209,7 +209,7 @@ describe("declarative scheduler time handling", () => {
         });
 
         const registrations = [
-            ["restart-time-task", "* * * * *", callback, retryDelay]
+            ["restart-time-task", "0 * * * *", callback, retryDelay]
         ];
 
         // First run

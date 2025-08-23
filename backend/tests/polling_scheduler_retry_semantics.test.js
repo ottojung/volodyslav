@@ -188,7 +188,7 @@ describe("declarative scheduler retry semantics", () => {
         });
         
         const registrations = [
-            ["idempotent-test", "* * * * *", task, retryDelay]
+            ["idempotent-test", "0 * * * *", task, retryDelay]
         ];
 
         // Multiple initialize calls should be idempotent

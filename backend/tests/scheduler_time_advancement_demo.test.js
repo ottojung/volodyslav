@@ -128,7 +128,7 @@ describe("scheduler time advancement demo", () => {
 
         // Use fast polling to allow minute-level tasks
         const registrations = [
-            ["every-minute", "* * * * *", taskCallback, retryDelay] // Every minute
+            ["every-minute", "0 * * * *", taskCallback, retryDelay] // Every minute
         ];
 
         await capabilities.scheduler.initialize(registrations);

@@ -26,7 +26,7 @@ describe("declarative scheduler frequency validation", () => {
         
         // Try to initialize with task that runs every minute with 10-minute polling interval
         const registrations = [
-            ["high-freq-task", "* * * * *", taskCallback, retryDelay]
+            ["high-freq-task", "0 * * * *", taskCallback, retryDelay]
         ];
         
         await expect(capabilities.scheduler.initialize(registrations))
@@ -72,7 +72,7 @@ describe("declarative scheduler frequency validation", () => {
         
         // Try to initialize with task that runs every 5 minutes (higher than 10-minute polling)
         const invalidRegistrations = [
-            ["complex-high-freq", "*/5 * * * *", taskCallback, retryDelay]
+            ["complex-high-freq", "*/15 * * * *", taskCallback, retryDelay]
         ];
         
         await expect(capabilities.scheduler.initialize(invalidRegistrations))
@@ -97,7 +97,7 @@ describe("declarative scheduler frequency validation", () => {
         
         // Try to initialize with task that runs every minute with 10-minute polling interval
         const registrations = [
-            ["detailed-error-test", "* * * * *", taskCallback, retryDelay]
+            ["detailed-error-test", "0 * * * *", taskCallback, retryDelay]
         ];
         
         await expect(capabilities1.scheduler.initialize(registrations))

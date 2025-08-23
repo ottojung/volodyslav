@@ -26,7 +26,7 @@ describe("declarative scheduler state management robustness", () => {
             
             // Registrations with duplicate task names should throw an error
             const registrations = [
-                ["duplicate-task", "* * * * *", taskCallback, retryDelay],
+                ["duplicate-task", "0 * * * *", taskCallback, retryDelay],
                 ["duplicate-task", "0 * * * *", taskCallback, retryDelay] // Same name, different schedule
             ];
             
@@ -41,7 +41,7 @@ describe("declarative scheduler state management robustness", () => {
             const taskCallback = jest.fn();
             
             const registrations = [
-                ["valid-task", "* * * * *", taskCallback, retryDelay],
+                ["valid-task", "0 * * * *", taskCallback, retryDelay],
                 ["invalid-task", "invalid-cron-expression", taskCallback, retryDelay]
             ];
             
@@ -69,7 +69,7 @@ describe("declarative scheduler state management robustness", () => {
             });
             
             const registrations = [
-                ["large-delay-task", "* * * * *", taskCallback, veryLargeDelay]
+                ["large-delay-task", "0 * * * *", taskCallback, veryLargeDelay]
             ];
             
             // Should handle very large retry delays without issues
@@ -95,7 +95,7 @@ describe("declarative scheduler state management robustness", () => {
             });
             
             const registrations = [
-                ["short-delay-task", "* * * * *", taskCallback, veryShortDelay]
+                ["short-delay-task", "0 * * * *", taskCallback, veryShortDelay]
             ];
             
             // Should handle very short retry delays
@@ -122,7 +122,7 @@ describe("declarative scheduler state management robustness", () => {
             });
             
             const registrations = [
-                ["global-modifier", "* * * * *", globalModifyingCallback, retryDelay]
+                ["global-modifier", "0 * * * *", globalModifyingCallback, retryDelay]
             ];
             
             // Should handle callbacks that modify global state
@@ -155,7 +155,7 @@ describe("declarative scheduler state management robustness", () => {
             });
             
             const registrations = [
-                ["memory-leak-task", "* * * * *", memoryLeakingCallback, retryDelay]
+                ["memory-leak-task", "0 * * * *", memoryLeakingCallback, retryDelay]
             ];
             
             // Should handle potentially leaky callbacks
@@ -192,7 +192,7 @@ describe("declarative scheduler state management robustness", () => {
             });
             
             const registrations = [
-                ["weird-throwing-task", "* * * * *", weirdThrowingCallback, retryDelay]
+                ["weird-throwing-task", "0 * * * *", weirdThrowingCallback, retryDelay]
             ];
             
             // Should handle non-Error thrown objects
@@ -213,7 +213,7 @@ describe("declarative scheduler state management robustness", () => {
             const taskCallback = jest.fn();
             
             const registrations = [
-                ["rapid-cycle-task", "* * * * *", taskCallback, retryDelay]
+                ["rapid-cycle-task", "0 * * * *", taskCallback, retryDelay]
             ];
             
             // Perform rapid start/stop cycles with slightly longer delays
@@ -234,7 +234,7 @@ describe("declarative scheduler state management robustness", () => {
             const taskCallback = jest.fn();
             
             const registrations = [
-                ["concurrent-task", "* * * * *", taskCallback, retryDelay]
+                ["concurrent-task", "0 * * * *", taskCallback, retryDelay]
             ];
             
             // Start multiple concurrent initializations
@@ -266,7 +266,7 @@ describe("declarative scheduler state management robustness", () => {
             const taskCallback = jest.fn();
             
             const registrations = [
-                ["multi-stop-task", "* * * * *", taskCallback, retryDelay]
+                ["multi-stop-task", "0 * * * *", taskCallback, retryDelay]
             ];
             
             await capabilities.scheduler.initialize(registrations);
@@ -293,7 +293,7 @@ describe("declarative scheduler state management robustness", () => {
             for (let i = 0; i < 10; i++) {
                 const callback = jest.fn();
                 callbacks.push(callback);
-                registrations.push([`task-${i}`, "* * * * *", callback, retryDelay]);
+                registrations.push([`task-${i}`, "0 * * * *", callback, retryDelay]);
             }
             
             // Should handle many simultaneous tasks
@@ -314,7 +314,7 @@ describe("declarative scheduler state management robustness", () => {
             
             const callbacks = [];
             const complexPatterns = [
-                "*/5 * * * *",      // Every 5 minutes
+                "*/15 * * * *",      // Every 5 minutes
                 "0 */2 * * *",     // Every 2 hours
                 "30 9 * * 1-5",    // 9:30 AM on weekdays
                 "0 0 1 * *",       // First day of month

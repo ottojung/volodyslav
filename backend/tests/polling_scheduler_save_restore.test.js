@@ -24,7 +24,7 @@ describe("declarative scheduler persistence and idempotency", () => {
         const taskCallback = jest.fn();
 
         const registrations = [
-            ["test-task", "* * * * *", taskCallback, retryDelay]
+            ["test-task", "0 * * * *", taskCallback, retryDelay]
         ];
 
         // Multiple initializations should be idempotent
@@ -48,7 +48,7 @@ describe("declarative scheduler persistence and idempotency", () => {
         const taskCallback1 = jest.fn();
 
         const registrations = [
-            ["persistent-task", "* * * * *", taskCallback1, retryDelay]
+            ["persistent-task", "0 * * * *", taskCallback1, retryDelay]
         ];
 
         // First "session" - initialize and run
@@ -104,7 +104,7 @@ describe("declarative scheduler persistence and idempotency", () => {
         });
         
         const registrations = [
-            ["failing-task", "* * * * *", failingCallback, retryDelay]
+            ["failing-task", "0 * * * *", failingCallback, retryDelay]
         ];
 
         // Should handle failing tasks and retries
@@ -132,7 +132,7 @@ describe("declarative scheduler persistence and idempotency", () => {
         // Follow up with actual tasks should work
         const taskCallback = jest.fn();
         const registrations = [
-            ["new-task", "* * * * *", taskCallback, fromMilliseconds(5000)]
+            ["new-task", "0 * * * *", taskCallback, fromMilliseconds(5000)]
         ];
         
         await capabilities.scheduler.initialize(registrations);
@@ -152,8 +152,8 @@ describe("declarative scheduler persistence and idempotency", () => {
 
         // Define a consistent task list
         const registrations = [
-            ["task1", "* * * * *", callback1, retryDelay],
-            ["task2", "* * * * *", callback2, retryDelay]
+            ["task1", "0 * * * *", callback1, retryDelay],
+            ["task2", "0 * * * *", callback2, retryDelay]
         ];
         
         // First session
@@ -183,7 +183,7 @@ describe("declarative scheduler persistence and idempotency", () => {
         const taskCallback = jest.fn();
         
         const registrations = [
-            ["cycle-task", "* * * * *", taskCallback, retryDelay]
+            ["cycle-task", "0 * * * *", taskCallback, retryDelay]
         ];
 
         // Multiple start/stop cycles

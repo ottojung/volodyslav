@@ -39,8 +39,8 @@ describe("declarative scheduler parallel execution", () => {
         });
         
         const registrations = [
-            ["parallel-task-1", "* * * * *", task1, retryDelay],
-            ["parallel-task-2", "* * * * *", task2, retryDelay]
+            ["parallel-task-1", "0 * * * *", task1, retryDelay],
+            ["parallel-task-2", "0 * * * *", task2, retryDelay]
         ];
         
         await capabilities.scheduler.initialize(registrations);
@@ -82,10 +82,10 @@ describe("declarative scheduler parallel execution", () => {
         });
         
         const registrations = [
-            ["concurrent-1", "* * * * *", () => concurrencyTask(1), retryDelay],
-            ["concurrent-2", "* * * * *", () => concurrencyTask(2), retryDelay],
-            ["concurrent-3", "* * * * *", () => concurrencyTask(3), retryDelay],
-            ["concurrent-4", "* * * * *", () => concurrencyTask(4), retryDelay]
+            ["concurrent-1", "0 * * * *", () => concurrencyTask(1), retryDelay],
+            ["concurrent-2", "0 * * * *", () => concurrencyTask(2), retryDelay],
+            ["concurrent-3", "0 * * * *", () => concurrencyTask(3), retryDelay],
+            ["concurrent-4", "0 * * * *", () => concurrencyTask(4), retryDelay]
         ];
         
         await capabilities.scheduler.initialize(registrations);
@@ -120,8 +120,8 @@ describe("declarative scheduler parallel execution", () => {
         });
         
         const registrations = [
-            ["slow-task", "* * * * *", slowTask, retryDelay],
-            ["fast-task", "* * * * *", fastTask, retryDelay]
+            ["slow-task", "0 * * * *", slowTask, retryDelay],
+            ["fast-task", "0 * * * *", fastTask, retryDelay]
         ];
         
         await capabilities.scheduler.initialize(registrations);
@@ -154,8 +154,8 @@ describe("declarative scheduler parallel execution", () => {
         });
         
         const registrations = [
-            ["good-task", "* * * * *", goodTask, retryDelay],
-            ["bad-task", "* * * * *", badTask, retryDelay]
+            ["good-task", "0 * * * *", goodTask, retryDelay],
+            ["bad-task", "0 * * * *", badTask, retryDelay]
         ];
         
         await capabilities.scheduler.initialize(registrations);
@@ -200,9 +200,9 @@ describe("declarative scheduler parallel execution", () => {
         timeControl.setTime(startTime);
         
         const registrations = [
-            ["retry-task-1", "* * * * *", task1, retryDelay],
-            ["retry-task-2", "* * * * *", task2, retryDelay],
-            ["retry-task-3", "* * * * *", task3, retryDelay]
+            ["retry-task-1", "0 * * * *", task1, retryDelay],
+            ["retry-task-2", "0 * * * *", task2, retryDelay],
+            ["retry-task-3", "0 * * * *", task3, retryDelay]
         ];
         
         await capabilities.scheduler.initialize(registrations);

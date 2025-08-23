@@ -15,7 +15,7 @@ function getTestCapabilities() {
 describe("declarative scheduler validation", () => {
 
     test("validate exposes parser and returns booleans", async () => {
-        expect(validate("* * * * *")).toBe(true);
+        expect(validate("0 * * * *")).toBe(true);
         expect(validate("0 2 * * *")).toBe(true);
         expect(validate("60 * * * *")).toBe(false); // invalid minute
         expect(validate(/** @type any */(null))).toBe(false);

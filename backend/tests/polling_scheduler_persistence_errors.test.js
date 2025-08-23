@@ -42,7 +42,7 @@ describe("declarative scheduler persistence and error handling", () => {
 
         const registrations = [
             // Use a cron that runs immediately (every minute)
-            ["flaky-task", "* * * * *", flakyCallback, retryDelay]
+            ["flaky-task", "0 * * * *", flakyCallback, retryDelay]
         ];
 
         // Initialize with fast polling for testing
@@ -67,7 +67,7 @@ describe("declarative scheduler persistence and error handling", () => {
         });
 
         const registrations = [
-            ["error-task", "* * * * *", errorCallback, retryDelay]
+            ["error-task", "0 * * * *", errorCallback, retryDelay]
         ];
 
         // Initialize scheduler with error-throwing callback
@@ -90,8 +90,8 @@ describe("declarative scheduler persistence and error handling", () => {
         const failureCallback = jest.fn().mockRejectedValue(new Error("Always fails"));
 
         const registrations = [
-            ["success-task", "* * * * *", successCallback, retryDelay],
-            ["failure-task", "* * * * *", failureCallback, retryDelay]
+            ["success-task", "0 * * * *", successCallback, retryDelay],
+            ["failure-task", "0 * * * *", failureCallback, retryDelay]
         ];
 
         // Initialize with both successful and failing tasks
@@ -116,7 +116,7 @@ describe("declarative scheduler persistence and error handling", () => {
         // Schedule fewer tasks to avoid timeout
         const registrations = [];
         for (let i = 0; i < 3; i++) {
-            registrations.push([`simple-task-${i}`, "* * * * *", simpleCallback, retryDelay]);
+            registrations.push([`simple-task-${i}`, "0 * * * *", simpleCallback, retryDelay]);
         }
 
         // Should be able to initialize with multiple tasks without issue
@@ -132,7 +132,7 @@ describe("declarative scheduler persistence and error handling", () => {
         // Simple test for resource constraint handling
         const task = jest.fn();
         const registrations = [
-            ["resource-test", "* * * * *", task, retryDelay]
+            ["resource-test", "0 * * * *", task, retryDelay]
         ];
 
         await expect(capabilities.scheduler.initialize(registrations)).resolves.toBeUndefined();
@@ -203,8 +203,8 @@ describe("declarative scheduler persistence and error handling", () => {
 
         // Tasks should be processed in the order they are registered
         const registrations = [
-            ["task1", "* * * * *", callback1, retryDelay],
-            ["task2", "* * * * *", callback2, retryDelay]
+            ["task1", "0 * * * *", callback1, retryDelay],
+            ["task2", "0 * * * *", callback2, retryDelay]
         ];
 
         await expect(capabilities.scheduler.initialize(registrations)).resolves.toBeUndefined();

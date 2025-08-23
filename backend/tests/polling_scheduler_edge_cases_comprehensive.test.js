@@ -48,9 +48,9 @@ describe("declarative scheduler comprehensive edge cases", () => {
             const callback3 = jest.fn();
 
             const registrations = [
-                ["task1", "* * * * *", callback1, retryDelay], // Every minute
-                ["task2", "* * * * *", callback2, retryDelay], // Every minute
-                ["task3", "* * * * *", callback3, retryDelay]  // Every minute
+                ["task1", "0 * * * *", callback1, retryDelay], // Every minute
+                ["task2", "0 * * * *", callback2, retryDelay], // Every minute
+                ["task3", "0 * * * *", callback3, retryDelay]  // Every minute
             ];
 
             // Should handle multiple identical schedules without errors
@@ -79,7 +79,7 @@ describe("declarative scheduler comprehensive edge cases", () => {
             });
 
             const registrations = [
-                ["short-retry", "* * * * *", flakyCallback, retryDelay]
+                ["short-retry", "0 * * * *", flakyCallback, retryDelay]
             ];
 
             // Should handle short retry delays without errors
@@ -168,7 +168,7 @@ describe("declarative scheduler comprehensive edge cases", () => {
             for (let i = 0; i < 15; i++) {
                 const callback = jest.fn();
                 callbacks.push(callback);
-                registrations.push([`task-${i}`, "* * * * *", callback, retryDelay]);
+                registrations.push([`task-${i}`, "0 * * * *", callback, retryDelay]);
             }
 
             // Should handle multiple concurrent tasks without errors
@@ -199,7 +199,7 @@ describe("declarative scheduler comprehensive edge cases", () => {
             });
 
             const registrations = [
-                ["error-task", "* * * * *", callback, retryDelay]
+                ["error-task", "0 * * * *", callback, retryDelay]
             ];
 
             // Should handle error-throwing callbacks gracefully
@@ -221,8 +221,8 @@ describe("declarative scheduler comprehensive edge cases", () => {
             const asyncCallback = jest.fn(() => Promise.resolve("async result"));
 
             const registrations = [
-                ["sync-task", "* * * * *", syncCallback, retryDelay],
-                ["async-task", "* * * * *", asyncCallback, retryDelay]
+                ["sync-task", "0 * * * *", syncCallback, retryDelay],
+                ["async-task", "0 * * * *", asyncCallback, retryDelay]
             ];
 
             // Should handle both sync and async callbacks

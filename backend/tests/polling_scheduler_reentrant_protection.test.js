@@ -31,7 +31,7 @@ describe("declarative scheduler re-entrancy protection", () => {
         });
         
         const registrations = [
-            ["long-task", "* * * * *", longRunningTask, retryDelay]
+            ["long-task", "0 * * * *", longRunningTask, retryDelay]
         ];
         
         // Call initialize multiple times concurrently
@@ -63,7 +63,7 @@ describe("declarative scheduler re-entrancy protection", () => {
         });
         
         const registrations = [
-            ["quick-task", "* * * * *", quickTask, retryDelay]
+            ["quick-task", "0 * * * *", quickTask, retryDelay]
         ];
         
         // First initialize call
@@ -93,7 +93,7 @@ describe("declarative scheduler re-entrancy protection", () => {
         });
         
         const registrations = [
-            ["error-task", "* * * * *", errorTask, retryDelay]
+            ["error-task", "0 * * * *", errorTask, retryDelay]
         ];
         
         // Should not throw despite task errors
@@ -117,7 +117,7 @@ describe("declarative scheduler re-entrancy protection", () => {
         const validTask = jest.fn().mockResolvedValue(undefined);
         
         const registrations = [
-            ["valid-task", "* * * * *", validTask, retryDelay]
+            ["valid-task", "0 * * * *", validTask, retryDelay]
         ];
         
         // First call to establish state
@@ -125,7 +125,7 @@ describe("declarative scheduler re-entrancy protection", () => {
         
         // Different registrations should cause validation error
         const differentRegistrations = [
-            ["different-task", "* * * * *", validTask, retryDelay]
+            ["different-task", "0 * * * *", validTask, retryDelay]
         ];
         
         await expect(capabilities.scheduler.initialize(differentRegistrations))

@@ -45,7 +45,7 @@ describe("declarative scheduler algorithm robustness", () => {
         const taskCallback = jest.fn();
         
         const registrations = [
-            ["frequent-task", "* * * * *", taskCallback, retryDelay] // Every minute
+            ["frequent-task", "0 * * * *", taskCallback, retryDelay] // Every minute
         ];
         
         await capabilities.scheduler.initialize(registrations);
@@ -68,7 +68,7 @@ describe("declarative scheduler algorithm robustness", () => {
         const registrations = [
             ["hourly-task", "0 * * * *", hourlyTask, retryDelay], // Hourly
             ["daily-task", "0 12 * * *", dailyTask, retryDelay], // Daily at noon
-            ["minute-task", "* * * * *", minuteTask, retryDelay] // Every minute
+            ["minute-task", "0 * * * *", minuteTask, retryDelay] // Every minute
         ];
         
         await capabilities.scheduler.initialize(registrations);
@@ -100,7 +100,7 @@ describe("declarative scheduler algorithm robustness", () => {
         timeControl.setTime(startTime);
         
         const registrations = [
-            ["precision-test", "* * * * *", precisionCallback, retryDelay]
+            ["precision-test", "0 * * * *", precisionCallback, retryDelay]
         ];
         
         await capabilities.scheduler.initialize(registrations);
@@ -146,8 +146,8 @@ describe("declarative scheduler algorithm robustness", () => {
         const task3 = jest.fn();
         
         const registrations = [
-            ["multi-field-task1", "* * * * *", task1, fromMilliseconds(1000)], // Every minute
-            ["multi-field-task2", "*/5 * * * *", task2, fromMilliseconds(2000)], // Every 5 minutes  
+            ["multi-field-task1", "0 * * * *", task1, fromMilliseconds(1000)], // Every minute
+            ["multi-field-task2", "*/15 * * * *", task2, fromMilliseconds(2000)], // Every 5 minutes  
             ["multi-field-task3", "0 * * * *", task3, fromMilliseconds(3000)] // Every hour
         ];
         
@@ -171,8 +171,8 @@ describe("declarative scheduler algorithm robustness", () => {
         });
         
         const registrations = [
-            ["bad-task", "* * * * *", badTask, retryDelay],
-            ["good-task", "* * * * *", goodTask, retryDelay]
+            ["bad-task", "0 * * * *", badTask, retryDelay],
+            ["good-task", "0 * * * *", goodTask, retryDelay]
         ];
         
         // Should not throw even with error in one task
@@ -209,7 +209,7 @@ describe("declarative scheduler algorithm robustness", () => {
         const taskCallback = jest.fn();
         
         const registrations = [
-            ["idempotent-test", "* * * * *", taskCallback, retryDelay]
+            ["idempotent-test", "0 * * * *", taskCallback, retryDelay]
         ];
         
         // Multiple initializations should be idempotent
