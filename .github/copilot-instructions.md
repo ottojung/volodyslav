@@ -247,9 +247,8 @@ function isPathLike(object) {
 ## Testing
 
 ### Running Tests
-- **Specific tests**: `jest path/to/test/file.js` or `jest --testNamePattern="test name"`
+- **Specific tests**: `npx jest --testNamePattern="test name"`
 - **Full test suite**: `npm test`
-- **Static analysis**: `npm run static-analysis` (includes linting and type checking)
 - **Build verification**: `npm run build`
 
 ### Test Conventions

@@ -256,9 +256,8 @@ function isPathLike(object) {
 # Testing and Validation
 
 ## Running Tests
-- **Specific tests**: `jest path/to/test/file.js` or `jest --testNamePattern="test name"`
+- **Specific tests**: `npx jest --testNamePattern="test name"`
 - **Full test suite**: `npm test`
-- **Static analysis**: `npm run static-analysis` (includes linting and type checking)
 - **Build verification**: `npm run build`
 
 ## Test Conventions
@@ -273,10 +272,9 @@ When working on a request from start to finish:
 1. **Setup**: `npm install` (install all dependencies)
 2. **Understand**: Read relevant code and tests to understand the context
 3. **Implement**: Make changes following the capabilities pattern and JSDoc conventions
-4. **Test**: Run `jest path/to/specific/test.js` for focused testing
+4. **Test**: Run `npx jest path/to/specific/test.js` for focused testing
 5. **Validate**: Run full test suite with `npm test`
-6. **Quality Check**: Run `npm run static-analysis` to catch linting/type issues
-7. **Build**: Run `npm run build` to ensure the project builds successfully
+6. **Build**: Run `npm run build` to ensure the project builds successfully
 
 ## Backwards compatibility
 
