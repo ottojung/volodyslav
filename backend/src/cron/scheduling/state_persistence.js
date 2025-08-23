@@ -143,9 +143,7 @@ async function persistCurrentState(capabilities, tasks) {
 
             storage.setState(newState);
 
-            const serialized = structure.serialize(newState);
-            const bytes = JSON.stringify(serialized).length;
-            capabilities.logger.logDebug({ taskCount: tasks.size, bytes }, "State persisted");
+            capabilities.logger.logDebug({ taskCount: tasks.size }, "State persisted");
         });
     } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
