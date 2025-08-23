@@ -84,7 +84,9 @@ class RuntimeStateStorageClass {
      *
      * Uses capabilities: reader, logger
      *
-     * @returns {Promise<RuntimeState|null>} - The existing runtime state or null if not found/invalid
+     * @returns {Promise<RuntimeState|null>} - The existing runtime state or null if file not found
+     * @throws {structure.RuntimeStateFileParseError} - If the state file cannot be parsed as JSON
+     * @throws {structure.RuntimeStateCorruptedError} - If the state file structure is invalid
      * @throws {Error} - If called outside of a transaction.
      */
     async getExistingState() {
@@ -95,25 +97,32 @@ class RuntimeStateStorageClass {
 
         try {
             const fileContent = await this.getFileContent();
-            const obj = JSON.parse(fileContent);
+            
+            // Handle empty file as if it doesn't exist
+            if (!fileContent.trim()) {
+                this.existingStateCache = null;
+                this.existingStateCacheLoaded = true;
+                return null;
+            }
+            
+            let obj;
+            try {
+                obj = JSON.parse(fileContent);
+            } catch (parseError) {
+                // File exists but contains invalid JSON - this is corruption
+                const error = parseError instanceof Error ? parseError : new Error(String(parseError));
+                throw new structure.RuntimeStateFileParseError(
+                    `Failed to parse runtime state file as JSON: ${error.message}`,
+                    this.stateFile.path,
+                    error
+                );
+            }
 
             const result = structure.tryDeserialize(obj);
 
             if (structure.isTryDeserializeError(result)) {
-                this.capabilities.logger.logWarning(
-                    {
-                        filepath: this.stateFile.path,
-                        error: result.message,
-                        field: result.field,
-                        value: result.value,
-                        expectedType: result.expectedType,
-                        errorType: result.name,
-                    },
-                    "Found invalid runtime state object in file",
-                );
-                this.existingStateCache = null;
-                this.existingStateCacheLoaded = true;
-                return null;
+                // File exists but structure is invalid - this is corruption
+                throw new structure.RuntimeStateCorruptedError(result, this.stateFile.path);
             }
 
             for (const err of result.taskErrors) {
@@ -140,16 +149,14 @@ class RuntimeStateStorageClass {
             this.existingStateCacheLoaded = true;
             return this.existingStateCache;
         } catch (error) {
-            this.capabilities.logger.logWarning(
-                {
-                    filepath: this.stateFile.path,
-                    error: error instanceof Error ? error.message : String(error)
-                },
-                "Failed to read runtime state file"
-            );
-            this.existingStateCache = null;
-            this.existingStateCacheLoaded = true;
-            return null;
+            if (structure.isRuntimeStateCorruptedError(error) || structure.isRuntimeStateFileParseError(error)) {
+                // Re-throw corruption/parsing errors as-is
+                throw error;
+            }
+
+            // Any other error (including I/O errors) should be re-thrown as exceptional
+            // Since we have an ExistingFile, the file should exist and be readable
+            throw error;
         }
     }
 
@@ -158,6 +165,8 @@ class RuntimeStateStorageClass {
      * or from the existing state file. If neither exists, creates a default state.
      *
      * @returns {Promise<RuntimeState>} - The current runtime state
+     * @throws {structure.RuntimeStateFileParseError} - If the state file cannot be parsed as JSON
+     * @throws {structure.RuntimeStateCorruptedError} - If the state file structure is invalid
      */
     async getCurrentState() {
         if (this.newState !== null) {
