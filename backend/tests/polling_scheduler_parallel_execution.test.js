@@ -19,8 +19,6 @@ function getTestCapabilities() {
 }
 
 describe("declarative scheduler parallel execution", () => {
-    // Use real timers for testing actual scheduler behavior
-
     test("should execute multiple due tasks in parallel", async () => {
         const capabilities = getTestCapabilities();
         const retryDelay = fromMilliseconds(5000);
