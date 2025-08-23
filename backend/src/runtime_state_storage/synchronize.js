@@ -31,11 +31,11 @@ function isRuntimeStateRepositoryError(object) {
 /**
  * Ensures the runtime state repository is accessible locally.
  * @param {Capabilities} capabilities
- * @returns {Promise<string>} The path to the .git directory
+ * @returns {Promise<void>} The path to the .git directory
  */
 async function ensureAccessible(capabilities) {
     try {
-        return await workingRepository.getRepository(capabilities, "runtime-state-repository", "empty");
+        await workingRepository.getRepository(capabilities, "runtime-state-repository", "empty");
     } catch (error) {
         if (workingRepository.isWorkingRepositoryError(error)) {
             throw new RuntimeStateRepositoryError(
