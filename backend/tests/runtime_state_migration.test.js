@@ -42,12 +42,12 @@ describe("runtime state migration", () => {
         // Check that state was loaded (should be called whether migrated or not)
         expect(capabilities.logger.logInfo).toHaveBeenCalledWith(
             expect.objectContaining({ taskCount: expect.any(Number) }),
-            "SchedulerStateLoaded"
+            "Scheduler state loaded"
         );
         
         // Check if migration was logged (if v1 state was detected)
         const migrationCalls = capabilities.logger.logInfo.mock.calls.filter(
-            call => call.length === 2 && call[1] === "RuntimeStateMigrated"
+            call => call.length === 2 && call[1] === "Runtime state migrated"
         );
         // If migration occurred, verify the migration parameters
         expect(migrationCalls.length).toBeLessThanOrEqual(1);

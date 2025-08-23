@@ -22,7 +22,7 @@ async function loadPersistedState(capabilities, tasks) {
 
             if (existingState === null) {
                 // No existing state - start fresh
-                capabilities.logger.logInfo({ taskCount: 0 }, "SchedulerStateLoaded");
+                capabilities.logger.logInfo({ taskCount: 0 }, "Scheduler state loaded");
                 return;
             }
 
@@ -30,7 +30,7 @@ async function loadPersistedState(capabilities, tasks) {
             if (existingState.version === 1) {
                 capabilities.logger.logInfo(
                     { from: 1, to: 2 },
-                    "RuntimeStateMigrated"
+                    "Runtime state migrated"
                 );
             }
 
@@ -85,13 +85,13 @@ async function loadPersistedState(capabilities, tasks) {
                     const message = error instanceof Error ? error.message : String(error);
                     capabilities.logger.logError(
                         { taskName: record.name, error: message },
-                        "FailedToLoadPersistedTask"
+                        `Failed to load persisted task: ${message}`
                     );
                     // Continue loading other tasks
                 }
             }
 
-            capabilities.logger.logInfo({ taskCount }, "SchedulerStateLoaded");
+            capabilities.logger.logInfo({ taskCount }, "Scheduler state loaded");
         });
     } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
