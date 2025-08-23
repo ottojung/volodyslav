@@ -19,7 +19,7 @@ function getTestCapabilities() {
 describe("runtime_state_storage mock", () => {
     test("mockRuntimeStateTransaction provides same interface", async () => {
         const capabilities = getTestCapabilities();
-        
+
         await mockRuntimeStateTransaction(capabilities, async (storage) => {
             expect(storage).toBeDefined();
             expect(typeof storage.setState).toBe("function");
@@ -79,7 +79,7 @@ describe("runtime_state_storage mock", () => {
         const capabilities = getTestCapabilities();
         const existingTime = capabilities.datetime.fromISOString("2025-01-01T10:00:00.000Z");
         const newTime = capabilities.datetime.fromISOString("2025-01-01T11:00:00.000Z");
-        
+
         const existingState = { version: RUNTIME_STATE_VERSION, startTime: existingTime, tasks: [] };
         const newState = { version: RUNTIME_STATE_VERSION, startTime: newTime, tasks: [] };
 
@@ -98,30 +98,30 @@ describe("runtime_state_storage mock", () => {
 
     test("stubRuntimeStateStorage replaces capabilities.state", async () => {
         const capabilities = getTestCapabilities();
-        
+
         // Before stubbing, capabilities.state should exist and be mocked by getMockedRootCapabilities
         expect(capabilities.state).toBeDefined();
         expect(jest.isMockFunction(capabilities.state.transaction)).toBe(true);
         expect(jest.isMockFunction(capabilities.state.ensureAccessible)).toBe(true);
-        
+
         // Store references to the original mocked functions
         const originalTransaction = capabilities.state.transaction;
         const originalEnsureAccessible = capabilities.state.ensureAccessible;
-        
+
         // Apply the stub
         stubRuntimeStateStorage(capabilities);
-        
+
         // Verify it's been replaced with our specific mock implementation
         expect(capabilities.state).toBeDefined();
         expect(capabilities.state.transaction).toBeDefined();
         expect(jest.isMockFunction(capabilities.state.transaction)).toBe(true);
         expect(capabilities.state.ensureAccessible).toBeDefined();
         expect(jest.isMockFunction(capabilities.state.ensureAccessible)).toBe(true);
-        
+
         // Verify the functions have been replaced (not the same mock instances)
         expect(capabilities.state.transaction).not.toBe(originalTransaction);
         expect(capabilities.state.ensureAccessible).not.toBe(originalEnsureAccessible);
-        
+
         // Test that the mock works
         const startTime = capabilities.datetime.now();
         const testState = { version: RUNTIME_STATE_VERSION, startTime, tasks: [] };
@@ -134,7 +134,7 @@ describe("runtime_state_storage mock", () => {
 
     test("isMockRuntimeStateStorage type guard works", async () => {
         const capabilities = getTestCapabilities();
-        
+
         await mockRuntimeStateTransaction(capabilities, async (storage) => {
             expect(isMockRuntimeStateStorage(storage)).toBe(true);
             expect(isMockRuntimeStateStorage({})).toBe(false);
@@ -146,7 +146,7 @@ describe("runtime_state_storage mock", () => {
         const capabilities = getTestCapabilities();
         const startTime = capabilities.datetime.now();
         const lastSuccess = capabilities.datetime.fromISOString("2025-01-01T09:00:00.000Z");
-        
+
         const testState = {
             version: RUNTIME_STATE_VERSION,
             startTime,
