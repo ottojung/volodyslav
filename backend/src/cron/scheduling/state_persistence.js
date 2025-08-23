@@ -96,7 +96,7 @@ async function loadPersistedState(capabilities, tasks) {
     } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
         capabilities.logger.logError({ message }, `State load failed: ${message}`);
-        // Non-fatal: continue with empty state
+        throw error;
     }
 }
 
