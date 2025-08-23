@@ -18,24 +18,20 @@ function getTestCapabilities() {
 
 describe("declarative scheduler state management robustness", () => {
     describe("initialization edge cases", () => {
-        test("should handle duplicate task names in registration", async () => {
+        test("should throw ScheduleDuplicateTaskError for duplicate task names in registration", async () => {
             const capabilities = getTestCapabilities();
             const retryDelay = fromMilliseconds(5000);
             const taskCallback = jest.fn();
             
-            // Registrations with duplicate task names should be handled gracefully
+            // Registrations with duplicate task names should throw an error
             const registrations = [
                 ["duplicate-task", "* * * * *", taskCallback, retryDelay],
                 ["duplicate-task", "0 * * * *", taskCallback, retryDelay] // Same name, different schedule
             ];
             
-            // Should handle registration without crashing (implementation may accept or reject)
+            // Should throw ScheduleDuplicateTaskError for duplicate names
             await expect(capabilities.scheduler.initialize(registrations, { pollIntervalMs: 100 }))
-                .resolves.not.toThrow();
-            
-            await new Promise(resolve => setTimeout(resolve, 200));
-            
-            await capabilities.scheduler.stop(capabilities);
+                .rejects.toThrow("Task with name \"duplicate-task\" is already scheduled");
         });
 
         test("should handle invalid cron expressions gracefully", async () => {

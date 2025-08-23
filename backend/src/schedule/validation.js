@@ -3,7 +3,7 @@
  */
 
 const cronScheduler = require("../cron");
-const { ScheduleInvalidNameError } = require("../cron/polling_scheduler_errors");
+const { ScheduleInvalidNameError, ScheduleDuplicateTaskError } = require("../cron/polling_scheduler_errors");
 
 const {
     TaskListMismatchError,
@@ -152,10 +152,9 @@ function validateRegistrations(registrations, capabilities) {
         
         const qname = JSON.stringify(name);
 
-        // Check for duplicate task names (but allow them for backwards compatibility)
+        // Check for duplicate task names - this is now a hard error
         if (seenNames.has(name)) {
-            // FIXME: make this a hard error, and test for it.
-            capabilities.logger.logWarning({name, i, registrations}, `Duplicate task name ${qname} found at registration index ${i}. This may cause unpredictable behavior.`);
+            throw new ScheduleDuplicateTaskError(name);
         }
         seenNames.add(name);
 
