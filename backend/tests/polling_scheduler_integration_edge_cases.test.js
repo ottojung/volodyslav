@@ -22,7 +22,7 @@ describe("declarative scheduler integration and system edge cases", () => {
         test("should handle typical daily backup scenario", async () => {
             const capabilities = getTestCapabilities();
             const retryDelay = fromMilliseconds(30 * 60 * 1000); // 30 minute retry
-            
+
             let backupCount = 0;
             const backupCallback = jest.fn(async () => {
                 backupCount++;
@@ -31,77 +31,77 @@ describe("declarative scheduler integration and system edge cases", () => {
                     throw new Error(`Backup failed: ${backupCount}`);
                 }
             });
-            
+
             const registrations = [
                 ["daily-backup", "0 2 * * *", backupCallback, retryDelay]
             ];
-            
+
             // Should handle daily backup scheduling without errors
             await capabilities.scheduler.initialize(registrations, { pollIntervalMs: 100 });
-            
+
             await new Promise(resolve => setTimeout(resolve, 200));
-            
+
             // Backup should not run yet (not at 2 AM)
             expect(true).toBe(true); // Scheduler initialized successfully
-            
+
             await capabilities.scheduler.stop(capabilities);
         });
 
         test("should handle periodic health check scenario", async () => {
             const capabilities = getTestCapabilities();
             const retryDelay = fromMilliseconds(60 * 1000); // 1 minute retry
-            
+
             let healthCheckCount = 0;
             const healthCheckCallback = jest.fn(async () => {
                 healthCheckCount++;
-                
+
                 // Simulate occasional health check failures
                 if (healthCheckCount > 3 && healthCheckCount % 4 === 0) {
                     throw new Error("System unhealthy - requires attention");
                 }
             });
-            
+
             const registrations = [
                 ["health-check", "*/2 * * * *", healthCheckCallback, retryDelay]
             ];
-            
+
             // Should handle health check scheduling without errors
             await capabilities.scheduler.initialize(registrations, { pollIntervalMs: 100 });
-            
+
             await new Promise(resolve => setTimeout(resolve, 200));
-            
+
             // Health check should not run yet (every 2 minutes timing)
             expect(true).toBe(true); // Scheduler initialized successfully
-            
+
             await capabilities.scheduler.stop(capabilities);
         });
 
         test("should handle log rotation scenario", async () => {
             const capabilities = getTestCapabilities();
             const retryDelay = fromMilliseconds(5 * 60 * 1000); // 5 minute retry
-            
+
             let rotationCount = 0;
             const logRotationCallback = jest.fn(async () => {
                 rotationCount++;
-                
+
                 // Simulate log rotation occasionally failing due to file locks
                 if (rotationCount % 7 === 0) {
                     throw new Error("Log file locked - cannot rotate");
                 }
             });
-            
+
             const registrations = [
                 ["log-rotation", "0 * * * *", logRotationCallback, retryDelay]
             ];
-            
+
             // Should handle hourly log rotation scheduling without errors
             await capabilities.scheduler.initialize(registrations, { pollIntervalMs: 100 });
-            
+
             await new Promise(resolve => setTimeout(resolve, 200));
-            
+
             // Log rotation should not run yet (hourly at top of hour)
             expect(true).toBe(true); // Scheduler initialized successfully
-            
+
             await capabilities.scheduler.stop(capabilities);
         });
     });
@@ -110,94 +110,94 @@ describe("declarative scheduler integration and system edge cases", () => {
         test("should handle network connectivity issues", async () => {
             const capabilities = getTestCapabilities();
             const retryDelay = fromMilliseconds(5000);
-            
+
             let networkCallCount = 0;
             const networkTaskCallback = jest.fn(async () => {
                 networkCallCount++;
-                
+
                 // Simulate network connectivity issues - fail first attempt, succeed later
                 if (networkCallCount <= 1) {
                     throw new Error("ENOTFOUND: network unreachable");
                 }
             });
-            
+
             const registrations = [
                 ["network-task", "* * * * *", networkTaskCallback, retryDelay]
             ];
-            
+
             // Should handle network-dependent tasks without crashing
             await capabilities.scheduler.initialize(registrations, { pollIntervalMs: 100 });
-            
+
             await new Promise(resolve => setTimeout(resolve, 300));
-            
+
             // Should have attempted execution
             expect(networkTaskCallback).toHaveBeenCalled();
-            
+
             await capabilities.scheduler.stop(capabilities);
         });
 
         test("should handle filesystem operations", async () => {
             const capabilities = getTestCapabilities();
             const retryDelay = fromMilliseconds(5000);
-            
+
             let operationCount = 0;
             const fileTaskCallback = jest.fn(async () => {
                 operationCount++;
-                
+
                 // Simulate occasional permission errors
                 if (operationCount % 3 === 0) {
                     throw new Error("EACCES: permission denied");
                 }
             });
-            
+
             const registrations = [
                 ["file-task", "* * * * *", fileTaskCallback, retryDelay]
             ];
-            
+
             // Should handle filesystem-dependent tasks
             await capabilities.scheduler.initialize(registrations, { pollIntervalMs: 100 });
-            
+
             await new Promise(resolve => setTimeout(resolve, 300));
-            
+
             expect(fileTaskCallback).toHaveBeenCalled();
-            
+
             await capabilities.scheduler.stop(capabilities);
         });
 
         test("should handle memory-intensive scenarios", async () => {
             const capabilities = getTestCapabilities();
             const retryDelay = fromMilliseconds(5000);
-            
+
             // Simulate memory-intensive task
             let memoryAllocations = [];
             const memoryIntensiveCallback = jest.fn(() => {
                 // Allocate and immediately clean up to prevent actual memory issues
                 const allocation = new Array(1000).fill("test data");
                 memoryAllocations.push(allocation);
-                
+
                 // Clean up to prevent memory buildup in test
                 if (memoryAllocations.length > 10) {
                     memoryAllocations = memoryAllocations.slice(-5);
                 }
             });
-            
+
             const registrations = [];
-            
+
             // Schedule multiple memory-intensive tasks
             for (let i = 0; i < 10; i++) {
                 registrations.push([`memory-task-${i}`, "* * * * *", memoryIntensiveCallback, retryDelay]);
             }
-            
+
             // Should handle multiple concurrent memory-intensive tasks
             await capabilities.scheduler.initialize(registrations, { pollIntervalMs: 100 });
-            
+
             await new Promise(resolve => setTimeout(resolve, 400));
-            
+
             // Some tasks should execute
             expect(memoryIntensiveCallback).toHaveBeenCalled();
-            
+
             await capabilities.scheduler.stop(capabilities);
-            
+
             // Clean up
             memoryAllocations = [];
         });
@@ -207,27 +207,27 @@ describe("declarative scheduler integration and system edge cases", () => {
         test("should recover from uncaught exceptions in callbacks", async () => {
             const capabilities = getTestCapabilities();
             const retryDelay = fromMilliseconds(5000);
-            
+
             const normalCallback = jest.fn();
             const crashingCallback = jest.fn(() => {
                 // Simulate uncaught exception
                 throw new ReferenceError("undefined variable access");
             });
-            
+
             const registrations = [
                 ["normal-task", "* * * * *", normalCallback, retryDelay],
                 ["crashing-task", "* * * * *", crashingCallback, retryDelay]
             ];
-            
+
             // Should handle mixed normal and crashing tasks
             await capabilities.scheduler.initialize(registrations, { pollIntervalMs: 100 });
-            
+
             await new Promise(resolve => setTimeout(resolve, 300));
-            
+
             // Both tasks should be attempted
             expect(normalCallback).toHaveBeenCalled();
             expect(crashingCallback).toHaveBeenCalled();
-            
+
             await capabilities.scheduler.stop(capabilities);
         });
 
@@ -235,62 +235,62 @@ describe("declarative scheduler integration and system edge cases", () => {
             const capabilities = getTestCapabilities();
             const retryDelay = fromMilliseconds(5000);
             const taskCallback = jest.fn();
-            
+
             const registrations = [
                 ["cycle-task", "* * * * *", taskCallback, retryDelay]
             ];
-            
+
             // Rapidly initialize and stop scheduler multiple times
             for (let cycle = 0; cycle < 5; cycle++) {
                 await capabilities.scheduler.initialize(registrations, { pollIntervalMs: 100 });
-                
+
                 await new Promise(resolve => setTimeout(resolve, 100));
-                
+
                 await capabilities.scheduler.stop(capabilities);
             }
-            
+
             // Should handle rapid cycles without issues
             expect(taskCallback).toHaveBeenCalled();
         });
     });
 
     describe("performance under stress", () => {
-                test("should handle burst task scheduling", async () => {
+        test("should handle burst task scheduling", async () => {
             const capabilities = getTestCapabilities();
             const retryDelay = fromMilliseconds(5000);
-            
+
             // Schedule many tasks at once
             const callbacks = [];
             const registrations = [];
             const startTime = Date.now();
-            
+
             for (let i = 0; i < 20; i++) {
                 const callback = jest.fn();
                 callbacks.push(callback);
                 registrations.push([`burst-task-${i}`, "* * * * *", callback, retryDelay]);
             }
-            
+
             const scheduleTime = Date.now();
-            
+
             // Should handle scheduling many tasks efficiently
             await capabilities.scheduler.initialize(registrations, { pollIntervalMs: 100 });
-            
+
             await new Promise(resolve => setTimeout(resolve, 400));
-            
+
             // Scheduling should be reasonably fast
             expect(scheduleTime - startTime).toBeLessThan(5000);
-            
+
             // Some tasks should execute
             const executedCount = callbacks.filter(cb => cb.mock.calls.length > 0).length;
             expect(executedCount).toBeGreaterThan(0);
-            
+
             await capabilities.scheduler.stop(capabilities);
         }, 10000);
 
         test("should handle mixed task execution patterns", async () => {
             const capabilities = getTestCapabilities();
             const retryDelay = fromMilliseconds(5000);
-            
+
             // Mix of different task types
             const quickCallback = jest.fn();
             const slowCallback = jest.fn(async () => {
@@ -299,24 +299,24 @@ describe("declarative scheduler integration and system edge cases", () => {
             const failingCallback = jest.fn(() => {
                 throw new Error("Intentional failure");
             });
-            
+
             const registrations = [
                 ["quick-1", "* * * * *", quickCallback, retryDelay],
                 ["slow-1", "* * * * *", slowCallback, retryDelay],
                 ["failing-1", "* * * * *", failingCallback, retryDelay],
                 ["quick-2", "* * * * *", quickCallback, retryDelay]
             ];
-            
+
             // Should handle mixed task types
             await capabilities.scheduler.initialize(registrations, { pollIntervalMs: 100 });
-            
+
             await new Promise(resolve => setTimeout(resolve, 400));
-            
+
             // All task types should be attempted
             expect(quickCallback).toHaveBeenCalled();
             expect(slowCallback).toHaveBeenCalled();
             expect(failingCallback).toHaveBeenCalled();
-            
+
             await capabilities.scheduler.stop(capabilities);
         });
     });
@@ -324,15 +324,15 @@ describe("declarative scheduler integration and system edge cases", () => {
     describe("edge cases in scheduler lifecycle", () => {
         test("should handle empty task registrations", async () => {
             const capabilities = getTestCapabilities();
-            
+
             // Should handle empty registrations without error
             await capabilities.scheduler.initialize([], { pollIntervalMs: 100 });
-            
+
             await new Promise(resolve => setTimeout(resolve, 200));
-            
+
             // No assertions needed for empty registrations, but scheduler should work
             expect(true).toBe(true); // Verify test runs successfully
-            
+
             await capabilities.scheduler.stop(capabilities);
         });
 
@@ -340,21 +340,21 @@ describe("declarative scheduler integration and system edge cases", () => {
             const capabilities = getTestCapabilities();
             const retryDelay = fromMilliseconds(5000);
             const taskCallback = jest.fn();
-            
+
             const registrations = [
                 ["repeat-test", "* * * * *", taskCallback, retryDelay]
             ];
-            
+
             // Multiple initialization calls should be idempotent
             await capabilities.scheduler.initialize(registrations, { pollIntervalMs: 100 });
             await capabilities.scheduler.initialize(registrations, { pollIntervalMs: 100 });
             await capabilities.scheduler.initialize(registrations, { pollIntervalMs: 100 });
-            
+
             await new Promise(resolve => setTimeout(resolve, 300));
-            
+
             // Task should still execute correctly
             expect(taskCallback).toHaveBeenCalled();
-            
+
             await capabilities.scheduler.stop(capabilities);
         });
     });
