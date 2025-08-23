@@ -149,7 +149,7 @@ async function persistCurrentState(capabilities, tasks) {
         });
     } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
-        capabilities.logger.logError({ message }, "StateWriteFailed");
+        capabilities.logger.logError({ message }, `State write failed: ${message}`);
         // Continue running - write failures are non-fatal
     }
 }
