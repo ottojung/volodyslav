@@ -10,6 +10,7 @@ const {
     stubEnvironment,
     stubSleeper,
     stubDatetime,
+    stubPollInterval,
 } = require("./stubs");
 const { getMockedRootCapabilities } = require("./spies");
 const { COMMON } = require("../src/time_duration");
@@ -20,7 +21,7 @@ function getTestCapabilities() {
     stubEnvironment(capabilities);
     stubSleeper(capabilities);
     stubDatetime(capabilities);
-
+    stubPollInterval(1);
     return capabilities;
 }
 
@@ -235,7 +236,7 @@ describe("Declarative Scheduler", () => {
 
             // Should log first-time initialization message
             expect(capabilities.logger.logInfo).toHaveBeenCalledWith(
-                { 
+                {
                     registeredTaskCount: 2,
                     taskNames: ["task1", "task2"]
                 },
@@ -253,20 +254,20 @@ describe("Declarative Scheduler", () => {
             const taskCallback = jest.fn().mockResolvedValue(undefined);
 
             const registrations = [
-                // Task that should run every 15 minutes (compatible with 10-minute polling)
-                ["test-task", "*/15 * * * *", taskCallback, COMMON.FIVE_MINUTES],
+                // Task that should run every minute
+                ["test-task", "* * * * *", taskCallback, COMMON.FIVE_MINUTES],
             ];
 
             const capabilities = getTestCapabilities();
 
-            // Initialize the scheduler
+            // Initialize the scheduler with very short poll interval for testing
             await capabilities.scheduler.initialize(registrations);
 
             // Wait for at least one poll cycle to execute
             await new Promise(resolve => setTimeout(resolve, 150));
 
-            // Note: Task execution depends on current time and cron schedule
-            // This test verifies scheduler setup, actual execution timing varies
+            // Task should have been executed because it's due to run (first time)
+            expect(taskCallback).toHaveBeenCalled();
             await capabilities.scheduler.stop(capabilities);
         });
 
@@ -274,7 +275,7 @@ describe("Declarative Scheduler", () => {
             const taskCallback = jest.fn().mockResolvedValue(undefined);
 
             const registrations = [
-                ["test-task", "*/15 * * * *", taskCallback, COMMON.FIVE_MINUTES],
+                ["test-task", "* * * * *", taskCallback, COMMON.FIVE_MINUTES],
             ];
 
             const capabilities = getTestCapabilities();
@@ -285,7 +286,8 @@ describe("Declarative Scheduler", () => {
             // Wait for initial execution
             await new Promise(resolve => setTimeout(resolve, 150));
 
-            // Note: Task execution depends on timing
+            // Task should have been called
+            expect(taskCallback).toHaveBeenCalled();
 
             // Second call to initialize with same capabilities - should be idempotent
             // This should not cause errors or duplicate scheduling issues
@@ -297,8 +299,8 @@ describe("Declarative Scheduler", () => {
             const taskCallback = jest.fn().mockResolvedValue(undefined);
 
             const registrations = [
-                // Simple task that runs every 15 minutes
-                ["hourly-task", "*/15 * * * *", taskCallback, COMMON.FIVE_MINUTES],
+                // Simple task that runs every minute
+                ["minute-task", "* * * * *", taskCallback, COMMON.FIVE_MINUTES],
             ];
 
             const capabilities = getTestCapabilities();
@@ -308,7 +310,8 @@ describe("Declarative Scheduler", () => {
             // Wait for execution
             await new Promise(resolve => setTimeout(resolve, 150));
 
-            // Note: Task execution depends on current time and cron schedule
+            // Task should execute on first run
+            expect(taskCallback).toHaveBeenCalled();
             await capabilities.scheduler.stop(capabilities);
         });
     });
