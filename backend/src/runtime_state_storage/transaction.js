@@ -55,7 +55,7 @@ async function transaction(capabilities, transformation) {
             if (newState !== null) {
                 const serialized = structure.serialize(newState);
                 const stateString = JSON.stringify(serialized, null, '\t');
-                
+
                 // Check if content has actually changed before writing and committing
                 let hasChanges = true;
                 if (existingStateFile !== null) {
@@ -67,7 +67,7 @@ async function transaction(capabilities, transformation) {
                         hasChanges = true;
                     }
                 }
-                
+
                 if (hasChanges) {
                     // Write atomically to the state file
                     await capabilities.writer.writeFile(stateFile, stateString);
