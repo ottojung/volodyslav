@@ -37,9 +37,9 @@ describe("declarative scheduler integration and system edge cases", () => {
             ];
 
             // Should handle daily backup scheduling without errors
-            await capabilities.scheduler.initialize(registrations, { pollIntervalMs: 100 });
+            await capabilities.scheduler.initialize(registrations, { pollIntervalMs: 1 });
 
-            await new Promise(resolve => setTimeout(resolve, 200));
+            await new Promise(resolve => setTimeout(resolve, 10));
 
             // Backup should not run yet (not at 2 AM)
             expect(true).toBe(true); // Scheduler initialized successfully
@@ -66,9 +66,9 @@ describe("declarative scheduler integration and system edge cases", () => {
             ];
 
             // Should handle health check scheduling without errors
-            await capabilities.scheduler.initialize(registrations, { pollIntervalMs: 100 });
+            await capabilities.scheduler.initialize(registrations, { pollIntervalMs: 1 });
 
-            await new Promise(resolve => setTimeout(resolve, 200));
+            await new Promise(resolve => setTimeout(resolve, 10));
 
             // Health check should not run yet (every 2 minutes timing)
             expect(true).toBe(true); // Scheduler initialized successfully
@@ -95,9 +95,9 @@ describe("declarative scheduler integration and system edge cases", () => {
             ];
 
             // Should handle hourly log rotation scheduling without errors
-            await capabilities.scheduler.initialize(registrations, { pollIntervalMs: 100 });
+            await capabilities.scheduler.initialize(registrations, { pollIntervalMs: 1 });
 
-            await new Promise(resolve => setTimeout(resolve, 200));
+            await new Promise(resolve => setTimeout(resolve, 10));
 
             // Log rotation should not run yet (hourly at top of hour)
             expect(true).toBe(true); // Scheduler initialized successfully
@@ -126,9 +126,9 @@ describe("declarative scheduler integration and system edge cases", () => {
             ];
 
             // Should handle network-dependent tasks without crashing
-            await capabilities.scheduler.initialize(registrations, { pollIntervalMs: 100 });
+            await capabilities.scheduler.initialize(registrations, { pollIntervalMs: 1 });
 
-            await new Promise(resolve => setTimeout(resolve, 300));
+            await new Promise(resolve => setTimeout(resolve, 10));
 
             // Should have attempted execution
             expect(networkTaskCallback).toHaveBeenCalled();
@@ -155,9 +155,9 @@ describe("declarative scheduler integration and system edge cases", () => {
             ];
 
             // Should handle filesystem-dependent tasks
-            await capabilities.scheduler.initialize(registrations, { pollIntervalMs: 100 });
+            await capabilities.scheduler.initialize(registrations, { pollIntervalMs: 1 });
 
-            await new Promise(resolve => setTimeout(resolve, 300));
+            await new Promise(resolve => setTimeout(resolve, 10));
 
             expect(fileTaskCallback).toHaveBeenCalled();
 
@@ -189,9 +189,9 @@ describe("declarative scheduler integration and system edge cases", () => {
             }
 
             // Should handle multiple concurrent memory-intensive tasks
-            await capabilities.scheduler.initialize(registrations, { pollIntervalMs: 100 });
+            await capabilities.scheduler.initialize(registrations, { pollIntervalMs: 1 });
 
-            await new Promise(resolve => setTimeout(resolve, 400));
+            await new Promise(resolve => setTimeout(resolve, 10));
 
             // Some tasks should execute
             expect(memoryIntensiveCallback).toHaveBeenCalled();
@@ -220,9 +220,9 @@ describe("declarative scheduler integration and system edge cases", () => {
             ];
 
             // Should handle mixed normal and crashing tasks
-            await capabilities.scheduler.initialize(registrations, { pollIntervalMs: 100 });
+            await capabilities.scheduler.initialize(registrations, { pollIntervalMs: 1 });
 
-            await new Promise(resolve => setTimeout(resolve, 300));
+            await new Promise(resolve => setTimeout(resolve, 10));
 
             // Both tasks should be attempted
             expect(normalCallback).toHaveBeenCalled();
@@ -242,9 +242,9 @@ describe("declarative scheduler integration and system edge cases", () => {
 
             // Rapidly initialize and stop scheduler multiple times
             for (let cycle = 0; cycle < 5; cycle++) {
-                await capabilities.scheduler.initialize(registrations, { pollIntervalMs: 100 });
+                await capabilities.scheduler.initialize(registrations, { pollIntervalMs: 1 });
 
-                await new Promise(resolve => setTimeout(resolve, 100));
+                await new Promise(resolve => setTimeout(resolve, 10));
 
                 await capabilities.scheduler.stop(capabilities);
             }
@@ -273,19 +273,19 @@ describe("declarative scheduler integration and system edge cases", () => {
             const scheduleTime = Date.now();
 
             // Should handle scheduling many tasks efficiently
-            await capabilities.scheduler.initialize(registrations, { pollIntervalMs: 100 });
+            await capabilities.scheduler.initialize(registrations, { pollIntervalMs: 1 });
 
-            await new Promise(resolve => setTimeout(resolve, 400));
+            await new Promise(resolve => setTimeout(resolve, 10));
 
             // Scheduling should be reasonably fast
-            expect(scheduleTime - startTime).toBeLessThan(5000);
+            expect(scheduleTime - startTime).toBeLessThan(1000);
 
             // Some tasks should execute
             const executedCount = callbacks.filter(cb => cb.mock.calls.length > 0).length;
             expect(executedCount).toBeGreaterThan(0);
 
             await capabilities.scheduler.stop(capabilities);
-        }, 10000);
+        });
 
         test("should handle mixed task execution patterns", async () => {
             const capabilities = getTestCapabilities();
@@ -308,9 +308,9 @@ describe("declarative scheduler integration and system edge cases", () => {
             ];
 
             // Should handle mixed task types
-            await capabilities.scheduler.initialize(registrations, { pollIntervalMs: 100 });
+            await capabilities.scheduler.initialize(registrations, { pollIntervalMs: 1 });
 
-            await new Promise(resolve => setTimeout(resolve, 400));
+            await new Promise(resolve => setTimeout(resolve, 10));
 
             // All task types should be attempted
             expect(quickCallback).toHaveBeenCalled();
@@ -326,9 +326,9 @@ describe("declarative scheduler integration and system edge cases", () => {
             const capabilities = getTestCapabilities();
 
             // Should handle empty registrations without error
-            await capabilities.scheduler.initialize([], { pollIntervalMs: 100 });
+            await capabilities.scheduler.initialize([], { pollIntervalMs: 1 });
 
-            await new Promise(resolve => setTimeout(resolve, 200));
+            await new Promise(resolve => setTimeout(resolve, 10));
 
             // No assertions needed for empty registrations, but scheduler should work
             expect(true).toBe(true); // Verify test runs successfully
@@ -346,11 +346,11 @@ describe("declarative scheduler integration and system edge cases", () => {
             ];
 
             // Multiple initialization calls should be idempotent
-            await capabilities.scheduler.initialize(registrations, { pollIntervalMs: 100 });
-            await capabilities.scheduler.initialize(registrations, { pollIntervalMs: 100 });
-            await capabilities.scheduler.initialize(registrations, { pollIntervalMs: 100 });
+            await capabilities.scheduler.initialize(registrations, { pollIntervalMs: 1 });
+            await capabilities.scheduler.initialize(registrations, { pollIntervalMs: 1 });
+            await capabilities.scheduler.initialize(registrations, { pollIntervalMs: 1 });
 
-            await new Promise(resolve => setTimeout(resolve, 300));
+            await new Promise(resolve => setTimeout(resolve, 10));
 
             // Task should still execute correctly
             expect(taskCallback).toHaveBeenCalled();
