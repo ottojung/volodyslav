@@ -123,26 +123,6 @@ class NegativeRetryDelayError extends Error {
     }
 }
 
-class OptionsTypeError extends Error {
-    /**
-     * @param {string} message
-     */
-    constructor(message) {
-        super(message);
-        this.name = "OptionsTypeError";
-    }
-}
-
-class InvalidPollIntervalError extends Error {
-    /**
-     * @param {string} message
-     */
-    constructor(message) {
-        super(message);
-        this.name = "InvalidPollIntervalError";
-    }
-}
-
 class ScheduleTaskError extends Error {
     /**
      * @param {string} message
@@ -210,16 +190,6 @@ function isRetryDelayTypeError(object) { return object instanceof RetryDelayType
 function isNegativeRetryDelayError(object) { return object instanceof NegativeRetryDelayError; }
 /**
  * @param {unknown} object
- * @returns {object is OptionsTypeError}
- */
-function isOptionsTypeError(object) { return object instanceof OptionsTypeError; }
-/**
- * @param {unknown} object
- * @returns {object is InvalidPollIntervalError}
- */
-function isInvalidPollIntervalError(object) { return object instanceof InvalidPollIntervalError; }
-/**
- * @param {unknown} object
  * @returns {object is ScheduleTaskError}
  */
 function isScheduleTaskError(object) { return object instanceof ScheduleTaskError; }
@@ -241,8 +211,6 @@ module.exports = {
     CallbackTypeError,
     RetryDelayTypeError,
     NegativeRetryDelayError,
-    OptionsTypeError,
-    InvalidPollIntervalError,
     ScheduleTaskError,
     StopSchedulerError,
 
@@ -254,8 +222,6 @@ module.exports = {
     isCallbackTypeError,
     isRetryDelayTypeError,
     isNegativeRetryDelayError,
-    isOptionsTypeError,
-    isInvalidPollIntervalError,
     isScheduleTaskError,
     isStopSchedulerError,
 };

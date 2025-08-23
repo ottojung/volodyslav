@@ -15,8 +15,6 @@ const {
     CallbackTypeError,
     RetryDelayTypeError,
     NegativeRetryDelayError,
-    OptionsTypeError,
-    InvalidPollIntervalError,
 } = require("./errors");
 
 const {
