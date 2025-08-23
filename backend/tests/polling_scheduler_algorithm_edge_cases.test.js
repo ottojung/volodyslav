@@ -18,8 +18,6 @@ function getTestCapabilities() {
 }
 
 describe("declarative scheduler algorithm robustness", () => {
-    // Use real timers for testing actual scheduler behavior
-
     test("should handle basic task scheduling correctly", async () => {
         const capabilities = getTestCapabilities();
         const retryDelay = fromMilliseconds(5000);
