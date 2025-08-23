@@ -2,7 +2,6 @@
  * Tests for success persistence.
  */
 
-const { transaction } = require("../src/runtime_state_storage");
 const { getMockedRootCapabilities } = require("./spies");
 const { stubEnvironment, stubLogger, stubDatetime, stubRuntimeStateStorage } = require("./stubs");
 
@@ -20,7 +19,7 @@ describe("success persistence", () => {
         const capabilities = getTestCapabilities();
         
         // Test basic state persistence without relying on scheduler execution
-        await transaction(capabilities, async (storage) => {
+        await capabilities.state.transaction(async (storage) => {
             const currentState = await storage.getCurrentState();
             const taskWithSuccess = {
                 version: 2,
@@ -39,7 +38,7 @@ describe("success persistence", () => {
         });
         
         // Verify state was persisted correctly
-        await transaction(capabilities, async (storage) => {
+        await capabilities.state.transaction(async (storage) => {
             const reloadedState = await storage.getExistingState();
             expect(reloadedState).not.toBeNull();
             expect(reloadedState.tasks).toHaveLength(1);

@@ -21,6 +21,7 @@
 /** @typedef {import('../datetime').Datetime} Datetime */
 /** @typedef {import('../sleeper').Sleeper} Sleeper */
 /** @typedef {import('../schedule').Scheduler} Scheduler */
+/** @typedef {import('../runtime_state_storage').RuntimeStateStorage} RuntimeStateStorage */
 
 
 /**
@@ -44,6 +45,7 @@
  * @property {Sleeper} sleeper - A sleeper instance.
  * @property {Command} volodyslavDailyTasks - A command instance for daily tasks.
  * @property {Scheduler} scheduler - A scheduler instance.
+ * @property {RuntimeStateStorage} state - A runtime state storage instance.
  */
 
 const random = require("../random");
@@ -64,7 +66,8 @@ const aiTranscriptionCapability = require("../ai/transcription");
 const datetimeCapability = require("../datetime");
 const sleeperCapability = require("../sleeper");
 const volodyslavDailyTasks = require("../executables").volodyslavDailyTasks;
-const schedule = require('../schedule')
+const schedule = require('../schedule');
+const runtimeStateStorage = require('../runtime_state_storage');
 
 /**
  * This structure collects maximum capabilities that any part of Volodyslav can access.
@@ -98,6 +101,7 @@ const make = () => {
         sleeper,
         volodyslavDailyTasks,
         scheduler: schedule.make(() => ret),
+        state: runtimeStateStorage.make(() => ret),
     };
 
     return ret;

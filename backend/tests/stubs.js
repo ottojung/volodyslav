@@ -247,12 +247,6 @@ class MockRuntimeStateStorageClass {
 }
 
 /**
- * Global in-memory storage for mock runtime state.
- * @type {Map<string, import('../src/runtime_state_storage/types').RuntimeState>}
- */
-const mockRuntimeStateStorage = new Map();
-
-/**
  * Mock implementation of runtime state storage transaction.
  * Provides the same interface as the real transaction but keeps everything in memory.
  * 
@@ -262,6 +256,9 @@ const mockRuntimeStateStorage = new Map();
  * @returns {Promise<T>}
  */
 async function mockRuntimeStateTransaction(capabilities, transformation) {
+    expect(capabilities.state).toBeDefined();
+    const mockRuntimeStateStorage = capabilities.state._testStorage;
+    expect(mockRuntimeStateStorage).toBeDefined();
     const storageKey = "mock-runtime-state";
     const mockStorage = new MockRuntimeStateStorageClass(capabilities, mockRuntimeStateStorage, storageKey);
     
@@ -292,13 +289,15 @@ function isMockRuntimeStateStorage(object) {
  * 
  * @param {any} capabilities - Capabilities object to modify
  */
-function stubRuntimeStateStorage(_capabilities) {
-    // Clear any previous mock state
-    mockRuntimeStateStorage.clear();
+function stubRuntimeStateStorage(capabilities) {
+    const storage = new Map();
     
-    // Mock the transaction function to use our in-memory implementation
-    const runtimeStateStorage = require("../src/runtime_state_storage");
-    runtimeStateStorage.transaction = jest.fn().mockImplementation(mockRuntimeStateTransaction);
+    // Mock the state capability to use our in-memory implementation
+    capabilities.state = {
+        transaction: jest.fn().mockImplementation((transformation) => mockRuntimeStateTransaction(capabilities, transformation)),
+        ensureAccessible: jest.fn().mockResolvedValue(undefined),
+        _testStorage: storage,
+    };
 }
 
 module.exports = {

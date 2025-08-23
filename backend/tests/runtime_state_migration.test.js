@@ -3,17 +3,15 @@
  */
 
 const { makePollingScheduler } = require("../src/cron/polling_scheduler");
-const { transaction } = require("../src/runtime_state_storage");
 const { fromMilliseconds } = require("../src/time_duration");
 const { getMockedRootCapabilities } = require("./spies");
-const { stubEnvironment, stubLogger, stubDatetime, stubRuntimeStateStorage } = require("./stubs");
+const { stubEnvironment, stubLogger, stubDatetime } = require("./stubs");
 
 function getTestCapabilities() {
     const capabilities = getMockedRootCapabilities();
     stubEnvironment(capabilities);
     stubLogger(capabilities);
     stubDatetime(capabilities);
-    stubRuntimeStateStorage(capabilities);
     return capabilities;
 }
 
@@ -22,7 +20,7 @@ describe("runtime state migration", () => {
         const capabilities = getTestCapabilities();
         
         // First, create a legacy v1 state (only startTime)
-        await transaction(capabilities, async (storage) => {
+        await capabilities.state.transaction(async (storage) => {
             const legacyState = {
                 version: 1,
                 startTime: capabilities.datetime.fromISOString("2025-01-01T10:00:00.000Z"),
@@ -58,7 +56,7 @@ describe("runtime state migration", () => {
         });
         
         // Verify that new state is v2 with tasks
-        await transaction(capabilities, async (storage) => {
+        await capabilities.state.transaction(async (storage) => {
             const currentState = await storage.getCurrentState();
             expect(currentState.version).toBe(2);
             expect(currentState.tasks).toHaveLength(1);
