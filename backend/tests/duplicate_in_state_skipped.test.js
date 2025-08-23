@@ -10,7 +10,6 @@ function getTestCapabilities() {
     stubEnvironment(capabilities);
     stubLogger(capabilities);
     stubDatetime(capabilities);
-    stubRuntimeStateStorage(capabilities);
     return capabilities;
 }
 
