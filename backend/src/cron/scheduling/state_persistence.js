@@ -3,7 +3,6 @@
  * Handles saving and restoring task state to/from disk.
  */
 
-const structure = require("../../runtime_state_storage/structure");
 const time_duration = require("../../time_duration");
 const { parseCronExpression } = require("../parser");
 
