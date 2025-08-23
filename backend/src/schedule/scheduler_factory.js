@@ -3,11 +3,13 @@
  */
 
 const cronScheduler = require("../cron");
+const { POLL_INTERVAL_MS } = require("../cron/polling_scheduler");
 const memconst = require("../memconst");
 
 const {
     ScheduleTaskError,
     StopSchedulerError,
+    PollingFrequencyChangeError,
 } = require("./errors");
 
 const {
@@ -82,23 +84,24 @@ function make(getCapabilities) {
             validateTasksAgainstPersistedStateInner(registrations, persistedTasks);
         }
 
-        // Handle polling scheduler lifecycle with interval change support
+        // Handle polling scheduler lifecycle - no longer supports interval changes
         if (pollingScheduler !== null) {
-            // Check if polling interval needs to be changed
-            if (requestedPollIntervalMs !== undefined && requestedPollIntervalMs !== currentPollIntervalMs) {
-                capabilities.logger.logInfo(
-                    { 
-                        oldInterval: currentPollIntervalMs,
-                        newInterval: requestedPollIntervalMs 
-                    },
-                    "Polling interval change requested: stopping current scheduler"
+            // If no interval is specified, continue with the existing one
+            if (requestedPollIntervalMs === undefined) {
+                // No interval specified - continue with existing interval (idempotent)
+                capabilities.logger.logDebug(
+                    { pollIntervalMs: currentPollIntervalMs },
+                    "Scheduler already initialized, continuing with existing configuration"
                 );
-                
-                await pollingScheduler.stop();
-                pollingScheduler = null;
-                currentPollIntervalMs = undefined;
+                return;
+            }
+            
+            // An explicit interval was specified - check if it's different from current
+            const currentInterval = currentPollIntervalMs ?? POLL_INTERVAL_MS; // Defensive fallback
+            if (requestedPollIntervalMs !== currentInterval) {
+                throw new PollingFrequencyChangeError(currentInterval, requestedPollIntervalMs);
             } else {
-                // Scheduler already running with correct interval
+                // Scheduler already running with the same explicit interval
                 capabilities.logger.logDebug(
                     { pollIntervalMs: currentPollIntervalMs },
                     "Scheduler already initialized with requested configuration"
@@ -118,7 +121,7 @@ function make(getCapabilities) {
         );
 
         pollingScheduler = cronScheduler.make(capabilities, cronOptions);
-        currentPollIntervalMs = requestedPollIntervalMs;
+        currentPollIntervalMs = requestedPollIntervalMs ?? POLL_INTERVAL_MS;
 
         let scheduledCount = 0;
         let skippedCount = 0;

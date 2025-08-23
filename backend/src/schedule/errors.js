@@ -167,6 +167,22 @@ class StopSchedulerError extends Error {
     }
 }
 
+class PollingFrequencyChangeError extends Error {
+    /**
+     * @param {number} currentInterval - The currently configured polling interval
+     * @param {number} requestedInterval - The requested new polling interval
+     */
+    constructor(currentInterval, requestedInterval) {
+        super(
+            `Cannot change polling frequency from ${currentInterval}ms to ${requestedInterval}ms. ` +
+            `Polling frequency cannot be changed after scheduler initialization.`
+        );
+        this.name = "PollingFrequencyChangeError";
+        this.currentInterval = currentInterval;
+        this.requestedInterval = requestedInterval;
+    }
+}
+
 // Predicates for all custom error classes
 /**
  * @param {unknown} object
@@ -228,6 +244,11 @@ function isScheduleTaskError(object) { return object instanceof ScheduleTaskErro
  * @returns {object is StopSchedulerError}
  */
 function isStopSchedulerError(object) { return object instanceof StopSchedulerError; }
+/**
+ * @param {unknown} object
+ * @returns {object is PollingFrequencyChangeError}
+ */
+function isPollingFrequencyChangeError(object) { return object instanceof PollingFrequencyChangeError; }
 
 module.exports = {
     TaskListMismatchError,
@@ -245,6 +266,7 @@ module.exports = {
     InvalidPollIntervalError,
     ScheduleTaskError,
     StopSchedulerError,
+    PollingFrequencyChangeError,
 
     isInvalidRegistrationError,
     isRegistrationsNotArrayError,
@@ -258,4 +280,5 @@ module.exports = {
     isInvalidPollIntervalError,
     isScheduleTaskError,
     isStopSchedulerError,
+    isPollingFrequencyChangeError,
 };
