@@ -29,7 +29,7 @@ describe("schedule validation duplicate task names", () => {
                 ["task-name", "30 * * * *", taskCallback, retryDelay]  // Same name, different schedule
             ];
             
-            await expect(capabilities.scheduler.initialize(registrationsWithDuplicate, { pollIntervalMs: 60000 }))
+            await expect(capabilities.scheduler.initialize(registrationsWithDuplicate))
                 .rejects.toThrow(ScheduleDuplicateTaskError);
         });
 
@@ -43,7 +43,7 @@ describe("schedule validation duplicate task names", () => {
                 ["specific-task-name", "30 * * * *", taskCallback, retryDelay]
             ];
             
-            await expect(capabilities.scheduler.initialize(registrationsWithDuplicate, { pollIntervalMs: 60000 }))
+            await expect(capabilities.scheduler.initialize(registrationsWithDuplicate))
                 .rejects.toThrow('Task with name "specific-task-name" is already scheduled');
         });
 
@@ -58,13 +58,13 @@ describe("schedule validation duplicate task names", () => {
             ];
             
             await expect(async () => {
-                await capabilities.scheduler.initialize(registrationsWithDuplicate, { pollIntervalMs: 60000 });
+                await capabilities.scheduler.initialize(registrationsWithDuplicate);
             }).rejects.toThrow(ScheduleDuplicateTaskError);
             
             // Verify error properties by catching it
             let caughtError = null;
             try {
-                await capabilities.scheduler.initialize(registrationsWithDuplicate, { pollIntervalMs: 60000 });
+                await capabilities.scheduler.initialize(registrationsWithDuplicate);
             } catch (error) {
                 caughtError = error;
             }
@@ -87,7 +87,7 @@ describe("schedule validation duplicate task names", () => {
                 ["duplicate-task", "45 * * * *", taskCallback, retryDelay]    // Second occurrence - should trigger error
             ];
             
-            await expect(capabilities.scheduler.initialize(registrationsWithDuplicate, { pollIntervalMs: 60000 }))
+            await expect(capabilities.scheduler.initialize(registrationsWithDuplicate))
                 .rejects.toThrow('Task with name "duplicate-task" is already scheduled');
         });
     });
@@ -106,7 +106,7 @@ describe("schedule validation duplicate task names", () => {
             ];
             
             // Should throw for task-a since it's the first duplicate encountered
-            await expect(capabilities.scheduler.initialize(registrationsWithMultipleDuplicates, { pollIntervalMs: 60000 }))
+            await expect(capabilities.scheduler.initialize(registrationsWithMultipleDuplicates))
                 .rejects.toThrow('Task with name "task-a" is already scheduled');
         });
 
@@ -123,7 +123,7 @@ describe("schedule validation duplicate task names", () => {
             ];
             
             // Should succeed since task names are case-sensitive
-            await expect(capabilities.scheduler.initialize(registrationsWithDifferentCase, { pollIntervalMs: 60000 }))
+            await expect(capabilities.scheduler.initialize(registrationsWithDifferentCase))
                 .resolves.toBeUndefined();
                 
             await capabilities.scheduler.stop();
@@ -141,7 +141,7 @@ describe("schedule validation duplicate task names", () => {
             ];
             
             // Should succeed since whitespace makes them different names
-            await expect(capabilities.scheduler.initialize(registrationsWithWhitespace, { pollIntervalMs: 60000 }))
+            await expect(capabilities.scheduler.initialize(registrationsWithWhitespace))
                 .resolves.toBeUndefined();
                 
             await capabilities.scheduler.stop();
@@ -157,7 +157,7 @@ describe("schedule validation duplicate task names", () => {
                 ["exact-duplicate", "0 * * * *", taskCallback, retryDelay]  // Exactly the same
             ];
             
-            await expect(capabilities.scheduler.initialize(registrationsWithExactDuplicate, { pollIntervalMs: 60000 }))
+            await expect(capabilities.scheduler.initialize(registrationsWithExactDuplicate))
                 .rejects.toThrow('Task with name "exact-duplicate" is already scheduled');
         });
     });
@@ -175,7 +175,7 @@ describe("schedule validation duplicate task names", () => {
             ];
             
             // Should throw ScheduleInvalidNameError, not ScheduleDuplicateTaskError
-            await expect(capabilities.scheduler.initialize(registrationsWithInvalidName, { pollIntervalMs: 60000 }))
+            await expect(capabilities.scheduler.initialize(registrationsWithInvalidName))
                 .rejects.toThrow("Task name must be a non-empty string");
         });
 
@@ -190,7 +190,7 @@ describe("schedule validation duplicate task names", () => {
             ];
             
             // Should throw RegistrationShapeError, not ScheduleDuplicateTaskError
-            await expect(capabilities.scheduler.initialize(registrationsWithInvalidStructure, { pollIntervalMs: 60000 }))
+            await expect(capabilities.scheduler.initialize(registrationsWithInvalidStructure))
                 .rejects.toThrow("Registration at index 0 must be an array of length 4");
         });
     });

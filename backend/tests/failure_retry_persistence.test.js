@@ -27,7 +27,7 @@ describe("failure retry persistence", () => {
         timeControl.setTime(startTime);
 
         // Create scheduler and schedule a failing task with fast polling
-        const scheduler = makePollingScheduler(capabilities, { pollIntervalMs: 1 });
+        const scheduler = makePollingScheduler(capabilities);
         const retryDelay = fromMilliseconds(5000); // 5 second retry delay
         const callback = jest.fn(() => {
             throw new Error("Task failed");

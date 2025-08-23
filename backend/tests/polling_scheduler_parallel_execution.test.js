@@ -43,7 +43,7 @@ describe("declarative scheduler parallel execution", () => {
             ["parallel-task-2", "* * * * *", task2, retryDelay]
         ];
         
-        await capabilities.scheduler.initialize(registrations, { pollIntervalMs: 100 });
+        await capabilities.scheduler.initialize(registrations);
         
         // Wait for execution
         await new Promise(resolve => setTimeout(resolve, 200));
@@ -88,7 +88,7 @@ describe("declarative scheduler parallel execution", () => {
             ["concurrent-4", "* * * * *", () => concurrencyTask(4), retryDelay]
         ];
         
-        await capabilities.scheduler.initialize(registrations, { pollIntervalMs: 10 });
+        await capabilities.scheduler.initialize(registrations);
         
         // Wait for execution
         await new Promise(resolve => setTimeout(resolve, 300));
@@ -124,7 +124,7 @@ describe("declarative scheduler parallel execution", () => {
             ["fast-task", "* * * * *", fastTask, retryDelay]
         ];
         
-        await capabilities.scheduler.initialize(registrations, { pollIntervalMs: 100 });
+        await capabilities.scheduler.initialize(registrations);
         
         // Wait for executions
         await new Promise(resolve => setTimeout(resolve, 200));
@@ -158,7 +158,7 @@ describe("declarative scheduler parallel execution", () => {
             ["bad-task", "* * * * *", badTask, retryDelay]
         ];
         
-        await capabilities.scheduler.initialize(registrations, { pollIntervalMs: 100 });
+        await capabilities.scheduler.initialize(registrations);
         
         // Wait for executions
         await new Promise(resolve => setTimeout(resolve, 200));
@@ -205,7 +205,7 @@ describe("declarative scheduler parallel execution", () => {
             ["retry-task-3", "* * * * *", task3, retryDelay]
         ];
         
-        await capabilities.scheduler.initialize(registrations, { pollIntervalMs: 50 });
+        await capabilities.scheduler.initialize(registrations);
         
         // Wait for initial executions
         await new Promise(resolve => setTimeout(resolve, 100));

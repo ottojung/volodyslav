@@ -32,7 +32,7 @@ describe("declarative scheduler cron expression validation", () => {
         ];
         
         // Should succeed with valid cron expressions
-        await expect(capabilities.scheduler.initialize(registrations, { pollIntervalMs: 60000 }))
+        await expect(capabilities.scheduler.initialize(registrations))
             .resolves.toBeUndefined();
             
         await capabilities.scheduler.stop();
@@ -48,7 +48,7 @@ describe("declarative scheduler cron expression validation", () => {
             ["compatible-task", "0 * * * *", taskCallback, retryDelay]
         ];
         
-        await expect(capabilities.scheduler.initialize(validRegistrations, { pollIntervalMs: 60000 }))
+        await expect(capabilities.scheduler.initialize(validRegistrations))
             .resolves.toBeUndefined();
             
         await capabilities.scheduler.stop();

@@ -17,7 +17,6 @@ const {
 
 /** @typedef {import('./types').Scheduler} Scheduler */
 /** @typedef {import('./types').Registration} Registration */
-/** @typedef {import('./types').PollerOptions} PollerOptions */
 /** @typedef {import('./types').Initialize} Initialize */
 /** @typedef {import('./types').Stop} Stop */
 /** @typedef {import('./types').Capabilities} Capabilities */

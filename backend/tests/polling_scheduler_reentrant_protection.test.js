@@ -36,9 +36,9 @@ describe("declarative scheduler re-entrancy protection", () => {
         
         // Call initialize multiple times concurrently
         const promises = [
-            capabilities.scheduler.initialize(registrations, { pollIntervalMs: 100 }),
-            capabilities.scheduler.initialize(registrations, { pollIntervalMs: 100 }),
-            capabilities.scheduler.initialize(registrations, { pollIntervalMs: 100 }),
+            capabilities.scheduler.initialize(registrations),
+            capabilities.scheduler.initialize(registrations),
+            capabilities.scheduler.initialize(registrations),
         ];
         
         await Promise.all(promises);
@@ -67,13 +67,13 @@ describe("declarative scheduler re-entrancy protection", () => {
         ];
         
         // First initialize call
-        await capabilities.scheduler.initialize(registrations, { pollIntervalMs: 100 });
+        await capabilities.scheduler.initialize(registrations);
         await new Promise(resolve => setTimeout(resolve, 200));
         
         expect(taskExecutionCount).toBe(1);
         
         // Second initialize call should be idempotent
-        await capabilities.scheduler.initialize(registrations, { pollIntervalMs: 100 });
+        await capabilities.scheduler.initialize(registrations);
         await new Promise(resolve => setTimeout(resolve, 200));
         
         // Task should not execute again on idempotent call
@@ -97,7 +97,7 @@ describe("declarative scheduler re-entrancy protection", () => {
         ];
         
         // Should not throw despite task errors
-        await expect(capabilities.scheduler.initialize(registrations, { pollIntervalMs: 100 })).resolves.toBeUndefined();
+        await expect(capabilities.scheduler.initialize(registrations)).resolves.toBeUndefined();
         
         // Wait for execution
         await new Promise(resolve => setTimeout(resolve, 200));
@@ -105,7 +105,7 @@ describe("declarative scheduler re-entrancy protection", () => {
         expect(taskExecutionCount).toBe(1);
         
         // Should allow subsequent initialize calls despite previous error
-        await expect(capabilities.scheduler.initialize(registrations, { pollIntervalMs: 100 })).resolves.toBeUndefined();
+        await expect(capabilities.scheduler.initialize(registrations)).resolves.toBeUndefined();
         
         await capabilities.scheduler.stop(capabilities);
     });
@@ -121,14 +121,14 @@ describe("declarative scheduler re-entrancy protection", () => {
         ];
         
         // First call to establish state
-        await capabilities.scheduler.initialize(registrations, { pollIntervalMs: 100 });
+        await capabilities.scheduler.initialize(registrations);
         
         // Different registrations should cause validation error
         const differentRegistrations = [
             ["different-task", "* * * * *", validTask, retryDelay]
         ];
         
-        await expect(capabilities.scheduler.initialize(differentRegistrations, { pollIntervalMs: 100 }))
+        await expect(capabilities.scheduler.initialize(differentRegistrations))
             .rejects.toThrow(/Task list mismatch detected/);
         
         await capabilities.scheduler.stop(capabilities);

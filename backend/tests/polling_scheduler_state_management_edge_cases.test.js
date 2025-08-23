@@ -31,7 +31,7 @@ describe("declarative scheduler state management robustness", () => {
             ];
             
             // Should throw ScheduleDuplicateTaskError for duplicate names
-            await expect(capabilities.scheduler.initialize(registrations, { pollIntervalMs: 1 }))
+            await expect(capabilities.scheduler.initialize(registrations))
                 .rejects.toThrow("Task with name \"duplicate-task\" is already scheduled");
         });
 
@@ -48,7 +48,7 @@ describe("declarative scheduler state management robustness", () => {
             // Should handle invalid cron expressions without crashing the entire scheduler
             let threwError = false;
             try {
-                await capabilities.scheduler.initialize(registrations, { pollIntervalMs: 1 });
+                await capabilities.scheduler.initialize(registrations);
                 await new Promise(resolve => setTimeout(resolve, 10));
             } catch (error) {
                 // If it throws, that's acceptable behavior for invalid input
@@ -73,7 +73,7 @@ describe("declarative scheduler state management robustness", () => {
             ];
             
             // Should handle very large retry delays without issues
-            await capabilities.scheduler.initialize(registrations, { pollIntervalMs: 1 });
+            await capabilities.scheduler.initialize(registrations);
             
             await new Promise(resolve => setTimeout(resolve, 10));
             
@@ -99,7 +99,7 @@ describe("declarative scheduler state management robustness", () => {
             ];
             
             // Should handle very short retry delays
-            await capabilities.scheduler.initialize(registrations, { pollIntervalMs: 1 });
+            await capabilities.scheduler.initialize(registrations);
             
             await new Promise(resolve => setTimeout(resolve, 10));
             
@@ -126,7 +126,7 @@ describe("declarative scheduler state management robustness", () => {
             ];
             
             // Should handle callbacks that modify global state
-            await capabilities.scheduler.initialize(registrations, { pollIntervalMs: 1 });
+            await capabilities.scheduler.initialize(registrations);
             
             await new Promise(resolve => setTimeout(resolve, 10));
             
@@ -159,7 +159,7 @@ describe("declarative scheduler state management robustness", () => {
             ];
             
             // Should handle potentially leaky callbacks
-            await capabilities.scheduler.initialize(registrations, { pollIntervalMs: 1 });
+            await capabilities.scheduler.initialize(registrations);
             
             await new Promise(resolve => setTimeout(resolve, 10));
             
@@ -196,7 +196,7 @@ describe("declarative scheduler state management robustness", () => {
             ];
             
             // Should handle non-Error thrown objects
-            await capabilities.scheduler.initialize(registrations, { pollIntervalMs: 1 });
+            await capabilities.scheduler.initialize(registrations);
             
             await new Promise(resolve => setTimeout(resolve, 10));
             
@@ -218,7 +218,7 @@ describe("declarative scheduler state management robustness", () => {
             
             // Perform rapid start/stop cycles with slightly longer delays
             for (let i = 0; i < 3; i++) {
-                await capabilities.scheduler.initialize(registrations, { pollIntervalMs: 1 });
+                await capabilities.scheduler.initialize(registrations);
                 await new Promise(resolve => setTimeout(resolve, 10)); // Longer delay for execution
                 await capabilities.scheduler.stop(capabilities);
             }
@@ -240,7 +240,7 @@ describe("declarative scheduler state management robustness", () => {
             // Start multiple concurrent initializations
             const promises = [];
             for (let i = 0; i < 3; i++) {
-                promises.push(capabilities.scheduler.initialize(registrations, { pollIntervalMs: 1 }));
+                promises.push(capabilities.scheduler.initialize(registrations));
             }
             
             // All should complete without errors (idempotent behavior)
@@ -269,7 +269,7 @@ describe("declarative scheduler state management robustness", () => {
                 ["multi-stop-task", "* * * * *", taskCallback, retryDelay]
             ];
             
-            await capabilities.scheduler.initialize(registrations, { pollIntervalMs: 1 });
+            await capabilities.scheduler.initialize(registrations);
             
             // Multiple stop calls should be safe
             await capabilities.scheduler.stop(capabilities);
@@ -297,7 +297,7 @@ describe("declarative scheduler state management robustness", () => {
             }
             
             // Should handle many simultaneous tasks
-            await capabilities.scheduler.initialize(registrations, { pollIntervalMs: 1 });
+            await capabilities.scheduler.initialize(registrations);
             
             await new Promise(resolve => setTimeout(resolve, 1000));
             
@@ -329,7 +329,7 @@ describe("declarative scheduler state management robustness", () => {
             });
             
             // Should handle complex cron patterns without errors
-            await capabilities.scheduler.initialize(registrations, { pollIntervalMs: 1 });
+            await capabilities.scheduler.initialize(registrations);
             
             await new Promise(resolve => setTimeout(resolve, 10));
             

@@ -31,7 +31,7 @@ describe("declarative scheduler precedence logic verification", () => {
         ];
         
         // Initialize and wait for execution
-        await capabilities.scheduler.initialize(registrations, { pollIntervalMs: 100 });
+        await capabilities.scheduler.initialize(registrations);
         await new Promise(resolve => setTimeout(resolve, 200));
         
         expect(task).toHaveBeenCalled();
@@ -51,7 +51,7 @@ describe("declarative scheduler precedence logic verification", () => {
         ];
         
         // Initialize and wait for execution
-        await capabilities.scheduler.initialize(registrations, { pollIntervalMs: 100 });
+        await capabilities.scheduler.initialize(registrations);
         await new Promise(resolve => setTimeout(resolve, 200));
         
         expect(task).toHaveBeenCalled();
@@ -76,9 +76,9 @@ describe("declarative scheduler precedence logic verification", () => {
             ];
             
             // Multiple calls at 10:00 should be idempotent
-            await capabilities.scheduler.initialize(registrations, { pollIntervalMs: 100 });
-            await capabilities.scheduler.initialize(registrations, { pollIntervalMs: 100 });
-            await capabilities.scheduler.initialize(registrations, { pollIntervalMs: 100 });
+            await capabilities.scheduler.initialize(registrations);
+            await capabilities.scheduler.initialize(registrations);
+            await capabilities.scheduler.initialize(registrations);
             
             jest.advanceTimersByTime(200);
             

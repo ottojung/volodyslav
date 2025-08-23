@@ -26,7 +26,6 @@ const {
 } = require("./task_identity");
 
 /** @typedef {import('./types').Registration} Registration */
-/** @typedef {import('./types').PollerOptions} PollerOptions */
 
 /**
  * Validates that registrations match persisted runtime state (inner implementation)

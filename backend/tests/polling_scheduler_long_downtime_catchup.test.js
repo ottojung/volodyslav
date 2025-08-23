@@ -29,7 +29,7 @@ describe("declarative scheduler task execution behavior", () => {
             ["daily-task", "* * * * *", callback, retryDelay]
         ];
         
-        await capabilities.scheduler.initialize(registrations, { pollIntervalMs: 100 });
+        await capabilities.scheduler.initialize(registrations);
         
         // Wait for execution
         await new Promise(resolve => setTimeout(resolve, 200));
@@ -52,7 +52,7 @@ describe("declarative scheduler task execution behavior", () => {
             ["daily-task", "0 8 * * *", dailyCallback, retryDelay]   // Daily at 8:00 AM
         ];
         
-        await capabilities.scheduler.initialize(registrations, { pollIntervalMs: 100 });
+        await capabilities.scheduler.initialize(registrations);
         
         // Wait for execution - at least the minute task should execute
         await new Promise(resolve => setTimeout(resolve, 200));
@@ -82,7 +82,7 @@ describe("declarative scheduler task execution behavior", () => {
             ["retry-task", "* * * * *", callback, retryDelay]
         ];
         
-        await capabilities.scheduler.initialize(registrations, { pollIntervalMs: 50 });
+        await capabilities.scheduler.initialize(registrations);
         
         // Wait for first execution
         await new Promise(resolve => setTimeout(resolve, 100));
@@ -107,7 +107,7 @@ describe("declarative scheduler task execution behavior", () => {
         ];
         
         // Should initialize without errors even for special dates
-        await capabilities.scheduler.initialize(registrations, { pollIntervalMs: 100 });
+        await capabilities.scheduler.initialize(registrations);
         
         await new Promise(resolve => setTimeout(resolve, 200));
         
@@ -127,7 +127,7 @@ describe("declarative scheduler task execution behavior", () => {
         ];
         
         // First initialization
-        await capabilities.scheduler.initialize(registrations, { pollIntervalMs: 100 });
+        await capabilities.scheduler.initialize(registrations);
         
         // Wait for execution
         await new Promise(resolve => setTimeout(resolve, 200));
@@ -136,7 +136,7 @@ describe("declarative scheduler task execution behavior", () => {
         await capabilities.scheduler.stop();
         
         // Second initialization with same task (should be idempotent)
-        await capabilities.scheduler.initialize(registrations, { pollIntervalMs: 100 });
+        await capabilities.scheduler.initialize(registrations);
         
         await new Promise(resolve => setTimeout(resolve, 200));
         
@@ -157,7 +157,7 @@ describe("declarative scheduler task execution behavior", () => {
             ["task3", "0 * * * *", task3, retryDelay]      // Every hour
         ];
         
-        await capabilities.scheduler.initialize(registrations, { pollIntervalMs: 100 });
+        await capabilities.scheduler.initialize(registrations);
         
         // Wait for executions
         await new Promise(resolve => setTimeout(resolve, 200));
@@ -182,7 +182,7 @@ describe("declarative scheduler task execution behavior", () => {
         ];
         
         // First scheduler instance
-        await capabilities.scheduler.initialize(registrations, { pollIntervalMs: 100 });
+        await capabilities.scheduler.initialize(registrations);
         
         await new Promise(resolve => setTimeout(resolve, 200));
         expect(executionCount).toBe(1);
@@ -190,7 +190,7 @@ describe("declarative scheduler task execution behavior", () => {
         await capabilities.scheduler.stop();
         
         // Restart with new instance (simulating application restart)
-        await capabilities.scheduler.initialize(registrations, { pollIntervalMs: 100 });
+        await capabilities.scheduler.initialize(registrations);
         
         await new Promise(resolve => setTimeout(resolve, 200));
         
@@ -211,7 +211,7 @@ describe("declarative scheduler task execution behavior", () => {
         
         // Should complete initialization quickly even with complex expressions
         const startTime = Date.now();
-        await capabilities.scheduler.initialize(registrations, { pollIntervalMs: 100 });
+        await capabilities.scheduler.initialize(registrations);
         const endTime = Date.now();
         
         // Should initialize reasonably fast

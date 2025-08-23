@@ -29,7 +29,7 @@ describe("declarative scheduler retry configuration", () => {
         ];
         
         // Should succeed with valid retry configurations
-        await expect(capabilities.scheduler.initialize(registrations, { pollIntervalMs: 60000 }))
+        await expect(capabilities.scheduler.initialize(registrations))
             .resolves.toBeUndefined();
             
         await capabilities.scheduler.stop();
@@ -44,7 +44,7 @@ describe("declarative scheduler retry configuration", () => {
         ];
         
         // Zero retry delay should be valid (immediate retry)
-        await expect(capabilities.scheduler.initialize(registrations, { pollIntervalMs: 60000 }))
+        await expect(capabilities.scheduler.initialize(registrations))
             .resolves.toBeUndefined();
             
         await capabilities.scheduler.stop();

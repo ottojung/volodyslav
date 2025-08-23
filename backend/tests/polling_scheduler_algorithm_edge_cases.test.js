@@ -28,7 +28,7 @@ describe("declarative scheduler algorithm robustness", () => {
             ["edge-case-test", "0 12 * * *", taskCallback, retryDelay] // Daily at noon
         ];
         
-        await capabilities.scheduler.initialize(registrations, { pollIntervalMs: 100 });
+        await capabilities.scheduler.initialize(registrations);
         
         // Verify the scheduler handles the scheduling gracefully
         await new Promise(resolve => setTimeout(resolve, 200));
@@ -48,7 +48,7 @@ describe("declarative scheduler algorithm robustness", () => {
             ["frequent-task", "* * * * *", taskCallback, retryDelay] // Every minute
         ];
         
-        await capabilities.scheduler.initialize(registrations, { pollIntervalMs: 100 });
+        await capabilities.scheduler.initialize(registrations);
         
         // Wait for execution
         await new Promise(resolve => setTimeout(resolve, 200));
@@ -71,7 +71,7 @@ describe("declarative scheduler algorithm robustness", () => {
             ["minute-task", "* * * * *", minuteTask, retryDelay] // Every minute
         ];
         
-        await capabilities.scheduler.initialize(registrations, { pollIntervalMs: 100 });
+        await capabilities.scheduler.initialize(registrations);
         
         // Wait for execution
         await new Promise(resolve => setTimeout(resolve, 200));
@@ -103,7 +103,7 @@ describe("declarative scheduler algorithm robustness", () => {
             ["precision-test", "* * * * *", precisionCallback, retryDelay]
         ];
         
-        await capabilities.scheduler.initialize(registrations, { pollIntervalMs: 50 });
+        await capabilities.scheduler.initialize(registrations);
         
         // Wait for scheduler to start and execute initial task
         await new Promise(resolve => setTimeout(resolve, 100));
@@ -127,7 +127,7 @@ describe("declarative scheduler algorithm robustness", () => {
             ["varying-interval", "0,15,45 * * * *", taskCallback, retryDelay]
         ];
         
-        await capabilities.scheduler.initialize(registrations, { pollIntervalMs: 100 });
+        await capabilities.scheduler.initialize(registrations);
         
         // Wait for initialization
         await new Promise(resolve => setTimeout(resolve, 200));
@@ -151,7 +151,7 @@ describe("declarative scheduler algorithm robustness", () => {
             ["multi-field-task3", "0 * * * *", task3, fromMilliseconds(3000)] // Every hour
         ];
         
-        await capabilities.scheduler.initialize(registrations, { pollIntervalMs: 100 });
+        await capabilities.scheduler.initialize(registrations);
         
         // Wait for executions
         await new Promise(resolve => setTimeout(resolve, 200));
@@ -176,7 +176,7 @@ describe("declarative scheduler algorithm robustness", () => {
         ];
         
         // Should not throw even with error in one task
-        await capabilities.scheduler.initialize(registrations, { pollIntervalMs: 100 });
+        await capabilities.scheduler.initialize(registrations);
         
         // Wait for executions
         await new Promise(resolve => setTimeout(resolve, 200));
@@ -199,7 +199,7 @@ describe("declarative scheduler algorithm robustness", () => {
         
         // Should throw for invalid cron expression
         await expect(
-            capabilities.scheduler.initialize(registrations, { pollIntervalMs: 100 })
+            capabilities.scheduler.initialize(registrations)
         ).rejects.toThrow();
     });
 
@@ -213,9 +213,9 @@ describe("declarative scheduler algorithm robustness", () => {
         ];
         
         // Multiple initializations should be idempotent
-        await capabilities.scheduler.initialize(registrations, { pollIntervalMs: 100 });
-        await capabilities.scheduler.initialize(registrations, { pollIntervalMs: 100 });
-        await capabilities.scheduler.initialize(registrations, { pollIntervalMs: 100 });
+        await capabilities.scheduler.initialize(registrations);
+        await capabilities.scheduler.initialize(registrations);
+        await capabilities.scheduler.initialize(registrations);
         
         // Wait for execution
         await new Promise(resolve => setTimeout(resolve, 200));

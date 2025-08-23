@@ -26,11 +26,11 @@ describe("declarative scheduler duplicate task handling", () => {
         ];
         
         // First initialization should succeed
-        await expect(capabilities.scheduler.initialize(registrations, { pollIntervalMs: 60000 })) // 1 minute polling
+        await expect(capabilities.scheduler.initialize(registrations)) // 1 minute polling
             .resolves.toBeUndefined();
             
         // Second initialization with same registrations should be idempotent
-        await expect(capabilities.scheduler.initialize(registrations, { pollIntervalMs: 60000 }))
+        await expect(capabilities.scheduler.initialize(registrations))
             .resolves.toBeUndefined();
             
         await capabilities.scheduler.stop();
@@ -49,7 +49,7 @@ describe("declarative scheduler duplicate task handling", () => {
         ];
         
         // This should throw ScheduleDuplicateTaskError for duplicate names
-        await expect(capabilities.scheduler.initialize(registrationsWithDuplicate, { pollIntervalMs: 60000 }))
+        await expect(capabilities.scheduler.initialize(registrationsWithDuplicate))
             .rejects.toThrow("Task with name \"task-a\" is already scheduled");
     });
 });

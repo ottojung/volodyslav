@@ -11,7 +11,6 @@ const { isTaskListMismatchError } = require("./errors");
 /** @typedef {import('./types').Scheduler} Scheduler */
 /** @typedef {import('./types').Registration} Registration */
 /** @typedef {import('./types').TaskIdentity} TaskIdentity */
-/** @typedef {import('./types').PollerOptions} PollerOptions */
 /** @typedef {import('./types').Initialize} Initialize */
 /** @typedef {import('./types').Stop} Stop */
 

@@ -29,7 +29,7 @@ describe("declarative scheduler time handling", () => {
             ["time-specific-task", "30 2 * * *", callback, retryDelay]
         ];
 
-        await capabilities.scheduler.initialize(registrations, { pollIntervalMs: 100 });
+        await capabilities.scheduler.initialize(registrations);
 
         // Wait for scheduler initialization
         await new Promise(resolve => setTimeout(resolve, 200));
@@ -50,7 +50,7 @@ describe("declarative scheduler time handling", () => {
             ["hourly-task", "30 1 * * *", callback, retryDelay]
         ];
 
-        await capabilities.scheduler.initialize(registrations, { pollIntervalMs: 100 });
+        await capabilities.scheduler.initialize(registrations);
 
         // Wait for scheduling
         await new Promise(resolve => setTimeout(resolve, 200));
@@ -70,7 +70,7 @@ describe("declarative scheduler time handling", () => {
             ["daily-task", "0 3 * * *", callback, retryDelay] // Daily 3 AM
         ];
 
-        await capabilities.scheduler.initialize(registrations, { pollIntervalMs: 100 });
+        await capabilities.scheduler.initialize(registrations);
 
         // Wait for initialization
         await new Promise(resolve => setTimeout(resolve, 200));
@@ -91,7 +91,7 @@ describe("declarative scheduler time handling", () => {
             ["timezone-task", "0 12 * * *", callback, retryDelay]
         ];
 
-        await capabilities.scheduler.initialize(registrations, { pollIntervalMs: 100 });
+        await capabilities.scheduler.initialize(registrations);
 
         // Wait for initialization
         await new Promise(resolve => setTimeout(resolve, 200));
@@ -111,7 +111,7 @@ describe("declarative scheduler time handling", () => {
             ["daily-edge-task", "0 2 * * *", callback, retryDelay] // Daily 2 AM
         ];
 
-        await capabilities.scheduler.initialize(registrations, { pollIntervalMs: 100 });
+        await capabilities.scheduler.initialize(registrations);
 
         // Wait for initialization
         await new Promise(resolve => setTimeout(resolve, 200));
@@ -136,7 +136,7 @@ describe("declarative scheduler time handling", () => {
         ];
 
         // First initialization and execution
-        await capabilities.scheduler.initialize(registrations, { pollIntervalMs: 100 });
+        await capabilities.scheduler.initialize(registrations);
         
         await new Promise(resolve => setTimeout(resolve, 200));
         expect(executionCount).toBe(1);
@@ -144,7 +144,7 @@ describe("declarative scheduler time handling", () => {
         await capabilities.scheduler.stop();
 
         // Second initialization (simulating restart)
-        await capabilities.scheduler.initialize(registrations, { pollIntervalMs: 100 });
+        await capabilities.scheduler.initialize(registrations);
 
         await new Promise(resolve => setTimeout(resolve, 200));
         
@@ -166,7 +166,7 @@ describe("declarative scheduler time handling", () => {
             ["evening-task", "0 14 * * *", task2, retryDelay]  // 2 PM
         ];
 
-        await capabilities.scheduler.initialize(registrations, { pollIntervalMs: 100 });
+        await capabilities.scheduler.initialize(registrations);
 
         // Wait for initialization
         await new Promise(resolve => setTimeout(resolve, 200));
@@ -188,7 +188,7 @@ describe("declarative scheduler time handling", () => {
             ["complex-schedule", "0,15,30,45 * * * *", callback, retryDelay]
         ];
 
-        await capabilities.scheduler.initialize(registrations, { pollIntervalMs: 100 });
+        await capabilities.scheduler.initialize(registrations);
 
         // Wait for initialization
         await new Promise(resolve => setTimeout(resolve, 200));
@@ -213,7 +213,7 @@ describe("declarative scheduler time handling", () => {
         ];
 
         // First run
-        await capabilities.scheduler.initialize(registrations, { pollIntervalMs: 100 });
+        await capabilities.scheduler.initialize(registrations);
         await new Promise(resolve => setTimeout(resolve, 200));
         expect(executionCount).toBe(1);
         await capabilities.scheduler.stop();
@@ -222,7 +222,7 @@ describe("declarative scheduler time handling", () => {
         await new Promise(resolve => setTimeout(resolve, 100));
 
         // Restart
-        await capabilities.scheduler.initialize(registrations, { pollIntervalMs: 100 });
+        await capabilities.scheduler.initialize(registrations);
         await new Promise(resolve => setTimeout(resolve, 200));
         
         // Should handle restart correctly

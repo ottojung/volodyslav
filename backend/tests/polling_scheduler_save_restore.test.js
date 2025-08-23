@@ -28,9 +28,9 @@ describe("declarative scheduler persistence and idempotency", () => {
         ];
 
         // Multiple initializations should be idempotent
-        await capabilities.scheduler.initialize(registrations, { pollIntervalMs: 100 });
-        await capabilities.scheduler.initialize(registrations, { pollIntervalMs: 100 });
-        await capabilities.scheduler.initialize(registrations, { pollIntervalMs: 100 });
+        await capabilities.scheduler.initialize(registrations);
+        await capabilities.scheduler.initialize(registrations);
+        await capabilities.scheduler.initialize(registrations);
         
         // Allow for task execution
         await new Promise(resolve => setTimeout(resolve, 300));
@@ -52,12 +52,12 @@ describe("declarative scheduler persistence and idempotency", () => {
         ];
 
         // First "session" - initialize and run
-        await capabilities.scheduler.initialize(registrations, { pollIntervalMs: 100 });
+        await capabilities.scheduler.initialize(registrations);
         await new Promise(resolve => setTimeout(resolve, 200));
         await capabilities.scheduler.stop(capabilities);
         
         // "Restart" - same task with same callback (simulating app restart)
-        await capabilities.scheduler.initialize(registrations, { pollIntervalMs: 100 });
+        await capabilities.scheduler.initialize(registrations);
         await new Promise(resolve => setTimeout(resolve, 200));
         
         // Callback should be executed in both sessions
@@ -79,7 +79,7 @@ describe("declarative scheduler persistence and idempotency", () => {
         ];
 
         // Should handle multiple task registration and persistence
-        await capabilities.scheduler.initialize(registrations, { pollIntervalMs: 100 });
+        await capabilities.scheduler.initialize(registrations);
         
         await new Promise(resolve => setTimeout(resolve, 200));
         
@@ -108,7 +108,7 @@ describe("declarative scheduler persistence and idempotency", () => {
         ];
 
         // Should handle failing tasks and retries
-        await capabilities.scheduler.initialize(registrations, { pollIntervalMs: 100 });
+        await capabilities.scheduler.initialize(registrations);
         
         // Wait for multiple attempts including retries
         await new Promise(resolve => setTimeout(resolve, 600));
@@ -123,7 +123,7 @@ describe("declarative scheduler persistence and idempotency", () => {
         const capabilities = getTestCapabilities();
         
         // Should handle initialization with no tasks
-        await capabilities.scheduler.initialize([], { pollIntervalMs: 100 });
+        await capabilities.scheduler.initialize([]);
         
         await new Promise(resolve => setTimeout(resolve, 200));
         
@@ -135,7 +135,7 @@ describe("declarative scheduler persistence and idempotency", () => {
             ["new-task", "* * * * *", taskCallback, fromMilliseconds(5000)]
         ];
         
-        await capabilities.scheduler.initialize(registrations, { pollIntervalMs: 100 });
+        await capabilities.scheduler.initialize(registrations);
         await new Promise(resolve => setTimeout(resolve, 200));
         
         expect(taskCallback).toHaveBeenCalled();
@@ -157,17 +157,17 @@ describe("declarative scheduler persistence and idempotency", () => {
         ];
         
         // First session
-        await capabilities.scheduler.initialize(registrations, { pollIntervalMs: 100 });
+        await capabilities.scheduler.initialize(registrations);
         await new Promise(resolve => setTimeout(resolve, 200));
         await capabilities.scheduler.stop(capabilities);
         
         // Second session with same task list (should work)
-        await capabilities.scheduler.initialize(registrations, { pollIntervalMs: 100 });
+        await capabilities.scheduler.initialize(registrations);
         await new Promise(resolve => setTimeout(resolve, 200));
         await capabilities.scheduler.stop(capabilities);
         
         // Third session with same task list
-        await capabilities.scheduler.initialize(registrations, { pollIntervalMs: 100 });
+        await capabilities.scheduler.initialize(registrations);
         await new Promise(resolve => setTimeout(resolve, 300));
         
         // Both callbacks should be called
@@ -188,7 +188,7 @@ describe("declarative scheduler persistence and idempotency", () => {
 
         // Multiple start/stop cycles
         for (let cycle = 0; cycle < 3; cycle++) {
-            await capabilities.scheduler.initialize(registrations, { pollIntervalMs: 100 });
+            await capabilities.scheduler.initialize(registrations);
             await new Promise(resolve => setTimeout(resolve, 150));
             await capabilities.scheduler.stop(capabilities);
         }
