@@ -110,21 +110,23 @@ async function loadPersistedState(capabilities, registrations) {
  * @returns {Map<string, Task>}
  */
 function materializeTasks(registrations, taskRecords) {
-
+    // TODO
+    throw new Error("Not implemented");
 }
 
 /**
  * Persist current scheduler state to disk
  * @param {import('../../capabilities/root').Capabilities} capabilities
+ * @param {Registration[]} registrations
  * @param {Transformation} transformation
  * @returns {Promise<void>}
  */
-async function persistCurrentState(capabilities, transformation) {
+async function persistCurrentState(capabilities, registrations, transformation) {
     try {
         await capabilities.state.transaction(async (storage) => {
             const currentState = await storage.getCurrentState();
             const currentTaskRecords = currentState.tasks;
-            const currentTasks = materializeTasks(currentTaskRecords);
+            const currentTasks = materializeTasks(registrations, currentTaskRecords);
             const newTasks = transformation(currentTasks);
 
             // Convert tasks to serializable format
@@ -158,7 +160,7 @@ async function persistCurrentState(capabilities, transformation) {
 
             storage.setState(newState);
 
-            capabilities.logger.logDebug({ taskCount: tasks.size }, "State persisted");
+            capabilities.logger.logDebug({ taskCount: newTasks.size }, "State persisted");
         });
     } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
