@@ -42,5 +42,8 @@
     "jest": "^29.7.0",
     "jest-environment-jsdom": "^29.7.0",
     "typescript": "^5.1.6"
+  },
+  "dependencies": {
+    "eslint-plugin-volodyslav": "file:tools/eslint-plugin-volodyslav"
   }
 }
