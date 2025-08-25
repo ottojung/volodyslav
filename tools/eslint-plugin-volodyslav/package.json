@@ -1,0 +1,12 @@
+{
+  "name": "eslint-plugin-volodyslav",
+  "main": "index.js",
+  "private": true,
+  "devDependencies": {
+    "eslint": "^8.57.1",
+    "eslint-utils": "^3.0.0"
+  },
+  "scripts": {
+    "test": "for test in tests/*.test.js; do echo \"Running $test\"; node \"$test\"; done"
+  }
+}

@@ -17,13 +17,14 @@ module.exports = {
     settings: {
         react: { version: "detect" },
     },
-    plugins: ["@typescript-eslint"],
+    plugins: ["@typescript-eslint", "volodyslav"],
     extends: [
         "eslint:recommended",
         "plugin:react/recommended",
         "plugin:jest/recommended",
         "plugin:import/recommended",
         "plugin:@typescript-eslint/recommended",
+        "plugin:volodyslav/recommended",
     ],
     rules: {
         "no-unused-vars": [

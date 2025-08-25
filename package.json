@@ -17,7 +17,9 @@
     "lint": "eslint . --ext .js,.jsx",
     "lint:fix": "eslint . --ext .js,.jsx --fix",
     "docs:dev": "npm run dev -w docs",
-    "docs:build": "npm run build -w docs"
+    "docs:build": "npm run build -w docs",
+    "rules:test": "npm --prefix tools/eslint-plugin-volodyslav run test",
+    "rules:new": "node scripts/new-rule.mjs"
   },
   "devDependencies": {
     "@babel/core": "^7.27.1",
