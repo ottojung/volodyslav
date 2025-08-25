@@ -36,10 +36,6 @@ Edit the rule implementation, run tests, and the rule will be enforced across th
 - `npm run rules:new <name>` - Generate a new rule with boilerplate
 - `npm run static-analysis` - Run the full linting pipeline (includes custom rules)
 
-## Existing Rules
-
-- `volodyslav/no-eval-anywhere` - Forbids any use of `eval()`, including `window.eval()` and `globalThis.eval()`
-
 ## Technical Details
 
 The plugin structure follows ESLint plugin conventions:
@@ -54,4 +50,4 @@ tools/eslint-plugin-volodyslav/
     └── no-eval-anywhere.test.js # Rule tests
 ```
 
-Rules are auto-discovered by reading the `rules/` directory and building a `recommended` configuration that enables all rules as errors.
+Rules are auto-discovered by reading the `rules/` directory and building a `recommended` configuration that enables all rules as errors.\
