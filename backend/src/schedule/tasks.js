@@ -14,7 +14,7 @@ const { COMMON } = require("../time_duration");
 /** @typedef {import('../subprocess/command').Command} Command */
 /** @typedef {import('../environment').Environment} Environment */
 /** @typedef {import('../logger').Logger} Logger */
-/** @typedef {import('./index').Registration} Registration */
+/** @typedef {import('./types').Registration} Registration */
 
 /**
  * @typedef {import('../capabilities/root').Capabilities} Capabilities

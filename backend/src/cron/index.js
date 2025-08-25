@@ -12,11 +12,16 @@ const {
 } = require("./polling_scheduler_errors");
 
 /**
+ * @typedef {import('./scheduling/types').Registration} Registration
+ */
+
+/**
  * Creates a new polling scheduler instance.
  * @param {import('../capabilities/root').Capabilities} capabilities
+ * @param {Array<Registration>} registrations
  */
-function make(capabilities) {
-    const scheduler = makePollingScheduler(capabilities);
+function make(capabilities, registrations) {
+    const scheduler = makePollingScheduler(capabilities, registrations);
     return {
         /**
          * Schedule a task.

@@ -38,15 +38,20 @@ const POLL_INTERVAL_MS = 600000;
 
 
 
+/**
+ * @typedef {import('./scheduling/types').Registration} Registration
+ */
 
+/**
+ * @typedef {import('./scheduling/types').Transformation} Transformation
+ */
 
 
 /**
  * @param {import('../capabilities/root').Capabilities} capabilities
+ * @param {Array<Registration>} registrations
  */
-function makePollingScheduler(capabilities) {
-    /** @type {Map<string, Task>} */
-    const tasks = new Map();
+function makePollingScheduler(capabilities, registrations) {
     /** @type {NodeJS.Timeout | null} */
     let interval = null;
     const dt = capabilities.datetime;
@@ -60,13 +65,16 @@ function makePollingScheduler(capabilities) {
     async function ensureStateLoaded() {
         if (!stateLoadAttempted) {
             stateLoadAttempted = true;
-            await loadPersistedState(capabilities, tasks);
+            await loadPersistedState(capabilities, registrations);
         }
     }
 
     // Persist current state
-    async function persistState() {
-        await persistCurrentState(capabilities, tasks);
+    /**
+     * @param {Transformation} transformation
+     */
+    async function persistState(transformation) {
+        await persistCurrentState(capabilities, transformation);
     }
 
     function start() {

@@ -7,14 +7,17 @@ const time_duration = require("../../time_duration");
 const { parseCronExpression } = require("../parser");
 
 /** @typedef {import('../polling_scheduler').Task} Task */
+/** @typedef {import('./types').Registration} Registration */
+/** @typedef {import('./types').Transformation} Transformation */
+/** @typedef {import('../../runtime_state_storage/types').TaskRecord} TaskRecord */
 
 /**
  * Loads persisted task state and builds in-memory tasks map
  * @param {import('../../capabilities/root').Capabilities} capabilities
- * @param {Map<string, Task>} tasks
+ * @param {Array<Registration>} registrations
  * @returns {Promise<void>}
  */
-async function loadPersistedState(capabilities, tasks) {
+async function loadPersistedState(capabilities, registrations) {
     try {
         await capabilities.state.transaction(async (storage) => {
             const existingState = await storage.getExistingState();
@@ -101,18 +104,31 @@ async function loadPersistedState(capabilities, tasks) {
 }
 
 /**
+ * Materialize task records into Task objects.
+ * @param {Registration[]} registrations
+ * @param {TaskRecord[]} taskRecords
+ * @returns {Map<string, Task>}
+ */
+function materializeTasks(registrations, taskRecords) {
+
+}
+
+/**
  * Persist current scheduler state to disk
  * @param {import('../../capabilities/root').Capabilities} capabilities
- * @param {Map<string, Task>} tasks
+ * @param {Transformation} transformation
  * @returns {Promise<void>}
  */
-async function persistCurrentState(capabilities, tasks) {
+async function persistCurrentState(capabilities, transformation) {
     try {
         await capabilities.state.transaction(async (storage) => {
             const currentState = await storage.getCurrentState();
+            const currentTaskRecords = currentState.tasks;
+            const currentTasks = materializeTasks(currentTaskRecords);
+            const newTasks = transformation(currentTasks);
 
             // Convert tasks to serializable format
-            const taskRecords = Array.from(tasks.values()).map((task) => ({
+            const taskRecords = Array.from(newTasks.values()).map((task) => ({
                 name: task.name,
                 cronExpression: task.cronExpression,
                 retryDelayMs: task.retryDelay.toMilliseconds(),
