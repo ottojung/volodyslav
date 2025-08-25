@@ -209,5 +209,4 @@ async function deleteOriginalAudios(capabilities, successes, diaryAudiosDir) {
     }
 }
 
-// export remains unchanged
 module.exports = { processDiaryAudios };
