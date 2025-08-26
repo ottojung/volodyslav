@@ -213,7 +213,6 @@ function makePollingScheduler(capabilities, registrations) {
         },
 
         async stopLoop() {
-            await ensureStateLoaded();
             stop();
         },
 
