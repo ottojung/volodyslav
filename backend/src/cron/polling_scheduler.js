@@ -75,7 +75,7 @@ function makePollingScheduler(capabilities, registrations) {
                     await poll();
                 } catch (error) {
                     const message = error instanceof Error ? error.message : String(error);
-                    capabilities.logger.logError({ errorMessage: message }, "UnexpectedPollError");
+                    capabilities.logger.logError({ errorMessage: message }, `Unexpected poll error: ${message}`);
                 }
             }, module.exports.POLL_INTERVAL_MS);
         }
