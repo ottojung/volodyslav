@@ -153,14 +153,8 @@ async function mutateTasks(capabilities, registrations, transformation) {
                 for (const registration of registrations.values()) {
                     ret.tasks.push({
                         name: registration.name,
-                        parsedCron: registration.parsedCron,
-                        callback: registration.callback,
-                        retryDelay: registration.retryDelay,
-                        lastSuccessTime: null,
-                        lastFailureTime: null,
-                        lastAttemptTime: null,
-                        pendingRetryUntil: null,
-                        lastEvaluatedFire: null,
+                        cronExpression: registration.parsedCron.unparse(),
+                        retryDelayMs: registration.retryDelay.toMilliseconds(),
                     });
                 }
 
