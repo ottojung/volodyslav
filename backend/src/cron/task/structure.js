@@ -12,6 +12,7 @@
  * FIXME: turn `Task` into a nominal type.
  * @typedef {object} Task
  * @property {string} name
+ * @property {string} cronString
  * @property {import('../expression').CronExpressionClass} parsedCron
  * @property {Callback} callback
  * @property {TimeDuration} retryDelay

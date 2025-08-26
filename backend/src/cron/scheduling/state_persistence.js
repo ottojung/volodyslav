@@ -42,7 +42,7 @@ function materializeTasks(registrations, taskRecords) {
             throw new Error(`Task ${name} is not found`);
         }
 
-        const { parsedCron, callback, retryDelay } = registration;
+        const { cronString, parsedCron, callback, retryDelay } = registration;
 
         const lastSuccessTime = record.lastSuccessTime;
         const lastFailureTime = record.lastFailureTime;
@@ -53,6 +53,7 @@ function materializeTasks(registrations, taskRecords) {
         /** @type {Task} */
         const task = {
             name,
+            cronString,
             parsedCron,
             callback,
             retryDelay,

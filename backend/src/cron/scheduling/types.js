@@ -28,6 +28,7 @@
 /**
  * @typedef {object} ParsedRegistration
  * @property {string} name
+ * @property {string} cronString
  * @property {CronExpression} parsedCron
  * @property {Callback} callback
  * @property {TimeDuration} retryDelay
