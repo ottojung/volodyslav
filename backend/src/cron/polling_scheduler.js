@@ -7,7 +7,7 @@ const {
     getMostRecentExecution,
     validateTaskFrequency,
     loadPersistedState,
-    persistCurrentState,
+    mutateTasks,
     makeTaskExecutor,
 } = require("./scheduling");
 const {
@@ -46,13 +46,17 @@ const POLL_INTERVAL_MS = 600000;
  */
 
 /**
+ * @typedef {import('./scheduling/types').ParsedRegistrations} ParsedRegistrations
+ */
+
+/**
  * @typedef {import('./scheduling/types').Transformation} Transformation
  */
 
 
 /**
  * @param {import('../capabilities/root').Capabilities} capabilities
- * @param {Array<Registration>} registrations
+ * @param {ParsedRegistrations} registrations
  */
 function makePollingScheduler(capabilities, registrations) {
     /** @type {NodeJS.Timeout | null} */
@@ -62,7 +66,7 @@ function makePollingScheduler(capabilities, registrations) {
     let pollInProgress = false; // Guard against re-entrant polls
 
     // Create task executor for handling task execution
-    const taskExecutor = makeTaskExecutor(capabilities, persistState);
+    const taskExecutor = makeTaskExecutor(capabilities, (transformation) => mutateTasks(capabilities, registrations, transformation));
 
     // Lazy load state when first needed
     async function ensureStateLoaded() {
@@ -70,14 +74,6 @@ function makePollingScheduler(capabilities, registrations) {
             stateLoadAttempted = true;
             await loadPersistedState(capabilities, registrations);
         }
-    }
-
-    // Persist current state
-    /**
-     * @param {Transformation} transformation
-     */
-    async function persistState(transformation) {
-        await persistCurrentState(capabilities, transformation);
     }
 
     function start() {

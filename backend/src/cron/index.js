@@ -16,9 +16,13 @@ const {
  */
 
 /**
+ * @typedef {import('./scheduling/types').ParsedRegistrations} ParsedRegistrations
+ */
+
+/**
  * Creates a new polling scheduler instance.
  * @param {import('../capabilities/root').Capabilities} capabilities
- * @param {Array<Registration>} registrations
+ * @param {ParsedRegistrations} registrations
  */
 function make(capabilities, registrations) {
     const scheduler = makePollingScheduler(capabilities, registrations);
