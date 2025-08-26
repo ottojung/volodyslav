@@ -11,7 +11,6 @@ const {
     makeTaskExecutor,
 } = require("./scheduling");
 const {
-    ScheduleDuplicateTaskError,
     ScheduleInvalidNameError,
 } = require("./polling_scheduler_errors");
 
