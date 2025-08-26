@@ -62,13 +62,6 @@ function make(capabilities, registrations) {
         },
 
         /**
-         * Get info about tasks.
-         * @returns {Promise<Array<{name:string,cronExpression:string,running:boolean,lastSuccessTime?:string,lastFailureTime?:string,lastAttemptTime?:string,pendingRetryUntil?:string,modeHint:"retry"|"cron"|"idle"}>>}
-         */
-        async getTasks() {
-            return await scheduler.getTasks();
-        },
-        /**
          * Validate a cron expression.
          * @param {string} cronExpression
          * @returns {boolean}
