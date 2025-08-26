@@ -84,12 +84,18 @@ async function mutateTasks(capabilities, registrations, transformation) {
             if (existingState === null) {
                 const ret = makeDefault(capabilities.datetime);
 
-                for (const registration of registrations.values()) {
-                    ret.tasks.push({
-                        name: registration.name,
-                        cronExpression: registration.parsedCron.unparse(),
-                        retryDelayMs: registration.retryDelay.toMilliseconds(),
-                    });
+                try {
+
+                    for (const registration of registrations.values()) {
+                        ret.tasks.push({
+                            name: registration.name,
+                            cronExpression: registration.parsedCron.unparse(),
+                            retryDelayMs: registration.retryDelay.toMilliseconds(),
+                        });
+                    }
+                } catch (err) {
+                    capabilities.logger.logError({ err }, "Failed to initialize default state with registrations");
+                    throw err;
                 }
 
                 return ret;

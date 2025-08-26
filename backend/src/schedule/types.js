@@ -13,6 +13,7 @@
 
 /**
  * @typedef {import('../cron').Registration} Registration
+ * @typedef {import('../cron').ParsedRegistrations} ParsedRegistrations
  */
 
 /**

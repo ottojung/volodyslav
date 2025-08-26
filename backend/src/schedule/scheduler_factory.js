@@ -21,6 +21,7 @@ const {
 /** @typedef {import('./types').Initialize} Initialize */
 /** @typedef {import('./types').Stop} Stop */
 /** @typedef {import('./types').Capabilities} Capabilities */
+/** @typedef {import('./types').ParsedRegistrations} ParsedRegistrations */
 
 /**
  * Initialize the scheduler with the given registrations.
@@ -91,11 +92,12 @@ function make(getCapabilities) {
             "Creating new polling scheduler"
         );
 
+        /** @type {ParsedRegistrations} */
         const parsedRegistrations = new Map();
         registrations.forEach(([name, cronExpression, callback, retryDelay]) =>
             parsedRegistrations.set(name, {
                 name,
-                cronExpression: parseCronExpression(cronExpression),
+                parsedCron: parseCronExpression(cronExpression),
                 callback,
                 retryDelay
             }));
