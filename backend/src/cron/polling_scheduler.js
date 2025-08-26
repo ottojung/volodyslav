@@ -177,6 +177,7 @@ function makePollingScheduler(capabilities, registrations) {
     return {
         /**
          * Schedule a new task.
+         * FIXME: change cronExpression type from string to CronExpression (parsed).
          * @param {string} name
          * @param {string} cronExpression
          * @param {Callback} callback
