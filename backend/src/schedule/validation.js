@@ -75,11 +75,11 @@ function validateTasksAgainstPersistedStateInner(registrations, persistedTasks) 
             extra.push(regTask.name);
         } else if (!taskIdentitiesEqual(regTask, persistedTask)) {
             // Detailed difference analysis
-            if (!cronScheduler.parseCronExpression(regTask.cronExpression).equal(cronScheduler.parseCronExpression(persistedTask.cronExpression))) {
+            if (regTask.cronExpression !== persistedTask.cronExpression) {
                 differing.push({
                     name: regTask.name,
                     field: 'cronExpression',
-                    expected: persistedTask.cronExpression, // FIXME: Better printed expression. This is currently the result of `unparse()` call, which is a mess.
+                    expected: persistedTask.cronExpression,
                     actual: regTask.cronExpression
                 });
             }
