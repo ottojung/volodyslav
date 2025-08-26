@@ -25,7 +25,7 @@ describe("scheduler time advancement demo", () => {
         const retryDelay = fromMilliseconds(5000);
         const taskCallback = jest.fn();
 
-        // Set initial time to 00:05:00 
+        // Set initial time to 00:05:00
         const startTime = new Date("2021-01-01T00:05:00.000Z").getTime();
         timeControl.setTime(startTime);
 
