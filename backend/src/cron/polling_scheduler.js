@@ -20,6 +20,7 @@ const {
  * @typedef {import('../time_duration').TimeDuration} TimeDuration
  * @typedef {import('./scheduling/types').CronExpression} CronExpression
  * @typedef {import('../datetime').DateTime} DateTime
+ * @typedef {import('./scheduling/types').Callback} Callback
  */
 
 const POLL_INTERVAL_MS = 600000;
@@ -28,7 +29,7 @@ const POLL_INTERVAL_MS = 600000;
  * @typedef {object} Task
  * @property {string} name
  * @property {import('./expression').CronExpressionClass} parsedCron
- * @property {(() => Promise<void> | void) | null} callback
+ * @property {Callback} callback
  * @property {TimeDuration} retryDelay
  * @property {DateTime|undefined} lastSuccessTime
  * @property {DateTime|undefined} lastFailureTime

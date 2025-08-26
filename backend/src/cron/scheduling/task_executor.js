@@ -33,21 +33,13 @@ function makeTaskExecutor(capabilities, persistState) {
      * @param {"retry"|"cron"} mode
      */
     async function runTask(task, mode) {
-        if (task.callback === null) {
-            capabilities.logger.logWarning({ name: task.name }, "TaskSkippedNoCallback");
-            return;
-        }
-
         task.running = true;
         const startTime = dt.now();
         task.lastAttemptTime = startTime;
         capabilities.logger.logInfo({ name: task.name, mode }, "TaskRunStarted");
 
         try {
-            const result = task.callback();
-            if (result instanceof Promise) {
-                await result;
-            }
+            await task.callback();
             const end = dt.now();
             task.lastSuccessTime = end;
             task.lastFailureTime = undefined;
