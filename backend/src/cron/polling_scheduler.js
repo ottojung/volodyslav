@@ -179,7 +179,7 @@ function makePollingScheduler(capabilities, registrations) {
          * Schedule a new task.
          * @param {string} name
          * @param {string} cronExpression
-         * @param {() => Promise<void> | void} callback
+         * @param {Callback} callback
          * @param {TimeDuration} retryDelay
          * @returns {Promise<string>}
          */
