@@ -49,14 +49,14 @@ function make(getCapabilities) {
          * @param {import('../runtime_state_storage/class').RuntimeStateStorage} storage
          */
         async function getStorage(storage) {
-            return await storage.getCurrentState();
+            return await storage.getExistingState();
         }
 
         const currentState = await capabilities.state.transaction(getStorage);
-        const persistedTasks = currentState.tasks;
+        const persistedTasks = currentState?.tasks;
 
         // Always validate registrations against persisted state (unless first-time with empty state)
-        if (persistedTasks.length === 0 && registrations.length > 0) {
+        if (persistedTasks === undefined) {
             capabilities.logger.logInfo(
                 {
                     registeredTaskCount: registrations.length,
@@ -64,7 +64,7 @@ function make(getCapabilities) {
                 },
                 "First-time scheduler initialization: registering initial tasks"
             );
-        } else if (persistedTasks.length > 0 || registrations.length > 0) {
+        } else {
             // Validate registrations match persisted state
             capabilities.logger.logDebug(
                 {
