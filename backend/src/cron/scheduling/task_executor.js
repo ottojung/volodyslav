@@ -24,14 +24,14 @@ function makeTaskExecutor(capabilities, mutateTasks) {
 
     /**
      * Execute multiple tasks in parallel.
-     * @param {Array<{taskName: string, mode: "retry"|"cron"}>} dueTasks
+     * @param {Array<{taskName: string, mode: "retry"|"cron", callback: Callback}>} dueTasks
      * @returns {Promise<void>}
      */
     async function executeTasks(dueTasks) {
         if (dueTasks.length === 0) return;
 
         // Execute all tasks in parallel
-        const promises = dueTasks.map(({ taskName, mode }) => runTask(taskName, mode));
+        const promises = dueTasks.map(({ taskName, mode, callback }) => runTask(taskName, mode, callback));
         await Promise.all(promises);
     }
 
@@ -39,8 +39,9 @@ function makeTaskExecutor(capabilities, mutateTasks) {
      * Execute a single task.
      * @param {string} taskName
      * @param {"retry"|"cron"} mode
+     * @param {Callback} callback
      */
-    async function runTask(taskName, mode) {
+    async function runTask(taskName, mode, callback) {
         const qname = JSON.stringify(taskName);
         const startTime = dt.now();
 
@@ -59,11 +60,6 @@ function makeTaskExecutor(capabilities, mutateTasks) {
                 return transformation(task);
             });
         }
-
-        const callback = await mutateThis((task) => {
-            // FIXME: extract this callback at `poll` and then pass it to the executor.
-            return task.callback;
-        });
 
         capabilities.logger.logInfo({ name: taskName, mode }, "TaskRunStarted");
 

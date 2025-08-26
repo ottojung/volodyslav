@@ -84,7 +84,7 @@ function makePollingScheduler(capabilities, registrations) {
             let skippedNotDue = 0;
 
             // Collect all due tasks for parallel execution
-            /** @type {Array<{taskName: string, mode: "retry"|"cron"}>} */
+            /** @type {Array<{taskName: string, mode: "retry"|"cron", callback: Callback}>} */
             const dueTasks = [];
 
             await mutateTasks(capabilities, registrations, (tasks) => {
@@ -116,24 +116,25 @@ function makePollingScheduler(capabilities, registrations) {
                         (!task.lastAttemptTime || task.lastAttemptTime.getTime() < lastScheduledFire.getTime());
 
                     const shouldRunRetry = task.pendingRetryUntil && now.getTime() >= task.pendingRetryUntil.getTime();
+                    const callback = task.callback;
 
                     if (shouldRunRetry && shouldRunCron) {
                         // Both are due - choose the mode based on which is earlier (chronologically smaller)
                         if (task.pendingRetryUntil && lastScheduledFire && task.pendingRetryUntil.getTime() < lastScheduledFire.getTime()) {
-                            dueTasks.push({ taskName, mode: "retry" });
+                            dueTasks.push({ taskName, mode: "retry", callback });
                             task.lastAttemptTime = now;
                             dueRetry++;
                         } else {
-                            dueTasks.push({ taskName, mode: "cron" });
+                            dueTasks.push({ taskName, mode: "cron", callback });
                             task.lastAttemptTime = now;
                             dueCron++;
                         }
                     } else if (shouldRunCron) {
-                        dueTasks.push({ taskName, mode: "cron" });
+                        dueTasks.push({ taskName, mode: "cron", callback });
                         task.lastAttemptTime = now;
                         dueCron++;
                     } else if (shouldRunRetry) {
-                        dueTasks.push({ taskName, mode: "retry" });
+                        dueTasks.push({ taskName, mode: "retry", callback });
                         task.lastAttemptTime = now;
                         dueRetry++;
                     } else if (task.pendingRetryUntil) {
