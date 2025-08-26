@@ -26,7 +26,6 @@ const POLL_INTERVAL_MS = 600000;
 /**
  * @typedef {object} Task
  * @property {string} name
- * @property {CronExpression} cronExpression
  * @property {import('./expression').CronExpressionClass} parsedCron
  * @property {(() => Promise<void> | void) | null} callback
  * @property {TimeDuration} retryDelay

@@ -23,7 +23,7 @@
 /**
  * @typedef {object} ParsedRegistration
  * @property {string} name
- * @property {CronExpression} cronExpression
+ * @property {CronExpression} parsedCron
  * @property {Callback} callback
  * @property {TimeDuration} retryDelay
  */
