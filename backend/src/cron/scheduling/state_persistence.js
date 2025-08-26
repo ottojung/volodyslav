@@ -22,72 +22,64 @@ const { parseCronExpression } = require("../parser");
  * @returns {Promise<void>}
  */
 async function loadPersistedState(capabilities, registrations) {
-    try {
-        await capabilities.state.transaction(async (storage) => {
-            const existingState = await storage.getExistingState();
-            let taskCount = 0;
+    /** @type {Map<string, Task>} */
+    const tasks = new Map();
 
-            if (existingState === null) {
-                // No existing state - start fresh
-                capabilities.logger.logInfo({ taskCount: 0 }, "Scheduler state loaded");
-                return;
+    await capabilities.state.transaction(async (storage) => {
+        const existingState = await storage.getExistingState();
+        let taskCount = 0;
+
+        if (existingState === null) {
+            // No existing state - start fresh
+            capabilities.logger.logInfo({ taskCount: 0 }, "Scheduler state loaded");
+            return;
+        }
+
+        // Handle migration logging
+        if (existingState.version === 1) {
+            capabilities.logger.logInfo(
+                { from: 1, to: 2 },
+                "Runtime state migrated"
+            );
+        }
+
+        // Build in-memory tasks from persisted state
+        for (const record of existingState.tasks) {
+            const name = record.name;
+
+            const registration = registrations.get(name);
+            if (registration === undefined) {
+                // FIXME: make it a proper error.    
+                throw new Error(`Task ${name} is not found`);
             }
 
-            // Handle migration logging
-            if (existingState.version === 1) {
-                capabilities.logger.logInfo(
-                    { from: 1, to: 2 },
-                    "Runtime state migrated"
-                );
-            }
+            const { parsedCron, callback, retryDelay } = registration;
+            const lastSuccessTime = record.lastSuccessTime;
+            const lastFailureTime = record.lastFailureTime;
+            const lastAttemptTime = record.lastAttemptTime;
+            const pendingRetryUntil = record.pendingRetryUntil;
+            const lastEvaluatedFire = record.lastEvaluatedFire;
 
-            // Build in-memory tasks from persisted state
-            for (const record of existingState.tasks) {
-                try {
-                    // Parse cron expression
-                    const parsedCron = parseCronExpression(record.cronExpression);
+            /** @type {Task} */
+            const task = {
+                name,
+                parsedCron,
+                callback,
+                retryDelay,
+                lastSuccessTime,
+                lastFailureTime,
+                lastAttemptTime,
+                pendingRetryUntil,
+                lastEvaluatedFire,
+                running: false,
+            };
 
-                    // Convert retryDelayMs to TimeDuration
-                    const retryDelay = time_duration.fromMilliseconds(record.retryDelayMs);
-                    const lastSuccessTime = record.lastSuccessTime;
-                    const lastFailureTime = record.lastFailureTime;
-                    const lastAttemptTime = record.lastAttemptTime;
-                    const pendingRetryUntil = record.pendingRetryUntil;
-                    const lastEvaluatedFire = record.lastEvaluatedFire;
+            tasks.set(name, task);
+            taskCount++;
+        }
 
-                    /** @type {Task} */
-                    const task = {
-                        name: record.name,
-                        parsedCron,
-                        callback: null, // Will be set when task is re-registered
-                        retryDelay,
-                        lastSuccessTime,
-                        lastFailureTime,
-                        lastAttemptTime,
-                        pendingRetryUntil,
-                        lastEvaluatedFire,
-                        running: false, // Never restore running state
-                    };
-
-                    tasks.set(record.name, task);
-                    taskCount++;
-                } catch (error) {
-                    const message = error instanceof Error ? error.message : String(error);
-                    capabilities.logger.logError(
-                        { taskName: record.name, error: message },
-                        `Failed to load persisted task: ${message}`
-                    );
-                    // Continue loading other tasks
-                }
-            }
-
-            capabilities.logger.logInfo({ taskCount }, "Scheduler state loaded");
-        });
-    } catch (error) {
-        const message = error instanceof Error ? error.message : String(error);
-        capabilities.logger.logError({ message }, `State load failed: ${message}`);
-        throw error;
-    }
+        capabilities.logger.logInfo({ taskCount }, "Scheduler state loaded");
+    });
 }
 
 /**
@@ -162,27 +154,16 @@ async function persistCurrentState(capabilities, registrations, transformation) 
                 name: task.name,
                 cronExpression: task.parsedCron.unparse(),
                 retryDelayMs: task.retryDelay.toMilliseconds(),
-                lastSuccessTime: task.lastSuccessTime
-                    ? capabilities.datetime.fromEpochMs(task.lastSuccessTime.getTime())
-                    : undefined,
-                lastFailureTime: task.lastFailureTime
-                    ? capabilities.datetime.fromEpochMs(task.lastFailureTime.getTime())
-                    : undefined,
-                lastAttemptTime: task.lastAttemptTime
-                    ? capabilities.datetime.fromEpochMs(task.lastAttemptTime.getTime())
-                    : undefined,
-                pendingRetryUntil: task.pendingRetryUntil
-                    ? capabilities.datetime.fromEpochMs(task.pendingRetryUntil.getTime())
-                    : undefined,
-                lastEvaluatedFire: task.lastEvaluatedFire
-                    ? capabilities.datetime.fromEpochMs(task.lastEvaluatedFire.getTime())
-                    : undefined,
+                lastSuccessTime: task.lastSuccessTime,
+                lastFailureTime: task.lastFailureTime,
+                lastAttemptTime: task.lastAttemptTime,
+                pendingRetryUntil: task.pendingRetryUntil,
+                lastEvaluatedFire: task.lastEvaluatedFire,
             }));
 
             // Update state with new task records
             const newState = {
-                version: currentState.version,
-                startTime: currentState.startTime,
+                ...currentState,
                 tasks: taskRecords,
             };
 
