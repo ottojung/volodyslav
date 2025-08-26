@@ -6,15 +6,19 @@
 const time_duration = require("../../time_duration");
 const { parseCronExpression } = require("../parser");
 
-/** @typedef {import('../polling_scheduler').Task} Task */
-/** @typedef {import('./types').Registration} Registration */
-/** @typedef {import('./types').Transformation} Transformation */
-/** @typedef {import('../../runtime_state_storage/types').TaskRecord} TaskRecord */
+/** 
+ * @typedef {import('../polling_scheduler').Task} Task 
+ * @typedef {import('./types').Registration} Registration
+ * @typedef {import('./types').ParsedRegistration} ParsedRegistration
+ * @typedef {import('./types').ParsedRegistrations} ParsedRegistrations
+ * @typedef {import('./types').Transformation} Transformation
+ * @typedef {import('../../runtime_state_storage/types').TaskRecord} TaskRecord
+ */
 
 /**
  * Loads persisted task state and builds in-memory tasks map
  * @param {import('../../capabilities/root').Capabilities} capabilities
- * @param {Array<Registration>} registrations
+ * @param {ParsedRegistrations} registrations
  * @returns {Promise<void>}
  */
 async function loadPersistedState(capabilities, registrations) {
@@ -105,13 +109,94 @@ async function loadPersistedState(capabilities, registrations) {
 
 /**
  * Materialize task records into Task objects.
- * @param {Registration[]} registrations
+ * @param {ParsedRegistrations} registrations
  * @param {TaskRecord[]} taskRecords
  * @returns {Map<string, Task>}
  */
 function materializeTasks(registrations, taskRecords) {
-    // TODO
-    throw new Error("Not implemented");
+    /** @type {Map<string, Task>} */
+    const tasks = new Map();
+
+    for (const [name, {cronExpression, callback, retryDelay}] of registrations) {
+        try {
+            /** @type {Task} */
+            const task = {
+                name,
+                cronExpression,
+                parsedCron,
+                callback,
+                retryDelay,
+                lastSuccessTime: undefined,
+                lastFailureTime: undefined,
+                lastAttemptTime: undefined,
+                pendingRetryUntil: undefined,
+                lastEvaluatedFire: undefined,
+                running: false,
+            };
+
+            tasks.set(name, task);
+        } catch (err) {
+            // Ignore invalid registrations - caller cannot log here
+            // Continue processing other registrations
+        }
+    }
+
+    for (const record of taskRecords) {
+        try {
+            const parsedCron = parseCronExpression(record.cronExpression);
+            const retryDelay = time_duration.fromMilliseconds(record.retryDelayMs);
+
+            const lastSuccessTime = record.lastSuccessTime
+                ? new Date(record.lastSuccessTime.getTime())
+                : undefined;
+            const lastFailureTime = record.lastFailureTime
+                ? new Date(record.lastFailureTime.getTime())
+                : undefined;
+            const lastAttemptTime = record.lastAttemptTime
+                ? new Date(record.lastAttemptTime.getTime())
+                : undefined;
+            const pendingRetryUntil = record.pendingRetryUntil
+                ? new Date(record.pendingRetryUntil.getTime())
+                : undefined;
+            const lastEvaluatedFire = record.lastEvaluatedFire
+                ? new Date(record.lastEvaluatedFire.getTime())
+                : undefined;
+
+            if (tasks.has(record.name)) {
+                // Merge persisted history into registered task (registration takes precedence for callback/cron/retryDelay)
+                const existing = tasks.get(record.name);
+                if (!existing) continue; // defensive
+
+                existing.lastSuccessTime = lastSuccessTime;
+                existing.lastFailureTime = lastFailureTime;
+                existing.lastAttemptTime = lastAttemptTime;
+                existing.pendingRetryUntil = pendingRetryUntil;
+                existing.lastEvaluatedFire = lastEvaluatedFire;
+                // Keep existing.cronExpression, existing.parsedCron and existing.retryDelay from registration
+            } else {
+                /** @type {Task} */
+                const task = {
+                    name: record.name,
+                    cronExpression: record.cronExpression,
+                    parsedCron,
+                    callback: null, // Not registered in this process
+                    retryDelay,
+                    lastSuccessTime,
+                    lastFailureTime,
+                    lastAttemptTime,
+                    pendingRetryUntil,
+                    lastEvaluatedFire,
+                    running: false,
+                };
+                tasks.set(record.name, task);
+            }
+        } catch (err) {
+            // Skip invalid persisted records
+            continue;
+        }
+    }
+
+    return tasks;
 }
 
 /**

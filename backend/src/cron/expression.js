@@ -36,6 +36,10 @@ function isCronExpression(object) {
     return object instanceof CronExpressionClass;
 }
 
+/**
+ * @typedef {CronExpressionClass} CronExpression
+ */
+
 module.exports = {
     CronExpressionClass,
     isCronExpression,

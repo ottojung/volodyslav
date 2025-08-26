@@ -15,15 +15,18 @@ const {
     ScheduleInvalidNameError,
 } = require("./polling_scheduler_errors");
 
-/** @typedef {import('../logger').Logger} Logger */
-/** @typedef {import('../time_duration/structure').TimeDuration} TimeDuration */
+/**
+ * @typedef {import('../logger').Logger} Logger
+ * @typedef {import('../time_duration').TimeDuration} TimeDuration
+ * @typedef {import('./scheduling/types').CronExpression} CronExpression
+ */
 
 const POLL_INTERVAL_MS = 600000;
 
 /**
  * @typedef {object} Task
  * @property {string} name
- * @property {string} cronExpression
+ * @property {CronExpression} cronExpression
  * @property {import('./expression').CronExpressionClass} parsedCron
  * @property {(() => Promise<void> | void) | null} callback
  * @property {TimeDuration} retryDelay
