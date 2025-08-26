@@ -60,22 +60,6 @@ function make(capabilities, registrations) {
         async stop() {
             return await scheduler.stopLoop();
         },
-
-        /**
-         * Validate a cron expression.
-         * @param {string} cronExpression
-         * @returns {boolean}
-         */
-        validate(cronExpression) {
-            try {
-                parseCronExpression(cronExpression);
-                return true;
-            } catch {
-                return false;
-            }
-        },
-
-
     };
 }
 
