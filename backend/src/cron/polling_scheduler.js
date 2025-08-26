@@ -43,19 +43,10 @@ function makePollingScheduler(capabilities, registrations) {
     /** @type {Set<string>} */
     const scheduledTasks = new Set(); // Task names that are enabled. Is a subset of names in `registrations`.
     const dt = capabilities.datetime;
-    let stateLoadAttempted = false;
     let pollInProgress = false; // Guard against re-entrant polls
 
     // Create task executor for handling task execution
     const taskExecutor = makeTaskExecutor(capabilities, (transformation) => mutateTasks(capabilities, registrations, transformation));
-
-    // Lazy load state when first needed
-    async function ensureStateLoaded() {
-        if (!stateLoadAttempted) {
-            stateLoadAttempted = true;
-            await loadPersistedState(capabilities, registrations);
-        }
-    }
 
     function start() {
         if (interval === null) {
