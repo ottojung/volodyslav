@@ -61,7 +61,7 @@ function makeTaskExecutor(capabilities, mutateTasks) {
         }
 
         const callback = await mutateThis((task) => {
-            task.lastAttemptTime = startTime;
+            // FIXME: extract this callback at `poll` and then pass it to the executor.
             return task.callback;
         });
 
