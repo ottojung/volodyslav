@@ -13,9 +13,7 @@ const {
 
 /**
  * @typedef {import('./scheduling/types').Registration} Registration
- */
-
-/**
+ * @typedef {import('./scheduling/types').Callback} Callback
  * @typedef {import('./scheduling/types').ParsedRegistrations} ParsedRegistrations
  */
 
@@ -31,7 +29,7 @@ function make(capabilities, registrations) {
          * Schedule a task.
          * @param {string} name
          * @param {string} cronExpression
-         * @param {() => Promise<void> | void} callback
+         * @param {Callback} callback
          * @param {import('../time_duration/structure').TimeDuration} retryDelay
          * @returns {Promise<string>}
          */
