@@ -4,6 +4,7 @@
 
 const { parseCronExpression } = require("../cron");
 const cronScheduler = require("../cron");
+const { mutateTasks } = require("../cron/scheduling");
 const memconst = require("../memconst");
 
 const {
@@ -101,6 +102,10 @@ function make(getCapabilities) {
                 callback,
                 retryDelay
             }));
+
+        if (persistedTasks === undefined) {
+            await mutateTasks(capabilities, parsedRegistrations, async () => undefined);
+        }
 
         pollingScheduler = cronScheduler.make(capabilities, parsedRegistrations);
 
