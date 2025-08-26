@@ -13,6 +13,7 @@ const {
 const {
     ScheduleInvalidNameError,
 } = require("./polling_scheduler_errors");
+const { isRunning } = require("./task");
 
 /**
  * @typedef {import('../logger').Logger} Logger
@@ -39,7 +40,8 @@ const POLL_INTERVAL_MS = 600000;
 function makePollingScheduler(capabilities, registrations) {
     /** @type {NodeJS.Timeout | null} */
     let interval = null;
-    const scheduled_tasks = []; // List of task names that are enabled. Is a subset of names in `registrations`.
+    /** @type {Set<string>} */
+    const scheduledTasks = new Set(); // Task names that are enabled. Is a subset of names in `registrations`.
     const dt = capabilities.datetime;
     let stateLoadAttempted = false;
     let pollInProgress = false; // Guard against re-entrant polls
@@ -90,64 +92,73 @@ function makePollingScheduler(capabilities, registrations) {
             let skippedRunning = 0;
             let skippedRetryFuture = 0;
             let skippedNotDue = 0;
+
             // Collect all due tasks for parallel execution
-            /** @type {Array<{task: Task, mode: "retry"|"cron"}>} */
+            /** @type {Array<{taskName: string, mode: "retry"|"cron"}>} */
             const dueTasks = [];
 
-            for (const task of tasks.values()) {
-                // Skip tasks that don't have a callback yet (loaded from persistence)
-                if (task.callback === null) {
-                    continue;
-                }
-                if (task.running) {
-                    skippedRunning++;
-                    capabilities.logger.logDebug({ name: task.name, reason: "running" }, "TaskSkip");
-                    continue;
-                }
+            await mutateTasks(capabilities, registrations, (tasks) => {
+                for (const taskName of scheduledTasks) {
+                    const qname = JSON.stringify(taskName);
 
-                // Check both cron schedule and retry timing
-                const { lastScheduledFire, newLastEvaluatedFire } = getMostRecentExecution(task.parsedCron, now, dt, task.lastEvaluatedFire);
-
-                // Update lastEvaluatedFire cache for performance optimization
-                if (newLastEvaluatedFire) {
-                    task.lastEvaluatedFire = newLastEvaluatedFire;
-                }
-
-                const shouldRunCron = lastScheduledFire &&
-                    (!task.lastAttemptTime || task.lastAttemptTime < lastScheduledFire);
-
-                const shouldRunRetry = task.pendingRetryUntil && now.getTime() >= task.pendingRetryUntil.getTime();
-
-                if (shouldRunRetry && shouldRunCron) {
-                    // Both are due - choose the mode based on which is earlier (chronologically smaller)
-                    if (task.pendingRetryUntil && lastScheduledFire && task.pendingRetryUntil.getTime() < lastScheduledFire.getTime()) {
-                        dueTasks.push({ task, mode: "retry" });
-                        dueRetry++;
-                    } else {
-                        dueTasks.push({ task, mode: "cron" });
-                        dueCron++;
+                    const task = tasks.get(taskName);
+                    if (task === undefined) {
+                        // FIXME: turn this into a proper error.    
+                        throw new Error(`Task ${qname} not found`);
                     }
-                } else if (shouldRunCron) {
-                    dueTasks.push({ task, mode: "cron" });
-                    dueCron++;
-                } else if (shouldRunRetry) {
-                    dueTasks.push({ task, mode: "retry" });
-                    dueRetry++;
-                } else if (task.pendingRetryUntil) {
-                    skippedRetryFuture++;
-                    capabilities.logger.logDebug({ name: task.name, reason: "retryNotDue" }, "TaskSkip");
-                } else {
-                    skippedNotDue++;
-                    capabilities.logger.logDebug({ name: task.name, reason: "notDue" }, "TaskSkip");
+
+                    if (isRunning(task)) {
+                        skippedRunning++;
+                        capabilities.logger.logDebug({ name: taskName, reason: "running" }, "TaskSkip");
+                        continue;
+                    }
+
+                    // Check both cron schedule and retry timing
+                    // FIXME: only use DateTime class, no Date.
+                    const lastEvaluatedFireDate = task.lastEvaluatedFire ? dt.toNativeDate(task.lastEvaluatedFire) : undefined;
+                    const { lastScheduledFire, newLastEvaluatedFire } = getMostRecentExecution(task.parsedCron, now, dt, lastEvaluatedFireDate);
+
+                    // Update lastEvaluatedFire cache for performance optimization
+                    if (newLastEvaluatedFire) {
+                        task.lastEvaluatedFire = dt.fromEpochMs(newLastEvaluatedFire.getDate());
+                    }
+
+                    const shouldRunCron = lastScheduledFire &&
+                        (!task.lastAttemptTime || task.lastAttemptTime.getTime() < lastScheduledFire.getTime());
+
+                    const shouldRunRetry = task.pendingRetryUntil && now.getTime() >= task.pendingRetryUntil.getTime();
+
+                    if (shouldRunRetry && shouldRunCron) {
+                        // Both are due - choose the mode based on which is earlier (chronologically smaller)
+                        if (task.pendingRetryUntil && lastScheduledFire && task.pendingRetryUntil.getTime() < lastScheduledFire.getTime()) {
+                            dueTasks.push({ taskName, mode: "retry" });
+                            dueRetry++;
+                        } else {
+                            dueTasks.push({ taskName, mode: "cron" });
+                            dueCron++;
+                        }
+                    } else if (shouldRunCron) {
+                        dueTasks.push({ taskName, mode: "cron" });
+                        dueCron++;
+                    } else if (shouldRunRetry) {
+                        dueTasks.push({ taskName, mode: "retry" });
+                        dueRetry++;
+                    } else if (task.pendingRetryUntil) {
+                        skippedRetryFuture++;
+                        capabilities.logger.logDebug({ name: taskName, reason: "retryNotDue" }, "TaskSkip");
+                    } else {
+                        skippedNotDue++;
+                        capabilities.logger.logDebug({ name: taskName, reason: "notDue" }, "TaskSkip");
+                    }
                 }
-            }
+            });
 
             // Execute all due tasks in parallel
             await taskExecutor.executeTasks(dueTasks);
 
             capabilities.logger.logDebug(
                 {
-                    total: tasks.size,
+                    due: dueTasks.length,
                     dueRetry,
                     dueCron,
                     skippedRunning,
@@ -188,7 +199,7 @@ function makePollingScheduler(capabilities, registrations) {
             // Validate task frequency against polling frequency
             validateTaskFrequency(parsedCron, module.exports.POLL_INTERVAL_MS, dt);
 
-            scheduled_tasks.push(name);
+            scheduledTasks.add(name);
             start();
         },
 
@@ -198,14 +209,7 @@ function makePollingScheduler(capabilities, registrations) {
          * @returns {Promise<boolean>}
          */
         async cancel(name) {
-            const existed = tasks.delete(name);
-            if (existed) {
-                // Persist state after removing task
-                await persistState();
-            }
-            if (tasks.size === 0) {
-                stop();
-            }
+            const existed = scheduledTasks.delete(name);
             return existed;
         },
 
@@ -219,10 +223,8 @@ function makePollingScheduler(capabilities, registrations) {
          * @returns {Promise<number>}
          */
         async cancelAll() {
-            const count = tasks.size;
-            tasks.clear();
-            // Persist the clearing of all tasks to ensure cancelled tasks don't reappear after restart
-            await persistState();
+            const count = scheduledTasks.size;
+            scheduledTasks.clear();
             stop();
             return count;
         },

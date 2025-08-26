@@ -24,14 +24,14 @@ function makeTaskExecutor(capabilities, mutateTasks) {
 
     /**
      * Execute multiple tasks in parallel.
-     * @param {Array<{name: string, mode: "retry"|"cron"}>} dueTasks
+     * @param {Array<{taskName: string, mode: "retry"|"cron"}>} dueTasks
      * @returns {Promise<void>}
      */
     async function executeTasks(dueTasks) {
         if (dueTasks.length === 0) return;
 
         // Execute all tasks in parallel
-        const promises = dueTasks.map(({ name, mode }) => runTask(name, mode));
+        const promises = dueTasks.map(({ taskName, mode }) => runTask(taskName, mode));
         await Promise.all(promises);
     }
 
