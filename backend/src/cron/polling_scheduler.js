@@ -36,7 +36,6 @@ const POLL_INTERVAL_MS = 600000;
  * @property {DateTime|undefined} lastAttemptTime
  * @property {DateTime|undefined} pendingRetryUntil
  * @property {DateTime|undefined} lastEvaluatedFire
- * @property {boolean} running
  */
 
 

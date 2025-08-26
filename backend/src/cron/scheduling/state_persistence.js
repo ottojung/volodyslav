@@ -68,7 +68,6 @@ async function loadPersistedState(capabilities, registrations) {
                 lastAttemptTime,
                 pendingRetryUntil,
                 lastEvaluatedFire,
-                running: false,
             };
 
             tasks.set(name, task);
@@ -122,7 +121,6 @@ function materializeTasks(registrations, taskRecords) {
             lastAttemptTime,
             pendingRetryUntil,
             lastEvaluatedFire,
-            running: false,
         };
 
         tasks.set(name, task);

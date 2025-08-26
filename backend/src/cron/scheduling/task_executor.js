@@ -33,7 +33,6 @@ function makeTaskExecutor(capabilities, persistState) {
      * @param {"retry"|"cron"} mode
      */
     async function runTask(task, mode) {
-        task.running = true;
         const startTime = dt.now();
         task.lastAttemptTime = startTime;
         capabilities.logger.logInfo({ name: task.name, mode }, "TaskRunStarted");
@@ -76,8 +75,6 @@ function makeTaskExecutor(capabilities, persistState) {
                 const message = err instanceof Error ? err.message : String(err);
                 capabilities.logger.logError({ message }, "StateWriteFailedAfterFailure");
             }
-        } finally {
-            task.running = false;
         }
     }
 
