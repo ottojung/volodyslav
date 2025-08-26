@@ -92,12 +92,13 @@ function make(getCapabilities) {
         );
 
         const parsedRegistrations = new Map();
-        registrations.forEach(([name, cronExpression, callback, retryDelay]) => ({
-            name,
-            cronExpression: parseCronExpression(cronExpression),
-            callback,
-            retryDelay
-        }));
+        registrations.forEach(([name, cronExpression, callback, retryDelay]) =>
+            parsedRegistrations.set(name, {
+                name,
+                cronExpression: parseCronExpression(cronExpression),
+                callback,
+                retryDelay
+            }));
 
         pollingScheduler = cronScheduler.make(capabilities, parsedRegistrations);
 
