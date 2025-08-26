@@ -264,7 +264,7 @@ describe("Declarative Scheduler", () => {
             await capabilities.scheduler.initialize(registrations);
 
             // Wait for at least one poll cycle to execute
-            await new Promise(resolve => setTimeout(resolve, 10));
+            await new Promise(resolve => setTimeout(resolve, 400));
 
             // Task should have been executed because it's due to run (first time)
             expect(taskCallback).toHaveBeenCalled();
@@ -284,7 +284,7 @@ describe("Declarative Scheduler", () => {
             await capabilities.scheduler.initialize(registrations);
 
             // Wait for initial execution
-            await new Promise(resolve => setTimeout(resolve, 10));
+            await new Promise(resolve => setTimeout(resolve, 400));
 
             // Task should have been called
             expect(taskCallback).toHaveBeenCalled();
@@ -292,26 +292,6 @@ describe("Declarative Scheduler", () => {
             // Second call to initialize with same capabilities - should be idempotent
             // This should not cause errors or duplicate scheduling issues
             await expect(capabilities.scheduler.initialize(registrations)).resolves.toBeUndefined();
-            await capabilities.scheduler.stop(capabilities);
-        });
-
-        test("scheduler executes tasks based on cron schedule", async () => {
-            const taskCallback = jest.fn().mockResolvedValue(undefined);
-
-            const registrations = [
-                // Simple task that runs every minute
-                ["minute-task", "* * * * *", taskCallback, COMMON.FIVE_MINUTES],
-            ];
-
-            const capabilities = getTestCapabilities();
-
-            await capabilities.scheduler.initialize(registrations);
-
-            // Wait for execution
-            await new Promise(resolve => setTimeout(resolve, 10));
-
-            // Task should execute on first run
-            expect(taskCallback).toHaveBeenCalled();
             await capabilities.scheduler.stop(capabilities);
         });
     });

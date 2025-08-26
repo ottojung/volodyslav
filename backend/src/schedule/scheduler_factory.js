@@ -2,7 +2,9 @@
  * Scheduler factory implementation for the declarative scheduler.
  */
 
+const { parseCronExpression } = require("../cron");
 const cronScheduler = require("../cron");
+const { mutateTasks } = require("../cron/scheduling");
 const memconst = require("../memconst");
 
 const {
@@ -20,6 +22,7 @@ const {
 /** @typedef {import('./types').Initialize} Initialize */
 /** @typedef {import('./types').Stop} Stop */
 /** @typedef {import('./types').Capabilities} Capabilities */
+/** @typedef {import('./types').ParsedRegistrations} ParsedRegistrations */
 
 /**
  * Initialize the scheduler with the given registrations.
@@ -47,27 +50,27 @@ function make(getCapabilities) {
          * @param {import('../runtime_state_storage/class').RuntimeStateStorage} storage
          */
         async function getStorage(storage) {
-            return await storage.getCurrentState();
+            return await storage.getExistingState();
         }
 
         const currentState = await capabilities.state.transaction(getStorage);
-        const persistedTasks = currentState.tasks;
+        const persistedTasks = currentState?.tasks;
 
         // Always validate registrations against persisted state (unless first-time with empty state)
-        if (persistedTasks.length === 0 && registrations.length > 0) {
+        if (persistedTasks === undefined) {
             capabilities.logger.logInfo(
-                { 
+                {
                     registeredTaskCount: registrations.length,
                     taskNames: registrations.map(([name]) => name)
                 },
                 "First-time scheduler initialization: registering initial tasks"
             );
-        } else if (persistedTasks.length > 0 || registrations.length > 0) {
+        } else {
             // Validate registrations match persisted state
             capabilities.logger.logDebug(
-                { 
+                {
                     persistedTaskCount: persistedTasks.length,
-                    registrationCount: registrations.length 
+                    registrationCount: registrations.length
                 },
                 "Validating task registrations against persisted state"
             );
@@ -85,12 +88,27 @@ function make(getCapabilities) {
         }
 
         // Create polling scheduler
-        capabilities.logger.logInfo(
+        capabilities.logger.logDebug(
             {},
             "Creating new polling scheduler"
         );
 
-        pollingScheduler = cronScheduler.make(capabilities);
+        /** @type {ParsedRegistrations} */
+        const parsedRegistrations = new Map();
+        registrations.forEach(([name, cronExpression, callback, retryDelay]) =>
+            parsedRegistrations.set(name, {
+                name,
+                cronString: cronExpression,
+                parsedCron: parseCronExpression(cronExpression),
+                callback,
+                retryDelay
+            }));
+
+        if (persistedTasks === undefined) {
+            await mutateTasks(capabilities, parsedRegistrations, async () => undefined);
+        }
+
+        pollingScheduler = cronScheduler.make(capabilities, parsedRegistrations);
 
         let scheduledCount = 0;
         let skippedCount = 0;
@@ -100,7 +118,7 @@ function make(getCapabilities) {
                 await pollingScheduler.schedule(name, cronExpression, callback, retryDelay);
                 scheduledCount++;
                 capabilities.logger.logDebug(
-                    { 
+                    {
                         taskName: name,
                         cronExpression,
                         retryDelayMs: retryDelay.toMilliseconds()
@@ -124,7 +142,7 @@ function make(getCapabilities) {
         }
 
         capabilities.logger.logInfo(
-            { 
+            {
                 totalRegistrations: registrations.length,
                 scheduledCount,
                 skippedCount
@@ -145,10 +163,10 @@ function make(getCapabilities) {
                     {},
                     "Stopping scheduler gracefully"
                 );
-                
+
                 await pollingScheduler.stop();
                 pollingScheduler = null;
-                
+
                 capabilities.logger.logInfo({}, "Scheduler stopped successfully");
             } catch (err) {
                 const error = err instanceof Error ? err : new Error(String(err));

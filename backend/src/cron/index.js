@@ -12,22 +12,29 @@ const {
 } = require("./polling_scheduler_errors");
 
 /**
+ * @typedef {import('./scheduling/types').Registration} Registration
+ * @typedef {import('./scheduling/types').Callback} Callback
+ * @typedef {import('./scheduling/types').ParsedRegistrations} ParsedRegistrations
+ */
+
+/**
  * Creates a new polling scheduler instance.
  * @param {import('../capabilities/root').Capabilities} capabilities
+ * @param {ParsedRegistrations} registrations
  */
-function make(capabilities) {
-    const scheduler = makePollingScheduler(capabilities);
+function make(capabilities, registrations) {
+    const scheduler = makePollingScheduler(capabilities, registrations);
     return {
         /**
          * Schedule a task.
          * @param {string} name
          * @param {string} cronExpression
-         * @param {() => Promise<void> | void} callback
+         * @param {Callback} callback
          * @param {import('../time_duration/structure').TimeDuration} retryDelay
-         * @returns {Promise<string>}
+         * @returns {Promise<void>}
          */
         async schedule(name, cronExpression, callback, retryDelay) {
-            return await scheduler.schedule(name, cronExpression, callback, retryDelay);
+            await scheduler.schedule(name, cronExpression, callback, retryDelay);
         },
 
         /**
@@ -53,29 +60,6 @@ function make(capabilities) {
         async stop() {
             return await scheduler.stopLoop();
         },
-
-        /**
-         * Get info about tasks.
-         * @returns {Promise<Array<{name:string,cronExpression:string,running:boolean,lastSuccessTime?:string,lastFailureTime?:string,lastAttemptTime?:string,pendingRetryUntil?:string,modeHint:"retry"|"cron"|"idle"}>>}
-         */
-        async getTasks() {
-            return await scheduler.getTasks();
-        },
-        /**
-         * Validate a cron expression.
-         * @param {string} cronExpression
-         * @returns {boolean}
-         */
-        validate(cronExpression) {
-            try {
-                parseCronExpression(cronExpression);
-                return true;
-            } catch {
-                return false;
-            }
-        },
-
-
     };
 }
 
