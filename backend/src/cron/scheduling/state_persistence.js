@@ -3,9 +3,6 @@
  * Handles saving and restoring task state to/from disk.
  */
 
-const time_duration = require("../../time_duration");
-const { parseCronExpression } = require("../parser");
-
 /** 
  * @typedef {import('../polling_scheduler').Task} Task 
  * @typedef {import('./types').Registration} Registration
