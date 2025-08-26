@@ -2,10 +2,15 @@
 /**
  * @typedef {import('../../time_duration').TimeDuration} TimeDuration
  * @typedef {import('../polling_scheduler').Task} Task
- * @typedef {(tasks: Map<string, Task>) => Map<string, Task>} Transformation
  * @typedef {() => Promise<void>} Callback
  * @typedef {import('../expression').CronExpression} CronExpression
  */
+
+/**
+ * @template T
+ * @typedef {(tasks: Map<string, Task>) => T} Transformation
+ */
+
 
 /**
  * Registration tuple defining a scheduled task.

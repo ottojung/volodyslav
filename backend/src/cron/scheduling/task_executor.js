@@ -6,12 +6,20 @@
 /** @typedef {import('../polling_scheduler').Task} Task */
 
 /**
+ * @template T
+ * @typedef {import('./types').Transformation<T>} Transformation
+ */
+
+/**
+ * @typedef {import('./types').Callback} Callback
+ */
+
+/**
  * Create a task executor.
  * @param {import('../../capabilities/root').Capabilities} capabilities
- * @param {() => Promise<void>} persistState
- * @returns {{executeTasks: (dueTasks: Array<{task: Task, mode: "retry"|"cron"}>) => Promise<void>, runTask: (task: Task, mode: "retry"|"cron") => Promise<void>}}
+ * @param {<T>(tr: Transformation<T>) => Promise<T>} mutateTasks
  */
-function makeTaskExecutor(capabilities, persistState) {
+function makeTaskExecutor(capabilities, mutateTasks) {
     const dt = capabilities.datetime;
 
     /**
@@ -29,52 +37,76 @@ function makeTaskExecutor(capabilities, persistState) {
 
     /**
      * Execute a single task.
-     * @param {Task} task
+     * @param {string} taskName
      * @param {"retry"|"cron"} mode
      */
-    async function runTask(task, mode) {
+    async function runTask(taskName, mode) {
+        const qname = JSON.stringify(taskName);
         const startTime = dt.now();
-        task.lastAttemptTime = startTime;
-        capabilities.logger.logInfo({ name: task.name, mode }, "TaskRunStarted");
 
-        try {
-            await task.callback();
-            const end = dt.now();
-            task.lastSuccessTime = end;
-            task.lastFailureTime = undefined;
-            task.pendingRetryUntil = undefined;
+        /**
+         * @template T
+         * @param {(task: Task) => T} transformation
+         * @returns {Promise<T>}
+         */
+        async function mutateThis(transformation) {
+            return await mutateTasks((tasks) => {
+                const task = tasks.get(taskName);
+                if (task === undefined) {
+                    // FIXME: implement proper error reporting.    
+                    throw new Error(`Task not found: ${taskName}`);
+                }
+                return transformation(task);
+            });
+        }
+
+        const callback = await mutateThis((task) => {
+            task.lastAttemptTime = startTime;
+            return task.callback;
+        });
+
+        capabilities.logger.logInfo({ name: taskName, mode }, "TaskRunStarted");
+
+        async function executeIt() {
+            try {
+                await callback();
+                return null;
+            } catch (error) {
+                if (error instanceof Error) {
+                    return error;
+                } else {
+                    return new Error(`Unknown error: ${error}`);
+                }
+            }
+        }
+
+        const maybeError = await executeIt();
+        const end = dt.now();
+
+        if (maybeError === null) {
+            await mutateThis((task) => {
+                task.lastSuccessTime = end;
+                task.lastFailureTime = undefined;
+                task.pendingRetryUntil = undefined;
+            });
 
             capabilities.logger.logInfo(
-                { name: task.name, mode, durationMs: end.getTime() - startTime.getTime() },
-                "TaskRunSuccess"
+                { name: taskName, mode, durationMs: end.getTime() - startTime.getTime() },
+                `Task ${qname} succeeded`
             );
+        } else {
+            await mutateThis((task) => {
+                const retryAt = dt.fromEpochMs(end.getTime() + task.retryDelay.toMilliseconds());
+                task.lastSuccessTime = undefined;
+                task.lastFailureTime = end;
+                task.pendingRetryUntil = retryAt;
+            });
 
-            // Persist state after success
-            try {
-                await persistState();
-            } catch (err) {
-                const message = err instanceof Error ? err.message : String(err);
-                capabilities.logger.logError({ message }, "StateWriteFailedAfterSuccess");
-            }
-        } catch (error) {
-            const end = dt.now();
-            task.lastFailureTime = end;
-            const retryAt = dt.fromEpochMs(end.getTime() + task.retryDelay.toMilliseconds());
-            task.pendingRetryUntil = retryAt;
-            const message = error instanceof Error ? error.message : String(error);
-
+            const message = maybeError.message;
             capabilities.logger.logInfo(
-                { name: task.name, mode, errorMessage: message, retryAtISO: retryAt.toISOString() },
-                "TaskRunFailure"
+                { name: taskName, mode, errorMessage: message },
+                `Task ${qname} failed: ${message}`
             );
-
-            // Persist state after failure
-            try {
-                await persistState();
-            } catch (err) {
-                const message = err instanceof Error ? err.message : String(err);
-                capabilities.logger.logError({ message }, "StateWriteFailedAfterFailure");
-            }
         }
     }
 
