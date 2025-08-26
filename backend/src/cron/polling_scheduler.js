@@ -178,8 +178,7 @@ function makePollingScheduler(capabilities, registrations) {
     return {
         /**
          * Schedule a new task.
-         * FIXME: change cronExpression type from string to CronExpression (parsed).
-         * FIXME: validate that callback, cronExpression, and retryDelay match registrations.
+         * FIXME: change the signature to accept ONLY the `name`, nothing else.
          * @param {string} name
          * @param {string} cronExpression
          * @param {Callback} _callback
