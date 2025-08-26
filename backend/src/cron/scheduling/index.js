@@ -5,7 +5,7 @@
 
 const { findPreviousFire, getMostRecentExecution } = require("./previous_fire_calculator");
 const { calculateMinimumCronInterval, validateTaskFrequency } = require("./frequency_validator");
-const { loadPersistedState, persistCurrentState } = require("./state_persistence");
+const { loadPersistedState, mutateTasks } = require("./state_persistence");
 const { makeTaskExecutor } = require("./task_executor");
 
 module.exports = {
@@ -14,6 +14,6 @@ module.exports = {
     calculateMinimumCronInterval,
     validateTaskFrequency,
     loadPersistedState,
-    persistCurrentState,
+    mutateTasks,
     makeTaskExecutor,
 };
