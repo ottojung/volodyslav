@@ -15,26 +15,27 @@ const { matchesCronExpression, getNextExecution } = require("../parser");
  * - Implements Correct caching: Returns actual fire time (not evaluation time) as cache
  * 
  * @param {import('../parser').CronExpressionClass} parsedCron - The parsed cron expression
- * @param {Date} now - The reference point (current time)
+ * @param {DateTime} now - The reference point (current time)
  * @param {import('../../datetime').Datetime} dt - DateTime capabilities instance
- * @param {Date|undefined} lastKnownFireTime - Optional cache hint (actual fire time, not evaluation time)
- * @returns {{previousFire: Date|undefined, newCacheTime: Date|undefined}}
+ * @param {DateTime|undefined} lastKnownFireTime - Optional cache hint (actual fire time, not evaluation time)
+ * @returns {{previousFire: DateTime|undefined, newCacheTime: DateTime|undefined}}
  */
 function findPreviousFire(parsedCron, now, dt, lastKnownFireTime) {
     try {
         // For efficiency, check if current minute matches first
-        const currentMinute = new Date(now);
+        const currentMinute = dt.toNativeDate(now);
         currentMinute.setSeconds(0, 0);
 
         const currentDt = dt.fromEpochMs(currentMinute.getTime());
         if (matchesCronExpression(parsedCron, currentDt)) {
             return {
-                previousFire: currentMinute,
-                newCacheTime: currentMinute
+                previousFire: currentDt,
+                newCacheTime: currentDt,
             };
         }
 
         // Strategy: Use cached fire time when available and recent, otherwise use limited search
+        /** @type DateTime */
         let anchorTime;
         const oneHour = 60 * 60 * 1000;
         const oneDay = 24 * oneHour;
@@ -46,18 +47,20 @@ function findPreviousFire(parsedCron, now, dt, lastKnownFireTime) {
             
             if (timeDiff <= oneWeek) {
                 // Recent cache - start from there for efficiency
-                anchorTime = new Date(lastKnownFireTime);
+                anchorTime = lastKnownFireTime;
             } else {
                 // For larger gaps, use very conservative lookback to prevent performance issues
-                anchorTime = new Date(now.getTime() - oneWeek);
+                anchorTime = dt.fromEpochMs(now.getTime() - oneWeek);
             }
         } else {
             // No cache available - use conservative lookback
-            anchorTime = new Date(now.getTime() - oneWeek);
+            anchorTime = dt.fromEpochMs(now.getTime() - oneWeek);
         }
 
         // Ensure anchor is minute-aligned
-        anchorTime.setSeconds(0, 0);
+        const minuteAnchor = dt.toNativeDate(anchorTime);
+        minuteAnchor.setSeconds(0, 0);
+        anchorTime = dt.fromEpochMs(minuteAnchor.getTime());
 
         // Use efficient forward stepping with aggressive limits
         let currentExecution;
@@ -66,11 +69,10 @@ function findPreviousFire(parsedCron, now, dt, lastKnownFireTime) {
         const maxIterations = 500; // Aggressive limit to ensure fast performance
 
         try {
-            const anchorDt = dt.fromEpochMs(anchorTime.getTime());
-            currentExecution = getNextExecution(parsedCron, anchorDt);
+            currentExecution = getNextExecution(parsedCron, anchorTime);
 
             while (currentExecution && iterations < maxIterations) {
-                const executionTime = dt.toNativeDate(currentExecution);
+                const executionTime = currentExecution;
 
                 if (executionTime.getTime() <= now.getTime()) {
                     lastFound = executionTime;
@@ -102,8 +104,8 @@ function findPreviousFire(parsedCron, now, dt, lastKnownFireTime) {
             const candidateDt = dt.fromEpochMs(candidate.getTime());
             if (matchesCronExpression(parsedCron, candidateDt)) {
                 return {
-                    previousFire: candidate,
-                    newCacheTime: candidate  // Cache the actual fire time
+                    previousFire: candidateDt,
+                    newCacheTime: candidateDt,  // Cache the actual fire time
                 };
             }
         }
@@ -123,12 +125,16 @@ function findPreviousFire(parsedCron, now, dt, lastKnownFireTime) {
 }
 
 /**
+ * @typedef {import('../../datetime').DateTime} DateTime
+ */
+
+/**
  * Get the most recent execution time for a cron expression.
  * @param {import('../parser').CronExpressionClass} parsedCron
- * @param {Date} now
+ * @param {DateTime} now
  * @param {import('../../datetime').Datetime} dt
- * @param {Date|undefined} lastEvaluatedFire
- * @returns {{lastScheduledFire: Date|undefined, newLastEvaluatedFire: Date|undefined}}
+ * @param {DateTime|undefined} lastEvaluatedFire
+ * @returns {{lastScheduledFire: DateTime|undefined, newLastEvaluatedFire: DateTime|undefined}}
  */
 function getMostRecentExecution(parsedCron, now, dt, lastEvaluatedFire) {
     const { previousFire, newCacheTime } = findPreviousFire(parsedCron, now, dt, lastEvaluatedFire);

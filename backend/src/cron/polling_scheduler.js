@@ -86,7 +86,7 @@ function makePollingScheduler(capabilities, registrations) {
 
         pollInProgress = true;
         try {
-            const now = dt.toNativeDate(dt.now());
+            const now = dt.now();
             let dueRetry = 0;
             let dueCron = 0;
             let skippedRunning = 0;
