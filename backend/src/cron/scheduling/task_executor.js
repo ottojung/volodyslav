@@ -39,25 +39,25 @@ function makeTaskExecutor(capabilities, persistState) {
         }
 
         task.running = true;
-        const startTime = dt.toNativeDate(dt.now());
+        const startTime = dt.now();
         task.lastAttemptTime = startTime;
         capabilities.logger.logInfo({ name: task.name, mode }, "TaskRunStarted");
-        
+
         try {
             const result = task.callback();
             if (result instanceof Promise) {
                 await result;
             }
-            const end = dt.toNativeDate(dt.now());
+            const end = dt.now();
             task.lastSuccessTime = end;
             task.lastFailureTime = undefined;
             task.pendingRetryUntil = undefined;
-            
+
             capabilities.logger.logInfo(
                 { name: task.name, mode, durationMs: end.getTime() - startTime.getTime() },
                 "TaskRunSuccess"
             );
-            
+
             // Persist state after success
             try {
                 await persistState();
@@ -66,17 +66,17 @@ function makeTaskExecutor(capabilities, persistState) {
                 capabilities.logger.logError({ message }, "StateWriteFailedAfterSuccess");
             }
         } catch (error) {
-            const end = dt.toNativeDate(dt.now());
+            const end = dt.now();
             task.lastFailureTime = end;
-            const retryAt = new Date(end.getTime() + task.retryDelay.toMilliseconds());
+            const retryAt = dt.fromEpochMs(end.getTime() + task.retryDelay.toMilliseconds());
             task.pendingRetryUntil = retryAt;
             const message = error instanceof Error ? error.message : String(error);
-            
+
             capabilities.logger.logInfo(
                 { name: task.name, mode, errorMessage: message, retryAtISO: retryAt.toISOString() },
                 "TaskRunFailure"
             );
-            
+
             // Persist state after failure
             try {
                 await persistState();
