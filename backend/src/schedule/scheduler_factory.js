@@ -87,7 +87,7 @@ function make(getCapabilities) {
         }
 
         // Create polling scheduler
-        capabilities.logger.logInfo(
+        capabilities.logger.logDebug(
             {},
             "Creating new polling scheduler"
         );
