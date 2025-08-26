@@ -3,6 +3,8 @@
  * Handles saving and restoring task state to/from disk.
  */
 
+const { makeDefault } = require('../../runtime_state_storage/structure');
+
 /** 
  * @typedef {import('../task').Task} Task 
  * @typedef {import('./types').Registration} Registration
@@ -143,7 +145,32 @@ function materializeTasks(registrations, taskRecords) {
  */
 async function mutateTasks(capabilities, registrations, transformation) {
     return await capabilities.state.transaction(async (storage) => {
-        const currentState = await storage.getCurrentState();
+        async function getCurrentState() {
+            const existingState = await storage.getExistingState();
+            if (existingState === null) {
+                const ret = makeDefault(capabilities.datetime);
+
+                for (const registration of registrations.values()) {
+                    ret.tasks.push({
+                        name: registration.name,
+                        parsedCron: registration.parsedCron,
+                        callback: registration.callback,
+                        retryDelay: registration.retryDelay,
+                        lastSuccessTime: null,
+                        lastFailureTime: null,
+                        lastAttemptTime: null,
+                        pendingRetryUntil: null,
+                        lastEvaluatedFire: null,
+                    });
+                }
+
+                return ret;
+            } else {
+                return existingState;
+            }
+        }
+
+        const currentState = await getCurrentState();
         const currentTaskRecords = currentState.tasks;
         const tasks = materializeTasks(registrations, currentTaskRecords);
         const result = transformation(tasks);
