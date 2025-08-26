@@ -1,7 +1,7 @@
 
 /**
  * @typedef {import('../../time_duration').TimeDuration} TimeDuration
- * @typedef {import('../polling_scheduler').Task} Task
+ * @typedef {import('../task').Task} Task
  * @typedef {() => Promise<void>} Callback
  * @typedef {import('../expression').CronExpression} CronExpression
  */

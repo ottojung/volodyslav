@@ -3,7 +3,7 @@
  * Handles running tasks with proper error handling.
  */
 
-/** @typedef {import('../polling_scheduler').Task} Task */
+/** @typedef {import('../task').Task} Task */
 
 /**
  * @template T

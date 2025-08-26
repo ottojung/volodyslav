@@ -25,19 +25,6 @@ const {
 const POLL_INTERVAL_MS = 600000;
 
 /**
- * @typedef {object} Task
- * @property {string} name
- * @property {import('./expression').CronExpressionClass} parsedCron
- * @property {Callback} callback
- * @property {TimeDuration} retryDelay
- * @property {DateTime|undefined} lastSuccessTime
- * @property {DateTime|undefined} lastFailureTime
- * @property {DateTime|undefined} lastAttemptTime
- * @property {DateTime|undefined} pendingRetryUntil
- * @property {DateTime|undefined} lastEvaluatedFire
- */
-
-/**
  * @typedef {import('./scheduling/types').Registration} Registration
  */
 

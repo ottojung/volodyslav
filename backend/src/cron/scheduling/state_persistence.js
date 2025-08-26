@@ -4,7 +4,7 @@
  */
 
 /** 
- * @typedef {import('../polling_scheduler').Task} Task 
+ * @typedef {import('../task').Task} Task 
  * @typedef {import('./types').Registration} Registration
  * @typedef {import('./types').ParsedRegistration} ParsedRegistration
  * @typedef {import('./types').ParsedRegistrations} ParsedRegistrations
