@@ -31,10 +31,10 @@ function make(capabilities, registrations) {
          * @param {string} cronExpression
          * @param {Callback} callback
          * @param {import('../time_duration/structure').TimeDuration} retryDelay
-         * @returns {Promise<string>}
+         * @returns {Promise<void>}
          */
         async schedule(name, cronExpression, callback, retryDelay) {
-            return await scheduler.schedule(name, cronExpression, callback, retryDelay);
+            await scheduler.schedule(name, cronExpression, callback, retryDelay);
         },
 
         /**
