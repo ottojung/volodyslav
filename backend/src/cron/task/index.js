@@ -1,8 +1,10 @@
 
+const { isRunning } = require('./methods');
 
 /**
  * @typedef {import('./structure').Task} Task
  */
 
-
-module.exports = {};
+module.exports = {
+    isRunning,
+};
