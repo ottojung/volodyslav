@@ -53,6 +53,7 @@ const POLL_INTERVAL_MS = 600000;
 function makePollingScheduler(capabilities, registrations) {
     /** @type {NodeJS.Timeout | null} */
     let interval = null;
+    const scheduled_tasks = []; // List of task names that are enabled. Is a subset of names in `registrations`.
     const dt = capabilities.datetime;
     let stateLoadAttempted = false;
     let pollInProgress = false; // Guard against re-entrant polls
@@ -188,6 +189,12 @@ function makePollingScheduler(capabilities, registrations) {
         async schedule(name, cronExpression, _callback, _retryDelay) {
             if (typeof name !== "string" || name.trim() === "") {
                 throw new ScheduleInvalidNameError(name);
+            }
+
+            const found = registrations.get(name);
+            if (found === undefined) {
+                // FIXME: turn this into a proper error.    
+                throw new Error(`Task ${name} not found.`);
             }
 
             // Parse and validate cron expression
