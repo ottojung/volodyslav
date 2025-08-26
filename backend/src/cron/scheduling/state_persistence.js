@@ -107,7 +107,7 @@ async function mutateTasks(capabilities, registrations, transformation) {
         // Convert tasks to serializable format
         const taskRecords = Array.from(tasks.values()).map((task) => ({
             name: task.name,
-            cronExpression: task.parsedCron.unparse(),
+            cronExpression: task.cronString,
             retryDelayMs: task.retryDelay.toMilliseconds(),
             lastSuccessTime: task.lastSuccessTime,
             lastFailureTime: task.lastFailureTime,
