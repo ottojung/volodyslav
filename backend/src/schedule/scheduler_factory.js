@@ -2,6 +2,7 @@
  * Scheduler factory implementation for the declarative scheduler.
  */
 
+const { parseCronExpression } = require("../cron");
 const cronScheduler = require("../cron");
 const memconst = require("../memconst");
 
@@ -56,7 +57,7 @@ function make(getCapabilities) {
         // Always validate registrations against persisted state (unless first-time with empty state)
         if (persistedTasks.length === 0 && registrations.length > 0) {
             capabilities.logger.logInfo(
-                { 
+                {
                     registeredTaskCount: registrations.length,
                     taskNames: registrations.map(([name]) => name)
                 },
@@ -65,9 +66,9 @@ function make(getCapabilities) {
         } else if (persistedTasks.length > 0 || registrations.length > 0) {
             // Validate registrations match persisted state
             capabilities.logger.logDebug(
-                { 
+                {
                     persistedTaskCount: persistedTasks.length,
-                    registrationCount: registrations.length 
+                    registrationCount: registrations.length
                 },
                 "Validating task registrations against persisted state"
             );
@@ -90,7 +91,15 @@ function make(getCapabilities) {
             "Creating new polling scheduler"
         );
 
-        pollingScheduler = cronScheduler.make(capabilities);
+        const parsedRegistrations = new Map();
+        registrations.forEach(([name, cronExpression, callback, retryDelay]) => ({
+            name,
+            cronExpression: parseCronExpression(cronExpression),
+            callback,
+            retryDelay
+        }));
+
+        pollingScheduler = cronScheduler.make(capabilities, parsedRegistrations);
 
         let scheduledCount = 0;
         let skippedCount = 0;
@@ -100,7 +109,7 @@ function make(getCapabilities) {
                 await pollingScheduler.schedule(name, cronExpression, callback, retryDelay);
                 scheduledCount++;
                 capabilities.logger.logDebug(
-                    { 
+                    {
                         taskName: name,
                         cronExpression,
                         retryDelayMs: retryDelay.toMilliseconds()
@@ -124,7 +133,7 @@ function make(getCapabilities) {
         }
 
         capabilities.logger.logInfo(
-            { 
+            {
                 totalRegistrations: registrations.length,
                 scheduledCount,
                 skippedCount
@@ -145,10 +154,10 @@ function make(getCapabilities) {
                     {},
                     "Stopping scheduler gracefully"
                 );
-                
+
                 await pollingScheduler.stop();
                 pollingScheduler = null;
-                
+
                 capabilities.logger.logInfo({}, "Scheduler stopped successfully");
             } catch (err) {
                 const error = err instanceof Error ? err : new Error(String(err));
