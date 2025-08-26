@@ -6,7 +6,6 @@ const { parseCronExpression } = require("./parser");
 const {
     getMostRecentExecution,
     validateTaskFrequency,
-    loadPersistedState,
     mutateTasks,
     makeTaskExecutor,
 } = require("./scheduling");
