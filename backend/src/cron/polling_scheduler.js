@@ -227,59 +227,6 @@ function makePollingScheduler(capabilities, registrations) {
             stop();
             return count;
         },
-
-        /**
-         * Get information about scheduled tasks.
-         * @returns {Promise<Array<{name:string,cronExpression:string,running:boolean,lastSuccessTime?:string,lastFailureTime?:string,lastAttemptTime?:string,pendingRetryUntil?:string,modeHint:"retry"|"cron"|"idle"}>>}
-         */
-        async getTasks() {
-            // Ensure state is loaded before returning task info
-            await ensureStateLoaded();
-
-            const now = dt.toNativeDate(dt.now());
-            return Array.from(tasks.values()).map((t) => {
-                /** @type {"retry"|"cron"|"idle"} */
-                let modeHint = "idle";
-
-                const { lastScheduledFire, newLastEvaluatedFire } = getMostRecentExecution(t.parsedCron, now, dt, t.lastEvaluatedFire);
-
-                // Update cache for performance (don't persist here as it's just for reading)
-                if (newLastEvaluatedFire) {
-                    t.lastEvaluatedFire = newLastEvaluatedFire;
-                }
-                const shouldRunCron = lastScheduledFire &&
-                    (!t.lastAttemptTime || t.lastAttemptTime < lastScheduledFire);
-                const shouldRunRetry = t.pendingRetryUntil && now.getTime() >= t.pendingRetryUntil.getTime();
-
-                if (shouldRunRetry && shouldRunCron) {
-                    // Both are due - choose mode based on which is earlier (chronologically smaller)
-                    if (t.pendingRetryUntil && lastScheduledFire && t.pendingRetryUntil.getTime() < lastScheduledFire.getTime()) {
-                        modeHint = "retry";
-                    } else {
-                        modeHint = "cron";
-                    }
-                } else if (shouldRunCron) {
-                    modeHint = "cron";
-                } else if (shouldRunRetry) {
-                    modeHint = "retry";
-                } else {
-                    modeHint = "idle";
-                }
-
-                return {
-                    name: t.name,
-                    cronExpression: t.cronExpression,
-                    running: t.running,
-                    lastSuccessTime: t.lastSuccessTime?.toISOString(),
-                    lastFailureTime: t.lastFailureTime?.toISOString(),
-                    lastAttemptTime: t.lastAttemptTime?.toISOString(),
-                    pendingRetryUntil: t.pendingRetryUntil?.toISOString(),
-                    modeHint,
-                };
-            });
-        },
-
-
     };
 }
 
