@@ -114,13 +114,12 @@ function makePollingScheduler(capabilities, registrations) {
                     }
 
                     // Check both cron schedule and retry timing
-                    // FIXME: only use DateTime class, no Date.
-                    const lastEvaluatedFireDate = task.lastEvaluatedFire ? dt.toNativeDate(task.lastEvaluatedFire) : undefined;
+                    const lastEvaluatedFireDate = task.lastEvaluatedFire ? task.lastEvaluatedFire : undefined;
                     const { lastScheduledFire, newLastEvaluatedFire } = getMostRecentExecution(task.parsedCron, now, dt, lastEvaluatedFireDate);
 
                     // Update lastEvaluatedFire cache for performance optimization
                     if (newLastEvaluatedFire) {
-                        task.lastEvaluatedFire = dt.fromEpochMs(newLastEvaluatedFire.getDate());
+                        task.lastEvaluatedFire = newLastEvaluatedFire;
                     }
 
                     const shouldRunCron = lastScheduledFire &&
