@@ -178,13 +178,14 @@ function makePollingScheduler(capabilities, registrations) {
         /**
          * Schedule a new task.
          * FIXME: change cronExpression type from string to CronExpression (parsed).
+         * FIXME: validate that callback, cronExpression, and retryDelay match registrations.
          * @param {string} name
          * @param {string} cronExpression
-         * @param {Callback} callback
-         * @param {TimeDuration} retryDelay
-         * @returns {Promise<string>}
+         * @param {Callback} _callback
+         * @param {TimeDuration} _retryDelay
+         * @returns {Promise<void>}
          */
-        async schedule(name, cronExpression, callback, retryDelay) {
+        async schedule(name, cronExpression, _callback, _retryDelay) {
             if (typeof name !== "string" || name.trim() === "") {
                 throw new ScheduleInvalidNameError(name);
             }
@@ -195,53 +196,8 @@ function makePollingScheduler(capabilities, registrations) {
             // Validate task frequency against polling frequency
             validateTaskFrequency(parsedCron, module.exports.POLL_INTERVAL_MS, dt);
 
-            // Load state first to check for existing tasks from persistence
-            await ensureStateLoaded();
-
-            // Check if task exists
-            const existingTask = tasks.get(name);
-            if (existingTask) {
-                // If task exists from persistence without callback, update it
-                if (existingTask.callback === null) {
-                    existingTask.callback = callback;
-                    existingTask.cronExpression = cronExpression;
-                    existingTask.parsedCron = parsedCron;
-                    existingTask.retryDelay = retryDelay;
-                    // NOTE: We preserve execution history fields (lastSuccessTime, etc.)
-
-                    // Persist updated task
-                    await persistState();
-
-                    start();
-                    return name;
-                } else {
-                    // Task already has a callback - this is a duplicate
-                    capabilities.logger.logWarning({ name }, "Duplicate registration attempt");
-                    throw new ScheduleDuplicateTaskError(name);
-                }
-            }
-
-            /** @type {Task} */
-            const task = {
-                name,
-                cronExpression,
-                parsedCron,
-                callback,
-                retryDelay,
-                lastSuccessTime: undefined,
-                lastFailureTime: undefined,
-                lastAttemptTime: undefined,
-                pendingRetryUntil: undefined,
-                lastEvaluatedFire: undefined,
-                running: false,
-            };
-            tasks.set(name, task);
-
-            // Persist state after adding task
-            await persistState();
-
+            scheduled_tasks.push(name);
             start();
-            return name;
         },
 
         /**
