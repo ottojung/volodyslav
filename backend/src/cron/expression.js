@@ -26,6 +26,13 @@ class CronExpressionClass {
         this.month = month;
         this.weekday = weekday;
     }
+
+    /**
+     * @returns {string}
+     */
+    unparse() {
+        return `${this.minute.join(",")} ${this.hour.join(",")} ${this.day.join(",")} ${this.month.join(",")} ${this.weekday.join(",")}`;
+    }
 }
 
 /**

@@ -172,7 +172,7 @@ function materializeTasks(registrations, taskRecords) {
 /**
  * Persist current scheduler state to disk
  * @param {import('../../capabilities/root').Capabilities} capabilities
- * @param {Registration[]} registrations
+ * @param {ParsedRegistrations} registrations
  * @param {Transformation} transformation
  * @returns {Promise<void>}
  */
@@ -187,7 +187,7 @@ async function persistCurrentState(capabilities, registrations, transformation) 
             // Convert tasks to serializable format
             const taskRecords = Array.from(newTasks.values()).map((task) => ({
                 name: task.name,
-                cronExpression: task.cronExpression,
+                cronExpression: task.parsedCron.unparse(),
                 retryDelayMs: task.retryDelay.toMilliseconds(),
                 lastSuccessTime: task.lastSuccessTime
                     ? capabilities.datetime.fromEpochMs(task.lastSuccessTime.getTime())
