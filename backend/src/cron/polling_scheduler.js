@@ -38,9 +38,6 @@ const POLL_INTERVAL_MS = 600000;
  * @property {DateTime|undefined} lastEvaluatedFire
  */
 
-
-
-
 /**
  * @typedef {import('./scheduling/types').Registration} Registration
  */
@@ -48,11 +45,6 @@ const POLL_INTERVAL_MS = 600000;
 /**
  * @typedef {import('./scheduling/types').ParsedRegistrations} ParsedRegistrations
  */
-
-/**
- * @typedef {import('./scheduling/types').Transformation} Transformation
- */
-
 
 /**
  * @param {import('../capabilities/root').Capabilities} capabilities
