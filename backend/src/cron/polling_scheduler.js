@@ -188,8 +188,11 @@ function makePollingScheduler(capabilities, registrations) {
             // Validate task frequency against polling frequency
             validateTaskFrequency(parsedCron, module.exports.POLL_INTERVAL_MS, dt);
 
+            if (scheduledTasks.size === 0) {
+                start();
+            }
+
             scheduledTasks.add(name);
-            start();
         },
 
         /**
@@ -199,6 +202,9 @@ function makePollingScheduler(capabilities, registrations) {
          */
         async cancel(name) {
             const existed = scheduledTasks.delete(name);
+            if (scheduledTasks.size === 0) {
+                stop();
+            }
             return existed;
         },
 
