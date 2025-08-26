@@ -49,32 +49,15 @@ async function loadPersistedState(capabilities, registrations) {
 
                     // Convert retryDelayMs to TimeDuration
                     const retryDelay = time_duration.fromMilliseconds(record.retryDelayMs);
-
-                    // Convert DateTime objects to native Date objects
-                    const lastSuccessTime = record.lastSuccessTime
-                        ? capabilities.datetime.toNativeDate(record.lastSuccessTime)
-                        : undefined;
-
-                    const lastFailureTime = record.lastFailureTime
-                        ? capabilities.datetime.toNativeDate(record.lastFailureTime)
-                        : undefined;
-
-                    const lastAttemptTime = record.lastAttemptTime
-                        ? capabilities.datetime.toNativeDate(record.lastAttemptTime)
-                        : undefined;
-
-                    const pendingRetryUntil = record.pendingRetryUntil
-                        ? capabilities.datetime.toNativeDate(record.pendingRetryUntil)
-                        : undefined;
-
-                    const lastEvaluatedFire = record.lastEvaluatedFire
-                        ? capabilities.datetime.toNativeDate(record.lastEvaluatedFire)
-                        : undefined;
+                    const lastSuccessTime = record.lastSuccessTime;
+                    const lastFailureTime = record.lastFailureTime;
+                    const lastAttemptTime = record.lastAttemptTime;
+                    const pendingRetryUntil = record.pendingRetryUntil;
+                    const lastEvaluatedFire = record.lastEvaluatedFire;
 
                     /** @type {Task} */
                     const task = {
                         name: record.name,
-                        cronExpression: record.cronExpression,
                         parsedCron,
                         callback: null, // Will be set when task is re-registered
                         retryDelay,
@@ -133,21 +116,11 @@ function materializeTasks(registrations, taskRecords) {
 
         const { parsedCron, callback, retryDelay } = registration;
 
-        const lastSuccessTime = record.lastSuccessTime
-            ? new Date(record.lastSuccessTime.getTime())
-            : undefined;
-        const lastFailureTime = record.lastFailureTime
-            ? new Date(record.lastFailureTime.getTime())
-            : undefined;
-        const lastAttemptTime = record.lastAttemptTime
-            ? new Date(record.lastAttemptTime.getTime())
-            : undefined;
-        const pendingRetryUntil = record.pendingRetryUntil
-            ? new Date(record.pendingRetryUntil.getTime())
-            : undefined;
-        const lastEvaluatedFire = record.lastEvaluatedFire
-            ? new Date(record.lastEvaluatedFire.getTime())
-            : undefined;
+        const lastSuccessTime = record.lastSuccessTime;
+        const lastFailureTime = record.lastFailureTime;
+        const lastAttemptTime = record.lastAttemptTime;
+        const pendingRetryUntil = record.pendingRetryUntil;
+        const lastEvaluatedFire = record.lastEvaluatedFire;
 
         /** @type {Task} */
         const task = {

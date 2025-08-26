@@ -19,6 +19,7 @@ const {
  * @typedef {import('../logger').Logger} Logger
  * @typedef {import('../time_duration').TimeDuration} TimeDuration
  * @typedef {import('./scheduling/types').CronExpression} CronExpression
+ * @typedef {import('../datetime').DateTime} DateTime
  */
 
 const POLL_INTERVAL_MS = 600000;
@@ -29,11 +30,11 @@ const POLL_INTERVAL_MS = 600000;
  * @property {import('./expression').CronExpressionClass} parsedCron
  * @property {(() => Promise<void> | void) | null} callback
  * @property {TimeDuration} retryDelay
- * @property {Date|undefined} lastSuccessTime
- * @property {Date|undefined} lastFailureTime
- * @property {Date|undefined} lastAttemptTime
- * @property {Date|undefined} pendingRetryUntil
- * @property {Date|undefined} lastEvaluatedFire
+ * @property {DateTime|undefined} lastSuccessTime
+ * @property {DateTime|undefined} lastFailureTime
+ * @property {DateTime|undefined} lastAttemptTime
+ * @property {DateTime|undefined} pendingRetryUntil
+ * @property {DateTime|undefined} lastEvaluatedFire
  * @property {boolean} running
  */
 
