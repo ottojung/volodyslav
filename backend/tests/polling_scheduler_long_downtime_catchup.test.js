@@ -89,6 +89,9 @@ describe("declarative scheduler task execution behavior", () => {
         await new Promise(resolve => setTimeout(resolve, 100));
         expect(callback).toHaveBeenCalledTimes(1);
         
+        // Wait a bit longer for error handling and state persistence to complete
+        await new Promise(resolve => setTimeout(resolve, 200));
+        
         // Instead of testing exact retry timing, test that retry state is set correctly
         // by checking the persisted state
         await capabilities.state.transaction(async (storage) => {
