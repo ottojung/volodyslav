@@ -307,7 +307,7 @@ function stubRuntimeStateStorage(capabilities) {
  */
 const stubPollInterval = (period = 1) => {
     // Direct module constant override 
-    const pollingSchedulerModule = require('../src/cron/polling_scheduler');
+    const pollingSchedulerModule = require('../src/scheduler/internal/polling_scheduler');
     pollingSchedulerModule.POLL_INTERVAL_MS = period;
 };
 

@@ -1,0 +1,177 @@
+/**
+ * Error classes for polling cron scheduler.
+ */
+
+/**
+ * Error thrown when attempting to register a task with a name that already exists.
+ */
+class ScheduleDuplicateTaskError extends Error {
+    /**
+     * @param {string} taskName
+     */
+    constructor(taskName) {
+        super(`Task with name "${taskName}" is already scheduled`);
+        this.name = "ScheduleDuplicateTaskError";
+        this.taskName = taskName;
+    }
+}
+
+/**
+ * @param {unknown} object
+ * @returns {object is ScheduleDuplicateTaskError}
+ */
+function isScheduleDuplicateTaskError(object) {
+    return object instanceof ScheduleDuplicateTaskError;
+}
+
+/**
+ * Error thrown when an invalid task name is provided.
+ */
+class ScheduleInvalidNameError extends Error {
+    /**
+     * @param {unknown} taskName
+     */
+    constructor(taskName) {
+        super("Task name must be a non-empty string");
+        this.name = "ScheduleInvalidNameError";
+        this.taskName = /** @type {string} */ (taskName);
+    }
+}
+
+/**
+ * @param {unknown} object
+ * @returns {object is ScheduleInvalidNameError}
+ */
+function isScheduleInvalidNameError(object) {
+    return object instanceof ScheduleInvalidNameError;
+}
+
+/**
+ * Error thrown when task frequency is higher than polling frequency.
+ */
+class ScheduleFrequencyError extends Error {
+    /**
+     * @param {number} taskFrequencyMs
+     * @param {number} pollFrequencyMs
+     */
+    constructor(taskFrequencyMs, pollFrequencyMs) {
+        // Format frequency display for better readability
+        /** @param {number} ms */
+        const formatFrequency = (ms) => {
+            if (ms < 60 * 1000) {
+                const seconds = Math.floor(ms / 1000);
+                return `${seconds} second${seconds !== 1 ? 's' : ''}`;
+            } else if (ms % (60 * 1000) === 0) {
+                // Exact minutes
+                const minutes = Math.floor(ms / (60 * 1000));
+                return `${minutes} minute${minutes !== 1 ? 's' : ''}`;
+            } else {
+                // Mixed minutes and seconds
+                const totalSeconds = Math.floor(ms / 1000);
+                return `${totalSeconds} second${totalSeconds !== 1 ? 's' : ''}`;
+            }
+        };
+
+        const taskFreq = formatFrequency(taskFrequencyMs);
+        const pollFreq = formatFrequency(pollFrequencyMs);
+
+        super(
+            `Task frequency (${taskFreq}) is higher than ` +
+            `polling frequency (${pollFreq}). ` +
+            `Tasks cannot execute more frequently than the polling interval.`
+        );
+        this.name = "ScheduleFrequencyError";
+        this.taskFrequencyMs = taskFrequencyMs;
+        this.pollFrequencyMs = pollFrequencyMs;
+    }
+}
+
+/**
+ * @param {unknown} object
+ * @returns {object is ScheduleFrequencyError}
+ */
+function isScheduleFrequencyError(object) {
+    return object instanceof ScheduleFrequencyError;
+}
+
+/**
+ * Error thrown when a task is not found in the runtime task map.
+ */
+class TaskNotFoundError extends Error {
+    /**
+     * @param {string} taskName
+     */
+    constructor(taskName) {
+        super(`Task ${JSON.stringify(taskName)} not found`);
+        this.name = "TaskNotFoundError";
+        this.taskName = taskName;
+    }
+}
+
+/**
+ * @param {unknown} object
+ * @returns {object is TaskNotFoundError}
+ */
+function isTaskNotFoundError(object) {
+    return object instanceof TaskNotFoundError;
+}
+
+/**
+ * Error thrown when attempting to register a task that is already registered.
+ */
+class TaskAlreadyRegisteredError extends Error {
+    /**
+     * @param {string} taskName
+     */
+    constructor(taskName) {
+        super(`Task ${taskName} is already registered`);
+        this.name = "TaskAlreadyRegisteredError";
+        this.taskName = taskName;
+    }
+}
+
+/**
+ * @param {unknown} object
+ * @returns {object is TaskAlreadyRegisteredError}
+ */
+function isTaskAlreadyRegisteredError(object) {
+    return object instanceof TaskAlreadyRegisteredError;
+}
+
+/**
+ * Error thrown when a task is not found in the registrations map.
+ */
+class TaskNotInRegistrationsError extends Error {
+    /**
+     * @param {string} taskName
+     */
+    constructor(taskName) {
+        super(`Task ${taskName} is not found in registrations`);
+        this.name = "TaskNotInRegistrationsError";
+        this.taskName = taskName;
+    }
+}
+
+/**
+ * @param {unknown} object
+ * @returns {object is TaskNotInRegistrationsError}
+ */
+function isTaskNotInRegistrationsError(object) {
+    return object instanceof TaskNotInRegistrationsError;
+}
+
+module.exports = {
+    ScheduleDuplicateTaskError,
+    isScheduleDuplicateTaskError,
+    ScheduleInvalidNameError,
+    isScheduleInvalidNameError,
+    ScheduleFrequencyError,
+    isScheduleFrequencyError,
+    TaskNotFoundError,
+    isTaskNotFoundError,
+    TaskAlreadyRegisteredError,
+    isTaskAlreadyRegisteredError,
+    TaskNotInRegistrationsError,
+    isTaskNotInRegistrationsError,
+};
+

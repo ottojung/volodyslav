@@ -20,7 +20,7 @@
 /** @typedef {import('../ai/transcription').AITranscription} AITranscription */
 /** @typedef {import('../datetime').Datetime} Datetime */
 /** @typedef {import('../sleeper').Sleeper} Sleeper */
-/** @typedef {import('../schedule').Scheduler} Scheduler */
+/** @typedef {import('../scheduler').Scheduler} Scheduler */
 /** @typedef {import('../runtime_state_storage').RuntimeStateStorage} RuntimeStateStorage */
 
 
@@ -66,7 +66,7 @@ const aiTranscriptionCapability = require("../ai/transcription");
 const datetimeCapability = require("../datetime");
 const sleeperCapability = require("../sleeper");
 const volodyslavDailyTasks = require("../executables").volodyslavDailyTasks;
-const schedule = require('../schedule');
+const schedule = require('../scheduler');
 const runtimeStateStorage = require('../runtime_state_storage');
 
 /**
