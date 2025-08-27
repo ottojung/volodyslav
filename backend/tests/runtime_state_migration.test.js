@@ -28,11 +28,11 @@ describe("runtime state migration", () => {
         
         const migrationResult = structure.tryDeserialize(legacyStateObj);
         expect(structure.isTryDeserializeError(migrationResult)).toBe(false);
-        if (!structure.isTryDeserializeError(migrationResult)) {
-            expect(migrationResult.migrated).toBe(true);
-            expect(migrationResult.state.version).toBe(2);
-            expect(migrationResult.state.tasks).toEqual([]);
-        }
+        
+        // TypeScript/JSDoc knows migrationResult is not an error after the check above
+        expect(migrationResult.migrated).toBe(true);
+        expect(migrationResult.state.version).toBe(2);
+        expect(migrationResult.state.tasks).toEqual([]);
         
         // Test scheduler behavior with first-time initialization
         const retryDelay = fromMilliseconds(1000);
