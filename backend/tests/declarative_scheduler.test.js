@@ -37,7 +37,7 @@ describe("Declarative Scheduler", () => {
 
             // Non-empty registrations should succeed on first-time setup (empty persisted state)
             await expect(capabilities.scheduler.initialize(registrations)).resolves.toBeUndefined();
-            await capabilities.scheduler.stop(capabilities);
+            await capabilities.scheduler.stop();
         });
 
         test("succeeds with empty registrations when no persisted state exists", async () => {
@@ -47,7 +47,7 @@ describe("Declarative Scheduler", () => {
 
             // Empty registrations should succeed (idempotent call does nothing)
             await expect(capabilities.scheduler.initialize(registrations)).resolves.toBeUndefined();
-            await capabilities.scheduler.stop(capabilities);
+            await capabilities.scheduler.stop();
         });
 
         test("is idempotent - multiple calls have no additional effect", async () => {
@@ -65,7 +65,7 @@ describe("Declarative Scheduler", () => {
             // Third call should also succeed and do nothing
             await expect(capabilities.scheduler.initialize(registrations)).resolves.toBeUndefined();
 
-            await capabilities.scheduler.stop(capabilities);
+            await capabilities.scheduler.stop();
         });
 
         test("throws TaskListMismatchError when tasks differ from persisted state", async () => {
@@ -86,7 +86,7 @@ describe("Declarative Scheduler", () => {
             ];
 
             await expect(capabilities.scheduler.initialize(differentRegistrations)).rejects.toThrow(/Task list mismatch detected/);
-            await capabilities.scheduler.stop(capabilities);
+            await capabilities.scheduler.stop();
         });
 
         test("throws TaskListMismatchError when cron expression differs", async () => {
@@ -105,7 +105,7 @@ describe("Declarative Scheduler", () => {
             ];
 
             await expect(capabilities.scheduler.initialize(changedRegistrations)).rejects.toThrow(/Task list mismatch detected/);
-            await capabilities.scheduler.stop(capabilities);
+            await capabilities.scheduler.stop();
         });
 
         test("throws TaskListMismatchError when retry delay differs", async () => {
@@ -124,7 +124,7 @@ describe("Declarative Scheduler", () => {
             ];
 
             await expect(capabilities.scheduler.initialize(changedRegistrations)).rejects.toThrow(/Task list mismatch detected/);
-            await capabilities.scheduler.stop(capabilities);
+            await capabilities.scheduler.stop();
         });
 
         test("throws TaskListMismatchError when task is missing from registrations", async () => {
@@ -147,7 +147,7 @@ describe("Declarative Scheduler", () => {
 
             expect(isTaskListMismatchError(error)).toBe(true);
             expect(error.mismatchDetails.missing).toContain("task2");
-            await capabilities.scheduler.stop(capabilities);
+            await capabilities.scheduler.stop();
         });
 
         test("throws TaskListMismatchError when extra task is in registrations", async () => {
@@ -170,7 +170,7 @@ describe("Declarative Scheduler", () => {
 
             expect(isTaskListMismatchError(error)).toBe(true);
             expect(error.mismatchDetails.extra).toContain("task2");
-            await capabilities.scheduler.stop(capabilities);
+            await capabilities.scheduler.stop();
         });
 
         test("provides detailed mismatch information in error", async () => {
@@ -210,7 +210,7 @@ describe("Declarative Scheduler", () => {
             expect(retryDiff.name).toBe("task1");
             expect(retryDiff.expected).toBe(COMMON.FIVE_MINUTES.toMilliseconds());
             expect(retryDiff.actual).toBe(COMMON.THIRTY_MINUTES.toMilliseconds());
-            await capabilities.scheduler.stop(capabilities);
+            await capabilities.scheduler.stop();
         });
 
         test("handles empty registrations with empty persisted state", async () => {
@@ -222,7 +222,7 @@ describe("Declarative Scheduler", () => {
 
             // Should be idempotent
             await expect(capabilities.scheduler.initialize(registrations)).resolves.toBeUndefined();
-            await capabilities.scheduler.stop(capabilities);
+            await capabilities.scheduler.stop();
         });
 
         test("logs appropriate messages for first-time initialization", async () => {
@@ -243,7 +243,7 @@ describe("Declarative Scheduler", () => {
                 "First-time scheduler initialization: registering initial tasks"
             );
 
-            await capabilities.scheduler.stop(capabilities);
+            await capabilities.scheduler.stop();
         });
     });
 
@@ -268,7 +268,7 @@ describe("Declarative Scheduler", () => {
 
             // Task should have been executed because it's due to run (first time)
             expect(taskCallback).toHaveBeenCalled();
-            await capabilities.scheduler.stop(capabilities);
+            await capabilities.scheduler.stop();
         });
 
         test("initialize is idempotent - can be called multiple times safely", async () => {
@@ -292,7 +292,7 @@ describe("Declarative Scheduler", () => {
             // Second call to initialize with same capabilities - should be idempotent
             // This should not cause errors or duplicate scheduling issues
             await expect(capabilities.scheduler.initialize(registrations)).resolves.toBeUndefined();
-            await capabilities.scheduler.stop(capabilities);
+            await capabilities.scheduler.stop();
         });
     });
 });

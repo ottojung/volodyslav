@@ -32,6 +32,7 @@ describe("declarative scheduler frequency validation", () => {
         
         await expect(capabilities.scheduler.initialize(registrations))
             .rejects.toThrow(/frequency.*higher.*polling/i);
+        await capabilities.scheduler.stop();
     });
 
     test("should allow task frequency equal to polling frequency", async () => {
@@ -88,7 +89,8 @@ describe("declarative scheduler frequency validation", () => {
         
         await expect(capabilities2.scheduler.initialize(validRegistrations))
             .resolves.toBeUndefined();
-            
+        
+        await capabilities1.scheduler.stop();
         await capabilities2.scheduler.stop();
     });
 
@@ -108,5 +110,8 @@ describe("declarative scheduler frequency validation", () => {
         
         await expect(capabilities2.scheduler.initialize(registrations))
             .rejects.toThrow(/polling.*frequency.*10.*minute/i);
+        
+        await capabilities1.scheduler.stop();
+        await capabilities2.scheduler.stop();
     });
 });

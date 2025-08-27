@@ -201,6 +201,7 @@ describe("declarative scheduler algorithm robustness", () => {
         await expect(
             capabilities.scheduler.initialize(registrations)
         ).rejects.toThrow();
+        await capabilities.scheduler.stop();
     });
 
     test("should handle idempotent initialization correctly", async () => {

@@ -24,9 +24,7 @@ describe("declarative scheduler persistence and error handling", () => {
         // Don't use fake timers - let the scheduler run with real timing
     });
 
-    afterEach(() => {
-        // No timer cleanup needed
-    });
+
 
     test("should handle task execution errors gracefully", async () => {
         const capabilities = getTestCapabilities();
@@ -55,7 +53,7 @@ describe("declarative scheduler persistence and error handling", () => {
         // Should have been called at least once (even if it errors)
         expect(flakyCallback).toHaveBeenCalled();
 
-        await capabilities.scheduler.stop(capabilities);
+        await capabilities.scheduler.stop();
     });
 
     test("should handle different types of callback errors", async () => {
@@ -80,7 +78,7 @@ describe("declarative scheduler persistence and error handling", () => {
         // Verify the scheduler handles error callbacks gracefully by not throwing
         await expect(capabilities.scheduler.initialize(registrations)).resolves.toBeUndefined();
 
-        await capabilities.scheduler.stop(capabilities);
+        await capabilities.scheduler.stop();
     });
 
     test("should maintain task state consistency after errors", async () => {
@@ -105,7 +103,7 @@ describe("declarative scheduler persistence and error handling", () => {
         expect(successCallback).toHaveBeenCalled();
         expect(failureCallback).toHaveBeenCalled();
 
-        await capabilities.scheduler.stop(capabilities);
+        await capabilities.scheduler.stop();
     });
 
     test("should handle concurrent task execution limits", async () => {
@@ -123,7 +121,7 @@ describe("declarative scheduler persistence and error handling", () => {
         // Should be able to initialize with multiple tasks without issue
         await expect(capabilities.scheduler.initialize(registrations)).resolves.toBeUndefined();
 
-        await capabilities.scheduler.stop(capabilities);
+        await capabilities.scheduler.stop();
     });
 
     test("should handle system resource constraints gracefully", async () => {
@@ -138,7 +136,7 @@ describe("declarative scheduler persistence and error handling", () => {
 
         await expect(capabilities.scheduler.initialize(registrations)).resolves.toBeUndefined();
 
-        await capabilities.scheduler.stop(capabilities);
+        await capabilities.scheduler.stop();
     });
 
     test("should handle time manipulation edge cases", async () => {
@@ -172,7 +170,7 @@ describe("declarative scheduler persistence and error handling", () => {
                 await expect(capabilities.scheduler.initialize(registrations)).resolves.toBeUndefined();
             }
 
-            await capabilities.scheduler.stop(capabilities);
+            await capabilities.scheduler.stop();
         } finally {
             jest.useRealTimers();
         }
@@ -192,7 +190,7 @@ describe("declarative scheduler persistence and error handling", () => {
 
         await expect(capabilities.scheduler.initialize(registrations)).resolves.toBeUndefined();
 
-        await capabilities.scheduler.stop(capabilities);
+        await capabilities.scheduler.stop();
     });
 
     test("should maintain correct task ordering and priority", async () => {
@@ -213,7 +211,7 @@ describe("declarative scheduler persistence and error handling", () => {
         // Both callbacks should be scheduled and available for execution
         await capabilities.scheduler.initialize(registrations);
 
-        await capabilities.scheduler.stop(capabilities);
+        await capabilities.scheduler.stop();
     });
 
     test("should maintain task order when scheduled at different times", async () => {
@@ -237,7 +235,7 @@ describe("declarative scheduler persistence and error handling", () => {
         // Tasks should be schedulable regardless of their scheduled times (test with separate instance)
         await expect(capabilities2.scheduler.initialize(registrations)).resolves.toBeUndefined();
 
-        await capabilities1.scheduler.stop(capabilities1);
-        await capabilities2.scheduler.stop(capabilities2);
+        await capabilities1.scheduler.stop();
+        await capabilities2.scheduler.stop();
     });
 });

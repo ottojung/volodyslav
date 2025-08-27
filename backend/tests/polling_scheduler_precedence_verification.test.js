@@ -43,7 +43,7 @@ describe("declarative scheduler precedence logic verification", () => {
         
         expect(task).toHaveBeenCalled();
         
-        await capabilities.scheduler.stop(capabilities);
+        await capabilities.scheduler.stop();
     });
 
     test("should handle different cron schedules correctly", async () => {
@@ -68,7 +68,7 @@ describe("declarative scheduler precedence logic verification", () => {
         
         expect(task).toHaveBeenCalled();
         
-        await capabilities.scheduler.stop(capabilities);
+        await capabilities.scheduler.stop();
     });
 
     test("should handle multiple initialize calls at the same time consistently", async () => {

@@ -52,6 +52,7 @@ describe("declarative scheduler duplicate task handling", () => {
         // This should throw ScheduleDuplicateTaskError for duplicate names
         await expect(capabilities.scheduler.initialize(registrationsWithDuplicate))
             .rejects.toThrow("Task with name \"task-a\" is already scheduled");
+        await capabilities.scheduler.stop();
     });
 });
 

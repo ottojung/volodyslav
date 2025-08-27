@@ -39,6 +39,9 @@ describe("declarative scheduler validation", () => {
             .rejects.toThrow(ScheduleInvalidNameError);
         await expect(capabilities2.scheduler.initialize(whitespaceNameRegistrations))
             .rejects.toThrow(ScheduleInvalidNameError);
+        
+        await capabilities1.scheduler.stop();
+        await capabilities2.scheduler.stop();
     });
 
 });

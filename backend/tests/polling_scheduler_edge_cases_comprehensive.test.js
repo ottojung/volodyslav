@@ -38,7 +38,7 @@ describe("declarative scheduler comprehensive edge cases", () => {
             // Task should be scheduled but not executed yet (timing dependent)
             expect(true).toBe(true); // Scheduler initialized successfully
 
-            await capabilities.scheduler.stop(capabilities);
+            await capabilities.scheduler.stop();
         });
 
         test("should handle multiple tasks with identical timing", async () => {
@@ -65,7 +65,7 @@ describe("declarative scheduler comprehensive edge cases", () => {
             expect(callback2).toHaveBeenCalledTimes(1);
             expect(callback3).toHaveBeenCalledTimes(1);
 
-            await capabilities.scheduler.stop(capabilities);
+            await capabilities.scheduler.stop();
         });
 
         test("should handle very short retry delays", async () => {
@@ -92,7 +92,7 @@ describe("declarative scheduler comprehensive edge cases", () => {
             // Should have attempted execution at least once
             expect(flakyCallback).toHaveBeenCalled();
 
-            await capabilities.scheduler.stop(capabilities);
+            await capabilities.scheduler.stop();
         });
     });
 
@@ -114,7 +114,7 @@ describe("declarative scheduler comprehensive edge cases", () => {
             // Task should not run (not Feb 29th)
             expect(true).toBe(true); // Scheduler initialized successfully
 
-            await capabilities.scheduler.stop(capabilities);
+            await capabilities.scheduler.stop();
         });
 
         test("should handle very sparse schedules", async () => {
@@ -134,7 +134,7 @@ describe("declarative scheduler comprehensive edge cases", () => {
             // Task should not run (not 1st of month at midnight)
             expect(true).toBe(true); // Scheduler initialized successfully
 
-            await capabilities.scheduler.stop(capabilities);
+            await capabilities.scheduler.stop();
         });
 
         test("should handle complex multi-field constraints", async () => {
@@ -154,7 +154,7 @@ describe("declarative scheduler comprehensive edge cases", () => {
             // Task should not run yet (not at 15 minutes past hour)
             expect(true).toBe(true); // Scheduler initialized successfully
 
-            await capabilities.scheduler.stop(capabilities);
+            await capabilities.scheduler.stop();
         });
     });
 
@@ -185,7 +185,7 @@ describe("declarative scheduler comprehensive edge cases", () => {
             const executedCount = callbacks.filter(cb => cb.mock.calls.length > 0).length;
             expect(executedCount).toBeGreaterThan(0);
 
-            await capabilities.scheduler.stop(capabilities);
+            await capabilities.scheduler.stop();
         }, 10000);
     });
 
@@ -211,7 +211,7 @@ describe("declarative scheduler comprehensive edge cases", () => {
             // Should have attempted execution
             expect(callback).toHaveBeenCalled();
 
-            await capabilities.scheduler.stop(capabilities);
+            await capabilities.scheduler.stop();
         });
 
         test("should handle callbacks that return both promises and sync values", async () => {
@@ -235,7 +235,7 @@ describe("declarative scheduler comprehensive edge cases", () => {
             expect(syncCallback).toHaveBeenCalled();
             expect(asyncCallback).toHaveBeenCalled();
 
-            await capabilities.scheduler.stop(capabilities);
+            await capabilities.scheduler.stop();
         });
     });
 
@@ -257,7 +257,7 @@ describe("declarative scheduler comprehensive edge cases", () => {
             // Task should not run yet (not at top of hour)
             expect(true).toBe(true); // Scheduler initialized successfully
 
-            await capabilities.scheduler.stop(capabilities);
+            await capabilities.scheduler.stop();
         });
 
         test("should handle second precision in task timing", async () => {
@@ -277,7 +277,7 @@ describe("declarative scheduler comprehensive edge cases", () => {
             // Task should not run yet (not at 30 minutes past hour)
             expect(true).toBe(true); // Scheduler initialized successfully
 
-            await capabilities.scheduler.stop(capabilities);
+            await capabilities.scheduler.stop();
         });
     });
 });
