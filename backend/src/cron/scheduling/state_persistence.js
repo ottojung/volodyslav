@@ -4,10 +4,9 @@
  */
 
 const { makeDefault } = require('../../runtime_state_storage/structure');
-const { makeTask } = require('../task');
+const { serialize, tryDeserialize, isTaskTryDeserializeError } = require('../task');
 const { 
     TaskAlreadyRegisteredError,
-    TaskNotInRegistrationsError,
 } = require('../polling_scheduler_errors');
 
 /** 
@@ -36,36 +35,16 @@ function materializeTasks(registrations, taskRecords) {
     for (const record of taskRecords) {
         const name = record.name;
 
-        if (name in tasks) {
+        if (tasks.has(name)) {
             throw new TaskAlreadyRegisteredError(name);
         }
 
-        const registration = registrations.get(name);
-        if (registration === undefined) {
-            throw new TaskNotInRegistrationsError(name);
+        const taskOrError = tryDeserialize(record, registrations);
+        if (isTaskTryDeserializeError(taskOrError)) {
+            throw new Error(`Failed to deserialize task ${name}: ${taskOrError.message}`);
         }
 
-        const { parsedCron, callback, retryDelay } = registration;
-
-        const lastSuccessTime = record.lastSuccessTime;
-        const lastFailureTime = record.lastFailureTime;
-        const lastAttemptTime = record.lastAttemptTime;
-        const pendingRetryUntil = record.pendingRetryUntil;
-        const lastEvaluatedFire = record.lastEvaluatedFire;
-
-        const task = makeTask(
-            name,
-            parsedCron,
-            callback,
-            retryDelay,
-            lastSuccessTime,
-            lastFailureTime,
-            lastAttemptTime,
-            pendingRetryUntil,
-            lastEvaluatedFire
-        );
-
-        tasks.set(name, task);
+        tasks.set(name, taskOrError);
     }
 
     return tasks;
@@ -105,17 +84,8 @@ async function mutateTasks(capabilities, registrations, transformation) {
         const tasks = materializeTasks(registrations, currentTaskRecords);
         const result = transformation(tasks);
 
-        // Convert tasks to serializable format
-        const taskRecords = Array.from(tasks.values()).map((task) => ({
-            name: task.name,
-            cronExpression: task.parsedCron.original,
-            retryDelayMs: task.retryDelay.toMilliseconds(),
-            lastSuccessTime: task.lastSuccessTime,
-            lastFailureTime: task.lastFailureTime,
-            lastAttemptTime: task.lastAttemptTime,
-            pendingRetryUntil: task.pendingRetryUntil,
-            lastEvaluatedFire: task.lastEvaluatedFire,
-        }));
+        // Convert tasks to serializable format using Task.serialize()
+        const taskRecords = Array.from(tasks.values()).map((task) => serialize(task));
 
         // Update state with new task records
         const newState = {

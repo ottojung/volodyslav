@@ -92,8 +92,6 @@ function makePollingScheduler(capabilities, registrations) {
 
             await mutateTasks(capabilities, registrations, (tasks) => {
                 for (const taskName of scheduledTasks) {
-                    const qname = JSON.stringify(taskName);
-
                     const task = tasks.get(taskName);
                     if (task === undefined) {
                         throw new TaskNotFoundError(taskName);
