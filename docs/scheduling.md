@@ -1,52 +1,103 @@
 ---
 title: Backend Scheduling
-description: High-level overview and intentional limitations of the polling scheduler
+description: Design of the declarative polling scheduler
 ---
 
-## High-Level Overview
+## Overview
 
-The backend provides a minimal, capability-driven, polling cron scheduler. Its purpose is to execute named asynchronous tasks according to standard 5-field cron expressions (minute precision) and to retry failed executions after a configured delay until a successful run clears the retry state.
+The backend contains a scheduler that runs asynchronous tasks according to cron
+expressions. Its design emphasises **declarative configuration**, durable
+state and predictable recovery. The scheduler exposes a single lifecycle:
+registration at start‑up followed by automatic execution; there are no
+imperative APIs for adding or removing tasks while the process is running.
 
-Key properties:
-- **Declarative architecture**: task registrations must exactly match persisted runtime state. During initialization, the scheduler validates that all task names, cron expressions, and retry delays are identical to what was persisted. Any mismatch throws a `TaskListMismatchError` with detailed information about missing, extra, or differing tasks.
-- Polling architecture: a single interval timer (eg. 10 minutes) evaluates all registered tasks for cron or retry eligibility.
-- Persistence: complete runtime state (task definitions + execution history + retry metadata) is stored transactionally on disk using atomic operations. Loaded state after restart must be bit‑for‑bit semantically identical to the stored state at shutdown time (no silent drift, no resurrection of cancelled tasks).
-- Recovery: tasks are restored from persisted records during startup; callbacks are reattached when the application re-registers them with identical parameters, preserving all execution history and retry state.
-- Failure handling: each failure schedules a retry at (failureTime + retryDelay). When both a cron firing and a retry become due, the earlier scheduled time wins. Success clears failure & retry metadata.
-- Concurrency: multiple due tasks run in parallel without limits.
-- Validation: cron expressions are parsed & validated; scheduling forbids tasks whose theoretical minimum interval is shorter than the polling interval to avoid “impossible to observe” schedules.
-- Logging: task lifecycle (start / success / failure / skips) is logged with `logInfo`; only internal scheduler errors surface with `logError` to keep noise low while still surfacing systemic faults.
+## Design Goals
 
-## Declarative Task Registration
+- **Declarative configuration** – the set of tasks is described entirely by the
+  registrations provided during initialisation.
+- **Deterministic behaviour** – persisted runtime state must match the declared
+  tasks exactly or the scheduler refuses to start.
+- **Durable state** – task definitions and minimal execution history are stored
+  atomically so a restart continues from the last known state.
+- **Minimal surface area** – the scheduler exposes only initialisation and stop
+  operations, keeping scheduling logic encapsulated.
 
-The scheduler enforces a **declarative model** where the application must re-register all tasks with identical parameters after every restart. This design ensures consistency between code and persisted runtime state.
+## Declarative Model
 
-### Key Aspects:
+The scheduler follows a declarative philosophy: every task is described by
+data rather than by issuing commands. This treats scheduling as configuration,
+not control flow, making the desired state explicit and auditable. A task
+definition consists of an identifier, a cron‑style schedule, executable logic
+and a retry interval. All definitions are supplied during start‑up and
+represent the complete list of tasks the application expects to exist.
 
-- **Exact Parameter Matching**: Task name, cron expression, and retry delay must be identical to persisted values
-- **Validation on Initialization**: The scheduler compares all registrations against stored state during startup
-- **TaskListMismatchError**: Thrown when there are discrepancies, providing detailed information about:
-  - Missing tasks (present in persisted state but not in registrations)
-  - Extra tasks (present in registrations but not in persisted state)  
-  - Differing tasks (same name but different cron expression or retry delay)
-- **Idempotent Operations**: Multiple initialization calls with identical registrations have no additional effect
-- **First-time Setup**: Empty persisted state allows any non-empty registration set (initial deployment scenario)
+At initialisation the scheduler loads the previously persisted definitions and
+checks that they exactly match the ones provided at start‑up. If the sets differ
+the scheduler refuses to run. This validation eliminates configuration drift and
+ensures that a process restart reproduces the intended schedule.
 
-This approach prevents configuration drift and ensures that the scheduler's runtime behavior exactly matches the application's intended task definitions.
+The declarative approach has several implications:
 
-## Limitations & Conscious Compromises
+1. **Static task set** – the lifetime of the process is bound to the tasks
+   defined at start‑up. Adding, removing or modifying a task requires changing
+   the definitions and restarting the scheduler, which keeps runtime state
+   predictable.
+2. **Reproducibility** – given the same declarations and persisted state, the
+   scheduler behaves deterministically across hosts and restarts.
+3. **State validation** – by verifying definitions on every start, stale tasks
+   from previous deployments cannot linger unnoticed.
 
-These are deliberate tradeoffs accepted for simplicity, clarity, and operational expectations:
+Because behaviour derives solely from declarations and stored state, the
+scheduler exposes no API for ad‑hoc scheduling once it is running.
 
-1. Minute Precision Only: Expressions are standard 5-field (minute hour day-of-month month weekday) cron; no seconds field; sub-minute scheduling will be detected and rejected.
-2. No Time Zone Abstraction: System local time is used directly. There is no explicit UTC or configurable timezone layer to reduce complexity. Daylight saving anomalies may shift perceived execution; this risk is accepted.
-3. No Disabled State: A task is either present (scheduled) or absent (cancelled and persisted as removed). Feature flags or “pause” semantics are intentionally excluded.
-4. Strict Persistence Semantics: Cancellations are persisted; cancelled tasks must not reappear after restart. No partial or lossy persistence is tolerated.
-5. Per-Execution Commits: Each state change creates an individual git commit. Batching is intentionally omitted to preserve granular audit history.
-6. Retry Strategy Simplicity: Single fixed delay per task. No exponential backoff, jitter, or capped retries; complexity deliberately avoided.
-7. Expression Frequency Guard: Frequency validation rejects schedules that would require observation more frequently than the polling loop can guarantee. This imposes an upper bound on task cadence tied to the configured poll interval.
-8. No Serialization of Callbacks: Functions are never persisted. Re-registration after restart is required to attach executable logic to restored task state. The declarative validation ensures that task definitions (name, cron expression, retry delay) match exactly between registrations and persisted state, preventing callback attachment to incorrect or modified task configurations.
-9. Logging Severity Model: Using `logInfo` for both success and failure of task executions keeps the severity channel (`logError`) reserved for systemic scheduler malfunctions only.
-10. Frequent state writes: The scheduler writes state changes to disk after each task execution using atomic transactions. This ensures durability and immediate persistence of execution history (success/failure times, retry metadata) but may impact performance due to high I/O overhead. The transactional approach prevents partial state corruption during system failures.
+## Polling Execution
 
-Anything beyond the above (priority queues, time zone parametrization, paused states, exponential backoff, task tagging, metrics export, etc.) is intentionally left out to keep the scheduler minimal and predictable.
+The scheduler uses a periodic polling loop to evaluate when tasks should run.
+For each scheduled task the scheduler records the times of the latest attempt
+and whether it succeeded or failed. A poll determines whether a task is due
+either because a cron occurrence has arrived or a previously scheduled retry
+time has passed. When both conditions hold, the earlier time determines the
+next run. Due tasks execute asynchronously and their updated history is
+persisted.
+
+To avoid schedules that cannot be observed, the scheduler validates that a
+cron expression's minimum interval is not shorter than the polling interval.
+
+## Persistence and Recovery
+
+Scheduler state is persisted through a runtime storage layer. The stored data
+includes
+
+- task definitions (identifier, schedule and retry interval)
+- timestamps for the most recent attempt and outcome
+- the scheduled time of any pending retry
+
+All updates are written transactionally; a completed write represents the sole
+source of truth. On restart the scheduler loads this state and requires the
+application to supply matching task definitions. Executable logic is provided
+anew at registration and is never persisted.
+
+## Failure Handling and Retry
+
+Each task defines a fixed delay before a failed run may be attempted again.
+When a failure occurs the scheduler notes the time and computes the next
+allowed attempt by adding the delay. Once the task succeeds the pending retry is
+cleared. The strategy is intentionally simple to keep failure recovery
+transparent and predictable.
+
+## Limitations and Tradeoffs
+
+1. **Local time only** – scheduling uses the host's clock without timezone
+   abstraction.
+2. **No disabled state** – a task exists only while it is registered.
+3. **Fixed retry delay** – there is no exponential backoff or jitter.
+4. **Frequency guard** – cron expressions that would fire more frequently than
+   the polling loop can observe are rejected.
+5. **Immediate persistence** – state is written after each mutation which can
+   increase I/O but ensures durability.
+6. **No callback persistence** – executable logic is provided anew at every
+   start; only task identity and history are stored.
+7. **Advanced features omitted** – priority scheduling, metrics, dynamic
+   registration, time‑zone handling and similar complexities are intentionally
+   excluded to keep the scheduler simple and predictable.
+
