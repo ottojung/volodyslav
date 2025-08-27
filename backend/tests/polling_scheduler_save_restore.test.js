@@ -18,8 +18,26 @@ function getTestCapabilities() {
 }
 
 describe("declarative scheduler persistence and idempotency", () => {
+    // Global capabilities reference for cleanup
+    let currentCapabilities = null;
+    
+    afterEach(async () => {
+        // Ensure scheduler is always stopped, even if test fails
+        if (currentCapabilities && currentCapabilities.scheduler) {
+            try {
+                await currentCapabilities.scheduler.stop();
+            } catch (error) {
+                // Ignore errors during cleanup
+                console.warn('Cleanup warning: Failed to stop scheduler:', error.message);
+            }
+        }
+        currentCapabilities = null;
+    });
+
     test("should handle repeated initialization with same tasks", async () => {
         const capabilities = getTestCapabilities();
+        currentCapabilities = capabilities;
+        currentCapabilities = capabilities;
         const retryDelay = fromMilliseconds(5000);
         
         const taskCallback = jest.fn();
@@ -44,6 +62,7 @@ describe("declarative scheduler persistence and idempotency", () => {
 
     test("should handle scheduler restart simulation", async () => {
         const capabilities = getTestCapabilities();
+        currentCapabilities = capabilities;
         const retryDelay = fromMilliseconds(5000);
         
         const taskCallback1 = jest.fn();
@@ -69,6 +88,7 @@ describe("declarative scheduler persistence and idempotency", () => {
 
     test("should handle multiple task persistence", async () => {
         const capabilities = getTestCapabilities();
+        currentCapabilities = capabilities;
         const retryDelay = fromMilliseconds(1000);
         
         const task1Callback = jest.fn();
@@ -93,6 +113,7 @@ describe("declarative scheduler persistence and idempotency", () => {
 
     test("should handle task with retry scenarios", async () => {
         const capabilities = getTestCapabilities();
+        currentCapabilities = capabilities;
         const retryDelay = fromMilliseconds(1000); // Short retry for testing
         
         let attemptCount = 0;
@@ -122,6 +143,7 @@ describe("declarative scheduler persistence and idempotency", () => {
 
     test("should handle empty task registration", async () => {
         const capabilities = getTestCapabilities();
+        currentCapabilities = capabilities;
         
         // Should handle initialization with no tasks
         await expect(capabilities.scheduler.initialize([])).resolves.toBeUndefined();
@@ -134,6 +156,7 @@ describe("declarative scheduler persistence and idempotency", () => {
     test("should handle task registration after empty initialization", async () => {
         // Use separate capabilities instance to avoid task list mismatch
         const capabilities = getTestCapabilities();
+        currentCapabilities = capabilities;
         
         const taskCallback = jest.fn();
         const registrations = [
@@ -150,6 +173,7 @@ describe("declarative scheduler persistence and idempotency", () => {
 
     test("should handle consistent task registration across sessions", async () => {
         const capabilities = getTestCapabilities();
+        currentCapabilities = capabilities;
         const retryDelay = fromMilliseconds(5000);
         
         const callback1 = jest.fn();
@@ -184,6 +208,7 @@ describe("declarative scheduler persistence and idempotency", () => {
 
     test("should maintain idempotency across stop and restart cycles", async () => {
         const capabilities = getTestCapabilities();
+        currentCapabilities = capabilities;
         const retryDelay = fromMilliseconds(5000);
         const taskCallback = jest.fn();
         

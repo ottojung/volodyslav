@@ -20,8 +20,26 @@ function getTestCapabilities() {
 describe("declarative scheduler task execution behavior", () => {
     // Use real timers for testing actual scheduler behavior
     
+    // Global capabilities reference for cleanup
+    let currentCapabilities = null;
+    
+    afterEach(async () => {
+        // Ensure scheduler is always stopped, even if test fails
+        if (currentCapabilities && currentCapabilities.scheduler) {
+            try {
+                await currentCapabilities.scheduler.stop();
+            } catch (error) {
+                // Ignore errors during cleanup
+                console.warn('Cleanup warning: Failed to stop scheduler:', error.message);
+            }
+        }
+        currentCapabilities = null;
+    });
+    
     test("should execute tasks according to their schedule", async () => {
         const capabilities = getTestCapabilities();
+        currentCapabilities = capabilities;
+        currentCapabilities = capabilities;
         const retryDelay = fromMilliseconds(5000);
         const callback = jest.fn();
         
@@ -41,6 +59,8 @@ describe("declarative scheduler task execution behavior", () => {
 
     test("should handle different cron schedule frequencies", async () => {
         const capabilities = getTestCapabilities();
+        currentCapabilities = capabilities;
+        currentCapabilities = capabilities;
         const retryDelay = fromMilliseconds(5000);
         
         const minuteCallback = jest.fn();
@@ -64,6 +84,8 @@ describe("declarative scheduler task execution behavior", () => {
 
     test("should handle task execution with retries correctly", async () => {
         const capabilities = getTestCapabilities();
+        currentCapabilities = capabilities;
+        currentCapabilities = capabilities;
         const timeControl = getDatetimeControl(capabilities);
         const retryDelay = fromMilliseconds(500); // Short retry for testing
         let executionCount = 0;
@@ -108,6 +130,7 @@ describe("declarative scheduler task execution behavior", () => {
 
     test("should handle special date schedules like leap year", async () => {
         const capabilities = getTestCapabilities();
+        currentCapabilities = capabilities;
         const retryDelay = fromMilliseconds(5000);
         const callback = jest.fn();
         
@@ -129,6 +152,7 @@ describe("declarative scheduler task execution behavior", () => {
 
     test("should handle task persistence and recovery", async () => {
         const capabilities = getTestCapabilities();
+        currentCapabilities = capabilities;
         const retryDelay = fromMilliseconds(5000);
         const callback = jest.fn();
         
@@ -155,6 +179,7 @@ describe("declarative scheduler task execution behavior", () => {
 
     test("should handle multiple task initialization correctly", async () => {
         const capabilities = getTestCapabilities();
+        currentCapabilities = capabilities;
         const retryDelay = fromMilliseconds(5000);
         
         const task1 = jest.fn();
@@ -180,6 +205,7 @@ describe("declarative scheduler task execution behavior", () => {
 
     test("should handle scheduler restart and state consistency", async () => {
         const capabilities = getTestCapabilities();
+        currentCapabilities = capabilities;
         const retryDelay = fromMilliseconds(1000);
         let executionCount = 0;
         
@@ -212,6 +238,7 @@ describe("declarative scheduler task execution behavior", () => {
 
     test("should efficiently handle various cron expressions", async () => {
         const capabilities = getTestCapabilities();
+        currentCapabilities = capabilities;
         const retryDelay = fromMilliseconds(5000);
         const callback = jest.fn();
         
