@@ -1,227 +1,168 @@
+// @ts-check
 /**
- * Error types for the declarative scheduler.
+ * Error classes for the scheduler.
  */
 
 /**
- * Error thrown when the task list provided to initialize() differs from persisted runtime state.
+ * Startup drift error when persisted state doesn't match registrations.
  */
-class TaskListMismatchError extends Error {
+class StartupDriftError extends Error {
     /**
      * @param {string} message
-     * @param {object} mismatchDetails
-     * @param {string[]} mismatchDetails.missing - Tasks in persisted state but not in registrations
-     * @param {string[]} mismatchDetails.extra - Tasks in registrations but not in persisted state
-     * @param {Array<{name: string, field: string, expected: any, actual: any}>} mismatchDetails.differing - Tasks with differing properties
-     */
-    constructor(message, mismatchDetails) {
-        super(message);
-        this.name = "TaskListMismatchError";
-        this.mismatchDetails = mismatchDetails;
-    }
-}
-
-/**
- * @param {unknown} object
- * @returns {object is TaskListMismatchError}
- */
-function isTaskListMismatchError(object) {
-    return object instanceof TaskListMismatchError;
-}
-
-/** Additional specific errors used by the scheduler */
-class InvalidRegistrationError extends Error {
-    /**
-     * @param {string} message
-     * @param {object} [details]
+     * @param {object} details
      */
     constructor(message, details) {
         super(message);
-        this.name = "InvalidRegistrationError";
+        this.name = "StartupDriftError";
         this.details = details;
     }
 }
 
-class RegistrationsNotArrayError extends Error {
+/**
+ * Duplicate task error when multiple tasks have the same identifier.
+ */
+class DuplicateTaskError extends Error {
     /**
-     * @param {string} message
+     * @param {string} taskName
      */
-    constructor(message) {
-        super(message);
-        this.name = "RegistrationsNotArrayError";
+    constructor(taskName) {
+        super(`Duplicate task: ${taskName}`);
+        this.name = "DuplicateTaskError";
+        this.taskName = taskName;
     }
 }
 
-class RegistrationShapeError extends Error {
+/**
+ * Invalid cron expression error.
+ */
+class InvalidCronError extends Error {
     /**
-     * @param {string} message
-     * @param {object} [details]
+     * @param {string} expression
+     * @param {string} reason
      */
-    constructor(message, details) {
-        super(message);
-        this.name = "RegistrationShapeError";
-        this.details = details;
+    constructor(expression, reason) {
+        super(`Invalid cron expression "${expression}": ${reason}`);
+        this.name = "InvalidCronError";
+        this.expression = expression;
+        this.reason = reason;
     }
 }
 
-class InvalidCronExpressionTypeError extends Error {
+/**
+ * Frequency guard error when cron frequency exceeds poll interval.
+ */
+class FrequencyGuardError extends Error {
     /**
-     * @param {string} message
-     * @param {object} [details]
+     * @param {string} taskName
+     * @param {number} cronIntervalMs
+     * @param {number} pollIntervalMs
      */
-    constructor(message, details) {
-        super(message);
-        this.name = "InvalidCronExpressionTypeError";
-        this.details = details;
+    constructor(taskName, cronIntervalMs, pollIntervalMs) {
+        super(`Task "${taskName}" has cron frequency (${cronIntervalMs}ms) faster than poll interval (${pollIntervalMs}ms)`);
+        this.name = "FrequencyGuardError";
+        this.taskName = taskName;
+        this.cronIntervalMs = cronIntervalMs;
+        this.pollIntervalMs = pollIntervalMs;
     }
 }
 
-class CronExpressionInvalidError extends Error {
+/**
+ * State persistence error.
+ */
+class StatePersistenceError extends Error {
     /**
-     * @param {string} message
-     * @param {object} [details]
+     * @param {string} operation
+     * @param {Error} cause
      */
-    constructor(message, details) {
-        super(message);
-        this.name = "CronExpressionInvalidError";
-        this.details = details;
+    constructor(operation, cause) {
+        super(`State persistence error during ${operation}: ${cause.message}`);
+        this.name = "StatePersistenceError";
+        this.operation = operation;
+        this.cause = cause;
     }
 }
 
-class CallbackTypeError extends Error {
+/**
+ * Task execution error.
+ */
+class TaskExecutionError extends Error {
     /**
-     * @param {string} message
-     * @param {object} [details]
+     * @param {string} taskName
+     * @param {Error} cause
      */
-    constructor(message, details) {
-        super(message);
-        this.name = "CallbackTypeError";
-        this.details = details;
+    constructor(taskName, cause) {
+        super(`Task execution error for "${taskName}": ${cause.message}`);
+        this.name = "TaskExecutionError";
+        this.taskName = taskName;
+        this.cause = cause;
     }
 }
 
-class RetryDelayTypeError extends Error {
-    /**
-     * @param {string} message
-     * @param {object} [details]
-     */
-    constructor(message, details) {
-        super(message);
-        this.name = "RetryDelayTypeError";
-        this.details = details;
-    }
+/**
+ * Type guard for StartupDriftError.
+ * @param {any} object
+ * @returns {object is StartupDriftError}
+ */
+function isStartupDriftError(object) {
+    return object instanceof StartupDriftError;
 }
 
-class NegativeRetryDelayError extends Error {
-    /**
-     * @param {string} message
-     * @param {object} [details]
-     */
-    constructor(message, details) {
-        super(message);
-        this.name = "NegativeRetryDelayError";
-        this.details = details;
-    }
+/**
+ * Type guard for DuplicateTaskError.
+ * @param {any} object
+ * @returns {object is DuplicateTaskError}
+ */
+function isDuplicateTaskError(object) {
+    return object instanceof DuplicateTaskError;
 }
 
-class ScheduleTaskError extends Error {
-    /**
-     * @param {string} message
-     * @param {object} [details]
-     */
-    constructor(message, details) {
-        super(message);
-        this.name = "ScheduleTaskError";
-        this.details = details;
-    }
+/**
+ * Type guard for InvalidCronError.
+ * @param {any} object
+ * @returns {object is InvalidCronError}
+ */
+function isInvalidCronError(object) {
+    return object instanceof InvalidCronError;
 }
 
-class StopSchedulerError extends Error {
-    /**
-     * @param {string} message
-     * @param {object} [details]
-     */
-    constructor(message, details) {
-        super(message);
-        this.name = "StopSchedulerError";
-        this.details = details;
-    }
+/**
+ * Type guard for FrequencyGuardError.
+ * @param {any} object
+ * @returns {object is FrequencyGuardError}
+ */
+function isFrequencyGuardError(object) {
+    return object instanceof FrequencyGuardError;
 }
 
-// Predicates for all custom error classes
 /**
- * @param {unknown} object
- * @returns {object is InvalidRegistrationError}
+ * Type guard for StatePersistenceError.
+ * @param {any} object
+ * @returns {object is StatePersistenceError}
  */
-function isInvalidRegistrationError(object) { return object instanceof InvalidRegistrationError; }
+function isStatePersistenceError(object) {
+    return object instanceof StatePersistenceError;
+}
+
 /**
- * @param {unknown} object
- * @returns {object is RegistrationsNotArrayError}
+ * Type guard for TaskExecutionError.
+ * @param {any} object
+ * @returns {object is TaskExecutionError}
  */
-function isRegistrationsNotArrayError(object) { return object instanceof RegistrationsNotArrayError; }
-/**
- * @param {unknown} object
- * @returns {object is RegistrationShapeError}
- */
-function isRegistrationShapeError(object) { return object instanceof RegistrationShapeError; }
-/**
- * @param {unknown} object
- * @returns {object is InvalidCronExpressionTypeError}
- */
-function isInvalidCronExpressionTypeError(object) { return object instanceof InvalidCronExpressionTypeError; }
-/**
- * @param {unknown} object
- * @returns {object is CronExpressionInvalidError}
- */
-function isCronExpressionInvalidError(object) { return object instanceof CronExpressionInvalidError; }
-/**
- * @param {unknown} object
- * @returns {object is CallbackTypeError}
- */
-function isCallbackTypeError(object) { return object instanceof CallbackTypeError; }
-/**
- * @param {unknown} object
- * @returns {object is RetryDelayTypeError}
- */
-function isRetryDelayTypeError(object) { return object instanceof RetryDelayTypeError; }
-/**
- * @param {unknown} object
- * @returns {object is NegativeRetryDelayError}
- */
-function isNegativeRetryDelayError(object) { return object instanceof NegativeRetryDelayError; }
-/**
- * @param {unknown} object
- * @returns {object is ScheduleTaskError}
- */
-function isScheduleTaskError(object) { return object instanceof ScheduleTaskError; }
-/**
- * @param {unknown} object
- * @returns {object is StopSchedulerError}
- */
-function isStopSchedulerError(object) { return object instanceof StopSchedulerError; }
+function isTaskExecutionError(object) {
+    return object instanceof TaskExecutionError;
+}
 
 module.exports = {
-    TaskListMismatchError,
-    isTaskListMismatchError,
-
-    InvalidRegistrationError,
-    RegistrationsNotArrayError,
-    RegistrationShapeError,
-    InvalidCronExpressionTypeError,
-    CronExpressionInvalidError,
-    CallbackTypeError,
-    RetryDelayTypeError,
-    NegativeRetryDelayError,
-    ScheduleTaskError,
-    StopSchedulerError,
-
-    isInvalidRegistrationError,
-    isRegistrationsNotArrayError,
-    isRegistrationShapeError,
-    isInvalidCronExpressionTypeError,
-    isCronExpressionInvalidError,
-    isCallbackTypeError,
-    isRetryDelayTypeError,
-    isNegativeRetryDelayError,
-    isScheduleTaskError,
-    isStopSchedulerError,
+    StartupDriftError,
+    DuplicateTaskError,
+    InvalidCronError,
+    FrequencyGuardError,
+    StatePersistenceError,
+    TaskExecutionError,
+    isStartupDriftError,
+    isDuplicateTaskError,
+    isInvalidCronError,
+    isFrequencyGuardError,
+    isStatePersistenceError,
+    isTaskExecutionError,
 };
