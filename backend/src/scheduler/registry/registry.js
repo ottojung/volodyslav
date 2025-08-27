@@ -129,7 +129,7 @@ function validateAgainstPersistedState(registry, persistedTasks) {
 /**
  * Create signature from registry.
  * @param {Registry} registry
- * @returns {object}
+ * @returns {import('./signature').RegistrySignature}
  */
 function createRegistrySignature(registry) {
     const { createSignature } = require('./signature');
@@ -144,7 +144,7 @@ function createRegistrySignature(registry) {
 /**
  * Create signature from persisted tasks.
  * @param {Array<import('../types').TaskDefinition & import('../types').TaskRuntime>} tasks
- * @returns {object}
+ * @returns {import('./signature').RegistrySignature}
  */
 function createPersistedSignature(tasks) {
     const { createSignature } = require('./signature');

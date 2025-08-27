@@ -11,6 +11,8 @@
  * @returns {import('../types').InstantMs | null} Next execution time or null if not eligible
  */
 function nextEligible(def, rt, now) {
+    const { isBefore } = require('../time/clock');
+    
     // If task is currently running, it's not eligible
     if (rt.isRunning) {
         return null;
@@ -18,8 +20,6 @@ function nextEligible(def, rt, now) {
 
     // Check if there's a pending retry
     if (rt.pendingRetryUntil) {
-        const { isBefore, isAfter } = require('../time/clock');
-        
         // If retry time has passed, schedule for retry
         if (isBefore(rt.pendingRetryUntil, now) || rt.pendingRetryUntil.epochMs === now.epochMs) {
             return now;
@@ -48,14 +48,14 @@ function nextEligible(def, rt, now) {
  * @returns {'cron' | 'retry' | null} Execution mode or null if not eligible
  */
 function getExecutionMode(def, rt, now) {
+    const { isBefore } = require('../time/clock');
+    
     if (rt.isRunning) {
         return null;
     }
 
     // Check if there's a pending retry that's due
     if (rt.pendingRetryUntil) {
-        const { isBefore } = require('../time/clock');
-        
         if (isBefore(rt.pendingRetryUntil, now) || rt.pendingRetryUntil.epochMs === now.epochMs) {
             return 'retry';
         }
@@ -63,7 +63,6 @@ function getExecutionMode(def, rt, now) {
 
     // Check if cron schedule is due
     const cronNext = def.cron.nextAfter(rt.lastEvaluatedFire || now);
-    const { isBefore } = require('../time/clock');
     
     if (isBefore(cronNext, now) || cronNext.epochMs === now.epochMs) {
         return 'cron';

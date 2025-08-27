@@ -4,9 +4,33 @@
  */
 
 /**
+ * @typedef {object} TaskSignature
+ * @property {string} name
+ * @property {string} cron
+ * @property {number} retryDelay
+ */
+
+/**
+ * @typedef {object} RegistrySignature
+ * @property {TaskSignature[]} tasks
+ * @property {number} count
+ * @property {string} hash
+ */
+
+/**
+ * @typedef {object} ComparisonResult
+ * @property {boolean} hasDifferences
+ * @property {string} summary
+ * @property {object} details
+ * @property {string[]} details.missing
+ * @property {string[]} details.extra
+ * @property {object[]} details.modified
+ */
+
+/**
  * Create a canonical signature for a set of task definitions.
  * @param {Array<import('../types').TaskDefinition>} tasks
- * @returns {object}
+ * @returns {RegistrySignature}
  */
 function createSignature(tasks) {
     const { toString } = require('../value-objects/task-id');
@@ -31,11 +55,12 @@ function createSignature(tasks) {
 
 /**
  * Compare two signatures.
- * @param {object} sig1
- * @param {object} sig2
- * @returns {object} Comparison result
+ * @param {RegistrySignature} sig1
+ * @param {RegistrySignature} sig2
+ * @returns {ComparisonResult} Comparison result
  */
 function compareSignatures(sig1, sig2) {
+    /** @type {{missing: string[], extra: string[], modified: object[]}} */
     const differences = {
         missing: [],
         extra: [],
@@ -43,18 +68,18 @@ function compareSignatures(sig1, sig2) {
     };
     
     // Create lookup maps
-    const tasks1 = new Map(sig1.tasks.map(t => [t.name, t]));
-    const tasks2 = new Map(sig2.tasks.map(t => [t.name, t]));
+    const tasks1 = new Map(sig1.tasks.map((/** @type {TaskSignature} */ t) => [t.name, t]));
+    const tasks2 = new Map(sig2.tasks.map((/** @type {TaskSignature} */ t) => [t.name, t]));
     
     // Find missing tasks (in sig1 but not sig2)
-    for (const [name, task] of tasks1) {
+    for (const [name] of tasks1) {
         if (!tasks2.has(name)) {
             differences.missing.push(name);
         }
     }
     
     // Find extra tasks (in sig2 but not sig1)
-    for (const [name, task] of tasks2) {
+    for (const [name] of tasks2) {
         if (!tasks1.has(name)) {
             differences.extra.push(name);
         }
@@ -85,8 +110,8 @@ function compareSignatures(sig1, sig2) {
 
 /**
  * Check if two task definitions are equal.
- * @param {object} task1
- * @param {object} task2
+ * @param {TaskSignature} task1
+ * @param {TaskSignature} task2
  * @returns {boolean}
  */
 function tasksEqual(task1, task2) {
@@ -97,7 +122,7 @@ function tasksEqual(task1, task2) {
 
 /**
  * Create a hash for a set of tasks.
- * @param {object[]} tasks
+ * @param {TaskSignature[]} tasks
  * @returns {string}
  */
 function hashTasks(tasks) {
@@ -116,7 +141,7 @@ function hashTasks(tasks) {
 
 /**
  * Create a summary of differences.
- * @param {object} differences
+ * @param {{missing: string[], extra: string[], modified: object[]}} differences
  * @returns {string}
  */
 function createSummary(differences) {
@@ -139,7 +164,7 @@ function createSummary(differences) {
 
 /**
  * Create a detailed difference report.
- * @param {object} differences
+ * @param {{missing: string[], extra: string[], modified: object[]}} differences
  * @returns {string}
  */
 function createDetailedReport(differences) {
