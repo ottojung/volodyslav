@@ -2,6 +2,7 @@ const eventLogStorage = require("../event_log_storage");
 const { processDiaryAudios } = require("../diary");
 const { executeDailyTasks } = require("./daily_tasks");
 const { COMMON } = require("../time_duration");
+const { initialize } = require("./index");
 
 /** @typedef {import('../filesystem/deleter').FileDeleter} FileDeleter */
 /** @typedef {import('../random/seed').NonDeterministicSeed} NonDeterministicSeed */
@@ -15,10 +16,7 @@ const { COMMON } = require("../time_duration");
 /** @typedef {import('../environment').Environment} Environment */
 /** @typedef {import('../logger').Logger} Logger */
 /** @typedef {import('./types').Registration} Registration */
-
-/**
- * @typedef {import('../capabilities/root').Capabilities} Capabilities
- */
+/** @typedef {import('../capabilities/root').Capabilities} Capabilities */
 
 /**
  * @param {Capabilities} capabilities
@@ -78,20 +76,8 @@ async function scheduleAll(capabilities) {
         ["daily-2am", "0 2 * * *", () => daily(capabilities), retryDelay],
     ];
 
-    // Initialize the scheduler with all registrations
-    await capabilities.scheduler.initialize(registrations);
-}
-
-/**
- * @param {Capabilities} capabilities
- */
-function runAllTasks(capabilities) {
-    return async () => {
-        await capabilities.logger.setup();
-        capabilities.logger.logInfo({}, "Running all periodic tasks now");
-        await allTasks(capabilities);
-        capabilities.logger.logInfo({}, "All periodic tasks have been run.");
-    };
+    // Initialize the scheduler with the registrations
+    await initialize(capabilities, registrations);
 }
 
 module.exports = {
@@ -99,5 +85,4 @@ module.exports = {
     daily,
     allTasks,
     scheduleAll,
-    runAllTasks,
 };

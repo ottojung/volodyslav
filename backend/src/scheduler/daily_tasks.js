@@ -16,6 +16,9 @@ function isDailyTasksUnavailable(error) {
  * Daily tasks unavailable error.
  */
 class DailyTasksUnavailable extends Error {
+    /**
+     * @param {string} message
+     */
     constructor(message) {
         super(message);
         this.name = 'DailyTasksUnavailable';

@@ -6,19 +6,21 @@
 
 /** @typedef {import('./types').Registration} Registration */
 
-/** @type {(registrations: Array<Registration>) => Promise<void>} */
+/** @type {((capabilities: import('../capabilities/root').Capabilities, registrations: Array<Registration>) => Promise<void>) | null} */
 let globalInitialize = null;
 
-/** @type {() => Promise<void>} */
+/** @type {(() => Promise<void>) | null} */
 let globalStop = null;
 
 /**
  * Initialize the scheduler with task registrations.
- * @type {(registrations: Array<Registration>) => Promise<void>}
+ * @param {import('../capabilities/root').Capabilities} capabilities
+ * @param {Array<Registration>} registrations
+ * @returns {Promise<void>}
  */
-async function initialize(registrations) {
+async function initialize(capabilities, registrations) {
     if (globalInitialize) {
-        return await globalInitialize(registrations);
+        return await globalInitialize(capabilities, registrations);
     }
     throw new Error("Scheduler not created. Call make() first.");
 }
@@ -48,23 +50,28 @@ function make(getCapabilities) {
     const { createPoller } = require('./runtime/poller');
     const { logStartupValidated } = require('./observability/logging');
     const { now } = require('./time/clock');
-    const { toString } = require('./value-objects/task-id');
 
+    /** @type {any} */
     let poller = null;
+    /** @type {any} */
     let registry = null;
 
     /**
      * Initialize the scheduler with the given registrations.
-     * @type {(registrations: Array<Registration>) => Promise<void>}
+     * @param {import('../capabilities/root').Capabilities} capabilities
+     * @param {Array<Registration>} registrations
+     * @returns {Promise<void>}
      */
-    async function initializeImpl(registrations) {
-        const capabilities = getCapabilities();
+    async function initializeImpl(capabilities, registrations) {
+        // Note: capabilities parameter is provided for consistency,
+        // but we still use getCapabilities() for internal consistency
+        const caps = getCapabilities();
 
         // Build and validate registry
         registry = buildRegistry(registrations);
 
         // Create state store
-        const store = createStore(capabilities.state);
+        const store = createStore(caps.state);
 
         // Check if this is first-time initialization
         let isFirstTime = false;
@@ -74,7 +81,7 @@ function make(getCapabilities) {
                 
                 if (state.tasks.length === 0) {
                     isFirstTime = true;
-                    capabilities.logger.logInfo(
+                    caps.logger.logInfo(
                         {
                             registeredTaskCount: registrations.length,
                             taskNames: registrations.map(([name]) => name)
@@ -83,7 +90,7 @@ function make(getCapabilities) {
                     );
                 } else {
                     // Validate registrations match persisted state
-                    capabilities.logger.logDebug(
+                    caps.logger.logDebug(
                         {
                             persistedTaskCount: state.tasks.length,
                             registrationCount: registrations.length
@@ -106,7 +113,7 @@ function make(getCapabilities) {
         // Handle poller lifecycle
         if (poller !== null) {
             // Scheduler already running
-            capabilities.logger.logDebug(
+            caps.logger.logDebug(
                 {},
                 "Scheduler already initialized"
             );
@@ -115,15 +122,15 @@ function make(getCapabilities) {
 
         // Create and start poller
         const pollInterval = fromMs(DEFAULT_POLL_INTERVAL_MS);
-        const executor = createExecutor(store, capabilities.logger);
-        poller = createPoller(store, executor, capabilities.logger, registry, pollInterval);
+        const executor = createExecutor(store, caps.logger);
+        poller = createPoller(store, executor, caps.logger, registry, pollInterval);
 
         // Start polling
         poller.start();
 
         // Log successful startup
         const taskNames = registry.getTaskNames();
-        logStartupValidated(taskNames.length, taskNames, now(), capabilities.logger);
+        logStartupValidated(taskNames.length, taskNames, now(), caps.logger);
     }
 
     /**
@@ -159,7 +166,6 @@ function validate(cronExpression) {
 
 // Re-export types for external consumption
 /** @typedef {import('./types').Scheduler} Scheduler */
-/** @typedef {import('./types').Registration} Registration */
 /** @typedef {import('./types').TaskIdentity} TaskIdentity */
 /** @typedef {import('./types').Initialize} Initialize */
 /** @typedef {import('./types').Stop} Stop */
