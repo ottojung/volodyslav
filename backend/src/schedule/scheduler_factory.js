@@ -98,7 +98,6 @@ function make(getCapabilities) {
         registrations.forEach(([name, cronExpression, callback, retryDelay]) =>
             parsedRegistrations.set(name, {
                 name,
-                cronString: cronExpression,
                 parsedCron: parseCronExpression(cronExpression),
                 callback,
                 retryDelay
