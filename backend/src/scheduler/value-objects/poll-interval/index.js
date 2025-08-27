@@ -1,6 +1,6 @@
 // @ts-check
 /**
- * @typedef {number & {__brand:'PollIntervalMs'}} PollIntervalMs
+ * @typedef {PollIntervalClass} PollIntervalMs
  */
 
 /**
@@ -10,18 +10,11 @@ class PollIntervalClass {
     /** @type {number} */
     ms;
 
-    /** @type {undefined} */
-    __brand = undefined; // nominal typing brand
-
     /**
      * Creates a new PollInterval instance.
      * @param {number} ms - Poll interval in milliseconds
      */
     constructor(ms) {
-        if (this.__brand !== undefined) {
-            throw new Error("PollInterval is a nominal type");
-        }
-
         if (!Number.isInteger(ms) || ms <= 0) {
             throw new Error("PollInterval must be a positive integer in milliseconds");
         }
@@ -44,7 +37,7 @@ class PollIntervalClass {
  * @returns {PollIntervalMs}
  */
 function fromMs(ms) {
-    return /** @type {PollIntervalMs} */ (new PollIntervalClass(ms));
+    return new PollIntervalClass(ms);
 }
 
 /**

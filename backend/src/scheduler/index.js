@@ -58,11 +58,11 @@ function make(getCapabilities) {
 
     /**
      * Initialize the scheduler with the given registrations.
-     * @param {import('../capabilities/root').Capabilities} capabilities
+     * @param {import('../capabilities/root').Capabilities} _capabilities
      * @param {Array<Registration>} registrations
      * @returns {Promise<void>}
      */
-    async function initializeImpl(capabilities, registrations) {
+    async function initializeImpl(_capabilities, registrations) {
         // Note: capabilities parameter is provided for consistency,
         // but we still use getCapabilities() for internal consistency
         const caps = getCapabilities();
@@ -181,7 +181,7 @@ module.exports = {
     ScheduleDuplicateTaskError: require('./errors').DuplicateTaskError,
     isScheduleDuplicateTaskError: require('./errors').isDuplicateTaskError,
     parseCronExpression: require('./value-objects/cron-expression').fromString,
-    getNextExecution: (cron, fromTime) => cron.nextAfter(fromTime),
+    getNextExecution: (/** @type {import('./value-objects/cron-expression').CronExpression} */ cron, /** @type {import('./value-objects/instant').InstantMs} */ fromTime) => cron.nextAfter(fromTime),
     isCronExpression: require('./value-objects/cron-expression').isCronExpression,
     isInvalidCronExpressionError: require('./errors').isInvalidCronError,
     InvalidCronExpressionError: require('./errors').InvalidCronError,

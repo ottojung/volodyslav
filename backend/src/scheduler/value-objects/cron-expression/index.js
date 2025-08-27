@@ -1,6 +1,6 @@
 // @ts-check
 /**
- * @typedef {object & {__brand:'CronExpression'}} CronExpression
+ * @typedef {CronExpressionClass} CronExpression
  */
 
 /**
@@ -25,9 +25,6 @@ class CronExpressionClass {
     /** @type {number[]} */
     weekday;
 
-    /** @type {undefined} */
-    __brand = undefined; // nominal typing brand
-
     /**
      * Creates a new CronExpression instance.
      * @param {string} original - Original cron string
@@ -38,10 +35,6 @@ class CronExpressionClass {
      * @param {number[]} weekday - Weekday values (0-6, 0=Sunday)
      */
     constructor(original, minute, hour, day, month, weekday) {
-        if (this.__brand !== undefined) {
-            throw new Error("CronExpression is a nominal type");
-        }
-
         this.original = original;
         this.minute = minute;
         this.hour = hour;

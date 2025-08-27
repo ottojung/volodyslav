@@ -1,6 +1,6 @@
 // @ts-check
 /**
- * @typedef {number & {__brand:'InstantMs'}} InstantMs
+ * @typedef {InstantClass} InstantMs
  */
 
 /**
@@ -10,18 +10,11 @@ class InstantClass {
     /** @type {number} */
     epochMs;
 
-    /** @type {undefined} */
-    __brand = undefined; // nominal typing brand
-
     /**
      * Creates a new Instant instance.
      * @param {number} epochMs - Milliseconds since epoch
      */
     constructor(epochMs) {
-        if (this.__brand !== undefined) {
-            throw new Error("Instant is a nominal type");
-        }
-
         if (!Number.isFinite(epochMs)) {
             throw new Error("Instant must be a finite number");
         }
@@ -44,7 +37,7 @@ class InstantClass {
  * @returns {InstantMs}
  */
 function fromEpochMs(epochMs) {
-    return /** @type {InstantMs} */ (new InstantClass(epochMs));
+    return new InstantClass(epochMs);
 }
 
 /**

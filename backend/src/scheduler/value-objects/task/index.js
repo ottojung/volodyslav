@@ -1,6 +1,6 @@
 // @ts-check
 /**
- * @typedef {object & {__brand:'Task'}} Task
+ * @typedef {TaskClass} Task
  */
 
 /**
@@ -41,9 +41,6 @@ class TaskClass {
     /** @type {boolean} */
     isRunning;
 
-    /** @type {undefined} */
-    __brand = undefined; // nominal typing brand
-
     /**
      * Creates a new Task instance.
      * @param {import('../task-id').TaskId} name
@@ -58,10 +55,6 @@ class TaskClass {
      * @param {boolean} isRunning
      */
     constructor(name, cron, callback, retryDelay, lastSuccessTime, lastFailureTime, lastAttemptTime, pendingRetryUntil, lastEvaluatedFire, isRunning) {
-        if (this.__brand !== undefined) {
-            throw new Error("Task is a nominal type");
-        }
-
         this.name = name;
         this.cron = cron;
         this.callback = callback;
@@ -131,11 +124,11 @@ class TaskClass {
  * @returns {Task}
  */
 function createTask(name, cron, callback, retryDelay, lastSuccessTime = null, lastFailureTime = null, lastAttemptTime = null, pendingRetryUntil = null, lastEvaluatedFire = null, isRunning = false) {
-    return /** @type {Task} */ (new TaskClass(
+    return new TaskClass(
         name, cron, callback, retryDelay, 
         lastSuccessTime, lastFailureTime, lastAttemptTime, 
         pendingRetryUntil, lastEvaluatedFire, isRunning
-    ));
+    );
 }
 
 /**

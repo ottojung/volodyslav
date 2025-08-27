@@ -30,9 +30,7 @@ function parseExpression(cronStr) {
         const month = parseField(monthStr, 1, 12);
         const weekday = parseField(weekdayStr, 0, 6);
 
-        return /** @type {import('./index').CronExpression} */ (
-            new CronExpressionClass(cronStr, minute, hour, day, month, weekday)
-        );
+        return new CronExpressionClass(cronStr, minute, hour, day, month, weekday);
     } catch (error) {
         throw new Error(`Invalid cron expression "${cronStr}": ${error.message}`);
     }

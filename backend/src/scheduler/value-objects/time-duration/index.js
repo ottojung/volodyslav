@@ -1,6 +1,6 @@
 // @ts-check
 /**
- * @typedef {number & {__brand:'DurationMs'}} TimeDuration
+ * @typedef {TimeDurationClass} TimeDuration
  */
 
 /**
@@ -10,18 +10,11 @@ class TimeDurationClass {
     /** @type {number} */
     ms;
 
-    /** @type {undefined} */
-    __brand = undefined; // nominal typing brand
-
     /**
      * Creates a new TimeDuration instance.
      * @param {number} ms - Duration in milliseconds
      */
     constructor(ms) {
-        if (this.__brand !== undefined) {
-            throw new Error("TimeDuration is a nominal type");
-        }
-
         if (!Number.isInteger(ms) || ms < 0) {
             throw new Error("TimeDuration must be a non-negative integer in milliseconds");
         }
@@ -52,7 +45,7 @@ class TimeDurationClass {
  * @returns {TimeDuration}
  */
 function fromMs(ms) {
-    return /** @type {TimeDuration} */ (new TimeDurationClass(ms));
+    return new TimeDurationClass(ms);
 }
 
 /**

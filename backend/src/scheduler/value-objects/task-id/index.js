@@ -1,6 +1,6 @@
 // @ts-check
 /**
- * @typedef {string & {__brand:'TaskId'}} TaskId
+ * @typedef {TaskIdClass} TaskId
  */
 
 /**
@@ -10,18 +10,11 @@ class TaskIdClass {
     /** @type {string} */
     value;
 
-    /** @type {undefined} */
-    __brand = undefined; // nominal typing brand
-
     /**
      * Creates a new TaskId instance.
      * @param {string} value - Task identifier string
      */
     constructor(value) {
-        if (this.__brand !== undefined) {
-            throw new Error("TaskId is a nominal type");
-        }
-
         if (typeof value !== 'string' || value.length === 0) {
             throw new Error("TaskId must be a non-empty string");
         }
@@ -49,7 +42,7 @@ class TaskIdClass {
  * @returns {TaskId}
  */
 function fromString(s) {
-    return /** @type {TaskId} */ (new TaskIdClass(s));
+    return new TaskIdClass(s);
 }
 
 /**
