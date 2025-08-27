@@ -124,7 +124,7 @@ describe("declarative scheduler persistence and idempotency", () => {
         const capabilities = getTestCapabilities();
         
         // Should handle initialization with no tasks
-        await capabilities.scheduler.initialize([]);
+        await expect(capabilities.scheduler.initialize([])).resolves.toBeUndefined();
         
         await new Promise(resolve => setTimeout(resolve, 200));
         
