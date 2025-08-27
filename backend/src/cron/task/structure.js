@@ -13,7 +13,7 @@
  * @typedef {object} Task
  * @property {string} name
  * @property {string} cronString
- * @property {import('../expression').CronExpressionClass} parsedCron
+ * @property {CronExpression} parsedCron
  * @property {Callback} callback
  * @property {TimeDuration} retryDelay
  * @property {DateTime|undefined} lastSuccessTime

@@ -13,8 +13,7 @@ const {
     isCronCalculationError
 } = require("./errors");
 
-const { CronExpressionClass, isCronExpression } = require("./expression");
-const { parseCronExpression } = require("./main_parser");
+const { parseCronExpression, isCronExpression } = require("./expression");
 const { matchesCronExpression, getNextExecution } = require("./calculator");
 
 module.exports = {
@@ -33,7 +32,4 @@ module.exports = {
     InvalidCronExpressionError,
     FieldParseError,
     CronCalculationError,
-
-    // Data types
-    CronExpressionClass,
 };

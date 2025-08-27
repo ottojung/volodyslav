@@ -7,7 +7,7 @@ const datetime = require("../datetime");
 
 /**
  * Checks if a given datetime matches the cron expression.
- * @param {import('./expression').CronExpressionClass} cronExpr - Parsed cron expression
+ * @param {import('./expression').CronExpression} cronExpr - Parsed cron expression
  * @param {import('../datetime').DateTime} dateTime - DateTime to check
  * @returns {boolean} True if the datetime matches the cron expression
  */
@@ -32,7 +32,7 @@ function matchesCronExpression(cronExpr, dateTime) {
 
 /**
  * Calculates the next execution time for a cron expression.
- * @param {import('./expression').CronExpressionClass} cronExpr - Parsed cron expression
+ * @param {import('./expression').CronExpression} cronExpr - Parsed cron expression
  * @param {import('../datetime').DateTime} fromDateTime - DateTime to calculate from
  * @returns {import('../datetime').DateTime} Next execution datetime
  * @throws {CronCalculationError} If next execution cannot be calculated
