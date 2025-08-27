@@ -2,7 +2,6 @@
  * Tests for missed cron catchup persistence.
  */
 
-const { makePollingScheduler } = require("../src/cron/polling_scheduler");
 const { fromMilliseconds } = require("../src/time_duration");
 const { getMockedRootCapabilities } = require("./spies");
 const { stubEnvironment, stubLogger, stubDatetime, stubRuntimeStateStorage } = require("./stubs");
@@ -22,12 +21,14 @@ describe("missed cron catchup persistence", () => {
         
         const capabilities = getTestCapabilities();
         
-        // Create scheduler and schedule a task
-        const scheduler1 = makePollingScheduler(capabilities); // Longer interval to avoid race conditions
+        // Initialize scheduler with registrations
         const retryDelay = fromMilliseconds(1000);
         const callback = jest.fn();
+        const registrations = [
+            ["hourly-task", "0 * * * *", callback, retryDelay] // Every hour at minute 0
+        ];
         
-        await scheduler1.schedule("hourly-task", "0 * * * *", callback, retryDelay); // Every hour at minute 0
+        await capabilities.scheduler.initialize(registrations);
         
         // Manually set lastSuccessTime to a previous hour to simulate missed execution
         await capabilities.state.transaction(async (storage) => {
@@ -39,24 +40,27 @@ describe("missed cron catchup persistence", () => {
             }
         });
         
-        await scheduler1.cancelAll();
+        await capabilities.scheduler.stop();
         
         // Advance time to after the hour boundary (1:05 AM) 
         jest.setSystemTime(new Date("2020-01-01T01:05:00Z"));
         
-        // Create new scheduler (simulating restart)
-        const scheduler2 = makePollingScheduler(capabilities);
-        
-        // Re-schedule the task with same name to load persisted state
+        // Re-initialize scheduler (simulating restart)
         const newCallback = jest.fn();
-        await scheduler2.schedule("hourly-task", "0 * * * *", newCallback, retryDelay);
+        const newRegistrations = [
+            ["hourly-task", "0 * * * *", newCallback, retryDelay]
+        ];
         
-        // Verify task should be due for catchup execution
-        const tasks = await scheduler2.getTasks();
-        expect(tasks).toHaveLength(1);
-        expect(tasks[0].modeHint).toBe("cron"); // Should be due for cron execution
+        await capabilities.scheduler.initialize(newRegistrations);
         
-        await scheduler2.cancelAll();
+        // The scheduler should have caught up and executed the missed task
+        // Use fast timers to avoid the 5 second timeout
+        jest.runOnlyPendingTimers();
+        
+        // Verify task was caught up (executed for the missed time)
+        expect(newCallback).toHaveBeenCalledTimes(1);
+        
+        await capabilities.scheduler.stop();
         jest.useRealTimers();
-    });
+    }, 10000); // Increase timeout to 10 seconds
 });

@@ -2,7 +2,6 @@
  * Tests for schedule persistence roundtrip.
  */
 
-const { makePollingScheduler } = require("../src/cron/polling_scheduler");
 const { fromMilliseconds } = require("../src/time_duration");
 const { getMockedRootCapabilities } = require("./spies");
 const { stubEnvironment, stubLogger, stubDatetime, stubRuntimeStateStorage } = require("./stubs");
@@ -20,41 +19,35 @@ describe("schedule persist roundtrip", () => {
     test("schedule, persist, reload -> task present with same cron and retryDelayMs", async () => {
         const capabilities = getTestCapabilities();
         
-        // Create first scheduler with longer poll interval to avoid conflicts
-        const scheduler1 = makePollingScheduler(capabilities);
+        // Initialize scheduler with registrations
         const retryDelay = fromMilliseconds(5000);
         const callback = jest.fn();
+        const registrations = [
+            ["hourly-task", "0 * * * *", callback, retryDelay]
+        ];
         
-        await scheduler1.schedule("hourly-task", "0 * * * *", callback, retryDelay);
+        await capabilities.scheduler.initialize(registrations);
         
         // Allow sufficient time for persistence to complete
         await new Promise(resolve => setTimeout(resolve, 200));
         
-        await scheduler1.cancelAll();
+        await capabilities.scheduler.stop();
         
-        // Allow time for cancel persistence  
+        // Allow time for cleanup  
         await new Promise(resolve => setTimeout(resolve, 200));
         
-        // Create a new scheduler and schedule the same task (simulating restart)
-        const scheduler2 = makePollingScheduler(capabilities);
-        
-        // Re-schedule the same task with a callback (as would happen on restart)
+        // Re-initialize the same scheduler (simulating restart)
         const newCallback = jest.fn();
-        await scheduler2.schedule("hourly-task", "0 * * * *", newCallback, retryDelay);
+        const newRegistrations = [
+            ["hourly-task", "0 * * * *", newCallback, retryDelay]
+        ];
+        
+        await capabilities.scheduler.initialize(newRegistrations);
         
         // Allow time for persistence
         await new Promise(resolve => setTimeout(resolve, 200));
         
-        // Verify task is active and persisted
-        const tasks = await scheduler2.getTasks();
-        expect(tasks).toHaveLength(1);
-        expect(tasks[0]).toMatchObject({
-            name: "hourly-task",
-            cronExpression: "0 * * * *",
-            running: false,
-        });
-        
-        // Verify task was persisted
+        // Verify task was persisted correctly by checking state
         await capabilities.state.transaction(async (storage) => {
             const currentState = await storage.getExistingState();
             expect(currentState).not.toBeNull();
@@ -66,7 +59,7 @@ describe("schedule persist roundtrip", () => {
             });
         });
         
-        await scheduler2.cancelAll();
+        await capabilities.scheduler.stop();
         
         // Allow cleanup time
         await new Promise(resolve => setTimeout(resolve, 100));
