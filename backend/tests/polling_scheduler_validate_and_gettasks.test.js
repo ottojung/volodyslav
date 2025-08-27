@@ -27,24 +27,21 @@ describe("declarative scheduler validation", () => {
         const capabilities2 = getTestCapabilities();
         const retryDelay = fromMilliseconds(0);
         
-        try {
-            // Try to initialize with invalid task names
-            const emptyNameRegistrations = [
-                ["", "0 * * * *", () => {}, retryDelay] // Every hour
-            ];
-            const whitespaceNameRegistrations = [
-                ["   ", "0 * * * *", () => {}, retryDelay] // Every hour
-            ];
-            
-            await expect(capabilities1.scheduler.initialize(emptyNameRegistrations))
-                .rejects.toThrow(ScheduleInvalidNameError);
-            await expect(capabilities2.scheduler.initialize(whitespaceNameRegistrations))
-                .rejects.toThrow(ScheduleInvalidNameError);
-        } finally {
-            // Ensure cleanup even if test throws
-            await capabilities1.scheduler.stop();
-            await capabilities2.scheduler.stop();
-        }
+        // Try to initialize with invalid task names
+        const emptyNameRegistrations = [
+            ["", "0 * * * *", () => {}, retryDelay] // Every hour
+        ];
+        const whitespaceNameRegistrations = [
+            ["   ", "0 * * * *", () => {}, retryDelay] // Every hour
+        ];
+        
+        await expect(capabilities1.scheduler.initialize(emptyNameRegistrations))
+            .rejects.toThrow(ScheduleInvalidNameError);
+        await expect(capabilities2.scheduler.initialize(whitespaceNameRegistrations))
+            .rejects.toThrow(ScheduleInvalidNameError);
+        
+        await capabilities1.scheduler.stop();
+        await capabilities2.scheduler.stop();
     });
 
 });

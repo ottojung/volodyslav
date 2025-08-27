@@ -42,21 +42,17 @@ describe("declarative scheduler duplicate task handling", () => {
         const retryDelay = fromMilliseconds(0);
         const taskCallback = jest.fn();
         
-        try {
-            // The declarative scheduler now strictly prohibits duplicate names
-            // within the same registration array
-            const registrationsWithDuplicate = [
-                ["task-a", "0 * * * *", taskCallback, retryDelay],
-                ["task-a", "0 * * * *", taskCallback, retryDelay]  // Duplicate name - should throw error
-            ];
-            
-            // This should throw ScheduleDuplicateTaskError for duplicate names
-            await expect(capabilities.scheduler.initialize(registrationsWithDuplicate))
-                .rejects.toThrow("Task with name \"task-a\" is already scheduled");
-        } finally {
-            // Ensure cleanup even if initialization fails
-            await capabilities.scheduler.stop();
-        }
+        // The declarative scheduler now strictly prohibits duplicate names
+        // within the same registration array
+        const registrationsWithDuplicate = [
+            ["task-a", "0 * * * *", taskCallback, retryDelay],
+            ["task-a", "0 * * * *", taskCallback, retryDelay]  // Duplicate name - should throw error
+        ];
+        
+        // This should throw ScheduleDuplicateTaskError for duplicate names
+        await expect(capabilities.scheduler.initialize(registrationsWithDuplicate))
+            .rejects.toThrow("Task with name \"task-a\" is already scheduled");
+        await capabilities.scheduler.stop();
     });
 });
 
