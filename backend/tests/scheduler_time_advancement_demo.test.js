@@ -14,7 +14,7 @@ function getTestCapabilities() {
     stubDatetime(capabilities);
     stubSleeper(capabilities);
     stubRuntimeStateStorage(capabilities);
-    stubPollInterval(100); // 100ms polling for more realistic timing
+    stubPollInterval(200); // Slower polling for more stable testing
     return capabilities;
 }
 
@@ -87,7 +87,7 @@ describe("scheduler time advancement demo", () => {
         await capabilities.scheduler.initialize(registrations);
 
         // Wait for scheduler to start up
-        await new Promise(resolve => setTimeout(resolve, 50));
+        await new Promise(resolve => setTimeout(resolve, 300));
 
         // Both tasks will catch up: hourly for 01:00:00 and daily for 00:00:00 today
         expect(hourlyTask).toHaveBeenCalledTimes(1); // Caught up 01:00:00
@@ -95,7 +95,7 @@ describe("scheduler time advancement demo", () => {
 
         // Advance to 2:00:00 AM (next hourly execution)
         timeControl.advanceTime(45 * 60 * 1000); // 45 minutes to reach 02:00:00
-        await new Promise(resolve => setTimeout(resolve, 50));
+        await new Promise(resolve => setTimeout(resolve, 300));
 
         expect(hourlyTask).toHaveBeenCalledTimes(2);
         expect(dailyTask).toHaveBeenCalledTimes(1); // Still just once

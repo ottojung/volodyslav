@@ -44,7 +44,6 @@ function makeTaskExecutor(capabilities, mutateTasks) {
     async function runTask(taskName, mode, callback) {
         const qname = JSON.stringify(taskName);
         const startTime = dt.now();
-        console.log(`runTask started: ${taskName} at ${dt.toNativeDate(startTime).toISOString()}`);
 
         /**
          * @template T
@@ -79,10 +78,8 @@ function makeTaskExecutor(capabilities, mutateTasks) {
 
         const maybeError = await executeIt();
         const end = dt.now();
-        console.log(`runTask completed: ${taskName} at ${dt.toNativeDate(end).toISOString()}, error: ${maybeError ? maybeError.message : 'none'}`);
 
         if (maybeError === null) {
-            console.log(`Setting success time for ${taskName} to ${dt.toNativeDate(end).toISOString()}`);
             await mutateThis((task) => {
                 task.lastSuccessTime = end;
                 task.lastFailureTime = undefined;
@@ -94,7 +91,6 @@ function makeTaskExecutor(capabilities, mutateTasks) {
                 `Task ${qname} succeeded`
             );
         } else {
-            console.log(`Setting failure time for ${taskName} to ${dt.toNativeDate(end).toISOString()}`);
             await mutateThis((task) => {
                 const retryAt = dt.fromEpochMs(end.getTime() + task.retryDelay.toMilliseconds());
                 task.lastSuccessTime = undefined;
@@ -108,7 +104,6 @@ function makeTaskExecutor(capabilities, mutateTasks) {
                 `Task ${qname} failed: ${message}`
             );
         }
-        console.log(`runTask finished updating state for: ${taskName}`);
     }
 
     return {
