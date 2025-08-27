@@ -24,7 +24,7 @@
  * @property {object} details
  * @property {string[]} details.missing
  * @property {string[]} details.extra
- * @property {object[]} details.modified
+ * @property {{name: string, old: TaskSignature, new: TaskSignature}[]} details.modified
  */
 
 /**
@@ -60,7 +60,7 @@ function createSignature(tasks) {
  * @returns {ComparisonResult} Comparison result
  */
 function compareSignatures(sig1, sig2) {
-    /** @type {{missing: string[], extra: string[], modified: object[]}} */
+    /** @type {{missing: string[], extra: string[], modified: {name: string, old: TaskSignature, new: TaskSignature}[]}} */
     const differences = {
         missing: [],
         extra: [],
@@ -141,7 +141,7 @@ function hashTasks(tasks) {
 
 /**
  * Create a summary of differences.
- * @param {{missing: string[], extra: string[], modified: object[]}} differences
+ * @param {{missing: string[], extra: string[], modified: {name: string, old: TaskSignature, new: TaskSignature}[]}} differences
  * @returns {string}
  */
 function createSummary(differences) {
@@ -164,7 +164,7 @@ function createSummary(differences) {
 
 /**
  * Create a detailed difference report.
- * @param {{missing: string[], extra: string[], modified: object[]}} differences
+ * @param {{missing: string[], extra: string[], modified: {name: string, old: TaskSignature, new: TaskSignature}[]}} differences
  * @returns {string}
  */
 function createDetailedReport(differences) {
