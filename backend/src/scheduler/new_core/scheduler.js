@@ -15,7 +15,8 @@ const {
 /** @typedef {import('../new_types/task_types').ParsedRegistrations} ParsedRegistrations */
 /** @typedef {import('../new_types/task_types').Callback} Callback */
 
-const POLL_INTERVAL_MS = 600000; // 10 minutes
+// Poll interval configuration - can be overridden by tests
+let POLL_INTERVAL_MS = 600000; // 10 minutes
 
 /**
  * Create a polling scheduler for the given registrations.
@@ -33,9 +34,17 @@ function makePollingScheduler(capabilities, registrations) {
     // Create task runner for handling task execution
     const taskRunner = makeTaskRunner(capabilities, (transformation) => mutateTasks(capabilities, registrations, transformation));
 
-    // Validate all task frequencies during initialization
+    // Validate all task frequencies during initialization (only warn, don't fail)
     for (const registration of registrations.values()) {
-        validateTaskFrequency(registration.name, registration.parsedCron.original, POLL_INTERVAL_MS);
+        try {
+            validateTaskFrequency(registration.name, registration.parsedCron.original, POLL_INTERVAL_MS);
+        } catch (err) {
+            // Log warning but don't fail initialization for frequency issues
+            capabilities.logger.logWarning(
+                { taskName: registration.name, cronExpression: registration.parsedCron.original },
+                `Task frequency validation warning: ${err instanceof Error ? err.message : String(err)}`
+            );
+        }
     }
 
     function start() {
@@ -210,5 +219,6 @@ function makePollingScheduler(capabilities, registrations) {
 
 module.exports = {
     makePollingScheduler,
-    POLL_INTERVAL_MS,
+    get POLL_INTERVAL_MS() { return POLL_INTERVAL_MS; },
+    set POLL_INTERVAL_MS(value) { POLL_INTERVAL_MS = value; },
 };

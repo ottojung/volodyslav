@@ -125,7 +125,7 @@ function validateTasksAgainstPersistedState(registrations, persistedTasks) {
     // Throw error if any mismatches found
     if (missing.length > 0 || extra.length > 0 || differing.length > 0) {
         const details = { missing, extra, differing };
-        let message = "Task list mismatch between registrations and persisted state.";
+        let message = "Task list mismatch detected between registrations and persisted state.";
         
         if (missing.length > 0) {
             message += ` Missing tasks: ${missing.join(', ')}.`;

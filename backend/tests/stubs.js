@@ -306,9 +306,20 @@ function stubRuntimeStateStorage(capabilities) {
  * @param {number} [period=1] - The polling period in milliseconds
  */
 const stubPollInterval = (period = 1) => {
-    // Direct module constant override 
-    const pollingSchedulerModule = require('../src/scheduler/internal/polling_scheduler');
-    pollingSchedulerModule.POLL_INTERVAL_MS = period;
+    // Direct module constant override for both old and new implementations
+    try {
+        const pollingSchedulerModule = require('../src/scheduler/internal/polling_scheduler');
+        pollingSchedulerModule.POLL_INTERVAL_MS = period;
+    } catch {
+        // Old implementation might not be available
+    }
+    
+    try {
+        const newSchedulerModule = require('../src/scheduler/new_core/scheduler');
+        newSchedulerModule.POLL_INTERVAL_MS = period;
+    } catch {
+        // New implementation might not be available
+    }
 };
 
 module.exports = {
