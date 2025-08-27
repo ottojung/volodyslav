@@ -4,12 +4,13 @@
 
 const { 
     parseCronExpression, 
-    matchesCronExpression, 
     getNextExecution,
     isCronExpression,
     isInvalidCronExpressionError,
     InvalidCronExpressionError 
-} = require("../src/cron/parser");
+} = require("../src/scheduler");
+
+const { matchesCronExpression } = require("../src/scheduler/internal/parser");
 
 const datetime = require("../src/datetime");
 

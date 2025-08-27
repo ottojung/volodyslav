@@ -9,6 +9,28 @@
 
 const { make } = require("./scheduler_factory");
 const { isTaskListMismatchError } = require("./errors");
+const { 
+    parseCronExpression, 
+    getNextExecution,
+    isCronExpression,
+    isInvalidCronExpressionError,
+    InvalidCronExpressionError 
+} = require("./internal/parser");
+const { ScheduleInvalidNameError, ScheduleDuplicateTaskError, isScheduleDuplicateTaskError } = require("./internal/polling_scheduler_errors");
+
+/**
+ * Validate a cron expression without creating a scheduler.
+ * @param {string} cronExpression
+ * @returns {boolean}
+ */
+function validate(cronExpression) {
+    try {
+        parseCronExpression(cronExpression);
+        return true;
+    } catch {
+        return false;
+    }
+}
 
 // Re-export types for external consumption
 /** @typedef {import('./types').Scheduler} Scheduler */
@@ -19,5 +41,14 @@ const { isTaskListMismatchError } = require("./errors");
 
 module.exports = {
     make,
+    validate,
     isTaskListMismatchError,
+    ScheduleInvalidNameError,
+    ScheduleDuplicateTaskError,
+    isScheduleDuplicateTaskError,
+    parseCronExpression,
+    getNextExecution,
+    isCronExpression,
+    isInvalidCronExpressionError,
+    InvalidCronExpressionError,
 };

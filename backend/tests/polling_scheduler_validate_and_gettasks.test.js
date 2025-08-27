@@ -1,4 +1,4 @@
-const { validate, ScheduleInvalidNameError } = require("../src/cron");
+const { validate, ScheduleInvalidNameError } = require("../src/scheduler");
 const { fromMilliseconds } = require("../src/time_duration");
 const { getMockedRootCapabilities } = require("./spies");
 const { stubEnvironment, stubLogger, stubDatetime, stubSleeper, stubPollInterval } = require("./stubs");
