@@ -63,6 +63,6 @@ describe("failure retry persistence", () => {
         // The task should have retried once more
         expect(callback).toHaveBeenCalledTimes(2); // Should have retried once
 
-        await capabilities.scheduler.stop();
+        await capabilities.scheduler.stopLoop();
     });
 });

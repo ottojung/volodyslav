@@ -75,7 +75,7 @@ describe("scheduler atomicity testing", () => {
 
         expect(finalState.tasks).toHaveLength(3);
 
-        await capabilities.scheduler.stop();
+        await capabilities.scheduler.stopLoop();
     });
 
     test("attempts to create a controlled race condition in task map serialization", async () => {
@@ -152,7 +152,7 @@ describe("scheduler atomicity testing", () => {
             // Analyze the execution timeline to show concurrency
             capabilities.logger.logDebug({ executionTimeline }, "Task execution timeline");
 
-            await capabilities.scheduler.stop();
+            await capabilities.scheduler.stopLoop();
         } finally {
             // Restore original function
             taskExecutor.makeTaskExecutor = originalMakeTaskExecutor;

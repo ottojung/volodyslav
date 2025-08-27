@@ -38,7 +38,7 @@ describe("declarative scheduler time handling", () => {
         // Task should not run yet (not at 2:30 AM)
         expect(true).toBe(true); // Scheduler initialized successfully
 
-        await capabilities.scheduler.stop();
+        await capabilities.scheduler.stopLoop();
     });
 
     test("should handle hourly tasks correctly", async () => {
@@ -59,7 +59,7 @@ describe("declarative scheduler time handling", () => {
         // Task should not run yet (not at 1:30 AM)
         expect(true).toBe(true); // Scheduler initialized successfully
 
-        await capabilities.scheduler.stop();
+        await capabilities.scheduler.stopLoop();
     });
 
     test("should maintain correct scheduling across time", async () => {
@@ -79,7 +79,7 @@ describe("declarative scheduler time handling", () => {
         // Task should not run yet (not at 3 AM)
         expect(true).toBe(true); // Scheduler initialized successfully
 
-        await capabilities.scheduler.stop();
+        await capabilities.scheduler.stopLoop();
     });
 
     test("should handle timezone-independent scheduling", async () => {
@@ -100,7 +100,7 @@ describe("declarative scheduler time handling", () => {
         // Task should not run yet (not at noon)
         expect(true).toBe(true); // Scheduler initialized successfully
 
-        await capabilities.scheduler.stop();
+        await capabilities.scheduler.stopLoop();
     });
 
     test("should handle edge case scheduling for weekly and daily tasks", async () => {
@@ -120,7 +120,7 @@ describe("declarative scheduler time handling", () => {
         // Task should not run yet (not at 2 AM)
         expect(true).toBe(true); // Scheduler initialized successfully
 
-        await capabilities.scheduler.stop();
+        await capabilities.scheduler.stopLoop();
     });
 
     test("should maintain execution history correctly", async () => {
@@ -142,7 +142,7 @@ describe("declarative scheduler time handling", () => {
         await new Promise(resolve => setTimeout(resolve, 200));
         expect(executionCount).toBe(1);
         
-        await capabilities.scheduler.stop();
+        await capabilities.scheduler.stopLoop();
 
         // Second initialization (simulating restart)
         await capabilities.scheduler.initialize(registrations);
@@ -152,7 +152,7 @@ describe("declarative scheduler time handling", () => {
         // Should maintain proper execution tracking
         expect(callback).toHaveBeenCalled();
 
-        await capabilities.scheduler.stop();
+        await capabilities.scheduler.stopLoop();
     });
 
     test("should handle multiple timezone-aware tasks consistently", async () => {
@@ -176,7 +176,7 @@ describe("declarative scheduler time handling", () => {
         expect(typeof task1).toBe('function');
         expect(typeof task2).toBe('function');
 
-        await capabilities.scheduler.stop();
+        await capabilities.scheduler.stopLoop();
     });
 
     test("should handle complex scheduling patterns", async () => {
@@ -197,7 +197,7 @@ describe("declarative scheduler time handling", () => {
         // Task should not run yet (not at scheduled times)
         expect(true).toBe(true); // Scheduler initialized successfully
 
-        await capabilities.scheduler.stop();
+        await capabilities.scheduler.stopLoop();
     });
 
     test("should handle scheduler restart with time consistency", async () => {
@@ -217,7 +217,7 @@ describe("declarative scheduler time handling", () => {
         await capabilities.scheduler.initialize(registrations);
         await new Promise(resolve => setTimeout(resolve, 200));
         expect(executionCount).toBe(1);
-        await capabilities.scheduler.stop();
+        await capabilities.scheduler.stopLoop();
 
         // Wait a bit to simulate time gap
         await new Promise(resolve => setTimeout(resolve, 100));
@@ -229,6 +229,6 @@ describe("declarative scheduler time handling", () => {
         // Should handle restart correctly
         expect(callback).toHaveBeenCalled();
 
-        await capabilities.scheduler.stop();
+        await capabilities.scheduler.stopLoop();
     });
 });

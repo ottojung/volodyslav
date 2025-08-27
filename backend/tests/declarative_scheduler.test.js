@@ -27,50 +27,31 @@ function getTestCapabilities() {
 
 describe("Declarative Scheduler", () => {
 
-    // Global capabilities reference for cleanup
-    let currentCapabilities = null;
-    
-    afterEach(async () => {
-        // Ensure scheduler is always stopped, even if test fails
-        if (currentCapabilities && currentCapabilities.scheduler) {
-            try {
-                await currentCapabilities.scheduler.stop();
-            } catch (error) {
-                // Ignore errors during cleanup
-                console.warn('Cleanup warning: Failed to stop scheduler:', error.message);
-            }
-        }
-        currentCapabilities = null;
-    });
-
     describe("initialize", () => {
         test("succeeds with non-empty registrations for first-time initialization", async () => {
             // This test verifies that first-time initialization works
             const capabilities = getTestCapabilities();
-            currentCapabilities = capabilities;
             const registrations = [
                 ["test-task", "0 * * * *", jest.fn(), COMMON.FIVE_MINUTES],
             ];
 
             // Non-empty registrations should succeed on first-time setup (empty persisted state)
             await expect(capabilities.scheduler.initialize(registrations)).resolves.toBeUndefined();
-            await capabilities.scheduler.stop();
+            await capabilities.scheduler.stopLoop();
         });
 
         test("succeeds with empty registrations when no persisted state exists", async () => {
             // This test verifies the basic functionality when there's no state
             const capabilities = getTestCapabilities();
-            currentCapabilities = capabilities;
             const registrations = [];
 
             // Empty registrations should succeed (idempotent call does nothing)
             await expect(capabilities.scheduler.initialize(registrations)).resolves.toBeUndefined();
-            await capabilities.scheduler.stop();
+            await capabilities.scheduler.stopLoop();
         });
 
         test("is idempotent - multiple calls have no additional effect", async () => {
             const capabilities = getTestCapabilities();
-            currentCapabilities = capabilities;
             const registrations = [
                 ["task1", "0 * * * *", jest.fn(), COMMON.FIVE_MINUTES],
             ];
@@ -84,12 +65,11 @@ describe("Declarative Scheduler", () => {
             // Third call should also succeed and do nothing
             await expect(capabilities.scheduler.initialize(registrations)).resolves.toBeUndefined();
 
-            await capabilities.scheduler.stop();
+            await capabilities.scheduler.stopLoop();
         });
 
         test("throws TaskListMismatchError when tasks differ from persisted state", async () => {
             const capabilities = getTestCapabilities();
-            currentCapabilities = capabilities;
 
             // First, set up some initial persisted state by calling initialize
             const initialRegistrations = [
@@ -106,12 +86,11 @@ describe("Declarative Scheduler", () => {
             ];
 
             await expect(capabilities.scheduler.initialize(differentRegistrations)).rejects.toThrow(/Task list mismatch detected/);
-            await capabilities.scheduler.stop();
+            await capabilities.scheduler.stopLoop();
         });
 
         test("throws TaskListMismatchError when cron expression differs", async () => {
             const capabilities = getTestCapabilities();
-            currentCapabilities = capabilities;
 
             // Set up initial state
             const initialRegistrations = [
@@ -126,12 +105,11 @@ describe("Declarative Scheduler", () => {
             ];
 
             await expect(capabilities.scheduler.initialize(changedRegistrations)).rejects.toThrow(/Task list mismatch detected/);
-            await capabilities.scheduler.stop();
+            await capabilities.scheduler.stopLoop();
         });
 
         test("throws TaskListMismatchError when retry delay differs", async () => {
             const capabilities = getTestCapabilities();
-            currentCapabilities = capabilities;
 
             // Set up initial state
             const initialRegistrations = [
@@ -146,12 +124,11 @@ describe("Declarative Scheduler", () => {
             ];
 
             await expect(capabilities.scheduler.initialize(changedRegistrations)).rejects.toThrow(/Task list mismatch detected/);
-            await capabilities.scheduler.stop();
+            await capabilities.scheduler.stopLoop();
         });
 
         test("throws TaskListMismatchError when task is missing from registrations", async () => {
             const capabilities = getTestCapabilities();
-            currentCapabilities = capabilities;
 
             // Set up initial state with two tasks
             const initialRegistrations = [
@@ -170,12 +147,11 @@ describe("Declarative Scheduler", () => {
 
             expect(isTaskListMismatchError(error)).toBe(true);
             expect(error.mismatchDetails.missing).toContain("task2");
-            await capabilities.scheduler.stop();
+            await capabilities.scheduler.stopLoop();
         });
 
         test("throws TaskListMismatchError when extra task is in registrations", async () => {
             const capabilities = getTestCapabilities();
-            currentCapabilities = capabilities;
 
             // Set up initial state with one task
             const initialRegistrations = [
@@ -194,12 +170,11 @@ describe("Declarative Scheduler", () => {
 
             expect(isTaskListMismatchError(error)).toBe(true);
             expect(error.mismatchDetails.extra).toContain("task2");
-            await capabilities.scheduler.stop();
+            await capabilities.scheduler.stopLoop();
         });
 
         test("provides detailed mismatch information in error", async () => {
             const capabilities = getTestCapabilities();
-            currentCapabilities = capabilities;
 
             // Set up initial state
             const initialRegistrations = [
@@ -235,12 +210,11 @@ describe("Declarative Scheduler", () => {
             expect(retryDiff.name).toBe("task1");
             expect(retryDiff.expected).toBe(COMMON.FIVE_MINUTES.toMilliseconds());
             expect(retryDiff.actual).toBe(COMMON.THIRTY_MINUTES.toMilliseconds());
-            await capabilities.scheduler.stop();
+            await capabilities.scheduler.stopLoop();
         });
 
         test("handles empty registrations with empty persisted state", async () => {
             const capabilities = getTestCapabilities();
-            currentCapabilities = capabilities;
             const registrations = [];
 
             // Should succeed with no tasks
@@ -248,12 +222,11 @@ describe("Declarative Scheduler", () => {
 
             // Should be idempotent
             await expect(capabilities.scheduler.initialize(registrations)).resolves.toBeUndefined();
-            await capabilities.scheduler.stop();
+            await capabilities.scheduler.stopLoop();
         });
 
         test("logs appropriate messages for first-time initialization", async () => {
             const capabilities = getTestCapabilities();
-            currentCapabilities = capabilities;
             const registrations = [
                 ["task1", "0 * * * *", jest.fn(), COMMON.FIVE_MINUTES],
                 ["task2", "0 0 * * *", jest.fn(), COMMON.TEN_MINUTES],
@@ -270,7 +243,7 @@ describe("Declarative Scheduler", () => {
                 "First-time scheduler initialization: registering initial tasks"
             );
 
-            await capabilities.scheduler.stop();
+            await capabilities.scheduler.stopLoop();
         });
     });
 
@@ -286,7 +259,6 @@ describe("Declarative Scheduler", () => {
             ];
 
             const capabilities = getTestCapabilities();
-            currentCapabilities = capabilities;
 
             // Initialize the scheduler with very short poll interval for testing
             await capabilities.scheduler.initialize(registrations);
@@ -296,7 +268,7 @@ describe("Declarative Scheduler", () => {
 
             // Task should have been executed because it's due to run (first time)
             expect(taskCallback).toHaveBeenCalled();
-            await capabilities.scheduler.stop();
+            await capabilities.scheduler.stopLoop();
         });
 
         test("initialize is idempotent - can be called multiple times safely", async () => {
@@ -307,7 +279,6 @@ describe("Declarative Scheduler", () => {
             ];
 
             const capabilities = getTestCapabilities();
-            currentCapabilities = capabilities;
 
             // First call to initialize
             await capabilities.scheduler.initialize(registrations);
@@ -321,7 +292,7 @@ describe("Declarative Scheduler", () => {
             // Second call to initialize with same capabilities - should be idempotent
             // This should not cause errors or duplicate scheduling issues
             await expect(capabilities.scheduler.initialize(registrations)).resolves.toBeUndefined();
-            await capabilities.scheduler.stop();
+            await capabilities.scheduler.stopLoop();
         });
     });
 });

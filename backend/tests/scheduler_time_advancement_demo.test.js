@@ -65,7 +65,7 @@ describe("scheduler time advancement demo", () => {
         await new Promise(resolve => setTimeout(resolve, 100)); // Wait for polling
         expect(taskCallback.mock.calls.length).toBeGreaterThan(afterSecondAdvance);
 
-        await capabilities.scheduler.stop();
+        await capabilities.scheduler.stopLoop();
     });
 
     test("should handle multiple tasks with different schedules", async () => {
@@ -97,7 +97,7 @@ describe("scheduler time advancement demo", () => {
         // Test that the scheduler is running and tasks are registered
         // This is mainly a smoke test to ensure the multiple task scheduling works
         
-        await capabilities.scheduler.stop();
+        await capabilities.scheduler.stopLoop();
     });
 
     test("should demonstrate sub-minute polling with time advancement", async () => {
@@ -135,7 +135,7 @@ describe("scheduler time advancement demo", () => {
         await new Promise(resolve => setTimeout(resolve, 100));
         expect(taskCallback.mock.calls.length).toBeGreaterThan(afterFirstAdvance);
 
-        await capabilities.scheduler.stop();
+        await capabilities.scheduler.stopLoop();
     });
 
     test("should verify time consistency across scheduler operations", async () => {
@@ -176,7 +176,7 @@ describe("scheduler time advancement demo", () => {
         // Should have more executions
         expect(taskCallback.executionTimes.length).toBeGreaterThan(initialExecutions);
 
-        await capabilities.scheduler.stop();
+        await capabilities.scheduler.stopLoop();
     });
 
     test("should demonstrate catching up on missed executions with gradual polling", async () => {
@@ -214,6 +214,6 @@ describe("scheduler time advancement demo", () => {
         await new Promise(resolve => setTimeout(resolve, 100));
         expect(taskCallback.mock.calls.length).toBeGreaterThan(afterBigJump);
 
-        await capabilities.scheduler.stop();
+        await capabilities.scheduler.stopLoop();
     });
 });

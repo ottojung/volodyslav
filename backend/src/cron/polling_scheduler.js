@@ -213,10 +213,6 @@ function makePollingScheduler(capabilities, registrations) {
             return existed;
         },
 
-        async stop() {
-            stop();
-        },
-
         async stopLoop() {
             stop();
         },

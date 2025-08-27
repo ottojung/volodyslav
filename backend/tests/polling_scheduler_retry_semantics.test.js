@@ -46,7 +46,7 @@ describe("declarative scheduler retry semantics", () => {
         await new Promise(resolve => setTimeout(resolve, 100));
         expect(executionCount).toBe(1);
 
-        await capabilities.scheduler.stop();
+        await capabilities.scheduler.stopLoop();
     });
 
     test("should handle retry logic when task fails", async () => {
@@ -86,7 +86,7 @@ describe("declarative scheduler retry semantics", () => {
         // Should have retried the failed task
         expect(executionCount).toBeGreaterThan(1);
 
-        await capabilities.scheduler.stop();
+        await capabilities.scheduler.stopLoop();
     });
 
     test("should handle successful execution clearing retry state", async () => {
@@ -126,7 +126,7 @@ describe("declarative scheduler retry semantics", () => {
         expect(executionCount).toBe(2);
         expect(task).toHaveBeenCalledTimes(2);
 
-        await capabilities.scheduler.stop();
+        await capabilities.scheduler.stopLoop();
     });
 
     test("should handle multiple tasks with different retry delays", async () => {
@@ -183,7 +183,7 @@ describe("declarative scheduler retry semantics", () => {
             expect(retryDelays).toEqual([3 * 60 * 1000, 8 * 60 * 1000]);
         });
 
-        await capabilities.scheduler.stop();
+        await capabilities.scheduler.stopLoop();
     });
 
     test("should maintain idempotent behavior on multiple initialize calls", async () => {
@@ -211,6 +211,6 @@ describe("declarative scheduler retry semantics", () => {
         expect(executionCount).toBe(1);
         expect(task).toHaveBeenCalledTimes(1);
 
-        await capabilities.scheduler.stop();
+        await capabilities.scheduler.stopLoop();
     });
 });

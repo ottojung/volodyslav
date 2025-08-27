@@ -18,26 +18,8 @@ function getTestCapabilities() {
 }
 
 describe("declarative scheduler persistence and idempotency", () => {
-    // Global capabilities reference for cleanup
-    let currentCapabilities = null;
-    
-    afterEach(async () => {
-        // Ensure scheduler is always stopped, even if test fails
-        if (currentCapabilities && currentCapabilities.scheduler) {
-            try {
-                await currentCapabilities.scheduler.stop();
-            } catch (error) {
-                // Ignore errors during cleanup
-                console.warn('Cleanup warning: Failed to stop scheduler:', error.message);
-            }
-        }
-        currentCapabilities = null;
-    });
-
     test("should handle repeated initialization with same tasks", async () => {
         const capabilities = getTestCapabilities();
-        currentCapabilities = capabilities;
-        currentCapabilities = capabilities;
         const retryDelay = fromMilliseconds(5000);
         
         const taskCallback = jest.fn();
@@ -57,12 +39,11 @@ describe("declarative scheduler persistence and idempotency", () => {
         // Task should execute normally despite multiple initializations
         expect(taskCallback).toHaveBeenCalled();
         
-        await capabilities.scheduler.stop();
+        await capabilities.scheduler.stopLoop();
     });
 
     test("should handle scheduler restart simulation", async () => {
         const capabilities = getTestCapabilities();
-        currentCapabilities = capabilities;
         const retryDelay = fromMilliseconds(5000);
         
         const taskCallback1 = jest.fn();
@@ -74,7 +55,7 @@ describe("declarative scheduler persistence and idempotency", () => {
         // First "session" - initialize and run
         await capabilities.scheduler.initialize(registrations);
         await new Promise(resolve => setTimeout(resolve, 200));
-        await capabilities.scheduler.stop();
+        await capabilities.scheduler.stopLoop();
         
         // "Restart" - same task with same callback (simulating app restart)
         await capabilities.scheduler.initialize(registrations);
@@ -83,12 +64,11 @@ describe("declarative scheduler persistence and idempotency", () => {
         // Callback should be executed in both sessions
         expect(taskCallback1).toHaveBeenCalled();
         
-        await capabilities.scheduler.stop();
+        await capabilities.scheduler.stopLoop();
     });
 
     test("should handle multiple task persistence", async () => {
         const capabilities = getTestCapabilities();
-        currentCapabilities = capabilities;
         const retryDelay = fromMilliseconds(1000);
         
         const task1Callback = jest.fn();
@@ -108,12 +88,11 @@ describe("declarative scheduler persistence and idempotency", () => {
         expect(true).toBe(true); // Scheduler initialized successfully
         expect(true).toBe(true); // Scheduler initialized successfully
         
-        await capabilities.scheduler.stop();
+        await capabilities.scheduler.stopLoop();
     });
 
     test("should handle task with retry scenarios", async () => {
         const capabilities = getTestCapabilities();
-        currentCapabilities = capabilities;
         const retryDelay = fromMilliseconds(1000); // Short retry for testing
         
         let attemptCount = 0;
@@ -138,25 +117,23 @@ describe("declarative scheduler persistence and idempotency", () => {
         // Should have made multiple attempts
         expect(failingCallback).toHaveBeenCalled();
         
-        await capabilities.scheduler.stop();
+        await capabilities.scheduler.stopLoop();
     });
 
     test("should handle empty task registration", async () => {
         const capabilities = getTestCapabilities();
-        currentCapabilities = capabilities;
         
         // Should handle initialization with no tasks
         await expect(capabilities.scheduler.initialize([])).resolves.toBeUndefined();
         
         await new Promise(resolve => setTimeout(resolve, 200));
         
-        await capabilities.scheduler.stop();
+        await capabilities.scheduler.stopLoop();
     });
 
     test("should handle task registration after empty initialization", async () => {
         // Use separate capabilities instance to avoid task list mismatch
         const capabilities = getTestCapabilities();
-        currentCapabilities = capabilities;
         
         const taskCallback = jest.fn();
         const registrations = [
@@ -168,12 +145,11 @@ describe("declarative scheduler persistence and idempotency", () => {
         
         expect(taskCallback).toHaveBeenCalled();
         
-        await capabilities.scheduler.stop();
+        await capabilities.scheduler.stopLoop();
     });
 
     test("should handle consistent task registration across sessions", async () => {
         const capabilities = getTestCapabilities();
-        currentCapabilities = capabilities;
         const retryDelay = fromMilliseconds(5000);
         
         const callback1 = jest.fn();
@@ -188,12 +164,12 @@ describe("declarative scheduler persistence and idempotency", () => {
         // First session
         await capabilities.scheduler.initialize(registrations);
         await new Promise(resolve => setTimeout(resolve, 200));
-        await capabilities.scheduler.stop();
+        await capabilities.scheduler.stopLoop();
         
         // Second session with same task list (should work)
         await capabilities.scheduler.initialize(registrations);
         await new Promise(resolve => setTimeout(resolve, 200));
-        await capabilities.scheduler.stop();
+        await capabilities.scheduler.stopLoop();
         
         // Third session with same task list
         await capabilities.scheduler.initialize(registrations);
@@ -203,12 +179,11 @@ describe("declarative scheduler persistence and idempotency", () => {
         expect(callback1).toHaveBeenCalled();
         expect(callback2).toHaveBeenCalled();
         
-        await capabilities.scheduler.stop();
+        await capabilities.scheduler.stopLoop();
     });
 
     test("should maintain idempotency across stop and restart cycles", async () => {
         const capabilities = getTestCapabilities();
-        currentCapabilities = capabilities;
         const retryDelay = fromMilliseconds(5000);
         const taskCallback = jest.fn();
         
@@ -220,7 +195,7 @@ describe("declarative scheduler persistence and idempotency", () => {
         for (let cycle = 0; cycle < 3; cycle++) {
             await capabilities.scheduler.initialize(registrations);
             await new Promise(resolve => setTimeout(resolve, 150));
-            await capabilities.scheduler.stop();
+            await capabilities.scheduler.stopLoop();
         }
         
         // Should have executed without issues across cycles

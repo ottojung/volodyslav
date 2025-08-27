@@ -126,7 +126,7 @@ describe("schedule validation duplicate task names", () => {
             await expect(capabilities.scheduler.initialize(registrationsWithDifferentCase))
                 .resolves.toBeUndefined();
                 
-            await capabilities.scheduler.stop();
+            await capabilities.scheduler.stopLoop();
         });
 
         test("whitespace differences treated as different task names", async () => {
@@ -144,7 +144,7 @@ describe("schedule validation duplicate task names", () => {
             await expect(capabilities.scheduler.initialize(registrationsWithWhitespace))
                 .resolves.toBeUndefined();
                 
-            await capabilities.scheduler.stop();
+            await capabilities.scheduler.stopLoop();
         });
 
         test("exact duplicate detection - same name exactly", async () => {

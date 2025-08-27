@@ -19,26 +19,9 @@ function getTestCapabilities() {
 }
 
 describe("declarative scheduler state management robustness", () => {
-    // Global capabilities reference for cleanup
-    let currentCapabilities = null;
-    
-    afterEach(async () => {
-        // Ensure scheduler is always stopped, even if test fails
-        if (currentCapabilities && currentCapabilities.scheduler) {
-            try {
-                await currentCapabilities.scheduler.stop();
-            } catch (error) {
-                // Ignore errors during cleanup
-                console.warn('Cleanup warning: Failed to stop scheduler:', error.message);
-            }
-        }
-        currentCapabilities = null;
-    });
-
     describe("initialization edge cases", () => {
         test("should throw ScheduleDuplicateTaskError for duplicate task names in registration", async () => {
             const capabilities = getTestCapabilities();
-            currentCapabilities = capabilities;
             const retryDelay = fromMilliseconds(5000);
             const taskCallback = jest.fn();
             
@@ -55,7 +38,6 @@ describe("declarative scheduler state management robustness", () => {
 
         test("should handle invalid cron expressions gracefully", async () => {
             const capabilities = getTestCapabilities();
-            currentCapabilities = capabilities;
             const retryDelay = fromMilliseconds(5000);
             const taskCallback = jest.fn();
             
@@ -77,12 +59,11 @@ describe("declarative scheduler state management robustness", () => {
             // Either way should be ok - throwing or not throwing for invalid cron
             expect(typeof threwError).toBe('boolean');
             
-            await capabilities.scheduler.stop();
+            await capabilities.scheduler.stopLoop();
         });
 
         test("should handle extremely large retry delays", async () => {
             const capabilities = getTestCapabilities();
-            currentCapabilities = capabilities;
             const veryLargeDelay = fromMilliseconds(365 * 24 * 60 * 60 * 1000); // 1 year
             const taskCallback = jest.fn(() => {
                 throw new Error("Task failure");
@@ -100,12 +81,11 @@ describe("declarative scheduler state management robustness", () => {
             // Task should execute at least once
             expect(taskCallback).toHaveBeenCalled();
             
-            await capabilities.scheduler.stop();
+            await capabilities.scheduler.stopLoop();
         });
 
         test("should handle extremely short retry delays", async () => {
             const capabilities = getTestCapabilities();
-            currentCapabilities = capabilities;
             const veryShortDelay = fromMilliseconds(1); // 1ms
             let callCount = 0;
             const taskCallback = jest.fn(() => {
@@ -127,14 +107,13 @@ describe("declarative scheduler state management robustness", () => {
             // Task should execute multiple times due to short retry
             expect(taskCallback).toHaveBeenCalled();
             
-            await capabilities.scheduler.stop();
+            await capabilities.scheduler.stopLoop();
         });
     });
 
     describe("error resilience", () => {
         test("should handle callbacks that modify global state", async () => {
             const capabilities = getTestCapabilities();
-            currentCapabilities = capabilities;
             const retryDelay = fromMilliseconds(5000);
             
             let globalCounter = 0;
@@ -158,12 +137,11 @@ describe("declarative scheduler state management robustness", () => {
             // Cleanup
             delete global.testGlobalValue;
             
-            await capabilities.scheduler.stop();
+            await capabilities.scheduler.stopLoop();
         });
 
         test("should handle callbacks with memory leaks", async () => {
             const capabilities = getTestCapabilities();
-            currentCapabilities = capabilities;
             const retryDelay = fromMilliseconds(5000);
             
             let memoryAccumulator = [];
@@ -191,12 +169,11 @@ describe("declarative scheduler state management robustness", () => {
             // Cleanup
             memoryAccumulator = [];
             
-            await capabilities.scheduler.stop();
+            await capabilities.scheduler.stopLoop();
         });
 
         test("should handle callbacks that throw non-Error objects", async () => {
             const capabilities = getTestCapabilities();
-            currentCapabilities = capabilities;
             const retryDelay = fromMilliseconds(5000);
             
             let throwCount = 0;
@@ -226,14 +203,13 @@ describe("declarative scheduler state management robustness", () => {
             
             expect(weirdThrowingCallback).toHaveBeenCalled();
             
-            await capabilities.scheduler.stop();
+            await capabilities.scheduler.stopLoop();
         });
     });
 
     describe("scheduler lifecycle robustness", () => {
         test("should handle rapid start/stop cycles", async () => {
             const capabilities = getTestCapabilities();
-            currentCapabilities = capabilities;
             const retryDelay = fromMilliseconds(5000);
             const taskCallback = jest.fn();
             
@@ -245,7 +221,7 @@ describe("declarative scheduler state management robustness", () => {
             for (let i = 0; i < 3; i++) {
                 await capabilities.scheduler.initialize(registrations);
                 await new Promise(resolve => setTimeout(resolve, 10)); // Longer delay for execution
-                await capabilities.scheduler.stop();
+                await capabilities.scheduler.stopLoop();
             }
             
             // Should handle rapid cycles without crashing
@@ -255,7 +231,6 @@ describe("declarative scheduler state management robustness", () => {
 
         test("should handle concurrent initialization attempts", async () => {
             const capabilities = getTestCapabilities();
-            currentCapabilities = capabilities;
             const retryDelay = fromMilliseconds(5000);
             const taskCallback = jest.fn();
             
@@ -276,20 +251,18 @@ describe("declarative scheduler state management robustness", () => {
             
             expect(taskCallback).toHaveBeenCalled();
             
-            await capabilities.scheduler.stop();
+            await capabilities.scheduler.stopLoop();
         });
 
         test("should handle stop without initialization", async () => {
             const capabilities = getTestCapabilities();
-            currentCapabilities = capabilities;
             
             // Should handle stop call even if not initialized
-            await expect(capabilities.scheduler.stop()).resolves.not.toThrow();
+            await expect(capabilities.scheduler.stopLoop()).resolves.not.toThrow();
         });
 
         test("should handle multiple stop calls", async () => {
             const capabilities = getTestCapabilities();
-            currentCapabilities = capabilities;
             const retryDelay = fromMilliseconds(5000);
             const taskCallback = jest.fn();
             
@@ -300,9 +273,9 @@ describe("declarative scheduler state management robustness", () => {
             await capabilities.scheduler.initialize(registrations);
             
             // Multiple stop calls should be safe
-            await capabilities.scheduler.stop();
-            await capabilities.scheduler.stop();
-            await capabilities.scheduler.stop();
+            await capabilities.scheduler.stopLoop();
+            await capabilities.scheduler.stopLoop();
+            await capabilities.scheduler.stopLoop();
             
             // Should not throw errors
             expect(true).toBe(true);
@@ -312,7 +285,6 @@ describe("declarative scheduler state management robustness", () => {
     describe("edge case task patterns", () => {
         test("should handle many simultaneous tasks", async () => {
             const capabilities = getTestCapabilities();
-            currentCapabilities = capabilities;
             const retryDelay = fromMilliseconds(5000);
             
             // Create many simultaneous tasks (reduced for performance)
@@ -334,12 +306,11 @@ describe("declarative scheduler state management robustness", () => {
             const executedCount = callbacks.filter(cb => cb.mock.calls.length > 0).length;
             expect(executedCount).toBeGreaterThan(0);
             
-            await capabilities.scheduler.stop();
+            await capabilities.scheduler.stopLoop();
         }, 10000); // Increase timeout to 10 seconds
 
         test("should handle tasks with complex cron patterns", async () => {
             const capabilities = getTestCapabilities();
-            currentCapabilities = capabilities;
             const retryDelay = fromMilliseconds(5000);
             
             const callbacks = [];
@@ -366,7 +337,7 @@ describe("declarative scheduler state management robustness", () => {
             // Should have successfully scheduled all complex patterns
             expect(callbacks.length).toBe(complexPatterns.length);
             
-            await capabilities.scheduler.stop();
+            await capabilities.scheduler.stopLoop();
         });
     });
 });

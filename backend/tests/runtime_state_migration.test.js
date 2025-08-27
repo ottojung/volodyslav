@@ -55,7 +55,7 @@ describe("runtime state migration", () => {
             });
         });
         
-        await capabilities.scheduler.stop();
+        await capabilities.scheduler.stopLoop();
         
         // Allow cleanup time
         await new Promise(resolve => setTimeout(resolve, 50));

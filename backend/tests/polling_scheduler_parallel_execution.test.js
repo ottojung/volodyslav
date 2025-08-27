@@ -58,7 +58,7 @@ describe("declarative scheduler parallel execution", () => {
         const startTimeDiff = Math.abs(task1StartTime - task2StartTime);
         expect(startTimeDiff).toBeLessThan(100); // Should start within 100ms of each other
 
-        await capabilities.scheduler.stop();
+        await capabilities.scheduler.stopLoop();
     });
 
     test("should execute many tasks in parallel without limits", async () => {
@@ -97,7 +97,7 @@ describe("declarative scheduler parallel execution", () => {
         expect(concurrencyTask).toHaveBeenCalledTimes(4);
         expect(maxConcurrentExecutions).toBeGreaterThan(1); // Should have some concurrency
 
-        await capabilities.scheduler.stop();
+        await capabilities.scheduler.stopLoop();
     });
 
     test("should not block fast tasks when slow task is running", async () => {
@@ -133,7 +133,7 @@ describe("declarative scheduler parallel execution", () => {
         expect(slowTaskStarted).toBe(true);
         expect(fastTaskCompleted).toBe(true);
 
-        await capabilities.scheduler.stop();
+        await capabilities.scheduler.stopLoop();
     });
 
     test("should handle parallel task failures independently", async () => {
@@ -169,7 +169,7 @@ describe("declarative scheduler parallel execution", () => {
         expect(goodTask).toHaveBeenCalled();
         expect(badTask).toHaveBeenCalled();
 
-        await capabilities.scheduler.stop();
+        await capabilities.scheduler.stopLoop();
     });
 
     test("should handle many parallel tasks with retries", async () => {
@@ -225,6 +225,6 @@ describe("declarative scheduler parallel execution", () => {
         // Should have more total calls after retry attempts
         expect(totalCallsAfterRetry).toBeGreaterThan(totalCallsInitial);
 
-        await capabilities.scheduler.stop();
+        await capabilities.scheduler.stopLoop();
     });
 });

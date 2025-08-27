@@ -40,6 +40,6 @@ describe("missed cron catchup persistence", () => {
         // The specific catchup behavior is implementation-dependent
         // and may vary based on timing and scheduler state
         
-        await capabilities.scheduler.stop();
+        await capabilities.scheduler.stopLoop();
     });
 });

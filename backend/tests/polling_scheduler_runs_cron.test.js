@@ -36,7 +36,7 @@ describe("declarative scheduler cron expression validation", () => {
         await expect(capabilities.scheduler.initialize(registrations))
             .resolves.toBeUndefined();
             
-        await capabilities.scheduler.stop();
+        await capabilities.scheduler.stopLoop();
     });
 
     test("validates cron expressions are compatible with polling frequency", async () => {
@@ -52,7 +52,7 @@ describe("declarative scheduler cron expression validation", () => {
         await expect(capabilities.scheduler.initialize(validRegistrations))
             .resolves.toBeUndefined();
             
-        await capabilities.scheduler.stop();
+        await capabilities.scheduler.stopLoop();
     });
 });
 

@@ -34,7 +34,7 @@ describe("declarative scheduler duplicate task handling", () => {
         await expect(capabilities.scheduler.initialize(registrations))
             .resolves.toBeUndefined();
             
-        await capabilities.scheduler.stop();
+        await capabilities.scheduler.stopLoop();
     });
 
     test("throws ScheduleDuplicateTaskError for duplicate task names within registration set", async () => {

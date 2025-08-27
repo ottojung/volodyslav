@@ -31,7 +31,7 @@ describe("Startup Dependencies", () => {
         expect(res.status).toBe(200);
         expect(res.text).toBe("pong");
 
-        capabilities.scheduler.stop();
+        capabilities.scheduler.stopLoop();
     });
 
     it("throws if notifications are not available", async () => {
