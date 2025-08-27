@@ -4,7 +4,7 @@
  */
 
 const { makeDefault } = require('../../runtime_state_storage/structure');
-const { TaskAlreadyRegisteredError, TaskNotInRegistrationsError } = require('../new_errors');
+const { TaskNotInRegistrationsError } = require('../new_errors');
 
 // Task structure and serialization - simplified consolidated version
 /** @typedef {import('../../datetime').DateTime} DateTime */

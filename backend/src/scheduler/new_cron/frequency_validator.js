@@ -4,7 +4,7 @@
  */
 
 const { ScheduleFrequencyError } = require('../new_errors');
-const { parseCronExpression, getNextExecution } = require('./parser');
+const { parseCronExpression } = require('./parser');
 
 /**
  * Calculate the minimum theoretical interval between cron fires.

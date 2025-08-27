@@ -1,24 +1,22 @@
 /**
- * Clean scheduler module exports.
+ * Declarative scheduler module exports.
  * This module provides a static, idempotent scheduler that validates tasks
- * against persisted runtime state using the new clean architecture.
+ * against persisted runtime state.
+ * 
+ * The scheduler uses a purely declarative interface - no procedural APIs
+ * like start, stop, schedule, or cancel are exposed to external consumers.
  */
 
-const { make } = require("./new_scheduler_factory");
-const { 
-    isTaskListMismatchError,
-    ScheduleInvalidNameError,
-    ScheduleDuplicateTaskError,
-    isScheduleDuplicateTaskError,
-    InvalidCronExpressionError,
-    isInvalidCronExpressionError,
-} = require("./new_errors");
-
+const { make } = require("./scheduler_factory");
+const { isTaskListMismatchError } = require("./errors");
 const { 
     parseCronExpression, 
     getNextExecution,
     isCronExpression,
-} = require("./new_cron/parser");
+    isInvalidCronExpressionError,
+    InvalidCronExpressionError 
+} = require("./internal/parser");
+const { ScheduleInvalidNameError, ScheduleDuplicateTaskError, isScheduleDuplicateTaskError } = require("./internal/polling_scheduler_errors");
 
 /**
  * Validate a cron expression without creating a scheduler.
@@ -35,11 +33,11 @@ function validate(cronExpression) {
 }
 
 // Re-export types for external consumption
-/** @typedef {import('./new_types/scheduler_types').Scheduler} Scheduler */
-/** @typedef {import('./new_types/task_types').Registration} Registration */
-/** @typedef {import('./new_types/scheduler_types').TaskIdentity} TaskIdentity */
-/** @typedef {import('./new_types/scheduler_types').Initialize} Initialize */
-/** @typedef {import('./new_types/scheduler_types').Stop} Stop */
+/** @typedef {import('./types').Scheduler} Scheduler */
+/** @typedef {import('./types').Registration} Registration */
+/** @typedef {import('./types').TaskIdentity} TaskIdentity */
+/** @typedef {import('./types').Initialize} Initialize */
+/** @typedef {import('./types').Stop} Stop */
 
 module.exports = {
     make,

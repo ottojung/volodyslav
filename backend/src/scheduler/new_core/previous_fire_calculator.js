@@ -24,7 +24,7 @@ function findPreviousFire(parsedCron, now, dt, lastKnownFireTime) {
         currentMinute.setSeconds(0, 0);
 
         const currentDt = dt.fromEpochMs(currentMinute.getTime());
-        if (matchesCronExpression(parsedCron, currentDt)) {
+        if (matchesCronExpression(parsedCron, dt.toNativeDate(currentDt))) {
             return {
                 previousFire: currentDt,
                 newCacheTime: currentDt,
@@ -61,7 +61,7 @@ function findPreviousFire(parsedCron, now, dt, lastKnownFireTime) {
         let iterations = 0;
 
         while (current.getTime() >= stopTime && iterations < maxIterations) {
-            if (matchesCronExpression(parsedCron, current)) {
+            if (matchesCronExpression(parsedCron, dt.toNativeDate(current))) {
                 return {
                     previousFire: current,
                     newCacheTime: current,
