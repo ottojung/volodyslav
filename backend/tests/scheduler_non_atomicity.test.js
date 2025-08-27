@@ -1,7 +1,4 @@
-/**
- * Tests that expose non-atomicity issues in the scheduler.
- * These tests should fail due to race conditions in state persistence.
- */
+
 
 const { fromMilliseconds } = require("../src/time_duration");
 const { getMockedRootCapabilities } = require("./spies");
@@ -19,16 +16,12 @@ function getTestCapabilities() {
     return capabilities;
 }
 
-describe("scheduler non-atomicity exposure", () => {
+describe("scheduler atomicity testing", () => {
 
-    test("demonstrates map state corruption with direct manipulation", async () => {
+    test("attempt map state corruption with direct manipulation", async () => {
         const capabilities = getTestCapabilities();
         const timeControl = getDatetimeControl(capabilities);
         const retryDelay = fromMilliseconds(20000);
-
-        // This test directly demonstrates the problem: when multiple concurrent
-        // operations modify shared state and then persist it independently,
-        // the last write wins and earlier writes are lost
 
         let task1Finished = false;
         let task2Finished = false;
@@ -80,57 +73,47 @@ describe("scheduler non-atomicity exposure", () => {
             attemptCount: tasksWithAttempt.length
         }, "Final state verification");
 
-        // With the current implementation, due to race conditions in state persistence,
-        // some task execution states might be lost
-        console.log(`All 3 tasks executed successfully`);
-        console.log(`Final state shows ${tasksWithSuccess.length} tasks with success times`);
-        console.log(`Final state shows ${tasksWithAttempt.length} tasks with attempt times`);
-
-        // This documents the race condition - ideally all 3 tasks should have their states persisted
         expect(finalState.tasks).toHaveLength(3);
 
         await capabilities.scheduler.stop();
     });
 
-    test("creates controlled race condition in task map serialization", async () => {
+    test("attempts to create a controlled race condition in task map serialization", async () => {
         const capabilities = getTestCapabilities();
         const timeControl = getDatetimeControl(capabilities);
         const retryDelay = fromMilliseconds(25000);
 
-        // This test creates a very controlled scenario to expose the race condition
-        // by precisely timing when tasks complete relative to when state is persisted
-
         const taskExecutor = require("../src/cron/scheduling/task_executor");
         const originalMakeTaskExecutor = taskExecutor.makeTaskExecutor;
-        
+
         let executorCallCount = 0;
         const executionTimeline = [];
 
         // Mock the task executor to control timing precisely
         taskExecutor.makeTaskExecutor = jest.fn().mockImplementation((caps, persistStateFn) => {
             const originalExecutor = originalMakeTaskExecutor(caps, persistStateFn);
-            
+
             return {
                 ...originalExecutor,
                 async runTask(task, mode) {
                     executorCallCount++;
                     const callId = executorCallCount;
-                    
-                    executionTimeline.push({ 
-                        event: 'task_start', 
-                        callId, 
-                        taskName: task.name, 
-                        timestamp: Date.now() 
+
+                    executionTimeline.push({
+                        event: 'task_start',
+                        callId,
+                        taskName: task.name,
+                        timestamp: Date.now()
                     });
-                    
+
                     // Execute the original task
                     await originalExecutor.runTask(task, mode);
-                    
-                    executionTimeline.push({ 
-                        event: 'task_complete', 
-                        callId, 
-                        taskName: task.name, 
-                        timestamp: Date.now() 
+
+                    executionTimeline.push({
+                        event: 'task_complete',
+                        callId,
+                        taskName: task.name,
+                        timestamp: Date.now()
                     });
                 }
             };
@@ -168,19 +151,6 @@ describe("scheduler non-atomicity exposure", () => {
 
             // Analyze the execution timeline to show concurrency
             capabilities.logger.logDebug({ executionTimeline }, "Task execution timeline");
-            
-            console.log("Task execution timeline:");
-            executionTimeline.forEach(event => {
-                console.log(`  ${event.event}: ${event.taskName} (call ${event.callId})`);
-            });
-
-            // Check final state
-            const finalState = await capabilities.state.transaction(async (storage) => {
-                return await storage.getCurrentState();
-            });
-
-            const successfulTasks = finalState.tasks.filter(t => t.lastSuccessTime);
-            console.log(`Final result: ${successfulTasks.length} out of 2 tasks have persisted success states`);
 
             await capabilities.scheduler.stop();
         } finally {
