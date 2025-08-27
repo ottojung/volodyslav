@@ -52,7 +52,7 @@ describe("declarative scheduler re-entrancy protection", () => {
         expect(taskStartCount).toBeGreaterThanOrEqual(1);
         expect(taskEndCount).toBeGreaterThanOrEqual(1);
         
-        await capabilities.scheduler.stopLoop();
+        await capabilities.scheduler.stop();
     });
 
     test("should allow multiple initialize calls after completion", async () => {
@@ -86,7 +86,7 @@ describe("declarative scheduler re-entrancy protection", () => {
         // Task should not execute again on idempotent call
         expect(taskExecutionCount).toBe(1);
         
-        await capabilities.scheduler.stopLoop();
+        await capabilities.scheduler.stop();
     });
 
     test("should handle errors during task execution gracefully", async () => {
@@ -119,7 +119,7 @@ describe("declarative scheduler re-entrancy protection", () => {
         // Should allow subsequent initialize calls despite previous error
         await expect(capabilities.scheduler.initialize(registrations)).resolves.toBeUndefined();
         
-        await capabilities.scheduler.stopLoop();
+        await capabilities.scheduler.stop();
     });
 
     test("should handle task validation errors properly", async () => {
@@ -143,6 +143,6 @@ describe("declarative scheduler re-entrancy protection", () => {
         await expect(capabilities.scheduler.initialize(differentRegistrations))
             .rejects.toThrow(/Task list mismatch detected/);
         
-        await capabilities.scheduler.stopLoop();
+        await capabilities.scheduler.stop();
     });
 });

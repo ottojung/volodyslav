@@ -36,7 +36,7 @@ describe("declarative scheduler task execution behavior", () => {
         await new Promise(resolve => setTimeout(resolve, 200));
         expect(callback).toHaveBeenCalled();
         
-        await capabilities.scheduler.stopLoop();
+        await capabilities.scheduler.stop();
     });
 
     test("should handle different cron schedule frequencies", async () => {
@@ -59,7 +59,7 @@ describe("declarative scheduler task execution behavior", () => {
         await new Promise(resolve => setTimeout(resolve, 200));
         expect(minuteCallback).toHaveBeenCalled();
         
-        await capabilities.scheduler.stopLoop();
+        await capabilities.scheduler.stop();
     });
 
     test("should handle task execution with retries correctly", async () => {
@@ -103,7 +103,7 @@ describe("declarative scheduler task execution behavior", () => {
             expect(task.lastFailureTime).toBeTruthy(); // Failure should be recorded
         });
         
-        await capabilities.scheduler.stopLoop();
+        await capabilities.scheduler.stop();
     });
 
     test("should handle special date schedules like leap year", async () => {
@@ -124,7 +124,7 @@ describe("declarative scheduler task execution behavior", () => {
         // Task should not run (not leap day)
         expect(true).toBe(true); // Scheduler initialized successfully
         
-        await capabilities.scheduler.stopLoop();
+        await capabilities.scheduler.stop();
     });
 
     test("should handle task persistence and recovery", async () => {
@@ -143,14 +143,14 @@ describe("declarative scheduler task execution behavior", () => {
         await new Promise(resolve => setTimeout(resolve, 200));
         expect(callback).toHaveBeenCalled();
         
-        await capabilities.scheduler.stopLoop();
+        await capabilities.scheduler.stop();
         
         // Second initialization with same task (should be idempotent)
         await capabilities.scheduler.initialize(registrations);
         
         await new Promise(resolve => setTimeout(resolve, 200));
         
-        await capabilities.scheduler.stopLoop();
+        await capabilities.scheduler.stop();
     });
 
     test("should handle multiple task initialization correctly", async () => {
@@ -175,7 +175,7 @@ describe("declarative scheduler task execution behavior", () => {
         // At least the minute task should execute
         expect(task1).toHaveBeenCalled();
         
-        await capabilities.scheduler.stopLoop();
+        await capabilities.scheduler.stop();
     });
 
     test("should handle scheduler restart and state consistency", async () => {
@@ -197,7 +197,7 @@ describe("declarative scheduler task execution behavior", () => {
         await new Promise(resolve => setTimeout(resolve, 200));
         expect(executionCount).toBe(1);
         
-        await capabilities.scheduler.stopLoop();
+        await capabilities.scheduler.stop();
         
         // Restart with new instance (simulating application restart)
         await capabilities.scheduler.initialize(registrations);
@@ -207,7 +207,7 @@ describe("declarative scheduler task execution behavior", () => {
         // Should maintain consistency and not duplicate executions inappropriately
         expect(callback).toHaveBeenCalled();
         
-        await capabilities.scheduler.stopLoop();
+        await capabilities.scheduler.stop();
     });
 
     test("should efficiently handle various cron expressions", async () => {
@@ -230,6 +230,6 @@ describe("declarative scheduler task execution behavior", () => {
         
         await new Promise(resolve => setTimeout(resolve, 200));
         
-        await capabilities.scheduler.stopLoop();
+        await capabilities.scheduler.stop();
     });
 });

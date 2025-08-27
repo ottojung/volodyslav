@@ -31,7 +31,7 @@ describe("schedule persist roundtrip", () => {
         // Allow sufficient time for persistence to complete
         await new Promise(resolve => setTimeout(resolve, 200));
         
-        await capabilities.scheduler.stopLoop();
+        await capabilities.scheduler.stop();
         
         // Allow time for cleanup  
         await new Promise(resolve => setTimeout(resolve, 200));
@@ -59,7 +59,7 @@ describe("schedule persist roundtrip", () => {
             });
         });
         
-        await capabilities.scheduler.stopLoop();
+        await capabilities.scheduler.stop();
         
         // Allow cleanup time
         await new Promise(resolve => setTimeout(resolve, 100));

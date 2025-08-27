@@ -47,7 +47,7 @@ describe("declarative scheduler frequency validation", () => {
         await expect(capabilities.scheduler.initialize(registrations))
             .resolves.toBeUndefined();
             
-        await capabilities.scheduler.stopLoop();
+        await capabilities.scheduler.stop();
     });
 
     test("should allow task frequency lower than polling frequency", async () => {
@@ -63,7 +63,7 @@ describe("declarative scheduler frequency validation", () => {
         await expect(capabilities.scheduler.initialize(registrations))
             .resolves.toBeUndefined();
             
-        await capabilities.scheduler.stopLoop();
+        await capabilities.scheduler.stop();
     });
 
     test("should validate frequency for complex cron expressions", async () => {
@@ -89,7 +89,7 @@ describe("declarative scheduler frequency validation", () => {
         await expect(capabilities2.scheduler.initialize(validRegistrations))
             .resolves.toBeUndefined();
             
-        await capabilities2.scheduler.stopLoop();
+        await capabilities2.scheduler.stop();
     });
 
     test("should provide clear error message with frequency details", async () => {

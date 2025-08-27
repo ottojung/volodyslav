@@ -36,7 +36,7 @@ describe("declarative scheduler algorithm robustness", () => {
         // Scheduler should have processed the registration without error
         expect(typeof taskCallback).toBe('function');
 
-        await capabilities.scheduler.stopLoop();
+        await capabilities.scheduler.stop();
     });
 
     test("should handle frequent task scheduling without issues", async () => {
@@ -54,7 +54,7 @@ describe("declarative scheduler algorithm robustness", () => {
         await new Promise(resolve => setTimeout(resolve, 10));
         expect(taskCallback).toHaveBeenCalled();
 
-        await capabilities.scheduler.stopLoop();
+        await capabilities.scheduler.stop();
     });
 
     test("should handle multiple different cron schedules", async () => {
@@ -79,7 +79,7 @@ describe("declarative scheduler algorithm robustness", () => {
         // At least the minute task should execute
         expect(minuteTask).toHaveBeenCalled();
 
-        await capabilities.scheduler.stopLoop();
+        await capabilities.scheduler.stop();
     });
 
     test("should handle retry timing precision correctly", async () => {
@@ -114,7 +114,7 @@ describe("declarative scheduler algorithm robustness", () => {
         await new Promise(resolve => setTimeout(resolve, 10)); // Wait for polling
         expect(precisionCallback).toHaveBeenCalledTimes(2);
 
-        await capabilities.scheduler.stopLoop();
+        await capabilities.scheduler.stop();
     });
 
     test("should handle complex cron expressions gracefully", async () => {
@@ -135,7 +135,7 @@ describe("declarative scheduler algorithm robustness", () => {
         // The task should be scheduled without errors
         expect(typeof taskCallback).toBe('function');
 
-        await capabilities.scheduler.stopLoop();
+        await capabilities.scheduler.stop();
     });
 
     test("should handle multiple tasks with different schedules and retries", async () => {
@@ -159,7 +159,7 @@ describe("declarative scheduler algorithm robustness", () => {
         // At least the minute task should execute
         expect(task1).toHaveBeenCalled();
 
-        await capabilities.scheduler.stopLoop();
+        await capabilities.scheduler.stop();
     });
 
     test("should handle error propagation gracefully", async () => {
@@ -185,7 +185,7 @@ describe("declarative scheduler algorithm robustness", () => {
         expect(badTask).toHaveBeenCalled();
         expect(goodTask).toHaveBeenCalled();
 
-        await capabilities.scheduler.stopLoop();
+        await capabilities.scheduler.stop();
     });
 
     test("should reject invalid cron expressions", async () => {
@@ -223,6 +223,6 @@ describe("declarative scheduler algorithm robustness", () => {
         // Should only execute once despite multiple initializations
         expect(taskCallback).toHaveBeenCalledTimes(1);
 
-        await capabilities.scheduler.stopLoop();
+        await capabilities.scheduler.stop();
     });
 });

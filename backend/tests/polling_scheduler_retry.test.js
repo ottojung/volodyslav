@@ -33,7 +33,7 @@ describe("declarative scheduler retry configuration", () => {
         await expect(capabilities.scheduler.initialize(registrations))
             .resolves.toBeUndefined();
             
-        await capabilities.scheduler.stopLoop();
+        await capabilities.scheduler.stop();
     });
 
     test("handles zero retry delay configuration", async () => {
@@ -48,7 +48,7 @@ describe("declarative scheduler retry configuration", () => {
         await expect(capabilities.scheduler.initialize(registrations))
             .resolves.toBeUndefined();
             
-        await capabilities.scheduler.stopLoop();
+        await capabilities.scheduler.stop();
     });
 });
 

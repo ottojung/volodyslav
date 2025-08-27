@@ -59,7 +59,7 @@ describe("declarative scheduler state management robustness", () => {
             // Either way should be ok - throwing or not throwing for invalid cron
             expect(typeof threwError).toBe('boolean');
             
-            await capabilities.scheduler.stopLoop();
+            await capabilities.scheduler.stop();
         });
 
         test("should handle extremely large retry delays", async () => {
@@ -81,7 +81,7 @@ describe("declarative scheduler state management robustness", () => {
             // Task should execute at least once
             expect(taskCallback).toHaveBeenCalled();
             
-            await capabilities.scheduler.stopLoop();
+            await capabilities.scheduler.stop();
         });
 
         test("should handle extremely short retry delays", async () => {
@@ -107,7 +107,7 @@ describe("declarative scheduler state management robustness", () => {
             // Task should execute multiple times due to short retry
             expect(taskCallback).toHaveBeenCalled();
             
-            await capabilities.scheduler.stopLoop();
+            await capabilities.scheduler.stop();
         });
     });
 
@@ -137,7 +137,7 @@ describe("declarative scheduler state management robustness", () => {
             // Cleanup
             delete global.testGlobalValue;
             
-            await capabilities.scheduler.stopLoop();
+            await capabilities.scheduler.stop();
         });
 
         test("should handle callbacks with memory leaks", async () => {
@@ -169,7 +169,7 @@ describe("declarative scheduler state management robustness", () => {
             // Cleanup
             memoryAccumulator = [];
             
-            await capabilities.scheduler.stopLoop();
+            await capabilities.scheduler.stop();
         });
 
         test("should handle callbacks that throw non-Error objects", async () => {
@@ -203,7 +203,7 @@ describe("declarative scheduler state management robustness", () => {
             
             expect(weirdThrowingCallback).toHaveBeenCalled();
             
-            await capabilities.scheduler.stopLoop();
+            await capabilities.scheduler.stop();
         });
     });
 
@@ -221,7 +221,7 @@ describe("declarative scheduler state management robustness", () => {
             for (let i = 0; i < 3; i++) {
                 await capabilities.scheduler.initialize(registrations);
                 await new Promise(resolve => setTimeout(resolve, 10)); // Longer delay for execution
-                await capabilities.scheduler.stopLoop();
+                await capabilities.scheduler.stop();
             }
             
             // Should handle rapid cycles without crashing
@@ -251,14 +251,14 @@ describe("declarative scheduler state management robustness", () => {
             
             expect(taskCallback).toHaveBeenCalled();
             
-            await capabilities.scheduler.stopLoop();
+            await capabilities.scheduler.stop();
         });
 
         test("should handle stop without initialization", async () => {
             const capabilities = getTestCapabilities();
             
             // Should handle stop call even if not initialized
-            await expect(capabilities.scheduler.stopLoop()).resolves.not.toThrow();
+            await expect(capabilities.scheduler.stop()).resolves.not.toThrow();
         });
 
         test("should handle multiple stop calls", async () => {
@@ -273,9 +273,9 @@ describe("declarative scheduler state management robustness", () => {
             await capabilities.scheduler.initialize(registrations);
             
             // Multiple stop calls should be safe
-            await capabilities.scheduler.stopLoop();
-            await capabilities.scheduler.stopLoop();
-            await capabilities.scheduler.stopLoop();
+            await capabilities.scheduler.stop();
+            await capabilities.scheduler.stop();
+            await capabilities.scheduler.stop();
             
             // Should not throw errors
             expect(true).toBe(true);
@@ -306,7 +306,7 @@ describe("declarative scheduler state management robustness", () => {
             const executedCount = callbacks.filter(cb => cb.mock.calls.length > 0).length;
             expect(executedCount).toBeGreaterThan(0);
             
-            await capabilities.scheduler.stopLoop();
+            await capabilities.scheduler.stop();
         }, 10000); // Increase timeout to 10 seconds
 
         test("should handle tasks with complex cron patterns", async () => {
@@ -337,7 +337,7 @@ describe("declarative scheduler state management robustness", () => {
             // Should have successfully scheduled all complex patterns
             expect(callbacks.length).toBe(complexPatterns.length);
             
-            await capabilities.scheduler.stopLoop();
+            await capabilities.scheduler.stop();
         });
     });
 });

@@ -43,7 +43,7 @@ describe("declarative scheduler precedence logic verification", () => {
         
         expect(task).toHaveBeenCalled();
         
-        await capabilities.scheduler.stopLoop();
+        await capabilities.scheduler.stop();
     });
 
     test("should handle different cron schedules correctly", async () => {
@@ -68,7 +68,7 @@ describe("declarative scheduler precedence logic verification", () => {
         
         expect(task).toHaveBeenCalled();
         
-        await capabilities.scheduler.stopLoop();
+        await capabilities.scheduler.stop();
     });
 
     test("should handle multiple initialize calls at the same time consistently", async () => {
@@ -94,6 +94,6 @@ describe("declarative scheduler precedence logic verification", () => {
         // The key test is that multiple initialize calls don't cause problems
         expect(task.mock.calls.length).toBeGreaterThanOrEqual(0); // May or may not execute immediately
         
-        await capabilities.scheduler.stopLoop();
+        await capabilities.scheduler.stop();
     });
 });
