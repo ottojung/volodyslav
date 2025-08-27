@@ -13,16 +13,19 @@ class CronExpressionClass {
     __brand = undefined; // nominal typing brand
 
     /**
+     * @param {string} original
      * @param {number[]} minute
      * @param {number[]} hour
      * @param {number[]} day
      * @param {number[]} month
      * @param {number[]} weekday
      */
-    constructor(minute, hour, day, month, weekday) {
+    constructor(original, minute, hour, day, month, weekday) {
         if (this.__brand !== undefined) {
             throw new Error("CronExpression is a nominal type");
         }
+
+        this.original = original;
         this.minute = minute;
         this.hour = hour;
         this.day = day;
@@ -31,21 +34,10 @@ class CronExpressionClass {
     }
 
     /**
-     * @returns {string}
-     */
-    unparse() {
-        return `${this.minute.join(",")} ${this.hour.join(",")} ${this.day.join(",")} ${this.month.join(",")} ${this.weekday.join(",")}`;
-    }
-
-    /**
-     * @param {unknown} other
+     * @param {CronExpression} other
      * @returns {boolean}
      */
-    equal(other) {
-        if (!(other instanceof CronExpressionClass)) {
-            return false;
-        }
-
+    equivalent(other) {
         return (
             this.minute.length === other.minute.length &&
             this.hour.length === other.hour.length &&
@@ -117,7 +109,7 @@ function parseCronExpression(expression) {
         const month = parseField(monthStr, FIELD_CONFIGS.month);
         const weekday = parseField(weekdayStr, FIELD_CONFIGS.weekday);
 
-        return new CronExpressionClass(minute, hour, day, month, weekday);
+        return new CronExpressionClass(expression, minute, hour, day, month, weekday);
     } catch (error) {
         const fieldStrings = [minuteStr, hourStr, dayStr, monthStr, weekdayStr];
         const fieldIndex = fieldStrings.findIndex((field, index) => {

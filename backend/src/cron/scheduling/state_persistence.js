@@ -88,7 +88,7 @@ async function mutateTasks(capabilities, registrations, transformation) {
                 for (const registration of registrations.values()) {
                     ret.tasks.push({
                         name: registration.name,
-                        cronExpression: registration.parsedCron.unparse(),
+                        cronExpression: registration.parsedCron.original,
                         retryDelayMs: registration.retryDelay.toMilliseconds(),
                     });
                 }
