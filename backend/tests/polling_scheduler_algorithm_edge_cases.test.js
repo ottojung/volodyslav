@@ -193,14 +193,19 @@ describe("declarative scheduler algorithm robustness", () => {
         const retryDelay = fromMilliseconds(5000);
         const taskCallback = jest.fn();
 
-        const registrations = [
-            ["invalid-cron", "invalid cron expression", taskCallback, retryDelay]
-        ];
+        try {
+            const registrations = [
+                ["invalid-cron", "invalid cron expression", taskCallback, retryDelay]
+            ];
 
-        // Should throw for invalid cron expression
-        await expect(
-            capabilities.scheduler.initialize(registrations)
-        ).rejects.toThrow();
+            // Should throw for invalid cron expression
+            await expect(
+                capabilities.scheduler.initialize(registrations)
+            ).rejects.toThrow();
+        } finally {
+            // Ensure cleanup even if initialization fails
+            await capabilities.scheduler.stop();
+        }
     });
 
     test("should handle idempotent initialization correctly", async () => {

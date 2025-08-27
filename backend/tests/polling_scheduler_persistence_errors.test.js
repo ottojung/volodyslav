@@ -24,9 +24,7 @@ describe("declarative scheduler persistence and error handling", () => {
         // Don't use fake timers - let the scheduler run with real timing
     });
 
-    afterEach(() => {
-        // No timer cleanup needed
-    });
+
 
     test("should handle task execution errors gracefully", async () => {
         const capabilities = getTestCapabilities();
@@ -237,7 +235,7 @@ describe("declarative scheduler persistence and error handling", () => {
         // Tasks should be schedulable regardless of their scheduled times (test with separate instance)
         await expect(capabilities2.scheduler.initialize(registrations)).resolves.toBeUndefined();
 
-        await capabilities1.scheduler.stop(capabilities1);
-        await capabilities2.scheduler.stop(capabilities2);
+        await capabilities1.scheduler.stop();
+        await capabilities2.scheduler.stop();
     });
 });

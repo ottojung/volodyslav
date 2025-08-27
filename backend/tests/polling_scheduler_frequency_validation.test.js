@@ -25,13 +25,18 @@ describe("declarative scheduler frequency validation", () => {
         const retryDelay = fromMilliseconds(5000);
         const taskCallback = jest.fn();
         
-        // Try to initialize with task that runs every minute (higher frequency than 10-minute polling interval)
-        const registrations = [
-            ["high-freq-task", "* * * * *", taskCallback, retryDelay]
-        ];
-        
-        await expect(capabilities.scheduler.initialize(registrations))
-            .rejects.toThrow(/frequency.*higher.*polling/i);
+        try {
+            // Try to initialize with task that runs every minute (higher frequency than 10-minute polling interval)
+            const registrations = [
+                ["high-freq-task", "* * * * *", taskCallback, retryDelay]
+            ];
+            
+            await expect(capabilities.scheduler.initialize(registrations))
+                .rejects.toThrow(/frequency.*higher.*polling/i);
+        } finally {
+            // Ensure cleanup even if initialization fails
+            await capabilities.scheduler.stop();
+        }
     });
 
     test("should allow task frequency equal to polling frequency", async () => {
@@ -73,23 +78,27 @@ describe("declarative scheduler frequency validation", () => {
         const retryDelay = fromMilliseconds(5000);
         const taskCallback = jest.fn();
         
-        // Try to initialize with task that runs every 5 minutes (higher frequency than 10-minute polling)
-        const invalidRegistrations = [
-            ["complex-high-freq", "*/5 * * * *", taskCallback, retryDelay]
-        ];
-        
-        await expect(capabilities1.scheduler.initialize(invalidRegistrations))
-            .rejects.toThrow(/frequency.*higher.*polling/i);
+        try {
+            // Try to initialize with task that runs every 5 minutes (higher frequency than 10-minute polling)
+            const invalidRegistrations = [
+                ["complex-high-freq", "*/5 * * * *", taskCallback, retryDelay]
+            ];
             
-        // Initialize with task that runs every 2 hours (lower frequency than 10-minute polling)
-        const validRegistrations = [
-            ["complex-low-freq", "0 */2 * * *", taskCallback, retryDelay]
-        ];
-        
-        await expect(capabilities2.scheduler.initialize(validRegistrations))
-            .resolves.toBeUndefined();
+            await expect(capabilities1.scheduler.initialize(invalidRegistrations))
+                .rejects.toThrow(/frequency.*higher.*polling/i);
+                
+            // Initialize with task that runs every 2 hours (lower frequency than 10-minute polling)
+            const validRegistrations = [
+                ["complex-low-freq", "0 */2 * * *", taskCallback, retryDelay]
+            ];
             
-        await capabilities2.scheduler.stop();
+            await expect(capabilities2.scheduler.initialize(validRegistrations))
+                .resolves.toBeUndefined();
+        } finally {
+            // Ensure cleanup for both capabilities instances
+            await capabilities1.scheduler.stop();
+            await capabilities2.scheduler.stop();
+        }
     });
 
     test("should provide clear error message with frequency details", async () => {
@@ -98,15 +107,21 @@ describe("declarative scheduler frequency validation", () => {
         const retryDelay = fromMilliseconds(5000);
         const taskCallback = jest.fn();
         
-        // Try to initialize with task that runs every minute (higher frequency than 10-minute polling interval)
-        const registrations = [
-            ["detailed-error-test", "* * * * *", taskCallback, retryDelay]
-        ];
-        
-        await expect(capabilities1.scheduler.initialize(registrations))
-            .rejects.toThrow(/task.*frequency.*1.*minute/i);
-        
-        await expect(capabilities2.scheduler.initialize(registrations))
-            .rejects.toThrow(/polling.*frequency.*10.*minute/i);
+        try {
+            // Try to initialize with task that runs every minute (higher frequency than 10-minute polling interval)
+            const registrations = [
+                ["detailed-error-test", "* * * * *", taskCallback, retryDelay]
+            ];
+            
+            await expect(capabilities1.scheduler.initialize(registrations))
+                .rejects.toThrow(/task.*frequency.*1.*minute/i);
+            
+            await expect(capabilities2.scheduler.initialize(registrations))
+                .rejects.toThrow(/polling.*frequency.*10.*minute/i);
+        } finally {
+            // Ensure cleanup for both capabilities instances
+            await capabilities1.scheduler.stop();
+            await capabilities2.scheduler.stop();
+        }
     });
 });

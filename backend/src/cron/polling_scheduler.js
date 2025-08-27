@@ -57,6 +57,9 @@ function makePollingScheduler(capabilities, registrations) {
                     capabilities.logger.logError({ errorMessage: message }, `Unexpected poll error: ${message}`);
                 }
             }, module.exports.POLL_INTERVAL_MS);
+            
+            // Allow Node.js to exit gracefully if this is the only remaining timer
+            interval.unref();
         }
     }
 
