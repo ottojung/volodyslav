@@ -99,7 +99,6 @@ function makePollingScheduler(capabilities, registrations) {
 
                     if (isRunning(task)) {
                         skippedRunning++;
-                        console.log(`Task ${taskName} is running, skipping (lastAttempt: ${task.lastAttemptTime ? dt.toNativeDate(task.lastAttemptTime).toISOString() : 'undefined'}, lastSuccess: ${task.lastSuccessTime ? dt.toNativeDate(task.lastSuccessTime).toISOString() : 'undefined'}, lastFailure: ${task.lastFailureTime ? dt.toNativeDate(task.lastFailureTime).toISOString() : 'undefined'})`);
                         capabilities.logger.logDebug({ name: taskName, reason: "running" }, "TaskSkip");
                         continue;
                     }
