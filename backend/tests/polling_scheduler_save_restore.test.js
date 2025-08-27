@@ -39,7 +39,7 @@ describe("declarative scheduler persistence and idempotency", () => {
         // Task should execute normally despite multiple initializations
         expect(taskCallback).toHaveBeenCalled();
         
-        await capabilities.scheduler.stop(capabilities);
+        await capabilities.scheduler.stop();
     });
 
     test("should handle scheduler restart simulation", async () => {
@@ -55,7 +55,7 @@ describe("declarative scheduler persistence and idempotency", () => {
         // First "session" - initialize and run
         await capabilities.scheduler.initialize(registrations);
         await new Promise(resolve => setTimeout(resolve, 200));
-        await capabilities.scheduler.stop(capabilities);
+        await capabilities.scheduler.stop();
         
         // "Restart" - same task with same callback (simulating app restart)
         await capabilities.scheduler.initialize(registrations);
@@ -64,7 +64,7 @@ describe("declarative scheduler persistence and idempotency", () => {
         // Callback should be executed in both sessions
         expect(taskCallback1).toHaveBeenCalled();
         
-        await capabilities.scheduler.stop(capabilities);
+        await capabilities.scheduler.stop();
     });
 
     test("should handle multiple task persistence", async () => {
@@ -88,7 +88,7 @@ describe("declarative scheduler persistence and idempotency", () => {
         expect(true).toBe(true); // Scheduler initialized successfully
         expect(true).toBe(true); // Scheduler initialized successfully
         
-        await capabilities.scheduler.stop(capabilities);
+        await capabilities.scheduler.stop();
     });
 
     test("should handle task with retry scenarios", async () => {
@@ -117,7 +117,7 @@ describe("declarative scheduler persistence and idempotency", () => {
         // Should have made multiple attempts
         expect(failingCallback).toHaveBeenCalled();
         
-        await capabilities.scheduler.stop(capabilities);
+        await capabilities.scheduler.stop();
     });
 
     test("should handle empty task registration", async () => {
@@ -128,7 +128,7 @@ describe("declarative scheduler persistence and idempotency", () => {
         
         await new Promise(resolve => setTimeout(resolve, 200));
         
-        await capabilities.scheduler.stop(capabilities);
+        await capabilities.scheduler.stop();
     });
 
     test("should handle task registration after empty initialization", async () => {
@@ -145,7 +145,7 @@ describe("declarative scheduler persistence and idempotency", () => {
         
         expect(taskCallback).toHaveBeenCalled();
         
-        await capabilities.scheduler.stop(capabilities);
+        await capabilities.scheduler.stop();
     });
 
     test("should handle consistent task registration across sessions", async () => {
@@ -164,12 +164,12 @@ describe("declarative scheduler persistence and idempotency", () => {
         // First session
         await capabilities.scheduler.initialize(registrations);
         await new Promise(resolve => setTimeout(resolve, 200));
-        await capabilities.scheduler.stop(capabilities);
+        await capabilities.scheduler.stop();
         
         // Second session with same task list (should work)
         await capabilities.scheduler.initialize(registrations);
         await new Promise(resolve => setTimeout(resolve, 200));
-        await capabilities.scheduler.stop(capabilities);
+        await capabilities.scheduler.stop();
         
         // Third session with same task list
         await capabilities.scheduler.initialize(registrations);
@@ -179,7 +179,7 @@ describe("declarative scheduler persistence and idempotency", () => {
         expect(callback1).toHaveBeenCalled();
         expect(callback2).toHaveBeenCalled();
         
-        await capabilities.scheduler.stop(capabilities);
+        await capabilities.scheduler.stop();
     });
 
     test("should maintain idempotency across stop and restart cycles", async () => {
@@ -195,7 +195,7 @@ describe("declarative scheduler persistence and idempotency", () => {
         for (let cycle = 0; cycle < 3; cycle++) {
             await capabilities.scheduler.initialize(registrations);
             await new Promise(resolve => setTimeout(resolve, 150));
-            await capabilities.scheduler.stop(capabilities);
+            await capabilities.scheduler.stop();
         }
         
         // Should have executed without issues across cycles

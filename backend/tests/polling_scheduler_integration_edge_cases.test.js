@@ -45,7 +45,7 @@ describe("declarative scheduler integration and system edge cases", () => {
             // Backup should not run yet (not at 2 AM)
             expect(true).toBe(true); // Scheduler initialized successfully
 
-            await capabilities.scheduler.stop(capabilities);
+            await capabilities.scheduler.stop();
         });
 
         test("should handle periodic health check scenario", async () => {
@@ -74,7 +74,7 @@ describe("declarative scheduler integration and system edge cases", () => {
             // Health check should not run yet (every 2 minutes timing)
             expect(true).toBe(true); // Scheduler initialized successfully
 
-            await capabilities.scheduler.stop(capabilities);
+            await capabilities.scheduler.stop();
         });
 
         test("should handle log rotation scenario", async () => {
@@ -103,7 +103,7 @@ describe("declarative scheduler integration and system edge cases", () => {
             // Log rotation should not run yet (hourly at top of hour)
             expect(true).toBe(true); // Scheduler initialized successfully
 
-            await capabilities.scheduler.stop(capabilities);
+            await capabilities.scheduler.stop();
         });
     });
 
@@ -134,7 +134,7 @@ describe("declarative scheduler integration and system edge cases", () => {
             // Should have attempted execution
             expect(networkTaskCallback).toHaveBeenCalled();
 
-            await capabilities.scheduler.stop(capabilities);
+            await capabilities.scheduler.stop();
         });
 
         test("should handle filesystem operations", async () => {
@@ -162,7 +162,7 @@ describe("declarative scheduler integration and system edge cases", () => {
 
             expect(fileTaskCallback).toHaveBeenCalled();
 
-            await capabilities.scheduler.stop(capabilities);
+            await capabilities.scheduler.stop();
         });
 
         test("should handle memory-intensive scenarios", async () => {
@@ -197,7 +197,7 @@ describe("declarative scheduler integration and system edge cases", () => {
             // Some tasks should execute
             expect(memoryIntensiveCallback).toHaveBeenCalled();
 
-            await capabilities.scheduler.stop(capabilities);
+            await capabilities.scheduler.stop();
 
             // Clean up
             memoryAllocations = [];
@@ -229,7 +229,7 @@ describe("declarative scheduler integration and system edge cases", () => {
             expect(normalCallback).toHaveBeenCalled();
             expect(crashingCallback).toHaveBeenCalled();
 
-            await capabilities.scheduler.stop(capabilities);
+            await capabilities.scheduler.stop();
         });
 
         test("should handle rapid initialization cycles", async () => {
@@ -247,7 +247,7 @@ describe("declarative scheduler integration and system edge cases", () => {
 
                 await new Promise(resolve => setTimeout(resolve, 10));
 
-                await capabilities.scheduler.stop(capabilities);
+                await capabilities.scheduler.stop();
             }
 
             // Should handle rapid cycles without issues
@@ -285,7 +285,7 @@ describe("declarative scheduler integration and system edge cases", () => {
             const executedCount = callbacks.filter(cb => cb.mock.calls.length > 0).length;
             expect(executedCount).toBeGreaterThan(0);
 
-            await capabilities.scheduler.stop(capabilities);
+            await capabilities.scheduler.stop();
         });
 
         test("should handle mixed task execution patterns", async () => {
@@ -318,7 +318,7 @@ describe("declarative scheduler integration and system edge cases", () => {
             expect(slowCallback).toHaveBeenCalled();
             expect(failingCallback).toHaveBeenCalled();
 
-            await capabilities.scheduler.stop(capabilities);
+            await capabilities.scheduler.stop();
         });
     });
 
@@ -334,7 +334,7 @@ describe("declarative scheduler integration and system edge cases", () => {
             // No assertions needed for empty registrations, but scheduler should work
             expect(true).toBe(true); // Verify test runs successfully
 
-            await capabilities.scheduler.stop(capabilities);
+            await capabilities.scheduler.stop();
         });
 
         test("should handle repeated initialization calls", async () => {
@@ -356,7 +356,7 @@ describe("declarative scheduler integration and system edge cases", () => {
             // Task should still execute correctly
             expect(taskCallback).toHaveBeenCalled();
 
-            await capabilities.scheduler.stop(capabilities);
+            await capabilities.scheduler.stop();
         });
     });
 });
