@@ -4,13 +4,13 @@
  */
 
 const { makeDefault } = require('../../runtime_state_storage/structure');
-const { serialize, tryDeserialize, isTaskTryDeserializeError } = require('../task');
+const { serialize, tryDeserialize, isTaskTryDeserializeError } = require('./task');
 const { 
     TaskAlreadyRegisteredError,
-} = require('../polling_scheduler_errors');
+} = require('./polling_scheduler_errors');
 
 /** 
- * @typedef {import('../task').Task} Task 
+ * @typedef {import('./task').Task} Task 
  * @typedef {import('./types').Registration} Registration
  * @typedef {import('./types').ParsedRegistration} ParsedRegistration
  * @typedef {import('./types').ParsedRegistrations} ParsedRegistrations

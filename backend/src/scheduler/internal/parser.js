@@ -11,7 +11,7 @@ const {
     isFieldParseError,
     CronCalculationError,
     isCronCalculationError
-} = require("./errors");
+} = require("./cron_errors");
 
 const { parseCronExpression, isCronExpression } = require("./expression");
 const { matchesCronExpression, getNextExecution } = require("./calculator");

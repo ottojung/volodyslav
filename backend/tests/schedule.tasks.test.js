@@ -9,7 +9,7 @@ const {
     stubNotifier,
 } = require("./stubs");
 
-const { everyHour, daily, allTasks } = require("../src/schedule/tasks");
+const { everyHour, daily, allTasks } = require("../src/scheduler/tasks");
 const { getMockedRootCapabilities } = require("./spies");
 const { COMMON } = require("../src/time_duration");
 

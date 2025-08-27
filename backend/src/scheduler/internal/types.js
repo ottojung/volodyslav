@@ -1,9 +1,9 @@
 
 /**
  * @typedef {import('../../time_duration').TimeDuration} TimeDuration
- * @typedef {import('../task').Task} Task
+ * @typedef {import('./task').Task} Task
  * @typedef {() => Promise<void>} Callback
- * @typedef {import('../expression').CronExpression} CronExpression
+ * @typedef {import('./expression').CronExpression} CronExpression
  */
 
 /**

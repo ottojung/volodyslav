@@ -4,7 +4,7 @@
 
 const {
     isTaskListMismatchError,
-} = require("../src/schedule");
+} = require("../src/scheduler");
 const {
     stubLogger,
     stubEnvironment,

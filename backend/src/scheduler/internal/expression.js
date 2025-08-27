@@ -2,7 +2,7 @@
  * Cron expression data structure.
  */
 
-const { InvalidCronExpressionError, isFieldParseError } = require("./errors");
+const { InvalidCronExpressionError, isFieldParseError } = require("./cron_errors");
 const { FIELD_CONFIGS, parseField } = require("./field_parser");
 
 /**

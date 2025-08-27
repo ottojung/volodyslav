@@ -2,7 +2,7 @@ const { isEnvironmentError } = require("./environment");
 const { isServerAddressAlreadyInUseError } = require("./express_app");
 const { isNotificationsUnavailable } = require("./notifications");
 const { isCommandUnavailable } = require("./subprocess");
-const { isTaskListMismatchError } = require("./schedule");
+const { isTaskListMismatchError } = require("./scheduler");
 
 module.exports = [
     isEnvironmentError,

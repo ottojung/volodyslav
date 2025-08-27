@@ -2,7 +2,7 @@
  * Field configuration and parsing for cron expressions.
  */
 
-const { FieldParseError } = require("./errors");
+const { FieldParseError } = require("./cron_errors");
 
 /**
  * @typedef {object} FieldConfig

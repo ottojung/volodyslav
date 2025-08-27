@@ -3,12 +3,12 @@
  * Ensures tasks don't run more frequently than the polling interval can handle.
  */
 
-const { getNextExecution } = require("../parser");
-const { ScheduleFrequencyError } = require("../polling_scheduler_errors");
+const { getNextExecution } = require("./parser");
+const { ScheduleFrequencyError } = require("./polling_scheduler_errors");
 
 /**
  * Calculate the minimum interval between executions for a cron expression.
- * @param {import('../expression').CronExpression} parsedCron
+ * @param {import('./expression').CronExpression} parsedCron
  * @param {import('../../datetime').Datetime} dt
  * @returns {number} Minimum interval in milliseconds
  */
@@ -79,7 +79,7 @@ function calculateMinimumCronInterval(parsedCron, dt) {
 
 /**
  * Validate that task frequency is not higher than polling frequency
- * @param {import('../expression').CronExpression} parsedCron
+ * @param {import('./expression').CronExpression} parsedCron
  * @param {number} pollIntervalMs
  * @param {import('../../datetime').Datetime} dt
  * @throws {ScheduleFrequencyError}

@@ -3,9 +3,9 @@
  * Handles running tasks with proper error handling.
  */
 
-const { TaskNotFoundError } = require('../polling_scheduler_errors');
+const { TaskNotFoundError } = require('./polling_scheduler_errors');
 
-/** @typedef {import('../task').Task} Task */
+/** @typedef {import('./task').Task} Task */
 
 /**
  * @template T

@@ -12,10 +12,10 @@ const {
 
 /**
  * @typedef {import('./structure').Task} Task
- * @typedef {import('../scheduling/types').CronExpression} CronExpression
- * @typedef {import('../../datetime').DateTime} DateTime
- * @typedef {import('../../time_duration').TimeDuration} TimeDuration
- * @typedef {import('../scheduling/types').Callback} Callback
+ * @typedef {import('../types').CronExpression} CronExpression
+ * @typedef {import('../../../datetime').DateTime} DateTime
+ * @typedef {import('../../../time_duration').TimeDuration} TimeDuration
+ * @typedef {import('../types').Callback} Callback
  * @typedef {import('./serialization_errors').TaskTryDeserializeError} TaskTryDeserializeError
  */
 
@@ -71,7 +71,7 @@ function serialize(task) {
  * Returns the Task on success, or a TaskTryDeserializeError on failure.
  *
  * @param {unknown} obj - The object to attempt to deserialize
- * @param {import('../scheduling/types').ParsedRegistrations} registrations - The task registrations
+ * @param {import('../types').ParsedRegistrations} registrations - The task registrations
  * @returns {Task | TaskTryDeserializeError} - The deserialized Task or error object
  */
 function tryDeserialize(obj, registrations) {

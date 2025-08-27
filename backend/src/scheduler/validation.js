@@ -2,8 +2,8 @@
  * Validation logic for scheduler registrations and task state.
  */
 
-const cronScheduler = require("../cron");
-const { ScheduleInvalidNameError, ScheduleDuplicateTaskError } = require("../cron/polling_scheduler_errors");
+const { parseCronExpression } = require("./internal/parser");
+const { ScheduleInvalidNameError, ScheduleDuplicateTaskError } = require("./internal/polling_scheduler_errors");
 
 const {
     TaskListMismatchError,
@@ -168,7 +168,9 @@ function validateRegistrations(registrations, capabilities) {
         }
 
         // Basic cron expression validation using the cron module
-        if (!cronScheduler.validate(cronExpression)) {
+        try {
+            parseCronExpression(cronExpression);
+        } catch (error) {
             throw new CronExpressionInvalidError(`Registration at index ${i} (${qname}): invalid cron expression '${cronExpression}'`, { index: i, name, value: cronExpression });
         }
 

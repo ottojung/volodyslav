@@ -7,7 +7,7 @@ const {
     validateTaskFrequency,
     mutateTasks,
     makeTaskExecutor,
-} = require("./scheduling");
+} = require("./index");
 const {
     ScheduleInvalidNameError,
     TaskNotFoundError,
@@ -15,25 +15,25 @@ const {
 const { isRunning } = require("./task");
 
 /**
- * @typedef {import('../logger').Logger} Logger
- * @typedef {import('../time_duration').TimeDuration} TimeDuration
- * @typedef {import('./scheduling/types').CronExpression} CronExpression
- * @typedef {import('../datetime').DateTime} DateTime
- * @typedef {import('./scheduling/types').Callback} Callback
+ * @typedef {import('../../logger').Logger} Logger
+ * @typedef {import('../../time_duration').TimeDuration} TimeDuration
+ * @typedef {import('./types').CronExpression} CronExpression
+ * @typedef {import('../../datetime').DateTime} DateTime
+ * @typedef {import('./types').Callback} Callback
  */
 
 const POLL_INTERVAL_MS = 600000;
 
 /**
- * @typedef {import('./scheduling/types').Registration} Registration
+ * @typedef {import('./types').Registration} Registration
  */
 
 /**
- * @typedef {import('./scheduling/types').ParsedRegistrations} ParsedRegistrations
+ * @typedef {import('./types').ParsedRegistrations} ParsedRegistrations
  */
 
 /**
- * @param {import('../capabilities/root').Capabilities} capabilities
+ * @param {import('../../capabilities/root').Capabilities} capabilities
  * @param {ParsedRegistrations} registrations
  */
 function makePollingScheduler(capabilities, registrations) {

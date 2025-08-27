@@ -2,9 +2,10 @@
  * Scheduler factory implementation for the declarative scheduler.
  */
 
-const { parseCronExpression } = require("../cron");
-const cronScheduler = require("../cron");
-const { mutateTasks } = require("../cron/scheduling");
+const { parseCronExpression } = require("./internal/parser");
+const { makePollingScheduler } = require("./internal/polling_scheduler");
+const { mutateTasks } = require("./internal/state_persistence");
+const { isScheduleDuplicateTaskError } = require("./internal/polling_scheduler_errors");
 const memconst = require("../memconst");
 
 const {
@@ -32,7 +33,7 @@ const {
  * @throws {Error} if registrations are invalid or capabilities are malformed
  */
 function make(getCapabilities) {
-    /** @type {ReturnType<cronScheduler.make> | null} */
+    /** @type {ReturnType<makePollingScheduler> | null} */
     let pollingScheduler = null;
 
     const getCapabilitiesMemo = memconst(getCapabilities);
@@ -107,7 +108,7 @@ function make(getCapabilities) {
             await mutateTasks(capabilities, parsedRegistrations, async () => undefined);
         }
 
-        pollingScheduler = cronScheduler.make(capabilities, parsedRegistrations);
+        pollingScheduler = makePollingScheduler(capabilities, parsedRegistrations);
 
         let scheduledCount = 0;
         let skippedCount = 0;
@@ -126,7 +127,7 @@ function make(getCapabilities) {
                 );
             } catch (error) {
                 // If the task is already scheduled with a callback, that's fine for idempotency
-                if (cronScheduler.isScheduleDuplicateTaskError(error)) {
+                if (isScheduleDuplicateTaskError(error)) {
                     skippedCount++;
                     capabilities.logger.logDebug(
                         { taskName: name },
@@ -163,7 +164,7 @@ function make(getCapabilities) {
                     "Stopping scheduler gracefully"
                 );
 
-                await pollingScheduler.stop();
+                await pollingScheduler.stopLoop();
                 pollingScheduler = null;
 
                 capabilities.logger.logInfo({}, "Scheduler stopped successfully");

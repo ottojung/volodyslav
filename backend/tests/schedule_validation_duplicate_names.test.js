@@ -6,7 +6,7 @@
 const { fromMilliseconds } = require("../src/time_duration");
 const { getMockedRootCapabilities } = require("./spies");
 const { stubEnvironment, stubLogger, stubDatetime, stubSleeper } = require("./stubs");
-const { ScheduleDuplicateTaskError, isScheduleDuplicateTaskError } = require("../src/cron/polling_scheduler_errors");
+const { ScheduleDuplicateTaskError, isScheduleDuplicateTaskError } = require("../src/scheduler");
 
 function getTestCapabilities() {
     const capabilities = getMockedRootCapabilities();

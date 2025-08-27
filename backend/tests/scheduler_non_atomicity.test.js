@@ -83,7 +83,7 @@ describe("scheduler atomicity testing", () => {
         const timeControl = getDatetimeControl(capabilities);
         const retryDelay = fromMilliseconds(25000);
 
-        const taskExecutor = require("../src/cron/scheduling/task_executor");
+        const taskExecutor = require("../src/scheduler/internal/task_executor");
         const originalMakeTaskExecutor = taskExecutor.makeTaskExecutor;
 
         let executorCallCount = 0;
