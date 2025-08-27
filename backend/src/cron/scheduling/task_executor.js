@@ -3,6 +3,8 @@
  * Handles running tasks with proper error handling.
  */
 
+const { TaskNotFoundError } = require('../polling_scheduler_errors');
+
 /** @typedef {import('../task').Task} Task */
 
 /**
@@ -54,8 +56,7 @@ function makeTaskExecutor(capabilities, mutateTasks) {
             return await mutateTasks((tasks) => {
                 const task = tasks.get(taskName);
                 if (task === undefined) {
-                    // FIXME: implement proper error reporting.    
-                    throw new Error(`Task not found: ${taskName}`);
+                    throw new TaskNotFoundError(taskName);
                 }
                 return transformation(task);
             });

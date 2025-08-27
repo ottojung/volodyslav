@@ -94,6 +94,72 @@ function isScheduleFrequencyError(object) {
     return object instanceof ScheduleFrequencyError;
 }
 
+/**
+ * Error thrown when a task is not found in the runtime task map.
+ */
+class TaskNotFoundError extends Error {
+    /**
+     * @param {string} taskName
+     */
+    constructor(taskName) {
+        super(`Task ${JSON.stringify(taskName)} not found`);
+        this.name = "TaskNotFoundError";
+        this.taskName = taskName;
+    }
+}
+
+/**
+ * @param {unknown} object
+ * @returns {object is TaskNotFoundError}
+ */
+function isTaskNotFoundError(object) {
+    return object instanceof TaskNotFoundError;
+}
+
+/**
+ * Error thrown when attempting to register a task that is already registered.
+ */
+class TaskAlreadyRegisteredError extends Error {
+    /**
+     * @param {string} taskName
+     */
+    constructor(taskName) {
+        super(`Task ${taskName} is already registered`);
+        this.name = "TaskAlreadyRegisteredError";
+        this.taskName = taskName;
+    }
+}
+
+/**
+ * @param {unknown} object
+ * @returns {object is TaskAlreadyRegisteredError}
+ */
+function isTaskAlreadyRegisteredError(object) {
+    return object instanceof TaskAlreadyRegisteredError;
+}
+
+/**
+ * Error thrown when a task is not found in the registrations map.
+ */
+class TaskNotInRegistrationsError extends Error {
+    /**
+     * @param {string} taskName
+     */
+    constructor(taskName) {
+        super(`Task ${taskName} is not found in registrations`);
+        this.name = "TaskNotInRegistrationsError";
+        this.taskName = taskName;
+    }
+}
+
+/**
+ * @param {unknown} object
+ * @returns {object is TaskNotInRegistrationsError}
+ */
+function isTaskNotInRegistrationsError(object) {
+    return object instanceof TaskNotInRegistrationsError;
+}
+
 module.exports = {
     ScheduleDuplicateTaskError,
     isScheduleDuplicateTaskError,
@@ -101,5 +167,11 @@ module.exports = {
     isScheduleInvalidNameError,
     ScheduleFrequencyError,
     isScheduleFrequencyError,
+    TaskNotFoundError,
+    isTaskNotFoundError,
+    TaskAlreadyRegisteredError,
+    isTaskAlreadyRegisteredError,
+    TaskNotInRegistrationsError,
+    isTaskNotInRegistrationsError,
 };
 

@@ -112,9 +112,9 @@ function make(getCapabilities) {
         let scheduledCount = 0;
         let skippedCount = 0;
 
-        for (const [name, cronExpression, callback, retryDelay] of registrations) {
+        for (const [name, cronExpression, , retryDelay] of registrations) {
             try {
-                await pollingScheduler.schedule(name, cronExpression, callback, retryDelay);
+                await pollingScheduler.schedule(name);
                 scheduledCount++;
                 capabilities.logger.logDebug(
                     {
