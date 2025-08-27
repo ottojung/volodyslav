@@ -12,8 +12,8 @@
  */
 
 /**
- * @typedef {import('../cron').Registration} Registration
- * @typedef {import('../cron').ParsedRegistrations} ParsedRegistrations
+ * @typedef {import('./internal/types').Registration} Registration
+ * @typedef {import('./internal/types').ParsedRegistrations} ParsedRegistrations
  */
 
 /**

@@ -1,5 +1,5 @@
 const express = require("express");
-const { everyHour, daily } = require("../schedule/tasks");
+const { everyHour, daily } = require("../scheduler/tasks");
 
 /** @typedef {import('../filesystem/deleter').FileDeleter} FileDeleter */
 /** @typedef {import('../random/seed').NonDeterministicSeed} NonDeterministicSeed */
