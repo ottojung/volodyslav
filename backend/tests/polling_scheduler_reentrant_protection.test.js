@@ -5,7 +5,7 @@
 
 const { fromMilliseconds } = require("../src/time_duration");
 const { getMockedRootCapabilities } = require("./spies");
-const { stubEnvironment, stubLogger, stubDatetime, stubSleeper, stubPollInterval } = require("./stubs");
+const { stubEnvironment, stubLogger, stubDatetime, stubSleeper, stubPollInterval, getDatetimeControl, stubRuntimeStateStorage } = require("./stubs");
 
 function getTestCapabilities() {
     const capabilities = getMockedRootCapabilities();
@@ -13,6 +13,7 @@ function getTestCapabilities() {
     stubLogger(capabilities);
     stubDatetime(capabilities);
     stubSleeper(capabilities);
+    stubRuntimeStateStorage(capabilities);
     stubPollInterval(1); // Fast polling for tests
     return capabilities;
 }
@@ -56,12 +57,17 @@ describe("declarative scheduler re-entrancy protection", () => {
 
     test("should allow multiple initialize calls after completion", async () => {
         const capabilities = getTestCapabilities();
+        const timeControl = getDatetimeControl(capabilities);
         const retryDelay = fromMilliseconds(5000);
         let taskExecutionCount = 0;
         
         const quickTask = jest.fn(() => {
             taskExecutionCount++;
         });
+        
+        // Set time to start of hour so "0 * * * *" schedule triggers
+        const startTime = new Date("2021-01-01T00:00:00.000Z").getTime();
+        timeControl.setTime(startTime);
         
         const registrations = [
             ["quick-task", "0 * * * *", quickTask, retryDelay]
@@ -85,6 +91,7 @@ describe("declarative scheduler re-entrancy protection", () => {
 
     test("should handle errors during task execution gracefully", async () => {
         const capabilities = getTestCapabilities();
+        const timeControl = getDatetimeControl(capabilities);
         const retryDelay = fromMilliseconds(5000);
         let taskExecutionCount = 0;
         
@@ -92,6 +99,10 @@ describe("declarative scheduler re-entrancy protection", () => {
             taskExecutionCount++;
             throw new Error("Task execution fails");
         });
+        
+        // Set time to start of hour so "0 * * * *" schedule triggers
+        const startTime = new Date("2021-01-01T00:00:00.000Z").getTime();
+        timeControl.setTime(startTime);
         
         const registrations = [
             ["error-task", "0 * * * *", errorTask, retryDelay]

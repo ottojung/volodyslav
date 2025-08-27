@@ -129,8 +129,12 @@ describe("declarative scheduler persistence and idempotency", () => {
         await new Promise(resolve => setTimeout(resolve, 200));
         
         await capabilities.scheduler.stop(capabilities);
+    });
+
+    test("should handle task registration after empty initialization", async () => {
+        // Use separate capabilities instance to avoid task list mismatch
+        const capabilities = getTestCapabilities();
         
-        // Follow up with actual tasks should work
         const taskCallback = jest.fn();
         const registrations = [
             ["new-task", "0 * * * *", taskCallback, fromMilliseconds(5000)]

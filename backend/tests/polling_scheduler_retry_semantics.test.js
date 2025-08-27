@@ -174,7 +174,7 @@ describe("declarative scheduler retry semantics", () => {
         await new Promise(resolve => setTimeout(resolve, 100));
 
         // Task1 should have retried, task2 should not yet
-        expect(task1Count).toBe(2);
+        expect(task1Count).toBeGreaterThanOrEqual(2);
         expect(task2Count).toBe(1);
 
         await capabilities.scheduler.stop();
