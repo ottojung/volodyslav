@@ -2,7 +2,6 @@
  * Polling based cron scheduler.
  */
 
-const { parseCronExpression } = require("./parser");
 const {
     getMostRecentExecution,
     validateTaskFrequency,
@@ -11,6 +10,7 @@ const {
 } = require("./scheduling");
 const {
     ScheduleInvalidNameError,
+    TaskNotFoundError,
 } = require("./polling_scheduler_errors");
 const { isRunning } = require("./task");
 
@@ -96,8 +96,7 @@ function makePollingScheduler(capabilities, registrations) {
 
                     const task = tasks.get(taskName);
                     if (task === undefined) {
-                        // FIXME: turn this into a proper error.    
-                        throw new Error(`Task ${qname} not found`);
+                        throw new TaskNotFoundError(taskName);
                     }
 
                     if (isRunning(task)) {
@@ -172,26 +171,21 @@ function makePollingScheduler(capabilities, registrations) {
     return {
         /**
          * Schedule a new task.
-         * FIXME: change the signature to accept ONLY the `name`, nothing else.
          * @param {string} name
-         * @param {string} cronExpression
-         * @param {Callback} _callback
-         * @param {TimeDuration} _retryDelay
          * @returns {Promise<void>}
          */
-        async schedule(name, cronExpression, _callback, _retryDelay) {
+        async schedule(name) {
             if (typeof name !== "string" || name.trim() === "") {
                 throw new ScheduleInvalidNameError(name);
             }
 
             const found = registrations.get(name);
             if (found === undefined) {
-                // FIXME: turn this into a proper error.    
-                throw new Error(`Task ${name} not found.`);
+                throw new TaskNotFoundError(name);
             }
 
-            // Parse and validate cron expression
-            const parsedCron = parseCronExpression(cronExpression);
+            // Parse and validate cron expression from registration
+            const parsedCron = found.parsedCron;
 
             // Validate task frequency against polling frequency
             validateTaskFrequency(parsedCron, module.exports.POLL_INTERVAL_MS, dt);

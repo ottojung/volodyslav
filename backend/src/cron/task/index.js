@@ -1,5 +1,6 @@
 
 const { isRunning } = require('./methods');
+const { makeTask, isTask } = require('./structure');
 
 /**
  * @typedef {import('./structure').Task} Task
@@ -7,4 +8,6 @@ const { isRunning } = require('./methods');
 
 module.exports = {
     isRunning,
+    makeTask,
+    isTask,
 };

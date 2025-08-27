@@ -4,6 +4,11 @@
  */
 
 const { makeDefault } = require('../../runtime_state_storage/structure');
+const { makeTask } = require('../task');
+const { 
+    TaskAlreadyRegisteredError,
+    TaskNotInRegistrationsError,
+} = require('../polling_scheduler_errors');
 
 /** 
  * @typedef {import('../task').Task} Task 
@@ -32,14 +37,12 @@ function materializeTasks(registrations, taskRecords) {
         const name = record.name;
 
         if (name in tasks) {
-            // FIXME: make it a proper error.    
-            throw new Error(`Task ${name} is already registered`);
+            throw new TaskAlreadyRegisteredError(name);
         }
 
         const registration = registrations.get(name);
         if (registration === undefined) {
-            // FIXME: make it a proper error.    
-            throw new Error(`Task ${name} is not found`);
+            throw new TaskNotInRegistrationsError(name);
         }
 
         const { parsedCron, callback, retryDelay } = registration;
@@ -50,8 +53,7 @@ function materializeTasks(registrations, taskRecords) {
         const pendingRetryUntil = record.pendingRetryUntil;
         const lastEvaluatedFire = record.lastEvaluatedFire;
 
-        /** @type {Task} */
-        const task = {
+        const task = makeTask(
             name,
             parsedCron,
             callback,
@@ -60,8 +62,8 @@ function materializeTasks(registrations, taskRecords) {
             lastFailureTime,
             lastAttemptTime,
             pendingRetryUntil,
-            lastEvaluatedFire,
-        };
+            lastEvaluatedFire
+        );
 
         tasks.set(name, task);
     }
