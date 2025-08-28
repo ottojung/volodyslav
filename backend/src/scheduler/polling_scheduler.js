@@ -53,9 +53,6 @@ function makePollingScheduler(capabilities, registrations) {
     const intervalManager = makeIntervalManager(pollFunction, capabilities);
 
     function start() {
-        if (scheduledTasks.size === 0) {
-            return; // Nothing to start
-        }
         intervalManager.start();
     }
 
@@ -83,7 +80,7 @@ function makePollingScheduler(capabilities, registrations) {
             const parsedCron = found.parsedCron;
 
             // Validate task frequency against polling frequency
-            validateTaskFrequency(parsedCron, POLL_INTERVAL_MS, dt);
+            validateTaskFrequency(parsedCron, module.exports.POLL_INTERVAL_MS, dt);
 
             if (scheduledTasks.size === 0) {
                 start();
