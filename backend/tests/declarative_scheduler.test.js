@@ -15,14 +15,13 @@ const {
 const { getMockedRootCapabilities } = require("./spies");
 const { COMMON } = require("../src/time_duration");
 
-stubPollInterval(1); // Fast polling for tests
-
 function getTestCapabilities() {
     const capabilities = getMockedRootCapabilities();
     stubLogger(capabilities);
     stubEnvironment(capabilities);
     stubSleeper(capabilities);
     stubDatetime(capabilities);
+    stubPollInterval(1);
     return capabilities;
 }
 
