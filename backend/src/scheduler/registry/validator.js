@@ -19,7 +19,11 @@ function validateRegistrations(registrations) {
 
     for (let i = 0; i < registrations.length; i++) {
         try {
-            const parsedReg = validateRegistration(registrations[i], i);
+            const registration = registrations[i];
+            if (registration === undefined) {
+                throw new Error("Registration cannot be undefined");
+            }
+            const parsedReg = validateRegistration(registration);
             
             // Check for duplicate names
             const { toString } = require('../value-objects/task-id');
@@ -32,7 +36,8 @@ function validateRegistrations(registrations) {
             seenNames.add(taskName);
             parsed.push(parsedReg);
         } catch (error) {
-            throw new Error(`Invalid registration at index ${i}: ${error.message}`);
+            const message = error instanceof Error ? error.message : String(error);
+            throw new Error(`Invalid registration at index ${i}: ${message}`);
         }
     }
 
@@ -42,10 +47,9 @@ function validateRegistrations(registrations) {
 /**
  * Validate a single registration.
  * @param {import('../types').Registration} registration
- * @param {number} index
  * @returns {import('../types').ParsedRegistration}
  */
-function validateRegistration(registration, index) {
+function validateRegistration(registration) {
     if (!Array.isArray(registration) || registration.length !== 4) {
         throw new Error(`Registration must be a 4-element array [name, cron, callback, retryDelay]`);
     }

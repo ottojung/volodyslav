@@ -21,9 +21,10 @@ function deepClone(obj) {
         return obj.map(deepClone);
     }
 
+    /** @type {Record<string, any>} */
     const cloned = {};
     for (const key in obj) {
-        if (obj.hasOwnProperty(key)) {
+        if (Object.prototype.hasOwnProperty.call(obj, key)) {
             cloned[key] = deepClone(obj[key]);
         }
     }
@@ -53,10 +54,30 @@ function deserialize(serialized) {
     const { fromEpochMs } = require('../value-objects/instant');
     const { validateState } = require('./schema');
     
+    // Validate serialized object structure
+    if (!serialized || typeof serialized !== 'object') {
+        throw new Error('Serialized state must be an object');
+    }
+    
+    if (!('version' in serialized)) {
+        throw new Error('Serialized state missing version');
+    }
+    
+    if (!('tasks' in serialized) || !Array.isArray(serialized.tasks)) {
+        throw new Error('Serialized state missing tasks array');
+    }
+    
+    if (!('lastUpdated' in serialized)) {
+        throw new Error('Serialized state missing lastUpdated');
+    }
+    
+    // Cast to Record for safe access after validation
+    const validSerialized = /** @type {Record<string, any>} */ (serialized);
+    
     const state = {
-        version: serialized.version,
-        tasks: serialized.tasks.map(deserializeTask),
-        lastUpdated: fromEpochMs(serialized.lastUpdated),
+        version: validSerialized['version'],
+        tasks: validSerialized['tasks'].map(deserializeTask),
+        lastUpdated: fromEpochMs(validSerialized['lastUpdated']),
     };
 
     return validateState(state);
@@ -95,16 +116,36 @@ function deserializeTask(serialized) {
     const { fromMs } = require('../value-objects/time-duration');
     const { fromEpochMs } = require('../value-objects/instant');
     
+    // Validate serialized task structure
+    if (!serialized || typeof serialized !== 'object') {
+        throw new Error('Serialized task must be an object');
+    }
+    
+    if (!('name' in serialized)) {
+        throw new Error('Serialized task missing name');
+    }
+    
+    if (!('cron' in serialized)) {
+        throw new Error('Serialized task missing cron');
+    }
+    
+    if (!('retryDelay' in serialized)) {
+        throw new Error('Serialized task missing retryDelay');
+    }
+    
+    // Cast to Record for safe access after validation
+    const validSerialized = /** @type {Record<string, any>} */ (serialized);
+    
     return {
-        name: fromString(serialized.name),
-        cron: cronFromString(serialized.cron),
-        retryDelay: fromMs(serialized.retryDelay),
-        lastSuccessTime: serialized.lastSuccessTime ? fromEpochMs(serialized.lastSuccessTime) : null,
-        lastFailureTime: serialized.lastFailureTime ? fromEpochMs(serialized.lastFailureTime) : null,
-        lastAttemptTime: serialized.lastAttemptTime ? fromEpochMs(serialized.lastAttemptTime) : null,
-        pendingRetryUntil: serialized.pendingRetryUntil ? fromEpochMs(serialized.pendingRetryUntil) : null,
-        lastEvaluatedFire: serialized.lastEvaluatedFire ? fromEpochMs(serialized.lastEvaluatedFire) : null,
-        isRunning: Boolean(serialized.isRunning),
+        name: fromString(validSerialized['name']),
+        cron: cronFromString(validSerialized['cron']),
+        retryDelay: fromMs(validSerialized['retryDelay']),
+        lastSuccessTime: validSerialized['lastSuccessTime'] ? fromEpochMs(validSerialized['lastSuccessTime']) : null,
+        lastFailureTime: validSerialized['lastFailureTime'] ? fromEpochMs(validSerialized['lastFailureTime']) : null,
+        lastAttemptTime: validSerialized['lastAttemptTime'] ? fromEpochMs(validSerialized['lastAttemptTime']) : null,
+        pendingRetryUntil: validSerialized['pendingRetryUntil'] ? fromEpochMs(validSerialized['pendingRetryUntil']) : null,
+        lastEvaluatedFire: validSerialized['lastEvaluatedFire'] ? fromEpochMs(validSerialized['lastEvaluatedFire']) : null,
+        isRunning: Boolean(validSerialized['isRunning']),
     };
 }
 

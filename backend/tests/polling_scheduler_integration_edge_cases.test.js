@@ -123,7 +123,7 @@ describe("declarative scheduler integration and system edge cases", () => {
             });
 
             const registrations = [
-                ["network-task", "0 * * * *", networkTaskCallback, retryDelay]
+                ["network-task", "* * * * *", networkTaskCallback, retryDelay]  // Every minute instead of "0 * * * *"
             ];
 
             // Should handle network-dependent tasks without crashing

@@ -87,7 +87,7 @@
 
 /**
  * Initialize function that registers tasks with the scheduler.
- * @typedef {(capabilities: import('../capabilities/root').Capabilities, registrations: Array<Registration>) => Promise<void>} Initialize
+ * @typedef {(registrations: Array<Registration>) => Promise<void>} Initialize
  */
 
 /**

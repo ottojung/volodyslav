@@ -12,7 +12,6 @@
 function serialize(task) {
     const { toString } = require('../task-id');
     const { toJSON } = require('../cron-expression/serialize');
-    const { toJSON: durationToJSON } = require('../time-duration/serialize');
     
     return {
         name: toString(task.name),
@@ -50,15 +49,18 @@ function deserialize(record, callback) {
         }
     }
     
-    const name = fromString(record.name);
-    const cron = cronFromString(record.cronExpression);
-    const retryDelay = fromMs(record.retryDelayMs);
+    // After validation, we know these properties exist
+    const validRecord = /** @type {Record<string, any>} */ (record);
     
-    const lastSuccessTime = record.lastSuccessTime ? fromEpochMs(record.lastSuccessTime) : null;
-    const lastFailureTime = record.lastFailureTime ? fromEpochMs(record.lastFailureTime) : null;
-    const lastAttemptTime = record.lastAttemptTime ? fromEpochMs(record.lastAttemptTime) : null;
-    const pendingRetryUntil = record.pendingRetryUntil ? fromEpochMs(record.pendingRetryUntil) : null;
-    const lastEvaluatedFire = record.lastEvaluatedFire ? fromEpochMs(record.lastEvaluatedFire) : null;
+    const name = fromString(validRecord['name']);
+    const cron = cronFromString(validRecord['cronExpression']);
+    const retryDelay = fromMs(validRecord['retryDelayMs']);
+    
+    const lastSuccessTime = validRecord['lastSuccessTime'] ? fromEpochMs(validRecord['lastSuccessTime']) : null;
+    const lastFailureTime = validRecord['lastFailureTime'] ? fromEpochMs(validRecord['lastFailureTime']) : null;
+    const lastAttemptTime = validRecord['lastAttemptTime'] ? fromEpochMs(validRecord['lastAttemptTime']) : null;
+    const pendingRetryUntil = validRecord['pendingRetryUntil'] ? fromEpochMs(validRecord['pendingRetryUntil']) : null;
+    const lastEvaluatedFire = validRecord['lastEvaluatedFire'] ? fromEpochMs(validRecord['lastEvaluatedFire']) : null;
     
     return createTask(
         name, cron, callback, retryDelay,

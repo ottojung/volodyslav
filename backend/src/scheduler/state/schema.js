@@ -32,7 +32,8 @@ function validateState(state) {
         try {
             validateTask(state.tasks[i]);
         } catch (error) {
-            throw new Error(`Invalid task at index ${i}: ${error.message}`);
+            const message = error instanceof Error ? error.message : String(error);
+            throw new Error(`Invalid task at index ${i}: ${message}`);
         }
     }
 

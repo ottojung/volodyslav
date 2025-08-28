@@ -45,7 +45,7 @@ async function everyHour(capabilities) {
 async function daily(capabilities) {
     capabilities.logger.logInfo({}, "Running daily tasks");
 
-    await executeDailyTasks(capabilities).catch((error) => {
+    await executeDailyTasks(capabilities).catch(/** @param {any} error */ (error) => {
         capabilities.logger.logError({ error }, "Error in daily tasks");
     });
 }
@@ -66,8 +66,10 @@ async function allTasks(capabilities) {
  * @returns {Promise<void>}
  */
 async function scheduleAll(capabilities) {
-    // Use a reasonable retry delay for scheduled tasks - 5 minutes
-    const retryDelay = COMMON.FIVE_MINUTES;
+    const { fromMs } = require('./value-objects/time-duration');
+    
+    // Convert project TimeDuration to scheduler TimeDuration
+    const retryDelay = fromMs(COMMON.FIVE_MINUTES.toMilliseconds());
 
     // Define all task registrations
     /** @type {Registration[]} */

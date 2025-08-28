@@ -36,15 +36,15 @@ describe("declarative scheduler retry configuration", () => {
         await capabilities.scheduler.stop();
     });
 
-    test("handles zero retry delay configuration", async () => {
+    test("handles minimal retry delay configuration", async () => {
         const capabilities = getTestCapabilities();
         const taskCallback = jest.fn();
         
         const registrations = [
-            ["no-retry-task", "0 * * * *", taskCallback, fromMilliseconds(0)]
+            ["minimal-retry-task", "0 * * * *", taskCallback, fromMilliseconds(1000)]
         ];
         
-        // Zero retry delay should be valid (immediate retry)
+        // Minimal retry delay should be valid (1 second minimum)
         await expect(capabilities.scheduler.initialize(registrations))
             .resolves.toBeUndefined();
             

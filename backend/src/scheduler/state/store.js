@@ -71,7 +71,6 @@ class StoreTxnImpl {
  */
 function convertFromRuntimeState(runtimeState) {
     const { CURRENT_STATE_VERSION } = require('../constants');
-    const { fromEpochMs } = require('../value-objects/instant');
     const { now } = require('../time/clock');
     
     if (!runtimeState) {

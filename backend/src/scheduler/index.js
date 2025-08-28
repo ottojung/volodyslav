@@ -58,13 +58,10 @@ function make(getCapabilities) {
 
     /**
      * Initialize the scheduler with the given registrations.
-     * @param {import('../capabilities/root').Capabilities} _capabilities
      * @param {Array<Registration>} registrations
      * @returns {Promise<void>}
      */
-    async function initializeImpl(_capabilities, registrations) {
-        // Note: capabilities parameter is provided for consistency,
-        // but we still use getCapabilities() for internal consistency
+    async function initializeImpl(registrations) {
         const caps = getCapabilities();
 
         // Build and validate registry
@@ -144,8 +141,8 @@ function make(getCapabilities) {
         }
     }
 
-    // Set global functions
-    globalInitialize = initializeImpl;
+    // Set global functions with adapters for the module-level API
+    globalInitialize = (capabilities, registrations) => initializeImpl(registrations);
     globalStop = stopImpl;
 
     return {

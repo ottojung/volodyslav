@@ -49,7 +49,6 @@ class CronExpressionClass {
      * @returns {import('../instant').InstantMs} Next execution time
      */
     nextAfter(now) {
-        const { parse } = require('./parse');
         const { calculateNext } = require('./parse');
         return calculateNext(this, now);
     }

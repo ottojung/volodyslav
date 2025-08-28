@@ -22,6 +22,11 @@ function parseExpression(cronStr) {
     }
 
     const [minuteStr, hourStr, dayStr, monthStr, weekdayStr] = parts;
+    
+    // These should all be defined since we validated parts.length === 5
+    if (!minuteStr || !hourStr || !dayStr || !monthStr || !weekdayStr) {
+        throw new Error(`Invalid cron expression parts: ${cronStr}`);
+    }
 
     try {
         const minute = parseField(minuteStr, 0, 59);
@@ -32,7 +37,8 @@ function parseExpression(cronStr) {
 
         return new CronExpressionClass(cronStr, minute, hour, day, month, weekday);
     } catch (error) {
-        throw new Error(`Invalid cron expression "${cronStr}": ${error.message}`);
+        const message = error instanceof Error ? error.message : String(error);
+        throw new Error(`Invalid cron expression "${cronStr}": ${message}`);
     }
 }
 
@@ -57,7 +63,14 @@ function parseField(field, min, max) {
     }
 
     if (field.includes('-')) {
-        const [start, end] = field.split('-');
+        const parts = field.split('-');
+        if (parts.length !== 2) {
+            throw new Error(`Invalid range format: ${field}`);
+        }
+        const [start, end] = parts;
+        if (!start || !end) {
+            throw new Error(`Invalid range format: ${field}`);
+        }
         const startNum = parseInt(start, 10);
         const endNum = parseInt(end, 10);
         
@@ -73,7 +86,14 @@ function parseField(field, min, max) {
     }
 
     if (field.includes('/')) {
-        const [range, step] = field.split('/');
+        const parts = field.split('/');
+        if (parts.length !== 2) {
+            throw new Error(`Invalid step format: ${field}`);
+        }
+        const [range, step] = parts;
+        if (!range || !step) {
+            throw new Error(`Invalid step format: ${field}`);
+        }
         const stepNum = parseInt(step, 10);
         
         if (isNaN(stepNum) || stepNum <= 0) {

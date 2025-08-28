@@ -64,7 +64,6 @@ class Executor {
     async executeTask(taskName, mode, callback) {
         const { newRunId } = require('../value-objects/run-id');
         const { now } = require('../time/clock');
-        const { TaskExecutionError } = require('../errors');
         const {
             logTaskStarted,
             logTaskSucceeded,

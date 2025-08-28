@@ -15,7 +15,7 @@ function parseFromString(str) {
     // Match patterns like "30m", "500ms", "1h", etc.
     const match = str.match(/^(\d+(?:\.\d+)?)\s*(ms|s|m|h)$/);
     
-    if (!match) {
+    if (!match || !match[1] || !match[2]) {
         throw new Error(`Invalid duration format: ${str}`);
     }
 

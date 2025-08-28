@@ -53,6 +53,12 @@ class Poller {
             return; // Already running
         }
 
+        // Perform an immediate poll to catch any ready tasks
+        this.poll().catch(error => {
+            const message = error instanceof Error ? error.message : String(error);
+            this.logger.logError({ errorMessage: message }, `Error in immediate poll: ${message}`);
+        });
+
         this.timer = setInterval(async () => {
             try {
                 await this.poll();
@@ -105,10 +111,18 @@ class Poller {
                 state = await txn.getState();
             });
 
+            if (!state) {
+                this.logger.logWarning({}, 'No state available, skipping poll cycle');
+                return;
+            }
+
+            // TypeScript doesn't know state is defined after the check, so we assert it
+            const currentState = /** @type {import('../types').SchedulerState} */ (state);
+
             // Collect all due tasks for execution
             const dueTasks = [];
 
-            for (const task of state.tasks) {
+            for (const task of currentState.tasks) {
                 const { toString } = require('../value-objects/task-id');
                 const taskName = toString(task.name);
 
