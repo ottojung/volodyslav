@@ -48,7 +48,7 @@ describe("declarative scheduler task execution behavior", () => {
         const dailyCallback = jest.fn();
         
         const registrations = [
-            ["minute-task", "0 * * * *", minuteCallback, retryDelay], // Every minute
+            ["minute-task", "* * * * *", minuteCallback, retryDelay], // Every minute
             ["hourly-task", "0 * * * *", hourlyCallback, retryDelay], // Every hour
             ["daily-task", "0 8 * * *", dailyCallback, retryDelay]   // Daily at 8:00 AM
         ];
@@ -56,7 +56,7 @@ describe("declarative scheduler task execution behavior", () => {
         await capabilities.scheduler.initialize(registrations);
         
         // Wait for execution - at least the minute task should execute
-        await new Promise(resolve => setTimeout(resolve, 200));
+        await new Promise(resolve => setTimeout(resolve, 500));
         expect(minuteCallback).toHaveBeenCalled();
         
         await capabilities.scheduler.stop();

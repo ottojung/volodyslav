@@ -27,6 +27,19 @@ class Executor {
     }
 
     /**
+     * Wait for all running tasks to complete.
+     * @returns {Promise<void>}
+     */
+    async waitForCompletion() {
+        if (this.runningTasks.size === 0) {
+            return;
+        }
+        
+        // Wait for all running tasks to complete
+        await Promise.all(this.runningTasks.values());
+    }
+
+    /**
      * Execute a task if not already running.
      * @param {string} taskName
      * @param {string} mode - 'cron' or 'retry'

@@ -47,11 +47,20 @@ function validateRegistrations(registrations) {
                 error.message === "TaskId must be a non-empty string" ||
                 error.message === "TaskId must contain only alphanumeric characters, dashes, and underscores"
             )) {
-                // Transform the error message for backward compatibility
+                const registration = registrations[i];
+                const taskName = Array.isArray(registration) ? registration[0] : '';
+                
+                // Transform message for specific test expectations but preserve error type
                 if (error.message === "TaskId must be a non-empty string") {
-                    throw new Error("Task name must be a non-empty string");
+                    // Create ScheduleInvalidNameError with transformed message
+                    const scheduleError = new ScheduleInvalidNameError(taskName);
+                    scheduleError.message = "Task name must be a non-empty string";
+                    throw scheduleError;
                 } else {
-                    throw new Error("Task name must contain only alphanumeric characters, dashes, and underscores");
+                    // Create ScheduleInvalidNameError with transformed message  
+                    const scheduleError = new ScheduleInvalidNameError(taskName);
+                    scheduleError.message = "Task name must contain only alphanumeric characters, dashes, and underscores";
+                    throw scheduleError;
                 }
             }
             

@@ -53,6 +53,9 @@ function make(getCapabilities) {
 
     /** @type {any} */
     let poller = null;
+    
+    /** @type {any} */
+    let executor = null;
     /** @type {any} */
     let registry = null;
 
@@ -124,7 +127,7 @@ function make(getCapabilities) {
 
         // Create and start poller
         const pollInterval = fromMs(DEFAULT_POLL_INTERVAL_MS);
-        const executor = createExecutor(store, caps.logger);
+        executor = createExecutor(store, caps.logger);
         poller = createPoller(store, executor, caps.logger, registry, pollInterval);
 
         // Start polling
@@ -142,7 +145,14 @@ function make(getCapabilities) {
     async function stopImpl() {
         if (poller !== null) {
             poller.stop();
+            
+            // Wait for any running tasks to complete
+            if (executor !== null) {
+                await executor.waitForCompletion();
+            }
+            
             poller = null;
+            executor = null;
         }
     }
 
