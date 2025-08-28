@@ -8,20 +8,6 @@ const { validateTaskFrequency } = require("./frequency_validator");
 const { makeIntervalManager, makePollingFunction, POLL_INTERVAL_MS } = require("./lifecycle");
 
 /**
- * Error thrown when an invalid task name is provided.
- */
-class ScheduleInvalidNameError extends Error {
-    /**
-     * @param {unknown} taskName
-     */
-    constructor(taskName) {
-        super("Task name must be a non-empty string");
-        this.name = "ScheduleInvalidNameError";
-        this.taskName = /** @type {string} */ (taskName);
-    }
-}
-
-/**
  * Error thrown when a task registration is not found in the polling scheduler.
  */
 class TaskRegistrationNotFoundError extends Error {
@@ -80,10 +66,6 @@ function makePollingScheduler(capabilities, registrations) {
          * @returns {Promise<void>}
          */
         async schedule(name) {
-            if (typeof name !== "string" || name.trim() === "") {
-                throw new ScheduleInvalidNameError(name);
-            }
-
             const found = registrations.get(name);
             if (found === undefined) {
                 throw new TaskRegistrationNotFoundError(name);
