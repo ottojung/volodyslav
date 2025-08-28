@@ -8,7 +8,7 @@ const periodicRouter = require("./routes/periodic");
 const entriesRouter = require("./routes/entries");
 const configRouter = require("./routes/config");
 const expressApp = require("./express_app");
-const { scheduleAll } = require("./scheduler/tasks");
+const { scheduleAll } = require("./jobs");
 const eventLogStorage = require("./event_log_storage");
 
 /** @typedef {import('./filesystem/deleter').FileDeleter} FileDeleter */

@@ -1,6 +1,6 @@
 const eventLogStorage = require("../event_log_storage");
 const { processDiaryAudios } = require("../diary");
-const { executeDailyTasks } = require("./daily_tasks");
+const { executeDailyTasks } = require("./daily");
 const { COMMON } = require("../time_duration");
 
 /** @typedef {import('../filesystem/deleter').FileDeleter} FileDeleter */
@@ -14,7 +14,7 @@ const { COMMON } = require("../time_duration");
 /** @typedef {import('../subprocess/command').Command} Command */
 /** @typedef {import('../environment').Environment} Environment */
 /** @typedef {import('../logger').Logger} Logger */
-/** @typedef {import('./types').Registration} Registration */
+/** @typedef {import('../scheduler').Registration} Registration */
 
 /**
  * @typedef {import('../capabilities/root').Capabilities} Capabilities

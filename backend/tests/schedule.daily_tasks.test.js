@@ -11,7 +11,7 @@ const {
     executeDailyTasks,
     ensureDailyTasksAvailable,
     isDailyTasksUnavailable,
-} = require("../src/scheduler/daily_tasks");
+} = require("../src/jobs");
 const { getMockedRootCapabilities } = require("./spies");
 const { stubLogger } = require("./stubs");
 
