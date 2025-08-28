@@ -13,6 +13,7 @@ const {
     stubDatetime,
     stubApp,
     stubEventLogRepository,
+    stubDailyTasksExecutable,
 } = require("./stubs");
 
 function getTestCapabilities() {
@@ -21,6 +22,7 @@ function getTestCapabilities() {
     stubEnvironment(capabilities);
     stubAiTranscriber(capabilities);
     stubNotifier(capabilities);
+    stubDailyTasksExecutable(capabilities);
     stubSleeper(capabilities);
     stubDatetime(capabilities);
 

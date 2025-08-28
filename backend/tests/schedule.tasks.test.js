@@ -7,6 +7,7 @@ const {
     stubEnvironment,
     stubAiTranscriber,
     stubNotifier,
+    stubDailyTasksExecutable,
 } = require("./stubs");
 
 const { everyHour, daily, allTasks } = require("../src/scheduler/tasks");
@@ -19,6 +20,7 @@ function getTestCapabilities() {
     stubEnvironment(capabilities);
     stubAiTranscriber(capabilities);
     stubNotifier(capabilities);
+    stubDailyTasksExecutable(capabilities);
     return capabilities;
 }
 

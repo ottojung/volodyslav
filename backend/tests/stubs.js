@@ -87,6 +87,10 @@ function stubNotifier(capabilities) {
     capabilities.notifier.notifyAboutWarning = jest.fn();
 }
 
+function stubDailyTasksExecutable(capabilities) {
+    capabilities.volodyslavDailyTasks.ensureAvailable = jest.fn().mockResolvedValue(true);
+}
+
 function stubSleeper(capabilities) {
     capabilities.sleeper.sleep = jest.fn().mockImplementation((_ms) => {
         return Promise.resolve(); // Immediately resolve when stubbed
@@ -320,6 +324,7 @@ module.exports = {
     stubLogger,
     stubAiTranscriber,
     stubNotifier,
+    stubDailyTasksExecutable,
     stubSleeper,
     stubDatetime,
     stubEventLogRepository,
