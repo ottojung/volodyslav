@@ -306,11 +306,9 @@ function stubRuntimeStateStorage(capabilities) {
 
 /**
  * Stubs the polling interval constant for scheduler tests.
- * This should be called before requiring modules that read POLL_INTERVAL_MS.
  * @param {number} [period=1] - The polling period in milliseconds
  */
 const stubPollInterval = (period = 1) => {
-    // Direct module constant override for both old and new module locations
     const intervalModule = require('../src/scheduler/polling/interval');
     jest.mockImplementation(intervalModule.getPollIntervalMs, () => period);
 };
