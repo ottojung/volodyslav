@@ -7,7 +7,7 @@
  * like start, stop, schedule, or cancel are exposed to external consumers.
  */
 
-const { make } = require("./scheduler_factory");
+const { make } = require("./make");
 const { isScheduleDuplicateTaskError } = require("./registration_validation");
 const { isTaskListMismatchError } = require("./state_validation");
 const {
