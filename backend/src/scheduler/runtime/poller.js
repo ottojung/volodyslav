@@ -94,6 +94,7 @@ class Poller {
         }
 
         this.isPolling = true;
+        
         try {
             const { now } = require('../time/clock');
             const { isEligibleNow, getExecutionMode } = require('../plan/planner');

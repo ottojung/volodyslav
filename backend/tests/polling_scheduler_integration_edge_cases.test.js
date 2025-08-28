@@ -3,9 +3,13 @@
  * Focuses on real-world scenarios, error recovery, and interaction patterns.
  */
 
+// IMPORTANT: Must stub poll interval before any other requires
+const { stubPollInterval } = require("./stubs");
+stubPollInterval(1); // Fast polling for tests
+
 const { fromMilliseconds } = require("../src/time_duration");
 const { getMockedRootCapabilities } = require("./spies");
-const { stubEnvironment, stubLogger, stubDatetime, stubSleeper, stubRuntimeStateStorage, stubPollInterval } = require("./stubs");
+const { stubEnvironment, stubLogger, stubDatetime, stubSleeper, stubRuntimeStateStorage } = require("./stubs");
 
 function getTestCapabilities() {
     const capabilities = getMockedRootCapabilities();
@@ -14,7 +18,6 @@ function getTestCapabilities() {
     stubDatetime(capabilities);
     stubSleeper(capabilities);
     stubRuntimeStateStorage(capabilities);
-    stubPollInterval(1); // Fast polling for tests
     return capabilities;
 }
 
@@ -110,6 +113,8 @@ describe("declarative scheduler integration and system edge cases", () => {
     describe("system integration edge cases", () => {
         test("should handle network connectivity issues", async () => {
             const capabilities = getTestCapabilities();
+            const { getDatetimeControl } = require("./stubs");
+            const timeControl = getDatetimeControl(capabilities);
             const retryDelay = fromMilliseconds(5000);
 
             let networkCallCount = 0;
@@ -122,19 +127,33 @@ describe("declarative scheduler integration and system edge cases", () => {
                 }
             });
 
+            // Set time to beginning of minute so "* * * * *" schedule definitely triggers
+            // Use 1 second past the minute boundary so nextAfter works correctly
+            const startTime = new Date("2021-01-01T00:00:01.000Z").getTime();
+            timeControl.setTime(startTime);
+            
+            // Also mock Date.now() for the scheduler's time system
+            const originalDateNow = Date.now;
+            Date.now = jest.fn(() => startTime);
+
             const registrations = [
                 ["network-task", "* * * * *", networkTaskCallback, retryDelay]  // Every minute instead of "0 * * * *"
             ];
 
-            // Should handle network-dependent tasks without crashing
-            await capabilities.scheduler.initialize(registrations);
+            try {
+                // Should handle network-dependent tasks without crashing
+                await capabilities.scheduler.initialize(registrations);
 
-            await new Promise(resolve => setTimeout(resolve, 10));
+                await new Promise(resolve => setTimeout(resolve, 10));
 
-            // Should have attempted execution
-            expect(networkTaskCallback).toHaveBeenCalled();
+                // Should have attempted execution
+                expect(networkTaskCallback).toHaveBeenCalled();
 
-            await capabilities.scheduler.stop();
+                await capabilities.scheduler.stop();
+            } finally {
+                // Restore Date.now
+                Date.now = originalDateNow;
+            }
         });
 
         test("should handle filesystem operations", async () => {
