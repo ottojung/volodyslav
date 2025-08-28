@@ -2,7 +2,6 @@ const path = require("path");
 const fs = require("fs");
 const os = require("os");
 const { stubEventLogRepository } = require("./stub_event_log_repository");
-const { getPollIntervalMs } = require("../src/scheduler/polling/interval");
 
 /**
  * Stubs the environment capabilities for testing.
