@@ -2,13 +2,35 @@
  * Cron expression matching and calculation utilities.
  */
 
-const { CronCalculationError } = require("./cron_errors");
-const datetime = require("../../datetime");
+const datetime = require("../datetime");
+
+/**
+ * Custom error class for calculation errors.
+ */
+class CronCalculationError extends Error {
+    /**
+     * @param {string} message
+     * @param {string} cronExpression
+     */
+    constructor(message, cronExpression) {
+        super(message);
+        this.name = "CronCalculationError";
+        this.cronExpression = cronExpression;
+    }
+}
+
+/**
+ * @param {unknown} object
+ * @returns {object is CronCalculationError}
+ */
+function isCronCalculationError(object) {
+    return object instanceof CronCalculationError;
+}
 
 /**
  * Checks if a given datetime matches the cron expression.
  * @param {import('./expression').CronExpression} cronExpr - Parsed cron expression
- * @param {import('../../datetime').DateTime} dateTime - DateTime to check
+ * @param {import('../datetime').DateTime} dateTime - DateTime to check
  * @returns {boolean} True if the datetime matches the cron expression
  */
 function matchesCronExpression(cronExpr, dateTime) {
@@ -33,8 +55,8 @@ function matchesCronExpression(cronExpr, dateTime) {
 /**
  * Calculates the next execution time for a cron expression.
  * @param {import('./expression').CronExpression} cronExpr - Parsed cron expression
- * @param {import('../../datetime').DateTime} fromDateTime - DateTime to calculate from
- * @returns {import('../../datetime').DateTime} Next execution datetime
+ * @param {import('../datetime').DateTime} fromDateTime - DateTime to calculate from
+ * @returns {import('../datetime').DateTime} Next execution datetime
  * @throws {CronCalculationError} If next execution cannot be calculated
  */
 function getNextExecution(cronExpr, fromDateTime) {
@@ -66,4 +88,5 @@ function getNextExecution(cronExpr, fromDateTime) {
 module.exports = {
     matchesCronExpression,
     getNextExecution,
+    isCronCalculationError,
 };

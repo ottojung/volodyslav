@@ -1,9 +1,9 @@
 
 /**
- * @typedef {import('../../../logger').Logger} Logger
- * @typedef {import('../../../time_duration').TimeDuration} TimeDuration
+ * @typedef {import('../../logger').Logger} Logger
+ * @typedef {import('../../time_duration').TimeDuration} TimeDuration
  * @typedef {import('../types').CronExpression} CronExpression
- * @typedef {import('../../../datetime').DateTime} DateTime
+ * @typedef {import('../../datetime').DateTime} DateTime
  * @typedef {import('../types').Callback} Callback
  */
 

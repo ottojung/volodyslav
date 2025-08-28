@@ -3,13 +3,52 @@
  * Ensures tasks don't run more frequently than the polling interval can handle.
  */
 
-const { getNextExecution } = require("./parser");
-const { ScheduleFrequencyError } = require("./polling_scheduler_errors");
+const { getNextExecution } = require("./expression");
+
+/**
+ * Error thrown when task frequency is higher than polling frequency.
+ */
+class ScheduleFrequencyError extends Error {
+    /**
+     * @param {number} taskFrequencyMs
+     * @param {number} pollFrequencyMs
+     */
+    constructor(taskFrequencyMs, pollFrequencyMs) {
+        // Format frequency display for better readability
+        /** @param {number} ms */
+        const formatFrequency = (ms) => {
+            if (ms < 60 * 1000) {
+                const seconds = Math.floor(ms / 1000);
+                return `${seconds} second${seconds !== 1 ? 's' : ''}`;
+            } else if (ms % (60 * 1000) === 0) {
+                // Exact minutes
+                const minutes = Math.floor(ms / (60 * 1000));
+                return `${minutes} minute${minutes !== 1 ? 's' : ''}`;
+            } else {
+                // Mixed minutes and seconds
+                const totalSeconds = Math.floor(ms / 1000);
+                return `${totalSeconds} second${totalSeconds !== 1 ? 's' : ''}`;
+            }
+        };
+
+        const taskFreq = formatFrequency(taskFrequencyMs);
+        const pollFreq = formatFrequency(pollFrequencyMs);
+
+        super(
+            `Task frequency (${taskFreq}) is higher than ` +
+            `polling frequency (${pollFreq}). ` +
+            `Tasks cannot execute more frequently than the polling interval.`
+        );
+        this.name = "ScheduleFrequencyError";
+        this.taskFrequencyMs = taskFrequencyMs;
+        this.pollFrequencyMs = pollFrequencyMs;
+    }
+}
 
 /**
  * Calculate the minimum interval between executions for a cron expression.
  * @param {import('./expression').CronExpression} parsedCron
- * @param {import('../../datetime').Datetime} dt
+ * @param {import('../datetime').Datetime} dt
  * @returns {number} Minimum interval in milliseconds
  */
 function calculateMinimumCronInterval(parsedCron, dt) {
@@ -81,7 +120,7 @@ function calculateMinimumCronInterval(parsedCron, dt) {
  * Validate that task frequency is not higher than polling frequency
  * @param {import('./expression').CronExpression} parsedCron
  * @param {number} pollIntervalMs
- * @param {import('../../datetime').Datetime} dt
+ * @param {import('../datetime').Datetime} dt
  * @throws {ScheduleFrequencyError}
  */
 function validateTaskFrequency(parsedCron, pollIntervalMs, dt) {

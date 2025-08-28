@@ -3,18 +3,29 @@
  * Handles saving and restoring task state to/from disk.
  */
 
-const { makeDefault } = require('../../runtime_state_storage/structure');
+const { makeDefault } = require('../runtime_state_storage/structure');
 const { serialize, tryDeserialize, isTaskTryDeserializeError } = require('./task');
-const { 
-    TaskAlreadyRegisteredError,
-} = require('./polling_scheduler_errors');
+
+/**
+ * Error thrown when attempting to register a task that is already registered.
+ */
+class TaskAlreadyRegisteredError extends Error {
+    /**
+     * @param {string} taskName
+     */
+    constructor(taskName) {
+        super(`Task ${taskName} is already registered`);
+        this.name = "TaskAlreadyRegisteredError";
+        this.taskName = taskName;
+    }
+}
 
 /** 
  * @typedef {import('./task').Task} Task 
  * @typedef {import('./types').Registration} Registration
  * @typedef {import('./types').ParsedRegistration} ParsedRegistration
  * @typedef {import('./types').ParsedRegistrations} ParsedRegistrations
- * @typedef {import('../../runtime_state_storage/types').TaskRecord} TaskRecord
+ * @typedef {import('../runtime_state_storage/types').TaskRecord} TaskRecord
  */
 
 /**
@@ -53,7 +64,7 @@ function materializeTasks(registrations, taskRecords) {
 /**
  * Persist current scheduler state to disk
  * @template T
- * @param {import('../../capabilities/root').Capabilities} capabilities
+ * @param {import('../capabilities/root').Capabilities} capabilities
  * @param {ParsedRegistrations} registrations
  * @param {Transformation<T>} transformation
  * @returns {Promise<T>}

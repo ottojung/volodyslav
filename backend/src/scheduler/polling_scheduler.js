@@ -2,23 +2,45 @@
  * Polling based cron scheduler.
  */
 
-const {
-    getMostRecentExecution,
-    validateTaskFrequency,
-    mutateTasks,
-    makeTaskExecutor,
-} = require("./index");
-const {
-    ScheduleInvalidNameError,
-    TaskNotFoundError,
-} = require("./polling_scheduler_errors");
+const { getMostRecentExecution } = require("./previous_fire_calculator");
+const { validateTaskFrequency } = require("./frequency_validator");
+const { mutateTasks } = require("./state_persistence");
+const { makeTaskExecutor } = require("./task_executor");
 const { isRunning } = require("./task");
 
 /**
- * @typedef {import('../../logger').Logger} Logger
- * @typedef {import('../../time_duration').TimeDuration} TimeDuration
+ * Error thrown when an invalid task name is provided.
+ */
+class ScheduleInvalidNameError extends Error {
+    /**
+     * @param {unknown} taskName
+     */
+    constructor(taskName) {
+        super("Task name must be a non-empty string");
+        this.name = "ScheduleInvalidNameError";
+        this.taskName = /** @type {string} */ (taskName);
+    }
+}
+
+/**
+ * Error thrown when a task is not found in the runtime task map.
+ */
+class TaskNotFoundError extends Error {
+    /**
+     * @param {string} taskName
+     */
+    constructor(taskName) {
+        super(`Task ${JSON.stringify(taskName)} not found`);
+        this.name = "TaskNotFoundError";
+        this.taskName = taskName;
+    }
+}
+
+/**
+ * @typedef {import('../logger').Logger} Logger
+ * @typedef {import('../time_duration').TimeDuration} TimeDuration
  * @typedef {import('./types').CronExpression} CronExpression
- * @typedef {import('../../datetime').DateTime} DateTime
+ * @typedef {import('../datetime').DateTime} DateTime
  * @typedef {import('./types').Callback} Callback
  */
 
@@ -33,7 +55,7 @@ const POLL_INTERVAL_MS = 600000;
  */
 
 /**
- * @param {import('../../capabilities/root').Capabilities} capabilities
+ * @param {import('../capabilities/root').Capabilities} capabilities
  * @param {ParsedRegistrations} registrations
  */
 function makePollingScheduler(capabilities, registrations) {

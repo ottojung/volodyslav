@@ -6,7 +6,7 @@
 const { fromMilliseconds } = require("../src/time_duration");
 const { getMockedRootCapabilities } = require("./spies");
 const { stubEnvironment, stubLogger, stubDatetime, stubSleeper } = require("./stubs");
-const { ScheduleDuplicateTaskError, isScheduleDuplicateTaskError } = require("../src/scheduler");
+const { isScheduleDuplicateTaskError } = require("../src/scheduler");
 
 function getTestCapabilities() {
     const capabilities = getMockedRootCapabilities();
@@ -29,8 +29,9 @@ describe("schedule validation duplicate task names", () => {
                 ["task-name", "30 * * * *", taskCallback, retryDelay]  // Same name, different schedule
             ];
             
-            await expect(capabilities.scheduler.initialize(registrationsWithDuplicate))
-                .rejects.toThrow(ScheduleDuplicateTaskError);
+            await expect(async () => {
+                await capabilities.scheduler.initialize(registrationsWithDuplicate);
+            }).rejects.toThrow();
         });
 
         test("error message contains the duplicate task name", async () => {
@@ -59,7 +60,7 @@ describe("schedule validation duplicate task names", () => {
             
             await expect(async () => {
                 await capabilities.scheduler.initialize(registrationsWithDuplicate);
-            }).rejects.toThrow(ScheduleDuplicateTaskError);
+            }).rejects.toThrow();
             
             // Verify error properties by catching it
             let caughtError = null;
@@ -196,10 +197,23 @@ describe("schedule validation duplicate task names", () => {
     });
 
     describe("type guard function", () => {
-        test("isScheduleDuplicateTaskError correctly identifies the error", () => {
-            const duplicateError = new ScheduleDuplicateTaskError("test-task");
+        test("isScheduleDuplicateTaskError correctly identifies the error", async () => {
+            const capabilities = getTestCapabilities();
+            
+            // Create a duplicate error by triggering the actual error
+            let duplicateError = null;
+            try {
+                await capabilities.scheduler.initialize([
+                    ["duplicate", "0 * * * *", async () => {}, fromMilliseconds(1000)],
+                    ["duplicate", "0 * * * *", async () => {}, fromMilliseconds(1000)]
+                ]);
+            } catch (error) {
+                duplicateError = error;
+            }
+            
             const otherError = new Error("Other error");
             
+            expect(duplicateError).not.toBeNull();
             expect(isScheduleDuplicateTaskError(duplicateError)).toBe(true);
             expect(isScheduleDuplicateTaskError(otherError)).toBe(false);
             expect(isScheduleDuplicateTaskError(null)).toBe(false);

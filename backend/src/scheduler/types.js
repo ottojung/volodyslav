@@ -1,9 +1,13 @@
+
 /**
  * Type definitions for the declarative scheduler.
  */
 
-/** @typedef {import('../time_duration/structure').TimeDuration} TimeDuration */
+/** @typedef {import('../time_duration').TimeDuration} TimeDuration */
 /** @typedef {import('./tasks').Capabilities} Capabilities */
+/** @typedef {import('./task').Task} Task */
+/** @typedef {() => Promise<void>} Callback */
+/** @typedef {import('./expression').CronExpression} CronExpression */
 
 /**
  * @typedef {object} Scheduler
@@ -12,8 +16,33 @@
  */
 
 /**
- * @typedef {import('./internal/types').Registration} Registration
- * @typedef {import('./internal/types').ParsedRegistrations} ParsedRegistrations
+ * Registration tuple defining a scheduled task.
+ * @typedef {[string, string, Callback, TimeDuration]} Registration
+ * @example
+ * // Schedule a daily backup task at 2 AM
+ * const registration = [
+ *   "daily-backup",           // Task name (must be unique)
+ *   "0 2 * * *",             // Cron expression (daily at 2:00 AM)
+ *   async () => { ... },     // Async callback function
+ *   fromMinutes(30)          // Retry delay (30 minutes)
+ * ];
+ */
+
+/**
+ * @typedef {object} ParsedRegistration
+ * @property {string} name
+ * @property {CronExpression} parsedCron
+ * @property {Callback} callback
+ * @property {TimeDuration} retryDelay
+ */
+
+/**
+ * @typedef {Map<string, ParsedRegistration>} ParsedRegistrations
+ */
+
+/**
+ * @template T
+ * @typedef {(tasks: Map<string, Task>) => T} Transformation
  */
 
 /**
