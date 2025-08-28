@@ -2,8 +2,8 @@
  * Validation logic for scheduler registrations and task state.
  */
 
-const { parseCronExpression } = require("./internal/parser");
-const { ScheduleInvalidNameError, ScheduleDuplicateTaskError } = require("./internal/polling_scheduler_errors");
+const { parseCronExpression } = require("./expression/parser");
+const { ScheduleInvalidNameError, ScheduleDuplicateTaskError } = require("./polling_scheduler_errors");
 
 const {
     TaskListMismatchError,

@@ -15,8 +15,8 @@ const {
     isCronExpression,
     isInvalidCronExpressionError,
     InvalidCronExpressionError 
-} = require("./internal/parser");
-const { ScheduleInvalidNameError, ScheduleDuplicateTaskError, isScheduleDuplicateTaskError } = require("./internal/polling_scheduler_errors");
+} = require("./expression/parser");
+const { ScheduleInvalidNameError, ScheduleDuplicateTaskError, isScheduleDuplicateTaskError } = require("./polling_scheduler_errors");
 
 /**
  * Validate a cron expression without creating a scheduler.

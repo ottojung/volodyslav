@@ -2,12 +2,10 @@
  * Polling based cron scheduler.
  */
 
-const {
-    getMostRecentExecution,
-    validateTaskFrequency,
-    mutateTasks,
-    makeTaskExecutor,
-} = require("./index");
+const { getMostRecentExecution } = require("./previous_fire_calculator");
+const { validateTaskFrequency } = require("./frequency_validator");
+const { mutateTasks } = require("./state_persistence");
+const { makeTaskExecutor } = require("./task_executor");
 const {
     ScheduleInvalidNameError,
     TaskNotFoundError,

@@ -2,10 +2,10 @@
  * Scheduler factory implementation for the declarative scheduler.
  */
 
-const { parseCronExpression } = require("./internal/parser");
-const { makePollingScheduler } = require("./internal/polling_scheduler");
-const { mutateTasks } = require("./internal/state_persistence");
-const { isScheduleDuplicateTaskError } = require("./internal/polling_scheduler_errors");
+const { parseCronExpression } = require("./expression/parser");
+const { makePollingScheduler } = require("./polling_scheduler");
+const { mutateTasks } = require("./state_persistence");
+const { isScheduleDuplicateTaskError } = require("./polling_scheduler_errors");
 const memconst = require("../memconst");
 
 const {
