@@ -4,7 +4,7 @@
  */
 
 const { mutateTasks } = require('../persistence');
-const { evaluateTasksForExecution } = require('../task_execution');
+const { evaluateTasksForExecution } = require('../execution');
 
 /** @typedef {import('../types').Callback} Callback */
 
@@ -13,7 +13,7 @@ const { evaluateTasksForExecution } = require('../task_execution');
  * @param {import('../../capabilities/root').Capabilities} capabilities
  * @param {import('../types').ParsedRegistrations} registrations
  * @param {Set<string>} scheduledTasks
- * @param {ReturnType<import('../task_executor').makeTaskExecutor>} taskExecutor
+ * @param {ReturnType<import('../execution').makeTaskExecutor>} taskExecutor
  * @returns {() => Promise<void>}
  */
 function makePollingFunction(capabilities, registrations, scheduledTasks, taskExecutor) {

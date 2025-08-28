@@ -17,20 +17,20 @@ class TaskExecutionNotFoundError extends Error {
     }
 }
 
-/** @typedef {import('./task').Task} Task */
+/** @typedef {import('../task').Task} Task */
 
 /**
  * @template T
- * @typedef {import('./types').Transformation<T>} Transformation
+ * @typedef {import('../types').Transformation<T>} Transformation
  */
 
 /**
- * @typedef {import('./types').Callback} Callback
+ * @typedef {import('../types').Callback} Callback
  */
 
 /**
  * Create a task executor.
- * @param {import('../capabilities/root').Capabilities} capabilities
+ * @param {import('../../capabilities/root').Capabilities} capabilities
  * @param {<T>(tr: Transformation<T>) => Promise<T>} mutateTasks
  */
 function makeTaskExecutor(capabilities, mutateTasks) {

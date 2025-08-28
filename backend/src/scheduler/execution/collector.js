@@ -114,5 +114,4 @@ function evaluateTasksForExecution(tasks, scheduledTasks, now, dt, capabilities)
 
 module.exports = {
     evaluateTasksForExecution,
-    TaskEvaluationNotFoundError,
 };
