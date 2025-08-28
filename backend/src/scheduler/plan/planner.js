@@ -3,6 +3,9 @@
  * Pure planning functions for task scheduling.
  */
 
+// Module-level imports to avoid Jest teardown issues
+const { isBefore } = require('../time/clock');
+
 /**
  * Calculate the next eligible execution time for a task.
  * @param {import('../types').TaskDefinition} def - Task definition
@@ -11,8 +14,6 @@
  * @returns {import('../types').InstantMs | null} Next execution time or null if not eligible
  */
 function nextEligible(def, rt, now) {
-    const { isBefore } = require('../time/clock');
-    
     // If task is currently running, it's not eligible
     if (rt.isRunning) {
         return null;

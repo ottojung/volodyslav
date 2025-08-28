@@ -3,6 +3,12 @@
  * Polling scheduler that coordinates task execution.
  */
 
+// Module-level imports to avoid Jest teardown issues
+const { now } = require('../time/clock');
+const { isEligibleNow, getExecutionMode } = require('../plan/planner');
+const { logTaskDispatched } = require('../observability/logging');
+const { toString: taskIdToString } = require('../value-objects/task-id');
+
 /**
  * Poller that runs tasks based on schedule.
  */
@@ -28,6 +34,9 @@ class Poller {
     /** @type {boolean} */
     isPolling;
 
+    /** @type {boolean} */
+    stopped;
+
     /**
      * @param {import('../types').Store} store
      * @param {import('./executor').Executor} executor
@@ -43,28 +52,36 @@ class Poller {
         this.pollInterval = pollInterval;
         this.timer = null;
         this.isPolling = false;
+        this.stopped = false;
     }
 
     /**
      * Start polling.
      */
     start() {
-        if (this.timer !== null) {
-            return; // Already running
+        if (this.timer !== null || this.stopped) {
+            return; // Already running or stopped
         }
 
         // Perform an immediate poll to catch any ready tasks
         this.poll().catch(error => {
-            const message = error instanceof Error ? error.message : String(error);
-            this.logger.logError({ errorMessage: message }, `Error in immediate poll: ${message}`);
+            if (!this.stopped) {
+                const message = error instanceof Error ? error.message : String(error);
+                this.logger.logError({ errorMessage: message }, `Error in immediate poll: ${message}`);
+            }
         });
 
         this.timer = setInterval(async () => {
+            if (this.stopped) {
+                return;
+            }
             try {
                 await this.poll();
             } catch (error) {
-                const message = error instanceof Error ? error.message : String(error);
-                this.logger.logError({ errorMessage: message }, `Unexpected poll error: ${message}`);
+                if (!this.stopped) {
+                    const message = error instanceof Error ? error.message : String(error);
+                    this.logger.logError({ errorMessage: message }, `Unexpected poll error: ${message}`);
+                }
             }
         }, this.pollInterval.toMs());
 
@@ -76,6 +93,7 @@ class Poller {
      * Stop polling.
      */
     stop() {
+        this.stopped = true;
         if (this.timer !== null) {
             clearInterval(this.timer);
             this.timer = null;
@@ -87,6 +105,11 @@ class Poller {
      * @returns {Promise<void>}
      */
     async poll() {
+        // Guard against operations after stop
+        if (this.stopped) {
+            return;
+        }
+
         // Guard against re-entrant polls
         if (this.isPolling) {
             this.logger.logDebug({ reason: "pollInProgress" }, "PollSkipped");
@@ -96,10 +119,6 @@ class Poller {
         this.isPolling = true;
         
         try {
-            const { now } = require('../time/clock');
-            const { isEligibleNow, getExecutionMode } = require('../plan/planner');
-            const { logTaskDispatched } = require('../observability/logging');
-
             const currentTime = now();
             let dueRetry = 0;
             let dueCron = 0;
@@ -111,6 +130,11 @@ class Poller {
             await this.store.transaction(async (txn) => {
                 state = await txn.getState();
             });
+
+            // Check if stopped after async operation
+            if (this.stopped) {
+                return;
+            }
 
             if (!state) {
                 this.logger.logWarning({}, 'No state available, skipping poll cycle');
@@ -124,8 +148,12 @@ class Poller {
             const dueTasks = [];
 
             for (const task of currentState.tasks) {
-                const { toString } = require('../value-objects/task-id');
-                const taskName = toString(task.name);
+                // Check if stopped during loop iteration
+                if (this.stopped) {
+                    return;
+                }
+
+                const taskName = taskIdToString(task.name);
 
                 // Skip if task is running
                 if (this.executor.isRunning(taskName)) {

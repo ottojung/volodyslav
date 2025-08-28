@@ -54,16 +54,6 @@ class CronExpressionClass {
     }
 
     /**
-     * Check if given instant matches this cron expression.
-     * @param {import('../instant').InstantMs} instant - Instant to check
-     * @returns {boolean} True if instant matches
-     */
-    matches(instant) {
-        const { checkMatch } = require('./parse');
-        return checkMatch(this, instant);
-    }
-
-    /**
      * Calculate the minimum interval between executions.
      * @returns {import('../time-duration').TimeDuration} Minimum interval
      */
