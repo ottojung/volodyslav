@@ -3,7 +3,7 @@
  */
 
 const { parseCronExpression } = require("./expression");
-const { makePollingScheduler } = require("./polling_scheduler");
+const { makePollingScheduler } = require("./polling");
 const { mutateTasks } = require("./persistence");
 const { isScheduleDuplicateTaskError } = require("./registration_validation");
 const memconst = require("../memconst");

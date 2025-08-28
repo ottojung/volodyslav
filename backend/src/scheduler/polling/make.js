@@ -2,10 +2,11 @@
  * Polling based cron scheduler.
  */
 
-const { mutateTasks } = require("./persistence");
-const { makeTaskExecutor } = require("./execution");
-const { validateTaskFrequency } = require("./registration_validation/frequency");
-const { makeIntervalManager, makePollingFunction, POLL_INTERVAL_MS } = require("./lifecycle");
+const { mutateTasks } = require("../persistence");
+const { makeTaskExecutor } = require("../execution");
+const { validateTaskFrequency } = require("../registration_validation/frequency");
+const { makePollingFunction } = require("./function");
+const { makeIntervalManager, POLL_INTERVAL_MS } = require("./interval");
 
 /**
  * Error thrown when a task registration is not found in the polling scheduler.
@@ -22,21 +23,21 @@ class TaskRegistrationNotFoundError extends Error {
 }
 
 /**
- * @typedef {import('../logger').Logger} Logger
- * @typedef {import('../time_duration').TimeDuration} TimeDuration
- * @typedef {import('./types').CronExpression} CronExpression
- * @typedef {import('../datetime').DateTime} DateTime
- * @typedef {import('./types').Callback} Callback
+ * @typedef {import('../../logger').Logger} Logger
+ * @typedef {import('../../time_duration').TimeDuration} TimeDuration
+ * @typedef {import('../types').CronExpression} CronExpression
+ * @typedef {import('../../datetime').DateTime} DateTime
+ * @typedef {import('../types').Callback} Callback
  */
 
-/** @typedef {import('./types').Registration} Registration */
+/** @typedef {import('../types').Registration} Registration */
 
 /**
- * @typedef {import('./types').ParsedRegistrations} ParsedRegistrations
+ * @typedef {import('../types').ParsedRegistrations} ParsedRegistrations
  */
 
 /**
- * @param {import('../capabilities/root').Capabilities} capabilities
+ * @param {import('../../capabilities/root').Capabilities} capabilities
  * @param {ParsedRegistrations} registrations
  */
 function makePollingScheduler(capabilities, registrations) {
@@ -75,7 +76,7 @@ function makePollingScheduler(capabilities, registrations) {
             const parsedCron = found.parsedCron;
 
             // Validate task frequency against polling frequency
-            validateTaskFrequency(parsedCron, module.exports.POLL_INTERVAL_MS, dt);
+            validateTaskFrequency(parsedCron, POLL_INTERVAL_MS, dt);
 
             if (scheduledTasks.size === 0) {
                 start();
@@ -116,5 +117,4 @@ function makePollingScheduler(capabilities, registrations) {
 
 module.exports = {
     makePollingScheduler,
-    POLL_INTERVAL_MS,
 };
