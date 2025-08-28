@@ -258,7 +258,7 @@ describe("scheduler task methods edge cases", () => {
                 { success: successTime, failure: failureTime, expected: true }
             ];
 
-            testCases.forEach(({ success, failure, expected }, index) => {
+            testCases.forEach(({ success, failure, expected }, _index) => {
                 const task = createTestTask({
                     lastAttemptTime: attemptTime,
                     lastSuccessTime: success,

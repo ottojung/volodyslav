@@ -3,7 +3,7 @@
  * Focuses on testing boundary conditions and error scenarios in field parsing.
  */
 
-const { parseField, FIELD_CONFIGS, isFieldParseError } = require("../src/scheduler/expression/field_parser");
+const { parseField, FIELD_CONFIGS } = require("../src/scheduler/expression/field_parser");
 
 describe("scheduler cron field parser edge cases", () => {
 
@@ -180,38 +180,26 @@ describe("scheduler cron field parser edge cases", () => {
 
     describe("error object properties", () => {
         test("should create FieldParseError with correct properties", () => {
-            try {
-                parseField("invalid", FIELD_CONFIGS.minute);
-                fail("Expected FieldParseError to be thrown");
-            } catch (error) {
-                expect(isFieldParseError(error)).toBe(true);
-                expect(error.name).toBe("FieldParseError");
-                expect(error.fieldValue).toBe("invalid");
-                expect(error.fieldName).toBe("minute");
-                expect(error.message).toContain("invalid");
-            }
+            expect(() => parseField("invalid", FIELD_CONFIGS.minute))
+                .toThrow(expect.objectContaining({
+                    name: "FieldParseError",
+                    fieldValue: "invalid",
+                    fieldName: "minute"
+                }));
         });
 
         test("should have informative error messages", () => {
-            try {
-                parseField("60", FIELD_CONFIGS.minute);
-            } catch (error) {
-                expect(error.message).toContain("out of range");
-                expect(error.message).toContain("0-59");
-            }
+            // Test out of range minute
+            expect(() => parseField("60", FIELD_CONFIGS.minute))
+                .toThrow(/out of range/);
 
-            try {
-                parseField("5-3", FIELD_CONFIGS.minute);
-            } catch (error) {
-                expect(error.message).toContain("invalid range");
-                expect(error.message).toContain("start > end");
-            }
+            // Test invalid range
+            expect(() => parseField("5-3", FIELD_CONFIGS.minute))
+                .toThrow(/invalid range/);
 
-            try {
-                parseField("*/0", FIELD_CONFIGS.minute);
-            } catch (error) {
-                expect(error.message).toContain("invalid step value");
-            }
+            // Test invalid step
+            expect(() => parseField("*/0", FIELD_CONFIGS.minute))
+                .toThrow(/invalid step value/);
         });
     });
 

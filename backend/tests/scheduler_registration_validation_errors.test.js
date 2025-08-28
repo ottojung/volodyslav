@@ -46,7 +46,7 @@ describe("scheduler registration validation error handling", () => {
                 123
             ];
 
-            invalidRegistrations.forEach((invalid, index) => {
+            invalidRegistrations.forEach((invalid, _index) => {
                 expect(() => validateRegistrations([invalid], capabilities))
                     .toThrow(/Registration at index 0 must be an array of length 4/);
             });
@@ -76,15 +76,14 @@ describe("scheduler registration validation error handling", () => {
         test("should include registration details in error", () => {
             const capabilities = getTestCapabilities();
             
-            try {
-                validateRegistrations(["invalid"], capabilities);
-                fail("Expected RegistrationShapeError");
-            } catch (error) {
-                expect(error.name).toBe("RegistrationShapeError");
-                expect(error.details).toBeDefined();
-                expect(error.details.index).toBe(0);
-                expect(error.details.registration).toBe("invalid");
-            }
+            expect(() => validateRegistrations(["invalid"], capabilities))
+                .toThrow(expect.objectContaining({
+                    name: "RegistrationShapeError",
+                    details: expect.objectContaining({
+                        index: 0,
+                        registration: "invalid"
+                    })
+                }));
         });
     });
 
@@ -171,13 +170,19 @@ describe("scheduler registration validation error handling", () => {
                 ["task", "0 0 * * *", callback, retryDelay]
             ];
 
+            expect(() => validateRegistrations(registrations, capabilities))
+                .toThrow(expect.objectContaining({
+                    taskName: "task"
+                }));
+
+            // Verify error type with separate error capture
+            let capturedError;
             try {
                 validateRegistrations(registrations, capabilities);
-                fail("Expected ScheduleDuplicateTaskError");
             } catch (error) {
-                expect(isScheduleDuplicateTaskError(error)).toBe(true);
-                expect(error.taskName).toBe("task");
+                capturedError = error;
             }
+            expect(isScheduleDuplicateTaskError(capturedError)).toBe(true);
         });
 
         test("should allow same name in different validation calls", () => {
@@ -240,16 +245,15 @@ describe("scheduler registration validation error handling", () => {
             const callback = jest.fn();
             const retryDelay = fromMilliseconds(5000);
             
-            try {
-                validateRegistrations([["task", null, callback, retryDelay]], capabilities);
-                fail("Expected InvalidCronExpressionTypeError");
-            } catch (error) {
-                expect(error.name).toBe("InvalidCronExpressionTypeError");
-                expect(error.details).toBeDefined();
-                expect(error.details.index).toBe(0);
-                expect(error.details.name).toBe("task");
-                expect(error.details.value).toBe(null);
-            }
+            expect(() => validateRegistrations([["task", null, callback, retryDelay]], capabilities))
+                .toThrow(expect.objectContaining({
+                    name: "InvalidCronExpressionTypeError",
+                    details: expect.objectContaining({
+                        index: 0,
+                        name: "task",
+                        value: null
+                    })
+                }));
         });
     });
 
@@ -283,14 +287,13 @@ describe("scheduler registration validation error handling", () => {
             const callback = jest.fn();
             const retryDelay = fromMilliseconds(5000);
             
-            try {
-                validateRegistrations([["task", "invalid-cron", callback, retryDelay]], capabilities);
-                fail("Expected CronExpressionInvalidError");
-            } catch (error) {
-                expect(error.name).toBe("CronExpressionInvalidError");
-                expect(error.details).toBeDefined();
-                expect(error.details.value).toBe("invalid-cron");
-            }
+            expect(() => validateRegistrations([["task", "invalid-cron", callback, retryDelay]], capabilities))
+                .toThrow(expect.objectContaining({
+                    name: "CronExpressionInvalidError",
+                    details: expect.objectContaining({
+                        value: "invalid-cron"
+                    })
+                }));
         });
     });
 
@@ -397,14 +400,13 @@ describe("scheduler registration validation error handling", () => {
                 toMilliseconds: () => -5000
             };
 
-            try {
-                validateRegistrations([["task", "0 * * * *", callback, negativeRetryDelay]], capabilities);
-                fail("Expected NegativeRetryDelayError");
-            } catch (error) {
-                expect(error.name).toBe("NegativeRetryDelayError");
-                expect(error.details).toBeDefined();
-                expect(error.details.retryMs).toBe(-5000);
-            }
+            expect(() => validateRegistrations([["task", "0 * * * *", callback, negativeRetryDelay]], capabilities))
+                .toThrow(expect.objectContaining({
+                    name: "NegativeRetryDelayError",
+                    details: expect.objectContaining({
+                        retryMs: -5000
+                    })
+                }));
         });
     });
 

@@ -246,9 +246,6 @@ describe("scheduler cron expression equivalence edge cases", () => {
         });
 
         test("should not modify the cron expressions during comparison", () => {
-            const originalMinute = [0];
-            const originalHour = Array.from({ length: 24 }, (_, i) => i);
-            
             const cron1 = parseCronExpression("0 * * * *");
             const cron2 = parseCronExpression("0 * * * *");
 
