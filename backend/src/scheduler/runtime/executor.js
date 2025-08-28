@@ -124,9 +124,10 @@ class Executor {
                     task.lastSuccessTime = endTime;
                     task.pendingRetryUntil = null;
                     
-                    // For cron mode, update lastEvaluatedFire to enable proper scheduling
+                    // For cron mode, update lastEvaluatedFire to the start time
+                    // This represents when the task was evaluated for cron schedule
                     if (mode === 'cron') {
-                        task.lastEvaluatedFire = endTime;
+                        task.lastEvaluatedFire = startTime;
                     }
                     
                     await txn.setState(state);

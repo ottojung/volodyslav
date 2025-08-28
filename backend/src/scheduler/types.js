@@ -100,6 +100,7 @@
  * @typedef {object} Scheduler
  * @property {Initialize} initialize - Initializes the scheduler with task registrations
  * @property {Stop} stop - Stops the scheduler and cleans up resources
+ * @property {() => Promise<void>} poll - Manually trigger a poll cycle for testing
  */
 
 module.exports = {

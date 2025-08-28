@@ -27,17 +27,6 @@ function matchesCronSchedule(cron, time) {
         cron.month.includes(month) &&
         cron.weekday.includes(weekday)
     );
-    
-    // Debug logging
-    if (process.env.NODE_ENV !== 'production') {
-        console.log(`Cron pattern matching for ${new Date(time.epochMs).toISOString()}:`);
-        console.log(`  minute: ${minute} in [${cron.minute}] = ${cron.minute.includes(minute)}`);
-        console.log(`  hour: ${hour} in [${cron.hour}] = ${cron.hour.includes(hour)}`);
-        console.log(`  day: ${day} in [${cron.day}] = ${cron.day.includes(day)}`);
-        console.log(`  month: ${month} in [${cron.month}] = ${cron.month.includes(month)}`);
-        console.log(`  weekday: ${weekday} in [${cron.weekday}] = ${cron.weekday.includes(weekday)}`);
-        console.log(`  Overall match: ${matches}`);
-    }
 
     return matches;
 }
@@ -95,8 +84,6 @@ function nextEligible(def, rt, now) {
  * @returns {'cron' | 'retry' | null} Execution mode or null if not eligible
  */
 function getExecutionMode(def, rt, now) {
-    const { isBefore } = require('../time/clock');
-    
     if (rt.isRunning) {
         return null;
     }

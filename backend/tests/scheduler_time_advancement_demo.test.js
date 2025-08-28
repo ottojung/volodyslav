@@ -57,6 +57,9 @@ describe("scheduler time advancement demo", () => {
         // Manually trigger polling since setInterval doesn't work with mocked time
         await capabilities.scheduler.poll();
         
+        // Wait for task execution to complete
+        await new Promise(resolve => setTimeout(resolve, 50));
+        
         console.log(`Calls after first advance: ${taskCallback.mock.calls.length}`);
         
         // Should have at least one more call than initial
@@ -66,14 +69,16 @@ describe("scheduler time advancement demo", () => {
 
         // Advance to 01:30:00
         timeControl.advanceTime(60 * 60 * 1000); // 1 hour
-        await new Promise(resolve => setTimeout(resolve, 100)); // Wait for polling
+        await capabilities.scheduler.poll(); // Manually trigger polling
+        await new Promise(resolve => setTimeout(resolve, 50)); // Wait for execution
         expect(taskCallback.mock.calls.length).toBeGreaterThan(afterFirstAdvance);
 
         const afterSecondAdvance = taskCallback.mock.calls.length;
 
         // Advance to 02:30:00
         timeControl.advanceTime(60 * 60 * 1000); // 1 hour
-        await new Promise(resolve => setTimeout(resolve, 100)); // Wait for polling
+        await capabilities.scheduler.poll(); // Manually trigger polling
+        await new Promise(resolve => setTimeout(resolve, 50)); // Wait for execution
         expect(taskCallback.mock.calls.length).toBeGreaterThan(afterSecondAdvance);
 
         await capabilities.scheduler.stop();

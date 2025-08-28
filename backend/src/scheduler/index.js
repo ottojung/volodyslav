@@ -68,9 +68,10 @@ function make(getCapabilities) {
 
         // Set up time override if datetime is mocked
         const { setTimeOverride } = require('./time/clock');
-        if (caps.datetime && caps.datetime.__isMockedDatetime) {
-            // Use mocked time
-            setTimeOverride(() => caps.datetime.getCurrentTime());
+        if (caps.datetime && 'getCurrentTime' in caps.datetime) {
+            // Use mocked time (check for method existence instead of private property)
+            const mockedDatetime = /** @type {any} */ (caps.datetime);
+            setTimeOverride(() => mockedDatetime.getCurrentTime());
         } else {
             // Use real time
             setTimeOverride(null);
@@ -144,7 +145,8 @@ function make(getCapabilities) {
 
         // Log successful startup
         const taskNames = registry.getTaskNames();
-        logStartupValidated(taskNames.length, taskNames, caps.datetime.now(), caps.logger);
+        const { now } = require('./time/clock');
+        logStartupValidated(taskNames.length, taskNames, now(), caps.logger);
     }
 
     /**

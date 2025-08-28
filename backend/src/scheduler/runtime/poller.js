@@ -8,6 +8,7 @@ const { now } = require('../time/clock');
 const { isEligibleNow, getExecutionMode } = require('../plan/planner');
 const { logTaskDispatched } = require('../observability/logging');
 const { toString: taskIdToString } = require('../value-objects/task-id');
+const { newRunId } = require('../value-objects/run-id');
 
 /**
  * Poller that runs tasks based on schedule.
@@ -120,7 +121,6 @@ class Poller {
         
         try {
             const currentTime = now();
-            console.log(`Poller running at: ${new Date(currentTime.epochMs).toISOString()}`);
             let dueRetry = 0;
             let dueCron = 0;
             let skippedRunning = 0;
@@ -209,7 +209,6 @@ class Poller {
 
             // Execute all due tasks
             for (const task of dueTasks) {
-                const { newRunId } = require('../value-objects/run-id');
                 const runId = newRunId();
                 
                 logTaskDispatched(task.taskName, runId, task.mode, currentTime, this.logger);
