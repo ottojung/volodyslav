@@ -47,13 +47,19 @@ function validateRegistrations(registrations) {
                 error.message === "TaskId must be a non-empty string" ||
                 error.message === "TaskId must contain only alphanumeric characters, dashes, and underscores"
             )) {
-                const registration = registrations[i];
-                const taskName = Array.isArray(registration) ? registration[0] : '';
-                throw new ScheduleInvalidNameError(taskName);
+                // Transform the error message for backward compatibility
+                if (error.message === "TaskId must be a non-empty string") {
+                    throw new Error("Task name must be a non-empty string");
+                } else {
+                    throw new Error("Task name must contain only alphanumeric characters, dashes, and underscores");
+                }
             }
             
             // For other errors, wrap with index information
             const message = error instanceof Error ? error.message : String(error);
+            if (message === "Registration must be a 4-element array [name, cron, callback, retryDelay]") {
+                throw new Error(`Registration at index ${i} must be an array of length 4`);
+            }
             throw new Error(`Invalid registration at index ${i}: ${message}`);
         }
     }

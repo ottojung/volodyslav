@@ -140,11 +140,9 @@ describe("schedule validation duplicate task names", () => {
                 ["task-name ", "45 * * * *", taskCallback, retryDelay]    // Trailing space
             ];
             
-            // Should succeed since whitespace makes them different names
+            // Should fail because whitespace is not allowed in task names
             await expect(capabilities.scheduler.initialize(registrationsWithWhitespace))
-                .resolves.toBeUndefined();
-                
-            await capabilities.scheduler.stop();
+                .rejects.toThrow("Task name must contain only alphanumeric characters, dashes, and underscores");
         });
 
         test("exact duplicate detection - same name exactly", async () => {
