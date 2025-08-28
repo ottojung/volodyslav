@@ -3,7 +3,7 @@
  * Handles efficient backwards calculation to find the most recent execution time.
  */
 
-const { matchesCronExpression, getNextExecution } = require("./expression");
+const { matchesCronExpression, getNextExecution } = require("./calculator");
 
 /**
  * Finds the most recent time a cron expression would have fired before the given reference time.

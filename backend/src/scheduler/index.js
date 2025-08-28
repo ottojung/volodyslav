@@ -10,13 +10,12 @@
 const { make } = require("./scheduler_factory");
 const { isScheduleDuplicateTaskError } = require("./registration_validation");
 const { isTaskListMismatchError } = require("./state_validation");
-const { 
-    parseCronExpression, 
-    matchesCronExpression,
-    getNextExecution,
+const {
+    parseCronExpression,
     isCronExpression,
     isInvalidCronExpressionError
-} = require("./expression");
+} = require('./expression')
+const { matchesCronExpression, getNextExecution } = require("./calculator");
 
 /**
  * Validate a cron expression without creating a scheduler.
