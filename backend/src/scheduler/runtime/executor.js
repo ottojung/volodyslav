@@ -3,6 +3,18 @@
  * Task execution with mutex protection and state management.
  */
 
+// Module-level imports to avoid Jest teardown issues
+const { newRunId } = require('../value-objects/run-id');
+const { now } = require('../time/clock');
+const {
+    logTaskStarted,
+    logTaskSucceeded,
+    logTaskFailed,
+    logRetryScheduled,
+} = require('../observability/logging');
+const { toString: taskIdToString } = require('../value-objects/task-id');
+const { calculateRetryTime } = require('../plan/planner');
+
 /**
  * Task executor with non-overlap protection.
  */
@@ -75,15 +87,6 @@ class Executor {
      * @returns {Promise<void>}
      */
     async executeTask(taskName, mode, callback) {
-        const { newRunId } = require('../value-objects/run-id');
-        const { now } = require('../time/clock');
-        const {
-            logTaskStarted,
-            logTaskSucceeded,
-            logTaskFailed,
-            logRetryScheduled,
-        } = require('../observability/logging');
-
         const runId = newRunId();
         const startTime = now();
 
@@ -91,8 +94,7 @@ class Executor {
         await this.store.transaction(async (txn) => {
             const state = await txn.getState();
             const task = state.tasks.find(t => {
-                const { toString } = require('../value-objects/task-id');
-                return toString(t.name) === taskName;
+                return taskIdToString(t.name) === taskName;
             });
 
             if (task) {
@@ -115,8 +117,7 @@ class Executor {
             await this.store.transaction(async (txn) => {
                 const state = await txn.getState();
                 const task = state.tasks.find(t => {
-                    const { toString } = require('../value-objects/task-id');
-                    return toString(t.name) === taskName;
+                    return taskIdToString(t.name) === taskName;
                 });
 
                 if (task) {
@@ -145,8 +146,7 @@ class Executor {
             await this.store.transaction(async (txn) => {
                 const state = await txn.getState();
                 const task = state.tasks.find(t => {
-                    const { toString } = require('../value-objects/task-id');
-                    return toString(t.name) === taskName;
+                    return taskIdToString(t.name) === taskName;
                 });
 
                 if (task) {
@@ -154,7 +154,6 @@ class Executor {
                     task.lastFailureTime = endTime;
                     
                     // Calculate retry time
-                    const { calculateRetryTime } = require('../plan/planner');
                     const retryTime = calculateRetryTime(endTime, task.retryDelay);
                     task.pendingRetryUntil = retryTime;
                     
