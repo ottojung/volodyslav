@@ -310,7 +310,7 @@ function stubRuntimeStateStorage(capabilities) {
  */
 const stubPollInterval = (period = 1) => {
     const intervalModule = require('../src/scheduler/polling/interval');
-    jest.spyOn(intervalModule, 'getPollIntervalMs').mockImplementation(() => period);
+    intervalModule.getPollIntervalMs = () => period;
 };
 
 module.exports = {
