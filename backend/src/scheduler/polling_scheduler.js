@@ -37,10 +37,10 @@ class TaskNotFoundError extends Error {
 }
 
 /**
- * @typedef {import('../../logger').Logger} Logger
- * @typedef {import('../../time_duration').TimeDuration} TimeDuration
+ * @typedef {import('../logger').Logger} Logger
+ * @typedef {import('../time_duration').TimeDuration} TimeDuration
  * @typedef {import('./types').CronExpression} CronExpression
- * @typedef {import('../../datetime').DateTime} DateTime
+ * @typedef {import('../datetime').DateTime} DateTime
  * @typedef {import('./types').Callback} Callback
  */
 
@@ -55,7 +55,7 @@ const POLL_INTERVAL_MS = 600000;
  */
 
 /**
- * @param {import('../../capabilities/root').Capabilities} capabilities
+ * @param {import('../capabilities/root').Capabilities} capabilities
  * @param {ParsedRegistrations} registrations
  */
 function makePollingScheduler(capabilities, registrations) {

@@ -3,7 +3,7 @@
  * Type definitions for the declarative scheduler.
  */
 
-/** @typedef {import('../../time_duration').TimeDuration} TimeDuration */
+/** @typedef {import('../time_duration').TimeDuration} TimeDuration */
 /** @typedef {import('./tasks').Capabilities} Capabilities */
 /** @typedef {import('./task').Task} Task */
 /** @typedef {() => Promise<void>} Callback */

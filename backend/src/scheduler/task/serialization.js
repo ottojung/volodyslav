@@ -13,8 +13,8 @@ const {
 /**
  * @typedef {import('./structure').Task} Task
  * @typedef {import('../types').CronExpression} CronExpression
- * @typedef {import('../../../datetime').DateTime} DateTime
- * @typedef {import('../../../time_duration').TimeDuration} TimeDuration
+ * @typedef {import('../../datetime').DateTime} DateTime
+ * @typedef {import('../../time_duration').TimeDuration} TimeDuration
  * @typedef {import('../types').Callback} Callback
  * @typedef {import('./serialization_errors').TaskTryDeserializeError} TaskTryDeserializeError
  */

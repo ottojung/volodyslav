@@ -60,12 +60,17 @@ describe("Cron Parser", () => {
 
         test("throws on invalid expressions", () => {
             const testInvalidExpression = (expr) => {
+                expect(() => parseCronExpression(expr)).toThrow();
+                
+                // Also verify the error type
+                let thrownError;
                 try {
                     parseCronExpression(expr);
-                    fail(`Expected parseCronExpression("${expr}") to throw an error`);
                 } catch (error) {
-                    expect(isInvalidCronExpressionError(error)).toBe(true);
+                    thrownError = error;
                 }
+                expect(thrownError).toBeDefined();
+                expect(isInvalidCronExpressionError(thrownError)).toBe(true);
             };
 
             testInvalidExpression("");
@@ -80,12 +85,17 @@ describe("Cron Parser", () => {
 
         test("throws on non-string input", () => {
             const testInvalidInput = (input) => {
+                expect(() => parseCronExpression(input)).toThrow();
+                
+                // Also verify the error type  
+                let thrownError;
                 try {
                     parseCronExpression(input);
-                    fail(`Expected parseCronExpression with non-string input to throw an error`);
                 } catch (error) {
-                    expect(isInvalidCronExpressionError(error)).toBe(true);
+                    thrownError = error;
                 }
+                expect(thrownError).toBeDefined();
+                expect(isInvalidCronExpressionError(thrownError)).toBe(true);
             };
 
             testInvalidInput(123);
