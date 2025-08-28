@@ -5,9 +5,20 @@
 
 const { makeDefault } = require('../../runtime_state_storage/structure');
 const { serialize, tryDeserialize, isTaskTryDeserializeError } = require('./task');
-const { 
-    TaskAlreadyRegisteredError,
-} = require('./polling_scheduler_errors');
+
+/**
+ * Error thrown when attempting to register a task that is already registered.
+ */
+class TaskAlreadyRegisteredError extends Error {
+    /**
+     * @param {string} taskName
+     */
+    constructor(taskName) {
+        super(`Task ${taskName} is already registered`);
+        this.name = "TaskAlreadyRegisteredError";
+        this.taskName = taskName;
+    }
+}
 
 /** 
  * @typedef {import('./task').Task} Task 

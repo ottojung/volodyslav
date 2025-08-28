@@ -2,8 +2,30 @@
  * Cron expression matching and calculation utilities.
  */
 
-const { CronCalculationError } = require("./cron_errors");
 const datetime = require("../../datetime");
+
+/**
+ * Custom error class for calculation errors.
+ */
+class CronCalculationError extends Error {
+    /**
+     * @param {string} message
+     * @param {string} cronExpression
+     */
+    constructor(message, cronExpression) {
+        super(message);
+        this.name = "CronCalculationError";
+        this.cronExpression = cronExpression;
+    }
+}
+
+/**
+ * @param {unknown} object
+ * @returns {object is CronCalculationError}
+ */
+function isCronCalculationError(object) {
+    return object instanceof CronCalculationError;
+}
 
 /**
  * Checks if a given datetime matches the cron expression.
@@ -66,4 +88,5 @@ function getNextExecution(cronExpr, fromDateTime) {
 module.exports = {
     matchesCronExpression,
     getNextExecution,
+    isCronCalculationError,
 };

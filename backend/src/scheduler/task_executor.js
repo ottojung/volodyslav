@@ -3,7 +3,19 @@
  * Handles running tasks with proper error handling.
  */
 
-const { TaskNotFoundError } = require('./polling_scheduler_errors');
+/**
+ * Error thrown when a task is not found in the runtime task map.
+ */
+class TaskNotFoundError extends Error {
+    /**
+     * @param {string} taskName
+     */
+    constructor(taskName) {
+        super(`Task ${JSON.stringify(taskName)} not found`);
+        this.name = "TaskNotFoundError";
+        this.taskName = taskName;
+    }
+}
 
 /** @typedef {import('./task').Task} Task */
 

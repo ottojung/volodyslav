@@ -3,18 +3,10 @@
  * This module orchestrates parsing, validation, and calculation for cron expressions.
  */
 
-// Export everything from sub-modules
-const {
-    InvalidCronExpressionError,
-    isInvalidCronExpressionError,
-    FieldParseError,
-    isFieldParseError,
-    CronCalculationError,
-    isCronCalculationError
-} = require("./cron_errors");
-
-const { parseCronExpression, isCronExpression } = require("./expression");
-const { matchesCronExpression, getNextExecution } = require("./calculator");
+// Import functions and predicates from sub-modules
+const { parseCronExpression, isCronExpression, isInvalidCronExpressionError } = require("./expression");
+const { matchesCronExpression, getNextExecution, isCronCalculationError } = require("./calculator");
+const { isFieldParseError } = require("./field_parser");
 
 module.exports = {
     // Main functions
@@ -22,14 +14,9 @@ module.exports = {
     matchesCronExpression,
     getNextExecution,
 
-    // Type guards
+    // Type guards  
     isCronExpression,
     isInvalidCronExpressionError,
     isFieldParseError,
     isCronCalculationError,
-
-    // Error classes
-    InvalidCronExpressionError,
-    FieldParseError,
-    CronCalculationError,
 };

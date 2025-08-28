@@ -2,8 +2,33 @@
  * Cron expression data structure.
  */
 
-const { InvalidCronExpressionError, isFieldParseError } = require("./cron_errors");
-const { FIELD_CONFIGS, parseField } = require("./field_parser");
+const { FIELD_CONFIGS, parseField, isFieldParseError } = require("./field_parser");
+
+/**
+ * Custom error class for invalid cron expressions.
+ */
+class InvalidCronExpressionError extends Error {
+    /**
+     * @param {string} expression
+     * @param {string} field
+     * @param {string} reason
+     */
+    constructor(expression, field, reason) {
+        super(`Invalid cron expression "${expression}": ${field} field ${reason}`);
+        this.name = "InvalidCronExpressionError";
+        this.expression = expression;
+        this.field = field;
+        this.reason = reason;
+    }
+}
+
+/**
+ * @param {unknown} object
+ * @returns {object is InvalidCronExpressionError}
+ */
+function isInvalidCronExpressionError(object) {
+    return object instanceof InvalidCronExpressionError;
+}
 
 /**
  * Represents a parsed cron expression with validated fields.
@@ -148,4 +173,5 @@ function parseCronExpression(expression) {
 module.exports = {
     parseCronExpression,
     isCronExpression,
+    isInvalidCronExpressionError,
 };

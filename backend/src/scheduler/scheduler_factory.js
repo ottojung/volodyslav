@@ -5,13 +5,59 @@
 const { parseCronExpression } = require("./expression/parser");
 const { makePollingScheduler } = require("./polling_scheduler");
 const { mutateTasks } = require("./state_persistence");
-const { isScheduleDuplicateTaskError } = require("./polling_scheduler_errors");
 const memconst = require("../memconst");
 
-const {
-    ScheduleTaskError,
-    StopSchedulerError,
-} = require("./errors");
+/**
+ * Error thrown when attempting to register a task with a name that already exists.
+ */
+class ScheduleDuplicateTaskError extends Error {
+    /**
+     * @param {string} taskName
+     */
+    constructor(taskName) {
+        super(`Task with name "${taskName}" is already scheduled`);
+        this.name = "ScheduleDuplicateTaskError";
+        this.taskName = taskName;
+    }
+}
+
+/**
+ * @param {unknown} object
+ * @returns {object is ScheduleDuplicateTaskError}
+ */
+function isScheduleDuplicateTaskError(object) {
+    return object instanceof ScheduleDuplicateTaskError;
+}
+
+/**
+ * Error for task scheduling failures.
+ */
+class ScheduleTaskError extends Error {
+    /**
+     * @param {string} message
+     * @param {object} [details]
+     */
+    constructor(message, details) {
+        super(message);
+        this.name = "ScheduleTaskError";
+        this.details = details;
+    }
+}
+
+/**
+ * Error for scheduler stop failures.
+ */
+class StopSchedulerError extends Error {
+    /**
+     * @param {string} message
+     * @param {object} [details]
+     */
+    constructor(message, details) {
+        super(message);
+        this.name = "StopSchedulerError";
+        this.details = details;
+    }
+}
 
 const {
     validateTasksAgainstPersistedStateInner,
@@ -188,4 +234,5 @@ function make(getCapabilities) {
 
 module.exports = {
     make,
+    isScheduleDuplicateTaskError,
 };

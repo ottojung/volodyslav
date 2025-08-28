@@ -2,7 +2,30 @@
  * Field configuration and parsing for cron expressions.
  */
 
-const { FieldParseError } = require("./cron_errors");
+/**
+ * Custom error class for field parsing errors.
+ */
+class FieldParseError extends Error {
+    /**
+     * @param {string} message
+     * @param {string} fieldValue
+     * @param {string} fieldName
+     */
+    constructor(message, fieldValue, fieldName) {
+        super(message);
+        this.name = "FieldParseError";
+        this.fieldValue = fieldValue;
+        this.fieldName = fieldName;
+    }
+}
+
+/**
+ * @param {unknown} object
+ * @returns {object is FieldParseError}
+ */
+function isFieldParseError(object) {
+    return object instanceof FieldParseError;
+}
 
 /**
  * @typedef {object} FieldConfig
@@ -116,4 +139,5 @@ function parseField(value, config) {
 module.exports = {
     FIELD_CONFIGS,
     parseField,
+    isFieldParseError,
 };

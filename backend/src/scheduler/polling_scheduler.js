@@ -6,11 +6,35 @@ const { getMostRecentExecution } = require("./previous_fire_calculator");
 const { validateTaskFrequency } = require("./frequency_validator");
 const { mutateTasks } = require("./state_persistence");
 const { makeTaskExecutor } = require("./task_executor");
-const {
-    ScheduleInvalidNameError,
-    TaskNotFoundError,
-} = require("./polling_scheduler_errors");
 const { isRunning } = require("./task");
+
+/**
+ * Error thrown when an invalid task name is provided.
+ */
+class ScheduleInvalidNameError extends Error {
+    /**
+     * @param {unknown} taskName
+     */
+    constructor(taskName) {
+        super("Task name must be a non-empty string");
+        this.name = "ScheduleInvalidNameError";
+        this.taskName = /** @type {string} */ (taskName);
+    }
+}
+
+/**
+ * Error thrown when a task is not found in the runtime task map.
+ */
+class TaskNotFoundError extends Error {
+    /**
+     * @param {string} taskName
+     */
+    constructor(taskName) {
+        super(`Task ${JSON.stringify(taskName)} not found`);
+        this.name = "TaskNotFoundError";
+        this.taskName = taskName;
+    }
+}
 
 /**
  * @typedef {import('../../logger').Logger} Logger

@@ -4,7 +4,46 @@
  */
 
 const { getNextExecution } = require("./expression/parser");
-const { ScheduleFrequencyError } = require("./polling_scheduler_errors");
+
+/**
+ * Error thrown when task frequency is higher than polling frequency.
+ */
+class ScheduleFrequencyError extends Error {
+    /**
+     * @param {number} taskFrequencyMs
+     * @param {number} pollFrequencyMs
+     */
+    constructor(taskFrequencyMs, pollFrequencyMs) {
+        // Format frequency display for better readability
+        /** @param {number} ms */
+        const formatFrequency = (ms) => {
+            if (ms < 60 * 1000) {
+                const seconds = Math.floor(ms / 1000);
+                return `${seconds} second${seconds !== 1 ? 's' : ''}`;
+            } else if (ms % (60 * 1000) === 0) {
+                // Exact minutes
+                const minutes = Math.floor(ms / (60 * 1000));
+                return `${minutes} minute${minutes !== 1 ? 's' : ''}`;
+            } else {
+                // Mixed minutes and seconds
+                const totalSeconds = Math.floor(ms / 1000);
+                return `${totalSeconds} second${totalSeconds !== 1 ? 's' : ''}`;
+            }
+        };
+
+        const taskFreq = formatFrequency(taskFrequencyMs);
+        const pollFreq = formatFrequency(pollFrequencyMs);
+
+        super(
+            `Task frequency (${taskFreq}) is higher than ` +
+            `polling frequency (${pollFreq}). ` +
+            `Tasks cannot execute more frequently than the polling interval.`
+        );
+        this.name = "ScheduleFrequencyError";
+        this.taskFrequencyMs = taskFrequencyMs;
+        this.pollFrequencyMs = pollFrequencyMs;
+    }
+}
 
 /**
  * Calculate the minimum interval between executions for a cron expression.
