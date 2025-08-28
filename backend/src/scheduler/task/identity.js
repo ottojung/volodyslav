@@ -2,8 +2,8 @@
  * Task identity operations for comparing registrations and persisted state.
  */
 
-/** @typedef {import('./types').Registration} Registration */
-/** @typedef {import('./types').TaskIdentity} TaskIdentity */
+/** @typedef {import('../types').Registration} Registration */
+/** @typedef {import('../types').TaskIdentity} TaskIdentity */
 
 /**
  * Converts a registration to a TaskIdentity for comparison
@@ -21,7 +21,7 @@ function registrationToTaskIdentity(registration) {
 
 /**
  * Converts a persisted TaskRecord to a TaskIdentity for comparison
- * @param {import('../runtime_state_storage/types').TaskRecord} taskRecord
+ * @param {import('../../runtime_state_storage/types').TaskRecord} taskRecord
  * @returns {TaskIdentity}
  */
 function taskRecordToTaskIdentity(taskRecord) {
