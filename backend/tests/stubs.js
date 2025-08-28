@@ -312,11 +312,13 @@ function stubRuntimeStateStorage(capabilities) {
 const stubPollInterval = (period = 1) => {
     // Direct module constant override for both old and new module locations
     const pollingSchedulerModule = require('../src/scheduler/polling/make');
-    const lifecycleModule = require('../src/scheduler/polling');
+    const pollingModule = require('../src/scheduler/polling');
+    const pollingModuleIndex = require('../src/scheduler/polling/index');
     const intervalModule = require('../src/scheduler/polling/interval');
     pollingSchedulerModule.POLL_INTERVAL_MS = period;
-    lifecycleModule.POLL_INTERVAL_MS = period;
+    pollingModule.POLL_INTERVAL_MS = period;
     intervalModule.POLL_INTERVAL_MS = period;
+    pollingModuleIndex.POLL_INTERVAL_MS = period;
 };
 
 module.exports = {
