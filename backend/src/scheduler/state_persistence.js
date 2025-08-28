@@ -3,7 +3,7 @@
  * Handles saving and restoring task state to/from disk.
  */
 
-const { makeDefault } = require('../../runtime_state_storage/structure');
+const { makeDefault } = require('../runtime_state_storage/structure');
 const { serialize, tryDeserialize, isTaskTryDeserializeError } = require('./task');
 
 /**
@@ -25,7 +25,7 @@ class TaskAlreadyRegisteredError extends Error {
  * @typedef {import('./types').Registration} Registration
  * @typedef {import('./types').ParsedRegistration} ParsedRegistration
  * @typedef {import('./types').ParsedRegistrations} ParsedRegistrations
- * @typedef {import('../../runtime_state_storage/types').TaskRecord} TaskRecord
+ * @typedef {import('../runtime_state_storage/types').TaskRecord} TaskRecord
  */
 
 /**
