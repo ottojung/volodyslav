@@ -4,7 +4,9 @@
  */
 
 /** Default polling interval in milliseconds (10 minutes) */
-let POLL_INTERVAL_MS = 600000;
+function getPollIntervalMs() {
+    return 600000;
+}
 
 /**
  * Create an interval manager for handling polling timing.
@@ -25,8 +27,8 @@ function makeIntervalManager(pollFunction, capabilities) {
                     const message = error instanceof Error ? error.message : String(error);
                     capabilities.logger.logError({ errorMessage: message }, `Unexpected poll error: ${message}`);
                 }
-            }, module.exports.POLL_INTERVAL_MS);
-            
+            }, getPollIntervalMs());
+
             // Allow Node.js to exit gracefully if this is the only remaining timer
             interval.unref();
         }
@@ -44,5 +46,5 @@ function makeIntervalManager(pollFunction, capabilities) {
 
 module.exports = {
     makeIntervalManager,
-    POLL_INTERVAL_MS,
+    getPollIntervalMs,
 };

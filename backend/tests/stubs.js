@@ -100,26 +100,26 @@ function stubSleeper(capabilities) {
 function stubDatetime(capabilities) {
     // Store the original datetime methods that are already jest mocks
     const originalNow = capabilities.datetime.now;
-    
+
     // Initialize with current real time, but this can be overridden
     let currentTimeMs = Date.now();
-    
+
     // Override the now method to return the controlled time
     originalNow.mockImplementation(() => capabilities.datetime.fromEpochMs(currentTimeMs));
-    
+
     // Add time control methods to the datetime object
     capabilities.datetime.setTime = (ms) => {
         currentTimeMs = ms;
     };
-    
+
     capabilities.datetime.advanceTime = (ms) => {
         currentTimeMs += ms;
     };
-    
+
     capabilities.datetime.getCurrentTime = () => {
         return currentTimeMs;
     };
-    
+
     // Mark it as mocked for type guard
     capabilities.datetime.__isMockedDatetime = true;
 }
@@ -265,16 +265,16 @@ async function mockRuntimeStateTransaction(capabilities, transformation) {
     expect(mockRuntimeStateStorage).toBeDefined();
     const storageKey = "mock-runtime-state";
     const mockStorage = new MockRuntimeStateStorageClass(capabilities, mockRuntimeStateStorage, storageKey);
-    
+
     // Run the transformation
     const result = await transformation(mockStorage);
-    
+
     // Handle state changes - persist to in-memory storage
     const newState = mockStorage.getNewState();
     if (newState !== null) {
         mockRuntimeStateStorage.set(storageKey, newState);
     }
-    
+
     return result;
 }
 
@@ -295,7 +295,7 @@ function isMockRuntimeStateStorage(object) {
  */
 function stubRuntimeStateStorage(capabilities) {
     const storage = new Map();
-    
+
     // Mock the state capability to use our in-memory implementation
     capabilities.state = {
         transaction: jest.fn().mockImplementation((transformation) => mockRuntimeStateTransaction(capabilities, transformation)),
@@ -311,10 +311,8 @@ function stubRuntimeStateStorage(capabilities) {
  */
 const stubPollInterval = (period = 1) => {
     // Direct module constant override for both old and new module locations
-    const pollingSchedulerModule = require('../src/scheduler/polling/make');
     const intervalModule = require('../src/scheduler/polling/interval');
-    pollingSchedulerModule.POLL_INTERVAL_MS = period;
-    intervalModule.POLL_INTERVAL_MS = period;
+    jest.mockImplementation(intervalModule.getPollIntervalMs, () => period);
 };
 
 module.exports = {
