@@ -5,7 +5,7 @@
 const { parseCronExpression } = require("./expression");
 const { makePollingScheduler } = require("./polling_scheduler");
 const { mutateTasks } = require("./state_persistence");
-const { isScheduleDuplicateTaskError } = require("./validation");
+const { isScheduleDuplicateTaskError } = require("./registration_validation");
 const memconst = require("../memconst");
 
 /**
@@ -38,10 +38,8 @@ class StopSchedulerError extends Error {
     }
 }
 
-const {
-    validateTasksAgainstPersistedStateInner,
-    validateRegistrations,
-} = require("./validation");
+const { validateRegistrations } = require("./registration_validation");
+const { validateTasksAgainstPersistedStateInner } = require("./state_validation");
 
 /** @typedef {import('./types').Scheduler} Scheduler */
 /** @typedef {import('./types').Registration} Registration */
