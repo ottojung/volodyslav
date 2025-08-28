@@ -5,38 +5,8 @@
 const { parseCronExpression } = require("./expression");
 const { makePollingScheduler } = require("./polling_scheduler");
 const { mutateTasks } = require("./state_persistence");
-const { isScheduleDuplicateTaskError } = require("./validation");
+const { isScheduleDuplicateTaskError, ScheduleTaskError, StopSchedulerError } = require("./errors");
 const memconst = require("../memconst");
-
-/**
- * Error for task scheduling failures.
- */
-class ScheduleTaskError extends Error {
-    /**
-     * @param {string} message
-     * @param {object} [details]
-     */
-    constructor(message, details) {
-        super(message);
-        this.name = "ScheduleTaskError";
-        this.details = details;
-    }
-}
-
-/**
- * Error for scheduler stop failures.
- */
-class StopSchedulerError extends Error {
-    /**
-     * @param {string} message
-     * @param {object} [details]
-     */
-    constructor(message, details) {
-        super(message);
-        this.name = "StopSchedulerError";
-        this.details = details;
-    }
-}
 
 const {
     validateTasksAgainstPersistedStateInner,

@@ -3,42 +3,20 @@
  */
 
 const { parseCronExpression } = require("./expression");
-
-/**
- * Error thrown when attempting to register a task with a name that already exists.
- */
-class ScheduleDuplicateTaskError extends Error {
-    /**
-     * @param {string} taskName
-     */
-    constructor(taskName) {
-        super(`Task with name "${taskName}" is already scheduled`);
-        this.name = "ScheduleDuplicateTaskError";
-        this.taskName = taskName;
-    }
-}
-
-/**
- * @param {unknown} object
- * @returns {object is ScheduleDuplicateTaskError}
- */
-function isScheduleDuplicateTaskError(object) {
-    return object instanceof ScheduleDuplicateTaskError;
-}
-
-/**
- * Error thrown when an invalid task name is provided.
- */
-class ScheduleInvalidNameError extends Error {
-    /**
-     * @param {unknown} taskName
-     */
-    constructor(taskName) {
-        super("Task name must be a non-empty string");
-        this.name = "ScheduleInvalidNameError";
-        this.taskName = /** @type {string} */ (taskName);
-    }
-}
+const {
+    ScheduleDuplicateTaskError,
+    isScheduleDuplicateTaskError,
+    ScheduleInvalidNameError,
+    TaskListMismatchError,
+    isTaskListMismatchError,
+    RegistrationsNotArrayError,
+    RegistrationShapeError,
+    InvalidCronExpressionTypeError,
+    CronExpressionInvalidError,
+    CallbackTypeError,
+    RetryDelayTypeError,
+    NegativeRetryDelayError,
+} = require("./errors");
 
 const {
     registrationToTaskIdentity,
@@ -49,243 +27,75 @@ const {
 /** @typedef {import('./types').Registration} Registration */
 
 /**
- * Error thrown when the task list provided to initialize() differs from persisted runtime state.
- */
-class TaskListMismatchError extends Error {
-    /**
-     * @param {string} message
-     * @param {object} mismatchDetails
-     * @param {string[]} mismatchDetails.missing - Tasks in persisted state but not in registrations
-     * @param {string[]} mismatchDetails.extra - Tasks in registrations but not in persisted state
-     * @param {Array<{name: string, field: string, expected: any, actual: any}>} mismatchDetails.differing - Tasks with differing properties
-     */
-    constructor(message, mismatchDetails) {
-        super(message);
-        this.name = "TaskListMismatchError";
-        this.mismatchDetails = mismatchDetails;
-    }
-}
-
-/**
- * @param {unknown} object
- * @returns {object is TaskListMismatchError}
- */
-function isTaskListMismatchError(object) {
-    return object instanceof TaskListMismatchError;
-}
-
-/**
- * Error for invalid registration input.
- */
-class InvalidRegistrationError extends Error {
-    /**
-     * @param {string} message
-     * @param {object} [details]
-     */
-    constructor(message, details) {
-        super(message);
-        this.name = "InvalidRegistrationError";
-        this.details = details;
-    }
-}
-
-/**
- * Error when registrations is not an array.
- */
-class RegistrationsNotArrayError extends Error {
-    /**
-     * @param {string} message
-     */
-    constructor(message) {
-        super(message);
-        this.name = "RegistrationsNotArrayError";
-    }
-}
-
-/**
- * Error for invalid registration shape.
- */
-class RegistrationShapeError extends Error {
-    /**
-     * @param {string} message
-     * @param {object} [details]
-     */
-    constructor(message, details) {
-        super(message);
-        this.name = "RegistrationShapeError";
-        this.details = details;
-    }
-}
-
-/**
- * Error for invalid cron expression type.
- */
-class InvalidCronExpressionTypeError extends Error {
-    /**
-     * @param {string} message
-     * @param {object} [details]
-     */
-    constructor(message, details) {
-        super(message);
-        this.name = "InvalidCronExpressionTypeError";
-        this.details = details;
-    }
-}
-
-/**
- * Error for invalid cron expression.
- */
-class CronExpressionInvalidError extends Error {
-    /**
-     * @param {string} message
-     * @param {object} [details]
-     */
-    constructor(message, details) {
-        super(message);
-        this.name = "CronExpressionInvalidError";
-        this.details = details;
-    }
-}
-
-/**
- * Error for invalid callback type.
- */
-class CallbackTypeError extends Error {
-    /**
-     * @param {string} message
-     * @param {object} [details]
-     */
-    constructor(message, details) {
-        super(message);
-        this.name = "CallbackTypeError";
-        this.details = details;
-    }
-}
-
-/**
- * Error for invalid retry delay type.
- */
-class RetryDelayTypeError extends Error {
-    /**
-     * @param {string} message
-     * @param {object} [details]
-     */
-    constructor(message, details) {
-        super(message);
-        this.name = "RetryDelayTypeError";
-        this.details = details;
-    }
-}
-
-/**
- * Error for negative retry delay.
- */
-class NegativeRetryDelayError extends Error {
-    /**
-     * @param {string} message
-     * @param {object} [details]
-     */
-    constructor(message, details) {
-        super(message);
-        this.name = "NegativeRetryDelayError";
-        this.details = details;
-    }
-}
-
-/**
- * Validates that registrations match persisted runtime state (inner implementation)
+ * Validates that the tasks provided to initialize() match the persisted runtime state.
  * @param {Registration[]} registrations
  * @param {import('../runtime_state_storage/types').TaskRecord[]} persistedTasks
- * @returns {void}
- * @throws {TaskListMismatchError} if tasks don't match
+ * @throws {TaskListMismatchError} if registrations don't match persisted state
  */
 function validateTasksAgainstPersistedStateInner(registrations, persistedTasks) {
-    // Early exit optimization for empty arrays
-    if (registrations.length === 0 && persistedTasks.length === 0) {
-        return;
-    }
-
-    // Convert to comparable identities with early validation
-    const registrationIdentities = registrations.map((registration, index) => {
-        try {
-            return registrationToTaskIdentity(registration);
-        } catch (err) {
-            const error = err instanceof Error ? err : new Error(String(err));
-            throw new InvalidRegistrationError(`Invalid registration at index ${index}: ${error.message}`, { index, cause: error });
-        }
-    });
-
+    // Convert to common format for comparison
+    const currentIdentities = registrations.map(registrationToTaskIdentity);
     const persistedIdentities = persistedTasks.map(taskRecordToTaskIdentity);
 
-    // Use Set for faster lookup operations  
-    const registrationNameSet = new Set(registrationIdentities.map(t => t.name));
-
-    // Find mismatches efficiently
+    // Find mismatches
     const missing = [];
     const extra = [];
     const differing = [];
 
-    // Find tasks in persisted state but not in registrations
-    for (const persistedTask of persistedIdentities) {
-        if (!registrationNameSet.has(persistedTask.name)) {
-            missing.push(persistedTask.name);
-        }
-    }
-
-    // Find tasks in registrations but not in persisted state, and check for differences
-    const persistedMap = new Map(persistedIdentities.map(t => [t.name, t]));
-
-    for (const regTask of registrationIdentities) {
-        const persistedTask = persistedMap.get(regTask.name);
-
-        if (!persistedTask) {
-            extra.push(regTask.name);
-        } else if (!taskIdentitiesEqual(regTask, persistedTask)) {
-            // Detailed difference analysis
-            if (regTask.cronExpression !== persistedTask.cronExpression) {
-                differing.push({
-                    name: regTask.name,
+    // Check for missing tasks (in persisted but not in current)
+    for (const persistedIdentity of persistedIdentities) {
+        const found = currentIdentities.find(current => current.name === persistedIdentity.name);
+        if (!found) {
+            missing.push(persistedIdentity.name);
+        } else if (!taskIdentitiesEqual(found, persistedIdentity)) {
+            // Task exists but properties differ
+            const differences = [];
+            if (found.cronExpression !== persistedIdentity.cronExpression) {
+                differences.push({
+                    name: found.name,
                     field: 'cronExpression',
-                    expected: persistedTask.cronExpression,
-                    actual: regTask.cronExpression
+                    expected: persistedIdentity.cronExpression,
+                    actual: found.cronExpression
                 });
             }
-            if (regTask.retryDelayMs !== persistedTask.retryDelayMs) {
-                differing.push({
-                    name: regTask.name,
+            if (found.retryDelayMs !== persistedIdentity.retryDelayMs) {
+                differences.push({
+                    name: found.name,
                     field: 'retryDelayMs',
-                    expected: persistedTask.retryDelayMs,
-                    actual: regTask.retryDelayMs
+                    expected: persistedIdentity.retryDelayMs,
+                    actual: found.retryDelayMs
                 });
             }
+            differing.push(...differences);
         }
     }
 
-    // If any mismatches found, throw comprehensive error
-    if (missing.length > 0 || extra.length > 0 || differing.length > 0) {
-        const mismatchDetails = { missing, extra, differing };
-        let message = "Task list mismatch detected between registrations and persisted state:";
+    // Check for extra tasks (in current but not in persisted)
+    for (const currentIdentity of currentIdentities) {
+        const found = persistedIdentities.find(persisted => persisted.name === currentIdentity.name);
+        if (!found) {
+            extra.push(currentIdentity.name);
+        }
+    }
 
+    // If there are any mismatches, throw detailed error
+    if (missing.length > 0 || extra.length > 0 || differing.length > 0) {
+        const details = { missing, extra, differing };
+        let message = "Task list mismatch detected:";
+        
         if (missing.length > 0) {
-            message += `\n  Missing tasks (in persisted state but not in registrations): ${missing.join(', ')}`;
-            message += `\n    This suggests tasks were removed from the registration list without clearing persisted state.`;
+            message += `\n  Missing tasks: ${missing.join(', ')}`;
         }
         if (extra.length > 0) {
-            message += `\n  Extra tasks (in registrations but not in persisted state): ${extra.join(', ')}`;
-            message += `\n    This suggests new tasks were added to the registration list.`;
+            message += `\n  Extra tasks: ${extra.join(', ')}`;
         }
         if (differing.length > 0) {
-            message += `\n  Modified tasks:`;
-            for (const diff of differing) {
-                message += `\n    ${diff.name}.${diff.field}: expected "${diff.expected}", got "${diff.actual}"`;
-            }
-            message += `\n    This suggests task configurations changed after initial registration.`;
+            message += `\n  Modified tasks: ${differing.map(d => `${d.name}.${d.field}`).join(', ')}`;
         }
-
-        message += `\n\nTo fix this mismatch, ensure the registration list exactly matches the previously persisted state,`;
-        message += ` or clear the persisted state if intentional changes were made.`;
-
-        throw new TaskListMismatchError(message, mismatchDetails);
+        
+        message += "\nEnsure task registrations exactly match the persisted state or clear the state storage.";
+        
+        throw new TaskListMismatchError(message, details);
     }
 }
 
