@@ -3,7 +3,7 @@
  * Ensures tasks don't run more frequently than the polling interval can handle.
  */
 
-const { getNextExecution } = require("../calculator/current");
+const { getNextExecution } = require("../calculator");
 
 /**
  * Error thrown when task frequency is higher than polling frequency.
