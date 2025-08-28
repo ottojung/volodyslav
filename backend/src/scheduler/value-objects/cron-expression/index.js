@@ -3,73 +3,8 @@
  * @typedef {CronExpressionClass} CronExpression
  */
 
-/**
- * Cron expression (nominal type).
- */
-class CronExpressionClass {
-    /** @type {string} */
-    original;
-    
-    /** @type {number[]} */
-    minute;
-    
-    /** @type {number[]} */
-    hour;
-    
-    /** @type {number[]} */
-    day;
-    
-    /** @type {number[]} */
-    month;
-    
-    /** @type {number[]} */
-    weekday;
-
-    /**
-     * Creates a new CronExpression instance.
-     * @param {string} original - Original cron string
-     * @param {number[]} minute - Minute values (0-59)
-     * @param {number[]} hour - Hour values (0-23)
-     * @param {number[]} day - Day values (1-31)
-     * @param {number[]} month - Month values (1-12)
-     * @param {number[]} weekday - Weekday values (0-6, 0=Sunday)
-     */
-    constructor(original, minute, hour, day, month, weekday) {
-        this.original = original;
-        this.minute = minute;
-        this.hour = hour;
-        this.day = day;
-        this.month = month;
-        this.weekday = weekday;
-    }
-
-    /**
-     * Get the next execution time after the given instant.
-     * @param {import('../instant').InstantMs} now - Current time instant
-     * @returns {import('../instant').InstantMs} Next execution time
-     */
-    nextAfter(now) {
-        const { calculateNext } = require('./parse');
-        return calculateNext(this, now);
-    }
-
-    /**
-     * Calculate the minimum interval between executions.
-     * @returns {import('../time-duration').TimeDuration} Minimum interval
-     */
-    minInterval() {
-        const { calculateMinInterval } = require('./parse');
-        return calculateMinInterval(this);
-    }
-
-    /**
-     * Convert to JSON string representation.
-     * @returns {string}
-     */
-    toJSON() {
-        return this.original;
-    }
-}
+// Import class from separate file to avoid circular dependencies
+const { CronExpressionClass } = require('./class');
 
 /**
  * Create a CronExpression from a cron string.

@@ -4,7 +4,7 @@
  * Parse cron expressions and calculate execution times.
  */
 
-const { CronExpressionClass } = require('./index');
+const { CronExpressionClass } = require('./class');
 
 /**
  * Parse a cron expression string.
