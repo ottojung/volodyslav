@@ -309,10 +309,8 @@ function stubRuntimeStateStorage(capabilities) {
  * @param {number} [period=1] - The polling period in milliseconds
  */
 const stubPollInterval = (period = 1) => {
-    const mockPeriod = period;
-    jest.mock('../src/scheduler/polling/delay', () => ({
-        getPollIntervalMs: () => mockPeriod,
-    }));
+    const delayModule = require('../src/scheduler/polling/delay');
+    delayModule.getPollIntervalMs = () => period;
 };
 
 module.exports = {
