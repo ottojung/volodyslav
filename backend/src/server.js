@@ -8,7 +8,7 @@ const periodicRouter = require("./routes/periodic");
 const entriesRouter = require("./routes/entries");
 const configRouter = require("./routes/config");
 const expressApp = require("./express_app");
-const { scheduleAll } = require("./jobs");
+const { scheduleAll, ensureDailyTasksAvailable } = require("./jobs");
 const eventLogStorage = require("./event_log_storage");
 
 /** @typedef {import('./filesystem/deleter').FileDeleter} FileDeleter */
@@ -60,6 +60,7 @@ async function ensureStartupDependencies(capabilities, app) {
     await capabilities.git.ensureAvailable();
     await eventLogStorage.ensureAccessible(capabilities);
     await capabilities.state.ensureAccessible();
+    await ensureDailyTasksAvailable(capabilities);
 }
 
 /**
