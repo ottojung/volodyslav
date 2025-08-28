@@ -15,7 +15,7 @@ const {
     isCronExpression,
     isInvalidCronExpressionError
 } = require('./expression')
-const { matchesCronExpression, getNextExecution } = require("./calculator");
+const { matchesCronExpression, getNextExecution } = require("./calculator/current");
 
 /**
  * Validate a cron expression without creating a scheduler.

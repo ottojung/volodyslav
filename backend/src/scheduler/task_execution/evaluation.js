@@ -3,7 +3,7 @@
  * Determines which tasks should be executed based on cron schedules and retry timing.
  */
 
-const { getMostRecentExecution } = require("../previous_fire_calculator");
+const { getMostRecentExecution } = require("../calculator/previous");
 const { isRunning } = require("../task");
 
 /** @typedef {import('../types').Callback} Callback */
