@@ -15,6 +15,7 @@ class StartupDriftError extends Error {
         super(message);
         this.name = "StartupDriftError";
         this.details = details;
+        this.mismatchDetails = details; // Alias for backward compatibility
     }
 }
 

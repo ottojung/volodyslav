@@ -40,7 +40,7 @@ function createSignature(tasks) {
     const taskSigs = tasks.map(task => ({
         name: toString(task.name),
         cron: toJSON(task.cron),
-        retryDelay: task.retryDelay.toMs(),
+        retryDelay: task.retryDelay.toMs ? task.retryDelay.toMs() : task.retryDelay.toMilliseconds(),
     }));
     
     // Sort by name for order independence

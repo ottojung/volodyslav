@@ -70,7 +70,7 @@ function make(getCapabilities) {
         // Create state store
         const store = createStore(caps.state);
 
-        // Check if this is first-time initialization
+        // Check if this is first-time initialization and validate if not
         let isFirstTime = false;
         try {
             await store.transaction(async (txn) => {
@@ -86,7 +86,7 @@ function make(getCapabilities) {
                         "First-time scheduler initialization: registering initial tasks"
                     );
                 } else {
-                    // Validate registrations match persisted state
+                    // Validate registrations match persisted state - this will throw if mismatch
                     caps.logger.logDebug(
                         {
                             persistedTaskCount: state.tasks.length,
@@ -98,7 +98,12 @@ function make(getCapabilities) {
                 }
             });
         } catch (error) {
-            // If we can't read state, treat as first time
+            // If it's a validation error, re-throw it
+            const { isStartupDriftError } = require('./errors');
+            if (isStartupDriftError(error)) {
+                throw error;
+            }
+            // If we can't read state for other reasons, treat as first time
             isFirstTime = true;
         }
 
@@ -142,7 +147,7 @@ function make(getCapabilities) {
     }
 
     // Set global functions with adapters for the module-level API
-    globalInitialize = (capabilities, registrations) => initializeImpl(registrations);
+    globalInitialize = (_capabilities, registrations) => initializeImpl(registrations);
     globalStop = stopImpl;
 
     return {

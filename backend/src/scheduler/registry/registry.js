@@ -116,12 +116,46 @@ function validateAgainstPersistedState(registry, persistedTasks) {
     const registrySignature = createRegistrySignature(registry);
     const persistedSignature = createPersistedSignature(persistedTasks);
     
-    const comparison = compareSignatures(registrySignature, persistedSignature);
+    const comparison = compareSignatures(persistedSignature, registrySignature);
     
     if (comparison.hasDifferences) {
+        // Transform the comparison details to match expected test format
+        const transformedDetails = {
+            missing: comparison.details.missing,
+            extra: comparison.details.extra,
+            differing: []
+        };
+        
+        // Transform modified tasks to differing format
+        for (const mod of comparison.details.modified) {
+            const taskName = mod.name;
+            const registryTask = mod.old; // from sig2 = registry
+            const persistedTask = mod.new; // from sig1 = persisted
+            
+            // Check cron differences
+            if (persistedTask.cron !== registryTask.cron) {
+                transformedDetails.differing.push({
+                    field: 'cronExpression',
+                    name: taskName,
+                    expected: persistedTask.cron,
+                    actual: registryTask.cron
+                });
+            }
+            
+            // Check retry delay differences
+            if (persistedTask.retryDelay !== registryTask.retryDelay) {
+                transformedDetails.differing.push({
+                    field: 'retryDelayMs',
+                    name: taskName,
+                    expected: persistedTask.retryDelay,
+                    actual: registryTask.retryDelay
+                });
+            }
+        }
+        
         throw new StartupDriftError(
-            `Task configuration drift detected: ${comparison.summary}`,
-            comparison.details
+            `Task list mismatch detected: ${comparison.summary}`,
+            transformedDetails
         );
     }
 }
