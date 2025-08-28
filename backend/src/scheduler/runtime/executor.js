@@ -123,6 +123,12 @@ class Executor {
                     task.isRunning = false;
                     task.lastSuccessTime = endTime;
                     task.pendingRetryUntil = null;
+                    
+                    // For cron mode, update lastEvaluatedFire to enable proper scheduling
+                    if (mode === 'cron') {
+                        task.lastEvaluatedFire = endTime;
+                    }
+                    
                     await txn.setState(state);
                 }
             });
