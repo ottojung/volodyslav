@@ -2,7 +2,7 @@
  * Polling based cron scheduler.
  */
 
-const { mutateTasks } = require("./state_persistence");
+const { mutateTasks } = require("./persistence");
 const { makeTaskExecutor } = require("./task_executor");
 const { validateTaskFrequency } = require("./frequency_validator");
 const { makeIntervalManager, makePollingFunction, POLL_INTERVAL_MS } = require("./lifecycle");
