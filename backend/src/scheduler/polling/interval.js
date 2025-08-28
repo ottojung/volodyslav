@@ -3,7 +3,7 @@
  * Handles the timing and execution of polling operations.
  */
 
-const { getPollIntervalMs } = require('./delay');
+const POLL_INTERVAL_MS = 600000;
 
 /**
  * Create an interval manager for handling polling timing.
@@ -24,7 +24,7 @@ function makeIntervalManager(pollFunction, capabilities) {
                     const message = error instanceof Error ? error.message : String(error);
                     capabilities.logger.logError({ errorMessage: message }, `Unexpected poll error: ${message}`);
                 }
-            }, getPollIntervalMs());
+            }, POLL_INTERVAL_MS);
 
             // Allow Node.js to exit gracefully if this is the only remaining timer
             interval.unref();
@@ -43,4 +43,5 @@ function makeIntervalManager(pollFunction, capabilities) {
 
 module.exports = {
     makeIntervalManager,
+    POLL_INTERVAL_MS,
 };
