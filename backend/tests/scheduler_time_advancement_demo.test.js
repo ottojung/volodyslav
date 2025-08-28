@@ -23,11 +23,15 @@ describe("scheduler time advancement demo", () => {
         const capabilities = getTestCapabilities();
         const timeControl = getDatetimeControl(capabilities);
         const retryDelay = fromMilliseconds(5000);
-        const taskCallback = jest.fn();
+        const taskCallback = jest.fn().mockImplementation(() => {
+            const currentTime = timeControl.getCurrentTime();
+            console.log(`Task executed at: ${new Date(currentTime).toISOString()}`);
+        });
 
         // Set initial time to 00:05:00
         const startTime = new Date("2021-01-01T00:05:00.000Z").getTime();
         timeControl.setTime(startTime);
+        console.log(`Start time: ${new Date(startTime).toISOString()}`);
 
         // Schedule a task that runs at 30 minutes past each hour
         const registrations = [
@@ -42,11 +46,18 @@ describe("scheduler time advancement demo", () => {
 
         // The scheduler may or may not catch up immediately - check current call count
         const initialCalls = taskCallback.mock.calls.length;
+        console.log(`Initial calls: ${initialCalls}`);
         
         // Now test that advancing time triggers new executions
         // Advance time to 00:30:00 (first execution after initialization)
+        console.log("Advancing time to 00:30:00...");
         timeControl.advanceTime(25 * 60 * 1000); // 25 minutes to reach 00:30:00
-        await new Promise(resolve => setTimeout(resolve, 100)); // Wait for polling
+        console.log(`After advance: ${new Date(timeControl.getCurrentTime()).toISOString()}`);
+        
+        // Manually trigger polling since setInterval doesn't work with mocked time
+        await capabilities.scheduler.poll();
+        
+        console.log(`Calls after first advance: ${taskCallback.mock.calls.length}`);
         
         // Should have at least one more call than initial
         expect(taskCallback.mock.calls.length).toBeGreaterThan(initialCalls);

@@ -49,7 +49,6 @@ function make(getCapabilities) {
     const { createExecutor } = require('./runtime/executor');
     const { createPoller } = require('./runtime/poller');
     const { logStartupValidated } = require('./observability/logging');
-    const { now } = require('./time/clock');
 
     /** @type {any} */
     let poller = null;
@@ -66,6 +65,16 @@ function make(getCapabilities) {
      */
     async function initializeImpl(registrations) {
         const caps = getCapabilities();
+
+        // Set up time override if datetime is mocked
+        const { setTimeOverride } = require('./time/clock');
+        if (caps.datetime && caps.datetime.__isMockedDatetime) {
+            // Use mocked time
+            setTimeOverride(() => caps.datetime.getCurrentTime());
+        } else {
+            // Use real time
+            setTimeOverride(null);
+        }
 
         // Build and validate registry
         registry = buildRegistry(registrations);
@@ -135,7 +144,7 @@ function make(getCapabilities) {
 
         // Log successful startup
         const taskNames = registry.getTaskNames();
-        logStartupValidated(taskNames.length, taskNames, now(), caps.logger);
+        logStartupValidated(taskNames.length, taskNames, caps.datetime.now(), caps.logger);
     }
 
     /**
@@ -163,6 +172,11 @@ function make(getCapabilities) {
     return {
         initialize: initializeImpl,
         stop: stopImpl,
+        poll: async () => {
+            if (poller) {
+                await poller.poll();
+            }
+        },
     };
 }
 

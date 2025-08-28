@@ -7,6 +7,42 @@
 const { isBefore } = require('../time/clock');
 
 /**
+ * Check if a time matches a cron schedule pattern.
+ * @param {import('../types').CronExpression} cron
+ * @param {import('../types').InstantMs} time
+ * @returns {boolean}
+ */
+function matchesCronSchedule(cron, time) {
+    const date = new Date(time.epochMs);
+    const minute = date.getMinutes();
+    const hour = date.getHours();
+    const day = date.getDate();
+    const month = date.getMonth() + 1; // JS months are 0-based, cron months are 1-based
+    const weekday = date.getDay(); // Both JS and cron use 0=Sunday
+
+    const matches = (
+        cron.minute.includes(minute) &&
+        cron.hour.includes(hour) &&
+        cron.day.includes(day) &&
+        cron.month.includes(month) &&
+        cron.weekday.includes(weekday)
+    );
+    
+    // Debug logging
+    if (process.env.NODE_ENV !== 'production') {
+        console.log(`Cron pattern matching for ${new Date(time.epochMs).toISOString()}:`);
+        console.log(`  minute: ${minute} in [${cron.minute}] = ${cron.minute.includes(minute)}`);
+        console.log(`  hour: ${hour} in [${cron.hour}] = ${cron.hour.includes(hour)}`);
+        console.log(`  day: ${day} in [${cron.day}] = ${cron.day.includes(day)}`);
+        console.log(`  month: ${month} in [${cron.month}] = ${cron.month.includes(month)}`);
+        console.log(`  weekday: ${weekday} in [${cron.weekday}] = ${cron.weekday.includes(weekday)}`);
+        console.log(`  Overall match: ${matches}`);
+    }
+
+    return matches;
+}
+
+/**
  * Calculate the next eligible execution time for a task.
  * @param {import('../types').TaskDefinition} def - Task definition
  * @param {import('../types').TaskRuntime} rt - Task runtime state
@@ -43,6 +79,11 @@ function nextEligible(def, rt, now) {
         return now;
     }
     
+    // Check if current time matches the cron pattern directly
+    if (matchesCronSchedule(def.cron, now)) {
+        return now;
+    }
+    
     return def.cron.nextAfter(rt.lastEvaluatedFire);
 }
 
@@ -73,8 +114,13 @@ function getExecutionMode(def, rt, now) {
         return 'cron';
     }
     
-    const cronNext = def.cron.nextAfter(rt.lastEvaluatedFire);
+    // Check if current time matches the cron pattern directly
+    if (matchesCronSchedule(def.cron, now)) {
+        return 'cron';
+    }
     
+    // Also check if we've missed any scheduled executions since last fire
+    const cronNext = def.cron.nextAfter(rt.lastEvaluatedFire);
     if (isBefore(cronNext, now) || cronNext.epochMs === now.epochMs) {
         return 'cron';
     }

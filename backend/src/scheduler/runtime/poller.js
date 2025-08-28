@@ -120,6 +120,7 @@ class Poller {
         
         try {
             const currentTime = now();
+            console.log(`Poller running at: ${new Date(currentTime.epochMs).toISOString()}`);
             let dueRetry = 0;
             let dueCron = 0;
             let skippedRunning = 0;

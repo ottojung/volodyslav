@@ -7,12 +7,24 @@
 const { fromEpochMs } = require('../value-objects/instant');
 const { fromMs } = require('../value-objects/time-duration');
 
+/** @type {(() => number) | null} */
+let timeOverride = null;
+
+/**
+ * Set a time override function for testing.
+ * @param {(() => number) | null} timeFunc - Function that returns current time in ms, or null to use real time
+ */
+function setTimeOverride(timeFunc) {
+    timeOverride = timeFunc;
+}
+
 /**
  * Get current time as InstantMs.
  * @returns {import('../types').InstantMs}
  */
 function now() {
-    return fromEpochMs(Date.now());
+    const currentTime = timeOverride ? timeOverride() : Date.now();
+    return fromEpochMs(currentTime);
 }
 
 /**
@@ -71,4 +83,5 @@ module.exports = {
     subtract,
     isBefore,
     isAfter,
+    setTimeOverride,
 };
