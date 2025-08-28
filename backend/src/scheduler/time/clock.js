@@ -3,12 +3,15 @@
  * Local-time clock abstraction.
  */
 
+// Module-level imports to avoid Jest teardown issues
+const { fromEpochMs } = require('../value-objects/instant');
+const { fromMs } = require('../value-objects/time-duration');
+
 /**
  * Get current time as InstantMs.
  * @returns {import('../types').InstantMs}
  */
 function now() {
-    const { fromEpochMs } = require('../value-objects/instant');
     return fromEpochMs(Date.now());
 }
 
@@ -28,7 +31,6 @@ function toDate(instant) {
  * @returns {import('../types').InstantMs}
  */
 function add(instant, duration) {
-    const { fromEpochMs } = require('../value-objects/instant');
     return fromEpochMs(instant.epochMs + duration.toMs());
 }
 
@@ -39,7 +41,6 @@ function add(instant, duration) {
  * @returns {import('../types').TimeDuration}
  */
 function subtract(later, earlier) {
-    const { fromMs } = require('../value-objects/time-duration');
     return fromMs(later.epochMs - earlier.epochMs);
 }
 

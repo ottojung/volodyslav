@@ -311,7 +311,7 @@ const stubPollInterval = (period = 1) => {
         DEFAULT_POLL_INTERVAL_MS: period,
         CURRENT_STATE_VERSION: "1.0",
         MAX_TASK_NAME_LENGTH: 100,
-        MAX_RETRY_DELAY_MS: 24 * 60 * 60 * 1000, // 24 hours
+        MAX_RETRY_DELAY_MS: 365 * 24 * 60 * 60 * 1000, // 1 year for backward compatibility
         MIN_RETRY_DELAY_MS: 0, // Allow immediate retries for compatibility
         MAX_CRON_ITERATIONS: 366 * 24 * 60, // One year worth of minutes
     }));

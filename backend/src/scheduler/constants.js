@@ -21,7 +21,7 @@ const MAX_TASK_NAME_LENGTH = 100;
 /**
  * Maximum retry delay in milliseconds.
  */
-const MAX_RETRY_DELAY_MS = 24 * 60 * 60 * 1000; // 24 hours
+const MAX_RETRY_DELAY_MS = 365 * 24 * 60 * 60 * 1000; // 1 year for backward compatibility
 
 /**
  * Minimum retry delay in milliseconds.

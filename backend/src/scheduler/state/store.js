@@ -3,6 +3,17 @@
  * Store interface for state persistence.
  */
 
+// Module-level imports to avoid Jest teardown issues
+const { fromString: taskIdFromString } = require('../value-objects/task-id');
+const { fromString: cronFromString } = require('../value-objects/cron-expression');
+const { fromMs } = require('../value-objects/time-duration');
+const { fromEpochMs } = require('../value-objects/instant');
+const datetime = require('../../datetime');
+const { CURRENT_STATE_VERSION } = require('../constants');
+const { now } = require('../time/clock');
+const { toString: taskIdToString } = require('../value-objects/task-id');
+const { toJSON: cronToJSON } = require('../value-objects/cron-expression/serialize');
+
 /**
  * Store implementation that wraps the runtime state storage.
  */
@@ -70,9 +81,6 @@ class StoreTxnImpl {
  * @returns {import('../types').SchedulerState}
  */
 function convertFromRuntimeState(runtimeState) {
-    const { CURRENT_STATE_VERSION } = require('../constants');
-    const { now } = require('../time/clock');
-    
     if (!runtimeState) {
         return {
             version: CURRENT_STATE_VERSION,
@@ -96,7 +104,6 @@ function convertFromRuntimeState(runtimeState) {
  * @returns {import('../../runtime_state_storage/types').RuntimeState}
  */
 function convertToRuntimeState(state) {
-    const datetime = require('../../datetime');
     const dt = datetime.make();
     
     const tasks = state.tasks.map(task => convertToTaskRecord(task, dt));
@@ -114,15 +121,10 @@ function convertToRuntimeState(state) {
  * @returns {import('../types').TaskDefinition & import('../types').TaskRuntime}
  */
 function convertTaskRecord(record) {
-    const { fromString } = require('../value-objects/task-id');
-    const { fromString: cronFromString } = require('../value-objects/cron-expression');
-    const { fromMs } = require('../value-objects/time-duration');
-    const { fromEpochMs } = require('../value-objects/instant');
-    const datetime = require('../../datetime');
     const dt = datetime.make();
 
     return {
-        name: fromString(record.name),
+        name: taskIdFromString(record.name),
         cron: cronFromString(record.cronExpression),
         retryDelay: fromMs(record.retryDelayMs),
         lastSuccessTime: record.lastSuccessTime ? fromEpochMs(dt.toNativeDate(record.lastSuccessTime).getTime()) : null,
@@ -141,12 +143,9 @@ function convertTaskRecord(record) {
  * @returns {import('../../runtime_state_storage/types').TaskRecord}
  */
 function convertToTaskRecord(task, dt) {
-    const { toString } = require('../value-objects/task-id');
-    const { toJSON } = require('../value-objects/cron-expression/serialize');
-    
     return {
-        name: toString(task.name),
-        cronExpression: toJSON(task.cron),
+        name: taskIdToString(task.name),
+        cronExpression: cronToJSON(task.cron),
         retryDelayMs: task.retryDelay.toMs ? task.retryDelay.toMs() : task.retryDelay.toMilliseconds(),
         lastSuccessTime: task.lastSuccessTime ? dt.fromEpochMs(task.lastSuccessTime.epochMs) : undefined,
         lastFailureTime: task.lastFailureTime ? dt.fromEpochMs(task.lastFailureTime.epochMs) : undefined,
