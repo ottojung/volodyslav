@@ -123,6 +123,7 @@ function validateAgainstPersistedState(registry, persistedTasks) {
         const transformedDetails = {
             missing: comparison.details.missing,
             extra: comparison.details.extra,
+            /** @type {Array<{field: string, name: string, expected: any, actual: any}>} */
             differing: []
         };
         
