@@ -2,6 +2,7 @@ const path = require("path");
 const fs = require("fs");
 const os = require("os");
 const { stubEventLogRepository } = require("./stub_event_log_repository");
+const { getPollIntervalMs } = require("../src/scheduler/polling/interval");
 
 /**
  * Stubs the environment capabilities for testing.
@@ -309,8 +310,9 @@ function stubRuntimeStateStorage(capabilities) {
  * @param {number} [period=1] - The polling period in milliseconds
  */
 const stubPollInterval = (period = 1) => {
-    const intervalModule = require('../src/scheduler/polling/interval');
-    intervalModule.getPollIntervalMs = () => period;
+    jest.mock('../src/scheduler/polling/delay', () => ({
+        getPollIntervalMs: () => period,
+    }));
 };
 
 module.exports = {

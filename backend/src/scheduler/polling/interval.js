@@ -3,10 +3,7 @@
  * Handles the timing and execution of polling operations.
  */
 
-/** Default polling interval in milliseconds (10 minutes) */
-function getPollIntervalMs() {
-    return 600000;
-}
+const { getPollIntervalMs } = require('./delay');
 
 /**
  * Create an interval manager for handling polling timing.
@@ -46,5 +43,4 @@ function makeIntervalManager(pollFunction, capabilities) {
 
 module.exports = {
     makeIntervalManager,
-    getPollIntervalMs,
 };
