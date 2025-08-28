@@ -11,7 +11,7 @@ const memconst = require("../memconst");
 const {
     validateTasksAgainstPersistedStateInner,
     validateRegistrations,
-} = require("./validation");
+} = require("./validation/");
 
 /** @typedef {import('./types').Scheduler} Scheduler */
 /** @typedef {import('./types').Registration} Registration */

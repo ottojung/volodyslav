@@ -65,6 +65,92 @@ function makePollingScheduler(capabilities, registrations) {
         }
     }
 
+    /**
+     * Evaluates task scheduling state and collects tasks that are due for execution.
+     * @param {Set<string>} scheduledTasks - Set of task names that are enabled
+     * @param {import('../datetime').DateTime} now - Current datetime
+     * @returns {Promise<{dueTasks: Array<{taskName: string, mode: "retry"|"cron", callback: Callback}>, stats: {dueRetry: number, dueCron: number, skippedRunning: number, skippedRetryFuture: number, skippedNotDue: number}}>}
+     */
+    async function collectDueTasks(scheduledTasks, now) {
+        let dueRetry = 0;
+        let dueCron = 0;
+        let skippedRunning = 0;
+        let skippedRetryFuture = 0;
+        let skippedNotDue = 0;
+
+        // Collect all due tasks for parallel execution
+        /** @type {Array<{taskName: string, mode: "retry"|"cron", callback: Callback}>} */
+        const dueTasks = [];
+
+        await mutateTasks(capabilities, registrations, (tasks) => {
+            for (const taskName of scheduledTasks) {
+                const task = tasks.get(taskName);
+                if (task === undefined) {
+                    throw new TaskNotFoundError(taskName);
+                }
+
+                if (isRunning(task)) {
+                    skippedRunning++;
+                    capabilities.logger.logDebug({ name: taskName, reason: "running" }, "TaskSkip");
+                    continue;
+                }
+
+                // Check both cron schedule and retry timing
+                const lastEvaluatedFireDate = task.lastEvaluatedFire ? task.lastEvaluatedFire : undefined;
+                const { lastScheduledFire, newLastEvaluatedFire } = getMostRecentExecution(task.parsedCron, now, dt, lastEvaluatedFireDate);
+
+                // Update lastEvaluatedFire cache for performance optimization
+                if (newLastEvaluatedFire) {
+                    task.lastEvaluatedFire = newLastEvaluatedFire;
+                }
+
+                const shouldRunCron = lastScheduledFire &&
+                    (!task.lastAttemptTime || task.lastAttemptTime.getTime() < lastScheduledFire.getTime());
+
+                const shouldRunRetry = task.pendingRetryUntil && now.getTime() >= task.pendingRetryUntil.getTime();
+                const callback = task.callback;
+
+                if (shouldRunRetry && shouldRunCron) {
+                    // Both are due - choose the mode based on which is earlier (chronologically smaller)
+                    if (task.pendingRetryUntil && lastScheduledFire && task.pendingRetryUntil.getTime() < lastScheduledFire.getTime()) {
+                        dueTasks.push({ taskName, mode: "retry", callback });
+                        task.lastAttemptTime = now;
+                        dueRetry++;
+                    } else {
+                        dueTasks.push({ taskName, mode: "cron", callback });
+                        task.lastAttemptTime = now;
+                        dueCron++;
+                    }
+                } else if (shouldRunCron) {
+                    dueTasks.push({ taskName, mode: "cron", callback });
+                    task.lastAttemptTime = now;
+                    dueCron++;
+                } else if (shouldRunRetry) {
+                    dueTasks.push({ taskName, mode: "retry", callback });
+                    task.lastAttemptTime = now;
+                    dueRetry++;
+                } else if (task.pendingRetryUntil) {
+                    skippedRetryFuture++;
+                    capabilities.logger.logDebug({ name: taskName, reason: "retryNotDue" }, "TaskSkip");
+                } else {
+                    skippedNotDue++;
+                    capabilities.logger.logDebug({ name: taskName, reason: "notDue" }, "TaskSkip");
+                }
+            }
+        });
+
+        return {
+            dueTasks,
+            stats: {
+                dueRetry,
+                dueCron,
+                skippedRunning,
+                skippedRetryFuture,
+                skippedNotDue,
+            }
+        };
+    }
+
     async function poll() {
         // Guard against re-entrant polls
         if (pollInProgress) {
@@ -75,72 +161,9 @@ function makePollingScheduler(capabilities, registrations) {
         pollInProgress = true;
         try {
             const now = dt.now();
-            let dueRetry = 0;
-            let dueCron = 0;
-            let skippedRunning = 0;
-            let skippedRetryFuture = 0;
-            let skippedNotDue = 0;
 
             // Collect all due tasks for parallel execution
-            /** @type {Array<{taskName: string, mode: "retry"|"cron", callback: Callback}>} */
-            const dueTasks = [];
-
-            await mutateTasks(capabilities, registrations, (tasks) => {
-                for (const taskName of scheduledTasks) {
-                    const task = tasks.get(taskName);
-                    if (task === undefined) {
-                        throw new TaskNotFoundError(taskName);
-                    }
-
-                    if (isRunning(task)) {
-                        skippedRunning++;
-                        capabilities.logger.logDebug({ name: taskName, reason: "running" }, "TaskSkip");
-                        continue;
-                    }
-
-                    // Check both cron schedule and retry timing
-                    const lastEvaluatedFireDate = task.lastEvaluatedFire ? task.lastEvaluatedFire : undefined;
-                    const { lastScheduledFire, newLastEvaluatedFire } = getMostRecentExecution(task.parsedCron, now, dt, lastEvaluatedFireDate);
-
-                    // Update lastEvaluatedFire cache for performance optimization
-                    if (newLastEvaluatedFire) {
-                        task.lastEvaluatedFire = newLastEvaluatedFire;
-                    }
-
-                    const shouldRunCron = lastScheduledFire &&
-                        (!task.lastAttemptTime || task.lastAttemptTime.getTime() < lastScheduledFire.getTime());
-
-                    const shouldRunRetry = task.pendingRetryUntil && now.getTime() >= task.pendingRetryUntil.getTime();
-                    const callback = task.callback;
-
-                    if (shouldRunRetry && shouldRunCron) {
-                        // Both are due - choose the mode based on which is earlier (chronologically smaller)
-                        if (task.pendingRetryUntil && lastScheduledFire && task.pendingRetryUntil.getTime() < lastScheduledFire.getTime()) {
-                            dueTasks.push({ taskName, mode: "retry", callback });
-                            task.lastAttemptTime = now;
-                            dueRetry++;
-                        } else {
-                            dueTasks.push({ taskName, mode: "cron", callback });
-                            task.lastAttemptTime = now;
-                            dueCron++;
-                        }
-                    } else if (shouldRunCron) {
-                        dueTasks.push({ taskName, mode: "cron", callback });
-                        task.lastAttemptTime = now;
-                        dueCron++;
-                    } else if (shouldRunRetry) {
-                        dueTasks.push({ taskName, mode: "retry", callback });
-                        task.lastAttemptTime = now;
-                        dueRetry++;
-                    } else if (task.pendingRetryUntil) {
-                        skippedRetryFuture++;
-                        capabilities.logger.logDebug({ name: taskName, reason: "retryNotDue" }, "TaskSkip");
-                    } else {
-                        skippedNotDue++;
-                        capabilities.logger.logDebug({ name: taskName, reason: "notDue" }, "TaskSkip");
-                    }
-                }
-            });
+            const { dueTasks, stats } = await collectDueTasks(scheduledTasks, now);
 
             // Execute all due tasks in parallel
             await taskExecutor.executeTasks(dueTasks);
@@ -148,11 +171,11 @@ function makePollingScheduler(capabilities, registrations) {
             capabilities.logger.logDebug(
                 {
                     due: dueTasks.length,
-                    dueRetry,
-                    dueCron,
-                    skippedRunning,
-                    skippedRetryFuture,
-                    skippedNotDue,
+                    dueRetry: stats.dueRetry,
+                    dueCron: stats.dueCron,
+                    skippedRunning: stats.skippedRunning,
+                    skippedRetryFuture: stats.skippedRetryFuture,
+                    skippedNotDue: stats.skippedNotDue,
                 },
                 "PollSummary"
             );

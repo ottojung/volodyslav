@@ -8,7 +8,7 @@
  */
 
 const { make } = require("./scheduler_factory");
-const { isTaskListMismatchError, isScheduleDuplicateTaskError } = require("./validation");
+const { isTaskListMismatchError, isScheduleDuplicateTaskError } = require("./validation/");
 const { 
     parseCronExpression, 
     matchesCronExpression,
