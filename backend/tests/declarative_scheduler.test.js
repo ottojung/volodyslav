@@ -3,9 +3,6 @@
  */
 
 const {
-    isTaskListMismatchError,
-} = require("../src/scheduler");
-const {
     stubLogger,
     stubEnvironment,
     stubSleeper,
@@ -145,6 +142,7 @@ describe("Declarative Scheduler", () => {
 
             const error = await capabilities.scheduler.initialize(missingTaskRegistrations).catch(e => e);
 
+            const { isTaskListMismatchError } = require("../src/scheduler");
             expect(isTaskListMismatchError(error)).toBe(true);
             expect(error.mismatchDetails.missing).toContain("task2");
             await capabilities.scheduler.stop();
@@ -168,6 +166,7 @@ describe("Declarative Scheduler", () => {
 
             const error = await capabilities.scheduler.initialize(extraTaskRegistrations).catch(e => e);
 
+            const { isTaskListMismatchError } = require("../src/scheduler");
             expect(isTaskListMismatchError(error)).toBe(true);
             expect(error.mismatchDetails.extra).toContain("task2");
             await capabilities.scheduler.stop();
@@ -192,6 +191,7 @@ describe("Declarative Scheduler", () => {
 
             const error = await capabilities.scheduler.initialize(mismatchedRegistrations).catch(e => e);
 
+            const { isTaskListMismatchError } = require("../src/scheduler");
             expect(isTaskListMismatchError(error)).toBe(true);
             expect(error.mismatchDetails.missing).toEqual(["task2"]);
             expect(error.mismatchDetails.extra).toEqual(["task3"]);

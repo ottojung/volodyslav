@@ -37,7 +37,12 @@ function nextEligible(def, rt, now) {
     }
 
     // No pending retry, use cron schedule
-    return def.cron.nextAfter(now);
+    // For first-time tasks (lastEvaluatedFire is null), make them eligible immediately
+    if (rt.lastEvaluatedFire === null) {
+        return now;
+    }
+    
+    return def.cron.nextAfter(rt.lastEvaluatedFire);
 }
 
 /**
@@ -62,7 +67,12 @@ function getExecutionMode(def, rt, now) {
     }
 
     // Check if cron schedule is due
-    const cronNext = def.cron.nextAfter(rt.lastEvaluatedFire || now);
+    // For first-time tasks (lastEvaluatedFire is null), consider them due immediately
+    if (rt.lastEvaluatedFire === null) {
+        return 'cron';
+    }
+    
+    const cronNext = def.cron.nextAfter(rt.lastEvaluatedFire);
     
     if (isBefore(cronNext, now) || cronNext.epochMs === now.epochMs) {
         return 'cron';
