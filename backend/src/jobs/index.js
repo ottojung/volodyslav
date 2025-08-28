@@ -1,6 +1,6 @@
 
 const { everyHour, daily, allTasks, scheduleAll, runAllTasks } = require("./all");
-const { isDailyTasksUnavailable } = require("./daily");
+const { isDailyTasksUnavailable, ensureDailyTasksAvailable } = require("./daily");
 
 module.exports = {
     everyHour,
@@ -9,4 +9,5 @@ module.exports = {
     scheduleAll,
     runAllTasks,
     isDailyTasksUnavailable,
+    ensureDailyTasksAvailable,
 };
