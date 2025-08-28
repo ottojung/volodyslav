@@ -3,7 +3,7 @@
  * Ensures tasks don't run more frequently than the polling interval can handle.
  */
 
-const { getNextExecution } = require("./expression");
+const { getNextExecution } = require("../expression");
 
 /**
  * Error thrown when task frequency is higher than polling frequency.
@@ -47,7 +47,7 @@ class ScheduleFrequencyError extends Error {
 
 /**
  * Generate test base times for comprehensive cron interval analysis.
- * @param {import('../datetime').Datetime} dt
+ * @param {import('../../datetime').Datetime} dt
  * @returns {Date[]} Array of base times to test from
  */
 function generateTestBaseTimes(dt) {
@@ -64,9 +64,9 @@ function generateTestBaseTimes(dt) {
 
 /**
  * Find minimum interval from a specific base time.
- * @param {import('./expression').CronExpression} parsedCron
+ * @param {import('../expression').CronExpression} parsedCron
  * @param {Date} baseTime
- * @param {import('../datetime').Datetime} dt
+ * @param {import('../../datetime').Datetime} dt
  * @param {number} targetSamples - Number of consecutive executions to analyze
  * @returns {number} Minimum interval in milliseconds, or Number.MAX_SAFE_INTEGER if no pattern found
  */
@@ -123,8 +123,8 @@ function handleEdgeCases(minInterval) {
 
 /**
  * Calculate the minimum interval between executions for a cron expression.
- * @param {import('./expression').CronExpression} parsedCron
- * @param {import('../datetime').Datetime} dt
+ * @param {import('../expression').CronExpression} parsedCron
+ * @param {import('../../datetime').Datetime} dt
  * @returns {number} Minimum interval in milliseconds
  */
 function calculateMinimumCronInterval(parsedCron, dt) {
@@ -156,9 +156,9 @@ function calculateMinimumCronInterval(parsedCron, dt) {
 
 /**
  * Validate that task frequency is not higher than polling frequency
- * @param {import('./expression').CronExpression} parsedCron
+ * @param {import('../expression').CronExpression} parsedCron
  * @param {number} pollIntervalMs
- * @param {import('../datetime').Datetime} dt
+ * @param {import('../../datetime').Datetime} dt
  * @throws {ScheduleFrequencyError}
  */
 function validateTaskFrequency(parsedCron, pollIntervalMs, dt) {
