@@ -4,13 +4,11 @@
 
 const { 
     parseCronExpression, 
+    matchesCronExpression,
     getNextExecution,
     isCronExpression,
-    isInvalidCronExpressionError,
-    InvalidCronExpressionError 
+    isInvalidCronExpressionError
 } = require("../src/scheduler");
-
-const { matchesCronExpression } = require("../src/scheduler/internal/parser");
 
 const datetime = require("../src/datetime");
 
@@ -61,20 +59,38 @@ describe("Cron Parser", () => {
         });
 
         test("throws on invalid expressions", () => {
-            expect(() => parseCronExpression("")).toThrow(InvalidCronExpressionError);
-            expect(() => parseCronExpression("0 * * *")).toThrow(InvalidCronExpressionError);
-            expect(() => parseCronExpression("0 * * * * *")).toThrow(InvalidCronExpressionError);
-            expect(() => parseCronExpression("60 * * * *")).toThrow(InvalidCronExpressionError);
-            expect(() => parseCronExpression("* 25 * * *")).toThrow(InvalidCronExpressionError);
-            expect(() => parseCronExpression("* * 32 * *")).toThrow(InvalidCronExpressionError);
-            expect(() => parseCronExpression("* * * 13 *")).toThrow(InvalidCronExpressionError);
-            expect(() => parseCronExpression("* * * * 7")).toThrow(InvalidCronExpressionError);
+            const testInvalidExpression = (expr) => {
+                try {
+                    parseCronExpression(expr);
+                    fail(`Expected parseCronExpression("${expr}") to throw an error`);
+                } catch (error) {
+                    expect(isInvalidCronExpressionError(error)).toBe(true);
+                }
+            };
+
+            testInvalidExpression("");
+            testInvalidExpression("0 * * *");
+            testInvalidExpression("0 * * * * *");
+            testInvalidExpression("60 * * * *");
+            testInvalidExpression("* 25 * * *");
+            testInvalidExpression("* * 32 * *");
+            testInvalidExpression("* * * 13 *");
+            testInvalidExpression("* * * * 7");
         });
 
         test("throws on non-string input", () => {
-            expect(() => parseCronExpression(123)).toThrow(InvalidCronExpressionError);
-            expect(() => parseCronExpression(null)).toThrow(InvalidCronExpressionError);
-            expect(() => parseCronExpression(undefined)).toThrow(InvalidCronExpressionError);
+            const testInvalidInput = (input) => {
+                try {
+                    parseCronExpression(input);
+                    fail(`Expected parseCronExpression with non-string input to throw an error`);
+                } catch (error) {
+                    expect(isInvalidCronExpressionError(error)).toBe(true);
+                }
+            };
+
+            testInvalidInput(123);
+            testInvalidInput(null);
+            testInvalidInput(undefined);
         });
 
         test("error contains helpful information", () => {

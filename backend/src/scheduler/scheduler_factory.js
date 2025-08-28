@@ -2,32 +2,11 @@
  * Scheduler factory implementation for the declarative scheduler.
  */
 
-const { parseCronExpression } = require("./expression/parser");
+const { parseCronExpression } = require("./expression");
 const { makePollingScheduler } = require("./polling_scheduler");
 const { mutateTasks } = require("./state_persistence");
+const { isScheduleDuplicateTaskError } = require("./validation");
 const memconst = require("../memconst");
-
-/**
- * Error thrown when attempting to register a task with a name that already exists.
- */
-class ScheduleDuplicateTaskError extends Error {
-    /**
-     * @param {string} taskName
-     */
-    constructor(taskName) {
-        super(`Task with name "${taskName}" is already scheduled`);
-        this.name = "ScheduleDuplicateTaskError";
-        this.taskName = taskName;
-    }
-}
-
-/**
- * @param {unknown} object
- * @returns {object is ScheduleDuplicateTaskError}
- */
-function isScheduleDuplicateTaskError(object) {
-    return object instanceof ScheduleDuplicateTaskError;
-}
 
 /**
  * Error for task scheduling failures.

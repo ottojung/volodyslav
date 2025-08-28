@@ -2,7 +2,7 @@
  * Validation logic for scheduler registrations and task state.
  */
 
-const { parseCronExpression } = require("./expression/parser");
+const { parseCronExpression } = require("./expression");
 
 /**
  * Error thrown when attempting to register a task with a name that already exists.
@@ -16,6 +16,14 @@ class ScheduleDuplicateTaskError extends Error {
         this.name = "ScheduleDuplicateTaskError";
         this.taskName = taskName;
     }
+}
+
+/**
+ * @param {unknown} object
+ * @returns {object is ScheduleDuplicateTaskError}
+ */
+function isScheduleDuplicateTaskError(object) {
+    return object instanceof ScheduleDuplicateTaskError;
 }
 
 /**
@@ -359,4 +367,5 @@ module.exports = {
     validateTasksAgainstPersistedStateInner,
     validateRegistrations,
     isTaskListMismatchError,
+    isScheduleDuplicateTaskError,
 };

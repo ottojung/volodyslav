@@ -8,14 +8,14 @@
  */
 
 const { make } = require("./scheduler_factory");
-const { isTaskListMismatchError } = require("./validation");
+const { isTaskListMismatchError, isScheduleDuplicateTaskError } = require("./validation");
 const { 
     parseCronExpression, 
+    matchesCronExpression,
     getNextExecution,
     isCronExpression,
     isInvalidCronExpressionError
-} = require("./expression/parser");
-const { isScheduleDuplicateTaskError } = require("./scheduler_factory");
+} = require("./expression");
 
 /**
  * Validate a cron expression without creating a scheduler.
@@ -44,6 +44,7 @@ module.exports = {
     isTaskListMismatchError,
     isScheduleDuplicateTaskError,
     parseCronExpression,
+    matchesCronExpression,
     getNextExecution,
     isCronExpression,
     isInvalidCronExpressionError,

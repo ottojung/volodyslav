@@ -3,7 +3,7 @@
  * Handles efficient backwards calculation to find the most recent execution time.
  */
 
-const { matchesCronExpression, getNextExecution } = require("./expression/parser");
+const { matchesCronExpression, getNextExecution } = require("./expression");
 
 /**
  * Finds the most recent time a cron expression would have fired before the given reference time.
@@ -14,9 +14,9 @@ const { matchesCronExpression, getNextExecution } = require("./expression/parser
  * - Is Deterministic: Same inputs always produce same output
  * - Implements Correct caching: Returns actual fire time (not evaluation time) as cache
  * 
- * @param {import('./expression/expression').CronExpression} parsedCron - The parsed cron expression
+ * @param {import('./expression').CronExpression} parsedCron - The parsed cron expression
  * @param {DateTime} now - The reference point (current time)
- * @param {import('../../datetime').Datetime} dt - DateTime capabilities instance
+ * @param {import('../datetime').Datetime} dt - DateTime capabilities instance
  * @param {DateTime|undefined} lastKnownFireTime - Optional cache hint (actual fire time, not evaluation time)
  * @returns {{previousFire: DateTime|undefined, newCacheTime: DateTime|undefined}}
  */
@@ -125,14 +125,14 @@ function findPreviousFire(parsedCron, now, dt, lastKnownFireTime) {
 }
 
 /**
- * @typedef {import('../../datetime').DateTime} DateTime
+ * @typedef {import('../datetime').DateTime} DateTime
  */
 
 /**
  * Get the most recent execution time for a cron expression.
- * @param {import('./expression/expression').CronExpression} parsedCron
+ * @param {import('./expression').CronExpression} parsedCron
  * @param {DateTime} now
- * @param {import('../../datetime').Datetime} dt
+ * @param {import('../datetime').Datetime} dt
  * @param {DateTime|undefined} lastEvaluatedFire
  * @returns {{lastScheduledFire: DateTime|undefined, newLastEvaluatedFire: DateTime|undefined}}
  */

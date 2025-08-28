@@ -7,7 +7,7 @@
 /** @typedef {import('./tasks').Capabilities} Capabilities */
 /** @typedef {import('./task').Task} Task */
 /** @typedef {() => Promise<void>} Callback */
-/** @typedef {import('./expression/expression').CronExpression} CronExpression */
+/** @typedef {import('./expression').CronExpression} CronExpression */
 
 /**
  * @typedef {object} Scheduler
