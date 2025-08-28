@@ -9,15 +9,15 @@ const { evaluateTasksForExecution } = require("./task_execution");
 const { ScheduleInvalidNameError } = require("./registration_validation");
 
 /**
- * Error thrown when a task is not found in the runtime task map.
+ * Error thrown when a task registration is not found in the polling scheduler.
  */
-class TaskNotFoundError extends Error {
+class TaskRegistrationNotFoundError extends Error {
     /**
      * @param {string} taskName
      */
     constructor(taskName) {
-        super(`Task ${JSON.stringify(taskName)} not found`);
-        this.name = "TaskNotFoundError";
+        super(`Task ${JSON.stringify(taskName)} not found in registrations`);
+        this.name = "TaskRegistrationNotFoundError";
         this.taskName = taskName;
     }
 }
@@ -138,7 +138,7 @@ function makePollingScheduler(capabilities, registrations) {
 
             const found = registrations.get(name);
             if (found === undefined) {
-                throw new TaskNotFoundError(name);
+                throw new TaskRegistrationNotFoundError(name);
             }
 
             // Parse and validate cron expression from registration

@@ -4,15 +4,15 @@
  */
 
 /**
- * Error thrown when a task is not found in the runtime task map.
+ * Error thrown when a task is not found during task execution.
  */
-class TaskNotFoundError extends Error {
+class TaskExecutionNotFoundError extends Error {
     /**
      * @param {string} taskName
      */
     constructor(taskName) {
-        super(`Task ${JSON.stringify(taskName)} not found`);
-        this.name = "TaskNotFoundError";
+        super(`Task ${JSON.stringify(taskName)} not found during execution`);
+        this.name = "TaskExecutionNotFoundError";
         this.taskName = taskName;
     }
 }
@@ -68,7 +68,7 @@ function makeTaskExecutor(capabilities, mutateTasks) {
             return await mutateTasks((tasks) => {
                 const task = tasks.get(taskName);
                 if (task === undefined) {
-                    throw new TaskNotFoundError(taskName);
+                    throw new TaskExecutionNotFoundError(taskName);
                 }
                 return transformation(task);
             });

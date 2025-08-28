@@ -9,15 +9,15 @@ const { isRunning } = require("../task");
 /** @typedef {import('../types').Callback} Callback */
 
 /**
- * Error thrown when a task is not found in the runtime task map.
+ * Error thrown when a task is not found during evaluation for execution.
  */
-class TaskNotFoundError extends Error {
+class TaskEvaluationNotFoundError extends Error {
     /**
      * @param {string} taskName
      */
     constructor(taskName) {
-        super(`Task ${JSON.stringify(taskName)} not found`);
-        this.name = "TaskNotFoundError";
+        super(`Task ${JSON.stringify(taskName)} not found during evaluation`);
+        this.name = "TaskEvaluationNotFoundError";
         this.taskName = taskName;
     }
 }
@@ -48,7 +48,7 @@ function evaluateTasksForExecution(tasks, scheduledTasks, now, dt, capabilities)
     for (const taskName of scheduledTasks) {
         const task = tasks.get(taskName);
         if (task === undefined) {
-            throw new TaskNotFoundError(taskName);
+            throw new TaskEvaluationNotFoundError(taskName);
         }
 
         if (isRunning(task)) {
@@ -114,5 +114,5 @@ function evaluateTasksForExecution(tasks, scheduledTasks, now, dt, capabilities)
 
 module.exports = {
     evaluateTasksForExecution,
-    TaskNotFoundError,
+    TaskEvaluationNotFoundError,
 };
