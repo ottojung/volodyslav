@@ -33,29 +33,28 @@ describe("declarative scheduler validation", () => {
         expect(validate("0 * * * *")).toBe(true);
         expect(validate("0 2 * * *")).toBe(true);
         expect(validate("60 * * * *")).toBe(false); // invalid minute
-        expect(validate(/** @type any */(null))).toBe(false);
+        expect(validate(/** @type string */(null))).toBe(false);
     });
 
     test("throws on invalid task name (empty/whitespace)", async () => {
         const capabilities1 = getTestCapabilities();
         const capabilities2 = getTestCapabilities();
         const retryDelay = fromMilliseconds(0);
-        
+
         // Try to initialize with invalid task names
         const emptyNameRegistrations = [
-            ["", "0 * * * *", () => {}, retryDelay] // Every hour
+            ["", "0 * * * *", () => { }, retryDelay] // Every hour
         ];
         const whitespaceNameRegistrations = [
-            ["   ", "0 * * * *", () => {}, retryDelay] // Every hour
+            ["   ", "0 * * * *", () => { }, retryDelay] // Every hour
         ];
-        
+
         await expect(capabilities1.scheduler.initialize(emptyNameRegistrations))
-            .rejects.toThrow(ScheduleInvalidNameError);
+            .rejects.toThrow(/must be a non-empty string/);
         await expect(capabilities2.scheduler.initialize(whitespaceNameRegistrations))
-            .rejects.toThrow(ScheduleInvalidNameError);
-        
+            .rejects.toThrow(/must be a non-empty string/);
+
         await capabilities1.scheduler.stop();
         await capabilities2.scheduler.stop();
     });
-
 });
