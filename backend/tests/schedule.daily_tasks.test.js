@@ -43,10 +43,10 @@ describe("Daily Tasks", () => {
         test("returns a promise", () => {
             const result = ensureDailyTasksAvailable();
             expect(result).toBeInstanceOf(Promise);
-            
+
             // Don't await the promise to avoid hanging - just verify it's a promise
             // Clean up by adding a catch handler without awaiting
-            result.catch(() => {});
+            result.catch(() => { });
         });
     });
 
@@ -62,7 +62,7 @@ describe("Daily Tasks", () => {
 
             // Don't await the promise to avoid hanging - just verify it's a promise
             // Clean up by adding a catch handler without awaiting
-            result.catch(() => {});
+            result.catch(() => { });
         });
 
         test("calls logger functions during execution", async () => {
