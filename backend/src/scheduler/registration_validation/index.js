@@ -4,13 +4,9 @@
  */
 
 const { validateRegistrations } = require("./core");
-const { 
-    isScheduleDuplicateTaskError,
-    ScheduleInvalidNameError,
-} = require("./errors");
+const { isScheduleDuplicateTaskError } = require("./errors");
 
 module.exports = {
     validateRegistrations,
     isScheduleDuplicateTaskError,
-    ScheduleInvalidNameError,
 };

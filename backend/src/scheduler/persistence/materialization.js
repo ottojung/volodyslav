@@ -4,13 +4,26 @@
  */
 
 const { serialize, tryDeserialize, isTaskTryDeserializeError } = require('../task');
-const { TaskAlreadyRegisteredError } = require('./errors');
 
 /** 
  * @typedef {import('../task').Task} Task 
  * @typedef {import('../types').ParsedRegistrations} ParsedRegistrations
  * @typedef {import('../../runtime_state_storage/types').TaskRecord} TaskRecord
  */
+
+/**
+ * Error thrown when attempting to register a task that is already registered.
+ */
+class TaskAlreadyRegisteredError extends Error {
+    /**
+     * @param {string} taskName
+     */
+    constructor(taskName) {
+        super(`Task ${taskName} is already registered`);
+        this.name = "TaskAlreadyRegisteredError";
+        this.taskName = taskName;
+    }
+}
 
 /**
  * Materialize task records into Task objects.

@@ -5,11 +5,9 @@
 
 const { mutateTasks } = require('./core');
 const { materializeTasks, serializeTasks } = require('./materialization');
-const { TaskAlreadyRegisteredError } = require('./errors');
 
 module.exports = {
     mutateTasks,
     materializeTasks,
     serializeTasks,
-    TaskAlreadyRegisteredError,
 };

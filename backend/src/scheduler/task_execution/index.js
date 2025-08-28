@@ -3,9 +3,8 @@
  * Encapsulates all functionality related to evaluating and executing tasks.
  */
 
-const { evaluateTasksForExecution, TaskEvaluationNotFoundError } = require("./evaluation");
+const { evaluateTasksForExecution } = require("./evaluation");
 
 module.exports = {
     evaluateTasksForExecution,
-    TaskEvaluationNotFoundError,
 };

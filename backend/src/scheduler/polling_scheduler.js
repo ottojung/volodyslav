@@ -6,7 +6,20 @@ const { mutateTasks } = require("./state_persistence");
 const { makeTaskExecutor } = require("./task_executor");
 const { validateTaskFrequency } = require("./frequency_validator");
 const { makeIntervalManager, makePollingFunction, POLL_INTERVAL_MS } = require("./lifecycle");
-const { ScheduleInvalidNameError } = require("./registration_validation");
+
+/**
+ * Error thrown when an invalid task name is provided.
+ */
+class ScheduleInvalidNameError extends Error {
+    /**
+     * @param {unknown} taskName
+     */
+    constructor(taskName) {
+        super("Task name must be a non-empty string");
+        this.name = "ScheduleInvalidNameError";
+        this.taskName = /** @type {string} */ (taskName);
+    }
+}
 
 /**
  * Error thrown when a task registration is not found in the polling scheduler.
@@ -123,4 +136,3 @@ module.exports = {
     makePollingScheduler,
     POLL_INTERVAL_MS,
 };
-
