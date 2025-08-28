@@ -1,5 +1,5 @@
 
-
+const taskExecutor = require("../src/scheduler/execution");
 const { fromMilliseconds } = require("../src/time_duration");
 const { getMockedRootCapabilities } = require("./spies");
 const { stubEnvironment, stubLogger, stubDatetime, stubSleeper, getDatetimeControl, stubPollInterval, stubRuntimeStateStorage } = require("./stubs");
@@ -83,7 +83,6 @@ describe("scheduler atomicity testing", () => {
         const timeControl = getDatetimeControl(capabilities);
         const retryDelay = fromMilliseconds(25000);
 
-        const taskExecutor = require("../src/scheduler/task_executor");
         const originalMakeTaskExecutor = taskExecutor.makeTaskExecutor;
 
         let executorCallCount = 0;
