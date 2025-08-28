@@ -34,6 +34,34 @@ class DuplicateTaskError extends Error {
 }
 
 /**
+ * Duplicate task error for scheduler API compatibility.
+ */
+class ScheduleDuplicateTaskError extends Error {
+    /**
+     * @param {string} taskName
+     */
+    constructor(taskName) {
+        super(`Task with name "${taskName}" is already scheduled`);
+        this.name = "ScheduleDuplicateTaskError";
+        this.taskName = taskName;
+    }
+}
+
+/**
+ * Invalid task name error for scheduler API compatibility.
+ */
+class ScheduleInvalidNameError extends Error {
+    /**
+     * @param {string} taskName
+     */
+    constructor(taskName) {
+        super(`Invalid task name: "${taskName}"`);
+        this.name = "ScheduleInvalidNameError";
+        this.taskName = taskName;
+    }
+}
+
+/**
  * Invalid cron expression error.
  */
 class InvalidCronError extends Error {
@@ -118,6 +146,24 @@ function isDuplicateTaskError(object) {
 }
 
 /**
+ * Type guard for ScheduleDuplicateTaskError.
+ * @param {any} object
+ * @returns {object is ScheduleDuplicateTaskError}
+ */
+function isScheduleDuplicateTaskError(object) {
+    return object instanceof ScheduleDuplicateTaskError;
+}
+
+/**
+ * Type guard for ScheduleInvalidNameError.
+ * @param {any} object
+ * @returns {object is ScheduleInvalidNameError}
+ */
+function isScheduleInvalidNameError(object) {
+    return object instanceof ScheduleInvalidNameError;
+}
+
+/**
  * Type guard for InvalidCronError.
  * @param {any} object
  * @returns {object is InvalidCronError}
@@ -156,12 +202,16 @@ function isTaskExecutionError(object) {
 module.exports = {
     StartupDriftError,
     DuplicateTaskError,
+    ScheduleDuplicateTaskError,
+    ScheduleInvalidNameError,
     InvalidCronError,
     FrequencyGuardError,
     StatePersistenceError,
     TaskExecutionError,
     isStartupDriftError,
     isDuplicateTaskError,
+    isScheduleDuplicateTaskError,
+    isScheduleInvalidNameError,
     isInvalidCronError,
     isFrequencyGuardError,
     isStatePersistenceError,

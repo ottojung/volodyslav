@@ -26,7 +26,7 @@ const MAX_RETRY_DELAY_MS = 24 * 60 * 60 * 1000; // 24 hours
 /**
  * Minimum retry delay in milliseconds.
  */
-const MIN_RETRY_DELAY_MS = 1000; // 1 second
+const MIN_RETRY_DELAY_MS = 0; // Allow immediate retries for compatibility
 
 /**
  * Maximum cron calculation iterations.

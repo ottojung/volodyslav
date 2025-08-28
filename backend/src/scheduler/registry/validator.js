@@ -16,6 +16,7 @@ function validateRegistrations(registrations) {
 
     const parsed = [];
     const seenNames = new Set();
+    const { ScheduleDuplicateTaskError, ScheduleInvalidNameError } = require('../errors');
 
     for (let i = 0; i < registrations.length; i++) {
         try {
@@ -30,12 +31,28 @@ function validateRegistrations(registrations) {
             const taskName = toString(parsedReg.name);
             
             if (seenNames.has(taskName)) {
-                throw new Error(`Duplicate task name: ${taskName}`);
+                throw new ScheduleDuplicateTaskError(taskName);
             }
             
             seenNames.add(taskName);
             parsed.push(parsedReg);
         } catch (error) {
+            // Re-throw specific error types without wrapping
+            if (error instanceof ScheduleDuplicateTaskError) {
+                throw error;
+            }
+            
+            // Handle task name validation errors specifically
+            if (error instanceof Error && (
+                error.message === "TaskId must be a non-empty string" ||
+                error.message === "TaskId must contain only alphanumeric characters, dashes, and underscores"
+            )) {
+                const registration = registrations[i];
+                const taskName = Array.isArray(registration) ? registration[0] : '';
+                throw new ScheduleInvalidNameError(taskName);
+            }
+            
+            // For other errors, wrap with index information
             const message = error instanceof Error ? error.message : String(error);
             throw new Error(`Invalid registration at index ${i}: ${message}`);
         }

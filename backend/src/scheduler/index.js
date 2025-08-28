@@ -179,9 +179,9 @@ module.exports = {
     validate,
     // Legacy compatibility exports
     isTaskListMismatchError: require('./errors').isStartupDriftError,
-    ScheduleInvalidNameError: require('./errors').InvalidCronError,
-    ScheduleDuplicateTaskError: require('./errors').DuplicateTaskError,
-    isScheduleDuplicateTaskError: require('./errors').isDuplicateTaskError,
+    ScheduleInvalidNameError: require('./errors').ScheduleInvalidNameError,
+    ScheduleDuplicateTaskError: require('./errors').ScheduleDuplicateTaskError,
+    isScheduleDuplicateTaskError: require('./errors').isScheduleDuplicateTaskError,
     parseCronExpression: require('./value-objects/cron-expression').fromString,
     getNextExecution: (/** @type {import('./value-objects/cron-expression').CronExpression} */ cron, /** @type {import('./value-objects/instant').InstantMs} */ fromTime) => cron.nextAfter(fromTime),
     isCronExpression: require('./value-objects/cron-expression').isCronExpression,
