@@ -17,20 +17,6 @@ const {
 } = require('./expression')
 const { matchesCronExpression, getNextExecution } = require("./calculator");
 
-/**
- * Validate a cron expression without creating a scheduler.
- * @param {string} cronExpression
- * @returns {boolean}
- */
-function validate(cronExpression) {
-    try {
-        parseCronExpression(cronExpression);
-        return true;
-    } catch {
-        return false;
-    }
-}
-
 // Re-export types for external consumption
 /** @typedef {import('./types').Scheduler} Scheduler */
 /** @typedef {import('./types').Registration} Registration */
@@ -40,7 +26,6 @@ function validate(cronExpression) {
 
 module.exports = {
     make,
-    validate,
     isTaskListMismatchError,
     isScheduleDuplicateTaskError,
     parseCronExpression,

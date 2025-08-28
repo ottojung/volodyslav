@@ -1,4 +1,4 @@
-const { validate, ScheduleInvalidNameError } = require("../src/scheduler");
+const { parseCronExpression } = require("../src/scheduler");
 const { fromMilliseconds } = require("../src/time_duration");
 const { getMockedRootCapabilities } = require("./spies");
 const { stubEnvironment, stubLogger, stubDatetime, stubSleeper, stubPollInterval } = require("./stubs");
@@ -11,6 +11,20 @@ function getTestCapabilities() {
     stubSleeper(capabilities);
     stubPollInterval(1); // Fast polling for tests
     return capabilities;
+}
+
+/**
+ * Validate a cron expression without creating a scheduler.
+ * @param {string} cronExpression
+ * @returns {boolean}
+ */
+function validate(cronExpression) {
+    try {
+        parseCronExpression(cronExpression);
+        return true;
+    } catch {
+        return false;
+    }
 }
 
 describe("declarative scheduler validation", () => {
