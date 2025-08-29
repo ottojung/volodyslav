@@ -14,7 +14,7 @@ function getTestCapabilities() {
     stubDatetime(capabilities);
     stubSleeper(capabilities);
     stubRuntimeStateStorage(capabilities);
-    stubPollInterval(capabilities); // Fast polling for tests - use real timers
+    stubPollInterval(capabilities, 1); // Fast polling for tests - use real timers
     return capabilities;
 }
 
