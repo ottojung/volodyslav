@@ -4,7 +4,7 @@
 
 const { mutateTasks } = require("../persistence");
 const { makeTaskExecutor } = require("../execution");
-const { validateTaskFrequency } = require("../registration_validation/frequency");
+const { validateTaskFrequency } = require("../registration_validation");
 const { makePollingFunction } = require("./function");
 const { makeIntervalManager, POLL_INTERVAL_MS } = require("./interval");
 
