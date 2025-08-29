@@ -267,7 +267,7 @@ describe("Declarative Scheduler", () => {
             await capabilities.scheduler.initialize(registrations);
 
             // Wait for at least one poll cycle to execute
-            await new Promise(resolve => setTimeout(resolve, 400));
+            await control.waitForNextCycleEnd();
 
             // Task should have been executed because it's due to run (first time)
             expect(taskCallback).toHaveBeenCalled();
@@ -283,6 +283,7 @@ describe("Declarative Scheduler", () => {
 
             const capabilities = getTestCapabilities();
             const control = getSchedulerControl(capabilities);
+            control.setPollingInterval(1);
 
             // First call to initialize
             await capabilities.scheduler.initialize(registrations);
