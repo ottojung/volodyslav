@@ -2,7 +2,7 @@
 const taskExecutor = require("../src/scheduler/execution");
 const { fromMilliseconds } = require("../src/time_duration");
 const { getMockedRootCapabilities } = require("./spies");
-const { stubEnvironment, stubLogger, stubDatetime, stubSleeper, getDatetimeControl, stubPollInterval, stubRuntimeStateStorage } = require("./stubs");
+const { stubEnvironment, stubLogger, stubDatetime, stubSleeper, getDatetimeControl, stubScheduler, getSchedulerControl, stubRuntimeStateStorage } = require("./stubs");
 
 function getTestCapabilities() {
     const capabilities = getMockedRootCapabilities();
@@ -12,7 +12,7 @@ function getTestCapabilities() {
     stubSleeper(capabilities);
     // Use stubRuntimeStateStorage for faster execution and to expose the race condition
     stubRuntimeStateStorage(capabilities);
-    stubPollInterval(capabilities, 1); // Fast polling for tests
+    stubScheduler(capabilities);
     return capabilities;
 }
 
@@ -20,6 +20,8 @@ describe("scheduler atomicity testing", () => {
 
     test("attempt map state corruption with direct manipulation", async () => {
         const capabilities = getTestCapabilities();
+        const schedulerControl = getSchedulerControl(capabilities);
+        schedulerControl.setPollingInterval(1);
         const timeControl = getDatetimeControl(capabilities);
         const retryDelay = fromMilliseconds(20000);
 
@@ -52,7 +54,7 @@ describe("scheduler atomicity testing", () => {
         await capabilities.scheduler.initialize(registrations);
 
         // Wait for tasks to complete
-        await new Promise(resolve => setTimeout(resolve, 100));
+        await schedulerControl.waitForNextCycleEnd();
 
         expect(task1Finished).toBe(true);
         expect(task2Finished).toBe(true);
@@ -80,6 +82,8 @@ describe("scheduler atomicity testing", () => {
 
     test("attempts to create a controlled race condition in task map serialization", async () => {
         const capabilities = getTestCapabilities();
+        const schedulerControl = getSchedulerControl(capabilities);
+        schedulerControl.setPollingInterval(1);
         const timeControl = getDatetimeControl(capabilities);
         const retryDelay = fromMilliseconds(25000);
 
@@ -128,7 +132,7 @@ describe("scheduler atomicity testing", () => {
 
             const task2 = jest.fn(async () => {
                 // Wait a tiny bit to create interleaving
-                await new Promise(resolve => setTimeout(resolve, 2));
+                await schedulerControl.waitForNextCycleEnd();
                 task2Done = true;
             });
 
@@ -143,7 +147,7 @@ describe("scheduler atomicity testing", () => {
             await capabilities.scheduler.initialize(registrations);
 
             // Wait for execution
-            await new Promise(resolve => setTimeout(resolve, 150));
+            await schedulerControl.waitForNextCycleEnd();
 
             expect(task1Done).toBe(true);
             expect(task2Done).toBe(true);

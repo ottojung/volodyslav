@@ -4,7 +4,7 @@
 
 const { fromMilliseconds } = require("../src/time_duration");
 const { getMockedRootCapabilities } = require("./spies");
-const { stubEnvironment, stubLogger, stubDatetime, stubSleeper, getDatetimeControl, stubRuntimeStateStorage, stubPollInterval } = require("./stubs");
+const { stubEnvironment, stubLogger, stubDatetime, stubSleeper, getDatetimeControl, stubRuntimeStateStorage, stubScheduler, getSchedulerControl } = require("./stubs");
 
 function getTestCapabilities() {
     const capabilities = getMockedRootCapabilities();
@@ -13,7 +13,7 @@ function getTestCapabilities() {
     stubDatetime(capabilities);
     stubSleeper(capabilities);
     stubRuntimeStateStorage(capabilities);
-    stubPollInterval(capabilities, 1); // Fast polling for tests
+    stubScheduler(capabilities);
     return capabilities;
 }
 
@@ -21,6 +21,8 @@ describe("failure retry persistence", () => {
     test("task failure sets pendingRetryUntil correctly", async () => {
         const capabilities = getTestCapabilities();
         const timeControl = getDatetimeControl(capabilities);
+        const schedulerControl = getSchedulerControl(capabilities);
+        schedulerControl.setPollingInterval(1);
 
         // Set a fixed starting time 
         const startTime = new Date("2020-01-01T00:00:30Z").getTime();
@@ -38,7 +40,7 @@ describe("failure retry persistence", () => {
         await capabilities.scheduler.initialize(registrations);
 
         // Wait for scheduler to start and catch up (will execute for 00:00:00)
-        await new Promise(resolve => setTimeout(resolve, 10));
+        await schedulerControl.waitForNextCycleEnd();
 
         // Check that task was executed and failed properly
         expect(callback).toHaveBeenCalledTimes(1);
@@ -55,7 +57,7 @@ describe("failure retry persistence", () => {
 
         // Advance time just enough to make retry due (but not trigger next cron)
         timeControl.advanceTime(10 * 1000); // 10 seconds (past the 5-second retry delay)
-        await new Promise(resolve => setTimeout(resolve, 10));
+        await schedulerControl.waitForNextCycleEnd();
 
         // The task should have retried once more
         expect(callback).toHaveBeenCalledTimes(2); // Should have retried once

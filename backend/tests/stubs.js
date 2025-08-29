@@ -305,21 +305,95 @@ function stubRuntimeStateStorage(capabilities) {
     };
 }
 
-/**
- * Stubs the polling interval constant for scheduler tests.
- */
-const stubPollInterval = (capabilities, period = 1) => {
+function stubScheduler(capabilities) {
     const originalPeriodic = capabilities.threading.periodic;
+    let periodOverride = null;
 
-    function periodic(name, original_period, callback) {
-        if (name === THREAD_NAME) {
-            original_period = period;
+    function setPollingInterval(newPeriod) {
+        periodOverride = newPeriod;
+    }
+
+    async function waitForNextCycleEnd() {
+        while (capabilities._stubbedScheduler.thread === undefined) {
+            await new Promise(resolve => setTimeout(resolve, 1));
         }
-        return originalPeriodic(name, original_period, callback);
+        await capabilities._stubbedScheduler.waitForNextCycleEnd();
+    }
+
+    capabilities._stubbedScheduler = {
+        setPollingInterval,
+        waitForNextCycleEnd,
+    };
+
+    function fakePeriodic(name, originalPeriod, callback) {
+        // eslint-disable-next-line no-unused-vars
+        let startedCount = 0;
+        let finishedCount = 0;
+
+        const callbackWrapper = async () => {
+            startedCount++;
+            try {
+                return await callback();
+            } finally {
+                finishedCount++
+            }
+        };
+
+        const thisPeriod = periodOverride !== null ? periodOverride : originalPeriod;
+        let thread = originalPeriodic(name, thisPeriod, callbackWrapper);
+
+        const setPollingInterval = (newPeriod) => {
+            const wasRunning = thread.isRunning();
+            thread.stop();
+            thread.period = newPeriod;
+            if (wasRunning) {
+                thread.start();
+            }
+        };
+
+        const waitForNextCycleEnd = async () => {
+            const initialEndCount = finishedCount;
+            while (finishedCount === initialEndCount) {
+                await new Promise(resolve => setTimeout(resolve, 1));
+            }
+        };
+
+        capabilities._stubbedScheduler = {
+            setPollingInterval,
+            thread,
+            waitForNextCycleEnd,
+        };
+
+        return thread;
+    }
+
+    function periodic(name, period, callback) {
+        if (name === THREAD_NAME) {
+            return fakePeriodic(name, period, callback);
+        } else {
+            return originalPeriodic(name, period, callback);
+        }
     }
 
     capabilities.threading.periodic = jest.fn().mockImplementation(periodic);
-};
+}
+
+/**
+ * @typedef {object} SchedulerControl
+ * @property { (newPeriod: number) => void } setPollingInterval
+ * @property {import('../src/threading').PeriodicThread} thread
+ * @property {() => Promise<void>} waitForNextCycleEnd
+ */
+
+/**
+ * @returns {SchedulerControl}
+ */
+function getSchedulerControl(capabilities) {
+    if (capabilities._stubbedScheduler === undefined) {
+        throw new Error("Scheduler must be stubbed with stubScheduler() to use scheduler control");
+    }
+    return capabilities._stubbedScheduler;
+}
 
 module.exports = {
     stubEnvironment,
@@ -335,7 +409,8 @@ module.exports = {
     stubTranscription,
     stubRuntimeStateStorage,
     getDatetimeControl,
+    getSchedulerControl,
+    stubScheduler,
     mockRuntimeStateTransaction,
     isMockRuntimeStateStorage,
-    stubPollInterval,
 };

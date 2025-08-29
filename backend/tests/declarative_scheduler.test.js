@@ -10,7 +10,8 @@ const {
     stubEnvironment,
     stubSleeper,
     stubDatetime,
-    stubPollInterval,
+    stubScheduler,
+    getSchedulerControl,
 } = require("./stubs");
 const { getMockedRootCapabilities } = require("./spies");
 const { COMMON } = require("../src/time_duration");
@@ -21,7 +22,7 @@ function getTestCapabilities() {
     stubEnvironment(capabilities);
     stubSleeper(capabilities);
     stubDatetime(capabilities);
-    stubPollInterval(capabilities, 1);
+    stubScheduler(capabilities);
     return capabilities;
 }
 
@@ -259,12 +260,14 @@ describe("Declarative Scheduler", () => {
             ];
 
             const capabilities = getTestCapabilities();
+            const control = getSchedulerControl(capabilities);
+            control.setPollingInterval(1000); // FIXME: figure out why doesn't it work with 1ms interval.
 
             // Initialize the scheduler with very short poll interval for testing
             await capabilities.scheduler.initialize(registrations);
 
             // Wait for at least one poll cycle to execute
-            await new Promise(resolve => setTimeout(resolve, 400));
+            await control.waitForNextCycleEnd();
 
             // Task should have been executed because it's due to run (first time)
             expect(taskCallback).toHaveBeenCalled();
@@ -279,12 +282,14 @@ describe("Declarative Scheduler", () => {
             ];
 
             const capabilities = getTestCapabilities();
+            const control = getSchedulerControl(capabilities);
+            control.setPollingInterval(1000); // FIXME: figure out why doesn't it work with 1ms interval.
 
             // First call to initialize
             await capabilities.scheduler.initialize(registrations);
 
             // Wait for initial execution
-            await new Promise(resolve => setTimeout(resolve, 400));
+            await control.waitForNextCycleEnd();
 
             // Task should have been called
             expect(taskCallback).toHaveBeenCalled();

@@ -49,6 +49,10 @@ class PeriodicThread {
             this.interval = undefined;
         }
     }
+
+    isRunning() {
+        return this.interval !== undefined;
+    }
 }
 
 /**
