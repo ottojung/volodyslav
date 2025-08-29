@@ -307,6 +307,15 @@ function stubRuntimeStateStorage(capabilities) {
 
 function stubScheduler(capabilities) {
     const originalPeriodic = capabilities.threading.periodic;
+    let periodOverride = null;
+
+    function setPollingInterval(newPeriod) {
+        periodOverride = newPeriod;
+    }
+ 
+    capabilities._stubbedScheduler = {
+        setPollingInterval,
+    };
 
     function fakePeriodic(name, originalPeriod, callback) {
         // eslint-disable-next-line no-unused-vars
@@ -322,7 +331,8 @@ function stubScheduler(capabilities) {
             }
         };
 
-        let thread = originalPeriodic(name, originalPeriod, callbackWrapper);
+        const thisPeriod = periodOverride !== null ? periodOverride : originalPeriod;
+        let thread = originalPeriodic(name, thisPeriod, callbackWrapper);
 
         const setPollingInterval = (newPeriod) => {
             const wasRunning = thread.isRunning();
@@ -340,13 +350,11 @@ function stubScheduler(capabilities) {
             }
         };
 
-        const struct = {
+        capabilities._stubbedScheduler = {
             setPollingInterval,
             thread,
             waitForNextCycleEnd,
         };
-
-        capabilities._stubbedScheduler = struct;
 
         return thread;
     }
@@ -373,10 +381,10 @@ function stubScheduler(capabilities) {
  * @returns {SchedulerControl}
  */
 function getSchedulerControl(capabilities) {
-    if (capabilities.threading._stubbedScheduler === undefined) {
+    if (capabilities._stubbedScheduler === undefined) {
         throw new Error("Scheduler must be stubbed with stubScheduler() to use scheduler control");
     }
-    return capabilities.threading._stubbedScheduler;
+    return capabilities._stubbedScheduler;
 }
 
 module.exports = {

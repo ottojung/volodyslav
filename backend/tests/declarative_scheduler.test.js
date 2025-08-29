@@ -10,7 +10,8 @@ const {
     stubEnvironment,
     stubSleeper,
     stubDatetime,
-    stubPollInterval,
+    stubScheduler,
+    getSchedulerControl,
 } = require("./stubs");
 const { getMockedRootCapabilities } = require("./spies");
 const { COMMON } = require("../src/time_duration");
@@ -21,7 +22,7 @@ function getTestCapabilities() {
     stubEnvironment(capabilities);
     stubSleeper(capabilities);
     stubDatetime(capabilities);
-    stubPollInterval(capabilities, 1);
+    stubScheduler(capabilities);
     return capabilities;
 }
 
@@ -259,6 +260,8 @@ describe("Declarative Scheduler", () => {
             ];
 
             const capabilities = getTestCapabilities();
+            const control = getSchedulerControl(capabilities);
+            control.setPollingInterval(1);
 
             // Initialize the scheduler with very short poll interval for testing
             await capabilities.scheduler.initialize(registrations);
