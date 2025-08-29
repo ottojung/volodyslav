@@ -365,7 +365,7 @@ function stubScheduler(capabilities) {
 /**
  * @typedef {object} SchedulerControl
  * @property { (newPeriod: number) => void } setPollingInterval
- * @property {PeriodicThread} thread
+ * @property {import('../src/threading').PeriodicThread} thread
  * @property {() => Promise<void>} waitForNextCycleEnd
  */
 
