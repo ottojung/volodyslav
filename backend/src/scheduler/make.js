@@ -170,7 +170,7 @@ function make(getCapabilities) {
      */
     async function initialize(registrations) {
         const capabilities = getCapabilitiesMemo();
-        
+
         // Validate input and check persisted state
         const { persistedTasks } = await validateAndCheckPersistedState(registrations, capabilities);
 
@@ -193,6 +193,7 @@ function make(getCapabilities) {
         const parsedRegistrations = parseRegistrations(registrations);
 
         if (persistedTasks === undefined) {
+            // Persist tasks during first initialization.
             await mutateTasks(capabilities, parsedRegistrations, async () => undefined);
         }
 
