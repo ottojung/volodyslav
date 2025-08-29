@@ -60,7 +60,7 @@ const tryResolvePath = memoize(tryResolvePathInternal);
  */
 async function resolvePath(command) {
     const path = await tryResolvePath(command);
-    if (!path) {
+    if (path === null) {
         throw new CommandUnavailable(command);
     }
     return path;
