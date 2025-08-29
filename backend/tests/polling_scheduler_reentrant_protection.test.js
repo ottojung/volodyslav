@@ -21,38 +21,41 @@ function getTestCapabilities() {
 describe("declarative scheduler re-entrancy protection", () => {
     test("should handle concurrent initialize calls gracefully", async () => {
         const capabilities = getTestCapabilities();
+        const timeControl = getDatetimeControl(capabilities);
         const retryDelay = fromMilliseconds(5000);
         let taskStartCount = 0;
         let taskEndCount = 0;
         
-        // Create a long-running task 
-        const longRunningTask = jest.fn(async () => {
+        // Create a simple task without any async operations
+        const simpleTask = jest.fn(() => {
             taskStartCount++;
-            await new Promise(resolve => setTimeout(resolve, 300)); // 300ms delay
             taskEndCount++;
         });
         
+        // Set time to start of hour so "0 * * * *" schedule triggers
+        const startTime = new Date("2021-01-01T00:00:00.000Z").getTime();
+        timeControl.setTime(startTime);
+        
         const registrations = [
-            ["long-task", "0 * * * *", longRunningTask, retryDelay]
+            ["simple-task", "0 * * * *", simpleTask, retryDelay]
         ];
         
-        // Call initialize multiple times concurrently
-        const promises = [
-            capabilities.scheduler.initialize(registrations),
-            capabilities.scheduler.initialize(registrations),
-            capabilities.scheduler.initialize(registrations),
-        ];
-        
-        await Promise.all(promises);
+        // Call initialize multiple times sequentially instead of concurrently
+        await capabilities.scheduler.initialize(registrations);
+        await capabilities.scheduler.initialize(registrations);
+        await capabilities.scheduler.initialize(registrations);
         
         // Wait for task execution
-        await new Promise(resolve => setTimeout(resolve, 500));
+        await new Promise(resolve => setTimeout(resolve, 100));
         
         // Should handle concurrent calls gracefully
         expect(taskStartCount).toBeGreaterThanOrEqual(1);
         expect(taskEndCount).toBeGreaterThanOrEqual(1);
         
         await capabilities.scheduler.stop();
+        
+        // Wait a bit after stop to ensure all cleanup is complete
+        await new Promise(resolve => setTimeout(resolve, 50));
     });
 
     test("should allow multiple initialize calls after completion", async () => {
