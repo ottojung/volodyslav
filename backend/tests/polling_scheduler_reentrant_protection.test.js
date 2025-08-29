@@ -61,6 +61,43 @@ describe("declarative scheduler re-entrancy protection", () => {
         await capabilities.scheduler.stop();
     });
 
+    test("should allow multiple initialize at the start", async () => {
+        const capabilities = getTestCapabilities();
+        const schedulerControl = getSchedulerControl(capabilities);
+        schedulerControl.setPollingInterval(1);
+        const timeControl = getDatetimeControl(capabilities);
+        const retryDelay = fromMilliseconds(5000);
+        let taskExecutionCount = 0;
+        
+        const quickTask = jest.fn(() => {
+            taskExecutionCount++;
+        });
+        
+        // Set time to start of hour so "0 * * * *" schedule triggers
+        const startTime = new Date("2021-01-01T00:00:00.000Z").getTime();
+        timeControl.setTime(startTime);
+        
+        const registrations = [
+            ["quick-task", "0 * * * *", quickTask, retryDelay]
+        ];
+        
+        // First initialize calls
+        await capabilities.scheduler.initialize(registrations);
+        await capabilities.scheduler.initialize(registrations);
+        await capabilities.scheduler.initialize(registrations);
+        await capabilities.scheduler.initialize(registrations);
+        await schedulerControl.waitForNextCycleEnd();
+        
+        expect(taskExecutionCount).toBe(1);
+
+        await schedulerControl.waitForNextCycleEnd();
+        
+        // Task should not execute again on idempotent call
+        expect(taskExecutionCount).toBe(1);
+        
+        await capabilities.scheduler.stop();
+    });
+
     test("should allow multiple initialize calls after completion", async () => {
         const capabilities = getTestCapabilities();
         const schedulerControl = getSchedulerControl(capabilities);
