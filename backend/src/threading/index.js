@@ -1,9 +1,22 @@
 
 // FIXME: develop this subfolder into a proper module.
 
+/**
+ * @typedef {() => Promise<void>} Callback
+ */
+
 class PeriodicThread {
     /** @type {undefined} */
     __brand = undefined; // nominal typing brand
+
+    /** @type {string} */
+    name;
+
+    /** @type {number} */
+    period;
+
+    /** @type {Callback} */
+    callback;
 
     /**
      * 
@@ -19,11 +32,8 @@ class PeriodicThread {
     }
 
     start() {
-        const callback = this.callback;
         if (this.interval === undefined) {
-            this.interval = setInterval(async () => {
-                await callback();
-            }, this.period);
+            this.interval = setInterval(this.callback, this.period);
         }
     }
 
@@ -49,12 +59,12 @@ function make() {
     /**
      * @param {string} name
      * @param {number} interval
-     * @param {() => Promise<void>} task
+     * @param {Callback} callback
      * @returns {PeriodicThread}
      */
-    function periodic(name, interval, task) {
+    function periodic(name, interval, callback) {
         // FIXME: check that `name` has not been registered yet.
-        return new PeriodicThread(name, interval, task);
+        return new PeriodicThread(name, interval, callback);
     }
 
     return {
