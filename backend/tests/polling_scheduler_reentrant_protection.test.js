@@ -5,7 +5,7 @@
 
 const { fromMilliseconds } = require("../src/time_duration");
 const { getMockedRootCapabilities } = require("./spies");
-const { stubEnvironment, stubLogger, stubDatetime, stubSleeper, stubPollInterval, getDatetimeControl, stubRuntimeStateStorage } = require("./stubs");
+const { stubEnvironment, stubLogger, stubDatetime, stubSleeper, stubScheduler, getSchedulerControl, getDatetimeControl, stubRuntimeStateStorage } = require("./stubs");
 
 function getTestCapabilities() {
     const capabilities = getMockedRootCapabilities();
@@ -14,26 +14,29 @@ function getTestCapabilities() {
     stubDatetime(capabilities);
     stubSleeper(capabilities);
     stubRuntimeStateStorage(capabilities);
-    stubPollInterval(capabilities, 1); // Fast polling for tests
+    stubScheduler(capabilities);
     return capabilities;
 }
 
 describe("declarative scheduler re-entrancy protection", () => {
     test("should handle concurrent initialize calls gracefully", async () => {
         const capabilities = getTestCapabilities();
+        const schedulerControl = getSchedulerControl(capabilities);
+        schedulerControl.setPollingInterval(1);
         const retryDelay = fromMilliseconds(5000);
         let taskStartCount = 0;
         let taskEndCount = 0;
         
-        // Create a long-running task 
-        const longRunningTask = jest.fn(async () => {
+        // Create a simple task that tracks execution
+        const simpleTask = jest.fn(async () => {
             taskStartCount++;
-            await new Promise(resolve => setTimeout(resolve, 300)); // 300ms delay
+            // Use a simple delay instead of waiting for scheduler cycles
+            await new Promise(resolve => setTimeout(resolve, 10));
             taskEndCount++;
         });
         
         const registrations = [
-            ["long-task", "0 * * * *", longRunningTask, retryDelay]
+            ["simple-task", "0 * * * *", simpleTask, retryDelay]
         ];
         
         // Call initialize multiple times concurrently
@@ -46,7 +49,10 @@ describe("declarative scheduler re-entrancy protection", () => {
         await Promise.all(promises);
         
         // Wait for task execution
-        await new Promise(resolve => setTimeout(resolve, 500));
+        await schedulerControl.waitForNextCycleEnd();
+        
+        // Give a bit more time for task completion
+        await new Promise(resolve => setTimeout(resolve, 50));
         
         // Should handle concurrent calls gracefully
         expect(taskStartCount).toBeGreaterThanOrEqual(1);
@@ -57,6 +63,8 @@ describe("declarative scheduler re-entrancy protection", () => {
 
     test("should allow multiple initialize calls after completion", async () => {
         const capabilities = getTestCapabilities();
+        const schedulerControl = getSchedulerControl(capabilities);
+        schedulerControl.setPollingInterval(1);
         const timeControl = getDatetimeControl(capabilities);
         const retryDelay = fromMilliseconds(5000);
         let taskExecutionCount = 0;
@@ -75,13 +83,13 @@ describe("declarative scheduler re-entrancy protection", () => {
         
         // First initialize call
         await capabilities.scheduler.initialize(registrations);
-        await new Promise(resolve => setTimeout(resolve, 200));
+        await schedulerControl.waitForNextCycleEnd();
         
         expect(taskExecutionCount).toBe(1);
         
         // Second initialize call should be idempotent
         await capabilities.scheduler.initialize(registrations);
-        await new Promise(resolve => setTimeout(resolve, 200));
+        await schedulerControl.waitForNextCycleEnd();
         
         // Task should not execute again on idempotent call
         expect(taskExecutionCount).toBe(1);
@@ -91,6 +99,8 @@ describe("declarative scheduler re-entrancy protection", () => {
 
     test("should handle errors during task execution gracefully", async () => {
         const capabilities = getTestCapabilities();
+        const schedulerControl = getSchedulerControl(capabilities);
+        schedulerControl.setPollingInterval(1);
         const timeControl = getDatetimeControl(capabilities);
         const retryDelay = fromMilliseconds(5000);
         let taskExecutionCount = 0;
@@ -112,7 +122,7 @@ describe("declarative scheduler re-entrancy protection", () => {
         await expect(capabilities.scheduler.initialize(registrations)).resolves.toBeUndefined();
         
         // Wait for execution
-        await new Promise(resolve => setTimeout(resolve, 200));
+        await schedulerControl.waitForNextCycleEnd();
         
         expect(taskExecutionCount).toBe(1);
         

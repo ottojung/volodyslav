@@ -5,7 +5,7 @@
 
 const { fromMilliseconds } = require("../src/time_duration");
 const { getMockedRootCapabilities } = require("./spies");
-const { stubEnvironment, stubLogger, stubDatetime, stubSleeper, stubPollInterval, getDatetimeControl, stubRuntimeStateStorage } = require("./stubs");
+const { stubEnvironment, stubLogger, stubDatetime, stubSleeper, stubScheduler, getSchedulerControl, getDatetimeControl, stubRuntimeStateStorage } = require("./stubs");
 
 function getTestCapabilities() {
     const capabilities = getMockedRootCapabilities();
@@ -14,7 +14,7 @@ function getTestCapabilities() {
     stubDatetime(capabilities);
     stubSleeper(capabilities);
     stubRuntimeStateStorage(capabilities);
-    stubPollInterval(capabilities, 1); // Fast polling for tests
+    stubScheduler(capabilities);
     return capabilities;
 }
 
@@ -24,6 +24,7 @@ describe("declarative scheduler precedence logic verification", () => {
     test("should handle task execution at scheduled times", async () => {
         const capabilities = getTestCapabilities();
         const timeControl = getDatetimeControl(capabilities);
+        const schedulerControl = getSchedulerControl(capabilities);
         const retryDelay = fromMilliseconds(2 * 60 * 1000); // 2 minutes
         
         const task = jest.fn().mockResolvedValue(undefined);
@@ -31,6 +32,7 @@ describe("declarative scheduler precedence logic verification", () => {
         // Set time to start of hour so "0 * * * *" schedule triggers
         const startTime = new Date("2021-01-01T00:00:00.000Z").getTime();
         timeControl.setTime(startTime);
+        schedulerControl.setPollingInterval(1);
         
         // Task runs at minute 0 of every hour
         const registrations = [
@@ -39,7 +41,7 @@ describe("declarative scheduler precedence logic verification", () => {
         
         // Initialize and wait for execution
         await capabilities.scheduler.initialize(registrations);
-        await new Promise(resolve => setTimeout(resolve, 200));
+        await schedulerControl.waitForNextCycleEnd();
         
         expect(task).toHaveBeenCalled();
         
@@ -49,6 +51,7 @@ describe("declarative scheduler precedence logic verification", () => {
     test("should handle different cron schedules correctly", async () => {
         const capabilities = getTestCapabilities();
         const timeControl = getDatetimeControl(capabilities);
+        const schedulerControl = getSchedulerControl(capabilities);
         const retryDelay = fromMilliseconds(6 * 60 * 1000); // 6 minutes
         
         const task = jest.fn().mockResolvedValue(undefined);
@@ -56,6 +59,7 @@ describe("declarative scheduler precedence logic verification", () => {
         // Set time to start of hour so "0 * * * *" schedule triggers
         const startTime = new Date("2021-01-01T00:00:00.000Z").getTime();
         timeControl.setTime(startTime);
+        schedulerControl.setPollingInterval(1);
         
         // Task runs at minute 0 of every hour
         const registrations = [
@@ -64,7 +68,7 @@ describe("declarative scheduler precedence logic verification", () => {
         
         // Initialize and wait for execution
         await capabilities.scheduler.initialize(registrations);
-        await new Promise(resolve => setTimeout(resolve, 200));
+        await schedulerControl.waitForNextCycleEnd();
         
         expect(task).toHaveBeenCalled();
         
@@ -73,9 +77,12 @@ describe("declarative scheduler precedence logic verification", () => {
 
     test("should handle multiple initialize calls at the same time consistently", async () => {
         const capabilities = getTestCapabilities();
+        const schedulerControl = getSchedulerControl(capabilities);
         
         const retryDelay = fromMilliseconds(5 * 60 * 1000); // 5 minutes
         const task = jest.fn().mockResolvedValue(undefined);
+        
+        schedulerControl.setPollingInterval(1);
         
         // Task runs every 15 minutes
         const registrations = [
@@ -88,7 +95,7 @@ describe("declarative scheduler precedence logic verification", () => {
         await capabilities.scheduler.initialize(registrations);
         
         // Wait for scheduler to start and potentially execute tasks
-        await new Promise(resolve => setTimeout(resolve, 200));
+        await schedulerControl.waitForNextCycleEnd();
         
         // Task should be executed (idempotent initialization doesn't prevent normal execution)
         // The key test is that multiple initialize calls don't cause problems
