@@ -341,7 +341,6 @@ function stubScheduler(capabilities) {
         };
 
         const struct = {
-            originalPeriodic,
             setPollingInterval,
             thread,
             waitForNextCycleEnd,
@@ -365,7 +364,9 @@ function stubScheduler(capabilities) {
 
 /**
  * @typedef {object} SchedulerControl
- * @property {() => SchedulerWaiter} waitForNextCycleEnd
+ * @property { (newPeriod: number) => void } setPollingInterval
+ * @property {PeriodicThread} thread
+ * @property {() => Promise<void>} waitForNextCycleEnd
  */
 
 /**
