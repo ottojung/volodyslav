@@ -309,21 +309,41 @@ function stubScheduler(capabilities) {
     const originalPeriodic = capabilities.threading.periodic;
 
     function fakePeriodic(name, originalPeriod, callback) {
-        let thread = originalPeriodic(name, originalPeriod, callback);
+        let startedCount = 0;
+        let finishedCount = 0;
+
+        const callbackWrapper = async () => {
+            startedCount++;
+            try {
+                return await callback();
+            } finally {
+                finishedCount++
+            }
+        };
+
+        let thread = originalPeriodic(name, originalPeriod, callbackWrapper);
 
         const setPollingInterval = (newPeriod) => {
             const wasRunning = thread.isRunning();
             thread.stop();
-            thread = originalPeriodic(name, newPeriod, callback);
+            thread = originalPeriodic(name, newPeriod, callbackWrapper);
             if (wasRunning) {
                 thread.start();
             }
-        }
+        };
+
+        const waitForNextCycleEnd = async () => {
+            const initialEndCount = finishedCount;
+            while (finishedCount === initialEndCount) {
+                await new Promise(resolve => setTimeout(resolve, 1));
+            }
+        };
 
         const struct = {
             originalPeriodic,
             setPollingInterval,
             thread,
+            waitForNextCycleEnd,
         };
 
         capabilities._stubbedScheduler = struct;
