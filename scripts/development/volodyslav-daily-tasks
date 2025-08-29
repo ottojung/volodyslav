@@ -1,0 +1,3 @@
+#! /bin/sh
+
+echo "Volodyslav daily tasks executable called: $*" 1>&2
