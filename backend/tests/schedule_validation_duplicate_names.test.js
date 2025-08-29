@@ -18,9 +18,22 @@ function getTestCapabilities() {
 }
 
 describe("schedule validation duplicate task names", () => {
+    let testCapabilities = null;
+
+    beforeEach(() => {
+        testCapabilities = getTestCapabilities();
+    });
+
+    afterEach(async () => {
+        if (testCapabilities) {
+            await testCapabilities.scheduler.stop();
+            testCapabilities = null;
+        }
+    });
+
     describe("ScheduleDuplicateTaskError behavior", () => {
         test("throws ScheduleDuplicateTaskError for duplicate task names", async () => {
-            const capabilities = getTestCapabilities();
+            const capabilities = testCapabilities;
             const retryDelay = fromMilliseconds(1000);
             const taskCallback = jest.fn();
             
@@ -35,7 +48,7 @@ describe("schedule validation duplicate task names", () => {
         });
 
         test("error message contains the duplicate task name", async () => {
-            const capabilities = getTestCapabilities();
+            const capabilities = testCapabilities;
             const retryDelay = fromMilliseconds(1000);
             const taskCallback = jest.fn();
             
