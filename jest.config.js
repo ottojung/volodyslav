@@ -4,7 +4,7 @@
  */
 module.exports = {
   projects: [
-    '<rootDir>/backend',
+    '<rootDir>/backend/jest.config.js',
     '<rootDir>/frontend/jest.config.js'
   ]
 };

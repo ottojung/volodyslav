@@ -305,6 +305,9 @@ function stubRuntimeStateStorage(capabilities) {
     };
 }
 
+// Global tracker for all created threads to ensure cleanup
+const globalThreadTracker = new Set();
+
 function stubScheduler(capabilities) {
     const originalPeriodic = capabilities.threading.periodic;
     let periodOverride = null;
@@ -341,6 +344,9 @@ function stubScheduler(capabilities) {
 
         const thisPeriod = periodOverride !== null ? periodOverride : originalPeriod;
         let thread = originalPeriodic(name, thisPeriod, callbackWrapper);
+        
+        // Track this thread globally for cleanup
+        globalThreadTracker.add(thread);
 
         const setPollingInterval = (newPeriod) => {
             const wasRunning = thread.isRunning();
@@ -395,6 +401,19 @@ function getSchedulerControl(capabilities) {
     return capabilities._stubbedScheduler;
 }
 
+/**
+ * Global cleanup function to stop all tracked scheduler threads.
+ * This should be called in test teardown to prevent resource leaks.
+ */
+function cleanupAllSchedulerThreads() {
+    for (const thread of globalThreadTracker) {
+        if (thread.isRunning && thread.isRunning()) {
+            thread.stop();
+        }
+    }
+    globalThreadTracker.clear();
+}
+
 module.exports = {
     stubEnvironment,
     stubLogger,
@@ -413,4 +432,5 @@ module.exports = {
     stubScheduler,
     mockRuntimeStateTransaction,
     isMockRuntimeStateStorage,
+    cleanupAllSchedulerThreads,
 };
