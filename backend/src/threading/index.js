@@ -52,9 +52,7 @@ function make() {
      * @returns {PeriodicThread}
      */
     function periodic(name, interval, task) {
-        const ret = new PeriodicThread(name, interval, task);
-        ret.start();
-        return ret;
+        return new PeriodicThread(name, interval, task);
     }
 
     return {
