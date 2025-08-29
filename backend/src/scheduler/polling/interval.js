@@ -4,6 +4,7 @@
  */
 
 const POLL_INTERVAL_MS = 600000;
+const THREAD_NAME = "volodyslav:scheduler:poll"
 
 /**
  * Create an interval manager for handling polling timing.
@@ -21,7 +22,7 @@ function makeIntervalManager(pollFunction, capabilities) {
         }
     }
 
-    const thread = capabilities.threading.periodic("scheduler:poll", POLL_INTERVAL_MS, wrappedPoll);
+    const thread = capabilities.threading.periodic(THREAD_NAME, POLL_INTERVAL_MS, wrappedPoll);
     const start = () => thread.start();
     const stop = () => thread.stop();
 
@@ -31,4 +32,5 @@ function makeIntervalManager(pollFunction, capabilities) {
 module.exports = {
     makeIntervalManager,
     POLL_INTERVAL_MS,
+    THREAD_NAME,
 };
