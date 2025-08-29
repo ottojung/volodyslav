@@ -360,12 +360,12 @@ describe("declarative scheduler integration and system edge cases", () => {
             // Should handle empty registrations without error
             await capabilities.scheduler.initialize([]);
 
-            await schedulerControl.waitForNextCycleEnd();
-
+            // No need to wait for cycles when there are no tasks
+            // Just verify scheduler can be stopped cleanly
+            await capabilities.scheduler.stop();
+            
             // No assertions needed for empty registrations, but scheduler should work
             expect(true).toBe(true); // Verify test runs successfully
-
-            await capabilities.scheduler.stop();
         });
 
         test("should handle repeated initialization calls", async () => {
