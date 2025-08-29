@@ -309,6 +309,7 @@ function stubScheduler(capabilities) {
     const originalPeriodic = capabilities.threading.periodic;
 
     function fakePeriodic(name, originalPeriod, callback) {
+        // eslint-disable-next-line no-unused-vars
         let startedCount = 0;
         let finishedCount = 0;
 
