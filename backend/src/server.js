@@ -61,6 +61,7 @@ async function ensureStartupDependencies(capabilities, app) {
     await eventLogStorage.ensureAccessible(capabilities);
     await capabilities.state.ensureAccessible();
     await ensureDailyTasksAvailable(capabilities);
+    await capabilities.wifiChecker.ensureAvailable();
 }
 
 /**

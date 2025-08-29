@@ -8,6 +8,7 @@ const {
     stubDatetime,
     stubEventLogRepository,
     stubDailyTasksExecutable,
+    stubWifiChecker,
 } = require("./stubs");
 const { getMockedRootCapabilities } = require("./spies");
 
@@ -18,6 +19,7 @@ function getTestCapabilities() {
     stubNotifier(capabilities);
     stubDailyTasksExecutable(capabilities);
     stubDatetime(capabilities);
+    stubWifiChecker(capabilities);
     return capabilities;
 }
 

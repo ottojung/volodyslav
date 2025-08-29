@@ -23,6 +23,7 @@
 /** @typedef {import('../scheduler').Scheduler} Scheduler */
 /** @typedef {import('../runtime_state_storage').RuntimeStateStorage} RuntimeStateStorage */
 /** @typedef {import('../threading').Threading} Threading */
+/** @typedef {import('../wifi').WifiConnectionChecker} WifiConnectionChecker */
 
 
 /**
@@ -48,6 +49,7 @@
  * @property {Scheduler} scheduler - A scheduler instance.
  * @property {RuntimeStateStorage} state - A runtime state storage instance.
  * @property {Threading} threading - A threading instance.
+ * @property {WifiConnectionChecker} wifiChecker - A WiFi connection checker instance.
  */
 
 const random = require("../random");
@@ -67,6 +69,7 @@ const notifierCapability = require("../notifications");
 const aiTranscriptionCapability = require("../ai/transcription");
 const datetimeCapability = require("../datetime");
 const sleeperCapability = require("../sleeper");
+const wifiCapability = require("../wifi");
 const volodyslavDailyTasks = require("../executables").volodyslavDailyTasks;
 const schedule = require('../scheduler');
 const runtimeStateStorage = require('../runtime_state_storage');
@@ -83,6 +86,7 @@ const make = () => {
     const datetime = datetimeCapability.make();
     const sleeper = sleeperCapability.make();
     const threading = threadingCapability.make();
+    const wifiChecker = wifiCapability.makeWifiConnectionChecker();
 
     /** @type {Capabilities} */
     const ret = {
@@ -103,6 +107,7 @@ const make = () => {
         notifier: notifierCapability.make(),
         aiTranscription: aiTranscriptionCapability.make(() => ret),
         sleeper,
+        wifiChecker,
         volodyslavDailyTasks,
         scheduler: schedule.make(() => ret),
         state: runtimeStateStorage.make(() => ret),
