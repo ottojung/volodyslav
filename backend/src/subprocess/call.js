@@ -35,7 +35,9 @@ async function callSubprocess(command, args) {
     try {
         return await callSubprocessPromise(command, args);
     } catch (error) {
-        throw new ProcessFailedError(`Failed to execute subprocess: ${command}`, error);
+        const qcommand = JSON.stringify(command);
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        throw new ProcessFailedError(`Failed to execute subprocess ${qcommand}: ${errorMessage}`, error);
     }
 }
 
@@ -50,7 +52,9 @@ async function callShellSubprocess(expression) {
     try {
         return await callSubprocessPromise(expression, [], { shell: true });
     } catch (error) {
-        throw new ProcessFailedError(`Failed to execute shell subprocess: ${expression}`, error);
+        const qcommand = JSON.stringify(expression);
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        throw new ProcessFailedError(`Failed to execute shell command ${qcommand}: ${errorMessage}`, error);
     }
 }
 
