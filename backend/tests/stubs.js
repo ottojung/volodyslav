@@ -305,21 +305,57 @@ function stubRuntimeStateStorage(capabilities) {
     };
 }
 
-/**
- * Stubs the polling interval constant for scheduler tests.
- */
-const stubPollInterval = (capabilities, period = 1) => {
+function stubScheduler(capabilities) {
     const originalPeriodic = capabilities.threading.periodic;
 
-    function periodic(name, original_period, callback) {
-        if (name === THREAD_NAME) {
-            original_period = period;
+    function fakePeriodic(name, originalPeriod, callback) {
+        let thread = originalPeriodic(name, originalPeriod, callback);
+
+        const setPollingInterval = (newPeriod) => {
+            const wasRunning = thread.isRunning();
+            thread.stop();
+            thread = originalPeriodic(name, newPeriod, callback);
+            if (wasRunning) {
+                thread.start();
+            }
         }
-        return originalPeriodic(name, original_period, callback);
+
+        const struct = {
+            originalPeriodic,
+            setPollingInterval,
+            thread,
+        };
+
+        capabilities._stubbedScheduler = struct;
+
+        return thread;
+    }
+
+    function periodic(name, period, callback) {
+        if (name === THREAD_NAME) {
+            return fakePeriodic(name, period, callback);
+        } else {
+            return originalPeriodic(name, period, callback);
+        }
     }
 
     capabilities.threading.periodic = jest.fn().mockImplementation(periodic);
-};
+}
+
+/**
+ * @typedef {object} SchedulerControl
+ * @property {() => SchedulerWaiter} waitForNextCycleEnd
+ */
+
+/**
+ * @returns {SchedulerControl}
+ */
+function getSchedulerControl(capabilities) {
+    if (capabilities.threading._stubbedScheduler === undefined) {
+        throw new Error("Scheduler must be stubbed with stubScheduler() to use scheduler control");
+    }
+    return capabilities.threading._stubbedScheduler;
+}
 
 module.exports = {
     stubEnvironment,
@@ -335,7 +371,8 @@ module.exports = {
     stubTranscription,
     stubRuntimeStateStorage,
     getDatetimeControl,
+    getSchedulerControl,
+    stubScheduler,
     mockRuntimeStateTransaction,
     isMockRuntimeStateStorage,
-    stubPollInterval,
 };
