@@ -19,9 +19,10 @@ class PeriodicThread {
     }
 
     start() {
+        const callback = this.callback;
         if (this.interval === undefined) {
             this.interval = setInterval(async () => {
-                await this.callback();
+                await callback();
             }, this.period);
         }
     }
