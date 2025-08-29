@@ -28,7 +28,7 @@ describe("declarative scheduler re-entrancy protection", () => {
         // Create a long-running task 
         const longRunningTask = jest.fn(async () => {
             taskStartCount++;
-            await new Promise(resolve => setTimeout(resolve, 300)); // 300ms delay
+            await schedulerControl.waitForNextCycleEnd(); // 300ms delay
             taskEndCount++;
         });
         
@@ -46,7 +46,7 @@ describe("declarative scheduler re-entrancy protection", () => {
         await Promise.all(promises);
         
         // Wait for task execution
-        await new Promise(resolve => setTimeout(resolve, 500));
+        await schedulerControl.waitForNextCycleEnd();
         
         // Should handle concurrent calls gracefully
         expect(taskStartCount).toBeGreaterThanOrEqual(1);
@@ -75,13 +75,13 @@ describe("declarative scheduler re-entrancy protection", () => {
         
         // First initialize call
         await capabilities.scheduler.initialize(registrations);
-        await new Promise(resolve => setTimeout(resolve, 200));
+        await schedulerControl.waitForNextCycleEnd();
         
         expect(taskExecutionCount).toBe(1);
         
         // Second initialize call should be idempotent
         await capabilities.scheduler.initialize(registrations);
-        await new Promise(resolve => setTimeout(resolve, 200));
+        await schedulerControl.waitForNextCycleEnd();
         
         // Task should not execute again on idempotent call
         expect(taskExecutionCount).toBe(1);
@@ -112,7 +112,7 @@ describe("declarative scheduler re-entrancy protection", () => {
         await expect(capabilities.scheduler.initialize(registrations)).resolves.toBeUndefined();
         
         // Wait for execution
-        await new Promise(resolve => setTimeout(resolve, 200));
+        await schedulerControl.waitForNextCycleEnd();
         
         expect(taskExecutionCount).toBe(1);
         

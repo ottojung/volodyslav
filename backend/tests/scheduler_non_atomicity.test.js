@@ -52,7 +52,7 @@ describe("scheduler atomicity testing", () => {
         await capabilities.scheduler.initialize(registrations);
 
         // Wait for tasks to complete
-        await new Promise(resolve => setTimeout(resolve, 100));
+        await schedulerControl.waitForNextCycleEnd();
 
         expect(task1Finished).toBe(true);
         expect(task2Finished).toBe(true);
@@ -128,7 +128,7 @@ describe("scheduler atomicity testing", () => {
 
             const task2 = jest.fn(async () => {
                 // Wait a tiny bit to create interleaving
-                await new Promise(resolve => setTimeout(resolve, 2));
+                await schedulerControl.waitForNextCycleEnd();
                 task2Done = true;
             });
 
@@ -143,7 +143,7 @@ describe("scheduler atomicity testing", () => {
             await capabilities.scheduler.initialize(registrations);
 
             // Wait for execution
-            await new Promise(resolve => setTimeout(resolve, 150));
+            await schedulerControl.waitForNextCycleEnd();
 
             expect(task1Done).toBe(true);
             expect(task2Done).toBe(true);

@@ -38,7 +38,7 @@ describe("failure retry persistence", () => {
         await capabilities.scheduler.initialize(registrations);
 
         // Wait for scheduler to start and catch up (will execute for 00:00:00)
-        await new Promise(resolve => setTimeout(resolve, 10));
+        await schedulerControl.waitForNextCycleEnd();
 
         // Check that task was executed and failed properly
         expect(callback).toHaveBeenCalledTimes(1);
@@ -55,7 +55,7 @@ describe("failure retry persistence", () => {
 
         // Advance time just enough to make retry due (but not trigger next cron)
         timeControl.advanceTime(10 * 1000); // 10 seconds (past the 5-second retry delay)
-        await new Promise(resolve => setTimeout(resolve, 10));
+        await schedulerControl.waitForNextCycleEnd();
 
         // The task should have retried once more
         expect(callback).toHaveBeenCalledTimes(2); // Should have retried once

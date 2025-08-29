@@ -43,7 +43,7 @@ describe("declarative scheduler retry semantics", () => {
         await capabilities.scheduler.initialize(registrations);
 
         // Wait for scheduler to start and catch up (will execute for 00:00:00)
-        await new Promise(resolve => setTimeout(resolve, 100));
+        await schedulerControl.waitForNextCycleEnd();
         expect(executionCount).toBe(1);
 
         await capabilities.scheduler.stop();
@@ -76,12 +76,12 @@ describe("declarative scheduler retry semantics", () => {
         await capabilities.scheduler.initialize(registrations);
 
         // Wait for initial execution and catch-up
-        await new Promise(resolve => setTimeout(resolve, 100));
+        await schedulerControl.waitForNextCycleEnd();
         expect(executionCount).toBeGreaterThanOrEqual(1);
 
         // Advance time by retry delay (5 minutes) to trigger retry
         timeControl.advanceTime(5 * 60 * 1000); // 5 minutes
-        await new Promise(resolve => setTimeout(resolve, 100));
+        await schedulerControl.waitForNextCycleEnd();
 
         // Should have retried the failed task
         expect(executionCount).toBeGreaterThan(1);
@@ -115,12 +115,12 @@ describe("declarative scheduler retry semantics", () => {
         await capabilities.scheduler.initialize(registrations);
 
         // Wait for initial execution (catch up for 00:00:00)
-        await new Promise(resolve => setTimeout(resolve, 100));
+        await schedulerControl.waitForNextCycleEnd();
         expect(executionCount).toBe(1);
 
         // Advance time by retry delay to trigger retry
         timeControl.advanceTime(5 * 60 * 1000); // 5 minutes
-        await new Promise(resolve => setTimeout(resolve, 100));
+        await schedulerControl.waitForNextCycleEnd();
 
         // Should have executed successfully
         expect(executionCount).toBe(2);
@@ -165,7 +165,7 @@ describe("declarative scheduler retry semantics", () => {
         await capabilities.scheduler.initialize(registrations);
 
         // Wait for initial executions (catch up for 00:00:00)
-        await new Promise(resolve => setTimeout(resolve, 100));
+        await schedulerControl.waitForNextCycleEnd();
         
         // Verify both tasks executed at least once
         expect(task1Count).toBeGreaterThanOrEqual(1);
@@ -205,7 +205,7 @@ describe("declarative scheduler retry semantics", () => {
         await capabilities.scheduler.initialize(registrations);
 
         // Wait for execution
-        await new Promise(resolve => setTimeout(resolve, 300));
+        await schedulerControl.waitForNextCycleEnd();
 
         // Should only execute once despite multiple initialize calls
         expect(executionCount).toBe(1);
