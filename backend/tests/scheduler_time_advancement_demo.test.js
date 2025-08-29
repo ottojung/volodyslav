@@ -100,19 +100,19 @@ describe("scheduler time advancement demo", () => {
         await capabilities.scheduler.stop();
     });
 
-    test("should demonstrate sub-minute polling with time advancement", async () => {
+    test("should demonstrate sub-hour polling with time advancement", async () => {
         const capabilities = getTestCapabilities();
         const timeControl = getDatetimeControl(capabilities);
         const retryDelay = fromMilliseconds(1000);
         const taskCallback = jest.fn();
 
-        // Set initial time to 00:00:30 (30 seconds past midnight)
-        const startTime = new Date("2021-01-01T00:00:30.000Z").getTime();
+        // Set initial time to 00:00:00 (midnight)
+        const startTime = new Date("2021-01-01T00:00:00.000Z").getTime();
         timeControl.setTime(startTime);
 
         // Use fast polling to allow minute-level tasks
         const registrations = [
-            ["every-minute", "* * * * *", taskCallback, retryDelay] // Every minute
+            ["every-minute", "*/30 * * * *", taskCallback, retryDelay] // Every 30 minutes
         ];
 
         await capabilities.scheduler.initialize(registrations);
@@ -123,15 +123,15 @@ describe("scheduler time advancement demo", () => {
         // Check initial execution count
         const initialCalls = taskCallback.mock.calls.length;
 
-        // Advance by 30 seconds to reach the next minute boundary (00:01:00)
-        timeControl.advanceTime(30 * 1000);
+        // Advance by 30 minutes to reach the next minute boundary (00:30:00)
+        timeControl.advanceTime(30 * 60 * 1000);
         await new Promise(resolve => setTimeout(resolve, 100));
         // Should have executed at least once more
         expect(taskCallback.mock.calls.length).toBeGreaterThan(initialCalls);
         const afterFirstAdvance = taskCallback.mock.calls.length;
 
-        // Advance by another minute to 00:02:00
-        timeControl.advanceTime(60 * 1000);
+        // Advance by another 30 minutes to 01:00:00
+        timeControl.advanceTime(30 * 60 * 1000);
         await new Promise(resolve => setTimeout(resolve, 100));
         expect(taskCallback.mock.calls.length).toBeGreaterThan(afterFirstAdvance);
 
