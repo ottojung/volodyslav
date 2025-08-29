@@ -22,8 +22,8 @@ function makeIntervalManager(pollFunction, capabilities) {
     }
 
     const thread = capabilities.threading.periodic("scheduler:poll", POLL_INTERVAL_MS, wrappedPoll);
-    const start = thread.start;    
-    const stop = thread.stop;
+    const start = () => thread.start();
+    const stop = () => thread.stop();
 
     return { start, stop };
 }
