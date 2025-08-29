@@ -13,6 +13,14 @@ class ProcessFailedError extends Error {
     }
 }
 
+/**
+ * @param {unknown} object
+ * @returns {object is ProcessFailedError}
+ */
+function isProcessFailedError(object) {
+    return object instanceof ProcessFailedError;
+}
+
 const callSubprocessPromise = promisify(execFile);
 
 /**
@@ -49,4 +57,5 @@ async function callShellSubprocess(expression) {
 module.exports = {
     callSubprocess,
     callShellSubprocess,
+    isProcessFailedError,
 };
