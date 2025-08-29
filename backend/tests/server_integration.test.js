@@ -49,7 +49,7 @@ describe("Server Integration with Declarative Scheduler", () => {
 
         // App should have been configured with middleware
         expect(app.use).toHaveBeenCalled();
-        capabilities.scheduler.stop();
+        await capabilities.scheduler.stop();
     });
 
     test("server initialization is idempotent", async () => {
@@ -65,7 +65,7 @@ describe("Server Integration with Declarative Scheduler", () => {
 
         // Should have configured app at least once
         expect(app.use).toHaveBeenCalled();
-        capabilities.scheduler.stop();
+        await capabilities.scheduler.stop();
     });
 
     test("server handles scheduler initialization errors gracefully", async () => {
@@ -79,7 +79,7 @@ describe("Server Integration with Declarative Scheduler", () => {
 
         // Server initialization should fail gracefully
         await expect(initialize(capabilities, app)).rejects.toThrow("Environment setup failed");
-        capabilities.scheduler.stop();
+        await capabilities.scheduler.stop();
     });
 
     test("server properly sets up all middleware even with scheduler", async () => {
@@ -96,7 +96,7 @@ describe("Server Integration with Declarative Scheduler", () => {
 
         // App configuration should have been set up
         expect(app.use).toHaveBeenCalled();
-        capabilities.scheduler.stop();
+        await capabilities.scheduler.stop();
     });
 
     test("server logs appropriate messages during initialization", async () => {
@@ -112,7 +112,7 @@ describe("Server Integration with Declarative Scheduler", () => {
         // Check that logger was properly configured  
         const logInfoCalls = capabilities.logger.logInfo.mock.calls;
         expect(logInfoCalls.length).toBeGreaterThan(0);
-        capabilities.scheduler.stop();
+        await capabilities.scheduler.stop();
     });
 
     test("server handles concurrent initialization attempts", async () => {
@@ -133,7 +133,7 @@ describe("Server Integration with Declarative Scheduler", () => {
         // Both apps should be configured
         expect(app1.use).toHaveBeenCalled();
         expect(app2.use).toHaveBeenCalled();
-        capabilities1.scheduler.stop();
-        capabilities2.scheduler.stop();
+        await capabilities1.scheduler.stop();
+        await capabilities2.scheduler.stop();
     });
 });

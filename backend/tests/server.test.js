@@ -33,7 +33,7 @@ describe("Startup Dependencies", () => {
         expect(res.status).toBe(200);
         expect(res.text).toBe("pong");
 
-        capabilities.scheduler.stop();
+        await capabilities.scheduler.stop();
     });
 
     it("throws if notifications are not available", async () => {
