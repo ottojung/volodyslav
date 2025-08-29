@@ -62,6 +62,10 @@ function make() {
     };
 }
 
+/**
+ * @typedef {ReturnType<make>} Threading
+ */
+
 module.exports = {
     make,
     isPeriodicThread,
