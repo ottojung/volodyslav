@@ -21,11 +21,11 @@ class CommandClass {
      *
      * @param {string[]} args - The arguments to pass to the command.
      * @returns {Promise<{ stdout: string, stderr: string }>} - The result of the subprocess execution.
+     * @throws 
      */
     async call(...args) {
         const commandPath = await resolvePath(this.command);
-        const options = {};
-        return callSubprocess(commandPath, args, options);
+        return callSubprocess(commandPath, args);
     }
 
     /**

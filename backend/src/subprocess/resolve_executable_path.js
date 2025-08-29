@@ -1,4 +1,4 @@
-const { callSubprocess } = require("./call");
+const { callShellSubprocess } = require("./call");
 const memoize = require("@emotion/memoize").default;
 
 class CommandUnavailable extends Error {
@@ -32,7 +32,7 @@ function isCommandUnavailable(object) {
  */
 async function tryResolvePathInternal(command) {
     try {
-        const result = await callSubprocess(`command -v ${command}`, { shell: true });
+        const result = await callShellSubprocess(`command -v ${command}`);
         const stdout = result.stdout;
         if (!stdout || !stdout.trim()) {
             return null;
