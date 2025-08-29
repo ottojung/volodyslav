@@ -174,7 +174,7 @@ function make(getCapabilities) {
         // Validate input and check persisted state
         const { persistedTasks } = await validateAndCheckPersistedState(registrations, capabilities);
 
-        // Handle polling scheduler lifecycle
+        // Handle polling scheduler lifecycle with proper concurrency protection
         if (pollingScheduler !== null) {
             // Scheduler already running
             capabilities.logger.logDebug(
@@ -195,6 +195,15 @@ function make(getCapabilities) {
         if (persistedTasks === undefined) {
             // Persist tasks during first initialization.
             await mutateTasks(capabilities, parsedRegistrations, async () => undefined);
+        }
+
+        // Check again after async operations to prevent race conditions
+        if (pollingScheduler !== null) {
+            capabilities.logger.logDebug(
+                {},
+                "Scheduler was initialized by concurrent call"
+            );
+            return;
         }
 
         pollingScheduler = makePollingScheduler(capabilities, parsedRegistrations);
