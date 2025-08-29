@@ -21,6 +21,7 @@ describe("failure retry persistence", () => {
     test("task failure sets pendingRetryUntil correctly", async () => {
         const capabilities = getTestCapabilities();
         const timeControl = getDatetimeControl(capabilities);
+        const schedulerControl = getSchedulerControl(capabilities);
 
         // Set a fixed starting time 
         const startTime = new Date("2020-01-01T00:00:30Z").getTime();
