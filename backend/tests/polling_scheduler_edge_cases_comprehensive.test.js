@@ -22,6 +22,8 @@ describe("declarative scheduler comprehensive edge cases", () => {
     describe("boundary conditions", () => {
         test("should handle task scheduled exactly at polling interval", async () => {
             const capabilities = getTestCapabilities();
+            const schedulerControl = getSchedulerControl(capabilities);
+            schedulerControl.setPollingInterval(1);
             const retryDelay = fromMilliseconds(1000);
             const taskCallback = jest.fn();
 
@@ -43,6 +45,8 @@ describe("declarative scheduler comprehensive edge cases", () => {
 
         test("should handle multiple tasks with identical timing", async () => {
             const capabilities = getTestCapabilities();
+            const schedulerControl = getSchedulerControl(capabilities);
+            schedulerControl.setPollingInterval(1);
             const retryDelay = fromMilliseconds(1000);
             const callback1 = jest.fn();
             const callback2 = jest.fn();
@@ -70,6 +74,8 @@ describe("declarative scheduler comprehensive edge cases", () => {
 
         test("should handle very short retry delays", async () => {
             const capabilities = getTestCapabilities();
+            const schedulerControl = getSchedulerControl(capabilities);
+            schedulerControl.setPollingInterval(1);
             const retryDelay = fromMilliseconds(100); // Very short retry delay
             let callCount = 0;
             const flakyCallback = jest.fn(() => {
@@ -100,6 +106,8 @@ describe("declarative scheduler comprehensive edge cases", () => {
     describe("complex cron expressions", () => {
         test("should handle leap year specific schedules", async () => {
             const capabilities = getTestCapabilities();
+            const schedulerControl = getSchedulerControl(capabilities);
+            schedulerControl.setPollingInterval(1);
             const retryDelay = fromMilliseconds(1000);
             const taskCallback = jest.fn();
 
@@ -120,6 +128,8 @@ describe("declarative scheduler comprehensive edge cases", () => {
 
         test("should handle very sparse schedules", async () => {
             const capabilities = getTestCapabilities();
+            const schedulerControl = getSchedulerControl(capabilities);
+            schedulerControl.setPollingInterval(1);
             const retryDelay = fromMilliseconds(1000);
             const taskCallback = jest.fn();
 
@@ -140,6 +150,8 @@ describe("declarative scheduler comprehensive edge cases", () => {
 
         test("should handle complex multi-field constraints", async () => {
             const capabilities = getTestCapabilities();
+            const schedulerControl = getSchedulerControl(capabilities);
+            schedulerControl.setPollingInterval(1);
             const retryDelay = fromMilliseconds(1000);
             const taskCallback = jest.fn();
 
@@ -162,6 +174,8 @@ describe("declarative scheduler comprehensive edge cases", () => {
     describe("performance and resource edge cases", () => {
         test("should handle many concurrent tasks", async () => {
             const capabilities = getTestCapabilities();
+            const schedulerControl = getSchedulerControl(capabilities);
+            schedulerControl.setPollingInterval(1);
             const retryDelay = fromMilliseconds(1000);
 
             // Schedule 15 tasks all due at the same time
@@ -193,6 +207,8 @@ describe("declarative scheduler comprehensive edge cases", () => {
     describe("callback edge cases", () => {
         test("should handle callbacks that throw specific error types", async () => {
             const capabilities = getTestCapabilities();
+            const schedulerControl = getSchedulerControl(capabilities);
+            schedulerControl.setPollingInterval(1);
             const retryDelay = fromMilliseconds(1000);
             
             const customError = new TypeError("Custom error type");
@@ -218,6 +234,8 @@ describe("declarative scheduler comprehensive edge cases", () => {
 
         test("should handle callbacks that return both promises and sync values", async () => {
             const capabilities = getTestCapabilities();
+            const schedulerControl = getSchedulerControl(capabilities);
+            schedulerControl.setPollingInterval(1);
             const retryDelay = fromMilliseconds(1000);
 
             const syncCallback = jest.fn(() => "sync result");
@@ -246,6 +264,8 @@ describe("declarative scheduler comprehensive edge cases", () => {
     describe("timing precision edge cases", () => {
         test("should handle minute boundary precision schedules", async () => {
             const capabilities = getTestCapabilities();
+            const schedulerControl = getSchedulerControl(capabilities);
+            schedulerControl.setPollingInterval(1);
             const retryDelay = fromMilliseconds(1000);
             const taskCallback = jest.fn();
 
@@ -266,6 +286,8 @@ describe("declarative scheduler comprehensive edge cases", () => {
 
         test("should handle second precision in task timing", async () => {
             const capabilities = getTestCapabilities();
+            const schedulerControl = getSchedulerControl(capabilities);
+            schedulerControl.setPollingInterval(1);
             const retryDelay = fromMilliseconds(1000);
             const taskCallback = jest.fn();
 

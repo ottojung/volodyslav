@@ -22,6 +22,8 @@ describe("declarative scheduler integration and system edge cases", () => {
     describe("real-world scenario testing", () => {
         test("should handle typical daily backup scenario", async () => {
             const capabilities = getTestCapabilities();
+            const schedulerControl = getSchedulerControl(capabilities);
+            schedulerControl.setPollingInterval(1);
             const retryDelay = fromMilliseconds(30 * 60 * 1000); // 30 minute retry
 
             let backupCount = 0;
@@ -50,6 +52,8 @@ describe("declarative scheduler integration and system edge cases", () => {
 
         test("should handle periodic health check scenario", async () => {
             const capabilities = getTestCapabilities();
+            const schedulerControl = getSchedulerControl(capabilities);
+            schedulerControl.setPollingInterval(1);
             const retryDelay = fromMilliseconds(60 * 1000); // 1 minute retry
 
             let healthCheckCount = 0;
@@ -79,6 +83,8 @@ describe("declarative scheduler integration and system edge cases", () => {
 
         test("should handle log rotation scenario", async () => {
             const capabilities = getTestCapabilities();
+            const schedulerControl = getSchedulerControl(capabilities);
+            schedulerControl.setPollingInterval(1);
             const retryDelay = fromMilliseconds(5 * 60 * 1000); // 5 minute retry
 
             let rotationCount = 0;
@@ -110,6 +116,8 @@ describe("declarative scheduler integration and system edge cases", () => {
     describe("system integration edge cases", () => {
         test("should handle network connectivity issues", async () => {
             const capabilities = getTestCapabilities();
+            const schedulerControl = getSchedulerControl(capabilities);
+            schedulerControl.setPollingInterval(1);
             const retryDelay = fromMilliseconds(5000);
 
             let networkCallCount = 0;
@@ -140,6 +148,8 @@ describe("declarative scheduler integration and system edge cases", () => {
 
         test("should handle filesystem operations", async () => {
             const capabilities = getTestCapabilities();
+            const schedulerControl = getSchedulerControl(capabilities);
+            schedulerControl.setPollingInterval(1);
             const retryDelay = fromMilliseconds(5000);
 
             let operationCount = 0;
@@ -169,6 +179,8 @@ describe("declarative scheduler integration and system edge cases", () => {
 
         test("should handle memory-intensive scenarios", async () => {
             const capabilities = getTestCapabilities();
+            const schedulerControl = getSchedulerControl(capabilities);
+            schedulerControl.setPollingInterval(1);
             const retryDelay = fromMilliseconds(5000);
 
             // Simulate memory-intensive task
@@ -210,6 +222,8 @@ describe("declarative scheduler integration and system edge cases", () => {
     describe("error recovery and resilience", () => {
         test("should recover from uncaught exceptions in callbacks", async () => {
             const capabilities = getTestCapabilities();
+            const schedulerControl = getSchedulerControl(capabilities);
+            schedulerControl.setPollingInterval(1);
             const retryDelay = fromMilliseconds(5000);
 
             const normalCallback = jest.fn();
@@ -239,6 +253,8 @@ describe("declarative scheduler integration and system edge cases", () => {
 
         test("should handle rapid initialization cycles", async () => {
             const capabilities = getTestCapabilities();
+            const schedulerControl = getSchedulerControl(capabilities);
+            schedulerControl.setPollingInterval(1);
             const retryDelay = fromMilliseconds(5000);
             const taskCallback = jest.fn();
 
@@ -264,6 +280,8 @@ describe("declarative scheduler integration and system edge cases", () => {
     describe("performance under stress", () => {
         test("should handle burst task scheduling", async () => {
             const capabilities = getTestCapabilities();
+            const schedulerControl = getSchedulerControl(capabilities);
+            schedulerControl.setPollingInterval(1);
             const retryDelay = fromMilliseconds(5000);
 
             // Schedule many tasks at once
@@ -296,6 +314,8 @@ describe("declarative scheduler integration and system edge cases", () => {
 
         test("should handle mixed task execution patterns", async () => {
             const capabilities = getTestCapabilities();
+            const schedulerControl = getSchedulerControl(capabilities);
+            schedulerControl.setPollingInterval(1);
             const retryDelay = fromMilliseconds(5000);
 
             // Mix of different task types
@@ -334,6 +354,8 @@ describe("declarative scheduler integration and system edge cases", () => {
     describe("edge cases in scheduler lifecycle", () => {
         test("should handle empty task registrations", async () => {
             const capabilities = getTestCapabilities();
+            const schedulerControl = getSchedulerControl(capabilities);
+            schedulerControl.setPollingInterval(1);
 
             // Should handle empty registrations without error
             await capabilities.scheduler.initialize([]);
@@ -348,6 +370,8 @@ describe("declarative scheduler integration and system edge cases", () => {
 
         test("should handle repeated initialization calls", async () => {
             const capabilities = getTestCapabilities();
+            const schedulerControl = getSchedulerControl(capabilities);
+            schedulerControl.setPollingInterval(1);
             const retryDelay = fromMilliseconds(5000);
             const taskCallback = jest.fn();
 

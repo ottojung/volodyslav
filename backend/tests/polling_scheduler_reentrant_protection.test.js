@@ -21,6 +21,8 @@ function getTestCapabilities() {
 describe("declarative scheduler re-entrancy protection", () => {
     test("should handle concurrent initialize calls gracefully", async () => {
         const capabilities = getTestCapabilities();
+        const schedulerControl = getSchedulerControl(capabilities);
+        schedulerControl.setPollingInterval(1);
         const retryDelay = fromMilliseconds(5000);
         let taskStartCount = 0;
         let taskEndCount = 0;
@@ -57,6 +59,8 @@ describe("declarative scheduler re-entrancy protection", () => {
 
     test("should allow multiple initialize calls after completion", async () => {
         const capabilities = getTestCapabilities();
+        const schedulerControl = getSchedulerControl(capabilities);
+        schedulerControl.setPollingInterval(1);
         const timeControl = getDatetimeControl(capabilities);
         const retryDelay = fromMilliseconds(5000);
         let taskExecutionCount = 0;
@@ -91,6 +95,8 @@ describe("declarative scheduler re-entrancy protection", () => {
 
     test("should handle errors during task execution gracefully", async () => {
         const capabilities = getTestCapabilities();
+        const schedulerControl = getSchedulerControl(capabilities);
+        schedulerControl.setPollingInterval(1);
         const timeControl = getDatetimeControl(capabilities);
         const retryDelay = fromMilliseconds(5000);
         let taskExecutionCount = 0;

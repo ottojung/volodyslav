@@ -21,6 +21,8 @@ function getTestCapabilities() {
 describe("declarative scheduler parallel execution", () => {
     test("should execute multiple due tasks in parallel", async () => {
         const capabilities = getTestCapabilities();
+        const schedulerControl = getSchedulerControl(capabilities);
+        schedulerControl.setPollingInterval(1);
         const retryDelay = fromMilliseconds(5000);
 
         let task1StartTime = null;
@@ -65,6 +67,8 @@ describe("declarative scheduler parallel execution", () => {
 
     test("should execute many tasks in parallel without limits", async () => {
         const capabilities = getTestCapabilities();
+        const schedulerControl = getSchedulerControl(capabilities);
+        schedulerControl.setPollingInterval(1);
         const retryDelay = fromMilliseconds(5000);
 
         let concurrentExecutions = 0;
@@ -104,6 +108,8 @@ describe("declarative scheduler parallel execution", () => {
 
     test("should not block fast tasks when slow task is running", async () => {
         const capabilities = getTestCapabilities();
+        const schedulerControl = getSchedulerControl(capabilities);
+        schedulerControl.setPollingInterval(1);
         const retryDelay = fromMilliseconds(5000);
 
         let fastTaskCompleted = false;
@@ -140,6 +146,8 @@ describe("declarative scheduler parallel execution", () => {
 
     test("should handle parallel task failures independently", async () => {
         const capabilities = getTestCapabilities();
+        const schedulerControl = getSchedulerControl(capabilities);
+        schedulerControl.setPollingInterval(1);
         const retryDelay = fromMilliseconds(1000);
 
         let goodTaskExecuted = false;
@@ -178,6 +186,8 @@ describe("declarative scheduler parallel execution", () => {
 
     test("should handle many parallel tasks with retries", async () => {
         const capabilities = getTestCapabilities();
+        const schedulerControl = getSchedulerControl(capabilities);
+        schedulerControl.setPollingInterval(1);
         const timeControl = getDatetimeControl(capabilities);
         const retryDelay = fromMilliseconds(500); // Short retry for faster testing
 

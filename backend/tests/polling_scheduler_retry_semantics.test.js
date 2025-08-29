@@ -22,6 +22,8 @@ describe("declarative scheduler retry semantics", () => {
 
     test("should execute tasks according to cron schedule", async () => {
         const capabilities = getTestCapabilities();
+        const schedulerControl = getSchedulerControl(capabilities);
+        schedulerControl.setPollingInterval(1);
         const timeControl = getDatetimeControl(capabilities);
         const retryDelay = fromMilliseconds(5 * 60 * 1000); // 5 minutes
         let executionCount = 0;
@@ -51,6 +53,8 @@ describe("declarative scheduler retry semantics", () => {
 
     test("should handle retry logic when task fails", async () => {
         const capabilities = getTestCapabilities();
+        const schedulerControl = getSchedulerControl(capabilities);
+        schedulerControl.setPollingInterval(1);
         const timeControl = getDatetimeControl(capabilities);
         const retryDelay = fromMilliseconds(5 * 60 * 1000); // 5 minutes
         let executionCount = 0;
@@ -91,6 +95,8 @@ describe("declarative scheduler retry semantics", () => {
 
     test("should handle successful execution clearing retry state", async () => {
         const capabilities = getTestCapabilities();
+        const schedulerControl = getSchedulerControl(capabilities);
+        schedulerControl.setPollingInterval(1);
         const timeControl = getDatetimeControl(capabilities);
         const retryDelay = fromMilliseconds(5 * 60 * 1000); // 5 minutes
         let executionCount = 0;
@@ -131,6 +137,8 @@ describe("declarative scheduler retry semantics", () => {
 
     test("should handle multiple tasks with different retry delays", async () => {
         const capabilities = getTestCapabilities();
+        const schedulerControl = getSchedulerControl(capabilities);
+        schedulerControl.setPollingInterval(1);
         const timeControl = getDatetimeControl(capabilities);
         const shortRetryDelay = fromMilliseconds(3 * 60 * 1000); // 3 minutes
         const longRetryDelay = fromMilliseconds(8 * 60 * 1000); // 8 minutes
@@ -188,6 +196,8 @@ describe("declarative scheduler retry semantics", () => {
 
     test("should maintain idempotent behavior on multiple initialize calls", async () => {
         const capabilities = getTestCapabilities();
+        const schedulerControl = getSchedulerControl(capabilities);
+        schedulerControl.setPollingInterval(1);
         const retryDelay = fromMilliseconds(30 * 1000); // 30 seconds
         let executionCount = 0;
 
