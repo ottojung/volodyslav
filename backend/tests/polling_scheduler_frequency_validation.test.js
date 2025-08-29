@@ -18,10 +18,24 @@ function getTestCapabilities() {
 }
 
 describe("declarative scheduler frequency validation", () => {
+    let testCapabilities = null;
+
+    beforeEach(() => {
+        testCapabilities = getTestCapabilities();
+    });
+
+    afterEach(async () => {
+        if (testCapabilities) {
+            await testCapabilities.scheduler.stop();
+            testCapabilities = null;
+            // Give a small delay for async cleanup to complete
+            await new Promise(resolve => setTimeout(resolve, 50));
+        }
+    });
 
     test("should throw error when task frequency is higher than polling frequency", async () => {
         // Use default 10-minute (600000ms) polling interval
-        const capabilities = getTestCapabilities();
+        const capabilities = testCapabilities;
         const retryDelay = fromMilliseconds(5000);
         const taskCallback = jest.fn();
         
@@ -32,11 +46,10 @@ describe("declarative scheduler frequency validation", () => {
         
         await expect(capabilities.scheduler.initialize(registrations))
             .rejects.toThrow(/frequency.*higher.*polling/i);
-        await capabilities.scheduler.stop();
     });
 
     test("should allow task frequency equal to polling frequency", async () => {
-        const capabilities = getTestCapabilities();
+        const capabilities = testCapabilities;
         const retryDelay = fromMilliseconds(5000);
         const taskCallback = jest.fn();
         
@@ -47,12 +60,10 @@ describe("declarative scheduler frequency validation", () => {
         
         await expect(capabilities.scheduler.initialize(registrations))
             .resolves.toBeUndefined();
-            
-        await capabilities.scheduler.stop();
     });
 
     test("should allow task frequency lower than polling frequency", async () => {
-        const capabilities = getTestCapabilities();
+        const capabilities = testCapabilities;
         const retryDelay = fromMilliseconds(5000);
         const taskCallback = jest.fn();
         
@@ -63,14 +74,10 @@ describe("declarative scheduler frequency validation", () => {
         
         await expect(capabilities.scheduler.initialize(registrations))
             .resolves.toBeUndefined();
-            
-        await capabilities.scheduler.stop();
     });
 
-    test("should validate frequency for complex cron expressions", async () => {
-        // Use separate capabilities instances to avoid task list mismatch
-        const capabilities1 = getTestCapabilities();
-        const capabilities2 = getTestCapabilities();
+    test("should validate frequency for complex cron expressions - high frequency", async () => {
+        const capabilities = testCapabilities;
         const retryDelay = fromMilliseconds(5000);
         const taskCallback = jest.fn();
         
@@ -79,24 +86,26 @@ describe("declarative scheduler frequency validation", () => {
             ["complex-high-freq", "*/5 * * * *", taskCallback, retryDelay]
         ];
         
-        await expect(capabilities1.scheduler.initialize(invalidRegistrations))
+        await expect(capabilities.scheduler.initialize(invalidRegistrations))
             .rejects.toThrow(/frequency.*higher.*polling/i);
-            
+    });
+
+    test("should validate frequency for complex cron expressions - low frequency", async () => {
+        const capabilities = testCapabilities;
+        const retryDelay = fromMilliseconds(5000);
+        const taskCallback = jest.fn();
+        
         // Initialize with task that runs every 2 hours (lower frequency than 10-minute polling)
         const validRegistrations = [
             ["complex-low-freq", "0 */2 * * *", taskCallback, retryDelay]
         ];
         
-        await expect(capabilities2.scheduler.initialize(validRegistrations))
+        await expect(capabilities.scheduler.initialize(validRegistrations))
             .resolves.toBeUndefined();
-        
-        await capabilities1.scheduler.stop();
-        await capabilities2.scheduler.stop();
     });
 
-    test("should provide clear error message with frequency details", async () => {
-        const capabilities1 = getTestCapabilities();
-        const capabilities2 = getTestCapabilities();
+    test("should provide clear error message with frequency details - task frequency", async () => {
+        const capabilities = testCapabilities;
         const retryDelay = fromMilliseconds(5000);
         const taskCallback = jest.fn();
         
@@ -105,13 +114,21 @@ describe("declarative scheduler frequency validation", () => {
             ["detailed-error-test", "* * * * *", taskCallback, retryDelay]
         ];
         
-        await expect(capabilities1.scheduler.initialize(registrations))
+        await expect(capabilities.scheduler.initialize(registrations))
             .rejects.toThrow(/task.*frequency.*1.*minute/i);
+    });
+
+    test("should provide clear error message with frequency details - polling frequency", async () => {
+        const capabilities = testCapabilities;
+        const retryDelay = fromMilliseconds(5000);
+        const taskCallback = jest.fn();
         
-        await expect(capabilities2.scheduler.initialize(registrations))
+        // Try to initialize with task that runs every minute (higher frequency than 10-minute polling interval)
+        const registrations = [
+            ["detailed-error-test", "* * * * *", taskCallback, retryDelay]
+        ];
+        
+        await expect(capabilities.scheduler.initialize(registrations))
             .rejects.toThrow(/polling.*frequency.*10.*minute/i);
-        
-        await capabilities1.scheduler.stop();
-        await capabilities2.scheduler.stop();
     });
 });

@@ -16,8 +16,23 @@ function getTestCapabilities() {
 }
 
 describe("schedule persist roundtrip", () => {
+    let testCapabilities = null;
+
+    beforeEach(() => {
+        testCapabilities = getTestCapabilities();
+    });
+
+    afterEach(async () => {
+        if (testCapabilities) {
+            await testCapabilities.scheduler.stop();
+            testCapabilities = null;
+            // Give a small delay for async cleanup to complete
+            await new Promise(resolve => setTimeout(resolve, 50));
+        }
+    });
+
     test("schedule, persist, reload -> task present with same cron and retryDelayMs", async () => {
-        const capabilities = getTestCapabilities();
+        const capabilities = testCapabilities;
         
         // Initialize scheduler with registrations
         const retryDelay = fromMilliseconds(5000);
@@ -59,7 +74,7 @@ describe("schedule persist roundtrip", () => {
             });
         });
         
-        await capabilities.scheduler.stop();
+        // Note: scheduler.stop() will be called in afterEach
         
         // Allow cleanup time
         await new Promise(resolve => setTimeout(resolve, 100));
