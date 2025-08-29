@@ -6,8 +6,7 @@ const { mutateTasks } = require("../persistence");
 const { makeTaskExecutor } = require("../execution");
 const { validateTaskFrequency } = require("../registration_validation/frequency");
 const { makePollingFunction } = require("./function");
-const { makeIntervalManager } = require("./interval");
-const { getPollIntervalMs } = require('./delay');
+const { makeIntervalManager, POLL_INTERVAL_MS } = require("./interval");
 
 /**
  * Error thrown when a task registration is not found in the polling scheduler.
@@ -77,7 +76,7 @@ function makePollingScheduler(capabilities, registrations) {
             const parsedCron = found.parsedCron;
 
             // Validate task frequency against polling frequency
-            validateTaskFrequency(parsedCron, getPollIntervalMs(), dt);
+            validateTaskFrequency(parsedCron, POLL_INTERVAL_MS, dt);
 
             if (scheduledTasks.size === 0) {
                 start();

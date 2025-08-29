@@ -7,14 +7,13 @@ const { fromMilliseconds } = require("../src/time_duration");
 const { getMockedRootCapabilities } = require("./spies");
 const { stubEnvironment, stubLogger, stubDatetime, stubSleeper, stubPollInterval } = require("./stubs");
 
-stubPollInterval(1); // Fast polling for tests
-
 function getTestCapabilities() {
     const capabilities = getMockedRootCapabilities();
     stubEnvironment(capabilities);
     stubLogger(capabilities);
     stubDatetime(capabilities);
     stubSleeper(capabilities);
+    stubPollInterval(1); // Fast polling for tests
     return capabilities;
 }
 
