@@ -4,13 +4,14 @@
 
 const { fromMilliseconds } = require("../src/time_duration");
 const { getMockedRootCapabilities } = require("./spies");
-const { stubEnvironment, stubLogger, stubDatetime } = require("./stubs");
+const { stubEnvironment, stubLogger, stubDatetime, stubScheduler } = require("./stubs");
 
 function getTestCapabilities() {
     const capabilities = getMockedRootCapabilities();
     stubEnvironment(capabilities);
     stubLogger(capabilities);
     stubDatetime(capabilities);
+    stubScheduler(capabilities);
     return capabilities;
 }
 

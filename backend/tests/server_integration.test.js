@@ -14,6 +14,7 @@ const {
     stubApp,
     stubEventLogRepository,
     stubDailyTasksExecutable,
+    stubScheduler,
 } = require("./stubs");
 
 function getTestCapabilities() {
@@ -25,6 +26,7 @@ function getTestCapabilities() {
     stubDailyTasksExecutable(capabilities);
     stubSleeper(capabilities);
     stubDatetime(capabilities);
+    stubScheduler(capabilities);
 
     // Mock the necessary methods that server initialization needs
     capabilities.environment.ensureEnvironmentIsInitialized = jest.fn().mockResolvedValue(undefined);

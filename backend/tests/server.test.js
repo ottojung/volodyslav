@@ -8,6 +8,7 @@ const {
     stubDatetime,
     stubEventLogRepository,
     stubDailyTasksExecutable,
+    stubScheduler,
 } = require("./stubs");
 const { getMockedRootCapabilities } = require("./spies");
 
@@ -18,6 +19,7 @@ function getTestCapabilities() {
     stubNotifier(capabilities);
     stubDailyTasksExecutable(capabilities);
     stubDatetime(capabilities);
+    stubScheduler(capabilities);
     return capabilities;
 }
 
