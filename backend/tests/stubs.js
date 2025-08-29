@@ -312,9 +312,17 @@ function stubScheduler(capabilities) {
     function setPollingInterval(newPeriod) {
         periodOverride = newPeriod;
     }
- 
+
+    async function waitForNextCycleEnd() {
+        while (capabilities._stubbedScheduler === undefined) {
+            await new Promise(resolve => setTimeout(resolve, 1));
+        }
+        await capabilities._stubbedScheduler.waitForNextCycleEnd();
+    }
+
     capabilities._stubbedScheduler = {
         setPollingInterval,
+        waitForNextCycleEnd,
     };
 
     function fakePeriodic(name, originalPeriod, callback) {

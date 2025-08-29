@@ -283,13 +283,12 @@ describe("Declarative Scheduler", () => {
 
             const capabilities = getTestCapabilities();
             const control = getSchedulerControl(capabilities);
-            control.setPollingInterval(1);
 
             // First call to initialize
             await capabilities.scheduler.initialize(registrations);
 
             // Wait for initial execution
-            await new Promise(resolve => setTimeout(resolve, 400));
+            await control.waitForNextCycleEnd();
 
             // Task should have been called
             expect(taskCallback).toHaveBeenCalled();
