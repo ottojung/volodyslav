@@ -7,29 +7,15 @@
  * like start, stop, schedule, or cancel are exposed to external consumers.
  */
 
-const { make } = require("./scheduler_factory");
-const { isTaskListMismatchError, isScheduleDuplicateTaskError } = require("./validation");
-const { 
-    parseCronExpression, 
-    matchesCronExpression,
-    getNextExecution,
+const { make } = require("./make");
+const { isScheduleDuplicateTaskError } = require("./registration_validation");
+const { isTaskListMismatchError } = require("./state_validation");
+const {
+    parseCronExpression,
     isCronExpression,
     isInvalidCronExpressionError
-} = require("./expression");
-
-/**
- * Validate a cron expression without creating a scheduler.
- * @param {string} cronExpression
- * @returns {boolean}
- */
-function validate(cronExpression) {
-    try {
-        parseCronExpression(cronExpression);
-        return true;
-    } catch {
-        return false;
-    }
-}
+} = require('./expression')
+const { matchesCronExpression, getNextExecution } = require("./calculator");
 
 // Re-export types for external consumption
 /** @typedef {import('./types').Scheduler} Scheduler */
@@ -40,7 +26,6 @@ function validate(cronExpression) {
 
 module.exports = {
     make,
-    validate,
     isTaskListMismatchError,
     isScheduleDuplicateTaskError,
     parseCronExpression,

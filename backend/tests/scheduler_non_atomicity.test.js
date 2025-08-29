@@ -1,5 +1,5 @@
 
-
+const taskExecutor = require("../src/scheduler/execution");
 const { fromMilliseconds } = require("../src/time_duration");
 const { getMockedRootCapabilities } = require("./spies");
 const { stubEnvironment, stubLogger, stubDatetime, stubSleeper, getDatetimeControl, stubPollInterval, stubRuntimeStateStorage } = require("./stubs");
@@ -12,7 +12,7 @@ function getTestCapabilities() {
     stubSleeper(capabilities);
     // Use stubRuntimeStateStorage for faster execution and to expose the race condition
     stubRuntimeStateStorage(capabilities);
-    stubPollInterval(1); // Fast polling for tests
+    stubPollInterval(capabilities, 1); // Fast polling for tests
     return capabilities;
 }
 
@@ -83,7 +83,6 @@ describe("scheduler atomicity testing", () => {
         const timeControl = getDatetimeControl(capabilities);
         const retryDelay = fromMilliseconds(25000);
 
-        const taskExecutor = require("../src/scheduler/task_executor");
         const originalMakeTaskExecutor = taskExecutor.makeTaskExecutor;
 
         let executorCallCount = 0;

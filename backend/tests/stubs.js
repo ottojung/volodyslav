@@ -87,6 +87,10 @@ function stubNotifier(capabilities) {
     capabilities.notifier.notifyAboutWarning = jest.fn();
 }
 
+function stubDailyTasksExecutable(capabilities) {
+    capabilities.volodyslavDailyTasks.ensureAvailable = jest.fn().mockResolvedValue(true);
+}
+
 function stubSleeper(capabilities) {
     capabilities.sleeper.sleep = jest.fn().mockImplementation((_ms) => {
         return Promise.resolve(); // Immediately resolve when stubbed
@@ -96,26 +100,26 @@ function stubSleeper(capabilities) {
 function stubDatetime(capabilities) {
     // Store the original datetime methods that are already jest mocks
     const originalNow = capabilities.datetime.now;
-    
+
     // Initialize with current real time, but this can be overridden
     let currentTimeMs = Date.now();
-    
+
     // Override the now method to return the controlled time
     originalNow.mockImplementation(() => capabilities.datetime.fromEpochMs(currentTimeMs));
-    
+
     // Add time control methods to the datetime object
     capabilities.datetime.setTime = (ms) => {
         currentTimeMs = ms;
     };
-    
+
     capabilities.datetime.advanceTime = (ms) => {
         currentTimeMs += ms;
     };
-    
+
     capabilities.datetime.getCurrentTime = () => {
         return currentTimeMs;
     };
-    
+
     // Mark it as mocked for type guard
     capabilities.datetime.__isMockedDatetime = true;
 }
@@ -261,16 +265,16 @@ async function mockRuntimeStateTransaction(capabilities, transformation) {
     expect(mockRuntimeStateStorage).toBeDefined();
     const storageKey = "mock-runtime-state";
     const mockStorage = new MockRuntimeStateStorageClass(capabilities, mockRuntimeStateStorage, storageKey);
-    
+
     // Run the transformation
     const result = await transformation(mockStorage);
-    
+
     // Handle state changes - persist to in-memory storage
     const newState = mockStorage.getNewState();
     if (newState !== null) {
         mockRuntimeStateStorage.set(storageKey, newState);
     }
-    
+
     return result;
 }
 
@@ -291,7 +295,7 @@ function isMockRuntimeStateStorage(object) {
  */
 function stubRuntimeStateStorage(capabilities) {
     const storage = new Map();
-    
+
     // Mock the state capability to use our in-memory implementation
     capabilities.state = {
         transaction: jest.fn().mockImplementation((transformation) => mockRuntimeStateTransaction(capabilities, transformation)),
@@ -302,13 +306,10 @@ function stubRuntimeStateStorage(capabilities) {
 
 /**
  * Stubs the polling interval constant for scheduler tests.
- * This should be called before requiring modules that read POLL_INTERVAL_MS.
- * @param {number} [period=1] - The polling period in milliseconds
  */
-const stubPollInterval = (period = 1) => {
-    // Direct module constant override 
-    const pollingSchedulerModule = require('../src/scheduler/polling_scheduler');
-    pollingSchedulerModule.POLL_INTERVAL_MS = period;
+const stubPollInterval = (capabilities, period = 1) => {
+    const originalPeriodic = capabilities.threading.periodic;
+    capabilities.threading.periodic = jest.fn().mockImplementation((name, _period, callback) => originalPeriodic(name, period, callback));
 };
 
 module.exports = {
@@ -316,6 +317,7 @@ module.exports = {
     stubLogger,
     stubAiTranscriber,
     stubNotifier,
+    stubDailyTasksExecutable,
     stubSleeper,
     stubDatetime,
     stubEventLogRepository,

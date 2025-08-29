@@ -3,9 +3,9 @@
  */
 
 const { parseCronExpression } = require("./expression");
-const { makePollingScheduler } = require("./polling_scheduler");
-const { mutateTasks } = require("./state_persistence");
-const { isScheduleDuplicateTaskError } = require("./validation");
+const { makePollingScheduler } = require("./polling");
+const { mutateTasks } = require("./persistence");
+const { isScheduleDuplicateTaskError } = require("./registration_validation");
 const memconst = require("../memconst");
 
 /**
@@ -38,10 +38,8 @@ class StopSchedulerError extends Error {
     }
 }
 
-const {
-    validateTasksAgainstPersistedStateInner,
-    validateRegistrations,
-} = require("./validation");
+const { validateRegistrations } = require("./registration_validation");
+const { validateTasksAgainstPersistedStateInner } = require("./state_validation");
 
 /** @typedef {import('./types').Scheduler} Scheduler */
 /** @typedef {import('./types').Registration} Registration */
@@ -64,12 +62,12 @@ function make(getCapabilities) {
     const getCapabilitiesMemo = memconst(getCapabilities);
 
     /**
-     * Initialize the scheduler with the given registrations.
-     * @type {Initialize}
+     * Validate registrations and check against persisted state.
+     * @param {Registration[]} registrations
+     * @param {Capabilities} capabilities
+     * @returns {Promise<{persistedTasks: import('../runtime_state_storage/types').TaskRecord[] | undefined}>}
      */
-    async function initialize(registrations) {
-        // Validate input parameters
-        const capabilities = getCapabilitiesMemo();
+    async function validateAndCheckPersistedState(registrations, capabilities) {
         validateRegistrations(registrations, capabilities);
 
         /**
@@ -103,22 +101,15 @@ function make(getCapabilities) {
             validateTasksAgainstPersistedStateInner(registrations, persistedTasks);
         }
 
-        // Handle polling scheduler lifecycle
-        if (pollingScheduler !== null) {
-            // Scheduler already running
-            capabilities.logger.logDebug(
-                {},
-                "Scheduler already initialized"
-            );
-            return;
-        }
+        return { persistedTasks };
+    }
 
-        // Create polling scheduler
-        capabilities.logger.logDebug(
-            {},
-            "Creating new polling scheduler"
-        );
-
+    /**
+     * Parse registrations into internal format.
+     * @param {Registration[]} registrations
+     * @returns {ParsedRegistrations}
+     */
+    function parseRegistrations(registrations) {
         /** @type {ParsedRegistrations} */
         const parsedRegistrations = new Map();
         registrations.forEach(([name, cronExpression, callback, retryDelay]) =>
@@ -128,13 +119,17 @@ function make(getCapabilities) {
                 callback,
                 retryDelay
             }));
+        return parsedRegistrations;
+    }
 
-        if (persistedTasks === undefined) {
-            await mutateTasks(capabilities, parsedRegistrations, async () => undefined);
-        }
-
-        pollingScheduler = makePollingScheduler(capabilities, parsedRegistrations);
-
+    /**
+     * Schedule all tasks and handle errors.
+     * @param {Registration[]} registrations
+     * @param {ReturnType<makePollingScheduler>} pollingScheduler
+     * @param {Capabilities} capabilities
+     * @returns {Promise<{scheduledCount: number, skippedCount: number}>}
+     */
+    async function scheduleAllTasks(registrations, pollingScheduler, capabilities) {
         let scheduledCount = 0;
         let skippedCount = 0;
 
@@ -165,6 +160,46 @@ function make(getCapabilities) {
                 }
             }
         }
+
+        return { scheduledCount, skippedCount };
+    }
+
+    /**
+     * Initialize the scheduler with the given registrations.
+     * @type {Initialize}
+     */
+    async function initialize(registrations) {
+        const capabilities = getCapabilitiesMemo();
+        
+        // Validate input and check persisted state
+        const { persistedTasks } = await validateAndCheckPersistedState(registrations, capabilities);
+
+        // Handle polling scheduler lifecycle
+        if (pollingScheduler !== null) {
+            // Scheduler already running
+            capabilities.logger.logDebug(
+                {},
+                "Scheduler already initialized"
+            );
+            return;
+        }
+
+        // Create polling scheduler
+        capabilities.logger.logDebug(
+            {},
+            "Creating new polling scheduler"
+        );
+
+        const parsedRegistrations = parseRegistrations(registrations);
+
+        if (persistedTasks === undefined) {
+            await mutateTasks(capabilities, parsedRegistrations, async () => undefined);
+        }
+
+        pollingScheduler = makePollingScheduler(capabilities, parsedRegistrations);
+
+        // Schedule all tasks
+        const { scheduledCount, skippedCount } = await scheduleAllTasks(registrations, pollingScheduler, capabilities);
 
         capabilities.logger.logInfo(
             {

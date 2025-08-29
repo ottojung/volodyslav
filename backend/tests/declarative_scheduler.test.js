@@ -21,7 +21,7 @@ function getTestCapabilities() {
     stubEnvironment(capabilities);
     stubSleeper(capabilities);
     stubDatetime(capabilities);
-    stubPollInterval(1);
+    stubPollInterval(capabilities, 1);
     return capabilities;
 }
 
@@ -254,8 +254,8 @@ describe("Declarative Scheduler", () => {
             const taskCallback = jest.fn().mockResolvedValue(undefined);
 
             const registrations = [
-                // Task that should run every minute
-                ["test-task", "* * * * *", taskCallback, COMMON.FIVE_MINUTES],
+                // Task that should run every 15 minutes
+                ["test-task", "*/15 * * * *", taskCallback, COMMON.FIVE_MINUTES],
             ];
 
             const capabilities = getTestCapabilities();
@@ -275,7 +275,7 @@ describe("Declarative Scheduler", () => {
             const taskCallback = jest.fn().mockResolvedValue(undefined);
 
             const registrations = [
-                ["test-task", "* * * * *", taskCallback, COMMON.FIVE_MINUTES],
+                ["test-task", "0 * * * *", taskCallback, COMMON.FIVE_MINUTES],
             ];
 
             const capabilities = getTestCapabilities();

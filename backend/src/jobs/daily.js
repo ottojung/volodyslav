@@ -85,5 +85,4 @@ module.exports = {
     executeDailyTasks,
     ensureDailyTasksAvailable,
     isDailyTasksUnavailable,
-    DailyTasksUnavailable,
 };

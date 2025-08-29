@@ -5,7 +5,6 @@
 
 // Import functions and predicates from sub-modules
 const { parseCronExpression, isCronExpression, isInvalidCronExpressionError } = require("./structure");
-const { matchesCronExpression, getNextExecution, isCronCalculationError } = require("../calculator");
 const { isFieldParseError } = require("./field_parser");
 
 // Re-export types from sub-modules
@@ -14,12 +13,9 @@ const { isFieldParseError } = require("./field_parser");
 module.exports = {
     // Main functions
     parseCronExpression,
-    matchesCronExpression,
-    getNextExecution,
 
     // Type guards  
     isCronExpression,
     isInvalidCronExpressionError,
     isFieldParseError,
-    isCronCalculationError,
 };

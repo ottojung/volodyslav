@@ -13,14 +13,11 @@ function getTestCapabilities() {
     stubDatetime(capabilities);
     stubSleeper(capabilities);
     stubRuntimeStateStorage(capabilities);
+    stubPollInterval(capabilities, 1); // Fast polling for tests
     return capabilities;
 }
 
 describe("failure retry persistence", () => {
-    beforeEach(() => {
-        // Use fast polling for these tests
-        stubPollInterval(1);
-    });
     test("task failure sets pendingRetryUntil correctly", async () => {
         const capabilities = getTestCapabilities();
         const timeControl = getDatetimeControl(capabilities);

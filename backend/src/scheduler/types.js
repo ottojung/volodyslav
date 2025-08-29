@@ -4,7 +4,7 @@
  */
 
 /** @typedef {import('../time_duration').TimeDuration} TimeDuration */
-/** @typedef {import('./tasks').Capabilities} Capabilities */
+/** @typedef {import('../capabilities/root').Capabilities} Capabilities */
 /** @typedef {import('./task').Task} Task */
 /** @typedef {() => Promise<void>} Callback */
 /** @typedef {import('./expression').CronExpression} CronExpression */

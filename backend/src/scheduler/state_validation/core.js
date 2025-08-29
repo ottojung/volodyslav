@@ -6,7 +6,7 @@ const {
     registrationToTaskIdentity,
     taskRecordToTaskIdentity,
     taskIdentitiesEqual,
-} = require("../task_identity");
+} = require("../task/identity");
 const { TaskListMismatchError } = require("./errors");
 
 /** @typedef {import('../types').Registration} Registration */

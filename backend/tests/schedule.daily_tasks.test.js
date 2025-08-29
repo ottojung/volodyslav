@@ -11,8 +11,7 @@ const {
     executeDailyTasks,
     ensureDailyTasksAvailable,
     isDailyTasksUnavailable,
-    DailyTasksUnavailable
-} = require("../src/scheduler/daily_tasks");
+} = require("../src/jobs");
 const { getMockedRootCapabilities } = require("./spies");
 const { stubLogger } = require("./stubs");
 
@@ -24,36 +23,6 @@ function getTestCapabilities() {
 
 describe("Daily Tasks", () => {
     describe("DailyTasksUnavailable Error", () => {
-        test("is a constructor function", () => {
-            expect(typeof DailyTasksUnavailable).toBe("function");
-        });
-
-        test("creates error instance with name property", () => {
-            const error = new DailyTasksUnavailable();
-            expect(error.name).toBe("DailyTasksUnavailable");
-        });
-
-        test("creates error instance with message property", () => {
-            const error = new DailyTasksUnavailable();
-            expect(typeof error.message).toBe("string");
-            expect(error.message.length).toBeGreaterThan(0);
-        });
-
-        test("type guard function exists and is callable", () => {
-            expect(typeof isDailyTasksUnavailable).toBe("function");
-        });
-
-        test("type guard returns boolean", () => {
-            const error = new DailyTasksUnavailable();
-            const result = isDailyTasksUnavailable(error);
-            expect(typeof result).toBe("boolean");
-        });
-
-        test("type guard returns true for DailyTasksUnavailable instances", () => {
-            const error = new DailyTasksUnavailable();
-            expect(isDailyTasksUnavailable(error)).toBe(true);
-        });
-
         test("type guard returns false for other error types", () => {
             const error = new Error("other error");
             expect(isDailyTasksUnavailable(error)).toBe(false);
@@ -74,10 +43,10 @@ describe("Daily Tasks", () => {
         test("returns a promise", () => {
             const result = ensureDailyTasksAvailable();
             expect(result).toBeInstanceOf(Promise);
-            
+
             // Don't await the promise to avoid hanging - just verify it's a promise
             // Clean up by adding a catch handler without awaiting
-            result.catch(() => {});
+            result.catch(() => { });
         });
     });
 
@@ -93,7 +62,7 @@ describe("Daily Tasks", () => {
 
             // Don't await the promise to avoid hanging - just verify it's a promise
             // Clean up by adding a catch handler without awaiting
-            result.catch(() => {});
+            result.catch(() => { });
         });
 
         test("calls logger functions during execution", async () => {
