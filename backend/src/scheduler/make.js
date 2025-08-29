@@ -202,7 +202,7 @@ function make(getCapabilities) {
         // Schedule all tasks
         const { scheduledCount, skippedCount } = await scheduleAllTasks(registrations, pollingScheduler, capabilities);
 
-        capabilities.logger.logInfo(
+        capabilities.logger.logDebug(
             {
                 totalRegistrations: registrations.length,
                 scheduledCount,
