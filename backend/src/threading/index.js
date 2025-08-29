@@ -62,6 +62,8 @@ function isPeriodicThread(obj) {
 
 function make() {
 
+    const registered = new Set();
+
     /**
      * @param {string} name
      * @param {number} interval
@@ -69,8 +71,14 @@ function make() {
      * @returns {PeriodicThread}
      */
     function periodic(name, interval, callback) {
-        // FIXME: check that `name` has not been registered yet.
-        return new PeriodicThread(name, interval, callback);
+        if (registered.has(name)) {
+            // FIXME: make it into a proper error class.
+            throw new Error(`Periodic thread with name ${JSON.stringify(name)} is already registered.`);
+        }
+
+        const thread = new PeriodicThread(name, interval, callback);
+        registered.add(name);
+        return thread;
     }
 
     return {
