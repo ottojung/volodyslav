@@ -306,13 +306,10 @@ function stubRuntimeStateStorage(capabilities) {
 
 /**
  * Stubs the polling interval constant for scheduler tests.
- * @param {number} [period=1] - The polling period in milliseconds
  */
-const stubPollInterval = (period = 1) => {
-    const mockPeriod = period;
-    jest.mock('../src/scheduler/polling/delay', () => ({
-        getPollIntervalMs: () => mockPeriod,
-    }));
+const stubPollInterval = (capabilities, period = 1) => {
+    const originalPeriodic = capabilities.threading.periodic;
+    capabilities.threading.periodic = jest.fn().mockImplementation((name, _period, callback) => originalPeriodic(name, period, callback));
 };
 
 module.exports = {
