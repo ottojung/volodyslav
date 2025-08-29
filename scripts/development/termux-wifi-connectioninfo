@@ -1,0 +1,3 @@
+#! /bin/sh
+
+echo "Termux wifi helper called: $*" 1>&2
