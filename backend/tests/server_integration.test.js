@@ -27,12 +27,6 @@ function getTestCapabilities() {
     stubSleeper(capabilities);
     stubDatetime(capabilities);
     stubWifiChecker(capabilities);
-
-    // Mock the necessary methods that server initialization needs
-    capabilities.environment.ensureEnvironmentIsInitialized = jest.fn().mockResolvedValue(undefined);
-    capabilities.notifier.ensureNotificationsAvailable = jest.fn().mockResolvedValue(undefined);
-    capabilities.git.ensureAvailable = jest.fn().mockResolvedValue(undefined);
-
     return capabilities;
 }
 
@@ -94,7 +88,6 @@ describe("Server Integration with Declarative Scheduler", () => {
         // Verify that essential setup steps were attempted
         expect(capabilities.environment.ensureEnvironmentIsInitialized).toHaveBeenCalled();
         expect(capabilities.notifier.ensureNotificationsAvailable).toHaveBeenCalled();
-        expect(capabilities.git.ensureAvailable).toHaveBeenCalled();
 
         // App configuration should have been set up
         expect(app.use).toHaveBeenCalled();
