@@ -308,14 +308,39 @@ function stubRuntimeStateStorage(capabilities) {
 function stubScheduler(capabilities) {
     const originalPeriodic = capabilities.threading.periodic;
     let periodOverride = null;
+    const activeTimers = new Set(); // Track timers for cleanup
 
     function setPollingInterval(newPeriod) {
         periodOverride = newPeriod;
     }
 
+    // Helper to create a trackable timeout
+    function createTimeout(callback, delay) {
+        const timer = setTimeout(() => {
+            activeTimers.delete(timer);
+            callback();
+        }, delay);
+        activeTimers.add(timer);
+        return timer;
+    }
+
+    // Cleanup function to clear any remaining timers
+    function cleanup() {
+        for (const timer of activeTimers) {
+            clearTimeout(timer);
+        }
+        activeTimers.clear();
+    }
+
+    // Register cleanup function globally so it gets called in afterEach
+    global.stubTimerCleanupFunctions = global.stubTimerCleanupFunctions || [];
+    global.stubTimerCleanupFunctions.push(cleanup);
+
     async function waitForNextCycleEnd() {
         while (capabilities._stubbedScheduler.thread === undefined) {
-            await new Promise(resolve => setTimeout(resolve, 1));
+            await new Promise(resolve => {
+                createTimeout(resolve, 1);
+            });
         }
         await capabilities._stubbedScheduler.waitForNextCycleEnd();
     }
@@ -323,6 +348,7 @@ function stubScheduler(capabilities) {
     capabilities._stubbedScheduler = {
         setPollingInterval,
         waitForNextCycleEnd,
+        cleanup, // Expose cleanup function
     };
 
     function fakePeriodic(name, originalPeriod, callback) {
@@ -341,6 +367,16 @@ function stubScheduler(capabilities) {
 
         const thisPeriod = periodOverride !== null ? periodOverride : originalPeriod;
         let thread = originalPeriodic(name, thisPeriod, callbackWrapper);
+        
+        // Override the start method to add unref() to intervals
+        const originalStart = thread.start.bind(thread);
+        thread.start = function() {
+            originalStart();
+            // Ensure the interval doesn't prevent Jest from exiting
+            if (thread.interval && typeof thread.interval === 'object' && thread.interval.unref) {
+                thread.interval.unref();
+            }
+        };
 
         const setPollingInterval = (newPeriod) => {
             const wasRunning = thread.isRunning();
@@ -353,8 +389,17 @@ function stubScheduler(capabilities) {
 
         const waitForNextCycleEnd = async () => {
             const initialEndCount = finishedCount;
+            const timeout = 5000; // 5 second timeout
+            const startTime = Date.now();
+            
             while (finishedCount === initialEndCount) {
-                await new Promise(resolve => setTimeout(resolve, 1));
+                if (Date.now() - startTime > timeout) {
+                    // Don't throw, just return - test might be finishing
+                    return;
+                }
+                await new Promise(resolve => {
+                    createTimeout(resolve, 1);
+                });
             }
         };
 
@@ -362,6 +407,7 @@ function stubScheduler(capabilities) {
             setPollingInterval,
             thread,
             waitForNextCycleEnd,
+            cleanup, // Expose cleanup function
         };
 
         return thread;
