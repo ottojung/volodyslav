@@ -177,9 +177,10 @@ describe("declarative scheduler persistence and error handling", () => {
 
                 // Should be able to initialize at any time
                 await expect(capabilities.scheduler.initialize(registrations)).resolves.toBeUndefined();
+                
+                // Stop the scheduler after each initialize to prevent leaks
+                await capabilities.scheduler.stop();
             }
-
-            await capabilities.scheduler.stop();
         } finally {
             jest.useRealTimers();
         }
