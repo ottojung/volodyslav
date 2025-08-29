@@ -345,14 +345,35 @@ function stubScheduler(capabilities) {
         const thisPeriod = periodOverride !== null ? periodOverride : originalPeriod;
         let thread = originalPeriodic(name, thisPeriod, callbackWrapper);
         
+        // Override the start method to use unref'd timers in test environment
+        const originalStart = thread.start.bind(thread);
+        thread.start = function() {
+            originalStart();
+            // In test environment, unref the timer so it doesn't prevent process exit
+            if (thread.interval) {
+                thread.interval.unref();
+            }
+        };
+        
+        // Override the stop method to remove from tracker when stopped
+        const originalStop = thread.stop.bind(thread);
+        thread.stop = function() {
+            originalStop();
+            globalThreadTracker.delete(thread);
+        };
+        
         // Track this thread globally for cleanup
         globalThreadTracker.add(thread);
 
         const setPollingInterval = (newPeriod) => {
             const wasRunning = thread.isRunning();
-            thread.stop();
+            if (wasRunning) {
+                // Use the original stop method to avoid removing from tracker
+                originalStop();
+            }
             thread.period = newPeriod;
             if (wasRunning) {
+                // Use the overridden start method which will unref the timer
                 thread.start();
             }
         };
@@ -406,9 +427,11 @@ function getSchedulerControl(capabilities) {
  * This should be called in test teardown to prevent resource leaks.
  */
 function cleanupAllSchedulerThreads() {
+    let stoppedCount = 0;
     for (const thread of globalThreadTracker) {
         if (thread.isRunning && thread.isRunning()) {
             thread.stop();
+            stoppedCount++;
         }
     }
     globalThreadTracker.clear();
