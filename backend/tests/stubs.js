@@ -345,7 +345,7 @@ function stubScheduler(capabilities) {
         const setPollingInterval = (newPeriod) => {
             const wasRunning = thread.isRunning();
             thread.stop();
-            thread = originalPeriodic(name, newPeriod, callbackWrapper);
+            thread.period = newPeriod;
             if (wasRunning) {
                 thread.start();
             }
