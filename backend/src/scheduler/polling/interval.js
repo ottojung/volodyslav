@@ -12,31 +12,18 @@ const POLL_INTERVAL_MS = 600000;
  * @returns {{start: () => void, stop: () => void}} Interval manager with start/stop methods
  */
 function makeIntervalManager(pollFunction, capabilities) {
-    /** @type {NodeJS.Timeout | null} */
-    let interval = null;
-
-    function start() {
-        if (interval === null) {
-            interval = setInterval(async () => {
-                try {
-                    await pollFunction();
-                } catch (error) {
-                    const message = error instanceof Error ? error.message : String(error);
-                    capabilities.logger.logError({ errorMessage: message }, `Unexpected poll error: ${message}`);
-                }
-            }, POLL_INTERVAL_MS);
-
-            // Allow Node.js to exit gracefully if this is the only remaining timer
-            interval.unref();
+    async function wrappedPoll() {
+        try {
+            await pollFunction();
+        } catch (error) {
+            const message = error instanceof Error ? error.message : String(error);
+            capabilities.logger.logError({ errorMessage: message }, `Unexpected poll error: ${message}`);
         }
     }
 
-    function stop() {
-        if (interval !== null) {
-            clearInterval(interval);
-            interval = null;
-        }
-    }
+    const thread = capabilities.threading.periodic("scheduler:poll", POLL_INTERVAL_MS, wrappedPoll);
+    const start = thread.start;    
+    const stop = thread.stop;
 
     return { start, stop };
 }
