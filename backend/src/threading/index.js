@@ -6,7 +6,10 @@
  */
 
 class PeriodicThread {
-    /** @type {undefined} */
+    /**
+     * @private
+     * @type {undefined} 
+     */
     __brand = undefined; // nominal typing brand
 
     /** @type {string} */
@@ -22,13 +25,16 @@ class PeriodicThread {
      * 
      * @param {string} name 
      * @param {number} period 
-     * @param {() => Promise<void>} callback 
+     * @param {Callback} callback 
      */
     constructor(name, period, callback) {
         this.name = name;
         this.period = period;
         this.callback = callback;
         this.interval = undefined;
+        if (this.__brand !== undefined) {
+            throw new Error("PeriodicThread is a nominal type.");
+        }
     }
 
     start() {
