@@ -2,6 +2,7 @@ const path = require("path");
 const fs = require("fs");
 const os = require("os");
 const { stubEventLogRepository } = require("./stub_event_log_repository");
+const { THREAD_NAME } = require("../src/scheduler/polling/interval");
 
 /**
  * Stubs the environment capabilities for testing.
@@ -309,7 +310,15 @@ function stubRuntimeStateStorage(capabilities) {
  */
 const stubPollInterval = (capabilities, period = 1) => {
     const originalPeriodic = capabilities.threading.periodic;
-    capabilities.threading.periodic = jest.fn().mockImplementation((name, _period, callback) => originalPeriodic(name, period, callback));
+
+    function periodic(name, original_period, callback) {
+        if (name === THREAD_NAME) {
+            original_period = period;
+        }
+        return originalPeriodic(name, original_period, callback);
+    }
+
+    capabilities.threading.periodic = jest.fn().mockImplementation(periodic);
 };
 
 module.exports = {
