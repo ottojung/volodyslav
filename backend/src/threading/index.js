@@ -69,7 +69,6 @@ function make() {
      * @returns {PeriodicThread}
      */
     function periodic(name, interval, callback) {
-        // FIXME: check that `name` has not been registered yet.
         return new PeriodicThread(name, interval, callback);
     }
 
