@@ -19,7 +19,7 @@ function getTestCapabilities() {
 describe("failure retry persistence", () => {
     beforeEach(() => {
         // Use fast polling for these tests
-        stubPollInterval(1);
+        stubPollInterval(capabilities, 1);
     });
     test("task failure sets pendingRetryUntil correctly", async () => {
         const capabilities = getTestCapabilities();

@@ -12,7 +12,7 @@ function getTestCapabilities() {
     stubSleeper(capabilities);
     // Use stubRuntimeStateStorage for faster execution and to expose the race condition
     stubRuntimeStateStorage(capabilities);
-    stubPollInterval(1); // Fast polling for tests
+    stubPollInterval(capabilities, 1); // Fast polling for tests
     return capabilities;
 }
 

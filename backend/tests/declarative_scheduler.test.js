@@ -21,7 +21,7 @@ function getTestCapabilities() {
     stubEnvironment(capabilities);
     stubSleeper(capabilities);
     stubDatetime(capabilities);
-    stubPollInterval(1);
+    stubPollInterval(capabilities, 1);
     return capabilities;
 }
 
