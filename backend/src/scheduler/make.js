@@ -174,6 +174,8 @@ function make(getCapabilities) {
         // Validate input and check persisted state
         const { persistedTasks } = await validateAndCheckPersistedState(registrations, capabilities);
 
+        const parsedRegistrations = parseRegistrations(registrations);
+
         // Handle polling scheduler lifecycle
         if (pollingScheduler !== null) {
             // Scheduler already running
@@ -182,6 +184,8 @@ function make(getCapabilities) {
                 "Scheduler already initialized"
             );
             return;
+        } else {
+            pollingScheduler = makePollingScheduler(capabilities, parsedRegistrations);
         }
 
         // Create polling scheduler
@@ -190,14 +194,10 @@ function make(getCapabilities) {
             "Creating new polling scheduler"
         );
 
-        const parsedRegistrations = parseRegistrations(registrations);
-
         if (persistedTasks === undefined) {
             // Persist tasks during first initialization.
             await mutateTasks(capabilities, parsedRegistrations, async () => undefined);
         }
-
-        pollingScheduler = makePollingScheduler(capabilities, parsedRegistrations);
 
         // Schedule all tasks
         const { scheduledCount, skippedCount } = await scheduleAllTasks(registrations, pollingScheduler, capabilities);
