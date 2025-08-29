@@ -314,7 +314,7 @@ function stubScheduler(capabilities) {
     }
 
     async function waitForNextCycleEnd() {
-        while (capabilities._stubbedScheduler === undefined) {
+        while (capabilities._stubbedScheduler.thread === undefined) {
             await new Promise(resolve => setTimeout(resolve, 1));
         }
         await capabilities._stubbedScheduler.waitForNextCycleEnd();
