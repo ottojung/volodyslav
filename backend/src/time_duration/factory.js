@@ -3,6 +3,7 @@
  * This provides a clean API for creating duration objects without direct constructor access.
  */
 
+const { Duration } = require('luxon');
 const { TimeDurationClass, InvalidDurationError } = require("./structure");
 
 /**
@@ -12,7 +13,10 @@ const { TimeDurationClass, InvalidDurationError } = require("./structure");
  * @throws {InvalidDurationError} When value is not a valid duration
  */
 function fromMilliseconds(value) {
-    return new TimeDurationClass(value);
+    if (!Number.isFinite(value) || value < 0) {
+        throw new InvalidDurationError("Milliseconds must be a non-negative finite number", value);
+    }
+    return new TimeDurationClass(Duration.fromMillis(value));
 }
 
 /**
@@ -25,7 +29,7 @@ function fromSeconds(value) {
     if (!Number.isFinite(value) || value < 0) {
         throw new InvalidDurationError("Seconds must be a non-negative finite number", value);
     }
-    return new TimeDurationClass(Math.floor(value * 1000));
+    return new TimeDurationClass(Duration.fromObject({ seconds: value }));
 }
 
 /**
@@ -38,7 +42,7 @@ function fromMinutes(value) {
     if (!Number.isFinite(value) || value < 0) {
         throw new InvalidDurationError("Minutes must be a non-negative finite number", value);
     }
-    return new TimeDurationClass(Math.floor(value * 60 * 1000));
+    return new TimeDurationClass(Duration.fromObject({ minutes: value }));
 }
 
 /**
@@ -51,7 +55,7 @@ function fromHours(value) {
     if (!Number.isFinite(value) || value < 0) {
         throw new InvalidDurationError("Hours must be a non-negative finite number", value);
     }
-    return new TimeDurationClass(Math.floor(value * 60 * 60 * 1000));
+    return new TimeDurationClass(Duration.fromObject({ hours: value }));
 }
 
 /**
@@ -64,7 +68,7 @@ function fromDays(value) {
     if (!Number.isFinite(value) || value < 0) {
         throw new InvalidDurationError("Days must be a non-negative finite number", value);
     }
-    return new TimeDurationClass(Math.floor(value * 24 * 60 * 60 * 1000));
+    return new TimeDurationClass(Duration.fromObject({ days: value }));
 }
 
 /**
@@ -72,7 +76,7 @@ function fromDays(value) {
  * @returns {import('./structure').TimeDuration}
  */
 function zero() {
-    return new TimeDurationClass(0);
+    return new TimeDurationClass(Duration.fromMillis(0));
 }
 
 /**
