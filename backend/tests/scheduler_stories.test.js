@@ -18,7 +18,7 @@ function getTestCapabilities() {
     return capabilities;
 }
 
-describe("scheduler time advancement demo", () => {
+describe("scheduler stories", () => {
     test("should observe multiple task invocations by advancing time gradually", async () => {
         const capabilities = getTestCapabilities();
         const timeControl = getDatetimeControl(capabilities);
