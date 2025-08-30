@@ -261,7 +261,7 @@ describe("Declarative Scheduler", () => {
 
             const capabilities = getTestCapabilities();
             const control = getSchedulerControl(capabilities);
-            control.setPollingInterval(100);
+            control.setPollingInterval(1);
 
             // Initialize the scheduler with very short poll interval for testing
             await capabilities.scheduler.initialize(registrations);
@@ -283,7 +283,7 @@ describe("Declarative Scheduler", () => {
 
             const capabilities = getTestCapabilities();
             const control = getSchedulerControl(capabilities);
-            control.setPollingInterval(100);
+            control.setPollingInterval(1);
 
             // First call to initialize
             await capabilities.scheduler.initialize(registrations);
