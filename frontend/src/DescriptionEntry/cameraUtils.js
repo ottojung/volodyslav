@@ -2,6 +2,7 @@
  * Camera integration utilities for DescriptionEntry (aggregated exports)
  */
 
+import { DateTime } from 'luxon';
 import {
     makePhotoRetrievalError,
     makePhotoConversionError,
@@ -17,7 +18,7 @@ import { retrievePhotos as getStoredPhotos, removePhotos as deleteStoredPhotos }
  * @returns {string} - A unique identifier
  */
 export const generateRequestIdentifier = () => {
-    return `camera_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    return `camera_${DateTime.now().toMillis()}_${Math.random().toString(36).substr(2, 9)}`;
 };
 /**
  * Navigates to the camera page with a request identifier

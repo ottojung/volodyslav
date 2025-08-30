@@ -4,7 +4,9 @@
  * using various time units (milliseconds, seconds, minutes, hours, days).
  */
 
-const { Duration } = require('luxon');
+/**
+ * @typedef {import('luxon').Duration} LuxonDuration
+ */
 
 /**
  * @typedef {object} TimeDurationData
@@ -12,7 +14,7 @@ const { Duration } = require('luxon');
  */
 
 class TimeDurationClass {
-    /** @type {import('luxon').Duration} */
+    /** @type {LuxonDuration} */
     _luxonDuration;
 
     /** @type {undefined} */
@@ -20,7 +22,7 @@ class TimeDurationClass {
 
     /**
      * Creates a new TimeDuration instance.
-     * @param {import('luxon').Duration} luxonDuration - The luxon Duration object
+     * @param {LuxonDuration} luxonDuration - The luxon Duration object
      */
     constructor(luxonDuration) {
         if (this.__brand !== undefined) {
@@ -155,11 +157,10 @@ class TimeDurationClass {
     }
 
     /**
-     * Gets the underlying Luxon Duration (for internal use only).
-     * @returns {import('luxon').Duration}
+     * Legacy compatibility property - gets the duration in milliseconds.
+     * @returns {number}
      */
     get milliseconds() {
-        // Legacy compatibility property
         return this.toMilliseconds();
     }
 }

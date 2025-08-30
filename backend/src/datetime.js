@@ -36,7 +36,11 @@ class DateTime {
      * @returns {string}
      */
     toISOString() {
-        return this._luxonDateTime.toISO();
+        const iso = this._luxonDateTime.toISO();
+        if (iso === null) {
+            throw new Error("Invalid DateTime: cannot convert to ISO string");
+        }
+        return iso;
     }
 
     /**
