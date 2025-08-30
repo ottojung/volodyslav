@@ -326,15 +326,19 @@ function stubScheduler(capabilities) {
     };
 
     function fakePeriodic(name, originalPeriod, callback) {
-        let startedCount = 0;
-        let finishedCount = 0;
+        let callbackIndex = 0;
+        const startedSet = new Set();
+        /** @type {Set<number>} */
+        const finishedSet = new Set();
 
         const callbackWrapper = async () => {
-            startedCount++;
+            callbackIndex++;
+            const currentKey = callbackIndex;
+            startedSet.add(currentKey);
             try {
                 return await callback();
             } finally {
-                finishedCount++
+                finishedSet.add(currentKey);
             }
         };
 
@@ -351,9 +355,29 @@ function stubScheduler(capabilities) {
         };
 
         const waitForNextCycleEnd = async () => {
-            const initialEndCount = finishedCount;
-            while (finishedCount === initialEndCount || finishedCount !== startedCount) {
-                await new Promise(resolve => setTimeout(resolve, 0));
+            await new Promise(resolve => setTimeout(resolve, 0));
+            const initialStarted = new Set([...startedSet]);
+
+            const allStartedFinished = () => {
+                for (const key of initialStarted) {
+                    if (!finishedSet.has(key)) {
+                        return false;
+                    }
+                }
+                return true;
+            };
+
+            const anyNewFinished = () => {
+                for (const key of finishedSet) {
+                    if (!initialStarted.has(key)) {
+                        return true;
+                    }
+                }
+                return false;
+            };
+
+            while (!(allStartedFinished() && anyNewFinished())) {
+                await new Promise(resolve => setTimeout(resolve, 1));
             }
         };
 
