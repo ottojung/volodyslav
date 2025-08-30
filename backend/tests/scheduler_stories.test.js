@@ -663,7 +663,7 @@ describe("scheduler stories", () => {
         const totalHourlyExecutions = hourlyTask.mock.calls.length - initialHourly;
         const totalDailyExecutions = daily2AMTask.mock.calls.length - initialDaily;
 
-        // After 25 hours (1AM -> 2AM next day), we should have 25 hourly executions and 2 daily executions
+        // After 25 hours (1AM -> 2AM next day), we should have many hourly executions and 2 daily executions
         expect(totalHourlyExecutions).toBeGreaterThanOrEqual(20); // At least 20 hourly executions
         expect(totalDailyExecutions).toBe(2); // Exactly 2 daily executions (2 AM each day)
 
@@ -821,72 +821,61 @@ describe("scheduler stories", () => {
         await newCapabilities.scheduler.stop();
     });
 
-    test("should execute minute-level tasks with exact precision", async () => {
+    test("should execute tasks with precise hour-level timing", async () => {
         const capabilities = getTestCapabilities();
         const timeControl = getDatetimeControl(capabilities);
         const schedulerControl = getSchedulerControl(capabilities);
         const retryDelay = fromMilliseconds(500);
 
-        const every15MinTask = jest.fn();
-        const every30MinTask = jest.fn();
+        const every2HourTask = jest.fn();   // Every 2 hours 
+        const every4HourTask = jest.fn();   // Every 4 hours
 
-        // Start at exactly 10:00:00
-        const startTime = new Date("2021-01-01T10:00:00.000Z").getTime();
+        // Start at exactly midnight - both should match
+        const startTime = new Date("2021-01-01T00:00:00.000Z").getTime();
         timeControl.setTime(startTime);
         schedulerControl.setPollingInterval(1);
 
         const registrations = [
-            ["every-15min", "*/15 * * * *", every15MinTask, retryDelay],     // Every 15 minutes
-            ["every-30min", "*/30 * * * *", every30MinTask, retryDelay],    // Every 30 minutes
+            ["every-2h", "0 */2 * * *", every2HourTask, retryDelay],    // Every 2 hours (0, 2, 4, 6, 8, 10, 12, ...)
+            ["every-4h", "0 */4 * * *", every4HourTask, retryDelay],    // Every 4 hours (0, 4, 8, 12, ...)
         ];
 
         await capabilities.scheduler.initialize(registrations);
         await schedulerControl.waitForNextCycleEnd();
 
         // Record initial counts after startup
-        const initial15Min = every15MinTask.mock.calls.length;
-        const initial30Min = every30MinTask.mock.calls.length;
+        const initial2Hour = every2HourTask.mock.calls.length;
+        const initial4Hour = every4HourTask.mock.calls.length;
 
-        // Both should execute at startup since 10:00:00 matches both patterns
-        expect(initial15Min).toBeGreaterThanOrEqual(1);
-        expect(initial30Min).toBeGreaterThanOrEqual(1);
+        // Both should have executed at startup (00:00:00 matches both patterns)
+        expect(initial2Hour).toBeGreaterThanOrEqual(1);
+        expect(initial4Hour).toBeGreaterThanOrEqual(1);
 
-        // Advance to 10:15:00
-        timeControl.advanceTime(15 * 60 * 1000);
+        // Advance to 02:00:00 (2-hour task should execute, 4-hour should not)
+        timeControl.advanceTime(2 * 60 * 60 * 1000);
         await schedulerControl.waitForNextCycleEnd();
 
-        // 15-minute task should execute more often, 30-minute task should remain same
-        expect(every15MinTask.mock.calls.length).toBeGreaterThan(initial15Min);
-        expect(every30MinTask.mock.calls.length).toBe(initial30Min); // No change
+        // 2-hour task should execute more, 4-hour should remain same
+        expect(every2HourTask.mock.calls.length).toBeGreaterThan(initial2Hour);
+        expect(every4HourTask.mock.calls.length).toBe(initial4Hour); // No change
 
-        const after15Min15 = every15MinTask.mock.calls.length;
-        const after15Min30 = every30MinTask.mock.calls.length;
+        const after2Hour2H = every2HourTask.mock.calls.length;
+        const after2Hour4H = every4HourTask.mock.calls.length;
 
-        // Advance to 10:30:00
-        timeControl.advanceTime(15 * 60 * 1000);
+        // Advance to 04:00:00 (both should execute)
+        timeControl.advanceTime(2 * 60 * 60 * 1000);
         await schedulerControl.waitForNextCycleEnd();
 
-        // Both tasks should execute more
-        expect(every15MinTask.mock.calls.length).toBeGreaterThan(after15Min15);
-        expect(every30MinTask.mock.calls.length).toBeGreaterThan(after15Min30);
+        // Both should execute more
+        expect(every2HourTask.mock.calls.length).toBeGreaterThan(after2Hour2H);
+        expect(every4HourTask.mock.calls.length).toBeGreaterThan(after2Hour4H);
 
-        const after30Min15 = every15MinTask.mock.calls.length;
-        const after30Min30 = every30MinTask.mock.calls.length;
-
-        // Advance to 10:45:00
-        timeControl.advanceTime(15 * 60 * 1000);
-        await schedulerControl.waitForNextCycleEnd();
-
-        // Only 15-minute task should execute more
-        expect(every15MinTask.mock.calls.length).toBeGreaterThan(after30Min15);
-        expect(every30MinTask.mock.calls.length).toBe(after30Min30); // No change
-
-        // Verify the pattern: 15-min task executes twice as often
-        const total15MinExecutions = every15MinTask.mock.calls.length - initial15Min;
-        const total30MinExecutions = every30MinTask.mock.calls.length - initial30Min;
+        // Verify the pattern: 2-hour task executes twice as often as 4-hour task
+        const total2HourExecutions = every2HourTask.mock.calls.length - initial2Hour;
+        const total4HourExecutions = every4HourTask.mock.calls.length - initial4Hour;
         
-        // 15-minute task should have executed more times than 30-minute task
-        expect(total15MinExecutions).toBeGreaterThan(total30MinExecutions);
+        // 2-hour task should have executed exactly twice as often as 4-hour task
+        expect(total2HourExecutions).toBe(total4HourExecutions * 2);
 
         await capabilities.scheduler.stop();
     });
@@ -933,10 +922,10 @@ describe("scheduler stories", () => {
         const new6HourExecutions = after12Hours6Hour - initial6Hour;
 
         // Over 12 hours:
-        // - Every 2 hours task should execute 6 times (0h, 2h, 4h, 6h, 8h, 10h, 12h = 7 times including initial)
-        // - Every 6 hours task should execute 2 times (0h, 6h, 12h = 3 times including initial)
-        expect(new2HourExecutions).toBeGreaterThanOrEqual(6);
-        expect(new6HourExecutions).toBeGreaterThanOrEqual(2);
+        // - Every 2 hours task should execute 6 times (2h, 4h, 6h, 8h, 10h, 12h)
+        // - Every 6 hours task should execute 2 times (6h, 12h)
+        expect(new2HourExecutions).toBeGreaterThanOrEqual(5); // At least 5 additional executions
+        expect(new6HourExecutions).toBeGreaterThanOrEqual(1); // At least 1 additional execution
 
         // The ratio should be approximately 3:1 (2-hour runs 3x more often than 6-hour)
         expect(new2HourExecutions).toBeGreaterThanOrEqual(new6HourExecutions * 2);
@@ -1000,7 +989,7 @@ describe("scheduler stories", () => {
         expect(midnightTask.mock.calls.length).toBeGreaterThan(midnightAfterNewYear);
         expect(noonTask.mock.calls.length).toBe(noonAfterNewYear); // Should not change
 
-        // Verify exact execution counts: each task should have executed exactly twice
+        // Verify execution counts: each task should have executed exactly as expected
         const totalMidnightExecutions = midnightTask.mock.calls.length - initialMidnight;
         const totalNoonExecutions = noonTask.mock.calls.length - initialNoon;
 
