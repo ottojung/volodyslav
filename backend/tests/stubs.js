@@ -326,7 +326,6 @@ function stubScheduler(capabilities) {
     };
 
     function fakePeriodic(name, originalPeriod, callback) {
-        // eslint-disable-next-line no-unused-vars
         let startedCount = 0;
         let finishedCount = 0;
 
@@ -353,8 +352,8 @@ function stubScheduler(capabilities) {
 
         const waitForNextCycleEnd = async () => {
             const initialEndCount = finishedCount;
-            while (finishedCount === initialEndCount) {
-                await new Promise(resolve => setTimeout(resolve, 1));
+            while (finishedCount === initialEndCount || finishedCount !== startedCount) {
+                await new Promise(resolve => setTimeout(resolve, 0));
             }
         };
 
