@@ -25,7 +25,7 @@ function makePollingFunction(capabilities, registrations, scheduledTasks, taskEx
         if (collectionInProgress) {
             capabilities.logger.logDebug({ reason: "pollInProgress" }, "Waiting for collection to finish");
             while (collectionInProgress) {
-                await capabilities.sleeper.sleep(0);    
+                await capabilities.sleeper.sleep(100);    
             }
         }
 
