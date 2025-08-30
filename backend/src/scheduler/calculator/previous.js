@@ -101,8 +101,8 @@ function findPreviousFire(parsedCron, now, dt, lastKnownFireTime) {
         const fallbackScanLimit = Math.min(60 * 24, 10000); // 1 day or 10k max
 
         for (let i = 1; i <= fallbackScanLimit; i++) {
-            const candidate = new Date(currentMinute.getTime() - (i * 60 * 1000));
-            const candidateDt = dt.fromEpochMs(candidate.getTime());
+            const candidateMs = currentMinute.getTime() - (i * 60 * 1000);
+            const candidateDt = dt.fromEpochMs(candidateMs);
             if (matchesCronExpression(parsedCron, candidateDt)) {
                 return {
                     previousFire: candidateDt,

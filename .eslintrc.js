@@ -49,5 +49,14 @@ module.exports = {
         // Disable prop-types validation since we use TypeScript
         "react/prop-types": "off",
     },
+    overrides: [
+        {
+            // Allow Date class usage in test files for test setup/mocking
+            files: ["**/tests/**/*.js", "**/test/**/*.js", "**/*.test.js", "**/*.spec.js"],
+            rules: {
+                "volodyslav/no-date-class": "off"
+            }
+        }
+    ],
     ignorePatterns: ["dist/", "node_modules/", "coverage/", "docs/build/"],
 };

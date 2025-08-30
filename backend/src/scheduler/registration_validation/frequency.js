@@ -53,12 +53,13 @@ class ScheduleFrequencyError extends Error {
 function generateTestBaseTimes(dt) {
     const now = dt.now();
     const baseTime = dt.toNativeDate(now);
+    const baseMs = baseTime.getTime();
     
     return [
         baseTime,
-        new Date(baseTime.getTime() + 60 * 1000), // +1 minute
-        new Date(baseTime.getTime() + 60 * 60 * 1000), // +1 hour
-        new Date(baseTime.getTime() + 24 * 60 * 60 * 1000), // +1 day
+        dt.toNativeDate(dt.fromEpochMs(baseMs + 60 * 1000)), // +1 minute
+        dt.toNativeDate(dt.fromEpochMs(baseMs + 60 * 60 * 1000)), // +1 hour
+        dt.toNativeDate(dt.fromEpochMs(baseMs + 24 * 60 * 60 * 1000)), // +1 day
     ];
 }
 

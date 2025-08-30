@@ -27,6 +27,7 @@
     "@babel/preset-react": "^7.27.1",
     "@types/express": "^4.17.17",
     "@types/jest": "^29.5.14",
+    "@types/luxon": "^3.7.1",
     "@types/node": "^18.19.123",
     "@types/react": "^18.2.14",
     "@types/react-dom": "^18.2.7",
@@ -44,6 +45,7 @@
     "typescript": "^5.1.6"
   },
   "dependencies": {
-    "eslint-plugin-volodyslav": "file:tools/eslint-plugin-volodyslav"
+    "eslint-plugin-volodyslav": "file:tools/eslint-plugin-volodyslav",
+    "luxon": "^3.7.1"
   }
 }
