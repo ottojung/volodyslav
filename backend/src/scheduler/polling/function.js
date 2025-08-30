@@ -18,28 +18,32 @@ const { evaluateTasksForExecution } = require('../execution');
  */
 function makePollingFunction(capabilities, registrations, scheduledTasks, taskExecutor) {
     const dt = capabilities.datetime;
-    let pollInProgress = false; // Guard against re-entrant polls
+    let collectionInProgress = false; // Guard against re-entrant collections
 
     return async function poll() {
         // Guard against re-entrant polls
-        if (pollInProgress) {
-            capabilities.logger.logDebug({ reason: "pollInProgress" }, "PollSkipped");
-            return;
+        if (collectionInProgress) {
+            capabilities.logger.logDebug({ reason: "pollInProgress" }, "Waiting for collection to finish");
+            while (collectionInProgress) {
+                await capabilities.sleeper.sleep(0);    
+            }
         }
 
-        pollInProgress = true;
+        collectionInProgress = true;
+
+        /** @type {Array<{taskName: string, mode: "retry"|"cron", callback: Callback}>} */
+        let dueTasks = [];
+        /** @type {{dueRetry: number, dueCron: number, skippedRunning: number, skippedRetryFuture: number, skippedNotDue: number}} */
+        let stats = {
+            dueRetry: 0,
+            dueCron: 0,
+            skippedRunning: 0,
+            skippedRetryFuture: 0,
+            skippedNotDue: 0,
+        };
+
         try {
             const now = dt.now();
-            /** @type {Array<{taskName: string, mode: "retry"|"cron", callback: Callback}>} */
-            let dueTasks = [];
-            /** @type {{dueRetry: number, dueCron: number, skippedRunning: number, skippedRetryFuture: number, skippedNotDue: number}} */
-            let stats = {
-                dueRetry: 0,
-                dueCron: 0,
-                skippedRunning: 0,
-                skippedRetryFuture: 0,
-                skippedNotDue: 0,
-            };
 
             // Evaluate which tasks should be executed
             await mutateTasks(capabilities, registrations, (tasks) => {
@@ -47,24 +51,24 @@ function makePollingFunction(capabilities, registrations, scheduledTasks, taskEx
                 dueTasks = result.dueTasks;
                 stats = result.stats;
             });
-
-            // Execute all due tasks in parallel
-            await taskExecutor.executeTasks(dueTasks);
-
-            capabilities.logger.logDebug(
-                {
-                    due: dueTasks.length,
-                    dueRetry: stats.dueRetry,
-                    dueCron: stats.dueCron,
-                    skippedRunning: stats.skippedRunning,
-                    skippedRetryFuture: stats.skippedRetryFuture,
-                    skippedNotDue: stats.skippedNotDue,
-                },
-                "PollSummary"
-            );
         } finally {
-            pollInProgress = false;
+            collectionInProgress = false;
         }
+
+        // Execute all due tasks in parallel
+        await taskExecutor.executeTasks(dueTasks);
+
+        capabilities.logger.logDebug(
+            {
+                due: dueTasks.length,
+                dueRetry: stats.dueRetry,
+                dueCron: stats.dueCron,
+                skippedRunning: stats.skippedRunning,
+                skippedRetryFuture: stats.skippedRetryFuture,
+                skippedNotDue: stats.skippedNotDue,
+            },
+            "PollSummary"
+        );
     };
 }
 
