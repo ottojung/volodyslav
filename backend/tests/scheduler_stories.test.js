@@ -45,7 +45,7 @@ describe("scheduler stories", () => {
 
         // The scheduler may or may not catch up immediately - check current call count
         const initialCalls = taskCallback.mock.calls.length;
-        
+
         // Now test that advancing time triggers new executions
         // Advance time to 00:30:00 (first execution after initialization)
         timeControl.advanceTime(25 * 60 * 1000); // 25 minutes to reach 00:30:00
@@ -53,7 +53,7 @@ describe("scheduler stories", () => {
 
         // Should have at least one more call than initial
         expect(taskCallback.mock.calls.length).toBeGreaterThan(initialCalls);
-        
+
         const afterFirstAdvance = taskCallback.mock.calls.length;
 
         // Advance to 01:30:00
@@ -101,7 +101,7 @@ describe("scheduler stories", () => {
 
         // Test that the scheduler is running and tasks are registered
         // This is mainly a smoke test to ensure the multiple task scheduling works
-        
+
         await capabilities.scheduler.stop();
     });
 
@@ -175,7 +175,7 @@ describe("scheduler stories", () => {
         // Check that task has executed and recorded times
         expect(taskCallback.executionTimes).toBeDefined();
         expect(taskCallback.executionTimes.length).toBeGreaterThan(0);
-        
+
         const initialExecutions = taskCallback.executionTimes.length;
 
         // Advance to next execution (01:00:00)
