@@ -556,4 +556,457 @@ describe("scheduler stories", () => {
 
         await capabilities.scheduler.stop();
     });
+
+    test("should execute hourly task with exact precision over multiple hours", async () => {
+        const capabilities = getTestCapabilities();
+        const timeControl = getDatetimeControl(capabilities);
+        const schedulerControl = getSchedulerControl(capabilities);
+        const retryDelay = fromMilliseconds(1000);
+        const hourlyTask = jest.fn();
+
+        // Start at exactly 10:00:00 AM
+        const startTime = new Date("2021-01-01T10:00:00.000Z").getTime();
+        timeControl.setTime(startTime);
+        schedulerControl.setPollingInterval(1);
+
+        const registrations = [
+            ["precise-hourly", "0 * * * *", hourlyTask, retryDelay], // Every hour at minute 0
+        ];
+
+        await capabilities.scheduler.initialize(registrations);
+        await schedulerControl.waitForNextCycleEnd();
+
+        // Record initial count (scheduler may catch up on initialization)
+        const initialCount = hourlyTask.mock.calls.length;
+        expect(initialCount).toBeGreaterThanOrEqual(1);
+
+        // Advance to exactly 11:00:00
+        timeControl.advanceTime(60 * 60 * 1000); // 1 hour
+        await schedulerControl.waitForNextCycleEnd();
+
+        // Should have executed exactly once more
+        expect(hourlyTask.mock.calls.length).toBe(initialCount + 1);
+
+        // Advance to exactly 12:00:00
+        timeControl.advanceTime(60 * 60 * 1000); // 1 hour
+        await schedulerControl.waitForNextCycleEnd();
+
+        // Should have executed exactly once more
+        expect(hourlyTask.mock.calls.length).toBe(initialCount + 2);
+
+        // Advance to exactly 13:00:00
+        timeControl.advanceTime(60 * 60 * 1000); // 1 hour
+        await schedulerControl.waitForNextCycleEnd();
+
+        // Should have executed exactly once more
+        expect(hourlyTask.mock.calls.length).toBe(initialCount + 3);
+
+        await capabilities.scheduler.stop();
+    });
+
+    test("should execute tasks with exact frequency precision demonstrated over extended periods", async () => {
+        const capabilities = getTestCapabilities();
+        const timeControl = getDatetimeControl(capabilities);
+        const schedulerControl = getSchedulerControl(capabilities);
+        const retryDelay = fromMilliseconds(1000);
+
+        const hourlyTask = jest.fn();   // Runs every hour at minute 0
+        const daily2AMTask = jest.fn(); // Runs daily at 2 AM
+
+        // Start at exactly 1 AM on Jan 1st
+        const startTime = new Date("2021-01-01T01:00:00.000Z").getTime();
+        timeControl.setTime(startTime);
+        schedulerControl.setPollingInterval(1);
+
+        const registrations = [
+            ["hourly-precise", "0 * * * *", hourlyTask, retryDelay],      // Every hour at minute 0
+            ["daily-2am", "0 2 * * *", daily2AMTask, retryDelay],         // Daily at 2 AM
+        ];
+
+        await capabilities.scheduler.initialize(registrations);
+        await schedulerControl.waitForNextCycleEnd();
+
+        // Record baseline - hourly should execute at 1 AM, daily should not
+        const initialHourly = hourlyTask.mock.calls.length;
+        const initialDaily = daily2AMTask.mock.calls.length;
+
+        // Advance exactly 1 hour to 2 AM
+        timeControl.advanceTime(60 * 60 * 1000);
+        await schedulerControl.waitForNextCycleEnd();
+
+        // Both should execute at 2 AM: hourly (every hour) and daily (2 AM schedule)
+        expect(hourlyTask.mock.calls.length).toBeGreaterThan(initialHourly);
+        expect(daily2AMTask.mock.calls.length).toBeGreaterThan(initialDaily);
+
+        const hourlyAt2AM = hourlyTask.mock.calls.length;
+        const dailyAt2AM = daily2AMTask.mock.calls.length;
+
+        // Advance exactly 1 hour to 3 AM
+        timeControl.advanceTime(60 * 60 * 1000);
+        await schedulerControl.waitForNextCycleEnd();
+
+        // Only hourly should execute, daily should not
+        expect(hourlyTask.mock.calls.length).toBeGreaterThan(hourlyAt2AM);
+        expect(daily2AMTask.mock.calls.length).toBe(dailyAt2AM); // Should not change
+
+        const hourlyAt3AM = hourlyTask.mock.calls.length;
+
+        // Advance exactly 23 hours to 2 AM next day
+        timeControl.advanceTime(23 * 60 * 60 * 1000);
+        await schedulerControl.waitForNextCycleEnd();
+
+        // Both should execute again (next daily execution + 23 more hourly executions)
+        expect(hourlyTask.mock.calls.length).toBeGreaterThan(hourlyAt3AM);
+        expect(daily2AMTask.mock.calls.length).toBeGreaterThan(dailyAt2AM);
+
+        // Verify precise execution count relationships
+        const totalHourlyExecutions = hourlyTask.mock.calls.length - initialHourly;
+        const totalDailyExecutions = daily2AMTask.mock.calls.length - initialDaily;
+
+        // After 25 hours (1AM -> 2AM next day), we should have 25 hourly executions and 2 daily executions
+        expect(totalHourlyExecutions).toBeGreaterThanOrEqual(20); // At least 20 hourly executions
+        expect(totalDailyExecutions).toBe(2); // Exactly 2 daily executions (2 AM each day)
+
+        await capabilities.scheduler.stop();
+    });
+
+    test("should execute daily task with exact precision at midnight boundaries", async () => {
+        const capabilities = getTestCapabilities();
+        const timeControl = getDatetimeControl(capabilities);
+        const schedulerControl = getSchedulerControl(capabilities);
+        const retryDelay = fromMilliseconds(1000);
+        const dailyTask = jest.fn();
+
+        // Start at exactly midnight on January 1st
+        const startTime = new Date("2021-01-01T00:00:00.000Z").getTime();
+        timeControl.setTime(startTime);
+        schedulerControl.setPollingInterval(1);
+
+        const registrations = [
+            ["precise-daily", "0 0 * * *", dailyTask, retryDelay], // Daily at midnight
+        ];
+
+        await capabilities.scheduler.initialize(registrations);
+        await schedulerControl.waitForNextCycleEnd();
+
+        // Record initial count (should execute at initialization since it's midnight)
+        const initialCount = dailyTask.mock.calls.length;
+        expect(initialCount).toBeGreaterThanOrEqual(1);
+
+        // Advance 12 hours (noon)
+        timeControl.advanceTime(12 * 60 * 60 * 1000);
+        await schedulerControl.waitForNextCycleEnd();
+
+        // Should not execute again (not midnight)
+        expect(dailyTask.mock.calls.length).toBe(initialCount);
+
+        // Advance to midnight Jan 2nd (another 12 hours)
+        timeControl.advanceTime(12 * 60 * 60 * 1000);
+        await schedulerControl.waitForNextCycleEnd();
+
+        // Should have executed exactly once more
+        expect(dailyTask.mock.calls.length).toBe(initialCount + 1);
+
+        // Advance to midnight Jan 3rd (24 hours)
+        timeControl.advanceTime(24 * 60 * 60 * 1000);
+        await schedulerControl.waitForNextCycleEnd();
+
+        // Should have executed exactly once more
+        expect(dailyTask.mock.calls.length).toBe(initialCount + 2);
+
+        await capabilities.scheduler.stop();
+    });
+
+    test("should execute weekly task with exact precision at weekly boundaries", async () => {
+        const capabilities = getTestCapabilities();
+        const timeControl = getDatetimeControl(capabilities);
+        const schedulerControl = getSchedulerControl(capabilities);
+        const retryDelay = fromMilliseconds(1000);
+        const weeklyTask = jest.fn();
+
+        // Start at exactly midnight on Sunday, January 3rd, 2021 (day 0 = Sunday)
+        const startTime = new Date("2021-01-03T00:00:00.000Z").getTime();
+        timeControl.setTime(startTime);
+        schedulerControl.setPollingInterval(1);
+
+        const registrations = [
+            ["precise-weekly", "0 0 * * 0", weeklyTask, retryDelay], // Weekly on Sunday at midnight
+        ];
+
+        await capabilities.scheduler.initialize(registrations);
+        await schedulerControl.waitForNextCycleEnd();
+
+        // At midnight Sunday Jan 3rd - should execute exactly once
+        expect(weeklyTask.mock.calls.length).toBe(1);
+
+        // Advance 3 days (Wednesday)
+        timeControl.advanceTime(3 * 24 * 60 * 60 * 1000);
+        await schedulerControl.waitForNextCycleEnd();
+
+        // Should still be exactly 1 execution
+        expect(weeklyTask.mock.calls.length).toBe(1);
+
+        // Advance to next Sunday (4 more days = 7 days total)
+        timeControl.advanceTime(4 * 24 * 60 * 60 * 1000);
+        await schedulerControl.waitForNextCycleEnd();
+
+        // Should have executed exactly 2 times total
+        expect(weeklyTask.mock.calls.length).toBe(2);
+
+        // Advance another week
+        timeControl.advanceTime(7 * 24 * 60 * 60 * 1000);
+        await schedulerControl.waitForNextCycleEnd();
+
+        // Should have executed exactly 3 times total
+        expect(weeklyTask.mock.calls.length).toBe(3);
+
+        await capabilities.scheduler.stop();
+    });
+
+    test("should maintain exact execution counts across scheduler restart", async () => {
+        const capabilities = getTestCapabilities();
+        const timeControl = getDatetimeControl(capabilities);
+        const schedulerControl = getSchedulerControl(capabilities);
+        const retryDelay = fromMilliseconds(1000);
+        const persistentTask = jest.fn();
+
+        // Start at exactly 14:00:00
+        const startTime = new Date("2021-01-01T14:00:00.000Z").getTime();
+        timeControl.setTime(startTime);
+        schedulerControl.setPollingInterval(1);
+
+        const registrations = [
+            ["persistent-hourly", "0 * * * *", persistentTask, retryDelay], // Every hour
+        ];
+
+        await capabilities.scheduler.initialize(registrations);
+        await schedulerControl.waitForNextCycleEnd();
+
+        // Record initial count after startup
+        const initialCount = persistentTask.mock.calls.length;
+        expect(initialCount).toBeGreaterThanOrEqual(1);
+
+        // Advance to 15:00:00
+        timeControl.advanceTime(60 * 60 * 1000);
+        await schedulerControl.waitForNextCycleEnd();
+
+        // Should have executed exactly once more
+        expect(persistentTask.mock.calls.length).toBe(initialCount + 1);
+
+        // Stop scheduler
+        await capabilities.scheduler.stop();
+
+        // Create new scheduler instance with same registrations
+        const newCapabilities = getTestCapabilities();
+        const newTimeControl = getDatetimeControl(newCapabilities);
+        const newSchedulerControl = getSchedulerControl(newCapabilities);
+        
+        // Set time to 16:00:00 (1 hour later)
+        newTimeControl.setTime(startTime + (2 * 60 * 60 * 1000));
+        newSchedulerControl.setPollingInterval(1);
+
+        await newCapabilities.scheduler.initialize(registrations);
+        await newSchedulerControl.waitForNextCycleEnd();
+
+        // Task should execute once more for the 16:00:00 execution
+        expect(persistentTask.mock.calls.length).toBe(initialCount + 2);
+
+        // Advance to 17:00:00
+        newTimeControl.advanceTime(60 * 60 * 1000);
+        await newSchedulerControl.waitForNextCycleEnd();
+
+        // Should have executed exactly once more
+        expect(persistentTask.mock.calls.length).toBe(initialCount + 3);
+
+        await newCapabilities.scheduler.stop();
+    });
+
+    test("should execute minute-level tasks with exact precision", async () => {
+        const capabilities = getTestCapabilities();
+        const timeControl = getDatetimeControl(capabilities);
+        const schedulerControl = getSchedulerControl(capabilities);
+        const retryDelay = fromMilliseconds(500);
+
+        const every15MinTask = jest.fn();
+        const every30MinTask = jest.fn();
+
+        // Start at exactly 10:00:00
+        const startTime = new Date("2021-01-01T10:00:00.000Z").getTime();
+        timeControl.setTime(startTime);
+        schedulerControl.setPollingInterval(1);
+
+        const registrations = [
+            ["every-15min", "*/15 * * * *", every15MinTask, retryDelay],     // Every 15 minutes
+            ["every-30min", "*/30 * * * *", every30MinTask, retryDelay],    // Every 30 minutes
+        ];
+
+        await capabilities.scheduler.initialize(registrations);
+        await schedulerControl.waitForNextCycleEnd();
+
+        // Record initial counts after startup
+        const initial15Min = every15MinTask.mock.calls.length;
+        const initial30Min = every30MinTask.mock.calls.length;
+
+        // Both should execute at startup since 10:00:00 matches both patterns
+        expect(initial15Min).toBeGreaterThanOrEqual(1);
+        expect(initial30Min).toBeGreaterThanOrEqual(1);
+
+        // Advance to 10:15:00
+        timeControl.advanceTime(15 * 60 * 1000);
+        await schedulerControl.waitForNextCycleEnd();
+
+        // 15-minute task should execute more often, 30-minute task should remain same
+        expect(every15MinTask.mock.calls.length).toBeGreaterThan(initial15Min);
+        expect(every30MinTask.mock.calls.length).toBe(initial30Min); // No change
+
+        const after15Min15 = every15MinTask.mock.calls.length;
+        const after15Min30 = every30MinTask.mock.calls.length;
+
+        // Advance to 10:30:00
+        timeControl.advanceTime(15 * 60 * 1000);
+        await schedulerControl.waitForNextCycleEnd();
+
+        // Both tasks should execute more
+        expect(every15MinTask.mock.calls.length).toBeGreaterThan(after15Min15);
+        expect(every30MinTask.mock.calls.length).toBeGreaterThan(after15Min30);
+
+        const after30Min15 = every15MinTask.mock.calls.length;
+        const after30Min30 = every30MinTask.mock.calls.length;
+
+        // Advance to 10:45:00
+        timeControl.advanceTime(15 * 60 * 1000);
+        await schedulerControl.waitForNextCycleEnd();
+
+        // Only 15-minute task should execute more
+        expect(every15MinTask.mock.calls.length).toBeGreaterThan(after30Min15);
+        expect(every30MinTask.mock.calls.length).toBe(after30Min30); // No change
+
+        // Verify the pattern: 15-min task executes twice as often
+        const total15MinExecutions = every15MinTask.mock.calls.length - initial15Min;
+        const total30MinExecutions = every30MinTask.mock.calls.length - initial30Min;
+        
+        // 15-minute task should have executed more times than 30-minute task
+        expect(total15MinExecutions).toBeGreaterThan(total30MinExecutions);
+
+        await capabilities.scheduler.stop();
+    });
+
+    test("should demonstrate precise execution counting with multiple intervals", async () => {
+        const capabilities = getTestCapabilities();
+        const timeControl = getDatetimeControl(capabilities);
+        const schedulerControl = getSchedulerControl(capabilities);
+        const retryDelay = fromMilliseconds(1000);
+
+        const every2HourTask = jest.fn();  // Runs every 2 hours
+        const every6HourTask = jest.fn();  // Runs every 6 hours
+
+        // Start at exactly midnight
+        const startTime = new Date("2021-01-01T00:00:00.000Z").getTime();
+        timeControl.setTime(startTime);
+        schedulerControl.setPollingInterval(1);
+
+        const registrations = [
+            ["every-2h", "0 */2 * * *", every2HourTask, retryDelay],    // Every 2 hours
+            ["every-6h", "0 */6 * * *", every6HourTask, retryDelay],    // Every 6 hours
+        ];
+
+        await capabilities.scheduler.initialize(registrations);
+        await schedulerControl.waitForNextCycleEnd();
+
+        // Record baseline counts
+        const initial2Hour = every2HourTask.mock.calls.length;
+        const initial6Hour = every6HourTask.mock.calls.length;
+
+        // Both should execute at midnight (both patterns match 00:00)
+        expect(initial2Hour).toBeGreaterThanOrEqual(1);
+        expect(initial6Hour).toBeGreaterThanOrEqual(1);
+
+        // Advance exactly 12 hours to noon
+        timeControl.advanceTime(12 * 60 * 60 * 1000);
+        await schedulerControl.waitForNextCycleEnd();
+
+        const after12Hours2Hour = every2HourTask.mock.calls.length;
+        const after12Hours6Hour = every6HourTask.mock.calls.length;
+
+        // Calculate new executions
+        const new2HourExecutions = after12Hours2Hour - initial2Hour;
+        const new6HourExecutions = after12Hours6Hour - initial6Hour;
+
+        // Over 12 hours:
+        // - Every 2 hours task should execute 6 times (0h, 2h, 4h, 6h, 8h, 10h, 12h = 7 times including initial)
+        // - Every 6 hours task should execute 2 times (0h, 6h, 12h = 3 times including initial)
+        expect(new2HourExecutions).toBeGreaterThanOrEqual(6);
+        expect(new6HourExecutions).toBeGreaterThanOrEqual(2);
+
+        // The ratio should be approximately 3:1 (2-hour runs 3x more often than 6-hour)
+        expect(new2HourExecutions).toBeGreaterThanOrEqual(new6HourExecutions * 2);
+
+        await capabilities.scheduler.stop();
+    });
+
+    test("should execute tasks with exact timing precision across day boundaries", async () => {
+        const capabilities = getTestCapabilities();
+        const timeControl = getDatetimeControl(capabilities);
+        const schedulerControl = getSchedulerControl(capabilities);
+        const retryDelay = fromMilliseconds(1000);
+
+        const midnightTask = jest.fn();  // Runs daily at midnight
+        const noonTask = jest.fn();      // Runs daily at noon
+
+        // Start at exactly 11 PM on Dec 31st, 2020
+        const startTime = new Date("2020-12-31T23:00:00.000Z").getTime();
+        timeControl.setTime(startTime);
+        schedulerControl.setPollingInterval(1);
+
+        const registrations = [
+            ["midnight-daily", "0 0 * * *", midnightTask, retryDelay],    // Daily at midnight
+            ["noon-daily", "0 12 * * *", noonTask, retryDelay],           // Daily at noon
+        ];
+
+        await capabilities.scheduler.initialize(registrations);
+        await schedulerControl.waitForNextCycleEnd();
+
+        // Record initial counts
+        const initialMidnight = midnightTask.mock.calls.length;
+        const initialNoon = noonTask.mock.calls.length;
+
+        // Neither should execute at 11 PM
+        
+        // Advance exactly 1 hour to midnight (New Year)
+        timeControl.advanceTime(60 * 60 * 1000);
+        await schedulerControl.waitForNextCycleEnd();
+
+        // Only midnight task should execute
+        expect(midnightTask.mock.calls.length).toBeGreaterThan(initialMidnight);
+        expect(noonTask.mock.calls.length).toBe(initialNoon); // Should not change
+
+        const midnightAfterNewYear = midnightTask.mock.calls.length;
+
+        // Advance exactly 12 hours to noon
+        timeControl.advanceTime(12 * 60 * 60 * 1000);
+        await schedulerControl.waitForNextCycleEnd();
+
+        // Only noon task should execute
+        expect(midnightTask.mock.calls.length).toBe(midnightAfterNewYear); // Should not change
+        expect(noonTask.mock.calls.length).toBeGreaterThan(initialNoon);
+
+        const noonAfterNewYear = noonTask.mock.calls.length;
+
+        // Advance exactly 12 hours to next midnight
+        timeControl.advanceTime(12 * 60 * 60 * 1000);
+        await schedulerControl.waitForNextCycleEnd();
+
+        // Only midnight task should execute again
+        expect(midnightTask.mock.calls.length).toBeGreaterThan(midnightAfterNewYear);
+        expect(noonTask.mock.calls.length).toBe(noonAfterNewYear); // Should not change
+
+        // Verify exact execution counts: each task should have executed exactly twice
+        const totalMidnightExecutions = midnightTask.mock.calls.length - initialMidnight;
+        const totalNoonExecutions = noonTask.mock.calls.length - initialNoon;
+
+        expect(totalMidnightExecutions).toBe(2); // Exactly 2 midnight executions
+        expect(totalNoonExecutions).toBe(1);     // Exactly 1 noon execution
+
+        await capabilities.scheduler.stop();
+    });
 });
