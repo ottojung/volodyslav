@@ -35,20 +35,25 @@ function isCronCalculationError(object) {
 function getNextExecution(cronExpr, fromDateTime) {
     const dt = datetime.make();
     const fromNative = dt.toNativeDate(fromDateTime);
-    const next = new Date(fromNative);
-    next.setSeconds(0, 0); // Reset seconds and milliseconds
-    next.setMinutes(next.getMinutes() + 1); // Start from next minute
+    
+    // Create next minute in milliseconds and convert back to DateTime
+    const fromMs = fromNative.getTime();
+    const nextMinuteMs = Math.floor(fromMs / (60 * 1000)) * (60 * 1000) + (60 * 1000); // Round up to next minute
+    const nextDt = dt.fromEpochMs(nextMinuteMs);
 
     // Limit iterations to prevent infinite loops
     const maxIterations = 366 * 24 * 60; // One year worth of minutes
     let iterations = 0;
 
+    let currentDt = nextDt;
+
     while (iterations < maxIterations) {
-        const nextDateTime = dt.fromEpochMs(next.getTime());
-        if (matchesCronExpression(cronExpr, nextDateTime)) {
-            return nextDateTime;
+        if (matchesCronExpression(cronExpr, currentDt)) {
+            return currentDt;
         }
-        next.setMinutes(next.getMinutes() + 1);
+        // Add one minute (60,000 milliseconds)
+        const nextMs = dt.toEpochMs(currentDt) + (60 * 1000);
+        currentDt = dt.fromEpochMs(nextMs);
         iterations++;
     }
 

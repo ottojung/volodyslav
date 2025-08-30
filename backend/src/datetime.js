@@ -40,7 +40,8 @@ class DateTime {
         if (iso === null) {
             throw new Error("Invalid DateTime: cannot convert to ISO string");
         }
-        return iso;
+        // Convert +00:00 to Z for backward compatibility with native Date
+        return iso.replace('+00:00', 'Z');
     }
 
     /**
