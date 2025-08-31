@@ -1,7 +1,7 @@
 
 /**
  * @typedef {import('../../logger').Logger} Logger
- * @typedef {import('../../time_duration').TimeDuration} TimeDuration
+ * @typedef {import('luxon').Duration} Duration
  * @typedef {import('../types').CronExpression} CronExpression
  * @typedef {import('../../datetime').DateTime} DateTime
  * @typedef {import('../types').Callback} Callback
@@ -18,7 +18,7 @@ class TaskClass {
      * @param {string} name
      * @param {CronExpression} parsedCron
      * @param {Callback} callback
-     * @param {TimeDuration} retryDelay
+     * @param {Duration} retryDelay
      * @param {DateTime|undefined} lastSuccessTime
      * @param {DateTime|undefined} lastFailureTime
      * @param {DateTime|undefined} lastAttemptTime
@@ -46,7 +46,7 @@ class TaskClass {
  * @param {string} name
  * @param {CronExpression} parsedCron
  * @param {Callback} callback
- * @param {TimeDuration} retryDelay
+ * @param {Duration} retryDelay
  * @param {DateTime|undefined} lastSuccessTime
  * @param {DateTime|undefined} lastFailureTime
  * @param {DateTime|undefined} lastAttemptTime

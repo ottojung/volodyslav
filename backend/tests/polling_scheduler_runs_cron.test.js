@@ -3,7 +3,7 @@
  * Focuses on validating cron expressions are properly accepted during initialization.
  */
 
-const { fromMilliseconds } = require("../src/time_duration");
+const { Duration } = require("luxon");
 const { getMockedRootCapabilities } = require("./spies");
 const { stubEnvironment, stubLogger, stubDatetime, stubSleeper, stubScheduler } = require("./stubs");
 
@@ -21,7 +21,7 @@ describe("declarative scheduler cron expression validation", () => {
     test("accepts valid cron expressions during initialization", async () => {
         const capabilities = getTestCapabilities();
         const taskCallback = jest.fn();
-        const retryDelay = fromMilliseconds(0);
+        const retryDelay = Duration.fromMillis(0);
         
         // Test various valid cron expressions
         const registrations = [
@@ -42,7 +42,7 @@ describe("declarative scheduler cron expression validation", () => {
     test("validates cron expressions are compatible with polling frequency", async () => {
         const capabilities = getTestCapabilities();
         const taskCallback = jest.fn();
-        const retryDelay = fromMilliseconds(0);
+        const retryDelay = Duration.fromMillis(0);
         
         // Task that runs every hour - should be compatible with 1-minute polling
         const validRegistrations = [

@@ -32,7 +32,7 @@ async function getCurrentState(storage, registrations, datetime) {
             ret.tasks.push({
                 name: registration.name,
                 cronExpression: registration.parsedCron.original,
-                retryDelayMs: registration.retryDelay.toMilliseconds(),
+                retryDelayMs: registration.retryDelay.toMillis(),
             });
         }
 

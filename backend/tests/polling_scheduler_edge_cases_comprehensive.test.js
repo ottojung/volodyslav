@@ -3,7 +3,7 @@
  * Tests boundary conditions, error scenarios, and complex edge cases.
  */
 
-const { fromMilliseconds } = require("../src/time_duration");
+const { Duration } = require("luxon");
 const { getMockedRootCapabilities } = require("./spies");
 const { stubEnvironment, stubLogger, stubDatetime, stubSleeper, stubRuntimeStateStorage, stubScheduler, getSchedulerControl } = require("./stubs");
 
@@ -24,7 +24,7 @@ describe("declarative scheduler comprehensive edge cases", () => {
             const capabilities = getTestCapabilities();
             const schedulerControl = getSchedulerControl(capabilities);
             schedulerControl.setPollingInterval(1);
-            const retryDelay = fromMilliseconds(1000);
+            const retryDelay = Duration.fromMillis(1000);
             const taskCallback = jest.fn();
 
             const registrations = [
@@ -47,7 +47,7 @@ describe("declarative scheduler comprehensive edge cases", () => {
             const capabilities = getTestCapabilities();
             const schedulerControl = getSchedulerControl(capabilities);
             schedulerControl.setPollingInterval(1);
-            const retryDelay = fromMilliseconds(1000);
+            const retryDelay = Duration.fromMillis(1000);
             const callback1 = jest.fn();
             const callback2 = jest.fn();
             const callback3 = jest.fn();
@@ -76,7 +76,7 @@ describe("declarative scheduler comprehensive edge cases", () => {
             const capabilities = getTestCapabilities();
             const schedulerControl = getSchedulerControl(capabilities);
             schedulerControl.setPollingInterval(1);
-            const retryDelay = fromMilliseconds(100); // Very short retry delay
+            const retryDelay = Duration.fromMillis(100); // Very short retry delay
             let callCount = 0;
             const flakyCallback = jest.fn(() => {
                 callCount++;
@@ -108,7 +108,7 @@ describe("declarative scheduler comprehensive edge cases", () => {
             const capabilities = getTestCapabilities();
             const schedulerControl = getSchedulerControl(capabilities);
             schedulerControl.setPollingInterval(1);
-            const retryDelay = fromMilliseconds(1000);
+            const retryDelay = Duration.fromMillis(1000);
             const taskCallback = jest.fn();
 
             const registrations = [
@@ -130,7 +130,7 @@ describe("declarative scheduler comprehensive edge cases", () => {
             const capabilities = getTestCapabilities();
             const schedulerControl = getSchedulerControl(capabilities);
             schedulerControl.setPollingInterval(1);
-            const retryDelay = fromMilliseconds(1000);
+            const retryDelay = Duration.fromMillis(1000);
             const taskCallback = jest.fn();
 
             const registrations = [
@@ -152,7 +152,7 @@ describe("declarative scheduler comprehensive edge cases", () => {
             const capabilities = getTestCapabilities();
             const schedulerControl = getSchedulerControl(capabilities);
             schedulerControl.setPollingInterval(1);
-            const retryDelay = fromMilliseconds(1000);
+            const retryDelay = Duration.fromMillis(1000);
             const taskCallback = jest.fn();
 
             const registrations = [
@@ -176,7 +176,7 @@ describe("declarative scheduler comprehensive edge cases", () => {
             const capabilities = getTestCapabilities();
             const schedulerControl = getSchedulerControl(capabilities);
             schedulerControl.setPollingInterval(1);
-            const retryDelay = fromMilliseconds(1000);
+            const retryDelay = Duration.fromMillis(1000);
 
             // Schedule 15 tasks all due at the same time
             const callbacks = [];
@@ -209,7 +209,7 @@ describe("declarative scheduler comprehensive edge cases", () => {
             const capabilities = getTestCapabilities();
             const schedulerControl = getSchedulerControl(capabilities);
             schedulerControl.setPollingInterval(1);
-            const retryDelay = fromMilliseconds(1000);
+            const retryDelay = Duration.fromMillis(1000);
             
             const customError = new TypeError("Custom error type");
             const callback = jest.fn(() => {
@@ -236,7 +236,7 @@ describe("declarative scheduler comprehensive edge cases", () => {
             const capabilities = getTestCapabilities();
             const schedulerControl = getSchedulerControl(capabilities);
             schedulerControl.setPollingInterval(1);
-            const retryDelay = fromMilliseconds(1000);
+            const retryDelay = Duration.fromMillis(1000);
 
             const syncCallback = jest.fn(() => "sync result");
             const asyncCallback = jest.fn(() => Promise.resolve("async result"));
@@ -266,7 +266,7 @@ describe("declarative scheduler comprehensive edge cases", () => {
             const capabilities = getTestCapabilities();
             const schedulerControl = getSchedulerControl(capabilities);
             schedulerControl.setPollingInterval(1);
-            const retryDelay = fromMilliseconds(1000);
+            const retryDelay = Duration.fromMillis(1000);
             const taskCallback = jest.fn();
 
             const registrations = [
@@ -288,7 +288,7 @@ describe("declarative scheduler comprehensive edge cases", () => {
             const capabilities = getTestCapabilities();
             const schedulerControl = getSchedulerControl(capabilities);
             schedulerControl.setPollingInterval(1);
-            const retryDelay = fromMilliseconds(1000);
+            const retryDelay = Duration.fromMillis(1000);
             const taskCallback = jest.fn();
 
             const registrations = [

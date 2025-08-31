@@ -3,7 +3,7 @@
  * Type definitions for the declarative scheduler.
  */
 
-/** @typedef {import('../time_duration').TimeDuration} TimeDuration */
+/** @typedef {import('luxon').Duration} Duration */
 /** @typedef {import('../capabilities/root').Capabilities} Capabilities */
 /** @typedef {import('./task').Task} Task */
 /** @typedef {() => Promise<void>} Callback */
@@ -17,7 +17,7 @@
 
 /**
  * Registration tuple defining a scheduled task.
- * @typedef {[string, string, Callback, TimeDuration]} Registration
+ * @typedef {[string, string, Callback, Duration]} Registration
  * @example
  * // Schedule a daily backup task at 2 AM
  * const registration = [
@@ -33,7 +33,7 @@
  * @property {string} name
  * @property {CronExpression} parsedCron
  * @property {Callback} callback
- * @property {TimeDuration} retryDelay
+ * @property {Duration} retryDelay
  */
 
 /**
