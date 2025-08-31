@@ -15,7 +15,7 @@ function registrationToTaskIdentity(registration) {
     return {
         name,
         cronExpression,
-        retryDelayMs: retryDelay.toMilliseconds(),
+        retryDelayMs: retryDelay.toMillis(),
     };
 }
 

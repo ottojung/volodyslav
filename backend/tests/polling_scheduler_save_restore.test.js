@@ -3,7 +3,7 @@
  * Ensures that scheduler maintains consistent behavior across multiple initializations.
  */
 
-const { fromMilliseconds } = require("../src/time_duration");
+const { Duration } = require("luxon");
 const { getMockedRootCapabilities } = require("./spies");
 const { stubEnvironment, stubLogger, stubDatetime, stubSleeper, stubScheduler, getSchedulerControl } = require("./stubs");
 
@@ -21,7 +21,7 @@ describe("declarative scheduler persistence and idempotency", () => {
     test("should handle repeated initialization with same tasks", async () => {
         const capabilities = getTestCapabilities();
         const schedulerControl = getSchedulerControl(capabilities);
-        const retryDelay = fromMilliseconds(5000);
+        const retryDelay = Duration.fromMillis(5000);
         
         schedulerControl.setPollingInterval(1);
         
@@ -49,7 +49,7 @@ describe("declarative scheduler persistence and idempotency", () => {
     test("should handle scheduler restart simulation", async () => {
         const capabilities = getTestCapabilities();
         const schedulerControl = getSchedulerControl(capabilities);
-        const retryDelay = fromMilliseconds(5000);
+        const retryDelay = Duration.fromMillis(5000);
         
         schedulerControl.setPollingInterval(1);
         
@@ -77,7 +77,7 @@ describe("declarative scheduler persistence and idempotency", () => {
     test("should handle multiple task persistence", async () => {
         const capabilities = getTestCapabilities();
         const schedulerControl = getSchedulerControl(capabilities);
-        const retryDelay = fromMilliseconds(1000);
+        const retryDelay = Duration.fromMillis(1000);
         
         schedulerControl.setPollingInterval(1);
         
@@ -106,7 +106,7 @@ describe("declarative scheduler persistence and idempotency", () => {
         const schedulerControl = getSchedulerControl(capabilities);
         
         schedulerControl.setPollingInterval(1);
-        const retryDelay = fromMilliseconds(1000); // Short retry for testing
+        const retryDelay = Duration.fromMillis(1000); // Short retry for testing
         
         let attemptCount = 0;
         const failingCallback = jest.fn(() => {
@@ -155,7 +155,7 @@ describe("declarative scheduler persistence and idempotency", () => {
         
         const taskCallback = jest.fn();
         const registrations = [
-            ["new-task", "0 * * * *", taskCallback, fromMilliseconds(5000)]
+            ["new-task", "0 * * * *", taskCallback, Duration.fromMillis(5000)]
         ];
         
         await capabilities.scheduler.initialize(registrations);
@@ -172,7 +172,7 @@ describe("declarative scheduler persistence and idempotency", () => {
         const schedulerControl = getSchedulerControl(capabilities);
         
         schedulerControl.setPollingInterval(1);
-        const retryDelay = fromMilliseconds(5000);
+        const retryDelay = Duration.fromMillis(5000);
         
         const callback1 = jest.fn();
         const callback2 = jest.fn();
@@ -211,7 +211,7 @@ describe("declarative scheduler persistence and idempotency", () => {
         const schedulerControl = getSchedulerControl(capabilities);
         
         schedulerControl.setPollingInterval(1);
-        const retryDelay = fromMilliseconds(5000);
+        const retryDelay = Duration.fromMillis(5000);
         const taskCallback = jest.fn();
         
         const registrations = [

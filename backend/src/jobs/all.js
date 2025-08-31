@@ -1,7 +1,7 @@
 const eventLogStorage = require("../event_log_storage");
 const { processDiaryAudios } = require("../diary");
 const { executeDailyTasks } = require("./daily");
-const { COMMON } = require("../time_duration");
+const { Duration } = require("luxon");
 
 /** @typedef {import('../filesystem/deleter').FileDeleter} FileDeleter */
 /** @typedef {import('../random/seed').NonDeterministicSeed} NonDeterministicSeed */
@@ -69,7 +69,7 @@ async function allTasks(capabilities) {
  */
 async function scheduleAll(capabilities) {
     // Use a reasonable retry delay for scheduled tasks - 5 minutes
-    const retryDelay = COMMON.FIVE_MINUTES;
+    const retryDelay = Duration.fromObject({minutes: 5});
 
     // Define all task registrations
     /** @type {Registration[]} */

@@ -14,7 +14,7 @@ const {
  * @typedef {import('./structure').Task} Task
  * @typedef {import('../types').CronExpression} CronExpression
  * @typedef {import('../../datetime').DateTime} DateTime
- * @typedef {import('../../time_duration').TimeDuration} TimeDuration
+ * @typedef {import('luxon').Duration} Duration
  * @typedef {import('../types').Callback} Callback
  * @typedef {import('./serialization_errors').TaskTryDeserializeError} TaskTryDeserializeError
  */
@@ -42,7 +42,7 @@ function serialize(task) {
     const serialized = {
         name: task.name,
         cronExpression: task.parsedCron.original,
-        retryDelayMs: task.retryDelay.toMilliseconds(),
+        retryDelayMs: task.retryDelay.toMillis(),
     };
     
     // Only include DateTime fields if they are defined
@@ -150,11 +150,11 @@ function tryDeserialize(obj, registrations) {
         }
 
         // Verify that the retry delay matches
-        if (retryDelayMs !== retryDelay.toMilliseconds()) {
+        if (retryDelayMs !== retryDelay.toMillis()) {
             return new TaskInvalidValueError(
                 "retryDelayMs",
                 retryDelayMs,
-                `does not match registration retry delay: ${retryDelay.toMilliseconds()}`
+                `does not match registration retry delay: ${retryDelay.toMillis()}`
             );
         }
 

@@ -6,7 +6,7 @@
 const { isRunning } = require("../src/scheduler/task/methods");
 const { makeTask } = require("../src/scheduler/task/structure");
 const { parseCronExpression } = require("../src/scheduler/expression");
-const { fromMilliseconds } = require("../src/time_duration");
+const { Duration } = require("luxon");
 
 describe("scheduler task methods edge cases", () => {
 
@@ -15,7 +15,7 @@ describe("scheduler task methods edge cases", () => {
             name: "test-task",
             parsedCron: parseCronExpression("0 * * * *"),
             callback: jest.fn(),
-            retryDelay: fromMilliseconds(5000),
+            retryDelay: Duration.fromMillis(5000),
             lastSuccessTime: undefined,
             lastFailureTime: undefined,
             lastAttemptTime: undefined,
@@ -315,7 +315,7 @@ describe("scheduler task methods edge cases", () => {
             const name = "test-task";
             const parsedCron = parseCronExpression("0 * * * *");
             const callback = jest.fn();
-            const retryDelay = fromMilliseconds(5000);
+            const retryDelay = Duration.fromMillis(5000);
             const lastSuccessTime = new Date();
             const lastFailureTime = new Date();
             const lastAttemptTime = new Date();
@@ -350,7 +350,7 @@ describe("scheduler task methods edge cases", () => {
                 "test-task",
                 parseCronExpression("0 * * * *"),
                 jest.fn(),
-                fromMilliseconds(5000)
+                Duration.fromMillis(5000)
             );
 
             expect(task.lastSuccessTime).toBeUndefined();

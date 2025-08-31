@@ -4,7 +4,7 @@
  * and various persistence scenarios correctly using the declarative API.
  */
 
-const { fromMilliseconds } = require("../src/time_duration");
+const { Duration } = require("luxon");
 const { getMockedRootCapabilities } = require("./spies");
 const { stubEnvironment, stubLogger, stubDatetime, stubSleeper, stubScheduler, getSchedulerControl } = require("./stubs");
 
@@ -30,7 +30,7 @@ describe("declarative scheduler persistence and error handling", () => {
         const capabilities = getTestCapabilities();
         const schedulerControl = getSchedulerControl(capabilities);
         schedulerControl.setPollingInterval(1);
-        const retryDelay = fromMilliseconds(5000);
+        const retryDelay = Duration.fromMillis(5000);
 
         let callCount = 0;
         const flakyCallback = jest.fn(() => {
@@ -63,7 +63,7 @@ describe("declarative scheduler persistence and error handling", () => {
         const capabilities = getTestCapabilities();
         const schedulerControl = getSchedulerControl(capabilities);
         schedulerControl.setPollingInterval(1);
-        const retryDelay = fromMilliseconds(1000);
+        const retryDelay = Duration.fromMillis(1000);
 
         // Test basic error handling without complex loops
         const errorCallback = jest.fn(() => {
@@ -90,7 +90,7 @@ describe("declarative scheduler persistence and error handling", () => {
         const capabilities = getTestCapabilities();
         const schedulerControl = getSchedulerControl(capabilities);
         schedulerControl.setPollingInterval(1);
-        const retryDelay = fromMilliseconds(2000);
+        const retryDelay = Duration.fromMillis(2000);
 
         const successCallback = jest.fn().mockResolvedValue(undefined);
         const failureCallback = jest.fn().mockRejectedValue(new Error("Always fails"));
@@ -117,7 +117,7 @@ describe("declarative scheduler persistence and error handling", () => {
 
     test("should handle concurrent task execution limits", async () => {
         const capabilities = getTestCapabilities();
-        const retryDelay = fromMilliseconds(5000);
+        const retryDelay = Duration.fromMillis(5000);
 
         const simpleCallback = jest.fn().mockResolvedValue(undefined);
 
@@ -135,7 +135,7 @@ describe("declarative scheduler persistence and error handling", () => {
 
     test("should handle system resource constraints gracefully", async () => {
         const capabilities = getTestCapabilities();
-        const retryDelay = fromMilliseconds(1000);
+        const retryDelay = Duration.fromMillis(1000);
 
         // Simple test for resource constraint handling
         const task = jest.fn();
@@ -153,7 +153,7 @@ describe("declarative scheduler persistence and error handling", () => {
         jest.useFakeTimers();
         
         const capabilities = getTestCapabilities();
-        const retryDelay = fromMilliseconds(5000);
+        const retryDelay = Duration.fromMillis(5000);
         const callback = jest.fn().mockResolvedValue(undefined);
 
         const registrations = [
@@ -187,7 +187,7 @@ describe("declarative scheduler persistence and error handling", () => {
 
     test("should handle invalid callback types gracefully", async () => {
         const capabilities = getTestCapabilities();
-        const retryDelay = fromMilliseconds(5000);
+        const retryDelay = Duration.fromMillis(5000);
 
         // Test various callback scenarios
         const validCallback = jest.fn().mockResolvedValue(undefined);
@@ -204,7 +204,7 @@ describe("declarative scheduler persistence and error handling", () => {
 
     test("should maintain correct task ordering and priority", async () => {
         const capabilities = getTestCapabilities();
-        const retryDelay = fromMilliseconds(1000);
+        const retryDelay = Duration.fromMillis(1000);
 
         const callback1 = jest.fn().mockResolvedValue(undefined);
         const callback2 = jest.fn().mockResolvedValue(undefined);
@@ -226,7 +226,7 @@ describe("declarative scheduler persistence and error handling", () => {
     test("should maintain task order when scheduled at different times", async () => {
         const capabilities1 = getTestCapabilities();
         const capabilities2 = getTestCapabilities();
-        const retryDelay = fromMilliseconds(5000);
+        const retryDelay = Duration.fromMillis(5000);
 
         const callback1 = jest.fn().mockResolvedValue(undefined);
         const callback2 = jest.fn().mockResolvedValue(undefined);

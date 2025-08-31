@@ -105,7 +105,7 @@ function makeTaskExecutor(capabilities, mutateTasks) {
             );
         } else {
             await mutateThis((task) => {
-                const retryAt = dt.fromEpochMs(end.getTime() + task.retryDelay.toMilliseconds());
+                const retryAt = dt.fromEpochMs(end.getTime() + task.retryDelay.toMillis());
                 task.lastSuccessTime = undefined;
                 task.lastFailureTime = end;
                 task.pendingRetryUntil = retryAt;
