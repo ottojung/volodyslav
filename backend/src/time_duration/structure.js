@@ -2,7 +2,10 @@
  * Time duration representation with multiple unit support.
  * This module provides a robust way to represent and manipulate time durations
  * using various time units (milliseconds, seconds, minutes, hours, days).
+ * Now backed by Luxon Duration for improved functionality.
  */
+
+const { Duration } = require('luxon');
 
 /**
  * @typedef {object} TimeDurationData
@@ -10,8 +13,8 @@
  */
 
 class TimeDurationClass {
-    /** @type {number} */
-    milliseconds;
+    /** @type {import('luxon').Duration} */
+    #luxonDuration;
 
     /** @type {undefined} */
     __brand = undefined; // nominal typing brand
@@ -29,7 +32,7 @@ class TimeDurationClass {
             throw new InvalidDurationError("Duration must be a non-negative integer in milliseconds", milliseconds);
         }
 
-        this.milliseconds = milliseconds;
+        this.#luxonDuration = Duration.fromMillis(milliseconds);
     }
 
     /**
@@ -37,7 +40,7 @@ class TimeDurationClass {
      * @returns {number}
      */
     toMilliseconds() {
-        return this.milliseconds;
+        return this.#luxonDuration.toMillis();
     }
 
     /**
@@ -45,7 +48,7 @@ class TimeDurationClass {
      * @returns {number}
      */
     toSeconds() {
-        return Math.floor(this.milliseconds / 1000);
+        return Math.floor(this.#luxonDuration.as('seconds'));
     }
 
     /**
@@ -53,7 +56,7 @@ class TimeDurationClass {
      * @returns {number}
      */
     toMinutes() {
-        return Math.floor(this.milliseconds / (1000 * 60));
+        return Math.floor(this.#luxonDuration.as('minutes'));
     }
 
     /**
@@ -61,7 +64,7 @@ class TimeDurationClass {
      * @returns {number}
      */
     toHours() {
-        return Math.floor(this.milliseconds / (1000 * 60 * 60));
+        return Math.floor(this.#luxonDuration.as('hours'));
     }
 
     /**
@@ -69,7 +72,7 @@ class TimeDurationClass {
      * @returns {number}
      */
     toDays() {
-        return Math.floor(this.milliseconds / (1000 * 60 * 60 * 24));
+        return Math.floor(this.#luxonDuration.as('days'));
     }
 
     /**
@@ -77,13 +80,14 @@ class TimeDurationClass {
      * @returns {string}
      */
     toString() {
-        if (this.milliseconds < 1000) {
-            return `${this.milliseconds}ms`;
-        } else if (this.milliseconds < 60000) {
+        const milliseconds = this.#luxonDuration.toMillis();
+        if (milliseconds < 1000) {
+            return `${milliseconds}ms`;
+        } else if (milliseconds < 60000) {
             return `${this.toSeconds()}s`;
-        } else if (this.milliseconds < 3600000) {
+        } else if (milliseconds < 3600000) {
             return `${this.toMinutes()}m`;
-        } else if (this.milliseconds < 86400000) {
+        } else if (milliseconds < 86400000) {
             return `${this.toHours()}h`;
         } else {
             return `${this.toDays()}d`;
@@ -96,7 +100,8 @@ class TimeDurationClass {
      * @returns {TimeDuration}
      */
     add(other) {
-        return new TimeDurationClass(this.milliseconds + other.milliseconds);
+        const resultDuration = this.#luxonDuration.plus(other.#luxonDuration);
+        return new TimeDurationClass(resultDuration.toMillis());
     }
 
     /**
@@ -105,7 +110,8 @@ class TimeDurationClass {
      * @returns {TimeDuration}
      */
     subtract(other) {
-        const result = this.milliseconds - other.milliseconds;
+        const resultDuration = this.#luxonDuration.minus(other.#luxonDuration);
+        const result = resultDuration.toMillis();
         if (result < 0) {
             throw new InvalidDurationError("Duration subtraction cannot result in negative duration", result);
         }
@@ -121,7 +127,8 @@ class TimeDurationClass {
         if (!Number.isFinite(factor) || factor < 0) {
             throw new InvalidDurationError("Multiplication factor must be a non-negative finite number", factor);
         }
-        return new TimeDurationClass(Math.floor(this.milliseconds * factor));
+        const resultMillis = Math.floor(this.#luxonDuration.toMillis() * factor);
+        return new TimeDurationClass(resultMillis);
     }
 
     /**
@@ -130,8 +137,10 @@ class TimeDurationClass {
      * @returns {number} -1 if this < other, 0 if equal, 1 if this > other
      */
     compare(other) {
-        if (this.milliseconds < other.milliseconds) return -1;
-        if (this.milliseconds > other.milliseconds) return 1;
+        const thisMillis = this.#luxonDuration.toMillis();
+        const otherMillis = other.#luxonDuration.toMillis();
+        if (thisMillis < otherMillis) return -1;
+        if (thisMillis > otherMillis) return 1;
         return 0;
     }
 
@@ -141,7 +150,7 @@ class TimeDurationClass {
      * @returns {boolean}
      */
     equals(other) {
-        return this.milliseconds === other.milliseconds;
+        return this.#luxonDuration.equals(other.#luxonDuration);
     }
 }
 
