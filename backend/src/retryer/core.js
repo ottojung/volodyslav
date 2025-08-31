@@ -9,11 +9,6 @@ const { Duration } = require("luxon");
 
 /**
  * @template T
- * @typedef {import('../time_duration').TimeDuration} TimeDuration
- */
-
-/**
- * @template T
  * @typedef {(args: {attempt: number, timePassed: () => import('luxon').Duration, retry: () => T}) => Promise<T>} RetryableCallback
  */
 
