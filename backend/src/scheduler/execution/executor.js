@@ -94,6 +94,7 @@ function makeTaskExecutor(capabilities, mutateTasks) {
 
         if (maybeError === null) {
             await mutateThis((task) => {
+                task.lastAttemptTime = startTime;
                 task.lastSuccessTime = end;
                 task.lastFailureTime = undefined;
                 task.pendingRetryUntil = undefined;
@@ -105,6 +106,7 @@ function makeTaskExecutor(capabilities, mutateTasks) {
             );
         } else {
             await mutateThis((task) => {
+                task.lastAttemptTime = startTime;
                 const retryAt = dt.fromEpochMs(end.getTime() + task.retryDelay.toMillis());
                 task.lastSuccessTime = undefined;
                 task.lastFailureTime = end;
