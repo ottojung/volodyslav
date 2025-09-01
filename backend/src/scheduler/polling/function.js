@@ -30,22 +30,8 @@ function makePollingFunction(capabilities, registrations, scheduledTasks, taskEx
         pollInProgress = true;
         try {
             const now = dt.now();
-            /** @type {Array<{taskName: string, mode: "retry"|"cron", callback: Callback}>} */
-            let dueTasks = [];
-            /** @type {{dueRetry: number, dueCron: number, skippedRunning: number, skippedRetryFuture: number, skippedNotDue: number}} */
-            let stats = {
-                dueRetry: 0,
-                dueCron: 0,
-                skippedRunning: 0,
-                skippedRetryFuture: 0,
-                skippedNotDue: 0,
-            };
-
-            // Evaluate which tasks should be executed
-            await mutateTasks(capabilities, registrations, (tasks) => {
-                const result = evaluateTasksForExecution(tasks, scheduledTasks, now, dt, capabilities);
-                dueTasks = result.dueTasks;
-                stats = result.stats;
+            const { dueTasks, stats } = await mutateTasks(capabilities, registrations, (tasks) => {
+                return evaluateTasksForExecution(tasks, scheduledTasks, now, dt, capabilities);
             });
 
             // Execute all due tasks in parallel
