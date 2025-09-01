@@ -18,11 +18,21 @@ const { evaluateTasksForExecution } = require('../execution');
  */
 function makePollingFunction(capabilities, registrations, scheduledTasks, taskExecutor) {
     const dt = capabilities.datetime;
+    let parallelCounter = 0;
+
     return async function poll() {
         const now = dt.now();
+
+        if (parallelCounter > 0) {
+            // Somebody is already polling;
+            return;
+        }
+
+        parallelCounter++;
         const { dueTasks, stats } = await mutateTasks(capabilities, registrations, (tasks) => {
             return evaluateTasksForExecution(tasks, scheduledTasks, now, dt, capabilities);
         });
+        parallelCounter--;
 
         // Execute all due tasks in parallel
         await taskExecutor.executeTasks(dueTasks);
