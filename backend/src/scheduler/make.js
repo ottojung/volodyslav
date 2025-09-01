@@ -170,10 +170,6 @@ function make(getCapabilities) {
      */
     async function initialize(registrations) {
         const capabilities = getCapabilitiesMemo();
-
-        // Validate input and check persisted state
-        const { persistedTasks } = await validateAndCheckPersistedState(registrations, capabilities);
-
         const parsedRegistrations = parseRegistrations(registrations);
 
         // Handle polling scheduler lifecycle
@@ -183,10 +179,15 @@ function make(getCapabilities) {
                 {},
                 "Scheduler already initialized"
             );
+            // Still validate registrations against persisted state for consistency.
+            await validateAndCheckPersistedState(registrations, capabilities);
             return;
         } else {
             pollingScheduler = makePollingScheduler(capabilities, parsedRegistrations);
         }
+
+        // Validate input and check persisted state
+        const { persistedTasks } = await validateAndCheckPersistedState(registrations, capabilities);
 
         // Create polling scheduler
         capabilities.logger.logDebug(
