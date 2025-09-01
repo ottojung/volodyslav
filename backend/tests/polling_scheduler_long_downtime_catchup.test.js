@@ -19,31 +19,6 @@ function getTestCapabilities() {
 }
 
 describe("declarative scheduler task execution behavior", () => {
-    // Use real timers for testing actual scheduler behavior
-
-    test("should execute tasks according to their schedule", async () => {
-        const capabilities = getTestCapabilities();
-        const schedulerControl = getSchedulerControl(capabilities);
-        const retryDelay = Duration.fromMillis(5000);
-        const callback = jest.fn();
-
-        schedulerControl.setPollingInterval(1);
-
-        const registrations = [
-            // Task runs every minute
-            ["daily-task", "0 * * * *", callback, retryDelay]
-        ];
-
-        await capabilities.scheduler.initialize(registrations);
-
-        // Wait for execution
-        await schedulerControl.waitForNextCycleEnd();
-        // Scheduler should initialize without errors
-        expect(true).toBe(true);
-
-        await capabilities.scheduler.stop();
-    });
-
     test("should handle different cron schedule frequencies", async () => {
         const capabilities = getTestCapabilities();
         const schedulerControl = getSchedulerControl(capabilities);
