@@ -20,7 +20,7 @@
 
 const memconst = require("../memconst");
 const { fromExisting } = require("./file");
-const { toEpochMs, now } = require("../datetime");
+const { toEpochMs } = require("../datetime");
 
 const fs = require("fs").promises;
 
@@ -134,19 +134,20 @@ async function instantiate(path) {
  * 2. Its size hasn't changed between two checks separated by a delay
  *
  * @param {Sleeper} sleeper - Sleeper capability for pausing.
+ * @param {import('../datetime').Datetime} datetime - Datetime capability for getting current time.
  * @param {ExistingFile} file - The path to the file to check.
  * @param {object} options - Stability check options.
  * @param {number} [options.minAgeMs=300000] - Minimum age in milliseconds (default: 5 minutes).
  * @param {number} [options.sizeCheckDelayMs=30000] - Delay between size checks in milliseconds (default: 30 seconds).
  * @returns {Promise<boolean>} - A promise that resolves with true if the file is stable, false otherwise.
  */
-async function isFileStable(sleeper, file, options = {}) {
+async function isFileStable(sleeper, datetime, file, options = {}) {
     const { minAgeMs = 300000, sizeCheckDelayMs = 30000 } = options; // 5 minutes, 30 seconds default
 
     try {
         // First check: get initial file stats
         const initialStats = await fs.stat(file.path);
-        const nowTime = toEpochMs(now());
+        const nowTime = toEpochMs(datetime.now());
         const fileModifiedTime = initialStats.mtime.getTime();
         const ageMs = nowTime - fileModifiedTime;
 
@@ -185,6 +186,7 @@ async function isFileStable(sleeper, file, options = {}) {
 /** 
  * @typedef {object} Capabilities
  * @property {import('../sleeper').Sleeper} sleeper - Sleeper capabilities.
+ * @property {import('../datetime').Datetime} datetime - Datetime capabilities.
  */
 
 /**
@@ -202,7 +204,7 @@ function make(getCapabilities) {
         instantiate,
         /** @type {(file: ExistingFile, options?: {minAgeMs?: number, sizeCheckDelayMs?: number}) => Promise<boolean>} */
         isFileStable: (file, options = {}) =>
-            isFileStable(deps().sleeper, file, options),
+            isFileStable(deps().sleeper, deps().datetime, file, options),
     };
 }
 

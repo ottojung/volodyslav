@@ -4,6 +4,7 @@
 
 const { stubDatetime, getDatetimeControl } = require("./stubs");
 const { getMockedRootCapabilities } = require("./spies");
+const { toEpochMs, toNativeDate, fromEpochMs } = require("../src/datetime");
 
 describe("datetime mocking", () => {
     test("should allow setting and getting specific time", () => {
@@ -17,7 +18,7 @@ describe("datetime mocking", () => {
         expect(control.getCurrentTime()).toBe(specificTime);
         
         const dateTime = capabilities.datetime.now();
-        expect(capabilities.datetime.toEpochMs(dateTime)).toBe(specificTime);
+        expect(toEpochMs(dateTime)).toBe(specificTime);
     });
 
     test("should allow advancing time", () => {
@@ -48,7 +49,7 @@ describe("datetime mocking", () => {
         
         // Verify the datetime capability sees the mocked time
         const now = capabilities.datetime.now();
-        const nativeDate = capabilities.datetime.toNativeDate(now);
+        const nativeDate = toNativeDate(now);
         expect(nativeDate.getTime()).toBe(specificTime);
     });
 
@@ -63,14 +64,14 @@ describe("datetime mocking", () => {
         control.setTime(startTime);
         
         // Get initial time
-        const initialTime = capabilities.datetime.toNativeDate(capabilities.datetime.now());
+        const initialTime = toNativeDate(capabilities.datetime.now());
         expect(initialTime.getTime()).toBe(startTime);
         
         // Advance time
         control.advanceTime(advanceMs);
         
         // Verify time advanced
-        const laterTime = capabilities.datetime.toNativeDate(capabilities.datetime.now());
+        const laterTime = toNativeDate(capabilities.datetime.now());
         expect(laterTime.getTime()).toBe(startTime + advanceMs);
         expect(laterTime.getTime() - initialTime.getTime()).toBe(advanceMs);
     });
@@ -87,13 +88,13 @@ describe("datetime mocking", () => {
         stubDatetime(capabilities);
         
         const specificTime = 1609459200000; // Jan 1, 2021 00:00:00 UTC
-        const specificDateTime = capabilities.datetime.fromEpochMs(specificTime);
+        const specificDateTime = fromEpochMs(specificTime);
         
         // Test that datetime.now is still a jest mock that supports mockReturnValue
         capabilities.datetime.now.mockReturnValue(specificDateTime);
         
         const result = capabilities.datetime.now();
-        expect(capabilities.datetime.toEpochMs(result)).toBe(specificTime);
+        expect(toEpochMs(result)).toBe(specificTime);
         expect(capabilities.datetime.now).toHaveBeenCalled();
     });
 
@@ -104,8 +105,8 @@ describe("datetime mocking", () => {
         const time1 = 1609459200000; // Jan 1, 2021 00:00:00 UTC
         const time2 = 1609545600000; // Jan 2, 2021 00:00:00 UTC
         
-        const dateTime1 = capabilities.datetime.fromEpochMs(time1);
-        const dateTime2 = capabilities.datetime.fromEpochMs(time2);
+        const dateTime1 = fromEpochMs(time1);
+        const dateTime2 = fromEpochMs(time2);
         
         capabilities.datetime.now
             .mockReturnValueOnce(dateTime1)
@@ -114,7 +115,7 @@ describe("datetime mocking", () => {
         const result1 = capabilities.datetime.now();
         const result2 = capabilities.datetime.now();
         
-        expect(capabilities.datetime.toEpochMs(result1)).toBe(time1);
-        expect(capabilities.datetime.toEpochMs(result2)).toBe(time2);
+        expect(toEpochMs(result1)).toBe(time1);
+        expect(toEpochMs(result2)).toBe(time2);
     });
 });

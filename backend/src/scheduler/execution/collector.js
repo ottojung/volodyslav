@@ -27,14 +27,13 @@ class TaskEvaluationNotFoundError extends Error {
  * @param {Map<string, import('../task').Task>} tasks - Task map
  * @param {Set<string>} scheduledTasks - Set of scheduled task names
  * @param {import('../../datetime').DateTime} now - Current datetime
- * @param {import('../../datetime').Datetime} dt - DateTime interface
  * @param {import('../../capabilities/root').Capabilities} capabilities - Capabilities for logging
  * @returns {{
  *   dueTasks: Array<{taskName: string, mode: "retry"|"cron", callback: Callback}>,
  *   stats: {dueRetry: number, dueCron: number, skippedRunning: number, skippedRetryFuture: number, skippedNotDue: number}
  * }}
  */
-function evaluateTasksForExecution(tasks, scheduledTasks, now, dt, capabilities) {
+function evaluateTasksForExecution(tasks, scheduledTasks, now, capabilities) {
     let dueRetry = 0;
     let dueCron = 0;
     let skippedRunning = 0;
@@ -59,7 +58,7 @@ function evaluateTasksForExecution(tasks, scheduledTasks, now, dt, capabilities)
 
         // Check both cron schedule and retry timing
         const lastEvaluatedFireDate = task.lastEvaluatedFire ? task.lastEvaluatedFire : undefined;
-        const { lastScheduledFire, newLastEvaluatedFire } = getMostRecentExecution(task.parsedCron, now, dt, lastEvaluatedFireDate);
+        const { lastScheduledFire, newLastEvaluatedFire } = getMostRecentExecution(task.parsedCron, now, lastEvaluatedFireDate);
 
         // Update lastEvaluatedFire cache for performance optimization
         if (newLastEvaluatedFire) {

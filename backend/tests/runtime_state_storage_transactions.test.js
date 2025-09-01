@@ -5,6 +5,7 @@
 const { RUNTIME_STATE_VERSION } = require("../src/runtime_state_storage/structure");
 const { getMockedRootCapabilities } = require("./spies");
 const { stubEnvironment, stubLogger, stubDatetime, stubGit } = require("./stubs");
+const { fromISOString, toISOString } = require("../src/datetime");
 
 function getTestCapabilities() {
     const capabilities = getMockedRootCapabilities();
@@ -18,7 +19,7 @@ describe("runtime_state_storage/transaction", () => {
     test("transaction allows setting and storing runtime state", async () => {
         const capabilities = getTestCapabilities();
 
-        const startTime = capabilities.datetime.fromISOString("2025-01-01T10:00:00.000Z");
+        const startTime = fromISOString("2025-01-01T10:00:00.000Z");
         const testState = { version: RUNTIME_STATE_VERSION, startTime, tasks: [] };
 
         await capabilities.state.transaction(async (runtimeStateStorage) => {
@@ -34,7 +35,7 @@ describe("runtime_state_storage/transaction", () => {
                 tasks: []
             });
             // Check that the stored time matches what we set
-            expect(capabilities.datetime.toISOString(storedState.startTime)).toBe("2025-01-01T10:00:00.000Z");
+            expect(toISOString(storedState.startTime)).toBe("2025-01-01T10:00:00.000Z");
         });
     });
 
@@ -81,7 +82,7 @@ describe("runtime_state_storage/transaction", () => {
     test("transaction provides access to existing state", async () => {
         const capabilities = getTestCapabilities();
 
-        const startTime = capabilities.datetime.fromISOString("2025-01-01T10:00:00.000Z");
+        const startTime = fromISOString("2025-01-01T10:00:00.000Z");
         const initialState = { version: RUNTIME_STATE_VERSION, startTime, tasks: [] };
 
         // First transaction: set initial state
@@ -100,7 +101,7 @@ describe("runtime_state_storage/transaction", () => {
             startTime: expect.any(Object),
             tasks: []
         });
-        expect(capabilities.datetime.toISOString(result.startTime)).toBe("2025-01-01T10:00:00.000Z");
+        expect(toISOString(result.startTime)).toBe("2025-01-01T10:00:00.000Z");
     });
 
     test("transaction handles missing state file gracefully", async () => {
@@ -123,8 +124,8 @@ describe("runtime_state_storage/transaction", () => {
     test("transaction updates existing state", async () => {
         const capabilities = getTestCapabilities();
 
-        const initialTime = capabilities.datetime.fromISOString("2025-01-01T10:00:00.000Z");
-        const updatedTime = capabilities.datetime.fromISOString("2025-01-01T11:00:00.000Z");
+        const initialTime = fromISOString("2025-01-01T10:00:00.000Z");
+        const updatedTime = fromISOString("2025-01-01T11:00:00.000Z");
 
         // Set initial state
         await capabilities.state.transaction(async (runtimeStateStorage) => {
@@ -141,14 +142,14 @@ describe("runtime_state_storage/transaction", () => {
             return await runtimeStateStorage.getExistingState();
         });
 
-        expect(capabilities.datetime.toISOString(result.startTime)).toBe("2025-01-01T11:00:00.000Z");
+        expect(toISOString(result.startTime)).toBe("2025-01-01T11:00:00.000Z");
     });
 
     test("getCurrentState prefers new state over existing", async () => {
         const capabilities = getTestCapabilities();
 
-        const existingTime = capabilities.datetime.fromISOString("2025-01-01T10:00:00.000Z");
-        const newTime = capabilities.datetime.fromISOString("2025-01-01T11:00:00.000Z");
+        const existingTime = fromISOString("2025-01-01T10:00:00.000Z");
+        const newTime = fromISOString("2025-01-01T11:00:00.000Z");
 
         // Set initial state
         await capabilities.state.transaction(async (runtimeStateStorage) => {
@@ -161,6 +162,6 @@ describe("runtime_state_storage/transaction", () => {
             return await runtimeStateStorage.getCurrentState();
         });
 
-        expect(capabilities.datetime.toISOString(result.startTime)).toBe("2025-01-01T11:00:00.000Z");
+        expect(toISOString(result.startTime)).toBe("2025-01-01T11:00:00.000Z");
     });
 });

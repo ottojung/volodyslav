@@ -1,6 +1,7 @@
 const request = require("supertest");
 const expressApp = require("../src/express_app");
 const { addRoutes } = require("../src/server");
+const { fromISOString, fromEpochMs } = require("../src/datetime");
 const { getMockedRootCapabilities } = require("./spies");
 const {
     stubEnvironment,
@@ -32,8 +33,8 @@ describe("POST /api/entries", () => {
         //   -d '{"rawInput":"httptype [foo bar] HTTP description"}'
 
         const { app, capabilities } = await makeTestApp();
-        const fixedTime = capabilities.datetime.fromISOString("2025-05-23T12:00:00.000Z").getTime();
-        capabilities.datetime.now.mockReturnValue(capabilities.datetime.fromEpochMs(fixedTime));
+        const fixedTime = fromISOString("2025-05-23T12:00:00.000Z").getTime();
+        capabilities.datetime.now.mockReturnValue(fromEpochMs(fixedTime));
 
         const requestBody = {
             rawInput: "httptype [foo bar] HTTP description",

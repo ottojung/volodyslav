@@ -98,7 +98,7 @@ async function processDiaryAudios(capabilities) {
     function makeAsset(file) {
         const filepath = file.path;
         const filename = path.basename(filepath);
-        const date = formatFileTimestamp(filename, capabilities.datetime);
+        const date = formatFileTimestamp(filename);
         const id = eventId.make(capabilities);
 
         /** @type {import('./event/structure').Event} */

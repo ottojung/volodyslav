@@ -10,6 +10,7 @@ const {
     stubEventLogRepository,
 } = require("./stubs");
 const { getMockedRootCapabilities } = require("./spies");
+const { fromISOString } = require("../src/datetime");
 
 function getTestCapabilities() {
     const capabilities = getMockedRootCapabilities();
@@ -26,7 +27,7 @@ describe("event_log_storage deletion", () => {
 
         const e1 = {
             id: { identifier: "delete1" },
-            date: capabilities.datetime.fromISOString("2025-05-12"),
+            date: fromISOString("2025-05-12"),
             original: "first",
             input: "first",
             type: "test",
@@ -35,7 +36,7 @@ describe("event_log_storage deletion", () => {
         };
         const e2 = {
             id: { identifier: "delete2" },
-            date: capabilities.datetime.fromISOString("2025-05-13"),
+            date: fromISOString("2025-05-13"),
             original: "second",
             input: "second",
             type: "test",
@@ -68,7 +69,7 @@ describe("event_log_storage deletion", () => {
 
         const e1 = {
             id: { identifier: "todel1" },
-            date: capabilities.datetime.fromISOString("2025-05-14"),
+            date: fromISOString("2025-05-14"),
             original: "one",
             input: "one",
             type: "test",
@@ -77,7 +78,7 @@ describe("event_log_storage deletion", () => {
         };
         const e2 = {
             id: { identifier: "todel2" },
-            date: capabilities.datetime.fromISOString("2025-05-15"),
+            date: fromISOString("2025-05-15"),
             original: "two",
             input: "two",
             type: "test",
@@ -107,7 +108,7 @@ describe("event_log_storage deletion", () => {
 
         const e1 = {
             id: { identifier: "solo" },
-            date: capabilities.datetime.fromISOString("2025-05-16"),
+            date: fromISOString("2025-05-16"),
             original: "solo",
             input: "solo",
             type: "test",
@@ -138,7 +139,7 @@ describe("event_log_storage deletion", () => {
 
         const e = {
             id: { identifier: "iter" },
-            date: capabilities.datetime.fromISOString("2025-06-01"),
+            date: fromISOString("2025-06-01"),
             original: "i",
             input: "i",
             type: "test",
@@ -166,7 +167,7 @@ describe("event_log_storage deletion", () => {
 
         const e1 = {
             id: { identifier: "multi1" },
-            date: capabilities.datetime.fromISOString("2025-06-02"),
+            date: fromISOString("2025-06-02"),
             original: "m1",
             input: "m1",
             type: "test",
@@ -175,7 +176,7 @@ describe("event_log_storage deletion", () => {
         };
         const e2 = {
             id: { identifier: "multi2" },
-            date: capabilities.datetime.fromISOString("2025-06-03"),
+            date: fromISOString("2025-06-03"),
             original: "m2",
             input: "m2",
             type: "test",

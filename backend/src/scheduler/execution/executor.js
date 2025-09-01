@@ -1,3 +1,4 @@
+const { fromEpochMs } = require("../../datetime");
 /**
  * Task execution for the polling scheduler.
  * Handles running tasks with proper error handling.
@@ -105,7 +106,7 @@ function makeTaskExecutor(capabilities, mutateTasks) {
             );
         } else {
             await mutateThis((task) => {
-                const retryAt = dt.fromEpochMs(end.getTime() + task.retryDelay.toMillis());
+                const retryAt = fromEpochMs(end.getTime() + task.retryDelay.toMillis());
                 task.lastSuccessTime = undefined;
                 task.lastFailureTime = end;
                 task.pendingRetryUntil = retryAt;

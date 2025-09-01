@@ -123,13 +123,6 @@ function stubDatetime(capabilities) {
         return currentTimeMs;
     };
 
-    // Add the datetime functions to the capability object for test compatibility
-    capabilities.datetime.fromEpochMs = jest.fn(datetime.fromEpochMs);
-    capabilities.datetime.fromISOString = jest.fn(datetime.fromISOString);
-    capabilities.datetime.toEpochMs = jest.fn(datetime.toEpochMs);
-    capabilities.datetime.toISOString = jest.fn(datetime.toISOString);
-    capabilities.datetime.toNativeDate = jest.fn(datetime.toNativeDate);
-
     // Mark it as mocked for type guard
     capabilities.datetime.__isMockedDatetime = true;
 }
