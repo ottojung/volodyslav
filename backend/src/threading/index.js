@@ -66,28 +66,6 @@ function isPeriodicThread(obj) {
 
 function make() {
 
-    /** @type {Set<string>} */
-    const mutexes = new Set();
-
-    /**
-     * @template T
-     * @param {string} name
-     * @param {() => Promise<T>} procedure
-     * @returns {Promise<T>}
-     */
-    async function withMutex(name, procedure) {
-        while (mutexes.has(name)) {
-            await new Promise(resolve => setTimeout(resolve, 1));
-        }
-
-        mutexes.add(name);
-        try {
-            return await procedure();
-        } finally {
-            mutexes.delete(name);
-        }
-    }
-
     /**
      * @param {string} name
      * @param {number} interval
@@ -100,7 +78,6 @@ function make() {
 
     return {
         periodic,
-        withMutex,
     };
 }
 
