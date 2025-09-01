@@ -18,39 +18,14 @@ const { evaluateTasksForExecution } = require('../execution');
  */
 function makePollingFunction(capabilities, registrations, scheduledTasks, taskExecutor) {
     const dt = capabilities.datetime;
-
-    let initialized = false;
-    let finished = { count: 0 };
-    let lastFinishedCount = 0;
-
     return async function poll() {
-        if (initialized && finished.count === lastFinishedCount) {
-            // Skip this poll if no updates are expected.
-            // This helps to avoid unnecessary work.
-            // The essential fact which makes this check behave correctly
-            // is that there can only be one instance of the same task running 
-            // at any time, even if it is still running when it should be due again.
-            return;
-        } else {
-            lastFinishedCount = finished.count;
-        }
-
-        let initResult;
-        try {
-            initialized = true; // Optimistic. Will revert (in the "catch" clause) if initialization fails.
-            const now = dt.now();
-            initResult = await mutateTasks(capabilities, registrations, (tasks) => {
-                return evaluateTasksForExecution(tasks, scheduledTasks, now, dt, capabilities);
-            });
-        } catch (error) {
-            initialized = false;
-            throw error;
-        }
-
-        const { dueTasks, stats } = initResult;
+        const now = dt.now();
+        const { dueTasks, stats } = await mutateTasks(capabilities, registrations, (tasks) => {
+            return evaluateTasksForExecution(tasks, scheduledTasks, now, dt, capabilities);
+        });
 
         // Execute all due tasks in parallel
-        await taskExecutor.executeTasks(dueTasks, finished);
+        await taskExecutor.executeTasks(dueTasks);
 
         capabilities.logger.logDebug(
             {

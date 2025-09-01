@@ -39,14 +39,13 @@ function makeTaskExecutor(capabilities, mutateTasks) {
     /**
      * Execute multiple tasks in parallel.
      * @param {Array<{taskName: string, mode: "retry"|"cron", callback: Callback}>} dueTasks
-     * @param {{count: number}} finished - An object with a count property to track finished tasks
      * @returns {Promise<void>}
      */
-    async function executeTasks(dueTasks, finished) {
+    async function executeTasks(dueTasks) {
         if (dueTasks.length === 0) return;
 
         // Execute all tasks in parallel
-        const promises = dueTasks.map(({ taskName, mode, callback }) => runTask(taskName, mode, callback, finished));
+        const promises = dueTasks.map(({ taskName, mode, callback }) => runTask(taskName, mode, callback));
         await Promise.all(promises);
     }
 
@@ -55,9 +54,8 @@ function makeTaskExecutor(capabilities, mutateTasks) {
      * @param {string} taskName
      * @param {"retry"|"cron"} mode
      * @param {Callback} callback
-     * @param {{count: number}} finished
      */
-    async function runTask(taskName, mode, callback, finished) {
+    async function runTask(taskName, mode, callback) {
         const qname = JSON.stringify(taskName);
         const startTime = dt.now();
 
@@ -92,7 +90,6 @@ function makeTaskExecutor(capabilities, mutateTasks) {
         }
 
         const maybeError = await executeIt();
-        finished.count++;
         const end = dt.now();
 
         if (maybeError === null) {
