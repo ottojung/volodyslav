@@ -284,7 +284,7 @@ describe("scheduler stories", () => {
         expect(stableTaskCallCount).toBeGreaterThanOrEqual(1); // Should run at least once
         expect(flakyTaskCallCount).toBeGreaterThanOrEqual(1);   // Should run at least once
         expect(criticalTaskCallCount).toBeGreaterThanOrEqual(1); // Should run at least once
-        
+
         // Verify the failure scenarios work as expected - tasks are called even with random failures
         expect(stableTask).toHaveBeenCalled();
         expect(flakyTask).toHaveBeenCalled();
@@ -328,7 +328,7 @@ describe("scheduler stories", () => {
         const newCapabilities = getTestCapabilities();
         const newTimeControl = getDatetimeControl(newCapabilities);
         const newSchedulerControl = getSchedulerControl(newCapabilities);
-        
+
         // Set the same advanced time for the new scheduler
         newTimeControl.setTime(startTime + (2 * 24 * 60 * 60 * 1000));
         newSchedulerControl.setPollingInterval(1);
@@ -460,7 +460,7 @@ describe("scheduler stories", () => {
         const daysToSimulate = 14;
         for (let day = 0; day < daysToSimulate; day++) {
             timeControl.advanceTime(24 * 60 * 60 * 1000); // Advance 1 day
-            
+
             // Occasionally wait for scheduler to process
             if (day % 3 === 0) {
                 await schedulerControl.waitForNextCycleEnd();
@@ -541,14 +541,14 @@ describe("scheduler stories", () => {
 
         // Lightweight tasks should continue, heavy tasks should fail
         expect(lightweightCallCount).toBeGreaterThanOrEqual(normalLight); // Should continue running
-        
+
         // Run for 2 more hours allowing recovery
         timeControl.advanceTime(2 * 60 * 60 * 1000);
         await schedulerControl.waitForNextCycleEnd();
 
         // System should eventually recover and heavy tasks should resume
         expect(resourceIntensiveCallCount).toBeGreaterThanOrEqual(normalHeavy);
-        
+
         // Verify that the resource monitoring and failure scenarios work
         expect(resourceIntensiveTask).toHaveBeenCalled();
         expect(lightweightTask).toHaveBeenCalled();
@@ -806,7 +806,7 @@ describe("scheduler stories", () => {
         const newCapabilities = getTestCapabilities();
         const newTimeControl = getDatetimeControl(newCapabilities);
         const newSchedulerControl = getSchedulerControl(newCapabilities);
-        
+
         // Set time to 16:00:00 (1 hour later)
         newTimeControl.setTime(startTime + (2 * 60 * 60 * 1000));
         newSchedulerControl.setPollingInterval(1);
@@ -879,7 +879,7 @@ describe("scheduler stories", () => {
         // Verify the pattern: 2-hour task executes twice as often as 4-hour task
         const total2HourExecutions = every2HourTask.mock.calls.length - initial2Hour;
         const total4HourExecutions = every4HourTask.mock.calls.length - initial4Hour;
-        
+
         // 2-hour task should have executed exactly twice as often as 4-hour task
         expect(total2HourExecutions).toBe(total4HourExecutions * 2);
 
@@ -961,7 +961,7 @@ describe("scheduler stories", () => {
         const initialNoon = noonTask.mock.calls.length;
 
         // Neither should execute at 11 PM
-        
+
         // Advance exactly 1 hour to midnight (New Year)
         timeControl.advanceTime(3 * 60 * 60 * 1000);
         await schedulerControl.waitForNextCycleEnd();
@@ -997,6 +997,51 @@ describe("scheduler stories", () => {
         expect(totalMidnightExecutions).toBe(2); // Exactly 2 midnight executions
         expect(totalNoonExecutions).toBe(1);     // Exactly 1 noon execution
 
+        await capabilities.scheduler.stop();
+    });
+
+    test.skip("should not block executions when a slow task is running", async () => {
+        const capabilities = getTestCapabilities();
+        const timeControl = getDatetimeControl(capabilities);
+        const schedulerControl = getSchedulerControl(capabilities);
+        const retryDelay = Duration.fromMillis(5000);
+
+        const fastTask = jest.fn();
+
+        let shouldRun = true;
+        const slowTask = jest.fn().mockImplementation(async () => {
+            while (shouldRun) {
+                await new Promise(resolve => setTimeout(resolve, 1));
+            }
+        });
+
+        // Set start time to 01:15:00 on Jan 1, 2021
+        const startTime = new Date("2021-01-01T01:15:00.000Z").getTime();
+        timeControl.setTime(startTime);
+        schedulerControl.setPollingInterval(1);
+
+        const registrations = [
+            ["fast-task", "0 * * * *", fastTask, retryDelay],   // Every hour at 0 minutes
+            ["slow-task", "0 * * * *", slowTask, retryDelay],    // Every hour at 0 minutes
+        ];
+
+        await capabilities.scheduler.initialize(registrations);
+
+        // Wait some time.
+        await new Promise(resolve => setTimeout(resolve, 200));
+
+        expect(fastTask.mock.calls.length).toEqual(1);
+        expect(slowTask.mock.calls.length).toEqual(1);
+
+        // Advance by one hour
+        timeControl.advanceTime(1 * 60 * 60 * 1000);
+        // Wait some time.
+        await new Promise(resolve => setTimeout(resolve, 200));
+
+        expect(fastTask.mock.calls.length).toEqual(2);
+        expect(slowTask.mock.calls.length).toEqual(1);
+
+        shouldRun = false;
         await capabilities.scheduler.stop();
     });
 });

@@ -25,4 +25,4 @@ function isRunning(task) {
 
 module.exports = {
     isRunning,
-}
+};

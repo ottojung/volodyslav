@@ -1,6 +1,6 @@
 /**
  * Tests for declarative scheduler task execution and scheduling behavior.
- * Focuses on proper task execution timing and recovery scenarios.
+ * Focuses on scenarios where the scheduler missed a bunch of executions.
  */
 
 const { Duration } = require("luxon");
@@ -18,247 +18,333 @@ function getTestCapabilities() {
     return capabilities;
 }
 
-describe("declarative scheduler task execution behavior", () => {
-    // Use real timers for testing actual scheduler behavior
-
-    test("should execute tasks according to their schedule", async () => {
+describe("declarative scheduler long downtime catchup behavior", () => {
+    test("should not catch up on missed executions during short downtime", async () => {
         const capabilities = getTestCapabilities();
-        const schedulerControl = getSchedulerControl(capabilities);
-        const retryDelay = Duration.fromMillis(5000);
-        const callback = jest.fn();
-
-        schedulerControl.setPollingInterval(1);
-
-        const registrations = [
-            // Task runs every minute
-            ["daily-task", "0 * * * *", callback, retryDelay]
-        ];
-
-        await capabilities.scheduler.initialize(registrations);
-
-        // Wait for execution
-        await schedulerControl.waitForNextCycleEnd();
-        // Scheduler should initialize without errors
-        expect(true).toBe(true);
-
-        await capabilities.scheduler.stop();
-    });
-
-    test("should handle different cron schedule frequencies", async () => {
-        const capabilities = getTestCapabilities();
-        const schedulerControl = getSchedulerControl(capabilities);
-        
-        schedulerControl.setPollingInterval(1);
-        const retryDelay = Duration.fromMillis(5000);
-
-        const minuteCallback = jest.fn();
-        const hourlyCallback = jest.fn();
-        const dailyCallback = jest.fn();
-
-        const registrations = [
-            ["minute-task", "0 * * * *", minuteCallback, retryDelay], // Every minute
-            ["hourly-task", "0 * * * *", hourlyCallback, retryDelay], // Every hour
-            ["daily-task", "0 8 * * *", dailyCallback, retryDelay]   // Daily at 8:00 AM
-        ];
-
-        await capabilities.scheduler.initialize(registrations);
-
-        // Wait for execution - at least the minute task should execute
-        await schedulerControl.waitForNextCycleEnd();
-        // Scheduler should initialize without errors
-        expect(true).toBe(true);
-
-        await capabilities.scheduler.stop();
-    });
-
-    test("should handle task execution with retries correctly", async () => {
-        const capabilities = getTestCapabilities();
-        const schedulerControl = getSchedulerControl(capabilities);
-        
-        schedulerControl.setPollingInterval(1);
         const timeControl = getDatetimeControl(capabilities);
-        const retryDelay = Duration.fromMillis(500); // Short retry for testing
-        let executionCount = 0;
+        const schedulerControl = getSchedulerControl(capabilities);
 
-        const callback = jest.fn(() => {
-            executionCount++;
-            if (executionCount === 1) {
-                throw new Error("First failure");
-            }
-        });
+        schedulerControl.setPollingInterval(1);
+        const retryDelay = Duration.fromMillis(5000);
+        const hourlyTask = jest.fn();
 
-        // Set initial time to trigger immediate execution (start of minute)
+        // Start at exactly the hour to trigger immediate execution
         const startTime = new Date("2021-01-01T00:00:00.000Z").getTime();
         timeControl.setTime(startTime);
 
         const registrations = [
-            ["retry-task", "0 * * * *", callback, retryDelay]
+            ["hourly-task", "0 * * * *", hourlyTask, retryDelay] // Every hour at 0 minutes
         ];
 
         await capabilities.scheduler.initialize(registrations);
-
-        // Wait for first execution
-        await schedulerControl.waitForNextCycleEnd();
-        expect(callback).toHaveBeenCalledTimes(1);
-
-        // Wait a bit longer for error handling and state persistence to complete
         await schedulerControl.waitForNextCycleEnd();
 
-        // Instead of testing exact retry timing, test that retry state is set correctly
-        // by checking the persisted state
-        await capabilities.state.transaction(async (storage) => {
-            const currentState = await storage.getExistingState();
-            expect(currentState).not.toBeNull();
-            expect(currentState.tasks).toHaveLength(1);
-            const task = currentState.tasks[0];
-            expect(task.pendingRetryUntil).toBeTruthy(); // Retry should be scheduled
-            expect(task.lastFailureTime).toBeTruthy(); // Failure should be recorded
-        });
+        // Should execute once at startup
+        expect(hourlyTask.mock.calls.length).toBe(1);
+        const initialExecutions = hourlyTask.mock.calls.length;
+
+        // Advance time by 3 hours all at once (simulating 3 missed executions)
+        timeControl.advanceTime(3 * 60 * 60 * 1000); // to 03:00:00
+        await schedulerControl.waitForNextCycleEnd();
+
+        // Should execute only once more (no catch-up), not 3 times
+        expect(hourlyTask.mock.calls.length).toBe(initialExecutions + 1);
 
         await capabilities.scheduler.stop();
     });
 
-    test("should handle special date schedules like leap year", async () => {
+    test("should not catch up on missed executions during short downtime, even if several polls", async () => {
         const capabilities = getTestCapabilities();
+        const timeControl = getDatetimeControl(capabilities);
         const schedulerControl = getSchedulerControl(capabilities);
-        
+
         schedulerControl.setPollingInterval(1);
         const retryDelay = Duration.fromMillis(5000);
-        const callback = jest.fn();
+        const hourlyTask = jest.fn();
+
+        // Start at exactly the hour to trigger immediate execution
+        const startTime = new Date("2021-01-01T00:00:00.000Z").getTime();
+        timeControl.setTime(startTime);
 
         const registrations = [
-            // Task for Feb 29 (leap day)
-            ["leap-day-task", "0 12 29 2 *", callback, retryDelay]
+            ["hourly-task", "0 * * * *", hourlyTask, retryDelay] // Every hour at 0 minutes
         ];
 
-        // Should initialize without errors even for special dates
         await capabilities.scheduler.initialize(registrations);
-
         await schedulerControl.waitForNextCycleEnd();
 
-        // Task should not run (not leap day)
-        expect(true).toBe(true); // Scheduler initialized successfully
+        // Should execute once at startup
+        expect(hourlyTask.mock.calls.length).toBe(1);
+        const initialExecutions = hourlyTask.mock.calls.length;
+
+        // Advance time by 3 hours all at once (simulating 3 missed executions)
+        timeControl.advanceTime(3 * 60 * 60 * 1000); // to 03:00:00
+
+        for (let i = 0; i < 30; i++) {
+            await schedulerControl.waitForNextCycleEnd();
+        }
+
+        // Should execute only once more (no catch-up), not 3 times
+        expect(hourlyTask.mock.calls.length).toBe(initialExecutions + 1);
 
         await capabilities.scheduler.stop();
     });
 
-    test("should handle task persistence and recovery", async () => {
+    test("should not catch up on many missed executions during extended downtime", async () => {
         const capabilities = getTestCapabilities();
+        const timeControl = getDatetimeControl(capabilities);
         const schedulerControl = getSchedulerControl(capabilities);
-        
+
+        schedulerControl.setPollingInterval(1);
+        const retryDelay = Duration.fromMillis(3000);
+
+        const hourlyTask = jest.fn();
+        const dailyTask = jest.fn();
+
+        // Start at a specific time 
+        const startTime = new Date("2021-01-01T02:00:00.000Z").getTime();
+        timeControl.setTime(startTime);
+
+        const registrations = [
+            ["hourly-catchup", "0 * * * *", hourlyTask, retryDelay],  // Every hour
+            ["daily-catchup", "0 6 * * *", dailyTask, retryDelay]     // Daily at 6 AM
+        ];
+
+        await capabilities.scheduler.initialize(registrations);
+        await schedulerControl.waitForNextCycleEnd();
+
+        const initialHourly = hourlyTask.mock.calls.length;
+        const initialDaily = dailyTask.mock.calls.length;
+
+        // Simulate extended downtime - advance 2 full days (48 hours)
+        // This would normally trigger 48 hourly executions and 2 daily executions
+        timeControl.advanceTime(2 * 24 * 60 * 60 * 1000);
+
+        for (let i = 0; i < 10; i++) {
+            await schedulerControl.waitForNextCycleEnd();
+        }
+
+        // Due to no-catchup policy: should execute only once per task, not multiple times
+        const hourlyExecutions = hourlyTask.mock.calls.length - initialHourly;
+        const dailyExecutions = dailyTask.mock.calls.length - initialDaily;
+
+        expect(hourlyExecutions).toBe(1); // Only 1 execution, not 48
+        expect(dailyExecutions).toBe(1);  // Only 1 execution, not 2
+
+        await capabilities.scheduler.stop();
+    });
+
+    test("should handle different task frequencies consistently during downtime", async () => {
+        const capabilities = getTestCapabilities();
+        const timeControl = getDatetimeControl(capabilities);
+        const schedulerControl = getSchedulerControl(capabilities);
+
         schedulerControl.setPollingInterval(1);
         const retryDelay = Duration.fromMillis(5000);
-        const callback = jest.fn();
+
+        const every15MinTask = jest.fn();
+        const hourlyTask = jest.fn();
+        const every6HourTask = jest.fn();
+
+        // Start at midnight for clean schedule boundaries
+        const startTime = new Date("2021-01-01T00:00:00.000Z").getTime();
+        timeControl.setTime(startTime);
 
         const registrations = [
-            ["persistent-task", "0 * * * *", callback, retryDelay]
+            ["every-15min", "*/15 * * * *", every15MinTask, retryDelay], // Every 15 minutes
+            ["hourly", "0 * * * *", hourlyTask, retryDelay],            // Every hour
+            ["every-6h", "0 */6 * * *", every6HourTask, retryDelay]     // Every 6 hours
         ];
 
-        // First initialization
         await capabilities.scheduler.initialize(registrations);
-
-        // Wait for execution
         await schedulerControl.waitForNextCycleEnd();
-        // Scheduler should initialize without errors
-        expect(true).toBe(true);
 
-        await capabilities.scheduler.stop();
+        const initial15Min = every15MinTask.mock.calls.length;
+        const initialHourly = hourlyTask.mock.calls.length;
+        const initial6Hour = every6HourTask.mock.calls.length;
 
-        // Second initialization with same task (should be idempotent)
-        await capabilities.scheduler.initialize(registrations);
+        // Advance 12 hours (would normally trigger many executions)
+        // 15-min task: 48 executions, hourly: 12 executions, 6-hour: 2 executions
+        timeControl.advanceTime(12 * 60 * 60 * 1000);
 
-        await schedulerControl.waitForNextCycleEnd();
+        for (let i = 0; i < 10; i++) {
+            await schedulerControl.waitForNextCycleEnd();
+        }
+
+        // All tasks should execute exactly once more (no catch-up)
+        expect(every15MinTask.mock.calls.length - initial15Min).toBe(1);
+        expect(hourlyTask.mock.calls.length - initialHourly).toBe(1);
+        expect(every6HourTask.mock.calls.length - initial6Hour).toBe(1);
 
         await capabilities.scheduler.stop();
     });
 
-    test("should handle multiple task initialization correctly", async () => {
+    test("should handle gradual time advancement after downtime correctly", async () => {
         const capabilities = getTestCapabilities();
+        const timeControl = getDatetimeControl(capabilities);
         const schedulerControl = getSchedulerControl(capabilities);
+
+        schedulerControl.setPollingInterval(1);
+        const retryDelay = Duration.fromMillis(3000);
+        const hourlyTask = jest.fn();
+
+        // Start at 10:00 AM
+        const startTime = new Date("2021-01-01T10:00:00.000Z").getTime();
+        timeControl.setTime(startTime);
+
+        const registrations = [
+            ["gradual-test", "0 * * * *", hourlyTask, retryDelay] // Every hour
+        ];
+
+        await capabilities.scheduler.initialize(registrations);
+        await schedulerControl.waitForNextCycleEnd();
+
+        const initialExecutions = hourlyTask.mock.calls.length;
+
+        // Jump ahead 5 hours at once (simulating downtime)
+        timeControl.advanceTime(5 * 60 * 60 * 1000); // to 15:00 (3 PM)
         
+        for (let i = 0; i < 10; i++) {
+            await schedulerControl.waitForNextCycleEnd();
+        }
+
+        // Should execute only once after the big jump (no catch-up)
+        expect(hourlyTask.mock.calls.length).toBe(initialExecutions + 1);
+        const afterBigJump = hourlyTask.mock.calls.length;
+
+        // Now advance gradually hour by hour to verify normal scheduling resumes
+        timeControl.advanceTime(60 * 60 * 1000); // to 16:00 (4 PM)
+        for (let i = 0; i < 10; i++) {
+            await schedulerControl.waitForNextCycleEnd();
+        }
+        expect(hourlyTask.mock.calls.length).toBe(afterBigJump + 1);
+
+        timeControl.advanceTime(60 * 60 * 1000); // to 17:00 (5 PM)
+        for (let i = 0; i < 10; i++) {
+            await schedulerControl.waitForNextCycleEnd();
+        }
+        expect(hourlyTask.mock.calls.length).toBe(afterBigJump + 2);
+
+        await capabilities.scheduler.stop();
+    });
+
+    test("should verify no-catchup policy with very long downtime periods", async () => {
+        const capabilities = getTestCapabilities();
+        const timeControl = getDatetimeControl(capabilities);
+        const schedulerControl = getSchedulerControl(capabilities);
+
         schedulerControl.setPollingInterval(1);
         const retryDelay = Duration.fromMillis(5000);
 
-        const task1 = jest.fn();
-        const task2 = jest.fn();
-        const task3 = jest.fn();
+        const task30Min = jest.fn();
+        const taskHourly = jest.fn();
+        const taskDaily = jest.fn();
+
+        // Start at a known time
+        const startTime = new Date("2021-01-01T00:00:00.000Z").getTime();
+        timeControl.setTime(startTime);
 
         const registrations = [
-            ["task1", "0 * * * *", task1, retryDelay],     // Every minute
-            ["task2", "*/15 * * * *", task2, retryDelay],   // Every 5 minutes
-            ["task3", "0 * * * *", task3, retryDelay]      // Every hour
+            ["every-30min", "*/30 * * * *", task30Min, retryDelay],   // Every 30 minutes
+            ["hourly-task", "0 * * * *", taskHourly, retryDelay],    // Every hour
+            ["daily-task", "0 9 * * *", taskDaily, retryDelay]       // Daily at 9 AM
         ];
 
         await capabilities.scheduler.initialize(registrations);
-
-        // Wait for executions
         await schedulerControl.waitForNextCycleEnd();
 
-        // At least the minute task should execute
-        // Scheduler should initialize without errors
-        expect(true).toBe(true);
+        const initial30Min = task30Min.mock.calls.length;
+        const initialHourly = taskHourly.mock.calls.length;
+        const initialDaily = taskDaily.mock.calls.length;
+
+        // Simulate very long downtime - advance 1 week (7 days)
+        // This would normally trigger:
+        // - 30-min task: 7 * 24 * 2 = 336 executions
+        // - hourly task: 7 * 24 = 168 executions  
+        // - daily task: 7 executions
+        timeControl.advanceTime(7 * 24 * 60 * 60 * 1000);
+        for (let i = 0; i < 10; i++) {
+            await schedulerControl.waitForNextCycleEnd();
+        }
+
+        // Verify no-catchup policy: each task should execute exactly once
+        expect(task30Min.mock.calls.length - initial30Min).toBe(1);
+        expect(taskHourly.mock.calls.length - initialHourly).toBe(1);
+        expect(taskDaily.mock.calls.length - initialDaily).toBe(1);
 
         await capabilities.scheduler.stop();
     });
 
-    test("should handle scheduler restart and state consistency", async () => {
+    test("should demonstrate scheduler restart with proper catchup behavior", async () => {
         const capabilities = getTestCapabilities();
+        const timeControl = getDatetimeControl(capabilities);
         const schedulerControl = getSchedulerControl(capabilities);
-        
+
         schedulerControl.setPollingInterval(1);
         const retryDelay = Duration.fromMillis(1000);
-        let executionCount = 0;
+        const hourlyTask = jest.fn();
 
-        const callback = jest.fn(() => {
-            executionCount++;
-        });
+        // Start at a specific time
+        const startTime = new Date("2021-01-01T08:00:00.000Z").getTime();
+        timeControl.setTime(startTime);
 
         const registrations = [
-            ["restart-task", "0 * * * *", callback, retryDelay]
+            ["restart-test", "0 * * * *", hourlyTask, retryDelay] // Every hour
         ];
 
         // First scheduler instance
         await capabilities.scheduler.initialize(registrations);
-
         await schedulerControl.waitForNextCycleEnd();
-        expect(executionCount).toBe(1);
+        expect(hourlyTask.mock.calls.length).toBe(1);
 
         await capabilities.scheduler.stop();
 
-        // Restart with new instance (simulating application restart)
+        // Advance time while scheduler is stopped (simulating downtime)
+        timeControl.advanceTime(4 * 60 * 60 * 1000); // 4 hours to 12:00 PM
+
+        // Restart scheduler with same registrations
         await capabilities.scheduler.initialize(registrations);
+        for (let i = 0; i < 10; i++) {
+            await schedulerControl.waitForNextCycleEnd();
+        }
 
-        await schedulerControl.waitForNextCycleEnd();
-
-        // Should maintain consistency and not duplicate executions inappropriately
-        // Scheduler should initialize without errors
-        expect(true).toBe(true);
+        // Should execute only once after restart, not 4 times for missed executions
+        expect(hourlyTask.mock.calls.length).toBe(2); // 1 initial + 1 after restart
 
         await capabilities.scheduler.stop();
     });
 
-    test("should efficiently handle various cron expressions", async () => {
+    test("should verify catchup behavior with complex cron expressions", async () => {
         const capabilities = getTestCapabilities();
+        const timeControl = getDatetimeControl(capabilities);
         const schedulerControl = getSchedulerControl(capabilities);
-        
+
         schedulerControl.setPollingInterval(1);
         const retryDelay = Duration.fromMillis(5000);
-        const callback = jest.fn();
+        const complexTask = jest.fn();
+
+        // Start at midnight for predictable cron behavior
+        const startTime = new Date("2021-01-01T00:00:00.000Z").getTime();
+        timeControl.setTime(startTime);
 
         const registrations = [
-            ["complex-task", "0,15,45 * * * *", callback, retryDelay] // Multiple specific minutes
+            // Every 15 minutes: 0, 15, 30, 45 minutes past each hour
+            ["complex-schedule", "0,15,30,45 * * * *", complexTask, retryDelay]
         ];
 
-        // Should complete initialization quickly even with complex expressions
-        const startTime = Date.now();
         await capabilities.scheduler.initialize(registrations);
-        const endTime = Date.now();
-
-        // Should initialize reasonably fast
-        const duration = endTime - startTime;
-        expect(duration).toBeLessThan(1000); // Under 1 second
-
         await schedulerControl.waitForNextCycleEnd();
+
+        const initialExecutions = complexTask.mock.calls.length;
+
+        // Advance time by 6 hours - would normally trigger 24 executions (4 per hour * 6 hours)
+        timeControl.advanceTime(6 * 60 * 60 * 1000);
+        for (let i = 0; i < 10; i++) {
+            await schedulerControl.waitForNextCycleEnd();
+        }
+
+        // Should execute only once more despite complex schedule (no catch-up)
+        expect(complexTask.mock.calls.length - initialExecutions).toBe(1);
 
         await capabilities.scheduler.stop();
     });
