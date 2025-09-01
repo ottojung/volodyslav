@@ -92,10 +92,10 @@ describe("scheduler stories", () => {
 
         await capabilities.scheduler.initialize(registrations);
 
-        // Wait for scheduler to start up and potentially catch up
+        // Wait for scheduler to start up.
         await schedulerControl.waitForNextCycleEnd();
 
-        // Both tasks should catch up for their previous occurrences
+        // Both tasks should start during the first cycle because they never ran before.
         expect(hourlyTask.mock.calls.length).toBeGreaterThan(0);
         expect(dailyTask.mock.calls.length).toBeGreaterThan(0);
 
@@ -216,14 +216,14 @@ describe("scheduler stories", () => {
         timeControl.advanceTime(5 * 60 * 60 * 1000 - 10 * 60 * 1000); // to 05:00:00
         await schedulerControl.waitForNextCycleEnd();
 
-        // Should have executed at least once more
-        expect(taskCallback.mock.calls.length).toBeGreaterThan(initialCalls);
+        // Should have executed once more because of no "make-up" semantics.
+        expect(taskCallback.mock.calls.length).toEqual(initialCalls + 1);
         const afterBigJump = taskCallback.mock.calls.length;
 
         // Poll gradually hour by hour from here to see individual executions
         timeControl.advanceTime(60 * 60 * 1000); // to 06:00:00
         await schedulerControl.waitForNextCycleEnd();
-        expect(taskCallback.mock.calls.length).toBeGreaterThan(afterBigJump);
+        expect(taskCallback.mock.calls.length).toEqual(afterBigJump + 1);
 
         await capabilities.scheduler.stop();
     });
