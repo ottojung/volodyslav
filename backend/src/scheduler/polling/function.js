@@ -20,19 +20,26 @@ function makePollingFunction(capabilities, registrations, scheduledTasks, taskEx
     const dt = capabilities.datetime;
     let parallelCounter = 0;
 
-    return async function poll() {
-        const now = dt.now();
+    async function getDueTasks() {
+        parallelCounter++;
+        try {
+            const now = dt.now();
+            return await mutateTasks(capabilities, registrations, (tasks) => {
+                return evaluateTasksForExecution(tasks, scheduledTasks, now, dt, capabilities);
+            });
+        } finally {
+            parallelCounter--;
+        }
+    }
 
+    return async function poll() {
         if (parallelCounter > 0) {
             // Somebody is already polling;
             return;
         }
 
-        parallelCounter++;
-        const { dueTasks, stats } = await mutateTasks(capabilities, registrations, (tasks) => {
-            return evaluateTasksForExecution(tasks, scheduledTasks, now, dt, capabilities);
-        });
-        parallelCounter--;
+        // Collect tasks and stats.
+        const { dueTasks, stats } = await getDueTasks();
 
         // Execute all due tasks in parallel
         await taskExecutor.executeTasks(dueTasks);
