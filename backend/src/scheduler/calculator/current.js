@@ -2,7 +2,7 @@
  * Cron expression matching.
  */
 
-const datetime = require("../../datetime");
+const { toNativeDate } = require("../../datetime");
 
 /**
  * Checks if a given datetime matches the cron expression.
@@ -11,8 +11,7 @@ const datetime = require("../../datetime");
  * @returns {boolean} True if the datetime matches the cron expression
  */
 function matchesCronExpression(cronExpr, dateTime) {
-    const dt = datetime.make();
-    const nativeDate = dt.toNativeDate(dateTime);
+    const nativeDate = toNativeDate(dateTime);
 
     const minute = nativeDate.getMinutes();
     const hour = nativeDate.getHours();

@@ -98,6 +98,8 @@ function stubSleeper(capabilities) {
     });
 }
 
+const datetime = require("../src/datetime");
+
 function stubDatetime(capabilities) {
     // Store the original datetime methods that are already jest mocks
     const originalNow = capabilities.datetime.now;
@@ -106,7 +108,7 @@ function stubDatetime(capabilities) {
     let currentTimeMs = Date.now();
 
     // Override the now method to return the controlled time
-    originalNow.mockImplementation(() => capabilities.datetime.fromEpochMs(currentTimeMs));
+    originalNow.mockImplementation(() => datetime.fromEpochMs(currentTimeMs));
 
     // Add time control methods to the datetime object
     capabilities.datetime.setTime = (ms) => {
@@ -120,6 +122,13 @@ function stubDatetime(capabilities) {
     capabilities.datetime.getCurrentTime = () => {
         return currentTimeMs;
     };
+
+    // Add the datetime functions to the capability object for test compatibility
+    capabilities.datetime.fromEpochMs = jest.fn(datetime.fromEpochMs);
+    capabilities.datetime.fromISOString = jest.fn(datetime.fromISOString);
+    capabilities.datetime.toEpochMs = jest.fn(datetime.toEpochMs);
+    capabilities.datetime.toISOString = jest.fn(datetime.toISOString);
+    capabilities.datetime.toNativeDate = jest.fn(datetime.toNativeDate);
 
     // Mark it as mocked for type guard
     capabilities.datetime.__isMockedDatetime = true;

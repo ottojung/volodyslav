@@ -5,7 +5,7 @@ const timezone = require("dayjs/plugin/timezone");
 dayjs.extend(utc);
 dayjs.extend(timezone);
 
-const datetime = require("../datetime");
+const { toNativeDate } = require("../datetime");
 
 /**
  * Formats a date to the local timezone.
@@ -15,7 +15,7 @@ const datetime = require("../datetime");
 function format(date) {
     // Format: YYYY-MM-DDTHH:mm:ssZZ (local timezone, e.g. 2025-05-22T15:30:00+0200)
     const tzName = Intl.DateTimeFormat().resolvedOptions().timeZone;
-    const native = datetime.make().toNativeDate(date);
+    const native = toNativeDate(date);
     return dayjs(native).tz(tzName).format("YYYY-MM-DDTHH:mm:ssZZ");
 }
 
