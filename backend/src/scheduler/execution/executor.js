@@ -44,84 +44,78 @@ function makeTaskExecutor(capabilities, mutateTasks) {
     async function executeTasks(dueTasks) {
         if (dueTasks.length === 0) return;
 
-        // Execute all tasks in parallel
-        const promises = dueTasks.map(({ taskName, mode, callback }) => runTask(taskName, mode, callback));
-        await Promise.all(promises);
-    }
+        // Execute all tasks in parallel but collect their results
+        const promises = dueTasks.map(async ({ taskName, mode, callback }) => {
+            const qname = JSON.stringify(taskName);
+            const startTime = dt.now();
 
-    /**
-     * Execute a single task.
-     * @param {string} taskName
-     * @param {"retry"|"cron"} mode
-     * @param {Callback} callback
-     */
-    async function runTask(taskName, mode, callback) {
-        const qname = JSON.stringify(taskName);
-        const startTime = dt.now();
+            capabilities.logger.logInfo({ name: taskName, mode }, "TaskRunStarted");
 
-        /**
-         * @template T
-         * @param {(task: Task) => T} transformation
-         * @returns {Promise<T>}
-         */
-        async function mutateThis(transformation) {
-            return await mutateTasks((tasks) => {
+            async function executeIt() {
+                try {
+                    await callback();
+                    return null;
+                } catch (error) {
+                    if (error instanceof Error) {
+                        return error;
+                    } else {
+                        return new Error(`Unknown error: ${error}`);
+                    }
+                }
+            }
+
+            const maybeError = await executeIt();
+            const end = dt.now();
+
+            // Return the result for later processing
+            return {
+                taskName,
+                mode,
+                startTime,
+                end,
+                maybeError,
+                qname
+            };
+        });
+
+        // Wait for all task executions to complete
+        const results = await Promise.all(promises);
+
+        // Process completion updates sequentially to avoid concurrency issues
+        for (const { taskName, mode, startTime, end, maybeError, qname } of results) {
+            await mutateTasks((tasks) => {
                 const task = tasks.get(taskName);
                 if (task === undefined) {
                     throw new TaskExecutionNotFoundError(taskName);
                 }
-                return transformation(task);
-            });
-        }
 
-        capabilities.logger.logInfo({ name: taskName, mode }, "TaskRunStarted");
+                if (maybeError === null) {
+                    task.lastSuccessTime = end;
+                    task.lastFailureTime = undefined;
+                    task.pendingRetryUntil = undefined;
 
-        async function executeIt() {
-            try {
-                await callback();
-                return null;
-            } catch (error) {
-                if (error instanceof Error) {
-                    return error;
+                    capabilities.logger.logInfo(
+                        { name: taskName, mode, durationMs: end.getTime() - startTime.getTime() },
+                        `Task ${qname} succeeded`
+                    );
                 } else {
-                    return new Error(`Unknown error: ${error}`);
+                    const retryAt = dt.fromEpochMs(end.getTime() + task.retryDelay.toMillis());
+                    task.lastSuccessTime = undefined;
+                    task.lastFailureTime = end;
+                    task.pendingRetryUntil = retryAt;
+
+                    const message = maybeError.message;
+                    capabilities.logger.logInfo(
+                        { name: taskName, mode, errorMessage: message },
+                        `Task ${qname} failed: ${message}`
+                    );
                 }
-            }
-        }
-
-        const maybeError = await executeIt();
-        const end = dt.now();
-
-        if (maybeError === null) {
-            await mutateThis((task) => {
-                task.lastSuccessTime = end;
-                task.lastFailureTime = undefined;
-                task.pendingRetryUntil = undefined;
             });
-
-            capabilities.logger.logInfo(
-                { name: taskName, mode, durationMs: end.getTime() - startTime.getTime() },
-                `Task ${qname} succeeded`
-            );
-        } else {
-            await mutateThis((task) => {
-                const retryAt = dt.fromEpochMs(end.getTime() + task.retryDelay.toMillis());
-                task.lastSuccessTime = undefined;
-                task.lastFailureTime = end;
-                task.pendingRetryUntil = retryAt;
-            });
-
-            const message = maybeError.message;
-            capabilities.logger.logInfo(
-                { name: taskName, mode, errorMessage: message },
-                `Task ${qname} failed: ${message}`
-            );
         }
     }
 
     return {
         executeTasks,
-        runTask,
     };
 }
 
