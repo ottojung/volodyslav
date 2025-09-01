@@ -53,6 +53,43 @@ describe("declarative scheduler long downtime catchup behavior", () => {
         await capabilities.scheduler.stop();
     });
 
+    test("should not catch up on missed executions during short downtime, even if several polls", async () => {
+        const capabilities = getTestCapabilities();
+        const timeControl = getDatetimeControl(capabilities);
+        const schedulerControl = getSchedulerControl(capabilities);
+
+        schedulerControl.setPollingInterval(1);
+        const retryDelay = Duration.fromMillis(5000);
+        const hourlyTask = jest.fn();
+
+        // Start at exactly the hour to trigger immediate execution
+        const startTime = new Date("2021-01-01T00:00:00.000Z").getTime();
+        timeControl.setTime(startTime);
+
+        const registrations = [
+            ["hourly-task", "0 * * * *", hourlyTask, retryDelay] // Every hour at 0 minutes
+        ];
+
+        await capabilities.scheduler.initialize(registrations);
+        await schedulerControl.waitForNextCycleEnd();
+
+        // Should execute once at startup
+        expect(hourlyTask.mock.calls.length).toBe(1);
+        const initialExecutions = hourlyTask.mock.calls.length;
+
+        // Advance time by 3 hours all at once (simulating 3 missed executions)
+        timeControl.advanceTime(3 * 60 * 60 * 1000); // to 03:00:00
+
+        for (let i = 0; i < 30; i++) {
+            await schedulerControl.waitForNextCycleEnd();
+        }
+
+        // Should execute only once more (no catch-up), not 3 times
+        expect(hourlyTask.mock.calls.length).toBe(initialExecutions + 1);
+
+        await capabilities.scheduler.stop();
+    });
+
     test("should not catch up on many missed executions during extended downtime", async () => {
         const capabilities = getTestCapabilities();
         const timeControl = getDatetimeControl(capabilities);
@@ -82,7 +119,10 @@ describe("declarative scheduler long downtime catchup behavior", () => {
         // Simulate extended downtime - advance 2 full days (48 hours)
         // This would normally trigger 48 hourly executions and 2 daily executions
         timeControl.advanceTime(2 * 24 * 60 * 60 * 1000);
-        await schedulerControl.waitForNextCycleEnd();
+
+        for (let i = 0; i < 10; i++) {
+            await schedulerControl.waitForNextCycleEnd();
+        }
 
         // Due to no-catchup policy: should execute only once per task, not multiple times
         const hourlyExecutions = hourlyTask.mock.calls.length - initialHourly;
@@ -126,7 +166,10 @@ describe("declarative scheduler long downtime catchup behavior", () => {
         // Advance 12 hours (would normally trigger many executions)
         // 15-min task: 48 executions, hourly: 12 executions, 6-hour: 2 executions
         timeControl.advanceTime(12 * 60 * 60 * 1000);
-        await schedulerControl.waitForNextCycleEnd();
+
+        for (let i = 0; i < 10; i++) {
+            await schedulerControl.waitForNextCycleEnd();
+        }
 
         // All tasks should execute exactly once more (no catch-up)
         expect(every15MinTask.mock.calls.length - initial15Min).toBe(1);
@@ -160,7 +203,10 @@ describe("declarative scheduler long downtime catchup behavior", () => {
 
         // Jump ahead 5 hours at once (simulating downtime)
         timeControl.advanceTime(5 * 60 * 60 * 1000); // to 15:00 (3 PM)
-        await schedulerControl.waitForNextCycleEnd();
+        
+        for (let i = 0; i < 10; i++) {
+            await schedulerControl.waitForNextCycleEnd();
+        }
 
         // Should execute only once after the big jump (no catch-up)
         expect(hourlyTask.mock.calls.length).toBe(initialExecutions + 1);
@@ -168,11 +214,15 @@ describe("declarative scheduler long downtime catchup behavior", () => {
 
         // Now advance gradually hour by hour to verify normal scheduling resumes
         timeControl.advanceTime(60 * 60 * 1000); // to 16:00 (4 PM)
-        await schedulerControl.waitForNextCycleEnd();
+        for (let i = 0; i < 10; i++) {
+            await schedulerControl.waitForNextCycleEnd();
+        }
         expect(hourlyTask.mock.calls.length).toBe(afterBigJump + 1);
 
         timeControl.advanceTime(60 * 60 * 1000); // to 17:00 (5 PM)
-        await schedulerControl.waitForNextCycleEnd();
+        for (let i = 0; i < 10; i++) {
+            await schedulerControl.waitForNextCycleEnd();
+        }
         expect(hourlyTask.mock.calls.length).toBe(afterBigJump + 2);
 
         await capabilities.scheduler.stop();
@@ -213,7 +263,9 @@ describe("declarative scheduler long downtime catchup behavior", () => {
         // - hourly task: 7 * 24 = 168 executions  
         // - daily task: 7 executions
         timeControl.advanceTime(7 * 24 * 60 * 60 * 1000);
-        await schedulerControl.waitForNextCycleEnd();
+        for (let i = 0; i < 10; i++) {
+            await schedulerControl.waitForNextCycleEnd();
+        }
 
         // Verify no-catchup policy: each task should execute exactly once
         expect(task30Min.mock.calls.length - initial30Min).toBe(1);
@@ -252,7 +304,9 @@ describe("declarative scheduler long downtime catchup behavior", () => {
 
         // Restart scheduler with same registrations
         await capabilities.scheduler.initialize(registrations);
-        await schedulerControl.waitForNextCycleEnd();
+        for (let i = 0; i < 10; i++) {
+            await schedulerControl.waitForNextCycleEnd();
+        }
 
         // Should execute only once after restart, not 4 times for missed executions
         expect(hourlyTask.mock.calls.length).toBe(2); // 1 initial + 1 after restart
@@ -285,7 +339,9 @@ describe("declarative scheduler long downtime catchup behavior", () => {
 
         // Advance time by 6 hours - would normally trigger 24 executions (4 per hour * 6 hours)
         timeControl.advanceTime(6 * 60 * 60 * 1000);
-        await schedulerControl.waitForNextCycleEnd();
+        for (let i = 0; i < 10; i++) {
+            await schedulerControl.waitForNextCycleEnd();
+        }
 
         // Should execute only once more despite complex schedule (no catch-up)
         expect(complexTask.mock.calls.length - initialExecutions).toBe(1);
