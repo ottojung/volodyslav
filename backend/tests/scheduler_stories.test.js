@@ -860,11 +860,11 @@ describe("scheduler stories", () => {
         const initial4Hour = every4HourTask.mock.calls.length;
 
         // Both should have executed at startup (00:00:00 matches both patterns)
-        expect(initial2Hour).toBeGreaterThanOrEqual(1);
-        expect(initial4Hour).toBeGreaterThanOrEqual(1);
+        expect(initial2Hour).toEqual(1);
+        expect(initial4Hour).toEqual(1);
 
-        // Advance to 02:00:00 (2-hour task should execute, 4-hour should not)
-        timeControl.advanceTime(2 * 60 * 60 * 1000);
+        // Advance to 03:00:00 (3-hour task should execute, 4-hour should not)
+        timeControl.advanceTime(3 * 60 * 60 * 1000);
         await schedulerControl.waitForNextCycleEnd();
         await schedulerControl.waitForNextCycleEnd();
         await schedulerControl.waitForNextCycleEnd();
@@ -984,7 +984,10 @@ describe("scheduler stories", () => {
         // Neither should execute at 11 PM
         
         // Advance exactly 1 hour to midnight (New Year)
-        timeControl.advanceTime(60 * 60 * 1000);
+        timeControl.advanceTime(3 * 60 * 60 * 1000);
+        await schedulerControl.waitForNextCycleEnd();
+        await schedulerControl.waitForNextCycleEnd();
+        await schedulerControl.waitForNextCycleEnd();
         await schedulerControl.waitForNextCycleEnd();
         await schedulerControl.waitForNextCycleEnd();
         await schedulerControl.waitForNextCycleEnd();
