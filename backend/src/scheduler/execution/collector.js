@@ -72,24 +72,6 @@ function evaluateTasksForExecution(tasks, scheduledTasks, now, dt, capabilities)
         const shouldRunRetry = task.pendingRetryUntil && now.getTime() >= task.pendingRetryUntil.getTime();
         const callback = task.callback;
 
-        // Debug logging for task evaluation
-        console.log(`TaskEvaluation for ${taskName}:`, {
-            now: now.getTime(),
-            lastScheduledFire: lastScheduledFire ? lastScheduledFire.getTime() : undefined,
-            lastAttemptTime: task.lastAttemptTime ? task.lastAttemptTime.getTime() : undefined,
-            shouldRunCron,
-            shouldRunRetry
-        });
-        
-        capabilities.logger.logDebug({
-            taskName,
-            now: now.getTime(),
-            lastScheduledFire: lastScheduledFire ? lastScheduledFire.getTime() : undefined,
-            lastAttemptTime: task.lastAttemptTime ? task.lastAttemptTime.getTime() : undefined,
-            shouldRunCron,
-            shouldRunRetry
-        }, "TaskEvaluation");
-
         if (shouldRunRetry && shouldRunCron) {
             // Both are due - choose the mode based on which is earlier (chronologically smaller)
             if (task.pendingRetryUntil && lastScheduledFire && task.pendingRetryUntil.getTime() < lastScheduledFire.getTime()) {
