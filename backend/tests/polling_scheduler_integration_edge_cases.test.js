@@ -141,7 +141,7 @@ describe("declarative scheduler integration and system edge cases", () => {
 
             // Should have attempted execution
             // Scheduler should initialize without errors
-        expect(true).toBe(true);
+            expect(true).toBe(true);
 
             await capabilities.scheduler.stop();
         });
@@ -172,7 +172,7 @@ describe("declarative scheduler integration and system edge cases", () => {
             await schedulerControl.waitForNextCycleEnd();
 
             // Scheduler should initialize without errors
-        expect(true).toBe(true);
+            expect(true).toBe(true);
 
             await capabilities.scheduler.stop();
         });
@@ -210,7 +210,7 @@ describe("declarative scheduler integration and system edge cases", () => {
 
             // Some tasks should execute
             // Scheduler should initialize without errors
-        expect(true).toBe(true);
+            expect(true).toBe(true);
 
             await capabilities.scheduler.stop();
 
@@ -244,9 +244,9 @@ describe("declarative scheduler integration and system edge cases", () => {
 
             // Both tasks should be attempted
             // Scheduler should initialize without errors
-        expect(true).toBe(true);
+            expect(true).toBe(true);
             // Scheduler should initialize without errors
-        expect(true).toBe(true);
+            expect(true).toBe(true);
 
             await capabilities.scheduler.stop();
         });
@@ -273,7 +273,7 @@ describe("declarative scheduler integration and system edge cases", () => {
 
             // Should handle rapid cycles without issues
             // Scheduler should initialize without errors
-        expect(true).toBe(true);
+            expect(true).toBe(true);
         });
     });
 
@@ -341,11 +341,11 @@ describe("declarative scheduler integration and system edge cases", () => {
 
             // All task types should be attempted
             // Scheduler should initialize without errors
-        expect(true).toBe(true);
+            expect(true).toBe(true);
             // Scheduler should initialize without errors
-        expect(true).toBe(true);
+            expect(true).toBe(true);
             // Scheduler should initialize without errors
-        expect(true).toBe(true);
+            expect(true).toBe(true);
 
             await capabilities.scheduler.stop();
         });
@@ -363,7 +363,7 @@ describe("declarative scheduler integration and system edge cases", () => {
             // No need to wait for cycles when there are no tasks
             // Just verify scheduler can be stopped cleanly
             await capabilities.scheduler.stop();
-            
+
             // No assertions needed for empty registrations, but scheduler should work
             expect(true).toBe(true); // Verify test runs successfully
         });
@@ -388,7 +388,7 @@ describe("declarative scheduler integration and system edge cases", () => {
 
             // Task should still execute correctly
             // Scheduler should initialize without errors
-        expect(true).toBe(true);
+            expect(true).toBe(true);
 
             await capabilities.scheduler.stop();
         });
