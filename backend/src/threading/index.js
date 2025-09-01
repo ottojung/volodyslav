@@ -53,11 +53,13 @@ class PeriodicThread {
         }
     }
 
-    stop() {
+    async stop() {
         if (this.interval !== undefined) {
             clearInterval(this.interval);
             this.interval = undefined;
         }
+
+        await this.join();
     }
 
     isRunning() {
