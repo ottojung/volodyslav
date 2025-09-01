@@ -25,7 +25,9 @@ const { transactionWithRetry } = require("./transaction_retry");
  * @returns {Promise<T>}
  */
 async function transaction(capabilities, workingPath, initial_state, transformation, retryOptions) {
-    return transactionWithRetry(capabilities, workingPath, initial_state, transformation, retryOptions);
+    return await capabilities.sleeper.withMutex(workingPath, async () => {
+        return await transactionWithRetry(capabilities, workingPath, initial_state, transformation, retryOptions);
+    });
 }
 
 module.exports = {
