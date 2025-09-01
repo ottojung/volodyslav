@@ -1,4 +1,5 @@
 const request = require("supertest");
+const { fromISOString, fromEpochMs } = require("../src/datetime");
 const { makeTestApp } = require("./api_ordering_test_setup");
 const fs = require("fs");
 const path = require("path");
@@ -36,7 +37,6 @@ describe("POST /api/entries - rawInput transformation and shortcuts", () => {
 
         // Create config with empty shortcuts using transaction system
         const { transaction } = require("../src/event_log_storage");
-const { fromISOString, fromEpochMs } = require("../src/datetime");
         await transaction(capabilities, async (storage) => {
             storage.setConfig({
                 help: "test config",

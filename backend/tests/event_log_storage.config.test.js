@@ -1,4 +1,5 @@
 const path = require("path");
+const { fromISOString } = require("../src/datetime");
 const { transaction } = require("../src/event_log_storage");
 const gitstore = require("../src/gitstore");
 const { readObjects } = require("../src/json_stream_file");
@@ -159,7 +160,6 @@ describe("event_log_storage", () => {
             const configPath = path.join(workTree, "config.json");
             const configFile = await capabilities.checker.instantiate(configPath);
             const configStorage = require("../src/config/storage");
-const { fromISOString } = require("../src/datetime");
             const storedConfig = await configStorage.readConfig(
                 capabilities,
                 configFile
