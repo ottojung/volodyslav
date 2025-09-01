@@ -60,6 +60,30 @@ time has passed. When both conditions hold, the earlier time determines the
 next run. Due tasks execute asynchronously and their updated history is
 persisted.
 
+### No Make‑Up Execution Policy
+
+**When a task misses multiple scheduled executions, it runs only once when the
+scheduler resumes, not multiple times to "catch up" for missed runs.** This
+behaviour is intentional and provides several benefits:
+
+- **Resource protection** – prevents overwhelming the system with a burst of
+  overdue tasks after extended downtime.
+- **Predictable load** – execution frequency remains consistent with the
+  declared schedule rather than creating unpredictable spikes.
+- **Simplified state** – avoids complex tracking of historical missed
+  executions and their individual retry states.
+- **Deterministic behaviour** – the same schedule produces the same execution
+  pattern regardless of when the scheduler was offline.
+
+For example, if a task scheduled to run every 2 hours misses 6 executions due
+to a 12‑hour system outage, it will execute once when the scheduler restarts
+rather than attempting to run 6 times in succession. The task then continues
+on its normal 2‑hour schedule from that point forward.
+
+This design aligns with the scheduler's declarative philosophy: tasks follow
+their ongoing schedule rather than trying to reconstruct past execution
+history.
+
 To avoid schedules that cannot be observed, the scheduler validates that a
 cron expression's minimum interval is not shorter than the polling interval.
 
