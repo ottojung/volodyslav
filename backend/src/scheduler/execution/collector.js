@@ -76,20 +76,20 @@ function evaluateTasksForExecution(tasks, scheduledTasks, now, dt, capabilities)
             // Both are due - choose the mode based on which is earlier (chronologically smaller)
             if (task.pendingRetryUntil && lastScheduledFire && task.pendingRetryUntil.getTime() < lastScheduledFire.getTime()) {
                 dueTasks.push({ taskName, mode: "retry", callback });
-                task.lastAttemptTime = task.pendingRetryUntil; // Use scheduled retry time
+                task.lastAttemptTime = now;
                 dueRetry++;
             } else {
                 dueTasks.push({ taskName, mode: "cron", callback });
-                task.lastAttemptTime = lastScheduledFire || now; // Use scheduled fire time, fallback to now
+                task.lastAttemptTime = now;
                 dueCron++;
             }
         } else if (shouldRunCron) {
             dueTasks.push({ taskName, mode: "cron", callback });
-            task.lastAttemptTime = lastScheduledFire || now; // Use scheduled fire time, fallback to now
+            task.lastAttemptTime = now;
             dueCron++;
         } else if (shouldRunRetry) {
             dueTasks.push({ taskName, mode: "retry", callback });
-            task.lastAttemptTime = task.pendingRetryUntil || now; // Use scheduled retry time, fallback to now
+            task.lastAttemptTime = now;
             dueRetry++;
         } else if (task.pendingRetryUntil) {
             skippedRetryFuture++;
