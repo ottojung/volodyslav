@@ -32,14 +32,24 @@ class PeriodicThread {
         this.period = period;
         this.callback = callback;
         this.interval = undefined;
+        this.runningSet = new Set();
         if (this.__brand !== undefined) {
             throw new Error("PeriodicThread is a nominal type.");
         }
     }
 
     start() {
+        const wrapped = async () => {
+            this.runningSet.add(wrapped);
+            try {
+                return await this.callback();
+            } finally {
+                this.runningSet.delete(wrapped);
+            }
+        }
+
         if (this.interval === undefined) {
-            this.interval = setInterval(this.callback, this.period);
+            this.interval = setInterval(wrapped, this.period);
         }
     }
 
@@ -52,6 +62,12 @@ class PeriodicThread {
 
     isRunning() {
         return this.interval !== undefined;
+    }
+
+    async join() {
+        for (const running of this.runningSet) {
+            await running;
+        }
     }
 }
 
