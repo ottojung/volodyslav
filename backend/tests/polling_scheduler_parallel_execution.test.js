@@ -31,13 +31,13 @@ describe("declarative scheduler parallel execution", () => {
         const task1 = jest.fn(async () => {
             task1StartTime = Date.now();
             // Add a small delay to make parallelism more observable
-            await schedulerControl.waitForNextCycleEnd();
+            await new Promise(resolve => setTimeout(resolve, 100));
         });
 
         const task2 = jest.fn(async () => {
             task2StartTime = Date.now();
             // Add a small delay to make parallelism more observable
-            await schedulerControl.waitForNextCycleEnd();
+            await new Promise(resolve => setTimeout(resolve, 100));
         });
 
         const registrations = [
