@@ -261,22 +261,31 @@ class MockRuntimeStateStorageClass {
  * @returns {Promise<T>}
  */
 async function mockRuntimeStateTransaction(capabilities, transformation) {
-    expect(capabilities.state).toBeDefined();
-    const mockRuntimeStateStorage = capabilities.state._testStorage;
-    expect(mockRuntimeStateStorage).toBeDefined();
-    const storageKey = "mock-runtime-state";
-    const mockStorage = new MockRuntimeStateStorageClass(capabilities, mockRuntimeStateStorage, storageKey);
-
-    // Run the transformation
-    const result = await transformation(mockStorage);
-
-    // Handle state changes - persist to in-memory storage
-    const newState = mockStorage.getNewState();
-    if (newState !== null) {
-        mockRuntimeStateStorage.set(storageKey, newState);
+    while (capabilities._mockRuntimeStateTransactionRunning === true) {
+        await new Promise(resolve => setTimeout(resolve, 1));
     }
 
-    return result;
+    try {
+        capabilities._mockRuntimeStateTransactionRunning = true;
+        expect(capabilities.state).toBeDefined();
+        const mockRuntimeStateStorage = capabilities.state._testStorage;
+        expect(mockRuntimeStateStorage).toBeDefined();
+        const storageKey = "mock-runtime-state";
+        const mockStorage = new MockRuntimeStateStorageClass(capabilities, mockRuntimeStateStorage, storageKey);
+
+        // Run the transformation
+        const result = await transformation(mockStorage);
+
+        // Handle state changes - persist to in-memory storage
+        const newState = mockStorage.getNewState();
+        if (newState !== null) {
+            mockRuntimeStateStorage.set(storageKey, newState);
+        }
+
+        return result;
+    } finally {
+        capabilities._mockRuntimeStateTransactionRunning = false;
+    }
 }
 
 /**
