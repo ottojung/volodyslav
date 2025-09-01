@@ -6,6 +6,7 @@ const { mockRuntimeStateTransaction, stubRuntimeStateStorage, isMockRuntimeState
 const { RUNTIME_STATE_VERSION } = require("../src/runtime_state_storage/structure");
 const { getMockedRootCapabilities } = require("./spies");
 const { stubEnvironment, stubLogger, stubDatetime } = require("./stubs");
+const { fromISOString, toISOString } = require("../src/datetime");
 
 function getTestCapabilities() {
     const capabilities = getMockedRootCapabilities();
@@ -42,7 +43,7 @@ describe("runtime_state_storage mock", () => {
 
     test("mock storage persists state between transactions", async () => {
         const capabilities = getTestCapabilities();
-        const startTime = capabilities.datetime.fromISOString("2025-01-01T10:00:00.000Z");
+        const startTime = fromISOString("2025-01-01T10:00:00.000Z");
         const testState = { version: RUNTIME_STATE_VERSION, startTime, tasks: [] };
 
         // First transaction: set state
@@ -58,7 +59,7 @@ describe("runtime_state_storage mock", () => {
                 startTime: expect.any(Object),
                 tasks: []
             });
-            expect(capabilities.datetime.toISOString(retrievedState.startTime)).toBe("2025-01-01T10:00:00.000Z");
+            expect(toISOString(retrievedState.startTime)).toBe("2025-01-01T10:00:00.000Z");
         });
     });
 
@@ -77,8 +78,8 @@ describe("runtime_state_storage mock", () => {
 
     test("mock storage prioritizes new state over existing", async () => {
         const capabilities = getTestCapabilities();
-        const existingTime = capabilities.datetime.fromISOString("2025-01-01T10:00:00.000Z");
-        const newTime = capabilities.datetime.fromISOString("2025-01-01T11:00:00.000Z");
+        const existingTime = fromISOString("2025-01-01T10:00:00.000Z");
+        const newTime = fromISOString("2025-01-01T11:00:00.000Z");
 
         const existingState = { version: RUNTIME_STATE_VERSION, startTime: existingTime, tasks: [] };
         const newState = { version: RUNTIME_STATE_VERSION, startTime: newTime, tasks: [] };
@@ -92,7 +93,7 @@ describe("runtime_state_storage mock", () => {
         await mockRuntimeStateTransaction(capabilities, async (storage) => {
             storage.setState(newState);
             const currentState = await storage.getCurrentState();
-            expect(capabilities.datetime.toISOString(currentState.startTime)).toBe("2025-01-01T11:00:00.000Z");
+            expect(toISOString(currentState.startTime)).toBe("2025-01-01T11:00:00.000Z");
         });
     });
 
@@ -145,7 +146,7 @@ describe("runtime_state_storage mock", () => {
     test("mock storage handles complex state with tasks", async () => {
         const capabilities = getTestCapabilities();
         const startTime = capabilities.datetime.now();
-        const lastSuccess = capabilities.datetime.fromISOString("2025-01-01T09:00:00.000Z");
+        const lastSuccess = fromISOString("2025-01-01T09:00:00.000Z");
 
         const testState = {
             version: RUNTIME_STATE_VERSION,
@@ -178,7 +179,7 @@ describe("runtime_state_storage mock", () => {
                     }
                 ]
             });
-            expect(capabilities.datetime.toISOString(retrievedState.tasks[0].lastSuccessTime)).toBe("2025-01-01T09:00:00.000Z");
+            expect(toISOString(retrievedState.tasks[0].lastSuccessTime)).toBe("2025-01-01T09:00:00.000Z");
         });
     });
 });

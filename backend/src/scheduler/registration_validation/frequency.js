@@ -4,6 +4,7 @@
  */
 
 const { getNextExecution } = require("../calculator");
+const { toNativeDate, fromEpochMs } = require("../../datetime");
 
 /**
  * Error thrown when task frequency is higher than polling frequency.
@@ -52,7 +53,7 @@ class ScheduleFrequencyError extends Error {
  */
 function generateTestBaseTimes(dt) {
     const now = dt.now();
-    const baseTime = dt.toNativeDate(now);
+    const baseTime = toNativeDate(now);
     
     return [
         baseTime,
@@ -66,12 +67,11 @@ function generateTestBaseTimes(dt) {
  * Find minimum interval from a specific base time.
  * @param {import('../expression').CronExpression} parsedCron
  * @param {Date} baseTime
- * @param {import('../../datetime').Datetime} dt
  * @param {number} targetSamples - Number of consecutive executions to analyze
  * @returns {number} Minimum interval in milliseconds, or Number.MAX_SAFE_INTEGER if no pattern found
  */
-function findMinimumIntervalFromBase(parsedCron, baseTime, dt, targetSamples) {
-    const baseDt = dt.fromEpochMs(baseTime.getTime());
+function findMinimumIntervalFromBase(parsedCron, baseTime, targetSamples) {
+    const baseDt = fromEpochMs(baseTime.getTime());
     let minInterval = Number.MAX_SAFE_INTEGER;
 
     // Get first execution from this base
@@ -83,8 +83,8 @@ function findMinimumIntervalFromBase(parsedCron, baseTime, dt, targetSamples) {
         const nextExecution = getNextExecution(parsedCron, previousExecution);
         if (!nextExecution) break;
 
-        const prevMs = dt.toNativeDate(previousExecution).getTime();
-        const nextMs = dt.toNativeDate(nextExecution).getTime();
+        const prevMs = toNativeDate(previousExecution).getTime();
+        const nextMs = toNativeDate(nextExecution).getTime();
         const interval = nextMs - prevMs;
 
         if (interval > 0 && interval < minInterval) {
@@ -134,7 +134,7 @@ function calculateMinimumCronInterval(parsedCron, dt) {
         const targetSamples = 10; // Analyze multiple consecutive executions
 
         for (const baseTime of testBases) {
-            const intervalFromBase = findMinimumIntervalFromBase(parsedCron, baseTime, dt, targetSamples);
+            const intervalFromBase = findMinimumIntervalFromBase(parsedCron, baseTime, targetSamples);
             
             if (intervalFromBase < minInterval) {
                 minInterval = intervalFromBase;

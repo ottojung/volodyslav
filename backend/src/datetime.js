@@ -2,11 +2,6 @@
  * Datetime capability for working with dates.
  * @typedef {object} Datetime
  * @property {() => DateTime} now - Returns the current datetime.
- * @property {(ms: number) => DateTime} fromEpochMs - Creates a DateTime from milliseconds.
- * @property {(iso: string) => DateTime} fromISOString - Creates a DateTime from ISO string.
- * @property {(dt: DateTime) => number} toEpochMs - Converts DateTime to epoch milliseconds.
- * @property {(dt: DateTime) => string} toISOString - Converts DateTime to ISO string.
- * @property {(dt: DateTime) => Date} toNativeDate - Converts DateTime to native Date.
  */
 
 class DateTime {
@@ -43,6 +38,15 @@ class DateTime {
     toDate() {
         return new Date(this._date.getTime());
     }
+}
+
+/**
+ * Checks if the given object is a DateTime instance.
+ * @param {unknown} object
+ * @returns {object is DateTime}
+ */
+function isDateTime(object) {
+    return object instanceof DateTime;
 }
 
 function now() {
@@ -95,15 +99,16 @@ function toNativeDate(dt) {
 function make() {
     return {
         now,
-        fromEpochMs,
-        fromISOString,
-        toEpochMs,
-        toISOString,
-        toNativeDate,
     };
 }
 
 module.exports = {
     make,
     DateTime,
+    isDateTime,
+    fromEpochMs,
+    fromISOString,
+    toEpochMs,
+    toISOString,
+    toNativeDate,
 };

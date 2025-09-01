@@ -4,7 +4,7 @@
  * in the format YYYYMMDDThhmmssZ followed by a dot and an extension.
  */
 
-const datetime = require("./datetime");
+const { fromISOString, toEpochMs, toNativeDate } = require("./datetime");
 
 class FilenameDoesNotEncodeDate extends Error {
     /**
@@ -27,10 +27,9 @@ function isFilenameDoesNotEncodeDate(object) {
 
 /**
  * @param {string} filename
- * @param {import('./datetime').Datetime} [dt]
  * @returns {import('./datetime').DateTime}
 */
-function formatFileTimestamp(filename, dt = datetime.make()) {
+function formatFileTimestamp(filename) {
     // 1) extract the basic‐ISO timestamp (YYYYMMDDThhmmssZ)
     const m = filename.match(/^(\d{8}T\d{6}Z)[.].*/);
     if (!m)
@@ -44,7 +43,7 @@ function formatFileTimestamp(filename, dt = datetime.make()) {
     const basic = m[1];
 
     // 2) get Date object from basic timestamp
-    const dateObject = formatTimeStamp(basic, dt);
+    const dateObject = formatTimeStamp(basic);
 
     if (dateObject === undefined) {
         // This should ideally not be hit if 'basic' is from the regex match above
@@ -59,10 +58,9 @@ function formatFileTimestamp(filename, dt = datetime.make()) {
 
 /**
  * @param {string | undefined} basic - String in YYYYMMDDThhmmssZ format
- * @param {import('./datetime').Datetime} dt
  * @returns {import('./datetime').DateTime | undefined}
 */
-function formatTimeStamp(basic, dt) {
+function formatTimeStamp(basic) {
     if (basic === undefined) {
         return undefined;
     }
@@ -79,16 +77,16 @@ function formatTimeStamp(basic, dt) {
     }
 
     const match = isoUTC.match(/(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})Z/);
-    const d = dt.fromISOString(isoUTC);
+    const d = fromISOString(isoUTC);
     if (
         !match ||
-        isNaN(dt.toEpochMs(d)) ||
-        dt.toNativeDate(d).getUTCFullYear() !== Number(match[1]) ||
-        dt.toNativeDate(d).getUTCMonth() + 1 !== Number(match[2]) ||
-        dt.toNativeDate(d).getUTCDate() !== Number(match[3]) ||
-        dt.toNativeDate(d).getUTCHours() !== Number(match[4]) ||
-        dt.toNativeDate(d).getUTCMinutes() !== Number(match[5]) ||
-        dt.toNativeDate(d).getUTCSeconds() !== Number(match[6])
+        isNaN(toEpochMs(d)) ||
+        toNativeDate(d).getUTCFullYear() !== Number(match[1]) ||
+        toNativeDate(d).getUTCMonth() + 1 !== Number(match[2]) ||
+        toNativeDate(d).getUTCDate() !== Number(match[3]) ||
+        toNativeDate(d).getUTCHours() !== Number(match[4]) ||
+        toNativeDate(d).getUTCMinutes() !== Number(match[5]) ||
+        toNativeDate(d).getUTCSeconds() !== Number(match[6])
     ) {
         return undefined;
     }

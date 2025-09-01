@@ -3,14 +3,9 @@
  */
 
 const structure = require("../src/runtime_state_storage/structure");
-const { make: makeDatetime } = require("../src/datetime");
+const { fromISOString, make: makeDatetime } = require("../src/datetime");
 
 describe("runtime_state_storage/structure", () => {
-    let datetime;
-
-    beforeEach(() => {
-        datetime = makeDatetime();
-    });
 
     describe("tryDeserialize", () => {
         test("deserializes valid runtime state object", () => {
@@ -71,7 +66,7 @@ describe("runtime_state_storage/structure", () => {
 
     describe("serialize", () => {
         test("serializes runtime state to plain object", () => {
-            const startTime = datetime.fromISOString("2025-01-01T10:00:00.000Z");
+            const startTime = fromISOString("2025-01-01T10:00:00.000Z");
             const state = { version: structure.RUNTIME_STATE_VERSION, startTime, tasks: [] };
 
             const result = structure.serialize(state);
@@ -85,6 +80,7 @@ describe("runtime_state_storage/structure", () => {
 
     describe("makeDefault", () => {
         test("creates default runtime state with current time", () => {
+            const datetime = makeDatetime();
             const now = datetime.now();
             datetime.now = jest.fn().mockReturnValue(now);
 

@@ -1,4 +1,5 @@
 const { createEntry } = require("../src/entry");
+const { toEpochMs, fromEpochMs } = require("../src/datetime");
 const { getMockedRootCapabilities } = require("./spies");
 const { stubEnvironment, stubEventLogRepository, stubDatetime, stubLogger } = require("./stubs");
 
@@ -16,7 +17,7 @@ describe("createEntry (integration, with real capabilities)", () => {
         const capabilities = await getTestCapabilities();
         const fixedTime = new Date("2023-10-26T10:00:00.000Z").getTime();
         capabilities.datetime.now.mockReturnValue(
-            capabilities.datetime.fromEpochMs(fixedTime)
+            fromEpochMs(fixedTime)
         );
         
         const entryData = {
@@ -33,7 +34,7 @@ describe("createEntry (integration, with real capabilities)", () => {
         expect(event.type).toBe(entryData.type);
         expect(event.description).toBe(entryData.description);
         expect(event.modifiers).toEqual(entryData.modifiers);
-        expect(capabilities.datetime.toEpochMs(event.date)).toBe(fixedTime);
+        expect(toEpochMs(event.date)).toBe(fixedTime);
         expect(event.id).toBeDefined();
         expect(event.creator).toBeDefined();
         expect(capabilities.logger.logInfo).toHaveBeenCalledWith(
@@ -130,14 +131,14 @@ describe("createEntry (integration, with real capabilities)", () => {
 
         // Use datetime capability instead of Date.now() for consistent time
         const beforeDateTime = capabilities.datetime.now();
-        const before = capabilities.datetime.toEpochMs(beforeDateTime);
+        const before = toEpochMs(beforeDateTime);
         
         const event = await createEntry(capabilities, entryData);
         
         const afterDateTime = capabilities.datetime.now();
-        const after = capabilities.datetime.toEpochMs(afterDateTime);
+        const after = toEpochMs(afterDateTime);
         
-        const eventTime = capabilities.datetime.toEpochMs(event.date);
+        const eventTime = toEpochMs(event.date);
         expect(eventTime).toBeGreaterThanOrEqual(before);
         expect(eventTime).toBeLessThanOrEqual(after);
     });

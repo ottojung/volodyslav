@@ -8,6 +8,7 @@ const {
     stubDatetime,
     stubEventLogRepository,
 } = require("./stubs");
+const { fromISOString, fromEpochMs } = require("../src/datetime");
 
 async function makeTestApp() {
     const capabilities = getMockedRootCapabilities();
@@ -165,7 +166,7 @@ describe("GET /api/entries with ordering", () => {
         const { app, capabilities } = await makeTestApp();
 
         // Create entries with different dates by controlling datetime.now()
-        const baseTime = capabilities.datetime.fromISOString("2023-01-01T10:00:00Z").getTime();
+        const baseTime = fromISOString("2023-01-01T10:00:00Z").getTime();
         const entries = [
             { rawInput: "type1 - Description 1" },
             { rawInput: "type2 - Description 3" },
@@ -174,7 +175,7 @@ describe("GET /api/entries with ordering", () => {
 
         // Mock datetime to return different times for each entry
         capabilities.datetime.now.mockReturnValueOnce(
-            capabilities.datetime.fromEpochMs(baseTime)
+            fromEpochMs(baseTime)
         ); // Oldest
         await request(app)
             .post("/api/entries")
@@ -182,7 +183,7 @@ describe("GET /api/entries with ordering", () => {
             .set("Content-Type", "application/json");
 
         capabilities.datetime.now.mockReturnValueOnce(
-            capabilities.datetime.fromEpochMs(baseTime + 2 * 24 * 60 * 60 * 1000)
+            fromEpochMs(baseTime + 2 * 24 * 60 * 60 * 1000)
         ); // Newest
         await request(app)
             .post("/api/entries")
@@ -190,7 +191,7 @@ describe("GET /api/entries with ordering", () => {
             .set("Content-Type", "application/json");
 
         capabilities.datetime.now.mockReturnValueOnce(
-            capabilities.datetime.fromEpochMs(baseTime + 24 * 60 * 60 * 1000)
+            fromEpochMs(baseTime + 24 * 60 * 60 * 1000)
         ); // Middle
         await request(app)
             .post("/api/entries")
@@ -202,7 +203,7 @@ describe("GET /api/entries with ordering", () => {
         expect(res.statusCode).toBe(200);
         expect(res.body.results).toHaveLength(3);
         // Should be in descending date order (newest first)
-        const dates = res.body.results.map(entry => capabilities.datetime.fromISOString(entry.date));
+        const dates = res.body.results.map(entry => fromISOString(entry.date));
         for (let i = 1; i < dates.length; i++) {
             expect(dates[i - 1].getTime()).toBeGreaterThanOrEqual(dates[i].getTime());
         }

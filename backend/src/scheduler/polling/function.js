@@ -24,7 +24,7 @@ function makePollingFunction(capabilities, registrations, scheduledTasks, taskEx
         try {
             const now = dt.now();
             return await mutateTasks(capabilities, registrations, (tasks) => {
-                return evaluateTasksForExecution(tasks, scheduledTasks, now, dt, capabilities);
+                return evaluateTasksForExecution(tasks, scheduledTasks, now, capabilities);
             });
         } finally {
             parallelCounter--;

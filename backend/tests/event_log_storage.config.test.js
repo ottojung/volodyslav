@@ -1,4 +1,5 @@
 const path = require("path");
+const { fromISOString } = require("../src/datetime");
 const { transaction } = require("../src/event_log_storage");
 const gitstore = require("../src/gitstore");
 const { readObjects } = require("../src/json_stream_file");
@@ -126,7 +127,7 @@ describe("event_log_storage", () => {
 
         const testEvent = {
             id: { identifier: "config-and-event" },
-            date: capabilities.datetime.fromISOString("2025-05-20"),
+            date: fromISOString("2025-05-20"),
             original: "test with config",
             input: "test with config",
             type: "config_test",

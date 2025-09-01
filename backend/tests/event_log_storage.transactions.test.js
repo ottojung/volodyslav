@@ -10,6 +10,7 @@ const {
     stubEventLogRepository,
 } = require("./stubs");
 const { getMockedRootCapabilities } = require("./spies");
+const { fromISOString } = require("../src/datetime");
 
 function getTestCapabilities() {
     const capabilities = getMockedRootCapabilities();
@@ -27,7 +28,7 @@ describe("event_log_storage", () => {
 
         const testEvent = {
             id: { identifier: "test123" },
-            date: capabilities.datetime.fromISOString("2025-05-12"),
+            date: fromISOString("2025-05-12"),
             original: "test input",
             input: "processed test input",
             modifiers: { test: "modifier" },
@@ -58,7 +59,7 @@ describe("event_log_storage", () => {
 
         const testEvent = {
             id: { identifier: "test123" },
-            date: capabilities.datetime.fromISOString("2025-05-12"),
+            date: fromISOString("2025-05-12"),
             original: "test input",
             input: "processed test input",
             modifiers: { test: "modifier" },
@@ -84,7 +85,7 @@ describe("event_log_storage", () => {
 
         const event1 = {
             id: { identifier: "event1" },
-            date: capabilities.datetime.fromISOString("2025-05-12"),
+            date: fromISOString("2025-05-12"),
             original: "first input",
             input: "processed first input",
             modifiers: { foo: "bar" },
@@ -93,7 +94,7 @@ describe("event_log_storage", () => {
         };
         const event2 = {
             id: { identifier: "event2" },
-            date: capabilities.datetime.fromISOString("2025-05-12"),
+            date: fromISOString("2025-05-12"),
             original: "second input",
             input: "processed second input",
             modifiers: { baz: "qux" },
