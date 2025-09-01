@@ -6,33 +6,41 @@ const capabilities = {
     },
 };
 
+// Top-level creation for testing - following the ESLint rule
+const testSymbol1 = uniqueSymbol.makeRandom(capabilities);
+const testSymbol2 = uniqueSymbol.makeRandom(capabilities, 32);
+const testSymbol3 = uniqueSymbol.fromString("test-symbol");
+const testSymbol4 = uniqueSymbol.fromString("prefix");
+const testSymbol5 = uniqueSymbol.fromString("original");
+const testSymbol6 = uniqueSymbol.fromString("test");
+const testSymbol7 = uniqueSymbol.fromString("base");
+const testSymbol8 = uniqueSymbol.fromString("test-value");
+const testSymbol9 = uniqueSymbol.fromString("same-value");
+const testSymbol10 = uniqueSymbol.fromString("same-value");
+
 describe("UniqueSymbol", () => {
     describe("makeRandom", () => {
         test("creates a UniqueSymbol with random string value", () => {
-            const symbol = uniqueSymbol.makeRandom(capabilities);
-            expect(uniqueSymbol.isUniqueSymbol(symbol)).toBe(true);
-            expect(typeof symbol.value).toBe("string");
-            expect(symbol.value).toHaveLength(16); // default length
+            expect(uniqueSymbol.isUniqueSymbol(testSymbol1)).toBe(true);
+            expect(typeof testSymbol1.value).toBe("string");
+            expect(testSymbol1.value).toHaveLength(16); // default length
         });
 
         test("creates a UniqueSymbol with custom length", () => {
-            const symbol = uniqueSymbol.makeRandom(capabilities, 32);
-            expect(uniqueSymbol.isUniqueSymbol(symbol)).toBe(true);
-            expect(symbol.value).toHaveLength(32);
+            expect(uniqueSymbol.isUniqueSymbol(testSymbol2)).toBe(true);
+            expect(testSymbol2.value).toHaveLength(32);
         });
 
         test("generated values are alphanumeric", () => {
-            const symbol = uniqueSymbol.makeRandom(capabilities);
-            expect(/^[0-9a-z]+$/.test(symbol.value)).toBe(true);
+            expect(/^[0-9a-z]+$/.test(testSymbol1.value)).toBe(true);
         });
     });
 
     describe("fromString", () => {
         test("creates a UniqueSymbol from a string", () => {
             const value = "test-symbol";
-            const symbol = uniqueSymbol.fromString(value);
-            expect(uniqueSymbol.isUniqueSymbol(symbol)).toBe(true);
-            expect(symbol.value).toBe(value);
+            expect(uniqueSymbol.isUniqueSymbol(testSymbol3)).toBe(true);
+            expect(testSymbol3.value).toBe(value);
         });
 
         test("throws error for empty string", () => {
@@ -50,39 +58,34 @@ describe("UniqueSymbol", () => {
 
     describe("concat", () => {
         test("concatenates with string to create new UniqueSymbol", () => {
-            const original = uniqueSymbol.fromString("prefix");
-            const concatenated = original.concat("-suffix");
+            const concatenated = testSymbol4.concat("-suffix");
             
             expect(uniqueSymbol.isUniqueSymbol(concatenated)).toBe(true);
             expect(concatenated.value).toBe("prefix-suffix");
-            expect(concatenated).not.toBe(original); // should be a new instance
+            expect(concatenated).not.toBe(testSymbol4); // should be a new instance
         });
 
         test("original symbol remains unchanged after concatenation", () => {
-            const original = uniqueSymbol.fromString("original");
-            const concatenated = original.concat("-new");
+            const concatenated = testSymbol5.concat("-new");
             
-            expect(original.value).toBe("original");
+            expect(testSymbol5.value).toBe("original");
             expect(concatenated.value).toBe("original-new");
         });
 
         test("can concatenate empty string", () => {
-            const original = uniqueSymbol.fromString("test");
-            const concatenated = original.concat("");
+            const concatenated = testSymbol6.concat("");
             
             expect(concatenated.value).toBe("test");
         });
 
         test("throws error when concatenating with non-string", () => {
-            const symbol = uniqueSymbol.fromString("test");
-            expect(() => symbol.concat(123)).toThrow(TypeError);
-            expect(() => symbol.concat(null)).toThrow(TypeError);
-            expect(() => symbol.concat(undefined)).toThrow(TypeError);
+            expect(() => testSymbol6.concat(123)).toThrow(TypeError);
+            expect(() => testSymbol6.concat(null)).toThrow(TypeError);
+            expect(() => testSymbol6.concat(undefined)).toThrow(TypeError);
         });
 
         test("supports multiple concatenations", () => {
-            const symbol = uniqueSymbol.fromString("base");
-            const result = symbol.concat("-part1").concat("-part2").concat("-part3");
+            const result = testSymbol7.concat("-part1").concat("-part2").concat("-part3");
             
             expect(result.value).toBe("base-part1-part2-part3");
         });
@@ -90,21 +93,18 @@ describe("UniqueSymbol", () => {
 
     describe("toString", () => {
         test("returns the string value", () => {
-            const symbol = uniqueSymbol.fromString("test-value");
-            expect(symbol.toString()).toBe("test-value");
+            expect(testSymbol8.toString()).toBe("test-value");
         });
 
         test("toString works with random symbols", () => {
-            const symbol = uniqueSymbol.makeRandom(capabilities);
-            expect(typeof symbol.toString()).toBe("string");
-            expect(symbol.toString()).toBe(symbol.value);
+            expect(typeof testSymbol1.toString()).toBe("string");
+            expect(testSymbol1.toString()).toBe(testSymbol1.value);
         });
     });
 
     describe("isUniqueSymbol", () => {
         test("returns true for UniqueSymbol instances", () => {
-            const symbol = uniqueSymbol.fromString("test");
-            expect(uniqueSymbol.isUniqueSymbol(symbol)).toBe(true);
+            expect(uniqueSymbol.isUniqueSymbol(testSymbol6)).toBe(true);
         });
 
         test("returns false for non-UniqueSymbol objects", () => {
@@ -124,30 +124,26 @@ describe("UniqueSymbol", () => {
     describe("nominal typing", () => {
         test("prevents direct instantiation", () => {
             // This test verifies the nominal typing behavior
-            const symbol = uniqueSymbol.fromString("test");
-            expect(symbol.__brand).toBe(undefined);
+            expect(testSymbol6.__brand).toBe(undefined);
         });
 
         test("different symbols with same value are equal in value but different instances", () => {
-            const symbol1 = uniqueSymbol.fromString("same-value");
-            const symbol2 = uniqueSymbol.fromString("same-value");
-            
-            expect(symbol1.value).toBe(symbol2.value);
-            expect(symbol1).not.toBe(symbol2);
-            expect(uniqueSymbol.isUniqueSymbol(symbol1)).toBe(true);
-            expect(uniqueSymbol.isUniqueSymbol(symbol2)).toBe(true);
+            expect(testSymbol9.value).toBe(testSymbol10.value);
+            expect(testSymbol9).not.toBe(testSymbol10);
+            expect(uniqueSymbol.isUniqueSymbol(testSymbol9)).toBe(true);
+            expect(uniqueSymbol.isUniqueSymbol(testSymbol10)).toBe(true);
         });
     });
 });
 
 describe("UniqueSymbol integration with sleeper.withMutex", () => {
     const sleeper = require("../src/sleeper").make();
+    const testMutexSymbol = uniqueSymbol.fromString("test-mutex");
     
     test("withMutex accepts UniqueSymbol as mutex name", async () => {
-        const symbol = uniqueSymbol.fromString("test-mutex");
         let executed = false;
         
-        await sleeper.withMutex(symbol, async () => {
+        await sleeper.withMutex(testMutexSymbol, async () => {
             executed = true;
         });
         
@@ -165,11 +161,11 @@ describe("UniqueSymbol integration with sleeper.withMutex", () => {
     });
     
     test("UniqueSymbol and string mutexes are separate", async () => {
-        const symbol = uniqueSymbol.fromString("mutex-name");
+        const mutexSymbol = uniqueSymbol.fromString("mutex-name");
         const results = [];
         
         // Start two concurrent operations with different mutex types but same string value
-        const promise1 = sleeper.withMutex(symbol, async () => {
+        const promise1 = sleeper.withMutex(mutexSymbol, async () => {
             results.push("symbol-start");
             await new Promise(resolve => setTimeout(resolve, 10));
             results.push("symbol-end");
@@ -193,13 +189,12 @@ describe("UniqueSymbol integration with sleeper.withMutex", () => {
 
 describe("UniqueSymbol integration with threading.periodic", () => {
     const threading = require("../src/threading").make();
+    const testThreadSymbol = uniqueSymbol.fromString("test-thread");
+    const baseThreadSymbol = uniqueSymbol.fromString("base");
     
     test("periodic accepts UniqueSymbol as thread name", () => {
-        const symbol = uniqueSymbol.fromString("test-thread");
-        let callCount = 0;
-        
-        const thread = threading.periodic(symbol, 100, async () => {
-            callCount++;
+        const thread = threading.periodic(testThreadSymbol, 100, async () => {
+            // Test callback
         });
         
         expect(thread.name).toBe("test-thread");
@@ -208,10 +203,8 @@ describe("UniqueSymbol integration with threading.periodic", () => {
     });
     
     test("periodic still accepts regular strings", () => {
-        let callCount = 0;
-        
         const thread = threading.periodic("string-thread", 100, async () => {
-            callCount++;
+            // Test callback
         });
         
         expect(thread.name).toBe("string-thread");
@@ -220,8 +213,7 @@ describe("UniqueSymbol integration with threading.periodic", () => {
     });
     
     test("concatenated UniqueSymbol works as thread name", () => {
-        const baseSymbol = uniqueSymbol.fromString("base");
-        const fullSymbol = baseSymbol.concat("-worker");
+        const fullSymbol = baseThreadSymbol.concat("-worker");
         
         const thread = threading.periodic(fullSymbol, 100, async () => {});
         

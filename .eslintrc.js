@@ -49,5 +49,14 @@ module.exports = {
         // Disable prop-types validation since we use TypeScript
         "react/prop-types": "off",
     },
+    overrides: [
+        {
+            // Allow UniqueSymbol creation in test files for testing purposes
+            files: ["**/*.test.js", "**/*.test.jsx", "**/*.test.ts", "**/*.test.tsx"],
+            rules: {
+                "volodyslav/unique-symbol-top-level-only": "off",
+            },
+        },
+    ],
     ignorePatterns: ["dist/", "node_modules/", "coverage/", "docs/build/"],
 };
