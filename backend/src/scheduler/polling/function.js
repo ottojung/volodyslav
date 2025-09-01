@@ -18,14 +18,34 @@ const { evaluateTasksForExecution } = require('../execution');
  */
 function makePollingFunction(capabilities, registrations, scheduledTasks, taskExecutor) {
     const dt = capabilities.datetime;
+
+    let initialized = false;
+    let finished = { count: 0 };
+    let lastFinishedCount = 0;
+
     return async function poll() {
-        const now = dt.now();
-        const { dueTasks, stats } = await mutateTasks(capabilities, registrations, (tasks) => {
-            return evaluateTasksForExecution(tasks, scheduledTasks, now, dt, capabilities);
-        });
+        if (initialized && finished.count === lastFinishedCount) {
+            return;
+        } else {
+            lastFinishedCount = finished.count;
+        }
+
+        let initResult;        
+        try {
+            initialized = true;
+            const now = dt.now();
+            initResult = await mutateTasks(capabilities, registrations, (tasks) => {
+                return evaluateTasksForExecution(tasks, scheduledTasks, now, dt, capabilities);
+            });
+        } catch (error) {
+            initialized = false;
+            throw error;
+        }
+
+        const { dueTasks, stats } = initResult;
 
         // Execute all due tasks in parallel
-        await taskExecutor.executeTasks(dueTasks);
+        await taskExecutor.executeTasks(dueTasks, finished);
 
         capabilities.logger.logDebug(
             {
