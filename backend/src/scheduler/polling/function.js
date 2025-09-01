@@ -21,7 +21,6 @@ function makePollingFunction(capabilities, registrations, scheduledTasks, taskEx
     let parallelCounter = 0;
 
     async function getDueTasks() {
-        parallelCounter++;
         try {
             const now = dt.now();
             return await mutateTasks(capabilities, registrations, (tasks) => {
@@ -36,6 +35,8 @@ function makePollingFunction(capabilities, registrations, scheduledTasks, taskEx
         if (parallelCounter > 0) {
             // Somebody is already polling;
             return;
+        } else {
+            parallelCounter++;
         }
 
         // Collect tasks and stats.
