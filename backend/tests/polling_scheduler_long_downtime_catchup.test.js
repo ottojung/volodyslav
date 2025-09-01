@@ -1,6 +1,6 @@
 /**
  * Tests for declarative scheduler task execution and scheduling behavior.
- * Focuses on proper task execution timing and recovery scenarios.
+ * Focuses on scenarios where the scheduler missed a bunch of executions.
  */
 
 const { Duration } = require("luxon");
