@@ -5,6 +5,7 @@
 /**
  * @typedef {object} Sleeper
  * @property {(ms: number) => Promise<void>} sleep - Pause for the given milliseconds.
+ * @property {<T>(name: string, procedure: () => Promise<T>) => Promise<T>} withMutex - Execute a procedure with a mutex lock.
  */
 
 /**
