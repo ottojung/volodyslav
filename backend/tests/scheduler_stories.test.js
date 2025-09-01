@@ -955,8 +955,6 @@ describe("scheduler stories", () => {
 
         await capabilities.scheduler.initialize(registrations);
         await schedulerControl.waitForNextCycleEnd();
-        await schedulerControl.waitForNextCycleEnd();
-        await schedulerControl.waitForNextCycleEnd();
 
         // Record initial counts
         const initialMidnight = midnightTask.mock.calls.length;
@@ -966,11 +964,6 @@ describe("scheduler stories", () => {
         
         // Advance exactly 1 hour to midnight (New Year)
         timeControl.advanceTime(3 * 60 * 60 * 1000);
-        await schedulerControl.waitForNextCycleEnd();
-        await schedulerControl.waitForNextCycleEnd();
-        await schedulerControl.waitForNextCycleEnd();
-        await schedulerControl.waitForNextCycleEnd();
-        await schedulerControl.waitForNextCycleEnd();
         await schedulerControl.waitForNextCycleEnd();
 
         // Only midnight task should execute
@@ -982,8 +975,6 @@ describe("scheduler stories", () => {
         // Advance exactly 12 hours to noon
         timeControl.advanceTime(12 * 60 * 60 * 1000);
         await schedulerControl.waitForNextCycleEnd();
-        await schedulerControl.waitForNextCycleEnd();
-        await schedulerControl.waitForNextCycleEnd();
 
         // Only noon task should execute
         expect(midnightTask.mock.calls.length).toBe(midnightAfterNewYear); // Should not change
@@ -993,8 +984,6 @@ describe("scheduler stories", () => {
 
         // Advance exactly 12 hours to next midnight
         timeControl.advanceTime(12 * 60 * 60 * 1000);
-        await schedulerControl.waitForNextCycleEnd();
-        await schedulerControl.waitForNextCycleEnd();
         await schedulerControl.waitForNextCycleEnd();
 
         // Only midnight task should execute again
