@@ -81,7 +81,7 @@ describe("declarative scheduler parallel execution", () => {
             taskExecutionOrder.push(`${taskId}-start`);
 
             // Add a small delay to make concurrency more observable
-            await schedulerControl.waitForNextCycleEnd();
+            await new Promise(resolve => setTimeout(resolve, 200));
 
             taskExecutionOrder.push(`${taskId}-end`);
             concurrentExecutions--;
