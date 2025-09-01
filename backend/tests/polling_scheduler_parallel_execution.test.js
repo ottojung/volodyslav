@@ -154,7 +154,7 @@ describe("declarative scheduler parallel execution", () => {
         let badTaskExecuted = false;
 
         const goodTask = jest.fn(async () => {
-            await schedulerControl.waitForNextCycleEnd();
+            await new Promise(resolve => setTimeout(resolve, 200));
             goodTaskExecuted = true;
         });
 
