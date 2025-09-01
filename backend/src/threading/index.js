@@ -65,7 +65,7 @@ class PeriodicThread {
     }
 
     async join() {
-        while (this.runningSet.size > 0) {
+        while (this.isRunning()) {
             await new Promise(resolve => setTimeout(resolve, 0));
         }
     }
