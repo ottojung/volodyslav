@@ -61,12 +61,12 @@ class PeriodicThread {
     }
 
     isRunning() {
-        return this.interval !== undefined;
+        return this.runningSet.size > 0;
     }
 
     async join() {
-        for (const running of this.runningSet) {
-            await running;
+        while (this.runningSet.size > 0) {
+            await new Promise(resolve => setTimeout(resolve, 0));
         }
     }
 }
