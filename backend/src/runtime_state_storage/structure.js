@@ -2,7 +2,7 @@
  * Runtime state structure and validation.
  */
 
-const datetimeMod = require("../datetime");
+const { fromISOString, toISOString } = require("../datetime");
 const {
     TryDeserializeError,
     MissingFieldError,
@@ -45,8 +45,6 @@ function tryDeserialize(obj) {
         return new InvalidStructureError("Runtime state must be a non-null object", obj);
     }
 
-    const dt = datetimeMod.make();
-
     const versionRaw = "version" in obj ? obj["version"] : 1;
     if (typeof versionRaw !== "number" || !Number.isInteger(versionRaw)) {
         return new InvalidTypeError("version", versionRaw, "integer");
@@ -63,7 +61,7 @@ function tryDeserialize(obj) {
     if (typeof startTimeRaw !== "string") {
         return new InvalidTypeError("startTime", startTimeRaw, "string");
     }
-    const startTime = dt.fromISOString(startTimeRaw);
+    const startTime = fromISOString(startTimeRaw);
     if (isNaN(startTime.getTime())) {
         return new InvalidTypeError("startTime", startTimeRaw, "valid ISO string");
     }
@@ -128,7 +126,7 @@ function tryDeserialize(obj) {
                 if (typeof t.lastSuccessTime !== "string") {
                     taskErrors.push(new TaskInvalidTypeError("lastSuccessTime", t.lastSuccessTime, "string", i));
                 } else {
-                    const d = dt.fromISOString(t.lastSuccessTime);
+                    const d = fromISOString(t.lastSuccessTime);
                     if (isNaN(d.getTime())) {
                         taskErrors.push(new TaskInvalidValueError("lastSuccessTime", t.lastSuccessTime, "valid ISO", i));
                     } else {
@@ -140,7 +138,7 @@ function tryDeserialize(obj) {
                 if (typeof t.lastFailureTime !== "string") {
                     taskErrors.push(new TaskInvalidTypeError("lastFailureTime", t.lastFailureTime, "string", i));
                 } else {
-                    const d = dt.fromISOString(t.lastFailureTime);
+                    const d = fromISOString(t.lastFailureTime);
                     if (isNaN(d.getTime())) {
                         taskErrors.push(new TaskInvalidValueError("lastFailureTime", t.lastFailureTime, "valid ISO", i));
                     } else {
@@ -152,7 +150,7 @@ function tryDeserialize(obj) {
                 if (typeof t.lastAttemptTime !== "string") {
                     taskErrors.push(new TaskInvalidTypeError("lastAttemptTime", t.lastAttemptTime, "string", i));
                 } else {
-                    const d = dt.fromISOString(t.lastAttemptTime);
+                    const d = fromISOString(t.lastAttemptTime);
                     if (isNaN(d.getTime())) {
                         taskErrors.push(new TaskInvalidValueError("lastAttemptTime", t.lastAttemptTime, "valid ISO", i));
                     } else {
@@ -164,7 +162,7 @@ function tryDeserialize(obj) {
                 if (typeof t.pendingRetryUntil !== "string") {
                     taskErrors.push(new TaskInvalidTypeError("pendingRetryUntil", t.pendingRetryUntil, "string", i));
                 } else {
-                    const d = dt.fromISOString(t.pendingRetryUntil);
+                    const d = fromISOString(t.pendingRetryUntil);
                     if (isNaN(d.getTime())) {
                         taskErrors.push(new TaskInvalidValueError("pendingRetryUntil", t.pendingRetryUntil, "valid ISO", i));
                     } else {
@@ -185,7 +183,6 @@ function tryDeserialize(obj) {
  * @returns {object}
  */
 function serialize(state) {
-    const dt = datetimeMod.make();
     const tasks = (state.tasks || [])
         .slice()
         .sort((a, b) => a.name.localeCompare(b.name))
@@ -196,15 +193,15 @@ function serialize(state) {
                 cronExpression: t.cronExpression,
                 retryDelayMs: t.retryDelayMs,
             };
-            if (t.lastSuccessTime) rec.lastSuccessTime = dt.toISOString(t.lastSuccessTime);
-            if (t.lastFailureTime) rec.lastFailureTime = dt.toISOString(t.lastFailureTime);
-            if (t.lastAttemptTime) rec.lastAttemptTime = dt.toISOString(t.lastAttemptTime);
-            if (t.pendingRetryUntil) rec.pendingRetryUntil = dt.toISOString(t.pendingRetryUntil);
+            if (t.lastSuccessTime) rec.lastSuccessTime = toISOString(t.lastSuccessTime);
+            if (t.lastFailureTime) rec.lastFailureTime = toISOString(t.lastFailureTime);
+            if (t.lastAttemptTime) rec.lastAttemptTime = toISOString(t.lastAttemptTime);
+            if (t.pendingRetryUntil) rec.pendingRetryUntil = toISOString(t.pendingRetryUntil);
             return rec;
         });
     return {
         version: RUNTIME_STATE_VERSION,
-        startTime: dt.toISOString(state.startTime),
+        startTime: toISOString(state.startTime),
         tasks,
     };
 }

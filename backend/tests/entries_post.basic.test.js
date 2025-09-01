@@ -1,6 +1,7 @@
 const request = require("supertest");
 const expressApp = require("../src/express_app");
 const { addRoutes } = require("../src/server");
+const { fromISOString, fromEpochMs } = require("../src/datetime");
 const { getMockedRootCapabilities } = require("./spies");
 const {
     stubEnvironment,
@@ -259,7 +260,6 @@ describe("POST /api/entries", () => {
             const fs = require("fs");
             const path = require("path");
             const os = require("os");
-const { fromISOString, fromEpochMs } = require("../src/datetime");
 
             const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "test-"));
             const tmpFilePath = path.join(tmpDir, "test-file.txt");

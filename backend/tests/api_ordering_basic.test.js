@@ -153,7 +153,7 @@ describe("API Ordering Integration Tests", () => {
         });
 
         it("defaults to dateDescending for invalid order parameter", async () => {
-            const { app, capabilities } = await makeTestApp();
+            const { app, capabilities } = await makeTestApp(); // eslint-disable-line no-unused-vars
 
             // Create a test entry
             const requestBody = {

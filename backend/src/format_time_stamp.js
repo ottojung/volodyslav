@@ -4,7 +4,7 @@
  * in the format YYYYMMDDThhmmssZ followed by a dot and an extension.
  */
 
-const { make: makeDatetime, fromISOString, toEpochMs, toNativeDate } = require("./datetime");
+const { fromISOString, toEpochMs, toNativeDate } = require("./datetime");
 
 class FilenameDoesNotEncodeDate extends Error {
     /**
@@ -27,10 +27,9 @@ function isFilenameDoesNotEncodeDate(object) {
 
 /**
  * @param {string} filename
- * @param {import('./datetime').Datetime} [dt]
  * @returns {import('./datetime').DateTime}
 */
-function formatFileTimestamp(filename, dt = makeDatetime()) {
+function formatFileTimestamp(filename) {
     // 1) extract the basic‐ISO timestamp (YYYYMMDDThhmmssZ)
     const m = filename.match(/^(\d{8}T\d{6}Z)[.].*/);
     if (!m)
@@ -44,7 +43,7 @@ function formatFileTimestamp(filename, dt = makeDatetime()) {
     const basic = m[1];
 
     // 2) get Date object from basic timestamp
-    const dateObject = formatTimeStamp(basic, dt);
+    const dateObject = formatTimeStamp(basic);
 
     if (dateObject === undefined) {
         // This should ideally not be hit if 'basic' is from the regex match above
@@ -59,10 +58,9 @@ function formatFileTimestamp(filename, dt = makeDatetime()) {
 
 /**
  * @param {string | undefined} basic - String in YYYYMMDDThhmmssZ format
- * @param {import('./datetime').Datetime} dt
  * @returns {import('./datetime').DateTime | undefined}
 */
-function formatTimeStamp(basic, dt) {
+function formatTimeStamp(basic) {
     if (basic === undefined) {
         return undefined;
     }

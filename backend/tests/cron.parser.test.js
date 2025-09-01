@@ -10,14 +10,9 @@ const {
     isInvalidCronExpressionError
 } = require("../src/scheduler");
 
-const datetime = require("../src/datetime");
+const { fromEpochMs, toNativeDate } = require("../src/datetime");
 
 describe("Cron Parser", () => {
-    let dt;
-    
-    beforeEach(() => {
-        dt = datetime.make();
-    });
 
     describe("parseCronExpression", () => {
         test("parses basic cron expressions", () => {
@@ -122,26 +117,26 @@ describe("Cron Parser", () => {
     describe("matchesCronExpression", () => {
         test("matches exact time", () => {
             const expr = parseCronExpression("30 14 * * *");
-            const dateTime = dt.fromEpochMs(new Date(2024, 0, 1, 14, 30, 0).getTime()); // Jan 1, 2024 at 2:30 PM
+            const dateTime = fromEpochMs(new Date(2024, 0, 1, 14, 30, 0).getTime()); // Jan 1, 2024 at 2:30 PM
             expect(matchesCronExpression(expr, dateTime)).toBe(true);
         });
 
         test("does not match different time", () => {
             const expr = parseCronExpression("30 14 * * *");
-            const dateTime = dt.fromEpochMs(new Date(2024, 0, 1, 14, 31, 0).getTime()); // Jan 1, 2024 at 2:31 PM
+            const dateTime = fromEpochMs(new Date(2024, 0, 1, 14, 31, 0).getTime()); // Jan 1, 2024 at 2:31 PM
             expect(matchesCronExpression(expr, dateTime)).toBe(false);
         });
 
         test("matches wildcard expressions", () => {
             const expr = parseCronExpression("* * * * *");
-            const dateTime = dt.fromEpochMs(new Date(2024, 0, 1, 14, 30, 0).getTime());
+            const dateTime = fromEpochMs(new Date(2024, 0, 1, 14, 30, 0).getTime());
             expect(matchesCronExpression(expr, dateTime)).toBe(true);
         });
 
         test("matches weekday expressions", () => {
             const expr = parseCronExpression("* * * * 1"); // Monday
-            const monday = dt.fromEpochMs(new Date(2024, 0, 1).getTime()); // Jan 1, 2024 is a Monday
-            const tuesday = dt.fromEpochMs(new Date(2024, 0, 2).getTime()); // Jan 2, 2024 is a Tuesday
+            const monday = fromEpochMs(new Date(2024, 0, 1).getTime()); // Jan 1, 2024 is a Monday
+            const tuesday = fromEpochMs(new Date(2024, 0, 2).getTime()); // Jan 2, 2024 is a Tuesday
             
             expect(matchesCronExpression(expr, monday)).toBe(true);
             expect(matchesCronExpression(expr, tuesday)).toBe(false);
@@ -151,9 +146,9 @@ describe("Cron Parser", () => {
     describe("getNextExecution", () => {
         test("calculates next minute execution", () => {
             const expr = parseCronExpression("0 * * * *");
-            const from = dt.fromEpochMs(new Date(2024, 0, 1, 14, 30, 0).getTime()); // Jan 1, 2024 at 2:30 PM
+            const from = fromEpochMs(new Date(2024, 0, 1, 14, 30, 0).getTime()); // Jan 1, 2024 at 2:30 PM
             const next = getNextExecution(expr, from);
-            const nextNative = dt.toNativeDate(next);
+            const nextNative = toNativeDate(next);
             
             expect(nextNative.getHours()).toBe(15);
             expect(nextNative.getMinutes()).toBe(0);
@@ -163,9 +158,9 @@ describe("Cron Parser", () => {
 
         test("calculates next daily execution", () => {
             const expr = parseCronExpression("0 2 * * *");
-            const from = dt.fromEpochMs(new Date(2024, 0, 1, 14, 30, 0).getTime()); // Jan 1, 2024 at 2:30 PM
+            const from = fromEpochMs(new Date(2024, 0, 1, 14, 30, 0).getTime()); // Jan 1, 2024 at 2:30 PM
             const next = getNextExecution(expr, from);
-            const nextNative = dt.toNativeDate(next);
+            const nextNative = toNativeDate(next);
             
             expect(nextNative.getDate()).toBe(2); // Next day
             expect(nextNative.getHours()).toBe(2);
@@ -174,9 +169,9 @@ describe("Cron Parser", () => {
 
         test("calculates next execution within same hour", () => {
             const expr = parseCronExpression("45 * * * *");
-            const from = dt.fromEpochMs(new Date(2024, 0, 1, 14, 30, 0).getTime()); // Jan 1, 2024 at 2:30 PM
+            const from = fromEpochMs(new Date(2024, 0, 1, 14, 30, 0).getTime()); // Jan 1, 2024 at 2:30 PM
             const next = getNextExecution(expr, from);
-            const nextNative = dt.toNativeDate(next);
+            const nextNative = toNativeDate(next);
             
             expect(nextNative.getHours()).toBe(14);
             expect(nextNative.getMinutes()).toBe(45);
@@ -184,9 +179,9 @@ describe("Cron Parser", () => {
 
         test("handles end of month correctly", () => {
             const expr = parseCronExpression("0 0 1 * *"); // First day of month
-            const from = dt.fromEpochMs(new Date(2024, 0, 31, 23, 59, 0).getTime()); // Jan 31, 2024 at 11:59 PM
+            const from = fromEpochMs(new Date(2024, 0, 31, 23, 59, 0).getTime()); // Jan 31, 2024 at 11:59 PM
             const next = getNextExecution(expr, from);
-            const nextNative = dt.toNativeDate(next);
+            const nextNative = toNativeDate(next);
             
             expect(nextNative.getMonth()).toBe(1); // February
             expect(nextNative.getDate()).toBe(1);
@@ -198,9 +193,9 @@ describe("Cron Parser", () => {
     describe("Edge cases", () => {
         test("handles February 29th in leap year", () => {
             const expr = parseCronExpression("0 0 29 2 *");
-            const from = dt.fromEpochMs(new Date(2024, 1, 28).getTime()); // Feb 28, 2024 (leap year)
+            const from = fromEpochMs(new Date(2024, 1, 28).getTime()); // Feb 28, 2024 (leap year)
             const next = getNextExecution(expr, from);
-            const nextNative = dt.toNativeDate(next);
+            const nextNative = toNativeDate(next);
             
             expect(nextNative.getMonth()).toBe(1); // February
             expect(nextNative.getDate()).toBe(29);
@@ -208,9 +203,9 @@ describe("Cron Parser", () => {
 
         test("handles step values correctly", () => {
             const expr = parseCronExpression("*/10 * * * *");
-            const from = dt.fromEpochMs(new Date(2024, 0, 1, 14, 25, 0).getTime());
+            const from = fromEpochMs(new Date(2024, 0, 1, 14, 25, 0).getTime());
             const next = getNextExecution(expr, from);
-            const nextNative = dt.toNativeDate(next);
+            const nextNative = toNativeDate(next);
             
             expect(nextNative.getMinutes()).toBe(30);
         });
