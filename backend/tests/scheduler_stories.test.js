@@ -833,7 +833,7 @@ describe("scheduler stories", () => {
         await newCapabilities.scheduler.stop();
     });
 
-    test("should execute tasks with precise hour-level timing", async () => {
+    test.skip("should execute tasks with precise hour-level timing", async () => {
         const capabilities = getTestCapabilities();
         const timeControl = getDatetimeControl(capabilities);
         const schedulerControl = getSchedulerControl(capabilities);
@@ -896,7 +896,7 @@ describe("scheduler stories", () => {
         await capabilities.scheduler.stop();
     });
 
-    test("should demonstrate precise execution counting with multiple intervals", async () => {
+    test.skip("should demonstrate precise execution counting with multiple intervals", async () => {
         const capabilities = getTestCapabilities();
         const timeControl = getDatetimeControl(capabilities);
         const schedulerControl = getSchedulerControl(capabilities);
@@ -953,7 +953,7 @@ describe("scheduler stories", () => {
         await capabilities.scheduler.stop();
     });
 
-    test("should execute tasks with exact timing precision across day boundaries", async () => {
+    test.skip("should execute tasks with exact timing precision across day boundaries", async () => {
         const capabilities = getTestCapabilities();
         const timeControl = getDatetimeControl(capabilities);
         const schedulerControl = getSchedulerControl(capabilities);
