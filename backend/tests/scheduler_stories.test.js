@@ -1000,7 +1000,7 @@ describe("scheduler stories", () => {
         await capabilities.scheduler.stop();
     });
 
-    test.skip("should not block executions when a slow task is running", async () => {
+    test("should not block executions when a slow task is running", async () => {
         const capabilities = getTestCapabilities();
         const timeControl = getDatetimeControl(capabilities);
         const schedulerControl = getSchedulerControl(capabilities);

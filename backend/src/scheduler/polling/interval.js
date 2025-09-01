@@ -10,7 +10,7 @@ const THREAD_NAME = "volodyslav:scheduler:poll"
  * Create an interval manager for handling polling timing.
  * @param {() => Promise<void>} pollFunction - Function to call on each poll
  * @param {import('../../capabilities/root').Capabilities} capabilities - For error logging
- * @returns {{start: () => void, stop: () => void}} Interval manager with start/stop methods
+ * @returns {{start: () => void, stop: () => Promise<void>}} Interval manager with start/stop methods
  */
 function makeIntervalManager(pollFunction, capabilities) {
     async function wrappedPoll() {
@@ -24,7 +24,7 @@ function makeIntervalManager(pollFunction, capabilities) {
 
     const thread = capabilities.threading.periodic(THREAD_NAME, POLL_INTERVAL_MS, wrappedPoll);
     const start = () => thread.start();
-    const stop = () => thread.stop();
+    const stop = async () => await thread.stop();
 
     return { start, stop };
 }

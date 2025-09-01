@@ -56,8 +56,8 @@ function makePollingScheduler(capabilities, registrations) {
         intervalManager.start();
     }
 
-    function stop() {
-        intervalManager.stop();
+    async function stop() {
+        await intervalManager.stop();
     }
 
     return {
@@ -99,7 +99,7 @@ function makePollingScheduler(capabilities, registrations) {
         },
 
         async stopLoop() {
-            stop();
+            return await stop();
         },
 
         /**

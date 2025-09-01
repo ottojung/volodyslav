@@ -18,39 +18,44 @@ const { evaluateTasksForExecution } = require('../execution');
  */
 function makePollingFunction(capabilities, registrations, scheduledTasks, taskExecutor) {
     const dt = capabilities.datetime;
-    let pollInProgress = false; // Guard against re-entrant polls
+    let parallelCounter = 0;
 
-    return async function poll() {
-        // Guard against re-entrant polls
-        if (pollInProgress) {
-            capabilities.logger.logDebug({ reason: "pollInProgress" }, "PollSkipped");
-            return;
-        }
-
-        pollInProgress = true;
+    async function getDueTasks() {
         try {
             const now = dt.now();
-            const { dueTasks, stats } = await mutateTasks(capabilities, registrations, (tasks) => {
+            return await mutateTasks(capabilities, registrations, (tasks) => {
                 return evaluateTasksForExecution(tasks, scheduledTasks, now, dt, capabilities);
             });
-
-            // Execute all due tasks in parallel
-            await taskExecutor.executeTasks(dueTasks);
-
-            capabilities.logger.logDebug(
-                {
-                    due: dueTasks.length,
-                    dueRetry: stats.dueRetry,
-                    dueCron: stats.dueCron,
-                    skippedRunning: stats.skippedRunning,
-                    skippedRetryFuture: stats.skippedRetryFuture,
-                    skippedNotDue: stats.skippedNotDue,
-                },
-                "PollSummary"
-            );
         } finally {
-            pollInProgress = false;
+            parallelCounter--;
         }
+    }
+
+    return async function poll() {
+        if (parallelCounter > 0) {
+            // Somebody is already polling;
+            return;
+        } else {
+            parallelCounter++;
+        }
+
+        // Collect tasks and stats.
+        const { dueTasks, stats } = await getDueTasks();
+
+        // Execute all due tasks in parallel
+        await taskExecutor.executeTasks(dueTasks);
+
+        capabilities.logger.logDebug(
+            {
+                due: dueTasks.length,
+                dueRetry: stats.dueRetry,
+                dueCron: stats.dueCron,
+                skippedRunning: stats.skippedRunning,
+                skippedRetryFuture: stats.skippedRetryFuture,
+                skippedNotDue: stats.skippedNotDue,
+            },
+            "PollSummary"
+        );
     };
 }
 
