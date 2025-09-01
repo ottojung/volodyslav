@@ -4,7 +4,7 @@
  * in the format YYYYMMDDThhmmssZ followed by a dot and an extension.
  */
 
-const datetime = require("./datetime");
+const { make: makeDatetime } = require("./datetime");
 
 class FilenameDoesNotEncodeDate extends Error {
     /**
@@ -30,7 +30,7 @@ function isFilenameDoesNotEncodeDate(object) {
  * @param {import('./datetime').Datetime} [dt]
  * @returns {import('./datetime').DateTime}
 */
-function formatFileTimestamp(filename, dt = datetime.make()) {
+function formatFileTimestamp(filename, dt = makeDatetime()) {
     // 1) extract the basic‐ISO timestamp (YYYYMMDDThhmmssZ)
     const m = filename.match(/^(\d{8}T\d{6}Z)[.].*/);
     if (!m)
