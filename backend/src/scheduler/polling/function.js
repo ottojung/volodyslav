@@ -30,9 +30,9 @@ function makePollingFunction(capabilities, registrations, scheduledTasks, taskEx
             lastFinishedCount = finished.count;
         }
 
-        let initResult;        
+        let initResult;
         try {
-            initialized = true;
+            initialized = true; // Optimistic. Will revert (in the "catch" clause) if initialization fails.
             const now = dt.now();
             initResult = await mutateTasks(capabilities, registrations, (tasks) => {
                 return evaluateTasksForExecution(tasks, scheduledTasks, now, dt, capabilities);
