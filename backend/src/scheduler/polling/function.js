@@ -18,39 +18,26 @@ const { evaluateTasksForExecution } = require('../execution');
  */
 function makePollingFunction(capabilities, registrations, scheduledTasks, taskExecutor) {
     const dt = capabilities.datetime;
-    let pollInProgress = false; // Guard against re-entrant polls
-
     return async function poll() {
-        // Guard against re-entrant polls
-        if (pollInProgress) {
-            capabilities.logger.logDebug({ reason: "pollInProgress" }, "PollSkipped");
-            return;
-        }
+        const now = dt.now();
+        const { dueTasks, stats } = await mutateTasks(capabilities, registrations, (tasks) => {
+            return evaluateTasksForExecution(tasks, scheduledTasks, now, dt, capabilities);
+        });
 
-        pollInProgress = true;
-        try {
-            const now = dt.now();
-            const { dueTasks, stats } = await mutateTasks(capabilities, registrations, (tasks) => {
-                return evaluateTasksForExecution(tasks, scheduledTasks, now, dt, capabilities);
-            });
+        // Execute all due tasks in parallel
+        await taskExecutor.executeTasks(dueTasks);
 
-            // Execute all due tasks in parallel
-            await taskExecutor.executeTasks(dueTasks);
-
-            capabilities.logger.logDebug(
-                {
-                    due: dueTasks.length,
-                    dueRetry: stats.dueRetry,
-                    dueCron: stats.dueCron,
-                    skippedRunning: stats.skippedRunning,
-                    skippedRetryFuture: stats.skippedRetryFuture,
-                    skippedNotDue: stats.skippedNotDue,
-                },
-                "PollSummary"
-            );
-        } finally {
-            pollInProgress = false;
-        }
+        capabilities.logger.logDebug(
+            {
+                due: dueTasks.length,
+                dueRetry: stats.dueRetry,
+                dueCron: stats.dueCron,
+                skippedRunning: stats.skippedRunning,
+                skippedRetryFuture: stats.skippedRetryFuture,
+                skippedNotDue: stats.skippedNotDue,
+            },
+            "PollSummary"
+        );
     };
 }
 
