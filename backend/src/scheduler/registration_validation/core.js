@@ -73,12 +73,12 @@ function validateRegistrations(registrations, capabilities) {
             throw new CallbackTypeError(`Registration at index ${i} (${qname}): callback must be a function, got: ${typeof callback}`, { index: i, name, value: callback });
         }
 
-        if (!retryDelay || typeof retryDelay.toMilliseconds !== 'function') {
-            throw new RetryDelayTypeError(`Registration at index ${i} (${qname}): retryDelay must be a TimeDuration object with toMilliseconds() method`, { index: i, name, value: retryDelay });
+        if (!retryDelay || typeof retryDelay.toMillis !== 'function') {
+            throw new RetryDelayTypeError(`Registration at index ${i} (${qname}): retryDelay must be a Duration object with toMillis() method`, { index: i, name, value: retryDelay });
         }
 
         // Validate retry delay is reasonable (warn for very large delays but don't block)
-        const retryMs = retryDelay.toMilliseconds();
+        const retryMs = retryDelay.toMillis();
         if (retryMs < 0) {
             throw new NegativeRetryDelayError(`Registration at index ${i} (${qname}): retryDelay cannot be negative`, { index: i, name, retryMs });
         }

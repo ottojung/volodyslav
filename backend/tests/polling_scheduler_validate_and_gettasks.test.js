@@ -1,5 +1,5 @@
 const { parseCronExpression } = require("../src/scheduler");
-const { fromMilliseconds } = require("../src/time_duration");
+const { Duration } = require("luxon");
 const { getMockedRootCapabilities } = require("./spies");
 const { stubEnvironment, stubLogger, stubDatetime, stubSleeper, stubScheduler } = require("./stubs");
 
@@ -39,7 +39,7 @@ describe("declarative scheduler validation", () => {
     test("throws on invalid task name (empty/whitespace)", async () => {
         const capabilities1 = getTestCapabilities();
         const capabilities2 = getTestCapabilities();
-        const retryDelay = fromMilliseconds(0);
+        const retryDelay = Duration.fromMillis(0);
 
         // Try to initialize with invalid task names
         const emptyNameRegistrations = [

@@ -3,7 +3,7 @@
  * Focuses on testing the various error classes and edge cases in task deserialization.
  */
 
-const { fromMilliseconds } = require("../src/time_duration");
+const { Duration } = require("luxon");
 const { parseCronExpression } = require("../src/scheduler/expression");
 const { tryDeserialize } = require("../src/scheduler/task/serialization");
 const {
@@ -20,7 +20,7 @@ describe("scheduler task serialization error handling", () => {
         const registrations = new Map();
         const parsedCron = parseCronExpression("0 * * * *");
         const callback = jest.fn();
-        const retryDelay = fromMilliseconds(5000);
+        const retryDelay = Duration.fromMillis(5000);
         
         registrations.set("test-task", {
             name: "test-task",

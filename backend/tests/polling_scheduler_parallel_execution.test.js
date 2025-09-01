@@ -3,7 +3,7 @@
  * Ensures tasks can run concurrently without blocking each other.
  */
 
-const { fromMilliseconds } = require("../src/time_duration");
+const { Duration } = require("luxon");
 const { getMockedRootCapabilities } = require("./spies");
 const { stubEnvironment, stubLogger, stubDatetime, stubSleeper, getDatetimeControl, stubScheduler, getSchedulerControl, stubRuntimeStateStorage } = require("./stubs");
 
@@ -23,7 +23,7 @@ describe("declarative scheduler parallel execution", () => {
         const capabilities = getTestCapabilities();
         const schedulerControl = getSchedulerControl(capabilities);
         schedulerControl.setPollingInterval(1);
-        const retryDelay = fromMilliseconds(5000);
+        const retryDelay = Duration.fromMillis(5000);
 
         let task1StartTime = null;
         let task2StartTime = null;
@@ -69,7 +69,7 @@ describe("declarative scheduler parallel execution", () => {
         const capabilities = getTestCapabilities();
         const schedulerControl = getSchedulerControl(capabilities);
         schedulerControl.setPollingInterval(1);
-        const retryDelay = fromMilliseconds(5000);
+        const retryDelay = Duration.fromMillis(5000);
 
         let concurrentExecutions = 0;
         let maxConcurrentExecutions = 0;
@@ -110,7 +110,7 @@ describe("declarative scheduler parallel execution", () => {
         const capabilities = getTestCapabilities();
         const schedulerControl = getSchedulerControl(capabilities);
         schedulerControl.setPollingInterval(1);
-        const retryDelay = fromMilliseconds(5000);
+        const retryDelay = Duration.fromMillis(5000);
 
         let fastTaskCompleted = false;
         let slowTaskStarted = false;
@@ -148,7 +148,7 @@ describe("declarative scheduler parallel execution", () => {
         const capabilities = getTestCapabilities();
         const schedulerControl = getSchedulerControl(capabilities);
         schedulerControl.setPollingInterval(1);
-        const retryDelay = fromMilliseconds(1000);
+        const retryDelay = Duration.fromMillis(1000);
 
         let goodTaskExecuted = false;
         let badTaskExecuted = false;
@@ -189,7 +189,7 @@ describe("declarative scheduler parallel execution", () => {
         const schedulerControl = getSchedulerControl(capabilities);
         schedulerControl.setPollingInterval(1);
         const timeControl = getDatetimeControl(capabilities);
-        const retryDelay = fromMilliseconds(500); // Short retry for faster testing
+        const retryDelay = Duration.fromMillis(500); // Short retry for faster testing
 
         let taskExecutions = {};
 

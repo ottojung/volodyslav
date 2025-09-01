@@ -141,7 +141,7 @@ function make(getCapabilities) {
                     {
                         taskName: name,
                         cronExpression,
-                        retryDelayMs: retryDelay.toMilliseconds()
+                        retryDelayMs: retryDelay.toMillis()
                     },
                     "Task scheduled successfully"
                 );

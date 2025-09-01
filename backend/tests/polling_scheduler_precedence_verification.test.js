@@ -3,7 +3,7 @@
  * This test verifies that task execution timing follows expected precedence behavior
  */
 
-const { fromMilliseconds } = require("../src/time_duration");
+const { Duration } = require("luxon");
 const { getMockedRootCapabilities } = require("./spies");
 const { stubEnvironment, stubLogger, stubDatetime, stubSleeper, stubScheduler, getSchedulerControl, getDatetimeControl, stubRuntimeStateStorage } = require("./stubs");
 
@@ -25,7 +25,7 @@ describe("declarative scheduler precedence logic verification", () => {
         const capabilities = getTestCapabilities();
         const timeControl = getDatetimeControl(capabilities);
         const schedulerControl = getSchedulerControl(capabilities);
-        const retryDelay = fromMilliseconds(2 * 60 * 1000); // 2 minutes
+        const retryDelay = Duration.fromMillis(2 * 60 * 1000); // 2 minutes
         
         const task = jest.fn().mockResolvedValue(undefined);
         
@@ -52,7 +52,7 @@ describe("declarative scheduler precedence logic verification", () => {
         const capabilities = getTestCapabilities();
         const timeControl = getDatetimeControl(capabilities);
         const schedulerControl = getSchedulerControl(capabilities);
-        const retryDelay = fromMilliseconds(6 * 60 * 1000); // 6 minutes
+        const retryDelay = Duration.fromMillis(6 * 60 * 1000); // 6 minutes
         
         const task = jest.fn().mockResolvedValue(undefined);
         
@@ -79,7 +79,7 @@ describe("declarative scheduler precedence logic verification", () => {
         const capabilities = getTestCapabilities();
         const schedulerControl = getSchedulerControl(capabilities);
         
-        const retryDelay = fromMilliseconds(5 * 60 * 1000); // 5 minutes
+        const retryDelay = Duration.fromMillis(5 * 60 * 1000); // 5 minutes
         const task = jest.fn().mockResolvedValue(undefined);
         
         schedulerControl.setPollingInterval(1);

@@ -2,7 +2,7 @@
  * Tests for runtime state migration from v1 to v2.
  */
 
-const { fromMilliseconds } = require("../src/time_duration");
+const { Duration } = require("luxon");
 const { getMockedRootCapabilities } = require("./spies");
 const { stubEnvironment, stubLogger, stubDatetime } = require("./stubs");
 
@@ -35,7 +35,7 @@ describe("runtime state migration", () => {
         expect(migrationResult.state.tasks).toEqual([]);
         
         // Test scheduler behavior with first-time initialization
-        const retryDelay = fromMilliseconds(1000);
+        const retryDelay = Duration.fromMillis(1000);
         const registrations = [
             ["test-task", "0 * * * *", jest.fn(), retryDelay]
         ];

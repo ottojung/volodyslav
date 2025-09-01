@@ -3,7 +3,7 @@
  * multiple scheduler task invocations by advancing time.
  */
 
-const { fromMilliseconds } = require("../src/time_duration");
+const { Duration } = require("luxon");
 const { getMockedRootCapabilities } = require("./spies");
 const { stubEnvironment, stubLogger, stubDatetime, stubSleeper, getDatetimeControl, stubRuntimeStateStorage, stubScheduler, getSchedulerControl } = require("./stubs");
 
@@ -23,7 +23,7 @@ describe("scheduler stories", () => {
         const capabilities = getTestCapabilities();
         const timeControl = getDatetimeControl(capabilities);
         const schedulerControl = getSchedulerControl(capabilities);
-        const retryDelay = fromMilliseconds(5000);
+        const retryDelay = Duration.fromMillis(5000);
         const taskCallback = jest.fn();
 
         // Set initial time to 00:05:00
@@ -75,7 +75,7 @@ describe("scheduler stories", () => {
         const capabilities = getTestCapabilities();
         const timeControl = getDatetimeControl(capabilities);
         const schedulerControl = getSchedulerControl(capabilities);
-        const retryDelay = fromMilliseconds(5000);
+        const retryDelay = Duration.fromMillis(5000);
 
         const hourlyTask = jest.fn();
         const dailyTask = jest.fn();
@@ -109,7 +109,7 @@ describe("scheduler stories", () => {
         const capabilities = getTestCapabilities();
         const timeControl = getDatetimeControl(capabilities);
         const schedulerControl = getSchedulerControl(capabilities);
-        const retryDelay = fromMilliseconds(1000);
+        const retryDelay = Duration.fromMillis(1000);
         const taskCallback = jest.fn();
 
         // Set initial time to 00:00:00 (midnight)
@@ -149,7 +149,7 @@ describe("scheduler stories", () => {
         const capabilities = getTestCapabilities();
         const timeControl = getDatetimeControl(capabilities);
         const schedulerControl = getSchedulerControl(capabilities);
-        const retryDelay = fromMilliseconds(5000);
+        const retryDelay = Duration.fromMillis(5000);
 
         const taskCallback = jest.fn().mockImplementation(() => {
             // Verify that during task execution, the scheduler sees consistent time
@@ -192,7 +192,7 @@ describe("scheduler stories", () => {
         const capabilities = getTestCapabilities();
         const timeControl = getDatetimeControl(capabilities);
         const schedulerControl = getSchedulerControl(capabilities);
-        const retryDelay = fromMilliseconds(5000);
+        const retryDelay = Duration.fromMillis(5000);
         const taskCallback = jest.fn();
 
         // Set initial time 

@@ -12,7 +12,7 @@ const {
 
 const { everyHour, daily, allTasks } = require("../src/jobs");
 const { getMockedRootCapabilities } = require("./spies");
-const { COMMON } = require("../src/time_duration");
+const { Duration } = require("luxon");
 
 function getTestCapabilities() {
     const capabilities = getMockedRootCapabilities();
@@ -70,7 +70,7 @@ describe("Schedule Tasks", () => {
         test("creates proper registration format", async () => {
             // Instead of calling scheduleAll which initializes the scheduler,
             // let's test that the registration data is properly formed
-            const retryDelay = COMMON.FIVE_MINUTES;
+            const retryDelay = Duration.fromObject({minutes: 5});
             const expectedRegistrations = [
                 ["every-hour", "0 * * * *", expect.any(Function), retryDelay],
                 ["daily-2am", "0 2 * * *", expect.any(Function), retryDelay],

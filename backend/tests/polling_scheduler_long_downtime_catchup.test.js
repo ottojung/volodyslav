@@ -3,7 +3,7 @@
  * Focuses on proper task execution timing and recovery scenarios.
  */
 
-const { fromMilliseconds } = require("../src/time_duration");
+const { Duration } = require("luxon");
 const { getMockedRootCapabilities } = require("./spies");
 const { stubEnvironment, stubLogger, stubDatetime, stubSleeper, getDatetimeControl, stubScheduler, getSchedulerControl, stubRuntimeStateStorage } = require("./stubs");
 
@@ -24,7 +24,7 @@ describe("declarative scheduler task execution behavior", () => {
     test("should execute tasks according to their schedule", async () => {
         const capabilities = getTestCapabilities();
         const schedulerControl = getSchedulerControl(capabilities);
-        const retryDelay = fromMilliseconds(5000);
+        const retryDelay = Duration.fromMillis(5000);
         const callback = jest.fn();
 
         schedulerControl.setPollingInterval(1);
@@ -49,7 +49,7 @@ describe("declarative scheduler task execution behavior", () => {
         const schedulerControl = getSchedulerControl(capabilities);
         
         schedulerControl.setPollingInterval(1);
-        const retryDelay = fromMilliseconds(5000);
+        const retryDelay = Duration.fromMillis(5000);
 
         const minuteCallback = jest.fn();
         const hourlyCallback = jest.fn();
@@ -77,7 +77,7 @@ describe("declarative scheduler task execution behavior", () => {
         
         schedulerControl.setPollingInterval(1);
         const timeControl = getDatetimeControl(capabilities);
-        const retryDelay = fromMilliseconds(500); // Short retry for testing
+        const retryDelay = Duration.fromMillis(500); // Short retry for testing
         let executionCount = 0;
 
         const callback = jest.fn(() => {
@@ -123,7 +123,7 @@ describe("declarative scheduler task execution behavior", () => {
         const schedulerControl = getSchedulerControl(capabilities);
         
         schedulerControl.setPollingInterval(1);
-        const retryDelay = fromMilliseconds(5000);
+        const retryDelay = Duration.fromMillis(5000);
         const callback = jest.fn();
 
         const registrations = [
@@ -147,7 +147,7 @@ describe("declarative scheduler task execution behavior", () => {
         const schedulerControl = getSchedulerControl(capabilities);
         
         schedulerControl.setPollingInterval(1);
-        const retryDelay = fromMilliseconds(5000);
+        const retryDelay = Duration.fromMillis(5000);
         const callback = jest.fn();
 
         const registrations = [
@@ -177,7 +177,7 @@ describe("declarative scheduler task execution behavior", () => {
         const schedulerControl = getSchedulerControl(capabilities);
         
         schedulerControl.setPollingInterval(1);
-        const retryDelay = fromMilliseconds(5000);
+        const retryDelay = Duration.fromMillis(5000);
 
         const task1 = jest.fn();
         const task2 = jest.fn();
@@ -206,7 +206,7 @@ describe("declarative scheduler task execution behavior", () => {
         const schedulerControl = getSchedulerControl(capabilities);
         
         schedulerControl.setPollingInterval(1);
-        const retryDelay = fromMilliseconds(1000);
+        const retryDelay = Duration.fromMillis(1000);
         let executionCount = 0;
 
         const callback = jest.fn(() => {
@@ -242,7 +242,7 @@ describe("declarative scheduler task execution behavior", () => {
         const schedulerControl = getSchedulerControl(capabilities);
         
         schedulerControl.setPollingInterval(1);
-        const retryDelay = fromMilliseconds(5000);
+        const retryDelay = Duration.fromMillis(5000);
         const callback = jest.fn();
 
         const registrations = [

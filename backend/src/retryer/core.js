@@ -5,15 +5,11 @@
  * @property {import('../datetime').Datetime} datetime - Date capability
  */
 
-const { fromDifference } = require('../time_duration');
-
-/**
- * @typedef {import('../time_duration').TimeDuration} TimeDuration
- */
+const { Duration } = require("luxon");
 
 /**
  * @template T
- * @typedef {(args: {attempt: number, timePassed: () => TimeDuration, retry: () => T}) => Promise<T>} RetryableCallback
+ * @typedef {(args: {attempt: number, timePassed: () => import('luxon').Duration, retry: () => T}) => Promise<T>} RetryableCallback
  */
 
 /**
@@ -52,7 +48,8 @@ async function withRetry(capabilities, callbackName, retryableCallback) {
 
     function timePassed() {
         const current = capabilities.datetime.now();
-        return fromDifference(current, startTime);
+        const diff = current.getTime() - startTime.getTime();
+        return Duration.fromMillis(diff);
     }
 
     // eslint-disable-next-line no-constant-condition

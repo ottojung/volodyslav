@@ -14,7 +14,7 @@ const {
     getSchedulerControl,
 } = require("./stubs");
 const { getMockedRootCapabilities } = require("./spies");
-const { COMMON } = require("../src/time_duration");
+const { Duration } = require("luxon");
 
 function getTestCapabilities() {
     const capabilities = getMockedRootCapabilities();
@@ -33,7 +33,7 @@ describe("Declarative Scheduler", () => {
             // This test verifies that first-time initialization works
             const capabilities = getTestCapabilities();
             const registrations = [
-                ["test-task", "0 * * * *", jest.fn(), COMMON.FIVE_MINUTES],
+                ["test-task", "0 * * * *", jest.fn(), Duration.fromObject({minutes: 5})],
             ];
 
             // Non-empty registrations should succeed on first-time setup (empty persisted state)
@@ -54,7 +54,7 @@ describe("Declarative Scheduler", () => {
         test("is idempotent - multiple calls have no additional effect", async () => {
             const capabilities = getTestCapabilities();
             const registrations = [
-                ["task1", "0 * * * *", jest.fn(), COMMON.FIVE_MINUTES],
+                ["task1", "0 * * * *", jest.fn(), Duration.fromObject({minutes: 5})],
             ];
 
             // First call should succeed
@@ -74,16 +74,16 @@ describe("Declarative Scheduler", () => {
 
             // First, set up some initial persisted state by calling initialize
             const initialRegistrations = [
-                ["task1", "0 * * * *", jest.fn(), COMMON.FIVE_MINUTES],
-                ["task2", "0 0 * * *", jest.fn(), COMMON.TEN_MINUTES],
+                ["task1", "0 * * * *", jest.fn(), Duration.fromObject({minutes: 5})],
+                ["task2", "0 0 * * *", jest.fn(), Duration.fromObject({minutes: 10})],
             ];
 
             await capabilities.scheduler.initialize(initialRegistrations);
 
             // Now try to initialize with different tasks using SAME capabilities (same working directory)
             const differentRegistrations = [
-                ["task1", "0 * * * *", jest.fn(), COMMON.FIVE_MINUTES], // same
-                ["task3", "0 0 * * *", jest.fn(), COMMON.TEN_MINUTES], // different name
+                ["task1", "0 * * * *", jest.fn(), Duration.fromObject({minutes: 5})], // same
+                ["task3", "0 0 * * *", jest.fn(), Duration.fromObject({minutes: 10})], // different name
             ];
 
             await expect(capabilities.scheduler.initialize(differentRegistrations)).rejects.toThrow(/Task list mismatch detected/);
@@ -95,14 +95,14 @@ describe("Declarative Scheduler", () => {
 
             // Set up initial state
             const initialRegistrations = [
-                ["task1", "0 * * * *", jest.fn(), COMMON.FIVE_MINUTES],
+                ["task1", "0 * * * *", jest.fn(), Duration.fromObject({minutes: 5})],
             ];
 
             await capabilities.scheduler.initialize(initialRegistrations);
 
             // Try with different cron expression using same capabilities
             const changedRegistrations = [
-                ["task1", "0 0 * * *", jest.fn(), COMMON.FIVE_MINUTES], // different cron
+                ["task1", "0 0 * * *", jest.fn(), Duration.fromObject({minutes: 5})], // different cron
             ];
 
             await expect(capabilities.scheduler.initialize(changedRegistrations)).rejects.toThrow(/Task list mismatch detected/);
@@ -114,14 +114,14 @@ describe("Declarative Scheduler", () => {
 
             // Set up initial state
             const initialRegistrations = [
-                ["task1", "0 * * * *", jest.fn(), COMMON.FIVE_MINUTES],
+                ["task1", "0 * * * *", jest.fn(), Duration.fromObject({minutes: 5})],
             ];
 
             await capabilities.scheduler.initialize(initialRegistrations);
 
             // Try with different retry delay using same capabilities
             const changedRegistrations = [
-                ["task1", "0 * * * *", jest.fn(), COMMON.TEN_MINUTES], // different retry delay
+                ["task1", "0 * * * *", jest.fn(), Duration.fromObject({minutes: 10})], // different retry delay
             ];
 
             await expect(capabilities.scheduler.initialize(changedRegistrations)).rejects.toThrow(/Task list mismatch detected/);
@@ -133,15 +133,15 @@ describe("Declarative Scheduler", () => {
 
             // Set up initial state with two tasks
             const initialRegistrations = [
-                ["task1", "0 * * * *", jest.fn(), COMMON.FIVE_MINUTES],
-                ["task2", "0 0 * * *", jest.fn(), COMMON.TEN_MINUTES],
+                ["task1", "0 * * * *", jest.fn(), Duration.fromObject({minutes: 5})],
+                ["task2", "0 0 * * *", jest.fn(), Duration.fromObject({minutes: 10})],
             ];
 
             await capabilities.scheduler.initialize(initialRegistrations);
 
             // Try with only one task (missing task2) using same capabilities
             const missingTaskRegistrations = [
-                ["task1", "0 * * * *", jest.fn(), COMMON.FIVE_MINUTES],
+                ["task1", "0 * * * *", jest.fn(), Duration.fromObject({minutes: 5})],
             ];
 
             const error = await capabilities.scheduler.initialize(missingTaskRegistrations).catch(e => e);
@@ -156,15 +156,15 @@ describe("Declarative Scheduler", () => {
 
             // Set up initial state with one task
             const initialRegistrations = [
-                ["task1", "0 * * * *", jest.fn(), COMMON.FIVE_MINUTES],
+                ["task1", "0 * * * *", jest.fn(), Duration.fromObject({minutes: 5})],
             ];
 
             await capabilities.scheduler.initialize(initialRegistrations);
 
             // Try with extra task using same capabilities
             const extraTaskRegistrations = [
-                ["task1", "0 * * * *", jest.fn(), COMMON.FIVE_MINUTES],
-                ["task2", "0 0 * * *", jest.fn(), COMMON.TEN_MINUTES], // extra task
+                ["task1", "0 * * * *", jest.fn(), Duration.fromObject({minutes: 5})],
+                ["task2", "0 0 * * *", jest.fn(), Duration.fromObject({minutes: 10})], // extra task
             ];
 
             const error = await capabilities.scheduler.initialize(extraTaskRegistrations).catch(e => e);
@@ -179,16 +179,16 @@ describe("Declarative Scheduler", () => {
 
             // Set up initial state
             const initialRegistrations = [
-                ["task1", "0 * * * *", jest.fn(), COMMON.FIVE_MINUTES],
-                ["task2", "0 0 * * *", jest.fn(), COMMON.TEN_MINUTES],
+                ["task1", "0 * * * *", jest.fn(), Duration.fromObject({minutes: 5})],
+                ["task2", "0 0 * * *", jest.fn(), Duration.fromObject({minutes: 10})],
             ];
 
             await capabilities.scheduler.initialize(initialRegistrations);
 
             // Create complex mismatch scenario using same capabilities
             const mismatchedRegistrations = [
-                ["task1", "0 */2 * * *", jest.fn(), COMMON.THIRTY_MINUTES], // different cron + retry delay
-                ["task3", "0 0 * * *", jest.fn(), COMMON.TEN_MINUTES], // extra task (task2 is missing)
+                ["task1", "0 */2 * * *", jest.fn(), Duration.fromObject({minutes: 30})], // different cron + retry delay
+                ["task3", "0 0 * * *", jest.fn(), Duration.fromObject({minutes: 10})], // extra task (task2 is missing)
             ];
 
             const error = await capabilities.scheduler.initialize(mismatchedRegistrations).catch(e => e);
@@ -209,8 +209,8 @@ describe("Declarative Scheduler", () => {
 
             expect(retryDiff).toBeTruthy();
             expect(retryDiff.name).toBe("task1");
-            expect(retryDiff.expected).toBe(COMMON.FIVE_MINUTES.toMilliseconds());
-            expect(retryDiff.actual).toBe(COMMON.THIRTY_MINUTES.toMilliseconds());
+            expect(retryDiff.expected).toBe(Duration.fromObject({minutes: 5}).toMillis());
+            expect(retryDiff.actual).toBe(Duration.fromObject({minutes: 30}).toMillis());
             await capabilities.scheduler.stop();
         });
 
@@ -229,8 +229,8 @@ describe("Declarative Scheduler", () => {
         test("logs appropriate messages for first-time initialization", async () => {
             const capabilities = getTestCapabilities();
             const registrations = [
-                ["task1", "0 * * * *", jest.fn(), COMMON.FIVE_MINUTES],
-                ["task2", "0 0 * * *", jest.fn(), COMMON.TEN_MINUTES],
+                ["task1", "0 * * * *", jest.fn(), Duration.fromObject({minutes: 5})],
+                ["task2", "0 0 * * *", jest.fn(), Duration.fromObject({minutes: 10})],
             ];
 
             await capabilities.scheduler.initialize(registrations);
@@ -256,7 +256,7 @@ describe("Declarative Scheduler", () => {
 
             const registrations = [
                 // Task that should run every 15 minutes
-                ["test-task", "*/15 * * * *", taskCallback, COMMON.FIVE_MINUTES],
+                ["test-task", "*/15 * * * *", taskCallback, Duration.fromObject({minutes: 5})],
             ];
 
             const capabilities = getTestCapabilities();
@@ -278,7 +278,7 @@ describe("Declarative Scheduler", () => {
             const taskCallback = jest.fn().mockResolvedValue(undefined);
 
             const registrations = [
-                ["test-task", "0 * * * *", taskCallback, COMMON.FIVE_MINUTES],
+                ["test-task", "0 * * * *", taskCallback, Duration.fromObject({minutes: 5})],
             ];
 
             const capabilities = getTestCapabilities();

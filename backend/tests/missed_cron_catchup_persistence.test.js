@@ -2,7 +2,7 @@
  * Tests for missed cron catchup persistence.
  */
 
-const { fromMilliseconds } = require("../src/time_duration");
+const { Duration } = require("luxon");
 const { getMockedRootCapabilities } = require("./spies");
 const { stubEnvironment, stubLogger, stubDatetime, stubRuntimeStateStorage } = require("./stubs");
 
@@ -20,7 +20,7 @@ describe("missed cron catchup persistence", () => {
         const capabilities = getTestCapabilities();
         
         // Initialize scheduler with registrations
-        const retryDelay = fromMilliseconds(1000);
+        const retryDelay = Duration.fromMillis(1000);
         const callback = jest.fn();
         const registrations = [
             ["hourly-task", "0 * * * *", callback, retryDelay] // Every hour at minute 0

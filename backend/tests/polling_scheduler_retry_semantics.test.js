@@ -3,7 +3,7 @@
  * Ensures cron schedule is not superseded by retry logic.
  */
 
-const { fromMilliseconds } = require("../src/time_duration");
+const { Duration } = require("luxon");
 const { getMockedRootCapabilities } = require("./spies");
 const { stubEnvironment, stubLogger, stubDatetime, stubSleeper, getDatetimeControl, stubScheduler, getSchedulerControl, stubRuntimeStateStorage } = require("./stubs");
 
@@ -25,7 +25,7 @@ describe("declarative scheduler retry semantics", () => {
         const schedulerControl = getSchedulerControl(capabilities);
         schedulerControl.setPollingInterval(1);
         const timeControl = getDatetimeControl(capabilities);
-        const retryDelay = fromMilliseconds(5 * 60 * 1000); // 5 minutes
+        const retryDelay = Duration.fromMillis(5 * 60 * 1000); // 5 minutes
         let executionCount = 0;
 
         const task = jest.fn(() => {
@@ -56,7 +56,7 @@ describe("declarative scheduler retry semantics", () => {
         const schedulerControl = getSchedulerControl(capabilities);
         schedulerControl.setPollingInterval(1);
         const timeControl = getDatetimeControl(capabilities);
-        const retryDelay = fromMilliseconds(5 * 60 * 1000); // 5 minutes
+        const retryDelay = Duration.fromMillis(5 * 60 * 1000); // 5 minutes
         let executionCount = 0;
 
         const task = jest.fn(() => {
@@ -98,7 +98,7 @@ describe("declarative scheduler retry semantics", () => {
         const schedulerControl = getSchedulerControl(capabilities);
         schedulerControl.setPollingInterval(1);
         const timeControl = getDatetimeControl(capabilities);
-        const retryDelay = fromMilliseconds(5 * 60 * 1000); // 5 minutes
+        const retryDelay = Duration.fromMillis(5 * 60 * 1000); // 5 minutes
         let executionCount = 0;
 
         const task = jest.fn(() => {
@@ -140,8 +140,8 @@ describe("declarative scheduler retry semantics", () => {
         const schedulerControl = getSchedulerControl(capabilities);
         schedulerControl.setPollingInterval(1);
         const timeControl = getDatetimeControl(capabilities);
-        const shortRetryDelay = fromMilliseconds(3 * 60 * 1000); // 3 minutes
-        const longRetryDelay = fromMilliseconds(8 * 60 * 1000); // 8 minutes
+        const shortRetryDelay = Duration.fromMillis(3 * 60 * 1000); // 3 minutes
+        const longRetryDelay = Duration.fromMillis(8 * 60 * 1000); // 8 minutes
 
         let task1Count = 0;
         let task2Count = 0;
@@ -198,7 +198,7 @@ describe("declarative scheduler retry semantics", () => {
         const capabilities = getTestCapabilities();
         const schedulerControl = getSchedulerControl(capabilities);
         schedulerControl.setPollingInterval(1);
-        const retryDelay = fromMilliseconds(30 * 1000); // 30 seconds
+        const retryDelay = Duration.fromMillis(30 * 1000); // 30 seconds
         let executionCount = 0;
 
         const task = jest.fn(() => {
