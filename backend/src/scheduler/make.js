@@ -218,8 +218,8 @@ function make(getCapabilities) {
      * @type {Stop}
      */
     async function stop() {
+        const capabilities = getCapabilitiesMemo();
         if (pollingScheduler !== null) {
-            const capabilities = getCapabilitiesMemo();
             try {
                 capabilities.logger.logInfo(
                     {},
@@ -237,7 +237,6 @@ function make(getCapabilities) {
                 throw new StopSchedulerError(`Failed to stop scheduler: ${error.message}`, { cause: error });
             }
         } else {
-            const capabilities = getCapabilitiesMemo();
             capabilities.logger.logDebug({}, "Scheduler already stopped or not initialized");
         }
     }
