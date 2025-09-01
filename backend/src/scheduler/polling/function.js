@@ -25,6 +25,11 @@ function makePollingFunction(capabilities, registrations, scheduledTasks, taskEx
 
     return async function poll() {
         if (initialized && finished.count === lastFinishedCount) {
+            // Skip this poll if no updates are expected.
+            // This helps to avoid unnecessary work.
+            // The essential fact which makes this check behave correctly
+            // is that there can only be one instance of the same task running 
+            // at any time, even if it is still running when it should be due again.
             return;
         } else {
             lastFinishedCount = finished.count;
