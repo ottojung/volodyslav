@@ -6,6 +6,7 @@
 const { RUNTIME_STATE_VERSION } = require("../src/runtime_state_storage/structure");
 const { getMockedRootCapabilities } = require("./spies");
 const { stubEnvironment, stubLogger, stubDatetime, stubRuntimeStateStorage } = require("./stubs");
+const { fromISOString, toISOString } = require("../src/datetime");
 
 function getTestCapabilities() {
     const capabilities = getMockedRootCapabilities();
@@ -21,7 +22,7 @@ describe("runtime_state_storage/transaction (mocked)", () => {
         const capabilities = getTestCapabilities();
         
 
-        const startTime = capabilities.datetime.fromISOString("2025-01-01T10:00:00.000Z");
+        const startTime = fromISOString("2025-01-01T10:00:00.000Z");
         const testState = { version: RUNTIME_STATE_VERSION, startTime, tasks: [] };
 
         await capabilities.state.transaction(async (runtimeStateStorage) => {
@@ -37,7 +38,7 @@ describe("runtime_state_storage/transaction (mocked)", () => {
                 tasks: []
             });
             // Check that the stored time matches what we set
-            expect(capabilities.datetime.toISOString(storedState.startTime)).toBe("2025-01-01T10:00:00.000Z");
+            expect(toISOString(storedState.startTime)).toBe("2025-01-01T10:00:00.000Z");
         });
     });
 
@@ -85,7 +86,7 @@ describe("runtime_state_storage/transaction (mocked)", () => {
         const capabilities = getTestCapabilities();
         
 
-        const startTime = capabilities.datetime.fromISOString("2025-01-01T10:00:00.000Z");
+        const startTime = fromISOString("2025-01-01T10:00:00.000Z");
         const testState = { version: RUNTIME_STATE_VERSION, startTime, tasks: [] };
 
         // Set up existing state
@@ -101,7 +102,7 @@ describe("runtime_state_storage/transaction (mocked)", () => {
                 startTime: expect.any(Object),
                 tasks: []
             });
-            expect(capabilities.datetime.toISOString(existingState.startTime)).toBe("2025-01-01T10:00:00.000Z");
+            expect(toISOString(existingState.startTime)).toBe("2025-01-01T10:00:00.000Z");
         });
     });
 
@@ -126,8 +127,8 @@ describe("runtime_state_storage/transaction (mocked)", () => {
         const capabilities = getTestCapabilities();
         
 
-        const initialTime = capabilities.datetime.fromISOString("2025-01-01T10:00:00.000Z");
-        const updatedTime = capabilities.datetime.fromISOString("2025-01-01T11:00:00.000Z");
+        const initialTime = fromISOString("2025-01-01T10:00:00.000Z");
+        const updatedTime = fromISOString("2025-01-01T11:00:00.000Z");
         
         const initialState = { version: RUNTIME_STATE_VERSION, startTime: initialTime, tasks: [] };
         const updatedState = { version: RUNTIME_STATE_VERSION, startTime: updatedTime, tasks: [] };
@@ -145,7 +146,7 @@ describe("runtime_state_storage/transaction (mocked)", () => {
         // Verify updated state
         await capabilities.state.transaction(async (runtimeStateStorage) => {
             const storedState = await runtimeStateStorage.getExistingState();
-            expect(capabilities.datetime.toISOString(storedState.startTime)).toBe("2025-01-01T11:00:00.000Z");
+            expect(toISOString(storedState.startTime)).toBe("2025-01-01T11:00:00.000Z");
         });
     });
 
@@ -153,8 +154,8 @@ describe("runtime_state_storage/transaction (mocked)", () => {
         const capabilities = getTestCapabilities();
         
 
-        const existingTime = capabilities.datetime.fromISOString("2025-01-01T10:00:00.000Z");
-        const newTime = capabilities.datetime.fromISOString("2025-01-01T11:00:00.000Z");
+        const existingTime = fromISOString("2025-01-01T10:00:00.000Z");
+        const newTime = fromISOString("2025-01-01T11:00:00.000Z");
         
         const existingState = { version: RUNTIME_STATE_VERSION, startTime: existingTime, tasks: [] };
         const newState = { version: RUNTIME_STATE_VERSION, startTime: newTime, tasks: [] };
@@ -168,7 +169,7 @@ describe("runtime_state_storage/transaction (mocked)", () => {
         await capabilities.state.transaction(async (runtimeStateStorage) => {
             runtimeStateStorage.setState(newState);
             const currentState = await runtimeStateStorage.getCurrentState();
-            expect(capabilities.datetime.toISOString(currentState.startTime)).toBe("2025-01-01T11:00:00.000Z");
+            expect(toISOString(currentState.startTime)).toBe("2025-01-01T11:00:00.000Z");
         });
     });
 
@@ -177,8 +178,8 @@ describe("runtime_state_storage/transaction (mocked)", () => {
         
 
         const startTime = capabilities.datetime.now();
-        const lastSuccess = capabilities.datetime.fromISOString("2025-01-01T09:00:00.000Z");
-        const lastFailure = capabilities.datetime.fromISOString("2025-01-01T08:00:00.000Z");
+        const lastSuccess = fromISOString("2025-01-01T09:00:00.000Z");
+        const lastFailure = fromISOString("2025-01-01T08:00:00.000Z");
         
         const complexState = {
             version: RUNTIME_STATE_VERSION,
@@ -208,8 +209,8 @@ describe("runtime_state_storage/transaction (mocked)", () => {
             expect(storedState.tasks).toHaveLength(2);
             expect(storedState.tasks[0].name).toBe("task-1");
             expect(storedState.tasks[1].name).toBe("task-2");
-            expect(capabilities.datetime.toISOString(storedState.tasks[0].lastSuccessTime)).toBe("2025-01-01T09:00:00.000Z");
-            expect(capabilities.datetime.toISOString(storedState.tasks[1].lastFailureTime)).toBe("2025-01-01T08:00:00.000Z");
+            expect(toISOString(storedState.tasks[0].lastSuccessTime)).toBe("2025-01-01T09:00:00.000Z");
+            expect(toISOString(storedState.tasks[1].lastFailureTime)).toBe("2025-01-01T08:00:00.000Z");
         });
     });
 });

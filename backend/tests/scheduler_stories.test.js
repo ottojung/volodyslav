@@ -6,6 +6,7 @@
 const { Duration } = require("luxon");
 const { getMockedRootCapabilities } = require("./spies");
 const { stubEnvironment, stubLogger, stubDatetime, stubSleeper, getDatetimeControl, stubRuntimeStateStorage, stubScheduler, getSchedulerControl } = require("./stubs");
+const { toNativeDate } = require("../src/datetime");
 
 function getTestCapabilities() {
     const capabilities = getMockedRootCapabilities();
@@ -153,7 +154,7 @@ describe("scheduler stories", () => {
 
         const taskCallback = jest.fn().mockImplementation(() => {
             // Verify that during task execution, the scheduler sees consistent time
-            const executionTime = capabilities.datetime.toNativeDate(capabilities.datetime.now());
+            const executionTime = toNativeDate(capabilities.datetime.now());
             taskCallback.executionTimes = taskCallback.executionTimes || [];
             taskCallback.executionTimes.push(executionTime.getTime());
         });
@@ -428,17 +429,17 @@ describe("scheduler stories", () => {
         const executionLog = [];
 
         const frequentTask = jest.fn().mockImplementation(() => {
-            const currentTime = capabilities.datetime.toNativeDate(capabilities.datetime.now());
+            const currentTime = toNativeDate(capabilities.datetime.now());
             executionLog.push({ task: 'frequent', time: currentTime.getTime() });
         });
 
         const weeklyTask = jest.fn().mockImplementation(() => {
-            const currentTime = capabilities.datetime.toNativeDate(capabilities.datetime.now());
+            const currentTime = toNativeDate(capabilities.datetime.now());
             executionLog.push({ task: 'weekly', time: currentTime.getTime() });
         });
 
         const monthlyTask = jest.fn().mockImplementation(() => {
-            const currentTime = capabilities.datetime.toNativeDate(capabilities.datetime.now());
+            const currentTime = toNativeDate(capabilities.datetime.now());
             executionLog.push({ task: 'monthly', time: currentTime.getTime() });
         });
 

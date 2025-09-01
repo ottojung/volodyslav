@@ -13,6 +13,7 @@ const {
     stubEventLogRepository,
 } = require("./stubs");
 const { getMockedRootCapabilities } = require("./spies");
+const { toNativeDate } = require("../src/datetime");
 
 function getTestCapabilities() {
     const capabilities = getMockedRootCapabilities();
@@ -94,7 +95,7 @@ describe("processDiaryAudios", () => {
         const assetsBase = capabilities.environment.eventLogAssetsDirectory();
         for (const name of filenames) {
             const date = formatFileTimestamp(name, capabilities.datetime);
-            const native = capabilities.datetime.toNativeDate(date);
+            const native = toNativeDate(date);
             const year = native.getFullYear();
             const month = String(native.getMonth() + 1).padStart(2, "0");
             const day = String(native.getDate()).padStart(2, "0");

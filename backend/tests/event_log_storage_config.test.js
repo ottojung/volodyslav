@@ -130,7 +130,7 @@ describe("event_log_storage", () => {
 
         const testEvent = {
             id: { identifier: "config-and-event" },
-            date: capabilities.datetime.fromISOString("2025-05-20"),
+            date: fromISOString("2025-05-20"),
             original: "test with config",
             input: "test with config",
             type: "config_test",
@@ -163,6 +163,7 @@ describe("event_log_storage", () => {
             const configPath = path.join(workTree, "config.json");
             const configFile = await capabilities.checker.instantiate(configPath);
             const configStorage = require("../src/config/storage");
+const { fromISOString } = require("../src/datetime");
             const storedConfig = await configStorage.readConfig(
                 capabilities,
                 configFile

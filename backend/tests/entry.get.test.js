@@ -1,6 +1,7 @@
 const { createEntry, getEntries } = require("../src/entry");
 const { getMockedRootCapabilities } = require("./spies");
 const { stubEnvironment, stubEventLogRepository, stubDatetime, stubLogger } = require("./stubs");
+const { fromISOString, fromEpochMs } = require("../src/datetime");
 
 async function getTestCapabilities() {
     const capabilities = getMockedRootCapabilities();
@@ -35,10 +36,10 @@ describe("getEntries ordering functionality", () => {
         const capabilities = await getTestCapabilities();
 
         // Create entries with different dates by controlling datetime.now()
-        const baseTime = capabilities.datetime.fromISOString("2023-01-01T10:00:00Z").getTime();
+        const baseTime = fromISOString("2023-01-01T10:00:00Z").getTime();
 
         capabilities.datetime.now.mockReturnValueOnce(
-            capabilities.datetime.fromEpochMs(baseTime)
+            fromEpochMs(baseTime)
         );
         const entry1Data = {
             original: "First entry",
@@ -49,7 +50,7 @@ describe("getEntries ordering functionality", () => {
         await createEntry(capabilities, entry1Data);
 
         capabilities.datetime.now.mockReturnValueOnce(
-            capabilities.datetime.fromEpochMs(baseTime + 24 * 60 * 60 * 1000)
+            fromEpochMs(baseTime + 24 * 60 * 60 * 1000)
         ); // +1 day
         const entry2Data = {
             original: "Second entry",
@@ -61,7 +62,7 @@ describe("getEntries ordering functionality", () => {
         await createEntry(capabilities, entry2Data);
 
         capabilities.datetime.now.mockReturnValueOnce(
-            capabilities.datetime.fromEpochMs(baseTime + 2 * 24 * 60 * 60 * 1000)
+            fromEpochMs(baseTime + 2 * 24 * 60 * 60 * 1000)
         ); // +2 days
         const entry3Data = {
             original: "Third entry",
@@ -86,10 +87,10 @@ describe("getEntries ordering functionality", () => {
         const capabilities = await getTestCapabilities();
 
         // Create entries with different dates by controlling datetime.now()
-        const baseTime = capabilities.datetime.fromISOString("2023-01-01T10:00:00Z").getTime();
+        const baseTime = fromISOString("2023-01-01T10:00:00Z").getTime();
 
         capabilities.datetime.now.mockReturnValueOnce(
-            capabilities.datetime.fromEpochMs(baseTime)
+            fromEpochMs(baseTime)
         );
         const entry1Data = {
             original: "First entry",
@@ -99,7 +100,7 @@ describe("getEntries ordering functionality", () => {
         };
 
         capabilities.datetime.now.mockReturnValueOnce(
-            capabilities.datetime.fromEpochMs(baseTime + 24 * 60 * 60 * 1000)
+            fromEpochMs(baseTime + 24 * 60 * 60 * 1000)
         ); // +1 day
         const entry2Data = {
             original: "Second entry",
@@ -127,10 +128,10 @@ describe("getEntries ordering functionality", () => {
     it("sorts entries by date descending when explicitly specified", async () => {
         const capabilities = await getTestCapabilities();
 
-        const baseTime = capabilities.datetime.fromISOString("2023-01-01T10:00:00Z").getTime();
+        const baseTime = fromISOString("2023-01-01T10:00:00Z").getTime();
 
         capabilities.datetime.now.mockReturnValueOnce(
-            capabilities.datetime.fromEpochMs(baseTime)
+            fromEpochMs(baseTime)
         );
         const entry1Data = {
             original: "First entry",
@@ -142,7 +143,7 @@ describe("getEntries ordering functionality", () => {
         await createEntry(capabilities, entry1Data);
 
         capabilities.datetime.now.mockReturnValueOnce(
-            capabilities.datetime.fromEpochMs(baseTime + 24 * 60 * 60 * 1000)
+            fromEpochMs(baseTime + 24 * 60 * 60 * 1000)
         ); // +1 day
         const entry2Data = {
             original: "Second entry",
@@ -189,10 +190,10 @@ describe("getEntries ordering functionality", () => {
         const capabilities = await getTestCapabilities();
 
         // Create 5 entries with different dates by controlling datetime.now()
-        const baseTime = capabilities.datetime.fromISOString("2023-01-01T10:00:00Z").getTime();
+        const baseTime = fromISOString("2023-01-01T10:00:00Z").getTime();
         for (let i = 1; i <= 5; i++) {
             capabilities.datetime.now.mockReturnValueOnce(
-                capabilities.datetime.fromEpochMs(baseTime + (i - 1) * 24 * 60 * 60 * 1000)
+                fromEpochMs(baseTime + (i - 1) * 24 * 60 * 60 * 1000)
             );
             await createEntry(capabilities, {
                 original: `Entry ${i}`,

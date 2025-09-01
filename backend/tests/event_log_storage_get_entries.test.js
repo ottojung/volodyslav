@@ -3,6 +3,7 @@ const { transaction } = require("../src/event_log_storage");
 const gitstore = require("../src/gitstore");
 const { readObjects } = require("../src/json_stream_file");
 const event = require("../src/event/structure");
+const { fromISOString } = require("../src/datetime");
 const {
     stubEnvironment,
     stubLogger,
@@ -29,7 +30,7 @@ describe("event_log_storage", () => {
         // First transaction: create initial entries
         const firstEvent = {
             id: { identifier: "existing1" },
-            date: capabilities.datetime.fromISOString("2025-05-01"),
+            date: fromISOString("2025-05-01"),
             original: "first input",
             input: "processed first input",
             modifiers: { test: "first" },
@@ -45,7 +46,7 @@ describe("event_log_storage", () => {
         // Second transaction: verify we can read existing entries and add more
         const secondEvent = {
             id: { identifier: "new1" },
-            date: capabilities.datetime.fromISOString("2025-05-15"),
+            date: fromISOString("2025-05-15"),
             original: "new input",
             input: "processed new input",
             modifiers: { test: "new" },
@@ -85,7 +86,7 @@ describe("event_log_storage", () => {
         // First create an initial entry
         const initialEvent = {
             id: { identifier: "cache-test" },
-            date: capabilities.datetime.fromISOString("2025-05-24"),
+            date: fromISOString("2025-05-24"),
             original: "cache test",
             input: "cache test input",
             type: "cache_test",
@@ -121,7 +122,7 @@ describe("event_log_storage", () => {
             storage.addEntry(
                 {
                     id: { identifier: "cache-test-2" },
-                    date: capabilities.datetime.fromISOString("2025-05-25"),
+                    date: fromISOString("2025-05-25"),
                     original: "cache test 2",
                     input: "cache test input 2",
                     type: "cache_test",

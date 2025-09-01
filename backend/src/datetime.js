@@ -104,6 +104,7 @@ function make() {
 
 module.exports = {
     make,
+    DateTime,
     isDateTime,
     fromEpochMs,
     fromISOString,

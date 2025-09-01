@@ -4,6 +4,7 @@
 
 const { getMockedRootCapabilities } = require("./spies");
 const { stubEnvironment, stubLogger, stubDatetime, stubRuntimeStateStorage } = require("./stubs");
+const { fromISOString } = require("../src/datetime");
 
 function getTestCapabilities() {
     const capabilities = getMockedRootCapabilities();
@@ -29,8 +30,8 @@ describe("success persistence", () => {
                         name: "test-task",
                         cronExpression: "* * * * *",
                         retryDelayMs: 1000,
-                        lastSuccessTime: capabilities.datetime.fromISOString("2020-01-01T00:00:00Z"),
-                        lastAttemptTime: capabilities.datetime.fromISOString("2020-01-01T00:00:00Z")
+                        lastSuccessTime: fromISOString("2020-01-01T00:00:00Z"),
+                        lastAttemptTime: fromISOString("2020-01-01T00:00:00Z")
                     }
                 ]
             };
