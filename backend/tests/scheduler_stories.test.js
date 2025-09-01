@@ -833,7 +833,7 @@ describe("scheduler stories", () => {
         await newCapabilities.scheduler.stop();
     });
 
-    test.skip("should execute tasks with precise hour-level timing", async () => {
+    test("should execute tasks with precise hour-level timing", async () => {
         const capabilities = getTestCapabilities();
         const timeControl = getDatetimeControl(capabilities);
         const schedulerControl = getSchedulerControl(capabilities);
@@ -896,7 +896,7 @@ describe("scheduler stories", () => {
         await capabilities.scheduler.stop();
     });
 
-    test.skip("should demonstrate precise execution counting with multiple intervals", async () => {
+    test("should demonstrate precise execution counting with multiple intervals", async () => {
         const capabilities = getTestCapabilities();
         const timeControl = getDatetimeControl(capabilities);
         const schedulerControl = getSchedulerControl(capabilities);
@@ -941,19 +941,14 @@ describe("scheduler stories", () => {
         const new2HourExecutions = after12Hours2Hour - initial2Hour;
         const new6HourExecutions = after12Hours6Hour - initial6Hour;
 
-        // Over 12 hours:
-        // - Every 2 hours task should execute 6 times (2h, 4h, 6h, 8h, 10h, 12h)
-        // - Every 6 hours task should execute 2 times (6h, 12h)
-        expect(new2HourExecutions).toBeGreaterThanOrEqual(5); // At least 5 additional executions
-        expect(new6HourExecutions).toBeGreaterThanOrEqual(1); // At least 1 additional execution
-
-        // The ratio should be approximately 3:1 (2-hour runs 3x more often than 6-hour)
-        expect(new2HourExecutions).toBeGreaterThanOrEqual(new6HourExecutions * 2);
+        // Over 12 hours must only execute once: do not "make up" for missed executions.
+        expect(new2HourExecutions).toEqual(1);
+        expect(new6HourExecutions).toEqual(1);
 
         await capabilities.scheduler.stop();
     });
 
-    test.skip("should execute tasks with exact timing precision across day boundaries", async () => {
+    test("should execute tasks with exact timing precision across day boundaries", async () => {
         const capabilities = getTestCapabilities();
         const timeControl = getDatetimeControl(capabilities);
         const schedulerControl = getSchedulerControl(capabilities);
