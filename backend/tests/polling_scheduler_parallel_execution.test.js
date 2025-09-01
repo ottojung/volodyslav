@@ -31,13 +31,13 @@ describe("declarative scheduler parallel execution", () => {
         const task1 = jest.fn(async () => {
             task1StartTime = Date.now();
             // Add a small delay to make parallelism more observable
-            await schedulerControl.waitForNextCycleEnd();
+            await new Promise(resolve => setTimeout(resolve, 100));
         });
 
         const task2 = jest.fn(async () => {
             task2StartTime = Date.now();
             // Add a small delay to make parallelism more observable
-            await schedulerControl.waitForNextCycleEnd();
+            await new Promise(resolve => setTimeout(resolve, 100));
         });
 
         const registrations = [
@@ -81,7 +81,7 @@ describe("declarative scheduler parallel execution", () => {
             taskExecutionOrder.push(`${taskId}-start`);
 
             // Add a small delay to make concurrency more observable
-            await schedulerControl.waitForNextCycleEnd();
+            await new Promise(resolve => setTimeout(resolve, 200));
 
             taskExecutionOrder.push(`${taskId}-end`);
             concurrentExecutions--;
@@ -118,12 +118,12 @@ describe("declarative scheduler parallel execution", () => {
         const slowTask = jest.fn(async () => {
             slowTaskStarted = true;
             // Simulate slow task with a longer delay
-            await schedulerControl.waitForNextCycleEnd();
+            await new Promise(resolve => setTimeout(resolve, 200));
         });
 
         const fastTask = jest.fn(async () => {
             // Fast task
-            await schedulerControl.waitForNextCycleEnd();
+            await new Promise(resolve => setTimeout(resolve, 0));
             fastTaskCompleted = true;
         });
 
@@ -154,7 +154,7 @@ describe("declarative scheduler parallel execution", () => {
         let badTaskExecuted = false;
 
         const goodTask = jest.fn(async () => {
-            await schedulerControl.waitForNextCycleEnd();
+            await new Promise(resolve => setTimeout(resolve, 200));
             goodTaskExecuted = true;
         });
 
