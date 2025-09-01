@@ -321,7 +321,7 @@ describe("declarative scheduler integration and system edge cases", () => {
             // Mix of different task types
             const quickCallback = jest.fn();
             const slowCallback = jest.fn(async () => {
-                await schedulerControl.waitForNextCycleEnd();
+                await new Promise(resolve => setTimeout(resolve, 100));
             });
             const failingCallback = jest.fn(() => {
                 throw new Error("Intentional failure");
