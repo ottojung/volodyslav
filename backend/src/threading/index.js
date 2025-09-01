@@ -1,6 +1,8 @@
 
 // FIXME: develop this subfolder into a proper module.
 
+const uniqueSymbolModule = require("../unique_symbol");
+
 /**
  * @typedef {() => Promise<void>} Callback
  */
@@ -23,12 +25,13 @@ class PeriodicThread {
 
     /**
      * 
-     * @param {string} name 
+     * @param {string | import('../unique_symbol').UniqueSymbol} name 
      * @param {number} period 
      * @param {Callback} callback 
      */
     constructor(name, period, callback) {
-        this.name = name;
+        // Convert UniqueSymbol to string if needed
+        this.name = uniqueSymbolModule.isUniqueSymbol(name) ? name.toString() : name;
         this.period = period;
         this.callback = callback;
         this.interval = undefined;
@@ -85,7 +88,7 @@ function isPeriodicThread(obj) {
 function make() {
 
     /**
-     * @param {string} name
+     * @param {string | import('../unique_symbol').UniqueSymbol} name
      * @param {number} interval
      * @param {Callback} callback
      * @returns {PeriodicThread}
