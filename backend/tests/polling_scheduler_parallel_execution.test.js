@@ -118,12 +118,12 @@ describe("declarative scheduler parallel execution", () => {
         const slowTask = jest.fn(async () => {
             slowTaskStarted = true;
             // Simulate slow task with a longer delay
-            await schedulerControl.waitForNextCycleEnd();
+            await new Promise(resolve => setTimeout(resolve, 200));
         });
 
         const fastTask = jest.fn(async () => {
             // Fast task
-            await schedulerControl.waitForNextCycleEnd();
+            await new Promise(resolve => setTimeout(resolve, 0));
             fastTaskCompleted = true;
         });
 
