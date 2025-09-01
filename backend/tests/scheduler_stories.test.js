@@ -999,4 +999,49 @@ describe("scheduler stories", () => {
 
         await capabilities.scheduler.stop();
     });
+
+    test.skip("should not block executions when a slow task is running", async () => {
+        const capabilities = getTestCapabilities();
+        const timeControl = getDatetimeControl(capabilities);
+        const schedulerControl = getSchedulerControl(capabilities);
+        const retryDelay = Duration.fromMillis(5000);
+
+        const fastTask = jest.fn();
+
+        let shouldRun = true;
+        const slowTask = jest.fn().mockImplementation(async () => {
+            while (shouldRun) {
+                await new Promise(resolve => setTimeout(resolve, 1));
+            }
+        });
+
+        // Set start time to 01:15:00 on Jan 1, 2021
+        const startTime = new Date("2021-01-01T01:15:00.000Z").getTime();
+        timeControl.setTime(startTime);
+        schedulerControl.setPollingInterval(1);
+
+        const registrations = [
+            ["fast-task", "0 * * * *", fastTask, retryDelay],   // Every hour at 0 minutes
+            ["slow-task", "0 * * * *", slowTask, retryDelay],    // Every hour at 0 minutes
+        ];
+
+        await capabilities.scheduler.initialize(registrations);
+
+        // Wait some time.
+        await new Promise(resolve => setTimeout(resolve, 200));
+
+        expect(fastTask.mock.calls.length).toEqual(1);
+        expect(slowTask.mock.calls.length).toEqual(1);
+
+        // Advance by one hour
+        timeControl.advanceTime(1 * 60 * 60 * 1000);
+        // Wait some time.
+        await new Promise(resolve => setTimeout(resolve, 200));
+
+        expect(fastTask.mock.calls.length).toEqual(2);
+        expect(slowTask.mock.calls.length).toEqual(1);
+
+        shouldRun = false;
+        await capabilities.scheduler.stop();
+    });
 });
