@@ -617,7 +617,7 @@ describe("scheduler stories", () => {
         // Start at exactly 1 AM on Jan 1st
         const startTime = new Date("2021-01-01T01:00:00.000Z").getTime();
         timeControl.setTime(startTime);
-        schedulerControl.setPollingInterval(100);
+        schedulerControl.setPollingInterval(1);
 
         const registrations = [
             ["hourly-precise", "0 * * * *", hourlyTask, retryDelay],      // Every hour at minute 0
