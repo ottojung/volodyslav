@@ -132,7 +132,7 @@ describe("scheduler atomicity testing", () => {
 
             const task2 = jest.fn(async () => {
                 // Wait a tiny bit to create interleaving
-                await schedulerControl.waitForNextCycleEnd();
+                await new Promise(resolve => setTimeout(resolve, 200));
                 task2Done = true;
             });
 
