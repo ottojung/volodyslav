@@ -51,6 +51,8 @@ describe("minimal scheduler reproduce", () => {
         console.log("=== Advance to 02:00 ===");
         timeControl.advanceTime(2 * 60 * 60 * 1000);
         await schedulerControl.waitForNextCycleEnd();
+        await schedulerControl.waitForNextCycleEnd(); // Try multiple cycles
+        await schedulerControl.waitForNextCycleEnd();
 
         console.log(`After 02:00: 2h=${task2h.mock.calls.length}, 4h=${task4h.mock.calls.length}`);
         
