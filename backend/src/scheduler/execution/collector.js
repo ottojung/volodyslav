@@ -80,12 +80,15 @@ function evaluateTasksForExecution(tasks, scheduledTasks, now, dt, capabilities)
                 dueRetry++;
             } else {
                 dueTasks.push({ taskName, mode: "cron", callback });
-                task.lastAttemptTime = now;
+                // Set lastAttemptTime to the scheduled fire time, not the current time
+                task.lastAttemptTime = lastScheduledFire || now;
                 dueCron++;
             }
         } else if (shouldRunCron) {
             dueTasks.push({ taskName, mode: "cron", callback });
-            task.lastAttemptTime = now;
+            // Set lastAttemptTime to the scheduled fire time, not the current time
+            // This ensures future evaluations correctly compare against the intended execution time
+            task.lastAttemptTime = lastScheduledFire || now;
             dueCron++;
         } else if (shouldRunRetry) {
             dueTasks.push({ taskName, mode: "retry", callback });
