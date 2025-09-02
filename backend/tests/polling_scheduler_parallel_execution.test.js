@@ -29,13 +29,13 @@ describe("declarative scheduler parallel execution", () => {
         let task2StartTime = null;
 
         const task1 = jest.fn(async () => {
-            task1StartTime = Date.now();
+            task1StartTime = capabilities.datetime.getCurrentTime();
             // Add a small delay to make parallelism more observable
             await new Promise(resolve => setTimeout(resolve, 100));
         });
 
         const task2 = jest.fn(async () => {
-            task2StartTime = Date.now();
+            task2StartTime = capabilities.datetime.getCurrentTime();
             // Add a small delay to make parallelism more observable
             await new Promise(resolve => setTimeout(resolve, 100));
         });
@@ -210,7 +210,7 @@ describe("declarative scheduler parallel execution", () => {
         const task3 = createTask('3');
 
         // Set initial time to trigger catch-up execution (past the minute start)
-        const startTime = new Date("2021-01-01T00:00:30.000Z").getTime(); // 30 seconds past the hour
+        const startTime = 1609459230000; // 2021-01-01T00:00:30.000Z (30 seconds past the hour)
         timeControl.setTime(startTime);
 
         const registrations = [

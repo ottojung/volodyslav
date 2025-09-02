@@ -7,6 +7,7 @@ const { isRunning } = require("../src/scheduler/task/methods");
 const { makeTask } = require("../src/scheduler/task/structure");
 const { parseCronExpression } = require("../src/scheduler/expression");
 const { Duration } = require("luxon");
+const { fromEpochMs } = require("../src/datetime");
 
 describe("scheduler task methods edge cases", () => {
 
@@ -42,8 +43,8 @@ describe("scheduler task methods edge cases", () => {
         test("should return false when lastAttemptTime is undefined", () => {
             const task = createTestTask({
                 lastAttemptTime: undefined,
-                lastSuccessTime: new Date("2024-01-01T10:00:00Z"),
-                lastFailureTime: new Date("2024-01-01T11:00:00Z")
+                lastSuccessTime: fromEpochMs(1704103200000),
+                lastFailureTime: fromEpochMs(1704106800000)
             });
 
             expect(isRunning(task)).toBe(false);
@@ -61,9 +62,9 @@ describe("scheduler task methods edge cases", () => {
 
         test("should return true when lastAttemptTime is more recent than both success and failure", () => {
             const task = createTestTask({
-                lastAttemptTime: new Date("2024-01-01T12:00:00Z"),
-                lastSuccessTime: new Date("2024-01-01T10:00:00Z"),
-                lastFailureTime: new Date("2024-01-01T11:00:00Z")
+                lastAttemptTime: fromEpochMs(1704110400000),
+                lastSuccessTime: fromEpochMs(1704103200000),
+                lastFailureTime: fromEpochMs(1704106800000)
             });
 
             expect(isRunning(task)).toBe(true);
@@ -71,9 +72,9 @@ describe("scheduler task methods edge cases", () => {
 
         test("should return false when lastAttemptTime is older than lastSuccessTime", () => {
             const task = createTestTask({
-                lastAttemptTime: new Date("2024-01-01T10:00:00Z"),
-                lastSuccessTime: new Date("2024-01-01T11:00:00Z"),
-                lastFailureTime: new Date("2024-01-01T09:00:00Z")
+                lastAttemptTime: fromEpochMs(1704103200000),
+                lastSuccessTime: fromEpochMs(1704106800000),
+                lastFailureTime: fromEpochMs(1704099600000)
             });
 
             expect(isRunning(task)).toBe(false);
@@ -81,30 +82,30 @@ describe("scheduler task methods edge cases", () => {
 
         test("should return false when lastAttemptTime is older than lastFailureTime", () => {
             const task = createTestTask({
-                lastAttemptTime: new Date("2024-01-01T10:00:00Z"),
-                lastSuccessTime: new Date("2024-01-01T09:00:00Z"),
-                lastFailureTime: new Date("2024-01-01T11:00:00Z")
+                lastAttemptTime: fromEpochMs(1704103200000),
+                lastSuccessTime: fromEpochMs(1704099600000),
+                lastFailureTime: fromEpochMs(1704106800000)
             });
 
             expect(isRunning(task)).toBe(false);
         });
 
         test("should return false when lastAttemptTime equals lastSuccessTime", () => {
-            const sameTime = new Date("2024-01-01T10:00:00Z");
+            const sameTime = fromEpochMs(1704103200000);
             const task = createTestTask({
                 lastAttemptTime: sameTime,
                 lastSuccessTime: sameTime,
-                lastFailureTime: new Date("2024-01-01T09:00:00Z")
+                lastFailureTime: fromEpochMs(1704099600000)
             });
 
             expect(isRunning(task)).toBe(false);
         });
 
         test("should return false when lastAttemptTime equals lastFailureTime", () => {
-            const sameTime = new Date("2024-01-01T10:00:00Z");
+            const sameTime = fromEpochMs(1704103200000);
             const task = createTestTask({
                 lastAttemptTime: sameTime,
-                lastSuccessTime: new Date("2024-01-01T09:00:00Z"),
+                lastSuccessTime: fromEpochMs(1704099600000),
                 lastFailureTime: sameTime
             });
 
@@ -113,7 +114,7 @@ describe("scheduler task methods edge cases", () => {
 
         test("should return true when only lastAttemptTime is set", () => {
             const task = createTestTask({
-                lastAttemptTime: new Date("2024-01-01T10:00:00Z"),
+                lastAttemptTime: fromEpochMs(1704103200000),
                 lastSuccessTime: undefined,
                 lastFailureTime: undefined
             });
@@ -123,9 +124,9 @@ describe("scheduler task methods edge cases", () => {
 
         test("should handle edge case with undefined success but defined failure", () => {
             const task = createTestTask({
-                lastAttemptTime: new Date("2024-01-01T12:00:00Z"),
+                lastAttemptTime: fromEpochMs(1704110400000),
                 lastSuccessTime: undefined,
-                lastFailureTime: new Date("2024-01-01T11:00:00Z")
+                lastFailureTime: fromEpochMs(1704106800000)
             });
 
             expect(isRunning(task)).toBe(true);
@@ -133,8 +134,8 @@ describe("scheduler task methods edge cases", () => {
 
         test("should handle edge case with defined success but undefined failure", () => {
             const task = createTestTask({
-                lastAttemptTime: new Date("2024-01-01T12:00:00Z"),
-                lastSuccessTime: new Date("2024-01-01T11:00:00Z"),
+                lastAttemptTime: fromEpochMs(1704110400000),
+                lastSuccessTime: fromEpochMs(1704106800000),
                 lastFailureTime: undefined
             });
 
@@ -143,7 +144,7 @@ describe("scheduler task methods edge cases", () => {
 
         test("should handle edge case with both success and failure undefined", () => {
             const task = createTestTask({
-                lastAttemptTime: new Date("2024-01-01T10:00:00Z"),
+                lastAttemptTime: fromEpochMs(1704103200000),
                 lastSuccessTime: undefined,
                 lastFailureTime: undefined
             });
@@ -153,7 +154,7 @@ describe("scheduler task methods edge cases", () => {
 
         test("should handle null values for success and failure times", () => {
             const task = createTestTask({
-                lastAttemptTime: new Date("2024-01-01T10:00:00Z"),
+                lastAttemptTime: fromEpochMs(1704103200000),
                 lastSuccessTime: null,
                 lastFailureTime: null
             });
@@ -164,27 +165,27 @@ describe("scheduler task methods edge cases", () => {
         test("should correctly use Math.max for completion time calculation", () => {
             // Test where failure is more recent than success
             const task1 = createTestTask({
-                lastAttemptTime: new Date("2024-01-01T10:00:00Z"),
-                lastSuccessTime: new Date("2024-01-01T08:00:00Z"),
-                lastFailureTime: new Date("2024-01-01T09:00:00Z") // More recent than success
+                lastAttemptTime: fromEpochMs(1704103200000),
+                lastSuccessTime: fromEpochMs(1704096000000),
+                lastFailureTime: fromEpochMs(1704099600000) // More recent than success
             });
 
             expect(isRunning(task1)).toBe(true);
 
             // Test where success is more recent than failure
             const task2 = createTestTask({
-                lastAttemptTime: new Date("2024-01-01T10:00:00Z"),
-                lastSuccessTime: new Date("2024-01-01T09:00:00Z"), // More recent than failure
-                lastFailureTime: new Date("2024-01-01T08:00:00Z")
+                lastAttemptTime: fromEpochMs(1704103200000),
+                lastSuccessTime: fromEpochMs(1704099600000), // More recent than failure
+                lastFailureTime: fromEpochMs(1704096000000)
             });
 
             expect(isRunning(task2)).toBe(true);
         });
 
         test("should handle very close timestamps correctly", () => {
-            const baseTime = new Date("2024-01-01T10:00:00.000Z");
+            const baseTime = fromEpochMs(1704103200000); // 2024-01-01T10:00:00.000Z
             const task = createTestTask({
-                lastAttemptTime: new Date(baseTime.getTime() + 1), // 1ms later
+                lastAttemptTime: fromEpochMs(1704103200001), // 1ms later
                 lastSuccessTime: baseTime,
                 lastFailureTime: undefined
             });
@@ -193,7 +194,7 @@ describe("scheduler task methods edge cases", () => {
         });
 
         test("should handle identical timestamps correctly", () => {
-            const sameTime = new Date("2024-01-01T10:00:00Z");
+            const sameTime = fromEpochMs(1704103200000);
             const task = createTestTask({
                 lastAttemptTime: sameTime,
                 lastSuccessTime: sameTime,
@@ -205,8 +206,8 @@ describe("scheduler task methods edge cases", () => {
 
         test("should handle extreme timestamp values", () => {
             // Test with very old dates
-            const veryOldDate = new Date("1970-01-01T00:00:00Z");
-            const recentDate = new Date("2024-01-01T10:00:00Z");
+            const veryOldDate = fromEpochMs(0);
+            const recentDate = fromEpochMs(1704103200000);
             
             const task1 = createTestTask({
                 lastAttemptTime: recentDate,
@@ -217,7 +218,7 @@ describe("scheduler task methods edge cases", () => {
             expect(isRunning(task1)).toBe(true);
 
             // Test with future dates
-            const futureDate = new Date("2030-01-01T00:00:00Z");
+            const futureDate = fromEpochMs(1893456000000);
             const task2 = createTestTask({
                 lastAttemptTime: recentDate,
                 lastSuccessTime: futureDate,
@@ -246,9 +247,9 @@ describe("scheduler task methods edge cases", () => {
         });
 
         test("should handle all permutations of defined/undefined times", () => {
-            const attemptTime = new Date("2024-01-01T12:00:00Z");
-            const successTime = new Date("2024-01-01T11:00:00Z");
-            const failureTime = new Date("2024-01-01T10:00:00Z");
+            const attemptTime = fromEpochMs(1704110400000);
+            const successTime = fromEpochMs(1704106800000);
+            const failureTime = fromEpochMs(1704103200000);
 
             // All combinations of undefined/defined success and failure times
             const testCases = [
@@ -271,9 +272,9 @@ describe("scheduler task methods edge cases", () => {
 
         test("should return consistent results for same input", () => {
             const task = createTestTask({
-                lastAttemptTime: new Date("2024-01-01T12:00:00Z"),
-                lastSuccessTime: new Date("2024-01-01T11:00:00Z"),
-                lastFailureTime: new Date("2024-01-01T10:00:00Z")
+                lastAttemptTime: fromEpochMs(1704110400000),
+                lastSuccessTime: fromEpochMs(1704106800000),
+                lastFailureTime: fromEpochMs(1704103200000)
             });
 
             // Should return same result multiple times
@@ -287,8 +288,8 @@ describe("scheduler task methods edge cases", () => {
         });
 
         test("should not modify the task object", () => {
-            const originalAttemptTime = new Date("2024-01-01T12:00:00Z");
-            const originalSuccessTime = new Date("2024-01-01T11:00:00Z");
+            const originalAttemptTime = fromEpochMs(1704110400000);
+            const originalSuccessTime = fromEpochMs(1704106800000);
             
             const task = createTestTask({
                 lastAttemptTime: originalAttemptTime,
@@ -316,11 +317,11 @@ describe("scheduler task methods edge cases", () => {
             const parsedCron = parseCronExpression("0 * * * *");
             const callback = jest.fn();
             const retryDelay = Duration.fromMillis(5000);
-            const lastSuccessTime = new Date();
-            const lastFailureTime = new Date();
-            const lastAttemptTime = new Date();
-            const pendingRetryUntil = new Date();
-            const lastEvaluatedFire = new Date();
+            const lastSuccessTime = fromEpochMs(1704103200000); // Fixed epoch for testing
+            const lastFailureTime = fromEpochMs(1704106800000); // Fixed epoch for testing
+            const lastAttemptTime = fromEpochMs(1704110400000); // Fixed epoch for testing
+            const pendingRetryUntil = fromEpochMs(1704114000000); // Fixed epoch for testing
+            const lastEvaluatedFire = fromEpochMs(1704117600000); // Fixed epoch for testing
 
             const task = makeTask(
                 name,

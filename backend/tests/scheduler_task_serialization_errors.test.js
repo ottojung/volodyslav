@@ -302,7 +302,9 @@ describe("scheduler task serialization error handling", () => {
 
         test("should successfully deserialize valid object with DateTime fields", () => {
             const registrations = createTestRegistrations();
-            const now = new Date();
+            // Use a fixed timestamp for testing
+            const fixedEpochMs = 1640995200000; // 2022-01-01T00:00:00.000Z
+            const now = { getTime: () => fixedEpochMs }; // Mock Date-like object
             const obj = {
                 name: "test-task",
                 cronExpression: "0 * * * *",

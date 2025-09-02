@@ -29,7 +29,7 @@ describe("declarative scheduler long downtime catchup behavior", () => {
         const hourlyTask = jest.fn();
 
         // Start at exactly the hour to trigger immediate execution
-        const startTime = new Date("2021-01-01T00:00:00.000Z").getTime();
+        const startTime = 1609459200000 // 2021-01-01T00:00:00.000Z;
         timeControl.setTime(startTime);
 
         const registrations = [
@@ -63,7 +63,7 @@ describe("declarative scheduler long downtime catchup behavior", () => {
         const hourlyTask = jest.fn();
 
         // Start at exactly the hour to trigger immediate execution
-        const startTime = new Date("2021-01-01T00:00:00.000Z").getTime();
+        const startTime = 1609459200000 // 2021-01-01T00:00:00.000Z;
         timeControl.setTime(startTime);
 
         const registrations = [
@@ -102,7 +102,7 @@ describe("declarative scheduler long downtime catchup behavior", () => {
         const dailyTask = jest.fn();
 
         // Start at a specific time 
-        const startTime = new Date("2021-01-01T02:00:00.000Z").getTime();
+        const startTime = 1609466400000 // 2021-01-01T02:00:00.000Z;
         timeControl.setTime(startTime);
 
         const registrations = [
@@ -147,7 +147,7 @@ describe("declarative scheduler long downtime catchup behavior", () => {
         const every6HourTask = jest.fn();
 
         // Start at midnight for clean schedule boundaries
-        const startTime = new Date("2021-01-01T00:00:00.000Z").getTime();
+        const startTime = 1609459200000 // 2021-01-01T00:00:00.000Z;
         timeControl.setTime(startTime);
 
         const registrations = [
@@ -189,7 +189,7 @@ describe("declarative scheduler long downtime catchup behavior", () => {
         const hourlyTask = jest.fn();
 
         // Start at 10:00 AM
-        const startTime = new Date("2021-01-01T10:00:00.000Z").getTime();
+        const startTime = 1609495200000 // 2021-01-01T10:00:00.000Z;
         timeControl.setTime(startTime);
 
         const registrations = [
@@ -241,7 +241,7 @@ describe("declarative scheduler long downtime catchup behavior", () => {
         const taskDaily = jest.fn();
 
         // Start at a known time
-        const startTime = new Date("2021-01-01T00:00:00.000Z").getTime();
+        const startTime = 1609459200000 // 2021-01-01T00:00:00.000Z;
         timeControl.setTime(startTime);
 
         const registrations = [
@@ -285,7 +285,7 @@ describe("declarative scheduler long downtime catchup behavior", () => {
         const hourlyTask = jest.fn();
 
         // Start at a specific time
-        const startTime = new Date("2021-01-01T08:00:00.000Z").getTime();
+        const startTime = 1609488000000; // 2021-01-01T08:00:00.000Z
         timeControl.setTime(startTime);
 
         const registrations = [
@@ -324,7 +324,7 @@ describe("declarative scheduler long downtime catchup behavior", () => {
         const complexTask = jest.fn();
 
         // Start at midnight for predictable cron behavior
-        const startTime = new Date("2021-01-01T00:00:00.000Z").getTime();
+        const startTime = 1609459200000 // 2021-01-01T00:00:00.000Z;
         timeControl.setTime(startTime);
 
         const registrations = [

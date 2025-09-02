@@ -13,6 +13,7 @@ export class DescriptionEntryError extends Error {
         super(message);
         this.name = this.constructor.name;
         this.cause = cause;
+        // eslint-disable-next-line volodyslav/no-date-class -- Frontend error timestamping
         this.timestamp = new Date().toISOString();
     }
 }

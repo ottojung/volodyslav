@@ -32,17 +32,12 @@ jest.mock("../src/DescriptionEntry/cameraUtils", () => ({
 import DescriptionEntry from "../src/DescriptionEntry/DescriptionEntry.jsx";
 // Import the mocked functions after the mock is set up
 import {
-    fetchRecentEntries,
     submitEntry,
-    fetchConfig,
 } from "../src/DescriptionEntry/api";
 
 // Import the mocked camera functions
 import {
-    generateRequestIdentifier,
-    navigateToCamera,
     checkCameraReturn,
-    cleanupUrlParams,
     restoreDescription,
     retrievePhotos,
 } from "../src/DescriptionEntry/cameraUtils";

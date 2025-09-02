@@ -15,7 +15,7 @@ async function getTestCapabilities() {
 describe("createEntry (integration, with real capabilities)", () => {
     it("creates an event log entry with correct data (no file)", async () => {
         const capabilities = await getTestCapabilities();
-        const fixedTime = new Date("2023-10-26T10:00:00.000Z").getTime();
+        const fixedTime = 1698314400000; // 2023-10-26T10:00:00.000Z
         capabilities.datetime.now.mockReturnValue(
             fromEpochMs(fixedTime)
         );

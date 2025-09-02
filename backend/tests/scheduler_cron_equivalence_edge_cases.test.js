@@ -269,8 +269,10 @@ describe("scheduler cron expression equivalence edge cases", () => {
             const largeCron1 = parseCronExpression("* * * * *");
             const largeCron2 = parseCronExpression("* * * * *");
 
+            // eslint-disable-next-line volodyslav/no-date-class -- Performance timing test
             const startTime = Date.now();
             const result = largeCron1.equivalent(largeCron2);
+            // eslint-disable-next-line volodyslav/no-date-class -- Performance timing test
             const endTime = Date.now();
 
             expect(result).toBe(true);
@@ -282,8 +284,10 @@ describe("scheduler cron expression equivalence edge cases", () => {
             const cron2 = parseCronExpression("0 * * * *");
 
             // Should return false quickly due to length difference
+            // eslint-disable-next-line volodyslav/no-date-class -- Performance timing test
             const startTime = Date.now();
             const result = cron1.equivalent(cron2);
+            // eslint-disable-next-line volodyslav/no-date-class -- Performance timing test
             const endTime = Date.now();
 
             expect(result).toBe(false);
