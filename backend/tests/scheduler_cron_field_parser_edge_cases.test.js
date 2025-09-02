@@ -33,6 +33,7 @@ describe("scheduler cron field parser edge cases", () => {
             expect(weekdayResult).toHaveLength(7);
             expect(weekdayResult[0]).toBe(0);
             expect(weekdayResult[6]).toBe(6);
+            expect(weekdayResult).toEqual([0, 1, 2, 3, 4, 5, 6]);
         });
 
         test("should parse single valid numbers", () => {
@@ -42,7 +43,7 @@ describe("scheduler cron field parser edge cases", () => {
             expect(parseField("1", FIELD_CONFIGS.day)).toEqual([1]);
             expect(parseField("31", FIELD_CONFIGS.day)).toEqual([31]);
             expect(parseField("12", FIELD_CONFIGS.month)).toEqual([12]);
-            expect(parseField("6", FIELD_CONFIGS.weekday)).toEqual([6]);
+            expect(parseField("6", FIELD_CONFIGS.weekday)).toEqual([6]); // Returns numeric weekday
         });
     });
 
@@ -170,7 +171,7 @@ describe("scheduler cron field parser edge cases", () => {
             expect(() => parseField("0", FIELD_CONFIGS.month)).toThrow();
             expect(() => parseField("13", FIELD_CONFIGS.month)).toThrow();
 
-            // Weekday field (0-6)
+            // Weekday field (0-6, returns numeric values)
             expect(parseField("0", FIELD_CONFIGS.weekday)).toEqual([0]);
             expect(parseField("6", FIELD_CONFIGS.weekday)).toEqual([6]);
             expect(() => parseField("-1", FIELD_CONFIGS.weekday)).toThrow();

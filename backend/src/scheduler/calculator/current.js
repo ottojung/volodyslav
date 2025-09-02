@@ -2,6 +2,8 @@
  * Cron expression matching.
  */
 
+const { weekdayNameToCronNumber } = require("../../weekday");
+
 /**
  * Checks if a given datetime matches the cron expression.
  * @param {import('../expression').CronExpression} cronExpr - Parsed cron expression
@@ -15,11 +17,9 @@ function matchesCronExpression(cronExpr, dateTime) {
     const hour = dateTime.hour;
     const minute = dateTime.minute;
     
-    // Calculate weekday from Luxon's timezone-aware weekday property
-    // Luxon weekday: 1=Monday, 7=Sunday
-    // Cron weekday: 0=Sunday, 1=Monday, ..., 6=Saturday
-    const luxonWeekday = dateTime.weekday;
-    const weekday = luxonWeekday % 7; // Convert: Luxon 7 (Sunday) -> 0, Luxon 1-6 (Mon-Sat) -> 1-6
+    // Convert weekday name (from DateTime) back to cron number for comparison
+    const weekdayName = dateTime.weekday; // This is now a string like "monday"
+    const weekday = weekdayNameToCronNumber(weekdayName);
 
     return (
         cronExpr.minute.includes(minute) &&
