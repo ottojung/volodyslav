@@ -1,6 +1,7 @@
 
 const { matchesCronExpression } = require("./current");
-const { fromMinutes } = require("../../datetime/duration");
+const { fromLuxon } = require("../../datetime/structure");
+const { Duration } = require("luxon");
 
 /**
  * Custom error class for calculation errors.
@@ -25,6 +26,9 @@ function isCronCalculationError(object) {
     return object instanceof CronCalculationError;
 }
 
+// Pre-create the one-minute duration for performance
+const ONE_MINUTE_DURATION = Duration.fromObject({ minutes: 1 });
+
 /**
  * Calculates the next execution time for a cron expression.
  * @param {import('../expression').CronExpression} cronExpr - Parsed cron expression
@@ -35,22 +39,25 @@ function isCronCalculationError(object) {
 function getNextExecution(cronExpr, fromDateTime) {
     // Start from the next minute with seconds and milliseconds reset
     // Use the timezone-aware method to preserve the original timezone
-    let currentDateTime = fromDateTime.startOfNextMinuteForIteration();
+    const startDateTime = fromDateTime.startOfNextMinuteForIteration();
+
+    // Extract the Luxon DateTime to use efficient Luxon arithmetic while preserving timezone
+    let currentLuxonDateTime = startDateTime._luxonDateTime;
 
     // Limit iterations to prevent infinite loops
     const maxIterations = 366 * 24 * 60; // One year worth of minutes
     let iterations = 0;
-    
-    // Create one-minute duration for efficient iteration
-    const oneMinute = fromMinutes(1);
 
     while (iterations < maxIterations) {
+        // Create DateTime wrapper only when needed for matching
+        const currentDateTime = fromLuxon(currentLuxonDateTime);
+        
         if (matchesCronExpression(cronExpr, currentDateTime)) {
             return currentDateTime;
         }
         
-        // Use timezone-aware Luxon arithmetic to preserve original timezone
-        currentDateTime = currentDateTime.advance(oneMinute);
+        // Use efficient Luxon arithmetic while preserving original timezone
+        currentLuxonDateTime = currentLuxonDateTime.plus(ONE_MINUTE_DURATION);
         iterations++;
     }
 
