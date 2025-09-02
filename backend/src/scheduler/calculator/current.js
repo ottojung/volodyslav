@@ -2,7 +2,7 @@
  * Cron expression matching.
  */
 
-const { weekdayNameToCronNumber } = require("../../weekday");
+const { weekdayNameToCronNumber } = require("../../datetime");
 
 /**
  * Checks if a given datetime matches the cron expression.

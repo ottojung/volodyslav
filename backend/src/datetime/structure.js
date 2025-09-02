@@ -1,13 +1,7 @@
-const { DateTime: LuxonDateTime } = require("luxon");
+
 const { luxonWeekdayToName } = require("./weekday");
 
-/**
- * Datetime capability for working with dates.
- * @typedef {object} Datetime
- * @property {() => DateTime} now - Returns the current datetime.
- */
-
-class DateTime {
+class DateTimeClass {
     /** @type {undefined} */
     __brand = undefined;
 
@@ -82,14 +76,14 @@ class DateTime {
     }
 
     /**
-     * @returns {"sunday" | "monday" | "tuesday" | "wednesday" | "thursday" | "friday" | "saturday"}
+     * @returns {import('./weekday').WeekdayName}
      */
     get weekday() {
         return luxonWeekdayToName(this._luxonDateTime.weekday);
     }
-
-
 }
+
+/** @typedef {DateTimeClass} DateTime */
 
 /**
  * Checks if the given object is a DateTime instance.
@@ -97,62 +91,19 @@ class DateTime {
  * @returns {object is DateTime}
  */
 function isDateTime(object) {
-    return object instanceof DateTime;
-}
-
-function now() {
-    return new DateTime(LuxonDateTime.now());
+    return object instanceof DateTimeClass;
 }
 
 /**
- * @param {number} ms
+ * The main constructor.
+ * @param {import('luxon').DateTime} luxonDateTime
  * @returns {DateTime}
  */
-function fromEpochMs(ms) {
-    return new DateTime(LuxonDateTime.fromMillis(ms));
-}
-
-/**
- * @param {string} iso
- * @returns {DateTime}
- */
-function fromISOString(iso) {
-    return new DateTime(LuxonDateTime.fromISO(iso));
-}
-
-/**
- * @param {DateTime} dt
- * @returns {number}
- */
-function toEpochMs(dt) {
-    return dt.getTime();
-}
-
-/**
- * @param {DateTime} dt
- * @returns {string}
- */
-function toISOString(dt) {
-    return dt.toISOString();
-}
-
-
-
-/**
- * @returns {Datetime}
- */
-function make() {
-    return {
-        now,
-    };
+function fromLuxon(luxonDateTime) {
+    return new DateTimeClass(luxonDateTime);
 }
 
 module.exports = {
-    make,
-    DateTime,
+    fromLuxon,
     isDateTime,
-    fromEpochMs,
-    fromISOString,
-    toEpochMs,
-    toISOString,
 };
