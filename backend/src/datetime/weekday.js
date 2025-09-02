@@ -6,6 +6,8 @@
  * @typedef {"sunday" | "monday" | "tuesday" | "wednesday" | "thursday" | "friday" | "saturday"} WeekdayName
  */
 
+const WEEKDAY_NAMES = ["sunday", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday"];
+
 /**
  * Convert Luxon weekday number to weekday name string.
  * Luxon weekday: 1=Monday, 2=Tuesday, ..., 7=Sunday
@@ -72,15 +74,15 @@ function cronNumberToWeekdayName(cronWeekday) {
  * @returns {value is WeekdayName} True if valid weekday name
  */
 function isWeekdayName(value) {
-    return ["sunday", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday"].includes(value);
+    return WEEKDAY_NAMES.includes(value);
 }
 
 /**
  * Get all weekday names.
- * @returns {WeekdayName[]} Array of all weekday names
+ * @returns {["sunday", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday"]} Array of all weekday names
  */
 function getAllWeekdayNames() {
-    return ["sunday", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday"];
+    return WEEKDAY_NAMES;
 }
 
 module.exports = {
