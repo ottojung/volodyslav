@@ -196,7 +196,7 @@ describe("declarative scheduler time handling", () => {
         expect(typeof task2).toBe('function');
 
         await capabilities.scheduler.stop();
-    }, 10000);
+    });
 
     test("should handle complex scheduling patterns", async () => {
         const capabilities = getTestCapabilities();
