@@ -86,17 +86,15 @@ function formatTimeStamp(basic) {
     }
 
     // Validate that the parsed date components match the original string
-    // by converting back to ISO string and comparing the components
-    const parsedIso = d.toISOString();
-    const parsedMatch = parsedIso.match(/(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})/);
+    // by comparing the date components directly instead of string slicing
     if (
-        !parsedMatch ||
-        parsedMatch[1] !== match[1] || // year
-        parsedMatch[2] !== match[2] || // month  
-        parsedMatch[3] !== match[3] || // day
-        parsedMatch[4] !== match[4] || // hour
-        parsedMatch[5] !== match[5] || // minute
-        parsedMatch[6] !== match[6]    // second
+        !match[1] || !match[2] || !match[3] || !match[4] || !match[5] || !match[6] ||
+        d.year !== parseInt(match[1], 10) ||      // year
+        d.month !== parseInt(match[2], 10) ||     // month  
+        d.day !== parseInt(match[3], 10) ||       // day
+        d.hour !== parseInt(match[4], 10) ||      // hour
+        d.minute !== parseInt(match[5], 10) ||    // minute
+        d.second !== parseInt(match[6], 10)       // second
     ) {
         return undefined;
     }

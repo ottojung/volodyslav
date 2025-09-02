@@ -95,10 +95,9 @@ describe("processDiaryAudios", () => {
         const assetsBase = capabilities.environment.eventLogAssetsDirectory();
         for (const name of filenames) {
             const date = formatFileTimestamp(name, capabilities.datetime);
-            const isoString = date.toISOString();
-            const year = isoString.slice(0, 4);
-            const month = isoString.slice(5, 7);
-            const day = isoString.slice(8, 10);
+            const year = date.year;
+            const month = date.month.toString().padStart(2, '0');
+            const day = date.day.toString().padStart(2, '0');
             // Expect one id directory under the date folder
             const idDirs = await fs.readdir(
                 path.join(assetsBase, `${year}-${month}`, day)

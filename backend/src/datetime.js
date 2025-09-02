@@ -38,6 +38,55 @@ class DateTime {
         return iso.replace('+00:00', 'Z');
     }
 
+    /**
+     * @returns {number}
+     */
+    get year() {
+        return this._luxonDateTime.year;
+    }
+
+    /**
+     * @returns {number}
+     */
+    get month() {
+        return this._luxonDateTime.month;
+    }
+
+    /**
+     * @returns {number}
+     */
+    get day() {
+        return this._luxonDateTime.day;
+    }
+
+    /**
+     * @returns {number}
+     */
+    get hour() {
+        return this._luxonDateTime.hour;
+    }
+
+    /**
+     * @returns {number}
+     */
+    get minute() {
+        return this._luxonDateTime.minute;
+    }
+
+    /**
+     * @returns {number}
+     */
+    get second() {
+        return this._luxonDateTime.second;
+    }
+
+    /**
+     * @returns {number}
+     */
+    get weekday() {
+        return this._luxonDateTime.weekday;
+    }
+
 
 }
 
