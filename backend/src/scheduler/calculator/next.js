@@ -33,22 +33,22 @@ function isCronCalculationError(object) {
  * @throws {CronCalculationError} If next execution cannot be calculated
  */
 function getNextExecution(cronExpr, fromDateTime) {
-    let currentMs = toEpochMs(fromDateTime);
-    
-    // Round to next minute boundary
-    const minuteMs = 60 * 1000;
-    currentMs = Math.ceil(currentMs / minuteMs) * minuteMs;
+    const fromMs = toEpochMs(fromDateTime);
+    // eslint-disable-next-line volodyslav/no-date-class
+    const next = new Date(fromMs); // performance-critical: fast iteration in loop
+    next.setSeconds(0, 0); // Reset seconds and milliseconds
+    next.setMinutes(next.getMinutes() + 1); // Start from next minute
 
     // Limit iterations to prevent infinite loops
     const maxIterations = 366 * 24 * 60; // One year worth of minutes
     let iterations = 0;
 
     while (iterations < maxIterations) {
-        const nextDateTime = fromEpochMs(currentMs);
+        const nextDateTime = fromEpochMs(next.getTime());
         if (matchesCronExpression(cronExpr, nextDateTime)) {
             return nextDateTime;
         }
-        currentMs += minuteMs; // Add 1 minute
+        next.setMinutes(next.getMinutes() + 1);
         iterations++;
     }
 
