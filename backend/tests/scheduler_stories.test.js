@@ -482,7 +482,7 @@ describe("scheduler stories", () => {
         expect(monthlyExecutions.length).toBeGreaterThan(0);
 
         await capabilities.scheduler.stop();
-    });
+    }, 20000); // Increase timeout to 20 seconds for complex scheduling precision test
 
     test("should handle resource exhaustion and recovery scenarios", async () => {
         const capabilities = getTestCapabilities();

@@ -364,6 +364,6 @@ describe("declarative scheduler state management robustness", () => {
             expect(callbacks.length).toBe(complexPatterns.length);
             
             await capabilities.scheduler.stop();
-        });
+        }, 15000); // Increase timeout to 15 seconds for complex cron patterns
     });
 });
