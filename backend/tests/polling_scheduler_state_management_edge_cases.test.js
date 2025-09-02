@@ -334,7 +334,6 @@ describe("declarative scheduler state management robustness", () => {
         }, 10000); // Increase timeout to 10 seconds
 
         test("should handle tasks with complex cron patterns", async () => {
-            jest.setTimeout(30000); // Set timeout to 30 seconds
             const capabilities = getTestCapabilities();
         const schedulerControl = getSchedulerControl(capabilities);
         schedulerControl.setPollingInterval(1);

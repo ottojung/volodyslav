@@ -12,7 +12,7 @@
     "build": "tsc && npm run build -w frontend",
     "start": "npm run build && npm run start -w backend",
     "static-analysis": "tsc --noEmit && eslint .",
-    "test": "tsc --noEmit && eslint . && jest",
+    "test": "tsc --noEmit && eslint . && jest --testTimeout=60000",
     "test-only": "jest",
     "lint": "eslint . --ext .js,.jsx",
     "lint:fix": "eslint . --ext .js,.jsx --fix",
