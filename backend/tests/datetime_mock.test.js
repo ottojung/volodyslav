@@ -4,7 +4,7 @@
 
 const { stubDatetime, getDatetimeControl } = require("./stubs");
 const { getMockedRootCapabilities } = require("./spies");
-const { toEpochMs, toNativeDate, fromEpochMs } = require("../src/datetime");
+const { toEpochMs, fromEpochMs } = require("../src/datetime");
 
 describe("datetime mocking", () => {
     test("should allow setting and getting specific time", () => {
@@ -49,8 +49,8 @@ describe("datetime mocking", () => {
         
         // Verify the datetime capability sees the mocked time
         const now = capabilities.datetime.now();
-        const nativeDate = toNativeDate(now);
-        expect(nativeDate.getTime()).toBe(specificTime);
+        const epochMs = toEpochMs(now);
+        expect(epochMs).toBe(specificTime);
     });
 
     test("should advance time and reflect in datetime operations", () => {
@@ -64,16 +64,16 @@ describe("datetime mocking", () => {
         control.setTime(startTime);
         
         // Get initial time
-        const initialTime = toNativeDate(capabilities.datetime.now());
-        expect(initialTime.getTime()).toBe(startTime);
+        const initialTime = capabilities.datetime.now();
+        expect(toEpochMs(initialTime)).toBe(startTime);
         
         // Advance time
         control.advanceTime(advanceMs);
         
         // Verify time advanced
-        const laterTime = toNativeDate(capabilities.datetime.now());
-        expect(laterTime.getTime()).toBe(startTime + advanceMs);
-        expect(laterTime.getTime() - initialTime.getTime()).toBe(advanceMs);
+        const laterTime = capabilities.datetime.now();
+        expect(toEpochMs(laterTime)).toBe(startTime + advanceMs);
+        expect(toEpochMs(laterTime) - toEpochMs(initialTime)).toBe(advanceMs);
     });
 
     test("should throw error when accessing control without stubbing", () => {

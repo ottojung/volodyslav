@@ -1,5 +1,4 @@
 const path = require("path");
-const { toNativeDate } = require("../datetime");
 
 /** @typedef {import('./structure').Event} Event */
 /** @typedef {import('../filesystem/file').ExistingFile} ExistingFile */
@@ -60,10 +59,13 @@ function make(event, file) {
  */
 function targetPath(capabilities, asset) {
     const baseDir = capabilities.environment.eventLogAssetsDirectory();
-    const date = toNativeDate(asset.event.date);
-    const year = date.getFullYear();
-    const month = String(date.getMonth() + 1).padStart(2, "0");
-    const day = String(date.getDate()).padStart(2, "0");
+    
+    // Get ISO string and extract date components from it
+    const isoString = asset.event.date.toISOString();
+    const year = isoString.slice(0, 4);
+    const month = isoString.slice(5, 7);
+    const day = isoString.slice(8, 10);
+    
     const firstPart = `${year}-${month}`;
     const secondPart = `${day}`;
     const thirdPart = `${asset.event.id.identifier}`;

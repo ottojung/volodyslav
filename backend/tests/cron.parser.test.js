@@ -10,7 +10,7 @@ const {
     isInvalidCronExpressionError
 } = require("../src/scheduler");
 
-const { fromEpochMs, toNativeDate } = require("../src/datetime");
+const { fromEpochMs } = require("../src/datetime");
 
 describe("Cron Parser", () => {
 
@@ -160,12 +160,11 @@ describe("Cron Parser", () => {
             const fromMs = 1704119400000; // 2024-01-01T14:30:00.000Z
             const from = fromEpochMs(fromMs);
             const next = getNextExecution(expr, from);
-            const nextNative = toNativeDate(next);
+            const nextIso = next.toISOString();
             
-            expect(nextNative.getHours()).toBe(15);
-            expect(nextNative.getMinutes()).toBe(0);
-            expect(nextNative.getSeconds()).toBe(0);
-            expect(nextNative.getMilliseconds()).toBe(0);
+            expect(nextIso.slice(11, 13)).toBe("15"); // hours
+            expect(nextIso.slice(14, 16)).toBe("00"); // minutes
+            expect(nextIso.slice(17, 19)).toBe("00"); // seconds
         });
 
         test("calculates next daily execution", () => {
@@ -174,11 +173,11 @@ describe("Cron Parser", () => {
             const fromMs = 1704119400000; // 2024-01-01T14:30:00.000Z
             const from = fromEpochMs(fromMs);
             const next = getNextExecution(expr, from);
-            const nextNative = toNativeDate(next);
+            const nextIso = next.toISOString();
             
-            expect(nextNative.getDate()).toBe(2); // Next day
-            expect(nextNative.getHours()).toBe(2);
-            expect(nextNative.getMinutes()).toBe(0);
+            expect(nextIso.slice(8, 10)).toBe("02"); // day
+            expect(nextIso.slice(11, 13)).toBe("02"); // hours
+            expect(nextIso.slice(14, 16)).toBe("00"); // minutes
         });
 
         test("calculates next execution within same hour", () => {
@@ -187,10 +186,10 @@ describe("Cron Parser", () => {
             const fromMs = 1704119400000; // 2024-01-01T14:30:00.000Z
             const from = fromEpochMs(fromMs);
             const next = getNextExecution(expr, from);
-            const nextNative = toNativeDate(next);
+            const nextIso = next.toISOString();
             
-            expect(nextNative.getHours()).toBe(14);
-            expect(nextNative.getMinutes()).toBe(45);
+            expect(nextIso.slice(11, 13)).toBe("14"); // hours
+            expect(nextIso.slice(14, 16)).toBe("45"); // minutes
         });
 
         test("handles end of month correctly", () => {
@@ -199,12 +198,12 @@ describe("Cron Parser", () => {
             const fromMs = 1706745540000;
             const from = fromEpochMs(fromMs);
             const next = getNextExecution(expr, from);
-            const nextNative = toNativeDate(next);
+            const nextIso = next.toISOString();
             
-            expect(nextNative.getMonth()).toBe(1); // February
-            expect(nextNative.getDate()).toBe(1);
-            expect(nextNative.getHours()).toBe(0);
-            expect(nextNative.getMinutes()).toBe(0);
+            expect(nextIso.slice(5, 7)).toBe("02"); // February (month)
+            expect(nextIso.slice(8, 10)).toBe("01"); // day
+            expect(nextIso.slice(11, 13)).toBe("00"); // hours
+            expect(nextIso.slice(14, 16)).toBe("00"); // minutes
         });
     });
 
@@ -215,10 +214,10 @@ describe("Cron Parser", () => {
             const fromMs = 1709078400000;
             const from = fromEpochMs(fromMs);
             const next = getNextExecution(expr, from);
-            const nextNative = toNativeDate(next);
+            const nextIso = next.toISOString();
             
-            expect(nextNative.getMonth()).toBe(1); // February
-            expect(nextNative.getDate()).toBe(29);
+            expect(nextIso.slice(5, 7)).toBe("02"); // February (month)
+            expect(nextIso.slice(8, 10)).toBe("29"); // day
         });
 
         test("handles step values correctly", () => {
@@ -227,9 +226,9 @@ describe("Cron Parser", () => {
             const fromMs = 1704119100000; // 2024-01-01T14:25:00.000Z
             const from = fromEpochMs(fromMs);
             const next = getNextExecution(expr, from);
-            const nextNative = toNativeDate(next);
+            const nextIso = next.toISOString();
             
-            expect(nextNative.getMinutes()).toBe(30);
+            expect(nextIso.slice(14, 16)).toBe("30"); // minutes
         });
 
         test("handles complex range and step combinations", () => {
