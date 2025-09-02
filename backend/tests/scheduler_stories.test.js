@@ -727,7 +727,7 @@ describe("scheduler stories", () => {
         expect(weeklyTask.mock.calls.length).toBe(3);
 
         await capabilities.scheduler.stop();
-    }, 10000);
+    });
 
     test("should maintain exact execution counts across scheduler restart", async () => {
         const capabilities = getTestCapabilities();
