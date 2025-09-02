@@ -55,9 +55,8 @@ describe("scheduler task methods edge cases", () => {
                 lastAttemptTime: null
             });
 
-            // Note: The current implementation only checks for undefined, not null
-            // This test documents the actual behavior - null will cause an error
-            expect(() => isRunning(task)).toThrow("Cannot read properties of null");
+            // Updated implementation now handles null gracefully
+            expect(isRunning(task)).toBe(false);
         });
 
         test("should return true when lastAttemptTime is more recent than both success and failure", () => {

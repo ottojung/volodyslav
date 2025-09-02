@@ -1,6 +1,6 @@
 const { format } = require("./date");
 const eventId = require("./id");
-const { fromISOString, toEpochMs } = require("../datetime");
+const { fromISOString } = require("../datetime");
 const {
     makeMissingFieldError,
     makeInvalidTypeError,
@@ -157,7 +157,7 @@ function tryDeserialize(obj) {
         }
 
         const dateObj = fromISOString(date);
-        if (isNaN(toEpochMs(dateObj))) {
+        if (!dateObj._luxonDateTime.isValid) {
             return makeInvalidValueError("date", date, "not a valid date string");
         }
 

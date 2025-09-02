@@ -5,7 +5,6 @@
  * @property {import('../datetime').Datetime} datetime - Date capability
  */
 
-const { Duration } = require("luxon");
 const { difference } = require("../datetime");
 
 /**

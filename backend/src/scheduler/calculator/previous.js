@@ -5,8 +5,6 @@
 
 const { matchesCronExpression } = require("./current");
 const { getNextExecution } = require("./next");
-const { fromLuxon } = require("../../datetime/structure");
-const { fromWeeks } = require("../../datetime");
 const { Duration } = require("luxon");
 
 /**
@@ -37,7 +35,6 @@ function findPreviousFire(parsedCron, now, lastKnownFireTime) {
         // Strategy: Use cached fire time when available and recent, otherwise use limited search
         /** @type DateTime */
         let anchorTime;
-        const oneWeekDuration = fromWeeks(1);
 
         if (lastKnownFireTime && lastKnownFireTime.isBefore(now)) {
             // Start from the last known fire time if available and reasonable
