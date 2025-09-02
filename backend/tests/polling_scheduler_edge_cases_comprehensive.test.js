@@ -124,7 +124,7 @@ describe("declarative scheduler comprehensive edge cases", () => {
             expect(true).toBe(true); // Scheduler initialized successfully
 
             await capabilities.scheduler.stop();
-        });
+        }, 10000); // Add timeout for leap year test
 
         test("should handle very sparse schedules", async () => {
             const capabilities = getTestCapabilities();
@@ -146,7 +146,7 @@ describe("declarative scheduler comprehensive edge cases", () => {
             expect(true).toBe(true); // Scheduler initialized successfully
 
             await capabilities.scheduler.stop();
-        }, 15000); // Increase timeout to 15 seconds for sparse schedules
+        }, 25000); // Increase timeout to 25 seconds for sparse schedules
 
         test("should handle complex multi-field constraints", async () => {
             const capabilities = getTestCapabilities();

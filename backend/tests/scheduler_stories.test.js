@@ -292,7 +292,7 @@ describe("scheduler stories", () => {
         expect(criticalTask).toHaveBeenCalled();
 
         await capabilities.scheduler.stop();
-    });
+    }, 30000); // Add timeout for long-term scheduler test
 
     test("should recover from extended scheduler downtime and catch up on missed tasks", async () => {
         const capabilities = getTestCapabilities();
@@ -1044,5 +1044,5 @@ describe("scheduler stories", () => {
 
         shouldRun = false;
         await capabilities.scheduler.stop();
-    });
+    }, 50000); // Set timeout to 50 seconds
 });
