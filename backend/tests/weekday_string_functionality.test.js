@@ -5,7 +5,7 @@
 const { DateTime: LuxonDateTime } = require("luxon");
 const { parseCronExpression, matchesCronExpression } = require("../src/scheduler");
 const DateTime = require("../src/datetime/structure");
-const { getAllWeekdayNames, isWeekdayName, luxonWeekdayToName, weekdayNameToCronNumber } = require("../src/datetime");
+const { getAllWeekdayNames, isWeekdayName, luxonWeekdayToName, weekdayNameToCronNumber } = require("../src/datetime/weekday");
 
 describe("Weekday string functionality", () => {
     test("DateTime.weekday should return weekday names", () => {
