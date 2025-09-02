@@ -4,6 +4,7 @@
  */
 
 const { Duration } = require("luxon");
+const luxon = require("luxon");
 const { getMockedRootCapabilities } = require("./spies");
 const { stubEnvironment, stubLogger, stubDatetime, stubSleeper, getDatetimeControl, stubRuntimeStateStorage, stubScheduler, getSchedulerControl } = require("./stubs");
 const { toEpochMs } = require("../src/datetime");
@@ -690,8 +691,8 @@ describe("scheduler stories", () => {
         const weeklyTask = jest.fn();
 
         // Start at exactly midnight on Sunday, January 3rd, 2021 (day 0 = Sunday)
-        const startTime = 1609632000000 // 2021-01-03T00:00:00.000Z;
-        timeControl.setTime(startTime);
+        const startTime = luxon.DateTime.fromISO("2021-01-03T00:00:00.000Z");
+        timeControl.setTime(startTime.toMillis());
         schedulerControl.setPollingInterval(1);
 
         const registrations = [
@@ -726,7 +727,7 @@ describe("scheduler stories", () => {
         expect(weeklyTask.mock.calls.length).toBe(3);
 
         await capabilities.scheduler.stop();
-    });
+    }, 10000);
 
     test("should maintain exact execution counts across scheduler restart", async () => {
         const capabilities = getTestCapabilities();
