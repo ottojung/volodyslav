@@ -6,8 +6,8 @@ module.exports = {
     docs: { description: "Disallow using native Date class" },
     schema: [],
     messages: { 
-      noDateConstructor: "Avoid using the native Date constructor. Use Luxon's DateTime.now(), DateTime.fromMillis(), DateTime.fromISO(), or other Luxon primitives instead.",
-      noDateStatic: "Avoid using static Date methods. Use Luxon's DateTime.now() or other Luxon primitives instead."
+      noDateConstructor: "Avoid using the native Date constructor. Methods of `Datetime` capability should be used instead.",
+      noDateStatic: "Avoid using static Date methods. Methods of `Datetime` capability should be used instead."
     },
   },
   create(context) {
