@@ -106,7 +106,7 @@ describe("scheduler atomicity testing", () => {
                         event: 'task_start',
                         callId,
                         taskName: task.name,
-                        timestamp: Date.now()
+                        timestamp: capabilities.datetime.getCurrentTime()
                     });
 
                     // Execute the original task
@@ -116,7 +116,7 @@ describe("scheduler atomicity testing", () => {
                         event: 'task_complete',
                         callId,
                         taskName: task.name,
-                        timestamp: Date.now()
+                        timestamp: capabilities.datetime.getCurrentTime()
                     });
                 }
             };
@@ -141,7 +141,7 @@ describe("scheduler atomicity testing", () => {
                 ["controlled-task-2", "0 * * * *", task2, retryDelay]
             ];
 
-            const startTime = new Date("2024-01-01T13:00:00.000Z").getTime();
+            const startTime = 1704114000000 // 2024-01-01T13:00:00.000Z;
             timeControl.setTime(startTime);
 
             await capabilities.scheduler.initialize(registrations);

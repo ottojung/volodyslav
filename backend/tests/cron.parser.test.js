@@ -117,24 +117,24 @@ describe("Cron Parser", () => {
     describe("matchesCronExpression", () => {
         test("matches exact time", () => {
             const expr = parseCronExpression("30 14 * * *");
-            // Jan 1, 2024 at 2:30 PM - using epoch milliseconds directly
-            const epochMs = 1704117000000; // 2024-01-01T14:30:00.000Z
+            // Jan 1, 2024 at 2:30 PM - using correct epoch milliseconds
+            const epochMs = 1704119400000; // 2024-01-01T14:30:00.000Z
             const dateTime = fromEpochMs(epochMs);
             expect(matchesCronExpression(expr, dateTime)).toBe(true);
         });
 
         test("does not match different time", () => {
             const expr = parseCronExpression("30 14 * * *");
-            // Jan 1, 2024 at 2:31 PM - using epoch milliseconds directly
-            const epochMs = 1704117060000; // 2024-01-01T14:31:00.000Z
+            // Jan 1, 2024 at 2:31 PM - using correct epoch milliseconds
+            const epochMs = 1704119460000; // 2024-01-01T14:31:00.000Z
             const dateTime = fromEpochMs(epochMs);
             expect(matchesCronExpression(expr, dateTime)).toBe(false);
         });
 
         test("matches wildcard expressions", () => {
             const expr = parseCronExpression("* * * * *");
-            // Using same epoch timestamp as above
-            const epochMs = 1704117000000; // 2024-01-01T14:30:00.000Z
+            // Using same corrected epoch timestamp
+            const epochMs = 1704119400000; // 2024-01-01T14:30:00.000Z
             const dateTime = fromEpochMs(epochMs);
             expect(matchesCronExpression(expr, dateTime)).toBe(true);
         });
@@ -157,7 +157,7 @@ describe("Cron Parser", () => {
         test("calculates next minute execution", () => {
             const expr = parseCronExpression("0 * * * *");
             // Jan 1, 2024 at 2:30 PM
-            const fromMs = 1704117000000; // 2024-01-01T14:30:00.000Z
+            const fromMs = 1704119400000; // 2024-01-01T14:30:00.000Z
             const from = fromEpochMs(fromMs);
             const next = getNextExecution(expr, from);
             const nextNative = toNativeDate(next);
@@ -171,7 +171,7 @@ describe("Cron Parser", () => {
         test("calculates next daily execution", () => {
             const expr = parseCronExpression("0 2 * * *");
             // Jan 1, 2024 at 2:30 PM
-            const fromMs = 1704117000000; // 2024-01-01T14:30:00.000Z
+            const fromMs = 1704119400000; // 2024-01-01T14:30:00.000Z
             const from = fromEpochMs(fromMs);
             const next = getNextExecution(expr, from);
             const nextNative = toNativeDate(next);
@@ -184,7 +184,7 @@ describe("Cron Parser", () => {
         test("calculates next execution within same hour", () => {
             const expr = parseCronExpression("45 * * * *");
             // Jan 1, 2024 at 2:30 PM
-            const fromMs = 1704117000000; // 2024-01-01T14:30:00.000Z
+            const fromMs = 1704119400000; // 2024-01-01T14:30:00.000Z
             const from = fromEpochMs(fromMs);
             const next = getNextExecution(expr, from);
             const nextNative = toNativeDate(next);
@@ -223,8 +223,8 @@ describe("Cron Parser", () => {
 
         test("handles step values correctly", () => {
             const expr = parseCronExpression("*/10 * * * *");
-            // Jan 1, 2024 at 2:25 PM - 2024-01-01T14:25:00.000Z  
-            const fromMs = 1704116700000;
+            // Jan 1, 2024 at 2:25 PM - should get next execution at 2:30 PM  
+            const fromMs = 1704119100000; // 2024-01-01T14:25:00.000Z
             const from = fromEpochMs(fromMs);
             const next = getNextExecution(expr, from);
             const nextNative = toNativeDate(next);

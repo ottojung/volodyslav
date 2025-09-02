@@ -28,7 +28,7 @@ describe("scheduler stories", () => {
         const taskCallback = jest.fn();
 
         // Set initial time to 00:05:00
-        const startTime = new Date("2021-01-01T00:05:00.000Z").getTime();
+        const startTime = 1609459500000 // 2021-01-01T00:05:00.000Z;
         timeControl.setTime(startTime);
         schedulerControl.setPollingInterval(1);
 
@@ -160,7 +160,7 @@ describe("scheduler stories", () => {
         });
 
         // Set specific start time 
-        const startTime = new Date("2021-01-01T00:15:00.000Z").getTime();
+        const startTime = 1609460100000 // 2021-01-01T00:15:00.000Z;
         timeControl.setTime(startTime);
         schedulerControl.setPollingInterval(1);
 
@@ -197,7 +197,7 @@ describe("scheduler stories", () => {
         const taskCallback = jest.fn();
 
         // Set initial time 
-        const startTime = new Date("2021-01-01T00:10:00.000Z").getTime();
+        const startTime = 1609459800000 // 2021-01-01T00:10:00.000Z;
         timeControl.setTime(startTime);
         schedulerControl.setPollingInterval(1);
 
@@ -513,7 +513,7 @@ describe("scheduler stories", () => {
             }
         });
 
-        const startTime = new Date("2021-01-01T08:00:00.000Z").getTime();
+        const startTime = 1609488000000 // 2021-01-01T08:00:00.000Z;
         timeControl.setTime(startTime);
         schedulerControl.setPollingInterval(1);
 
@@ -616,7 +616,7 @@ describe("scheduler stories", () => {
         const daily2AMTask = jest.fn().mockImplementation(async () => await new Promise(resolve => setTimeout(resolve, 400))); // Runs daily at 2 AM
 
         // Start at exactly 1 AM on Jan 1st
-        const startTime = new Date("2021-01-01T01:00:00.000Z").getTime();
+        const startTime = 1609462800000 // 2021-01-01T01:00:00.000Z;
         timeControl.setTime(startTime);
         schedulerControl.setPollingInterval(1);
 
@@ -945,7 +945,7 @@ describe("scheduler stories", () => {
         const noonTask = jest.fn();      // Runs daily at noon
 
         // Start at exactly 11 PM on Dec 31st, 2020
-        const startTime = new Date("2020-12-31T23:00:00.000Z").getTime();
+        const startTime = 1609455600000 // 2020-12-31T23:00:00.000Z;
         timeControl.setTime(startTime);
         schedulerControl.setPollingInterval(1);
 
