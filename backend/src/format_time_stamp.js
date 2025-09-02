@@ -4,7 +4,7 @@
  * in the format YYYYMMDDThhmmssZ followed by a dot and an extension.
  */
 
-const { fromISOString, toEpochMs } = require("./datetime");
+const { fromISOString } = require("./datetime");
 
 class FilenameDoesNotEncodeDate extends Error {
     /**
@@ -80,7 +80,7 @@ function formatTimeStamp(basic) {
     const d = fromISOString(isoUTC);
     if (
         !match ||
-        isNaN(toEpochMs(d))
+        !d._luxonDateTime.isValid
     ) {
         return undefined;
     }

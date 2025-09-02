@@ -4,7 +4,7 @@
  */
 
 const { getNextExecution } = require("../calculator");
-const { fromEpochMs, toEpochMs } = require("../../datetime");
+const { difference, fromMinutes, fromHours, fromDays } = require("../../datetime");
 
 /**
  * Error thrown when task frequency is higher than polling frequency.
@@ -49,33 +49,31 @@ class ScheduleFrequencyError extends Error {
 /**
  * Generate test base times for comprehensive cron interval analysis.
  * @param {import('../../datetime').Datetime} dt
- * @returns {number[]} Array of base times to test from (as epoch ms)
+ * @returns {import('../../datetime').DateTime[]} Array of base DateTimes to test from
  */
 function generateTestBaseTimes(dt) {
     const now = dt.now();
-    const baseTimeMs = toEpochMs(now);
     
     return [
-        baseTimeMs,
-        baseTimeMs + 60 * 1000, // +1 minute
-        baseTimeMs + 60 * 60 * 1000, // +1 hour
-        baseTimeMs + 24 * 60 * 60 * 1000, // +1 day
+        now,
+        now.advance(fromMinutes(1)), // +1 minute
+        now.advance(fromHours(1)), // +1 hour
+        now.advance(fromDays(1)), // +1 day
     ];
 }
 
 /**
  * Find minimum interval from a specific base time.
  * @param {import('../expression').CronExpression} parsedCron
- * @param {number} baseTimeMs
+ * @param {import('../../datetime').DateTime} baseTime
  * @param {number} targetSamples - Number of consecutive executions to analyze
  * @returns {number} Minimum interval in milliseconds, or Number.MAX_SAFE_INTEGER if no pattern found
  */
-function findMinimumIntervalFromBase(parsedCron, baseTimeMs, targetSamples) {
-    const baseDt = fromEpochMs(baseTimeMs);
+function findMinimumIntervalFromBase(parsedCron, baseTime, targetSamples) {
     let minInterval = Number.MAX_SAFE_INTEGER;
 
     // Get first execution from this base
-    let previousExecution = getNextExecution(parsedCron, baseDt);
+    let previousExecution = getNextExecution(parsedCron, baseTime);
     if (!previousExecution) return minInterval;
 
     // Check consecutive executions to find true minimum interval
@@ -83,9 +81,7 @@ function findMinimumIntervalFromBase(parsedCron, baseTimeMs, targetSamples) {
         const nextExecution = getNextExecution(parsedCron, previousExecution);
         if (!nextExecution) break;
 
-        const prevMs = toEpochMs(previousExecution);
-        const nextMs = toEpochMs(nextExecution);
-        const interval = nextMs - prevMs;
+        const interval = difference(nextExecution, previousExecution).toMillis();
 
         if (interval > 0 && interval < minInterval) {
             minInterval = interval;

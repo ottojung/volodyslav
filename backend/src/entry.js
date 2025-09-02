@@ -2,7 +2,7 @@ const { transaction } = require("./event_log_storage");
 const eventId = require("./event/id");
 const asset = require("./event/asset");
 const creatorMake = require("./creator");
-const { toEpochMs } = require("./datetime");
+//const { toEpochMs } = require("./datetime");
 
 /**
  * Error thrown when entry data validation fails due to user input issues.
@@ -163,9 +163,8 @@ async function getEntries(capabilities, pagination) {
 
     // Sort entries by date
     const sortedEntries = [...entries].sort((a, b) => {
-        const dateA = toEpochMs(a.date);
-        const dateB = toEpochMs(b.date);
-        return order === 'dateAscending' ? dateA - dateB : dateB - dateA;
+        const comparison = a.date.compare(b.date);
+        return order === 'dateAscending' ? comparison : -comparison;
     });
 
     // Apply pagination
