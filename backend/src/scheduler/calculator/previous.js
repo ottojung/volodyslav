@@ -5,7 +5,7 @@
 
 const { matchesCronExpression } = require("./current");
 const { getNextExecution } = require("./next");
-const { toNativeDate, fromEpochMs } = require("../../datetime");
+const { fromEpochMs } = require("../../datetime");
 
 /**
  * Finds the most recent time a cron expression would have fired before the given reference time.
@@ -24,10 +24,10 @@ const { toNativeDate, fromEpochMs } = require("../../datetime");
 function findPreviousFire(parsedCron, now, lastKnownFireTime) {
     try {
         // For efficiency, check if current minute matches first
-        const currentMinute = toNativeDate(now);
-        currentMinute.setSeconds(0, 0);
-
-        const currentDt = fromEpochMs(currentMinute.getTime());
+        const nowMs = now.getTime();
+        const currentMinuteMs = Math.floor(nowMs / (60 * 1000)) * (60 * 1000); // Round down to minute
+        
+        const currentDt = fromEpochMs(currentMinuteMs);
         if (matchesCronExpression(parsedCron, currentDt)) {
             return {
                 previousFire: currentDt,
@@ -59,9 +59,9 @@ function findPreviousFire(parsedCron, now, lastKnownFireTime) {
         }
 
         // Ensure anchor is minute-aligned
-        const minuteAnchor = toNativeDate(anchorTime);
-        minuteAnchor.setSeconds(0, 0);
-        anchorTime = fromEpochMs(minuteAnchor.getTime());
+        const anchorMs = anchorTime.getTime();
+        const minuteAlignedMs = Math.floor(anchorMs / (60 * 1000)) * (60 * 1000);
+        anchorTime = fromEpochMs(minuteAlignedMs);
 
         // Use efficient forward stepping with aggressive limits
         let currentExecution;
@@ -101,7 +101,7 @@ function findPreviousFire(parsedCron, now, lastKnownFireTime) {
         const fallbackScanLimit = Math.min(60 * 24, 10000); // 1 day or 10k max
 
         for (let i = 1; i <= fallbackScanLimit; i++) {
-            const candidateMs = currentMinute.getTime() - (i * 60 * 1000);
+            const candidateMs = currentMinuteMs - (i * 60 * 1000);
             const candidateDt = fromEpochMs(candidateMs);
             if (matchesCronExpression(parsedCron, candidateDt)) {
                 return {

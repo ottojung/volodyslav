@@ -1,12 +1,12 @@
 const { formatFileTimestamp } = require('../src/format_time_stamp');
-const { toNativeDate, toISOString } = require('../src/datetime');
+const { toISOString, isDateTime } = require('../src/datetime');
 
 describe('formatFileTimestamp', () => {
   it('returns a Date object for valid filename', () => {
     const filename = '20250503T203813Z.txt';
     const dt = require('../src/datetime').make();
     const date = formatFileTimestamp(filename, dt);
-    expect(toNativeDate(date)).toBeInstanceOf(Date);
+    expect(isDateTime(date)).toBe(true);
     expect(toISOString(date)).toBe('2025-05-03T20:38:13.000Z');
   });
 

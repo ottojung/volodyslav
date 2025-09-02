@@ -38,12 +38,7 @@ class DateTime {
         return iso.replace('+00:00', 'Z');
     }
 
-    /**
-     * @returns {Date}
-     */
-    toDate() {
-        return this._luxonDateTime.toJSDate();
-    }
+
 }
 
 /**
@@ -91,13 +86,7 @@ function toISOString(dt) {
     return dt.toISOString();
 }
 
-/**
- * @param {DateTime} dt
- * @returns {Date}
- */
-function toNativeDate(dt) {
-    return dt.toDate();
-}
+
 
 /**
  * @returns {Datetime}
@@ -116,5 +105,4 @@ module.exports = {
     fromISOString,
     toEpochMs,
     toISOString,
-    toNativeDate,
 };

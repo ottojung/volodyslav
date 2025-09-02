@@ -6,7 +6,7 @@
 const { Duration } = require("luxon");
 const { getMockedRootCapabilities } = require("./spies");
 const { stubEnvironment, stubLogger, stubDatetime, stubSleeper, getDatetimeControl, stubRuntimeStateStorage, stubScheduler, getSchedulerControl } = require("./stubs");
-const { toNativeDate } = require("../src/datetime");
+const { toEpochMs } = require("../src/datetime");
 
 function getTestCapabilities() {
     const capabilities = getMockedRootCapabilities();
@@ -154,9 +154,9 @@ describe("scheduler stories", () => {
 
         const taskCallback = jest.fn().mockImplementation(() => {
             // Verify that during task execution, the scheduler sees consistent time
-            const executionTime = toNativeDate(capabilities.datetime.now());
+            const executionTime = toEpochMs(capabilities.datetime.now());
             taskCallback.executionTimes = taskCallback.executionTimes || [];
-            taskCallback.executionTimes.push(executionTime.getTime());
+            taskCallback.executionTimes.push(executionTime);
         });
 
         // Set specific start time 
@@ -429,18 +429,18 @@ describe("scheduler stories", () => {
         const executionLog = [];
 
         const frequentTask = jest.fn().mockImplementation(() => {
-            const currentTime = toNativeDate(capabilities.datetime.now());
-            executionLog.push({ task: 'frequent', time: currentTime.getTime() });
+            const currentTime = toEpochMs(capabilities.datetime.now());
+            executionLog.push({ task: 'frequent', time: currentTime });
         });
 
         const weeklyTask = jest.fn().mockImplementation(() => {
-            const currentTime = toNativeDate(capabilities.datetime.now());
-            executionLog.push({ task: 'weekly', time: currentTime.getTime() });
+            const currentTime = toEpochMs(capabilities.datetime.now());
+            executionLog.push({ task: 'weekly', time: currentTime });
         });
 
         const monthlyTask = jest.fn().mockImplementation(() => {
-            const currentTime = toNativeDate(capabilities.datetime.now());
-            executionLog.push({ task: 'monthly', time: currentTime.getTime() });
+            const currentTime = toEpochMs(capabilities.datetime.now());
+            executionLog.push({ task: 'monthly', time: currentTime });
         });
 
         // Start at beginning of year for clean monthly/weekly boundaries

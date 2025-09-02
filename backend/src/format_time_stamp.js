@@ -4,7 +4,7 @@
  * in the format YYYYMMDDThhmmssZ followed by a dot and an extension.
  */
 
-const { fromISOString, toEpochMs, toNativeDate } = require("./datetime");
+const { fromISOString, toEpochMs } = require("./datetime");
 
 class FilenameDoesNotEncodeDate extends Error {
     /**
@@ -80,13 +80,23 @@ function formatTimeStamp(basic) {
     const d = fromISOString(isoUTC);
     if (
         !match ||
-        isNaN(toEpochMs(d)) ||
-        toNativeDate(d).getUTCFullYear() !== Number(match[1]) ||
-        toNativeDate(d).getUTCMonth() + 1 !== Number(match[2]) ||
-        toNativeDate(d).getUTCDate() !== Number(match[3]) ||
-        toNativeDate(d).getUTCHours() !== Number(match[4]) ||
-        toNativeDate(d).getUTCMinutes() !== Number(match[5]) ||
-        toNativeDate(d).getUTCSeconds() !== Number(match[6])
+        isNaN(toEpochMs(d))
+    ) {
+        return undefined;
+    }
+
+    // Validate that the parsed date components match the original string
+    // by converting back to ISO string and comparing the components
+    const parsedIso = d.toISOString();
+    const parsedMatch = parsedIso.match(/(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})/);
+    if (
+        !parsedMatch ||
+        parsedMatch[1] !== match[1] || // year
+        parsedMatch[2] !== match[2] || // month  
+        parsedMatch[3] !== match[3] || // day
+        parsedMatch[4] !== match[4] || // hour
+        parsedMatch[5] !== match[5] || // minute
+        parsedMatch[6] !== match[6]    // second
     ) {
         return undefined;
     }

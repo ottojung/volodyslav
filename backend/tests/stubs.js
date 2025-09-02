@@ -104,9 +104,8 @@ function stubDatetime(capabilities) {
     // Store the original datetime methods that are already jest mocks
     const originalNow = capabilities.datetime.now;
 
-    // Initialize with current real time, but this can be overridden
-    // eslint-disable-next-line volodyslav/no-date-class -- Required for test initialization
-    let currentTimeMs = Date.now();
+    // Initialize with a fixed time for tests (January 1, 2024 00:00:00 UTC)
+    let currentTimeMs = 1704067200000;
 
     // Override the now method to return the controlled time
     originalNow.mockImplementation(() => datetime.fromEpochMs(currentTimeMs));

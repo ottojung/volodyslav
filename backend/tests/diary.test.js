@@ -13,7 +13,7 @@ const {
     stubEventLogRepository,
 } = require("./stubs");
 const { getMockedRootCapabilities } = require("./spies");
-const { toNativeDate } = require("../src/datetime");
+
 
 function getTestCapabilities() {
     const capabilities = getMockedRootCapabilities();
@@ -95,10 +95,10 @@ describe("processDiaryAudios", () => {
         const assetsBase = capabilities.environment.eventLogAssetsDirectory();
         for (const name of filenames) {
             const date = formatFileTimestamp(name, capabilities.datetime);
-            const native = toNativeDate(date);
-            const year = native.getFullYear();
-            const month = String(native.getMonth() + 1).padStart(2, "0");
-            const day = String(native.getDate()).padStart(2, "0");
+            const isoString = date.toISOString();
+            const year = isoString.slice(0, 4);
+            const month = isoString.slice(5, 7);
+            const day = isoString.slice(8, 10);
             // Expect one id directory under the date folder
             const idDirs = await fs.readdir(
                 path.join(assetsBase, `${year}-${month}`, day)

@@ -4,7 +4,7 @@
  */
 
 const { getNextExecution } = require("../calculator");
-const { toNativeDate, fromEpochMs, toEpochMs } = require("../../datetime");
+const { fromEpochMs, toEpochMs } = require("../../datetime");
 
 /**
  * Error thrown when task frequency is higher than polling frequency.
@@ -49,30 +49,29 @@ class ScheduleFrequencyError extends Error {
 /**
  * Generate test base times for comprehensive cron interval analysis.
  * @param {import('../../datetime').Datetime} dt
- * @returns {Date[]} Array of base times to test from
+ * @returns {number[]} Array of base times to test from (as epoch ms)
  */
 function generateTestBaseTimes(dt) {
     const now = dt.now();
-    const baseTime = toNativeDate(now);
     const baseTimeMs = toEpochMs(now);
     
     return [
-        baseTime,
-        toNativeDate(fromEpochMs(baseTimeMs + 60 * 1000)), // +1 minute
-        toNativeDate(fromEpochMs(baseTimeMs + 60 * 60 * 1000)), // +1 hour
-        toNativeDate(fromEpochMs(baseTimeMs + 24 * 60 * 60 * 1000)), // +1 day
+        baseTimeMs,
+        baseTimeMs + 60 * 1000, // +1 minute
+        baseTimeMs + 60 * 60 * 1000, // +1 hour
+        baseTimeMs + 24 * 60 * 60 * 1000, // +1 day
     ];
 }
 
 /**
  * Find minimum interval from a specific base time.
  * @param {import('../expression').CronExpression} parsedCron
- * @param {Date} baseTime
+ * @param {number} baseTimeMs
  * @param {number} targetSamples - Number of consecutive executions to analyze
  * @returns {number} Minimum interval in milliseconds, or Number.MAX_SAFE_INTEGER if no pattern found
  */
-function findMinimumIntervalFromBase(parsedCron, baseTime, targetSamples) {
-    const baseDt = fromEpochMs(baseTime.getTime());
+function findMinimumIntervalFromBase(parsedCron, baseTimeMs, targetSamples) {
+    const baseDt = fromEpochMs(baseTimeMs);
     let minInterval = Number.MAX_SAFE_INTEGER;
 
     // Get first execution from this base
@@ -84,8 +83,8 @@ function findMinimumIntervalFromBase(parsedCron, baseTime, targetSamples) {
         const nextExecution = getNextExecution(parsedCron, previousExecution);
         if (!nextExecution) break;
 
-        const prevMs = toNativeDate(previousExecution).getTime();
-        const nextMs = toNativeDate(nextExecution).getTime();
+        const prevMs = toEpochMs(previousExecution);
+        const nextMs = toEpochMs(nextExecution);
         const interval = nextMs - prevMs;
 
         if (interval > 0 && interval < minInterval) {
