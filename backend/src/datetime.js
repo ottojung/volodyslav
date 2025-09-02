@@ -1,3 +1,5 @@
+const { DateTime: LuxonDateTime } = require("luxon");
+
 /**
  * Datetime capability for working with dates.
  * @typedef {object} Datetime
@@ -9,10 +11,10 @@ class DateTime {
     __brand = undefined;
 
     /**
-     * @param {Date} date
+     * @param {import('luxon').DateTime} luxonDateTime
      */
-    constructor(date) {
-        this._date = date;
+    constructor(luxonDateTime) {
+        this._luxonDateTime = luxonDateTime;
         if (this.__brand !== undefined) {
             throw new Error("DateTime is nominal");
         }
@@ -22,21 +24,21 @@ class DateTime {
      * @returns {number}
      */
     getTime() {
-        return this._date.getTime();
+        return this._luxonDateTime.toMillis();
     }
 
     /**
      * @returns {string}
      */
     toISOString() {
-        return this._date.toISOString();
+        return this._luxonDateTime.toISO({ format: 'extended', suppressMilliseconds: false }).replace('+00:00', 'Z');
     }
 
     /**
      * @returns {Date}
      */
     toDate() {
-        return new Date(this._date.getTime());
+        return this._luxonDateTime.toJSDate();
     }
 }
 
@@ -50,7 +52,7 @@ function isDateTime(object) {
 }
 
 function now() {
-    return new DateTime(new Date());
+    return new DateTime(LuxonDateTime.now());
 }
 
 /**
@@ -58,7 +60,7 @@ function now() {
  * @returns {DateTime}
  */
 function fromEpochMs(ms) {
-    return new DateTime(new Date(ms));
+    return new DateTime(LuxonDateTime.fromMillis(ms));
 }
 
 /**
@@ -66,7 +68,7 @@ function fromEpochMs(ms) {
  * @returns {DateTime}
  */
 function fromISOString(iso) {
-    return new DateTime(new Date(iso));
+    return new DateTime(LuxonDateTime.fromISO(iso));
 }
 
 /**

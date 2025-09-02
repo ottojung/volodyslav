@@ -4,7 +4,7 @@
  */
 
 const { getNextExecution } = require("../calculator");
-const { toNativeDate, fromEpochMs } = require("../../datetime");
+const { toNativeDate, fromEpochMs, toEpochMs } = require("../../datetime");
 
 /**
  * Error thrown when task frequency is higher than polling frequency.
@@ -54,12 +54,13 @@ class ScheduleFrequencyError extends Error {
 function generateTestBaseTimes(dt) {
     const now = dt.now();
     const baseTime = toNativeDate(now);
+    const baseTimeMs = toEpochMs(now);
     
     return [
         baseTime,
-        new Date(baseTime.getTime() + 60 * 1000), // +1 minute
-        new Date(baseTime.getTime() + 60 * 60 * 1000), // +1 hour
-        new Date(baseTime.getTime() + 24 * 60 * 60 * 1000), // +1 day
+        toNativeDate(fromEpochMs(baseTimeMs + 60 * 1000)), // +1 minute
+        toNativeDate(fromEpochMs(baseTimeMs + 60 * 60 * 1000)), // +1 hour
+        toNativeDate(fromEpochMs(baseTimeMs + 24 * 60 * 60 * 1000)), // +1 day
     ];
 }
 

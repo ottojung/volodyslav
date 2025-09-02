@@ -1,5 +1,5 @@
 
-const { toNativeDate, fromEpochMs } = require("../../datetime");
+const { fromEpochMs, toEpochMs } = require("../../datetime");
 const { matchesCronExpression } = require("./current");
 
 /**
@@ -33,8 +33,9 @@ function isCronCalculationError(object) {
  * @throws {CronCalculationError} If next execution cannot be calculated
  */
 function getNextExecution(cronExpr, fromDateTime) {
-    const fromNative = toNativeDate(fromDateTime);
-    const next = new Date(fromNative);
+    const fromMs = toEpochMs(fromDateTime);
+    // eslint-disable-next-line volodyslav/no-date-class
+    const next = new Date(fromMs); // performance-critical: fast iteration in loop
     next.setSeconds(0, 0); // Reset seconds and milliseconds
     next.setMinutes(next.getMinutes() + 1); // Start from next minute
 
