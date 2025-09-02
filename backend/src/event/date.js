@@ -1,11 +1,4 @@
-const dayjs = require("dayjs");
-const utc = require("dayjs/plugin/utc");
-const timezone = require("dayjs/plugin/timezone");
-
-dayjs.extend(utc);
-dayjs.extend(timezone);
-
-const { toEpochMs } = require("../datetime");
+const { DateTime: LuxonDateTime } = require("luxon");
 
 /**
  * Formats a date to the local timezone.
@@ -15,8 +8,8 @@ const { toEpochMs } = require("../datetime");
 function format(date) {
     // Format: YYYY-MM-DDTHH:mm:ssZZ (local timezone, e.g. 2025-05-22T15:30:00+0200)
     const tzName = Intl.DateTimeFormat().resolvedOptions().timeZone;
-    const ms = toEpochMs(date);
-    return dayjs(ms).tz(tzName).format("YYYY-MM-DDTHH:mm:ssZZ");
+    const luxonDateTime = LuxonDateTime.fromMillis(date.getTime()).setZone(tzName);
+    return luxonDateTime.toFormat("yyyy-MM-dd'T'HH:mm:ssZZZ");
 }
 
 module.exports = {
