@@ -11,7 +11,7 @@ const { Duration } = require("luxon");
  * @returns {import('luxon').Duration} Duration between the two DateTimes
  */
 function difference(laterDateTime, earlierDateTime) {
-    return laterDateTime._luxonDateTime.diff(earlierDateTime._luxonDateTime);
+    return laterDateTime.diff(earlierDateTime);
 }
 
 /**

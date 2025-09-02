@@ -35,15 +35,13 @@ function isCronCalculationError(object) {
  */
 function getNextExecution(cronExpr, fromDateTime) {
     // Start from the next minute with seconds and milliseconds reset
-    // Convert directly to Luxon for performance-critical iteration
-    const startLuxon = fromDateTime._luxonDateTime
-        .set({ second: 0, millisecond: 0 })
-        .plus({ minutes: 1 });
+    // Use the new public method for performance-critical iteration
+    const startDateTime = fromDateTime.startOfNextMinuteForIteration();
 
     // For better performance, create a native Date for iteration
     // This avoids repeated object creation while still eliminating millisecond conversions
     // eslint-disable-next-line volodyslav/no-date-class
-    const iterationDate = startLuxon.toJSDate();
+    const iterationDate = new Date(startDateTime.getTime());
 
     // Limit iterations to prevent infinite loops
     const maxIterations = 366 * 24 * 60; // One year worth of minutes

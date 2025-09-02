@@ -157,7 +157,7 @@ function tryDeserialize(obj) {
         }
 
         const dateObj = fromISOString(date);
-        if (!dateObj._luxonDateTime.isValid) {
+        if (!dateObj.isValid) {
             return makeInvalidValueError("date", date, "not a valid date string");
         }
 

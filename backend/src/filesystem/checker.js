@@ -150,7 +150,7 @@ async function isFileStable(sleeper, datetime, file, options = {}) {
         const initialStats = await fs.stat(file.path);
         const nowTime = datetime.now();
         const fileModifiedTime = fromLuxon(LuxonDateTime.fromJSDate(initialStats.mtime));
-        const ageDuration = nowTime._luxonDateTime.diff(fileModifiedTime._luxonDateTime);
+        const ageDuration = nowTime.diff(fileModifiedTime);
 
         if (ageDuration.toMillis() < minAgeMs) {
             return false; // File was modified too recently

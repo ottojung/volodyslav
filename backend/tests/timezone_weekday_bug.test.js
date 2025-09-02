@@ -70,8 +70,8 @@ describe("Timezone weekday bug", () => {
             const luxonDateTime = LuxonDateTime.fromISO(date);
             const dateTime = DateTime.fromLuxon(luxonDateTime);
             
-            // Verify Luxon weekday is as expected
-            expect(dateTime._luxonDateTime.weekday).toBe(luxonWeekday);
+            // Verify Luxon weekday is as expected (via public interface)
+            expect(luxonDateTime.weekday).toBe(luxonWeekday);
             
             // Verify our DateTime returns the correct weekday name
             expect(dateTime.weekday).toBe(weekdayName);

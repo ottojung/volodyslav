@@ -179,6 +179,35 @@ class DateTimeClass {
     startOfMinute() {
         return fromLuxon(this._luxonDateTime.set({ second: 0, millisecond: 0 }));
     }
+
+    /**
+     * Calculate the duration difference between this DateTime and another DateTime.
+     * @param {DateTime} otherDateTime - The other DateTime to compare with
+     * @returns {import('luxon').Duration} Duration between the two DateTimes
+     */
+    diff(otherDateTime) {
+        return this._luxonDateTime.diff(otherDateTime._luxonDateTime);
+    }
+
+    /**
+     * Create a new DateTime for performance-critical iteration starting from next minute.
+     * This method is specifically designed for high-performance cron calculations.
+     * @returns {DateTime} New DateTime at the start of the next minute for iteration
+     */
+    startOfNextMinuteForIteration() {
+        const nextMinuteLuxon = this._luxonDateTime
+            .set({ second: 0, millisecond: 0 })
+            .plus({ minutes: 1 });
+        return fromLuxon(nextMinuteLuxon);
+    }
+
+    /**
+     * Check if this DateTime represents a valid date and time.
+     * @returns {boolean} True if this DateTime is valid
+     */
+    get isValid() {
+        return this._luxonDateTime.isValid;
+    }
 }
 
 /** @typedef {DateTimeClass} DateTime */

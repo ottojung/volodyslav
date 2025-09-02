@@ -38,7 +38,7 @@ function findPreviousFire(parsedCron, now, lastKnownFireTime) {
 
         if (lastKnownFireTime && lastKnownFireTime.isBefore(now)) {
             // Start from the last known fire time if available and reasonable
-            const timeDiff = now._luxonDateTime.diff(lastKnownFireTime._luxonDateTime);
+            const timeDiff = now.diff(lastKnownFireTime);
             const oneWeekDuration = Duration.fromObject({ weeks: 1 });
             
             if (timeDiff <= oneWeekDuration) {

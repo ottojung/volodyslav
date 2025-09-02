@@ -80,7 +80,7 @@ function formatTimeStamp(basic) {
     const d = fromISOString(isoUTC);
     if (
         !match ||
-        !d._luxonDateTime.isValid
+        !d.isValid
     ) {
         return undefined;
     }
