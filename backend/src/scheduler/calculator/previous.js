@@ -5,7 +5,7 @@
 
 const { matchesCronExpression } = require("./current");
 const { getNextExecution } = require("./next");
-const { fromEpochMs } = require("../../datetime");
+const { Duration } = require("luxon");
 
 /**
  * Finds the most recent time a cron expression would have fired before the given reference time.
@@ -24,44 +24,38 @@ const { fromEpochMs } = require("../../datetime");
 function findPreviousFire(parsedCron, now, lastKnownFireTime) {
     try {
         // For efficiency, check if current minute matches first
-        const nowMs = now.getTime();
-        const currentMinuteMs = Math.floor(nowMs / (60 * 1000)) * (60 * 1000); // Round down to minute
-        
-        const currentDt = fromEpochMs(currentMinuteMs);
-        if (matchesCronExpression(parsedCron, currentDt)) {
+        const currentMinute = now.startOfMinute();
+        if (matchesCronExpression(parsedCron, currentMinute)) {
             return {
-                previousFire: currentDt,
-                newCacheTime: currentDt,
+                previousFire: currentMinute,
+                newCacheTime: currentMinute,
             };
         }
 
         // Strategy: Use cached fire time when available and recent, otherwise use limited search
         /** @type DateTime */
         let anchorTime;
-        const oneHour = 60 * 60 * 1000;
-        const oneDay = 24 * oneHour;
-        const oneWeek = 7 * oneDay;
 
-        if (lastKnownFireTime && lastKnownFireTime.getTime() < now.getTime()) {
+        if (lastKnownFireTime && lastKnownFireTime.isBefore(now)) {
             // Start from the last known fire time if available and reasonable
-            const timeDiff = now.getTime() - lastKnownFireTime.getTime();
+            const timeDiff = now.diff(lastKnownFireTime);
+            const oneWeekDuration = Duration.fromObject({ weeks: 1 });
             
-            if (timeDiff <= oneWeek) {
+            if (timeDiff <= oneWeekDuration) {
                 // Recent cache - start from there for efficiency
                 anchorTime = lastKnownFireTime;
             } else {
                 // For larger gaps, use very conservative lookback to prevent performance issues
-                anchorTime = fromEpochMs(now.getTime() - oneWeek);
+                anchorTime = now.subtract(oneWeekDuration);
             }
         } else {
             // No cache available - use conservative lookback
-            anchorTime = fromEpochMs(now.getTime() - oneWeek);
+            const oneWeekDuration = Duration.fromObject({ weeks: 1 });
+            anchorTime = now.subtract(oneWeekDuration);
         }
 
         // Ensure anchor is minute-aligned
-        const anchorMs = anchorTime.getTime();
-        const minuteAlignedMs = Math.floor(anchorMs / (60 * 1000)) * (60 * 1000);
-        anchorTime = fromEpochMs(minuteAlignedMs);
+        anchorTime = anchorTime.startOfMinute();
 
         // Use efficient forward stepping with aggressive limits
         let currentExecution;
@@ -75,7 +69,7 @@ function findPreviousFire(parsedCron, now, lastKnownFireTime) {
             while (currentExecution && iterations < maxIterations) {
                 const executionTime = currentExecution;
 
-                if (executionTime.getTime() <= now.getTime()) {
+                if (executionTime.isBeforeOrEqual(now)) {
                     lastFound = executionTime;
                     // Get next execution from this point
                     currentExecution = getNextExecution(parsedCron, currentExecution);
@@ -99,14 +93,15 @@ function findPreviousFire(parsedCron, now, lastKnownFireTime) {
         // Fallback: very limited backward scan for edge cases where forward calculation fails
         // Keep this small for performance
         const fallbackScanLimit = Math.min(60 * 24, 10000); // 1 day or 10k max
+        const currentMinuteForScan = now.startOfMinute();
 
         for (let i = 1; i <= fallbackScanLimit; i++) {
-            const candidateMs = currentMinuteMs - (i * 60 * 1000);
-            const candidateDt = fromEpochMs(candidateMs);
-            if (matchesCronExpression(parsedCron, candidateDt)) {
+            // Use DateTime subtraction instead of millisecond arithmetic
+            const candidate = currentMinuteForScan.subtract(Duration.fromObject({ minutes: i }));
+            if (matchesCronExpression(parsedCron, candidate)) {
                 return {
-                    previousFire: candidateDt,
-                    newCacheTime: candidateDt,  // Cache the actual fire time
+                    previousFire: candidate,
+                    newCacheTime: candidate,  // Cache the actual fire time
                 };
             }
         }

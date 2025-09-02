@@ -55,9 +55,8 @@ describe("scheduler task methods edge cases", () => {
                 lastAttemptTime: null
             });
 
-            // Note: The current implementation only checks for undefined, not null
-            // This test documents the actual behavior - null will cause an error
-            expect(() => isRunning(task)).toThrow("Cannot read properties of null");
+            // Updated implementation now handles null gracefully
+            expect(isRunning(task)).toBe(false);
         });
 
         test("should return true when lastAttemptTime is more recent than both success and failure", () => {
@@ -228,18 +227,14 @@ describe("scheduler task methods edge cases", () => {
             expect(isRunning(task2)).toBe(false);
         });
 
-        test("should work with Date objects that have different getTime implementations", () => {
-            // Create mock Date-like objects
-            const mockAttemptTime = {
-                getTime: () => 1000
-            };
-            const mockSuccessTime = {
-                getTime: () => 500
-            };
+        test("should work with proper DateTime objects", () => {
+            // Use proper DateTime objects instead of mock objects
+            const attemptTime = fromEpochMs(1000);
+            const successTime = fromEpochMs(500);
 
             const task = createTestTask({
-                lastAttemptTime: mockAttemptTime,
-                lastSuccessTime: mockSuccessTime,
+                lastAttemptTime: attemptTime,
+                lastSuccessTime: successTime,
                 lastFailureTime: undefined
             });
 

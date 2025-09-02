@@ -20,7 +20,8 @@
 
 const memconst = require("../memconst");
 const { fromExisting } = require("./file");
-const { toEpochMs } = require("../datetime");
+const { fromLuxon } = require("../datetime/structure");
+const { DateTime: LuxonDateTime } = require("luxon");
 
 const fs = require("fs").promises;
 
@@ -147,11 +148,11 @@ async function isFileStable(sleeper, datetime, file, options = {}) {
     try {
         // First check: get initial file stats
         const initialStats = await fs.stat(file.path);
-        const nowTime = toEpochMs(datetime.now());
-        const fileModifiedTime = initialStats.mtime.getTime();
-        const ageMs = nowTime - fileModifiedTime;
+        const nowTime = datetime.now();
+        const fileModifiedTime = fromLuxon(LuxonDateTime.fromJSDate(initialStats.mtime));
+        const ageDuration = nowTime.diff(fileModifiedTime);
 
-        if (ageMs < minAgeMs) {
+        if (ageDuration.toMillis() < minAgeMs) {
             return false; // File was modified too recently
         }
 

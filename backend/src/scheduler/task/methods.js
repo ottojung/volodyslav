@@ -9,18 +9,33 @@
  * @returns {boolean}
  */
 function isRunning(task) {
-    if (task.lastAttemptTime === undefined) {
+    if (task.lastAttemptTime === undefined || task.lastAttemptTime === null) {
         return false;
     }
 
     // A task is running if the last attempt is more recent than any completion
-    const lastAttemptMs = task.lastAttemptTime.getTime();
+    const lastAttemptTime = task.lastAttemptTime;
     
-    const lastSuccessMs = task.lastSuccessTime ? task.lastSuccessTime.getTime() : -1;
-    const lastFailureMs = task.lastFailureTime ? task.lastFailureTime.getTime() : -1;
-    const lastCompletionMs = Math.max(lastSuccessMs, lastFailureMs);
+    // Find the most recent completion time using DateTime methods
+    let lastCompletionTime = undefined;
     
-    return lastAttemptMs > lastCompletionMs;
+    if (task.lastSuccessTime && task.lastFailureTime) {
+        // Both exist, find the later one
+        lastCompletionTime = task.lastSuccessTime.isAfter(task.lastFailureTime) 
+            ? task.lastSuccessTime 
+            : task.lastFailureTime;
+    } else if (task.lastSuccessTime) {
+        lastCompletionTime = task.lastSuccessTime;
+    } else if (task.lastFailureTime) {
+        lastCompletionTime = task.lastFailureTime;
+    }
+    
+    // If no completion time, task is running since last attempt
+    if (!lastCompletionTime) {
+        return true;
+    }
+    
+    return lastAttemptTime.isAfter(lastCompletionTime);
 }
 
 module.exports = {

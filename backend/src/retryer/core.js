@@ -5,7 +5,7 @@
  * @property {import('../datetime').Datetime} datetime - Date capability
  */
 
-const { Duration } = require("luxon");
+const { difference } = require("../datetime");
 
 /**
  * @template T
@@ -48,8 +48,7 @@ async function withRetry(capabilities, callbackName, retryableCallback) {
 
     function timePassed() {
         const current = capabilities.datetime.now();
-        const diff = current.getTime() - startTime.getTime();
-        return Duration.fromMillis(diff);
+        return difference(current, startTime);
     }
 
     // eslint-disable-next-line no-constant-condition
