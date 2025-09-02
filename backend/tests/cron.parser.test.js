@@ -160,11 +160,10 @@ describe("Cron Parser", () => {
             const fromMs = 1704119400000; // 2024-01-01T14:30:00.000Z
             const from = fromEpochMs(fromMs);
             const next = getNextExecution(expr, from);
-            const nextIso = next.toISOString();
             
-            expect(nextIso.slice(11, 13)).toBe("15"); // hours
-            expect(nextIso.slice(14, 16)).toBe("00"); // minutes
-            expect(nextIso.slice(17, 19)).toBe("00"); // seconds
+            expect(next.hour).toBe(15); // hours
+            expect(next.minute).toBe(0); // minutes
+            expect(next.second).toBe(0); // seconds
         });
 
         test("calculates next daily execution", () => {
@@ -173,11 +172,10 @@ describe("Cron Parser", () => {
             const fromMs = 1704119400000; // 2024-01-01T14:30:00.000Z
             const from = fromEpochMs(fromMs);
             const next = getNextExecution(expr, from);
-            const nextIso = next.toISOString();
             
-            expect(nextIso.slice(8, 10)).toBe("02"); // day
-            expect(nextIso.slice(11, 13)).toBe("02"); // hours
-            expect(nextIso.slice(14, 16)).toBe("00"); // minutes
+            expect(next.day).toBe(2); // day
+            expect(next.hour).toBe(2); // hours
+            expect(next.minute).toBe(0); // minutes
         });
 
         test("calculates next execution within same hour", () => {
@@ -186,10 +184,9 @@ describe("Cron Parser", () => {
             const fromMs = 1704119400000; // 2024-01-01T14:30:00.000Z
             const from = fromEpochMs(fromMs);
             const next = getNextExecution(expr, from);
-            const nextIso = next.toISOString();
             
-            expect(nextIso.slice(11, 13)).toBe("14"); // hours
-            expect(nextIso.slice(14, 16)).toBe("45"); // minutes
+            expect(next.hour).toBe(14); // hours
+            expect(next.minute).toBe(45); // minutes
         });
 
         test("handles end of month correctly", () => {
@@ -198,12 +195,11 @@ describe("Cron Parser", () => {
             const fromMs = 1706745540000;
             const from = fromEpochMs(fromMs);
             const next = getNextExecution(expr, from);
-            const nextIso = next.toISOString();
             
-            expect(nextIso.slice(5, 7)).toBe("02"); // February (month)
-            expect(nextIso.slice(8, 10)).toBe("01"); // day
-            expect(nextIso.slice(11, 13)).toBe("00"); // hours
-            expect(nextIso.slice(14, 16)).toBe("00"); // minutes
+            expect(next.month).toBe(2); // February (month)
+            expect(next.day).toBe(1); // day
+            expect(next.hour).toBe(0); // hours
+            expect(next.minute).toBe(0); // minutes
         });
     });
 
@@ -214,10 +210,9 @@ describe("Cron Parser", () => {
             const fromMs = 1709078400000;
             const from = fromEpochMs(fromMs);
             const next = getNextExecution(expr, from);
-            const nextIso = next.toISOString();
             
-            expect(nextIso.slice(5, 7)).toBe("02"); // February (month)
-            expect(nextIso.slice(8, 10)).toBe("29"); // day
+            expect(next.month).toBe(2); // February (month)
+            expect(next.day).toBe(29); // day
         });
 
         test("handles step values correctly", () => {
@@ -226,9 +221,8 @@ describe("Cron Parser", () => {
             const fromMs = 1704119100000; // 2024-01-01T14:25:00.000Z
             const from = fromEpochMs(fromMs);
             const next = getNextExecution(expr, from);
-            const nextIso = next.toISOString();
             
-            expect(nextIso.slice(14, 16)).toBe("30"); // minutes
+            expect(next.minute).toBe(30); // minutes
         });
 
         test("handles complex range and step combinations", () => {

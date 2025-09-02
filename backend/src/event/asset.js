@@ -60,11 +60,11 @@ function make(event, file) {
 function targetPath(capabilities, asset) {
     const baseDir = capabilities.environment.eventLogAssetsDirectory();
     
-    // Get ISO string and extract date components from it
-    const isoString = asset.event.date.toISOString();
-    const year = isoString.slice(0, 4);
-    const month = isoString.slice(5, 7);
-    const day = isoString.slice(8, 10);
+    // Extract date components using proper DateTime methods
+    const date = asset.event.date;
+    const year = date.year;
+    const month = date.month.toString().padStart(2, '0');
+    const day = date.day.toString().padStart(2, '0');
     
     const firstPart = `${year}-${month}`;
     const secondPart = `${day}`;
