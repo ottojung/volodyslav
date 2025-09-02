@@ -6,6 +6,9 @@
  * @typedef {"sunday" | "monday" | "tuesday" | "wednesday" | "thursday" | "friday" | "saturday"} WeekdayName
  */
 
+/**
+ * @type {["sunday", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday"]}
+ */
 const WEEKDAY_NAMES = ["sunday", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday"];
 
 /**
@@ -74,12 +77,14 @@ function cronNumberToWeekdayName(cronWeekday) {
  * @returns {value is WeekdayName} True if valid weekday name
  */
 function isWeekdayName(value) {
-    return WEEKDAY_NAMES.includes(value);
+    /** @type {string[]} */    
+    const names = WEEKDAY_NAMES;
+    return names.includes(value);
 }
 
 /**
  * Get all weekday names.
- * @returns {["sunday", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday"]} Array of all weekday names
+ * @returns {typeof WEEKDAY_NAMES} Array of all weekday names
  */
 function getAllWeekdayNames() {
     return WEEKDAY_NAMES;
