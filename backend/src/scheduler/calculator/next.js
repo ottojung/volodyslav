@@ -1,7 +1,6 @@
 
 const { matchesCronExpression } = require("./current");
-const { fromLuxon } = require("../../datetime/structure");
-const { DateTime: LuxonDateTime } = require("luxon");
+const { fromMinutes } = require("../../datetime/duration");
 
 /**
  * Custom error class for calculation errors.
@@ -35,29 +34,23 @@ function isCronCalculationError(object) {
  */
 function getNextExecution(cronExpr, fromDateTime) {
     // Start from the next minute with seconds and milliseconds reset
-    // Use the new public method for performance-critical iteration
-    const startDateTime = fromDateTime.startOfNextMinuteForIteration();
-
-    // For better performance, create a native Date for iteration
-    // This avoids repeated object creation while still eliminating millisecond conversions
-    // eslint-disable-next-line volodyslav/no-date-class
-    const iterationDate = new Date(startDateTime.getTime());
+    // Use the timezone-aware method to preserve the original timezone
+    let currentDateTime = fromDateTime.startOfNextMinuteForIteration();
 
     // Limit iterations to prevent infinite loops
     const maxIterations = 366 * 24 * 60; // One year worth of minutes
     let iterations = 0;
+    
+    // Create one-minute duration for efficient iteration
+    const oneMinute = fromMinutes(1);
 
     while (iterations < maxIterations) {
-        // Create DateTime wrapper only when needed for matching
-        const luxonDt = LuxonDateTime.fromJSDate(iterationDate);
-        const currentDateTime = fromLuxon(luxonDt);
-        
         if (matchesCronExpression(cronExpr, currentDateTime)) {
             return currentDateTime;
         }
         
-        // Use efficient native Date manipulation for iteration
-        iterationDate.setMinutes(iterationDate.getMinutes() + 1);
+        // Use timezone-aware Luxon arithmetic to preserve original timezone
+        currentDateTime = currentDateTime.advance(oneMinute);
         iterations++;
     }
 

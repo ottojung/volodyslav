@@ -4,7 +4,7 @@
  */
 
 const { DateTime: LuxonDateTime } = require("luxon");
-const { parseCronExpression, matchesCronExpression } = require("../src/scheduler");
+const { parseCronExpression, matchesCronExpression, getNextExecution } = require("../src/scheduler");
 const { fromEpochMs } = require("../src/datetime");
 const DateTime = require('../src/datetime/structure');
 
@@ -80,5 +80,62 @@ describe("Timezone weekday bug", () => {
             const cronExpr = parseCronExpression(`* * * * ${cronNumber}`);
             expect(matchesCronExpression(cronExpr, dateTime)).toBe(true);
         });
+    });
+
+    test("getNextExecution should preserve timezone consistency with matchesCronExpression", () => {
+        // Test the main issue: getNextExecution and matchesCronExpression should use same timezone
+        
+        // Create a DateTime in UTC+02 timezone  
+        const luxonDateTime = LuxonDateTime.fromISO("2024-01-01T00:00:00", { zone: "UTC+2" });
+        const dateTimeUTCPlus2 = DateTime.fromLuxon(luxonDateTime);
+        
+        // This is Monday in UTC+2
+        expect(dateTimeUTCPlus2.weekday).toBe("monday");
+        
+        // Create a cron expression that should trigger on Mondays at 00:05
+        const mondayExpr = parseCronExpression("5 0 * * 1"); // 00:05 on Mondays
+        
+        // Get next execution starting from 00:00 Monday in UTC+2
+        const nextExecution = getNextExecution(mondayExpr, dateTimeUTCPlus2);
+        
+        // The next execution should be at 00:05 on the same Monday in the same timezone
+        expect(nextExecution.weekday).toBe("monday");
+        expect(nextExecution.hour).toBe(0);
+        expect(nextExecution.minute).toBe(5);
+        
+        // Most importantly: the returned DateTime should match the cron expression 
+        expect(matchesCronExpression(mondayExpr, nextExecution)).toBe(true);
+        
+        // Verify the timezone information is preserved by checking the underlying Luxon DateTime
+        // Both should have the same UTC offset
+        expect(nextExecution._luxonDateTime.zoneName).toBe(dateTimeUTCPlus2._luxonDateTime.zoneName);
+        expect(nextExecution._luxonDateTime.offset).toBe(dateTimeUTCPlus2._luxonDateTime.offset);
+    });
+
+    test("getNextExecution should work correctly across timezone boundaries", () => {
+        // Test a case where the day changes at different times due to timezone
+        
+        // 2024-01-01T23:30:00 in UTC+02 (Monday evening)
+        const luxonDateTime = LuxonDateTime.fromISO("2024-01-01T23:30:00", { zone: "UTC+2" });
+        const mondayEvening = DateTime.fromLuxon(luxonDateTime);
+        
+        expect(mondayEvening.weekday).toBe("monday");
+        
+        // Look for Tuesday 00:30 in the same timezone
+        const tuesdayExpr = parseCronExpression("30 0 * * 2"); // 00:30 on Tuesdays
+        
+        const nextExecution = getNextExecution(tuesdayExpr, mondayEvening);
+        
+        // Should find Tuesday 00:30 in the same timezone 
+        expect(nextExecution.weekday).toBe("tuesday");
+        expect(nextExecution.hour).toBe(0);
+        expect(nextExecution.minute).toBe(30);
+        
+        // Should match the cron expression
+        expect(matchesCronExpression(tuesdayExpr, nextExecution)).toBe(true);
+        
+        // Should preserve timezone
+        expect(nextExecution._luxonDateTime.zoneName).toBe(mondayEvening._luxonDateTime.zoneName);
+        expect(nextExecution._luxonDateTime.offset).toBe(mondayEvening._luxonDateTime.offset);
     });
 });
