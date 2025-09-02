@@ -5,14 +5,15 @@
 
 const { DateTime: LuxonDateTime } = require("luxon");
 const { parseCronExpression, matchesCronExpression } = require("../src/scheduler");
-const { DateTime, fromEpochMs } = require("../src/datetime");
+const { fromEpochMs } = require("../src/datetime");
+const DateTime = require('../src/datetime/structure');
 
 describe("Timezone weekday bug", () => {
     test("should handle timezone-aware weekday calculation", () => {
         // 2024-01-01T00:00 in UTC+02 timezone
         // This should be Monday (weekday "monday"), not Sunday ("sunday")
         const luxonDateTime = LuxonDateTime.fromISO("2024-01-01T00:00:00", { zone: "UTC+2" });
-        const dateTimeUTCPlus2 = new DateTime(luxonDateTime);
+        const dateTimeUTCPlus2 = DateTime.fromLuxon(luxonDateTime);
         
         // Verify this is actually Monday in the local timezone
         expect(luxonDateTime.weekday).toBe(1); // Luxon: 1=Monday
@@ -30,7 +31,7 @@ describe("Timezone weekday bug", () => {
         const utcMidnight = fromEpochMs(1704067200000); // 2024-01-01T00:00:00.000Z
         
         // 2024-01-01T00:00:00 in UTC-05 timezone - this is also Monday locally 
-        const easternMidnight = new DateTime(LuxonDateTime.fromISO("2024-01-01T00:00:00", { zone: "UTC-5" }));
+        const easternMidnight = DateTime.fromLuxon(LuxonDateTime.fromISO("2024-01-01T00:00:00", { zone: "UTC-5" }));
         
         const mondayExpr = parseCronExpression("* * * * 1"); // Monday
         
@@ -44,7 +45,7 @@ describe("Timezone weekday bug", () => {
         const utcDateTime = fromEpochMs(1704074400000); // 2024-01-01T02:00:00.000Z
         
         // Same UTC time but in UTC+02 timezone - still Monday locally
-        const localDateTime = new DateTime(LuxonDateTime.fromMillis(1704074400000, { zone: "UTC+2" }));
+        const localDateTime = DateTime.fromLuxon(LuxonDateTime.fromMillis(1704074400000, { zone: "UTC+2" }));
         
         const mondayExpr = parseCronExpression("* * * * 1"); // Monday
         
@@ -67,7 +68,7 @@ describe("Timezone weekday bug", () => {
 
         testCases.forEach(({ date, luxonWeekday, weekdayName, cronNumber, day: _day }) => {
             const luxonDateTime = LuxonDateTime.fromISO(date);
-            const dateTime = new DateTime(luxonDateTime);
+            const dateTime = DateTime.fromLuxon(luxonDateTime);
             
             // Verify Luxon weekday is as expected
             expect(dateTime._luxonDateTime.weekday).toBe(luxonWeekday);
