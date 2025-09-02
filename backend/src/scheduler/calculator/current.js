@@ -18,11 +18,11 @@ function matchesCronExpression(cronExpr, dateTime) {
     const hour = parseInt(isoString.slice(11, 13), 10);
     const minute = parseInt(isoString.slice(14, 16), 10);
     
-    // Calculate weekday from epoch milliseconds
-    // JavaScript Date.getDay() returns 0=Sunday, which matches cron
-    const epochMs = dateTime.getTime();
-    const epochDays = Math.floor(epochMs / (24 * 60 * 60 * 1000));
-    const weekday = (epochDays + 4) % 7; // January 1, 1970 was a Thursday (4)
+    // Calculate weekday from Luxon's timezone-aware weekday property
+    // Luxon weekday: 1=Monday, 7=Sunday
+    // Cron weekday: 0=Sunday, 1=Monday, ..., 6=Saturday
+    const luxonWeekday = dateTime._luxonDateTime.weekday;
+    const weekday = luxonWeekday % 7; // Convert: Luxon 7 (Sunday) -> 0, Luxon 1-6 (Mon-Sat) -> 1-6
 
     return (
         cronExpr.minute.includes(minute) &&
