@@ -31,9 +31,9 @@ describe("scheduler cron field parser edge cases", () => {
 
             const weekdayResult = parseField("*", FIELD_CONFIGS.weekday);
             expect(weekdayResult).toHaveLength(7);
-            expect(weekdayResult[0]).toBe("sunday");
-            expect(weekdayResult[6]).toBe("saturday");
-            expect(weekdayResult).toEqual(["sunday", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday"]);
+            expect(weekdayResult[0]).toBe(0);
+            expect(weekdayResult[6]).toBe(6);
+            expect(weekdayResult).toEqual([0, 1, 2, 3, 4, 5, 6]);
         });
 
         test("should parse single valid numbers", () => {
@@ -43,17 +43,7 @@ describe("scheduler cron field parser edge cases", () => {
             expect(parseField("1", FIELD_CONFIGS.day)).toEqual([1]);
             expect(parseField("31", FIELD_CONFIGS.day)).toEqual([31]);
             expect(parseField("12", FIELD_CONFIGS.month)).toEqual([12]);
-            expect(parseField("6", FIELD_CONFIGS.weekday)).toEqual(["saturday"]); // Now returns weekday name
-        });
-
-        test("should parse weekday names", () => {
-            expect(parseField("monday", FIELD_CONFIGS.weekday)).toEqual(["monday"]);
-            expect(parseField("tuesday", FIELD_CONFIGS.weekday)).toEqual(["tuesday"]);
-            expect(parseField("wednesday", FIELD_CONFIGS.weekday)).toEqual(["wednesday"]);
-            expect(parseField("thursday", FIELD_CONFIGS.weekday)).toEqual(["thursday"]);
-            expect(parseField("friday", FIELD_CONFIGS.weekday)).toEqual(["friday"]);
-            expect(parseField("saturday", FIELD_CONFIGS.weekday)).toEqual(["saturday"]);
-            expect(parseField("sunday", FIELD_CONFIGS.weekday)).toEqual(["sunday"]);
+            expect(parseField("6", FIELD_CONFIGS.weekday)).toEqual([6]); // Returns numeric weekday
         });
     });
 
@@ -181,9 +171,9 @@ describe("scheduler cron field parser edge cases", () => {
             expect(() => parseField("0", FIELD_CONFIGS.month)).toThrow();
             expect(() => parseField("13", FIELD_CONFIGS.month)).toThrow();
 
-            // Weekday field (0-6, but now returns weekday names)
-            expect(parseField("0", FIELD_CONFIGS.weekday)).toEqual(["sunday"]);
-            expect(parseField("6", FIELD_CONFIGS.weekday)).toEqual(["saturday"]);
+            // Weekday field (0-6, returns numeric values)
+            expect(parseField("0", FIELD_CONFIGS.weekday)).toEqual([0]);
+            expect(parseField("6", FIELD_CONFIGS.weekday)).toEqual([6]);
             expect(() => parseField("-1", FIELD_CONFIGS.weekday)).toThrow();
             expect(() => parseField("7", FIELD_CONFIGS.weekday)).toThrow();
         });

@@ -5,7 +5,7 @@
 const { DateTime: LuxonDateTime } = require("luxon");
 const { parseCronExpression, matchesCronExpression } = require("../src/scheduler");
 const { DateTime } = require("../src/datetime");
-const { getAllWeekdayNames, isWeekdayName, luxonWeekdayToName } = require("../src/weekday");
+const { getAllWeekdayNames, isWeekdayName, luxonWeekdayToName, weekdayNameToCronNumber } = require("../src/weekday");
 
 describe("Weekday string functionality", () => {
     test("DateTime.weekday should return weekday names", () => {
@@ -26,24 +26,16 @@ describe("Weekday string functionality", () => {
         });
     });
 
-    test("parseCronExpression should accept weekday names", () => {
-        const weekdayNames = getAllWeekdayNames();
-        
-        weekdayNames.forEach(weekdayName => {
-            const cronExpr = parseCronExpression(`* * * * ${weekdayName}`);
-            expect(cronExpr.weekday).toEqual([weekdayName]);
-        });
-    });
-
-    test("parseCronExpression should still accept numeric weekday values for backward compatibility", () => {
+    test("parseCronExpression should only accept numeric weekday values", () => {
+        // Test that numeric values work
         const testCases = [
-            { numeric: "0", expected: ["sunday"] },
-            { numeric: "1", expected: ["monday"] },
-            { numeric: "2", expected: ["tuesday"] },
-            { numeric: "3", expected: ["wednesday"] },
-            { numeric: "4", expected: ["thursday"] },
-            { numeric: "5", expected: ["friday"] },
-            { numeric: "6", expected: ["saturday"] },
+            { numeric: 0, expected: [0] },      // Sunday
+            { numeric: 1, expected: [1] },      // Monday  
+            { numeric: 2, expected: [2] },      // Tuesday
+            { numeric: 3, expected: [3] },      // Wednesday
+            { numeric: 4, expected: [4] },      // Thursday
+            { numeric: 5, expected: [5] },      // Friday
+            { numeric: 6, expected: [6] },      // Saturday
         ];
 
         testCases.forEach(({ numeric, expected }) => {
@@ -52,57 +44,17 @@ describe("Weekday string functionality", () => {
         });
     });
 
-    test("matchesCronExpression should work with weekday names", () => {
-        // Test each day of the week
-        const testCases = [
-            { date: "2024-01-01T12:00:00Z", weekdayName: "monday" },
-            { date: "2024-01-02T12:00:00Z", weekdayName: "tuesday" },
-            { date: "2024-01-03T12:00:00Z", weekdayName: "wednesday" },
-            { date: "2024-01-04T12:00:00Z", weekdayName: "thursday" },
-            { date: "2024-01-05T12:00:00Z", weekdayName: "friday" },
-            { date: "2024-01-06T12:00:00Z", weekdayName: "saturday" },
-            { date: "2024-01-07T12:00:00Z", weekdayName: "sunday" },
-        ];
+    test("parseCronExpression should reject weekday names", () => {
+        const weekdayNames = getAllWeekdayNames();
 
-        testCases.forEach(({ date, weekdayName }) => {
-            const luxonDateTime = LuxonDateTime.fromISO(date);
-            const dateTime = new DateTime(luxonDateTime);
-            
-            // Should match the correct weekday
-            const correctCronExpr = parseCronExpression(`* * * * ${weekdayName}`);
-            expect(matchesCronExpression(correctCronExpr, dateTime)).toBe(true);
-            
-            // Should not match a different weekday
-            const otherWeekdayNames = getAllWeekdayNames().filter(name => name !== weekdayName);
-            const randomOtherWeekday = otherWeekdayNames[0];
-            const incorrectCronExpr = parseCronExpression(`* * * * ${randomOtherWeekday}`);
-            expect(matchesCronExpression(incorrectCronExpr, dateTime)).toBe(false);
+        weekdayNames.forEach((name) => {
+            expect(() => parseCronExpression(`* * * * ${name}`)).toThrow();
         });
-    });
-
-    test("parseCronExpression should handle weekday ranges", () => {
-        // Monday to Friday (1-5)
-        const mondayToFridayCron = parseCronExpression("* * * * 1-5");
-        expect(mondayToFridayCron.weekday).toEqual(["monday", "tuesday", "wednesday", "thursday", "friday"]);
-        
-        // Sunday to Tuesday (0-2)
-        const sundayToTuesdayCron = parseCronExpression("* * * * 0-2");
-        expect(sundayToTuesdayCron.weekday).toEqual(["sunday", "monday", "tuesday"]);
-    });
-
-    test("parseCronExpression should handle comma-separated weekday values", () => {
-        // Mix of names and numbers
-        const mixedCron = parseCronExpression("* * * * monday,3,friday");
-        expect(mixedCron.weekday).toEqual(["monday", "wednesday", "friday"]);
-        
-        // All weekday names
-        const allNamesCron = parseCronExpression("* * * * sunday,monday,tuesday,wednesday,thursday,friday,saturday");
-        expect(allNamesCron.weekday).toEqual(getAllWeekdayNames());
     });
 
     test("parseCronExpression should handle wildcard for weekdays", () => {
         const wildcardCron = parseCronExpression("* * * * *");
-        expect(wildcardCron.weekday).toEqual(getAllWeekdayNames());
+        expect(wildcardCron.weekday).toEqual([0, 1, 2, 3, 4, 5, 6]);
     });
 
     test("weekday utility functions should work correctly", () => {
@@ -119,8 +71,61 @@ describe("Weekday string functionality", () => {
         
         // Test getAllWeekdayNames
         const allNames = getAllWeekdayNames();
-        expect(allNames).toHaveLength(7);
-        expect(allNames[0]).toBe("sunday");
-        expect(allNames[6]).toBe("saturday");
+        expect(allNames).toEqual(["sunday", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday"]);
+        
+        // Test weekdayNameToCronNumber
+        expect(weekdayNameToCronNumber("sunday")).toBe(0);
+        expect(weekdayNameToCronNumber("monday")).toBe(1);
+        expect(weekdayNameToCronNumber("saturday")).toBe(6);
+    });
+
+    test("matchesCronExpression should work with numeric weekdays and string DateTime.weekday", () => {
+        // Test each day of the week
+        const testCases = [
+            { date: "2024-01-01T12:00:00Z", weekdayName: "monday", cronNumber: 1 },
+            { date: "2024-01-02T12:00:00Z", weekdayName: "tuesday", cronNumber: 2 },
+            { date: "2024-01-03T12:00:00Z", weekdayName: "wednesday", cronNumber: 3 },
+            { date: "2024-01-04T12:00:00Z", weekdayName: "thursday", cronNumber: 4 },
+            { date: "2024-01-05T12:00:00Z", weekdayName: "friday", cronNumber: 5 },
+            { date: "2024-01-06T12:00:00Z", weekdayName: "saturday", cronNumber: 6 },
+            { date: "2024-01-07T12:00:00Z", weekdayName: "sunday", cronNumber: 0 },
+        ];
+
+        testCases.forEach(({ date, weekdayName, cronNumber }) => {
+            const luxonDateTime = LuxonDateTime.fromISO(date);
+            const dateTime = new DateTime(luxonDateTime);
+            
+            // Verify DateTime returns weekday name
+            expect(dateTime.weekday).toBe(weekdayName);
+            
+            // Should match the correct weekday cron expression (using number)
+            const correctCronExpr = parseCronExpression(`* * * * ${cronNumber}`);
+            expect(matchesCronExpression(correctCronExpr, dateTime)).toBe(true);
+            
+            // Should not match a different weekday
+            const differentCronNumber = cronNumber === 0 ? 1 : 0;
+            const incorrectCronExpr = parseCronExpression(`* * * * ${differentCronNumber}`);
+            expect(matchesCronExpression(incorrectCronExpr, dateTime)).toBe(false);
+        });
+    });
+
+    test("parseCronExpression should handle numeric weekday ranges", () => {
+        // Monday to Friday (1-5)
+        const mondayToFridayCron = parseCronExpression("* * * * 1-5");
+        expect(mondayToFridayCron.weekday).toEqual([1, 2, 3, 4, 5]);
+        
+        // Sunday to Tuesday (0-2)
+        const sundayToTuesdayCron = parseCronExpression("* * * * 0-2");
+        expect(sundayToTuesdayCron.weekday).toEqual([0, 1, 2]);
+    });
+
+    test("parseCronExpression should handle comma-separated numeric weekday values", () => {
+        // Mixed numbers
+        const mixedCron = parseCronExpression("* * * * 1,3,5");
+        expect(mixedCron.weekday).toEqual([1, 3, 5]);
+        
+        // Single value
+        const singleCron = parseCronExpression("* * * * 0");
+        expect(singleCron.weekday).toEqual([0]);
     });
 });

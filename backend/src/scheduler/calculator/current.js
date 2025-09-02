@@ -2,6 +2,8 @@
  * Cron expression matching.
  */
 
+const { weekdayNameToCronNumber } = require("../../weekday");
+
 /**
  * Checks if a given datetime matches the cron expression.
  * @param {import('../expression').CronExpression} cronExpr - Parsed cron expression
@@ -15,8 +17,9 @@ function matchesCronExpression(cronExpr, dateTime) {
     const hour = dateTime.hour;
     const minute = dateTime.minute;
     
-    // Get weekday name directly from DateTime (now returns string)
-    const weekday = dateTime.weekday;
+    // Convert weekday name (from DateTime) back to cron number for comparison
+    const weekdayName = dateTime.weekday; // This is now a string like "monday"
+    const weekday = weekdayNameToCronNumber(weekdayName);
 
     return (
         cronExpr.minute.includes(minute) &&

@@ -22,7 +22,7 @@ describe("Cron Parser", () => {
             expect(expr.hour).toEqual(Array.from({ length: 24 }, (_, i) => i));
             expect(expr.day).toEqual(Array.from({ length: 31 }, (_, i) => i + 1));
             expect(expr.month).toEqual(Array.from({ length: 12 }, (_, i) => i + 1));
-            expect(expr.weekday).toEqual(["sunday", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday"]);
+            expect(expr.weekday).toEqual([0, 1, 2, 3, 4, 5, 6]);
         });
 
         test("parses specific time expressions", () => {
@@ -50,7 +50,7 @@ describe("Cron Parser", () => {
             const expr = parseCronExpression("0,15,30,45 9-17 * * 1-5");
             expect(expr.minute).toEqual([0, 15, 30, 45]);
             expect(expr.hour).toEqual([9, 10, 11, 12, 13, 14, 15, 16, 17]);
-            expect(expr.weekday).toEqual(["monday", "tuesday", "wednesday", "thursday", "friday"]);
+            expect(expr.weekday).toEqual([1, 2, 3, 4, 5]);
         });
 
         test("throws on invalid expressions", () => {
@@ -140,7 +140,7 @@ describe("Cron Parser", () => {
         });
 
         test("matches weekday expressions", () => {
-            const expr = parseCronExpression("* * * * monday"); // Monday
+            const expr = parseCronExpression("* * * * 1"); // Monday (1)
             // Jan 1, 2024 is a Monday - 2024-01-01T00:00:00.000Z
             const mondayMs = 1704067200000;
             // Jan 2, 2024 is a Tuesday - 2024-01-02T00:00:00.000Z  

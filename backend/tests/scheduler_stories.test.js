@@ -695,7 +695,7 @@ describe("scheduler stories", () => {
         schedulerControl.setPollingInterval(1);
 
         const registrations = [
-            ["precise-weekly", "0 0 * * sunday", weeklyTask, retryDelay], // Weekly on Sunday at midnight
+            ["precise-weekly", "0 0 * * 0", weeklyTask, retryDelay], // Weekly on Sunday (0) at midnight
         ];
 
         await capabilities.scheduler.initialize(registrations);
