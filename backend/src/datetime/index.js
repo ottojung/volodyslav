@@ -1,5 +1,5 @@
 
-const { fromEpochMs, fromISOString, toEpochMs, toISOString } = require('./conversions');
+const { fromEpochMs, fromISOString, toEpochMs, toISOString, mtime } = require('./conversions');
 const { make } = require('./capability');
 const { weekdayNameToCronNumber, cronNumberToWeekdayName, isWeekdayName, getAllWeekdayNames } = require('./weekday');
 const { isDateTime } = require('./structure');
@@ -12,6 +12,7 @@ const { difference, fromMilliseconds, fromMinutes, fromHours, fromDays, fromWeek
 module.exports = {
     make,
     isDateTime,
+    mtime,
     fromEpochMs,
     fromISOString,
     toEpochMs,

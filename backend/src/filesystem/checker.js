@@ -20,8 +20,7 @@
 
 const memconst = require("../memconst");
 const { fromExisting } = require("./file");
-const { fromLuxon } = require("../datetime/structure");
-const { DateTime: LuxonDateTime } = require("luxon");
+const { mtime } = require("../datetime");
 
 const fs = require("fs").promises;
 
@@ -149,7 +148,7 @@ async function isFileStable(sleeper, datetime, file, options = {}) {
         // First check: get initial file stats
         const initialStats = await fs.stat(file.path);
         const nowTime = datetime.now();
-        const fileModifiedTime = fromLuxon(LuxonDateTime.fromJSDate(initialStats.mtime));
+        const fileModifiedTime = mtime(initialStats);
         const ageDuration = nowTime.diff(fileModifiedTime);
 
         if (ageDuration.toMillis() < minAgeMs) {

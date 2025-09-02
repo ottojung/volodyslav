@@ -37,9 +37,19 @@ function toISOString(dt) {
     return dt.toISOString();
 }
 
-module.exports = {
+/**
+ * Gets the modification time of a file from its stats.
+ * @param {import('fs').Stats} stats - The file stats object.
+ * @returns {DateTime} - The modification time as a DateTime object.
+ */
+function mtime(stats) {
+    return fromLuxon(LuxonDateTime.fromJSDate(stats.mtime));
+}
+
+module.exports = {    
     fromEpochMs,
     fromISOString,
     toEpochMs,
     toISOString,
+    mtime,
 };
