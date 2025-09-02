@@ -2,6 +2,7 @@
 const { fromEpochMs, fromISOString, toEpochMs, toISOString } = require('./conversions');
 const { make } = require('./capability');
 const { luxonWeekdayToName, weekdayNameToCronNumber, cronNumberToWeekdayName, isWeekdayName, getAllWeekdayNames } = require('./weekday');
+const { isDateTime } = require('./structure');
 
 /** @typedef {import('./capability').Datetime} Datetime */
 /** @typedef {import('./structure').DateTime} DateTime */
@@ -9,6 +10,7 @@ const { luxonWeekdayToName, weekdayNameToCronNumber, cronNumberToWeekdayName, is
 
 module.exports = {
     make,
+    isDateTime,
     fromEpochMs,
     fromISOString,
     toEpochMs,
