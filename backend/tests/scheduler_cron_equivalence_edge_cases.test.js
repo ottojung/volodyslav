@@ -89,8 +89,8 @@ describe("scheduler cron expression equivalence edge cases", () => {
         });
 
         test("should detect differences in weekday field", () => {
-            const cron1 = parseCronExpression("0 0 * * 0");
-            const cron2 = parseCronExpression("0 0 * * 1");
+            const cron1 = parseCronExpression("0 0 * * sunday");
+            const cron2 = parseCronExpression("0 0 * * monday");
 
             expect(cron1.equivalent(cron2)).toBe(false);
         });

@@ -10,18 +10,18 @@ const { DateTime, fromEpochMs } = require("../src/datetime");
 describe("Timezone weekday bug", () => {
     test("should handle timezone-aware weekday calculation", () => {
         // 2024-01-01T00:00 in UTC+02 timezone
-        // This should be Monday (weekday 1 in cron format), not Sunday (weekday 0)
+        // This should be Monday (weekday "monday"), not Sunday ("sunday")
         const luxonDateTime = LuxonDateTime.fromISO("2024-01-01T00:00:00", { zone: "UTC+2" });
         const dateTimeUTCPlus2 = new DateTime(luxonDateTime);
         
         // Verify this is actually Monday in the local timezone
         expect(luxonDateTime.weekday).toBe(1); // Luxon: 1=Monday
+        expect(dateTimeUTCPlus2.weekday).toBe("monday"); // Our DateTime: "monday"
         
-        // Create Monday cron expression (1 = Monday in cron format)
-        const mondayExpr = parseCronExpression("* * * * 1");
+        // Create Monday cron expression (now uses "monday" instead of 1)
+        const mondayExpr = parseCronExpression("* * * * monday");
         
         // This should match because 2024-01-01 00:00 UTC+2 is a Monday
-        // But current implementation incorrectly calculates weekday based on UTC
         expect(matchesCronExpression(mondayExpr, dateTimeUTCPlus2)).toBe(true);
     });
 
@@ -32,7 +32,7 @@ describe("Timezone weekday bug", () => {
         // 2024-01-01T00:00:00 in UTC-05 timezone - this is also Monday locally 
         const easternMidnight = new DateTime(LuxonDateTime.fromISO("2024-01-01T00:00:00", { zone: "UTC-5" }));
         
-        const mondayExpr = parseCronExpression("* * * * 1"); // Monday
+        const mondayExpr = parseCronExpression("* * * * monday"); // Monday
         
         // Both should match Monday expression
         expect(matchesCronExpression(mondayExpr, utcMidnight)).toBe(true);
@@ -46,38 +46,37 @@ describe("Timezone weekday bug", () => {
         // Same UTC time but in UTC+02 timezone - still Monday locally
         const localDateTime = new DateTime(LuxonDateTime.fromMillis(1704074400000, { zone: "UTC+2" }));
         
-        const mondayExpr = parseCronExpression("* * * * 1"); // Monday
+        const mondayExpr = parseCronExpression("* * * * monday"); // Monday
         
         // Both should match Monday
         expect(matchesCronExpression(mondayExpr, utcDateTime)).toBe(true);
         expect(matchesCronExpression(mondayExpr, localDateTime)).toBe(true);
     });
 
-    test("should correctly convert Luxon weekday to cron weekday format", () => {
+    test("should correctly return weekday names from DateTime", () => {
         // Test each day of the week
         const testCases = [
-            { date: "2024-01-01T00:00:00Z", luxonWeekday: 1, cronWeekday: 1, day: "Monday" },    // Mon
-            { date: "2024-01-02T00:00:00Z", luxonWeekday: 2, cronWeekday: 2, day: "Tuesday" },   // Tue
-            { date: "2024-01-03T00:00:00Z", luxonWeekday: 3, cronWeekday: 3, day: "Wednesday" }, // Wed
-            { date: "2024-01-04T00:00:00Z", luxonWeekday: 4, cronWeekday: 4, day: "Thursday" },  // Thu
-            { date: "2024-01-05T00:00:00Z", luxonWeekday: 5, cronWeekday: 5, day: "Friday" },    // Fri
-            { date: "2024-01-06T00:00:00Z", luxonWeekday: 6, cronWeekday: 6, day: "Saturday" },  // Sat
-            { date: "2024-01-07T00:00:00Z", luxonWeekday: 7, cronWeekday: 0, day: "Sunday" },    // Sun
+            { date: "2024-01-01T00:00:00Z", luxonWeekday: 1, weekdayName: "monday", day: "Monday" },    // Mon
+            { date: "2024-01-02T00:00:00Z", luxonWeekday: 2, weekdayName: "tuesday", day: "Tuesday" },   // Tue
+            { date: "2024-01-03T00:00:00Z", luxonWeekday: 3, weekdayName: "wednesday", day: "Wednesday" }, // Wed
+            { date: "2024-01-04T00:00:00Z", luxonWeekday: 4, weekdayName: "thursday", day: "Thursday" },  // Thu
+            { date: "2024-01-05T00:00:00Z", luxonWeekday: 5, weekdayName: "friday", day: "Friday" },    // Fri
+            { date: "2024-01-06T00:00:00Z", luxonWeekday: 6, weekdayName: "saturday", day: "Saturday" },  // Sat
+            { date: "2024-01-07T00:00:00Z", luxonWeekday: 7, weekdayName: "sunday", day: "Sunday" },    // Sun
         ];
 
-        testCases.forEach(({ date, luxonWeekday, cronWeekday, day: _day }) => {
+        testCases.forEach(({ date, luxonWeekday, weekdayName, day: _day }) => {
             const luxonDateTime = LuxonDateTime.fromISO(date);
             const dateTime = new DateTime(luxonDateTime);
             
             // Verify Luxon weekday is as expected
             expect(dateTime._luxonDateTime.weekday).toBe(luxonWeekday);
             
-            // Verify the conversion formula
-            const convertedWeekday = luxonWeekday % 7;
-            expect(convertedWeekday).toBe(cronWeekday);
+            // Verify our DateTime returns the correct weekday name
+            expect(dateTime.weekday).toBe(weekdayName);
             
             // Verify it matches the expected cron expression
-            const cronExpr = parseCronExpression(`* * * * ${cronWeekday}`);
+            const cronExpr = parseCronExpression(`* * * * ${weekdayName}`);
             expect(matchesCronExpression(cronExpr, dateTime)).toBe(true);
         });
     });

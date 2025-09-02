@@ -27,7 +27,7 @@ describe("declarative scheduler cron expression validation", () => {
         const registrations = [
             ["hourly-task", "0 * * * *", taskCallback, retryDelay],      // Every hour
             ["daily-task", "0 9 * * *", taskCallback, retryDelay],       // Daily at 9 AM
-            ["weekly-task", "0 9 * * 1", taskCallback, retryDelay],      // Mondays at 9 AM
+            ["weekly-task", "0 9 * * monday", taskCallback, retryDelay],      // Mondays at 9 AM
             ["monthly-task", "0 9 1 * *", taskCallback, retryDelay],     // 1st of month at 9 AM
             ["minute-task", "*/15 * * * *", taskCallback, retryDelay]     // Every 5 minutes
         ];
