@@ -31,7 +31,11 @@ class DateTime {
      * @returns {string}
      */
     toISOString() {
-        return this._luxonDateTime.toISO({ format: 'extended', suppressMilliseconds: false }).replace('+00:00', 'Z');
+        const iso = this._luxonDateTime.toISO({ format: 'extended', suppressMilliseconds: false });
+        if (!iso) {
+            throw new Error("Failed to convert DateTime to ISO string");
+        }
+        return iso.replace('+00:00', 'Z');
     }
 
     /**

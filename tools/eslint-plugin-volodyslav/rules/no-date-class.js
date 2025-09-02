@@ -11,12 +11,14 @@ module.exports = {
     },
   },
   create(context) {
+    const sourceCode = context.getSourceCode();
+    
     return {
       NewExpression(node) {
         // Check for new Date() calls
         if (node.callee.type === "Identifier" && node.callee.name === "Date") {
           // Allow Date usage if there's a specific performance comment
-          const comments = context.getCommentsBefore(node);
+          const comments = sourceCode.getCommentsBefore(node);
           const allowPerformance = comments.some(comment => 
             comment.value.includes('performance-critical') || 
             comment.value.includes('eslint-disable-next-line volodyslav/no-date-class')
@@ -36,7 +38,7 @@ module.exports = {
           node.callee.object.name === "Date"
         ) {
           // Allow Date usage if there's a specific performance comment
-          const comments = context.getCommentsBefore(node);
+          const comments = sourceCode.getCommentsBefore(node);
           const allowPerformance = comments.some(comment => 
             comment.value.includes('performance-critical') || 
             comment.value.includes('eslint-disable-next-line volodyslav/no-date-class')
