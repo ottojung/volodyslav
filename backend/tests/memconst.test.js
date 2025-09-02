@@ -112,6 +112,7 @@ describe('memconst', () => {
     const memoized = memconst(delayedFn);
 
     // Execute
+    // eslint-disable-next-line volodyslav/no-date-class -- Performance timing test
     const start = Date.now();
     const promise1 = memoized();
     const promise2 = memoized();
@@ -121,6 +122,7 @@ describe('memconst', () => {
 
     // Wait for the promises to resolve
     const [result1, result2] = await Promise.all([promise1, promise2]);
+    // eslint-disable-next-line volodyslav/no-date-class -- Performance timing test
     const end = Date.now();
 
     // Verify

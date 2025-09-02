@@ -30,7 +30,7 @@ describe("declarative scheduler precedence logic verification", () => {
         const task = jest.fn().mockResolvedValue(undefined);
         
         // Set time to start of hour so "0 * * * *" schedule triggers
-        const startTime = new Date("2021-01-01T00:00:00.000Z").getTime();
+        const startTime = 1609459200000 // 2021-01-01T00:00:00.000Z;
         timeControl.setTime(startTime);
         schedulerControl.setPollingInterval(1);
         
@@ -57,7 +57,7 @@ describe("declarative scheduler precedence logic verification", () => {
         const task = jest.fn().mockResolvedValue(undefined);
         
         // Set time to start of hour so "0 * * * *" schedule triggers
-        const startTime = new Date("2021-01-01T00:00:00.000Z").getTime();
+        const startTime = 1609459200000 // 2021-01-01T00:00:00.000Z;
         timeControl.setTime(startTime);
         schedulerControl.setPollingInterval(1);
         

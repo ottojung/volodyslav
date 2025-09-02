@@ -105,6 +105,7 @@ function stubDatetime(capabilities) {
     const originalNow = capabilities.datetime.now;
 
     // Initialize with current real time, but this can be overridden
+    // eslint-disable-next-line volodyslav/no-date-class -- Required for test initialization
     let currentTimeMs = Date.now();
 
     // Override the now method to return the controlled time

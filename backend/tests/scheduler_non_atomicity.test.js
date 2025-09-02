@@ -48,7 +48,7 @@ describe("scheduler atomicity testing", () => {
         ];
 
         // Set time to trigger immediate execution
-        const startTime = new Date("2024-01-01T11:00:00.000Z").getTime();
+        const startTime = 1704106800000 // 2024-01-01T11:00:00.000Z;
         timeControl.setTime(startTime);
 
         await capabilities.scheduler.initialize(registrations);

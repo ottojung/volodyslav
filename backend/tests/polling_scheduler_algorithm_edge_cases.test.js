@@ -106,7 +106,7 @@ describe("declarative scheduler algorithm robustness", () => {
         });
 
         // Set initial time to trigger immediate execution (start of minute)
-        const startTime = new Date("2021-01-01T00:00:00.000Z").getTime();
+        const startTime = 1609459200000; // 2021-01-01T00:00:00.000Z
         timeControl.setTime(startTime);
 
         const registrations = [

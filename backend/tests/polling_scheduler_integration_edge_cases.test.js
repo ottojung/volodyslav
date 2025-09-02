@@ -287,7 +287,7 @@ describe("declarative scheduler integration and system edge cases", () => {
             // Schedule many tasks at once
             const callbacks = [];
             const registrations = [];
-            const startTime = Date.now();
+            const startTime = capabilities.datetime.getCurrentTime();
 
             for (let i = 0; i < 20; i++) {
                 const callback = jest.fn();
@@ -295,7 +295,7 @@ describe("declarative scheduler integration and system edge cases", () => {
                 registrations.push([`burst-task-${i}`, "0 * * * *", callback, retryDelay]);
             }
 
-            const scheduleTime = Date.now();
+            const scheduleTime = capabilities.datetime.getCurrentTime();
 
             // Should handle scheduling many tasks efficiently
             await capabilities.scheduler.initialize(registrations);

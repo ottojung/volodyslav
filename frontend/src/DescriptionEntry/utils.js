@@ -8,7 +8,9 @@
  * @returns {string} Formatted date string
  */
 export const formatRelativeDate = (dateString) => {
+    // eslint-disable-next-line volodyslav/no-date-class -- Frontend date formatting utility
     const date = new Date(dateString);
+    // eslint-disable-next-line volodyslav/no-date-class -- Frontend date formatting utility
     const now = new Date();
     const diffMs = now.getTime() - date.getTime();
     const diffMins = Math.floor(diffMs / (1000 * 60));

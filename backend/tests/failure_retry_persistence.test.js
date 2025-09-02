@@ -25,7 +25,7 @@ describe("failure retry persistence", () => {
         schedulerControl.setPollingInterval(1);
 
         // Set a fixed starting time 
-        const startTime = new Date("2020-01-01T00:00:30Z").getTime();
+        const startTime = 1577836830000; // 2020-01-01T00:00:30Z
         timeControl.setTime(startTime);
 
         // Initialize scheduler with registrations

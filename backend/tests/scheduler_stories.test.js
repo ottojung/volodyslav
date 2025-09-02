@@ -82,7 +82,7 @@ describe("scheduler stories", () => {
         const dailyTask = jest.fn();
 
         // Set start time to 01:15:00 on Jan 1, 2021
-        const startTime = new Date("2021-01-01T01:15:00.000Z").getTime();
+        const startTime = 1609463700000 // 2021-01-01T01:15:00.000Z;
         timeControl.setTime(startTime);
         schedulerControl.setPollingInterval(1);
 
@@ -114,7 +114,7 @@ describe("scheduler stories", () => {
         const taskCallback = jest.fn();
 
         // Set initial time to 00:00:00 (midnight)
-        const startTime = new Date("2021-01-01T00:00:00.000Z").getTime();
+        const startTime = 1609459200000 // 2021-01-01T00:00:00.000Z;
         timeControl.setTime(startTime);
         schedulerControl.setPollingInterval(1);
 
@@ -262,7 +262,7 @@ describe("scheduler stories", () => {
         });
 
         // Set initial time and configure fast polling
-        const startTime = new Date("2021-01-01T00:00:00.000Z").getTime();
+        const startTime = 1609459200000 // 2021-01-01T00:00:00.000Z;
         timeControl.setTime(startTime);
         schedulerControl.setPollingInterval(1);
 
@@ -304,7 +304,7 @@ describe("scheduler stories", () => {
         const dailyTask = jest.fn();
 
         // Start scheduler at specific time
-        const startTime = new Date("2021-01-01T12:00:00.000Z").getTime();
+        const startTime = 1609502400000 // 2021-01-01T12:00:00.000Z;
         timeControl.setTime(startTime);
         schedulerControl.setPollingInterval(1);
 
@@ -377,7 +377,7 @@ describe("scheduler stories", () => {
             // Always succeeds, used for cleanup operations
         });
 
-        const startTime = new Date("2021-01-01T10:00:00.000Z").getTime();
+        const startTime = 1609495200000 // 2021-01-01T10:00:00.000Z;
         timeControl.setTime(startTime);
         schedulerControl.setPollingInterval(1);
 
@@ -444,7 +444,7 @@ describe("scheduler stories", () => {
         });
 
         // Start at beginning of year for clean monthly/weekly boundaries
-        const startTime = new Date("2021-01-01T00:00:00.000Z").getTime();
+        const startTime = 1609459200000 // 2021-01-01T00:00:00.000Z;
         timeControl.setTime(startTime);
         schedulerControl.setPollingInterval(1);
 
@@ -566,7 +566,7 @@ describe("scheduler stories", () => {
         const hourlyTask = jest.fn();
 
         // Start at exactly 10:00:00 AM
-        const startTime = new Date("2021-01-01T10:00:00.000Z").getTime();
+        const startTime = 1609495200000 // 2021-01-01T10:00:00.000Z;
         timeControl.setTime(startTime);
         schedulerControl.setPollingInterval(1);
 
@@ -685,7 +685,7 @@ describe("scheduler stories", () => {
         const dailyTask = jest.fn();
 
         // Start at exactly midnight on January 1st
-        const startTime = new Date("2021-01-01T00:00:00.000Z").getTime();
+        const startTime = 1609459200000 // 2021-01-01T00:00:00.000Z;
         timeControl.setTime(startTime);
         schedulerControl.setPollingInterval(1);
 
@@ -732,7 +732,7 @@ describe("scheduler stories", () => {
         const weeklyTask = jest.fn();
 
         // Start at exactly midnight on Sunday, January 3rd, 2021 (day 0 = Sunday)
-        const startTime = new Date("2021-01-03T00:00:00.000Z").getTime();
+        const startTime = 1609632000000 // 2021-01-03T00:00:00.000Z;
         timeControl.setTime(startTime);
         schedulerControl.setPollingInterval(1);
 
@@ -778,7 +778,7 @@ describe("scheduler stories", () => {
         const persistentTask = jest.fn();
 
         // Start at exactly 14:00:00
-        const startTime = new Date("2021-01-01T14:00:00.000Z").getTime();
+        const startTime = 1609509600000 // 2021-01-01T14:00:00.000Z;
         timeControl.setTime(startTime);
         schedulerControl.setPollingInterval(1);
 
@@ -838,7 +838,7 @@ describe("scheduler stories", () => {
         const every4HourTask = jest.fn();   // Every 4 hours
 
         // Start at exactly midnight - both should match
-        const startTime = new Date("2021-01-01T00:00:00.000Z").getTime();
+        const startTime = 1609459200000 // 2021-01-01T00:00:00.000Z;
         timeControl.setTime(startTime);
         schedulerControl.setPollingInterval(1);
 
@@ -897,7 +897,7 @@ describe("scheduler stories", () => {
         const every6HourTask = jest.fn();  // Runs every 6 hours
 
         // Start at exactly midnight
-        const startTime = new Date("2021-01-01T00:00:00.000Z").getTime();
+        const startTime = 1609459200000 // 2021-01-01T00:00:00.000Z;
         timeControl.setTime(startTime);
         schedulerControl.setPollingInterval(1);
 
@@ -1017,7 +1017,7 @@ describe("scheduler stories", () => {
         });
 
         // Set start time to 01:15:00 on Jan 1, 2021
-        const startTime = new Date("2021-01-01T01:15:00.000Z").getTime();
+        const startTime = 1609463700000 // 2021-01-01T01:15:00.000Z;
         timeControl.setTime(startTime);
         schedulerControl.setPollingInterval(1);
 

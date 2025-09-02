@@ -173,6 +173,7 @@ describe("declarative scheduler persistence and error handling", () => {
             ];
 
             for (const timeStr of testTimes) {
+                // eslint-disable-next-line volodyslav/no-date-class -- Jest system time mocking
                 jest.setSystemTime(new Date(timeStr));
 
                 // Should be able to initialize at any time
