@@ -1,6 +1,8 @@
 
-const { fromEpochMs, toEpochMs } = require("../../datetime");
+const { toEpochMs } = require("../../datetime");
 const { matchesCronExpression } = require("./current");
+const { fromLuxon } = require("../../datetime/structure");
+const { DateTime: LuxonDateTime } = require("luxon");
 
 /**
  * Custom error class for calculation errors.
@@ -33,6 +35,9 @@ function isCronCalculationError(object) {
  * @throws {CronCalculationError} If next execution cannot be calculated
  */
 function getNextExecution(cronExpr, fromDateTime) {
+    // Preserve the original timezone
+    const originalZone = fromDateTime._luxonDateTime.zone;
+    
     const fromMs = toEpochMs(fromDateTime);
     // eslint-disable-next-line volodyslav/no-date-class
     const next = new Date(fromMs); // performance-critical: fast iteration in loop
@@ -44,7 +49,8 @@ function getNextExecution(cronExpr, fromDateTime) {
     let iterations = 0;
 
     while (iterations < maxIterations) {
-        const nextDateTime = fromEpochMs(next.getTime());
+        // Create DateTime preserving the original timezone
+        const nextDateTime = fromLuxon(LuxonDateTime.fromMillis(next.getTime(), { zone: originalZone }));
         if (matchesCronExpression(cronExpr, nextDateTime)) {
             return nextDateTime;
         }
