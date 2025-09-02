@@ -227,18 +227,14 @@ describe("scheduler task methods edge cases", () => {
             expect(isRunning(task2)).toBe(false);
         });
 
-        test("should work with Date objects that have different getTime implementations", () => {
-            // Create mock Date-like objects
-            const mockAttemptTime = {
-                getTime: () => 1000
-            };
-            const mockSuccessTime = {
-                getTime: () => 500
-            };
+        test("should work with proper DateTime objects", () => {
+            // Use proper DateTime objects instead of mock objects
+            const attemptTime = fromEpochMs(1000);
+            const successTime = fromEpochMs(500);
 
             const task = createTestTask({
-                lastAttemptTime: mockAttemptTime,
-                lastSuccessTime: mockSuccessTime,
+                lastAttemptTime: attemptTime,
+                lastSuccessTime: successTime,
                 lastFailureTime: undefined
             });
 
