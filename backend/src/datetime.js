@@ -1,4 +1,5 @@
 const { DateTime: LuxonDateTime } = require("luxon");
+const { luxonWeekdayToName } = require("./weekday");
 
 /**
  * Datetime capability for working with dates.
@@ -81,10 +82,10 @@ class DateTime {
     }
 
     /**
-     * @returns {number}
+     * @returns {"sunday" | "monday" | "tuesday" | "wednesday" | "thursday" | "friday" | "saturday"}
      */
     get weekday() {
-        return this._luxonDateTime.weekday;
+        return luxonWeekdayToName(this._luxonDateTime.weekday);
     }
 
 

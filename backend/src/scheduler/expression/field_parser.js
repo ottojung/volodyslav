@@ -2,6 +2,8 @@
  * Field configuration and parsing for cron expressions.
  */
 
+const { isWeekdayName, getAllWeekdayNames, cronNumberToWeekdayName } = require("../../weekday");
+
 /**
  * Custom error class for field parsing errors.
  */
@@ -32,6 +34,7 @@ function isFieldParseError(object) {
  * @property {number} min - Minimum allowed value
  * @property {number} max - Maximum allowed value  
  * @property {string} name - Field name for error messages
+ * @property {boolean} [isWeekday] - Whether this field uses weekday names
  */
 
 /**
@@ -42,17 +45,21 @@ const FIELD_CONFIGS = {
     hour: { min: 0, max: 23, name: "hour" },
     day: { min: 1, max: 31, name: "day" },
     month: { min: 1, max: 12, name: "month" },
-    weekday: { min: 0, max: 6, name: "weekday" } // 0 = Sunday, 6 = Saturday
+    weekday: { min: 0, max: 6, name: "weekday", isWeekday: true } // Now uses weekday names
 };
 
 /**
  * Parses a single cron field value.
  * @param {string} value - The field value to parse
  * @param {FieldConfig} config - Field configuration
- * @returns {number[]} Array of valid values for this field
+ * @returns {number[] | string[]} Array of valid values for this field
  * @throws {FieldParseError} If the field value is invalid
  */
 function parseField(value, config) {
+    if (config.isWeekday) {
+        return parseWeekdayField(value, config);
+    }
+    
     if (value === "*") {
         return Array.from({ length: config.max - config.min + 1 }, (_, i) => config.min + i);
     }
@@ -134,6 +141,110 @@ function parseField(value, config) {
     }
 
     return [num];
+}
+
+/**
+ * Parses weekday field values, supporting both numeric (for backward compatibility) and name formats.
+ * @param {string} value - The weekday field value to parse
+ * @param {FieldConfig} config - Field configuration
+ * @returns {string[]} Array of weekday names
+ * @throws {FieldParseError} If the field value is invalid
+ */
+function parseWeekdayField(value, config) {
+    if (value === "*") {
+        return getAllWeekdayNames();
+    }
+
+    if (value.includes(",")) {
+        const parts = value.split(",");
+        const result = [];
+        for (const part of parts) {
+            result.push(...parseWeekdayField(part.trim(), config));
+        }
+        // Remove duplicates while preserving order
+        return [...new Set(result)];
+    }
+
+    if (value.includes("/")) {
+        const parts = value.split("/");
+        if (parts.length !== 2) {
+            throw new FieldParseError(`invalid step format "${value}"`, value, config.name);
+        }
+        const range = parts[0];
+        const stepStr = parts[1];
+        if (!range || !stepStr) {
+            throw new FieldParseError(`invalid step format "${value}"`, value, config.name);
+        }
+        const stepNum = parseInt(stepStr, 10);
+        if (isNaN(stepNum) || stepNum <= 0) {
+            throw new FieldParseError(`invalid step value "${stepStr}"`, value, config.name);
+        }
+
+        const baseValues = parseWeekdayField(range, config);
+        const result = [];
+        for (let i = 0; i < baseValues.length; i += stepNum) {
+            const val = baseValues[i];
+            if (val !== undefined) {
+                result.push(val);
+            }
+        }
+        return result;
+    }
+
+    if (value.includes("-")) {
+        // Range parsing for weekdays is complex, let's support numeric ranges for now
+        // and convert to names
+        const parts = value.split("-");
+        if (parts.length !== 2) {
+            throw new FieldParseError(`invalid range format "${value}"`, value, config.name);
+        }
+        const startStr = parts[0];
+        const endStr = parts[1];
+        if (!startStr || !endStr) {
+            throw new FieldParseError(`invalid range format "${value}"`, value, config.name);
+        }
+        
+        // Try to parse as numbers first
+        const startNum = parseInt(startStr, 10);
+        const endNum = parseInt(endStr, 10);
+
+        if (!isNaN(startNum) && !isNaN(endNum)) {
+            // Numeric range
+            if (startNum < config.min || startNum > config.max) {
+                throw new FieldParseError(`out of range (${config.min}-${config.max})`, value, config.name);
+            }
+            if (endNum < config.min || endNum > config.max) {
+                throw new FieldParseError(`out of range (${config.min}-${config.max})`, value, config.name);
+            }
+            if (startNum > endNum) {
+                throw new FieldParseError(`invalid range (start > end)`, value, config.name);
+            }
+
+            const result = [];
+            for (let i = startNum; i <= endNum; i++) {
+                result.push(cronNumberToWeekdayName(i));
+            }
+            return result;
+        } else {
+            throw new FieldParseError(`weekday ranges must be numeric for now "${value}"`, value, config.name);
+        }
+    }
+
+    // Single value - could be a weekday name or number
+    if (isWeekdayName(value.toLowerCase())) {
+        return [value.toLowerCase()];
+    }
+
+    // Try to parse as number for backward compatibility
+    const num = parseInt(value, 10);
+    if (!isNaN(num)) {
+        if (num < config.min || num > config.max) {
+            throw new FieldParseError(`out of range (${config.min}-${config.max})`, value, config.name);
+        }
+        return [cronNumberToWeekdayName(num)];
+    }
+
+    throw new FieldParseError(`invalid weekday "${value}" (expected weekday name or number 0-6)`, value, config.name);
 }
 
 module.exports = {

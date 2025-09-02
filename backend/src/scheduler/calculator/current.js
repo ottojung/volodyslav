@@ -15,11 +15,8 @@ function matchesCronExpression(cronExpr, dateTime) {
     const hour = dateTime.hour;
     const minute = dateTime.minute;
     
-    // Calculate weekday from Luxon's timezone-aware weekday property
-    // Luxon weekday: 1=Monday, 7=Sunday
-    // Cron weekday: 0=Sunday, 1=Monday, ..., 6=Saturday
-    const luxonWeekday = dateTime.weekday;
-    const weekday = luxonWeekday % 7; // Convert: Luxon 7 (Sunday) -> 0, Luxon 1-6 (Mon-Sat) -> 1-6
+    // Get weekday name directly from DateTime (now returns string)
+    const weekday = dateTime.weekday;
 
     return (
         cronExpr.minute.includes(minute) &&
