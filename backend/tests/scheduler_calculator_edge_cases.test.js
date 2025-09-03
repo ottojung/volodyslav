@@ -4,6 +4,22 @@
  * 
  * This test file follows the style of scheduler_stories.test.js - creating actual scenarios
  * with actual end-to-end checks, not just testing the calculator directly.
+ * 
+ * Expected Test Results:
+ * - Bug 1 & 2 tests should FAIL, exposing the mathematical calculation bugs
+ * - Bug 3 test may pass if the bug manifests differently in the end-to-end context
+ * - Complex constraint test should pass, showing normal operation works
+ * 
+ * When these tests are run, they demonstrate the following critical issues:
+ * 
+ * 1. Bug 1 (P0): Tasks execute on disallowed days when minute/hour fields advance
+ *    without triggering a carry, violating day-of-month constraints
+ * 
+ * 2. Bug 2 (P0): Previous execution calculations return times on forbidden days
+ *    when minute/hour decrements don't trigger underflow
+ * 
+ * 3. Bug 3 (P1): Weekday constraint searches are limited to 7 days and fail
+ *    when valid dates are farther away (e.g., "Monday the 13th" constraints)
  */
 
 const { Duration } = require("luxon");
