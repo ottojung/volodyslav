@@ -197,7 +197,7 @@ function make(getCapabilities) {
 
         if (persistedTasks === undefined) {
             // Persist tasks during first initialization.
-            await mutateTasks(capabilities, parsedRegistrations, async (_) => {});
+            await mutateTasks(capabilities, parsedRegistrations, async () => undefined);
         }
 
         // Schedule all tasks
