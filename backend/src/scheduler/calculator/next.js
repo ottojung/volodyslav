@@ -77,7 +77,6 @@ function determineIterationStrategy(cronExpr) {
     const minuteConstraints = cronExpr.minute.length;
     const hourConstraints = cronExpr.hour.length;
     const dayConstraints = cronExpr.day.length;
-    const monthConstraints = cronExpr.month.length;
     const weekdayConstraints = cronExpr.weekday.length;
     
     // Only use day-level optimization for very sparse schedules with specific minute and hour constraints
@@ -100,6 +99,8 @@ function determineIterationStrategy(cronExpr) {
 
 /**
  * Increment by minutes for frequent patterns.
+ * @param {import('luxon').DateTime} luxonDateTime
+ * @returns {import('luxon').DateTime}
  */
 function minuteIncrement(luxonDateTime) {
     return luxonDateTime.plus(ONE_MINUTE_DURATION);
@@ -107,6 +108,10 @@ function minuteIncrement(luxonDateTime) {
 
 /**
  * Smart day increment - jumps by days when hour/minute constraints don't match.
+ * @param {import('luxon').DateTime} luxonDateTime
+ * @param {import('../expression').CronExpression} cronExpr
+ * @param {import('../../datetime').DateTime} currentDateTime
+ * @returns {import('luxon').DateTime}
  */
 function smartDayIncrement(luxonDateTime, cronExpr, currentDateTime) {
     const currentMinute = currentDateTime.minute;
@@ -119,7 +124,7 @@ function smartDayIncrement(luxonDateTime, cronExpr, currentDateTime) {
     
     // If hour matches but minute doesn't, jump to next valid minute in same hour
     if (cronExpr.hour.includes(currentHour) && !cronExpr.minute.includes(currentMinute)) {
-        const validMinutes = cronExpr.minute.filter(m => m > currentMinute);
+        const validMinutes = cronExpr.minute.filter(/** @param {number} m */ m => m > currentMinute);
         if (validMinutes.length > 0) {
             const nextValidMinute = Math.min(...validMinutes);
             return luxonDateTime.startOf('hour').plus(Duration.fromObject({ minutes: nextValidMinute }));
