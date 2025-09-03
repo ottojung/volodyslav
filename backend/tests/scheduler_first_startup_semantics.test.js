@@ -21,7 +21,7 @@ function getTestCapabilities() {
 
 describe("scheduler first startup semantics", () => {
     describe("cron expression matching current time", () => {
-        test("should NOT execute task even if cron exactly matches current time on first startup", async () => {
+        test("should execute task if cron exactly matches current time on first startup", async () => {
             const capabilities = getTestCapabilities();
             const schedulerControl = getSchedulerControl(capabilities);
             const datetimeControl = getDatetimeControl(capabilities);
@@ -43,8 +43,8 @@ describe("scheduler first startup semantics", () => {
             await capabilities.scheduler.initialize(registrations);
             await schedulerControl.waitForNextCycleEnd();
 
-            // With new startup semantics, task should NOT execute immediately even if cron matches
-            expect(taskCallback).toHaveBeenCalledTimes(0);
+            // With new startup semantics, task should execute immediately if cron matches exactly
+            expect(taskCallback).toHaveBeenCalledTimes(1);
 
             await capabilities.scheduler.stop();
         });
@@ -107,7 +107,7 @@ describe("scheduler first startup semantics", () => {
             await schedulerControl.waitForNextCycleEnd();
 
             // Now task should execute
-            expect(taskCallback).toHaveBeenCalledTimes(0);
+            expect(taskCallback).toHaveBeenCalledTimes(1);
 
             await capabilities.scheduler.stop();
         });
@@ -140,7 +140,7 @@ describe("scheduler first startup semantics", () => {
             await schedulerControl.waitForNextCycleEnd();
 
             // Only the matching task should execute
-            expect(matchingTaskCallback).toHaveBeenCalledTimes(0);
+            expect(matchingTaskCallback).toHaveBeenCalledTimes(1);
             expect(nonMatchingTaskCallback1).toHaveBeenCalledTimes(0);
             expect(nonMatchingTaskCallback2).toHaveBeenCalledTimes(0);
 
@@ -171,7 +171,7 @@ describe("scheduler first startup semantics", () => {
             await schedulerControl.waitForNextCycleEnd();
 
             // Only exact match should execute
-            expect(exactMatchCallback).toHaveBeenCalledTimes(0);
+            expect(exactMatchCallback).toHaveBeenCalledTimes(1);
             expect(oneMinuteOffCallback).toHaveBeenCalledTimes(0);
 
             await capabilities.scheduler.stop();
@@ -203,9 +203,9 @@ describe("scheduler first startup semantics", () => {
             await capabilities.scheduler.initialize(registrations);
             await schedulerControl.waitForNextCycleEnd();
 
-            // With new startup semantics, tasks should NOT execute immediately
-            expect(everyMinuteCallback).toHaveBeenCalledTimes(0);
-            expect(everyHourCallback).toHaveBeenCalledTimes(0);
+            // With new startup semantics, only matching tasks execute immediately
+            expect(everyMinuteCallback).toHaveBeenCalledTimes(1); // */15 matches :30
+            expect(everyHourCallback).toHaveBeenCalledTimes(1); // 30 * matches :30
 
             await capabilities.scheduler.stop();
         });
@@ -234,7 +234,7 @@ describe("scheduler first startup semantics", () => {
             await schedulerControl.waitForNextCycleEnd();
 
             // Only Tuesday task should execute
-            expect(tuesdayCallback).toHaveBeenCalledTimes(0);
+            expect(tuesdayCallback).toHaveBeenCalledTimes(1);
             expect(wednesdayCallback).toHaveBeenCalledTimes(0);
 
             await capabilities.scheduler.stop();
