@@ -198,38 +198,7 @@ function make(getCapabilities) {
 
         if (persistedTasks === undefined) {
             // Persist tasks during first initialization.
-            // Handle special first-startup semantics:
-            // - If task cron exactly matches current time, allow execution
-            // - Otherwise prevent immediate execution but allow next scheduled execution
-            await mutateTasks(capabilities, parsedRegistrations, async (tasks) => {
-                const now = capabilities.datetime.now();
-                
-                for (const task of tasks.values()) {
-                    const cronMatches = matchesCronExpression(task.parsedCron, now);
-                    
-                    if (cronMatches) {
-                        // Task should execute immediately since cron matches current time
-                        // Leave lastAttemptTime undefined so it will execute
-                        // Set lastSuccessTime to now to prevent "running" status
-                        task.lastSuccessTime = now;
-                        capabilities.logger.logDebug(
-                            { taskName: task.name },
-                            "First startup: task cron matches current time, allowing execution"
-                        );
-                    } else {
-                        // Task should not execute immediately
-                        // Set lastAttemptTime to now to prevent immediate execution
-                        task.lastAttemptTime = now;
-                        // Also set lastSuccessTime to prevent "running" status
-                        task.lastSuccessTime = now;
-                        capabilities.logger.logDebug(
-                            { taskName: task.name },
-                            "First startup: task cron does not match current time, preventing execution"
-                        );
-                    }
-                }
-                return undefined;
-            });
+            await mutateTasks(capabilities, parsedRegistrations, async (_) => {});
         }
 
         // Schedule all tasks
