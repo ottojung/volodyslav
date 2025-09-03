@@ -665,13 +665,16 @@ describe("scheduler stories", () => {
         await capabilities.scheduler.initialize(registrations);
         await schedulerControl.waitForNextCycleEnd();
 
-        // Record initial count (should execute at initialization since it's midnight)
+        // With new behavior, tasks should NOT execute immediately on first startup
         const initialCount = dailyTask.mock.calls.length;
-        expect(initialCount).toBeGreaterThanOrEqual(1);
+        expect(initialCount).toBe(0);
 
-        // Advance 12 hours (noon)
-        timeControl.advanceTime(12 * 60 * 60 * 1000);
+        // Advance 24 hours to next midnight to test that task executes properly
+        timeControl.advanceTime(24 * 60 * 60 * 1000);
         await schedulerControl.waitForNextCycleEnd();
+        
+        // Should execute at the next scheduled time
+        expect(dailyTask.mock.calls.length).toBeGreaterThan(initialCount);
 
         // Should not execute again (not midnight)
         expect(dailyTask.mock.calls.length).toBe(initialCount);
