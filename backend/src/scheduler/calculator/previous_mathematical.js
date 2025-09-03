@@ -16,6 +16,7 @@ const {
 } = require("./date_helpers");
 
 const { fromLuxon } = require("../../datetime/structure");
+const { matchesCronExpression } = require("./current");
 
 /**
  * Custom error class for calculation errors.
@@ -42,6 +43,8 @@ function isCronCalculationError(object) {
 
 /**
  * Calculates the previous execution time for a cron expression using mathematical field calculation.
+ * If the current time matches the cron expression, returns the current time.
+ * Otherwise, finds the most recent past execution time.
  * @param {import('../expression').CronExpression} cronExpr - Parsed cron expression
  * @param {import('../../datetime').DateTime} fromDateTime - DateTime to calculate from
  * @returns {import('../../datetime').DateTime|null} Previous execution datetime, or null if none found
@@ -51,6 +54,13 @@ function calculatePreviousExecution(cronExpr, fromDateTime) {
         // Start from the current minute boundary with seconds and milliseconds reset
         const startDateTime = fromDateTime.startOfMinute();
         
+        // Check if the current time already matches the cron expression
+        if (matchesCronExpression(cronExpr, startDateTime)) {
+            // Current time matches - return it as the "most recent" execution
+            return startDateTime;
+        }
+        
+        // Current time doesn't match, find the actual previous execution
         // Extract components
         let year = startDateTime.year;
         let month = startDateTime.month;
@@ -120,25 +130,27 @@ function calculatePreviousExecution(cronExpr, fromDateTime) {
             minute = maxInSet(cronExpr.minute);
         }
         
-        // Step 5: Apply weekday constraints
-        const candidateWeekday = getWeekday(year, month, day);
-        if (!isValidInSet(candidateWeekday, cronExpr.weekday)) {
-            const constraintResult = prevDateSatisfyingWeekdayConstraint(
-                year, month, day,
-                cronExpr.weekday,
-                cronExpr.month,
-                cronExpr.day
-            );
-            
-            if (constraintResult) {
-                year = constraintResult.year;
-                month = constraintResult.month;
-                day = constraintResult.day;
-                hour = maxInSet(cronExpr.hour);
-                minute = maxInSet(cronExpr.minute);
-            } else {
-                // Could not satisfy constraints - return null
-                return null;
+        // Step 5: Apply weekday constraints only if weekday constraint exists
+        if (cronExpr.weekday.length < 7) { // Not all weekdays are allowed
+            const candidateWeekday = getWeekday(year, month, day);
+            if (!isValidInSet(candidateWeekday, cronExpr.weekday)) {
+                const constraintResult = prevDateSatisfyingWeekdayConstraint(
+                    year, month, day,
+                    cronExpr.weekday,
+                    cronExpr.month,
+                    cronExpr.day
+                );
+                
+                if (constraintResult) {
+                    year = constraintResult.year;
+                    month = constraintResult.month;
+                    day = constraintResult.day;
+                    hour = maxInSet(cronExpr.hour);
+                    minute = maxInSet(cronExpr.minute);
+                } else {
+                    // Could not satisfy constraints - return null
+                    return null;
+                }
             }
         }
         
