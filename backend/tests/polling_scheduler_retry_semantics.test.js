@@ -225,6 +225,10 @@ describe("declarative scheduler retry semantics", () => {
         const retryDelay = Duration.fromMillis(30 * 1000); // 30 seconds
         let executionCount = 0;
 
+        // Set time to avoid immediate execution for "0 * * * *" schedule
+        const startTime = 1609459500000; // 2021-01-01T00:05:00.000Z
+        timeControl.setTime(startTime);
+
         const task = jest.fn(() => {
             executionCount++;
         });

@@ -53,8 +53,8 @@ describe("declarative scheduler comprehensive edge cases", () => {
             const callback2 = jest.fn();
             const callback3 = jest.fn();
 
-            // Set time to start of hour for "0 * * * *" schedule
-            const startTime = 1609459200000; // 2021-01-01T00:00:00.000Z
+            // Set time to avoid immediate execution for "0 * * * *" schedule
+            const startTime = 1609459500000; // 2021-01-01T00:05:00.000Z
             timeControl.setTime(startTime);
 
             const registrations = [
@@ -170,8 +170,8 @@ describe("declarative scheduler comprehensive edge cases", () => {
             schedulerControl.setPollingInterval(1);
             const retryDelay = Duration.fromMillis(1000);
 
-            // Set time to start of hour for "0 * * * *" schedule
-            const startTime = 1609459200000; // 2021-01-01T00:00:00.000Z
+            // Set time to avoid immediate execution for "0 * * * *" schedule
+            const startTime = 1609459500000; // 2021-01-01T00:05:00.000Z
             timeControl.setTime(startTime);
 
             // Schedule 15 tasks all due at the same time

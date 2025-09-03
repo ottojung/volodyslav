@@ -105,8 +105,8 @@ describe("declarative scheduler algorithm robustness", () => {
             }
         });
 
-        // Set initial time to trigger immediate execution (start of minute)
-        const startTime = 1609459200000; // 2021-01-01T00:00:00.000Z
+        // Set initial time to avoid immediate execution
+        const startTime = 1609459500000; // 2021-01-01T00:05:00.000Z
         timeControl.setTime(startTime);
 
         const registrations = [
@@ -236,8 +236,8 @@ describe("declarative scheduler algorithm robustness", () => {
         const retryDelay = Duration.fromMillis(5000);
         const taskCallback = jest.fn();
 
-        // Set time to start of hour for "0 * * * *" schedule
-        const startTime = 1609459200000; // 2021-01-01T00:00:00.000Z
+        // Set time to avoid immediate execution for "0 * * * *" schedule
+        const startTime = 1609459500000; // 2021-01-01T00:05:00.000Z
         timeControl.setTime(startTime);
 
         const registrations = [
