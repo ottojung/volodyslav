@@ -6,6 +6,7 @@ const { parseCronExpression } = require("./expression");
 const { makePollingScheduler } = require("./polling");
 const { mutateTasks } = require("./persistence");
 const { isScheduleDuplicateTaskError } = require("./registration_validation");
+const { matchesCronExpression } = require("./calculator");
 const memconst = require("../memconst");
 
 /**
@@ -197,17 +198,35 @@ function make(getCapabilities) {
 
         if (persistedTasks === undefined) {
             // Persist tasks during first initialization.
-            // Set lastAttemptTime to current time to prevent immediate execution on first startup
-            // but allow the next scheduled execution to run
+            // Handle special first-startup semantics:
+            // - If task cron exactly matches current time, allow execution
+            // - Otherwise prevent immediate execution but allow next scheduled execution
             await mutateTasks(capabilities, parsedRegistrations, async (tasks) => {
                 const now = capabilities.datetime.now();
                 
                 for (const task of tasks.values()) {
-                    // Set lastAttemptTime to now to prevent immediate execution
-                    task.lastAttemptTime = now;
-                    // Also set lastSuccessTime to the same value to indicate the task completed successfully
-                    // This prevents the task from being marked as "running"
-                    task.lastSuccessTime = now;
+                    const cronMatches = matchesCronExpression(task.parsedCron, now);
+                    
+                    if (cronMatches) {
+                        // Task should execute immediately since cron matches current time
+                        // Leave lastAttemptTime undefined so it will execute
+                        // Set lastSuccessTime to now to prevent "running" status
+                        task.lastSuccessTime = now;
+                        capabilities.logger.logDebug(
+                            { taskName: task.name },
+                            "First startup: task cron matches current time, allowing execution"
+                        );
+                    } else {
+                        // Task should not execute immediately
+                        // Set lastAttemptTime to now to prevent immediate execution
+                        task.lastAttemptTime = now;
+                        // Also set lastSuccessTime to prevent "running" status
+                        task.lastSuccessTime = now;
+                        capabilities.logger.logDebug(
+                            { taskName: task.name },
+                            "First startup: task cron does not match current time, preventing execution"
+                        );
+                    }
                 }
                 return undefined;
             });

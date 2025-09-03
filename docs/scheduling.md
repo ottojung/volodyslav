@@ -109,6 +109,33 @@ allowed attempt by adding the delay. Once the task succeeds the pending retry is
 cleared. The strategy is intentionally simple to keep failure recovery
 transparent and predictable.
 
+## Startup Semantics
+
+The scheduler follows specific rules for task execution during the very first startup when no persisted state exists:
+
+### First Startup Behavior
+
+**Tasks execute immediately only if their cron expression exactly matches the current time at startup.** This prevents overwhelming the system with all tasks executing simultaneously while still honoring tasks that are genuinely scheduled to run at that moment.
+
+#### Examples
+
+- **Should execute**: If the scheduler starts at 15:30 on a Tuesday and a task is scheduled with `"30 15 * * 2"` (15:30 on Tuesday), the task will execute immediately.
+- **Should not execute**: If the scheduler starts at 15:30 on a Tuesday and a task is scheduled with `"20 15 * * 2"` (15:20 on Tuesday), the task will wait until its next scheduled time.
+
+#### Implementation Details
+
+During first startup, the scheduler:
+
+1. **Evaluates cron expressions** against the current time using precise matching
+2. **Sets execution timestamps conditionally**:
+   - **Matching tasks**: Allow immediate execution by leaving `lastAttemptTime` undefined while setting `lastSuccessTime` to prevent "running" status
+   - **Non-matching tasks**: Prevent execution by setting both `lastAttemptTime` and `lastSuccessTime` to the current time
+3. **Continues normal scheduling** for all subsequent executions based on cron expressions
+
+### Subsequent Startup Behavior
+
+After the first startup, the scheduler loads persisted execution history and continues normal scheduling based on the last known state. No special first-startup logic applies to subsequent restarts.
+
 ## Limitations and Tradeoffs
 
 1. **Local time only** – scheduling uses the host's clock without timezone
