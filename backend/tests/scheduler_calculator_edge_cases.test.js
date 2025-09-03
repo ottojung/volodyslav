@@ -107,7 +107,7 @@ describe("scheduler calculator edge cases", () => {
         await capabilities.scheduler.stop();
     });
 
-    test.failing("should understand combinations of days of month and hours", async () => {
+    test("should understand combinations of days of month and hours", async () => {
         const capabilities = getTestCapabilities();
         const timeControl = getDatetimeControl(capabilities);
         const schedulerControl = getSchedulerControl(capabilities);
@@ -190,7 +190,7 @@ describe("scheduler calculator edge cases", () => {
         await capabilities.scheduler.stop();
     });
 
-    test.failing("should understand complex combinations of days of month and hours", async () => {
+    test("should understand complex combinations of days of month and hours", async () => {
         const capabilities = getTestCapabilities();
         const timeControl = getDatetimeControl(capabilities);
         const schedulerControl = getSchedulerControl(capabilities);
