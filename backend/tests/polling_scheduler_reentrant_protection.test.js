@@ -21,9 +21,15 @@ function getTestCapabilities() {
 describe("declarative scheduler re-entrancy protection", () => {
     test("should handle concurrent initialize calls gracefully", async () => {
         const capabilities = getTestCapabilities();
+        const timeControl = getDatetimeControl(capabilities);
         const schedulerControl = getSchedulerControl(capabilities);
         schedulerControl.setPollingInterval(1);
         const retryDelay = Duration.fromMillis(5000);
+
+        // Set time to start of hour for "0 * * * *" schedule
+        const startTime = 1609459200000; // 2021-01-01T00:00:00.000Z
+        timeControl.setTime(startTime);
+
         let taskStartCount = 0;
         let taskEndCount = 0;
         
@@ -48,7 +54,13 @@ describe("declarative scheduler re-entrancy protection", () => {
         
         await Promise.all(promises);
         
-        // Wait for task execution
+        // Should NOT execute immediately on first startup
+        await schedulerControl.waitForNextCycleEnd();
+        expect(taskStartCount).toBe(0);
+        expect(taskEndCount).toBe(0);
+
+        // Advance to next scheduled execution (01:00:00)
+        timeControl.advanceTime(60 * 60 * 1000); // 1 hour
         await schedulerControl.waitForNextCycleEnd();
         
         // Give a bit more time for task completion
@@ -86,13 +98,20 @@ describe("declarative scheduler re-entrancy protection", () => {
         await capabilities.scheduler.initialize(registrations);
         await capabilities.scheduler.initialize(registrations);
         await capabilities.scheduler.initialize(registrations);
+
+        // Should NOT execute immediately on first startup
+        await schedulerControl.waitForNextCycleEnd();
+        expect(taskExecutionCount).toBe(0);
+
+        // Advance to next scheduled execution (01:00:00)
+        timeControl.advanceTime(60 * 60 * 1000); // 1 hour
         await schedulerControl.waitForNextCycleEnd();
         
         expect(taskExecutionCount).toBe(1);
 
         await schedulerControl.waitForNextCycleEnd();
         
-        // Task should not execute again on idempotent call
+        // Task should not execute again without advancing time
         expect(taskExecutionCount).toBe(1);
         
         await capabilities.scheduler.stop();
@@ -120,6 +139,13 @@ describe("declarative scheduler re-entrancy protection", () => {
         
         // First initialize call
         await capabilities.scheduler.initialize(registrations);
+
+        // Should NOT execute immediately on first startup
+        await schedulerControl.waitForNextCycleEnd();
+        expect(taskExecutionCount).toBe(0);
+
+        // Advance to next scheduled execution (01:00:00)
+        timeControl.advanceTime(60 * 60 * 1000); // 1 hour
         await schedulerControl.waitForNextCycleEnd();
         
         expect(taskExecutionCount).toBe(1);

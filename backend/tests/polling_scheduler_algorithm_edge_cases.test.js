@@ -115,7 +115,12 @@ describe("declarative scheduler algorithm robustness", () => {
 
         await capabilities.scheduler.initialize(registrations);
 
-        // Wait for scheduler to start and execute initial task
+        // Should NOT execute immediately on first startup
+        await schedulerControl.waitForNextCycleEnd();
+        expect(precisionCallback).toHaveBeenCalledTimes(0);
+
+        // Advance to next scheduled execution (01:00:00)
+        timeControl.advanceTime(60 * 60 * 1000); // 1 hour
         await schedulerControl.waitForNextCycleEnd();
         expect(precisionCallback).toHaveBeenCalledTimes(1);
 
@@ -225,10 +230,15 @@ describe("declarative scheduler algorithm robustness", () => {
 
     test("should handle idempotent initialization correctly", async () => {
         const capabilities = getTestCapabilities();
+        const timeControl = getDatetimeControl(capabilities);
         const schedulerControl = getSchedulerControl(capabilities);
         schedulerControl.setPollingInterval(1);
         const retryDelay = Duration.fromMillis(5000);
         const taskCallback = jest.fn();
+
+        // Set time to start of hour for "0 * * * *" schedule
+        const startTime = 1609459200000; // 2021-01-01T00:00:00.000Z
+        timeControl.setTime(startTime);
 
         const registrations = [
             ["idempotent-test", "0 * * * *", taskCallback, retryDelay]
@@ -239,7 +249,12 @@ describe("declarative scheduler algorithm robustness", () => {
         await capabilities.scheduler.initialize(registrations);
         await capabilities.scheduler.initialize(registrations);
 
-        // Wait for execution
+        // Should NOT execute immediately on first startup
+        await schedulerControl.waitForNextCycleEnd();
+        expect(taskCallback).toHaveBeenCalledTimes(0);
+
+        // Advance to next scheduled execution (01:00:00)
+        timeControl.advanceTime(60 * 60 * 1000); // 1 hour
         await schedulerControl.waitForNextCycleEnd();
 
         // Should only execute once despite multiple initializations

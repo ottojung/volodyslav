@@ -12,6 +12,7 @@ const {
     stubDatetime,
     stubScheduler,
     getSchedulerControl,
+    stubRuntimeStateStorage,
 } = require("./stubs");
 const { getMockedRootCapabilities } = require("./spies");
 const { Duration } = require("luxon");
@@ -22,6 +23,7 @@ function getTestCapabilities() {
     stubEnvironment(capabilities);
     stubSleeper(capabilities);
     stubDatetime(capabilities);
+    stubRuntimeStateStorage(capabilities);
     stubScheduler(capabilities);
     return capabilities;
 }
