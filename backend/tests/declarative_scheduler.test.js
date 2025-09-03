@@ -12,9 +12,11 @@ const {
     stubDatetime,
     stubScheduler,
     getSchedulerControl,
+    getDatetimeControl,
+    stubRuntimeStateStorage,
 } = require("./stubs");
 const { getMockedRootCapabilities } = require("./spies");
-const { Duration } = require("luxon");
+const { Duration, DateTime } = require("luxon");
 
 function getTestCapabilities() {
     const capabilities = getMockedRootCapabilities();
@@ -22,6 +24,7 @@ function getTestCapabilities() {
     stubEnvironment(capabilities);
     stubSleeper(capabilities);
     stubDatetime(capabilities);
+    stubRuntimeStateStorage(capabilities);
     stubScheduler(capabilities);
     return capabilities;
 }
@@ -261,6 +264,11 @@ describe("Declarative Scheduler", () => {
 
             const capabilities = getTestCapabilities();
             const control = getSchedulerControl(capabilities);
+            const timeControl = getDatetimeControl(capabilities);
+            
+            // Set time to 00:05:00 to avoid immediate execution (task runs at 0, 15, 30, 45 minutes)
+            const startTime = DateTime.fromISO("2021-01-01T00:05:00.000Z").toMillis(); // 2021-01-01T00:05:00.000Z
+            timeControl.setTime(startTime);
             control.setPollingInterval(1);
 
             // Initialize the scheduler with very short poll interval for testing
@@ -269,8 +277,8 @@ describe("Declarative Scheduler", () => {
             // Wait for at least one poll cycle to execute
             await control.waitForNextCycleEnd();
 
-            // Task should have been executed because it's due to run (first time)
-            expect(taskCallback).toHaveBeenCalled();
+            // Task should NOT have been executed on first startup (new behavior)
+            expect(taskCallback).not.toHaveBeenCalled();
             await capabilities.scheduler.stop();
         });
 
@@ -283,6 +291,11 @@ describe("Declarative Scheduler", () => {
 
             const capabilities = getTestCapabilities();
             const control = getSchedulerControl(capabilities);
+            const timeControl = getDatetimeControl(capabilities);
+            
+            // Set time to 00:30:00 to avoid immediate execution (task runs at 0 minutes of each hour)
+            const startTime = 1609461000000; // 2021-01-01T00:30:00.000Z
+            timeControl.setTime(startTime);
             control.setPollingInterval(1);
 
             // First call to initialize
@@ -291,8 +304,8 @@ describe("Declarative Scheduler", () => {
             // Wait for initial execution
             await control.waitForNextCycleEnd();
 
-            // Task should have been called
-            expect(taskCallback).toHaveBeenCalled();
+            // Task should NOT have been called on first startup (new behavior)
+            expect(taskCallback).not.toHaveBeenCalled();
 
             // Second call to initialize with same capabilities - should be idempotent
             // This should not cause errors or duplicate scheduling issues

@@ -47,13 +47,22 @@ describe("scheduler atomicity testing", () => {
             ["demo-task-3", "0 * * * *", task3, retryDelay]
         ];
 
-        // Set time to trigger immediate execution
-        const startTime = 1704106800000 // 2024-01-01T11:00:00.000Z;
+        // Set time to avoid immediate execution for "0 * * * *" schedule
+        const startTime = 1704107100000 // 2024-01-01T11:05:00.000Z;
         timeControl.setTime(startTime);
 
         await capabilities.scheduler.initialize(registrations);
 
-        // Wait for tasks to complete
+        // Wait for scheduler initialization
+        await schedulerControl.waitForNextCycleEnd();
+
+        // Should NOT execute immediately on first startup
+        expect(task1Finished).toBe(false);
+        expect(task2Finished).toBe(false);
+        expect(task3Finished).toBe(false);
+
+        // Advance to next scheduled execution (12:00:00)
+        timeControl.advanceTime(60 * 60 * 1000); // 1 hour to 12:00:00
         await schedulerControl.waitForNextCycleEnd();
 
         expect(task1Finished).toBe(true);
@@ -141,12 +150,20 @@ describe("scheduler atomicity testing", () => {
                 ["controlled-task-2", "0 * * * *", task2, retryDelay]
             ];
 
-            const startTime = 1704114000000 // 2024-01-01T13:00:00.000Z;
+            const startTime = 1704114300000 // 2024-01-01T13:05:00.000Z;
             timeControl.setTime(startTime);
 
             await capabilities.scheduler.initialize(registrations);
 
-            // Wait for execution
+            // Wait for scheduler initialization
+            await schedulerControl.waitForNextCycleEnd();
+
+            // Should NOT execute immediately on first startup
+            expect(task1Done).toBe(false);
+            expect(task2Done).toBe(false);
+
+            // Advance to next scheduled execution (14:00:00)
+            timeControl.advanceTime(60 * 60 * 1000); // 1 hour to 14:00:00
             await schedulerControl.waitForNextCycleEnd();
 
             expect(task1Done).toBe(true);

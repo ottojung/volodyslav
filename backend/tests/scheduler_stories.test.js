@@ -3,7 +3,7 @@
  * multiple scheduler task invocations by advancing time.
  */
 
-const { Duration } = require("luxon");
+const { Duration, DateTime } = require("luxon");
 const luxon = require("luxon");
 const { getMockedRootCapabilities } = require("./spies");
 const { stubEnvironment, stubLogger, stubDatetime, stubSleeper, getDatetimeControl, stubRuntimeStateStorage, stubScheduler, getSchedulerControl } = require("./stubs");
@@ -29,7 +29,7 @@ describe("scheduler stories", () => {
         const taskCallback = jest.fn();
 
         // Set initial time to 00:05:00
-        const startTime = 1609459500000 // 2021-01-01T00:05:00.000Z;
+        const startTime = luxon.DateTime.fromISO("2021-01-01T00:05:00Z").toMillis();
         timeControl.setTime(startTime);
         schedulerControl.setPollingInterval(1);
 
@@ -40,35 +40,34 @@ describe("scheduler stories", () => {
 
         await capabilities.scheduler.initialize(registrations);
 
-        // Wait for scheduler to start and possibly catch up
-        // With fast polling (1ms), we should see execution within 100ms
-        // await new Promise(resolve => setTimeout(resolve, 100));
+        // Wait for scheduler to start 
         await schedulerControl.waitForNextCycleEnd();
 
-        // The scheduler may or may not catch up immediately - check current call count
+        // Should not execute at 05 minutes.
         const initialCalls = taskCallback.mock.calls.length;
+        expect(initialCalls).toBe(0);
 
         // Now test that advancing time triggers new executions
         // Advance time to 00:30:00 (first execution after initialization)
         timeControl.advanceTime(25 * 60 * 1000); // 25 minutes to reach 00:30:00
         await schedulerControl.waitForNextCycleEnd();
 
-        // Should have at least one more call than initial
-        expect(taskCallback.mock.calls.length).toBeGreaterThan(initialCalls);
+        // Should have one more call
+        expect(taskCallback.mock.calls.length).toBe(initialCalls + 1);
 
         const afterFirstAdvance = taskCallback.mock.calls.length;
 
         // Advance to 01:30:00
         timeControl.advanceTime(60 * 60 * 1000); // 1 hour
         await schedulerControl.waitForNextCycleEnd();
-        expect(taskCallback.mock.calls.length).toBeGreaterThan(afterFirstAdvance);
+        expect(taskCallback.mock.calls.length).toBe(afterFirstAdvance + 1);
 
         const afterSecondAdvance = taskCallback.mock.calls.length;
 
         // Advance to 02:30:00
         timeControl.advanceTime(60 * 60 * 1000); // 1 hour
         await schedulerControl.waitForNextCycleEnd();
-        expect(taskCallback.mock.calls.length).toBeGreaterThan(afterSecondAdvance);
+        expect(taskCallback.mock.calls.length).toBe(afterSecondAdvance + 1);
 
         await capabilities.scheduler.stop();
     });
@@ -97,9 +96,9 @@ describe("scheduler stories", () => {
         // Wait for scheduler to start up.
         await schedulerControl.waitForNextCycleEnd();
 
-        // Both tasks should start during the first cycle because they never ran before.
-        expect(hourlyTask.mock.calls.length).toBeGreaterThan(0);
-        expect(dailyTask.mock.calls.length).toBeGreaterThan(0);
+        // Should NOT execute immediately on first startup
+        expect(hourlyTask.mock.calls.length).toBe(0);
+        expect(dailyTask.mock.calls.length).toBe(0);
 
         // Test that the scheduler is running and tasks are registered
         // This is mainly a smoke test to ensure the multiple task scheduling works
@@ -115,7 +114,7 @@ describe("scheduler stories", () => {
         const taskCallback = jest.fn();
 
         // Set initial time to 00:00:00 (midnight)
-        const startTime = 1609459200000 // 2021-01-01T00:00:00.000Z;
+        const startTime = DateTime.fromISO("2021-01-01T00:00:00.000Z").toMillis();
         timeControl.setTime(startTime);
         schedulerControl.setPollingInterval(1);
 
@@ -129,20 +128,21 @@ describe("scheduler stories", () => {
         // Wait for scheduler to start
         await schedulerControl.waitForNextCycleEnd();
 
-        // Check initial execution count
+        // Should execute at 00 minute.
         const initialCalls = taskCallback.mock.calls.length;
+        expect(initialCalls).toBe(1);
 
         // Advance by 30 minutes to reach the next minute boundary (00:30:00)
         timeControl.advanceTime(30 * 60 * 1000);
         await schedulerControl.waitForNextCycleEnd();
-        // Should have executed at least once more
-        expect(taskCallback.mock.calls.length).toBeGreaterThan(initialCalls);
+        // Should have executed once more
+        expect(taskCallback.mock.calls.length).toBe(initialCalls + 1);
         const afterFirstAdvance = taskCallback.mock.calls.length;
 
         // Advance by another 30 minutes to 01:00:00
         timeControl.advanceTime(30 * 60 * 1000);
         await schedulerControl.waitForNextCycleEnd();
-        expect(taskCallback.mock.calls.length).toBeGreaterThan(afterFirstAdvance);
+        expect(taskCallback.mock.calls.length).toBe(afterFirstAdvance + 1);
 
         await capabilities.scheduler.stop();
     });
@@ -160,8 +160,8 @@ describe("scheduler stories", () => {
             taskCallback.executionTimes.push(executionTime);
         });
 
-        // Set specific start time 
-        const startTime = 1609460100000 // 2021-01-01T00:15:00.000Z;
+        // Set specific start time
+        const startTime = luxon.DateTime.fromISO("2021-01-01T00:15:00.000Z").toMillis();
         timeControl.setTime(startTime);
         schedulerControl.setPollingInterval(1);
 
@@ -174,18 +174,16 @@ describe("scheduler stories", () => {
         // Wait for scheduler to start
         await schedulerControl.waitForNextCycleEnd();
 
-        // Check that task has executed and recorded times
-        expect(taskCallback.executionTimes).toBeDefined();
-        expect(taskCallback.executionTimes.length).toBeGreaterThan(0);
-
-        const initialExecutions = taskCallback.executionTimes.length;
+        // With new behavior, tasks should NOT execute immediately on first startup
+        expect(taskCallback.executionTimes).toBeUndefined();
 
         // Advance to next execution (01:00:00)
         timeControl.advanceTime(45 * 60 * 1000); // 45 minutes to reach 01:00:00
         await schedulerControl.waitForNextCycleEnd();
 
-        // Should have more executions
-        expect(taskCallback.executionTimes.length).toBeGreaterThan(initialExecutions);
+        // Should have executed now
+        expect(taskCallback.executionTimes).toBeDefined();
+        expect(taskCallback.executionTimes.length).toBeGreaterThan(0);
 
         await capabilities.scheduler.stop();
     });
@@ -198,7 +196,7 @@ describe("scheduler stories", () => {
         const taskCallback = jest.fn();
 
         // Set initial time 
-        const startTime = 1609459800000 // 2021-01-01T00:10:00.000Z;
+        const startTime = DateTime.fromISO("2021-01-01T00:10:00.000Z").toMillis();
         timeControl.setTime(startTime);
         schedulerControl.setPollingInterval(1);
 
@@ -211,8 +209,9 @@ describe("scheduler stories", () => {
         // Wait for scheduler to start
         await schedulerControl.waitForNextCycleEnd();
 
-        // Check initial executions
+        // With new behavior, tasks should NOT execute immediately on first startup  
         const initialCalls = taskCallback.mock.calls.length;
+        expect(initialCalls).toBe(0);
 
         // Jump ahead 5 hours at once - scheduler behavior may vary
         timeControl.advanceTime(5 * 60 * 60 * 1000 - 10 * 60 * 1000); // to 05:00:00
@@ -247,14 +246,14 @@ describe("scheduler stories", () => {
 
         const flakyTask = jest.fn().mockImplementation(() => {
             flakyTaskCallCount++;
-            // Fails 30% of the time
-            if (Math.random() < 0.3) {
+            // Fails after the first time.
+            if (flakyTaskCallCount === 1) {
                 throw new Error("Flaky task failure");
             }
         });
 
         // Set initial time and configure polling
-        const startTime = 1609459200000 // 2021-01-01T00:00:00.000Z;
+        const startTime = luxon.DateTime.fromISO("2021-01-01T00:00:00.000Z").toMillis();
         timeControl.setTime(startTime);
         schedulerControl.setPollingInterval(100);
 
@@ -266,13 +265,17 @@ describe("scheduler stories", () => {
         await capabilities.scheduler.initialize(registrations);
         await schedulerControl.waitForNextCycleEnd();
 
+        // Should execute at 00.
+        expect(stableTaskCallCount).toBe(1);
+        expect(flakyTaskCallCount).toBe(1);
+
         // Simulate just 2 hours instead of 7 days for faster testing
         timeControl.advanceTime(2 * 60 * 60 * 1000); // Advance 2 hours
         await schedulerControl.waitForNextCycleEnd();
 
         // Verify all tasks executed at least once despite failures
-        expect(stableTaskCallCount).toBeGreaterThanOrEqual(1);
-        expect(flakyTaskCallCount).toBeGreaterThanOrEqual(1);
+        expect(stableTaskCallCount).toBe(2);
+        expect(flakyTaskCallCount).toBe(2);
 
         // Verify the failure scenarios work as expected - tasks are called even with random failures
         expect(stableTask).toHaveBeenCalled();
@@ -291,7 +294,7 @@ describe("scheduler stories", () => {
         const dailyTask = jest.fn();
 
         // Start scheduler at specific time
-        const startTime = 1609502400000 // 2021-01-01T12:00:00.000Z;
+        const startTime = luxon.DateTime.fromISO("2021-01-01T12:00:00.000Z").toMillis();
         timeControl.setTime(startTime);
         schedulerControl.setPollingInterval(1);
 
@@ -303,14 +306,17 @@ describe("scheduler stories", () => {
         await capabilities.scheduler.initialize(registrations);
         await schedulerControl.waitForNextCycleEnd();
 
+        // Should execute at 00.
         const initialHourly = hourlyTask.mock.calls.length;
         const initialDaily = dailyTask.mock.calls.length;
+        expect(initialHourly).toBe(1);
+        expect(initialDaily).toBe(0);
 
         // Stop scheduler (simulate downtime)
         await capabilities.scheduler.stop();
 
         // Advance time by 2 days while scheduler is down (reduced from 7 days)
-        timeControl.advanceTime(2 * 24 * 60 * 60 * 1000);
+        timeControl.advanceTime(Duration.fromObject({ days: 2 }).toMillis());
 
         // Restart scheduler with new capabilities to avoid state conflicts
         const newCapabilities = getTestCapabilities();
@@ -318,15 +324,15 @@ describe("scheduler stories", () => {
         const newSchedulerControl = getSchedulerControl(newCapabilities);
 
         // Set the same advanced time for the new scheduler
-        newTimeControl.setTime(startTime + (2 * 24 * 60 * 60 * 1000));
+        newTimeControl.setTime(timeControl.getCurrentTime());
         newSchedulerControl.setPollingInterval(1);
 
         await newCapabilities.scheduler.initialize(registrations);
         await newSchedulerControl.waitForNextCycleEnd();
 
-        // Scheduler should catch up on missed executions
-        expect(hourlyTask.mock.calls.length).toBeGreaterThan(initialHourly);
-        expect(dailyTask.mock.calls.length).toBeGreaterThan(initialDaily);
+        // Since this is a NEW scheduler instance with fresh state, it should execute immediately.
+        expect(hourlyTask.mock.calls.length).toBe(initialHourly + 1);
+        expect(dailyTask.mock.calls.length).toBe(initialDaily + 0);
 
         await newCapabilities.scheduler.stop();
     });
@@ -421,7 +427,7 @@ describe("scheduler stories", () => {
         });
 
         // Start at a time when the frequent task should trigger soon
-        const startTime = 1609459200000; // 2021-01-01T00:00:00.000Z
+        const startTime = DateTime.fromISO("2021-01-01T00:00:00.000Z").toMillis(); // 2021-01-01T00:00:00.000Z
         timeControl.setTime(startTime);
         schedulerControl.setPollingInterval(100);
 
@@ -525,7 +531,7 @@ describe("scheduler stories", () => {
         const hourlyTask = jest.fn();
 
         // Start at exactly 10:00:00 AM
-        const startTime = 1609495200000 // 2021-01-01T10:00:00.000Z;
+        const startTime = luxon.DateTime.fromISO("2021-01-01T10:00:00.000Z").toMillis();
         timeControl.setTime(startTime);
         schedulerControl.setPollingInterval(1);
 
@@ -536,30 +542,30 @@ describe("scheduler stories", () => {
         await capabilities.scheduler.initialize(registrations);
         await schedulerControl.waitForNextCycleEnd();
 
-        // Record initial count (scheduler may catch up on initialization)
+        // Should execute immediately because 00 minute.
         const initialCount = hourlyTask.mock.calls.length;
-        expect(initialCount).toBeGreaterThanOrEqual(1);
+        expect(initialCount).toBe(1);
 
-        // Advance to exactly 11:00:00
+        // Advance to exactly 11:00:00 (next scheduled time)
         timeControl.advanceTime(60 * 60 * 1000); // 1 hour
         await schedulerControl.waitForNextCycleEnd();
 
-        // Should have executed exactly once more
-        expect(hourlyTask.mock.calls.length).toBe(initialCount + 1);
+        // Should have executed more now
+        expect(hourlyTask.mock.calls.length).toBe(2);
 
         // Advance to exactly 12:00:00
         timeControl.advanceTime(60 * 60 * 1000); // 1 hour
         await schedulerControl.waitForNextCycleEnd();
 
         // Should have executed exactly once more
-        expect(hourlyTask.mock.calls.length).toBe(initialCount + 2);
+        expect(hourlyTask.mock.calls.length).toBe(3);
 
         // Advance to exactly 13:00:00
         timeControl.advanceTime(60 * 60 * 1000); // 1 hour
         await schedulerControl.waitForNextCycleEnd();
 
         // Should have executed exactly once more
-        expect(hourlyTask.mock.calls.length).toBe(initialCount + 3);
+        expect(hourlyTask.mock.calls.length).toBe(4);
 
         await capabilities.scheduler.stop();
     });
@@ -587,21 +593,19 @@ describe("scheduler stories", () => {
         await capabilities.scheduler.initialize(registrations);
         await schedulerControl.waitForNextCycleEnd();
 
-        // Record baseline - hourly should execute at 1 AM, daily should not
+        // Should execute because 00 minute.
         const initialHourly = hourlyTask.mock.calls.length;
         const initialDaily = daily2AMTask.mock.calls.length;
-
-        // Both should execute at 2 AM: hourly (every hour) and daily (2 AM schedule)
-        expect(daily2AMTask.mock.calls.length).toEqual(1);
-        expect(hourlyTask.mock.calls.length).toEqual(1);
+        expect(initialHourly).toBe(1);
+        expect(initialDaily).toBe(0);
 
         // Advance exactly 1 hour to 2 AM
         timeControl.advanceTime(60 * 60 * 1000);
         await schedulerControl.waitForNextCycleEnd();
 
         // Both should execute at 2 AM: hourly (every hour) and daily (2 AM schedule)
-        expect(hourlyTask.mock.calls.length).toBeGreaterThan(initialHourly);
-        expect(daily2AMTask.mock.calls.length).toBeGreaterThan(initialDaily);
+        expect(daily2AMTask.mock.calls.length).toEqual(1);
+        expect(hourlyTask.mock.calls.length).toEqual(2);
 
         const hourlyAt2AM = hourlyTask.mock.calls.length;
         const dailyAt2AM = daily2AMTask.mock.calls.length;
@@ -644,7 +648,7 @@ describe("scheduler stories", () => {
         const dailyTask = jest.fn();
 
         // Start at exactly midnight on January 1st
-        const startTime = 1609459200000 // 2021-01-01T00:00:00.000Z;
+        const startTime = luxon.DateTime.fromISO("2021-01-01T00:00:00.000Z").toMillis();
         timeControl.setTime(startTime);
         schedulerControl.setPollingInterval(1);
 
@@ -655,30 +659,37 @@ describe("scheduler stories", () => {
         await capabilities.scheduler.initialize(registrations);
         await schedulerControl.waitForNextCycleEnd();
 
-        // Record initial count (should execute at initialization since it's midnight)
+        // Should execute at 00 minutes.
         const initialCount = dailyTask.mock.calls.length;
-        expect(initialCount).toBeGreaterThanOrEqual(1);
+        expect(initialCount).toBe(1);
 
-        // Advance 12 hours (noon)
-        timeControl.advanceTime(12 * 60 * 60 * 1000);
+        // Advance 24 hours to next midnight (January 2nd)
+        timeControl.advanceTime(24 * 60 * 60 * 1000);
         await schedulerControl.waitForNextCycleEnd();
-
-        // Should not execute again (not midnight)
-        expect(dailyTask.mock.calls.length).toBe(initialCount);
-
-        // Advance to midnight Jan 2nd (another 12 hours)
-        timeControl.advanceTime(12 * 60 * 60 * 1000);
-        await schedulerControl.waitForNextCycleEnd();
-
-        // Should have executed exactly once more
+        
+        // Should execute at midnight on January 2nd
         expect(dailyTask.mock.calls.length).toBe(initialCount + 1);
 
-        // Advance to midnight Jan 3rd (24 hours)
-        timeControl.advanceTime(24 * 60 * 60 * 1000);
+        // Advance 12 hours to noon on Jan 2nd (should not execute - not midnight)
+        timeControl.advanceTime(12 * 60 * 60 * 1000);
+        await schedulerControl.waitForNextCycleEnd();
+        
+        // Should not execute again (not midnight)
+        expect(dailyTask.mock.calls.length).toBe(initialCount + 1);
+
+        // Advance to midnight Jan 3rd (another 12 hours)
+        timeControl.advanceTime(12 * 60 * 60 * 1000);
         await schedulerControl.waitForNextCycleEnd();
 
         // Should have executed exactly once more
         expect(dailyTask.mock.calls.length).toBe(initialCount + 2);
+
+        // Advance to midnight Jan 4th (24 hours)
+        timeControl.advanceTime(24 * 60 * 60 * 1000);
+        await schedulerControl.waitForNextCycleEnd();
+
+        // Should have executed exactly once more
+        expect(dailyTask.mock.calls.length).toBe(initialCount + 3);
 
         await capabilities.scheduler.stop();
     });
@@ -702,29 +713,36 @@ describe("scheduler stories", () => {
         await capabilities.scheduler.initialize(registrations);
         await schedulerControl.waitForNextCycleEnd();
 
-        // At midnight Sunday Jan 3rd - should execute exactly once
+        // Should execute at 00 minutes.
         expect(weeklyTask.mock.calls.length).toBe(1);
+
+        // Advance to next Sunday (7 days) - January 10th
+        timeControl.advanceTime(7 * 24 * 60 * 60 * 1000);
+        await schedulerControl.waitForNextCycleEnd();
+
+        // At midnight Sunday Jan 10th - should execute exactly once more
+        expect(weeklyTask.mock.calls.length).toBe(2);
 
         // Advance 3 days (Wednesday)
         timeControl.advanceTime(3 * 24 * 60 * 60 * 1000);
         await schedulerControl.waitForNextCycleEnd();
 
-        // Should still be exactly 1 execution
-        expect(weeklyTask.mock.calls.length).toBe(1);
+        // Should still be exactly 1 more execution
+        expect(weeklyTask.mock.calls.length).toBe(2);
 
         // Advance to next Sunday (4 more days = 7 days total)
         timeControl.advanceTime(4 * 24 * 60 * 60 * 1000);
         await schedulerControl.waitForNextCycleEnd();
 
-        // Should have executed exactly 2 times total
-        expect(weeklyTask.mock.calls.length).toBe(2);
+        // Should have executed exactly 3 times total
+        expect(weeklyTask.mock.calls.length).toBe(3);
 
         // Advance another week
         timeControl.advanceTime(7 * 24 * 60 * 60 * 1000);
         await schedulerControl.waitForNextCycleEnd();
 
-        // Should have executed exactly 3 times total
-        expect(weeklyTask.mock.calls.length).toBe(3);
+        // Should have executed exactly 4 times total
+        expect(weeklyTask.mock.calls.length).toBe(4);
 
         await capabilities.scheduler.stop();
     });
@@ -737,7 +755,7 @@ describe("scheduler stories", () => {
         const persistentTask = jest.fn();
 
         // Start at exactly 14:00:00
-        const startTime = 1609509600000 // 2021-01-01T14:00:00.000Z;
+        const startTime = luxon.DateTime.fromISO("2021-01-01T14:00:00.000Z").toMillis();
         timeControl.setTime(startTime);
         schedulerControl.setPollingInterval(1);
 
@@ -748,16 +766,16 @@ describe("scheduler stories", () => {
         await capabilities.scheduler.initialize(registrations);
         await schedulerControl.waitForNextCycleEnd();
 
-        // Record initial count after startup
+        // Should execute at 00 minutes.
         const initialCount = persistentTask.mock.calls.length;
-        expect(initialCount).toBeGreaterThanOrEqual(1);
+        expect(initialCount).toBe(1);
 
         // Advance to 15:00:00
         timeControl.advanceTime(60 * 60 * 1000);
         await schedulerControl.waitForNextCycleEnd();
 
         // Should have executed exactly once more
-        expect(persistentTask.mock.calls.length).toBe(initialCount + 1);
+        expect(persistentTask.mock.calls.length).toBe(2);
 
         // Stop scheduler
         await capabilities.scheduler.stop();
@@ -774,15 +792,15 @@ describe("scheduler stories", () => {
         await newCapabilities.scheduler.initialize(registrations);
         await newSchedulerControl.waitForNextCycleEnd();
 
-        // Task should execute once more for the 16:00:00 execution
-        expect(persistentTask.mock.calls.length).toBe(initialCount + 2);
+        // Should execute immediately on restart
+        expect(persistentTask.mock.calls.length).toBe(3);
 
         // Advance to 17:00:00
         newTimeControl.advanceTime(60 * 60 * 1000);
         await newSchedulerControl.waitForNextCycleEnd();
 
         // Should have executed exactly once more
-        expect(persistentTask.mock.calls.length).toBe(initialCount + 3);
+        expect(persistentTask.mock.calls.length).toBe(4);
 
         await newCapabilities.scheduler.stop();
     });
@@ -797,7 +815,7 @@ describe("scheduler stories", () => {
         const every4HourTask = jest.fn();   // Every 4 hours
 
         // Start at exactly midnight - both should match
-        const startTime = 1609459200000 // 2021-01-01T00:00:00.000Z;
+        const startTime = luxon.DateTime.fromISO("2021-01-01T00:00:00.000Z").toMillis();
         timeControl.setTime(startTime);
         schedulerControl.setPollingInterval(1);
 
@@ -809,39 +827,124 @@ describe("scheduler stories", () => {
         await capabilities.scheduler.initialize(registrations);
         await schedulerControl.waitForNextCycleEnd();
 
-        // Record initial counts after startup
+        // Should execute at 00 minute.
         const initial2Hour = every2HourTask.mock.calls.length;
         const initial4Hour = every4HourTask.mock.calls.length;
+        expect(initial2Hour).toBe(1);
+        expect(initial4Hour).toBe(1);
 
-        // Both should have executed at startup (00:00:00 matches both patterns)
-        expect(initial2Hour).toEqual(1);
-        expect(initial4Hour).toEqual(1);
-
-        // Advance to 03:00:00 (3-hour task should execute, 4-hour should not)
-        timeControl.advanceTime(3 * 60 * 60 * 1000);
+        // Advance to 02:00:00 (2-hour task should execute, 4-hour should not)
+        timeControl.advanceTime(2 * 60 * 60 * 1000);
         await schedulerControl.waitForNextCycleEnd();
 
-        // 2-hour task should execute more, 4-hour should remain same
-        expect(every2HourTask.mock.calls.length).toBeGreaterThan(initial2Hour);
-        expect(every4HourTask.mock.calls.length).toBe(initial4Hour); // No change
+        // 2-hour task should execute, 4-hour should not
+        expect(every2HourTask.mock.calls.length).toBe(2);
+        expect(every4HourTask.mock.calls.length).toBe(1);
+        // Advance to 04:00:00 (both should execute - matches both patterns)
+        timeControl.advanceTime(2 * 60 * 60 * 1000);
+        await schedulerControl.waitForNextCycleEnd();
+
+        // Both should have executed
+        expect(every2HourTask.mock.calls.length).toBe(3); // executed at 02:00 and 04:00
+        expect(every4HourTask.mock.calls.length).toBe(2); // executed at 04:00
 
         const after2Hour2H = every2HourTask.mock.calls.length;
         const after2Hour4H = every4HourTask.mock.calls.length;
 
-        // Advance to 04:00:00 (both should execute)
+        // Advance to 06:00:00 (2-hour should execute, 4-hour should not)
         timeControl.advanceTime(2 * 60 * 60 * 1000);
         await schedulerControl.waitForNextCycleEnd();
 
-        // Both should execute more
+        // 2-hour task should execute more, 4-hour should remain same
         expect(every2HourTask.mock.calls.length).toBeGreaterThan(after2Hour2H);
-        expect(every4HourTask.mock.calls.length).toBeGreaterThan(after2Hour4H);
+        expect(every4HourTask.mock.calls.length).toBe(after2Hour4H); // No change
+
+        // Advance to 08:00:00 (both should execute again)
+        timeControl.advanceTime(2 * 60 * 60 * 1000);
+        await schedulerControl.waitForNextCycleEnd();
+
+        // Both should have executed more
+        expect(every2HourTask.mock.calls.length).toBe(5); // 02:00, 04:00, 06:00, 08:00
+        expect(every4HourTask.mock.calls.length).toBe(3); // 04:00, 08:00
 
         // Verify the pattern: 2-hour task executes twice as often as 4-hour task
-        const total2HourExecutions = every2HourTask.mock.calls.length - initial2Hour;
-        const total4HourExecutions = every4HourTask.mock.calls.length - initial4Hour;
+        const total2HourExecutions = every2HourTask.mock.calls.length;
+        const total4HourExecutions = every4HourTask.mock.calls.length;
 
-        // 2-hour task should have executed exactly twice as often as 4-hour task
-        expect(total2HourExecutions).toBe(total4HourExecutions * 2);
+        // 2-hour task should have executed exactly twice as often as 4-hour task - 1 initial
+        expect(total2HourExecutions).toBe(total4HourExecutions * 2 - 1);
+
+        await capabilities.scheduler.stop();
+    });
+
+    test("should execute tasks with precise hour-level timing different start", async () => {
+        const capabilities = getTestCapabilities();
+        const timeControl = getDatetimeControl(capabilities);
+        const schedulerControl = getSchedulerControl(capabilities);
+        const retryDelay = Duration.fromMillis(500);
+
+        const every2HourTask = jest.fn();   // Every 2 hours 
+        const every4HourTask = jest.fn();   // Every 4 hours
+
+        // Start at 2am - both should match
+        const startTime = luxon.DateTime.fromISO("2021-01-01T02:00:00.000Z").toMillis();
+        timeControl.setTime(startTime);
+        schedulerControl.setPollingInterval(1);
+
+        const registrations = [
+            ["every-2h", "0 */2 * * *", every2HourTask, retryDelay],    // Every 2 hours (0, 2, 4, 6, 8, 10, 12, ...)
+            ["every-4h", "0 */4 * * *", every4HourTask, retryDelay],    // Every 4 hours (0, 4, 8, 12, ...)
+        ];
+
+        await capabilities.scheduler.initialize(registrations);
+        await schedulerControl.waitForNextCycleEnd();
+
+        // Should execute at 00 minute.
+        const initial2Hour = every2HourTask.mock.calls.length;
+        const initial4Hour = every4HourTask.mock.calls.length;
+        expect(initial2Hour).toBe(1);
+        expect(initial4Hour).toBe(0);
+
+        // Advance to 02:00:00 (2-hour task should execute, 4-hour should not)
+        timeControl.advanceTime(2 * 60 * 60 * 1000);
+        await schedulerControl.waitForNextCycleEnd();
+
+        // 2-hour task should execute, 4-hour should not
+        expect(every2HourTask.mock.calls.length).toBe(2);
+        expect(every4HourTask.mock.calls.length).toBe(1);
+        // Advance to 04:00:00 (both should execute - matches both patterns)
+        timeControl.advanceTime(2 * 60 * 60 * 1000);
+        await schedulerControl.waitForNextCycleEnd();
+
+        // Both should have executed
+        expect(every2HourTask.mock.calls.length).toBe(3); // executed at 02:00 and 04:00
+        expect(every4HourTask.mock.calls.length).toBe(1); // executed at 04:00
+
+        const after2Hour2H = every2HourTask.mock.calls.length;
+        const after2Hour4H = every4HourTask.mock.calls.length;
+
+        // Advance to 06:00:00 (2-hour should execute, 4-hour should not)
+        timeControl.advanceTime(2 * 60 * 60 * 1000);
+        await schedulerControl.waitForNextCycleEnd();
+
+        // Both task should execute more
+        expect(every2HourTask.mock.calls.length).toBe(after2Hour2H + 1);
+        expect(every4HourTask.mock.calls.length).toBe(after2Hour4H + 1);
+
+        // Advance to 08:00:00 (only 2-hour should execute again)
+        timeControl.advanceTime(2 * 60 * 60 * 1000);
+        await schedulerControl.waitForNextCycleEnd();
+
+        // Both should have executed more
+        expect(every2HourTask.mock.calls.length).toBe(5); // 02:00, 04:00, 06:00, 08:00
+        expect(every4HourTask.mock.calls.length).toBe(2); // 04:00, 08:00
+
+        // Verify the pattern: 2-hour task executes twice as often as 4-hour task
+        const total2HourExecutions = every2HourTask.mock.calls.length;
+        const total4HourExecutions = every4HourTask.mock.calls.length;
+
+        // 2-hour task should have executed exactly twice as often as 4-hour task + 1 initial
+        expect(total2HourExecutions).toBe(total4HourExecutions * 2 + 1);
 
         await capabilities.scheduler.stop();
     });
@@ -856,7 +959,7 @@ describe("scheduler stories", () => {
         const every6HourTask = jest.fn();  // Runs every 6 hours
 
         // Start at exactly midnight
-        const startTime = 1609459200000 // 2021-01-01T00:00:00.000Z;
+        const startTime = luxon.DateTime.fromISO("2021-01-01T00:00:00.000Z").toMillis();
         timeControl.setTime(startTime);
         schedulerControl.setPollingInterval(1);
 
@@ -868,28 +971,24 @@ describe("scheduler stories", () => {
         await capabilities.scheduler.initialize(registrations);
         await schedulerControl.waitForNextCycleEnd();
 
-        // Record baseline counts
+        // Should execute at 00 minutes
         const initial2Hour = every2HourTask.mock.calls.length;
         const initial6Hour = every6HourTask.mock.calls.length;
+        expect(initial2Hour).toBe(1);
+        expect(initial6Hour).toBe(1);
 
-        // Both should execute at midnight (both patterns match 00:00)
-        expect(initial2Hour).toBeGreaterThanOrEqual(1);
-        expect(initial6Hour).toBeGreaterThanOrEqual(1);
-
-        // Advance exactly 12 hours to noon
+        // Advance exactly 12 hours to noon in one jump (simulating missed executions)
         timeControl.advanceTime(12 * 60 * 60 * 1000);
         await schedulerControl.waitForNextCycleEnd();
 
         const after12Hours2Hour = every2HourTask.mock.calls.length;
         const after12Hours6Hour = every6HourTask.mock.calls.length;
 
-        // Calculate new executions
-        const new2HourExecutions = after12Hours2Hour - initial2Hour;
-        const new6HourExecutions = after12Hours6Hour - initial6Hour;
-
-        // Over 12 hours must only execute once: do not "make up" for missed executions.
-        expect(new2HourExecutions).toEqual(1);
-        expect(new6HourExecutions).toEqual(1);
+        // Should NOT execute multiple times for missed executions
+        // Should only execute once for the current time (12:00:00)
+        // Both patterns match 12:00:00 (divisible by both 2 and 6)
+        expect(after12Hours2Hour).toBe(2);
+        expect(after12Hours6Hour).toBe(2);
 
         await capabilities.scheduler.stop();
     });
@@ -904,7 +1003,7 @@ describe("scheduler stories", () => {
         const noonTask = jest.fn();      // Runs daily at noon
 
         // Start at exactly 11 PM on Dec 31st, 2020
-        const startTime = 1609455600000 // 2020-12-31T23:00:00.000Z;
+        const startTime = luxon.DateTime.fromISO("2020-12-31T23:00:00.000Z").toMillis();
         timeControl.setTime(startTime);
         schedulerControl.setPollingInterval(1);
 
@@ -968,15 +1067,13 @@ describe("scheduler stories", () => {
 
         const fastTask = jest.fn();
 
-        let shouldRun = true;
         const slowTask = jest.fn().mockImplementation(async () => {
-            while (shouldRun) {
-                await new Promise(resolve => setTimeout(resolve, 1));
-            }
+            // Simulate a task that takes a moderate amount of time but doesn't block indefinitely
+            await new Promise(resolve => setTimeout(resolve, 1000)); // 1 second
         });
 
         // Set start time to 01:15:00 on Jan 1, 2021
-        const startTime = 1609463700000 // 2021-01-01T01:15:00.000Z;
+        const startTime = luxon.DateTime.fromISO("2021-01-01T01:15:00.000Z").toMillis();
         timeControl.setTime(startTime);
         schedulerControl.setPollingInterval(1);
 
@@ -990,18 +1087,28 @@ describe("scheduler stories", () => {
         // Wait some time.
         await new Promise(resolve => setTimeout(resolve, 200));
 
+        // Should NOT execute immediately on first startup
+        expect(fastTask.mock.calls.length).toEqual(0);
+        expect(slowTask.mock.calls.length).toEqual(0);
+
+        // Advance to next hour (02:00:00)
+        timeControl.advanceTime(45 * 60 * 1000); // 45 minutes to reach 02:00:00
+        await schedulerControl.waitForNextCycleEnd();
+        // Wait some time.
+        await new Promise(resolve => setTimeout(resolve, 200));
+
         expect(fastTask.mock.calls.length).toEqual(1);
         expect(slowTask.mock.calls.length).toEqual(1);
 
-        // Advance by one hour
+        // Advance by one hour to 03:00:00
         timeControl.advanceTime(1 * 60 * 60 * 1000);
+        await schedulerControl.waitForNextCycleEnd();
         // Wait some time.
         await new Promise(resolve => setTimeout(resolve, 200));
 
         expect(fastTask.mock.calls.length).toEqual(2);
-        expect(slowTask.mock.calls.length).toEqual(1);
+        expect(slowTask.mock.calls.length).toEqual(2); // Both can execute since slow task only takes 1 second
 
-        shouldRun = false;
         await capabilities.scheduler.stop();
     });
 });

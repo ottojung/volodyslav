@@ -3,7 +3,7 @@
  * Ensures proper guarding against overlapping scheduler operations.
  */
 
-const { Duration } = require("luxon");
+const { Duration, DateTime } = require("luxon");
 const { getMockedRootCapabilities } = require("./spies");
 const { stubEnvironment, stubLogger, stubDatetime, stubSleeper, stubScheduler, getSchedulerControl, getDatetimeControl, stubRuntimeStateStorage } = require("./stubs");
 
@@ -21,9 +21,15 @@ function getTestCapabilities() {
 describe("declarative scheduler re-entrancy protection", () => {
     test("should handle concurrent initialize calls gracefully", async () => {
         const capabilities = getTestCapabilities();
+        const timeControl = getDatetimeControl(capabilities);
         const schedulerControl = getSchedulerControl(capabilities);
         schedulerControl.setPollingInterval(1);
         const retryDelay = Duration.fromMillis(5000);
+
+        // Set time to avoid immediate execution for "0 * * * *" schedule
+        const startTime = DateTime.fromISO("2021-01-01T00:05:00.000Z").toMillis();
+        timeControl.setTime(startTime);
+
         let taskStartCount = 0;
         let taskEndCount = 0;
         
@@ -48,7 +54,13 @@ describe("declarative scheduler re-entrancy protection", () => {
         
         await Promise.all(promises);
         
-        // Wait for task execution
+        // Should NOT execute immediately on first startup
+        await schedulerControl.waitForNextCycleEnd();
+        expect(taskStartCount).toBe(0);
+        expect(taskEndCount).toBe(0);
+
+        // Advance to next scheduled execution (01:00:00)
+        timeControl.advanceTime(60 * 60 * 1000); // 1 hour
         await schedulerControl.waitForNextCycleEnd();
         
         // Give a bit more time for task completion
@@ -73,8 +85,8 @@ describe("declarative scheduler re-entrancy protection", () => {
             taskExecutionCount++;
         });
         
-        // Set time to start of hour so "0 * * * *" schedule triggers
-        const startTime = 1609459200000 // 2021-01-01T00:00:00.000Z;
+        // Set time to avoid immediate execution for "0 * * * *" schedule
+        const startTime = DateTime.fromISO("2021-01-01T00:05:00.000Z").toMillis();
         timeControl.setTime(startTime);
         
         const registrations = [
@@ -86,13 +98,20 @@ describe("declarative scheduler re-entrancy protection", () => {
         await capabilities.scheduler.initialize(registrations);
         await capabilities.scheduler.initialize(registrations);
         await capabilities.scheduler.initialize(registrations);
+
+        // Should NOT execute immediately on first startup
+        await schedulerControl.waitForNextCycleEnd();
+        expect(taskExecutionCount).toBe(0);
+
+        // Advance to next scheduled execution (01:00:00)
+        timeControl.advanceTime(60 * 60 * 1000); // 1 hour
         await schedulerControl.waitForNextCycleEnd();
         
         expect(taskExecutionCount).toBe(1);
 
         await schedulerControl.waitForNextCycleEnd();
         
-        // Task should not execute again on idempotent call
+        // Task should not execute again without advancing time
         expect(taskExecutionCount).toBe(1);
         
         await capabilities.scheduler.stop();
@@ -110,8 +129,8 @@ describe("declarative scheduler re-entrancy protection", () => {
             taskExecutionCount++;
         });
         
-        // Set time to start of hour so "0 * * * *" schedule triggers
-        const startTime = 1609459200000 // 2021-01-01T00:00:00.000Z;
+        // Set time to avoid immediate execution for "0 * * * *" schedule
+        const startTime = DateTime.fromISO("2021-01-01T00:05:00.000Z").toMillis();
         timeControl.setTime(startTime);
         
         const registrations = [
@@ -120,6 +139,13 @@ describe("declarative scheduler re-entrancy protection", () => {
         
         // First initialize call
         await capabilities.scheduler.initialize(registrations);
+
+        // Should NOT execute immediately on first startup
+        await schedulerControl.waitForNextCycleEnd();
+        expect(taskExecutionCount).toBe(0);
+
+        // Advance to next scheduled execution (01:00:00)
+        timeControl.advanceTime(60 * 60 * 1000); // 1 hour
         await schedulerControl.waitForNextCycleEnd();
         
         expect(taskExecutionCount).toBe(1);
@@ -147,8 +173,8 @@ describe("declarative scheduler re-entrancy protection", () => {
             throw new Error("Task execution fails");
         });
         
-        // Set time to start of hour so "0 * * * *" schedule triggers
-        const startTime = 1609459200000 // 2021-01-01T00:00:00.000Z;
+        // Set time to avoid immediate execution for "0 * * * *" schedule
+        const startTime = DateTime.fromISO("2021-01-01T00:05:00.000Z").toMillis();
         timeControl.setTime(startTime);
         
         const registrations = [
@@ -158,7 +184,14 @@ describe("declarative scheduler re-entrancy protection", () => {
         // Should not throw despite task errors
         await expect(capabilities.scheduler.initialize(registrations)).resolves.toBeUndefined();
         
-        // Wait for execution
+        // Wait for scheduler initialization
+        await schedulerControl.waitForNextCycleEnd();
+        
+        // Should NOT execute immediately on first startup
+        expect(taskExecutionCount).toBe(0);
+        
+        // Advance to next scheduled execution (01:00:00)
+        timeControl.advanceTime(60 * 60 * 1000); // 1 hour
         await schedulerControl.waitForNextCycleEnd();
         
         expect(taskExecutionCount).toBe(1);
