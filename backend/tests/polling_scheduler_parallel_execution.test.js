@@ -3,7 +3,7 @@
  * Ensures tasks can run concurrently without blocking each other.
  */
 
-const { Duration } = require("luxon");
+const { Duration, DateTime } = require("luxon");
 const { getMockedRootCapabilities } = require("./spies");
 const { stubEnvironment, stubLogger, stubDatetime, stubSleeper, getDatetimeControl, stubScheduler, getSchedulerControl, stubRuntimeStateStorage } = require("./stubs");
 
@@ -73,7 +73,7 @@ describe("declarative scheduler parallel execution", () => {
         const retryDelay = Duration.fromMillis(5000);
 
         // Set time to avoid immediate execution for "0 * * * *" schedule
-        const startTime = 1609459500000; // 2021-01-01T00:05:00.000Z
+        const startTime = DateTime.fromISO("2021-01-01T00:05:00.000Z").toMillis(); // 2021-01-01T00:05:00.000Z
         timeControl.setTime(startTime);
 
         let concurrentExecutions = 0;
@@ -124,7 +124,7 @@ describe("declarative scheduler parallel execution", () => {
         const retryDelay = Duration.fromMillis(5000);
 
         // Set time to avoid immediate execution for "0 * * * *" schedule
-        const startTime = 1609459500000; // 2021-01-01T00:05:00.000Z
+        const startTime = DateTime.fromISO("2021-01-01T00:05:00.000Z").toMillis(); // 2021-01-01T00:05:00.000Z
         timeControl.setTime(startTime);
 
         let fastTaskCompleted = false;
@@ -173,7 +173,7 @@ describe("declarative scheduler parallel execution", () => {
         const retryDelay = Duration.fromMillis(1000);
 
         // Set time to avoid immediate execution for "0 * * * *" schedule
-        const startTime = 1609459500000; // 2021-01-01T00:05:00.000Z
+        const startTime = DateTime.fromISO("2021-01-01T00:05:00.000Z").toMillis(); // 2021-01-01T00:05:00.000Z
         timeControl.setTime(startTime);
 
         let goodTaskExecuted = false;
@@ -222,7 +222,7 @@ describe("declarative scheduler parallel execution", () => {
         const retryDelay = Duration.fromMillis(500); // Short retry for faster testing
 
         // Set time to avoid immediate execution for "0 * * * *" schedule
-        const startTime = 1609459500000; // 2021-01-01T00:05:00.000Z
+        const startTime = DateTime.fromISO("2021-01-01T00:05:00.000Z").toMillis(); // 2021-01-01T00:05:00.000Z
         timeControl.setTime(startTime);
 
         let taskExecutions = {};

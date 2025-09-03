@@ -3,7 +3,7 @@
  * Focuses on observable behavior and edge case handling.
  */
 
-const { Duration } = require("luxon");
+const { Duration, DateTime } = require("luxon");
 const { getMockedRootCapabilities } = require("./spies");
 const { stubEnvironment, stubLogger, stubDatetime, stubSleeper, getDatetimeControl, stubScheduler, getSchedulerControl, stubRuntimeStateStorage } = require("./stubs");
 
@@ -106,7 +106,7 @@ describe("declarative scheduler algorithm robustness", () => {
         });
 
         // Set initial time to avoid immediate execution
-        const startTime = 1609459500000; // 2021-01-01T00:05:00.000Z
+        const startTime = DateTime.fromISO("2021-01-01T00:05:00.000Z").toMillis(); // 2021-01-01T00:05:00.000Z
         timeControl.setTime(startTime);
 
         const registrations = [
@@ -237,7 +237,7 @@ describe("declarative scheduler algorithm robustness", () => {
         const taskCallback = jest.fn();
 
         // Set time to avoid immediate execution for "0 * * * *" schedule
-        const startTime = 1609459500000; // 2021-01-01T00:05:00.000Z
+        const startTime = DateTime.fromISO("2021-01-01T00:05:00.000Z").toMillis(); // 2021-01-01T00:05:00.000Z
         timeControl.setTime(startTime);
 
         const registrations = [

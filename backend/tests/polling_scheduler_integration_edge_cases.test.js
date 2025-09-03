@@ -3,7 +3,7 @@
  * Focuses on real-world scenarios, error recovery, and interaction patterns.
  */
 
-const { Duration } = require("luxon");
+const { Duration, DateTime } = require("luxon");
 const { getMockedRootCapabilities } = require("./spies");
 const { stubEnvironment, stubLogger, stubDatetime, stubSleeper, stubRuntimeStateStorage, stubScheduler, getSchedulerControl, getDatetimeControl } = require("./stubs");
 
@@ -286,7 +286,7 @@ describe("declarative scheduler integration and system edge cases", () => {
             const retryDelay = Duration.fromMillis(5000);
 
             // Set time to avoid immediate execution for "0 * * * *" schedule
-            const startTime = 1609459500000; // 2021-01-01T00:05:00.000Z
+            const startTime = DateTime.fromISO("2021-01-01T00:05:00.000Z").toMillis();
             timeControl.setTime(startTime);
 
             // Schedule many tasks at once

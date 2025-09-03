@@ -3,7 +3,7 @@
  * Ensures proper guarding against overlapping scheduler operations.
  */
 
-const { Duration } = require("luxon");
+const { Duration, DateTime } = require("luxon");
 const { getMockedRootCapabilities } = require("./spies");
 const { stubEnvironment, stubLogger, stubDatetime, stubSleeper, stubScheduler, getSchedulerControl, getDatetimeControl, stubRuntimeStateStorage } = require("./stubs");
 
@@ -27,7 +27,7 @@ describe("declarative scheduler re-entrancy protection", () => {
         const retryDelay = Duration.fromMillis(5000);
 
         // Set time to avoid immediate execution for "0 * * * *" schedule
-        const startTime = 1609459500000; // 2021-01-01T00:05:00.000Z
+        const startTime = DateTime.fromISO("2021-01-01T00:05:00.000Z").toMillis();
         timeControl.setTime(startTime);
 
         let taskStartCount = 0;
@@ -86,7 +86,7 @@ describe("declarative scheduler re-entrancy protection", () => {
         });
         
         // Set time to avoid immediate execution for "0 * * * *" schedule
-        const startTime = 1609459500000 // 2021-01-01T00:05:00.000Z;
+        const startTime = DateTime.fromISO("2021-01-01T00:05:00.000Z").toMillis();
         timeControl.setTime(startTime);
         
         const registrations = [
@@ -130,7 +130,7 @@ describe("declarative scheduler re-entrancy protection", () => {
         });
         
         // Set time to avoid immediate execution for "0 * * * *" schedule
-        const startTime = 1609459500000 // 2021-01-01T00:05:00.000Z;
+        const startTime = DateTime.fromISO("2021-01-01T00:05:00.000Z").toMillis();
         timeControl.setTime(startTime);
         
         const registrations = [
@@ -174,7 +174,7 @@ describe("declarative scheduler re-entrancy protection", () => {
         });
         
         // Set time to avoid immediate execution for "0 * * * *" schedule
-        const startTime = 1609459500000 // 2021-01-01T00:05:00.000Z;
+        const startTime = DateTime.fromISO("2021-01-01T00:05:00.000Z").toMillis();
         timeControl.setTime(startTime);
         
         const registrations = [
