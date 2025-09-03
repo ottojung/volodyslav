@@ -269,8 +269,8 @@ describe("Declarative Scheduler", () => {
             // Wait for at least one poll cycle to execute
             await control.waitForNextCycleEnd();
 
-            // Task should have been executed because it's due to run (first time)
-            expect(taskCallback).toHaveBeenCalled();
+            // Task should NOT have been executed on first startup (new behavior)
+            expect(taskCallback).not.toHaveBeenCalled();
             await capabilities.scheduler.stop();
         });
 
@@ -291,8 +291,8 @@ describe("Declarative Scheduler", () => {
             // Wait for initial execution
             await control.waitForNextCycleEnd();
 
-            // Task should have been called
-            expect(taskCallback).toHaveBeenCalled();
+            // Task should NOT have been called on first startup (new behavior)
+            expect(taskCallback).not.toHaveBeenCalled();
 
             // Second call to initialize with same capabilities - should be idempotent
             // This should not cause errors or duplicate scheduling issues

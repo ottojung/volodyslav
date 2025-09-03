@@ -197,7 +197,20 @@ function make(getCapabilities) {
 
         if (persistedTasks === undefined) {
             // Persist tasks during first initialization.
-            await mutateTasks(capabilities, parsedRegistrations, async () => undefined);
+            // Set lastAttemptTime to just before current time to prevent immediate execution on first startup
+            // but allow the next scheduled execution to run
+            await mutateTasks(capabilities, parsedRegistrations, async (tasks) => {
+                const now = capabilities.datetime.now();
+                // Set lastAttemptTime to 1 second before now to prevent immediate execution
+                // but still allow future scheduled executions
+                const Duration = require('luxon').Duration;
+                const justBefore = now.subtract(Duration.fromObject({ seconds: 1 }));
+                
+                for (const task of tasks.values()) {
+                    task.lastAttemptTime = justBefore;
+                }
+                return undefined;
+            });
         }
 
         // Schedule all tasks
