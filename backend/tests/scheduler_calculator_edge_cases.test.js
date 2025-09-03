@@ -4,12 +4,7 @@
  * 
  * This test file follows the style of scheduler_stories.test.js - creating actual scenarios
  * with actual end-to-end checks, not just testing the calculator directly.
- * 
- * These tests verify correct behavior for:
- * 1. Day-of-month constraints when minute/hour fields advance without carry
- * 2. Previous execution calculations with day-of-month constraints
- * 3. Weekday constraint searches beyond 7-day windows
- * 4. Complex day and weekday constraint combinations
+ *
  */
 
 const { Duration } = require("luxon");
@@ -29,7 +24,172 @@ function getTestCapabilities() {
 }
 
 describe("scheduler calculator edge cases", () => {
-    
+    test.failing("should understand days of month", async () => {
+        const capabilities = getTestCapabilities();
+        const timeControl = getDatetimeControl(capabilities);
+        const schedulerControl = getSchedulerControl(capabilities);
+        const retryDelay = Duration.fromMillis(1000);
+        
+        const taskCallback = jest.fn();
+        const executionTimes = [];
+        
+        taskCallback.mockImplementation(() => {
+            const currentDateTime = capabilities.datetime.now();
+            executionTimes.push({
+                time: currentDateTime,
+                day: currentDateTime.day,
+                hour: currentDateTime.hour,
+                minute: currentDateTime.minute,
+                humanTime: toEpochMs(currentDateTime)
+            });
+        });
+
+        const startTime = toEpochMs(fromISOString("2025-01-14T10:00:00.000Z"));
+        timeControl.setTime(startTime);
+        schedulerControl.setPollingInterval(1);
+
+        // Cron expression: run at midnight of the 20th day of each month
+        const registrations = [
+            ["20th-only-task", "0 0 20 * *", taskCallback, retryDelay]
+        ];
+
+        await capabilities.scheduler.initialize(registrations);
+
+        // First cycle - should NOT execute because we're on the 14th
+        await schedulerControl.waitForNextCycleEnd();
+        expect(executionTimes).toHaveLength(0);
+
+        // Advance to next day
+        timeControl.advanceTime(Duration.fromObject({ days: 1 }).toMillis());
+        await schedulerControl.waitForNextCycleEnd();
+        expect(executionTimes).toHaveLength(0);
+
+        // Advance to next day
+        timeControl.advanceTime(Duration.fromObject({ days: 1 }).toMillis());
+        await schedulerControl.waitForNextCycleEnd();
+        expect(executionTimes).toHaveLength(0);
+
+        // Advance to next day
+        timeControl.advanceTime(Duration.fromObject({ days: 1 }).toMillis());
+        await schedulerControl.waitForNextCycleEnd();
+        expect(executionTimes).toHaveLength(0);
+
+        // Advance to next day
+        timeControl.advanceTime(Duration.fromObject({ days: 1 }).toMillis());
+        await schedulerControl.waitForNextCycleEnd();
+        expect(executionTimes).toHaveLength(0);
+
+        // Advance to next day
+        timeControl.advanceTime(Duration.fromObject({ days: 1 }).toMillis());
+        await schedulerControl.waitForNextCycleEnd();
+        expect(executionTimes).toHaveLength(0);
+
+        // Advance to next day
+        timeControl.advanceTime(Duration.fromObject({ days: 1 }).toMillis());
+        await schedulerControl.waitForNextCycleEnd();
+        expect(executionTimes).toHaveLength(1);
+
+        // Advance to next day
+        timeControl.advanceTime(Duration.fromObject({ days: 1 }).toMillis());
+        await schedulerControl.waitForNextCycleEnd();
+        expect(executionTimes).toHaveLength(1);
+
+        // Advance to next day
+        timeControl.advanceTime(Duration.fromObject({ days: 1 }).toMillis());
+        await schedulerControl.waitForNextCycleEnd();
+        expect(executionTimes).toHaveLength(1);
+
+        // Advance to next day
+        timeControl.advanceTime(Duration.fromObject({ days: 1 }).toMillis());
+        await schedulerControl.waitForNextCycleEnd();
+        expect(executionTimes).toHaveLength(1);
+
+        await capabilities.scheduler.stop();
+    });
+
+    test.failing("should understand combinations of days of month and hours", async () => {
+        const capabilities = getTestCapabilities();
+        const timeControl = getDatetimeControl(capabilities);
+        const schedulerControl = getSchedulerControl(capabilities);
+        const retryDelay = Duration.fromMillis(1000);
+        
+        const taskCallback = jest.fn();
+        const executionTimes = [];
+        
+        taskCallback.mockImplementation(() => {
+            const currentDateTime = capabilities.datetime.now();
+            executionTimes.push({
+                time: currentDateTime,
+                day: currentDateTime.day,
+                hour: currentDateTime.hour,
+                minute: currentDateTime.minute,
+                humanTime: toEpochMs(currentDateTime)
+            });
+        });
+
+        const startTime = toEpochMs(fromISOString("2025-01-14T10:00:00.000Z"));
+        timeControl.setTime(startTime);
+        schedulerControl.setPollingInterval(1);
+
+        // Cron expression: run every hour the 20th day of each month
+        const registrations = [
+            ["20th-only-task", "0 * 20 * *", taskCallback, retryDelay]
+        ];
+
+        await capabilities.scheduler.initialize(registrations);
+
+        // First cycle - should NOT execute because we're on the 14th
+        await schedulerControl.waitForNextCycleEnd();
+        expect(executionTimes).toHaveLength(0);
+
+        // Advance to next day
+        timeControl.advanceTime(Duration.fromObject({ days: 1 }).toMillis());
+        await schedulerControl.waitForNextCycleEnd();
+        expect(executionTimes).toHaveLength(0);
+
+        // Advance to next day
+        timeControl.advanceTime(Duration.fromObject({ days: 1 }).toMillis());
+        await schedulerControl.waitForNextCycleEnd();
+        expect(executionTimes).toHaveLength(0);
+
+        // Advance to next day
+        timeControl.advanceTime(Duration.fromObject({ days: 1 }).toMillis());
+        await schedulerControl.waitForNextCycleEnd();
+        expect(executionTimes).toHaveLength(0);
+
+        // Advance to next day
+        timeControl.advanceTime(Duration.fromObject({ days: 1 }).toMillis());
+        await schedulerControl.waitForNextCycleEnd();
+        expect(executionTimes).toHaveLength(0);
+
+        // Advance to next day
+        timeControl.advanceTime(Duration.fromObject({ days: 1 }).toMillis());
+        await schedulerControl.waitForNextCycleEnd();
+        expect(executionTimes).toHaveLength(0);
+
+        // Advance to next day
+        timeControl.advanceTime(Duration.fromObject({ days: 1 }).toMillis());
+        await schedulerControl.waitForNextCycleEnd();
+        expect(executionTimes).toHaveLength(1);
+
+        // Advance to next day
+        timeControl.advanceTime(Duration.fromObject({ days: 1 }).toMillis());
+        await schedulerControl.waitForNextCycleEnd();
+        expect(executionTimes).toHaveLength(1);
+
+        // Advance to next day
+        timeControl.advanceTime(Duration.fromObject({ days: 1 }).toMillis());
+        await schedulerControl.waitForNextCycleEnd();
+        expect(executionTimes).toHaveLength(1);
+
+        // Advance to next day
+        timeControl.advanceTime(Duration.fromObject({ days: 1 }).toMillis());
+        await schedulerControl.waitForNextCycleEnd();
+        expect(executionTimes).toHaveLength(1);
+
+        await capabilities.scheduler.stop();
+    });
+
     /**
      * Test case: Day-of-month constraint with minute advancement
      * 
