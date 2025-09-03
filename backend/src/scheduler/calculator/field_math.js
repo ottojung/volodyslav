@@ -10,6 +10,10 @@
  * @returns {number|null} Next value in set, or null if none exists
  */
 function nextInSet(currentValue, validSet) {
+    if (validSet.length === 0) {
+        return null;
+    }
+
     // Binary search for efficiency with larger sets
     let left = 0;
     let right = validSet.length - 1;
@@ -19,7 +23,7 @@ function nextInSet(currentValue, validSet) {
         const mid = Math.floor((left + right) / 2);
         const midValue = validSet[mid];
 
-        if (midValue > currentValue) {
+        if (midValue !== undefined && midValue > currentValue) {
             result = midValue;
             right = mid - 1; // Continue searching for a smaller valid value
         } else {
@@ -37,6 +41,10 @@ function nextInSet(currentValue, validSet) {
  * @returns {number|null} Previous value in set, or null if none exists
  */
 function prevInSet(currentValue, validSet) {
+    if (validSet.length === 0) {
+        return null;
+    }
+
     // Binary search for efficiency with larger sets
     let left = 0;
     let right = validSet.length - 1;
@@ -46,7 +54,7 @@ function prevInSet(currentValue, validSet) {
         const mid = Math.floor((left + right) / 2);
         const midValue = validSet[mid];
 
-        if (midValue < currentValue) {
+        if (midValue !== undefined && midValue < currentValue) {
             result = midValue;
             left = mid + 1; // Continue searching for a larger valid value
         } else {
@@ -64,13 +72,21 @@ function prevInSet(currentValue, validSet) {
  * @returns {{value: number, rolledOver: boolean}}
  */
 function nextInSetWithRollover(currentValue, validSet) {
+    if (validSet.length === 0) {
+        throw new Error("Cannot get next value from empty set");
+    }
+
     const next = nextInSet(currentValue, validSet);
     if (next !== null) {
         return { value: next, rolledOver: false };
     }
     
     // Rollover to minimum value
-    return { value: validSet[0], rolledOver: true };
+    const minValue = validSet[0];
+    if (minValue === undefined) {
+        throw new Error("Cannot get minimum value from empty set");
+    }
+    return { value: minValue, rolledOver: true };
 }
 
 /**
@@ -80,13 +96,21 @@ function nextInSetWithRollover(currentValue, validSet) {
  * @returns {{value: number, underflowed: boolean}}
  */
 function prevInSetWithUnderflow(currentValue, validSet) {
+    if (validSet.length === 0) {
+        throw new Error("Cannot get previous value from empty set");
+    }
+
     const prev = prevInSet(currentValue, validSet);
     if (prev !== null) {
         return { value: prev, underflowed: false };
     }
     
     // Underflow to maximum value
-    return { value: validSet[validSet.length - 1], underflowed: true };
+    const maxValue = validSet[validSet.length - 1];
+    if (maxValue === undefined) {
+        throw new Error("Cannot get maximum value from empty set");
+    }
+    return { value: maxValue, underflowed: true };
 }
 
 /**
@@ -95,7 +119,14 @@ function prevInSetWithUnderflow(currentValue, validSet) {
  * @returns {number}
  */
 function minInSet(validSet) {
-    return validSet[0];
+    if (validSet.length === 0) {
+        throw new Error("Cannot get minimum value from empty set");
+    }
+    const minValue = validSet[0];
+    if (minValue === undefined) {
+        throw new Error("Cannot get minimum value from empty set");
+    }
+    return minValue;
 }
 
 /**
@@ -104,7 +135,14 @@ function minInSet(validSet) {
  * @returns {number}
  */
 function maxInSet(validSet) {
-    return validSet[validSet.length - 1];
+    if (validSet.length === 0) {
+        throw new Error("Cannot get maximum value from empty set");
+    }
+    const maxValue = validSet[validSet.length - 1];
+    if (maxValue === undefined) {
+        throw new Error("Cannot get maximum value from empty set");
+    }
+    return maxValue;
 }
 
 /**
@@ -121,6 +159,10 @@ function isValidInSet(value, validSet) {
     while (left <= right) {
         const mid = Math.floor((left + right) / 2);
         const midValue = validSet[mid];
+
+        if (midValue === undefined) {
+            return false;
+        }
 
         if (midValue === value) {
             return true;

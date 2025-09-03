@@ -4,6 +4,7 @@
  */
 
 const { weekdayNameToCronNumber } = require("../../datetime");
+const { DateTime } = require("luxon");
 
 /**
  * Gets the number of days in a given month, accounting for leap years.
@@ -15,11 +16,19 @@ function daysInMonth(month, year) {
     // Month is 1-based in cron expressions
     const daysInMonths = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
     
+    if (month < 1 || month > 12) {
+        throw new Error(`Invalid month: ${month}. Must be between 1 and 12.`);
+    }
+    
     if (month === 2 && isLeapYear(year)) {
         return 29;
     }
     
-    return daysInMonths[month - 1];
+    const days = daysInMonths[month - 1];
+    if (days === undefined) {
+        throw new Error(`Internal error: Invalid month index: ${month - 1}`);
+    }
+    return days;
 }
 
 /**
@@ -51,9 +60,12 @@ function validDaysInMonth(month, year, daySet) {
  * @returns {number} Weekday number (0=Sunday, 1=Monday, ..., 6=Saturday)
  */
 function getWeekday(year, month, day) {
-    // Use JavaScript Date to get weekday (0=Sunday)
-    const date = new Date(year, month - 1, day); // month is 0-based in JS Date
-    return date.getDay();
+    // Use Luxon DateTime to get weekday
+    const luxonDate = DateTime.fromObject({ year, month, day }, { zone: 'utc' });
+    // Luxon weekday: 1=Monday, 2=Tuesday, ..., 7=Sunday
+    // Convert to cron format: 0=Sunday, 1=Monday, ..., 6=Saturday
+    const luxonWeekday = luxonDate.weekday;
+    return luxonWeekday === 7 ? 0 : luxonWeekday; // Convert Sunday from 7 to 0
 }
 
 /**
@@ -74,13 +86,13 @@ function dateTimeWeekdayToCronNumber(dateTime) {
  * @returns {{year: number, month: number, day: number}}
  */
 function addDays(year, month, day, days) {
-    const date = new Date(year, month - 1, day);
-    date.setDate(date.getDate() + days);
+    const luxonDate = DateTime.fromObject({ year, month, day }, { zone: 'utc' });
+    const advancedDate = luxonDate.plus({ days });
     
     return {
-        year: date.getFullYear(),
-        month: date.getMonth() + 1, // Convert back to 1-based
-        day: date.getDate()
+        year: advancedDate.year,
+        month: advancedDate.month,
+        day: advancedDate.day
     };
 }
 
