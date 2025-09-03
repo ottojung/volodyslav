@@ -89,17 +89,10 @@ cron expression's minimum interval is not shorter than the polling interval.
 
 ## Persistence and Recovery
 
-Scheduler state is persisted through a runtime storage layer. The stored data
-includes
-
-- task definitions (identifier, schedule and retry interval)
-- timestamps for the most recent attempt and outcome
-- the scheduled time of any pending retry
-
-All updates are written transactionally; a completed write represents the sole
-source of truth. On restart the scheduler loads this state and requires the
-application to supply matching task definitions. Executable logic is provided
-anew at registration and is never persisted.
+Scheduler state is persisted through a runtime storage layer. 
+On restart the scheduler loads this state and requires the
+application to supply matching task definitions.
+The actual callbacks are provided anew at registration and are not persisted.
 
 ## Failure Handling and Retry
 
@@ -119,18 +112,8 @@ The scheduler follows specific rules for task execution during the very first st
 
 #### Examples
 
-- **Should execute**: If the scheduler starts at 15:30 on a Tuesday and a task is scheduled with `"30 15 * * 2"` (15:30 on Tuesday), the task will execute immediately.
-- **Should not execute**: If the scheduler starts at 15:30 on a Tuesday and a task is scheduled with `"20 15 * * 2"` (15:20 on Tuesday), the task will wait until its next scheduled time.
-
-#### Implementation Details
-
-During first startup, the scheduler:
-
-1. **Evaluates cron expressions** against the current time using precise matching
-2. **Sets execution timestamps conditionally**:
-   - **Matching tasks**: Allow immediate execution by leaving `lastAttemptTime` undefined while setting `lastSuccessTime` to prevent "running" status
-   - **Non-matching tasks**: Prevent execution by setting both `lastAttemptTime` and `lastSuccessTime` to the current time
-3. **Continues normal scheduling** for all subsequent executions based on cron expressions
+- **Should execute**: If the scheduler starts at 15:30 on a Tuesday and a task is scheduled with `30 15 * * 2` (15:30 on Tuesday), the task will execute immediately.
+- **Should not execute**: If the scheduler starts at 15:30 on a Tuesday and a task is scheduled with `20 15 * * 2` (15:20 on Tuesday), the task will wait until its next scheduled time.
 
 ### Subsequent Startup Behavior
 
