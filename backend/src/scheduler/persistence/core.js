@@ -2,6 +2,7 @@
  * State initialization and persistence core functionality.
  */
 
+const { Duration } = require('luxon');
 const { makeDefault } = require('../../runtime_state_storage/structure');
 const { materializeTasks, serializeTasks } = require('./materialization');
 
@@ -24,6 +25,8 @@ const { materializeTasks, serializeTasks } = require('./materialization');
  * @returns {Promise<import('../../runtime_state_storage/types').RuntimeState>}
  */
 async function getCurrentState(storage, registrations, datetime) {
+    const now = datetime.now();    
+    const lastMinute = now.subtract(Duration.fromObject({ minutes: 1 }));
     const existingState = await storage.getExistingState();
     if (existingState === null) {
         const ret = makeDefault(datetime);
@@ -33,6 +36,8 @@ async function getCurrentState(storage, registrations, datetime) {
                 name: registration.name,
                 cronExpression: registration.parsedCron.original,
                 retryDelayMs: registration.retryDelay.toMillis(),
+                lastAttemptTime: lastMinute,
+                lastSuccessTime: lastMinute,
             });
         }
 
