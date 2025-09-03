@@ -83,30 +83,30 @@ function calculatePreviousExecution(cronExpr, fromDateTime) {
             minute = maxInSet(cronExpr.minute);
         }
         
-        // Step 3: Calculate previous day (if underflow from hour)
-        if (underflow) {
-            const validDays = validDaysInMonth(month, year, cronExpr.day);
-            if (validDays.length === 0) {
-                // No valid days in this month, go back to previous month
+        // Step 3: Calculate previous day (always check day constraints)
+        const validDays = validDaysInMonth(month, year, cronExpr.day);
+        if (validDays.length === 0) {
+            // No valid days in this month, go back to previous month
+            underflow = true;
+        } else if (underflow || !isValidInSet(day, validDays)) {
+            // Either carried from hour, or current day violates day constraints
+            const dayResult = prevInSetWithUnderflow(day, validDays);
+            if (dayResult.underflowed) {
+                // No more valid days in this month
                 underflow = true;
             } else {
-                const dayResult = prevInSetWithUnderflow(day, validDays);
-                if (dayResult.underflowed) {
-                    // No more valid days in this month
-                    underflow = true;
-                } else {
-                    day = dayResult.value;
-                    underflow = false;
-                    
-                    // Reset hour and minute when going back a day
-                    hour = maxInSet(cronExpr.hour);
-                    minute = maxInSet(cronExpr.minute);
-                }
+                day = dayResult.value;
+                underflow = false;
+                
+                // Reset hour and minute when going back a day
+                hour = maxInSet(cronExpr.hour);
+                minute = maxInSet(cronExpr.minute);
             }
         }
         
-        // Step 4: Calculate previous month (if underflow from day)
-        if (underflow) {
+        // Step 4: Calculate previous month (always check month constraints)
+        if (underflow || !isValidInSet(month, cronExpr.month)) {
+            // Either carried from day, or current month violates month constraints
             const monthResult = prevInSetWithUnderflow(month, cronExpr.month);
             month = monthResult.value;
             

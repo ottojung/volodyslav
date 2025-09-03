@@ -24,7 +24,7 @@ function getTestCapabilities() {
 }
 
 describe("scheduler calculator edge cases", () => {
-    test.failing("should understand days of month", async () => {
+    test("should understand days of month", async () => {
         const capabilities = getTestCapabilities();
         const timeControl = getDatetimeControl(capabilities);
         const schedulerControl = getSchedulerControl(capabilities);
@@ -131,9 +131,92 @@ describe("scheduler calculator edge cases", () => {
         timeControl.setTime(startTime);
         schedulerControl.setPollingInterval(1);
 
-        // Cron expression: run every hour the 20th day of each month
+        // Cron expression: run every hour of the 20th day of each month  
         const registrations = [
             ["20th-only-task", "0 * 20 * *", taskCallback, retryDelay]
+        ];
+
+        await capabilities.scheduler.initialize(registrations);
+
+        // First cycle - should NOT execute because we're on the 14th
+        await schedulerControl.waitForNextCycleEnd();
+        expect(executionTimes).toHaveLength(0);
+
+        // Advance to next day
+        timeControl.advanceTime(Duration.fromObject({ days: 1 }).toMillis());
+        await schedulerControl.waitForNextCycleEnd();
+        expect(executionTimes).toHaveLength(0);
+
+        // Advance to next day
+        timeControl.advanceTime(Duration.fromObject({ days: 1 }).toMillis());
+        await schedulerControl.waitForNextCycleEnd();
+        expect(executionTimes).toHaveLength(0);
+
+        // Advance to next day
+        timeControl.advanceTime(Duration.fromObject({ days: 1 }).toMillis());
+        await schedulerControl.waitForNextCycleEnd();
+        expect(executionTimes).toHaveLength(0);
+
+        // Advance to next day
+        timeControl.advanceTime(Duration.fromObject({ days: 1 }).toMillis());
+        await schedulerControl.waitForNextCycleEnd();
+        expect(executionTimes).toHaveLength(0);
+
+        // Advance to next day
+        timeControl.advanceTime(Duration.fromObject({ days: 1 }).toMillis());
+        await schedulerControl.waitForNextCycleEnd();
+        expect(executionTimes).toHaveLength(0);
+
+        // Advance to next day
+        timeControl.advanceTime(Duration.fromObject({ days: 1 }).toMillis());
+        await schedulerControl.waitForNextCycleEnd();
+        expect(executionTimes).toHaveLength(1);
+
+        // Advance to next day
+        timeControl.advanceTime(Duration.fromObject({ days: 1 }).toMillis());
+        await schedulerControl.waitForNextCycleEnd();
+        expect(executionTimes).toHaveLength(1);
+
+        // Advance to next day
+        timeControl.advanceTime(Duration.fromObject({ days: 1 }).toMillis());
+        await schedulerControl.waitForNextCycleEnd();
+        expect(executionTimes).toHaveLength(1);
+
+        // Advance to next day
+        timeControl.advanceTime(Duration.fromObject({ days: 1 }).toMillis());
+        await schedulerControl.waitForNextCycleEnd();
+        expect(executionTimes).toHaveLength(1);
+
+        await capabilities.scheduler.stop();
+    });
+
+    test.failing("should understand complex combinations of days of month and hours", async () => {
+        const capabilities = getTestCapabilities();
+        const timeControl = getDatetimeControl(capabilities);
+        const schedulerControl = getSchedulerControl(capabilities);
+        const retryDelay = Duration.fromMillis(1000);
+        
+        const taskCallback = jest.fn();
+        const executionTimes = [];
+        
+        taskCallback.mockImplementation(() => {
+            const currentDateTime = capabilities.datetime.now();
+            executionTimes.push({
+                time: currentDateTime,
+                day: currentDateTime.day,
+                hour: currentDateTime.hour,
+                minute: currentDateTime.minute,
+                humanTime: toEpochMs(currentDateTime)
+            });
+        });
+
+        const startTime = toEpochMs(fromISOString("2025-01-14T10:00:00.000Z"));
+        timeControl.setTime(startTime);
+        schedulerControl.setPollingInterval(1);
+
+        // Cron expression: run every 15 minutes of the 20th day of each month  
+        const registrations = [
+            ["20th-only-task", "*/15 * 20 * *", taskCallback, retryDelay]
         ];
 
         await capabilities.scheduler.initialize(registrations);
@@ -200,7 +283,7 @@ describe("scheduler calculator edge cases", () => {
      * but we start the scheduler on the 14th. The scheduler should wait until
      * the 15th to execute, not execute immediately on the disallowed 14th.
      */
-    test.failing("should not execute on disallowed day when minute advances without carry", async () => {
+    test("should not execute on disallowed day when minute advances without carry", async () => {
         const capabilities = getTestCapabilities();
         const timeControl = getDatetimeControl(capabilities);
         const schedulerControl = getSchedulerControl(capabilities);
