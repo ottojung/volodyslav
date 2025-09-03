@@ -4,7 +4,7 @@
  * exactly matches the current time.
  */
 
-const { Duration } = require("luxon");
+const { Duration, DateTime } = require("luxon");
 const { getMockedRootCapabilities } = require("./spies");
 const { stubEnvironment, stubLogger, stubDatetime, stubSleeper, stubRuntimeStateStorage, stubScheduler, getSchedulerControl, getDatetimeControl } = require("./stubs");
 
@@ -27,7 +27,7 @@ describe("scheduler first startup semantics", () => {
             const datetimeControl = getDatetimeControl(capabilities);
             
             // Set time to 15:30:00 on a Tuesday (day 2)
-            const tuesdayAt1530 = new Date("2024-01-02T15:30:00.000Z").getTime(); // Tuesday, 15:30
+            const tuesdayAt1530 = DateTime.fromISO("2024-01-02T15:30:00.000Z").toMillis(); // Tuesday, 15:30
             datetimeControl.setTime(tuesdayAt1530);
             
             schedulerControl.setPollingInterval(1);
@@ -55,7 +55,7 @@ describe("scheduler first startup semantics", () => {
             const datetimeControl = getDatetimeControl(capabilities);
             
             // Set time to 15:30:00 on a Tuesday (day 2)
-            const tuesdayAt1530 = new Date("2024-01-02T15:30:00.000Z").getTime(); // Tuesday, 15:30
+            const tuesdayAt1530 = DateTime.fromISO("2024-01-02T15:30:00.000Z").toMillis(); // Tuesday, 15:30
             datetimeControl.setTime(tuesdayAt1530);
             
             schedulerControl.setPollingInterval(1);
@@ -83,7 +83,7 @@ describe("scheduler first startup semantics", () => {
             const datetimeControl = getDatetimeControl(capabilities);
             
             // Set time to 15:30:00 on a Tuesday
-            const tuesdayAt1530 = new Date("2024-01-02T15:30:00.000Z").getTime(); // Tuesday, 15:30
+            const tuesdayAt1530 = DateTime.fromISO("2024-01-02T15:30:00.000Z").toMillis(); // Tuesday, 15:30
             datetimeControl.setTime(tuesdayAt1530);
             
             schedulerControl.setPollingInterval(1);
@@ -103,7 +103,7 @@ describe("scheduler first startup semantics", () => {
             expect(taskCallback).toHaveBeenCalledTimes(0);
 
             // Advance time to 15:35
-            datetimeControl.setTime(new Date("2024-01-02T15:35:00.000Z").getTime());
+            datetimeControl.setTime(DateTime.fromISO("2024-01-02T15:35:00.000Z").toMillis());
             await schedulerControl.waitForNextCycleEnd();
 
             // Now task should execute
@@ -120,7 +120,7 @@ describe("scheduler first startup semantics", () => {
             const datetimeControl = getDatetimeControl(capabilities);
             
             // Set time to 15:30:00 on a Tuesday
-            const tuesdayAt1530 = new Date("2024-01-02T15:30:00.000Z").getTime(); // Tuesday, 15:30
+            const tuesdayAt1530 = DateTime.fromISO("2024-01-02T15:30:00.000Z").toMillis(); // Tuesday, 15:30
             datetimeControl.setTime(tuesdayAt1530);
             
             schedulerControl.setPollingInterval(1);
@@ -153,7 +153,7 @@ describe("scheduler first startup semantics", () => {
             const datetimeControl = getDatetimeControl(capabilities);
             
             // Set time to exactly 15:30:00
-            const tuesdayAt1530 = new Date("2024-01-02T15:30:00.000Z").getTime();
+            const tuesdayAt1530 = DateTime.fromISO("2024-01-02T15:30:00.000Z").toMillis();
             datetimeControl.setTime(tuesdayAt1530);
             
             schedulerControl.setPollingInterval(1);
@@ -185,7 +185,7 @@ describe("scheduler first startup semantics", () => {
             const datetimeControl = getDatetimeControl(capabilities);
             
             // Set time to 15:30:00 on Tuesday
-            const tuesdayAt1530 = new Date("2024-01-02T15:30:00.000Z").getTime();
+            const tuesdayAt1530 = DateTime.fromISO("2024-01-02T15:30:00.000Z").toMillis();
             datetimeControl.setTime(tuesdayAt1530);
             
             schedulerControl.setPollingInterval(1);
@@ -215,7 +215,7 @@ describe("scheduler first startup semantics", () => {
             const datetimeControl = getDatetimeControl(capabilities);
             
             // Set time to Tuesday (day 2)
-            const tuesdayAt1530 = new Date("2024-01-02T15:30:00.000Z").getTime();
+            const tuesdayAt1530 = DateTime.fromISO("2024-01-02T15:30:00.000Z").toMillis();
             datetimeControl.setTime(tuesdayAt1530); // Tuesday
             
             schedulerControl.setPollingInterval(1);
