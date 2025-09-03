@@ -3,7 +3,7 @@
  * multiple scheduler task invocations by advancing time.
  */
 
-const { Duration } = require("luxon");
+const { Duration, DateTime } = require("luxon");
 const luxon = require("luxon");
 const { getMockedRootCapabilities } = require("./spies");
 const { stubEnvironment, stubLogger, stubDatetime, stubSleeper, getDatetimeControl, stubRuntimeStateStorage, stubScheduler, getSchedulerControl } = require("./stubs");
@@ -114,7 +114,7 @@ describe("scheduler stories", () => {
         const taskCallback = jest.fn();
 
         // Set initial time to 00:00:00 (midnight)
-        const startTime = 1609459200000 // 2021-01-01T00:00:00.000Z;
+        const startTime = DateTime.fromISO("2021-01-01T00:00:00.000Z").toMillis();
         timeControl.setTime(startTime);
         schedulerControl.setPollingInterval(1);
 
@@ -196,7 +196,7 @@ describe("scheduler stories", () => {
         const taskCallback = jest.fn();
 
         // Set initial time 
-        const startTime = 1609459800000 // 2021-01-01T00:10:00.000Z;
+        const startTime = DateTime.fromISO("2021-01-01T00:10:00.000Z").toMillis();
         timeControl.setTime(startTime);
         schedulerControl.setPollingInterval(1);
 
@@ -427,7 +427,7 @@ describe("scheduler stories", () => {
         });
 
         // Start at a time when the frequent task should trigger soon
-        const startTime = 1609459200000; // 2021-01-01T00:00:00.000Z
+        const startTime = DateTime.fromISO("2021-01-01T00:00:00.000Z").toMillis(); // 2021-01-01T00:00:00.000Z
         timeControl.setTime(startTime);
         schedulerControl.setPollingInterval(100);
 

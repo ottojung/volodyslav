@@ -47,8 +47,8 @@ describe("scheduler atomicity testing", () => {
             ["demo-task-3", "0 * * * *", task3, retryDelay]
         ];
 
-        // Set time to trigger immediate execution
-        const startTime = 1704106800000 // 2024-01-01T11:00:00.000Z;
+        // Set time to avoid immediate execution for "0 * * * *" schedule
+        const startTime = 1704107100000 // 2024-01-01T11:05:00.000Z;
         timeControl.setTime(startTime);
 
         await capabilities.scheduler.initialize(registrations);
@@ -150,7 +150,7 @@ describe("scheduler atomicity testing", () => {
                 ["controlled-task-2", "0 * * * *", task2, retryDelay]
             ];
 
-            const startTime = 1704114000000 // 2024-01-01T13:00:00.000Z;
+            const startTime = 1704114300000 // 2024-01-01T13:05:00.000Z;
             timeControl.setTime(startTime);
 
             await capabilities.scheduler.initialize(registrations);

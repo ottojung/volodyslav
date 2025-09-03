@@ -2,7 +2,7 @@
  * Tests for failure retry persistence.
  */
 
-const { Duration } = require("luxon");
+const { Duration, DateTime } = require("luxon");
 const { getMockedRootCapabilities } = require("./spies");
 const { stubEnvironment, stubLogger, stubDatetime, stubSleeper, getDatetimeControl, stubRuntimeStateStorage, stubScheduler, getSchedulerControl } = require("./stubs");
 
@@ -24,8 +24,8 @@ describe("failure retry persistence", () => {
         const schedulerControl = getSchedulerControl(capabilities);
         schedulerControl.setPollingInterval(1);
 
-        // Set a fixed starting time 
-        const startTime = 1577836830000; // 2020-01-01T00:00:30Z
+        // Set a fixed starting time that does NOT match the cron schedule
+        const startTime = DateTime.fromISO("2020-01-01T00:05:30.000Z").toMillis(); // 00:05:30 - doesn't match "0 * * * *"
         timeControl.setTime(startTime);
 
         // Initialize scheduler with registrations
@@ -44,7 +44,7 @@ describe("failure retry persistence", () => {
         expect(callback).toHaveBeenCalledTimes(0);
 
         // Advance to next scheduled execution (01:00:00)
-        timeControl.advanceTime(59.5 * 60 * 1000); // 59.5 minutes to reach 01:00:00
+        timeControl.setTime(DateTime.fromISO("2020-01-01T01:00:00.000Z").toMillis()); // Set to exact time for execution
         await schedulerControl.waitForNextCycleEnd();
 
         // Check that task was executed and failed properly

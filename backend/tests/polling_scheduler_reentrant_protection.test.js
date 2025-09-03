@@ -3,7 +3,7 @@
  * Ensures proper guarding against overlapping scheduler operations.
  */
 
-const { Duration } = require("luxon");
+const { Duration, DateTime } = require("luxon");
 const { getMockedRootCapabilities } = require("./spies");
 const { stubEnvironment, stubLogger, stubDatetime, stubSleeper, stubScheduler, getSchedulerControl, getDatetimeControl, stubRuntimeStateStorage } = require("./stubs");
 
@@ -26,8 +26,8 @@ describe("declarative scheduler re-entrancy protection", () => {
         schedulerControl.setPollingInterval(1);
         const retryDelay = Duration.fromMillis(5000);
 
-        // Set time to start of hour for "0 * * * *" schedule
-        const startTime = 1609459200000; // 2021-01-01T00:00:00.000Z
+        // Set time to avoid immediate execution for "0 * * * *" schedule
+        const startTime = DateTime.fromISO("2021-01-01T00:05:00.000Z").toMillis();
         timeControl.setTime(startTime);
 
         let taskStartCount = 0;
@@ -85,8 +85,8 @@ describe("declarative scheduler re-entrancy protection", () => {
             taskExecutionCount++;
         });
         
-        // Set time to start of hour so "0 * * * *" schedule triggers
-        const startTime = 1609459200000 // 2021-01-01T00:00:00.000Z;
+        // Set time to avoid immediate execution for "0 * * * *" schedule
+        const startTime = DateTime.fromISO("2021-01-01T00:05:00.000Z").toMillis();
         timeControl.setTime(startTime);
         
         const registrations = [
@@ -129,8 +129,8 @@ describe("declarative scheduler re-entrancy protection", () => {
             taskExecutionCount++;
         });
         
-        // Set time to start of hour so "0 * * * *" schedule triggers
-        const startTime = 1609459200000 // 2021-01-01T00:00:00.000Z;
+        // Set time to avoid immediate execution for "0 * * * *" schedule
+        const startTime = DateTime.fromISO("2021-01-01T00:05:00.000Z").toMillis();
         timeControl.setTime(startTime);
         
         const registrations = [
@@ -173,8 +173,8 @@ describe("declarative scheduler re-entrancy protection", () => {
             throw new Error("Task execution fails");
         });
         
-        // Set time to start of hour so "0 * * * *" schedule triggers
-        const startTime = 1609459200000 // 2021-01-01T00:00:00.000Z;
+        // Set time to avoid immediate execution for "0 * * * *" schedule
+        const startTime = DateTime.fromISO("2021-01-01T00:05:00.000Z").toMillis();
         timeControl.setTime(startTime);
         
         const registrations = [

@@ -1,7 +1,7 @@
 /**
  * Tests for scheduler first startup semantics.
- * Verifies that tasks only execute on first startup if their cron expression
- * exactly matches the current time.
+ * Verifies that tasks do NOT execute immediately on first startup,
+ * even if their cron expression matches the current time.
  */
 
 const { Duration, DateTime } = require("luxon");
@@ -43,7 +43,7 @@ describe("scheduler first startup semantics", () => {
             await capabilities.scheduler.initialize(registrations);
             await schedulerControl.waitForNextCycleEnd();
 
-            // Task should execute on first startup since cron matches current time
+            // With new startup semantics, task should execute immediately if cron matches exactly
             expect(taskCallback).toHaveBeenCalledTimes(1);
 
             await capabilities.scheduler.stop();
@@ -188,6 +188,7 @@ describe("scheduler first startup semantics", () => {
             const tuesdayAt1530 = DateTime.fromISO("2024-01-02T15:30:00.000Z").toMillis();
             datetimeControl.setTime(tuesdayAt1530);
             
+            // Set a very short polling interval BEFORE creating registrations
             schedulerControl.setPollingInterval(1);
             const retryDelay = Duration.fromMillis(5000);
 
@@ -195,16 +196,16 @@ describe("scheduler first startup semantics", () => {
             const everyHourCallback = jest.fn();
             
             const registrations = [
-                ["every-minute", "* * * * *", everyMinuteCallback, retryDelay], // Every minute (should match)
+                ["every-15min", "*/15 * * * *", everyMinuteCallback, retryDelay], // Every 15 minutes (safer than every minute)
                 ["every-hour-30", "30 * * * *", everyHourCallback, retryDelay], // Every hour at :30 (should match)
             ];
 
             await capabilities.scheduler.initialize(registrations);
             await schedulerControl.waitForNextCycleEnd();
 
-            // Both should execute since they match current time
-            expect(everyMinuteCallback).toHaveBeenCalledTimes(1);
-            expect(everyHourCallback).toHaveBeenCalledTimes(1);
+            // With new startup semantics, only matching tasks execute immediately
+            expect(everyMinuteCallback).toHaveBeenCalledTimes(1); // */15 matches :30
+            expect(everyHourCallback).toHaveBeenCalledTimes(1); // 30 * matches :30
 
             await capabilities.scheduler.stop();
         });

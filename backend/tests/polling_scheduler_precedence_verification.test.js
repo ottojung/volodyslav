@@ -3,7 +3,7 @@
  * This test verifies that task execution timing follows expected precedence behavior
  */
 
-const { Duration } = require("luxon");
+const { Duration, DateTime } = require("luxon");
 const { getMockedRootCapabilities } = require("./spies");
 const { stubEnvironment, stubLogger, stubDatetime, stubSleeper, stubScheduler, getSchedulerControl, getDatetimeControl, stubRuntimeStateStorage } = require("./stubs");
 
@@ -29,8 +29,8 @@ describe("declarative scheduler precedence logic verification", () => {
         
         const task = jest.fn().mockResolvedValue(undefined);
         
-        // Set time to start of hour so "0 * * * *" schedule triggers
-        const startTime = 1609459200000 // 2021-01-01T00:00:00.000Z;
+        // Set time to avoid immediate execution for "0 * * * *" schedule
+        const startTime = DateTime.fromISO("2021-01-01T00:05:00.000Z").toMillis();
         timeControl.setTime(startTime);
         schedulerControl.setPollingInterval(1);
         
@@ -63,8 +63,8 @@ describe("declarative scheduler precedence logic verification", () => {
         
         const task = jest.fn().mockResolvedValue(undefined);
         
-        // Set time to start of hour so "0 * * * *" schedule triggers
-        const startTime = 1609459200000 // 2021-01-01T00:00:00.000Z;
+        // Set time to avoid immediate execution for "0 * * * *" schedule
+        const startTime = DateTime.fromISO("2021-01-01T00:05:00.000Z").toMillis();
         timeControl.setTime(startTime);
         schedulerControl.setPollingInterval(1);
         

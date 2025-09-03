@@ -3,7 +3,7 @@
  * Ensures cron schedule is not superseded by retry logic.
  */
 
-const { Duration } = require("luxon");
+const { Duration, DateTime } = require("luxon");
 const { getMockedRootCapabilities } = require("./spies");
 const { stubEnvironment, stubLogger, stubDatetime, stubSleeper, getDatetimeControl, stubScheduler, getSchedulerControl, stubRuntimeStateStorage } = require("./stubs");
 
@@ -224,6 +224,10 @@ describe("declarative scheduler retry semantics", () => {
         schedulerControl.setPollingInterval(1);
         const retryDelay = Duration.fromMillis(30 * 1000); // 30 seconds
         let executionCount = 0;
+
+        // Set time to avoid immediate execution for "0 * * * *" schedule
+        const startTime = DateTime.fromISO("2021-01-01T00:05:00.000Z").toMillis(); // 2021-01-01T00:05:00.000Z
+        timeControl.setTime(startTime);
 
         const task = jest.fn(() => {
             executionCount++;
