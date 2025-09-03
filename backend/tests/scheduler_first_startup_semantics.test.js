@@ -27,7 +27,8 @@ describe("scheduler first startup semantics", () => {
             const datetimeControl = getDatetimeControl(capabilities);
             
             // Set time to 15:30:00 on a Tuesday (day 2)
-            datetimeControl.setNow("2024-01-02T15:30:00.000Z"); // Tuesday, 15:30
+            const tuesdayAt1530 = new Date("2024-01-02T15:30:00.000Z").getTime(); // Tuesday, 15:30
+            datetimeControl.setTime(tuesdayAt1530);
             
             schedulerControl.setPollingInterval(1);
             const retryDelay = Duration.fromMillis(5000);
@@ -54,7 +55,8 @@ describe("scheduler first startup semantics", () => {
             const datetimeControl = getDatetimeControl(capabilities);
             
             // Set time to 15:30:00 on a Tuesday (day 2)
-            datetimeControl.setNow("2024-01-02T15:30:00.000Z"); // Tuesday, 15:30
+            const tuesdayAt1530 = new Date("2024-01-02T15:30:00.000Z").getTime(); // Tuesday, 15:30
+            datetimeControl.setTime(tuesdayAt1530);
             
             schedulerControl.setPollingInterval(1);
             const retryDelay = Duration.fromMillis(5000);
@@ -81,7 +83,8 @@ describe("scheduler first startup semantics", () => {
             const datetimeControl = getDatetimeControl(capabilities);
             
             // Set time to 15:30:00 on a Tuesday
-            datetimeControl.setNow("2024-01-02T15:30:00.000Z"); // Tuesday, 15:30
+            const tuesdayAt1530 = new Date("2024-01-02T15:30:00.000Z").getTime(); // Tuesday, 15:30
+            datetimeControl.setTime(tuesdayAt1530);
             
             schedulerControl.setPollingInterval(1);
             const retryDelay = Duration.fromMillis(5000);
@@ -100,7 +103,7 @@ describe("scheduler first startup semantics", () => {
             expect(taskCallback).toHaveBeenCalledTimes(0);
 
             // Advance time to 15:35
-            datetimeControl.setNow("2024-01-02T15:35:00.000Z");
+            datetimeControl.setTime(new Date("2024-01-02T15:35:00.000Z").getTime());
             await schedulerControl.waitForNextCycleEnd();
 
             // Now task should execute
@@ -117,7 +120,8 @@ describe("scheduler first startup semantics", () => {
             const datetimeControl = getDatetimeControl(capabilities);
             
             // Set time to 15:30:00 on a Tuesday
-            datetimeControl.setNow("2024-01-02T15:30:00.000Z"); // Tuesday, 15:30
+            const tuesdayAt1530 = new Date("2024-01-02T15:30:00.000Z").getTime(); // Tuesday, 15:30
+            datetimeControl.setTime(tuesdayAt1530);
             
             schedulerControl.setPollingInterval(1);
             const retryDelay = Duration.fromMillis(5000);
@@ -149,7 +153,8 @@ describe("scheduler first startup semantics", () => {
             const datetimeControl = getDatetimeControl(capabilities);
             
             // Set time to exactly 15:30:00
-            datetimeControl.setNow("2024-01-02T15:30:00.000Z");
+            const tuesdayAt1530 = new Date("2024-01-02T15:30:00.000Z").getTime();
+            datetimeControl.setTime(tuesdayAt1530);
             
             schedulerControl.setPollingInterval(1);
             const retryDelay = Duration.fromMillis(5000);
@@ -180,7 +185,8 @@ describe("scheduler first startup semantics", () => {
             const datetimeControl = getDatetimeControl(capabilities);
             
             // Set time to 15:30:00 on Tuesday
-            datetimeControl.setNow("2024-01-02T15:30:00.000Z");
+            const tuesdayAt1530 = new Date("2024-01-02T15:30:00.000Z").getTime();
+            datetimeControl.setTime(tuesdayAt1530);
             
             schedulerControl.setPollingInterval(1);
             const retryDelay = Duration.fromMillis(5000);
@@ -209,7 +215,8 @@ describe("scheduler first startup semantics", () => {
             const datetimeControl = getDatetimeControl(capabilities);
             
             // Set time to Tuesday (day 2)
-            datetimeControl.setNow("2024-01-02T15:30:00.000Z"); // Tuesday
+            const tuesdayAt1530 = new Date("2024-01-02T15:30:00.000Z").getTime();
+            datetimeControl.setTime(tuesdayAt1530); // Tuesday
             
             schedulerControl.setPollingInterval(1);
             const retryDelay = Duration.fromMillis(5000);
