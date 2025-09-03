@@ -1,0 +1,161 @@
+/**
+ * Date manipulation utilities for mathematical cron algorithm.
+ * Provides timezone-aware date operations while working with the DateTime abstraction.
+ */
+
+const { weekdayNameToCronNumber } = require("../../datetime");
+
+/**
+ * Gets the number of days in a given month, accounting for leap years.
+ * @param {number} month - Month (1-12)
+ * @param {number} year - Year
+ * @returns {number} Number of days in the month
+ */
+function daysInMonth(month, year) {
+    // Month is 1-based in cron expressions
+    const daysInMonths = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+    
+    if (month === 2 && isLeapYear(year)) {
+        return 29;
+    }
+    
+    return daysInMonths[month - 1];
+}
+
+/**
+ * Checks if a year is a leap year.
+ * @param {number} year - Year to check
+ * @returns {boolean}
+ */
+function isLeapYear(year) {
+    return (year % 4 === 0 && year % 100 !== 0) || (year % 400 === 0);
+}
+
+/**
+ * Gets valid days for a given month and year from a day constraint set.
+ * @param {number} month - Month (1-12)
+ * @param {number} year - Year
+ * @param {number[]} daySet - Set of valid days from cron expression
+ * @returns {number[]} Array of valid days that exist in the given month
+ */
+function validDaysInMonth(month, year, daySet) {
+    const maxDay = daysInMonth(month, year);
+    return daySet.filter(day => day >= 1 && day <= maxDay);
+}
+
+/**
+ * Gets the weekday number (0=Sunday) for a given date.
+ * @param {number} year - Year
+ * @param {number} month - Month (1-12)
+ * @param {number} day - Day
+ * @returns {number} Weekday number (0=Sunday, 1=Monday, ..., 6=Saturday)
+ */
+function getWeekday(year, month, day) {
+    // Use JavaScript Date to get weekday (0=Sunday)
+    const date = new Date(year, month - 1, day); // month is 0-based in JS Date
+    return date.getDay();
+}
+
+/**
+ * Converts a DateTime weekday name to cron number.
+ * @param {import('../../datetime').DateTime} dateTime
+ * @returns {number} Cron weekday number (0=Sunday)
+ */
+function dateTimeWeekdayToCronNumber(dateTime) {
+    return weekdayNameToCronNumber(dateTime.weekday);
+}
+
+/**
+ * Advances a date by a number of days.
+ * @param {number} year - Year
+ * @param {number} month - Month (1-12)
+ * @param {number} day - Day
+ * @param {number} days - Number of days to advance
+ * @returns {{year: number, month: number, day: number}}
+ */
+function addDays(year, month, day, days) {
+    const date = new Date(year, month - 1, day);
+    date.setDate(date.getDate() + days);
+    
+    return {
+        year: date.getFullYear(),
+        month: date.getMonth() + 1, // Convert back to 1-based
+        day: date.getDate()
+    };
+}
+
+/**
+ * Subtracts a number of days from a date.
+ * @param {number} year - Year
+ * @param {number} month - Month (1-12)
+ * @param {number} day - Day
+ * @param {number} days - Number of days to subtract
+ * @returns {{year: number, month: number, day: number}}
+ */
+function subtractDays(year, month, day, days) {
+    return addDays(year, month, day, -days);
+}
+
+/**
+ * Finds the next date that satisfies weekday constraints.
+ * @param {number} year - Starting year
+ * @param {number} month - Starting month (1-12)
+ * @param {number} day - Starting day
+ * @param {number[]} weekdaySet - Valid weekdays from cron expression
+ * @param {number[]} monthSet - Valid months from cron expression
+ * @param {number[]} daySet - Valid days from cron expression
+ * @returns {{year: number, month: number, day: number}|null}
+ */
+function nextDateSatisfyingWeekdayConstraint(year, month, day, weekdaySet, monthSet, daySet) {
+    // Try the next 7 days to find a valid weekday
+    for (let offset = 0; offset < 7; offset++) {
+        const candidateDate = addDays(year, month, day, offset);
+        const candidateWeekday = getWeekday(candidateDate.year, candidateDate.month, candidateDate.day);
+        
+        if (weekdaySet.includes(candidateWeekday) &&
+            monthSet.includes(candidateDate.month) &&
+            validDaysInMonth(candidateDate.month, candidateDate.year, daySet).includes(candidateDate.day)) {
+            return candidateDate;
+        }
+    }
+    
+    return null;
+}
+
+/**
+ * Finds the previous date that satisfies weekday constraints.
+ * @param {number} year - Starting year
+ * @param {number} month - Starting month (1-12)
+ * @param {number} day - Starting day
+ * @param {number[]} weekdaySet - Valid weekdays from cron expression
+ * @param {number[]} monthSet - Valid months from cron expression
+ * @param {number[]} daySet - Valid days from cron expression
+ * @returns {{year: number, month: number, day: number}|null}
+ */
+function prevDateSatisfyingWeekdayConstraint(year, month, day, weekdaySet, monthSet, daySet) {
+    // Try the previous 7 days to find a valid weekday
+    for (let offset = 0; offset < 7; offset++) {
+        const candidateDate = subtractDays(year, month, day, offset);
+        const candidateWeekday = getWeekday(candidateDate.year, candidateDate.month, candidateDate.day);
+        
+        if (weekdaySet.includes(candidateWeekday) &&
+            monthSet.includes(candidateDate.month) &&
+            validDaysInMonth(candidateDate.month, candidateDate.year, daySet).includes(candidateDate.day)) {
+            return candidateDate;
+        }
+    }
+    
+    return null;
+}
+
+module.exports = {
+    daysInMonth,
+    isLeapYear,
+    validDaysInMonth,
+    getWeekday,
+    dateTimeWeekdayToCronNumber,
+    addDays,
+    subtractDays,
+    nextDateSatisfyingWeekdayConstraint,
+    prevDateSatisfyingWeekdayConstraint,
+};
