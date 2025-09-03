@@ -172,6 +172,17 @@ function calculatePreviousExecution(cronExpr, fromDateTime) {
             return null;
         }
         
+        // For day-constrained crons, only return executions from the same day
+        // This prevents returning yesterday's executions when today doesn't match the cron
+        if (cronExpr.day.length < 31) { // Day constraint exists (not all days allowed)
+            if (resultDateTime.day !== fromDateTime.day || 
+                resultDateTime.month !== fromDateTime.month || 
+                resultDateTime.year !== fromDateTime.year) {
+                // Previous execution is from a different day, don't consider it "recent"
+                return null;
+            }
+        }
+        
         return resultDateTime;
         
     } catch (error) {
