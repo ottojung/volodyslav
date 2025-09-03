@@ -3,7 +3,7 @@
  * Focuses on observable behavior and edge case handling.
  */
 
-const { Duration } = require("luxon");
+const { Duration, DateTime } = require("luxon");
 const { getMockedRootCapabilities } = require("./spies");
 const { stubEnvironment, stubLogger, stubDatetime, stubSleeper, getDatetimeControl, stubScheduler, getSchedulerControl, stubRuntimeStateStorage } = require("./stubs");
 
@@ -105,8 +105,8 @@ describe("declarative scheduler algorithm robustness", () => {
             }
         });
 
-        // Set initial time to trigger immediate execution (start of minute)
-        const startTime = 1609459200000; // 2021-01-01T00:00:00.000Z
+        // Set initial time to avoid immediate execution
+        const startTime = DateTime.fromISO("2021-01-01T00:05:00.000Z").toMillis(); // 2021-01-01T00:05:00.000Z
         timeControl.setTime(startTime);
 
         const registrations = [
@@ -115,7 +115,12 @@ describe("declarative scheduler algorithm robustness", () => {
 
         await capabilities.scheduler.initialize(registrations);
 
-        // Wait for scheduler to start and execute initial task
+        // Should NOT execute immediately on first startup
+        await schedulerControl.waitForNextCycleEnd();
+        expect(precisionCallback).toHaveBeenCalledTimes(0);
+
+        // Advance to next scheduled execution (01:00:00)
+        timeControl.advanceTime(60 * 60 * 1000); // 1 hour
         await schedulerControl.waitForNextCycleEnd();
         expect(precisionCallback).toHaveBeenCalledTimes(1);
 
@@ -225,10 +230,15 @@ describe("declarative scheduler algorithm robustness", () => {
 
     test("should handle idempotent initialization correctly", async () => {
         const capabilities = getTestCapabilities();
+        const timeControl = getDatetimeControl(capabilities);
         const schedulerControl = getSchedulerControl(capabilities);
         schedulerControl.setPollingInterval(1);
         const retryDelay = Duration.fromMillis(5000);
         const taskCallback = jest.fn();
+
+        // Set time to avoid immediate execution for "0 * * * *" schedule
+        const startTime = DateTime.fromISO("2021-01-01T00:05:00.000Z").toMillis(); // 2021-01-01T00:05:00.000Z
+        timeControl.setTime(startTime);
 
         const registrations = [
             ["idempotent-test", "0 * * * *", taskCallback, retryDelay]
@@ -239,7 +249,12 @@ describe("declarative scheduler algorithm robustness", () => {
         await capabilities.scheduler.initialize(registrations);
         await capabilities.scheduler.initialize(registrations);
 
-        // Wait for execution
+        // Should NOT execute immediately on first startup
+        await schedulerControl.waitForNextCycleEnd();
+        expect(taskCallback).toHaveBeenCalledTimes(0);
+
+        // Advance to next scheduled execution (01:00:00)
+        timeControl.advanceTime(60 * 60 * 1000); // 1 hour
         await schedulerControl.waitForNextCycleEnd();
 
         // Should only execute once despite multiple initializations

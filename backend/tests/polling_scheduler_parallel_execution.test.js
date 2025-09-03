@@ -3,7 +3,7 @@
  * Ensures tasks can run concurrently without blocking each other.
  */
 
-const { Duration } = require("luxon");
+const { Duration, DateTime } = require("luxon");
 const { getMockedRootCapabilities } = require("./spies");
 const { stubEnvironment, stubLogger, stubDatetime, stubSleeper, getDatetimeControl, stubScheduler, getSchedulerControl, stubRuntimeStateStorage } = require("./stubs");
 
@@ -67,9 +67,14 @@ describe("declarative scheduler parallel execution", () => {
 
     test("should execute many tasks in parallel without limits", async () => {
         const capabilities = getTestCapabilities();
+        const timeControl = getDatetimeControl(capabilities);
         const schedulerControl = getSchedulerControl(capabilities);
         schedulerControl.setPollingInterval(1);
         const retryDelay = Duration.fromMillis(5000);
+
+        // Set time to avoid immediate execution for "0 * * * *" schedule
+        const startTime = DateTime.fromISO("2021-01-01T00:05:00.000Z").toMillis(); // 2021-01-01T00:05:00.000Z
+        timeControl.setTime(startTime);
 
         let concurrentExecutions = 0;
         let maxConcurrentExecutions = 0;
@@ -96,7 +101,12 @@ describe("declarative scheduler parallel execution", () => {
 
         await capabilities.scheduler.initialize(registrations);
 
-        // Wait for execution
+        // Should NOT execute immediately on first startup
+        await schedulerControl.waitForNextCycleEnd();
+        expect(concurrencyTask).toHaveBeenCalledTimes(0);
+
+        // Advance to next scheduled execution (01:00:00)
+        timeControl.advanceTime(60 * 60 * 1000); // 1 hour
         await schedulerControl.waitForNextCycleEnd();
 
         // Should execute all tasks and allow multiple to run concurrently
@@ -108,9 +118,14 @@ describe("declarative scheduler parallel execution", () => {
 
     test("should not block fast tasks when slow task is running", async () => {
         const capabilities = getTestCapabilities();
+        const timeControl = getDatetimeControl(capabilities);
         const schedulerControl = getSchedulerControl(capabilities);
         schedulerControl.setPollingInterval(1);
         const retryDelay = Duration.fromMillis(5000);
+
+        // Set time to avoid immediate execution for "0 * * * *" schedule
+        const startTime = DateTime.fromISO("2021-01-01T00:05:00.000Z").toMillis(); // 2021-01-01T00:05:00.000Z
+        timeControl.setTime(startTime);
 
         let fastTaskCompleted = false;
         let slowTaskStarted = false;
@@ -134,7 +149,13 @@ describe("declarative scheduler parallel execution", () => {
 
         await capabilities.scheduler.initialize(registrations);
 
-        // Wait for executions
+        // Should NOT execute immediately on first startup
+        await schedulerControl.waitForNextCycleEnd();
+        expect(slowTaskStarted).toBe(false);
+        expect(fastTaskCompleted).toBe(false);
+
+        // Advance to next scheduled execution (01:00:00)
+        timeControl.advanceTime(60 * 60 * 1000); // 1 hour
         await schedulerControl.waitForNextCycleEnd();
 
         // Both tasks should have started and the fast one should complete
@@ -146,9 +167,14 @@ describe("declarative scheduler parallel execution", () => {
 
     test("should handle parallel task failures independently", async () => {
         const capabilities = getTestCapabilities();
+        const timeControl = getDatetimeControl(capabilities);
         const schedulerControl = getSchedulerControl(capabilities);
         schedulerControl.setPollingInterval(1);
         const retryDelay = Duration.fromMillis(1000);
+
+        // Set time to avoid immediate execution for "0 * * * *" schedule
+        const startTime = DateTime.fromISO("2021-01-01T00:05:00.000Z").toMillis(); // 2021-01-01T00:05:00.000Z
+        timeControl.setTime(startTime);
 
         let goodTaskExecuted = false;
         let badTaskExecuted = false;
@@ -170,14 +196,18 @@ describe("declarative scheduler parallel execution", () => {
 
         await capabilities.scheduler.initialize(registrations);
 
-        // Wait for executions
+        // Should NOT execute immediately on first startup
+        await schedulerControl.waitForNextCycleEnd();
+        expect(goodTaskExecuted).toBe(false);
+        expect(badTaskExecuted).toBe(false);
+
+        // Advance to next scheduled execution (01:00:00)
+        timeControl.advanceTime(60 * 60 * 1000); // 1 hour
         await schedulerControl.waitForNextCycleEnd();
 
         // Both tasks should have been attempted
         expect(goodTaskExecuted).toBe(true);
         expect(badTaskExecuted).toBe(true);
-        // Scheduler should initialize without errors
-        expect(true).toBe(true);
         // Scheduler should initialize without errors
         expect(true).toBe(true);
 
@@ -190,6 +220,10 @@ describe("declarative scheduler parallel execution", () => {
         schedulerControl.setPollingInterval(1);
         const timeControl = getDatetimeControl(capabilities);
         const retryDelay = Duration.fromMillis(500); // Short retry for faster testing
+
+        // Set time to avoid immediate execution for "0 * * * *" schedule
+        const startTime = DateTime.fromISO("2021-01-01T00:05:00.000Z").toMillis(); // 2021-01-01T00:05:00.000Z
+        timeControl.setTime(startTime);
 
         let taskExecutions = {};
 
@@ -209,10 +243,6 @@ describe("declarative scheduler parallel execution", () => {
         const task2 = createTask('2');
         const task3 = createTask('3');
 
-        // Set initial time to trigger catch-up execution (past the minute start)
-        const startTime = 1609459230000; // 2021-01-01T00:00:30.000Z (30 seconds past the hour)
-        timeControl.setTime(startTime);
-
         const registrations = [
             ["retry-task-1", "0 * * * *", task1, retryDelay],
             ["retry-task-2", "0 * * * *", task2, retryDelay],
@@ -221,8 +251,17 @@ describe("declarative scheduler parallel execution", () => {
 
         await capabilities.scheduler.initialize(registrations);
 
-        // Wait for initial executions
+        // Should NOT execute immediately on first startup
         await schedulerControl.waitForNextCycleEnd();
+        expect(task1).toHaveBeenCalledTimes(0);
+        expect(task2).toHaveBeenCalledTimes(0);
+        expect(task3).toHaveBeenCalledTimes(0);
+
+        // Advance to next scheduled execution (01:00:00)
+        timeControl.advanceTime(59.5 * 60 * 1000); // 59.5 minutes to reach 01:00:00
+        await schedulerControl.waitForNextCycleEnd();
+
+        // Wait for initial executions
         expect(task1).toHaveBeenCalledTimes(1);
         expect(task2).toHaveBeenCalledTimes(1);
         expect(task3).toHaveBeenCalledTimes(1);

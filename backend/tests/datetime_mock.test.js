@@ -2,6 +2,7 @@
  * Test for the new datetime mocking functionality.
  */
 
+const { DateTime } = require("luxon");
 const { stubDatetime, getDatetimeControl } = require("./stubs");
 const { getMockedRootCapabilities } = require("./spies");
 const { toEpochMs, fromEpochMs } = require("../src/datetime");
@@ -12,7 +13,7 @@ describe("datetime mocking", () => {
         stubDatetime(capabilities);
         
         const control = getDatetimeControl(capabilities);
-        const specificTime = 1609459200000; // Jan 1, 2021 00:00:00 UTC
+        const specificTime = DateTime.fromISO("2021-01-01T00:00:00.000Z").toMillis(); // Jan 1, 2021 00:00:00 UTC
         
         control.setTime(specificTime);
         expect(control.getCurrentTime()).toBe(specificTime);
@@ -26,7 +27,7 @@ describe("datetime mocking", () => {
         stubDatetime(capabilities);
         
         const control = getDatetimeControl(capabilities);
-        const startTime = 1609459200000; // Jan 1, 2021 00:00:00 UTC
+        const startTime = DateTime.fromISO("2021-01-01T00:00:00.000Z").toMillis(); // Jan 1, 2021 00:00:00 UTC
         const advanceMs = 60 * 1000; // 1 minute
         
         control.setTime(startTime);
@@ -42,7 +43,7 @@ describe("datetime mocking", () => {
         expect(capabilities.datetime.__isMockedDatetime).toBe(true);
         
         const control = getDatetimeControl(capabilities);
-        const specificTime = 1609459200000; // Jan 1, 2021 00:00:00 UTC
+        const specificTime = DateTime.fromISO("2021-01-01T00:00:00.000Z").toMillis(); // Jan 1, 2021 00:00:00 UTC
         
         control.setTime(specificTime);
         expect(control.getCurrentTime()).toBe(specificTime);
@@ -58,7 +59,7 @@ describe("datetime mocking", () => {
         stubDatetime(capabilities);
         
         const control = getDatetimeControl(capabilities);
-        const startTime = 1609459200000; // Jan 1, 2021 00:00:00 UTC
+        const startTime = DateTime.fromISO("2021-01-01T00:00:00.000Z").toMillis(); // Jan 1, 2021 00:00:00 UTC
         const advanceMs = 10 * 60 * 1000; // 10 minutes
         
         control.setTime(startTime);
@@ -87,7 +88,7 @@ describe("datetime mocking", () => {
         const capabilities = getMockedRootCapabilities();
         stubDatetime(capabilities);
         
-        const specificTime = 1609459200000; // Jan 1, 2021 00:00:00 UTC
+        const specificTime = DateTime.fromISO("2021-01-01T00:00:00.000Z").toMillis(); // Jan 1, 2021 00:00:00 UTC
         const specificDateTime = fromEpochMs(specificTime);
         
         // Test that datetime.now is still a jest mock that supports mockReturnValue
@@ -102,7 +103,7 @@ describe("datetime mocking", () => {
         const capabilities = getMockedRootCapabilities();
         stubDatetime(capabilities);
         
-        const time1 = 1609459200000; // Jan 1, 2021 00:00:00 UTC
+        const time1 = DateTime.fromISO("2021-01-01T00:00:00.000Z").toMillis(); // Jan 1, 2021 00:00:00 UTC
         const time2 = 1609545600000; // Jan 2, 2021 00:00:00 UTC
         
         const dateTime1 = fromEpochMs(time1);

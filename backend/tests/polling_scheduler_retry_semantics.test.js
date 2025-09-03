@@ -3,7 +3,7 @@
  * Ensures cron schedule is not superseded by retry logic.
  */
 
-const { Duration } = require("luxon");
+const { Duration, DateTime } = require("luxon");
 const { getMockedRootCapabilities } = require("./spies");
 const { stubEnvironment, stubLogger, stubDatetime, stubSleeper, getDatetimeControl, stubScheduler, getSchedulerControl, stubRuntimeStateStorage } = require("./stubs");
 
@@ -44,7 +44,12 @@ describe("declarative scheduler retry semantics", () => {
         // Initialize with fast polling for tests
         await capabilities.scheduler.initialize(registrations);
 
-        // Wait for scheduler to start and catch up (will execute for 00:00:00)
+        // Wait for scheduler to start (should NOT execute immediately on first startup)
+        await schedulerControl.waitForNextCycleEnd();
+        expect(executionCount).toBe(0);
+
+        // Advance to the next scheduled time (01:00:00) to verify scheduling works
+        timeControl.advanceTime(55 * 60 * 1000); // 55 minutes to reach 01:00:00
         await schedulerControl.waitForNextCycleEnd();
         expect(executionCount).toBe(1);
 
@@ -79,7 +84,12 @@ describe("declarative scheduler retry semantics", () => {
         // Initialize scheduler with fast polling for tests
         await capabilities.scheduler.initialize(registrations);
 
-        // Wait for initial execution and catch-up
+        // Wait for initial execution (should NOT execute immediately on first startup)
+        await schedulerControl.waitForNextCycleEnd();
+        expect(executionCount).toBe(0);
+
+        // Advance to the next scheduled time (01:00:00) to trigger first execution and failure
+        timeControl.advanceTime(55 * 60 * 1000); // 55 minutes to reach 01:00:00
         await schedulerControl.waitForNextCycleEnd();
         expect(executionCount).toBeGreaterThanOrEqual(1);
 
@@ -120,7 +130,12 @@ describe("declarative scheduler retry semantics", () => {
         // Initialize scheduler with fast polling
         await capabilities.scheduler.initialize(registrations);
 
-        // Wait for initial execution (catch up for 00:00:00)
+        // Wait for initial execution (should NOT execute immediately on first startup)
+        await schedulerControl.waitForNextCycleEnd();
+        expect(executionCount).toBe(0);
+
+        // Advance to next scheduled time (00:15:00) to trigger first execution
+        timeControl.advanceTime(10 * 60 * 1000); // 10 minutes to reach 00:15:00
         await schedulerControl.waitForNextCycleEnd();
         expect(executionCount).toBe(1);
 
@@ -172,7 +187,15 @@ describe("declarative scheduler retry semantics", () => {
         // Initialize scheduler with fast polling
         await capabilities.scheduler.initialize(registrations);
 
-        // Wait for initial executions (catch up for 00:00:00)
+        // Wait for initial executions (should NOT execute immediately on first startup)
+        await schedulerControl.waitForNextCycleEnd();
+        
+        // Verify both tasks have NOT executed yet
+        expect(task1Count).toBe(0);
+        expect(task2Count).toBe(0);
+
+        // Advance to next scheduled time (00:15:00) to trigger executions
+        timeControl.advanceTime(10 * 60 * 1000); // 10 minutes to reach 00:15:00
         await schedulerControl.waitForNextCycleEnd();
         
         // Verify both tasks executed at least once
@@ -197,9 +220,14 @@ describe("declarative scheduler retry semantics", () => {
     test("should maintain idempotent behavior on multiple initialize calls", async () => {
         const capabilities = getTestCapabilities();
         const schedulerControl = getSchedulerControl(capabilities);
+        const timeControl = getDatetimeControl(capabilities);
         schedulerControl.setPollingInterval(1);
         const retryDelay = Duration.fromMillis(30 * 1000); // 30 seconds
         let executionCount = 0;
+
+        // Set time to avoid immediate execution for "0 * * * *" schedule
+        const startTime = DateTime.fromISO("2021-01-01T00:05:00.000Z").toMillis(); // 2021-01-01T00:05:00.000Z
+        timeControl.setTime(startTime);
 
         const task = jest.fn(() => {
             executionCount++;
@@ -214,10 +242,18 @@ describe("declarative scheduler retry semantics", () => {
         await capabilities.scheduler.initialize(registrations);
         await capabilities.scheduler.initialize(registrations);
 
-        // Wait for execution
+        // Wait for execution (should NOT execute immediately on first startup)
         await schedulerControl.waitForNextCycleEnd();
 
-        // Should only execute once despite multiple initialize calls
+        // Should not execute despite multiple initialize calls (new behavior)
+        expect(executionCount).toBe(0);
+        expect(task).toHaveBeenCalledTimes(0);
+
+        // Advance to next scheduled time to verify normal execution works
+        timeControl.advanceTime(60 * 60 * 1000); // 1 hour to reach 01:00:00
+        await schedulerControl.waitForNextCycleEnd();
+
+        // Should execute exactly once at scheduled time
         expect(executionCount).toBe(1);
         expect(task).toHaveBeenCalledTimes(1);
 

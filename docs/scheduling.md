@@ -89,17 +89,10 @@ cron expression's minimum interval is not shorter than the polling interval.
 
 ## Persistence and Recovery
 
-Scheduler state is persisted through a runtime storage layer. The stored data
-includes
-
-- task definitions (identifier, schedule and retry interval)
-- timestamps for the most recent attempt and outcome
-- the scheduled time of any pending retry
-
-All updates are written transactionally; a completed write represents the sole
-source of truth. On restart the scheduler loads this state and requires the
-application to supply matching task definitions. Executable logic is provided
-anew at registration and is never persisted.
+Scheduler state is persisted through a runtime storage layer. 
+On restart the scheduler loads this state and requires the
+application to supply matching task definitions.
+The actual callbacks are provided anew at registration and are not persisted.
 
 ## Failure Handling and Retry
 
@@ -108,6 +101,23 @@ When a failure occurs the scheduler notes the time and computes the next
 allowed attempt by adding the delay. Once the task succeeds the pending retry is
 cleared. The strategy is intentionally simple to keep failure recovery
 transparent and predictable.
+
+## Startup Semantics
+
+The scheduler follows specific rules for task execution during the very first startup when no persisted state exists:
+
+### First Startup Behavior
+
+**Tasks execute immediately only if their cron expression exactly matches the current time at startup.** This prevents overwhelming the system with all tasks executing simultaneously while still honoring tasks that are genuinely scheduled to run at that moment.
+
+#### Examples
+
+- **Should execute**: If the scheduler starts at 15:30 on a Tuesday and a task is scheduled with `30 15 * * 2` (15:30 on Tuesday), the task will execute immediately.
+- **Should not execute**: If the scheduler starts at 15:30 on a Tuesday and a task is scheduled with `20 15 * * 2` (15:20 on Tuesday), the task will wait until its next scheduled time.
+
+### Subsequent Startup Behavior
+
+After the first startup, the scheduler loads persisted execution history and continues normal scheduling based on the last known state. No special first-startup logic applies to subsequent restarts.
 
 ## Limitations and Tradeoffs
 
