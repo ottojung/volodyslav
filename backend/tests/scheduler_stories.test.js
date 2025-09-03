@@ -185,8 +185,6 @@ describe("scheduler stories", () => {
         expect(taskCallback.executionTimes).toBeDefined();
         expect(taskCallback.executionTimes.length).toBeGreaterThan(0);
 
-        const initialExecutions = taskCallback.executionTimes.length;
-
         await capabilities.scheduler.stop();
     });
 

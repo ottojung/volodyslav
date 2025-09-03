@@ -39,7 +39,12 @@ describe("failure retry persistence", () => {
 
         await capabilities.scheduler.initialize(registrations);
 
-        // Wait for scheduler to start and catch up (will execute for 00:00:00)
+        // Should NOT execute immediately on first startup
+        await schedulerControl.waitForNextCycleEnd();
+        expect(callback).toHaveBeenCalledTimes(0);
+
+        // Advance to next scheduled execution (01:00:00)
+        timeControl.advanceTime(59.5 * 60 * 1000); // 59.5 minutes to reach 01:00:00
         await schedulerControl.waitForNextCycleEnd();
 
         // Check that task was executed and failed properly

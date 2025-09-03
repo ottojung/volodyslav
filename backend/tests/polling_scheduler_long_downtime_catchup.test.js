@@ -39,12 +39,19 @@ describe("declarative scheduler long downtime catchup behavior", () => {
         await capabilities.scheduler.initialize(registrations);
         await schedulerControl.waitForNextCycleEnd();
 
-        // Should execute once at startup
+        // Should NOT execute immediately on first startup
+        expect(hourlyTask.mock.calls.length).toBe(0);
+
+        // Advance to next scheduled execution (01:00:00)
+        timeControl.advanceTime(60 * 60 * 1000); // 1 hour to 01:00:00
+        await schedulerControl.waitForNextCycleEnd();
+        
+        // Now should have executed once
         expect(hourlyTask.mock.calls.length).toBe(1);
         const initialExecutions = hourlyTask.mock.calls.length;
 
         // Advance time by 3 hours all at once (simulating 3 missed executions)
-        timeControl.advanceTime(3 * 60 * 60 * 1000); // to 03:00:00
+        timeControl.advanceTime(3 * 60 * 60 * 1000); // to 04:00:00
         await schedulerControl.waitForNextCycleEnd();
 
         // Should execute only once more (no catch-up), not 3 times
@@ -73,7 +80,14 @@ describe("declarative scheduler long downtime catchup behavior", () => {
         await capabilities.scheduler.initialize(registrations);
         await schedulerControl.waitForNextCycleEnd();
 
-        // Should execute once at startup
+        // Should NOT execute immediately on first startup
+        expect(hourlyTask.mock.calls.length).toBe(0);
+
+        // Advance to next scheduled execution (01:00:00)
+        timeControl.advanceTime(60 * 60 * 1000); // 1 hour to 01:00:00
+        await schedulerControl.waitForNextCycleEnd();
+        
+        // Now should have executed once
         expect(hourlyTask.mock.calls.length).toBe(1);
         const initialExecutions = hourlyTask.mock.calls.length;
 
@@ -295,6 +309,15 @@ describe("declarative scheduler long downtime catchup behavior", () => {
         // First scheduler instance
         await capabilities.scheduler.initialize(registrations);
         await schedulerControl.waitForNextCycleEnd();
+        
+        // Should NOT execute immediately on first startup
+        expect(hourlyTask.mock.calls.length).toBe(0);
+        
+        // Advance to next scheduled execution (09:00:00)
+        timeControl.advanceTime(60 * 60 * 1000); // 1 hour to 09:00:00
+        await schedulerControl.waitForNextCycleEnd();
+        
+        // Now should have executed once
         expect(hourlyTask.mock.calls.length).toBe(1);
 
         await capabilities.scheduler.stop();

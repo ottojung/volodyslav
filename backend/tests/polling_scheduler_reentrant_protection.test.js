@@ -158,7 +158,14 @@ describe("declarative scheduler re-entrancy protection", () => {
         // Should not throw despite task errors
         await expect(capabilities.scheduler.initialize(registrations)).resolves.toBeUndefined();
         
-        // Wait for execution
+        // Wait for scheduler initialization
+        await schedulerControl.waitForNextCycleEnd();
+        
+        // Should NOT execute immediately on first startup
+        expect(taskExecutionCount).toBe(0);
+        
+        // Advance to next scheduled execution (01:00:00)
+        timeControl.advanceTime(60 * 60 * 1000); // 1 hour
         await schedulerControl.waitForNextCycleEnd();
         
         expect(taskExecutionCount).toBe(1);

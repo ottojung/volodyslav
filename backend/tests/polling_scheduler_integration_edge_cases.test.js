@@ -5,7 +5,7 @@
 
 const { Duration } = require("luxon");
 const { getMockedRootCapabilities } = require("./spies");
-const { stubEnvironment, stubLogger, stubDatetime, stubSleeper, stubRuntimeStateStorage, stubScheduler, getSchedulerControl } = require("./stubs");
+const { stubEnvironment, stubLogger, stubDatetime, stubSleeper, stubRuntimeStateStorage, stubScheduler, getSchedulerControl, getDatetimeControl } = require("./stubs");
 
 function getTestCapabilities() {
     const capabilities = getMockedRootCapabilities();
@@ -280,14 +280,18 @@ describe("declarative scheduler integration and system edge cases", () => {
     describe("performance under stress", () => {
         test("should handle burst task scheduling", async () => {
             const capabilities = getTestCapabilities();
+            const timeControl = getDatetimeControl(capabilities);
             const schedulerControl = getSchedulerControl(capabilities);
             schedulerControl.setPollingInterval(1);
             const retryDelay = Duration.fromMillis(5000);
 
+            // Set time to start of hour for "0 * * * *" schedule
+            const startTime = 1609459200000; // 2021-01-01T00:00:00.000Z
+            timeControl.setTime(startTime);
+
             // Schedule many tasks at once
             const callbacks = [];
             const registrations = [];
-            const startTime = capabilities.datetime.getCurrentTime();
 
             for (let i = 0; i < 20; i++) {
                 const callback = jest.fn();
@@ -305,8 +309,16 @@ describe("declarative scheduler integration and system edge cases", () => {
             // Scheduling should be reasonably fast
             expect(scheduleTime - startTime).toBeLessThan(1000);
 
-            // Some tasks should execute
-            const executedCount = callbacks.filter(cb => cb.mock.calls.length > 0).length;
+            // Should NOT execute immediately on first startup
+            let executedCount = callbacks.filter(cb => cb.mock.calls.length > 0).length;
+            expect(executedCount).toBe(0);
+
+            // Advance to next scheduled execution (01:00:00)
+            timeControl.advanceTime(60 * 60 * 1000); // 1 hour
+            await schedulerControl.waitForNextCycleEnd();
+
+            // Some tasks should execute now
+            executedCount = callbacks.filter(cb => cb.mock.calls.length > 0).length;
             expect(executedCount).toBeGreaterThan(0);
 
             await capabilities.scheduler.stop();

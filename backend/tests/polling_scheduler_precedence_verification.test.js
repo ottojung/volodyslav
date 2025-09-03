@@ -39,8 +39,15 @@ describe("declarative scheduler precedence logic verification", () => {
             ["precedence-test", "0 * * * *", task, retryDelay]
         ];
         
-        // Initialize and wait for execution
+        // Initialize scheduler
         await capabilities.scheduler.initialize(registrations);
+        await schedulerControl.waitForNextCycleEnd();
+        
+        // Should not execute immediately on first startup
+        expect(task).not.toHaveBeenCalled();
+        
+        // Advance time to next scheduled execution (01:00:00)
+        timeControl.advanceTime(60 * 60 * 1000); // 1 hour
         await schedulerControl.waitForNextCycleEnd();
         
         expect(task).toHaveBeenCalled();
@@ -66,8 +73,15 @@ describe("declarative scheduler precedence logic verification", () => {
             ["precedence-test", "0 * * * *", task, retryDelay]
         ];
         
-        // Initialize and wait for execution
+        // Initialize scheduler
         await capabilities.scheduler.initialize(registrations);
+        await schedulerControl.waitForNextCycleEnd();
+        
+        // Should not execute immediately on first startup
+        expect(task).not.toHaveBeenCalled();
+        
+        // Advance time to next scheduled execution (01:00:00)
+        timeControl.advanceTime(60 * 60 * 1000); // 1 hour
         await schedulerControl.waitForNextCycleEnd();
         
         expect(task).toHaveBeenCalled();

@@ -5,7 +5,7 @@
 
 const { Duration } = require("luxon");
 const { getMockedRootCapabilities } = require("./spies");
-const { stubEnvironment, stubLogger, stubDatetime, stubSleeper, stubRuntimeStateStorage, stubScheduler, getSchedulerControl } = require("./stubs");
+const { stubEnvironment, stubLogger, stubDatetime, stubSleeper, stubRuntimeStateStorage, stubScheduler, getSchedulerControl, getDatetimeControl } = require("./stubs");
 
 function getTestCapabilities() {
     const capabilities = getMockedRootCapabilities();
@@ -122,9 +122,14 @@ describe("declarative scheduler state management robustness", () => {
     describe("error resilience", () => {
         test("should handle callbacks that modify global state", async () => {
             const capabilities = getTestCapabilities();
-        const schedulerControl = getSchedulerControl(capabilities);
-        schedulerControl.setPollingInterval(1);
+            const timeControl = getDatetimeControl(capabilities);
+            const schedulerControl = getSchedulerControl(capabilities);
+            schedulerControl.setPollingInterval(1);
             const retryDelay = Duration.fromMillis(5000);
+            
+            // Set time to start of hour for "0 * * * *" schedule
+            const startTime = 1609459200000; // 2021-01-01T00:00:00.000Z
+            timeControl.setTime(startTime);
             
             let globalCounter = 0;
             const globalModifyingCallback = jest.fn(() => {
@@ -141,8 +146,15 @@ describe("declarative scheduler state management robustness", () => {
             
             await schedulerControl.waitForNextCycleEnd();
             
+            // Should NOT execute immediately on first startup
+            expect(globalCounter).toBe(0);
+            
+            // Advance to next scheduled execution (01:00:00)
+            timeControl.advanceTime(60 * 60 * 1000); // 1 hour
+            await schedulerControl.waitForNextCycleEnd();
+            
             // Scheduler should initialize without errors
-        expect(true).toBe(true);
+            expect(true).toBe(true);
             expect(globalCounter).toBeGreaterThan(0);
             
             // Cleanup
@@ -307,9 +319,14 @@ describe("declarative scheduler state management robustness", () => {
     describe("edge case task patterns", () => {
         test("should handle many simultaneous tasks", async () => {
             const capabilities = getTestCapabilities();
-        const schedulerControl = getSchedulerControl(capabilities);
-        schedulerControl.setPollingInterval(1);
+            const timeControl = getDatetimeControl(capabilities);
+            const schedulerControl = getSchedulerControl(capabilities);
+            schedulerControl.setPollingInterval(1);
             const retryDelay = Duration.fromMillis(5000);
+            
+            // Set time to start of hour for "0 * * * *" schedule
+            const startTime = 1609459200000; // 2021-01-01T00:00:00.000Z
+            timeControl.setTime(startTime);
             
             // Create many simultaneous tasks (reduced for performance)
             const registrations = [];
@@ -326,8 +343,16 @@ describe("declarative scheduler state management robustness", () => {
             
             await schedulerControl.waitForNextCycleEnd();
             
+            // Should NOT execute immediately on first startup
+            let executedCount = callbacks.filter(cb => cb.mock.calls.length > 0).length;
+            expect(executedCount).toBe(0);
+            
+            // Advance to next scheduled execution (01:00:00)
+            timeControl.advanceTime(60 * 60 * 1000); // 1 hour
+            await schedulerControl.waitForNextCycleEnd();
+            
             // At least some tasks should execute
-            const executedCount = callbacks.filter(cb => cb.mock.calls.length > 0).length;
+            executedCount = callbacks.filter(cb => cb.mock.calls.length > 0).length;
             expect(executedCount).toBeGreaterThan(0);
             
             await capabilities.scheduler.stop();

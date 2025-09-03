@@ -53,7 +53,16 @@ describe("scheduler atomicity testing", () => {
 
         await capabilities.scheduler.initialize(registrations);
 
-        // Wait for tasks to complete
+        // Wait for scheduler initialization
+        await schedulerControl.waitForNextCycleEnd();
+
+        // Should NOT execute immediately on first startup
+        expect(task1Finished).toBe(false);
+        expect(task2Finished).toBe(false);
+        expect(task3Finished).toBe(false);
+
+        // Advance to next scheduled execution (12:00:00)
+        timeControl.advanceTime(60 * 60 * 1000); // 1 hour to 12:00:00
         await schedulerControl.waitForNextCycleEnd();
 
         expect(task1Finished).toBe(true);
@@ -146,7 +155,15 @@ describe("scheduler atomicity testing", () => {
 
             await capabilities.scheduler.initialize(registrations);
 
-            // Wait for execution
+            // Wait for scheduler initialization
+            await schedulerControl.waitForNextCycleEnd();
+
+            // Should NOT execute immediately on first startup
+            expect(task1Done).toBe(false);
+            expect(task2Done).toBe(false);
+
+            // Advance to next scheduled execution (14:00:00)
+            timeControl.advanceTime(60 * 60 * 1000); // 1 hour to 14:00:00
             await schedulerControl.waitForNextCycleEnd();
 
             expect(task1Done).toBe(true);
