@@ -285,8 +285,8 @@ describe("declarative scheduler integration and system edge cases", () => {
             schedulerControl.setPollingInterval(1);
             const retryDelay = Duration.fromMillis(5000);
 
-            // Set time to start of hour for "0 * * * *" schedule
-            const startTime = 1609459200000; // 2021-01-01T00:00:00.000Z
+            // Set time to avoid immediate execution for "0 * * * *" schedule
+            const startTime = 1609459500000; // 2021-01-01T00:05:00.000Z
             timeControl.setTime(startTime);
 
             // Schedule many tasks at once

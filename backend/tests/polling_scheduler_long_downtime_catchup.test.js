@@ -28,8 +28,8 @@ describe("declarative scheduler long downtime catchup behavior", () => {
         const retryDelay = Duration.fromMillis(5000);
         const hourlyTask = jest.fn();
 
-        // Start at exactly the hour to trigger immediate execution
-        const startTime = 1609459200000 // 2021-01-01T00:00:00.000Z;
+        // Start at a non-scheduled time to avoid immediate execution
+        const startTime = 1609459500000 // 2021-01-01T00:05:00.000Z;
         timeControl.setTime(startTime);
 
         const registrations = [
@@ -69,8 +69,8 @@ describe("declarative scheduler long downtime catchup behavior", () => {
         const retryDelay = Duration.fromMillis(5000);
         const hourlyTask = jest.fn();
 
-        // Start at exactly the hour to trigger immediate execution
-        const startTime = 1609459200000 // 2021-01-01T00:00:00.000Z;
+        // Start at a non-scheduled time to avoid immediate execution  
+        const startTime = 1609459500000 // 2021-01-01T00:05:00.000Z;
         timeControl.setTime(startTime);
 
         const registrations = [
@@ -298,8 +298,8 @@ describe("declarative scheduler long downtime catchup behavior", () => {
         const retryDelay = Duration.fromMillis(1000);
         const hourlyTask = jest.fn();
 
-        // Start at a specific time
-        const startTime = 1609488000000; // 2021-01-01T08:00:00.000Z
+        // Start at a non-scheduled time to avoid immediate execution
+        const startTime = 1609488300000; // 2021-01-01T08:05:00.000Z
         timeControl.setTime(startTime);
 
         const registrations = [
