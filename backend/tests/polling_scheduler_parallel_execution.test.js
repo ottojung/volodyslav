@@ -243,10 +243,6 @@ describe("declarative scheduler parallel execution", () => {
         const task2 = createTask('2');
         const task3 = createTask('3');
 
-        // Set initial time to trigger catch-up execution (past the minute start)
-        const startTime = 1609459230000; // 2021-01-01T00:00:30.000Z (30 seconds past the hour)
-        timeControl.setTime(startTime);
-
         const registrations = [
             ["retry-task-1", "0 * * * *", task1, retryDelay],
             ["retry-task-2", "0 * * * *", task2, retryDelay],
