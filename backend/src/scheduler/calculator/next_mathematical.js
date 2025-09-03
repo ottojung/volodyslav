@@ -91,30 +91,30 @@ function calculateNextExecution(cronExpr, fromDateTime) {
             minute = minInSet(cronExpr.minute);
         }
         
-        // Step 3: Calculate next day (if carry from hour)  
-        if (carry) {
-            const currentValidDays = validDaysInMonth(month, year, cronExpr.day);
-            if (currentValidDays.length === 0) {
-                // No valid days in this month, advance to next month
+        // Step 3: Calculate next day (always check day constraints)
+        const currentValidDays = validDaysInMonth(month, year, cronExpr.day);
+        if (currentValidDays.length === 0) {
+            // No valid days in this month, advance to next month
+            carry = true;
+        } else if (carry || !isValidInSet(day, currentValidDays)) {
+            // Either carried from hour, or current day violates day constraints
+            const dayResult = nextInSetWithRollover(day, currentValidDays);
+            if (dayResult.rolledOver) {
+                // No more valid days in this month
                 carry = true;
             } else {
-                const dayResult = nextInSetWithRollover(day, currentValidDays);
-                if (dayResult.rolledOver) {
-                    // No more valid days in this month
-                    carry = true;
-                } else {
-                    day = dayResult.value;
-                    carry = false;
-                    
-                    // Reset hour and minute when advancing day
-                    hour = minInSet(cronExpr.hour);
-                    minute = minInSet(cronExpr.minute);
-                }
+                day = dayResult.value;
+                carry = false;
+                
+                // Reset hour and minute when advancing day
+                hour = minInSet(cronExpr.hour);
+                minute = minInSet(cronExpr.minute);
             }
         }
         
-        // Step 4: Calculate next month (if carry from day)
-        if (carry) {
+        // Step 4: Calculate next month (always check month constraints)
+        if (carry || !isValidInSet(month, cronExpr.month)) {
+            // Either carried from day, or current month violates month constraints
             const monthResult = nextInSetWithRollover(month, cronExpr.month);
             month = monthResult.value;
             

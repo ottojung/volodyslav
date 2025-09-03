@@ -131,9 +131,9 @@ describe("scheduler calculator edge cases", () => {
         timeControl.setTime(startTime);
         schedulerControl.setPollingInterval(1);
 
-        // Cron expression: run every hour the 20th day of each month
+        // Cron expression: run at midnight of the 20th day of each month  
         const registrations = [
-            ["20th-only-task", "0 * 20 * *", taskCallback, retryDelay]
+            ["20th-only-task", "0 0 20 * *", taskCallback, retryDelay]
         ];
 
         await capabilities.scheduler.initialize(registrations);
