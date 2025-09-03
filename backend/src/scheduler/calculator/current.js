@@ -1,8 +1,9 @@
 /**
- * Cron expression matching.
+ * Cron expression matching using mathematical field-based approach.
  */
 
-const { weekdayNameToCronNumber } = require("../../datetime");
+const { isValidInSet } = require("./field_math");
+const { dateTimeWeekdayToCronNumber } = require("./date_helpers");
 
 /**
  * Checks if a given datetime matches the cron expression.
@@ -11,22 +12,21 @@ const { weekdayNameToCronNumber } = require("../../datetime");
  * @returns {boolean} True if the datetime matches the cron expression
  */
 function matchesCronExpression(cronExpr, dateTime) {
-    // Extract date components using proper DateTime methods instead of string slicing
+    // Extract date components
     const month = dateTime.month; // Already 1-based like cron
     const day = dateTime.day;
     const hour = dateTime.hour;
     const minute = dateTime.minute;
     
-    // Convert weekday name (from DateTime) back to cron number for comparison
-    const weekdayName = dateTime.weekday; // This is now a string like "monday"
-    const weekday = weekdayNameToCronNumber(weekdayName);
+    // Convert weekday name (from DateTime) to cron number for comparison
+    const weekday = dateTimeWeekdayToCronNumber(dateTime);
 
     return (
-        cronExpr.minute.includes(minute) &&
-        cronExpr.hour.includes(hour) &&
-        cronExpr.day.includes(day) &&
-        cronExpr.month.includes(month) &&
-        cronExpr.weekday.includes(weekday)
+        isValidInSet(minute, cronExpr.minute) &&
+        isValidInSet(hour, cronExpr.hour) &&
+        isValidInSet(day, cronExpr.day) &&
+        isValidInSet(month, cronExpr.month) &&
+        isValidInSet(weekday, cronExpr.weekday)
     );
 }
 
