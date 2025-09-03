@@ -50,10 +50,9 @@ describe("scheduler calculator edge cases", () => {
         const executionTimes = [];
         
         taskCallback.mockImplementation(() => {
-            const currentTime = toEpochMs(capabilities.datetime.now());
-            const currentDateTime = fromEpochMs(currentTime);
+            const currentDateTime = capabilities.datetime.now();
             executionTimes.push({
-                time: currentTime,
+                time: currentDateTime,
                 day: currentDateTime.day,
                 hour: currentDateTime.hour,
                 minute: currentDateTime.minute,
