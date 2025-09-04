@@ -170,3 +170,166 @@ describe("getMostRecentExecution", () => {
         expect(prev("*/15 * * * *", "2025-01-14T10:01:00.000Z")).toBe("2025-01-14T10:00:00.000Z");
     });
 });
+
+describe("Boundary semantics (exclusive next / inclusive prev) for specific patterns", () => {
+    test("next: exact boundary for hourly -> next hour", () => {
+        expect(next("0 * * * *", "2025-01-01T14:00:00.000Z")).toBe("2025-01-01T15:00:00.000Z");
+    });
+
+    test("next: exact boundary for daily -> next day", () => {
+        expect(next("0 2 * * *", "2025-01-01T02:00:00.000Z")).toBe("2025-01-02T02:00:00.000Z");
+    });
+
+    test("next: exact boundary for DOM -> next month same DOM", () => {
+        expect(next("0 0 1 * *", "2025-01-01T00:00:00.000Z")).toBe("2025-02-01T00:00:00.000Z");
+    });
+
+    test("next: exact boundary for DOW (Monday) -> next Monday", () => {
+        expect(next("0 12 * * 1", "2025-01-06T12:00:00.000Z")).toBe("2025-01-13T12:00:00.000Z");
+    });
+
+    test("prev: exact boundary hourly is inclusive", () => {
+        expect(prev("0 * * * *", "2025-01-01T14:00:00.000Z")).toBe("2025-01-01T14:00:00.000Z");
+    });
+
+    test("prev: exact boundary daily is inclusive", () => {
+        expect(prev("0 2 * * *", "2025-01-01T02:00:00.000Z")).toBe("2025-01-01T02:00:00.000Z");
+    });
+
+    test("prev: exact boundary DOM is inclusive", () => {
+        expect(prev("0 0 1 * *", "2025-03-01T00:00:00.000Z")).toBe("2025-03-01T00:00:00.000Z");
+    });
+
+    test("prev: exact boundary DOW (Sunday) is inclusive", () => {
+        expect(prev("0 0 * * 0", "2025-01-05T00:00:00.000Z")).toBe("2025-01-05T00:00:00.000Z");
+    });
+});
+
+describe("Year boundaries", () => {
+    test("next: New Year roll", () => {
+        expect(next("0 0 1 1 *", "2024-12-31T23:59:59.999Z")).toBe("2025-01-01T00:00:00.000Z");
+    });
+
+    test("prev: New Year boundary inclusive", () => {
+        expect(prev("0 0 1 1 *", "2025-01-01T00:00:00.000Z")).toBe("2025-01-01T00:00:00.000Z");
+    });
+});
+
+describe("Seconds/millis alignment", () => {
+    test("next: non-zero seconds skip the current tick", () => {
+        expect(next("0 * * * *", "2025-01-01T14:00:00.001Z")).toBe("2025-01-01T15:00:00.000Z");
+    });
+
+    test("next: step alignment with seconds", () => {
+        expect(next("*/15 * * * *", "2025-01-14T10:15:00.001Z")).toBe("2025-01-14T10:30:00.000Z");
+    });
+
+    test("prev: non-zero seconds round down to current tick when within the minute", () => {
+        expect(prev("*/15 * * * *", "2025-01-14T10:15:59.999Z")).toBe("2025-01-14T10:15:00.000Z");
+    });
+});
+
+describe("Ranges, lists, and steps across boundaries", () => {
+    test("hour step: */6 hours", () => {
+        expect(next("0 */6 * * *", "2025-01-01T13:00:00.000Z")).toBe("2025-01-01T18:00:00.000Z");
+    });
+
+    test("minute range with step: 5-50/15 from :50 exact -> next hour :05", () => {
+        expect(next("5-50/15 * * * *", "2025-01-01T10:50:00.000Z")).toBe("2025-01-01T11:05:00.000Z");
+    });
+
+    test("minute list: 10,20,50 from :19 -> :20", () => {
+        expect(next("10,20,50 * * * *", "2025-01-01T10:19:00.000Z")).toBe("2025-01-01T10:20:00.000Z");
+    });
+
+    test("minute list: :50 exact boundary -> next hour :10", () => {
+        expect(next("10,20,50 * * * *", "2025-01-01T10:50:00.000Z")).toBe("2025-01-01T11:10:00.000Z");
+    });
+
+    test("prev minute list: from :21 -> :20", () => {
+        expect(prev("10,20,50 * * * *", "2025-01-01T10:21:00.000Z")).toBe("2025-01-01T10:20:00.000Z");
+    });
+
+    test.failing("prev hour range underflow: 0 8-17 * * * from 07:59 -> prev day 17:00", () => {
+        expect(prev("0 8-17 * * *", "2025-01-15T07:59:00.000Z")).toBe("2025-01-14T17:00:00.000Z");
+    });
+});
+
+describe("Month restrictions and wrap", () => {
+    test("next: only April -> after April ends, jump a year", () => {
+        expect(next("0 0 * 4 *", "2025-04-30T23:59:59.999Z")).toBe("2026-04-01T00:00:00.000Z");
+    });
+
+    test("next: quarterly months */3 (1,4,7,10)", () => {
+        expect(next("0 0 1 */3 *", "2025-04-02T00:00:00.000Z")).toBe("2025-07-01T00:00:00.000Z");
+    });
+
+    test("prev: quarterly months */3 from just after tick -> same day 00:00", () => {
+        expect(prev("0 0 1 */3 *", "2025-04-01T00:00:00.001Z")).toBe("2025-04-01T00:00:00.000Z");
+    });
+
+    test("month range wrap (exact boundary): 23 0 1 3-5 * from 2025-05-01 00:23 -> 2026-03-01 00:23", () => {
+        expect(next("23 0 1 3-5 *", "2025-05-01T00:23:00.000Z")).toBe("2026-03-01T00:23:00.000Z");
+    });
+
+    test.failing("prev month range wrap: 23 0 1 3-5 * from 2025-03-01 00:22:59 -> 2024-05-01 00:23", () => {
+        expect(prev("23 0 1 3-5 *", "2025-03-01T00:22:59.999Z")).toBe("2024-05-01T00:23:00.000Z");
+    });
+});
+
+describe("DOM/DOW OR nuances", () => {
+    test.failing("both match at boundary: pick earlier of next DOM or next DOW (after skipping boundary)", () => {
+        // 2024-01-01 was Monday. At exactly 12:00, next() must skip boundary and choose the next Monday (2024-01-08 12:00),
+        // which comes before the next 1st-of-month (2024-02-01 12:00).
+        expect(next("0 12 1 * 1", "2024-01-01T12:00:00.000Z")).toBe("2024-01-08T12:00:00.000Z");
+    });
+
+    test("one is *: DOW=*, DOM restricted -> ignore DOW", () => {
+        expect(next("0 12 3 * *", "2025-01-01T10:00:00.000Z")).toBe("2025-01-03T12:00:00.000Z");
+    });
+
+    test("Sunday mapping (0): next Sunday from Sunday at boundary -> next week", () => {
+        expect(next("0 0 * * 0", "2025-01-05T00:00:00.000Z")).toBe("2025-01-12T00:00:00.000Z");
+    });
+
+    test("Sunday mapping (0): prev from midweek -> nearest previous Sunday", () => {
+        // Wed Jan 8, 2025 -> previous Sunday Jan 5 at 00:00
+        expect(prev("0 0 * * 0", "2025-01-08T12:34:00.000Z")).toBe("2025-01-05T00:00:00.000Z");
+    });
+
+    test("DOW steps: */2 means 0,2,4,6 (Sun/Tue/Thu/Sat). From Monday -> Tuesday", () => {
+        expect(next("0 0 * * */2", "2025-01-06T00:01:00.000Z")).toBe("2025-01-07T00:00:00.000Z");
+    });
+});
+
+describe("DOM and calendar validity", () => {
+    test.failing("DOM=31 previous: from 2025-06-01 -> 2025-05-31", () => {
+        expect(prev("0 0 31 * *", "2025-06-01T00:00:00.000Z")).toBe("2025-05-31T00:00:00.000Z");
+    });
+
+    test("DOM=30 next around February (non-leap year 2025): from Feb 1 -> Mar 30", () => {
+        expect(next("0 0 30 * *", "2025-02-01T00:00:00.000Z")).toBe("2025-03-30T00:00:00.000Z");
+    });
+
+    test.failing("DOM step */2 next over month boundary (odd -> even): from Jan 31 -> Feb 2", () => {
+        expect(next("0 0 */2 * *", "2025-01-31T23:59:59.999Z")).toBe("2025-02-02T00:00:00.000Z");
+    });
+
+    test.failing("DOM step */2 prev to last even DOM of Feb 2025 (28)", () => {
+        expect(prev("0 0 */2 * *", "2025-03-01T00:00:00.000Z")).toBe("2025-02-28T00:00:00.000Z");
+    });
+});
+
+describe("Carry ripple across hour/day/month", () => {
+    test.failing("minute step crosses hour -> revalidate hour/day", () => {
+        expect(next("*/30 8-9 * * *", "2025-01-14T09:59:31.000Z")).toBe("2025-01-15T08:00:00.000Z");
+    });
+
+    test.failing("prev: ripple back across day for hour range", () => {
+        expect(prev("*/30 8-9 * * *", "2025-01-14T08:00:00.000Z")).toBe("2025-01-13T09:30:00.000Z");
+    });
+
+    test("end-of-day to next day: 45 23 * * * at boundary -> next day same time", () => {
+        expect(next("45 23 * * *", "2025-01-01T23:45:00.000Z")).toBe("2025-01-02T23:45:00.000Z");
+    });
+});
