@@ -3,7 +3,7 @@
  */
 
 const { Duration, DateTime } = require("luxon");
-const { fromEpochMs, fromMilliseconds } = require("../src/datetime");
+const { fromEpochMs, fromObject } = require("../src/datetime");
 const { getMockedRootCapabilities } = require("./spies");
 const { stubEnvironment, stubLogger, stubDatetime, stubSleeper, getDatetimeControl, stubRuntimeStateStorage, stubScheduler, getSchedulerControl } = require("./stubs");
 
@@ -23,7 +23,7 @@ describe("failure retry persistence", () => {
         const capabilities = getTestCapabilities();
         const timeControl = getDatetimeControl(capabilities);
         const schedulerControl = getSchedulerControl(capabilities);
-        schedulerControl.setPollingInterval(fromMilliseconds(1));
+        schedulerControl.setPollingInterval(fromObject({milliseconds: 1}));
 
         // Set a fixed starting time that does NOT match the cron schedule
         const startTime = DateTime.fromISO("2020-01-01T00:05:30.000Z").toMillis(); // 00:05:30 - doesn't match "0 * * * *"
@@ -62,7 +62,7 @@ describe("failure retry persistence", () => {
         });
 
         // Advance time just enough to make retry due (but not trigger next cron)
-        timeControl.advanceByDuration(fromMilliseconds(10 * 1000)); // 10 seconds (past the 5-second retry delay)
+        timeControl.advanceByDuration(fromObject({seconds: 10})); // 10 seconds (past the 5-second retry delay)
         await schedulerControl.waitForNextCycleEnd();
 
         // The task should have retried once more

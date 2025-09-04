@@ -5,7 +5,7 @@
 const { DateTime } = require("luxon");
 const { stubDatetime, getDatetimeControl } = require("./stubs");
 const { getMockedRootCapabilities } = require("./spies");
-const { toEpochMs, fromEpochMs, fromMinutes, fromHours } = require("../src/datetime");
+const { toEpochMs, fromEpochMs, fromMinutes, fromHours, difference } = require("../src/datetime");
 
 describe("datetime mocking", () => {
     describe("DateTime/Duration API", () => {
@@ -54,8 +54,9 @@ describe("datetime mocking", () => {
             control.advanceByDuration(fromHours(2));   // 2 hours
             
             const result = control.getCurrentDateTime();
-            const expectedAdvanceMs = (30 * 60 * 1000) + (2 * 60 * 60 * 1000); // 30 min + 2 hours
-            expect(toEpochMs(result)).toBe(toEpochMs(startDateTime) + expectedAdvanceMs);
+            const expectedAdvance = fromMinutes(30).plus(fromHours(2)); // 30 min + 2 hours 
+            const actualAdvance = difference(result, startDateTime);
+            expect(actualAdvance.as('milliseconds')).toBe(expectedAdvance.as('milliseconds'));
         });
     });
 
@@ -96,11 +97,10 @@ describe("datetime mocking", () => {
             // Advance time
             control.advanceByDuration(advanceDuration);
             
-            // Verify time advanced
+            // Verify time advanced correctly
             const laterTime = capabilities.datetime.now();
-            const expectedAdvanceMs = 10 * 60 * 1000; // 10 minutes in ms
-            expect(toEpochMs(laterTime)).toBe(toEpochMs(startDateTime) + expectedAdvanceMs);
-            expect(toEpochMs(laterTime) - toEpochMs(initialTime)).toBe(expectedAdvanceMs);
+            const actualAdvance = difference(laterTime, initialTime);
+            expect(actualAdvance.as('minutes')).toBe(10);
         });
 
         test("should throw error when accessing control without stubbing", () => {

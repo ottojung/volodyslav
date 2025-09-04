@@ -4,7 +4,7 @@
  */
 
 const { Duration, DateTime } = require("luxon");
-const { fromEpochMs, toEpochMs, fromHours, fromMilliseconds, fromMinutes } = require("../src/datetime");
+const { fromEpochMs, toEpochMs, fromHours, fromObject, fromMinutes } = require("../src/datetime");
 const { getMockedRootCapabilities } = require("./spies");
 const { stubEnvironment, stubLogger, stubDatetime, stubSleeper, getDatetimeControl, stubScheduler, getSchedulerControl, stubRuntimeStateStorage } = require("./stubs");
 
@@ -23,7 +23,7 @@ describe("declarative scheduler parallel execution", () => {
     test("should execute multiple due tasks in parallel", async () => {
         const capabilities = getTestCapabilities();
         const schedulerControl = getSchedulerControl(capabilities);
-        schedulerControl.setPollingInterval(fromMilliseconds(1));
+        schedulerControl.setPollingInterval(fromObject({milliseconds: 1}));
         const retryDelay = Duration.fromMillis(5000);
 
         let task1StartTime = null;
@@ -70,7 +70,7 @@ describe("declarative scheduler parallel execution", () => {
         const capabilities = getTestCapabilities();
         const timeControl = getDatetimeControl(capabilities);
         const schedulerControl = getSchedulerControl(capabilities);
-        schedulerControl.setPollingInterval(fromMilliseconds(1));
+        schedulerControl.setPollingInterval(fromObject({milliseconds: 1}));
         const retryDelay = Duration.fromMillis(5000);
 
         // Set time to avoid immediate execution for "0 * * * *" schedule
@@ -121,7 +121,7 @@ describe("declarative scheduler parallel execution", () => {
         const capabilities = getTestCapabilities();
         const timeControl = getDatetimeControl(capabilities);
         const schedulerControl = getSchedulerControl(capabilities);
-        schedulerControl.setPollingInterval(fromMilliseconds(1));
+        schedulerControl.setPollingInterval(fromObject({milliseconds: 1}));
         const retryDelay = Duration.fromMillis(5000);
 
         // Set time to avoid immediate execution for "0 * * * *" schedule
@@ -170,7 +170,7 @@ describe("declarative scheduler parallel execution", () => {
         const capabilities = getTestCapabilities();
         const timeControl = getDatetimeControl(capabilities);
         const schedulerControl = getSchedulerControl(capabilities);
-        schedulerControl.setPollingInterval(fromMilliseconds(1));
+        schedulerControl.setPollingInterval(fromObject({milliseconds: 1}));
         const retryDelay = Duration.fromMillis(1000);
 
         // Set time to avoid immediate execution for "0 * * * *" schedule
@@ -218,7 +218,7 @@ describe("declarative scheduler parallel execution", () => {
     test("should handle many parallel tasks with retries", async () => {
         const capabilities = getTestCapabilities();
         const schedulerControl = getSchedulerControl(capabilities);
-        schedulerControl.setPollingInterval(fromMilliseconds(1));
+        schedulerControl.setPollingInterval(fromObject({milliseconds: 1}));
         const timeControl = getDatetimeControl(capabilities);
         const retryDelay = Duration.fromMillis(500); // Short retry for faster testing
 
@@ -268,7 +268,7 @@ describe("declarative scheduler parallel execution", () => {
         expect(task3).toHaveBeenCalledTimes(1);
 
         // Advance time by retry delay to trigger retries
-        timeControl.advanceByDuration(fromMilliseconds(1000)); // 1000ms - double the 500ms retry delay
+        timeControl.advanceByDuration(fromObject({milliseconds: 1000})); // 1000ms - double the 500ms retry delay
         await schedulerControl.waitForNextCycleEnd(); // Wait for polling
 
         // All tasks should have been retried at least once

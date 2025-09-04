@@ -4,7 +4,7 @@
  */
 
 const { Duration, DateTime } = require("luxon");
-const { fromEpochMs, fromHours, fromMilliseconds } = require("../src/datetime");
+const { fromEpochMs, fromHours, fromObject } = require("../src/datetime");
 const { getMockedRootCapabilities } = require("./spies");
 const { stubEnvironment, stubLogger, stubDatetime, stubSleeper, stubScheduler, getSchedulerControl, getDatetimeControl, stubRuntimeStateStorage } = require("./stubs");
 
@@ -33,7 +33,7 @@ describe("declarative scheduler precedence logic verification", () => {
         // Set time to avoid immediate execution for "0 * * * *" schedule
         const startTime = DateTime.fromISO("2021-01-01T00:05:00.000Z").toMillis();
         timeControl.setDateTime(fromEpochMs(startTime));
-        schedulerControl.setPollingInterval(fromMilliseconds(1));
+        schedulerControl.setPollingInterval(fromObject({milliseconds: 1}));
         
         // Task runs at minute 0 of every hour
         const registrations = [
@@ -67,7 +67,7 @@ describe("declarative scheduler precedence logic verification", () => {
         // Set time to avoid immediate execution for "0 * * * *" schedule
         const startTime = DateTime.fromISO("2021-01-01T00:05:00.000Z").toMillis();
         timeControl.setDateTime(fromEpochMs(startTime));
-        schedulerControl.setPollingInterval(fromMilliseconds(1));
+        schedulerControl.setPollingInterval(fromObject({milliseconds: 1}));
         
         // Task runs at minute 0 of every hour
         const registrations = [
@@ -97,7 +97,7 @@ describe("declarative scheduler precedence logic verification", () => {
         const retryDelay = Duration.fromMillis(5 * 60 * 1000); // 5 minutes
         const task = jest.fn().mockResolvedValue(undefined);
         
-        schedulerControl.setPollingInterval(fromMilliseconds(1));
+        schedulerControl.setPollingInterval(fromObject({milliseconds: 1}));
         
         // Task runs every 15 minutes
         const registrations = [

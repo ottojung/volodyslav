@@ -5,7 +5,7 @@
  */
 
 const { Duration, DateTime } = require("luxon");
-const { fromEpochMs, fromMilliseconds } = require("../src/datetime");
+const { fromEpochMs, fromObject } = require("../src/datetime");
 const { getMockedRootCapabilities } = require("./spies");
 const { stubEnvironment, stubLogger, stubDatetime, stubSleeper, stubRuntimeStateStorage, stubScheduler, getSchedulerControl, getDatetimeControl } = require("./stubs");
 
@@ -31,7 +31,7 @@ describe("scheduler first startup semantics", () => {
             const tuesdayAt1530 = DateTime.fromISO("2024-01-02T15:30:00.000Z").toMillis(); // Tuesday, 15:30
             datetimeControl.setDateTime(fromEpochMs(tuesdayAt1530));
             
-            schedulerControl.setPollingInterval(fromMilliseconds(1));
+            schedulerControl.setPollingInterval(fromObject({milliseconds: 1}));
             const retryDelay = Duration.fromMillis(5000);
 
             const taskCallback = jest.fn();
@@ -59,7 +59,7 @@ describe("scheduler first startup semantics", () => {
             const tuesdayAt1530 = DateTime.fromISO("2024-01-02T15:30:00.000Z").toMillis(); // Tuesday, 15:30
             datetimeControl.setDateTime(fromEpochMs(tuesdayAt1530));
             
-            schedulerControl.setPollingInterval(fromMilliseconds(1));
+            schedulerControl.setPollingInterval(fromObject({milliseconds: 1}));
             const retryDelay = Duration.fromMillis(5000);
 
             const taskCallback = jest.fn();
@@ -87,7 +87,7 @@ describe("scheduler first startup semantics", () => {
             const tuesdayAt1530 = DateTime.fromISO("2024-01-02T15:30:00.000Z").toMillis(); // Tuesday, 15:30
             datetimeControl.setDateTime(fromEpochMs(tuesdayAt1530));
             
-            schedulerControl.setPollingInterval(fromMilliseconds(1));
+            schedulerControl.setPollingInterval(fromObject({milliseconds: 1}));
             const retryDelay = Duration.fromMillis(5000);
 
             const taskCallback = jest.fn();
@@ -124,7 +124,7 @@ describe("scheduler first startup semantics", () => {
             const tuesdayAt1530 = DateTime.fromISO("2024-01-02T15:30:00.000Z").toMillis(); // Tuesday, 15:30
             datetimeControl.setDateTime(fromEpochMs(tuesdayAt1530));
             
-            schedulerControl.setPollingInterval(fromMilliseconds(1));
+            schedulerControl.setPollingInterval(fromObject({milliseconds: 1}));
             const retryDelay = Duration.fromMillis(5000);
 
             const matchingTaskCallback = jest.fn();
@@ -157,7 +157,7 @@ describe("scheduler first startup semantics", () => {
             const tuesdayAt1530 = DateTime.fromISO("2024-01-02T15:30:00.000Z").toMillis();
             datetimeControl.setDateTime(fromEpochMs(tuesdayAt1530));
             
-            schedulerControl.setPollingInterval(fromMilliseconds(1));
+            schedulerControl.setPollingInterval(fromObject({milliseconds: 1}));
             const retryDelay = Duration.fromMillis(5000);
 
             const exactMatchCallback = jest.fn();
@@ -190,7 +190,7 @@ describe("scheduler first startup semantics", () => {
             datetimeControl.setDateTime(fromEpochMs(tuesdayAt1530));
             
             // Set a very short polling interval BEFORE creating registrations
-            schedulerControl.setPollingInterval(fromMilliseconds(1));
+            schedulerControl.setPollingInterval(fromObject({milliseconds: 1}));
             const retryDelay = Duration.fromMillis(5000);
 
             const everyMinuteCallback = jest.fn();
@@ -220,7 +220,7 @@ describe("scheduler first startup semantics", () => {
             const tuesdayAt1530 = DateTime.fromISO("2024-01-02T15:30:00.000Z").toMillis();
             datetimeControl.setDateTime(fromEpochMs(tuesdayAt1530)); // Tuesday
             
-            schedulerControl.setPollingInterval(fromMilliseconds(1));
+            schedulerControl.setPollingInterval(fromObject({milliseconds: 1}));
             const retryDelay = Duration.fromMillis(5000);
 
             const tuesdayCallback = jest.fn();

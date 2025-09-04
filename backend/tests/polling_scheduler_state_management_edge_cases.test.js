@@ -4,7 +4,7 @@
  */
 
 const { Duration, DateTime } = require("luxon");
-const { fromEpochMs, fromHours, fromMilliseconds } = require("../src/datetime");
+const { fromEpochMs, fromHours, fromObject } = require("../src/datetime");
 const { getMockedRootCapabilities } = require("./spies");
 const { stubEnvironment, stubLogger, stubDatetime, stubSleeper, stubRuntimeStateStorage, stubScheduler, getSchedulerControl, getDatetimeControl } = require("./stubs");
 
@@ -40,7 +40,7 @@ describe("declarative scheduler state management robustness", () => {
         test("should handle invalid cron expressions gracefully", async () => {
             const capabilities = getTestCapabilities();
         const schedulerControl = getSchedulerControl(capabilities);
-        schedulerControl.setPollingInterval(fromMilliseconds(1));
+        schedulerControl.setPollingInterval(fromObject({milliseconds: 1}));
             const retryDelay = Duration.fromMillis(5000);
             const taskCallback = jest.fn();
             
@@ -68,7 +68,7 @@ describe("declarative scheduler state management robustness", () => {
         test("should handle extremely large retry delays", async () => {
             const capabilities = getTestCapabilities();
         const schedulerControl = getSchedulerControl(capabilities);
-        schedulerControl.setPollingInterval(fromMilliseconds(1));
+        schedulerControl.setPollingInterval(fromObject({milliseconds: 1}));
             const veryLargeDelay = Duration.fromMillis(365 * 24 * 60 * 60 * 1000); // 1 year
             const taskCallback = jest.fn(() => {
                 throw new Error("Task failure");
@@ -93,7 +93,7 @@ describe("declarative scheduler state management robustness", () => {
         test("should handle extremely short retry delays", async () => {
             const capabilities = getTestCapabilities();
         const schedulerControl = getSchedulerControl(capabilities);
-        schedulerControl.setPollingInterval(fromMilliseconds(1));
+        schedulerControl.setPollingInterval(fromObject({milliseconds: 1}));
             const veryShortDelay = Duration.fromMillis(1); // 1ms
             let callCount = 0;
             const taskCallback = jest.fn(() => {
@@ -125,7 +125,7 @@ describe("declarative scheduler state management robustness", () => {
             const capabilities = getTestCapabilities();
             const timeControl = getDatetimeControl(capabilities);
             const schedulerControl = getSchedulerControl(capabilities);
-            schedulerControl.setPollingInterval(fromMilliseconds(1));
+            schedulerControl.setPollingInterval(fromObject({milliseconds: 1}));
             const retryDelay = Duration.fromMillis(5000);
             
             // Set time to avoid immediate execution for "0 * * * *" schedule  
@@ -167,7 +167,7 @@ describe("declarative scheduler state management robustness", () => {
         test("should handle callbacks with memory leaks", async () => {
             const capabilities = getTestCapabilities();
         const schedulerControl = getSchedulerControl(capabilities);
-        schedulerControl.setPollingInterval(fromMilliseconds(1));
+        schedulerControl.setPollingInterval(fromObject({milliseconds: 1}));
             const retryDelay = Duration.fromMillis(5000);
             
             let memoryAccumulator = [];
@@ -202,7 +202,7 @@ describe("declarative scheduler state management robustness", () => {
         test("should handle callbacks that throw non-Error objects", async () => {
             const capabilities = getTestCapabilities();
         const schedulerControl = getSchedulerControl(capabilities);
-        schedulerControl.setPollingInterval(fromMilliseconds(1));
+        schedulerControl.setPollingInterval(fromObject({milliseconds: 1}));
             const retryDelay = Duration.fromMillis(5000);
             
             let throwCount = 0;
@@ -241,7 +241,7 @@ describe("declarative scheduler state management robustness", () => {
         test("should handle rapid start/stop cycles", async () => {
             const capabilities = getTestCapabilities();
         const schedulerControl = getSchedulerControl(capabilities);
-        schedulerControl.setPollingInterval(fromMilliseconds(1));
+        schedulerControl.setPollingInterval(fromObject({milliseconds: 1}));
             const retryDelay = Duration.fromMillis(5000);
             const taskCallback = jest.fn();
             
@@ -264,7 +264,7 @@ describe("declarative scheduler state management robustness", () => {
         test("should handle concurrent initialization attempts", async () => {
             const capabilities = getTestCapabilities();
         const schedulerControl = getSchedulerControl(capabilities);
-        schedulerControl.setPollingInterval(fromMilliseconds(1));
+        schedulerControl.setPollingInterval(fromObject({milliseconds: 1}));
             const retryDelay = Duration.fromMillis(5000);
             const taskCallback = jest.fn();
             
@@ -322,7 +322,7 @@ describe("declarative scheduler state management robustness", () => {
             const capabilities = getTestCapabilities();
             const timeControl = getDatetimeControl(capabilities);
             const schedulerControl = getSchedulerControl(capabilities);
-            schedulerControl.setPollingInterval(fromMilliseconds(1));
+            schedulerControl.setPollingInterval(fromObject({milliseconds: 1}));
             const retryDelay = Duration.fromMillis(5000);
             
             // Set time to avoid immediate execution for "0 * * * *" schedule

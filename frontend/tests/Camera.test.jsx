@@ -2,7 +2,7 @@ import React from 'react';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import '@testing-library/jest-dom';
 import { make as makeSleeper } from '../../backend/src/sleeper.js';
-import { fromMilliseconds } from '../../backend/src/datetime/duration.js';
+import { fromObject } from '../../backend/src/datetime/duration.js';
 
 const sleeper = makeSleeper();
 
@@ -79,7 +79,7 @@ describe('Camera component', () => {
                     objectStore: jest.fn().mockImplementation(() => ({
                         put: jest.fn().mockImplementation((data, key) => {
                             mockStore.set(key, data);
-                            sleeper.sleep(fromMilliseconds(0)).then(() => {
+                            sleeper.sleep(fromObject({milliseconds: 0})).then(() => {
                                 if (typeof transaction.oncomplete === 'function') {
                                     transaction.oncomplete();
                                 }
@@ -104,7 +104,7 @@ describe('Camera component', () => {
         };
         const mockOpen = jest.fn().mockImplementation(() => {
             const req = {};
-            sleeper.sleep(fromMilliseconds(0)).then(() => {
+            sleeper.sleep(fromObject({milliseconds: 0})).then(() => {
                 if (typeof req.onupgradeneeded === 'function') {
                     req.result = mockDB;
                     req.onupgradeneeded({ target: req });
@@ -199,7 +199,7 @@ describe('Camera component', () => {
         await waitFor(() => screen.getByAltText('Preview'));
         
         // Wait a bit for the blob to be processed
-        await sleeper.sleep(fromMilliseconds(100));
+        await sleeper.sleep(fromObject({milliseconds: 100}));
         
         fireEvent.click(screen.getByText('Done'));
 
