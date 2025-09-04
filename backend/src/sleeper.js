@@ -2,20 +2,22 @@
  * Sleeper capability for pausing execution.
  */
 
+const { fromMilliseconds } = require('./datetime/duration');
+
 /**
  * @typedef {object} Sleeper
- * @property {(ms: number) => Promise<void>} sleep - Pause for the given milliseconds.
+ * @property {(duration: import('luxon').Duration) => Promise<void>} sleep - Pause for the given duration.
  * @property {<T>(name: string, procedure: () => Promise<T>) => Promise<T>} withMutex - Execute a procedure with a mutex lock.
  */
 
 /**
- * Pauses execution for the specified milliseconds.
- * @param {number} ms - Milliseconds to sleep.
+ * Pauses execution for the specified duration.
+ * @param {import('luxon').Duration} duration - Duration to sleep.
  * @returns {Promise<void>} Resolves after the delay.
  */
-function sleep(ms) {
+function sleep(duration) {
     return new Promise((resolve) => {
-        setTimeout(resolve, ms);
+        setTimeout(resolve, duration.toMillis());
     });
 }
 
@@ -32,7 +34,8 @@ function make() {
      */
     async function withMutex(name, procedure) {
         while (mutexes.has(name)) {
-            await new Promise(resolve => setTimeout(resolve, 1));
+            const shortDelay = fromMilliseconds(1);
+            await new Promise(resolve => setTimeout(resolve, shortDelay.toMillis()));
         }
 
         mutexes.add(name);

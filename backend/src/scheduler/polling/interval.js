@@ -3,7 +3,10 @@
  * Handles the timing and execution of polling operations.
  */
 
+const { fromMilliseconds } = require('../../datetime/duration');
+
 const POLL_INTERVAL_MS = 600000;
+const POLL_INTERVAL = fromMilliseconds(POLL_INTERVAL_MS);
 const THREAD_NAME = "volodyslav:scheduler:poll"
 
 /**
@@ -22,7 +25,7 @@ function makeIntervalManager(pollFunction, capabilities) {
         }
     }
 
-    const thread = capabilities.threading.periodic(THREAD_NAME, POLL_INTERVAL_MS, wrappedPoll);
+    const thread = capabilities.threading.periodic(THREAD_NAME, POLL_INTERVAL, wrappedPoll);
     const start = () => thread.start();
     const stop = async () => await thread.stop();
 
@@ -32,5 +35,6 @@ function makeIntervalManager(pollFunction, capabilities) {
 module.exports = {
     makeIntervalManager,
     POLL_INTERVAL_MS,
+    POLL_INTERVAL,
     THREAD_NAME,
 };
