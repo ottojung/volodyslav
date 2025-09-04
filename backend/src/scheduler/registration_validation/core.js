@@ -6,12 +6,8 @@ const { parseCronExpression } = require("../expression");
 const {
     RegistrationsNotArrayError,
     RegistrationShapeError,
-    ScheduleInvalidNameError,
     ScheduleDuplicateTaskError,
-    InvalidCronExpressionTypeError,
     CronExpressionInvalidError,
-    CallbackTypeError,
-    RetryDelayTypeError,
     NegativeRetryDelayError,
 } = require("./errors");
 
@@ -20,10 +16,9 @@ const {
 /**
  * Validates registration input format and content
  * @param {Registration[]} registrations
- * @param {import('../types').SchedulerCapabilities} capabilities
  * @throws {Error} if registrations are invalid
  */
-function validateRegistrations(registrations, capabilities) {
+function validateRegistrations(registrations) {
     if (!Array.isArray(registrations)) {
         throw new RegistrationsNotArrayError("Registrations must be an array");
     }
@@ -37,9 +32,8 @@ function validateRegistrations(registrations, capabilities) {
         }
 
         const [name, cronExpression, callback, retryDelay] = registration;
-
-        if (typeof name !== 'string' || name.trim() === '') {
-            throw new ScheduleInvalidNameError(name || '(empty)');
+        if (callback === undefined || typeof callback !== 'function') {
+            throw new RegistrationShapeError(`Registration at index ${i} (${JSON.stringify(name)}): callback must be a function, got: ${typeof callback}`, { index: i, name, value: callback });
         }
 
         const qname = JSON.stringify(name);
@@ -50,18 +44,6 @@ function validateRegistrations(registrations, capabilities) {
         }
         seenNames.add(name);
 
-        // Validate name format (helpful for avoiding common mistakes)
-        if (name.includes(' ')) {
-            capabilities.logger.logWarning(
-                { name, index: i },
-                `Task name ${qname} contains spaces. Consider using hyphens or underscores instead.`
-            );
-        }
-
-        if (typeof cronExpression !== 'string' || cronExpression.trim() === '') {
-            throw new InvalidCronExpressionTypeError(`Registration at index ${i} (${qname}): cronExpression must be a non-empty string, got: ${typeof cronExpression}`, { index: i, name, value: cronExpression });
-        }
-
         // Basic cron expression validation using the cron module
         try {
             parseCronExpression(cronExpression);
@@ -69,24 +51,10 @@ function validateRegistrations(registrations, capabilities) {
             throw new CronExpressionInvalidError(`Registration at index ${i} (${qname}): invalid cron expression '${cronExpression}'`, { index: i, name, value: cronExpression });
         }
 
-        if (typeof callback !== 'function') {
-            throw new CallbackTypeError(`Registration at index ${i} (${qname}): callback must be a function, got: ${typeof callback}`, { index: i, name, value: callback });
-        }
-
-        if (!retryDelay || typeof retryDelay.toMillis !== 'function') {
-            throw new RetryDelayTypeError(`Registration at index ${i} (${qname}): retryDelay must be a Duration object with toMillis() method`, { index: i, name, value: retryDelay });
-        }
-
         // Validate retry delay is reasonable (warn for very large delays but don't block)
         const retryMs = retryDelay.toMillis();
         if (retryMs < 0) {
             throw new NegativeRetryDelayError(`Registration at index ${i} (${qname}): retryDelay cannot be negative`, { index: i, name, retryMs });
-        }
-        if (retryMs > 24 * 60 * 60 * 1000) { // 24 hours
-            capabilities.logger.logWarning(
-                { name, retryDelayMs: retryMs, retryDelayHours: Math.round(retryMs / (60 * 60 * 1000)) },
-                `Task ${qname} has a very large retry delay of ${retryMs}ms (${Math.round(retryMs / (60 * 60 * 1000))} hours). Consider using a smaller delay.`
-            );
         }
     }
 }

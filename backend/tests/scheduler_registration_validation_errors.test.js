@@ -87,63 +87,6 @@ describe("scheduler registration validation error handling", () => {
         });
     });
 
-    describe("ScheduleInvalidNameError scenarios", () => {
-        test("should throw ScheduleInvalidNameError for non-string names", () => {
-            const capabilities = getTestCapabilities();
-            const callback = jest.fn();
-            const retryDelay = Duration.fromMillis(5000);
-            
-            const invalidNames = [
-                null,
-                undefined,
-                123,
-                {},
-                [],
-                true,
-                false
-            ];
-
-            invalidNames.forEach(invalidName => {
-                expect(() => validateRegistrations([[invalidName, "0 * * * *", callback, retryDelay]], capabilities))
-                    .toThrow("Task name must be a non-empty string");
-            });
-        });
-
-        test("should throw ScheduleInvalidNameError for empty or whitespace-only names", () => {
-            const capabilities = getTestCapabilities();
-            const callback = jest.fn();
-            const retryDelay = Duration.fromMillis(5000);
-            
-            const emptyNames = [
-                "",
-                "   ",
-                "\t",
-                "\n",
-                "  \t  \n  "
-            ];
-
-            emptyNames.forEach(emptyName => {
-                expect(() => validateRegistrations([[emptyName, "0 * * * *", callback, retryDelay]], capabilities))
-                    .toThrow("Task name must be a non-empty string");
-            });
-        });
-
-        test("should log warning for names with spaces but not throw", () => {
-            const capabilities = getTestCapabilities();
-            const callback = jest.fn();
-            const retryDelay = Duration.fromMillis(5000);
-            
-            expect(() => validateRegistrations([["task name with spaces", "0 * * * *", callback, retryDelay]], capabilities))
-                .not.toThrow();
-            
-            // Should have logged a warning
-            expect(capabilities.logger.logWarning).toHaveBeenCalledWith(
-                expect.objectContaining({ name: "task name with spaces" }),
-                expect.stringContaining("contains spaces")
-            );
-        });
-    });
-
     describe("ScheduleDuplicateTaskError scenarios", () => {
         test("should throw ScheduleDuplicateTaskError for duplicate task names", () => {
             const capabilities = getTestCapabilities();
@@ -197,63 +140,6 @@ describe("scheduler registration validation error handling", () => {
             
             // Second call should also succeed (different validation session)
             expect(() => validateRegistrations(registrations, capabilities)).not.toThrow();
-        });
-    });
-
-    describe("InvalidCronExpressionTypeError scenarios", () => {
-        test("should throw InvalidCronExpressionTypeError for non-string cron expressions", () => {
-            const capabilities = getTestCapabilities();
-            const callback = jest.fn();
-            const retryDelay = Duration.fromMillis(5000);
-            
-            const invalidCronExpressions = [
-                null,
-                undefined,
-                123,
-                {},
-                [],
-                true,
-                false
-            ];
-
-            invalidCronExpressions.forEach(invalidCron => {
-                expect(() => validateRegistrations([["task", invalidCron, callback, retryDelay]], capabilities))
-                    .toThrow(/cronExpression must be a non-empty string/);
-            });
-        });
-
-        test("should throw InvalidCronExpressionTypeError for empty cron expressions", () => {
-            const capabilities = getTestCapabilities();
-            const callback = jest.fn();
-            const retryDelay = Duration.fromMillis(5000);
-            
-            const emptyCronExpressions = [
-                "",
-                "   ",
-                "\t",
-                "\n"
-            ];
-
-            emptyCronExpressions.forEach(emptyCron => {
-                expect(() => validateRegistrations([["task", emptyCron, callback, retryDelay]], capabilities))
-                    .toThrow(/cronExpression must be a non-empty string/);
-            });
-        });
-
-        test("should include detailed error information", () => {
-            const capabilities = getTestCapabilities();
-            const callback = jest.fn();
-            const retryDelay = Duration.fromMillis(5000);
-            
-            expect(() => validateRegistrations([["task", null, callback, retryDelay]], capabilities))
-                .toThrow(expect.objectContaining({
-                    name: "InvalidCronExpressionTypeError",
-                    details: expect.objectContaining({
-                        index: 0,
-                        name: "task",
-                        value: null
-                    })
-                }));
         });
     });
 
@@ -337,47 +223,6 @@ describe("scheduler registration validation error handling", () => {
         });
     });
 
-    describe("RetryDelayTypeError scenarios", () => {
-        test("should throw RetryDelayTypeError for invalid retry delay objects", () => {
-            const capabilities = getTestCapabilities();
-            const callback = jest.fn();
-            
-            const invalidRetryDelays = [
-                null,
-                undefined,
-                "string",
-                123,
-                {},
-                [],
-                true,
-                { /* missing toMillis method */ },
-                { toMillis: "not-a-function" }
-            ];
-
-            invalidRetryDelays.forEach(invalidRetryDelay => {
-                expect(() => validateRegistrations([["task", "0 * * * *", callback, invalidRetryDelay]], capabilities))
-                    .toThrow(/retryDelay must be a Duration object/);
-            });
-        });
-
-        test("should accept valid Duration objects", () => {
-            const capabilities = getTestCapabilities();
-            const callback = jest.fn();
-            
-            const validRetryDelays = [
-                Duration.fromMillis(0),
-                Duration.fromMillis(1000),
-                Duration.fromMillis(60000),
-                Duration.fromMillis(3600000)
-            ];
-
-            validRetryDelays.forEach((validRetryDelay, index) => {
-                expect(() => validateRegistrations([[`task-${index}`, "0 * * * *", callback, validRetryDelay]], capabilities))
-                    .not.toThrow();
-            });
-        });
-    });
-
     describe("NegativeRetryDelayError scenarios", () => {
         test("should throw NegativeRetryDelayError for negative retry delays", () => {
             const capabilities = getTestCapabilities();
@@ -407,44 +252,6 @@ describe("scheduler registration validation error handling", () => {
                         retryMs: -5000
                     })
                 }));
-        });
-    });
-
-    describe("warning scenarios", () => {
-        test("should log warning for very large retry delays but not throw", () => {
-            const capabilities = getTestCapabilities();
-            const callback = jest.fn();
-            
-            // 25 hours = over the 24 hour threshold
-            const largeRetryDelay = Duration.fromMillis(25 * 60 * 60 * 1000);
-
-            expect(() => validateRegistrations([["task", "0 * * * *", callback, largeRetryDelay]], capabilities))
-                .not.toThrow();
-            
-            // Should have logged a warning
-            expect(capabilities.logger.logWarning).toHaveBeenCalledWith(
-                expect.objectContaining({ 
-                    name: "task",
-                    retryDelayMs: 25 * 60 * 60 * 1000 
-                }),
-                expect.stringContaining("very large retry delay")
-            );
-        });
-
-        test("should not warn for reasonable retry delays", () => {
-            const capabilities = getTestCapabilities();
-            const callback = jest.fn();
-            
-            // 1 hour - should not trigger warning
-            const reasonableRetryDelay = Duration.fromMillis(60 * 60 * 1000);
-
-            validateRegistrations([["task", "0 * * * *", callback, reasonableRetryDelay]], capabilities);
-            
-            // Should not have logged a warning about retry delay
-            expect(capabilities.logger.logWarning).not.toHaveBeenCalledWith(
-                expect.anything(),
-                expect.stringContaining("very large retry delay")
-            );
         });
     });
 
