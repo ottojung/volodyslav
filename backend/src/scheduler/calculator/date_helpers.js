@@ -3,8 +3,7 @@
  * Provides timezone-aware date operations while working with the DateTime abstraction.
  */
 
-const { weekdayNameToCronNumber } = require("../../datetime");
-const { DateTime } = require("luxon");
+const { weekdayNameToCronNumber, dateTimeFromObject, fromObject } = require("../../datetime");
 
 /**
  * Gets the number of days in a given month, accounting for leap years.
@@ -61,10 +60,10 @@ function validDaysInMonth(month, year, daySet) {
  */
 function getWeekday(year, month, day) {
     // Use Luxon DateTime to get weekday
-    const luxonDate = DateTime.fromObject({ year, month, day }, { zone: 'utc' });
+    const luxonDate = dateTimeFromObject({ year, month, day }, { zone: 'utc' });
     // Luxon weekday: 1=Monday, 2=Tuesday, ..., 7=Sunday
     // Convert to cron format: 0=Sunday, 1=Monday, ..., 6=Saturday
-    const luxonWeekday = luxonDate.weekday;
+    const luxonWeekday = luxonDate.luxonWeekday;
     return luxonWeekday === 7 ? 0 : luxonWeekday; // Convert Sunday from 7 to 0
 }
 
@@ -86,8 +85,8 @@ function dateTimeWeekdayToCronNumber(dateTime) {
  * @returns {{year: number, month: number, day: number}}
  */
 function addDays(year, month, day, days) {
-    const luxonDate = DateTime.fromObject({ year, month, day }, { zone: 'utc' });
-    const advancedDate = luxonDate.plus({ days });
+    const luxonDate = dateTimeFromObject({ year, month, day }, { zone: 'utc' });
+    const advancedDate = luxonDate.advance(fromObject({ days }));
     
     return {
         year: advancedDate.year,

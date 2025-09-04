@@ -4,7 +4,7 @@
 
 const { isPushError } = require("./wrappers");
 const { executeTransactionAttempt } = require("./transaction_attempt");
-const { Duration } = require("luxon");
+const { fromMilliseconds } = require("../datetime");
 const {
     logTransactionAttemptStart,
     logTransactionSuccessAfterRetries,
@@ -110,7 +110,7 @@ function createLoggingContext(attempt, maxAttempts, workingPath, initial_state) 
 async function transactionWithRetry(capabilities, workingPath, initial_state, transformation, retryOptions = DEFAULT_RETRY_OPTIONS) {
     const options = { ...DEFAULT_RETRY_OPTIONS, ...retryOptions };
     const delayMs = options.delayMs;
-    const delay = Duration.fromMillis(delayMs);
+    const delay = fromMilliseconds(delayMs);
     const callbackName = `transaction:${workingPath}`;
 
     return withRetry(capabilities, callbackName, async ({ attempt, retry }) => {
@@ -137,7 +137,7 @@ async function transactionWithRetry(capabilities, workingPath, initial_state, tr
                 throw error;
             }
 
-            logRetryAttempt(capabilities.logger, loggingContext, delay.toString(), error);
+            logRetryAttempt(capabilities.logger, loggingContext, delay.toString() || `${delayMs}ms`, error);
             await capabilities.sleeper.sleep(delayMs);
             return retry();
         }
