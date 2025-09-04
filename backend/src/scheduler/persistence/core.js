@@ -2,7 +2,7 @@
  * State initialization and persistence core functionality.
  */
 
-const { fromObject } = require("../../datetime");
+const { fromMinutes } = require("../../datetime");
 const { makeDefault } = require('../../runtime_state_storage/structure');
 const { materializeTasks, serializeTasks } = require('./materialization');
 
@@ -26,7 +26,7 @@ const { materializeTasks, serializeTasks } = require('./materialization');
  */
 async function getCurrentState(storage, registrations, datetime) {
     const now = datetime.now();    
-    const lastMinute = now.subtract(fromObject({ minutes: 1 }));
+    const lastMinute = now.subtract(fromMinutes(1));
     const existingState = await storage.getExistingState();
     if (existingState === null) {
         const ret = makeDefault(datetime);

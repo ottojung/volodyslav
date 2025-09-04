@@ -1,6 +1,6 @@
 const request = require("supertest");
 const { makeTestApp } = require("./api_ordering_test_setup");
-const { fromISOString, fromEpochMs } = require("../src/datetime");
+const { fromISOString, fromDays } = require("../src/datetime");
 
 describe("API Ordering Integration Tests", () => {
     describe("Pagination with Ordering", () => {
@@ -37,7 +37,7 @@ describe("API Ordering Integration Tests", () => {
             const { app, capabilities } = await makeTestApp();
 
             // Create entries with different dates by controlling datetime.now()
-            const baseTime = fromISOString("2023-01-01T10:00:00Z").getTime();
+            const baseTime = fromISOString("2023-01-01T10:00:00Z");
             const entries = [
                 { rawInput: "test - Entry 1" },
                 { rawInput: "test - Entry 2" },
@@ -47,9 +47,8 @@ describe("API Ordering Integration Tests", () => {
 
             // Create entries with incrementing timestamps
             for (let i = 0; i < entries.length; i++) {
-                capabilities.datetime.now.mockReturnValueOnce(
-                    fromEpochMs(baseTime + i * 24 * 60 * 60 * 1000)
-                );
+                const entryTime = baseTime.advance(fromDays(i));
+                capabilities.datetime.now.mockReturnValueOnce(entryTime);
                 await request(app)
                     .post("/api/entries")
                     .send(entries[i])
@@ -71,7 +70,7 @@ describe("API Ordering Integration Tests", () => {
 
             const lastFromPage1 = fromISOString(page1.body.results[page1.body.results.length - 1].date);
             const firstFromPage2 = fromISOString(page2.body.results[0].date);
-            expect(lastFromPage1.getTime()).toBeGreaterThanOrEqual(firstFromPage2.getTime());
+            expect(lastFromPage1.isAfterOrEqual(firstFromPage2)).toBe(true);
         });
     });
 
@@ -135,10 +134,8 @@ describe("API Ordering Integration Tests", () => {
         it("ignores when modifiers and uses current time", async () => {
             const { app, capabilities } = await makeTestApp();
 
-            const fixedTime = fromISOString("2025-06-28T10:00:00Z").getTime();
-            capabilities.datetime.now.mockReturnValue(
-                fromEpochMs(fixedTime)
-            );
+            const fixedTime = fromISOString("2025-06-28T10:00:00Z");
+            capabilities.datetime.now.mockReturnValue(fixedTime);
 
             const requestBody = {
                 rawInput: "test [when 2023-06-15T14:30:00Z] - Entry with when modifier",
@@ -155,16 +152,14 @@ describe("API Ordering Integration Tests", () => {
             // The created entry should use current time, not the when modifier
             // Parse the returned date and compare timestamps to avoid timezone issues
             const returnedDate = fromISOString(createRes.body.entry.date);
-            expect(returnedDate.getTime()).toBe(fixedTime);
+            expect(returnedDate.equals(fixedTime)).toBe(true);
         });
 
         it("ignores explicit date parameter and uses current time", async () => {
             const { app, capabilities } = await makeTestApp();
 
-            const fixedTime = fromISOString("2025-06-28T12:00:00Z").getTime();
-            capabilities.datetime.now.mockReturnValue(
-                fromEpochMs(fixedTime)
-            );
+            const fixedTime = fromISOString("2025-06-28T12:00:00Z");
+            capabilities.datetime.now.mockReturnValue(fixedTime);
 
             const requestBody = {
                 rawInput: "test [when 2023-06-15T14:30:00Z] - Entry with both dates",
@@ -182,7 +177,7 @@ describe("API Ordering Integration Tests", () => {
             // The created entry should use current time, ignoring both the explicit date and when modifier
             // Parse the returned date and compare timestamps to avoid timezone issues
             const returnedDate = fromISOString(createRes.body.entry.date);
-            expect(returnedDate.getTime()).toBe(fixedTime);
+            expect(returnedDate.equals(fixedTime)).toBe(true);
         });
     });
 });

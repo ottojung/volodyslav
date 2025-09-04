@@ -3,8 +3,8 @@
  * Ensures tasks can run concurrently without blocking each other.
  */
 
-const { Duration, DateTime } = require("luxon");
-const { fromEpochMs, toEpochMs, fromHours, fromMilliseconds, fromMinutes } = require("../src/datetime");
+const { Duration } = require("luxon");
+const { fromISOString, fromHours, fromMilliseconds, fromMinutes } = require("../src/datetime");
 const { getMockedRootCapabilities } = require("./spies");
 const { stubEnvironment, stubLogger, stubDatetime, stubSleeper, getDatetimeControl, stubScheduler, getSchedulerControl, stubRuntimeStateStorage } = require("./stubs");
 
@@ -30,13 +30,13 @@ describe("declarative scheduler parallel execution", () => {
         let task2StartTime = null;
 
         const task1 = jest.fn(async () => {
-            task1StartTime = toEpochMs(capabilities.datetime.now());
+            task1StartTime = capabilities.datetime.now();
             // Add a small delay to make parallelism more observable
             await new Promise(resolve => setTimeout(resolve, 100));
         });
 
         const task2 = jest.fn(async () => {
-            task2StartTime = toEpochMs(capabilities.datetime.now());
+            task2StartTime = capabilities.datetime.now();
             // Add a small delay to make parallelism more observable
             await new Promise(resolve => setTimeout(resolve, 100));
         });
@@ -60,7 +60,7 @@ describe("declarative scheduler parallel execution", () => {
         // Tasks should have started around the same time (parallel execution)
         expect(task1StartTime).toBeDefined();
         expect(task2StartTime).toBeDefined();
-        const startTimeDiff = Math.abs(task1StartTime - task2StartTime);
+        const startTimeDiff = Math.abs(task1StartTime.diff(task2StartTime).toMillis());
         expect(startTimeDiff).toBeLessThan(100); // Should start within 100ms of each other
 
         await capabilities.scheduler.stop();
@@ -74,8 +74,8 @@ describe("declarative scheduler parallel execution", () => {
         const retryDelay = Duration.fromMillis(5000);
 
         // Set time to avoid immediate execution for "0 * * * *" schedule
-        const startTime = DateTime.fromISO("2021-01-01T00:05:00.000Z").toMillis(); // 2021-01-01T00:05:00.000Z
-        timeControl.setDateTime(fromEpochMs(startTime));
+        const startTime = fromISOString("2021-01-01T00:05:00.000Z"); // 2021-01-01T00:05:00.000Z
+        timeControl.setDateTime(startTime);
 
         let concurrentExecutions = 0;
         let maxConcurrentExecutions = 0;
@@ -125,8 +125,8 @@ describe("declarative scheduler parallel execution", () => {
         const retryDelay = Duration.fromMillis(5000);
 
         // Set time to avoid immediate execution for "0 * * * *" schedule
-        const startTime = DateTime.fromISO("2021-01-01T00:05:00.000Z").toMillis(); // 2021-01-01T00:05:00.000Z
-        timeControl.setDateTime(fromEpochMs(startTime));
+        const startTime = fromISOString("2021-01-01T00:05:00.000Z"); // 2021-01-01T00:05:00.000Z
+        timeControl.setDateTime(startTime);
 
         let fastTaskCompleted = false;
         let slowTaskStarted = false;
@@ -174,8 +174,8 @@ describe("declarative scheduler parallel execution", () => {
         const retryDelay = Duration.fromMillis(1000);
 
         // Set time to avoid immediate execution for "0 * * * *" schedule
-        const startTime = DateTime.fromISO("2021-01-01T00:05:00.000Z").toMillis(); // 2021-01-01T00:05:00.000Z
-        timeControl.setDateTime(fromEpochMs(startTime));
+        const startTime = fromISOString("2021-01-01T00:05:00.000Z"); // 2021-01-01T00:05:00.000Z
+        timeControl.setDateTime(startTime);
 
         let goodTaskExecuted = false;
         let badTaskExecuted = false;
@@ -223,8 +223,8 @@ describe("declarative scheduler parallel execution", () => {
         const retryDelay = Duration.fromMillis(500); // Short retry for faster testing
 
         // Set time to avoid immediate execution for "0 * * * *" schedule
-        const startTime = DateTime.fromISO("2021-01-01T00:05:00.000Z").toMillis(); // 2021-01-01T00:05:00.000Z
-        timeControl.setDateTime(fromEpochMs(startTime));
+        const startTime = fromISOString("2021-01-01T00:05:00.000Z"); // 2021-01-01T00:05:00.000Z
+        timeControl.setDateTime(startTime);
 
         let taskExecutions = {};
 

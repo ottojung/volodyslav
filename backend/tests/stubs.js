@@ -105,7 +105,7 @@ function stubDatetime(capabilities) {
     const originalNow = capabilities.datetime.now;
 
     // Initialize with a fixed time for tests (January 1, 2024 00:00:00 UTC)
-    let currentDateTime = datetime.fromEpochMs(1704067200000);
+    let currentDateTime = datetime.fromISOString("2024-01-01T00:00:00.000Z");
 
     // Override the now method to return the controlled time
     originalNow.mockImplementation(() => currentDateTime);

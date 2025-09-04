@@ -2,8 +2,8 @@
  * Tests for failure retry persistence.
  */
 
-const { Duration, DateTime } = require("luxon");
-const { fromEpochMs, fromMilliseconds } = require("../src/datetime");
+const { Duration } = require("luxon");
+const { fromMilliseconds, fromISOString } = require("../src/datetime");
 const { getMockedRootCapabilities } = require("./spies");
 const { stubEnvironment, stubLogger, stubDatetime, stubSleeper, getDatetimeControl, stubRuntimeStateStorage, stubScheduler, getSchedulerControl } = require("./stubs");
 
@@ -26,8 +26,8 @@ describe("failure retry persistence", () => {
         schedulerControl.setPollingInterval(fromMilliseconds(1));
 
         // Set a fixed starting time that does NOT match the cron schedule
-        const startTime = DateTime.fromISO("2020-01-01T00:05:30.000Z").toMillis(); // 00:05:30 - doesn't match "0 * * * *"
-        timeControl.setDateTime(fromEpochMs(startTime));
+        const startTime = fromISOString("2020-01-01T00:05:30.000Z"); // 00:05:30 - doesn't match "0 * * * *"
+        timeControl.setDateTime(startTime);
 
         // Initialize scheduler with registrations
         const retryDelay = Duration.fromMillis(5000); // 5 second retry delay
@@ -45,7 +45,7 @@ describe("failure retry persistence", () => {
         expect(callback).toHaveBeenCalledTimes(0);
 
         // Advance to next scheduled execution (01:00:00)
-        timeControl.setDateTime(fromEpochMs(DateTime.fromISO("2020-01-01T01:00:00.000Z").toMillis())); // Set to exact time for execution
+        timeControl.setDateTime(fromISOString("2020-01-01T01:00:00.000Z")); // Set to exact time for execution
         await schedulerControl.waitForNextCycleEnd();
 
         // Check that task was executed and failed properly

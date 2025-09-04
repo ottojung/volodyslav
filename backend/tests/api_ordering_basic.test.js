@@ -1,6 +1,6 @@
 const request = require("supertest");
 const { makeTestApp } = require("./api_ordering_test_setup");
-const { fromISOString, fromEpochMs } = require("../src/datetime");
+const { fromISOString } = require("../src/datetime");
 
 describe("API Ordering Integration Tests", () => {
     describe("Phone Script Bug Fix", () => {
@@ -30,7 +30,7 @@ describe("API Ordering Integration Tests", () => {
             const { app, capabilities } = await makeTestApp();
 
             // Create entries with different dates by controlling datetime.now()
-            const baseTime = fromISOString("2023-01-01T10:00:00Z").getTime();
+            const baseTime = fromISOString("2023-01-01T10:00:00Z");
             const entries = [
                 { rawInput: "test - Oldest entry" },
                 { rawInput: "test - Newest entry" },
@@ -39,7 +39,7 @@ describe("API Ordering Integration Tests", () => {
 
             // Mock datetime to return different times for each entry
             capabilities.datetime.now.mockReturnValueOnce(
-                fromEpochMs(baseTime)
+                baseTime
             ); // Oldest
             await request(app)
                 .post("/api/entries")
@@ -47,7 +47,7 @@ describe("API Ordering Integration Tests", () => {
                 .set("Content-Type", "application/json");
 
             capabilities.datetime.now.mockReturnValueOnce(
-                fromEpochMs(baseTime + 2 * 24 * 60 * 60 * 1000)
+                baseTime + 2 * 24 * 60 * 60 * 1000
             ); // Newest
             await request(app)
                 .post("/api/entries")
@@ -55,7 +55,7 @@ describe("API Ordering Integration Tests", () => {
                 .set("Content-Type", "application/json");
 
             capabilities.datetime.now.mockReturnValueOnce(
-                fromEpochMs(baseTime + 24 * 60 * 60 * 1000)
+                baseTime + 24 * 60 * 60 * 1000
             ); // Middle
             await request(app)
                 .post("/api/entries")
@@ -70,7 +70,7 @@ describe("API Ordering Integration Tests", () => {
             // Verify the order is descending (newest first)
             const dates = res.body.results.map(entry => fromISOString(entry.date));
             for (let i = 1; i < dates.length; i++) {
-                expect(dates[i - 1].getTime()).toBeGreaterThanOrEqual(dates[i].getTime());
+                expect(dates[i - 1].isAfterOrEqual(dates[i])).toBe(true);
             }
         });
     });
@@ -80,14 +80,14 @@ describe("API Ordering Integration Tests", () => {
             const { app, capabilities } = await makeTestApp();
 
             // Create entries with different dates by controlling datetime.now()
-            const baseTime = fromISOString("2023-01-01T10:00:00Z").getTime();
+            const baseTime = fromISOString("2023-01-01T10:00:00Z");
             const entries = [
                 { rawInput: "test - First" },
                 { rawInput: "test - Second" },
             ];
 
             capabilities.datetime.now.mockReturnValueOnce(
-                fromEpochMs(baseTime)
+                baseTime
             );
             await request(app)
                 .post("/api/entries")
@@ -95,7 +95,7 @@ describe("API Ordering Integration Tests", () => {
                 .set("Content-Type", "application/json");
 
             capabilities.datetime.now.mockReturnValueOnce(
-                fromEpochMs(baseTime + 24 * 60 * 60 * 1000)
+                baseTime + 24 * 60 * 60 * 1000
             );
             await request(app)
                 .post("/api/entries")
@@ -110,7 +110,7 @@ describe("API Ordering Integration Tests", () => {
             for (let i = 1; i < res.body.results.length; i++) {
                 const currentDate = fromISOString(res.body.results[i].date);
                 const previousDate = fromISOString(res.body.results[i - 1].date);
-                expect(previousDate.getTime()).toBeGreaterThanOrEqual(currentDate.getTime());
+                expect(previousDate.isAfterOrEqual(currentDate)).toBe(true);
             }
         });
 
@@ -118,14 +118,14 @@ describe("API Ordering Integration Tests", () => {
             const { app, capabilities } = await makeTestApp();
 
             // Create entries with different dates by controlling datetime.now()
-            const baseTime = fromISOString("2023-01-01T10:00:00Z").getTime();
+            const baseTime = fromISOString("2023-01-01T10:00:00Z");
             const entries = [
                 { rawInput: "test - Second" },
                 { rawInput: "test - First" },
             ];
 
             capabilities.datetime.now.mockReturnValueOnce(
-                fromEpochMs(baseTime + 24 * 60 * 60 * 1000)
+                baseTime + 24 * 60 * 60 * 1000
             ); // Second (newer)
             await request(app)
                 .post("/api/entries")
@@ -133,7 +133,7 @@ describe("API Ordering Integration Tests", () => {
                 .set("Content-Type", "application/json");
 
             capabilities.datetime.now.mockReturnValueOnce(
-                fromEpochMs(baseTime)
+                baseTime
             ); // First (older)
             await request(app)
                 .post("/api/entries")
@@ -148,7 +148,7 @@ describe("API Ordering Integration Tests", () => {
             for (let i = 1; i < res.body.results.length; i++) {
                 const currentDate = fromISOString(res.body.results[i].date);
                 const previousDate = fromISOString(res.body.results[i - 1].date);
-                expect(currentDate.getTime()).toBeGreaterThanOrEqual(previousDate.getTime());
+                expect(currentDate.isAfterOrEqual(previousDate)).toBe(true);
             }
         });
 
@@ -175,7 +175,7 @@ describe("API Ordering Integration Tests", () => {
             // Extract all dates and verify they are in descending order
             const dates = res.body.results.map(entry => fromISOString(entry.date));
             for (let i = 1; i < dates.length; i++) {
-                expect(dates[i - 1].getTime()).toBeGreaterThanOrEqual(dates[i].getTime());
+                expect(dates[i - 1].isAfterOrEqual(dates[i])).toBe(true);
             }
         });
     });

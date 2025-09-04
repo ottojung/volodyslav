@@ -3,8 +3,8 @@
  * Focuses on scheduler robustness, error handling, and consistent behavior.
  */
 
-const { Duration, DateTime } = require("luxon");
-const { fromEpochMs, fromHours, fromMilliseconds } = require("../src/datetime");
+const { Duration } = require("luxon");
+const { fromISOString, fromHours, fromMilliseconds } = require("../src/datetime");
 const { getMockedRootCapabilities } = require("./spies");
 const { stubEnvironment, stubLogger, stubDatetime, stubSleeper, stubRuntimeStateStorage, stubScheduler, getSchedulerControl, getDatetimeControl } = require("./stubs");
 
@@ -129,8 +129,8 @@ describe("declarative scheduler state management robustness", () => {
             const retryDelay = Duration.fromMillis(5000);
             
             // Set time to avoid immediate execution for "0 * * * *" schedule  
-            const startTime = DateTime.fromISO("2021-01-01T00:05:00.000Z").toMillis(); // 2021-01-01T00:05:00.000Z
-            timeControl.setDateTime(fromEpochMs(startTime));
+            const startTime = fromISOString("2021-01-01T00:05:00.000Z"); // 2021-01-01T00:05:00.000Z
+            timeControl.setDateTime(startTime);
             
             let globalCounter = 0;
             const globalModifyingCallback = jest.fn(() => {
@@ -326,8 +326,8 @@ describe("declarative scheduler state management robustness", () => {
             const retryDelay = Duration.fromMillis(5000);
             
             // Set time to avoid immediate execution for "0 * * * *" schedule
-            const startTime = DateTime.fromISO("2021-01-01T00:05:00.000Z").toMillis(); // 2021-01-01T00:05:00.000Z
-            timeControl.setDateTime(fromEpochMs(startTime));
+            const startTime = fromISOString("2021-01-01T00:05:00.000Z"); // 2021-01-01T00:05:00.000Z
+            timeControl.setDateTime(startTime);
             
             // Create many simultaneous tasks (reduced for performance)
             const registrations = [];

@@ -3,6 +3,7 @@
  */
 
 const { makeTask } = require('./structure');
+const { isDateTime } = require('../../datetime');
 const {
     TaskMissingFieldError,
     TaskInvalidTypeError,
@@ -120,9 +121,7 @@ function tryDeserialize(obj, registrations) {
             ["lastEvaluatedFire", lastEvaluatedFire]
         ]) {
             if (value !== undefined && value !== null) {
-                // For now, we accept DateTime objects directly
-                // In a real implementation, you might need to parse ISO strings
-                if (typeof value !== "object" || value === null || !('getTime' in value)) {
+                if (!isDateTime(value)) {
                     return new TaskInvalidTypeError(String(fieldName), value, "DateTime or undefined");
                 }
             }

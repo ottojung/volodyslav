@@ -8,7 +8,7 @@ const {
     stubDatetime,
     stubEventLogRepository,
 } = require("./stubs");
-const { fromISOString, fromEpochMs } = require("../src/datetime");
+const { fromISOString } = require("../src/datetime");
 
 async function makeTestApp() {
     const capabilities = getMockedRootCapabilities();
@@ -166,7 +166,6 @@ describe("GET /api/entries with ordering", () => {
         const { app, capabilities } = await makeTestApp();
 
         // Create entries with different dates by controlling datetime.now()
-        const baseTime = fromISOString("2023-01-01T10:00:00Z").getTime();
         const entries = [
             { rawInput: "type1 - Description 1" },
             { rawInput: "type2 - Description 3" },
@@ -175,7 +174,7 @@ describe("GET /api/entries with ordering", () => {
 
         // Mock datetime to return different times for each entry
         capabilities.datetime.now.mockReturnValueOnce(
-            fromEpochMs(baseTime)
+            fromISOString("2023-01-01T10:00:00.000Z")
         ); // Oldest
         await request(app)
             .post("/api/entries")
@@ -183,7 +182,7 @@ describe("GET /api/entries with ordering", () => {
             .set("Content-Type", "application/json");
 
         capabilities.datetime.now.mockReturnValueOnce(
-            fromEpochMs(baseTime + 2 * 24 * 60 * 60 * 1000)
+            fromISOString("2023-01-03T10:00:00.000Z")
         ); // Newest
         await request(app)
             .post("/api/entries")
@@ -191,7 +190,7 @@ describe("GET /api/entries with ordering", () => {
             .set("Content-Type", "application/json");
 
         capabilities.datetime.now.mockReturnValueOnce(
-            fromEpochMs(baseTime + 24 * 60 * 60 * 1000)
+            fromISOString("2023-01-02T10:00:00.000Z")
         ); // Middle
         await request(app)
             .post("/api/entries")
@@ -205,7 +204,7 @@ describe("GET /api/entries with ordering", () => {
         // Should be in descending date order (newest first)
         const dates = res.body.results.map(entry => fromISOString(entry.date));
         for (let i = 1; i < dates.length; i++) {
-            expect(dates[i - 1].getTime()).toBeGreaterThanOrEqual(dates[i].getTime());
+            expect(dates[i - 1].isAfterOrEqual(dates[i])).toBe(true);
         }
     });
 

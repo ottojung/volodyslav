@@ -3,8 +3,8 @@
  * Tests boundary conditions, error scenarios, and complex edge cases.
  */
 
-const { Duration, DateTime } = require("luxon");
-const { fromEpochMs, fromHours, fromMilliseconds } = require("../src/datetime");
+const { Duration } = require("luxon");
+const { fromISOString, fromHours, fromMilliseconds } = require("../src/datetime");
 const { getMockedRootCapabilities } = require("./spies");
 const { stubEnvironment, stubLogger, stubDatetime, stubSleeper, stubRuntimeStateStorage, stubScheduler, getSchedulerControl, getDatetimeControl } = require("./stubs");
 
@@ -55,8 +55,8 @@ describe("declarative scheduler comprehensive edge cases", () => {
             const callback3 = jest.fn();
 
             // Set time to avoid immediate execution for "0 * * * *" schedule
-            const startTime = DateTime.fromISO("2021-01-01T00:05:00.000Z").toMillis(); // 2021-01-01T00:05:00.000Z
-            timeControl.setDateTime(fromEpochMs(startTime));
+            const startTime = fromISOString("2021-01-01T00:05:00.000Z"); // 2021-01-01T00:05:00.000Z
+            timeControl.setDateTime(startTime);
 
             const registrations = [
                 ["task1", "0 * * * *", callback1, retryDelay], // Every minute
@@ -172,8 +172,8 @@ describe("declarative scheduler comprehensive edge cases", () => {
             const retryDelay = Duration.fromMillis(1000);
 
             // Set time to avoid immediate execution for "0 * * * *" schedule
-            const startTime = DateTime.fromISO("2021-01-01T00:05:00.000Z").toMillis(); // 2021-01-01T00:05:00.000Z
-            timeControl.setDateTime(fromEpochMs(startTime));
+            const startTime = fromISOString("2021-01-01T00:05:00.000Z"); // 2021-01-01T00:05:00.000Z
+            timeControl.setDateTime(startTime);
 
             // Schedule 15 tasks all due at the same time
             const callbacks = [];

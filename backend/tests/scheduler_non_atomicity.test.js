@@ -3,7 +3,7 @@ const taskExecutor = require("../src/scheduler/execution");
 const { Duration } = require("luxon");
 const { getMockedRootCapabilities } = require("./spies");
 const { stubEnvironment, stubLogger, stubDatetime, stubSleeper, getDatetimeControl, stubScheduler, getSchedulerControl, stubRuntimeStateStorage } = require("./stubs");
-const { toEpochMs, fromHours, fromEpochMs, fromMilliseconds } = require("../src/datetime");
+const { fromHours, fromMilliseconds, fromISOString } = require("../src/datetime");
 
 function getTestCapabilities() {
     const capabilities = getMockedRootCapabilities();
@@ -49,8 +49,8 @@ describe("scheduler atomicity testing", () => {
         ];
 
         // Set time to avoid immediate execution for "0 * * * *" schedule
-        const startTime = 1704107100000 // 2024-01-01T11:05:00.000Z;
-        timeControl.setDateTime(fromEpochMs(startTime));
+        const startTime = fromISOString("2024-01-01T11:05:00.000Z");
+        timeControl.setDateTime(startTime);
 
         await capabilities.scheduler.initialize(registrations);
 
@@ -116,7 +116,7 @@ describe("scheduler atomicity testing", () => {
                         event: 'task_start',
                         callId,
                         taskName: task.name,
-                        timestamp: toEpochMs(capabilities.datetime.now())
+                        timestamp: capabilities.datetime.now().toISOString()
                     });
 
                     // Execute the original task
@@ -126,7 +126,7 @@ describe("scheduler atomicity testing", () => {
                         event: 'task_complete',
                         callId,
                         taskName: task.name,
-                        timestamp: toEpochMs(capabilities.datetime.now())
+                        timestamp: capabilities.datetime.now().toISOString()
                     });
                 }
             };
@@ -151,8 +151,8 @@ describe("scheduler atomicity testing", () => {
                 ["controlled-task-2", "0 * * * *", task2, retryDelay]
             ];
 
-            const startTime = 1704114300000 // 2024-01-01T13:05:00.000Z;
-            timeControl.setDateTime(fromEpochMs(startTime));
+            const startTime = fromISOString("2024-01-01T13:05:00.000Z");
+            timeControl.setDateTime(startTime);
 
             await capabilities.scheduler.initialize(registrations);
 
