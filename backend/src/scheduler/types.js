@@ -10,17 +10,6 @@
 /** @typedef {import('./expression').CronExpression} CronExpression */
 
 /**
- * Minimal capabilities interface for the scheduler.
- * This provides only the capabilities actually needed by the scheduler,
- * following the principle of least privilege.
- * @typedef {object} SchedulerCapabilities
- * @property {import('../logger').Logger} logger - For logging operations
- * @property {import('../datetime').Datetime} datetime - For time operations
- * @property {import('../runtime_state_storage').RuntimeStateStorage} state - For persistence
- * @property {import('../threading').Threading} threading - For periodic operations
- */
-
-/**
  * @typedef {object} Scheduler
  * @property {Initialize} initialize - Initializes the scheduler with task registrations
  * @property {Stop} stop - Stops the scheduler and cleans up resources

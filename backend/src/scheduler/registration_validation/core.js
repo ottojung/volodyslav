@@ -20,7 +20,7 @@ const {
 /**
  * Validates registration input format and content
  * @param {Registration[]} registrations
- * @param {import('../types').SchedulerCapabilities} capabilities
+ * @param {import('../types').Capabilities} capabilities
  * @throws {Error} if registrations are invalid
  */
 function validateRegistrations(registrations, capabilities) {

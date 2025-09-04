@@ -50,7 +50,7 @@ async function getCurrentState(storage, registrations, datetime) {
 /**
  * Persist current scheduler state to disk
  * @template T
- * @param {import('../types').SchedulerCapabilities} capabilities
+ * @param {import('../../capabilities/root').Capabilities} capabilities
  * @param {ParsedRegistrations} registrations
  * @param {Transformation<T>} transformation
  * @returns {Promise<T>}
