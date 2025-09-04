@@ -109,7 +109,12 @@ const make = () => {
         sleeper,
         wifiChecker,
         volodyslavDailyTasks,
-        scheduler: schedule.make(() => ret),
+        scheduler: schedule.make(() => ({
+            datetime: ret.datetime,
+            logger: ret.logger,
+            state: ret.state,
+            threading: ret.threading,
+        })),
         state: runtimeStateStorage.make(() => ret),
         threading,
     };

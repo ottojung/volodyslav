@@ -27,7 +27,7 @@ class TaskEvaluationNotFoundError extends Error {
  * @param {Map<string, import('../task').Task>} tasks - Task map
  * @param {Set<string>} scheduledTasks - Set of scheduled task names
  * @param {import('../../datetime').DateTime} now - Current datetime
- * @param {import('../../capabilities/root').Capabilities} capabilities - Capabilities for logging
+ * @param {import('../types').SchedulerCapabilities} capabilities - Capabilities for logging
  * @returns {{
  *   dueTasks: Array<{taskName: string, mode: "retry"|"cron", callback: Callback}>,
  *   stats: {dueRetry: number, dueCron: number, skippedRunning: number, skippedRetryFuture: number, skippedNotDue: number}
