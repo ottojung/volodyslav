@@ -17,6 +17,7 @@ const {
 } = require("./stubs");
 const { getMockedRootCapabilities } = require("./spies");
 const { Duration, DateTime } = require("luxon");
+const { fromEpochMs } = require("../src/datetime");
 
 function getTestCapabilities() {
     const capabilities = getMockedRootCapabilities();
@@ -268,7 +269,7 @@ describe("Declarative Scheduler", () => {
             
             // Set time to 00:05:00 to avoid immediate execution (task runs at 0, 15, 30, 45 minutes)
             const startTime = DateTime.fromISO("2021-01-01T00:05:00.000Z").toMillis(); // 2021-01-01T00:05:00.000Z
-            timeControl.setTime(startTime);
+            timeControl.setDateTime(fromEpochMs(startTime));
             control.setPollingInterval(1);
 
             // Initialize the scheduler with very short poll interval for testing
@@ -295,7 +296,7 @@ describe("Declarative Scheduler", () => {
             
             // Set time to 00:30:00 to avoid immediate execution (task runs at 0 minutes of each hour)
             const startTime = 1609461000000; // 2021-01-01T00:30:00.000Z
-            timeControl.setTime(startTime);
+            timeControl.setDateTime(fromEpochMs(startTime));
             control.setPollingInterval(1);
 
             // First call to initialize

@@ -4,6 +4,7 @@
  */
 
 const { Duration, DateTime } = require("luxon");
+const { fromEpochMs, toEpochMs, fromHours } = require("../src/datetime");
 const { getMockedRootCapabilities } = require("./spies");
 const { stubEnvironment, stubLogger, stubDatetime, stubSleeper, stubRuntimeStateStorage, stubScheduler, getSchedulerControl, getDatetimeControl } = require("./stubs");
 
@@ -287,7 +288,7 @@ describe("declarative scheduler integration and system edge cases", () => {
 
             // Set time to avoid immediate execution for "0 * * * *" schedule
             const startTime = DateTime.fromISO("2021-01-01T00:05:00.000Z").toMillis();
-            timeControl.setTime(startTime);
+            timeControl.setDateTime(fromEpochMs(startTime));
 
             // Schedule many tasks at once
             const callbacks = [];
@@ -299,7 +300,7 @@ describe("declarative scheduler integration and system edge cases", () => {
                 registrations.push([`burst-task-${i}`, "0 * * * *", callback, retryDelay]);
             }
 
-            const scheduleTime = capabilities.datetime.getCurrentTime();
+            const scheduleTime = toEpochMs(capabilities.datetime.now());
 
             // Should handle scheduling many tasks efficiently
             await capabilities.scheduler.initialize(registrations);
@@ -314,7 +315,7 @@ describe("declarative scheduler integration and system edge cases", () => {
             expect(executedCount).toBe(0);
 
             // Advance to next scheduled execution (01:00:00)
-            timeControl.advanceTime(60 * 60 * 1000); // 1 hour
+            timeControl.advanceByDuration(fromHours(1)); // 1 hour
             await schedulerControl.waitForNextCycleEnd();
 
             // Some tasks should execute now

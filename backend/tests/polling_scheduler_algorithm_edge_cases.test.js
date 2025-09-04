@@ -4,6 +4,7 @@
  */
 
 const { Duration, DateTime } = require("luxon");
+const { fromEpochMs, fromHours, fromMilliseconds } = require("../src/datetime");
 const { getMockedRootCapabilities } = require("./spies");
 const { stubEnvironment, stubLogger, stubDatetime, stubSleeper, getDatetimeControl, stubScheduler, getSchedulerControl, stubRuntimeStateStorage } = require("./stubs");
 
@@ -107,7 +108,7 @@ describe("declarative scheduler algorithm robustness", () => {
 
         // Set initial time to avoid immediate execution
         const startTime = DateTime.fromISO("2021-01-01T00:05:00.000Z").toMillis(); // 2021-01-01T00:05:00.000Z
-        timeControl.setTime(startTime);
+        timeControl.setDateTime(fromEpochMs(startTime));
 
         const registrations = [
             ["precision-test", "0 * * * *", precisionCallback, retryDelay]
@@ -120,12 +121,12 @@ describe("declarative scheduler algorithm robustness", () => {
         expect(precisionCallback).toHaveBeenCalledTimes(0);
 
         // Advance to next scheduled execution (01:00:00)
-        timeControl.advanceTime(60 * 60 * 1000); // 1 hour
+        timeControl.advanceByDuration(fromHours(1)); // 1 hour
         await schedulerControl.waitForNextCycleEnd();
         expect(precisionCallback).toHaveBeenCalledTimes(1);
 
         // Advance time by retry delay to trigger retry
-        timeControl.advanceTime(1000); // 1 second retry delay
+        timeControl.advanceByDuration(fromMilliseconds(1000)); // 1 second retry delay
         await schedulerControl.waitForNextCycleEnd(); // Wait for polling
         expect(precisionCallback).toHaveBeenCalledTimes(2);
 
@@ -238,7 +239,7 @@ describe("declarative scheduler algorithm robustness", () => {
 
         // Set time to avoid immediate execution for "0 * * * *" schedule
         const startTime = DateTime.fromISO("2021-01-01T00:05:00.000Z").toMillis(); // 2021-01-01T00:05:00.000Z
-        timeControl.setTime(startTime);
+        timeControl.setDateTime(fromEpochMs(startTime));
 
         const registrations = [
             ["idempotent-test", "0 * * * *", taskCallback, retryDelay]
@@ -254,7 +255,7 @@ describe("declarative scheduler algorithm robustness", () => {
         expect(taskCallback).toHaveBeenCalledTimes(0);
 
         // Advance to next scheduled execution (01:00:00)
-        timeControl.advanceTime(60 * 60 * 1000); // 1 hour
+        timeControl.advanceByDuration(fromHours(1)); // 1 hour
         await schedulerControl.waitForNextCycleEnd();
 
         // Should only execute once despite multiple initializations

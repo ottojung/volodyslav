@@ -4,6 +4,7 @@
  */
 
 const { Duration, DateTime } = require("luxon");
+const { fromEpochMs, toEpochMs, fromHours, fromMilliseconds, fromMinutes } = require("../src/datetime");
 const { getMockedRootCapabilities } = require("./spies");
 const { stubEnvironment, stubLogger, stubDatetime, stubSleeper, getDatetimeControl, stubScheduler, getSchedulerControl, stubRuntimeStateStorage } = require("./stubs");
 
@@ -29,13 +30,13 @@ describe("declarative scheduler parallel execution", () => {
         let task2StartTime = null;
 
         const task1 = jest.fn(async () => {
-            task1StartTime = capabilities.datetime.getCurrentTime();
+            task1StartTime = toEpochMs(capabilities.datetime.now());
             // Add a small delay to make parallelism more observable
             await new Promise(resolve => setTimeout(resolve, 100));
         });
 
         const task2 = jest.fn(async () => {
-            task2StartTime = capabilities.datetime.getCurrentTime();
+            task2StartTime = toEpochMs(capabilities.datetime.now());
             // Add a small delay to make parallelism more observable
             await new Promise(resolve => setTimeout(resolve, 100));
         });
@@ -74,7 +75,7 @@ describe("declarative scheduler parallel execution", () => {
 
         // Set time to avoid immediate execution for "0 * * * *" schedule
         const startTime = DateTime.fromISO("2021-01-01T00:05:00.000Z").toMillis(); // 2021-01-01T00:05:00.000Z
-        timeControl.setTime(startTime);
+        timeControl.setDateTime(fromEpochMs(startTime));
 
         let concurrentExecutions = 0;
         let maxConcurrentExecutions = 0;
@@ -106,7 +107,7 @@ describe("declarative scheduler parallel execution", () => {
         expect(concurrencyTask).toHaveBeenCalledTimes(0);
 
         // Advance to next scheduled execution (01:00:00)
-        timeControl.advanceTime(60 * 60 * 1000); // 1 hour
+        timeControl.advanceByDuration(fromHours(1)); // 1 hour
         await schedulerControl.waitForNextCycleEnd();
 
         // Should execute all tasks and allow multiple to run concurrently
@@ -125,7 +126,7 @@ describe("declarative scheduler parallel execution", () => {
 
         // Set time to avoid immediate execution for "0 * * * *" schedule
         const startTime = DateTime.fromISO("2021-01-01T00:05:00.000Z").toMillis(); // 2021-01-01T00:05:00.000Z
-        timeControl.setTime(startTime);
+        timeControl.setDateTime(fromEpochMs(startTime));
 
         let fastTaskCompleted = false;
         let slowTaskStarted = false;
@@ -155,7 +156,7 @@ describe("declarative scheduler parallel execution", () => {
         expect(fastTaskCompleted).toBe(false);
 
         // Advance to next scheduled execution (01:00:00)
-        timeControl.advanceTime(60 * 60 * 1000); // 1 hour
+        timeControl.advanceByDuration(fromHours(1)); // 1 hour
         await schedulerControl.waitForNextCycleEnd();
 
         // Both tasks should have started and the fast one should complete
@@ -174,7 +175,7 @@ describe("declarative scheduler parallel execution", () => {
 
         // Set time to avoid immediate execution for "0 * * * *" schedule
         const startTime = DateTime.fromISO("2021-01-01T00:05:00.000Z").toMillis(); // 2021-01-01T00:05:00.000Z
-        timeControl.setTime(startTime);
+        timeControl.setDateTime(fromEpochMs(startTime));
 
         let goodTaskExecuted = false;
         let badTaskExecuted = false;
@@ -202,7 +203,7 @@ describe("declarative scheduler parallel execution", () => {
         expect(badTaskExecuted).toBe(false);
 
         // Advance to next scheduled execution (01:00:00)
-        timeControl.advanceTime(60 * 60 * 1000); // 1 hour
+        timeControl.advanceByDuration(fromHours(1)); // 1 hour
         await schedulerControl.waitForNextCycleEnd();
 
         // Both tasks should have been attempted
@@ -223,7 +224,7 @@ describe("declarative scheduler parallel execution", () => {
 
         // Set time to avoid immediate execution for "0 * * * *" schedule
         const startTime = DateTime.fromISO("2021-01-01T00:05:00.000Z").toMillis(); // 2021-01-01T00:05:00.000Z
-        timeControl.setTime(startTime);
+        timeControl.setDateTime(fromEpochMs(startTime));
 
         let taskExecutions = {};
 
@@ -258,7 +259,7 @@ describe("declarative scheduler parallel execution", () => {
         expect(task3).toHaveBeenCalledTimes(0);
 
         // Advance to next scheduled execution (01:00:00)
-        timeControl.advanceTime(59.5 * 60 * 1000); // 59.5 minutes to reach 01:00:00
+        timeControl.advanceByDuration(fromMinutes(59.5)); // 59.5 minutes to reach 01:00:00
         await schedulerControl.waitForNextCycleEnd();
 
         // Wait for initial executions
@@ -267,7 +268,7 @@ describe("declarative scheduler parallel execution", () => {
         expect(task3).toHaveBeenCalledTimes(1);
 
         // Advance time by retry delay to trigger retries
-        timeControl.advanceTime(1000); // 1000ms - double the 500ms retry delay
+        timeControl.advanceByDuration(fromMilliseconds(1000)); // 1000ms - double the 500ms retry delay
         await schedulerControl.waitForNextCycleEnd(); // Wait for polling
 
         // All tasks should have been retried at least once

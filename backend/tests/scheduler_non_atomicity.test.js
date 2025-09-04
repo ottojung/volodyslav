@@ -3,6 +3,7 @@ const taskExecutor = require("../src/scheduler/execution");
 const { Duration } = require("luxon");
 const { getMockedRootCapabilities } = require("./spies");
 const { stubEnvironment, stubLogger, stubDatetime, stubSleeper, getDatetimeControl, stubScheduler, getSchedulerControl, stubRuntimeStateStorage } = require("./stubs");
+const { toEpochMs, fromHours, fromEpochMs } = require("../src/datetime");
 
 function getTestCapabilities() {
     const capabilities = getMockedRootCapabilities();
@@ -49,7 +50,7 @@ describe("scheduler atomicity testing", () => {
 
         // Set time to avoid immediate execution for "0 * * * *" schedule
         const startTime = 1704107100000 // 2024-01-01T11:05:00.000Z;
-        timeControl.setTime(startTime);
+        timeControl.setDateTime(fromEpochMs(startTime));
 
         await capabilities.scheduler.initialize(registrations);
 
@@ -62,7 +63,7 @@ describe("scheduler atomicity testing", () => {
         expect(task3Finished).toBe(false);
 
         // Advance to next scheduled execution (12:00:00)
-        timeControl.advanceTime(60 * 60 * 1000); // 1 hour to 12:00:00
+        timeControl.advanceByDuration(fromHours(1)); // 1 hour to 12:00:00
         await schedulerControl.waitForNextCycleEnd();
 
         expect(task1Finished).toBe(true);
@@ -115,7 +116,7 @@ describe("scheduler atomicity testing", () => {
                         event: 'task_start',
                         callId,
                         taskName: task.name,
-                        timestamp: capabilities.datetime.getCurrentTime()
+                        timestamp: toEpochMs(capabilities.datetime.now())
                     });
 
                     // Execute the original task
@@ -125,7 +126,7 @@ describe("scheduler atomicity testing", () => {
                         event: 'task_complete',
                         callId,
                         taskName: task.name,
-                        timestamp: capabilities.datetime.getCurrentTime()
+                        timestamp: toEpochMs(capabilities.datetime.now())
                     });
                 }
             };
@@ -151,7 +152,7 @@ describe("scheduler atomicity testing", () => {
             ];
 
             const startTime = 1704114300000 // 2024-01-01T13:05:00.000Z;
-            timeControl.setTime(startTime);
+            timeControl.setDateTime(fromEpochMs(startTime));
 
             await capabilities.scheduler.initialize(registrations);
 
@@ -163,7 +164,7 @@ describe("scheduler atomicity testing", () => {
             expect(task2Done).toBe(false);
 
             // Advance to next scheduled execution (14:00:00)
-            timeControl.advanceTime(60 * 60 * 1000); // 1 hour to 14:00:00
+            timeControl.advanceByDuration(fromHours(1)); // 1 hour to 14:00:00
             await schedulerControl.waitForNextCycleEnd();
 
             expect(task1Done).toBe(true);
