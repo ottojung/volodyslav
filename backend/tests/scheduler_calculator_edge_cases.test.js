@@ -538,4 +538,191 @@ describe("scheduler calculator edge cases", () => {
 
         await capabilities.scheduler.stop();
     });
+
+    test.failing("should treat DOM and DOW with OR semantics (not AND): 0 9 1 * 1", async () => {
+        const capabilities = getTestCapabilities();
+        const timeControl = getDatetimeControl(capabilities);
+        const schedulerControl = getSchedulerControl(capabilities);
+        const retryDelay = Duration.fromMillis(1000);
+
+        const taskCallback = jest.fn();
+
+        // Jan 1, 2025 is Wednesday; cron is "0 9 1 * 1" (9:00 on 1st OR every Monday)
+        const startTime = toEpochMs(fromISOString("2025-01-01T08:59:00.000Z"));
+        timeControl.setTime(startTime);
+        schedulerControl.setPollingInterval(1);
+
+        const registrations = [
+            ["or-semantics", "0 9 1 * 1", taskCallback, retryDelay],
+        ];
+
+        await capabilities.scheduler.initialize(registrations);
+        await schedulerControl.waitForNextCycleEnd();
+
+        // Advance 1 minute to hit Jan 1 09:00Z (should fire due to DOM=1 even though it's Wed)
+        timeControl.advanceTime(60 * 1000);
+        await schedulerControl.waitForNextCycleEnd();
+        expect(taskCallback.mock.calls.length).toBe(1);
+
+        // Reset mock and advance to next Monday 2025-01-06 09:00Z
+        taskCallback.mockClear();
+
+        const mondayNoon = toEpochMs(fromISOString("2025-01-06T09:00:00.000Z"));
+        const now = timeControl.now();
+        timeControl.advanceTime(mondayNoon - now);
+        await schedulerControl.waitForNextCycleEnd();
+
+        // Should also fire on Monday at 09:00 (DOW match), independent of DOM
+        expect(taskCallback.mock.calls.length).toBe(1);
+
+        expect(capabilities.scheduler).toBeDefined();
+        await capabilities.scheduler.stop();
+    });
+
+    test.failing("should not fire when hour is invalid even if minute matches (15 10 * * *)", async () => {
+        const capabilities = getTestCapabilities();
+        const timeControl = getDatetimeControl(capabilities);
+        const schedulerControl = getSchedulerControl(capabilities);
+        const retryDelay = Duration.fromMillis(1000);
+
+        const taskCallback = jest.fn();
+
+        // Start just before 11:15Z on Jan 1, 2025
+        const start = toEpochMs(fromISOString("2025-01-01T11:14:00.000Z"));
+        timeControl.setTime(start);
+        schedulerControl.setPollingInterval(1);
+
+        const registrations = [
+            ["hour-validity", "15 10 * * *", taskCallback, retryDelay], // 10:15 daily
+        ];
+
+        await capabilities.scheduler.initialize(registrations);
+        await schedulerControl.waitForNextCycleEnd();
+
+        // Advance beyond 11:15 (invalid hour)
+        timeControl.advanceTime(2 * 60 * 1000); // to ~11:16
+        await schedulerControl.waitForNextCycleEnd();
+
+        // Should NOT have fired at 11:15
+        expect(taskCallback).not.toHaveBeenCalled();
+
+        // Advance to next valid 10:15 the following day
+        const nextValid = toEpochMs(fromISOString("2025-01-02T10:15:00.000Z"));
+        const now = timeControl.now();
+        timeControl.advanceTime(nextValid - now);
+        await schedulerControl.waitForNextCycleEnd();
+
+        // Should fire exactly once at 10:15 next day
+        expect(taskCallback).toHaveBeenCalledTimes(1);
+
+        expect(capabilities.scheduler).toBeDefined();
+        await capabilities.scheduler.stop();
+    });
+
+    test("should handle weekday+DOM where next match is beyond 7 days (0 12 1 * 1)", async () => {
+        const capabilities = getTestCapabilities();
+        const timeControl = getDatetimeControl(capabilities);
+        const schedulerControl = getSchedulerControl(capabilities);
+        const retryDelay = Duration.fromMillis(1000);
+
+        const taskCallback = jest.fn();
+
+        // Start Jan 2, 2025 (Thu). Next month with 1st=Monday is Sep 1, 2025.
+        const start = toEpochMs(fromISOString("2025-01-02T10:00:00.000Z"));
+        timeControl.setTime(start);
+        schedulerControl.setPollingInterval(1);
+
+        const registrations = [
+            ["beyond-7d", "0 12 1 * 1", taskCallback, retryDelay],
+        ];
+
+        await capabilities.scheduler.initialize(registrations);
+        await schedulerControl.waitForNextCycleEnd();
+
+        // Should not fire immediately
+        expect(taskCallback).toHaveBeenCalledTimes(0);
+
+        // Check several intermediate points
+        for (let i = 0; i < 20; i++) {
+            timeControl.advanceTime(Duration.fromObject({ days: 1 }).toMillis());
+            await schedulerControl.waitForNextCycleEnd();
+            expect(taskCallback).toHaveBeenCalledTimes(0);
+        }
+
+        // Jump straight to 2025-09-01 12:00Z (Mon)
+        const target = toEpochMs(fromISOString("2025-09-01T12:00:00.000Z"));
+        timeControl.setTime(target);
+        await schedulerControl.waitForNextCycleEnd();
+
+        // Should execute at that time
+        expect(taskCallback).toHaveBeenCalledTimes(1);
+
+        // No more executions on subsequent cycles
+        await schedulerControl.waitForNextCycleEnd();
+        await schedulerControl.waitForNextCycleEnd();
+        expect(taskCallback).toHaveBeenCalledTimes(1);
+
+        expect(capabilities.scheduler).toBeDefined();
+        await capabilities.scheduler.stop();
+    });
+
+    test.failing("should treat Sunday as 0 or 7 (0 12 * * 7 fires on Sunday)", async () => {
+        const capabilities = getTestCapabilities();
+        const timeControl = getDatetimeControl(capabilities);
+        const schedulerControl = getSchedulerControl(capabilities);
+        const retryDelay = Duration.fromMillis(1000);
+
+        const taskCallback = jest.fn();
+
+        // 2025-01-05 is a Sunday
+        const start = toEpochMs(fromISOString("2025-01-05T11:59:00.000Z"));
+        timeControl.setTime(start);
+        schedulerControl.setPollingInterval(1);
+
+        const registrations = [
+            ["sunday-7", "0 12 * * 7", taskCallback, retryDelay], // Sunday at 12:00
+        ];
+
+        await capabilities.scheduler.initialize(registrations);
+        await schedulerControl.waitForNextCycleEnd();
+
+        // Move to 12:00 Sunday
+        timeControl.advanceTime(60 * 1000 * 1); // +1 minute
+        await schedulerControl.waitForNextCycleEnd();
+
+        expect(taskCallback).toHaveBeenCalledTimes(1); // should fire
+        expect(capabilities.scheduler).toBeDefined();
+        await capabilities.scheduler.stop();
+    });
+
+    test("initialize should not crash on far-away weekday/DOM combination", async () => {
+        const capabilities = getTestCapabilities();
+        const timeControl = getDatetimeControl(capabilities);
+        const schedulerControl = getSchedulerControl(capabilities);
+        const retryDelay = Duration.fromMillis(1000);
+
+        const taskCallback = jest.fn();
+        const start = toEpochMs(fromISOString("2025-01-02T10:00:00.000Z"));
+
+        timeControl.setTime(start);
+        schedulerControl.setPollingInterval(1);
+
+        const registrations = [
+            ["far-weekday-intersection", "0 12 1 * 1", taskCallback, retryDelay],
+        ];
+
+        // Should not throw during initialize
+        await expect(capabilities.scheduler.initialize(registrations)).resolves.toBeUndefined();
+        await schedulerControl.waitForNextCycleEnd();
+
+        // Jump to the far-away valid time to confirm it eventually fires
+        const target = toEpochMs(fromISOString("2025-09-01T12:00:00.000Z"));
+        timeControl.advanceTime(target - start);
+        await schedulerControl.waitForNextCycleEnd();
+        expect(taskCallback).toHaveBeenCalledTimes(1);
+
+        expect(capabilities.scheduler).toBeDefined();
+        await capabilities.scheduler.stop();
+    });
+
 });
