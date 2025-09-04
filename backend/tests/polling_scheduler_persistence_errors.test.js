@@ -20,13 +20,6 @@ function getTestCapabilities() {
 }
 
 describe("declarative scheduler persistence and error handling", () => {
-    // Use real timers for testing actual scheduler behavior
-    beforeEach(() => {
-        // Don't use fake timers - let the scheduler run with real timing
-    });
-
-
-
     test("should handle task execution errors gracefully", async () => {
         const capabilities = getTestCapabilities();
         const schedulerControl = getSchedulerControl(capabilities);

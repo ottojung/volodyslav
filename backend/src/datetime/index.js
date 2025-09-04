@@ -9,6 +9,7 @@ const { fromObject: dateTimeFromObject, format } = require('./factories');
 /** @typedef {import('./capability').Datetime} Datetime */
 /** @typedef {import('./structure').DateTime} DateTime */
 /** @typedef {import('./weekday').WeekdayName} WeekdayName */
+/** @typedef {import('./duration').Duration} Duration */
 
 module.exports = {
     make,

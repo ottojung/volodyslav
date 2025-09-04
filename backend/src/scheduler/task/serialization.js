@@ -30,7 +30,6 @@ const {
  * @property {DateTime} [lastFailureTime] - Last failed execution time
  * @property {DateTime} [lastAttemptTime] - Last attempt time
  * @property {DateTime} [pendingRetryUntil] - Pending retry until time
- * @property {DateTime} [lastEvaluatedFire] - Last evaluated fire time
  */
 
 /**
@@ -59,10 +58,6 @@ function serialize(task) {
     if (task.pendingRetryUntil !== undefined) {
         serialized.pendingRetryUntil = task.pendingRetryUntil;
     }
-    if (task.lastEvaluatedFire !== undefined) {
-        serialized.lastEvaluatedFire = task.lastEvaluatedFire;
-    }
-    
     return serialized;
 }
 
@@ -110,7 +105,6 @@ function tryDeserialize(obj, registrations) {
         const lastFailureTime = ("lastFailureTime" in obj) ? obj.lastFailureTime : undefined;
         const lastAttemptTime = ("lastAttemptTime" in obj) ? obj.lastAttemptTime : undefined;
         const pendingRetryUntil = ("pendingRetryUntil" in obj) ? obj.pendingRetryUntil : undefined;
-        const lastEvaluatedFire = ("lastEvaluatedFire" in obj) ? obj.lastEvaluatedFire : undefined;
 
         // Validate DateTime fields
         for (const [fieldName, value] of [
@@ -118,7 +112,6 @@ function tryDeserialize(obj, registrations) {
             ["lastFailureTime", lastFailureTime],
             ["lastAttemptTime", lastAttemptTime],
             ["pendingRetryUntil", pendingRetryUntil],
-            ["lastEvaluatedFire", lastEvaluatedFire]
         ]) {
             if (value !== undefined && value !== null) {
                 if (!isDateTime(value)) {
@@ -167,7 +160,6 @@ function tryDeserialize(obj, registrations) {
             /** @type {DateTime|undefined} */ (lastFailureTime),
             /** @type {DateTime|undefined} */ (lastAttemptTime),
             /** @type {DateTime|undefined} */ (pendingRetryUntil),
-            /** @type {DateTime|undefined} */ (lastEvaluatedFire)
         );
 
     } catch (error) {

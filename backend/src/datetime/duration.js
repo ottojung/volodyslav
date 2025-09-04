@@ -2,7 +2,9 @@
  * Duration utilities using Luxon Duration.
  */
 
-const { Duration } = require("luxon");
+const luxon = require("luxon");
+
+/** @typedef {import('luxon').Duration} Duration */
 
 /**
  * Calculate the difference between two DateTimes as a Duration.
@@ -17,46 +19,46 @@ function difference(laterDateTime, earlierDateTime) {
 /**
  * Create a Duration from milliseconds.
  * @param {number} ms - Milliseconds
- * @returns {import('luxon').Duration} Duration object
+ * @returns {Duration} Duration object
  */
 function fromMilliseconds(ms) {
-    return Duration.fromMillis(ms);
+    return luxon.Duration.fromMillis(ms);
 }
 
 /**
  * Create a Duration from minutes.
  * @param {number} minutes - Minutes
- * @returns {import('luxon').Duration} Duration object
+ * @returns {Duration} Duration object
  */
 function fromMinutes(minutes) {
-    return Duration.fromObject({ minutes });
+    return luxon.Duration.fromObject({ minutes });
 }
 
 /**
  * Create a Duration from hours.
  * @param {number} hours - Hours
- * @returns {import('luxon').Duration} Duration object
+ * @returns {Duration} Duration object
  */
 function fromHours(hours) {
-    return Duration.fromObject({ hours });
+    return luxon.Duration.fromObject({ hours });
 }
 
 /**
  * Create a Duration from days.
  * @param {number} days - Days
- * @returns {import('luxon').Duration} Duration object
+ * @returns {Duration} Duration object
  */
 function fromDays(days) {
-    return Duration.fromObject({ days });
+    return luxon.Duration.fromObject({ days });
 }
 
 /**
  * Create a Duration from weeks.
  * @param {number} weeks - Weeks
- * @returns {import('luxon').Duration} Duration object
+ * @returns {Duration} Duration object
  */
 function fromWeeks(weeks) {
-    return Duration.fromObject({ weeks });
+    return luxon.Duration.fromObject({ weeks });
 }
 
 /**
@@ -71,10 +73,10 @@ function fromWeeks(weeks) {
  * @param {number} [spec.minutes] - Minutes
  * @param {number} [spec.seconds] - Seconds
  * @param {number} [spec.milliseconds] - Milliseconds
- * @returns {import('luxon').Duration} Duration object
+ * @returns {Duration} Duration object
  */
 function fromObject(spec) {
-    return Duration.fromObject(spec);
+    return luxon.Duration.fromObject(spec);
 }
 
 module.exports = {

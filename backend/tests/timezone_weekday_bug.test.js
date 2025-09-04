@@ -4,7 +4,8 @@
  */
 
 const { DateTime: LuxonDateTime } = require("luxon");
-const { parseCronExpression, matchesCronExpression, getNextExecution } = require("../src/scheduler");
+const { parseCronExpression } = require("../src/scheduler/expression");
+const { matchesCronExpression, getNextExecution } = require("../src/scheduler/calculator");
 const { fromISOString } = require("../src/datetime");
 
 const DateTime = require('../src/datetime/structure');

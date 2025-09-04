@@ -1,4 +1,4 @@
-const { parseCronExpression } = require("../src/scheduler");
+const { parseCronExpression } = require("../src/scheduler/expression");
 const { Duration } = require("luxon");
 const { getMockedRootCapabilities } = require("./spies");
 const { stubEnvironment, stubLogger, stubDatetime, stubSleeper, stubScheduler } = require("./stubs");

@@ -7,6 +7,8 @@ const { Duration } = require("luxon");
 const { fromISOString, fromHours, fromMilliseconds } = require("../src/datetime");
 const { getMockedRootCapabilities } = require("./spies");
 const { stubEnvironment, stubLogger, stubDatetime, stubSleeper, stubRuntimeStateStorage, stubScheduler, getSchedulerControl, getDatetimeControl } = require("./stubs");
+const { parseCronExpression } = require("../src/scheduler/expression");
+
 
 function getTestCapabilities() {
     const capabilities = getMockedRootCapabilities();
@@ -361,8 +363,6 @@ describe("declarative scheduler state management robustness", () => {
 
         test("should handle tasks with complex cron patterns", async () => {
             // Test that complex cron expressions can be parsed without errors
-            const { parseCronExpression } = require("../src/scheduler");
-            
             const complexPatterns = [
                 "*/15 * * * *",      // Every 15 minutes
                 "0 */2 * * *",     // Every 2 hours
