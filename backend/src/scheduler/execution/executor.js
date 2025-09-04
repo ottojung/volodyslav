@@ -31,7 +31,7 @@ class TaskExecutionNotFoundError extends Error {
 
 /**
  * Create a task executor.
- * @param {import('../../capabilities/root').Capabilities} capabilities
+ * @param {import('../types').SchedulerCapabilities} capabilities
  * @param {<T>(tr: Transformation<T>) => Promise<T>} mutateTasks
  */
 function makeTaskExecutor(capabilities, mutateTasks) {

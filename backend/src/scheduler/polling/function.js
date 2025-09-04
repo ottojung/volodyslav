@@ -10,7 +10,7 @@ const { evaluateTasksForExecution } = require('../execution');
 
 /**
  * Create a polling function that evaluates and executes due tasks.
- * @param {import('../../capabilities/root').Capabilities} capabilities
+ * @param {import('../types').SchedulerCapabilities} capabilities
  * @param {import('../types').ParsedRegistrations} registrations
  * @param {Set<string>} scheduledTasks
  * @param {ReturnType<import('../execution').makeTaskExecutor>} taskExecutor

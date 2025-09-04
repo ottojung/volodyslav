@@ -46,12 +46,13 @@ const { validateTasksAgainstPersistedStateInner } = require("./state_validation"
 /** @typedef {import('./types').Initialize} Initialize */
 /** @typedef {import('./types').Stop} Stop */
 /** @typedef {import('./types').Capabilities} Capabilities */
+/** @typedef {import('./types').SchedulerCapabilities} SchedulerCapabilities */
 /** @typedef {import('./types').ParsedRegistrations} ParsedRegistrations */
 
 /**
  * Initialize the scheduler with the given registrations.
  * 
- * @param {() => Capabilities} getCapabilities
+ * @param {() => SchedulerCapabilities} getCapabilities
  * @returns {Scheduler}
  * @throws {Error} if registrations are invalid or capabilities are malformed
  */

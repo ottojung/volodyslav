@@ -37,7 +37,7 @@ class TaskRegistrationNotFoundError extends Error {
  */
 
 /**
- * @param {import('../../capabilities/root').Capabilities} capabilities
+ * @param {import('../../scheduler/types').SchedulerCapabilities} capabilities
  * @param {ParsedRegistrations} registrations
  */
 function makePollingScheduler(capabilities, registrations) {
