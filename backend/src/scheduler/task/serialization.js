@@ -30,7 +30,6 @@ const {
  * @property {DateTime} [lastFailureTime] - Last failed execution time
  * @property {DateTime} [lastAttemptTime] - Last attempt time
  * @property {DateTime} [pendingRetryUntil] - Pending retry until time
- * @property {DateTime} [lastEvaluatedFire] - Last evaluated fire time
  */
 
 /**
@@ -106,7 +105,6 @@ function tryDeserialize(obj, registrations) {
         const lastFailureTime = ("lastFailureTime" in obj) ? obj.lastFailureTime : undefined;
         const lastAttemptTime = ("lastAttemptTime" in obj) ? obj.lastAttemptTime : undefined;
         const pendingRetryUntil = ("pendingRetryUntil" in obj) ? obj.pendingRetryUntil : undefined;
-        const lastEvaluatedFire = ("lastEvaluatedFire" in obj) ? obj.lastEvaluatedFire : undefined;
 
         // Validate DateTime fields
         for (const [fieldName, value] of [
@@ -114,7 +112,6 @@ function tryDeserialize(obj, registrations) {
             ["lastFailureTime", lastFailureTime],
             ["lastAttemptTime", lastAttemptTime],
             ["pendingRetryUntil", pendingRetryUntil],
-            ["lastEvaluatedFire", lastEvaluatedFire]
         ]) {
             if (value !== undefined && value !== null) {
                 if (!isDateTime(value)) {

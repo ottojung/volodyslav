@@ -21,7 +21,6 @@ describe("scheduler task methods edge cases", () => {
             lastFailureTime: undefined,
             lastAttemptTime: undefined,
             pendingRetryUntil: undefined,
-            lastEvaluatedFire: undefined
         };
 
         const config = { ...defaults, ...overrides };
@@ -35,7 +34,6 @@ describe("scheduler task methods edge cases", () => {
             config.lastFailureTime,
             config.lastAttemptTime,
             config.pendingRetryUntil,
-            config.lastEvaluatedFire
         );
     }
 
@@ -316,7 +314,6 @@ describe("scheduler task methods edge cases", () => {
             const lastFailureTime = fromISOString("2024-01-01T11:00:00.000Z"); // Fixed epoch for testing
             const lastAttemptTime = fromISOString("2024-01-01T12:00:00.000Z"); // Fixed epoch for testing
             const pendingRetryUntil = fromISOString("2024-01-01T13:00:00.000Z"); // Fixed epoch for testing
-            const lastEvaluatedFire = fromISOString("2024-01-01T14:00:00.000Z"); // Fixed epoch for testing
 
             const task = makeTask(
                 name,
@@ -327,7 +324,6 @@ describe("scheduler task methods edge cases", () => {
                 lastFailureTime,
                 lastAttemptTime,
                 pendingRetryUntil,
-                lastEvaluatedFire
             );
 
             expect(task.name).toBe(name);
@@ -338,7 +334,6 @@ describe("scheduler task methods edge cases", () => {
             expect(task.lastFailureTime).toBe(lastFailureTime);
             expect(task.lastAttemptTime).toBe(lastAttemptTime);
             expect(task.pendingRetryUntil).toBe(pendingRetryUntil);
-            expect(task.lastEvaluatedFire).toBe(lastEvaluatedFire);
         });
 
         test("should handle optional parameters as undefined", () => {
@@ -353,7 +348,6 @@ describe("scheduler task methods edge cases", () => {
             expect(task.lastFailureTime).toBeUndefined();
             expect(task.lastAttemptTime).toBeUndefined();
             expect(task.pendingRetryUntil).toBeUndefined();
-            expect(task.lastEvaluatedFire).toBeUndefined();
         });
     });
 });
