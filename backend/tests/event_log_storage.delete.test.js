@@ -59,7 +59,7 @@ describe("event_log_storage deletion", () => {
             const dataFile = await capabilities.checker.instantiate(dataPath);
             const objects = await readObjects(capabilities, dataFile);
             expect(objects).toHaveLength(1);
-            expect(objects[0].id).toBe(event.serialize(e2).id);
+            expect(objects[0].id).toBe(event.serialize(capabilities, e2).id);
         });
     });
 
@@ -98,7 +98,7 @@ describe("event_log_storage deletion", () => {
             const dataFile = await capabilities.checker.instantiate(dataPath);
             const objects = await readObjects(capabilities, dataFile);
             expect(objects).toHaveLength(1);
-            expect(objects[0].id).toBe(event.serialize(e2).id);
+            expect(objects[0].id).toBe(event.serialize(capabilities, e2).id);
         });
     });
 

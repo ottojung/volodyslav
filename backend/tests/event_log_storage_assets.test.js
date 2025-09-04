@@ -238,7 +238,7 @@ describe("event_log_storage", () => {
             if (fileExists) {
                 const dataFile = await capabilities.checker.instantiate(dataPath);
                 const objects = await readObjects(capabilities, dataFile);
-                const serializedEvent = event.serialize(testEvent);
+                const serializedEvent = event.serialize(capabilities, testEvent);
                 found = objects.some(
                     (obj) =>
                         obj.id?.identifier === serializedEvent.id?.identifier
