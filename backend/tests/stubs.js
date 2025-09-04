@@ -109,6 +109,7 @@ function stubDatetime(capabilities) {
 
     // Override the now method to return the controlled time
     originalNow.mockImplementation(() => datetime.fromEpochMs(currentTimeMs));
+    capabilities.datetime.timeZone = () => "UTC";
 
     // Add time control methods to the datetime object
     capabilities.datetime.setTime = (ms) => {
