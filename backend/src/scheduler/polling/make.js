@@ -76,7 +76,7 @@ function makePollingScheduler(capabilities, registrations) {
             const parsedCron = found.parsedCron;
 
             // Validate task frequency against polling frequency
-            validateTaskFrequency(parsedCron, POLL_INTERVAL_MS, dt);
+            validateTaskFrequency(capabilities, parsedCron, POLL_INTERVAL_MS, dt);
 
             if (scheduledTasks.size === 0) {
                 start();
