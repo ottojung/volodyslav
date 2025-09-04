@@ -2,6 +2,7 @@ const { createEntry, getEntries } = require("../src/entry");
 const { getMockedRootCapabilities } = require("./spies");
 const { stubEnvironment, stubEventLogRepository, stubDatetime, stubLogger } = require("./stubs");
 const { fromISOString } = require("../src/datetime");
+const { fromDays } = require("../src/datetime/duration");
 
 async function getTestCapabilities() {
     const capabilities = getMockedRootCapabilities();
@@ -50,7 +51,7 @@ describe("getEntries ordering functionality", () => {
         await createEntry(capabilities, entry1Data);
 
         capabilities.datetime.now.mockReturnValueOnce(
-            baseTime + 24 * 60 * 60 * 1000
+            baseTime.advance(fromDays(1))
         ); // +1 day
         const entry2Data = {
             original: "Second entry",
@@ -62,7 +63,7 @@ describe("getEntries ordering functionality", () => {
         await createEntry(capabilities, entry2Data);
 
         capabilities.datetime.now.mockReturnValueOnce(
-            baseTime + 2 * 24 * 60 * 60 * 1000
+            baseTime.advance(fromDays(2))
         ); // +2 days
         const entry3Data = {
             original: "Third entry",
@@ -100,7 +101,7 @@ describe("getEntries ordering functionality", () => {
         };
 
         capabilities.datetime.now.mockReturnValueOnce(
-            baseTime + 24 * 60 * 60 * 1000
+            baseTime.advance(fromDays(1))
         ); // +1 day
         const entry2Data = {
             original: "Second entry",
@@ -143,7 +144,7 @@ describe("getEntries ordering functionality", () => {
         await createEntry(capabilities, entry1Data);
 
         capabilities.datetime.now.mockReturnValueOnce(
-            baseTime + 24 * 60 * 60 * 1000
+            baseTime.advance(fromDays(1))
         ); // +1 day
         const entry2Data = {
             original: "Second entry",
@@ -193,7 +194,7 @@ describe("getEntries ordering functionality", () => {
         const baseTime = fromISOString("2023-01-01T10:00:00Z");
         for (let i = 1; i <= 5; i++) {
             capabilities.datetime.now.mockReturnValueOnce(
-                baseTime + (i - 1 * 24 * 60 * 60 * 1000)
+                baseTime.advance(fromDays(i - 1))
             );
             await createEntry(capabilities, {
                 original: `Entry ${i}`,

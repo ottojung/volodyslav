@@ -33,6 +33,10 @@ function fromObject(spec, options = {}) {
  * @returns {string} Formatted date string
  */
 function format(dateTime, pattern, timezone) {
+    if (!dateTime || !dateTime._luxonDateTime) {
+        throw new Error("Invalid DateTime object: missing _luxonDateTime property");
+    }
+    
     let luxonDateTime = dateTime._luxonDateTime;
     if (timezone) {
         luxonDateTime = luxonDateTime.setZone(timezone);

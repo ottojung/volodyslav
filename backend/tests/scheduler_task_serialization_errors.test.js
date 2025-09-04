@@ -13,6 +13,7 @@ const {
     isTaskInvalidValueError,
     isTaskInvalidStructureError,
 } = require("../src/scheduler/task/serialization_errors");
+const { fromISOString } = require("../src/datetime");
 
 describe("scheduler task serialization error handling", () => {
     
@@ -302,9 +303,8 @@ describe("scheduler task serialization error handling", () => {
 
         test("should successfully deserialize valid object with DateTime fields", () => {
             const registrations = createTestRegistrations();
-            // Use a fixed timestamp for testing
-            const fixedEpochMs = 1640995200000; // 2022-01-01T00:00:00.000Z
-            const now = { getTime: () => fixedEpochMs }; // Mock Date-like object
+            // Use a proper DateTime object for testing
+            const now = fromISOString("2022-01-01T00:00:00.000Z");
             const obj = {
                 name: "test-task",
                 cronExpression: "0 * * * *",

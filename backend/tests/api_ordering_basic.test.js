@@ -70,7 +70,7 @@ describe("API Ordering Integration Tests", () => {
             // Verify the order is descending (newest first)
             const dates = res.body.results.map(entry => fromISOString(entry.date));
             for (let i = 1; i < dates.length; i++) {
-                expect(dates[i - 1]).toBeGreaterThanOrEqual(dates[i]);
+                expect(dates[i - 1].isAfterOrEqual(dates[i])).toBe(true);
             }
         });
     });
@@ -110,7 +110,7 @@ describe("API Ordering Integration Tests", () => {
             for (let i = 1; i < res.body.results.length; i++) {
                 const currentDate = fromISOString(res.body.results[i].date);
                 const previousDate = fromISOString(res.body.results[i - 1].date);
-                expect(previousDate).toBeGreaterThanOrEqual(currentDate);
+                expect(previousDate.isAfterOrEqual(currentDate)).toBe(true);
             }
         });
 
@@ -175,7 +175,7 @@ describe("API Ordering Integration Tests", () => {
             // Extract all dates and verify they are in descending order
             const dates = res.body.results.map(entry => fromISOString(entry.date));
             for (let i = 1; i < dates.length; i++) {
-                expect(dates[i - 1]).toBeGreaterThanOrEqual(dates[i]);
+                expect(dates[i - 1].isAfterOrEqual(dates[i])).toBe(true);
             }
         });
     });
