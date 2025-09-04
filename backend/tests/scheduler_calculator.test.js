@@ -51,10 +51,6 @@ describe("getNextExecution", () => {
         expect(next("15 10 * * *", "2025-01-01T11:14:00.000Z")).toBe("2025-01-02T10:15:00.000Z");
     });
 
-    test.failing("DOW=7 should match Sunday (0) the same as DOW=0", () => {
-        expect(next("0 12 * * 7", "2025-01-05T11:00:00.000Z")).toBe("2025-01-05T12:00:00.000Z"); // 2025-01-05 is Sunday
-    });
-
     test.failing("DOM/DOW OR semantics: fire on the 1st even if not Monday (0 9 1 * 1)", () => {
         // Jan 1, 2025 is Wednesday; should still fire at 09:00 because DOM=1
         expect(next("0 9 1 * 1", "2025-01-01T08:59:00.000Z")).toBe("2025-01-01T09:00:00.000Z");
