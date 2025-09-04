@@ -8,6 +8,8 @@ const luxon = require("luxon");
 const { getMockedRootCapabilities } = require("./spies");
 const { stubEnvironment, stubLogger, stubDatetime, stubSleeper, getDatetimeControl, stubRuntimeStateStorage, stubScheduler, getSchedulerControl } = require("./stubs");
 const { toEpochMs } = require("../src/datetime");
+const { tryDeserialize, isTaskTryDeserializeError } = require("../src/scheduler/task");
+const { parseCronExpression } = require("../src/scheduler/expression");
 
 function getTestCapabilities() {
     const capabilities = getMockedRootCapabilities();
@@ -1110,5 +1112,24 @@ describe("scheduler stories", () => {
         expect(slowTask.mock.calls.length).toEqual(2); // Both can execute since slow task only takes 1 second
 
         await capabilities.scheduler.stop();
+    });
+
+    test.failing("should reject non-DateTime objects during task deserialization", () => {
+        const cron = parseCronExpression("* * * * *");
+        const retryDelay = Duration.fromMillis(0);
+        const registrations = new Map([
+            ["demo", { name: "demo", parsedCron: cron, callback: async () => {}, retryDelay }]
+        ]);
+
+        const fakeDate = { getTime: () => 0 };
+        const serialized = {
+            name: "demo",
+            cronExpression: cron.original,
+            retryDelayMs: 0,
+            lastSuccessTime: fakeDate,
+        };
+
+        const result = tryDeserialize(serialized, registrations);
+        expect(isTaskTryDeserializeError(result)).toBe(true);
     });
 });
