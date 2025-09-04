@@ -46,6 +46,5 @@ function getMostRecentExecution(parsedCron, now, _lastEvaluatedFire) {
 }
 
 module.exports = {
-    findPreviousFire,
     getMostRecentExecution,
 };

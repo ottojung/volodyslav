@@ -10,12 +10,7 @@
 const { make } = require("./make");
 const { isScheduleDuplicateTaskError } = require("./registration_validation");
 const { isTaskListMismatchError } = require("./state_validation");
-const {
-    parseCronExpression,
-    isCronExpression,
-    isInvalidCronExpressionError
-} = require('./expression')
-const { matchesCronExpression, getNextExecution } = require("./calculator");
+const { isCronExpression, isInvalidCronExpressionError } = require('./expression')
 
 // Re-export types for external consumption
 /** @typedef {import('./types').Scheduler} Scheduler */
@@ -28,9 +23,6 @@ module.exports = {
     make,
     isTaskListMismatchError,
     isScheduleDuplicateTaskError,
-    parseCronExpression,
-    matchesCronExpression,
-    getNextExecution,
     isCronExpression,
     isInvalidCronExpressionError,
 };

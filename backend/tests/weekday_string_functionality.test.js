@@ -3,7 +3,8 @@
  */
 
 const { DateTime: LuxonDateTime } = require("luxon");
-const { parseCronExpression, matchesCronExpression } = require("../src/scheduler");
+const { parseCronExpression } = require("../src/scheduler/expression");
+const { matchesCronExpression } = require("../src/scheduler/calculator");
 const DateTime = require("../src/datetime/structure");
 const { getAllWeekdayNames, isWeekdayName, luxonWeekdayToName, weekdayNameToCronNumber } = require("../src/datetime/weekday");
 

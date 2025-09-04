@@ -2,12 +2,10 @@
  * Tests for the cron expression parser module.
  */
 
-const { 
-    parseCronExpression, 
-    matchesCronExpression,
-    isCronExpression,
-    isInvalidCronExpressionError
-} = require("../src/scheduler");
+const { parseCronExpression } = require("../src/scheduler/expression");
+const { matchesCronExpression } = require("../src/scheduler/calculator");
+
+const { isCronExpression, isInvalidCronExpressionError } = require("../src/scheduler");
 
 const { fromISOString } = require("../src/datetime");
 
@@ -55,7 +53,7 @@ describe("Cron Parser", () => {
         test("throws on invalid expressions", () => {
             const testInvalidExpression = (expr) => {
                 expect(() => parseCronExpression(expr)).toThrow();
-                
+
                 // Also verify the error type
                 let thrownError;
                 try {
@@ -80,7 +78,7 @@ describe("Cron Parser", () => {
         test("throws on non-string input", () => {
             const testInvalidInput = (input) => {
                 expect(() => parseCronExpression(input)).toThrow();
-                
+
                 // Also verify the error type  
                 let thrownError;
                 try {
@@ -104,7 +102,7 @@ describe("Cron Parser", () => {
             } catch (error) {
                 thrownError = error;
             }
-            
+
             expect(thrownError).toBeDefined();
             expect(isInvalidCronExpressionError(thrownError)).toBe(true);
             expect(thrownError.expression).toBe("60 * * * *");
@@ -140,7 +138,7 @@ describe("Cron Parser", () => {
             const monday = fromISOString("2024-01-01T00:00:00.000Z");
             // Jan 2, 2024 is a Tuesday
             const tuesday = fromISOString("2024-01-02T00:00:00.000Z");
-            
+
             expect(matchesCronExpression(expr, monday)).toBe(true);
             expect(matchesCronExpression(expr, tuesday)).toBe(false);
         });
