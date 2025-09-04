@@ -3,7 +3,7 @@
  */
 
 const { Duration, DateTime } = require("luxon");
-const { fromEpochMs } = require("../src/datetime");
+const { fromEpochMs, fromMilliseconds } = require("../src/datetime");
 const { getMockedRootCapabilities } = require("./spies");
 const { stubEnvironment, stubLogger, stubDatetime, stubSleeper, getDatetimeControl, stubRuntimeStateStorage, stubScheduler, getSchedulerControl } = require("./stubs");
 
@@ -62,7 +62,7 @@ describe("failure retry persistence", () => {
         });
 
         // Advance time just enough to make retry due (but not trigger next cron)
-        timeControl.advanceTime(10 * 1000); // 10 seconds (past the 5-second retry delay)
+        timeControl.advanceByDuration(fromMilliseconds(10 * 1000)); // 10 seconds (past the 5-second retry delay)
         await schedulerControl.waitForNextCycleEnd();
 
         // The task should have retried once more

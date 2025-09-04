@@ -4,7 +4,7 @@
  */
 
 const { Duration, DateTime } = require("luxon");
-const { fromEpochMs, fromHours } = require("../src/datetime");
+const { fromEpochMs, fromHours, fromDays } = require("../src/datetime");
 const { getMockedRootCapabilities } = require("./spies");
 const { stubEnvironment, stubLogger, stubDatetime, stubSleeper, getDatetimeControl, stubScheduler, getSchedulerControl, stubRuntimeStateStorage } = require("./stubs");
 
@@ -52,7 +52,7 @@ describe("declarative scheduler long downtime catchup behavior", () => {
         const initialExecutions = hourlyTask.mock.calls.length;
 
         // Advance time by 3 hours all at once (simulating 3 missed executions)
-        timeControl.advanceTime(3 * 60 * 60 * 1000); // to 04:00:00
+        timeControl.advanceByDuration(fromHours(3)); // to 04:00:00
         await schedulerControl.waitForNextCycleEnd();
 
         // Should execute only once more (no catch-up), not 3 times
@@ -93,7 +93,7 @@ describe("declarative scheduler long downtime catchup behavior", () => {
         const initialExecutions = hourlyTask.mock.calls.length;
 
         // Advance time by 3 hours all at once (simulating 3 missed executions)
-        timeControl.advanceTime(3 * 60 * 60 * 1000); // to 03:00:00
+        timeControl.advanceByDuration(fromHours(3)); // to 03:00:00
 
         for (let i = 0; i < 30; i++) {
             await schedulerControl.waitForNextCycleEnd();
@@ -133,7 +133,7 @@ describe("declarative scheduler long downtime catchup behavior", () => {
 
         // Simulate extended downtime - advance 2 full days (48 hours)
         // This would normally trigger 48 hourly executions and 2 daily executions
-        timeControl.advanceTime(2 * 24 * 60 * 60 * 1000);
+        timeControl.advanceByDuration(fromDays(2));
 
         for (let i = 0; i < 10; i++) {
             await schedulerControl.waitForNextCycleEnd();
@@ -180,7 +180,7 @@ describe("declarative scheduler long downtime catchup behavior", () => {
 
         // Advance 12 hours (would normally trigger many executions)
         // 15-min task: 48 executions, hourly: 12 executions, 6-hour: 2 executions
-        timeControl.advanceTime(12 * 60 * 60 * 1000);
+        timeControl.advanceByDuration(fromHours(12));
 
         for (let i = 0; i < 10; i++) {
             await schedulerControl.waitForNextCycleEnd();
@@ -217,7 +217,7 @@ describe("declarative scheduler long downtime catchup behavior", () => {
         const initialExecutions = hourlyTask.mock.calls.length;
 
         // Jump ahead 5 hours at once (simulating downtime)
-        timeControl.advanceTime(5 * 60 * 60 * 1000); // to 15:00 (3 PM)
+        timeControl.advanceByDuration(fromHours(5)); // to 15:00 (3 PM)
         
         for (let i = 0; i < 10; i++) {
             await schedulerControl.waitForNextCycleEnd();
@@ -277,7 +277,7 @@ describe("declarative scheduler long downtime catchup behavior", () => {
         // - 30-min task: 7 * 24 * 2 = 336 executions
         // - hourly task: 7 * 24 = 168 executions  
         // - daily task: 7 executions
-        timeControl.advanceTime(7 * 24 * 60 * 60 * 1000);
+        timeControl.advanceByDuration(fromDays(7));
         for (let i = 0; i < 10; i++) {
             await schedulerControl.waitForNextCycleEnd();
         }
@@ -324,7 +324,7 @@ describe("declarative scheduler long downtime catchup behavior", () => {
         await capabilities.scheduler.stop();
 
         // Advance time while scheduler is stopped (simulating downtime)
-        timeControl.advanceTime(4 * 60 * 60 * 1000); // 4 hours to 12:00 PM
+        timeControl.advanceByDuration(fromHours(4)); // 4 hours to 12:00 PM
 
         // Restart scheduler with same registrations
         await capabilities.scheduler.initialize(registrations);
@@ -362,7 +362,7 @@ describe("declarative scheduler long downtime catchup behavior", () => {
         const initialExecutions = complexTask.mock.calls.length;
 
         // Advance time by 6 hours - would normally trigger 24 executions (4 per hour * 6 hours)
-        timeControl.advanceTime(6 * 60 * 60 * 1000);
+        timeControl.advanceByDuration(fromHours(6));
         for (let i = 0; i < 10; i++) {
             await schedulerControl.waitForNextCycleEnd();
         }

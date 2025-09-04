@@ -4,7 +4,7 @@
  */
 
 const { Duration, DateTime } = require("luxon");
-const { fromEpochMs, toEpochMs, fromHours, fromMilliseconds } = require("../src/datetime");
+const { fromEpochMs, toEpochMs, fromHours, fromMilliseconds, fromMinutes } = require("../src/datetime");
 const { getMockedRootCapabilities } = require("./spies");
 const { stubEnvironment, stubLogger, stubDatetime, stubSleeper, getDatetimeControl, stubScheduler, getSchedulerControl, stubRuntimeStateStorage } = require("./stubs");
 
@@ -259,7 +259,7 @@ describe("declarative scheduler parallel execution", () => {
         expect(task3).toHaveBeenCalledTimes(0);
 
         // Advance to next scheduled execution (01:00:00)
-        timeControl.advanceTime(59.5 * 60 * 1000); // 59.5 minutes to reach 01:00:00
+        timeControl.advanceByDuration(fromMinutes(59.5)); // 59.5 minutes to reach 01:00:00
         await schedulerControl.waitForNextCycleEnd();
 
         // Wait for initial executions
