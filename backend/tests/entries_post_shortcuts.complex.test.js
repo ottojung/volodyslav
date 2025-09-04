@@ -1,5 +1,5 @@
 const request = require("supertest");
-const { fromISOString, fromEpochMs } = require("../src/datetime");
+const { fromISOString } = require("../src/datetime");
 const { makeTestApp } = require("./api_ordering_test_setup");
 
 describe("POST /api/entries - rawInput transformation and shortcuts", () => {
@@ -7,7 +7,7 @@ describe("POST /api/entries - rawInput transformation and shortcuts", () => {
         // Test a real-world scenario with multiple recursive transformations
         const { app, capabilities } = await makeTestApp();
         const fixedTime = fromISOString("2025-05-23T12:00:00.000Z").getTime();
-        capabilities.datetime.now.mockReturnValue(fromEpochMs(fixedTime));
+        capabilities.datetime.now.mockReturnValue(fixedTime);
 
         // Create complex config with shorthand expansions using transaction system
         const { transaction } = require("../src/event_log_storage");
@@ -88,7 +88,7 @@ describe("POST /api/entries - rawInput transformation and shortcuts", () => {
         // This test simulates the real application environment to check if transformations work
         const { app, capabilities } = await makeTestApp();
         const fixedTime = fromISOString("2025-05-23T12:00:00.000Z").getTime();
-        capabilities.datetime.now.mockReturnValue(fromEpochMs(fixedTime));
+        capabilities.datetime.now.mockReturnValue(fixedTime);
 
         // Create a config with a simple shortcut using transaction system
         const { transaction } = require("../src/event_log_storage");

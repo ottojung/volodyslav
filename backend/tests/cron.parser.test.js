@@ -10,7 +10,7 @@ const {
     isInvalidCronExpressionError
 } = require("../src/scheduler");
 
-const { fromEpochMs } = require("../src/datetime");
+const { fromISOString } = require("../src/datetime");
 
 describe("Cron Parser", () => {
 
@@ -119,7 +119,7 @@ describe("Cron Parser", () => {
             const expr = parseCronExpression("30 14 * * *");
             // Jan 1, 2024 at 2:30 PM - using correct epoch milliseconds
             const epochMs = 1704119400000; // 2024-01-01T14:30:00.000Z
-            const dateTime = fromEpochMs(epochMs);
+            const dateTime = epochMs;
             expect(matchesCronExpression(expr, dateTime)).toBe(true);
         });
 
@@ -127,7 +127,7 @@ describe("Cron Parser", () => {
             const expr = parseCronExpression("30 14 * * *");
             // Jan 1, 2024 at 2:31 PM - using correct epoch milliseconds
             const epochMs = 1704119460000; // 2024-01-01T14:31:00.000Z
-            const dateTime = fromEpochMs(epochMs);
+            const dateTime = epochMs;
             expect(matchesCronExpression(expr, dateTime)).toBe(false);
         });
 
@@ -135,7 +135,7 @@ describe("Cron Parser", () => {
             const expr = parseCronExpression("* * * * *");
             // Using same corrected epoch timestamp
             const epochMs = 1704119400000; // 2024-01-01T14:30:00.000Z
-            const dateTime = fromEpochMs(epochMs);
+            const dateTime = epochMs;
             expect(matchesCronExpression(expr, dateTime)).toBe(true);
         });
 
@@ -145,8 +145,8 @@ describe("Cron Parser", () => {
             const mondayMs = 1704067200000;
             // Jan 2, 2024 is a Tuesday - 2024-01-02T00:00:00.000Z  
             const tuesdayMs = 1704153600000;
-            const monday = fromEpochMs(mondayMs);
-            const tuesday = fromEpochMs(tuesdayMs);
+            const monday = mondayMs;
+            const tuesday = tuesdayMs;
             
             expect(matchesCronExpression(expr, monday)).toBe(true);
             expect(matchesCronExpression(expr, tuesday)).toBe(false);
@@ -158,7 +158,7 @@ describe("Cron Parser", () => {
             const expr = parseCronExpression("0 * * * *");
             // Jan 1, 2024 at 2:30 PM
             const fromMs = 1704119400000; // 2024-01-01T14:30:00.000Z
-            const from = fromEpochMs(fromMs);
+            const from = fromMs;
             const next = getNextExecution(expr, from);
             
             expect(next.hour).toBe(15); // hours
@@ -170,7 +170,7 @@ describe("Cron Parser", () => {
             const expr = parseCronExpression("0 2 * * *");
             // Jan 1, 2024 at 2:30 PM
             const fromMs = 1704119400000; // 2024-01-01T14:30:00.000Z
-            const from = fromEpochMs(fromMs);
+            const from = fromMs;
             const next = getNextExecution(expr, from);
             
             expect(next.day).toBe(2); // day
@@ -182,7 +182,7 @@ describe("Cron Parser", () => {
             const expr = parseCronExpression("45 * * * *");
             // Jan 1, 2024 at 2:30 PM
             const fromMs = 1704119400000; // 2024-01-01T14:30:00.000Z
-            const from = fromEpochMs(fromMs);
+            const from = fromMs;
             const next = getNextExecution(expr, from);
             
             expect(next.hour).toBe(14); // hours
@@ -193,7 +193,7 @@ describe("Cron Parser", () => {
             const expr = parseCronExpression("0 0 1 * *"); // First day of month
             // Jan 31, 2024 at 11:59 PM - 2024-01-31T23:59:00.000Z
             const fromMs = 1706745540000;
-            const from = fromEpochMs(fromMs);
+            const from = fromMs;
             const next = getNextExecution(expr, from);
             
             expect(next.month).toBe(2); // February (month)
@@ -208,7 +208,7 @@ describe("Cron Parser", () => {
             const expr = parseCronExpression("0 0 29 2 *");
             // Feb 28, 2024 (leap year) - 2024-02-28T00:00:00.000Z
             const fromMs = 1709078400000;
-            const from = fromEpochMs(fromMs);
+            const from = fromMs;
             const next = getNextExecution(expr, from);
             
             expect(next.month).toBe(2); // February (month)
@@ -219,7 +219,7 @@ describe("Cron Parser", () => {
             const expr = parseCronExpression("*/10 * * * *");
             // Jan 1, 2024 at 2:25 PM - should get next execution at 2:30 PM  
             const fromMs = 1704119100000; // 2024-01-01T14:25:00.000Z
-            const from = fromEpochMs(fromMs);
+            const from = fromMs;
             const next = getNextExecution(expr, from);
             
             expect(next.minute).toBe(30); // minutes

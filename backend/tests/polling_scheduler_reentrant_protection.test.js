@@ -4,7 +4,7 @@
  */
 
 const { Duration, DateTime } = require("luxon");
-const { fromEpochMs, fromHours, fromMilliseconds } = require("../src/datetime");
+const { fromHours, fromMilliseconds } = require("../src/datetime");
 const { getMockedRootCapabilities } = require("./spies");
 const { stubEnvironment, stubLogger, stubDatetime, stubSleeper, stubScheduler, getSchedulerControl, getDatetimeControl, stubRuntimeStateStorage } = require("./stubs");
 
@@ -28,8 +28,8 @@ describe("declarative scheduler re-entrancy protection", () => {
         const retryDelay = Duration.fromMillis(5000);
 
         // Set time to avoid immediate execution for "0 * * * *" schedule
-        const startTime = DateTime.fromISO("2021-01-01T00:05:00.000Z").toMillis();
-        timeControl.setDateTime(fromEpochMs(startTime));
+        const startTime = fromISOString("2021-01-01T00:05:00.000Z");
+        timeControl.setDateTime(startTime);
 
         let taskStartCount = 0;
         let taskEndCount = 0;
@@ -87,8 +87,8 @@ describe("declarative scheduler re-entrancy protection", () => {
         });
         
         // Set time to avoid immediate execution for "0 * * * *" schedule
-        const startTime = DateTime.fromISO("2021-01-01T00:05:00.000Z").toMillis();
-        timeControl.setDateTime(fromEpochMs(startTime));
+        const startTime = fromISOString("2021-01-01T00:05:00.000Z");
+        timeControl.setDateTime(startTime);
         
         const registrations = [
             ["quick-task", "0 * * * *", quickTask, retryDelay]
@@ -131,8 +131,8 @@ describe("declarative scheduler re-entrancy protection", () => {
         });
         
         // Set time to avoid immediate execution for "0 * * * *" schedule
-        const startTime = DateTime.fromISO("2021-01-01T00:05:00.000Z").toMillis();
-        timeControl.setDateTime(fromEpochMs(startTime));
+        const startTime = fromISOString("2021-01-01T00:05:00.000Z");
+        timeControl.setDateTime(startTime);
         
         const registrations = [
             ["quick-task", "0 * * * *", quickTask, retryDelay]
@@ -175,8 +175,8 @@ describe("declarative scheduler re-entrancy protection", () => {
         });
         
         // Set time to avoid immediate execution for "0 * * * *" schedule
-        const startTime = DateTime.fromISO("2021-01-01T00:05:00.000Z").toMillis();
-        timeControl.setDateTime(fromEpochMs(startTime));
+        const startTime = fromISOString("2021-01-01T00:05:00.000Z");
+        timeControl.setDateTime(startTime);
         
         const registrations = [
             ["error-task", "0 * * * *", errorTask, retryDelay]

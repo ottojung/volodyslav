@@ -1,5 +1,5 @@
 const request = require("supertest");
-const { fromISOString, fromEpochMs } = require("../src/datetime");
+const { fromISOString } = require("../src/datetime");
 const { makeTestApp } = require("./api_ordering_test_setup");
 
 describe("POST /api/entries - rawInput transformation and shortcuts", () => {
@@ -11,7 +11,7 @@ describe("POST /api/entries - rawInput transformation and shortcuts", () => {
 
         const { app, capabilities } = await makeTestApp();
         const fixedTime = fromISOString("2025-05-23T12:00:00.000Z").getTime();
-        capabilities.datetime.now.mockReturnValue(fromEpochMs(fixedTime));
+        capabilities.datetime.now.mockReturnValue(fixedTime);
 
         // Create a config with shortcuts using transaction system
         const { transaction } = require("../src/event_log_storage");
@@ -48,7 +48,7 @@ describe("POST /api/entries - rawInput transformation and shortcuts", () => {
     it("applies recursive shortcuts correctly", async () => {
         const { app, capabilities } = await makeTestApp();
         const fixedTime = fromISOString("2025-05-23T12:00:00.000Z").getTime();
-        capabilities.datetime.now.mockReturnValue(fromEpochMs(fixedTime));
+        capabilities.datetime.now.mockReturnValue(fixedTime);
 
         // Create config with recursive shortcuts using transaction system
         const { transaction } = require("../src/event_log_storage");
@@ -86,7 +86,7 @@ describe("POST /api/entries - rawInput transformation and shortcuts", () => {
     it("preserves word boundaries in shortcuts", async () => {
         const { app, capabilities } = await makeTestApp();
         const fixedTime = fromISOString("2025-05-23T12:00:00.000Z").getTime();
-        capabilities.datetime.now.mockReturnValue(fromEpochMs(fixedTime));
+        capabilities.datetime.now.mockReturnValue(fixedTime);
 
         // Create config with word boundary shortcuts using transaction system
         const { transaction } = require("../src/event_log_storage");
@@ -122,7 +122,7 @@ describe("POST /api/entries - rawInput transformation and shortcuts", () => {
     it("applies shortcuts to modifiers as well as type", async () => {
         const { app, capabilities } = await makeTestApp();
         const fixedTime = fromISOString("2025-05-23T12:00:00.000Z").getTime();
-        capabilities.datetime.now.mockReturnValue(fromEpochMs(fixedTime));
+        capabilities.datetime.now.mockReturnValue(fixedTime);
 
         // Create config with shortcuts for locations using transaction system
         const { transaction } = require("../src/event_log_storage");
@@ -163,7 +163,7 @@ describe("POST /api/entries - rawInput transformation and shortcuts", () => {
     it("normalizes whitespace during transformation", async () => {
         const { app, capabilities } = await makeTestApp();
         const fixedTime = fromISOString("2025-05-23T12:00:00.000Z").getTime();
-        capabilities.datetime.now.mockReturnValue(fromEpochMs(fixedTime));
+        capabilities.datetime.now.mockReturnValue(fixedTime);
 
         const requestBody = {
             rawInput: "    WORK   [loc    office]    -    Description with  extra   spaces  ",

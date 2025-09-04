@@ -4,7 +4,7 @@
  */
 
 const { Duration, DateTime } = require("luxon");
-const { fromEpochMs, fromHours, fromDays, fromMilliseconds } = require("../src/datetime");
+const { fromHours, fromDays, fromMilliseconds } = require("../src/datetime");
 const { getMockedRootCapabilities } = require("./spies");
 const { stubEnvironment, stubLogger, stubDatetime, stubSleeper, getDatetimeControl, stubScheduler, getSchedulerControl, stubRuntimeStateStorage } = require("./stubs");
 
@@ -30,8 +30,8 @@ describe("declarative scheduler long downtime catchup behavior", () => {
         const hourlyTask = jest.fn();
 
         // Start at a non-scheduled time to avoid immediate execution
-        const startTime = DateTime.fromISO("2021-01-01T00:05:00.000Z").toMillis();
-        timeControl.setDateTime(fromEpochMs(startTime));
+        const startTime = fromISOString("2021-01-01T00:05:00.000Z");
+        timeControl.setDateTime(startTime);
 
         const registrations = [
             ["hourly-task", "0 * * * *", hourlyTask, retryDelay] // Every hour at 0 minutes
@@ -71,8 +71,8 @@ describe("declarative scheduler long downtime catchup behavior", () => {
         const hourlyTask = jest.fn();
 
         // Start at a non-scheduled time to avoid immediate execution  
-        const startTime = DateTime.fromISO("2021-01-01T00:05:00.000Z").toMillis();
-        timeControl.setDateTime(fromEpochMs(startTime));
+        const startTime = fromISOString("2021-01-01T00:05:00.000Z");
+        timeControl.setDateTime(startTime);
 
         const registrations = [
             ["hourly-task", "0 * * * *", hourlyTask, retryDelay] // Every hour at 0 minutes
@@ -118,7 +118,7 @@ describe("declarative scheduler long downtime catchup behavior", () => {
 
         // Start at a specific time 
         const startTime = 1609466400000 // 2021-01-01T02:00:00.000Z;
-        timeControl.setDateTime(fromEpochMs(startTime));
+        timeControl.setDateTime(startTime);
 
         const registrations = [
             ["hourly-catchup", "0 * * * *", hourlyTask, retryDelay],  // Every hour
@@ -162,8 +162,8 @@ describe("declarative scheduler long downtime catchup behavior", () => {
         const every6HourTask = jest.fn();
 
         // Start at midnight for clean schedule boundaries
-        const startTime = DateTime.fromISO("2021-01-01T00:00:00.000Z").toMillis();
-        timeControl.setDateTime(fromEpochMs(startTime));
+        const startTime = fromISOString("2021-01-01T00:00:00.000Z");
+        timeControl.setDateTime(startTime);
 
         const registrations = [
             ["every-15min", "*/15 * * * *", every15MinTask, retryDelay], // Every 15 minutes
@@ -205,7 +205,7 @@ describe("declarative scheduler long downtime catchup behavior", () => {
 
         // Start at 10:00 AM
         const startTime = 1609495200000 // 2021-01-01T10:00:00.000Z;
-        timeControl.setDateTime(fromEpochMs(startTime));
+        timeControl.setDateTime(startTime);
 
         const registrations = [
             ["gradual-test", "0 * * * *", hourlyTask, retryDelay] // Every hour
@@ -256,8 +256,8 @@ describe("declarative scheduler long downtime catchup behavior", () => {
         const taskDaily = jest.fn();
 
         // Start at a known time
-        const startTime = DateTime.fromISO("2021-01-01T00:00:00.000Z").toMillis();
-        timeControl.setDateTime(fromEpochMs(startTime));
+        const startTime = fromISOString("2021-01-01T00:00:00.000Z");
+        timeControl.setDateTime(startTime);
 
         const registrations = [
             ["every-30min", "*/30 * * * *", task30Min, retryDelay],   // Every 30 minutes
@@ -301,7 +301,7 @@ describe("declarative scheduler long downtime catchup behavior", () => {
 
         // Start at a non-scheduled time to avoid immediate execution
         const startTime = 1609488300000; // 2021-01-01T08:05:00.000Z
-        timeControl.setDateTime(fromEpochMs(startTime));
+        timeControl.setDateTime(startTime);
 
         const registrations = [
             ["restart-test", "0 * * * *", hourlyTask, retryDelay] // Every hour
@@ -348,8 +348,8 @@ describe("declarative scheduler long downtime catchup behavior", () => {
         const complexTask = jest.fn();
 
         // Start at midnight for predictable cron behavior
-        const startTime = DateTime.fromISO("2021-01-01T00:00:00.000Z").toMillis();
-        timeControl.setDateTime(fromEpochMs(startTime));
+        const startTime = fromISOString("2021-01-01T00:00:00.000Z");
+        timeControl.setDateTime(startTime);
 
         const registrations = [
             // Every 15 minutes: 0, 15, 30, 45 minutes past each hour

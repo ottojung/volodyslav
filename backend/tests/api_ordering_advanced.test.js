@@ -1,6 +1,6 @@
 const request = require("supertest");
 const { makeTestApp } = require("./api_ordering_test_setup");
-const { fromISOString, fromEpochMs } = require("../src/datetime");
+const { fromISOString } = require("../src/datetime");
 
 describe("API Ordering Integration Tests", () => {
     describe("Pagination with Ordering", () => {
@@ -48,7 +48,7 @@ describe("API Ordering Integration Tests", () => {
             // Create entries with incrementing timestamps
             for (let i = 0; i < entries.length; i++) {
                 capabilities.datetime.now.mockReturnValueOnce(
-                    fromEpochMs(baseTime + i * 24 * 60 * 60 * 1000)
+                    baseTime + i * 24 * 60 * 60 * 1000
                 );
                 await request(app)
                     .post("/api/entries")
@@ -137,7 +137,7 @@ describe("API Ordering Integration Tests", () => {
 
             const fixedTime = fromISOString("2025-06-28T10:00:00Z").getTime();
             capabilities.datetime.now.mockReturnValue(
-                fromEpochMs(fixedTime)
+                fixedTime
             );
 
             const requestBody = {
@@ -163,7 +163,7 @@ describe("API Ordering Integration Tests", () => {
 
             const fixedTime = fromISOString("2025-06-28T12:00:00Z").getTime();
             capabilities.datetime.now.mockReturnValue(
-                fromEpochMs(fixedTime)
+                fixedTime
             );
 
             const requestBody = {

@@ -1,5 +1,5 @@
 const { createEntry } = require("../src/entry");
-const { toEpochMs, fromEpochMs } = require("../src/datetime");
+const { fromISOString } = require("../src/datetime");
 const { getMockedRootCapabilities } = require("./spies");
 const { stubEnvironment, stubEventLogRepository, stubDatetime, stubLogger } = require("./stubs");
 
@@ -17,7 +17,7 @@ describe("createEntry (integration, with real capabilities)", () => {
         const capabilities = await getTestCapabilities();
         const fixedTime = 1698314400000; // 2023-10-26T10:00:00.000Z
         capabilities.datetime.now.mockReturnValue(
-            fromEpochMs(fixedTime)
+            fixedTime
         );
         
         const entryData = {

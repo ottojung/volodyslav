@@ -4,7 +4,7 @@
  */
 
 const { Duration, DateTime } = require("luxon");
-const { fromEpochMs, fromHours, fromMinutes, fromMilliseconds } = require("../src/datetime");
+const { fromHours, fromMinutes, fromMilliseconds } = require("../src/datetime");
 const { getMockedRootCapabilities } = require("./spies");
 const { stubEnvironment, stubLogger, stubDatetime, stubSleeper, getDatetimeControl, stubScheduler, getSchedulerControl, stubRuntimeStateStorage } = require("./stubs");
 
@@ -40,7 +40,7 @@ describe("declarative scheduler retry semantics", () => {
 
         // Set a fixed starting time to 00:05:00 (so 00:00:00 was 5 minutes ago - will catch up)
         const startTime = 1704067500000 // 2024-01-01T00:05:00Z;
-        timeControl.setDateTime(fromEpochMs(startTime));
+        timeControl.setDateTime(startTime);
 
         // Initialize with fast polling for tests
         await capabilities.scheduler.initialize(registrations);
@@ -80,7 +80,7 @@ describe("declarative scheduler retry semantics", () => {
 
         // Set a fixed starting time to 00:05:00 (so 00:00:00 was 5 minutes ago - will catch up)
         const startTime = 1704067500000 // 2024-01-01T00:05:00Z;
-        timeControl.setDateTime(fromEpochMs(startTime));
+        timeControl.setDateTime(startTime);
 
         // Initialize scheduler with fast polling for tests
         await capabilities.scheduler.initialize(registrations);
@@ -126,7 +126,7 @@ describe("declarative scheduler retry semantics", () => {
 
         // Set a fixed starting time to 00:05:00 (so 00:00:00 was 5 minutes ago - will catch up)
         const startTime = 1704067500000 // 2024-01-01T00:05:00Z;
-        timeControl.setDateTime(fromEpochMs(startTime));
+        timeControl.setDateTime(startTime);
 
         // Initialize scheduler with fast polling
         await capabilities.scheduler.initialize(registrations);
@@ -183,7 +183,7 @@ describe("declarative scheduler retry semantics", () => {
 
         // Set a fixed starting time to 00:05:00 (so 00:00:00 was 5 minutes ago - will catch up)
         const startTime = 1704067500000 // 2024-01-01T00:05:00Z;
-        timeControl.setDateTime(fromEpochMs(startTime));
+        timeControl.setDateTime(startTime);
 
         // Initialize scheduler with fast polling
         await capabilities.scheduler.initialize(registrations);
@@ -227,8 +227,8 @@ describe("declarative scheduler retry semantics", () => {
         let executionCount = 0;
 
         // Set time to avoid immediate execution for "0 * * * *" schedule
-        const startTime = DateTime.fromISO("2021-01-01T00:05:00.000Z").toMillis(); // 2021-01-01T00:05:00.000Z
-        timeControl.setDateTime(fromEpochMs(startTime));
+        const startTime = fromISOString("2021-01-01T00:05:00.000Z"); // 2021-01-01T00:05:00.000Z
+        timeControl.setDateTime(startTime);
 
         const task = jest.fn(() => {
             executionCount++;

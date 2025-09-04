@@ -1,7 +1,7 @@
 const { createEntry, getEntries } = require("../src/entry");
 const { getMockedRootCapabilities } = require("./spies");
 const { stubEnvironment, stubEventLogRepository, stubDatetime, stubLogger } = require("./stubs");
-const { fromISOString, fromEpochMs } = require("../src/datetime");
+const { fromISOString } = require("../src/datetime");
 
 async function getTestCapabilities() {
     const capabilities = getMockedRootCapabilities();
@@ -39,7 +39,7 @@ describe("getEntries ordering functionality", () => {
         const baseTime = fromISOString("2023-01-01T10:00:00Z").getTime();
 
         capabilities.datetime.now.mockReturnValueOnce(
-            fromEpochMs(baseTime)
+            baseTime
         );
         const entry1Data = {
             original: "First entry",
@@ -50,7 +50,7 @@ describe("getEntries ordering functionality", () => {
         await createEntry(capabilities, entry1Data);
 
         capabilities.datetime.now.mockReturnValueOnce(
-            fromEpochMs(baseTime + 24 * 60 * 60 * 1000)
+            baseTime + 24 * 60 * 60 * 1000
         ); // +1 day
         const entry2Data = {
             original: "Second entry",
@@ -62,7 +62,7 @@ describe("getEntries ordering functionality", () => {
         await createEntry(capabilities, entry2Data);
 
         capabilities.datetime.now.mockReturnValueOnce(
-            fromEpochMs(baseTime + 2 * 24 * 60 * 60 * 1000)
+            baseTime + 2 * 24 * 60 * 60 * 1000
         ); // +2 days
         const entry3Data = {
             original: "Third entry",
@@ -90,7 +90,7 @@ describe("getEntries ordering functionality", () => {
         const baseTime = fromISOString("2023-01-01T10:00:00Z").getTime();
 
         capabilities.datetime.now.mockReturnValueOnce(
-            fromEpochMs(baseTime)
+            baseTime
         );
         const entry1Data = {
             original: "First entry",
@@ -100,7 +100,7 @@ describe("getEntries ordering functionality", () => {
         };
 
         capabilities.datetime.now.mockReturnValueOnce(
-            fromEpochMs(baseTime + 24 * 60 * 60 * 1000)
+            baseTime + 24 * 60 * 60 * 1000
         ); // +1 day
         const entry2Data = {
             original: "Second entry",
@@ -131,7 +131,7 @@ describe("getEntries ordering functionality", () => {
         const baseTime = fromISOString("2023-01-01T10:00:00Z").getTime();
 
         capabilities.datetime.now.mockReturnValueOnce(
-            fromEpochMs(baseTime)
+            baseTime
         );
         const entry1Data = {
             original: "First entry",
@@ -143,7 +143,7 @@ describe("getEntries ordering functionality", () => {
         await createEntry(capabilities, entry1Data);
 
         capabilities.datetime.now.mockReturnValueOnce(
-            fromEpochMs(baseTime + 24 * 60 * 60 * 1000)
+            baseTime + 24 * 60 * 60 * 1000
         ); // +1 day
         const entry2Data = {
             original: "Second entry",
@@ -193,7 +193,7 @@ describe("getEntries ordering functionality", () => {
         const baseTime = fromISOString("2023-01-01T10:00:00Z").getTime();
         for (let i = 1; i <= 5; i++) {
             capabilities.datetime.now.mockReturnValueOnce(
-                fromEpochMs(baseTime + (i - 1) * 24 * 60 * 60 * 1000)
+                baseTime + (i - 1 * 24 * 60 * 60 * 1000)
             );
             await createEntry(capabilities, {
                 original: `Entry ${i}`,

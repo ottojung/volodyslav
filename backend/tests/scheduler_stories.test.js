@@ -7,7 +7,7 @@ const { Duration, DateTime } = require("luxon");
 const luxon = require("luxon");
 const { getMockedRootCapabilities } = require("./spies");
 const { stubEnvironment, stubLogger, stubDatetime, stubSleeper, getDatetimeControl, stubRuntimeStateStorage, stubScheduler, getSchedulerControl } = require("./stubs");
-const { toEpochMs, fromEpochMs, fromHours, fromMinutes, fromMilliseconds, fromDays } = require("../src/datetime");
+const { fromISOString, fromHours, fromMinutes, fromMilliseconds, fromDays } = require("../src/datetime");
 
 function getTestCapabilities() {
     const capabilities = getMockedRootCapabilities();
@@ -29,8 +29,8 @@ describe("scheduler stories", () => {
         const taskCallback = jest.fn();
 
         // Set initial time to 00:05:00
-        const startTime = luxon.DateTime.fromISO("2021-01-01T00:05:00Z").toMillis();
-        timeControl.setDateTime(fromEpochMs(startTime));
+        const startTime = fromISOString("2021-01-01T00:05:00Z");
+        timeControl.setDateTime(startTime);
         schedulerControl.setPollingInterval(fromMilliseconds(1));
 
         // Schedule a task that runs at 30 minutes past each hour
@@ -83,7 +83,7 @@ describe("scheduler stories", () => {
 
         // Set start time to 01:15:00 on Jan 1, 2021
         const startTime = 1609463700000 // 2021-01-01T01:15:00.000Z;
-        timeControl.setDateTime(fromEpochMs(startTime));
+        timeControl.setDateTime(startTime);
         schedulerControl.setPollingInterval(fromMilliseconds(1));
 
         const registrations = [
@@ -114,8 +114,8 @@ describe("scheduler stories", () => {
         const taskCallback = jest.fn();
 
         // Set initial time to 00:00:00 (midnight)
-        const startTime = DateTime.fromISO("2021-01-01T00:00:00.000Z").toMillis();
-        timeControl.setDateTime(fromEpochMs(startTime));
+        const startTime = fromISOString("2021-01-01T00:00:00.000Z");
+        timeControl.setDateTime(startTime);
         schedulerControl.setPollingInterval(fromMilliseconds(1));
 
         // Use fast polling to allow minute-level tasks
@@ -155,14 +155,14 @@ describe("scheduler stories", () => {
 
         const taskCallback = jest.fn().mockImplementation(() => {
             // Verify that during task execution, the scheduler sees consistent time
-            const executionTime = toEpochMs(capabilities.datetime.now());
+            const executionTime = capabilities.datetime.now().toISOString();
             taskCallback.executionTimes = taskCallback.executionTimes || [];
             taskCallback.executionTimes.push(executionTime);
         });
 
         // Set specific start time
-        const startTime = luxon.DateTime.fromISO("2021-01-01T00:15:00.000Z").toMillis();
-        timeControl.setDateTime(fromEpochMs(startTime));
+        const startTime = fromISOString("2021-01-01T00:15:00.000Z");
+        timeControl.setDateTime(startTime);
         schedulerControl.setPollingInterval(fromMilliseconds(1));
 
         const registrations = [
@@ -196,8 +196,8 @@ describe("scheduler stories", () => {
         const taskCallback = jest.fn();
 
         // Set initial time 
-        const startTime = DateTime.fromISO("2021-01-01T00:10:00.000Z").toMillis();
-        timeControl.setDateTime(fromEpochMs(startTime));
+        const startTime = fromISOString("2021-01-01T00:10:00.000Z");
+        timeControl.setDateTime(startTime);
         schedulerControl.setPollingInterval(fromMilliseconds(1));
 
         const registrations = [
@@ -253,8 +253,8 @@ describe("scheduler stories", () => {
         });
 
         // Set initial time and configure polling
-        const startTime = luxon.DateTime.fromISO("2021-01-01T00:00:00.000Z").toMillis();
-        timeControl.setDateTime(fromEpochMs(startTime));
+        const startTime = fromISOString("2021-01-01T00:00:00.000Z");
+        timeControl.setDateTime(startTime);
         schedulerControl.setPollingInterval(fromMilliseconds(100));
 
         const registrations = [
@@ -294,8 +294,8 @@ describe("scheduler stories", () => {
         const dailyTask = jest.fn();
 
         // Start scheduler at specific time
-        const startTime = luxon.DateTime.fromISO("2021-01-01T12:00:00.000Z").toMillis();
-        timeControl.setDateTime(fromEpochMs(startTime));
+        const startTime = fromISOString("2021-01-01T12:00:00.000Z");
+        timeControl.setDateTime(startTime);
         schedulerControl.setPollingInterval(fromMilliseconds(1));
 
         const registrations = [
@@ -371,7 +371,7 @@ describe("scheduler stories", () => {
         });
 
         const startTime = 1609495200000 // 2021-01-01T10:00:00.000Z;
-        timeControl.setDateTime(fromEpochMs(startTime));
+        timeControl.setDateTime(startTime);
         schedulerControl.setPollingInterval(fromMilliseconds(1));
 
         const registrations = [
@@ -422,13 +422,13 @@ describe("scheduler stories", () => {
         const executionLog = [];
 
         const frequentTask = jest.fn().mockImplementation(() => {
-            const currentTime = toEpochMs(capabilities.datetime.now());
+            const currentTime = capabilities.datetime.now().toISOString();
             executionLog.push({ task: 'frequent', time: currentTime });
         });
 
         // Start at a time when the frequent task should trigger soon
-        const startTime = DateTime.fromISO("2021-01-01T00:00:00.000Z").toMillis(); // 2021-01-01T00:00:00.000Z
-        timeControl.setDateTime(fromEpochMs(startTime));
+        const startTime = fromISOString("2021-01-01T00:00:00.000Z"); // 2021-01-01T00:00:00.000Z
+        timeControl.setDateTime(startTime);
         schedulerControl.setPollingInterval(fromMilliseconds(100));
 
         const registrations = [
@@ -479,7 +479,7 @@ describe("scheduler stories", () => {
         });
 
         const startTime = 1609488000000 // 2021-01-01T08:00:00.000Z;
-        timeControl.setDateTime(fromEpochMs(startTime));
+        timeControl.setDateTime(startTime);
         schedulerControl.setPollingInterval(fromMilliseconds(1));
 
         const registrations = [
@@ -531,8 +531,8 @@ describe("scheduler stories", () => {
         const hourlyTask = jest.fn();
 
         // Start at exactly 10:00:00 AM
-        const startTime = luxon.DateTime.fromISO("2021-01-01T10:00:00.000Z").toMillis();
-        timeControl.setDateTime(fromEpochMs(startTime));
+        const startTime = fromISOString("2021-01-01T10:00:00.000Z");
+        timeControl.setDateTime(startTime);
         schedulerControl.setPollingInterval(fromMilliseconds(1));
 
         const registrations = [
@@ -582,7 +582,7 @@ describe("scheduler stories", () => {
 
         // Start at exactly 1 AM on Jan 1st
         const startTime = 1609462800000 // 2021-01-01T01:00:00.000Z;
-        timeControl.setDateTime(fromEpochMs(startTime));
+        timeControl.setDateTime(startTime);
         schedulerControl.setPollingInterval(fromMilliseconds(1));
 
         const registrations = [
@@ -648,8 +648,8 @@ describe("scheduler stories", () => {
         const dailyTask = jest.fn();
 
         // Start at exactly midnight on January 1st
-        const startTime = luxon.DateTime.fromISO("2021-01-01T00:00:00.000Z").toMillis();
-        timeControl.setDateTime(fromEpochMs(startTime));
+        const startTime = fromISOString("2021-01-01T00:00:00.000Z");
+        timeControl.setDateTime(startTime);
         schedulerControl.setPollingInterval(fromMilliseconds(1));
 
         const registrations = [
@@ -703,7 +703,7 @@ describe("scheduler stories", () => {
 
         // Start at exactly midnight on Sunday, January 3rd, 2021 (day 0 = Sunday)
         const startTime = luxon.DateTime.fromISO("2021-01-03T00:00:00.000Z");
-        timeControl.setDateTime(fromEpochMs(startTime.toMillis()));
+        timeControl.setDateTime(startTime.toMillis());
         schedulerControl.setPollingInterval(fromMilliseconds(1));
 
         const registrations = [
@@ -755,8 +755,8 @@ describe("scheduler stories", () => {
         const persistentTask = jest.fn();
 
         // Start at exactly 14:00:00
-        const startTime = luxon.DateTime.fromISO("2021-01-01T14:00:00.000Z").toMillis();
-        timeControl.setDateTime(fromEpochMs(startTime));
+        const startTime = fromISOString("2021-01-01T14:00:00.000Z");
+        timeControl.setDateTime(startTime);
         schedulerControl.setPollingInterval(fromMilliseconds(1));
 
         const registrations = [
@@ -786,7 +786,7 @@ describe("scheduler stories", () => {
         const newSchedulerControl = getSchedulerControl(newCapabilities);
 
         // Set time to 16:00:00 (1 hour later)
-        newTimeControl.setDateTime(fromEpochMs(startTime + (2 * 60 * 60 * 1000)));
+        newTimeControl.setDateTime(startTime + (2 * 60 * 60 * 1000));
         newSchedulerControl.setPollingInterval(fromMilliseconds(1));
 
         await newCapabilities.scheduler.initialize(registrations);
@@ -815,8 +815,8 @@ describe("scheduler stories", () => {
         const every4HourTask = jest.fn();   // Every 4 hours
 
         // Start at exactly midnight - both should match
-        const startTime = luxon.DateTime.fromISO("2021-01-01T00:00:00.000Z").toMillis();
-        timeControl.setDateTime(fromEpochMs(startTime));
+        const startTime = fromISOString("2021-01-01T00:00:00.000Z");
+        timeControl.setDateTime(startTime);
         schedulerControl.setPollingInterval(fromMilliseconds(1));
 
         const registrations = [
@@ -887,8 +887,8 @@ describe("scheduler stories", () => {
         const every4HourTask = jest.fn();   // Every 4 hours
 
         // Start at 2am - both should match
-        const startTime = luxon.DateTime.fromISO("2021-01-01T02:00:00.000Z").toMillis();
-        timeControl.setDateTime(fromEpochMs(startTime));
+        const startTime = fromISOString("2021-01-01T02:00:00.000Z");
+        timeControl.setDateTime(startTime);
         schedulerControl.setPollingInterval(fromMilliseconds(1));
 
         const registrations = [
@@ -959,8 +959,8 @@ describe("scheduler stories", () => {
         const every6HourTask = jest.fn();  // Runs every 6 hours
 
         // Start at exactly midnight
-        const startTime = luxon.DateTime.fromISO("2021-01-01T00:00:00.000Z").toMillis();
-        timeControl.setDateTime(fromEpochMs(startTime));
+        const startTime = fromISOString("2021-01-01T00:00:00.000Z");
+        timeControl.setDateTime(startTime);
         schedulerControl.setPollingInterval(fromMilliseconds(1));
 
         const registrations = [
@@ -1003,8 +1003,8 @@ describe("scheduler stories", () => {
         const noonTask = jest.fn();      // Runs daily at noon
 
         // Start at exactly 11 PM on Dec 31st, 2020
-        const startTime = luxon.DateTime.fromISO("2020-12-31T23:00:00.000Z").toMillis();
-        timeControl.setDateTime(fromEpochMs(startTime));
+        const startTime = fromISOString("2020-12-31T23:00:00.000Z");
+        timeControl.setDateTime(startTime);
         schedulerControl.setPollingInterval(fromMilliseconds(1));
 
         const registrations = [
@@ -1073,8 +1073,8 @@ describe("scheduler stories", () => {
         });
 
         // Set start time to 01:15:00 on Jan 1, 2021
-        const startTime = luxon.DateTime.fromISO("2021-01-01T01:15:00.000Z").toMillis();
-        timeControl.setDateTime(fromEpochMs(startTime));
+        const startTime = fromISOString("2021-01-01T01:15:00.000Z");
+        timeControl.setDateTime(startTime);
         schedulerControl.setPollingInterval(fromMilliseconds(1));
 
         const registrations = [

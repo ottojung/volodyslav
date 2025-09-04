@@ -1,6 +1,6 @@
 const request = require("supertest");
 const { makeTestApp } = require("./api_ordering_test_setup");
-const { fromISOString, fromEpochMs } = require("../src/datetime");
+const { fromISOString } = require("../src/datetime");
 
 describe("API Ordering Integration Tests", () => {
     describe("Phone Script Bug Fix", () => {
@@ -39,7 +39,7 @@ describe("API Ordering Integration Tests", () => {
 
             // Mock datetime to return different times for each entry
             capabilities.datetime.now.mockReturnValueOnce(
-                fromEpochMs(baseTime)
+                baseTime
             ); // Oldest
             await request(app)
                 .post("/api/entries")
@@ -47,7 +47,7 @@ describe("API Ordering Integration Tests", () => {
                 .set("Content-Type", "application/json");
 
             capabilities.datetime.now.mockReturnValueOnce(
-                fromEpochMs(baseTime + 2 * 24 * 60 * 60 * 1000)
+                baseTime + 2 * 24 * 60 * 60 * 1000
             ); // Newest
             await request(app)
                 .post("/api/entries")
@@ -55,7 +55,7 @@ describe("API Ordering Integration Tests", () => {
                 .set("Content-Type", "application/json");
 
             capabilities.datetime.now.mockReturnValueOnce(
-                fromEpochMs(baseTime + 24 * 60 * 60 * 1000)
+                baseTime + 24 * 60 * 60 * 1000
             ); // Middle
             await request(app)
                 .post("/api/entries")
@@ -87,7 +87,7 @@ describe("API Ordering Integration Tests", () => {
             ];
 
             capabilities.datetime.now.mockReturnValueOnce(
-                fromEpochMs(baseTime)
+                baseTime
             );
             await request(app)
                 .post("/api/entries")
@@ -95,7 +95,7 @@ describe("API Ordering Integration Tests", () => {
                 .set("Content-Type", "application/json");
 
             capabilities.datetime.now.mockReturnValueOnce(
-                fromEpochMs(baseTime + 24 * 60 * 60 * 1000)
+                baseTime + 24 * 60 * 60 * 1000
             );
             await request(app)
                 .post("/api/entries")
@@ -125,7 +125,7 @@ describe("API Ordering Integration Tests", () => {
             ];
 
             capabilities.datetime.now.mockReturnValueOnce(
-                fromEpochMs(baseTime + 24 * 60 * 60 * 1000)
+                baseTime + 24 * 60 * 60 * 1000
             ); // Second (newer)
             await request(app)
                 .post("/api/entries")
@@ -133,7 +133,7 @@ describe("API Ordering Integration Tests", () => {
                 .set("Content-Type", "application/json");
 
             capabilities.datetime.now.mockReturnValueOnce(
-                fromEpochMs(baseTime)
+                baseTime
             ); // First (older)
             await request(app)
                 .post("/api/entries")

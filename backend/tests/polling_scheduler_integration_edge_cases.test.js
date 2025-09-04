@@ -4,7 +4,7 @@
  */
 
 const { Duration, DateTime } = require("luxon");
-const { fromEpochMs, toEpochMs, fromHours, fromMilliseconds } = require("../src/datetime");
+const { fromHours, fromMilliseconds } = require("../src/datetime");
 const { getMockedRootCapabilities } = require("./spies");
 const { stubEnvironment, stubLogger, stubDatetime, stubSleeper, stubRuntimeStateStorage, stubScheduler, getSchedulerControl, getDatetimeControl } = require("./stubs");
 
@@ -287,8 +287,8 @@ describe("declarative scheduler integration and system edge cases", () => {
             const retryDelay = Duration.fromMillis(5000);
 
             // Set time to avoid immediate execution for "0 * * * *" schedule
-            const startTime = DateTime.fromISO("2021-01-01T00:05:00.000Z").toMillis();
-            timeControl.setDateTime(fromEpochMs(startTime));
+            const startTime = fromISOString("2021-01-01T00:05:00.000Z");
+            timeControl.setDateTime(startTime);
 
             // Schedule many tasks at once
             const callbacks = [];
