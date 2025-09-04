@@ -4,7 +4,7 @@
  */
 
 const { Duration, DateTime } = require("luxon");
-const { fromEpochMs, fromHours, fromDays } = require("../src/datetime");
+const { fromEpochMs, fromHours, fromDays, fromMilliseconds } = require("../src/datetime");
 const { getMockedRootCapabilities } = require("./spies");
 const { stubEnvironment, stubLogger, stubDatetime, stubSleeper, getDatetimeControl, stubScheduler, getSchedulerControl, stubRuntimeStateStorage } = require("./stubs");
 
@@ -25,7 +25,7 @@ describe("declarative scheduler long downtime catchup behavior", () => {
         const timeControl = getDatetimeControl(capabilities);
         const schedulerControl = getSchedulerControl(capabilities);
 
-        schedulerControl.setPollingInterval(1);
+        schedulerControl.setPollingInterval(fromMilliseconds(1));
         const retryDelay = Duration.fromMillis(5000);
         const hourlyTask = jest.fn();
 
@@ -66,7 +66,7 @@ describe("declarative scheduler long downtime catchup behavior", () => {
         const timeControl = getDatetimeControl(capabilities);
         const schedulerControl = getSchedulerControl(capabilities);
 
-        schedulerControl.setPollingInterval(1);
+        schedulerControl.setPollingInterval(fromMilliseconds(1));
         const retryDelay = Duration.fromMillis(5000);
         const hourlyTask = jest.fn();
 
@@ -110,7 +110,7 @@ describe("declarative scheduler long downtime catchup behavior", () => {
         const timeControl = getDatetimeControl(capabilities);
         const schedulerControl = getSchedulerControl(capabilities);
 
-        schedulerControl.setPollingInterval(1);
+        schedulerControl.setPollingInterval(fromMilliseconds(1));
         const retryDelay = Duration.fromMillis(3000);
 
         const hourlyTask = jest.fn();
@@ -154,7 +154,7 @@ describe("declarative scheduler long downtime catchup behavior", () => {
         const timeControl = getDatetimeControl(capabilities);
         const schedulerControl = getSchedulerControl(capabilities);
 
-        schedulerControl.setPollingInterval(1);
+        schedulerControl.setPollingInterval(fromMilliseconds(1));
         const retryDelay = Duration.fromMillis(5000);
 
         const every15MinTask = jest.fn();
@@ -199,7 +199,7 @@ describe("declarative scheduler long downtime catchup behavior", () => {
         const timeControl = getDatetimeControl(capabilities);
         const schedulerControl = getSchedulerControl(capabilities);
 
-        schedulerControl.setPollingInterval(1);
+        schedulerControl.setPollingInterval(fromMilliseconds(1));
         const retryDelay = Duration.fromMillis(3000);
         const hourlyTask = jest.fn();
 
@@ -248,7 +248,7 @@ describe("declarative scheduler long downtime catchup behavior", () => {
         const timeControl = getDatetimeControl(capabilities);
         const schedulerControl = getSchedulerControl(capabilities);
 
-        schedulerControl.setPollingInterval(1);
+        schedulerControl.setPollingInterval(fromMilliseconds(1));
         const retryDelay = Duration.fromMillis(5000);
 
         const task30Min = jest.fn();
@@ -295,7 +295,7 @@ describe("declarative scheduler long downtime catchup behavior", () => {
         const timeControl = getDatetimeControl(capabilities);
         const schedulerControl = getSchedulerControl(capabilities);
 
-        schedulerControl.setPollingInterval(1);
+        schedulerControl.setPollingInterval(fromMilliseconds(1));
         const retryDelay = Duration.fromMillis(1000);
         const hourlyTask = jest.fn();
 
@@ -343,7 +343,7 @@ describe("declarative scheduler long downtime catchup behavior", () => {
         const timeControl = getDatetimeControl(capabilities);
         const schedulerControl = getSchedulerControl(capabilities);
 
-        schedulerControl.setPollingInterval(1);
+        schedulerControl.setPollingInterval(fromMilliseconds(1));
         const retryDelay = Duration.fromMillis(5000);
         const complexTask = jest.fn();
 

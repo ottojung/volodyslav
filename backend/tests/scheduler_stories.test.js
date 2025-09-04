@@ -31,7 +31,7 @@ describe("scheduler stories", () => {
         // Set initial time to 00:05:00
         const startTime = luxon.DateTime.fromISO("2021-01-01T00:05:00Z").toMillis();
         timeControl.setDateTime(fromEpochMs(startTime));
-        schedulerControl.setPollingInterval(1);
+        schedulerControl.setPollingInterval(fromMilliseconds(1));
 
         // Schedule a task that runs at 30 minutes past each hour
         const registrations = [
@@ -84,7 +84,7 @@ describe("scheduler stories", () => {
         // Set start time to 01:15:00 on Jan 1, 2021
         const startTime = 1609463700000 // 2021-01-01T01:15:00.000Z;
         timeControl.setDateTime(fromEpochMs(startTime));
-        schedulerControl.setPollingInterval(1);
+        schedulerControl.setPollingInterval(fromMilliseconds(1));
 
         const registrations = [
             ["hourly-task", "0 * * * *", hourlyTask, retryDelay],   // Every hour at 0 minutes
@@ -116,7 +116,7 @@ describe("scheduler stories", () => {
         // Set initial time to 00:00:00 (midnight)
         const startTime = DateTime.fromISO("2021-01-01T00:00:00.000Z").toMillis();
         timeControl.setDateTime(fromEpochMs(startTime));
-        schedulerControl.setPollingInterval(1);
+        schedulerControl.setPollingInterval(fromMilliseconds(1));
 
         // Use fast polling to allow minute-level tasks
         const registrations = [
@@ -163,7 +163,7 @@ describe("scheduler stories", () => {
         // Set specific start time
         const startTime = luxon.DateTime.fromISO("2021-01-01T00:15:00.000Z").toMillis();
         timeControl.setDateTime(fromEpochMs(startTime));
-        schedulerControl.setPollingInterval(1);
+        schedulerControl.setPollingInterval(fromMilliseconds(1));
 
         const registrations = [
             ["time-check-task", "0 * * * *", taskCallback, retryDelay] // Every hour at 0 minutes
@@ -198,7 +198,7 @@ describe("scheduler stories", () => {
         // Set initial time 
         const startTime = DateTime.fromISO("2021-01-01T00:10:00.000Z").toMillis();
         timeControl.setDateTime(fromEpochMs(startTime));
-        schedulerControl.setPollingInterval(1);
+        schedulerControl.setPollingInterval(fromMilliseconds(1));
 
         const registrations = [
             ["hourly-task", "0 * * * *", taskCallback, retryDelay] // Every hour at 0 minutes
@@ -255,7 +255,7 @@ describe("scheduler stories", () => {
         // Set initial time and configure polling
         const startTime = luxon.DateTime.fromISO("2021-01-01T00:00:00.000Z").toMillis();
         timeControl.setDateTime(fromEpochMs(startTime));
-        schedulerControl.setPollingInterval(100);
+        schedulerControl.setPollingInterval(fromMilliseconds(100));
 
         const registrations = [
             ["stable-frequent", "*/30 * * * *", stableTask, retryDelay],       // Every 30 minutes
@@ -296,7 +296,7 @@ describe("scheduler stories", () => {
         // Start scheduler at specific time
         const startTime = luxon.DateTime.fromISO("2021-01-01T12:00:00.000Z").toMillis();
         timeControl.setDateTime(fromEpochMs(startTime));
-        schedulerControl.setPollingInterval(1);
+        schedulerControl.setPollingInterval(fromMilliseconds(1));
 
         const registrations = [
             ["hourly-recovery", "0 * * * *", hourlyTask, retryDelay],
@@ -325,7 +325,7 @@ describe("scheduler stories", () => {
 
         // Set the same advanced time for the new scheduler
         newTimeControl.setDateTime(timeControl.getCurrentDateTime());
-        newSchedulerControl.setPollingInterval(1);
+        newSchedulerControl.setPollingInterval(fromMilliseconds(1));
 
         await newCapabilities.scheduler.initialize(registrations);
         await newSchedulerControl.waitForNextCycleEnd();
@@ -372,7 +372,7 @@ describe("scheduler stories", () => {
 
         const startTime = 1609495200000 // 2021-01-01T10:00:00.000Z;
         timeControl.setDateTime(fromEpochMs(startTime));
-        schedulerControl.setPollingInterval(1);
+        schedulerControl.setPollingInterval(fromMilliseconds(1));
 
         const registrations = [
             ["primary-system", "*/30 * * * *", primaryTask, quickRetryDelay],     // Every 30 minutes, quick retry
@@ -429,7 +429,7 @@ describe("scheduler stories", () => {
         // Start at a time when the frequent task should trigger soon
         const startTime = DateTime.fromISO("2021-01-01T00:00:00.000Z").toMillis(); // 2021-01-01T00:00:00.000Z
         timeControl.setDateTime(fromEpochMs(startTime));
-        schedulerControl.setPollingInterval(100);
+        schedulerControl.setPollingInterval(fromMilliseconds(100));
 
         const registrations = [
             ["frequent-task", "*/30 * * * *", frequentTask, retryDelay],    // Every 30 minutes
@@ -480,7 +480,7 @@ describe("scheduler stories", () => {
 
         const startTime = 1609488000000 // 2021-01-01T08:00:00.000Z;
         timeControl.setDateTime(fromEpochMs(startTime));
-        schedulerControl.setPollingInterval(1);
+        schedulerControl.setPollingInterval(fromMilliseconds(1));
 
         const registrations = [
             ["heavy-processing", "*/30 * * * *", resourceIntensiveTask, retryDelay],  // Every 30 minutes
@@ -533,7 +533,7 @@ describe("scheduler stories", () => {
         // Start at exactly 10:00:00 AM
         const startTime = luxon.DateTime.fromISO("2021-01-01T10:00:00.000Z").toMillis();
         timeControl.setDateTime(fromEpochMs(startTime));
-        schedulerControl.setPollingInterval(1);
+        schedulerControl.setPollingInterval(fromMilliseconds(1));
 
         const registrations = [
             ["precise-hourly", "0 * * * *", hourlyTask, retryDelay], // Every hour at minute 0
@@ -583,7 +583,7 @@ describe("scheduler stories", () => {
         // Start at exactly 1 AM on Jan 1st
         const startTime = 1609462800000 // 2021-01-01T01:00:00.000Z;
         timeControl.setDateTime(fromEpochMs(startTime));
-        schedulerControl.setPollingInterval(1);
+        schedulerControl.setPollingInterval(fromMilliseconds(1));
 
         const registrations = [
             ["hourly-precise", "0 * * * *", hourlyTask, retryDelay],      // Every hour at minute 0
@@ -650,7 +650,7 @@ describe("scheduler stories", () => {
         // Start at exactly midnight on January 1st
         const startTime = luxon.DateTime.fromISO("2021-01-01T00:00:00.000Z").toMillis();
         timeControl.setDateTime(fromEpochMs(startTime));
-        schedulerControl.setPollingInterval(1);
+        schedulerControl.setPollingInterval(fromMilliseconds(1));
 
         const registrations = [
             ["precise-daily", "0 0 * * *", dailyTask, retryDelay], // Daily at midnight
@@ -704,7 +704,7 @@ describe("scheduler stories", () => {
         // Start at exactly midnight on Sunday, January 3rd, 2021 (day 0 = Sunday)
         const startTime = luxon.DateTime.fromISO("2021-01-03T00:00:00.000Z");
         timeControl.setDateTime(fromEpochMs(startTime.toMillis()));
-        schedulerControl.setPollingInterval(1);
+        schedulerControl.setPollingInterval(fromMilliseconds(1));
 
         const registrations = [
             ["precise-weekly", "0 0 * * 0", weeklyTask, retryDelay], // Weekly on Sunday (0) at midnight
@@ -757,7 +757,7 @@ describe("scheduler stories", () => {
         // Start at exactly 14:00:00
         const startTime = luxon.DateTime.fromISO("2021-01-01T14:00:00.000Z").toMillis();
         timeControl.setDateTime(fromEpochMs(startTime));
-        schedulerControl.setPollingInterval(1);
+        schedulerControl.setPollingInterval(fromMilliseconds(1));
 
         const registrations = [
             ["persistent-hourly", "0 * * * *", persistentTask, retryDelay], // Every hour
@@ -787,7 +787,7 @@ describe("scheduler stories", () => {
 
         // Set time to 16:00:00 (1 hour later)
         newTimeControl.setDateTime(fromEpochMs(startTime + (2 * 60 * 60 * 1000)));
-        newSchedulerControl.setPollingInterval(1);
+        newSchedulerControl.setPollingInterval(fromMilliseconds(1));
 
         await newCapabilities.scheduler.initialize(registrations);
         await newSchedulerControl.waitForNextCycleEnd();
@@ -817,7 +817,7 @@ describe("scheduler stories", () => {
         // Start at exactly midnight - both should match
         const startTime = luxon.DateTime.fromISO("2021-01-01T00:00:00.000Z").toMillis();
         timeControl.setDateTime(fromEpochMs(startTime));
-        schedulerControl.setPollingInterval(1);
+        schedulerControl.setPollingInterval(fromMilliseconds(1));
 
         const registrations = [
             ["every-2h", "0 */2 * * *", every2HourTask, retryDelay],    // Every 2 hours (0, 2, 4, 6, 8, 10, 12, ...)
@@ -889,7 +889,7 @@ describe("scheduler stories", () => {
         // Start at 2am - both should match
         const startTime = luxon.DateTime.fromISO("2021-01-01T02:00:00.000Z").toMillis();
         timeControl.setDateTime(fromEpochMs(startTime));
-        schedulerControl.setPollingInterval(1);
+        schedulerControl.setPollingInterval(fromMilliseconds(1));
 
         const registrations = [
             ["every-2h", "0 */2 * * *", every2HourTask, retryDelay],    // Every 2 hours (0, 2, 4, 6, 8, 10, 12, ...)
@@ -961,7 +961,7 @@ describe("scheduler stories", () => {
         // Start at exactly midnight
         const startTime = luxon.DateTime.fromISO("2021-01-01T00:00:00.000Z").toMillis();
         timeControl.setDateTime(fromEpochMs(startTime));
-        schedulerControl.setPollingInterval(1);
+        schedulerControl.setPollingInterval(fromMilliseconds(1));
 
         const registrations = [
             ["every-2h", "0 */2 * * *", every2HourTask, retryDelay],    // Every 2 hours
@@ -1005,7 +1005,7 @@ describe("scheduler stories", () => {
         // Start at exactly 11 PM on Dec 31st, 2020
         const startTime = luxon.DateTime.fromISO("2020-12-31T23:00:00.000Z").toMillis();
         timeControl.setDateTime(fromEpochMs(startTime));
-        schedulerControl.setPollingInterval(1);
+        schedulerControl.setPollingInterval(fromMilliseconds(1));
 
         const registrations = [
             ["midnight-daily", "0 0 * * *", midnightTask, retryDelay],    // Daily at midnight
@@ -1075,7 +1075,7 @@ describe("scheduler stories", () => {
         // Set start time to 01:15:00 on Jan 1, 2021
         const startTime = luxon.DateTime.fromISO("2021-01-01T01:15:00.000Z").toMillis();
         timeControl.setDateTime(fromEpochMs(startTime));
-        schedulerControl.setPollingInterval(1);
+        schedulerControl.setPollingInterval(fromMilliseconds(1));
 
         const registrations = [
             ["fast-task", "0 * * * *", fastTask, retryDelay],   // Every hour at 0 minutes

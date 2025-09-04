@@ -4,7 +4,7 @@
  */
 
 const { Duration, DateTime } = require("luxon");
-const { fromEpochMs, fromHours } = require("../src/datetime");
+const { fromEpochMs, fromHours, fromMilliseconds } = require("../src/datetime");
 const { getMockedRootCapabilities } = require("./spies");
 const { stubEnvironment, stubLogger, stubDatetime, stubSleeper, stubScheduler, getSchedulerControl, getDatetimeControl, stubRuntimeStateStorage } = require("./stubs");
 
@@ -24,7 +24,7 @@ describe("declarative scheduler re-entrancy protection", () => {
         const capabilities = getTestCapabilities();
         const timeControl = getDatetimeControl(capabilities);
         const schedulerControl = getSchedulerControl(capabilities);
-        schedulerControl.setPollingInterval(1);
+        schedulerControl.setPollingInterval(fromMilliseconds(1));
         const retryDelay = Duration.fromMillis(5000);
 
         // Set time to avoid immediate execution for "0 * * * *" schedule
@@ -77,7 +77,7 @@ describe("declarative scheduler re-entrancy protection", () => {
     test("should allow multiple initialize at the start", async () => {
         const capabilities = getTestCapabilities();
         const schedulerControl = getSchedulerControl(capabilities);
-        schedulerControl.setPollingInterval(1);
+        schedulerControl.setPollingInterval(fromMilliseconds(1));
         const timeControl = getDatetimeControl(capabilities);
         const retryDelay = Duration.fromMillis(5000);
         let taskExecutionCount = 0;
@@ -121,7 +121,7 @@ describe("declarative scheduler re-entrancy protection", () => {
     test("should allow multiple initialize calls after completion", async () => {
         const capabilities = getTestCapabilities();
         const schedulerControl = getSchedulerControl(capabilities);
-        schedulerControl.setPollingInterval(1);
+        schedulerControl.setPollingInterval(fromMilliseconds(1));
         const timeControl = getDatetimeControl(capabilities);
         const retryDelay = Duration.fromMillis(5000);
         let taskExecutionCount = 0;
@@ -164,7 +164,7 @@ describe("declarative scheduler re-entrancy protection", () => {
     test("should handle errors during task execution gracefully", async () => {
         const capabilities = getTestCapabilities();
         const schedulerControl = getSchedulerControl(capabilities);
-        schedulerControl.setPollingInterval(1);
+        schedulerControl.setPollingInterval(fromMilliseconds(1));
         const timeControl = getDatetimeControl(capabilities);
         const retryDelay = Duration.fromMillis(5000);
         let taskExecutionCount = 0;
