@@ -3,7 +3,7 @@ const taskExecutor = require("../src/scheduler/execution");
 const { Duration } = require("luxon");
 const { getMockedRootCapabilities } = require("./spies");
 const { stubEnvironment, stubLogger, stubDatetime, stubSleeper, getDatetimeControl, stubScheduler, getSchedulerControl, stubRuntimeStateStorage } = require("./stubs");
-const { fromEpochMs, toEpochMs, fromHours, fromMinutes, fromMilliseconds } = require("../src/datetime");
+const { toEpochMs, fromHours, fromEpochMs } = require("../src/datetime");
 
 function getTestCapabilities() {
     const capabilities = getMockedRootCapabilities();
@@ -50,7 +50,7 @@ describe("scheduler atomicity testing", () => {
 
         // Set time to avoid immediate execution for "0 * * * *" schedule
         const startTime = 1704107100000 // 2024-01-01T11:05:00.000Z;
-        timeControl.setTime(startTime);
+        timeControl.setDateTime(fromEpochMs(startTime));
 
         await capabilities.scheduler.initialize(registrations);
 
@@ -152,7 +152,7 @@ describe("scheduler atomicity testing", () => {
             ];
 
             const startTime = 1704114300000 // 2024-01-01T13:05:00.000Z;
-            timeControl.setTime(startTime);
+            timeControl.setDateTime(fromEpochMs(startTime));
 
             await capabilities.scheduler.initialize(registrations);
 
