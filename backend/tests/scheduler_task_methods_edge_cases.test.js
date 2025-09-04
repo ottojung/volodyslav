@@ -166,7 +166,7 @@ describe("scheduler task methods edge cases", () => {
             const task1 = createTestTask({
                 lastAttemptTime: 1704103200000,
                 lastSuccessTime: 1704096000000,
-                lastFailureTime: 1704099600000 // More recent than success
+                lastFailureTime: fromISOString("Z")More recent than success
             });
 
             expect(isRunning(task1)).toBe(true);

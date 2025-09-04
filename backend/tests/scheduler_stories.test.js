@@ -82,7 +82,7 @@ describe("scheduler stories", () => {
         const dailyTask = jest.fn();
 
         // Set start time to 01:15:00 on Jan 1, 2021
-        const startTime = 1609463700000 // 2021-01-01T01:15:00.000Z;
+        const startTime = fromISOString("2021-01-01T01:15:00.000Z");
         timeControl.setDateTime(startTime);
         schedulerControl.setPollingInterval(fromMilliseconds(1));
 
@@ -370,7 +370,7 @@ describe("scheduler stories", () => {
             // Always succeeds, used for cleanup operations
         });
 
-        const startTime = 1609495200000 // 2021-01-01T10:00:00.000Z;
+        const startTime = fromISOString("2021-01-01T10:00:00.000Z");
         timeControl.setDateTime(startTime);
         schedulerControl.setPollingInterval(fromMilliseconds(1));
 
@@ -478,7 +478,7 @@ describe("scheduler stories", () => {
             }
         });
 
-        const startTime = 1609488000000 // 2021-01-01T08:00:00.000Z;
+        const startTime = fromISOString("2021-01-01T08:00:00.000Z");
         timeControl.setDateTime(startTime);
         schedulerControl.setPollingInterval(fromMilliseconds(1));
 
@@ -581,7 +581,7 @@ describe("scheduler stories", () => {
         const daily2AMTask = jest.fn().mockImplementation(async () => await new Promise(resolve => setTimeout(resolve, 400))); // Runs daily at 2 AM
 
         // Start at exactly 1 AM on Jan 1st
-        const startTime = 1609462800000 // 2021-01-01T01:00:00.000Z;
+        const startTime = fromISOString("2021-01-01T01:00:00.000Z");
         timeControl.setDateTime(startTime);
         schedulerControl.setPollingInterval(fromMilliseconds(1));
 
@@ -702,8 +702,8 @@ describe("scheduler stories", () => {
         const weeklyTask = jest.fn();
 
         // Start at exactly midnight on Sunday, January 3rd, 2021 (day 0 = Sunday)
-        const startTime = luxon.DateTime.fromISO("2021-01-03T00:00:00.000Z");
-        timeControl.setDateTime(startTime.toMillis());
+        const startTime = fromISOString("2021-01-03T00:00:00.000Z");
+        timeControl.setDateTime(startTime);
         schedulerControl.setPollingInterval(fromMilliseconds(1));
 
         const registrations = [
@@ -785,8 +785,8 @@ describe("scheduler stories", () => {
         const newTimeControl = getDatetimeControl(newCapabilities);
         const newSchedulerControl = getSchedulerControl(newCapabilities);
 
-        // Set time to 16:00:00 (1 hour later)
-        newTimeControl.setDateTime(startTime + (2 * 60 * 60 * 1000));
+        // Set time to 16:00:00 (2 hours later)
+        newTimeControl.setDateTime(startTime.advance(fromHours(2)));
         newSchedulerControl.setPollingInterval(fromMilliseconds(1));
 
         await newCapabilities.scheduler.initialize(registrations);

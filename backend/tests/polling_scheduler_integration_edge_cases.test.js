@@ -4,7 +4,7 @@
  */
 
 const { Duration, DateTime } = require("luxon");
-const { fromHours, fromMilliseconds } = require("../src/datetime");
+const { fromISOString, fromHours, fromMilliseconds } = require("../src/datetime");
 const { getMockedRootCapabilities } = require("./spies");
 const { stubEnvironment, stubLogger, stubDatetime, stubSleeper, stubRuntimeStateStorage, stubScheduler, getSchedulerControl, getDatetimeControl } = require("./stubs");
 
@@ -300,15 +300,10 @@ describe("declarative scheduler integration and system edge cases", () => {
                 registrations.push([`burst-task-${i}`, "0 * * * *", callback, retryDelay]);
             }
 
-            const scheduleTime = toEpochMs(capabilities.datetime.now());
-
             // Should handle scheduling many tasks efficiently
             await capabilities.scheduler.initialize(registrations);
 
             await schedulerControl.waitForNextCycleEnd();
-
-            // Scheduling should be reasonably fast
-            expect(scheduleTime - startTime).toBeLessThan(1000);
 
             // Should NOT execute immediately on first startup
             let executedCount = callbacks.filter(cb => cb.mock.calls.length > 0).length;

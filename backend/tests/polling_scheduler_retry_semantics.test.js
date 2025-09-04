@@ -39,7 +39,7 @@ describe("declarative scheduler retry semantics", () => {
         ];
 
         // Set a fixed starting time to 00:05:00 (so 00:00:00 was 5 minutes ago - will catch up)
-        const startTime = 1704067500000 // 2024-01-01T00:05:00Z;
+        const startTime = fromISOString("2024-01-01T00:05:00Z");
         timeControl.setDateTime(startTime);
 
         // Initialize with fast polling for tests
@@ -79,7 +79,7 @@ describe("declarative scheduler retry semantics", () => {
         ];
 
         // Set a fixed starting time to 00:05:00 (so 00:00:00 was 5 minutes ago - will catch up)
-        const startTime = 1704067500000 // 2024-01-01T00:05:00Z;
+        const startTime = fromISOString("2024-01-01T00:05:00Z");
         timeControl.setDateTime(startTime);
 
         // Initialize scheduler with fast polling for tests
@@ -125,7 +125,7 @@ describe("declarative scheduler retry semantics", () => {
         ];
 
         // Set a fixed starting time to 00:05:00 (so 00:00:00 was 5 minutes ago - will catch up)
-        const startTime = 1704067500000 // 2024-01-01T00:05:00Z;
+        const startTime = fromISOString("2024-01-01T00:05:00Z");
         timeControl.setDateTime(startTime);
 
         // Initialize scheduler with fast polling
@@ -182,7 +182,7 @@ describe("declarative scheduler retry semantics", () => {
         ];
 
         // Set a fixed starting time to 00:05:00 (so 00:00:00 was 5 minutes ago - will catch up)
-        const startTime = 1704067500000 // 2024-01-01T00:05:00Z;
+        const startTime = fromISOString("2024-01-01T00:05:00Z");
         timeControl.setDateTime(startTime);
 
         // Initialize scheduler with fast polling
