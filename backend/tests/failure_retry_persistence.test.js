@@ -2,8 +2,8 @@
  * Tests for failure retry persistence.
  */
 
-const { Duration, DateTime } = require("luxon");
-const { fromMilliseconds } = require("../src/datetime");
+const { Duration } = require("luxon");
+const { fromMilliseconds, fromISOString } = require("../src/datetime");
 const { getMockedRootCapabilities } = require("./spies");
 const { stubEnvironment, stubLogger, stubDatetime, stubSleeper, getDatetimeControl, stubRuntimeStateStorage, stubScheduler, getSchedulerControl } = require("./stubs");
 

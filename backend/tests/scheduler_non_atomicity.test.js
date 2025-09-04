@@ -3,7 +3,7 @@ const taskExecutor = require("../src/scheduler/execution");
 const { Duration } = require("luxon");
 const { getMockedRootCapabilities } = require("./spies");
 const { stubEnvironment, stubLogger, stubDatetime, stubSleeper, getDatetimeControl, stubScheduler, getSchedulerControl, stubRuntimeStateStorage } = require("./stubs");
-const { fromHours, fromMilliseconds } = require("../src/datetime");
+const { fromHours, fromMilliseconds, fromISOString } = require("../src/datetime");
 
 function getTestCapabilities() {
     const capabilities = getMockedRootCapabilities();
@@ -116,7 +116,7 @@ describe("scheduler atomicity testing", () => {
                         event: 'task_start',
                         callId,
                         taskName: task.name,
-                        timestamp: toEpochMs(capabilities.datetime.now())
+                        timestamp: capabilities.datetime.now().toISOString()
                     });
 
                     // Execute the original task
@@ -126,7 +126,7 @@ describe("scheduler atomicity testing", () => {
                         event: 'task_complete',
                         callId,
                         taskName: task.name,
-                        timestamp: toEpochMs(capabilities.datetime.now())
+                        timestamp: capabilities.datetime.now().toISOString()
                     });
                 }
             };

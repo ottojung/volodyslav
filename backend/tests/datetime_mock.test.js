@@ -2,7 +2,6 @@
  * Test for the new datetime mocking functionality.
  */
 
-const { DateTime } = require("luxon");
 const { stubDatetime, getDatetimeControl } = require("./stubs");
 const { getMockedRootCapabilities } = require("./spies");
 const { fromISOString, fromMinutes, fromHours } = require("../src/datetime");

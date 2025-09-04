@@ -3,10 +3,10 @@
  * Ensures cron schedule is not superseded by retry logic.
  */
 
-const { fromISOString, Duration, DateTime } = require("luxon");
+const { Duration } = require("luxon");
 const { fromISOString, fromHours, fromMinutes, fromMilliseconds } = require("../src/datetime");
-const { fromISOString, getMockedRootCapabilities } = require("./spies");
-const { fromISOString, stubEnvironment, stubLogger, stubDatetime, stubSleeper, getDatetimeControl, stubScheduler, getSchedulerControl, stubRuntimeStateStorage } = require("./stubs");
+const { getMockedRootCapabilities } = require("./spies");
+const { stubEnvironment, stubLogger, stubDatetime, stubSleeper, getDatetimeControl, stubScheduler, getSchedulerControl, stubRuntimeStateStorage } = require("./stubs");
 
 function getTestCapabilities() {
     const capabilities = getMockedRootCapabilities();

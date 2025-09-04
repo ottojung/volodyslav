@@ -10,8 +10,6 @@ const {
     isInvalidCronExpressionError
 } = require("../src/scheduler");
 
-const { fromISOString } = require("../src/datetime");
-
 describe("Cron Parser", () => {
 
     describe("parseCronExpression", () => {

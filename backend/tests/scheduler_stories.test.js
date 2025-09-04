@@ -3,8 +3,7 @@
  * multiple scheduler task invocations by advancing time.
  */
 
-const { Duration, DateTime } = require("luxon");
-const luxon = require("luxon");
+const { Duration } = require("luxon");
 const { getMockedRootCapabilities } = require("./spies");
 const { stubEnvironment, stubLogger, stubDatetime, stubSleeper, getDatetimeControl, stubRuntimeStateStorage, stubScheduler, getSchedulerControl } = require("./stubs");
 const { fromISOString, fromHours, fromMinutes, fromMilliseconds, fromDays } = require("../src/datetime");

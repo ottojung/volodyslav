@@ -39,12 +39,11 @@ describe("scheduler calculator edge cases", () => {
                 time: currentDateTime,
                 day: currentDateTime.day,
                 hour: currentDateTime.hour,
-                minute: currentDateTime.minute,
-                humanTime: toEpochMs(currentDateTime)
+                minute: currentDateTime.minute
             });
         });
 
-        const startTime = toEpochMs(fromISOString("2025-01-14T10:00:00.000Z"));
+        const startTime = fromISOString("2025-01-14T10:00:00.000Z");
         timeControl.setDateTime(startTime);
         schedulerControl.setPollingInterval(fromMilliseconds(1));
 
@@ -122,12 +121,11 @@ describe("scheduler calculator edge cases", () => {
                 time: currentDateTime,
                 day: currentDateTime.day,
                 hour: currentDateTime.hour,
-                minute: currentDateTime.minute,
-                humanTime: toEpochMs(currentDateTime)
+                minute: currentDateTime.minute
             });
         });
 
-        const startTime = toEpochMs(fromISOString("2025-01-14T10:00:00.000Z"));
+        const startTime = fromISOString("2025-01-14T10:00:00.000Z");
         timeControl.setDateTime(startTime);
         schedulerControl.setPollingInterval(fromMilliseconds(1));
 
@@ -205,12 +203,11 @@ describe("scheduler calculator edge cases", () => {
                 time: currentDateTime,
                 day: currentDateTime.day,
                 hour: currentDateTime.hour,
-                minute: currentDateTime.minute,
-                humanTime: toEpochMs(currentDateTime)
+                minute: currentDateTime.minute
             });
         });
 
-        const startTime = toEpochMs(fromISOString("2025-01-14T10:00:00.000Z"));
+        const startTime = fromISOString("2025-01-14T10:00:00.000Z");
         timeControl.setDateTime(startTime);
         schedulerControl.setPollingInterval(fromMilliseconds(1));
 
@@ -298,13 +295,12 @@ describe("scheduler calculator edge cases", () => {
                 time: currentDateTime,
                 day: currentDateTime.day,
                 hour: currentDateTime.hour,
-                minute: currentDateTime.minute,
-                humanTime: toEpochMs(currentDateTime)
+                minute: currentDateTime.minute
             });
         });
 
         // Set time to 2025-01-14 10:00:00 (day 14, which is NOT allowed by the cron)
-        const startTime = toEpochMs(fromISOString("2025-01-14T10:00:00.000Z"));
+        const startTime = fromISOString("2025-01-14T10:00:00.000Z");
         timeControl.setDateTime(startTime);
         schedulerControl.setPollingInterval(fromMilliseconds(1));
 
@@ -359,19 +355,17 @@ describe("scheduler calculator edge cases", () => {
         const executionTimes = [];
 
         taskCallback.mockImplementation(() => {
-            const currentTime = toEpochMs(capabilities.datetime.now());
-            const currentDateTime = currentTime;
+            const currentDateTime = capabilities.datetime.now();
             executionTimes.push({
-                time: currentTime,
+                time: currentDateTime.toISOString(),
                 day: currentDateTime.day,
                 hour: currentDateTime.hour,
-                minute: currentDateTime.minute,
-                humanTime: toEpochMs(currentDateTime)
+                minute: currentDateTime.minute
             });
         });
 
         // Start on the 15th to let task execute normally first
-        const day15Time = toEpochMs(fromISOString("2025-01-15T10:00:00.000Z"));
+        const day15Time = fromISOString("2025-01-15T10:00:00.000Z");
         timeControl.setDateTime(day15Time);
         schedulerControl.setPollingInterval(fromMilliseconds(1));
 
@@ -394,7 +388,7 @@ describe("scheduler calculator edge cases", () => {
         await capabilities.scheduler.stop();
 
         // Now move to 2025-01-16 10:00 (day 16, which is NOT allowed)
-        const day16Time = toEpochMs(fromISOString("2025-01-16T10:00:00.000Z"));
+        const day16Time = fromISOString("2025-01-16T10:00:00.000Z");
         timeControl.setDateTime(day16Time);
 
         // Start a fresh scheduler instance
@@ -409,14 +403,12 @@ describe("scheduler calculator edge cases", () => {
         const newExecutionTimes = [];
 
         newTaskCallback.mockImplementation(() => {
-            const currentTime = toEpochMs(newCapabilities.datetime.now());
-            const currentDateTime = currentTime;
+            const currentDateTime = newCapabilities.datetime.now();
             newExecutionTimes.push({
-                time: currentTime,
+                time: currentDateTime.toISOString(),
                 day: currentDateTime.day,
                 hour: currentDateTime.hour,
-                minute: currentDateTime.minute,
-                humanTime: toEpochMs(currentDateTime)
+                minute: currentDateTime.minute
             });
         });
 
@@ -453,7 +445,7 @@ describe("scheduler calculator edge cases", () => {
 
         // Set time to a specific date where we know the constraint behavior  
         // Use a simpler constraint that's easier to test
-        const startTime = toEpochMs(fromISOString("2025-01-01T10:00:00.000Z"));
+        const startTime = fromISOString("2025-01-01T10:00:00.000Z");
         timeControl.setDateTime(startTime);
         schedulerControl.setPollingInterval(fromMilliseconds(1));
 
@@ -496,18 +488,16 @@ describe("scheduler calculator edge cases", () => {
         const executionTimes = [];
 
         taskCallback.mockImplementation(() => {
-            const currentTime = toEpochMs(capabilities.datetime.now());
-            const currentDateTime = currentTime;
+            const currentDateTime = capabilities.datetime.now();
             executionTimes.push({
-                time: currentTime,
+                time: currentDateTime.toISOString(),
                 day: currentDateTime.day,
-                weekday: currentDateTime.weekday,
-                humanTime: toEpochMs(currentDateTime)
+                weekday: currentDateTime.weekday
             });
         });
 
         // Set time to a known date 
-        const startTime = toEpochMs(fromISOString("2025-01-01T10:00:00.000Z")); // Jan 1, 2025 (Wednesday)
+        const startTime = fromISOString("2025-01-01T10:00:00.000Z"); // Jan 1, 2025 (Wednesday)
         timeControl.setDateTime(startTime);
         schedulerControl.setPollingInterval(fromMilliseconds(1));
 
@@ -548,7 +538,7 @@ describe("scheduler calculator edge cases", () => {
         const taskCallback = jest.fn();
 
         // Jan 1, 2025 is Wednesday; cron is "0 9 1 * 1" (9:00 on 1st OR every Monday)
-        const startTime = toEpochMs(fromISOString("2025-01-01T08:59:00.000Z"));
+        const startTime = fromISOString("2025-01-01T08:59:00.000Z");
         timeControl.setDateTime(startTime);
         schedulerControl.setPollingInterval(fromMilliseconds(1));
 
@@ -567,9 +557,10 @@ describe("scheduler calculator edge cases", () => {
         // Reset mock and advance to next Monday 2025-01-06 09:00Z
         taskCallback.mockClear();
 
-        const mondayNoon = toEpochMs(fromISOString("2025-01-06T09:00:00.000Z"));
-        const now = toEpochMs(timeControl.getCurrentDateTime());
-        timeControl.advanceByDuration(fromMilliseconds(mondayNoon - now));
+        const mondayNoon = fromISOString("2025-01-06T09:00:00.000Z");
+        const now = timeControl.getCurrentDateTime();
+        const duration = mondayNoon.diff(now);
+        timeControl.advanceByDuration(duration);
         await schedulerControl.waitForNextCycleEnd();
 
         // Should also fire on Monday at 09:00 (DOW match), independent of DOM
@@ -588,7 +579,7 @@ describe("scheduler calculator edge cases", () => {
         const taskCallback = jest.fn();
 
         // Start just before 11:15Z on Jan 1, 2025
-        const start = toEpochMs(fromISOString("2025-01-01T11:14:00.000Z"));
+        const start = fromISOString("2025-01-01T11:14:00.000Z");
         timeControl.setDateTime(start);
         schedulerControl.setPollingInterval(fromMilliseconds(1));
 
@@ -607,9 +598,10 @@ describe("scheduler calculator edge cases", () => {
         expect(taskCallback).not.toHaveBeenCalled();
 
         // Advance to next valid 10:15 the following day
-        const nextValid = toEpochMs(fromISOString("2025-01-02T10:15:00.000Z"));
-        const now = toEpochMs(timeControl.getCurrentDateTime());
-        timeControl.advanceByDuration(fromMilliseconds(nextValid - now));
+        const nextValid = fromISOString("2025-01-02T10:15:00.000Z");
+        const now = timeControl.getCurrentDateTime();
+        const duration = nextValid.diff(now);
+        timeControl.advanceByDuration(duration);
         await schedulerControl.waitForNextCycleEnd();
 
         // Should fire exactly once at 10:15 next day
@@ -628,7 +620,7 @@ describe("scheduler calculator edge cases", () => {
         const taskCallback = jest.fn();
 
         // Start Jan 2, 2025 (Thu). Next month with 1st=Monday is Sep 1, 2025.
-        const start = toEpochMs(fromISOString("2025-01-02T10:00:00.000Z"));
+        const start = fromISOString("2025-01-02T10:00:00.000Z");
         timeControl.setDateTime(start);
         schedulerControl.setPollingInterval(fromMilliseconds(1));
 
@@ -650,7 +642,7 @@ describe("scheduler calculator edge cases", () => {
         }
 
         // Jump straight to 2025-09-01 12:00Z (Mon)
-        const target = toEpochMs(fromISOString("2025-09-01T12:00:00.000Z"));
+        const target = fromISOString("2025-09-01T12:00:00.000Z");
         timeControl.setDateTime(target);
         await schedulerControl.waitForNextCycleEnd();
 
@@ -673,7 +665,7 @@ describe("scheduler calculator edge cases", () => {
         const retryDelay = Duration.fromMillis(1000);
 
         const taskCallback = jest.fn();
-        const start = toEpochMs(fromISOString("2025-01-02T10:00:00.000Z"));
+        const start = fromISOString("2025-01-02T10:00:00.000Z");
 
         timeControl.setDateTime(start);
         schedulerControl.setPollingInterval(fromMilliseconds(1));
@@ -687,7 +679,7 @@ describe("scheduler calculator edge cases", () => {
         await schedulerControl.waitForNextCycleEnd();
 
         // Jump to the far-away valid time to confirm it eventually fires
-        const target = toEpochMs(fromISOString("2025-09-01T12:00:00.000Z"));
+        const target = fromISOString("2025-09-01T12:00:00.000Z");
         timeControl.setDateTime(target);
         await schedulerControl.waitForNextCycleEnd();
         expect(taskCallback).toHaveBeenCalledTimes(1);
@@ -704,7 +696,7 @@ describe("scheduler calculator edge cases", () => {
         const cb = jest.fn();
 
         // Jan 1, 2025 (Wed). Cron: 09:00 on day 1 OR any Monday 09:00
-        const start = toEpochMs(fromISOString("2025-01-01T08:59:00.000Z"));
+        const start = fromISOString("2025-01-01T08:59:00.000Z");
         timeControl.setDateTime(start);
         schedulerControl.setPollingInterval(fromMilliseconds(1));
 
@@ -720,7 +712,7 @@ describe("scheduler calculator edge cases", () => {
 
         // Next Monday 2025-01-06 09:00 should also fire (DOW match)
         cb.mockClear();
-        const nextMonday = toEpochMs(fromISOString("2025-01-06T09:00:00.000Z"));
+        const nextMonday = fromISOString("2025-01-06T09:00:00.000Z");
         timeControl.setDateTime(nextMonday);
         await schedulerControl.waitForNextCycleEnd();
         expect(cb).toHaveBeenCalledTimes(1);
@@ -737,7 +729,7 @@ describe("scheduler calculator edge cases", () => {
         const cb = jest.fn();
 
         // Cron: 10:15 daily
-        const start = toEpochMs(fromISOString("2025-01-01T11:14:00.000Z")); // invalid hour 11
+        const start = fromISOString("2025-01-01T11:14:00.000Z"); // invalid hour 11
         timeControl.setDateTime(start);
         schedulerControl.setPollingInterval(fromMilliseconds(1));
 
@@ -752,7 +744,7 @@ describe("scheduler calculator edge cases", () => {
         expect(cb).toHaveBeenCalledTimes(0);
 
         // Next valid 10:15 next day should fire once
-        const nextValid = toEpochMs(fromISOString("2025-01-02T10:15:00.000Z"));
+        const nextValid = fromISOString("2025-01-02T10:15:00.000Z");
         timeControl.setDateTime(nextValid);
         await schedulerControl.waitForNextCycleEnd();
         expect(cb).toHaveBeenCalledTimes(1);
@@ -768,7 +760,7 @@ describe("scheduler calculator edge cases", () => {
         const retryDelay = Duration.fromMillis(1000);
         const cb = jest.fn();
 
-        const start = toEpochMs(fromISOString("2025-01-02T10:00:00.000Z"));
+        const start = fromISOString("2025-01-02T10:00:00.000Z");
         timeControl.setDateTime(start);
         schedulerControl.setPollingInterval(fromMilliseconds(1));
 
@@ -779,7 +771,7 @@ describe("scheduler calculator edge cases", () => {
         expect(cb).toHaveBeenCalledTimes(0);
 
         // Jump to the first-of-month Monday: 2025-09-01 12:00Z
-        const target = toEpochMs(fromISOString("2025-09-01T12:00:00.000Z"));
+        const target = fromISOString("2025-09-01T12:00:00.000Z");
         timeControl.setDateTime(target);
         await schedulerControl.waitForNextCycleEnd();
         expect(cb).toHaveBeenCalledTimes(1);
@@ -796,7 +788,7 @@ describe("scheduler calculator edge cases", () => {
         const cb = jest.fn();
 
         // Start April 1st, 2025
-        const start = toEpochMs(fromISOString("2025-04-01T00:00:00.000Z"));
+        const start = fromISOString("2025-04-01T00:00:00.000Z");
         timeControl.setDateTime(start);
         schedulerControl.setPollingInterval(fromMilliseconds(1));
 
@@ -807,7 +799,7 @@ describe("scheduler calculator edge cases", () => {
         expect(cb).toHaveBeenCalledTimes(0);
 
         // Jump to April 30 + 1 day => May 1 (no fire), then to May 31 00:00
-        const may31 = toEpochMs(fromISOString("2025-05-31T00:00:00.000Z"));
+        const may31 = fromISOString("2025-05-31T00:00:00.000Z");
         timeControl.setDateTime(may31);
         await schedulerControl.waitForNextCycleEnd();
         expect(cb).toHaveBeenCalledTimes(1);
@@ -824,7 +816,7 @@ describe("scheduler calculator edge cases", () => {
         const cb = jest.fn();
 
         // Start Feb 1, 2025 (non-leap)
-        const start = toEpochMs(fromISOString("2025-02-01T00:00:00.000Z"));
+        const start = fromISOString("2025-02-01T00:00:00.000Z");
         timeControl.setDateTime(start);
         schedulerControl.setPollingInterval(fromMilliseconds(1));
 
@@ -835,7 +827,7 @@ describe("scheduler calculator edge cases", () => {
         expect(cb).toHaveBeenCalledTimes(0);
 
         // Jump to 2028-02-29 00:00Z (leap year)
-        const leap = toEpochMs(fromISOString("2028-02-29T00:00:00.000Z"));
+        const leap = fromISOString("2028-02-29T00:00:00.000Z");
         timeControl.setDateTime(leap);
         await schedulerControl.waitForNextCycleEnd();
         expect(cb).toHaveBeenCalledTimes(1);
@@ -852,7 +844,7 @@ describe("scheduler calculator edge cases", () => {
         const cb = jest.fn();
 
         // Start exactly at 2025-01-20 00:00Z, cron fires at 00:00 on day 20
-        const start = toEpochMs(fromISOString("2025-01-20T00:00:00.000Z"));
+        const start = fromISOString("2025-01-20T00:00:00.000Z");
         timeControl.setDateTime(start);
         schedulerControl.setPollingInterval(fromMilliseconds(1));
 
@@ -875,7 +867,7 @@ describe("scheduler calculator edge cases", () => {
         const retryDelay = Duration.fromMillis(1000);
         const cb = jest.fn();
 
-        const start = toEpochMs(fromISOString("2025-01-14T10:07:00.000Z"));
+        const start = fromISOString("2025-01-14T10:07:00.000Z");
         timeControl.setDateTime(start);
         schedulerControl.setPollingInterval(fromMilliseconds(1));
 
@@ -906,7 +898,7 @@ describe("scheduler calculator edge cases", () => {
         const retryDelay = Duration.fromMillis(1000);
         const cb = jest.fn();
 
-        const start = toEpochMs(fromISOString("2025-01-14T18:30:00.000Z"));
+        const start = fromISOString("2025-01-14T18:30:00.000Z");
         timeControl.setDateTime(start);
         schedulerControl.setPollingInterval(fromMilliseconds(1));
 
@@ -917,7 +909,7 @@ describe("scheduler calculator edge cases", () => {
         expect(cb).toHaveBeenCalledTimes(0);
 
         // Next day 08:00
-        const next0800 = toEpochMs(fromISOString("2025-01-15T08:00:00.000Z"));
+        const next0800 = fromISOString("2025-01-15T08:00:00.000Z");
         timeControl.setDateTime(next0800);
         await schedulerControl.waitForNextCycleEnd();
         expect(cb).toHaveBeenCalledTimes(1);
@@ -935,7 +927,7 @@ describe("scheduler calculator edge cases", () => {
         const cb1 = jest.fn();
         const cb2 = jest.fn();
 
-        const start = toEpochMs(fromISOString("2025-01-03T11:59:00.000Z")); // Jan 3, 2025
+        const start = fromISOString("2025-01-03T11:59:00.000Z"); // Jan 3, 2025
         timeControl.setDateTime(start);
         schedulerControl.setPollingInterval(fromMilliseconds(1));
 
@@ -964,7 +956,7 @@ describe("scheduler calculator edge cases", () => {
         const cb = jest.fn();
 
         // Start Wed Jan 1, 2025; next Monday is Jan 6
-        const start = toEpochMs(fromISOString("2025-01-01T11:59:00.000Z"));
+        const start = fromISOString("2025-01-01T11:59:00.000Z");
         timeControl.setDateTime(start);
         schedulerControl.setPollingInterval(fromMilliseconds(1));
 
@@ -975,7 +967,7 @@ describe("scheduler calculator edge cases", () => {
         expect(cb).toHaveBeenCalledTimes(0);
 
         // Jump to Monday noon
-        const monday = toEpochMs(fromISOString("2025-01-06T12:00:00.000Z"));
+        const monday = fromISOString("2025-01-06T12:00:00.000Z");
         timeControl.setDateTime(monday);
         await schedulerControl.waitForNextCycleEnd();
         expect(cb).toHaveBeenCalledTimes(1);
@@ -992,7 +984,7 @@ describe("scheduler calculator edge cases", () => {
         const cb = jest.fn();
 
         // Start Jun 1, 2025
-        const start = toEpochMs(fromISOString("2025-06-01T00:00:00.000Z"));
+        const start = fromISOString("2025-06-01T00:00:00.000Z");
         timeControl.setDateTime(start);
         schedulerControl.setPollingInterval(fromMilliseconds(1));
 
@@ -1029,7 +1021,7 @@ describe("scheduler calculator edge cases", () => {
         const cb = jest.fn();
 
         // Start on Saturday Jan 4, 2025 11:59, should skip to Monday 12:00
-        const start = toEpochMs(fromISOString("2025-01-04T11:59:00.000Z")); // Saturday
+        const start = fromISOString("2025-01-04T11:59:00.000Z"); // Saturday
         timeControl.setDateTime(start);
         schedulerControl.setPollingInterval(fromMilliseconds(1));
 
@@ -1061,7 +1053,7 @@ describe("scheduler calculator edge cases", () => {
         const cb = jest.fn();
 
         // Start 2025-01-20 00:00 — day 20
-        const start = toEpochMs(fromISOString("2025-01-20T00:00:00.000Z"));
+        const start = fromISOString("2025-01-20T00:00:00.000Z");
         timeControl.setDateTime(start);
         schedulerControl.setPollingInterval(fromMilliseconds(1));
 
@@ -1098,7 +1090,7 @@ describe("scheduler calculator edge cases", () => {
         const cb = jest.fn();
 
         // Start after Jan occurrence has passed: Jan 2, 00:00
-        const start = toEpochMs(fromISOString("2025-01-02T00:00:00.000Z"));
+        const start = fromISOString("2025-01-02T00:00:00.000Z");
         timeControl.setDateTime(start);
         schedulerControl.setPollingInterval(fromMilliseconds(1));
 
@@ -1126,7 +1118,7 @@ describe("scheduler calculator edge cases", () => {
         const cb = jest.fn();
 
         // Start Jan 1, 2026 00:00; Dec 31, 2025 was last run
-        const start = toEpochMs(fromISOString("2026-01-01T00:00:00.000Z"));
+        const start = fromISOString("2026-01-01T00:00:00.000Z");
         timeControl.setDateTime(start);
         schedulerControl.setPollingInterval(fromMilliseconds(1));
 
@@ -1151,7 +1143,7 @@ describe("scheduler calculator edge cases", () => {
         const cb = jest.fn();
 
         // Start 2025-01-12 11:59 (Sun). Next is 2025-01-13 (Mon) 12:00 OR 2025-02-13 12:00 etc.
-        const start = toEpochMs(fromISOString("2025-01-12T11:59:00.000Z"));
+        const start = fromISOString("2025-01-12T11:59:00.000Z");
         timeControl.setDateTime(start);
         schedulerControl.setPollingInterval(fromMilliseconds(1));
 

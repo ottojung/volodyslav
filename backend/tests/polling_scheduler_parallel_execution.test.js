@@ -3,10 +3,10 @@
  * Ensures tasks can run concurrently without blocking each other.
  */
 
-const { fromISOString, Duration, DateTime } = require("luxon");
+const { Duration } = require("luxon");
 const { fromISOString, fromHours, fromMilliseconds, fromMinutes } = require("../src/datetime");
-const { fromISOString, getMockedRootCapabilities } = require("./spies");
-const { fromISOString, stubEnvironment, stubLogger, stubDatetime, stubSleeper, getDatetimeControl, stubScheduler, getSchedulerControl, stubRuntimeStateStorage } = require("./stubs");
+const { getMockedRootCapabilities } = require("./spies");
+const { stubEnvironment, stubLogger, stubDatetime, stubSleeper, getDatetimeControl, stubScheduler, getSchedulerControl, stubRuntimeStateStorage } = require("./stubs");
 
 function getTestCapabilities() {
     const capabilities = getMockedRootCapabilities();
@@ -30,13 +30,13 @@ describe("declarative scheduler parallel execution", () => {
         let task2StartTime = null;
 
         const task1 = jest.fn(async () => {
-            task1StartTime = toEpochMs(capabilities.datetime.now());
+            task1StartTime = capabilities.datetime.now();
             // Add a small delay to make parallelism more observable
             await new Promise(resolve => setTimeout(resolve, 100));
         });
 
         const task2 = jest.fn(async () => {
-            task2StartTime = toEpochMs(capabilities.datetime.now());
+            task2StartTime = capabilities.datetime.now();
             // Add a small delay to make parallelism more observable
             await new Promise(resolve => setTimeout(resolve, 100));
         });

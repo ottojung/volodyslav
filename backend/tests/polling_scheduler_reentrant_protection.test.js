@@ -3,8 +3,8 @@
  * Ensures proper guarding against overlapping scheduler operations.
  */
 
-const { Duration, DateTime } = require("luxon");
-const { fromHours, fromMilliseconds } = require("../src/datetime");
+const { Duration } = require("luxon");
+const { fromHours, fromMilliseconds, fromISOString } = require("../src/datetime");
 const { getMockedRootCapabilities } = require("./spies");
 const { stubEnvironment, stubLogger, stubDatetime, stubSleeper, stubScheduler, getSchedulerControl, getDatetimeControl, stubRuntimeStateStorage } = require("./stubs");
 

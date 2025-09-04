@@ -5,7 +5,7 @@
 
 const { DateTime: LuxonDateTime } = require("luxon");
 const { parseCronExpression, matchesCronExpression, getNextExecution } = require("../src/scheduler");
-const { fromISOString } = require("../src/datetime");
+
 const DateTime = require('../src/datetime/structure');
 
 describe("Timezone weekday bug", () => {

@@ -3,7 +3,7 @@
  * Focuses on scheduler robustness, error handling, and consistent behavior.
  */
 
-const { Duration, DateTime } = require("luxon");
+const { Duration } = require("luxon");
 const { fromISOString, fromHours, fromMilliseconds } = require("../src/datetime");
 const { getMockedRootCapabilities } = require("./spies");
 const { stubEnvironment, stubLogger, stubDatetime, stubSleeper, stubRuntimeStateStorage, stubScheduler, getSchedulerControl, getDatetimeControl } = require("./stubs");

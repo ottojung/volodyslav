@@ -4,7 +4,7 @@
  * even if their cron expression matches the current time.
  */
 
-const { Duration, DateTime } = require("luxon");
+const { Duration } = require("luxon");
 const { fromISOString, fromMilliseconds } = require("../src/datetime");
 const { getMockedRootCapabilities } = require("./spies");
 const { stubEnvironment, stubLogger, stubDatetime, stubSleeper, stubRuntimeStateStorage, stubScheduler, getSchedulerControl, getDatetimeControl } = require("./stubs");

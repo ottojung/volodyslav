@@ -16,7 +16,7 @@ const {
     stubRuntimeStateStorage,
 } = require("./stubs");
 const { getMockedRootCapabilities } = require("./spies");
-const { Duration, DateTime } = require("luxon");
+const { Duration } = require("luxon");
 const { fromISOString, fromMilliseconds } = require("../src/datetime");
 
 function getTestCapabilities() {
