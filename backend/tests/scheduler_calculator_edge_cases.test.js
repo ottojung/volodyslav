@@ -688,7 +688,7 @@ describe("scheduler calculator edge cases", () => {
 
         // Jump to the far-away valid time to confirm it eventually fires
         const target = toEpochMs(fromISOString("2025-09-01T12:00:00.000Z"));
-        timeControl.advanceTime(target - start);
+        timeControl.setTime(target);
         await schedulerControl.waitForNextCycleEnd();
         expect(taskCallback).toHaveBeenCalledTimes(1);
 
