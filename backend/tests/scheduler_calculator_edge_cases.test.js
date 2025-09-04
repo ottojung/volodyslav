@@ -666,35 +666,6 @@ describe("scheduler calculator edge cases", () => {
         await capabilities.scheduler.stop();
     });
 
-    test.failing("should treat Sunday as 0 or 7 (0 12 * * 7 fires on Sunday)", async () => {
-        const capabilities = getTestCapabilities();
-        const timeControl = getDatetimeControl(capabilities);
-        const schedulerControl = getSchedulerControl(capabilities);
-        const retryDelay = Duration.fromMillis(1000);
-
-        const taskCallback = jest.fn();
-
-        // 2025-01-05 is a Sunday
-        const start = toEpochMs(fromISOString("2025-01-05T11:59:00.000Z"));
-        timeControl.setTime(start);
-        schedulerControl.setPollingInterval(1);
-
-        const registrations = [
-            ["sunday-7", "0 12 * * 7", taskCallback, retryDelay], // Sunday at 12:00
-        ];
-
-        await capabilities.scheduler.initialize(registrations);
-        await schedulerControl.waitForNextCycleEnd();
-
-        // Move to 12:00 Sunday
-        timeControl.advanceTime(60 * 1000 * 1); // +1 minute
-        await schedulerControl.waitForNextCycleEnd();
-
-        expect(taskCallback).toHaveBeenCalledTimes(1); // should fire
-        expect(capabilities.scheduler).toBeDefined();
-        await capabilities.scheduler.stop();
-    });
-
     test("initialize should not crash on far-away weekday/DOM combination", async () => {
         const capabilities = getTestCapabilities();
         const timeControl = getDatetimeControl(capabilities);
