@@ -29,10 +29,10 @@ describe("scheduler calculator edge cases", () => {
         const timeControl = getDatetimeControl(capabilities);
         const schedulerControl = getSchedulerControl(capabilities);
         const retryDelay = Duration.fromMillis(1000);
-        
+
         const taskCallback = jest.fn();
         const executionTimes = [];
-        
+
         taskCallback.mockImplementation(() => {
             const currentDateTime = capabilities.datetime.now();
             executionTimes.push({
@@ -112,10 +112,10 @@ describe("scheduler calculator edge cases", () => {
         const timeControl = getDatetimeControl(capabilities);
         const schedulerControl = getSchedulerControl(capabilities);
         const retryDelay = Duration.fromMillis(1000);
-        
+
         const taskCallback = jest.fn();
         const executionTimes = [];
-        
+
         taskCallback.mockImplementation(() => {
             const currentDateTime = capabilities.datetime.now();
             executionTimes.push({
@@ -195,10 +195,10 @@ describe("scheduler calculator edge cases", () => {
         const timeControl = getDatetimeControl(capabilities);
         const schedulerControl = getSchedulerControl(capabilities);
         const retryDelay = Duration.fromMillis(1000);
-        
+
         const taskCallback = jest.fn();
         const executionTimes = [];
-        
+
         taskCallback.mockImplementation(() => {
             const currentDateTime = capabilities.datetime.now();
             executionTimes.push({
@@ -288,10 +288,10 @@ describe("scheduler calculator edge cases", () => {
         const timeControl = getDatetimeControl(capabilities);
         const schedulerControl = getSchedulerControl(capabilities);
         const retryDelay = Duration.fromMillis(1000);
-        
+
         const taskCallback = jest.fn();
         const executionTimes = [];
-        
+
         taskCallback.mockImplementation(() => {
             const currentDateTime = capabilities.datetime.now();
             executionTimes.push({
@@ -354,10 +354,10 @@ describe("scheduler calculator edge cases", () => {
         const timeControl = getDatetimeControl(capabilities);
         const schedulerControl = getSchedulerControl(capabilities);
         const retryDelay = Duration.fromMillis(1000);
-        
+
         const taskCallback = jest.fn();
         const executionTimes = [];
-        
+
         taskCallback.mockImplementation(() => {
             const currentTime = toEpochMs(capabilities.datetime.now());
             const currentDateTime = fromEpochMs(currentTime);
@@ -401,13 +401,13 @@ describe("scheduler calculator edge cases", () => {
         const newCapabilities = getTestCapabilities();
         const newTimeControl = getDatetimeControl(newCapabilities);
         const newSchedulerControl = getSchedulerControl(newCapabilities);
-        
+
         newTimeControl.setTime(day16Time);
         newSchedulerControl.setPollingInterval(1);
 
         const newTaskCallback = jest.fn();
         const newExecutionTimes = [];
-        
+
         newTaskCallback.mockImplementation(() => {
             const currentTime = toEpochMs(newCapabilities.datetime.now());
             const currentDateTime = fromEpochMs(currentTime);
@@ -448,9 +448,9 @@ describe("scheduler calculator edge cases", () => {
         const timeControl = getDatetimeControl(capabilities);
         const schedulerControl = getSchedulerControl(capabilities);
         const retryDelay = Duration.fromMillis(1000);
-        
+
         const taskCallback = jest.fn();
-        
+
         // Set time to a specific date where we know the constraint behavior  
         // Use a simpler constraint that's easier to test
         const startTime = toEpochMs(fromISOString("2025-01-01T10:00:00.000Z"));
@@ -473,7 +473,7 @@ describe("scheduler calculator edge cases", () => {
 
         // Task should execute on Friday
         expect(taskCallback.mock.calls.length).toBeGreaterThan(0);
-        
+
         // Always verify that the scheduler is properly defined
         expect(capabilities.scheduler).toBeDefined();
 
@@ -491,10 +491,10 @@ describe("scheduler calculator edge cases", () => {
         const timeControl = getDatetimeControl(capabilities);
         const schedulerControl = getSchedulerControl(capabilities);
         const retryDelay = Duration.fromMillis(1000);
-        
+
         const taskCallback = jest.fn();
         const executionTimes = [];
-        
+
         taskCallback.mockImplementation(() => {
             const currentTime = toEpochMs(capabilities.datetime.now());
             const currentDateTime = fromEpochMs(currentTime);
@@ -525,13 +525,13 @@ describe("scheduler calculator edge cases", () => {
         await schedulerControl.waitForNextCycleEnd();
 
         // Task should execute on Friday the 3rd
-        const validExecutions = executionTimes.filter(exec => 
+        const validExecutions = executionTimes.filter(exec =>
             exec.day === 3 && exec.weekday === "friday"
         );
         expect(validExecutions.length).toBeGreaterThan(0);
 
         // Verify no executions on wrong days or weekdays
-        const invalidExecutions = executionTimes.filter(exec => 
+        const invalidExecutions = executionTimes.filter(exec =>
             exec.day !== 3 || exec.weekday !== "friday"
         );
         expect(invalidExecutions).toHaveLength(0);
