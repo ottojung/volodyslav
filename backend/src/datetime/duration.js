@@ -59,6 +59,24 @@ function fromWeeks(weeks) {
     return Duration.fromObject({ weeks });
 }
 
+/**
+ * Create a Duration from an object specification.
+ * @param {object} spec - Duration specification object
+ * @param {number} [spec.years] - Years
+ * @param {number} [spec.quarters] - Quarters
+ * @param {number} [spec.months] - Months
+ * @param {number} [spec.weeks] - Weeks
+ * @param {number} [spec.days] - Days
+ * @param {number} [spec.hours] - Hours
+ * @param {number} [spec.minutes] - Minutes
+ * @param {number} [spec.seconds] - Seconds
+ * @param {number} [spec.milliseconds] - Milliseconds
+ * @returns {import('luxon').Duration} Duration object
+ */
+function fromObject(spec) {
+    return Duration.fromObject(spec);
+}
+
 module.exports = {
     difference,
     fromMilliseconds,
@@ -66,4 +84,5 @@ module.exports = {
     fromHours,
     fromDays,
     fromWeeks,
+    fromObject,
 };

@@ -83,6 +83,14 @@ class DateTimeClass {
     }
 
     /**
+     * Get the Luxon weekday number (1=Monday, 7=Sunday).
+     * @returns {number} Luxon weekday number
+     */
+    get luxonWeekday() {
+        return this._luxonDateTime.weekday;
+    }
+
+    /**
      * Advance this DateTime by the given Duration.
      * @param {import('luxon').Duration} duration - Duration to advance by
      * @returns {DateTime} New DateTime advanced by the duration

@@ -1,4 +1,4 @@
-const { DateTime: LuxonDateTime } = require("luxon");
+const { format: formatDateTime } = require("../datetime");
 
 /**
  * @typedef {object} Capabilities
@@ -14,8 +14,7 @@ const { DateTime: LuxonDateTime } = require("luxon");
 function format(capabilities, date) {
     // Format: YYYY-MM-DDTHH:mm:ssZZ (local timezone, e.g. 2025-05-22T15:30:00+0200)
     const tzName = capabilities.datetime.timeZone();
-    const luxonDateTime = LuxonDateTime.fromMillis(date.getTime()).setZone(tzName);
-    return luxonDateTime.toFormat("yyyy-MM-dd'T'HH:mm:ssZZZ");
+    return formatDateTime(date, "yyyy-MM-dd'T'HH:mm:ssZZZ", tzName);
 }
 
 module.exports = {
