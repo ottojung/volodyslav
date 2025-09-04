@@ -59,10 +59,6 @@ function serialize(task) {
     if (task.pendingRetryUntil !== undefined) {
         serialized.pendingRetryUntil = task.pendingRetryUntil;
     }
-    if (task.lastEvaluatedFire !== undefined) {
-        serialized.lastEvaluatedFire = task.lastEvaluatedFire;
-    }
-    
     return serialized;
 }
 
@@ -167,7 +163,6 @@ function tryDeserialize(obj, registrations) {
             /** @type {DateTime|undefined} */ (lastFailureTime),
             /** @type {DateTime|undefined} */ (lastAttemptTime),
             /** @type {DateTime|undefined} */ (pendingRetryUntil),
-            /** @type {DateTime|undefined} */ (lastEvaluatedFire)
         );
 
     } catch (error) {
