@@ -39,7 +39,7 @@ const { make: makeEventLogStorage } = require("./class");
  */
 async function appendEntriesToFile(capabilities, file, entries) {
     for (const entry of entries) {
-        const serialized = event.serialize(entry);
+        const serialized = event.serialize(capabilities, entry);
         const eventString = JSON.stringify(serialized, null, "\t");
         await capabilities.appender.appendFile(file, eventString + "\n");
     }
@@ -53,7 +53,7 @@ async function appendEntriesToFile(capabilities, file, entries) {
  */
 async function writeEntriesToFile(capabilities, file, entries) {
     const lines = entries.map((e) => {
-        const serialized = event.serialize(e);
+        const serialized = event.serialize(capabilities, e);
         return JSON.stringify(serialized, null, '\t');
     });
     const content = lines.join('\n') + (lines.length > 0 ? '\n' : '');
