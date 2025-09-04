@@ -69,7 +69,7 @@ describe("datetime mocking", () => {
             
             control.setTime(specificTime);
             const result = control.getCurrentTime();
-            expect(toEpochMs(result)).toBe(specificTime);
+            expect(result).toBe(specificTime);
             
             const dateTime = capabilities.datetime.now();
             expect(toEpochMs(dateTime)).toBe(specificTime);
@@ -87,7 +87,7 @@ describe("datetime mocking", () => {
             control.advanceTime(advanceMs);
             
             const result = control.getCurrentTime();
-            expect(toEpochMs(result)).toBe(startTime + advanceMs);
+            expect(result).toBe(startTime + advanceMs);
         });
     });
 

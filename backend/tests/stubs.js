@@ -133,8 +133,9 @@ function stubDatetime(capabilities) {
         }
     };
 
+    // Keep backward compatibility: getCurrentTime returns milliseconds for legacy tests
     capabilities.datetime.getCurrentTime = () => {
-        return currentDateTime;
+        return datetime.toEpochMs(currentDateTime);
     };
 
     // Mark it as mocked for type guard
@@ -145,22 +146,22 @@ function stubDatetime(capabilities) {
  * Provides access to datetime manipulation functions when datetime is stubbed.
  * Supports both the old milliseconds API and the new DateTime/Duration API.
  * @param {any} capabilities - The capabilities object with stubbed datetime
- * @returns {{setTime: (dateTimeOrMs: import('../src/datetime').DateTime|number) => void, advanceTime: (durationOrMs: import('luxon').Duration|number) => void, getCurrentTime: () => import('../src/datetime').DateTime, setDateTime: (dateTime: import('../src/datetime').DateTime) => void, advanceByDuration: (duration: import('luxon').Duration) => void, getCurrentDateTime: () => import('../src/datetime').DateTime}}
+ * @returns {{setTime: (dateTimeOrMs: import('../src/datetime').DateTime|number) => void, advanceTime: (durationOrMs: import('luxon').Duration|number) => void, getCurrentTime: () => number, setDateTime: (dateTime: import('../src/datetime').DateTime) => void, advanceByDuration: (duration: import('luxon').Duration) => void, getCurrentDateTime: () => import('../src/datetime').DateTime}}
  */
 function getDatetimeControl(capabilities) {
     if (!capabilities.datetime.__isMockedDatetime) {
         throw new Error("Datetime must be stubbed with stubDatetime() to use datetime control");
     }
     return {
-        // Backward compatible API (supporting both old ms and new DateTime/Duration)
+        // Backward compatible API
         setTime: (dateTimeOrMs) => capabilities.datetime.setTime(dateTimeOrMs),
         advanceTime: (durationOrMs) => capabilities.datetime.advanceTime(durationOrMs),
-        getCurrentTime: () => capabilities.datetime.getCurrentTime(),
+        getCurrentTime: () => capabilities.datetime.getCurrentTime(), // Returns milliseconds
         
         // New explicit DateTime/Duration API
         setDateTime: (dateTime) => capabilities.datetime.setTime(dateTime),
         advanceByDuration: (duration) => capabilities.datetime.advanceTime(duration),
-        getCurrentDateTime: () => capabilities.datetime.getCurrentTime(),
+        getCurrentDateTime: () => capabilities.datetime.now(), // Returns DateTime object
     };
 }
 
