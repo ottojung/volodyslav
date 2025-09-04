@@ -14,14 +14,7 @@ function difference(laterDateTime, earlierDateTime) {
     return laterDateTime.diff(earlierDateTime);
 }
 
-/**
- * Create a Duration from milliseconds.
- * @param {number} ms - Milliseconds
- * @returns {import('luxon').Duration} Duration object
- */
-function fromMilliseconds(ms) {
-    return Duration.fromMillis(ms);
-}
+
 
 /**
  * Create a Duration from minutes.
@@ -79,7 +72,6 @@ function fromObject(spec) {
 
 module.exports = {
     difference,
-    fromMilliseconds,
     fromMinutes,
     fromHours,
     fromDays,

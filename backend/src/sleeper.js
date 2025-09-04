@@ -2,7 +2,7 @@
  * Sleeper capability for pausing execution.
  */
 
-const { fromMilliseconds } = require('./datetime/duration');
+const { fromObject } = require('./datetime/duration');
 
 /**
  * @typedef {object} Sleeper
@@ -34,7 +34,7 @@ function make() {
      */
     async function withMutex(name, procedure) {
         while (mutexes.has(name)) {
-            const shortDelay = fromMilliseconds(1);
+            const shortDelay = fromObject({milliseconds: 1});
             await new Promise(resolve => setTimeout(resolve, shortDelay.toMillis()));
         }
 

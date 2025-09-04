@@ -3,10 +3,10 @@
  * Handles the timing and execution of polling operations.
  */
 
-const { fromMilliseconds } = require('../../datetime/duration');
+const { fromObject } = require('../../datetime/duration');
 
 const POLL_INTERVAL_MS = 600000;
-const POLL_INTERVAL = fromMilliseconds(POLL_INTERVAL_MS);
+const POLL_INTERVAL = fromObject({milliseconds: POLL_INTERVAL_MS});
 const THREAD_NAME = "volodyslav:scheduler:poll"
 
 /**

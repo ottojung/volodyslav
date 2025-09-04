@@ -21,7 +21,7 @@
 const memconst = require("../memconst");
 const { fromExisting } = require("./file");
 const { mtime } = require("../datetime");
-const { fromMilliseconds } = require("../datetime/duration");
+const { fromObject } = require("../datetime/duration");
 
 const fs = require("fs").promises;
 
@@ -160,7 +160,7 @@ async function isFileStable(sleeper, datetime, file, options = {}) {
         const initialSize = initialStats.size;
 
         // Wait a short time and check size again
-        await sleeper.sleep(fromMilliseconds(sizeCheckDelayMs));
+        await sleeper.sleep(fromObject({milliseconds: sizeCheckDelayMs}));
 
         const finalStats = await fs.stat(file.path);
         const finalSize = finalStats.size;

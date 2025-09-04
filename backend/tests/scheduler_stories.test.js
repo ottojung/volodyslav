@@ -7,7 +7,7 @@ const { Duration, DateTime } = require("luxon");
 const luxon = require("luxon");
 const { getMockedRootCapabilities } = require("./spies");
 const { stubEnvironment, stubLogger, stubDatetime, stubSleeper, getDatetimeControl, stubRuntimeStateStorage, stubScheduler, getSchedulerControl } = require("./stubs");
-const { toEpochMs, fromEpochMs, fromHours, fromMinutes, fromMilliseconds, fromDays } = require("../src/datetime");
+const { toEpochMs, fromEpochMs, fromHours, fromMinutes, fromDays, fromObject } = require("../src/datetime");
 
 function getTestCapabilities() {
     const capabilities = getMockedRootCapabilities();
@@ -49,7 +49,7 @@ describe("scheduler stories", () => {
 
         // Now test that advancing time triggers new executions
         // Advance time to 00:30:00 (first execution after initialization)
-        timeControl.advanceByDuration(fromMilliseconds(25 * 60 * 1000)); // 25 minutes to reach 00:30:00
+        timeControl.advanceByDuration(fromObject({minutes: 25})); // 25 minutes to reach 00:30:00
         await schedulerControl.waitForNextCycleEnd();
 
         // Should have one more call
