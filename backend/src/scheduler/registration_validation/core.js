@@ -82,12 +82,6 @@ function validateRegistrations(registrations, capabilities) {
         if (retryMs < 0) {
             throw new NegativeRetryDelayError(`Registration at index ${i} (${qname}): retryDelay cannot be negative`, { index: i, name, retryMs });
         }
-        if (retryMs > 24 * 60 * 60 * 1000) { // 24 hours
-            capabilities.logger.logWarning(
-                { name, retryDelayMs: retryMs, retryDelayHours: Math.round(retryMs / (60 * 60 * 1000)) },
-                `Task ${qname} has a very large retry delay of ${retryMs}ms (${Math.round(retryMs / (60 * 60 * 1000))} hours). Consider using a smaller delay.`
-            );
-        }
     }
 }
 
