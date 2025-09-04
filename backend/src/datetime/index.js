@@ -1,10 +1,10 @@
 
-const { fromEpochMs, fromISOString, toEpochMs, toISOString, mtime } = require('./conversions');
+const { fromISOString, toISOString, mtime } = require('./conversions');
 const { make } = require('./capability');
 const { weekdayNameToCronNumber, cronNumberToWeekdayName, isWeekdayName, getAllWeekdayNames } = require('./weekday');
 const { isDateTime } = require('./structure');
 const { difference, fromMilliseconds, fromMinutes, fromHours, fromDays, fromWeeks, fromObject } = require('./duration');
-const { fromObject: dateTimeFromObject, fromMillisWithZone, format } = require('./factories');
+const { fromObject: dateTimeFromObject, format } = require('./factories');
 
 /** @typedef {import('./capability').Datetime} Datetime */
 /** @typedef {import('./structure').DateTime} DateTime */
@@ -14,9 +14,7 @@ module.exports = {
     make,
     isDateTime,
     mtime,
-    fromEpochMs,
     fromISOString,
-    toEpochMs,
     toISOString,
     weekdayNameToCronNumber,
     cronNumberToWeekdayName,
@@ -32,6 +30,5 @@ module.exports = {
     fromObject,
     // DateTime factories
     dateTimeFromObject,
-    fromMillisWithZone,
     format,
 };

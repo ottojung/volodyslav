@@ -15,12 +15,7 @@ class DateTimeClass {
         }
     }
 
-    /**
-     * @returns {number}
-     */
-    getTime() {
-        return this._luxonDateTime.toMillis();
-    }
+
 
     /**
      * @returns {string}

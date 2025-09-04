@@ -26,16 +26,6 @@ function fromObject(spec, options = {}) {
 }
 
 /**
- * Create a DateTime from milliseconds and set timezone.
- * @param {number} millis - Milliseconds since epoch
- * @param {string} timezone - Timezone to set (e.g., 'UTC', 'America/New_York')
- * @returns {DateTime} DateTime object with timezone set
- */
-function fromMillisWithZone(millis, timezone) {
-    return fromLuxon(LuxonDateTime.fromMillis(millis).setZone(timezone));
-}
-
-/**
  * Format a DateTime with the given pattern.
  * @param {DateTime} dateTime - DateTime to format
  * @param {string} pattern - Format pattern (e.g., "yyyy-MM-dd'T'HH:mm:ssZZZ")
@@ -43,7 +33,7 @@ function fromMillisWithZone(millis, timezone) {
  * @returns {string} Formatted date string
  */
 function format(dateTime, pattern, timezone) {
-    let luxonDateTime = LuxonDateTime.fromMillis(dateTime.getTime());
+    let luxonDateTime = dateTime._luxonDateTime;
     if (timezone) {
         luxonDateTime = luxonDateTime.setZone(timezone);
     }
@@ -52,6 +42,5 @@ function format(dateTime, pattern, timezone) {
 
 module.exports = {
     fromObject,
-    fromMillisWithZone,
     format,
 };
