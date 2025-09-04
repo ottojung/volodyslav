@@ -47,7 +47,7 @@ function isCronCalculationError(object) {
  * Otherwise, finds the most recent past execution time.
  * @param {import('../expression').CronExpression} cronExpr - Parsed cron expression
  * @param {import('../../datetime').DateTime} fromDateTime - DateTime to calculate from
- * @returns {import('../../datetime').DateTime|null} Previous execution datetime, or null if none found
+ * @returns {import('../../datetime').DateTime} Previous execution datetime, or null if none found
  */
 function calculatePreviousExecution(cronExpr, fromDateTime) {
     try {
@@ -149,7 +149,10 @@ function calculatePreviousExecution(cronExpr, fromDateTime) {
                     minute = maxInSet(cronExpr.minute);
                 } else {
                     // Could not satisfy constraints - return null
-                    return null;
+                    throw new CronCalculationError(
+                        "Could not satisfy weekday constraints",
+                        cronExpr.original
+                    );
                 }
             }
         }
@@ -169,7 +172,10 @@ function calculatePreviousExecution(cronExpr, fromDateTime) {
         
         // Ensure the result is actually before the input time
         if (resultDateTime.isAfter(fromDateTime)) {
-            return null;
+            throw new CronCalculationError(
+                "Calculated previous execution is after the reference time",
+                cronExpr.original
+            );
         }
         
         // For day-constrained crons, only return executions from the same day
@@ -179,7 +185,10 @@ function calculatePreviousExecution(cronExpr, fromDateTime) {
                 resultDateTime.month !== fromDateTime.month || 
                 resultDateTime.year !== fromDateTime.year) {
                 // Previous execution is from a different day, don't consider it "recent"
-                return null;
+                throw new CronCalculationError(
+                    "Previous execution falls on a different day",
+                    cronExpr.original
+                );
             }
         }
         
@@ -192,7 +201,10 @@ function calculatePreviousExecution(cronExpr, fromDateTime) {
         
         // For previous calculations, we're more lenient with errors
         // and return null instead of throwing in many cases
-        return null;
+        throw new CronCalculationError(
+            `Error calculating previous execution: ${error}`,
+            cronExpr.original
+        );
     }
 }
 

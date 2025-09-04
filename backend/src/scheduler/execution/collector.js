@@ -57,13 +57,7 @@ function evaluateTasksForExecution(tasks, scheduledTasks, now, capabilities) {
         }
 
         // Check both cron schedule and retry timing
-        const lastEvaluatedFireDate = task.lastEvaluatedFire ? task.lastEvaluatedFire : undefined;
-        const { lastScheduledFire, newLastEvaluatedFire } = getMostRecentExecution(task.parsedCron, now, lastEvaluatedFireDate);
-
-        // Update lastEvaluatedFire cache for performance optimization
-        if (newLastEvaluatedFire) {
-            task.lastEvaluatedFire = newLastEvaluatedFire;
-        }
+        const lastScheduledFire = getMostRecentExecution(task.parsedCron, now);
 
         const shouldRunCron = lastScheduledFire &&
             (!task.lastAttemptTime || task.lastAttemptTime.isBefore(lastScheduledFire));

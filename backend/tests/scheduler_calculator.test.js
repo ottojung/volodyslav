@@ -13,8 +13,8 @@ function next(cronExprStr, fromISOStringStr) {
 function prev(cronExprStr, fromISOStringStr) {
     const expr = parseCronExpression(cronExprStr);
     const from = fromISOString(fromISOStringStr);
-    const { lastScheduledFire } = getMostRecentExecution(expr, from);
-    return lastScheduledFire.toISOString();
+    const date = getMostRecentExecution(expr, from);
+    return date.toISOString();
 }
 
 describe("getNextExecution", () => {
