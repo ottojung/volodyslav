@@ -15,7 +15,7 @@ class PeriodicThread {
     /** @type {string} */
     name;
 
-    /** @type {number} */
+    /** @type {import('luxon').Duration} */
     period;
 
     /** @type {Callback} */
@@ -24,7 +24,7 @@ class PeriodicThread {
     /**
      * 
      * @param {string} name 
-     * @param {number} period 
+     * @param {import('luxon').Duration} period 
      * @param {Callback} callback 
      */
     constructor(name, period, callback) {
@@ -49,7 +49,7 @@ class PeriodicThread {
         }
 
         if (this.interval === undefined) {
-            this.interval = setInterval(wrapped, this.period);
+            this.interval = setInterval(wrapped, this.period.toMillis());
         }
     }
 
@@ -86,7 +86,7 @@ function make() {
 
     /**
      * @param {string} name
-     * @param {number} interval
+     * @param {import('luxon').Duration} interval
      * @param {Callback} callback
      * @returns {PeriodicThread}
      */

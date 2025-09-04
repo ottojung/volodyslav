@@ -3,6 +3,7 @@ const fs = require("fs");
 const os = require("os");
 const { stubEventLogRepository } = require("./stub_event_log_repository");
 const { THREAD_NAME } = require("../src/scheduler/polling/interval");
+const { fromMilliseconds } = require("../src/datetime/duration");
 
 /**
  * Stubs the environment capabilities for testing.
@@ -93,7 +94,7 @@ function stubDailyTasksExecutable(capabilities) {
 }
 
 function stubSleeper(capabilities) {
-    capabilities.sleeper.sleep = jest.fn().mockImplementation((_ms) => {
+    capabilities.sleeper.sleep = jest.fn().mockImplementation((_duration) => {
         return Promise.resolve(); // Immediately resolve when stubbed
     });
 }
@@ -324,7 +325,8 @@ function stubScheduler(capabilities) {
     let periodOverride = null;
 
     function setPollingInterval(newPeriod) {
-        periodOverride = newPeriod;
+        // Convert number to Duration for backwards compatibility
+        periodOverride = typeof newPeriod === 'number' ? fromMilliseconds(newPeriod) : newPeriod;
     }
 
     async function waitForNextCycleEnd() {
@@ -362,7 +364,9 @@ function stubScheduler(capabilities) {
         const setPollingInterval = (newPeriod) => {
             const wasRunning = thread.isRunning();
             thread.stop();
-            thread.period = newPeriod;
+            // Convert number to Duration for backwards compatibility
+            const newPeriodDuration = typeof newPeriod === 'number' ? fromMilliseconds(newPeriod) : newPeriod;
+            thread.period = newPeriodDuration;
             if (wasRunning) {
                 thread.start();
             }
