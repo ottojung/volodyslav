@@ -7,7 +7,7 @@ const path = require("path");
 describe("POST /api/entries - rawInput transformation and shortcuts", () => {
     it("works without shortcuts when config file doesn't exist", async () => {
         const { app, capabilities } = await makeTestApp();
-        const fixedTime = fromISOString("2025-05-23T12:00:00.000Z").getTime();
+        const fixedTime = fromISOString("2025-05-23T12:00:00.000Z");
         capabilities.datetime.now.mockReturnValue(fixedTime);
 
         const requestBody = {
@@ -32,7 +32,7 @@ describe("POST /api/entries - rawInput transformation and shortcuts", () => {
 
     it("works with empty shortcuts config", async () => {
         const { app, capabilities } = await makeTestApp();
-        const fixedTime = fromISOString("2025-05-23T12:00:00.000Z").getTime();
+        const fixedTime = fromISOString("2025-05-23T12:00:00.000Z");
         capabilities.datetime.now.mockReturnValue(fixedTime);
 
         // Create config with empty shortcuts using transaction system
@@ -66,7 +66,7 @@ describe("POST /api/entries - rawInput transformation and shortcuts", () => {
 
     it("handles malformed config gracefully", async () => {
         const { app, capabilities } = await makeTestApp();
-        const fixedTime = fromISOString("2025-05-23T12:00:00.000Z").getTime();
+        const fixedTime = fromISOString("2025-05-23T12:00:00.000Z");
         capabilities.datetime.now.mockReturnValue(fixedTime);
 
         // Create malformed config
@@ -100,7 +100,7 @@ describe("POST /api/entries - rawInput transformation and shortcuts", () => {
         // This test verifies what happens when there's no config file - 
         // this is likely what's happening in your real application
         const { app, capabilities } = await makeTestApp();
-        const fixedTime = fromISOString("2025-05-23T12:00:00.000Z").getTime();
+        const fixedTime = fromISOString("2025-05-23T12:00:00.000Z");
         capabilities.datetime.now.mockReturnValue(fixedTime);
 
         // Ensure no config file exists

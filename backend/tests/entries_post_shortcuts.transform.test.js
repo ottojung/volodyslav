@@ -10,7 +10,7 @@ describe("POST /api/entries - rawInput transformation and shortcuts", () => {
         //   -d '{"rawInput":"w [loc o] - Fixed the parser"}'
 
         const { app, capabilities } = await makeTestApp();
-        const fixedTime = fromISOString("2025-05-23T12:00:00.000Z").getTime();
+        const fixedTime = fromISOString("2025-05-23T12:00:00.000Z");
         capabilities.datetime.now.mockReturnValue(fixedTime);
 
         // Create a config with shortcuts using transaction system
@@ -47,7 +47,7 @@ describe("POST /api/entries - rawInput transformation and shortcuts", () => {
 
     it("applies recursive shortcuts correctly", async () => {
         const { app, capabilities } = await makeTestApp();
-        const fixedTime = fromISOString("2025-05-23T12:00:00.000Z").getTime();
+        const fixedTime = fromISOString("2025-05-23T12:00:00.000Z");
         capabilities.datetime.now.mockReturnValue(fixedTime);
 
         // Create config with recursive shortcuts using transaction system
@@ -85,7 +85,7 @@ describe("POST /api/entries - rawInput transformation and shortcuts", () => {
 
     it("preserves word boundaries in shortcuts", async () => {
         const { app, capabilities } = await makeTestApp();
-        const fixedTime = fromISOString("2025-05-23T12:00:00.000Z").getTime();
+        const fixedTime = fromISOString("2025-05-23T12:00:00.000Z");
         capabilities.datetime.now.mockReturnValue(fixedTime);
 
         // Create config with word boundary shortcuts using transaction system
@@ -121,7 +121,7 @@ describe("POST /api/entries - rawInput transformation and shortcuts", () => {
 
     it("applies shortcuts to modifiers as well as type", async () => {
         const { app, capabilities } = await makeTestApp();
-        const fixedTime = fromISOString("2025-05-23T12:00:00.000Z").getTime();
+        const fixedTime = fromISOString("2025-05-23T12:00:00.000Z");
         capabilities.datetime.now.mockReturnValue(fixedTime);
 
         // Create config with shortcuts for locations using transaction system
@@ -162,7 +162,7 @@ describe("POST /api/entries - rawInput transformation and shortcuts", () => {
 
     it("normalizes whitespace during transformation", async () => {
         const { app, capabilities } = await makeTestApp();
-        const fixedTime = fromISOString("2025-05-23T12:00:00.000Z").getTime();
+        const fixedTime = fromISOString("2025-05-23T12:00:00.000Z");
         capabilities.datetime.now.mockReturnValue(fixedTime);
 
         const requestBody = {

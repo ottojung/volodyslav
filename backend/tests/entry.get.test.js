@@ -36,7 +36,7 @@ describe("getEntries ordering functionality", () => {
         const capabilities = await getTestCapabilities();
 
         // Create entries with different dates by controlling datetime.now()
-        const baseTime = fromISOString("2023-01-01T10:00:00Z").getTime();
+        const baseTime = fromISOString("2023-01-01T10:00:00Z");
 
         capabilities.datetime.now.mockReturnValueOnce(
             baseTime
@@ -87,7 +87,7 @@ describe("getEntries ordering functionality", () => {
         const capabilities = await getTestCapabilities();
 
         // Create entries with different dates by controlling datetime.now()
-        const baseTime = fromISOString("2023-01-01T10:00:00Z").getTime();
+        const baseTime = fromISOString("2023-01-01T10:00:00Z");
 
         capabilities.datetime.now.mockReturnValueOnce(
             baseTime
@@ -128,7 +128,7 @@ describe("getEntries ordering functionality", () => {
     it("sorts entries by date descending when explicitly specified", async () => {
         const capabilities = await getTestCapabilities();
 
-        const baseTime = fromISOString("2023-01-01T10:00:00Z").getTime();
+        const baseTime = fromISOString("2023-01-01T10:00:00Z");
 
         capabilities.datetime.now.mockReturnValueOnce(
             baseTime
@@ -190,7 +190,7 @@ describe("getEntries ordering functionality", () => {
         const capabilities = await getTestCapabilities();
 
         // Create 5 entries with different dates by controlling datetime.now()
-        const baseTime = fromISOString("2023-01-01T10:00:00Z").getTime();
+        const baseTime = fromISOString("2023-01-01T10:00:00Z");
         for (let i = 1; i <= 5; i++) {
             capabilities.datetime.now.mockReturnValueOnce(
                 baseTime + (i - 1 * 24 * 60 * 60 * 1000)

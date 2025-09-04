@@ -152,16 +152,14 @@ describe("API Ordering Integration Tests", () => {
             // The created entry should use current time, not the when modifier
             // Parse the returned date and compare timestamps to avoid timezone issues
             const returnedDate = fromISOString(createRes.body.entry.date);
-            expect(returnedDate.getTime()).toBe(fixedTime);
+            expect(returnedDate.equals(fixedTime)).toBe(true);
         });
 
         it("ignores explicit date parameter and uses current time", async () => {
             const { app, capabilities } = await makeTestApp();
 
-            const fixedTime = fromISOString("2025-06-28T12:00:00Z").getTime();
-            capabilities.datetime.now.mockReturnValue(
-                fixedTime
-            );
+            const fixedTime = fromISOString("2025-06-28T12:00:00Z");
+            capabilities.datetime.now.mockReturnValue(fixedTime);
 
             const requestBody = {
                 rawInput: "test [when 2023-06-15T14:30:00Z] - Entry with both dates",
@@ -179,7 +177,7 @@ describe("API Ordering Integration Tests", () => {
             // The created entry should use current time, ignoring both the explicit date and when modifier
             // Parse the returned date and compare timestamps to avoid timezone issues
             const returnedDate = fromISOString(createRes.body.entry.date);
-            expect(returnedDate.getTime()).toBe(fixedTime);
+            expect(returnedDate.equals(fixedTime)).toBe(true);
         });
     });
 });

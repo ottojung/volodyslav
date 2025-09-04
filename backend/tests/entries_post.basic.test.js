@@ -33,7 +33,7 @@ describe("POST /api/entries", () => {
         //   -d '{"rawInput":"httptype [foo bar] HTTP description"}'
 
         const { app, capabilities } = await makeTestApp();
-        const fixedTime = fromISOString("2025-05-23T12:00:00.000Z").getTime();
+        const fixedTime = fromISOString("2025-05-23T12:00:00.000Z");
         capabilities.datetime.now.mockReturnValue(fixedTime);
 
         const requestBody = {
