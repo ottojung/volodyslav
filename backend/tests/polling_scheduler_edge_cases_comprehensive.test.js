@@ -3,10 +3,10 @@
  * Tests boundary conditions, error scenarios, and complex edge cases.
  */
 
-const { Duration, DateTime } = require("luxon");
-const { fromHours, fromMilliseconds } = require("../src/datetime");
-const { getMockedRootCapabilities } = require("./spies");
-const { stubEnvironment, stubLogger, stubDatetime, stubSleeper, stubRuntimeStateStorage, stubScheduler, getSchedulerControl, getDatetimeControl } = require("./stubs");
+const { fromISOString, Duration, DateTime } = require("luxon");
+const { fromISOString, fromHours, fromMilliseconds } = require("../src/datetime");
+const { fromISOString, getMockedRootCapabilities } = require("./spies");
+const { fromISOString, stubEnvironment, stubLogger, stubDatetime, stubSleeper, stubRuntimeStateStorage, stubScheduler, getSchedulerControl, getDatetimeControl } = require("./stubs");
 
 function getTestCapabilities() {
     const capabilities = getMockedRootCapabilities();
@@ -119,7 +119,7 @@ describe("declarative scheduler comprehensive edge cases", () => {
     describe("complex cron expressions", () => {
         test("should handle leap year specific schedules", async () => {
             // Test that leap year cron expressions can be parsed without errors
-            const { parseCronExpression } = require("../src/scheduler");
+            const { fromISOString, parseCronExpression } = require("../src/scheduler");
             
             // This should not throw errors
             expect(() => parseCronExpression("0 12 29 2 *")).not.toThrow(); // Feb 29th leap year
@@ -130,7 +130,7 @@ describe("declarative scheduler comprehensive edge cases", () => {
         test("should handle very sparse schedules", async () => {
             // Test that sparse cron expressions can be parsed without errors
             // by using the main scheduler import which re-exports parseCronExpression
-            const { parseCronExpression } = require("../src/scheduler");
+            const { fromISOString, parseCronExpression } = require("../src/scheduler");
             
             // These should not throw errors
             expect(() => parseCronExpression("0 0 1 * *")).not.toThrow(); // Monthly

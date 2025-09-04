@@ -17,7 +17,7 @@ const {
 } = require("./stubs");
 const { getMockedRootCapabilities } = require("./spies");
 const { Duration, DateTime } = require("luxon");
-const { fromMilliseconds } = require("../src/datetime");
+const { fromISOString, fromMilliseconds } = require("../src/datetime");
 
 function getTestCapabilities() {
     const capabilities = getMockedRootCapabilities();

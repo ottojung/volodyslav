@@ -3,10 +3,10 @@
  * Focuses on scenarios where the scheduler missed a bunch of executions.
  */
 
-const { Duration, DateTime } = require("luxon");
-const { fromHours, fromDays, fromMilliseconds } = require("../src/datetime");
-const { getMockedRootCapabilities } = require("./spies");
-const { stubEnvironment, stubLogger, stubDatetime, stubSleeper, getDatetimeControl, stubScheduler, getSchedulerControl, stubRuntimeStateStorage } = require("./stubs");
+const { fromISOString, Duration, DateTime } = require("luxon");
+const { fromISOString, fromHours, fromDays, fromMilliseconds } = require("../src/datetime");
+const { fromISOString, getMockedRootCapabilities } = require("./spies");
+const { fromISOString, stubEnvironment, stubLogger, stubDatetime, stubSleeper, getDatetimeControl, stubScheduler, getSchedulerControl, stubRuntimeStateStorage } = require("./stubs");
 
 function getTestCapabilities() {
     const capabilities = getMockedRootCapabilities();
