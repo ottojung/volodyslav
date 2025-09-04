@@ -60,7 +60,7 @@ describe("declarative scheduler parallel execution", () => {
         // Tasks should have started around the same time (parallel execution)
         expect(task1StartTime).toBeDefined();
         expect(task2StartTime).toBeDefined();
-        const startTimeDiff = Math.abs(task1StartTime - task2StartTime);
+        const startTimeDiff = Math.abs(task1StartTime.diff(task2StartTime).toMillis());
         expect(startTimeDiff).toBeLessThan(100); // Should start within 100ms of each other
 
         await capabilities.scheduler.stop();

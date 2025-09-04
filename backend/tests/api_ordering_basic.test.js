@@ -148,7 +148,7 @@ describe("API Ordering Integration Tests", () => {
             for (let i = 1; i < res.body.results.length; i++) {
                 const currentDate = fromISOString(res.body.results[i].date);
                 const previousDate = fromISOString(res.body.results[i - 1].date);
-                expect(currentDate).toBeGreaterThanOrEqual(previousDate);
+                expect(currentDate.isAfterOrEqual(previousDate)).toBe(true);
             }
         });
 
