@@ -1,7 +1,7 @@
 
 /**
  * @typedef {import('../../logger').Logger} Logger
- * @typedef {import('luxon').Duration} Duration
+ * @typedef {import('../../datetime').Duration} Duration
  * @typedef {import('../types').CronExpression} CronExpression
  * @typedef {import('../../datetime').DateTime} DateTime
  * @typedef {import('../types').Callback} Callback
