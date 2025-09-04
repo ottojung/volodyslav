@@ -295,7 +295,7 @@ describe("Declarative Scheduler", () => {
             const timeControl = getDatetimeControl(capabilities);
             
             // Set time to 00:30:00 to avoid immediate execution (task runs at 0 minutes of each hour)
-            const startTime = 1609461000000; // 2021-01-01T00:30:00.000Z
+            const startTime = fromISOString("2021-01-01T00:30:00.000Z");
             timeControl.setDateTime(startTime);
             control.setPollingInterval(fromMilliseconds(1));
 
