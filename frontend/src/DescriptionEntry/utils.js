@@ -2,17 +2,18 @@
  * Utility functions for DescriptionEntry component
  */
 
+import { DateTime } from 'luxon';
+
 /**
  * Formats a date string into a human-readable relative time format
  * @param {string} dateString - ISO date string
  * @returns {string} Formatted date string
  */
 export const formatRelativeDate = (dateString) => {
-    // eslint-disable-next-line volodyslav/no-date-class -- Frontend date formatting utility
-    const date = new Date(dateString);
-    // eslint-disable-next-line volodyslav/no-date-class -- Frontend date formatting utility
-    const now = new Date();
-    const diffMs = now.getTime() - date.getTime();
+    const date = DateTime.fromISO(dateString);
+    const now = DateTime.now();
+    const diff = now.diff(date);
+    const diffMs = diff.as('milliseconds');
     const diffMins = Math.floor(diffMs / (1000 * 60));
     const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
     const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
@@ -22,7 +23,7 @@ export const formatRelativeDate = (dateString) => {
     if (diffHours < 24) return `${diffHours}h ago`;
     if (diffDays < 7) return `${diffDays}d ago`;
 
-    return date.toLocaleDateString();
+    return date.toLocaleString();
 };
 
 /**
