@@ -60,7 +60,7 @@ describe("event_log_storage", () => {
             const existingEntries = await storage.getExistingEntries();
             expect(existingEntries).toHaveLength(1);
             expect(existingEntries[0].id.identifier).toEqual(
-                event.serialize(firstEvent).id
+                event.serialize(capabilities, firstEvent).id
             );
 
             // Now add a new entry
@@ -74,8 +74,8 @@ describe("event_log_storage", () => {
             const dataFile = await capabilities.checker.instantiate(dataPath);
             const objects = await readObjects(capabilities, dataFile);
             expect(objects).toHaveLength(2);
-            expect(objects[0].id).toEqual(event.serialize(firstEvent).id);
-            expect(objects[1].id).toEqual(event.serialize(secondEvent).id);
+            expect(objects[0].id).toEqual(event.serialize(capabilities, firstEvent).id);
+            expect(objects[1].id).toEqual(event.serialize(capabilities, secondEvent).id);
         });
     });
 
