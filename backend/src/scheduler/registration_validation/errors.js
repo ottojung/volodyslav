@@ -47,21 +47,6 @@ class RegistrationShapeError extends Error {
 }
 
 /**
- * Error for invalid cron expression type.
- */
-class InvalidCronExpressionTypeError extends Error {
-    /**
-     * @param {string} message
-     * @param {object} [details]
-     */
-    constructor(message, details) {
-        super(message);
-        this.name = "InvalidCronExpressionTypeError";
-        this.details = details;
-    }
-}
-
-/**
  * Error for invalid cron expression.
  */
 class CronExpressionInvalidError extends Error {
@@ -72,36 +57,6 @@ class CronExpressionInvalidError extends Error {
     constructor(message, details) {
         super(message);
         this.name = "CronExpressionInvalidError";
-        this.details = details;
-    }
-}
-
-/**
- * Error for invalid callback type.
- */
-class CallbackTypeError extends Error {
-    /**
-     * @param {string} message
-     * @param {object} [details]
-     */
-    constructor(message, details) {
-        super(message);
-        this.name = "CallbackTypeError";
-        this.details = details;
-    }
-}
-
-/**
- * Error for invalid retry delay type.
- */
-class RetryDelayTypeError extends Error {
-    /**
-     * @param {string} message
-     * @param {object} [details]
-     */
-    constructor(message, details) {
-        super(message);
-        this.name = "RetryDelayTypeError";
         this.details = details;
     }
 }
@@ -143,30 +98,12 @@ function isScheduleDuplicateTaskError(object) {
     return object instanceof ScheduleDuplicateTaskError;
 }
 
-/**
- * Error thrown when an invalid task name is provided.
- */
-class ScheduleInvalidNameError extends Error {
-    /**
-     * @param {unknown} taskName
-     */
-    constructor(taskName) {
-        super("Task name must be a non-empty string");
-        this.name = "ScheduleInvalidNameError";
-        this.taskName = /** @type {string} */ (taskName);
-    }
-}
-
 module.exports = {
     InvalidRegistrationError,
     RegistrationsNotArrayError,
     RegistrationShapeError,
-    InvalidCronExpressionTypeError,
     CronExpressionInvalidError,
-    CallbackTypeError,
-    RetryDelayTypeError,
     NegativeRetryDelayError,
     ScheduleDuplicateTaskError,
     isScheduleDuplicateTaskError,
-    ScheduleInvalidNameError,
 };

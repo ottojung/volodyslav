@@ -68,7 +68,7 @@ function make(getCapabilities) {
      * @returns {Promise<{persistedTasks: import('../runtime_state_storage/types').TaskRecord[] | undefined}>}
      */
     async function validateAndCheckPersistedState(registrations, capabilities) {
-        validateRegistrations(registrations, capabilities);
+        validateRegistrations(registrations);
 
         /**
          * @param {import('../runtime_state_storage/class').RuntimeStateStorage} storage
