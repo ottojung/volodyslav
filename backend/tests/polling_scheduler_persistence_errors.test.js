@@ -5,7 +5,7 @@
  */
 
 const { Duration } = require("luxon");
-const { fromMilliseconds } = require("../src/datetime");
+const { fromMilliseconds, fromISOString } = require("../src/datetime");
 const { getMockedRootCapabilities } = require("./spies");
 const { stubEnvironment, stubLogger, stubDatetime, stubSleeper, stubScheduler, getSchedulerControl } = require("./stubs");
 
@@ -174,8 +174,11 @@ describe("declarative scheduler persistence and error handling", () => {
             ];
 
             for (const timeStr of testTimes) {
-                // eslint-disable-next-line volodyslav/no-date-class -- Jest system time mocking
-                jest.setSystemTime(new Date(timeStr));
+                // Convert ISO string to DateTime then get the JS timestamp for Jest mocking
+                const dateTime = fromISOString(timeStr);
+                // Use Luxon's toMillis() to get the timestamp without using Date
+                const timestamp = dateTime._luxonDateTime.toMillis();
+                jest.setSystemTime(timestamp);
 
                 // Should be able to initialize at any time
                 await expect(capabilities.scheduler.initialize(registrations)).resolves.toBeUndefined();

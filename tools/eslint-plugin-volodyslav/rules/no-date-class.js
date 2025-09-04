@@ -11,22 +11,11 @@ module.exports = {
     },
   },
   create(context) {
-    const sourceCode = context.getSourceCode();
-    
     return {
       NewExpression(node) {
         // Check for new Date() calls
         if (node.callee.type === "Identifier" && node.callee.name === "Date") {
-          // Allow Date usage if there's a specific performance comment
-          const comments = sourceCode.getCommentsBefore(node);
-          const allowPerformance = comments.some(comment => 
-            comment.value.includes('performance-critical') || 
-            comment.value.includes('eslint-disable-next-line volodyslav/no-date-class')
-          );
-          
-          if (!allowPerformance) {
-            context.report({ node, messageId: "noDateConstructor" });
-          }
+          context.report({ node, messageId: "noDateConstructor" });
         }
       },
       CallExpression(node) {
@@ -37,16 +26,7 @@ module.exports = {
           node.callee.object.type === "Identifier" &&
           node.callee.object.name === "Date"
         ) {
-          // Allow Date usage if there's a specific performance comment
-          const comments = sourceCode.getCommentsBefore(node);
-          const allowPerformance = comments.some(comment => 
-            comment.value.includes('performance-critical') || 
-            comment.value.includes('eslint-disable-next-line volodyslav/no-date-class')
-          );
-          
-          if (!allowPerformance) {
-            context.report({ node, messageId: "noDateStatic" });
-          }
+          context.report({ node, messageId: "noDateStatic" });
         }
       }
     };

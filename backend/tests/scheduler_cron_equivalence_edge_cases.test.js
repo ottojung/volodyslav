@@ -269,14 +269,13 @@ describe("scheduler cron expression equivalence edge cases", () => {
             const largeCron1 = parseCronExpression("* * * * *");
             const largeCron2 = parseCronExpression("* * * * *");
 
-            // eslint-disable-next-line volodyslav/no-date-class -- Performance timing test
-            const startTime = Date.now();
+            const startTime = process.hrtime.bigint();
             const result = largeCron1.equivalent(largeCron2);
-            // eslint-disable-next-line volodyslav/no-date-class -- Performance timing test
-            const endTime = Date.now();
+            const endTime = process.hrtime.bigint();
 
             expect(result).toBe(true);
-            expect(endTime - startTime).toBeLessThan(100); // Should be fast
+            const durationMs = Number(endTime - startTime) / 1000000;
+            expect(durationMs).toBeLessThan(100); // Should be fast
         });
 
         test("should short-circuit on length differences", () => {
@@ -284,14 +283,13 @@ describe("scheduler cron expression equivalence edge cases", () => {
             const cron2 = parseCronExpression("0 * * * *");
 
             // Should return false quickly due to length difference
-            // eslint-disable-next-line volodyslav/no-date-class -- Performance timing test
-            const startTime = Date.now();
+            const startTime = process.hrtime.bigint();
             const result = cron1.equivalent(cron2);
-            // eslint-disable-next-line volodyslav/no-date-class -- Performance timing test
-            const endTime = Date.now();
+            const endTime = process.hrtime.bigint();
 
             expect(result).toBe(false);
-            expect(endTime - startTime).toBeLessThan(50);
+            const durationMs = Number(endTime - startTime) / 1000000;
+            expect(durationMs).toBeLessThan(50);
         });
     });
 });
