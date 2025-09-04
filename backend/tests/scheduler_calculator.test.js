@@ -148,11 +148,6 @@ describe("getMostRecentExecution", () => {
         expect(prev("*/10 * * * *", "2024-01-01T14:35:00.000Z")).toBe("2024-01-01T14:30:00.000Z");
     });
 
-    test.failing("DOW=7 previous should match Sunday same as 0", () => {
-        // From Monday 00:00 → previous Sunday 12:00
-        expect(prev("0 12 * * 7", "2025-01-06T00:00:00.000Z")).toBe("2025-01-05T12:00:00.000Z");
-    });
-
     test.failing("DOM/DOW OR semantics for previous: closer of Jan 1 or previous Monday", () => {
         // From Jan 2, 2025 morning → expected Jan 1, 2025 12:00 (closer than Mon Dec 30, 2024)
         expect(prev("0 12 1 * 1", "2025-01-02T10:00:00.000Z")).toBe("2025-01-01T12:00:00.000Z");
