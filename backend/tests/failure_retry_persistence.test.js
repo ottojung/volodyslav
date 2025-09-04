@@ -23,7 +23,7 @@ describe("failure retry persistence", () => {
         const capabilities = getTestCapabilities();
         const timeControl = getDatetimeControl(capabilities);
         const schedulerControl = getSchedulerControl(capabilities);
-        schedulerControl.setPollingInterval(1);
+        schedulerControl.setPollingInterval(fromMilliseconds(1));
 
         // Set a fixed starting time that does NOT match the cron schedule
         const startTime = DateTime.fromISO("2020-01-01T00:05:30.000Z").toMillis(); // 00:05:30 - doesn't match "0 * * * *"

@@ -4,6 +4,7 @@
  */
 
 const { Duration } = require("luxon");
+const { fromMilliseconds } = require("../src/datetime");
 const { getMockedRootCapabilities } = require("./spies");
 const { stubEnvironment, stubLogger, stubDatetime, stubSleeper, stubScheduler, getSchedulerControl } = require("./stubs");
 
@@ -23,7 +24,7 @@ describe("declarative scheduler persistence and idempotency", () => {
         const schedulerControl = getSchedulerControl(capabilities);
         const retryDelay = Duration.fromMillis(5000);
         
-        schedulerControl.setPollingInterval(1);
+        schedulerControl.setPollingInterval(fromMilliseconds(1));
         
         const taskCallback = jest.fn();
 
@@ -51,7 +52,7 @@ describe("declarative scheduler persistence and idempotency", () => {
         const schedulerControl = getSchedulerControl(capabilities);
         const retryDelay = Duration.fromMillis(5000);
         
-        schedulerControl.setPollingInterval(1);
+        schedulerControl.setPollingInterval(fromMilliseconds(1));
         
         const taskCallback1 = jest.fn();
 
@@ -79,7 +80,7 @@ describe("declarative scheduler persistence and idempotency", () => {
         const schedulerControl = getSchedulerControl(capabilities);
         const retryDelay = Duration.fromMillis(1000);
         
-        schedulerControl.setPollingInterval(1);
+        schedulerControl.setPollingInterval(fromMilliseconds(1));
         
         const task1Callback = jest.fn();
         const task2Callback = jest.fn();
@@ -105,7 +106,7 @@ describe("declarative scheduler persistence and idempotency", () => {
         const capabilities = getTestCapabilities();
         const schedulerControl = getSchedulerControl(capabilities);
         
-        schedulerControl.setPollingInterval(1);
+        schedulerControl.setPollingInterval(fromMilliseconds(1));
         const retryDelay = Duration.fromMillis(1000); // Short retry for testing
         
         let attemptCount = 0;
@@ -151,7 +152,7 @@ describe("declarative scheduler persistence and idempotency", () => {
         const capabilities = getTestCapabilities();
         const schedulerControl = getSchedulerControl(capabilities);
         
-        schedulerControl.setPollingInterval(1);
+        schedulerControl.setPollingInterval(fromMilliseconds(1));
         
         const taskCallback = jest.fn();
         const registrations = [
@@ -171,7 +172,7 @@ describe("declarative scheduler persistence and idempotency", () => {
         const capabilities = getTestCapabilities();
         const schedulerControl = getSchedulerControl(capabilities);
         
-        schedulerControl.setPollingInterval(1);
+        schedulerControl.setPollingInterval(fromMilliseconds(1));
         const retryDelay = Duration.fromMillis(5000);
         
         const callback1 = jest.fn();
@@ -210,7 +211,7 @@ describe("declarative scheduler persistence and idempotency", () => {
         const capabilities = getTestCapabilities();
         const schedulerControl = getSchedulerControl(capabilities);
         
-        schedulerControl.setPollingInterval(1);
+        schedulerControl.setPollingInterval(fromMilliseconds(1));
         const retryDelay = Duration.fromMillis(5000);
         const taskCallback = jest.fn();
         

@@ -4,6 +4,7 @@
  */
 
 const { Duration } = require("luxon");
+const { fromMilliseconds } = require("../src/datetime");
 const { getMockedRootCapabilities } = require("./spies");
 const { stubEnvironment, stubLogger, stubDatetime, stubSleeper, stubScheduler, getSchedulerControl } = require("./stubs");
 
@@ -26,7 +27,7 @@ describe("declarative scheduler time handling", () => {
         const retryDelay = Duration.fromMillis(5000);
         const callback = jest.fn();
 
-        schedulerControl.setPollingInterval(1);
+        schedulerControl.setPollingInterval(fromMilliseconds(1));
 
         const registrations = [
             // Schedule task for 2:30 AM
@@ -50,7 +51,7 @@ describe("declarative scheduler time handling", () => {
         const retryDelay = Duration.fromMillis(5000);
         const callback = jest.fn();
 
-        schedulerControl.setPollingInterval(1);
+        schedulerControl.setPollingInterval(fromMilliseconds(1));
 
         const registrations = [
             // Schedule task for 1:30 AM daily
@@ -74,7 +75,7 @@ describe("declarative scheduler time handling", () => {
         const retryDelay = Duration.fromMillis(5000);
         const callback = jest.fn();
 
-        schedulerControl.setPollingInterval(1);
+        schedulerControl.setPollingInterval(fromMilliseconds(1));
 
         const registrations = [
             ["daily-task", "0 3 * * *", callback, retryDelay] // Daily 3 AM
@@ -97,7 +98,7 @@ describe("declarative scheduler time handling", () => {
         const retryDelay = Duration.fromMillis(5000);
         const callback = jest.fn();
 
-        schedulerControl.setPollingInterval(1);
+        schedulerControl.setPollingInterval(fromMilliseconds(1));
 
         const registrations = [
             // Schedule task at noon - should work regardless of timezone
@@ -121,7 +122,7 @@ describe("declarative scheduler time handling", () => {
         const retryDelay = Duration.fromMillis(5000);
         const callback = jest.fn();
 
-        schedulerControl.setPollingInterval(1);
+        schedulerControl.setPollingInterval(fromMilliseconds(1));
 
         const registrations = [
             ["daily-edge-task", "0 2 * * *", callback, retryDelay] // Daily 2 AM
@@ -143,7 +144,7 @@ describe("declarative scheduler time handling", () => {
         const schedulerControl = getSchedulerControl(capabilities);
         const retryDelay = Duration.fromMillis(5000);
         
-        schedulerControl.setPollingInterval(1);
+        schedulerControl.setPollingInterval(fromMilliseconds(1));
         
         const callback = jest.fn();
 
@@ -176,7 +177,7 @@ describe("declarative scheduler time handling", () => {
         const schedulerControl = getSchedulerControl(capabilities);
         const retryDelay = Duration.fromMillis(5000);
         
-        schedulerControl.setPollingInterval(1);
+        schedulerControl.setPollingInterval(fromMilliseconds(1));
         
         const task1 = jest.fn();
         const task2 = jest.fn();
@@ -204,7 +205,7 @@ describe("declarative scheduler time handling", () => {
         const retryDelay = Duration.fromMillis(5000);
         const callback = jest.fn();
 
-        schedulerControl.setPollingInterval(1);
+        schedulerControl.setPollingInterval(fromMilliseconds(1));
 
         const registrations = [
             // Complex schedule - multiple times per hour
@@ -227,7 +228,7 @@ describe("declarative scheduler time handling", () => {
         const schedulerControl = getSchedulerControl(capabilities);
         const retryDelay = Duration.fromMillis(1000);
         
-        schedulerControl.setPollingInterval(1);
+        schedulerControl.setPollingInterval(fromMilliseconds(1));
         
         const callback = jest.fn();
 
