@@ -321,7 +321,7 @@ describe("scheduler calculator edge cases", () => {
         expect(taskCallback.mock.calls.length).toBe(0);
 
         // Advance time by 15 minutes to 10:15 (still on day 14)
-        timeControl.advanceTime(15 * 60 * 1000);
+        timeControl.advanceByDuration(fromMilliseconds(15 * 60 * 1000));
         await schedulerControl.waitForNextCycleEnd();
 
         // Task should still NOT execute because we're still on day 14
@@ -600,7 +600,7 @@ describe("scheduler calculator edge cases", () => {
         await schedulerControl.waitForNextCycleEnd();
 
         // Advance beyond 11:15 (invalid hour)
-        timeControl.advanceTime(2 * 60 * 1000); // to ~11:16
+        timeControl.advanceByDuration(fromMilliseconds(2 * 60 * 1000)); // to ~11:16
         await schedulerControl.waitForNextCycleEnd();
 
         // Should NOT have fired at 11:15
@@ -747,7 +747,7 @@ describe("scheduler calculator edge cases", () => {
         await schedulerControl.waitForNextCycleEnd();
 
         // Advancing to 11:15 must NOT fire
-        timeControl.advanceTime(2 * 60 * 1000);
+        timeControl.advanceByDuration(fromMilliseconds(2 * 60 * 1000));
         await schedulerControl.waitForNextCycleEnd();
         expect(cb).toHaveBeenCalledTimes(0);
 

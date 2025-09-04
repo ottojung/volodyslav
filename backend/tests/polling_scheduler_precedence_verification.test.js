@@ -4,6 +4,7 @@
  */
 
 const { Duration, DateTime } = require("luxon");
+const { fromEpochMs, toEpochMs, fromHours, fromMinutes, fromMilliseconds } = require("../src/datetime");
 const { getMockedRootCapabilities } = require("./spies");
 const { stubEnvironment, stubLogger, stubDatetime, stubSleeper, stubScheduler, getSchedulerControl, getDatetimeControl, stubRuntimeStateStorage } = require("./stubs");
 
@@ -31,7 +32,7 @@ describe("declarative scheduler precedence logic verification", () => {
         
         // Set time to avoid immediate execution for "0 * * * *" schedule
         const startTime = DateTime.fromISO("2021-01-01T00:05:00.000Z").toMillis();
-        timeControl.setTime(startTime);
+        timeControl.setDateTime(fromEpochMs(startTime));
         schedulerControl.setPollingInterval(1);
         
         // Task runs at minute 0 of every hour
@@ -47,7 +48,7 @@ describe("declarative scheduler precedence logic verification", () => {
         expect(task).not.toHaveBeenCalled();
         
         // Advance time to next scheduled execution (01:00:00)
-        timeControl.advanceTime(60 * 60 * 1000); // 1 hour
+        timeControl.advanceByDuration(fromHours(1)); // 1 hour
         await schedulerControl.waitForNextCycleEnd();
         
         expect(task).toHaveBeenCalled();
@@ -65,7 +66,7 @@ describe("declarative scheduler precedence logic verification", () => {
         
         // Set time to avoid immediate execution for "0 * * * *" schedule
         const startTime = DateTime.fromISO("2021-01-01T00:05:00.000Z").toMillis();
-        timeControl.setTime(startTime);
+        timeControl.setDateTime(fromEpochMs(startTime));
         schedulerControl.setPollingInterval(1);
         
         // Task runs at minute 0 of every hour
@@ -81,7 +82,7 @@ describe("declarative scheduler precedence logic verification", () => {
         expect(task).not.toHaveBeenCalled();
         
         // Advance time to next scheduled execution (01:00:00)
-        timeControl.advanceTime(60 * 60 * 1000); // 1 hour
+        timeControl.advanceByDuration(fromHours(1)); // 1 hour
         await schedulerControl.waitForNextCycleEnd();
         
         expect(task).toHaveBeenCalled();

@@ -8,7 +8,7 @@ const { getMockedRootCapabilities } = require("./spies");
 const { toEpochMs, fromEpochMs, fromMinutes, fromHours } = require("../src/datetime");
 
 describe("datetime mocking", () => {
-    describe("New DateTime/Duration API", () => {
+    describe("DateTime/Duration API", () => {
         test("should allow setting and getting specific time with DateTime", () => {
             const capabilities = getMockedRootCapabilities();
             stubDatetime(capabilities);
@@ -56,38 +56,6 @@ describe("datetime mocking", () => {
             const result = control.getCurrentDateTime();
             const expectedAdvanceMs = (30 * 60 * 1000) + (2 * 60 * 60 * 1000); // 30 min + 2 hours
             expect(toEpochMs(result)).toBe(toEpochMs(startDateTime) + expectedAdvanceMs);
-        });
-    });
-
-    describe("Backward Compatibility API", () => {
-        test("should allow setting and getting specific time with milliseconds (legacy)", () => {
-            const capabilities = getMockedRootCapabilities();
-            stubDatetime(capabilities);
-            
-            const control = getDatetimeControl(capabilities);
-            const specificTime = DateTime.fromISO("2021-01-01T00:00:00.000Z").toMillis(); // Jan 1, 2021 00:00:00 UTC
-            
-            control.setTime(specificTime);
-            const result = control.getCurrentTime();
-            expect(result).toBe(specificTime);
-            
-            const dateTime = capabilities.datetime.now();
-            expect(toEpochMs(dateTime)).toBe(specificTime);
-        });
-
-        test("should allow advancing time with milliseconds (legacy)", () => {
-            const capabilities = getMockedRootCapabilities();
-            stubDatetime(capabilities);
-            
-            const control = getDatetimeControl(capabilities);
-            const startTime = DateTime.fromISO("2021-01-01T00:00:00.000Z").toMillis(); // Jan 1, 2021 00:00:00 UTC
-            const advanceMs = 60 * 1000; // 1 minute
-            
-            control.setTime(startTime);
-            control.advanceTime(advanceMs);
-            
-            const result = control.getCurrentTime();
-            expect(result).toBe(startTime + advanceMs);
         });
     });
 

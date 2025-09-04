@@ -111,31 +111,17 @@ function stubDatetime(capabilities) {
     originalNow.mockImplementation(() => currentDateTime);
     capabilities.datetime.timeZone = () => "UTC";
 
-    // Add time control methods to the datetime object - support both old (ms) and new (DateTime/Duration) APIs
-    capabilities.datetime.setTime = (timeValue) => {
-        if (typeof timeValue === 'number') {
-            // Backward compatibility: accept milliseconds
-            currentDateTime = datetime.fromEpochMs(timeValue);
-        } else {
-            // New API: accept DateTime object
-            currentDateTime = timeValue;
-        }
+    // DateTime/Duration-only API - no milliseconds support
+    capabilities.datetime.setDateTime = (dateTime) => {
+        currentDateTime = dateTime;
     };
 
-    capabilities.datetime.advanceTime = (timeValue) => {
-        if (typeof timeValue === 'number') {
-            // Backward compatibility: accept milliseconds
-            const duration = datetime.fromMilliseconds(timeValue);
-            currentDateTime = currentDateTime.advance(duration);
-        } else {
-            // New API: accept Duration object
-            currentDateTime = currentDateTime.advance(timeValue);
-        }
+    capabilities.datetime.advanceByDuration = (duration) => {
+        currentDateTime = currentDateTime.advance(duration);
     };
 
-    // Keep backward compatibility: getCurrentTime returns milliseconds for legacy tests
-    capabilities.datetime.getCurrentTime = () => {
-        return datetime.toEpochMs(currentDateTime);
+    capabilities.datetime.getCurrentDateTime = () => {
+        return currentDateTime;
     };
 
     // Mark it as mocked for type guard
@@ -144,24 +130,19 @@ function stubDatetime(capabilities) {
 
 /**
  * Provides access to datetime manipulation functions when datetime is stubbed.
- * Supports both the old milliseconds API and the new DateTime/Duration API.
+ * Works only with DateTime/Duration objects - no milliseconds support.
  * @param {any} capabilities - The capabilities object with stubbed datetime
- * @returns {{setTime: (dateTimeOrMs: import('../src/datetime').DateTime|number) => void, advanceTime: (durationOrMs: import('luxon').Duration|number) => void, getCurrentTime: () => number, setDateTime: (dateTime: import('../src/datetime').DateTime) => void, advanceByDuration: (duration: import('luxon').Duration) => void, getCurrentDateTime: () => import('../src/datetime').DateTime}}
+ * @returns {{setDateTime: (dateTime: import('../src/datetime').DateTime) => void, advanceByDuration: (duration: import('luxon').Duration) => void, getCurrentDateTime: () => import('../src/datetime').DateTime}}
  */
 function getDatetimeControl(capabilities) {
     if (!capabilities.datetime.__isMockedDatetime) {
         throw new Error("Datetime must be stubbed with stubDatetime() to use datetime control");
     }
     return {
-        // Backward compatible API
-        setTime: (dateTimeOrMs) => capabilities.datetime.setTime(dateTimeOrMs),
-        advanceTime: (durationOrMs) => capabilities.datetime.advanceTime(durationOrMs),
-        getCurrentTime: () => capabilities.datetime.getCurrentTime(), // Returns milliseconds
-        
-        // New explicit DateTime/Duration API
-        setDateTime: (dateTime) => capabilities.datetime.setTime(dateTime),
-        advanceByDuration: (duration) => capabilities.datetime.advanceTime(duration),
-        getCurrentDateTime: () => capabilities.datetime.now(), // Returns DateTime object
+        // DateTime/Duration-only API
+        setDateTime: (dateTime) => capabilities.datetime.setDateTime(dateTime),
+        advanceByDuration: (duration) => capabilities.datetime.advanceByDuration(duration),
+        getCurrentDateTime: () => capabilities.datetime.getCurrentDateTime(),
     };
 }
 

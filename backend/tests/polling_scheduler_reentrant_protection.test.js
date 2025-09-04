@@ -4,6 +4,7 @@
  */
 
 const { Duration, DateTime } = require("luxon");
+const { fromEpochMs, toEpochMs, fromHours, fromMinutes, fromMilliseconds } = require("../src/datetime");
 const { getMockedRootCapabilities } = require("./spies");
 const { stubEnvironment, stubLogger, stubDatetime, stubSleeper, stubScheduler, getSchedulerControl, getDatetimeControl, stubRuntimeStateStorage } = require("./stubs");
 
@@ -28,7 +29,7 @@ describe("declarative scheduler re-entrancy protection", () => {
 
         // Set time to avoid immediate execution for "0 * * * *" schedule
         const startTime = DateTime.fromISO("2021-01-01T00:05:00.000Z").toMillis();
-        timeControl.setTime(startTime);
+        timeControl.setDateTime(fromEpochMs(startTime));
 
         let taskStartCount = 0;
         let taskEndCount = 0;
@@ -60,7 +61,7 @@ describe("declarative scheduler re-entrancy protection", () => {
         expect(taskEndCount).toBe(0);
 
         // Advance to next scheduled execution (01:00:00)
-        timeControl.advanceTime(60 * 60 * 1000); // 1 hour
+        timeControl.advanceByDuration(fromHours(1)); // 1 hour
         await schedulerControl.waitForNextCycleEnd();
         
         // Give a bit more time for task completion
@@ -87,7 +88,7 @@ describe("declarative scheduler re-entrancy protection", () => {
         
         // Set time to avoid immediate execution for "0 * * * *" schedule
         const startTime = DateTime.fromISO("2021-01-01T00:05:00.000Z").toMillis();
-        timeControl.setTime(startTime);
+        timeControl.setDateTime(fromEpochMs(startTime));
         
         const registrations = [
             ["quick-task", "0 * * * *", quickTask, retryDelay]
@@ -104,7 +105,7 @@ describe("declarative scheduler re-entrancy protection", () => {
         expect(taskExecutionCount).toBe(0);
 
         // Advance to next scheduled execution (01:00:00)
-        timeControl.advanceTime(60 * 60 * 1000); // 1 hour
+        timeControl.advanceByDuration(fromHours(1)); // 1 hour
         await schedulerControl.waitForNextCycleEnd();
         
         expect(taskExecutionCount).toBe(1);
@@ -131,7 +132,7 @@ describe("declarative scheduler re-entrancy protection", () => {
         
         // Set time to avoid immediate execution for "0 * * * *" schedule
         const startTime = DateTime.fromISO("2021-01-01T00:05:00.000Z").toMillis();
-        timeControl.setTime(startTime);
+        timeControl.setDateTime(fromEpochMs(startTime));
         
         const registrations = [
             ["quick-task", "0 * * * *", quickTask, retryDelay]
@@ -145,7 +146,7 @@ describe("declarative scheduler re-entrancy protection", () => {
         expect(taskExecutionCount).toBe(0);
 
         // Advance to next scheduled execution (01:00:00)
-        timeControl.advanceTime(60 * 60 * 1000); // 1 hour
+        timeControl.advanceByDuration(fromHours(1)); // 1 hour
         await schedulerControl.waitForNextCycleEnd();
         
         expect(taskExecutionCount).toBe(1);
@@ -175,7 +176,7 @@ describe("declarative scheduler re-entrancy protection", () => {
         
         // Set time to avoid immediate execution for "0 * * * *" schedule
         const startTime = DateTime.fromISO("2021-01-01T00:05:00.000Z").toMillis();
-        timeControl.setTime(startTime);
+        timeControl.setDateTime(fromEpochMs(startTime));
         
         const registrations = [
             ["error-task", "0 * * * *", errorTask, retryDelay]
@@ -191,7 +192,7 @@ describe("declarative scheduler re-entrancy protection", () => {
         expect(taskExecutionCount).toBe(0);
         
         // Advance to next scheduled execution (01:00:00)
-        timeControl.advanceTime(60 * 60 * 1000); // 1 hour
+        timeControl.advanceByDuration(fromHours(1)); // 1 hour
         await schedulerControl.waitForNextCycleEnd();
         
         expect(taskExecutionCount).toBe(1);

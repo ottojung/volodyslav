@@ -4,6 +4,7 @@
  */
 
 const { Duration, DateTime } = require("luxon");
+const { fromEpochMs, toEpochMs, fromHours, fromMinutes, fromMilliseconds } = require("../src/datetime");
 const { getMockedRootCapabilities } = require("./spies");
 const { stubEnvironment, stubLogger, stubDatetime, stubSleeper, stubRuntimeStateStorage, stubScheduler, getSchedulerControl, getDatetimeControl } = require("./stubs");
 
@@ -129,7 +130,7 @@ describe("declarative scheduler state management robustness", () => {
             
             // Set time to avoid immediate execution for "0 * * * *" schedule  
             const startTime = DateTime.fromISO("2021-01-01T00:05:00.000Z").toMillis(); // 2021-01-01T00:05:00.000Z
-            timeControl.setTime(startTime);
+            timeControl.setDateTime(fromEpochMs(startTime));
             
             let globalCounter = 0;
             const globalModifyingCallback = jest.fn(() => {
@@ -150,7 +151,7 @@ describe("declarative scheduler state management robustness", () => {
             expect(globalCounter).toBe(0);
             
             // Advance to next scheduled execution (01:00:00)
-            timeControl.advanceTime(60 * 60 * 1000); // 1 hour
+            timeControl.advanceByDuration(fromHours(1)); // 1 hour
             await schedulerControl.waitForNextCycleEnd();
             
             // Scheduler should initialize without errors
@@ -326,7 +327,7 @@ describe("declarative scheduler state management robustness", () => {
             
             // Set time to avoid immediate execution for "0 * * * *" schedule
             const startTime = DateTime.fromISO("2021-01-01T00:05:00.000Z").toMillis(); // 2021-01-01T00:05:00.000Z
-            timeControl.setTime(startTime);
+            timeControl.setDateTime(fromEpochMs(startTime));
             
             // Create many simultaneous tasks (reduced for performance)
             const registrations = [];
@@ -348,7 +349,7 @@ describe("declarative scheduler state management robustness", () => {
             expect(executedCount).toBe(0);
             
             // Advance to next scheduled execution (01:00:00)
-            timeControl.advanceTime(60 * 60 * 1000); // 1 hour
+            timeControl.advanceByDuration(fromHours(1)); // 1 hour
             await schedulerControl.waitForNextCycleEnd();
             
             // At least some tasks should execute

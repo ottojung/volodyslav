@@ -4,6 +4,7 @@
  */
 
 const { Duration, DateTime } = require("luxon");
+const { fromEpochMs, toEpochMs, fromHours, fromMinutes, fromMilliseconds } = require("../src/datetime");
 const { getMockedRootCapabilities } = require("./spies");
 const { stubEnvironment, stubLogger, stubDatetime, stubSleeper, getDatetimeControl, stubScheduler, getSchedulerControl, stubRuntimeStateStorage } = require("./stubs");
 
@@ -39,7 +40,7 @@ describe("declarative scheduler retry semantics", () => {
 
         // Set a fixed starting time to 00:05:00 (so 00:00:00 was 5 minutes ago - will catch up)
         const startTime = 1704067500000 // 2024-01-01T00:05:00Z;
-        timeControl.setTime(startTime);
+        timeControl.setDateTime(fromEpochMs(startTime));
 
         // Initialize with fast polling for tests
         await capabilities.scheduler.initialize(registrations);
@@ -49,7 +50,7 @@ describe("declarative scheduler retry semantics", () => {
         expect(executionCount).toBe(0);
 
         // Advance to the next scheduled time (01:00:00) to verify scheduling works
-        timeControl.advanceTime(55 * 60 * 1000); // 55 minutes to reach 01:00:00
+        timeControl.advanceByDuration(fromMilliseconds(55 * 60 * 1000)); // 55 minutes to reach 01:00:00
         await schedulerControl.waitForNextCycleEnd();
         expect(executionCount).toBe(1);
 
@@ -79,7 +80,7 @@ describe("declarative scheduler retry semantics", () => {
 
         // Set a fixed starting time to 00:05:00 (so 00:00:00 was 5 minutes ago - will catch up)
         const startTime = 1704067500000 // 2024-01-01T00:05:00Z;
-        timeControl.setTime(startTime);
+        timeControl.setDateTime(fromEpochMs(startTime));
 
         // Initialize scheduler with fast polling for tests
         await capabilities.scheduler.initialize(registrations);
@@ -89,12 +90,12 @@ describe("declarative scheduler retry semantics", () => {
         expect(executionCount).toBe(0);
 
         // Advance to the next scheduled time (01:00:00) to trigger first execution and failure
-        timeControl.advanceTime(55 * 60 * 1000); // 55 minutes to reach 01:00:00
+        timeControl.advanceByDuration(fromMilliseconds(55 * 60 * 1000)); // 55 minutes to reach 01:00:00
         await schedulerControl.waitForNextCycleEnd();
         expect(executionCount).toBeGreaterThanOrEqual(1);
 
         // Advance time by retry delay (5 minutes) to trigger retry
-        timeControl.advanceTime(5 * 60 * 1000); // 5 minutes
+        timeControl.advanceByDuration(fromMinutes(5)); // 5 minutes
         await schedulerControl.waitForNextCycleEnd();
 
         // Should have retried the failed task
@@ -125,7 +126,7 @@ describe("declarative scheduler retry semantics", () => {
 
         // Set a fixed starting time to 00:05:00 (so 00:00:00 was 5 minutes ago - will catch up)
         const startTime = 1704067500000 // 2024-01-01T00:05:00Z;
-        timeControl.setTime(startTime);
+        timeControl.setDateTime(fromEpochMs(startTime));
 
         // Initialize scheduler with fast polling
         await capabilities.scheduler.initialize(registrations);
@@ -135,12 +136,12 @@ describe("declarative scheduler retry semantics", () => {
         expect(executionCount).toBe(0);
 
         // Advance to next scheduled time (00:15:00) to trigger first execution
-        timeControl.advanceTime(10 * 60 * 1000); // 10 minutes to reach 00:15:00
+        timeControl.advanceByDuration(fromMilliseconds(10 * 60 * 1000)); // 10 minutes to reach 00:15:00
         await schedulerControl.waitForNextCycleEnd();
         expect(executionCount).toBe(1);
 
         // Advance time by retry delay to trigger retry
-        timeControl.advanceTime(5 * 60 * 1000); // 5 minutes
+        timeControl.advanceByDuration(fromMinutes(5)); // 5 minutes
         await schedulerControl.waitForNextCycleEnd();
 
         // Should have executed successfully
@@ -182,7 +183,7 @@ describe("declarative scheduler retry semantics", () => {
 
         // Set a fixed starting time to 00:05:00 (so 00:00:00 was 5 minutes ago - will catch up)
         const startTime = 1704067500000 // 2024-01-01T00:05:00Z;
-        timeControl.setTime(startTime);
+        timeControl.setDateTime(fromEpochMs(startTime));
 
         // Initialize scheduler with fast polling
         await capabilities.scheduler.initialize(registrations);
@@ -195,7 +196,7 @@ describe("declarative scheduler retry semantics", () => {
         expect(task2Count).toBe(0);
 
         // Advance to next scheduled time (00:15:00) to trigger executions
-        timeControl.advanceTime(10 * 60 * 1000); // 10 minutes to reach 00:15:00
+        timeControl.advanceByDuration(fromMilliseconds(10 * 60 * 1000)); // 10 minutes to reach 00:15:00
         await schedulerControl.waitForNextCycleEnd();
         
         // Verify both tasks executed at least once
@@ -227,7 +228,7 @@ describe("declarative scheduler retry semantics", () => {
 
         // Set time to avoid immediate execution for "0 * * * *" schedule
         const startTime = DateTime.fromISO("2021-01-01T00:05:00.000Z").toMillis(); // 2021-01-01T00:05:00.000Z
-        timeControl.setTime(startTime);
+        timeControl.setDateTime(fromEpochMs(startTime));
 
         const task = jest.fn(() => {
             executionCount++;
@@ -250,7 +251,7 @@ describe("declarative scheduler retry semantics", () => {
         expect(task).toHaveBeenCalledTimes(0);
 
         // Advance to next scheduled time to verify normal execution works
-        timeControl.advanceTime(60 * 60 * 1000); // 1 hour to reach 01:00:00
+        timeControl.advanceByDuration(fromHours(1)); // 1 hour to reach 01:00:00
         await schedulerControl.waitForNextCycleEnd();
 
         // Should execute exactly once at scheduled time

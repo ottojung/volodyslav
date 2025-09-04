@@ -3,6 +3,7 @@ const taskExecutor = require("../src/scheduler/execution");
 const { Duration } = require("luxon");
 const { getMockedRootCapabilities } = require("./spies");
 const { stubEnvironment, stubLogger, stubDatetime, stubSleeper, getDatetimeControl, stubScheduler, getSchedulerControl, stubRuntimeStateStorage } = require("./stubs");
+const { fromEpochMs, toEpochMs, fromHours, fromMinutes, fromMilliseconds } = require("../src/datetime");
 
 function getTestCapabilities() {
     const capabilities = getMockedRootCapabilities();
@@ -62,7 +63,7 @@ describe("scheduler atomicity testing", () => {
         expect(task3Finished).toBe(false);
 
         // Advance to next scheduled execution (12:00:00)
-        timeControl.advanceTime(60 * 60 * 1000); // 1 hour to 12:00:00
+        timeControl.advanceByDuration(fromHours(1)); // 1 hour to 12:00:00
         await schedulerControl.waitForNextCycleEnd();
 
         expect(task1Finished).toBe(true);
@@ -115,7 +116,7 @@ describe("scheduler atomicity testing", () => {
                         event: 'task_start',
                         callId,
                         taskName: task.name,
-                        timestamp: capabilities.datetime.getCurrentTime()
+                        timestamp: toEpochMs(capabilities.datetime.now())
                     });
 
                     // Execute the original task
@@ -125,7 +126,7 @@ describe("scheduler atomicity testing", () => {
                         event: 'task_complete',
                         callId,
                         taskName: task.name,
-                        timestamp: capabilities.datetime.getCurrentTime()
+                        timestamp: toEpochMs(capabilities.datetime.now())
                     });
                 }
             };
@@ -163,7 +164,7 @@ describe("scheduler atomicity testing", () => {
             expect(task2Done).toBe(false);
 
             // Advance to next scheduled execution (14:00:00)
-            timeControl.advanceTime(60 * 60 * 1000); // 1 hour to 14:00:00
+            timeControl.advanceByDuration(fromHours(1)); // 1 hour to 14:00:00
             await schedulerControl.waitForNextCycleEnd();
 
             expect(task1Done).toBe(true);

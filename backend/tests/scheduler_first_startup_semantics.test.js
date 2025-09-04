@@ -5,6 +5,7 @@
  */
 
 const { Duration, DateTime } = require("luxon");
+const { fromEpochMs, toEpochMs, fromHours, fromMinutes, fromMilliseconds } = require("../src/datetime");
 const { getMockedRootCapabilities } = require("./spies");
 const { stubEnvironment, stubLogger, stubDatetime, stubSleeper, stubRuntimeStateStorage, stubScheduler, getSchedulerControl, getDatetimeControl } = require("./stubs");
 
@@ -28,7 +29,7 @@ describe("scheduler first startup semantics", () => {
             
             // Set time to 15:30:00 on a Tuesday (day 2)
             const tuesdayAt1530 = DateTime.fromISO("2024-01-02T15:30:00.000Z").toMillis(); // Tuesday, 15:30
-            datetimeControl.setTime(tuesdayAt1530);
+            datetimeControl.setDateTime(fromEpochMs(tuesdayAt1530));
             
             schedulerControl.setPollingInterval(1);
             const retryDelay = Duration.fromMillis(5000);
@@ -56,7 +57,7 @@ describe("scheduler first startup semantics", () => {
             
             // Set time to 15:30:00 on a Tuesday (day 2)
             const tuesdayAt1530 = DateTime.fromISO("2024-01-02T15:30:00.000Z").toMillis(); // Tuesday, 15:30
-            datetimeControl.setTime(tuesdayAt1530);
+            datetimeControl.setDateTime(fromEpochMs(tuesdayAt1530));
             
             schedulerControl.setPollingInterval(1);
             const retryDelay = Duration.fromMillis(5000);
@@ -84,7 +85,7 @@ describe("scheduler first startup semantics", () => {
             
             // Set time to 15:30:00 on a Tuesday
             const tuesdayAt1530 = DateTime.fromISO("2024-01-02T15:30:00.000Z").toMillis(); // Tuesday, 15:30
-            datetimeControl.setTime(tuesdayAt1530);
+            datetimeControl.setDateTime(fromEpochMs(tuesdayAt1530));
             
             schedulerControl.setPollingInterval(1);
             const retryDelay = Duration.fromMillis(5000);
@@ -103,7 +104,7 @@ describe("scheduler first startup semantics", () => {
             expect(taskCallback).toHaveBeenCalledTimes(0);
 
             // Advance time to 15:35
-            datetimeControl.setTime(DateTime.fromISO("2024-01-02T15:35:00.000Z").toMillis());
+            datetimeControl.setDateTime(fromEpochMs(DateTime.fromISO("2024-01-02T15:35:00.000Z").toMillis()));
             await schedulerControl.waitForNextCycleEnd();
 
             // Now task should execute
@@ -121,7 +122,7 @@ describe("scheduler first startup semantics", () => {
             
             // Set time to 15:30:00 on a Tuesday
             const tuesdayAt1530 = DateTime.fromISO("2024-01-02T15:30:00.000Z").toMillis(); // Tuesday, 15:30
-            datetimeControl.setTime(tuesdayAt1530);
+            datetimeControl.setDateTime(fromEpochMs(tuesdayAt1530));
             
             schedulerControl.setPollingInterval(1);
             const retryDelay = Duration.fromMillis(5000);
@@ -154,7 +155,7 @@ describe("scheduler first startup semantics", () => {
             
             // Set time to exactly 15:30:00
             const tuesdayAt1530 = DateTime.fromISO("2024-01-02T15:30:00.000Z").toMillis();
-            datetimeControl.setTime(tuesdayAt1530);
+            datetimeControl.setDateTime(fromEpochMs(tuesdayAt1530));
             
             schedulerControl.setPollingInterval(1);
             const retryDelay = Duration.fromMillis(5000);
@@ -186,7 +187,7 @@ describe("scheduler first startup semantics", () => {
             
             // Set time to 15:30:00 on Tuesday
             const tuesdayAt1530 = DateTime.fromISO("2024-01-02T15:30:00.000Z").toMillis();
-            datetimeControl.setTime(tuesdayAt1530);
+            datetimeControl.setDateTime(fromEpochMs(tuesdayAt1530));
             
             // Set a very short polling interval BEFORE creating registrations
             schedulerControl.setPollingInterval(1);
@@ -217,7 +218,7 @@ describe("scheduler first startup semantics", () => {
             
             // Set time to Tuesday (day 2)
             const tuesdayAt1530 = DateTime.fromISO("2024-01-02T15:30:00.000Z").toMillis();
-            datetimeControl.setTime(tuesdayAt1530); // Tuesday
+            datetimeControl.setDateTime(fromEpochMs(tuesdayAt1530)); // Tuesday
             
             schedulerControl.setPollingInterval(1);
             const retryDelay = Duration.fromMillis(5000);
