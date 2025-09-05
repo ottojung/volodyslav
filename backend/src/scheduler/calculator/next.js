@@ -17,7 +17,6 @@ function getNextExecution(cronExpr, origin) {
     let month = origin.month;
 
     let dayCount = 0;
-    let hourCount = 0;
 
     // eslint-disable-next-line no-constant-condition    
     while (true) {
@@ -27,37 +26,31 @@ function getNextExecution(cronExpr, origin) {
         }
 
         for (const day of validDays) {
-            let validHours = cronExpr.validHours;
+            let hour = cronExpr.validHours[0];
+            let minute = cronExpr.validMinutes[0];
             if (dayCount === 0) {
-                validHours = validHours.filter(h => h >= origin.hour);
+                dayCount++;
+                hour = cronExpr.validHours.filter(h => h >= origin.hour)[0];
+                minute = cronExpr.validMinutes.filter(m => m > origin.minute)[0];
+                if (hour === undefined || minute === undefined) {
+                    continue;
+                }
             }
-            dayCount++;
 
-            for (const hour of validHours) {
-                let validMinutes = cronExpr.validMinutes;
-                if (hourCount === 0) {
-                    // Strict inequality on minutes makes this exclusive.
-                    validMinutes = validMinutes.filter(m => m > origin.minute);
-                }
-                hourCount++;
-
-                for (const minute of validMinutes) {
-                    const candidate = dateTimeFromObject({
-                        year,
-                        month,
-                        day,
-                        hour,
-                        minute,
-                        second: 0,
-                        millisecond: 0,
-                    });
-                    if (candidate.isValid === false) {
-                        continue;
-                    }
-                    if (matchesCronExpression(cronExpr, candidate)) {
-                        return candidate;
-                    }
-                }
+            const candidate = dateTimeFromObject({
+                year,
+                month,
+                day,
+                hour,
+                minute,
+                second: 0,
+                millisecond: 0,
+            });
+            if (candidate.isValid === false) {
+                continue;
+            }
+            if (matchesCronExpression(cronExpr, candidate)) {
+                return candidate;
             }
         }
 
