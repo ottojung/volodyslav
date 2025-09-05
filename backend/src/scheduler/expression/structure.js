@@ -91,10 +91,20 @@ class CronExpressionClass {
 
     /** 
      * @param {number} day
+     * @param {import("../../datetime").WeekdayName} weekdayName
+     * @returns {boolean}
+     */
+    isValidDay(day, weekdayName) {
+        const weekday = weekdayNameToCronNumber(weekdayName);
+        return this.isValidDayAndWeekdayNumbers(day, weekday);
+    }
+
+    /** 
+     * @param {number} day
      * @param {number} weekday
      * @returns {boolean}
      */
-    isValidDay(day, weekday) {
+    isValidDayAndWeekdayNumbers(day, weekday) {
         // POSIX DOM/DOW semantics: when both day and weekday are restricted (not wildcards),
         // the job should run if EITHER the day OR the weekday matches
         if (this.isDomDowRestricted) {
@@ -130,7 +140,7 @@ class CronExpressionClass {
                 let weekday = startWeekday;
                 let day = 1;
                 while (day <= 31) {
-                    if (this.isValidDay(day, weekday)) {
+                    if (this.isValidDayAndWeekdayNumbers(day, weekday)) {
                         validDays.push(day);
                     }
                     day = day + 1;

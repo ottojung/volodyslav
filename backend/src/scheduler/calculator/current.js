@@ -2,8 +2,6 @@
  * Cron expression matching using boolean mask lookups.
  */
 
-const { weekdayNameToCronNumber } = require("../../datetime");
-
 /**
  * Checks if a given datetime matches the cron expression.
  * @param {import('../expression').CronExpression} cronExpr - Parsed cron expression
@@ -28,9 +26,7 @@ function matchesCronExpression(cronExpr, dateTime) {
         return false;
     }
 
-    // Convert weekday name (string) to cron number (1-6) for comparison
-    const weekday = weekdayNameToCronNumber(dateTime.weekday);
-    return cronExpr.isValidDay(day, weekday);
+    return cronExpr.isValidDay(day, dateTime.weekday);
 }
 
 module.exports = {
