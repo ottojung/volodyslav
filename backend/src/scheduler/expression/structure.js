@@ -39,11 +39,11 @@ class CronExpressionClass {
 
     /**
      * @param {string} original
-     * @param {boolean[]} minute
-     * @param {boolean[]} hour
-     * @param {boolean[]} day
-     * @param {boolean[]} month
-     * @param {boolean[]} weekday
+     * @param {number[]} minute
+     * @param {number[]} hour
+     * @param {number[]} day
+     * @param {number[]} month
+     * @param {number[]} weekday
      */
     constructor(original, minute, hour, day, month, weekday) {
         if (this.__brand !== undefined) {
@@ -64,6 +64,11 @@ class CronExpressionClass {
      */
     equivalent(other) {
         return (
+            this.minute.length === other.minute.length &&
+            this.hour.length === other.hour.length &&
+            this.day.length === other.day.length &&
+            this.month.length === other.month.length &&
+            this.weekday.length === other.weekday.length &&
             this.minute.every((v, i) => v === other.minute[i]) &&
             this.hour.every((v, i) => v === other.hour[i]) &&
             this.day.every((v, i) => v === other.day[i]) &&
