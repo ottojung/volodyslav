@@ -181,7 +181,26 @@ function getNextExecution(cronExpr, fromDateTime) {
 
                 if (isValidInSet(currentMonth, cronExpr.month)) {
                     const validDays = validDaysInMonth(currentMonth, currentYear, cronExpr.day);
-                    const startDay = monthOffset === 0 ? searchDay : 1;
+                    let startDay = monthOffset === 0 ? searchDay : 1;
+                    
+                    // For the current month, ensure we don't return a time that's not after the original time
+                    if (monthOffset === 0) {
+                        // Check if current day with current time calculation would be after original time
+                        const candidateTime = startDateTime._luxonDateTime.set({
+                            year: currentYear,
+                            month: currentMonth,
+                            day: searchDay,
+                            hour: hour,
+                            minute: minute,
+                            second: 0,
+                            millisecond: 0
+                        });
+                        
+                        if (candidateTime.toMillis() <= fromDateTime._luxonDateTime.toMillis()) {
+                            // Current day time is not after original, look for next valid day
+                            startDay = searchDay + 1;
+                        }
+                    }
                     
                     const validDay = validDays.find(d => d >= startDay);
                     if (validDay) {
@@ -209,8 +228,8 @@ function getNextExecution(cronExpr, fromDateTime) {
                 year: searchYear,
                 month: searchMonth,
                 day: searchDay,
-                hour: minInSet(cronExpr.hour),
-                minute: minInSet(cronExpr.minute),
+                hour: hour,  // Use calculated hour, not min
+                minute: minute,  // Use calculated minute, not min
                 second: 0,
                 millisecond: 0
             });
@@ -228,6 +247,7 @@ function getNextExecution(cronExpr, fromDateTime) {
                 year = searchYear;
                 month = searchMonth;
                 day = searchDay;
+                // hour and minute are already calculated correctly
             }
         }
 
