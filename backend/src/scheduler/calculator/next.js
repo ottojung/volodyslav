@@ -15,7 +15,6 @@ const { matchesCronExpression } = require('./current');
 function getNextExecution(cronExpr, origin) {
     let year = origin.year;
     let month = origin.month;
-
     let dayCount = 0;
 
     // eslint-disable-next-line no-constant-condition
