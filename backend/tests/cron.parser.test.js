@@ -9,45 +9,61 @@ const { isCronExpression, isInvalidCronExpressionError } = require("../src/sched
 
 const { fromISOString } = require("../src/datetime");
 
+/**
+ * Helper function to create a boolean mask from an array of numbers.
+ * @param {number[]} numbers - Array of valid numbers
+ * @param {number} maxValue - Maximum value (inclusive) for the mask
+ * @returns {boolean[]} Boolean mask
+ */
+function createMask(numbers, maxValue) {
+    const mask = new Array(maxValue + 1).fill(false);
+    for (const num of numbers) {
+        if (num >= 0 && num <= maxValue) {
+            mask[num] = true;
+        }
+    }
+    return mask;
+}
+
 describe("Cron Parser", () => {
 
     describe("parseCronExpression", () => {
         test("parses basic cron expressions", () => {
             const expr = parseCronExpression("0 * * * *");
             expect(isCronExpression(expr)).toBe(true);
-            expect(expr.minute).toEqual([0]);
-            expect(expr.hour).toEqual(Array.from({ length: 24 }, (_, i) => i));
-            expect(expr.day).toEqual(Array.from({ length: 31 }, (_, i) => i + 1));
-            expect(expr.month).toEqual(Array.from({ length: 12 }, (_, i) => i + 1));
-            expect(expr.weekday).toEqual([0, 1, 2, 3, 4, 5, 6]);
+            expect(expr.minute).toEqual(createMask([0], 59));
+            expect(expr.hour).toEqual(createMask(Array.from({ length: 24 }, (_, i) => i), 23));
+            expect(expr.day).toEqual(createMask(Array.from({ length: 31 }, (_, i) => i + 1), 31));
+            expect(expr.month).toEqual(createMask(Array.from({ length: 12 }, (_, i) => i + 1), 12));
+            expect(expr.weekday).toEqual(createMask([0, 1, 2, 3, 4, 5, 6], 6));
         });
 
         test("parses specific time expressions", () => {
             const expr = parseCronExpression("0 2 * * *");
-            expect(expr.minute).toEqual([0]);
-            expect(expr.hour).toEqual([2]);
+            expect(expr.minute).toEqual(createMask([0], 59));
+            expect(expr.hour).toEqual(createMask([2], 23));
         });
 
         test("parses range expressions", () => {
             const expr = parseCronExpression("0-5 * * * *");
-            expect(expr.minute).toEqual([0, 1, 2, 3, 4, 5]);
+            expect(expr.minute).toEqual(createMask([0, 1, 2, 3, 4, 5], 59));
         });
 
         test("parses step expressions", () => {
             const expr = parseCronExpression("*/15 * * * *");
-            expect(expr.minute).toEqual([0, 15, 30, 45]);
+            expect(expr.minute).toEqual(createMask([0, 15, 30, 45], 59));
         });
 
         test("parses comma-separated expressions", () => {
             const expr = parseCronExpression("0,30 * * * *");
-            expect(expr.minute).toEqual([0, 30]);
+            expect(expr.minute).toEqual(createMask([0, 30], 59));
         });
 
         test("parses complex expressions", () => {
             const expr = parseCronExpression("0,15,30,45 9-17 * * 1-5");
-            expect(expr.minute).toEqual([0, 15, 30, 45]);
-            expect(expr.hour).toEqual([9, 10, 11, 12, 13, 14, 15, 16, 17]);
-            expect(expr.weekday).toEqual([1, 2, 3, 4, 5]);
+            expect(expr.minute).toEqual(createMask([0, 15, 30, 45], 59));
+            expect(expr.hour).toEqual(createMask([9, 10, 11, 12, 13, 14, 15, 16, 17], 23));
+            expect(expr.weekday).toEqual(createMask([1, 2, 3, 4, 5], 6));
         });
 
         test("throws on invalid expressions", () => {

@@ -87,19 +87,19 @@ function getMostRecentExecution(cronExpr, fromDateTime) {
         if (validDays.length === 0) {
             // No valid days in this month, go back to previous month
             underflow = true;
-        } else if (underflow || !isValidInSet(day, validDays)) {
+        } else if (underflow || !validDays.includes(day)) {
             // Either carried from hour, or current day violates day constraints
-            const dayResult = prevInSetWithUnderflow(day, validDays);
-            if (dayResult.underflowed) {
-                // No more valid days in this month
-                underflow = true;
-            } else {
-                day = dayResult.value;
+            const prevDay = [...validDays].reverse().find(d => d < day);
+            if (prevDay !== undefined) {
+                day = prevDay;
                 underflow = false;
-
+                
                 // Reset hour and minute when going back a day
                 hour = maxInSet(cronExpr.hour);
                 minute = maxInSet(cronExpr.minute);
+            } else {
+                // No more valid days in this month
+                underflow = true;
             }
         }
 
@@ -124,13 +124,21 @@ function getMostRecentExecution(cronExpr, fromDateTime) {
                 );
             }
 
-            day = maxInSet(validDays);
+            const maxDay = validDays[validDays.length - 1];
+            if (maxDay === undefined) {
+                throw new CronCalculationError(
+                    "No valid days found in month after filtering",
+                    cronExpr.original
+                );
+            }
+            day = maxDay; // Get the last (maximum) valid day
             hour = maxInSet(cronExpr.hour);
             minute = maxInSet(cronExpr.minute);
         }
 
         // Step 5: Apply weekday constraints only if weekday constraint exists
-        if (cronExpr.weekday.length < 7) { // Not all weekdays are allowed
+        const isWeekdayWildcard = cronExpr.weekday.slice(0, 7).every(val => val === true);
+        if (!isWeekdayWildcard) { // Not all weekdays are allowed
             const candidateWeekday = getWeekday(year, month, day);
             if (!isValidInSet(candidateWeekday, cronExpr.weekday)) {
                 const constraintResult = prevDateSatisfyingWeekdayConstraint(
@@ -179,7 +187,8 @@ function getMostRecentExecution(cronExpr, fromDateTime) {
 
         // For day-constrained crons, only return executions from the same day
         // This prevents returning yesterday's executions when today doesn't match the cron
-        if (cronExpr.day.length < 31) { // Day constraint exists (not all days allowed)
+        const isDayWildcard = cronExpr.day.slice(1, 32).every(val => val === true); // Check days 1-31
+        if (!isDayWildcard) { // Day constraint exists (not all days allowed)
             if (resultDateTime.day !== fromDateTime.day ||
                 resultDateTime.month !== fromDateTime.month ||
                 resultDateTime.year !== fromDateTime.year) {
