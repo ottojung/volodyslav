@@ -44,8 +44,9 @@ class CronExpressionClass {
      * @param {boolean[]} day
      * @param {boolean[]} month
      * @param {boolean[]} weekday
+     * @param {boolean} isDomDowRestricted
      */
-    constructor(original, minute, hour, day, month, weekday) {
+    constructor(original, minute, hour, day, month, weekday, isDomDowRestricted) {
         if (this.__brand !== undefined) {
             throw new Error("CronExpression is a nominal type");
         }
@@ -56,24 +57,7 @@ class CronExpressionClass {
         this.day = day;
         this.month = month;
         this.weekday = weekday;
-
-        let isWeekdayWildcard = true;
-        for (let i = 0; i <= 6; i++) {
-            if (!this.weekday[i]) {
-                isWeekdayWildcard = false;
-                break;
-            }
-        }
-
-        let isDayWildcard = true;
-        for (let i = 1; i <= 31; i++) {
-            if (!this.day[i]) {
-                isDayWildcard = false;
-                break;
-            }
-        }        
-
-        this.isDomDowRestricted = !isDayWildcard && !isWeekdayWildcard;
+        this.isDomDowRestricted = isDomDowRestricted;
     }
 
     /**
@@ -82,6 +66,7 @@ class CronExpressionClass {
      */
     equivalent(other) {
         return (
+            this.isDomDowRestricted === other.isDomDowRestricted &&
             this.minute.length === other.minute.length &&
             this.hour.length === other.hour.length &&
             this.day.length === other.day.length &&
@@ -151,8 +136,9 @@ function parseCronExpression(expression) {
         const day = parseField(dayStr, FIELD_CONFIGS.day);
         const month = parseField(monthStr, FIELD_CONFIGS.month);
         const weekday = parseField(weekdayStr, FIELD_CONFIGS.weekday);
+        const isDomDowRestricted = dayStr !== "*" && weekdayStr !== "*";
 
-        return new CronExpressionClass(expression, minute, hour, day, month, weekday);
+        return new CronExpressionClass(expression, minute, hour, day, month, weekday, isDomDowRestricted);
     } catch (error) {
         const fieldStrings = [minuteStr, hourStr, dayStr, monthStr, weekdayStr];
         const fieldIndex = fieldStrings.findIndex((field, index) => {
