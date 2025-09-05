@@ -73,8 +73,9 @@ function getMostRecentExecution(cronExpr, fromDateTime) {
         minute = minuteResult.value;
         let underflow = minuteResult.underflowed;
 
-        // Step 2: Calculate previous hour (if underflow from minute)
-        if (underflow) {
+        // Step 2: Calculate previous hour (always check hour constraints)
+        if (underflow || !isValidInSet(hour, cronExpr.hour)) {
+            // Either carried from minute, or current hour violates hour constraints
             const hourResult = prevInSetWithUnderflow(hour, cronExpr.hour);
             hour = hourResult.value;
             underflow = hourResult.underflowed;

@@ -174,8 +174,8 @@ function getNextExecution(cronExpr, fromDateTime) {
             // Only DOM is restricted, DOW is wildcard - find next valid DOM
             let found = false;
 
-            // Try up to 12 months to find a valid day
-            for (let monthOffset = 0; monthOffset < 12; monthOffset++) {
+            // Try up to 48 months to find a valid day (needed for leap years)
+            for (let monthOffset = 0; monthOffset < 48; monthOffset++) {
                 const currentMonth = ((searchMonth - 1 + monthOffset) % 12) + 1;
                 const currentYear = searchYear + Math.floor((searchMonth - 1 + monthOffset) / 12);
 
