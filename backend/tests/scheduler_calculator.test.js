@@ -171,49 +171,49 @@ function prev(cronExprStr, fromISOStringStr) {
 //     });
 // });
 
-// describe("Boundary semantics (exclusive next / inclusive prev) for specific patterns", () => {
-//     test("next: exact boundary for hourly -> next hour", () => {
-//         expect(next("0 * * * *", "2025-01-01T14:00:00.000Z")).toBe("2025-01-01T15:00:00.000Z");
-//     });
-
-//     test("next: exact boundary for daily -> next day", () => {
-//         expect(next("0 2 * * *", "2025-01-01T02:00:00.000Z")).toBe("2025-01-02T02:00:00.000Z");
-//     });
-
-//     test("next: exact boundary for DOM -> next month same DOM", () => {
-//         expect(next("0 0 1 * *", "2025-01-01T00:00:00.000Z")).toBe("2025-02-01T00:00:00.000Z");
-//     });
-
-//     test("next: exact boundary for DOW (Monday) -> next Monday", () => {
-//         expect(next("0 12 * * 1", "2025-01-06T12:00:00.000Z")).toBe("2025-01-13T12:00:00.000Z");
-//     });
-
-//     test("prev: exact boundary hourly is exclusive", () => {
-//         expect(prev("0 * * * *", "2025-01-01T14:00:00.000Z")).toBe("2025-01-01T13:59:00.000Z");
-//     });
-
-//     test("prev: exact boundary daily is exclusive", () => {
-//         expect(prev("0 2 * * *", "2025-01-01T02:00:00.000Z")).toBe("2025-01-01T01:59:00.000Z");
-//     });
-
-//     test("prev: exact boundary DOM is exclusive", () => {
-//         expect(prev("0 0 1 * *", "2025-03-01T00:00:00.000Z")).toBe("2025-02-28T00:00:00.000Z");
-//     });
-
-//     test("prev: exact boundary DOW (Sunday) is exclusive", () => {
-//         expect(prev("0 0 * * 0", "2025-01-05T00:00:00.000Z")).toBe("2024-12-29T00:00:00.000Z");
-//     });
-// });
-
-describe("Year boundaries", () => {
-    // test("next: New Year roll", () => {
-    //     expect(next("0 0 1 1 *", "2024-12-31T23:59:59.999Z")).toBe("2025-01-01T00:00:00.000Z");
+describe("Boundary semantics (exclusive next / inclusive prev) for specific patterns", () => {
+    // test("next: exact boundary for hourly -> next hour", () => {
+    //     expect(next("0 * * * *", "2025-01-01T14:00:00.000Z")).toBe("2025-01-01T15:00:00.000Z");
     // });
 
-    test("prev: New Year boundary exclusive", () => {
-        expect(prev("0 0 1 1 *", "2025-01-01T00:00:00.000Z")).toBe("2024-12-31T00:00:00.000Z");
+    // test("next: exact boundary for daily -> next day", () => {
+    //     expect(next("0 2 * * *", "2025-01-01T02:00:00.000Z")).toBe("2025-01-02T02:00:00.000Z");
+    // });
+
+    // test("next: exact boundary for DOM -> next month same DOM", () => {
+    //     expect(next("0 0 1 * *", "2025-01-01T00:00:00.000Z")).toBe("2025-02-01T00:00:00.000Z");
+    // });
+
+    // test("next: exact boundary for DOW (Monday) -> next Monday", () => {
+    //     expect(next("0 12 * * 1", "2025-01-06T12:00:00.000Z")).toBe("2025-01-13T12:00:00.000Z");
+    // });
+
+    test("prev: exact boundary hourly is exclusive", () => {
+        expect(prev("0 * * * *", "2025-01-01T14:00:00.000Z")).toBe("2025-01-01T13:59:00.000Z");
     });
+
+    // test("prev: exact boundary daily is exclusive", () => {
+    //     expect(prev("0 2 * * *", "2025-01-01T02:00:00.000Z")).toBe("2025-01-01T01:59:00.000Z");
+    // });
+
+    // test("prev: exact boundary DOM is exclusive", () => {
+    //     expect(prev("0 0 1 * *", "2025-03-01T00:00:00.000Z")).toBe("2025-02-28T00:00:00.000Z");
+    // });
+
+    // test("prev: exact boundary DOW (Sunday) is exclusive", () => {
+    //     expect(prev("0 0 * * 0", "2025-01-05T00:00:00.000Z")).toBe("2024-12-29T00:00:00.000Z");
+    // });
 });
+
+// describe("Year boundaries", () => {
+//     // test("next: New Year roll", () => {
+//     //     expect(next("0 0 1 1 *", "2024-12-31T23:59:59.999Z")).toBe("2025-01-01T00:00:00.000Z");
+//     // });
+
+//     test("prev: New Year boundary exclusive", () => {
+//         expect(prev("0 0 1 1 *", "2025-01-01T00:00:00.000Z")).toBe("2024-12-31T00:00:00.000Z");
+//     });
+// });
 
 // describe("Seconds/millis alignment", () => {
 //     test("next: non-zero seconds skip the current tick", () => {
