@@ -2,26 +2,72 @@
  * Next execution calculation API.
  */
 
-const { fromObject } = require('../../datetime');
+const { dateTimeFromObject } = require('../../datetime');
 const { matchesCronExpression } = require('./current');
-
-const ONE_MINUTE = fromObject({ minutes: 1 });
 
 /**
  * Calculates the next execution time for a cron expression.
  * @param {import('../expression').CronExpression} cronExpr - Parsed cron expression
- * @param {import('../../datetime').DateTime} fromDateTime - DateTime to calculate from
+ * @param {import('../../datetime').DateTime} origin - DateTime to calculate from
  * @returns {import('../../datetime').DateTime} Next execution datetime
  * @throws {CronCalculationError} If next execution cannot be calculated
  */
-function getNextExecution(cronExpr, fromDateTime) {
-    let current = fromDateTime.advance(ONE_MINUTE);
+function getNextExecution(cronExpr, origin) {
+    let year = origin.year;
+    let month = origin.month;
 
-    while (!matchesCronExpression(cronExpr, current)) {
-        current = current.advance(ONE_MINUTE);
+    let dayCount = 0;
+    let hourCount = 0;
+
+    // eslint-disable-next-line no-constant-condition    
+    while (true) {
+        let validDays = cronExpr.validDays(year, month);
+        if (dayCount === 0) {
+            validDays = validDays.filter(d => d >= origin.day);
+        }
+
+        for (const day of validDays) {
+            let validHours = cronExpr.validHours;
+            if (dayCount === 0) {
+                validHours = validHours.filter(h => h >= origin.hour);
+            }
+            dayCount++;
+
+            for (const hour of validHours) {
+                let validMinutes = cronExpr.validMinutes;
+                if (hourCount === 0) {
+                    // Strict inequality on minutes makes this exclusive.
+                    validMinutes = validMinutes.filter(m => m > origin.minute);
+                }
+                hourCount++;
+
+                for (const minute of validMinutes) {
+                    const candidate = dateTimeFromObject({
+                        year,
+                        month,
+                        day,
+                        hour,
+                        minute,
+                        second: 0,
+                        millisecond: 0,
+                    });
+                    if (candidate.isValid === false) {
+                        continue;
+                    }
+                    if (matchesCronExpression(cronExpr, candidate)) {
+                        return candidate;
+                    }
+                }
+            }
+        }
+
+        // Advance to next month.
+        month += 1;
+        if (month > 12) {
+            month = 1;
+            year += 1;
+        }
     }
-
-    return current.startOfMinute();
 }
 
 module.exports = {
