@@ -129,8 +129,33 @@ function getNextExecution(cronExpr, fromDateTime) {
 
         if (isDayRestricted && isWeekdayRestricted) {
             // Both DOM and DOW are restricted - use OR logic
+            
+            // Check if current day with minimum time would be after original time
+            let searchStartDay = searchDay;
+            const testTime = startDateTime._luxonDateTime.set({
+                year: searchYear,
+                month: searchMonth,
+                day: searchDay,
+                hour: minInSet(cronExpr.hour),
+                minute: minInSet(cronExpr.minute),
+                second: 0,
+                millisecond: 0
+            });
+            
+            if (testTime.toMillis() <= fromDateTime._luxonDateTime.toMillis()) {
+                // The computed time is not after the original time, start search from next day
+                const nextDay = startDateTime._luxonDateTime.set({
+                    year: searchYear,
+                    month: searchMonth,
+                    day: searchDay
+                }).plus({ days: 1 });
+                searchStartDay = nextDay.day;
+                searchYear = nextDay.year;
+                searchMonth = nextDay.month;
+            }
+            
             const constraintResult = nextDateSatisfyingDomDowConstraints(
-                searchYear, searchMonth, searchDay,
+                searchYear, searchMonth, searchStartDay,
                 cronExpr.weekday,
                 cronExpr.month,
                 cronExpr.day,
@@ -151,8 +176,33 @@ function getNextExecution(cronExpr, fromDateTime) {
             }
         } else if (isWeekdayRestricted) {
             // Only weekday is restricted, DOM is wildcard - use existing helper
+            
+            // Check if current day with minimum time would be after original time
+            let searchStartDay = searchDay;
+            const testTime = startDateTime._luxonDateTime.set({
+                year: searchYear,
+                month: searchMonth,
+                day: searchDay,
+                hour: minInSet(cronExpr.hour),
+                minute: minInSet(cronExpr.minute),
+                second: 0,
+                millisecond: 0
+            });
+            
+            if (testTime.toMillis() <= fromDateTime._luxonDateTime.toMillis()) {
+                // The computed time is not after the original time, start search from next day
+                const nextDay = startDateTime._luxonDateTime.set({
+                    year: searchYear,
+                    month: searchMonth,
+                    day: searchDay
+                }).plus({ days: 1 });
+                searchStartDay = nextDay.day;
+                searchYear = nextDay.year;
+                searchMonth = nextDay.month;
+            }
+            
             const constraintResult = nextDateSatisfyingWeekdayConstraint(
-                searchYear, searchMonth, searchDay,
+                searchYear, searchMonth, searchStartDay,
                 cronExpr.weekday,
                 cronExpr.month,
                 cronExpr.day
