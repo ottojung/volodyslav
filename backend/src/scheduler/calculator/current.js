@@ -21,13 +21,29 @@ function matchesCronExpression(cronExpr, dateTime) {
     // Convert weekday name (from DateTime) to cron number for comparison
     const weekday = dateTimeWeekdayToCronNumber(dateTime);
 
-    return (
+    // Check minute, hour, and month constraints (these are always AND)
+    const basicMatch = (
         isValidInSet(minute, cronExpr.minute) &&
         isValidInSet(hour, cronExpr.hour) &&
-        isValidInSet(day, cronExpr.day) &&
-        isValidInSet(month, cronExpr.month) &&
-        isValidInSet(weekday, cronExpr.weekday)
+        isValidInSet(month, cronExpr.month)
     );
+
+    if (!basicMatch) {
+        return false;
+    }
+
+    // DOM/DOW OR semantics: when both day and weekday are restricted (not wildcards),
+    // the job should run if EITHER the day OR the weekday matches
+    const isDayRestricted = cronExpr.day.length < 31; // Not all days 1-31
+    const isWeekdayRestricted = cronExpr.weekday.length < 7; // Not all weekdays 0-6
+
+    if (isDayRestricted && isWeekdayRestricted) {
+        // Both are restricted - use OR logic
+        return isValidInSet(day, cronExpr.day) || isValidInSet(weekday, cronExpr.weekday);
+    } else {
+        // At least one is wildcard - use AND logic
+        return isValidInSet(day, cronExpr.day) && isValidInSet(weekday, cronExpr.weekday);
+    }
 }
 
 module.exports = {
