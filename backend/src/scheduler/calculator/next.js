@@ -40,7 +40,6 @@ const ONE_MINUTE = fromObject({ minutes: 1 });
 function getNextExecution(cronExpr, fromDateTime) {
     let current = fromDateTime.advance(ONE_MINUTE);
 
-    // eslint-disable-next-line no-constant-condition
     while (!matchesCronExpression(cronExpr, current)) {
         current = current.advance(ONE_MINUTE);
     }

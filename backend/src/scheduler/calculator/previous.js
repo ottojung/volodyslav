@@ -39,7 +39,6 @@ const ONE_MINUTE = fromObject({ minutes: 1 });
 function getMostRecentExecution(cronExpr, fromDateTime) {
     let current = fromDateTime.subtract(ONE_MINUTE);
 
-    // eslint-disable-next-line no-constant-condition
     while (!matchesCronExpression(cronExpr, current)) {
         current = current.subtract(ONE_MINUTE);
     }
