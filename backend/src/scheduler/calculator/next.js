@@ -16,6 +16,7 @@ const {
 } = require("./date_helpers");
 
 const { fromLuxon } = require("../../datetime/structure");
+const { fromObject } = require("../../datetime");
 
 /**
  * Custom error class for calculation errors.
@@ -115,7 +116,7 @@ function getNextExecution(cronExpr, fromDateTime) {
         // If hour had to advance due to constraints (not just carry), we need to start search from next day
         if (!carry && !isValidInSet(hour, cronExpr.hour)) {
             // Hour constraint failed on same day, advance to next day for search
-            const nextDay = startDateTime.advance({ days: 1 });
+            const nextDay = startDateTime.advance(fromObject({ days: 1 }));
             searchYear = nextDay.year;
             searchMonth = nextDay.month;
             searchDay = nextDay.day;
@@ -312,7 +313,7 @@ function getNextExecution(cronExpr, fromDateTime) {
                 
                 if (testTime.toMillis() <= fromDateTime._luxonDateTime.toMillis()) {
                     // The computed time is not after the original time, advance to next day
-                    const nextDay = startDateTime.advance({ days: 1 });
+                    const nextDay = startDateTime.advance(fromObject({ days: 1 }));
                     
                     // Check if advancing to next day keeps us in a valid month
                     if (isValidInSet(nextDay.month, cronExpr.month)) {

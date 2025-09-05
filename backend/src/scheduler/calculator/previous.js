@@ -13,8 +13,7 @@ const {
     validDaysInMonth,
     prevDateSatisfyingWeekdayConstraint,
     prevDateSatisfyingDomDowConstraints,
-    getWeekday,
-    dateTimeWeekdayToCronNumber
+    getWeekday
 } = require("./date_helpers");
 
 const { fromLuxon } = require("../../datetime/structure");
