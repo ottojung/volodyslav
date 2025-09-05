@@ -34,8 +34,8 @@ function matchesCronExpression(cronExpr, dateTime) {
 
     // DOM/DOW OR semantics: when both day and weekday are restricted (not wildcards),
     // the job should run if EITHER the day OR the weekday matches
-    const isDayRestricted = cronExpr.day.length < 31; // Not all days 1-31
-    const isWeekdayRestricted = cronExpr.weekday.length < 7; // Not all weekdays 0-6
+    const isDayRestricted = !cronExpr.day.every(v => v === true); // Not all days
+    const isWeekdayRestricted = !cronExpr.weekday.every(v => v === true); // Not all weekdays
 
     if (isDayRestricted && isWeekdayRestricted) {
         // Both are restricted - use OR logic

@@ -43,12 +43,12 @@ function isLeapYear(year) {
  * Gets valid days for a given month and year from a day constraint set.
  * @param {number} month - Month (1-12)
  * @param {number} year - Year
- * @param {number[]} daySet - Set of valid days from cron expression
- * @returns {number[]} Array of valid days that exist in the given month
+ * @param {boolean[]} daySet - Mask valid days from cron expression
+ * @returns {boolean[]} Mask valid days that exist in the given month
  */
 function validDaysInMonth(month, year, daySet) {
     const maxDay = daysInMonth(month, year);
-    return daySet.filter(day => day >= 1 && day <= maxDay);
+    return daySet.map((isValid, day) => isValid && day >= 1 && day <= maxDay);
 }
 
 /**
@@ -112,9 +112,9 @@ function subtractDays(year, month, day, days) {
  * @param {number} year - Starting year
  * @param {number} month - Starting month (1-12)
  * @param {number} day - Starting day
- * @param {number[]} weekdaySet - Valid weekdays from cron expression
- * @param {number[]} monthSet - Valid months from cron expression
- * @param {number[]} daySet - Valid days from cron expression
+ * @param {boolean[]} weekdaySet - Valid weekdays from cron expression
+ * @param {boolean[]} monthSet - Valid months from cron expression
+ * @param {boolean[]} daySet - Valid days from cron expression
  * @returns {{year: number, month: number, day: number}|null}
  */
 function nextDateSatisfyingWeekdayConstraint(year, month, day, weekdaySet, monthSet, daySet) {
@@ -123,9 +123,9 @@ function nextDateSatisfyingWeekdayConstraint(year, month, day, weekdaySet, month
         const candidateDate = addDays(year, month, day, offset);
         const candidateWeekday = getWeekday(candidateDate.year, candidateDate.month, candidateDate.day);
         
-        if (weekdaySet.includes(candidateWeekday) &&
-            monthSet.includes(candidateDate.month) &&
-            validDaysInMonth(candidateDate.month, candidateDate.year, daySet).includes(candidateDate.day)) {
+        if (weekdaySet[candidateWeekday] === true &&
+            monthSet[candidateDate.month] === true &&
+            validDaysInMonth(candidateDate.month, candidateDate.year, daySet)[candidateDate.day] === true) {
             return candidateDate;
         }
     }
@@ -138,9 +138,9 @@ function nextDateSatisfyingWeekdayConstraint(year, month, day, weekdaySet, month
  * @param {number} year - Starting year
  * @param {number} month - Starting month (1-12)
  * @param {number} day - Starting day
- * @param {number[]} weekdaySet - Valid weekdays from cron expression
- * @param {number[]} monthSet - Valid months from cron expression
- * @param {number[]} daySet - Valid days from cron expression
+ * @param {boolean[]} weekdaySet - Valid weekdays from cron expression
+ * @param {boolean[]} monthSet - Valid months from cron expression
+ * @param {boolean[]} daySet - Valid days from cron expression
  * @returns {{year: number, month: number, day: number}|null}
  */
 function prevDateSatisfyingWeekdayConstraint(year, month, day, weekdaySet, monthSet, daySet) {
@@ -149,9 +149,9 @@ function prevDateSatisfyingWeekdayConstraint(year, month, day, weekdaySet, month
         const candidateDate = subtractDays(year, month, day, offset);
         const candidateWeekday = getWeekday(candidateDate.year, candidateDate.month, candidateDate.day);
         
-        if (weekdaySet.includes(candidateWeekday) &&
-            monthSet.includes(candidateDate.month) &&
-            validDaysInMonth(candidateDate.month, candidateDate.year, daySet).includes(candidateDate.day)) {
+        if (weekdaySet[candidateWeekday] === true &&
+            monthSet[candidateDate.month] === true &&
+            validDaysInMonth(candidateDate.month, candidateDate.year, daySet)[candidateDate.day] === true) {
             return candidateDate;
         }
     }
@@ -165,9 +165,9 @@ function prevDateSatisfyingWeekdayConstraint(year, month, day, weekdaySet, month
  * @param {number} year - Starting year
  * @param {number} month - Starting month (1-12)
  * @param {number} day - Starting day
- * @param {number[]} weekdaySet - Valid weekdays from cron expression
- * @param {number[]} monthSet - Valid months from cron expression
- * @param {number[]} daySet - Valid days from cron expression
+ * @param {boolean[]} weekdaySet - Valid weekdays from cron expression
+ * @param {boolean[]} monthSet - Valid months from cron expression
+ * @param {boolean[]} daySet - Valid days from cron expression
  * @param {boolean} useOrLogic - Whether to use OR logic (true) or AND logic (false)
  * @returns {{year: number, month: number, day: number}|null}
  */
@@ -179,14 +179,14 @@ function nextDateSatisfyingDomDowConstraints(year, month, day, weekdaySet, month
         const candidateWeekday = getWeekday(candidateDate.year, candidateDate.month, candidateDate.day);
         
         // Must always satisfy month constraint
-        if (!monthSet.includes(candidateDate.month)) {
+        if (monthSet[candidateDate.month] !== true) {
             continue;
         }
 
         const validDays = validDaysInMonth(candidateDate.month, candidateDate.year, daySet);
-        const domMatches = validDays.includes(candidateDate.day);
-        const dowMatches = weekdaySet.includes(candidateWeekday);
-        
+        const domMatches = validDays[candidateDate.day] === true;
+        const dowMatches = weekdaySet[candidateWeekday] === true;
+
         if (useOrLogic) {
             // OR logic: either DOM or DOW must match
             if (domMatches || dowMatches) {
@@ -209,9 +209,9 @@ function nextDateSatisfyingDomDowConstraints(year, month, day, weekdaySet, month
  * @param {number} year - Starting year
  * @param {number} month - Starting month (1-12)
  * @param {number} day - Starting day
- * @param {number[]} weekdaySet - Valid weekdays from cron expression
- * @param {number[]} monthSet - Valid months from cron expression
- * @param {number[]} daySet - Valid days from cron expression
+ * @param {boolean[]} weekdaySet - Valid weekdays from cron expression
+ * @param {boolean[]} monthSet - Valid months from cron expression
+ * @param {boolean[]} daySet - Valid days from cron expression
  * @param {boolean} useOrLogic - Whether to use OR logic (true) or AND logic (false)
  * @returns {{year: number, month: number, day: number}|null}
  */
@@ -222,14 +222,14 @@ function prevDateSatisfyingDomDowConstraints(year, month, day, weekdaySet, month
         const candidateWeekday = getWeekday(candidateDate.year, candidateDate.month, candidateDate.day);
         
         // Must always satisfy month constraint
-        if (!monthSet.includes(candidateDate.month)) {
+        if (monthSet[candidateDate.month] !== true) {
             continue;
         }
 
         const validDays = validDaysInMonth(candidateDate.month, candidateDate.year, daySet);
-        const domMatches = validDays.includes(candidateDate.day);
-        const dowMatches = weekdaySet.includes(candidateWeekday);
-        
+        const domMatches = validDays[candidateDate.day] === true;
+        const dowMatches = weekdaySet[candidateWeekday] === true;
+
         if (useOrLogic) {
             // OR logic: either DOM or DOW must match
             if (domMatches || dowMatches) {
