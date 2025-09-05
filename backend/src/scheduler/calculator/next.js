@@ -272,32 +272,87 @@ function getNextExecution(cronExpr, fromDateTime) {
                 );
             }
         } else {
-            // Neither DOM nor DOW is restricted - but still need to validate time constraints
-            // If current computed time is earlier than the original time, we need the next day
-            const testTime = startDateTime._luxonDateTime.set({
-                year: searchYear,
-                month: searchMonth,
-                day: searchDay,
-                hour: hour,  // Use calculated hour, not min
-                minute: minute,  // Use calculated minute, not min
-                second: 0,
-                millisecond: 0
-            });
-            
-            if (testTime.toMillis() <= fromDateTime._luxonDateTime.toMillis()) {
-                // The computed time is not after the original time, advance to next day
-                const nextDay = startDateTime.advance({ days: 1 });
-                year = nextDay.year;
-                month = nextDay.month;
-                day = nextDay.day;
-                hour = minInSet(cronExpr.hour);
-                minute = minInSet(cronExpr.minute);
+            // Neither DOM nor DOW is restricted - but still need to validate month constraints
+            // First check if current month is valid
+            if (!isValidInSet(searchMonth, cronExpr.month)) {
+                // Current month is not valid, need to find next valid month
+                let found = false;
+                for (let monthOffset = 1; monthOffset < 48; monthOffset++) {
+                    const currentMonth = ((searchMonth - 1 + monthOffset) % 12) + 1;
+                    const currentYear = searchYear + Math.floor((searchMonth - 1 + monthOffset) / 12);
+                    
+                    if (isValidInSet(currentMonth, cronExpr.month)) {
+                        year = currentYear;
+                        month = currentMonth;
+                        day = 1; // Start from first day of the valid month
+                        hour = minInSet(cronExpr.hour);
+                        minute = minInSet(cronExpr.minute);
+                        found = true;
+                        break;
+                    }
+                }
+                
+                if (!found) {
+                    throw new CronCalculationError(
+                        "Could not find valid month",
+                        cronExpr.original
+                    );
+                }
             } else {
-                // Use current calculation
-                year = searchYear;
-                month = searchMonth;
-                day = searchDay;
-                // hour and minute are already calculated correctly
+                // Current month is valid, check time constraints
+                const testTime = startDateTime._luxonDateTime.set({
+                    year: searchYear,
+                    month: searchMonth,
+                    day: searchDay,
+                    hour: hour,  // Use calculated hour, not min
+                    minute: minute,  // Use calculated minute, not min
+                    second: 0,
+                    millisecond: 0
+                });
+                
+                if (testTime.toMillis() <= fromDateTime._luxonDateTime.toMillis()) {
+                    // The computed time is not after the original time, advance to next day
+                    const nextDay = startDateTime.advance({ days: 1 });
+                    
+                    // Check if advancing to next day keeps us in a valid month
+                    if (isValidInSet(nextDay.month, cronExpr.month)) {
+                        year = nextDay.year;
+                        month = nextDay.month;
+                        day = nextDay.day;
+                        hour = minInSet(cronExpr.hour);
+                        minute = minInSet(cronExpr.minute);
+                    } else {
+                        // Advancing day moved us to invalid month, find next valid month
+                        let found = false;
+                        for (let monthOffset = 1; monthOffset < 48; monthOffset++) {
+                            const currentMonth = ((searchMonth - 1 + monthOffset) % 12) + 1;
+                            const currentYear = searchYear + Math.floor((searchMonth - 1 + monthOffset) / 12);
+                            
+                            if (isValidInSet(currentMonth, cronExpr.month)) {
+                                year = currentYear;
+                                month = currentMonth;
+                                day = 1; // Start from first day of the valid month
+                                hour = minInSet(cronExpr.hour);
+                                minute = minInSet(cronExpr.minute);
+                                found = true;
+                                break;
+                            }
+                        }
+                        
+                        if (!found) {
+                            throw new CronCalculationError(
+                                "Could not find valid month after day advance",
+                                cronExpr.original
+                            );
+                        }
+                    }
+                } else {
+                    // Use current calculation
+                    year = searchYear;
+                    month = searchMonth;
+                    day = searchDay;
+                    // hour and minute are already calculated correctly
+                }
             }
         }
 
