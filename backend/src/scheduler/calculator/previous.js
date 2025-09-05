@@ -5,6 +5,7 @@
 const {
     prevInSetWithUnderflow,
     maxInSet,
+    minInSet,
     isValidInSet
 } = require("./field_math");
 
@@ -12,7 +13,8 @@ const {
     validDaysInMonth,
     prevDateSatisfyingWeekdayConstraint,
     prevDateSatisfyingDomDowConstraints,
-    getWeekday
+    getWeekday,
+    dateTimeWeekdayToCronNumber
 } = require("./date_helpers");
 
 const { fromLuxon } = require("../../datetime/structure");
@@ -56,8 +58,21 @@ function getMostRecentExecution(cronExpr, fromDateTime) {
 
         // Check if the current time already matches the cron expression
         if (matchesCronExpression(cronExpr, startDateTime)) {
-            // Current time matches - return it as the "most recent" execution
-            return startDateTime;
+            // Special case: If we're at the beginning of a multi-value hour range,
+            // use exclusive semantics to enable "ripple back" across days
+            // This is needed for patterns like "*/30 8-9 * * *" where from 08:00,
+            // we want the previous 09:30, not the current 08:00
+            const isHourRestricted = cronExpr.hour.length < 24 && cronExpr.hour.length > 1;
+            const isAtBeginningOfHourRange = isHourRestricted && startDateTime.hour === minInSet(cronExpr.hour);
+            const isMinuteAtBeginning = startDateTime.minute === minInSet(cronExpr.minute);
+            
+            if (isAtBeginningOfHourRange && isMinuteAtBeginning) {
+                // At beginning of multi-value hour range - use exclusive semantics
+                // Continue to find actual previous execution
+            } else {
+                // Normal case - return current time (inclusive)
+                return startDateTime;
+            }
         }
 
         // Current time doesn't match, find the actual previous execution
@@ -73,8 +88,9 @@ function getMostRecentExecution(cronExpr, fromDateTime) {
         minute = minuteResult.value;
         let underflow = minuteResult.underflowed;
 
-        // Step 2: Calculate previous hour (if underflow from minute)
-        if (underflow) {
+        // Step 2: Calculate previous hour (always check hour constraints)
+        if (underflow || !isValidInSet(hour, cronExpr.hour)) {
+            // Either carried from minute, or current hour violates hour constraints
             const hourResult = prevInSetWithUnderflow(hour, cronExpr.hour);
             hour = hourResult.value;
             underflow = hourResult.underflowed;
