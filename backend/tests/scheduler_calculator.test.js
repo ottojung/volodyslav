@@ -81,9 +81,9 @@ describe("getNextExecution", () => {
         expect(next("*/15 * * * *", "2025-01-14T10:07:00.000Z")).toBe("2025-01-14T10:15:00.000Z");
     });
 
-    test("DOW wildcard (explicit 0..6) should behave like '*'", () => {
+    test("DOW wildcard (explicit 0..6) should not behave like '*'", () => {
         expect(next("0 12 3 * *", "2025-01-01T10:00:00.000Z")).toBe("2025-01-03T12:00:00.000Z");
-        expect(next("0 12 3 * 0,1,2,3,4,5,6", "2025-01-01T10:00:00.000Z")).toBe("2025-01-03T12:00:00.000Z");
+        expect(next("0 12 3 * 0,1,2,3,4,5,6", "2025-01-01T10:00:00.000Z")).toBe("2025-01-01T12:00:00.000Z");
     });
 
     test("compound: */15 8-17 20 * * late on 20th → next month 20 at 08:00", () => {
