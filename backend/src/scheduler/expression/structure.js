@@ -57,21 +57,23 @@ class CronExpressionClass {
         this.month = month;
         this.weekday = weekday;
 
-        this.isWeekdayWildcard = true;
+        let isWeekdayWildcard = true;
         for (let i = 0; i <= 6; i++) {
             if (!this.weekday[i]) {
-                this.isWeekdayWildcard = false;
+                isWeekdayWildcard = false;
                 break;
             }
         }
 
-        this.isDayWildcard = true;
+        let isDayWildcard = true;
         for (let i = 1; i <= 31; i++) {
             if (!this.day[i]) {
-                this.isDayWildcard = false;
+                isDayWildcard = false;
                 break;
             }
         }        
+
+        this.isDomDowRestricted = !isDayWildcard && !isWeekdayWildcard;
     }
 
     /**
