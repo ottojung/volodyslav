@@ -5,29 +5,6 @@
 const { matchesCronExpression } = require("./current");
 const { fromObject } = require("../../datetime");
 
-/**
- * Custom error class for calculation errors.
- */
-class CronCalculationError extends Error {
-    /**
-     * @param {string} message
-     * @param {string} cronExpression
-     */
-    constructor(message, cronExpression) {
-        super(message);
-        this.name = "CronCalculationError";
-        this.cronExpression = cronExpression;
-    }
-}
-
-/**
- * @param {unknown} object
- * @returns {object is CronCalculationError}
- */
-function isCronCalculationError(object) {
-    return object instanceof CronCalculationError;
-}
-
 const ONE_MINUTE = fromObject({ minutes: 1 });
 
 /**
@@ -48,5 +25,4 @@ function getMostRecentExecution(cronExpr, fromDateTime) {
 
 module.exports = {
     getMostRecentExecution,
-    isCronCalculationError,
 };

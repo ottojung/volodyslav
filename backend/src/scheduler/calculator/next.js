@@ -5,33 +5,10 @@
 const { fromObject } = require('../../datetime');
 const { matchesCronExpression } = require('./current');
 
-/**
- * Custom error class for calculation errors.
- */
-class CronCalculationError extends Error {
-    /**
-     * @param {string} message
-     * @param {string} cronExpression
-     */
-    constructor(message, cronExpression) {
-        super(message);
-        this.name = "CronCalculationError";
-        this.cronExpression = cronExpression;
-    }
-}
-
-/**
- * @param {unknown} object
- * @returns {object is CronCalculationError}
- */
-function isCronCalculationError(object) {
-    return object instanceof CronCalculationError;
-}
-
 const ONE_MINUTE = fromObject({ minutes: 1 });
 
 /**
- * Calculates the next execution time for a cron expression using mathematical field calculation.
+ * Calculates the next execution time for a cron expression.
  * @param {import('../expression').CronExpression} cronExpr - Parsed cron expression
  * @param {import('../../datetime').DateTime} fromDateTime - DateTime to calculate from
  * @returns {import('../../datetime').DateTime} Next execution datetime
@@ -49,5 +26,4 @@ function getNextExecution(cronExpr, fromDateTime) {
 
 module.exports = {
     getNextExecution,
-    isCronCalculationError,
 };
