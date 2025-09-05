@@ -9,7 +9,8 @@ const ONE_MINUTE = fromObject({ minutes: 1 });
 
 /**
  * Calculates the previous execution time for a cron expression.
- * Edge case: if fromDateTime is exactly 0 seconds of a matching minute, it will return current match.
+ * Note: it is inclusive. I.e. if `fromDateTime` matches the cron expression,
+ * it will be returned as the previous execution time.
  * @param {import('../expression').CronExpression} cronExpr - Parsed cron expression
  * @param {import('../../datetime').DateTime} fromDateTime - DateTime to calculate from
  * @returns {import('../../datetime').DateTime} Previous execution datetime, or null if none found
