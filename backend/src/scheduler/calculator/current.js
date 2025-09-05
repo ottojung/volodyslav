@@ -28,7 +28,7 @@ function matchesCronExpression(cronExpr, dateTime) {
         return false;
     }
 
-    // Convert weekday name (from DateTime) to cron number for comparison
+    // Convert weekday name (string) to cron number (1-6) for comparison
     const weekday = weekdayNameToCronNumber(dateTime.weekday);
 
     // DOM/DOW OR semantics: when both day and weekday are restricted (not wildcards),
