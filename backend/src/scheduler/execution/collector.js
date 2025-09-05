@@ -57,10 +57,12 @@ function evaluateTasksForExecution(tasks, scheduledTasks, now, capabilities) {
         }
 
         // Check both cron schedule and retry timing
-        const lastScheduledFireRaw = getMostRecentExecution(task.parsedCron, now);
-        const lastScheduledFire = lastScheduledFireRaw.startOfNextMinute();
+        const lastScheduledFire = getMostRecentExecution(task.parsedCron, now);
+        // The actual attempt might have been anytime during the scheduled minute
+        // so we consider the next minute as the threshold.
+        const lastScheduledFireForComparison = lastScheduledFire.startOfNextMinute();
 
-        const shouldRunCron = !task.lastAttemptTime || task.lastAttemptTime.isBefore(lastScheduledFire);
+        const shouldRunCron = !task.lastAttemptTime || task.lastAttemptTime.isBefore(lastScheduledFireForComparison);
         const shouldRunRetry = task.pendingRetryUntil && now.isAfterOrEqual(task.pendingRetryUntil);
         const callback = task.callback;
 
