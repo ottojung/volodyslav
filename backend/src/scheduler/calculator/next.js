@@ -62,12 +62,15 @@ function getNextExecution(cronExpr, fromDateTime) {
         const validDays = validDaysInMonth(month, year, cronExpr.day);
         const startWeekday = getWeekday(year, month, day);
 
+        // Helper function to check if weekday is wildcard (all weekdays 0-6 are true)
+        const isWeekdayWildcard = cronExpr.weekday.slice(0, 7).every(val => val === true);
+        
         const currentMatches = (
             isValidInSet(minute, cronExpr.minute) &&
             isValidInSet(hour, cronExpr.hour) &&
             isValidInSet(day, validDays) &&
             isValidInSet(month, cronExpr.month) &&
-            (cronExpr.weekday.length === 7 || isValidInSet(startWeekday, cronExpr.weekday))
+            (isWeekdayWildcard || isValidInSet(startWeekday, cronExpr.weekday))
         );
 
         if (currentMatches) {
@@ -138,7 +141,8 @@ function getNextExecution(cronExpr, fromDateTime) {
         }
 
         // Step 5: Apply weekday constraints only if weekday constraint exists
-        if (cronExpr.weekday.length < 7) { // Not all weekdays are allowed
+        const isWeekdayWildcard = cronExpr.weekday.slice(0, 7).every(val => val === true);
+        if (!isWeekdayWildcard) { // Not all weekdays are allowed
             const candidateWeekday = getWeekday(year, month, day);
             if (!isValidInSet(candidateWeekday, cronExpr.weekday)) {
                 const constraintResult = nextDateSatisfyingWeekdayConstraint(

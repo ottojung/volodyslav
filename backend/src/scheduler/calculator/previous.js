@@ -130,7 +130,8 @@ function getMostRecentExecution(cronExpr, fromDateTime) {
         }
 
         // Step 5: Apply weekday constraints only if weekday constraint exists
-        if (cronExpr.weekday.length < 7) { // Not all weekdays are allowed
+        const isWeekdayWildcard = cronExpr.weekday.slice(0, 7).every(val => val === true);
+        if (!isWeekdayWildcard) { // Not all weekdays are allowed
             const candidateWeekday = getWeekday(year, month, day);
             if (!isValidInSet(candidateWeekday, cronExpr.weekday)) {
                 const constraintResult = prevDateSatisfyingWeekdayConstraint(
@@ -179,7 +180,8 @@ function getMostRecentExecution(cronExpr, fromDateTime) {
 
         // For day-constrained crons, only return executions from the same day
         // This prevents returning yesterday's executions when today doesn't match the cron
-        if (cronExpr.day.length < 31) { // Day constraint exists (not all days allowed)
+        const isDayWildcard = cronExpr.day.slice(1, 32).every(val => val === true); // Check days 1-31
+        if (!isDayWildcard) { // Day constraint exists (not all days allowed)
             if (resultDateTime.day !== fromDateTime.day ||
                 resultDateTime.month !== fromDateTime.month ||
                 resultDateTime.year !== fromDateTime.year) {

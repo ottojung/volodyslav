@@ -53,7 +53,7 @@ function matchesCronExpression(cronExpr, dateTime) {
     }
 
     if (!isDayWildcard && !isWeekdayWildcard) {
-        // Both are restricted - use OR logic
+        // Both are restricted (not wildcards) - use OR logic
         return cronExpr.day[day] === true || cronExpr.weekday[weekday] === true;
     } else {
         // At least one is wildcard - use AND logic
