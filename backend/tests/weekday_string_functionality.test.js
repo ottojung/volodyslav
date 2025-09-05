@@ -8,6 +8,22 @@ const { matchesCronExpression } = require("../src/scheduler/calculator");
 const DateTime = require("../src/datetime/structure");
 const { getAllWeekdayNames, isWeekdayName, luxonWeekdayToName, weekdayNameToCronNumber } = require("../src/datetime/weekday");
 
+/**
+ * Helper function to create a boolean mask from an array of numbers.
+ * @param {number[]} numbers - Array of valid numbers
+ * @param {number} maxValue - Maximum value (inclusive) for the mask
+ * @returns {boolean[]} Boolean mask
+ */
+function createMask(numbers, maxValue) {
+    const mask = new Array(maxValue + 1).fill(false);
+    for (const num of numbers) {
+        if (num >= 0 && num <= maxValue) {
+            mask[num] = true;
+        }
+    }
+    return mask;
+}
+
 describe("Weekday string functionality", () => {
     test("DateTime.weekday should return weekday names", () => {
         const testCases = [
@@ -41,7 +57,7 @@ describe("Weekday string functionality", () => {
 
         testCases.forEach(({ numeric, expected }) => {
             const cronExpr = parseCronExpression(`* * * * ${numeric}`);
-            expect(cronExpr.weekday).toEqual(expected);
+            expect(cronExpr.weekday).toEqual(createMask(expected, 6));
         });
     });
 
@@ -55,7 +71,7 @@ describe("Weekday string functionality", () => {
 
     test("parseCronExpression should handle wildcard for weekdays", () => {
         const wildcardCron = parseCronExpression("* * * * *");
-        expect(wildcardCron.weekday).toEqual([0, 1, 2, 3, 4, 5, 6]);
+        expect(wildcardCron.weekday).toEqual(createMask([0, 1, 2, 3, 4, 5, 6], 6));
     });
 
     test("weekday utility functions should work correctly", () => {
@@ -113,20 +129,20 @@ describe("Weekday string functionality", () => {
     test("parseCronExpression should handle numeric weekday ranges", () => {
         // Monday to Friday (1-5)
         const mondayToFridayCron = parseCronExpression("* * * * 1-5");
-        expect(mondayToFridayCron.weekday).toEqual([1, 2, 3, 4, 5]);
+        expect(mondayToFridayCron.weekday).toEqual(createMask([1, 2, 3, 4, 5], 6));
         
         // Sunday to Tuesday (0-2)
         const sundayToTuesdayCron = parseCronExpression("* * * * 0-2");
-        expect(sundayToTuesdayCron.weekday).toEqual([0, 1, 2]);
+        expect(sundayToTuesdayCron.weekday).toEqual(createMask([0, 1, 2], 6));
     });
 
     test("parseCronExpression should handle comma-separated numeric weekday values", () => {
         // Mixed numbers
         const mixedCron = parseCronExpression("* * * * 1,3,5");
-        expect(mixedCron.weekday).toEqual([1, 3, 5]);
+        expect(mixedCron.weekday).toEqual(createMask([1, 3, 5], 6));
         
         // Single value
         const singleCron = parseCronExpression("* * * * 0");
-        expect(singleCron.weekday).toEqual([0]);
+        expect(singleCron.weekday).toEqual(createMask([0], 6));
     });
 });

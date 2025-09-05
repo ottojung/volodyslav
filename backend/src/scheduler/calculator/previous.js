@@ -87,19 +87,19 @@ function getMostRecentExecution(cronExpr, fromDateTime) {
         if (validDays.length === 0) {
             // No valid days in this month, go back to previous month
             underflow = true;
-        } else if (underflow || !isValidInSet(day, validDays)) {
+        } else if (underflow || !validDays.includes(day)) {
             // Either carried from hour, or current day violates day constraints
-            const dayResult = prevInSetWithUnderflow(day, validDays);
-            if (dayResult.underflowed) {
-                // No more valid days in this month
-                underflow = true;
-            } else {
-                day = dayResult.value;
+            const prevDay = [...validDays].reverse().find(d => d < day);
+            if (prevDay !== undefined) {
+                day = prevDay;
                 underflow = false;
-
+                
                 // Reset hour and minute when going back a day
                 hour = maxInSet(cronExpr.hour);
                 minute = maxInSet(cronExpr.minute);
+            } else {
+                // No more valid days in this month
+                underflow = true;
             }
         }
 
@@ -124,7 +124,14 @@ function getMostRecentExecution(cronExpr, fromDateTime) {
                 );
             }
 
-            day = maxInSet(validDays);
+            const maxDay = validDays[validDays.length - 1];
+            if (maxDay === undefined) {
+                throw new CronCalculationError(
+                    "No valid days found in month after filtering",
+                    cronExpr.original
+                );
+            }
+            day = maxDay; // Get the last (maximum) valid day
             hour = maxInSet(cronExpr.hour);
             minute = maxInSet(cronExpr.minute);
         }

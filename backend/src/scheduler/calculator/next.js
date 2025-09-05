@@ -68,7 +68,7 @@ function getNextExecution(cronExpr, fromDateTime) {
         const currentMatches = (
             isValidInSet(minute, cronExpr.minute) &&
             isValidInSet(hour, cronExpr.hour) &&
-            isValidInSet(day, validDays) &&
+            validDays.includes(day) && // validDays is a number array from validDaysInMonth
             isValidInSet(month, cronExpr.month) &&
             (isWeekdayWildcard || isValidInSet(startWeekday, cronExpr.weekday))
         );
@@ -98,19 +98,19 @@ function getNextExecution(cronExpr, fromDateTime) {
         if (currentValidDays.length === 0) {
             // No valid days in this month, advance to next month
             carry = true;
-        } else if (carry || !isValidInSet(day, currentValidDays)) {
+        } else if (carry || !currentValidDays.includes(day)) {
             // Either carried from hour, or current day violates day constraints
-            const dayResult = nextInSetWithRollover(day, currentValidDays);
-            if (dayResult.rolledOver) {
-                // No more valid days in this month
-                carry = true;
-            } else {
-                day = dayResult.value;
+            const nextDay = currentValidDays.find(d => d > day);
+            if (nextDay !== undefined) {
+                day = nextDay;
                 carry = false;
-
+                
                 // Reset hour and minute when advancing day
                 hour = minInSet(cronExpr.hour);
                 minute = minInSet(cronExpr.minute);
+            } else {
+                // No more valid days in this month
+                carry = true;
             }
         }
 
@@ -135,14 +135,21 @@ function getNextExecution(cronExpr, fromDateTime) {
                 );
             }
 
-            day = minInSet(newValidDays);
+            const minDay = newValidDays[0];
+            if (minDay === undefined) {
+                throw new CronCalculationError(
+                    "No valid days found in month after filtering",
+                    cronExpr.original
+                );
+            }
+            day = minDay; // Get the first (minimum) valid day
             hour = minInSet(cronExpr.hour);
             minute = minInSet(cronExpr.minute);
         }
 
         // Step 5: Apply weekday constraints only if weekday constraint exists
-        const isWeekdayWildcard = cronExpr.weekday.slice(0, 7).every(val => val === true);
-        if (!isWeekdayWildcard) { // Not all weekdays are allowed
+        const isWeekdayWildcard2 = cronExpr.weekday.slice(0, 7).every(val => val === true);
+        if (!isWeekdayWildcard2) { // Not all weekdays are allowed
             const candidateWeekday = getWeekday(year, month, day);
             if (!isValidInSet(candidateWeekday, cronExpr.weekday)) {
                 const constraintResult = nextDateSatisfyingWeekdayConstraint(
