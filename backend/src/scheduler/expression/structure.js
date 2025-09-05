@@ -2,6 +2,7 @@
  * Cron expression data structure.
  */
 
+const { weekdayNameToCronNumber, dateTimeFromObject, fromObject } = require("../../datetime");
 const { FIELD_CONFIGS, parseField, isFieldParseError } = require("./field_parser");
 
 /**
@@ -58,6 +59,90 @@ class CronExpressionClass {
         this.month = month;
         this.weekday = weekday;
         this.isDomDowRestricted = isDomDowRestricted;
+        /** @type {Map<string, number[]>}  */    
+        this._validDaysCache = new Map();
+    }
+
+    /**
+     * Gets the valid minutes for the cron expression.
+     * @return {number[]} Sorted array of valid minute values
+     */
+    get validMinutes() {
+        if (!this._validMinutes) {
+            this._validMinutes = this.minute
+                .map((isValid, minute) => (isValid ? minute : -1))
+                .filter((minute) => minute !== -1);
+        }
+        return this._validMinutes;
+    }
+
+    /**
+     * Gets the valid hours for the cron expression.
+     * @return {number[]} Sorted array of valid hour values
+     */
+    get validHours() {
+        if (!this._validHours) {
+            this._validHours = this.hour
+                .map((isValid, hour) => (isValid ? hour : -1))
+                .filter((hour) => hour !== -1);
+        }
+        return this._validHours;
+    }
+
+    /** 
+     * @param {number} day
+     * @param {import("../../datetime").WeekdayName} weekdayName
+     * @returns {boolean}
+     */    
+    isValidDay(day, weekdayName) {
+        // Convert weekday name (string) to cron number (1-6) for comparison
+        const weekday = weekdayNameToCronNumber(weekdayName);
+
+        // POSIX DOM/DOW semantics: when both day and weekday are restricted (not wildcards),
+        // the job should run if EITHER the day OR the weekday matches
+        if (this.isDomDowRestricted) {
+            // Both are restricted (not wildcards) - use OR logic
+            return this.day[day] === true || this.weekday[weekday] === true;
+        } else {
+            // At least one is wildcard - use AND logic
+            return this.day[day] === true && this.weekday[weekday] === true;
+        }
+    }
+
+    /**
+     * Gets the valid days for the cron expression and for the given year and month.
+     * @param {number} year
+     * @param {number} month
+     * @return {number[]} Sorted array of valid day values
+     */
+    validDays(year, month) {
+        const cacheKey = `${year}-${month}`;
+        const existing = this._validDaysCache.get(cacheKey);
+        if (existing === undefined) {
+
+            /** @type {() => number[]} */
+            const calculateValidDays = () => {
+                if (this.month[month] === false) {
+                    return [];
+                }
+
+                /** @type {number[]} */
+                const validDays = [];
+                const ONE_DAY = fromObject({ days: 1 });
+                const startDate = dateTimeFromObject({ year, month, day: 1, hour: 0, minute: 0, second: 0 });
+                for (let date = startDate; date.month === month; date = date.advance(ONE_DAY)) {
+                    if (this.isValidDay(date.day, date.weekday)) {
+                        validDays.push(date.day);
+                    }
+                }
+                return validDays;
+            };
+
+            const validDays = calculateValidDays();
+            this._validDaysCache.set(cacheKey, validDays);
+            return validDays;
+        }
+        return existing;
     }
 
     /**
