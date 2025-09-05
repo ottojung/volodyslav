@@ -49,21 +49,36 @@ const FIELD_CONFIGS = {
  * Parses a single cron field value.
  * @param {string} value - The field value to parse
  * @param {FieldConfig} config - Field configuration
- * @returns {number[]} Array of valid values for this field
+ * @returns {boolean[]} Boolean mask where index indicates if value is valid
  * @throws {FieldParseError} If the field value is invalid
  */
 function parseField(value, config) {
+    // Create boolean mask with correct length for the field
+    const maskLength = config.max + 1; // +1 to include the max value
+    
     if (value === "*") {
-        return Array.from({ length: config.max - config.min + 1 }, (_, i) => config.min + i);
+        const mask = new Array(maskLength).fill(false);
+        // Set all valid values to true
+        for (let i = config.min; i <= config.max; i++) {
+            mask[i] = true;
+        }
+        return mask;
     }
 
     if (value.includes(",")) {
         const parts = value.split(",");
-        const result = [];
+        const mask = new Array(maskLength).fill(false);
+        
         for (const part of parts) {
-            result.push(...parseField(part.trim(), config));
+            const partMask = parseField(part.trim(), config);
+            // Merge the part mask into the main mask
+            for (let i = 0; i < partMask.length; i++) {
+                if (partMask[i]) {
+                    mask[i] = true;
+                }
+            }
         }
-        return [...new Set(result)].sort((a, b) => a - b);
+        return mask;
     }
 
     if (value.includes("/")) {
@@ -81,15 +96,25 @@ function parseField(value, config) {
             throw new FieldParseError(`invalid step value "${stepStr}"`, value, config.name);
         }
 
-        const baseValues = parseField(range, config);
-        const result = [];
-        for (let i = 0; i < baseValues.length; i += stepNum) {
-            const val = baseValues[i];
-            if (val !== undefined) {
-                result.push(val);
+        const baseMask = parseField(range, config);
+        const mask = new Array(maskLength).fill(false);
+        
+        // Find valid values from base mask and apply step
+        const validValues = [];
+        for (let i = 0; i < baseMask.length; i++) {
+            if (baseMask[i]) {
+                validValues.push(i);
             }
         }
-        return result;
+        
+        // Apply step to valid values
+        for (let i = 0; i < validValues.length; i += stepNum) {
+            const val = validValues[i];
+            if (val !== undefined) {
+                mask[val] = true;
+            }
+        }
+        return mask;
     }
 
     if (value.includes("-")) {
@@ -121,7 +146,11 @@ function parseField(value, config) {
             throw new FieldParseError(`invalid range (start > end)`, value, config.name);
         }
 
-        return Array.from({ length: endNum - startNum + 1 }, (_, i) => startNum + i);
+        const mask = new Array(maskLength).fill(false);
+        for (let i = startNum; i <= endNum; i++) {
+            mask[i] = true;
+        }
+        return mask;
     }
 
     const num = parseInt(value, 10);
@@ -133,7 +162,9 @@ function parseField(value, config) {
         throw new FieldParseError(`out of range (${config.min}-${config.max})`, value, config.name);
     }
 
-    return [num];
+    const mask = new Array(maskLength).fill(false);
+    mask[num] = true;
+    return mask;
 }
 
 module.exports = {

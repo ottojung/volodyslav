@@ -39,11 +39,11 @@ class CronExpressionClass {
 
     /**
      * @param {string} original
-     * @param {number[]} minute
-     * @param {number[]} hour
-     * @param {number[]} day
-     * @param {number[]} month
-     * @param {number[]} weekday
+     * @param {boolean[]} minute
+     * @param {boolean[]} hour
+     * @param {boolean[]} day
+     * @param {boolean[]} month
+     * @param {boolean[]} weekday
      */
     constructor(original, minute, hour, day, month, weekday) {
         if (this.__brand !== undefined) {

@@ -40,15 +40,23 @@ function isLeapYear(year) {
 }
 
 /**
- * Gets valid days for a given month and year from a day constraint set.
+ * Gets valid days for a given month and year from a day boolean mask.
  * @param {number} month - Month (1-12)
  * @param {number} year - Year
- * @param {number[]} daySet - Set of valid days from cron expression
+ * @param {boolean[]} dayMask - Boolean mask of valid days from cron expression
  * @returns {number[]} Array of valid days that exist in the given month
  */
-function validDaysInMonth(month, year, daySet) {
+function validDaysInMonth(month, year, dayMask) {
     const maxDay = daysInMonth(month, year);
-    return daySet.filter(day => day >= 1 && day <= maxDay);
+    const validDays = [];
+    
+    for (let day = 1; day <= maxDay; day++) {
+        if (dayMask[day]) {
+            validDays.push(day);
+        }
+    }
+    
+    return validDays;
 }
 
 /**
@@ -112,20 +120,20 @@ function subtractDays(year, month, day, days) {
  * @param {number} year - Starting year
  * @param {number} month - Starting month (1-12)
  * @param {number} day - Starting day
- * @param {number[]} weekdaySet - Valid weekdays from cron expression
- * @param {number[]} monthSet - Valid months from cron expression
- * @param {number[]} daySet - Valid days from cron expression
+ * @param {boolean[]} weekdayMask - Valid weekdays boolean mask from cron expression
+ * @param {boolean[]} monthMask - Valid months boolean mask from cron expression
+ * @param {boolean[]} dayMask - Valid days boolean mask from cron expression
  * @returns {{year: number, month: number, day: number}|null}
  */
-function nextDateSatisfyingWeekdayConstraint(year, month, day, weekdaySet, monthSet, daySet) {
+function nextDateSatisfyingWeekdayConstraint(year, month, day, weekdayMask, monthMask, dayMask) {
     // Try the next 7 days to find a valid weekday
     for (let offset = 0; offset < 7; offset++) {
         const candidateDate = addDays(year, month, day, offset);
         const candidateWeekday = getWeekday(candidateDate.year, candidateDate.month, candidateDate.day);
         
-        if (weekdaySet.includes(candidateWeekday) &&
-            monthSet.includes(candidateDate.month) &&
-            validDaysInMonth(candidateDate.month, candidateDate.year, daySet).includes(candidateDate.day)) {
+        if (weekdayMask[candidateWeekday] &&
+            monthMask[candidateDate.month] &&
+            validDaysInMonth(candidateDate.month, candidateDate.year, dayMask).includes(candidateDate.day)) {
             return candidateDate;
         }
     }
@@ -138,20 +146,20 @@ function nextDateSatisfyingWeekdayConstraint(year, month, day, weekdaySet, month
  * @param {number} year - Starting year
  * @param {number} month - Starting month (1-12)
  * @param {number} day - Starting day
- * @param {number[]} weekdaySet - Valid weekdays from cron expression
- * @param {number[]} monthSet - Valid months from cron expression
- * @param {number[]} daySet - Valid days from cron expression
+ * @param {boolean[]} weekdayMask - Valid weekdays boolean mask from cron expression
+ * @param {boolean[]} monthMask - Valid months boolean mask from cron expression
+ * @param {boolean[]} dayMask - Valid days boolean mask from cron expression
  * @returns {{year: number, month: number, day: number}|null}
  */
-function prevDateSatisfyingWeekdayConstraint(year, month, day, weekdaySet, monthSet, daySet) {
+function prevDateSatisfyingWeekdayConstraint(year, month, day, weekdayMask, monthMask, dayMask) {
     // Try the previous 7 days to find a valid weekday
     for (let offset = 0; offset < 7; offset++) {
         const candidateDate = subtractDays(year, month, day, offset);
         const candidateWeekday = getWeekday(candidateDate.year, candidateDate.month, candidateDate.day);
         
-        if (weekdaySet.includes(candidateWeekday) &&
-            monthSet.includes(candidateDate.month) &&
-            validDaysInMonth(candidateDate.month, candidateDate.year, daySet).includes(candidateDate.day)) {
+        if (weekdayMask[candidateWeekday] &&
+            monthMask[candidateDate.month] &&
+            validDaysInMonth(candidateDate.month, candidateDate.year, dayMask).includes(candidateDate.day)) {
             return candidateDate;
         }
     }
@@ -165,13 +173,13 @@ function prevDateSatisfyingWeekdayConstraint(year, month, day, weekdaySet, month
  * @param {number} year - Starting year
  * @param {number} month - Starting month (1-12)
  * @param {number} day - Starting day
- * @param {number[]} weekdaySet - Valid weekdays from cron expression
- * @param {number[]} monthSet - Valid months from cron expression
- * @param {number[]} daySet - Valid days from cron expression
+ * @param {boolean[]} weekdayMask - Valid weekdays boolean mask from cron expression
+ * @param {boolean[]} monthMask - Valid months boolean mask from cron expression
+ * @param {boolean[]} dayMask - Valid days boolean mask from cron expression
  * @param {boolean} useOrLogic - Whether to use OR logic (true) or AND logic (false)
  * @returns {{year: number, month: number, day: number}|null}
  */
-function nextDateSatisfyingDomDowConstraints(year, month, day, weekdaySet, monthSet, daySet, useOrLogic = false) {
+function nextDateSatisfyingDomDowConstraints(year, month, day, weekdayMask, monthMask, dayMask, useOrLogic = false) {
     // First check if the current date already satisfies the constraints (offset=0)
     // Then try up to 400 days to find a valid date
     for (let offset = 0; offset < 400; offset++) {
@@ -179,13 +187,13 @@ function nextDateSatisfyingDomDowConstraints(year, month, day, weekdaySet, month
         const candidateWeekday = getWeekday(candidateDate.year, candidateDate.month, candidateDate.day);
         
         // Must always satisfy month constraint
-        if (!monthSet.includes(candidateDate.month)) {
+        if (!monthMask[candidateDate.month]) {
             continue;
         }
 
-        const validDays = validDaysInMonth(candidateDate.month, candidateDate.year, daySet);
+        const validDays = validDaysInMonth(candidateDate.month, candidateDate.year, dayMask);
         const domMatches = validDays.includes(candidateDate.day);
-        const dowMatches = weekdaySet.includes(candidateWeekday);
+        const dowMatches = weekdayMask[candidateWeekday];
         
         if (useOrLogic) {
             // OR logic: either DOM or DOW must match
@@ -209,26 +217,26 @@ function nextDateSatisfyingDomDowConstraints(year, month, day, weekdaySet, month
  * @param {number} year - Starting year
  * @param {number} month - Starting month (1-12)
  * @param {number} day - Starting day
- * @param {number[]} weekdaySet - Valid weekdays from cron expression
- * @param {number[]} monthSet - Valid months from cron expression
- * @param {number[]} daySet - Valid days from cron expression
+ * @param {boolean[]} weekdayMask - Valid weekdays boolean mask from cron expression
+ * @param {boolean[]} monthMask - Valid months boolean mask from cron expression
+ * @param {boolean[]} dayMask - Valid days boolean mask from cron expression
  * @param {boolean} useOrLogic - Whether to use OR logic (true) or AND logic (false)
  * @returns {{year: number, month: number, day: number}|null}
  */
-function prevDateSatisfyingDomDowConstraints(year, month, day, weekdaySet, monthSet, daySet, useOrLogic = false) {
+function prevDateSatisfyingDomDowConstraints(year, month, day, weekdayMask, monthMask, dayMask, useOrLogic = false) {
     // Try up to 400 days (over a year) to find a valid date
     for (let offset = 0; offset < 400; offset++) {
         const candidateDate = subtractDays(year, month, day, offset);
         const candidateWeekday = getWeekday(candidateDate.year, candidateDate.month, candidateDate.day);
         
         // Must always satisfy month constraint
-        if (!monthSet.includes(candidateDate.month)) {
+        if (!monthMask[candidateDate.month]) {
             continue;
         }
 
-        const validDays = validDaysInMonth(candidateDate.month, candidateDate.year, daySet);
+        const validDays = validDaysInMonth(candidateDate.month, candidateDate.year, dayMask);
         const domMatches = validDays.includes(candidateDate.day);
-        const dowMatches = weekdaySet.includes(candidateWeekday);
+        const dowMatches = weekdayMask[candidateWeekday];
         
         if (useOrLogic) {
             // OR logic: either DOM or DOW must match

@@ -1,8 +1,7 @@
 /**
- * Cron expression matching using mathematical field-based approach.
+ * Cron expression matching using boolean mask lookups.
  */
 
-const { isValidInSet } = require("./field_math");
 const { dateTimeWeekdayToCronNumber } = require("./date_helpers");
 
 /**
@@ -23,9 +22,9 @@ function matchesCronExpression(cronExpr, dateTime) {
 
     // Check minute, hour, and month constraints (these are always AND)
     const basicMatch = (
-        isValidInSet(minute, cronExpr.minute) &&
-        isValidInSet(hour, cronExpr.hour) &&
-        isValidInSet(month, cronExpr.month)
+        cronExpr.minute[minute] === true &&
+        cronExpr.hour[hour] === true &&
+        cronExpr.month[month] === true
     );
 
     if (!basicMatch) {
@@ -34,15 +33,31 @@ function matchesCronExpression(cronExpr, dateTime) {
 
     // DOM/DOW OR semantics: when both day and weekday are restricted (not wildcards),
     // the job should run if EITHER the day OR the weekday matches
-    const isDayRestricted = cronExpr.day.length < 31; // Not all days 1-31
-    const isWeekdayRestricted = cronExpr.weekday.length < 7; // Not all weekdays 0-6
+    
+    // Check if day field is wildcard (all days 1-31 are true)
+    let isDayWildcard = true;
+    for (let i = 1; i <= 31; i++) {
+        if (!cronExpr.day[i]) {
+            isDayWildcard = false;
+            break;
+        }
+    }
+    
+    // Check if weekday field is wildcard (all weekdays 0-6 are true)
+    let isWeekdayWildcard = true;
+    for (let i = 0; i <= 6; i++) {
+        if (!cronExpr.weekday[i]) {
+            isWeekdayWildcard = false;
+            break;
+        }
+    }
 
-    if (isDayRestricted && isWeekdayRestricted) {
-        // Both are restricted - use OR logic
-        return isValidInSet(day, cronExpr.day) || isValidInSet(weekday, cronExpr.weekday);
+    if (!isDayWildcard && !isWeekdayWildcard) {
+        // Both are restricted (not wildcards) - use OR logic
+        return cronExpr.day[day] === true || cronExpr.weekday[weekday] === true;
     } else {
         // At least one is wildcard - use AND logic
-        return isValidInSet(day, cronExpr.day) && isValidInSet(weekday, cronExpr.weekday);
+        return cronExpr.day[day] === true && cronExpr.weekday[weekday] === true;
     }
 }
 
