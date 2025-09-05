@@ -57,15 +57,17 @@ function getMostRecentExecution(cronExpr, fromDateTime) {
 
         // Check if the current time already matches the cron expression
         if (matchesCronExpression(cronExpr, startDateTime)) {
-            // Special case: If we're at the beginning of a multi-value hour range,
-            // use exclusive semantics to enable "ripple back" across days
+            // Special case: If we're at the beginning of a multi-value hour range
+            // AND have multi-value minute constraints, use exclusive semantics 
+            // to enable "ripple back" across days.
             // This is needed for patterns like "*/30 8-9 * * *" where from 08:00,
             // we want the previous 09:30, not the current 08:00
             const isHourRestricted = cronExpr.hour.length < 24 && cronExpr.hour.length > 1;
+            const isMinuteRestricted = cronExpr.minute.length > 1; // Multiple minute values
             const isAtBeginningOfHourRange = isHourRestricted && startDateTime.hour === minInSet(cronExpr.hour);
             const isMinuteAtBeginning = startDateTime.minute === minInSet(cronExpr.minute);
             
-            if (isAtBeginningOfHourRange && isMinuteAtBeginning) {
+            if (isHourRestricted && isMinuteRestricted && isAtBeginningOfHourRange && isMinuteAtBeginning) {
                 // At beginning of multi-value hour range - use exclusive semantics
                 // Continue to find actual previous execution
             } else {

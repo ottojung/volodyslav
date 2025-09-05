@@ -4,6 +4,7 @@
  */
 
 const { getMostRecentExecution } = require("../calculator");
+const { matchesCronExpression } = require("../calculator/current");
 const { isRunning } = require("../task");
 
 /** @typedef {import('../types').Callback} Callback */
