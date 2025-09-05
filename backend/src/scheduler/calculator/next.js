@@ -21,7 +21,7 @@ function getNextExecution(cronExpr, fromDateTime) {
         current = current.advance(ONE_MINUTE);
     }
 
-    return current;
+    return current.startOfMinute();
 }
 
 module.exports = {

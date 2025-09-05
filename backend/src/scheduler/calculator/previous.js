@@ -20,7 +20,7 @@ function getMostRecentExecution(cronExpr, fromDateTime) {
         current = current.subtract(ONE_MINUTE);
     }
 
-    return current;
+    return current.startOfMinute();
 }
 
 module.exports = {
