@@ -3,6 +3,7 @@
  * Determines which tasks should be executed based on cron schedules and retry timing.
  */
 
+const { fromMinutes, fromMilliseconds } = require("../../datetime");
 const { getMostRecentExecution } = require("../calculator");
 const { isRunning } = require("../task");
 
@@ -58,11 +59,7 @@ function evaluateTasksForExecution(tasks, scheduledTasks, now, capabilities) {
 
         // Check both cron schedule and retry timing
         const lastScheduledFire = getMostRecentExecution(task.parsedCron, now);
-        // The actual attempt might have been anytime during the scheduled minute
-        // so we consider the next minute as the threshold.
-        const lastScheduledFireForComparison = lastScheduledFire.startOfNextMinute();
-
-        const shouldRunCron = !task.lastAttemptTime || task.lastAttemptTime.isBefore(lastScheduledFireForComparison);
+        const shouldRunCron = !task.lastAttemptTime || task.lastAttemptTime.isBefore(lastScheduledFire);
         const shouldRunRetry = task.pendingRetryUntil && now.isAfterOrEqual(task.pendingRetryUntil);
         const callback = task.callback;
 
