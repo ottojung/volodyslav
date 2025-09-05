@@ -2,7 +2,7 @@
  * Cron expression data structure.
  */
 
-const { dateTimeFromObject, weekdayNameToCronNumber } = require("../../datetime");
+const { dateTimeFromObject, weekdayNameToCronNumber, getMaxDaysInMonth } = require("../../datetime");
 const { FIELD_CONFIGS, parseField, isFieldParseError } = require("./field_parser");
 
 /**
@@ -137,9 +137,10 @@ class CronExpressionClass {
                 const validDays = [];
                 const startWeekdayName = dateTimeFromObject({ year, month, day: 1 }).weekday;
                 const startWeekday = weekdayNameToCronNumber(startWeekdayName);
+                const max_days = getMaxDaysInMonth(year, month);
                 let weekday = startWeekday;
                 let day = 1;
-                while (day <= 31) {
+                while (day <= max_days) {
                     if (this.isValidDayAndWeekdayNumbers(day, weekday)) {
                         validDays.push(day);
                     }
