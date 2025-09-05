@@ -2,7 +2,7 @@
  * Cron expression data structure.
  */
 
-const { weekdayNameToCronNumber, dateTimeFromObject, fromObject } = require("../../datetime");
+const { dateTimeFromObject, weekdayNameToCronNumber } = require("../../datetime");
 const { FIELD_CONFIGS, parseField, isFieldParseError } = require("./field_parser");
 
 /**
@@ -59,7 +59,7 @@ class CronExpressionClass {
         this.month = month;
         this.weekday = weekday;
         this.isDomDowRestricted = isDomDowRestricted;
-        /** @type {Map<string, number[]>}  */    
+        /** @type {Map<string, number[]>}  */
         this._validDaysCache = new Map();
     }
 
@@ -91,13 +91,10 @@ class CronExpressionClass {
 
     /** 
      * @param {number} day
-     * @param {import("../../datetime").WeekdayName} weekdayName
+     * @param {number} weekday
      * @returns {boolean}
-     */    
-    isValidDay(day, weekdayName) {
-        // Convert weekday name (string) to cron number (1-6) for comparison
-        const weekday = weekdayNameToCronNumber(weekdayName);
-
+     */
+    isValidDay(day, weekday) {
         // POSIX DOM/DOW semantics: when both day and weekday are restricted (not wildcards),
         // the job should run if EITHER the day OR the weekday matches
         if (this.isDomDowRestricted) {
@@ -128,12 +125,14 @@ class CronExpressionClass {
 
                 /** @type {number[]} */
                 const validDays = [];
-                const ONE_DAY = fromObject({ days: 1 });
-                const startDate = dateTimeFromObject({ year, month, day: 1, hour: 0, minute: 0, second: 0 });
-                for (let date = startDate; date.month === month; date = date.advance(ONE_DAY)) {
-                    if (this.isValidDay(date.day, date.weekday)) {
-                        validDays.push(date.day);
+                const startWeekdayName = dateTimeFromObject({ year, month, day: 1 }).weekday;
+                const startWeekday = weekdayNameToCronNumber(startWeekdayName);
+                let weekday = startWeekday;
+                for (let day = 1; day <= 31; day++) {
+                    if (this.isValidDay(day, weekday)) {
+                        validDays.push(day);
                     }
+                    weekday = 1 + ((weekday + 1) % 7);
                 }
                 return validDays;
             };
