@@ -16,17 +16,12 @@ function matchesCronExpression(cronExpr, dateTime) {
     const minute = dateTime.minute;
 
     // Check minute, hour, and month constraints (these are always AND)
-    const basicMatch = (
+    return (
         cronExpr.minute[minute] === true &&
         cronExpr.hour[hour] === true &&
-        cronExpr.month[month] === true
+        cronExpr.month[month] === true &&
+        cronExpr.isValidDay(day, dateTime.weekday)
     );
-
-    if (!basicMatch) {
-        return false;
-    }
-
-    return cronExpr.isValidDay(day, dateTime.weekday);
 }
 
 module.exports = {
