@@ -529,7 +529,7 @@ describe("scheduler calculator edge cases", () => {
         await capabilities.scheduler.stop();
     });
 
-    test.failing("should treat DOM and DOW with OR semantics (not AND): 0 9 1 * 1", async () => {
+    test("should treat DOM and DOW with OR semantics (not AND): 0 9 1 * 1", async () => {
         const capabilities = getTestCapabilities();
         const timeControl = getDatetimeControl(capabilities);
         const schedulerControl = getSchedulerControl(capabilities);
@@ -570,7 +570,7 @@ describe("scheduler calculator edge cases", () => {
         await capabilities.scheduler.stop();
     });
 
-    test.failing("should not fire when hour is invalid even if minute matches (15 10 * * *)", async () => {
+    test("should not fire when hour is invalid even if minute matches (15 10 * * *)", async () => {
         const capabilities = getTestCapabilities();
         const timeControl = getDatetimeControl(capabilities);
         const schedulerControl = getSchedulerControl(capabilities);
@@ -688,7 +688,7 @@ describe("scheduler calculator edge cases", () => {
         await capabilities.scheduler.stop();
     });
 
-    test.failing("OR semantics: should fire on DOM=1 even if DOW mismatches; and on DOW match independently", async () => {
+    test("OR semantics: should fire on DOM=1 even if DOW mismatches; and on DOW match independently", async () => {
         const capabilities = getTestCapabilities();
         const timeControl = getDatetimeControl(capabilities);
         const schedulerControl = getSchedulerControl(capabilities);
@@ -721,7 +721,7 @@ describe("scheduler calculator edge cases", () => {
     });
 
     // 2) Hour validity after minute change without carry (next)
-    test.failing("Hour validity: should not fire when hour is invalid even if minute matches", async () => {
+    test("Hour validity: should not fire when hour is invalid even if minute matches", async () => {
         const capabilities = getTestCapabilities();
         const timeControl = getDatetimeControl(capabilities);
         const schedulerControl = getSchedulerControl(capabilities);
@@ -1135,7 +1135,7 @@ describe("scheduler calculator edge cases", () => {
     });
 
     // 17) Combined specific DOM & DOW (OR): 13th and Mondays at 12:00
-    test.failing("Combined DOM=13 and DOW=Mon should fire on 13th and on Mondays (OR)", async () => {
+    test("Combined DOM=13 and DOW=Mon should fire on 13th and on Mondays (OR)", async () => {
         const capabilities = getTestCapabilities();
         const timeControl = getDatetimeControl(capabilities);
         const schedulerControl = getSchedulerControl(capabilities);

@@ -159,6 +159,93 @@ function prevDateSatisfyingWeekdayConstraint(year, month, day, weekdaySet, month
     return null;
 }
 
+/**
+ * Finds the next date that satisfies DOM/DOW OR constraints.
+ * When both DOM and DOW are restricted, finds the next date that satisfies EITHER constraint.
+ * @param {number} year - Starting year
+ * @param {number} month - Starting month (1-12)
+ * @param {number} day - Starting day
+ * @param {number[]} weekdaySet - Valid weekdays from cron expression
+ * @param {number[]} monthSet - Valid months from cron expression
+ * @param {number[]} daySet - Valid days from cron expression
+ * @param {boolean} useOrLogic - Whether to use OR logic (true) or AND logic (false)
+ * @returns {{year: number, month: number, day: number}|null}
+ */
+function nextDateSatisfyingDomDowConstraints(year, month, day, weekdaySet, monthSet, daySet, useOrLogic = false) {
+    // First check if the current date already satisfies the constraints (offset=0)
+    // Then try up to 400 days to find a valid date
+    for (let offset = 0; offset < 400; offset++) {
+        const candidateDate = addDays(year, month, day, offset);
+        const candidateWeekday = getWeekday(candidateDate.year, candidateDate.month, candidateDate.day);
+        
+        // Must always satisfy month constraint
+        if (!monthSet.includes(candidateDate.month)) {
+            continue;
+        }
+
+        const validDays = validDaysInMonth(candidateDate.month, candidateDate.year, daySet);
+        const domMatches = validDays.includes(candidateDate.day);
+        const dowMatches = weekdaySet.includes(candidateWeekday);
+        
+        if (useOrLogic) {
+            // OR logic: either DOM or DOW must match
+            if (domMatches || dowMatches) {
+                return candidateDate;
+            }
+        } else {
+            // AND logic: both DOM and DOW must match  
+            if (domMatches && dowMatches) {
+                return candidateDate;
+            }
+        }
+    }
+    
+    return null;
+}
+
+/**
+ * Finds the previous date that satisfies DOM/DOW OR constraints.
+ * When both DOM and DOW are restricted, finds the previous date that satisfies EITHER constraint.
+ * @param {number} year - Starting year
+ * @param {number} month - Starting month (1-12)
+ * @param {number} day - Starting day
+ * @param {number[]} weekdaySet - Valid weekdays from cron expression
+ * @param {number[]} monthSet - Valid months from cron expression
+ * @param {number[]} daySet - Valid days from cron expression
+ * @param {boolean} useOrLogic - Whether to use OR logic (true) or AND logic (false)
+ * @returns {{year: number, month: number, day: number}|null}
+ */
+function prevDateSatisfyingDomDowConstraints(year, month, day, weekdaySet, monthSet, daySet, useOrLogic = false) {
+    // Try up to 400 days (over a year) to find a valid date
+    for (let offset = 0; offset < 400; offset++) {
+        const candidateDate = subtractDays(year, month, day, offset);
+        const candidateWeekday = getWeekday(candidateDate.year, candidateDate.month, candidateDate.day);
+        
+        // Must always satisfy month constraint
+        if (!monthSet.includes(candidateDate.month)) {
+            continue;
+        }
+
+        const validDays = validDaysInMonth(candidateDate.month, candidateDate.year, daySet);
+        const domMatches = validDays.includes(candidateDate.day);
+        const dowMatches = weekdaySet.includes(candidateWeekday);
+        
+        if (useOrLogic) {
+            // OR logic: either DOM or DOW must match
+            if (domMatches || dowMatches) {
+                return candidateDate;
+            }
+        } else {
+            // AND logic: both DOM and DOW must match  
+            if (domMatches && dowMatches) {
+                return candidateDate;
+            }
+        }
+    }
+    
+    return null;
+}
+
 module.exports = {
     daysInMonth,
     isLeapYear,
@@ -169,4 +256,6 @@ module.exports = {
     subtractDays,
     nextDateSatisfyingWeekdayConstraint,
     prevDateSatisfyingWeekdayConstraint,
+    nextDateSatisfyingDomDowConstraints,
+    prevDateSatisfyingDomDowConstraints,
 };

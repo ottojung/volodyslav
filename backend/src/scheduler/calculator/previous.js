@@ -5,13 +5,16 @@
 const {
     prevInSetWithUnderflow,
     maxInSet,
+    minInSet,
     isValidInSet
 } = require("./field_math");
 
 const {
     validDaysInMonth,
     prevDateSatisfyingWeekdayConstraint,
-    getWeekday
+    prevDateSatisfyingDomDowConstraints,
+    getWeekday,
+    dateTimeWeekdayToCronNumber
 } = require("./date_helpers");
 
 const { fromLuxon } = require("../../datetime/structure");
@@ -55,8 +58,21 @@ function getMostRecentExecution(cronExpr, fromDateTime) {
 
         // Check if the current time already matches the cron expression
         if (matchesCronExpression(cronExpr, startDateTime)) {
-            // Current time matches - return it as the "most recent" execution
-            return startDateTime;
+            // Special case: If we're at the beginning of a multi-value hour range,
+            // use exclusive semantics to enable "ripple back" across days
+            // This is needed for patterns like "*/30 8-9 * * *" where from 08:00,
+            // we want the previous 09:30, not the current 08:00
+            const isHourRestricted = cronExpr.hour.length < 24 && cronExpr.hour.length > 1;
+            const isAtBeginningOfHourRange = isHourRestricted && startDateTime.hour === minInSet(cronExpr.hour);
+            const isMinuteAtBeginning = startDateTime.minute === minInSet(cronExpr.minute);
+            
+            if (isAtBeginningOfHourRange && isMinuteAtBeginning) {
+                // At beginning of multi-value hour range - use exclusive semantics
+                // Continue to find actual previous execution
+            } else {
+                // Normal case - return current time (inclusive)
+                return startDateTime;
+            }
         }
 
         // Current time doesn't match, find the actual previous execution
@@ -72,8 +88,9 @@ function getMostRecentExecution(cronExpr, fromDateTime) {
         minute = minuteResult.value;
         let underflow = minuteResult.underflowed;
 
-        // Step 2: Calculate previous hour (if underflow from minute)
-        if (underflow) {
+        // Step 2: Calculate previous hour (always check hour constraints)
+        if (underflow || !isValidInSet(hour, cronExpr.hour)) {
+            // Either carried from minute, or current hour violates hour constraints
             const hourResult = prevInSetWithUnderflow(hour, cronExpr.hour);
             hour = hourResult.value;
             underflow = hourResult.underflowed;
@@ -129,8 +146,34 @@ function getMostRecentExecution(cronExpr, fromDateTime) {
             minute = maxInSet(cronExpr.minute);
         }
 
-        // Step 5: Apply weekday constraints only if weekday constraint exists
-        if (cronExpr.weekday.length < 7) { // Not all weekdays are allowed
+        // Step 5: Apply DOM/DOW OR semantics for date constraints
+        const isDayRestricted = cronExpr.day.length < 31; // Not all days 1-31
+        const isWeekdayRestricted = cronExpr.weekday.length < 7; // Not all weekdays 0-6
+
+        if (isDayRestricted && isWeekdayRestricted) {
+            // Both DOM and DOW are restricted - use OR logic
+            const constraintResult = prevDateSatisfyingDomDowConstraints(
+                year, month, day,
+                cronExpr.weekday,
+                cronExpr.month,
+                cronExpr.day,
+                true // use OR logic
+            );
+
+            if (constraintResult) {
+                year = constraintResult.year;
+                month = constraintResult.month;
+                day = constraintResult.day;
+                hour = maxInSet(cronExpr.hour);
+                minute = maxInSet(cronExpr.minute);
+            } else {
+                throw new CronCalculationError(
+                    "Could not satisfy DOM/DOW OR constraints",
+                    cronExpr.original
+                );
+            }
+        } else if (isWeekdayRestricted) {
+            // Only weekday is restricted, DOM is wildcard
             const candidateWeekday = getWeekday(year, month, day);
             if (!isValidInSet(candidateWeekday, cronExpr.weekday)) {
                 const constraintResult = prevDateSatisfyingWeekdayConstraint(
@@ -147,7 +190,6 @@ function getMostRecentExecution(cronExpr, fromDateTime) {
                     hour = maxInSet(cronExpr.hour);
                     minute = maxInSet(cronExpr.minute);
                 } else {
-                    // Could not satisfy constraints - return null
                     throw new CronCalculationError(
                         "Could not satisfy weekday constraints",
                         cronExpr.original
@@ -155,6 +197,7 @@ function getMostRecentExecution(cronExpr, fromDateTime) {
                 }
             }
         }
+        // If only DOM is restricted or both are wildcards, current calculation is valid
 
         // Create the result DateTime using Luxon and convert to our DateTime structure
         const luxonDateTime = startDateTime._luxonDateTime.set({
@@ -175,20 +218,6 @@ function getMostRecentExecution(cronExpr, fromDateTime) {
                 "Calculated previous execution is after the reference time",
                 cronExpr.original
             );
-        }
-
-        // For day-constrained crons, only return executions from the same day
-        // This prevents returning yesterday's executions when today doesn't match the cron
-        if (cronExpr.day.length < 31) { // Day constraint exists (not all days allowed)
-            if (resultDateTime.day !== fromDateTime.day ||
-                resultDateTime.month !== fromDateTime.month ||
-                resultDateTime.year !== fromDateTime.year) {
-                // Previous execution is from a different day, don't consider it "recent"
-                throw new CronCalculationError(
-                    "Previous execution falls on a different day",
-                    cronExpr.original
-                );
-            }
         }
 
         return resultDateTime;
