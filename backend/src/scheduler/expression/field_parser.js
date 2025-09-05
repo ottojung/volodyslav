@@ -49,29 +49,21 @@ const FIELD_CONFIGS = {
  * Parses a single cron field value.
  * @param {string} value - The field value to parse
  * @param {FieldConfig} config - Field configuration
- * @returns {boolean[]} A mask of valid values for this field
+ * @returns {number[]} Array of valid values for this field
  * @throws {FieldParseError} If the field value is invalid
  */
 function parseField(value, config) {
-    const result = Array.from({ length: config.max - config.min + 1 }, () => false);
     if (value === "*") {
-        for (let i = 0; i < result.length; i++) {
-            result[i] = true;
-        }
-        return result;
+        return Array.from({ length: config.max - config.min + 1 }, (_, i) => config.min + i);
     }
 
     if (value.includes(",")) {
         const parts = value.split(",");
         const result = [];
         for (const part of parts) {
-            const field = parseField(part.trim(), config);
-            field.forEach((isValid, index) => {
-                if (isValid) {
-                    result[index] = true;
-                }
-            });
+            result.push(...parseField(part.trim(), config));
         }
+        return [...new Set(result)].sort((a, b) => a - b);
     }
 
     if (value.includes("/")) {
@@ -90,10 +82,11 @@ function parseField(value, config) {
         }
 
         const baseValues = parseField(range, config);
+        const result = [];
         for (let i = 0; i < baseValues.length; i += stepNum) {
             const val = baseValues[i];
-            if (val) {
-                result[i] = true;
+            if (val !== undefined) {
+                result.push(val);
             }
         }
         return result;
@@ -128,11 +121,8 @@ function parseField(value, config) {
             throw new FieldParseError(`invalid range (start > end)`, value, config.name);
         }
 
-        for (let i = startNum; i <= endNum; i++) {
-            result[i - config.min] = true;
-        }
-        return result;
-    }       
+        return Array.from({ length: endNum - startNum + 1 }, (_, i) => startNum + i);
+    }
 
     const num = parseInt(value, 10);
     if (isNaN(num)) {
@@ -143,8 +133,7 @@ function parseField(value, config) {
         throw new FieldParseError(`out of range (${config.min}-${config.max})`, value, config.name);
     }
 
-    result[num] = true;
-    return result;
+    return [num];
 }
 
 module.exports = {
