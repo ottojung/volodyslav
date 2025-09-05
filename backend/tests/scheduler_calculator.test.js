@@ -304,6 +304,26 @@ describe("DOM/DOW OR nuances", () => {
         expect(next("0 12 3 * *", "2025-01-01T10:00:00.000Z")).toBe("2025-01-03T12:00:00.000Z");
     });
 
+    test("one is full: DOW=1-6, DOM restricted -> do not ignore DOW", () => {
+        expect(next("0 12 3 * 1-6", "2025-01-01T10:00:00.000Z")).toBe("2025-01-01T12:00:00.000Z");
+    });
+
+    test("DOW restricted, DOM=*", () => {
+        expect(next("0 12 * * 1", "2025-01-01T10:00:00.000Z")).toBe("2025-01-06T12:00:00.000Z");
+    });
+
+    test("DOW restricted 2, DOM=*", () => {
+        expect(next("0 12 * * 2", "2025-01-01T10:00:00.000Z")).toBe("2025-01-07T12:00:00.000Z");
+    });
+
+    test("DOW restricted, DOM is full", () => {
+        expect(next("0 12 1-31 * 1", "2025-01-01T10:00:00.000Z")).toBe("2025-01-01T12:00:00.000Z");
+    });
+
+    test("DOW restricted 2, DOM is full", () => {
+        expect(next("0 12 1-31 * 2", "2025-01-01T10:00:00.000Z")).toBe("2025-01-01T12:00:00.000Z");
+    });
+
     test("Sunday mapping (0): next Sunday from Sunday at boundary -> next week", () => {
         expect(next("0 0 * * 0", "2025-01-05T00:00:00.000Z")).toBe("2025-01-12T00:00:00.000Z");
     });
