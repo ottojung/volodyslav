@@ -18,7 +18,7 @@ function getNextExecution(cronExpr, origin) {
 
     let dayCount = 0;
 
-    // eslint-disable-next-line no-constant-condition    
+    // eslint-disable-next-line no-constant-condition
     while (true) {
         let validDays = cronExpr.validDays(year, month);
         if (dayCount === 0) {
@@ -26,16 +26,41 @@ function getNextExecution(cronExpr, origin) {
         }
 
         for (const day of validDays) {
-            let hour = cronExpr.validHours[0];
-            let minute = cronExpr.validMinutes[0];
-            if (dayCount === 0) {
-                dayCount++;
-                hour = cronExpr.validHours.filter(h => h >= origin.hour)[0];
-                minute = cronExpr.validMinutes.filter(m => m > origin.minute)[0];
-                if (hour === undefined || minute === undefined) {
-                    continue;
+            const getTime = () => {
+                if (dayCount === 0) {
+                    const hour = cronExpr.validHours.filter(h => h >= origin.hour)[0];
+                    if (hour === undefined) {
+                        return null;
+                    }
+
+                    const minute = hour === origin.hour
+                        ? cronExpr.validMinutes.filter(m => m > origin.minute)[0]
+                        : cronExpr.validMinutes[0];
+                    if (minute === undefined) {
+                        const hour = cronExpr.validHours.filter(h => h > origin.hour)[0];
+                        if (hour === undefined) {
+                            return null;
+                        }
+                        const minute = cronExpr.validMinutes[0];
+                        if (minute === undefined) {
+                            return null;
+                        }
+                        return { hour, minute };
+                    }
+
+                    return { hour, minute };
+                } else {
+                    return { hour: cronExpr.validHours[0], minute: cronExpr.validMinutes[0] };
                 }
+            };
+
+            const time = getTime();
+            dayCount++;
+            if (time === null) {
+                continue;
             }
+
+            const { hour, minute } = time;
 
             const candidate = dateTimeFromObject({
                 year,
