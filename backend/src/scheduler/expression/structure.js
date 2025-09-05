@@ -128,10 +128,12 @@ class CronExpressionClass {
                 const startWeekdayName = dateTimeFromObject({ year, month, day: 1 }).weekday;
                 const startWeekday = weekdayNameToCronNumber(startWeekdayName);
                 let weekday = startWeekday;
-                for (let day = 1; day <= 31; day++) {
+                let day = 1;
+                while (day <= 31) {
                     if (this.isValidDay(day, weekday)) {
                         validDays.push(day);
                     }
+                    day = day + 1;
                     weekday = 1 + ((weekday + 1) % 7);
                 }
                 return validDays;
