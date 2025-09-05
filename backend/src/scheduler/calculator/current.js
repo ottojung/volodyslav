@@ -31,7 +31,7 @@ function matchesCronExpression(cronExpr, dateTime) {
     // Convert weekday name (string) to cron number (1-6) for comparison
     const weekday = weekdayNameToCronNumber(dateTime.weekday);
 
-    // DOM/DOW OR semantics: when both day and weekday are restricted (not wildcards),
+    // POSIX DOM/DOW semantics: when both day and weekday are restricted (not wildcards),
     // the job should run if EITHER the day OR the weekday matches
     if (cronExpr.isDomDowRestricted) {
         // Both are restricted (not wildcards) - use OR logic
