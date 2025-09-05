@@ -2,7 +2,7 @@
  * Cron expression matching using boolean mask lookups.
  */
 
-const { dateTimeWeekdayToCronNumber } = require("./date_helpers");
+const { weekdayNameToCronNumber } = require("../../datetime");
 
 /**
  * Checks if a given datetime matches the cron expression.
@@ -27,9 +27,9 @@ function matchesCronExpression(cronExpr, dateTime) {
     if (!basicMatch) {
         return false;
     }
-    
+
     // Convert weekday name (from DateTime) to cron number for comparison
-    const weekday = dateTimeWeekdayToCronNumber(dateTime);
+    const weekday = weekdayNameToCronNumber(dateTime.weekday);
 
     // DOM/DOW OR semantics: when both day and weekday are restricted (not wildcards),
     // the job should run if EITHER the day OR the weekday matches
