@@ -33,26 +33,7 @@ function matchesCronExpression(cronExpr, dateTime) {
 
     // DOM/DOW OR semantics: when both day and weekday are restricted (not wildcards),
     // the job should run if EITHER the day OR the weekday matches
-    
-    // Check if day field is wildcard (all days 1-31 are true)
-    let isDayWildcard = true;
-    for (let i = 1; i <= 31; i++) {
-        if (!cronExpr.day[i]) {
-            isDayWildcard = false;
-            break;
-        }
-    }
-    
-    // Check if weekday field is wildcard (all weekdays 0-6 are true)
-    let isWeekdayWildcard = true;
-    for (let i = 0; i <= 6; i++) {
-        if (!cronExpr.weekday[i]) {
-            isWeekdayWildcard = false;
-            break;
-        }
-    }
-
-    if (!isDayWildcard && !isWeekdayWildcard) {
+    if (!cronExpr.isDayWildcard && !cronExpr.isWeekdayWildcard) {
         // Both are restricted (not wildcards) - use OR logic
         return cronExpr.day[day] === true || cronExpr.weekday[weekday] === true;
     } else {
