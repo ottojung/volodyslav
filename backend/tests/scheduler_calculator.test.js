@@ -240,8 +240,8 @@ describe("Seconds/millis alignment", () => {
         expect(next("*/15 * * * *", "2025-01-14T10:15:00.001Z")).toBe("2025-01-14T10:30:00.000Z");
     });
 
-    test("prev: non-zero seconds do not round down to current tick when within the minute", () => {
-        expect(prev("*/15 * * * *", "2025-01-14T10:15:59.999Z")).toBe("2025-01-14T10:00:00.000Z");
+    test("prev: non-zero seconds round down to current tick when within the minute", () => {
+        expect(prev("*/15 * * * *", "2025-01-14T10:15:59.999Z")).toBe("2025-01-14T10:15:00.000Z");
     });
 });
 
@@ -327,12 +327,12 @@ describe("DOM and calendar validity", () => {
         expect(next("0 0 30 * *", "2025-02-01T00:00:00.000Z")).toBe("2025-03-30T00:00:00.000Z");
     });
 
-    test("DOM step */2 next over month boundary (odd -> even): from Jan 31 -> Feb 2", () => {
-        expect(next("0 0 */2 * *", "2025-01-31T23:59:59.999Z")).toBe("2025-02-02T00:00:00.000Z");
+    test("DOM step */2 next over month boundary (odd -> even): from Jan 31 -> Feb 1", () => {
+        expect(next("0 0 */2 * *", "2025-01-31T23:59:59.999Z")).toBe("2025-02-01T00:00:00.000Z");
     });
 
-    test("DOM step */2 prev to last even DOM of Feb 2025 (28)", () => {
-        expect(prev("0 0 */2 * *", "2025-03-01T00:00:00.000Z")).toBe("2025-02-28T00:00:00.000Z");
+    test("DOM step */2 prev to last even DOM of Feb 2025 (27)", () => {
+        expect(prev("0 0 */2 * *", "2025-03-01T00:00:00.000Z")).toBe("2025-02-27T00:00:00.000Z");
     });
 });
 
