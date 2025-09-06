@@ -65,6 +65,10 @@ describe("getNextExecution", () => {
         expect(next("0 0 31 * *", "2025-04-01T00:00:00.000Z")).toBe("2025-05-31T00:00:00.000Z");
     });
 
+    test("DOM=25 should not skip months", () => {
+        expect(next("0 0 25 * *", "2025-04-01T00:00:00.000Z")).toBe("2025-04-25T00:00:00.000Z");
+    });
+
     test("leap day: next Feb 29 should be 2028 if starting in 2025", () => {
         expect(next("0 0 29 2 *", "2025-02-01T00:00:00.000Z")).toBe("2028-02-29T00:00:00.000Z");
     });
