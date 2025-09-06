@@ -46,6 +46,36 @@ const FIELD_CONFIGS = {
 };
 
 /**
+ * Validates that a field value is POSIX compliant.
+ * Rejects non-POSIX extensions like names, macros, and Quartz tokens.
+ * @param {string} value - The field value to validate
+ * @param {FieldConfig} config - Field configuration
+ * @throws {FieldParseError} If the field value contains non-POSIX extensions
+ */
+function validatePosixCompliance(value, config) {
+    // Reject macro syntax (@hourly, @reboot, etc.)
+    if (value.startsWith("@")) {
+        throw new FieldParseError(`macro syntax not supported (POSIX violation) "${value}"`, value, config.name);
+    }
+    
+    // Reject Quartz tokens (?, L, W, #)
+    const quartz_tokens = ["?", "L", "W", "#"];
+    for (const token of quartz_tokens) {
+        if (value.includes(token)) {
+            throw new FieldParseError(`Quartz token '${token}' not supported (POSIX violation) "${value}"`, value, config.name);
+        }
+    }
+    
+    // Reject names (mon, jan, etc.) - detect alphabetic characters
+    // Allow digits, decimal points, scientific notation, wildcards (*), ranges (-), commas (,), and whitespace
+    // This allows parseInt to handle decimal/scientific notation naturally while rejecting named tokens
+    const allowedPattern = /^[\d\s,*.\-eE+]+$/;
+    if (!allowedPattern.test(value)) {
+        throw new FieldParseError(`names not supported, use numbers only (POSIX violation) "${value}"`, value, config.name);
+    }
+}
+
+/**
  * Parses a single cron field value.
  * @param {string} value - The field value to parse
  * @param {FieldConfig} config - Field configuration
@@ -82,8 +112,11 @@ function parseField(value, config) {
     }
 
     if (value.includes("/")) {
-        throw new FieldParseError(`slash syntax not supported "${value}"`, value, config.name);
+        throw new FieldParseError(`slash syntax not supported (POSIX violation) "${value}"`, value, config.name);
     }
+
+    // POSIX compliance validation - reject non-POSIX extensions after checking for slashes
+    validatePosixCompliance(value, config);
 
     if (value.includes("-")) {
         const parts = value.split("-");
@@ -111,7 +144,7 @@ function parseField(value, config) {
         }
 
         if (startNum > endNum) {
-            throw new FieldParseError(`invalid range (start > end)`, value, config.name);
+            throw new FieldParseError(`wrap-around ranges not supported (POSIX violation) "${value}"`, value, config.name);
         }
 
         const mask = new Array(maskLength).fill(false);
