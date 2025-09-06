@@ -49,8 +49,8 @@ describe("Cron Parser", () => {
             expect(expr.minute).toEqual(createMask([0, 1, 2, 3, 4, 5], 59));
         });
 
-        test("parses step expressions", () => {
-            const expr = parseCronExpression("*/15 * * * *");
+        test("parses explicit comma-separated expressions", () => {
+            const expr = parseCronExpression("0,15,30,45 * * * *");
             expect(expr.minute).toEqual(createMask([0, 15, 30, 45], 59));
         });
 

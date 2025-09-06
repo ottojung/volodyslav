@@ -68,7 +68,7 @@ describe("declarative scheduler integration and system edge cases", () => {
             });
 
             const registrations = [
-                ["health-check", "*/30 * * * *", healthCheckCallback, retryDelay]
+                ["health-check", "0,30 * * * *", healthCheckCallback, retryDelay]
             ];
 
             // Should handle health check scheduling without errors

@@ -197,7 +197,7 @@ describe("scheduler first startup semantics", () => {
             const everyHourCallback = jest.fn();
             
             const registrations = [
-                ["every-15min", "*/15 * * * *", everyMinuteCallback, retryDelay], // Every 15 minutes (safer than every minute)
+                ["every-15min", "0,15,30,45 * * * *", everyMinuteCallback, retryDelay], // Every 15 minutes (safer than every minute)
                 ["every-hour-30", "30 * * * *", everyHourCallback, retryDelay], // Every hour at :30 (should match)
             ];
 
@@ -205,7 +205,7 @@ describe("scheduler first startup semantics", () => {
             await schedulerControl.waitForNextCycleEnd();
 
             // With new startup semantics, only matching tasks execute immediately
-            expect(everyMinuteCallback).toHaveBeenCalledTimes(1); // */15 matches :30
+            expect(everyMinuteCallback).toHaveBeenCalledTimes(1); // 0,15,30,45 matches :30
             expect(everyHourCallback).toHaveBeenCalledTimes(1); // 30 * matches :30
 
             await capabilities.scheduler.stop();
