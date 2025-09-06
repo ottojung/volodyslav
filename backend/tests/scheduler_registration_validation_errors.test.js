@@ -158,7 +158,7 @@ describe("scheduler registration validation error handling", () => {
                 "* * 0 * *", // Out of range day
                 "* * * 0 *", // Out of range month
                 "* * * * 7", // Out of range weekday
-                "*/0 * * * *", // Invalid step
+                "*/0 * * * *", // Slash syntax (now invalid)
                 "1-0 * * * *", // Invalid range
             ];
 

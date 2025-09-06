@@ -104,32 +104,20 @@ describe("scheduler cron field parser edge cases", () => {
         });
     });
 
-    describe("step parsing edge cases", () => {
-        test("should parse valid step expressions", () => {
-            expect(parseField("*/5", FIELD_CONFIGS.minute)).toEqual(createMask([0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55], 59));
-            expect(parseField("0-10/2", FIELD_CONFIGS.minute)).toEqual(createMask([0, 2, 4, 6, 8, 10], 59));
-            expect(parseField("1-7/3", FIELD_CONFIGS.day)).toEqual(createMask([1, 4, 7], 31));
-        });
-
-        test("should throw FieldParseError for invalid step formats", () => {
+    describe("slash syntax rejection", () => {
+        test("should throw FieldParseError for all slash syntax", () => {
+            expect(() => parseField("*/5", FIELD_CONFIGS.minute)).toThrow();
+            expect(() => parseField("0-10/2", FIELD_CONFIGS.minute)).toThrow();
+            expect(() => parseField("1-7/3", FIELD_CONFIGS.day)).toThrow();
             expect(() => parseField("/5", FIELD_CONFIGS.minute)).toThrow();
             expect(() => parseField("*//5", FIELD_CONFIGS.minute)).toThrow();
             expect(() => parseField("*/", FIELD_CONFIGS.minute)).toThrow();
             expect(() => parseField("*//", FIELD_CONFIGS.minute)).toThrow();
             expect(() => parseField("1/2/3", FIELD_CONFIGS.minute)).toThrow();
-        });
-
-        test("should throw FieldParseError for invalid step values", () => {
             expect(() => parseField("*/0", FIELD_CONFIGS.minute)).toThrow();
             expect(() => parseField("*/-1", FIELD_CONFIGS.minute)).toThrow();
             expect(() => parseField("*/abc", FIELD_CONFIGS.minute)).toThrow();
-            // Note: parseInt("1.5") = 1, so this doesn't throw but creates step of 1
-        });
-
-        test("should handle step values larger than range", () => {
-            // This should work but return fewer values
-            const result = parseField("0-5/10", FIELD_CONFIGS.minute);
-            expect(result).toEqual(createMask([0], 59)); // Only first value since step is larger than range
+            expect(() => parseField("0-5/10", FIELD_CONFIGS.minute)).toThrow();
         });
     });
 
@@ -147,8 +135,8 @@ describe("scheduler cron field parser edge cases", () => {
 
         test("should handle mixed expressions in comma-separated lists", () => {
             expect(parseField("1,3-5,10", FIELD_CONFIGS.minute)).toEqual(createMask([1, 3, 4, 5, 10], 59));
-            expect(parseField("0,*/30", FIELD_CONFIGS.minute)).toEqual(createMask([0, 30], 59));
-            expect(parseField("1-3,*/20,45", FIELD_CONFIGS.minute)).toEqual(createMask([0, 1, 2, 3, 20, 40, 45], 59));
+            expect(parseField("0,30", FIELD_CONFIGS.minute)).toEqual(createMask([0, 30], 59));
+            expect(parseField("1-3,0,20,40,45", FIELD_CONFIGS.minute)).toEqual(createMask([0, 1, 2, 3, 20, 40, 45], 59));
         });
 
         test("should handle whitespace in comma-separated lists", () => {
@@ -216,9 +204,9 @@ describe("scheduler cron field parser edge cases", () => {
             expect(() => parseField("5-3", FIELD_CONFIGS.minute))
                 .toThrow(/invalid range/);
 
-            // Test invalid step
+            // Test invalid step - now expects slash syntax rejection message
             expect(() => parseField("*/0", FIELD_CONFIGS.minute))
-                .toThrow(/invalid step value/);
+                .toThrow(/slash syntax not supported/);
         });
     });
 
