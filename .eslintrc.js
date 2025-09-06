@@ -16,6 +16,14 @@ module.exports = {
     },
     settings: {
         react: { version: "detect" },
+        "import/resolver": {
+            "node": {
+                "extensions": [".js", ".jsx", ".ts", ".tsx"]
+            }
+        },
+        "import/ignore": [
+            "virtual:"
+        ]
     },
     plugins: ["@typescript-eslint", "volodyslav"],
     extends: [
@@ -48,6 +56,28 @@ module.exports = {
 
         // Disable prop-types validation since we use TypeScript
         "react/prop-types": "off",
+
+        // Ban directive comments that silence ESLint warnings
+        "no-warning-comments": [
+            "error",
+            {
+                "terms": [
+                    "eslint-disable",
+                    "eslint-disable-next-line",
+                    "eslint-disable-line",
+                    "eslint-enable"
+                ],
+                "location": "anywhere"
+            }
+        ],
+
+        // Allow virtual imports from Vite plugins
+        "import/no-unresolved": [
+            "error",
+            {
+                "ignore": ["^virtual:"]
+            }
+        ],
     },
     ignorePatterns: ["dist/", "node_modules/", "coverage/", "docs/build/", "tools/eslint-plugin-volodyslav"],
 };
