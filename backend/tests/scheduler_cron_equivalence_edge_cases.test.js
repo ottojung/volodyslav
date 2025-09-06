@@ -208,9 +208,8 @@ describe("scheduler cron expression equivalence edge cases", () => {
             const cron1 = parseCronExpression("* * * * *");
             const cron2 = parseCronExpression("0-59 0-23 1-31 1-12 0-6");
 
-            // These should be equivalent but the current implementation might not detect it
-            // since it compares parsed arrays directly
-            expect(cron1.equivalent(cron2)).toBe(true);
+            // These should not be equivalent because wildcards enable different DOM/DOW interactions.
+            expect(cron1.equivalent(cron2)).toBe(false);
         });
 
         test("should handle single-element ranges", () => {
