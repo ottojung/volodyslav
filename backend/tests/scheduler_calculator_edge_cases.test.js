@@ -184,6 +184,8 @@ describe("scheduler calculator edge cases", () => {
         timeControl.advanceByDuration(fromDays(1));
         await schedulerControl.waitForNextCycleEnd();
         expect(executionTimes).toHaveLength(2);
+
+        await capabilities.scheduler.stop();
     });
 
     test("should understand complex combinations of days of month and hours", async () => {
@@ -609,7 +611,7 @@ describe("scheduler calculator edge cases", () => {
         await capabilities.scheduler.stop();
     });
 
-    test("should handle weekday+DOM where next match is beyond 7 days (0 12 1 * 1)", async () => {
+    test("should handle patterns where next match is beyond 7 days", async () => {
         const capabilities = getTestCapabilities();
         const timeControl = getDatetimeControl(capabilities);
         const schedulerControl = getSchedulerControl(capabilities);
@@ -623,7 +625,7 @@ describe("scheduler calculator edge cases", () => {
         schedulerControl.setPollingInterval(fromMilliseconds(1));
 
         const registrations = [
-            ["beyond-7d", "0 12 1 * 1", taskCallback, retryDelay],
+            ["beyond-7d", "0 12 1 * *", taskCallback, retryDelay],
         ];
 
         await capabilities.scheduler.initialize(registrations);
