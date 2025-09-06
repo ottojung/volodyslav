@@ -3,26 +3,85 @@
  */
 
 const { matchesCronExpression } = require("./current");
-const { fromObject } = require("../../datetime");
-
-const ONE_MINUTE = fromObject({ minutes: 1 });
+const { dateTimeFromObject } = require("../../datetime");
+const { iterateValidDaysBackwards } = require("../expression/structure");
 
 /**
  * Calculates the previous execution time for a cron expression.
  * Note: it is inclusive. I.e. if `fromDateTime` matches the cron expression,
  * it will be returned as the previous execution time.
  * @param {import('../expression').CronExpression} cronExpr - Parsed cron expression
- * @param {import('../../datetime').DateTime} fromDateTime - DateTime to calculate from
+ * @param {import('../../datetime').DateTime} origin - DateTime to calculate from
  * @returns {import('../../datetime').DateTime} Previous execution datetime, or null if none found
  */
-function getMostRecentExecution(cronExpr, fromDateTime) {
-    let current = fromDateTime.startOfMinute();
+function getMostRecentExecution(cronExpr, origin) {
+    for (const { year, month, day } of iterateValidDaysBackwards(cronExpr, origin)) {
+        const getTime = () => {
+            if (day === origin.day && year === origin.year && month === origin.month) {
+                const filteredHours = cronExpr.validHours.filter(h => h <= origin.hour);
+                const hour = filteredHours[filteredHours.length - 1];
+                if (hour === undefined) {
+                    return null;
+                }
 
-    while (!matchesCronExpression(cronExpr, current)) {
-        current = current.subtract(ONE_MINUTE);
+                const validMinutes = cronExpr.validMinutes;
+                const filteredMinutes = validMinutes.filter(m => m <= origin.minute);
+                const minute = hour === origin.hour
+                    ? filteredMinutes[0]
+                    : validMinutes[validMinutes.length - 1];
+                if (minute === undefined) {
+                    const filteredHours = cronExpr.validHours.filter(h => h < origin.hour);
+                    const hour = filteredHours[filteredHours.length - 1];
+                    if (hour === undefined) {
+                        return null;
+                    }
+                    const minute = validMinutes[validMinutes.length - 1];
+                    if (minute === undefined) {
+                        throw new Error("Internal error: no valid minutes in cron expression");
+                    }
+                    return { hour, minute };
+                }
+
+                return { hour, minute };
+            } else {
+                const validHours = cronExpr.validHours;
+                const hour = validHours[validHours.length - 1];
+                const validMinutes = cronExpr.validMinutes;
+                const minute = validMinutes[validMinutes.length - 1];
+                return { hour, minute };
+            }
+        };
+
+        const time = getTime();
+        if (time === null) {
+            continue;
+        }
+
+        const { hour, minute } = time;
+
+        const candidate = dateTimeFromObject({
+            year,
+            month,
+            day,
+            hour,
+            minute,
+            second: 0,
+            millisecond: 0,
+        }, {
+            zone: origin.zone ? origin.zone : undefined,
+        });
+
+        if (candidate.isValid === false) {
+            throw new Error(`Invalid candidate datetime: ${candidate}`);
+        }
+        if (matchesCronExpression(cronExpr, candidate)) {
+            return candidate;
+        } else {
+            throw new Error("Internal error: candidate does not match cron expression");
+        }
     }
 
-    return current;
+    throw new Error("No valid next execution time found");
 }
 
 module.exports = {

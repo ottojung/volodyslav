@@ -32,7 +32,7 @@ function getNextExecution(cronExpr, origin) {
                     }
                     const minute = cronExpr.validMinutes[0];
                     if (minute === undefined) {
-                        return null;
+                        throw new Error("Internal error: no valid minutes in cron expression");
                     }
                     return { hour, minute };
                 }
