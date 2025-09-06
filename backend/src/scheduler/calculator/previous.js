@@ -17,14 +17,15 @@ const { iterateValidDaysBackwards } = require("../expression/structure");
 function getMostRecentExecution(cronExpr, origin) {
     for (const { year, month, day } of iterateValidDaysBackwards(cronExpr, origin)) {
         const getTime = () => {
+            const validHours = cronExpr.validHours;
+            const validMinutes = cronExpr.validMinutes;
             if (day === origin.day && year === origin.year && month === origin.month) {
-                const filteredHours = cronExpr.validHours.filter(h => h <= origin.hour);
+                const filteredHours = validHours.filter(h => h <= origin.hour);
                 const hour = filteredHours[filteredHours.length - 1];
                 if (hour === undefined) {
                     return null;
                 }
 
-                const validMinutes = cronExpr.validMinutes;
                 const filteredMinutes = validMinutes.filter(m => m <= origin.minute);
                 const minute = hour === origin.hour
                     ? filteredMinutes[0]
@@ -44,9 +45,7 @@ function getMostRecentExecution(cronExpr, origin) {
 
                 return { hour, minute };
             } else {
-                const validHours = cronExpr.validHours;
                 const hour = validHours[validHours.length - 1];
-                const validMinutes = cronExpr.validMinutes;
                 const minute = validMinutes[validMinutes.length - 1];
                 return { hour, minute };
             }
