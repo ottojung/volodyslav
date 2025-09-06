@@ -227,18 +227,17 @@ describe("scheduler cron field parser edge cases", () => {
             expect(() => parseField(longString, FIELD_CONFIGS.minute)).toThrow();
         });
 
-        test("should handle decimal numbers (parseInt behavior)", () => {
-            // parseInt("1.5") returns 1, parseInt("1.0") returns 1
-            expect(parseField("1.5", FIELD_CONFIGS.minute)).toEqual(createMask([1], 59));
-            expect(parseField("1.0", FIELD_CONFIGS.minute)).toEqual(createMask([1], 59));
+        test("should reject decimal numbers", () => {
+            // Decimal numbers should be rejected rather than truncated
+            expect(() => parseField("1.5", FIELD_CONFIGS.minute)).toThrow();
+            expect(() => parseField("1.0", FIELD_CONFIGS.minute)).toThrow();
         });
 
-        test("should handle scientific notation (parseInt behavior)", () => {
-            // parseInt handles scientific notation by parsing the integer part
-            expect(parseField("1e10", FIELD_CONFIGS.minute)).toEqual(createMask([1], 59));
-            expect(parseField("2e5", FIELD_CONFIGS.minute)).toEqual(createMask([2], 59));
-            // "1e-5" gets parsed as range "1e" to "5" (parseInt("1e") = 1, parseInt("5") = 5)
-            expect(parseField("1e-5", FIELD_CONFIGS.minute)).toEqual(createMask([1, 2, 3, 4, 5], 59));
+        test("should reject scientific notation", () => {
+            // Scientific notation should be rejected as invalid
+            expect(() => parseField("1e10", FIELD_CONFIGS.minute)).toThrow();
+            expect(() => parseField("2e5", FIELD_CONFIGS.minute)).toThrow();
+            expect(() => parseField("1e-5", FIELD_CONFIGS.minute)).toThrow();
         });
     });
 });

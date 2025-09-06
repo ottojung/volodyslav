@@ -134,6 +134,11 @@ function parseField(value, config) {
         if (isNaN(startNum) || isNaN(endNum)) {
             throw new FieldParseError(`invalid range "${value}"`, value, config.name);
         }
+        
+        // Verify the parsed numbers match the original strings to catch cases like "1e" -> 1
+        if (startNum.toString() !== startStr || endNum.toString() !== endStr) {
+            throw new FieldParseError(`invalid range format "${value}"`, value, config.name);
+        }
 
         if (startNum < config.min || startNum > config.max) {
             throw new FieldParseError(`out of range (${config.min}-${config.max})`, value, config.name);
@@ -154,9 +159,19 @@ function parseField(value, config) {
         return mask;
     }
 
+    // Check for decimal values which are not valid in cron expressions
+    if (value.includes('.')) {
+        throw new FieldParseError(`decimal numbers not supported "${value}"`, value, config.name);
+    }
+    
     const num = parseInt(value, 10);
     if (isNaN(num)) {
         throw new FieldParseError(`invalid number "${value}"`, value, config.name);
+    }
+    
+    // Verify the parsed number matches the original string to catch cases like "1.5" -> 1
+    if (num.toString() !== value) {
+        throw new FieldParseError(`invalid number format "${value}"`, value, config.name);
     }
 
     if (num < config.min || num > config.max) {
