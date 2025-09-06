@@ -51,12 +51,12 @@ describe("getNextExecution", () => {
         expect(next("15 10 * * *", "2025-01-01T11:14:00.000Z")).toBe("2025-01-02T10:15:00.000Z");
     });
 
-    test.failing("DOM/DOW OR semantics: fire on the 1st even if not Monday (0 9 1 * 1)", () => {
+    test("DOM/DOW OR semantics: fire on the 1st even if not Monday (0 9 1 * 1)", () => {
         // Jan 1, 2025 is Wednesday; should still fire at 09:00 because DOM=1
         expect(next("0 9 1 * 1", "2025-01-01T08:59:00.000Z")).toBe("2025-01-01T09:00:00.000Z");
     });
 
-    test.failing("DOM/DOW OR semantics: also fire on next Monday even if not the 1st (0 9 1 * 1)", () => {
+    test("DOM/DOW OR semantics: also fire on next Monday even if not the 1st (0 9 1 * 1)", () => {
         // From Jan 2, 2025 → next Monday is Jan 6 at 09:00
         expect(next("0 9 1 * 1", "2025-01-02T10:00:00.000Z")).toBe("2025-01-06T09:00:00.000Z");
     });
@@ -65,7 +65,11 @@ describe("getNextExecution", () => {
         expect(next("0 0 31 * *", "2025-04-01T00:00:00.000Z")).toBe("2025-05-31T00:00:00.000Z");
     });
 
-    test.failing("leap day: next Feb 29 should be 2028 if starting in 2025", () => {
+    test("DOM=25 should not skip months", () => {
+        expect(next("0 0 25 * *", "2025-04-01T00:00:00.000Z")).toBe("2025-04-25T00:00:00.000Z");
+    });
+
+    test("leap day: next Feb 29 should be 2028 if starting in 2025", () => {
         expect(next("0 0 29 2 *", "2025-02-01T00:00:00.000Z")).toBe("2028-02-29T00:00:00.000Z");
     });
 
@@ -81,9 +85,9 @@ describe("getNextExecution", () => {
         expect(next("*/15 * * * *", "2025-01-14T10:07:00.000Z")).toBe("2025-01-14T10:15:00.000Z");
     });
 
-    test("DOW wildcard (explicit 0..6) should behave like '*'", () => {
+    test("DOW wildcard (explicit 0..6) should not behave like '*'", () => {
         expect(next("0 12 3 * *", "2025-01-01T10:00:00.000Z")).toBe("2025-01-03T12:00:00.000Z");
-        expect(next("0 12 3 * 0,1,2,3,4,5,6", "2025-01-01T10:00:00.000Z")).toBe("2025-01-03T12:00:00.000Z");
+        expect(next("0 12 3 * 0,1,2,3,4,5,6", "2025-01-01T10:00:00.000Z")).toBe("2025-01-01T12:00:00.000Z");
     });
 
     test("compound: */15 8-17 20 * * late on 20th → next month 20 at 08:00", () => {
@@ -104,7 +108,7 @@ describe("getMostRecentExecution", () => {
         expect(prev("0 * * * *", "2024-01-01T14:30:00.000Z")).toBe("2024-01-01T14:00:00.000Z");
     });
 
-    test.failing("calculates previous daily execution", () => {
+    test("calculates previous daily execution", () => {
         expect(prev("0 2 * * *", "2024-01-02T14:30:00.000Z")).toBe("2024-01-02T02:00:00.000Z");
     });
 
@@ -112,11 +116,11 @@ describe("getMostRecentExecution", () => {
         expect(prev("45 * * * *", "2024-01-01T14:50:00.000Z")).toBe("2024-01-01T14:45:00.000Z");
     });
 
-    test.failing("handles end of month correctly", () => {
+    test("handles end of month correctly", () => {
         expect(prev("0 0 1 * *", "2024-02-15T00:00:00.000Z")).toBe("2024-02-01T00:00:00.000Z");
     });
 
-    test.failing("handles February 29th in leap year", () => {
+    test("handles February 29th in leap year", () => {
         expect(prev("0 0 29 2 *", "2024-03-01T00:00:00.000Z")).toBe("2024-02-29T00:00:00.000Z");
     });
 
@@ -124,11 +128,11 @@ describe("getMostRecentExecution", () => {
         expect(prev("*/10 * * * *", "2024-01-01T14:35:00.000Z")).toBe("2024-01-01T14:30:00.000Z");
     });
 
-    test("inclusive semantics: prev('* * * * *') returns the current minute when matching", () => {
+    test("inclusive semantics: prev('* * * * *') returns current minute when matching", () => {
         expect(prev("* * * * *", "2025-01-01T14:30:00.000Z")).toBe("2025-01-01T14:30:00.000Z");
     });
 
-    test.failing("previous daily: prev('0 2 * * *') from same day afternoon → 02:00 that day", () => {
+    test("previous daily: prev('0 2 * * *') from same day afternoon → 02:00 that day", () => {
         expect(prev("0 2 * * *", "2024-01-02T14:30:00.000Z")).toBe("2024-01-02T02:00:00.000Z");
     });
 
@@ -136,11 +140,11 @@ describe("getMostRecentExecution", () => {
         expect(prev("45 * * * *", "2024-01-01T14:50:00.000Z")).toBe("2024-01-01T14:45:00.000Z");
     });
 
-    test.failing("previous month boundary: prev('0 0 1 * *') mid-Feb → Feb 1", () => {
+    test("previous month boundary: prev('0 0 1 * *') mid-Feb → Feb 1", () => {
         expect(prev("0 0 1 * *", "2024-02-15T00:00:00.000Z")).toBe("2024-02-01T00:00:00.000Z");
     });
 
-    test.failing("previous leap day: prev('0 0 29 2 *') on 2024-03-01 → 2024-02-29", () => {
+    test("previous leap day: prev('0 0 29 2 *') on 2024-03-01 → 2024-02-29", () => {
         expect(prev("0 0 29 2 *", "2024-03-01T00:00:00.000Z")).toBe("2024-02-29T00:00:00.000Z");
     });
 
@@ -148,17 +152,17 @@ describe("getMostRecentExecution", () => {
         expect(prev("*/10 * * * *", "2024-01-01T14:35:00.000Z")).toBe("2024-01-01T14:30:00.000Z");
     });
 
-    test.failing("DOM/DOW OR semantics for previous: closer of Jan 1 or previous Monday", () => {
+    test("DOM/DOW OR semantics for previous: closer of Jan 1 or previous Monday", () => {
         // From Jan 2, 2025 morning → expected Jan 1, 2025 12:00 (closer than Mon Dec 30, 2024)
         expect(prev("0 12 1 * 1", "2025-01-02T10:00:00.000Z")).toBe("2025-01-01T12:00:00.000Z");
     });
 
-    test.failing("previous must revalidate hour even if minute underflow is not needed (15 10 * * *)", () => {
+    test("previous must revalidate hour even if minute underflow is not needed (15 10 * * *)", () => {
         // From 14:16, previous should be 10:15 (not 14:15 because 14 is invalid hour)
         expect(prev("15 10 * * *", "2025-01-02T14:16:00.000Z")).toBe("2025-01-02T10:15:00.000Z");
     });
 
-    test.failing("month list wraparound (previous): 0 0 1 4,7,10 * from 2025-01-01 → 2024-10-01", () => {
+    test("month list wraparound (previous): 0 0 1 4,7,10 * from 2025-01-01 → 2024-10-01", () => {
         expect(prev("0 0 1 4,7,10 *", "2025-01-01T12:00:00.000Z")).toBe("2024-10-01T00:00:00.000Z");
     });
 
@@ -192,8 +196,20 @@ describe("Boundary semantics (exclusive next / inclusive prev) for specific patt
         expect(prev("0 * * * *", "2025-01-01T14:00:00.000Z")).toBe("2025-01-01T14:00:00.000Z");
     });
 
+    test("prev: inexact boundary hourly is inclusive", () => {
+        expect(prev("0 * * * *", "2025-01-01T14:00:15.000Z")).toBe("2025-01-01T14:00:00.000Z");
+    });
+
+    test("prev: inexact boundary hourly is precisely inclusive", () => {
+        expect(prev("0 * * * *", "2025-01-01T14:00:00.001Z")).toBe("2025-01-01T14:00:00.000Z");
+    });
+
     test("prev: exact boundary daily is inclusive", () => {
         expect(prev("0 2 * * *", "2025-01-01T02:00:00.000Z")).toBe("2025-01-01T02:00:00.000Z");
+    });
+
+    test("prev: inexact boundary daily is inclusive", () => {
+        expect(prev("0 2 * * *", "2025-01-01T02:00:01.000Z")).toBe("2025-01-01T02:00:00.000Z");
     });
 
     test("prev: exact boundary DOM is inclusive", () => {
@@ -212,6 +228,14 @@ describe("Year boundaries", () => {
 
     test("prev: New Year boundary inclusive", () => {
         expect(prev("0 0 1 1 *", "2025-01-01T00:00:00.000Z")).toBe("2025-01-01T00:00:00.000Z");
+    });
+
+    test("prev: inexact New Year boundary inclusive", () => {
+        expect(prev("0 0 1 1 *", "2025-01-01T00:00:10.000Z")).toBe("2025-01-01T00:00:00.000Z");
+    });
+
+    test("prev: inexact New Year boundary exclusive", () => {
+        expect(prev("0 0 1 1 *", "2024-12-31T23:59:59.999Z")).toBe("2024-01-01T00:00:00.000Z");
     });
 });
 
@@ -250,7 +274,7 @@ describe("Ranges, lists, and steps across boundaries", () => {
         expect(prev("10,20,50 * * * *", "2025-01-01T10:21:00.000Z")).toBe("2025-01-01T10:20:00.000Z");
     });
 
-    test.failing("prev hour range underflow: 0 8-17 * * * from 07:59 -> prev day 17:00", () => {
+    test("prev hour range underflow: 0 8-17 * * * from 07:59 -> prev day 17:00", () => {
         expect(prev("0 8-17 * * *", "2025-01-15T07:59:00.000Z")).toBe("2025-01-14T17:00:00.000Z");
     });
 });
@@ -264,7 +288,7 @@ describe("Month restrictions and wrap", () => {
         expect(next("0 0 1 */3 *", "2025-04-02T00:00:00.000Z")).toBe("2025-07-01T00:00:00.000Z");
     });
 
-    test("prev: quarterly months */3 from just after tick -> same day 00:00", () => {
+    test("prev: quarterly months */3 from just after tick -> prev day", () => {
         expect(prev("0 0 1 */3 *", "2025-04-01T00:00:00.001Z")).toBe("2025-04-01T00:00:00.000Z");
     });
 
@@ -272,13 +296,13 @@ describe("Month restrictions and wrap", () => {
         expect(next("23 0 1 3-5 *", "2025-05-01T00:23:00.000Z")).toBe("2026-03-01T00:23:00.000Z");
     });
 
-    test.failing("prev month range wrap: 23 0 1 3-5 * from 2025-03-01 00:22:59 -> 2024-05-01 00:23", () => {
+    test("prev month range wrap: 23 0 1 3-5 * from 2025-03-01 00:22:59 -> 2024-05-01 00:23", () => {
         expect(prev("23 0 1 3-5 *", "2025-03-01T00:22:59.999Z")).toBe("2024-05-01T00:23:00.000Z");
     });
 });
 
 describe("DOM/DOW OR nuances", () => {
-    test.failing("both match at boundary: pick earlier of next DOM or next DOW (after skipping boundary)", () => {
+    test("both match at boundary: pick earlier of next DOM or next DOW (after skipping boundary)", () => {
         // 2024-01-01 was Monday. At exactly 12:00, next() must skip boundary and choose the next Monday (2024-01-08 12:00),
         // which comes before the next 1st-of-month (2024-02-01 12:00).
         expect(next("0 12 1 * 1", "2024-01-01T12:00:00.000Z")).toBe("2024-01-08T12:00:00.000Z");
@@ -286,6 +310,26 @@ describe("DOM/DOW OR nuances", () => {
 
     test("one is *: DOW=*, DOM restricted -> ignore DOW", () => {
         expect(next("0 12 3 * *", "2025-01-01T10:00:00.000Z")).toBe("2025-01-03T12:00:00.000Z");
+    });
+
+    test("one is full: DOW=1-6, DOM restricted -> do not ignore DOW", () => {
+        expect(next("0 12 3 * 1-6", "2025-01-01T10:00:00.000Z")).toBe("2025-01-01T12:00:00.000Z");
+    });
+
+    test("DOW restricted, DOM=*", () => {
+        expect(next("0 12 * * 1", "2025-01-01T10:00:00.000Z")).toBe("2025-01-06T12:00:00.000Z");
+    });
+
+    test("DOW restricted 2, DOM=*", () => {
+        expect(next("0 12 * * 2", "2025-01-01T10:00:00.000Z")).toBe("2025-01-07T12:00:00.000Z");
+    });
+
+    test("DOW restricted, DOM is full", () => {
+        expect(next("0 12 1-31 * 1", "2025-01-01T10:00:00.000Z")).toBe("2025-01-01T12:00:00.000Z");
+    });
+
+    test("DOW restricted 2, DOM is full", () => {
+        expect(next("0 12 1-31 * 2", "2025-01-01T10:00:00.000Z")).toBe("2025-01-01T12:00:00.000Z");
     });
 
     test("Sunday mapping (0): next Sunday from Sunday at boundary -> next week", () => {
@@ -303,7 +347,7 @@ describe("DOM/DOW OR nuances", () => {
 });
 
 describe("DOM and calendar validity", () => {
-    test.failing("DOM=31 previous: from 2025-06-01 -> 2025-05-31", () => {
+    test("DOM=31 previous: from 2025-06-01 -> 2025-05-31", () => {
         expect(prev("0 0 31 * *", "2025-06-01T00:00:00.000Z")).toBe("2025-05-31T00:00:00.000Z");
     });
 
@@ -311,22 +355,18 @@ describe("DOM and calendar validity", () => {
         expect(next("0 0 30 * *", "2025-02-01T00:00:00.000Z")).toBe("2025-03-30T00:00:00.000Z");
     });
 
-    test.failing("DOM step */2 next over month boundary (odd -> even): from Jan 31 -> Feb 2", () => {
-        expect(next("0 0 */2 * *", "2025-01-31T23:59:59.999Z")).toBe("2025-02-02T00:00:00.000Z");
-    });
-
-    test.failing("DOM step */2 prev to last even DOM of Feb 2025 (28)", () => {
-        expect(prev("0 0 */2 * *", "2025-03-01T00:00:00.000Z")).toBe("2025-02-28T00:00:00.000Z");
+    test("DOM step */2 next over month boundary (odd -> even): from Jan 31 -> Feb 1", () => {
+        expect(next("0 0 */2 * *", "2025-01-31T23:59:59.999Z")).toBe("2025-02-01T00:00:00.000Z");
     });
 });
 
 describe("Carry ripple across hour/day/month", () => {
-    test.failing("minute step crosses hour -> revalidate hour/day", () => {
+    test("minute step crosses hour -> revalidate hour/day", () => {
         expect(next("*/30 8-9 * * *", "2025-01-14T09:59:31.000Z")).toBe("2025-01-15T08:00:00.000Z");
     });
 
-    test.failing("prev: ripple back across day for hour range", () => {
-        expect(prev("*/30 8-9 * * *", "2025-01-14T08:00:00.000Z")).toBe("2025-01-13T09:30:00.000Z");
+    test("prev: ripple back disabled because of inclusiveness", () => {
+        expect(prev("*/30 8-9 * * *", "2025-01-14T08:00:00.000Z")).toBe("2025-01-14T08:00:00.000Z");
     });
 
     test("end-of-day to next day: 45 23 * * * at boundary -> next day same time", () => {

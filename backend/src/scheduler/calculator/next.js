@@ -2,205 +2,79 @@
  * Next execution calculation API.
  */
 
-const {
-    nextInSetWithRollover,
-    minInSet,
-    isValidInSet
-} = require("./field_math");
-
-const {
-    validDaysInMonth,
-    nextDateSatisfyingWeekdayConstraint,
-    getWeekday
-} = require("./date_helpers");
-
-const { fromLuxon } = require("../../datetime/structure");
+const { dateTimeFromObject } = require('../../datetime');
+const { iterateValidDays } = require('../expression');
+const { matchesCronExpression } = require('./current');
 
 /**
- * Custom error class for calculation errors.
- */
-class CronCalculationError extends Error {
-    /**
-     * @param {string} message
-     * @param {string} cronExpression
-     */
-    constructor(message, cronExpression) {
-        super(message);
-        this.name = "CronCalculationError";
-        this.cronExpression = cronExpression;
-    }
-}
-
-/**
- * @param {unknown} object
- * @returns {object is CronCalculationError}
- */
-function isCronCalculationError(object) {
-    return object instanceof CronCalculationError;
-}
-
-/**
- * Calculates the next execution time for a cron expression using mathematical field calculation.
+ * Calculates the next execution time for a cron expression.
  * @param {import('../expression').CronExpression} cronExpr - Parsed cron expression
- * @param {import('../../datetime').DateTime} fromDateTime - DateTime to calculate from
+ * @param {import('../../datetime').DateTime} origin - DateTime to calculate from
  * @returns {import('../../datetime').DateTime} Next execution datetime
  * @throws {CronCalculationError} If next execution cannot be calculated
  */
-function getNextExecution(cronExpr, fromDateTime) {
-    try {
-        // Start from the next minute boundary with seconds and milliseconds reset
-        const startDateTime = fromDateTime.startOfNextMinuteForIteration();
-
-        // Extract components
-        let year = startDateTime.year;
-        let month = startDateTime.month;
-        let day = startDateTime.day;
-        let hour = startDateTime.hour;
-        let minute = startDateTime.minute;
-
-        // Check if the starting time already matches all constraints
-        const validDays = validDaysInMonth(month, year, cronExpr.day);
-        const startWeekday = getWeekday(year, month, day);
-
-        // Helper function to check if weekday is wildcard (all weekdays 0-6 are true)
-        const isWeekdayWildcard = cronExpr.weekday.slice(0, 7).every(val => val === true);
-        
-        const currentMatches = (
-            isValidInSet(minute, cronExpr.minute) &&
-            isValidInSet(hour, cronExpr.hour) &&
-            validDays.includes(day) && // validDays is a number array from validDaysInMonth
-            isValidInSet(month, cronExpr.month) &&
-            (isWeekdayWildcard || isValidInSet(startWeekday, cronExpr.weekday))
-        );
-
-        if (currentMatches) {
-            // Current time already matches, return it
-            return startDateTime;
-        }
-
-        // Step 1: Calculate next minute
-        const minuteResult = nextInSetWithRollover(minute, cronExpr.minute);
-        minute = minuteResult.value;
-        let carry = minuteResult.rolledOver;
-
-        // Step 2: Calculate next hour (if carry from minute)
-        if (carry) {
-            const hourResult = nextInSetWithRollover(hour, cronExpr.hour);
-            hour = hourResult.value;
-            carry = hourResult.rolledOver;
-
-            // Reset minute to minimum when advancing hour
-            minute = minInSet(cronExpr.minute);
-        }
-
-        // Step 3: Calculate next day (always check day constraints)
-        const currentValidDays = validDaysInMonth(month, year, cronExpr.day);
-        if (currentValidDays.length === 0) {
-            // No valid days in this month, advance to next month
-            carry = true;
-        } else if (carry || !currentValidDays.includes(day)) {
-            // Either carried from hour, or current day violates day constraints
-            const nextDay = currentValidDays.find(d => d > day);
-            if (nextDay !== undefined) {
-                day = nextDay;
-                carry = false;
-                
-                // Reset hour and minute when advancing day
-                hour = minInSet(cronExpr.hour);
-                minute = minInSet(cronExpr.minute);
-            } else {
-                // No more valid days in this month
-                carry = true;
-            }
-        }
-
-        // Step 4: Calculate next month (always check month constraints)
-        if (carry || !isValidInSet(month, cronExpr.month)) {
-            // Either carried from day, or current month violates month constraints
-            const monthResult = nextInSetWithRollover(month, cronExpr.month);
-            month = monthResult.value;
-
-            if (monthResult.rolledOver) {
-                // Rolled over to next year
-                year = year + 1;
-            }
-
-            // Set to first valid day in the new month
-            const newValidDays = validDaysInMonth(month, year, cronExpr.day);
-            if (newValidDays.length === 0) {
-                // This should not happen for valid cron expressions
-                throw new CronCalculationError(
-                    "No valid days found in month",
-                    cronExpr.original
-                );
-            }
-
-            const minDay = newValidDays[0];
-            if (minDay === undefined) {
-                throw new CronCalculationError(
-                    "No valid days found in month after filtering",
-                    cronExpr.original
-                );
-            }
-            day = minDay; // Get the first (minimum) valid day
-            hour = minInSet(cronExpr.hour);
-            minute = minInSet(cronExpr.minute);
-        }
-
-        // Step 5: Apply weekday constraints only if weekday constraint exists
-        const isWeekdayWildcard2 = cronExpr.weekday.slice(0, 7).every(val => val === true);
-        if (!isWeekdayWildcard2) { // Not all weekdays are allowed
-            const candidateWeekday = getWeekday(year, month, day);
-            if (!isValidInSet(candidateWeekday, cronExpr.weekday)) {
-                const constraintResult = nextDateSatisfyingWeekdayConstraint(
-                    year, month, day,
-                    cronExpr.weekday,
-                    cronExpr.month,
-                    cronExpr.day
-                );
-
-                if (constraintResult) {
-                    year = constraintResult.year;
-                    month = constraintResult.month;
-                    day = constraintResult.day;
-                    hour = minInSet(cronExpr.hour);
-                    minute = minInSet(cronExpr.minute);
-                } else {
-                    // This should be extremely rare for valid cron expressions
-                    throw new CronCalculationError(
-                        "Could not satisfy weekday constraints",
-                        cronExpr.original
-                    );
+function getNextExecution(cronExpr, origin) {
+    for (const { year, month, day } of iterateValidDays(cronExpr, origin)) {
+        const getTime = () => {
+            if (day === origin.day && year === origin.year && month === origin.month) {
+                const hour = cronExpr.validHours.filter(h => h >= origin.hour)[0];
+                if (hour === undefined) {
+                    return null;
                 }
+
+                const minute = hour === origin.hour
+                    ? cronExpr.validMinutes.filter(m => m > origin.minute)[0]
+                    : cronExpr.validMinutes[0];
+                if (minute === undefined) {
+                    const hour = cronExpr.validHours.filter(h => h > origin.hour)[0];
+                    if (hour === undefined) {
+                        return null;
+                    }
+                    const minute = cronExpr.validMinutes[0];
+                    if (minute === undefined) {
+                        throw new Error("Internal error: no valid minutes in cron expression");
+                    }
+                    return { hour, minute };
+                }
+
+                return { hour, minute };
+            } else {
+                return { hour: cronExpr.validHours[0], minute: cronExpr.validMinutes[0] };
             }
+        };
+
+        const time = getTime();
+        if (time === null) {
+            continue;
         }
 
-        // Create the result DateTime using Luxon and convert to our DateTime structure
-        const luxonDateTime = startDateTime._luxonDateTime.set({
+        const { hour, minute } = time;
+
+        const candidate = dateTimeFromObject({
             year,
             month,
             day,
             hour,
             minute,
             second: 0,
-            millisecond: 0
+            millisecond: 0,
+        }, {
+            zone: origin.zone ? origin.zone : undefined,
         });
 
-        return fromLuxon(luxonDateTime);
-
-    } catch (error) {
-        if (isCronCalculationError(error)) {
-            throw error;
+        if (candidate.isValid === false) {
+            throw new Error(`Invalid candidate datetime: ${candidate}`);
         }
-
-        throw new CronCalculationError(
-            `Calculation failed: ${error instanceof Error ? error.message : String(error)}`,
-            cronExpr.original
-        );
+        if (matchesCronExpression(cronExpr, candidate)) {
+            return candidate;
+        } else {
+            throw new Error("Internal error: candidate does not match cron expression");
+        }
     }
+
+    throw new Error("No valid next execution time found");
 }
 
 module.exports = {
     getNextExecution,
-    isCronCalculationError,
 };

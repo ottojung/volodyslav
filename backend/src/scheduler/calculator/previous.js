@@ -2,221 +2,87 @@
  * Previous fire time calculation API.
  */
 
-const {
-    prevInSetWithUnderflow,
-    maxInSet,
-    isValidInSet
-} = require("./field_math");
-
-const {
-    validDaysInMonth,
-    prevDateSatisfyingWeekdayConstraint,
-    getWeekday
-} = require("./date_helpers");
-
-const { fromLuxon } = require("../../datetime/structure");
 const { matchesCronExpression } = require("./current");
-
-/**
- * Custom error class for calculation errors.
- */
-class CronCalculationError extends Error {
-    /**
-     * @param {string} message
-     * @param {string} cronExpression
-     */
-    constructor(message, cronExpression) {
-        super(message);
-        this.name = "CronCalculationError";
-        this.cronExpression = cronExpression;
-    }
-}
-
-/**
- * @param {unknown} object
- * @returns {object is CronCalculationError}
- */
-function isCronCalculationError(object) {
-    return object instanceof CronCalculationError;
-}
+const { dateTimeFromObject } = require("../../datetime");
+const { iterateValidDaysBackwards } = require("../expression/structure");
 
 /**
  * Calculates the previous execution time for a cron expression.
- * If the current time matches the cron expression, returns the current time.
- * Otherwise, finds the most recent past execution time.
+ * Note: it is inclusive. I.e. if `fromDateTime` matches the cron expression,
+ * it will be returned as the previous execution time.
  * @param {import('../expression').CronExpression} cronExpr - Parsed cron expression
- * @param {import('../../datetime').DateTime} fromDateTime - DateTime to calculate from
+ * @param {import('../../datetime').DateTime} origin - DateTime to calculate from
  * @returns {import('../../datetime').DateTime} Previous execution datetime, or null if none found
  */
-function getMostRecentExecution(cronExpr, fromDateTime) {
-    try {
-        // Start from the current minute boundary with seconds and milliseconds reset
-        const startDateTime = fromDateTime.startOfMinute();
-
-        // Check if the current time already matches the cron expression
-        if (matchesCronExpression(cronExpr, startDateTime)) {
-            // Current time matches - return it as the "most recent" execution
-            return startDateTime;
-        }
-
-        // Current time doesn't match, find the actual previous execution
-        // Extract components
-        let year = startDateTime.year;
-        let month = startDateTime.month;
-        let day = startDateTime.day;
-        let hour = startDateTime.hour;
-        let minute = startDateTime.minute;
-
-        // Step 1: Calculate previous minute
-        const minuteResult = prevInSetWithUnderflow(minute, cronExpr.minute);
-        minute = minuteResult.value;
-        let underflow = minuteResult.underflowed;
-
-        // Step 2: Calculate previous hour (if underflow from minute)
-        if (underflow) {
-            const hourResult = prevInSetWithUnderflow(hour, cronExpr.hour);
-            hour = hourResult.value;
-            underflow = hourResult.underflowed;
-
-            // Reset minute to maximum when going back an hour
-            minute = maxInSet(cronExpr.minute);
-        }
-
-        // Step 3: Calculate previous day (always check day constraints)
-        const validDays = validDaysInMonth(month, year, cronExpr.day);
-        if (validDays.length === 0) {
-            // No valid days in this month, go back to previous month
-            underflow = true;
-        } else if (underflow || !validDays.includes(day)) {
-            // Either carried from hour, or current day violates day constraints
-            const prevDay = [...validDays].reverse().find(d => d < day);
-            if (prevDay !== undefined) {
-                day = prevDay;
-                underflow = false;
-                
-                // Reset hour and minute when going back a day
-                hour = maxInSet(cronExpr.hour);
-                minute = maxInSet(cronExpr.minute);
-            } else {
-                // No more valid days in this month
-                underflow = true;
-            }
-        }
-
-        // Step 4: Calculate previous month (always check month constraints)
-        if (underflow || !isValidInSet(month, cronExpr.month)) {
-            // Either carried from day, or current month violates month constraints
-            const monthResult = prevInSetWithUnderflow(month, cronExpr.month);
-            month = monthResult.value;
-
-            if (monthResult.underflowed) {
-                // Underflowed to previous year
-                year = year - 1;
-            }
-
-            // Set to last valid day in the new month
-            const validDays = validDaysInMonth(month, year, cronExpr.day);
-            if (validDays.length === 0) {
-                // This should not happen for valid cron expressions
-                throw new CronCalculationError(
-                    "No valid days found in month",
-                    cronExpr.original
-                );
-            }
-
-            const maxDay = validDays[validDays.length - 1];
-            if (maxDay === undefined) {
-                throw new CronCalculationError(
-                    "No valid days found in month after filtering",
-                    cronExpr.original
-                );
-            }
-            day = maxDay; // Get the last (maximum) valid day
-            hour = maxInSet(cronExpr.hour);
-            minute = maxInSet(cronExpr.minute);
-        }
-
-        // Step 5: Apply weekday constraints only if weekday constraint exists
-        const isWeekdayWildcard = cronExpr.weekday.slice(0, 7).every(val => val === true);
-        if (!isWeekdayWildcard) { // Not all weekdays are allowed
-            const candidateWeekday = getWeekday(year, month, day);
-            if (!isValidInSet(candidateWeekday, cronExpr.weekday)) {
-                const constraintResult = prevDateSatisfyingWeekdayConstraint(
-                    year, month, day,
-                    cronExpr.weekday,
-                    cronExpr.month,
-                    cronExpr.day
-                );
-
-                if (constraintResult) {
-                    year = constraintResult.year;
-                    month = constraintResult.month;
-                    day = constraintResult.day;
-                    hour = maxInSet(cronExpr.hour);
-                    minute = maxInSet(cronExpr.minute);
-                } else {
-                    // Could not satisfy constraints - return null
-                    throw new CronCalculationError(
-                        "Could not satisfy weekday constraints",
-                        cronExpr.original
-                    );
+function getMostRecentExecution(cronExpr, origin) {
+    for (const { year, month, day } of iterateValidDaysBackwards(cronExpr, origin)) {
+        const getTime = () => {
+            const validHours = cronExpr.validHours;
+            const validMinutes = cronExpr.validMinutes;
+            if (day === origin.day && year === origin.year && month === origin.month) {
+                const filteredHours = validHours.filter(h => h <= origin.hour);
+                const hour = filteredHours[filteredHours.length - 1];
+                if (hour === undefined) {
+                    return null;
                 }
+
+                const filteredMinutes = validMinutes.filter(m => m <= origin.minute);
+                const minute = hour === origin.hour
+                    ? filteredMinutes[filteredMinutes.length - 1]
+                    : validMinutes[validMinutes.length - 1];
+                if (minute === undefined) {
+                    const filteredHours = validHours.filter(h => h < origin.hour);
+                    const hour = filteredHours[filteredHours.length - 1];
+                    if (hour === undefined) {
+                        return null;
+                    }
+                    const minute = validMinutes[validMinutes.length - 1];
+                    if (minute === undefined) {
+                        throw new Error("Internal error: no valid minutes in cron expression");
+                    }
+                    return { hour, minute };
+                }
+
+                return { hour, minute };
+            } else {
+                const hour = validHours[validHours.length - 1];
+                const minute = validMinutes[validMinutes.length - 1];
+                return { hour, minute };
             }
+        };
+
+        const time = getTime();
+        if (time === null) {
+            continue;
         }
 
-        // Create the result DateTime using Luxon and convert to our DateTime structure
-        const luxonDateTime = startDateTime._luxonDateTime.set({
+        const { hour, minute } = time;
+
+        const candidate = dateTimeFromObject({
             year,
             month,
             day,
             hour,
             minute,
             second: 0,
-            millisecond: 0
+            millisecond: 0,
+        }, {
+            zone: origin.zone ? origin.zone : undefined,
         });
 
-        const resultDateTime = fromLuxon(luxonDateTime);
-
-        // Ensure the result is actually before the input time
-        if (resultDateTime.isAfter(fromDateTime)) {
-            throw new CronCalculationError(
-                "Calculated previous execution is after the reference time",
-                cronExpr.original
-            );
+        if (candidate.isValid === false) {
+            throw new Error(`Invalid candidate datetime: ${candidate}`);
         }
-
-        // For day-constrained crons, only return executions from the same day
-        // This prevents returning yesterday's executions when today doesn't match the cron
-        const isDayWildcard = cronExpr.day.slice(1, 32).every(val => val === true); // Check days 1-31
-        if (!isDayWildcard) { // Day constraint exists (not all days allowed)
-            if (resultDateTime.day !== fromDateTime.day ||
-                resultDateTime.month !== fromDateTime.month ||
-                resultDateTime.year !== fromDateTime.year) {
-                // Previous execution is from a different day, don't consider it "recent"
-                throw new CronCalculationError(
-                    "Previous execution falls on a different day",
-                    cronExpr.original
-                );
-            }
+        if (matchesCronExpression(cronExpr, candidate)) {
+            return candidate;
+        } else {
+            throw new Error("Internal error: candidate does not match cron expression");
         }
-
-        return resultDateTime;
-
-    } catch (error) {
-        if (isCronCalculationError(error)) {
-            throw error;
-        }
-
-        // For previous calculations, we're more lenient with errors
-        // and return null instead of throwing in many cases
-        throw new CronCalculationError(
-            `Error calculating previous execution: ${error}`,
-            cronExpr.original
-        );
     }
+
+    throw new Error("No valid next execution time found");
 }
 
 module.exports = {
     getMostRecentExecution,
-    isCronCalculationError,
 };

@@ -86,6 +86,14 @@ class DateTimeClass {
     }
 
     /**
+     * Get the timezone name.
+     * @returns {string|null} Timezone name (e.g., 'UTC', 'America/New_York')
+     */
+    get zone() {
+        return this._luxonDateTime.zoneName;
+    }
+
+    /**
      * Advance this DateTime by the given Duration.
      * @param {import('luxon').Duration} duration - Duration to advance by
      * @returns {DateTime} New DateTime advanced by the duration
