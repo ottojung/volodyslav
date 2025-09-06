@@ -25,7 +25,7 @@ function naivePrev(cronExprStr, fromISOStringStr) {
     throw new Error("naivePrev: exceeded iteration limit");
 }
 
-describe("Fuzzing prev tests", () => {
+describe("Compared to reference implementation", () => {
 
     for (const minute of ["*", "0"]) {
         for (const hour of ["*", "0"]) {
