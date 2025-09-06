@@ -62,6 +62,13 @@ function evaluateTasksForExecution(tasks, scheduledTasks, now, capabilities) {
         const shouldRunRetry = task.pendingRetryUntil && now.isAfterOrEqual(task.pendingRetryUntil);
         const callback = task.callback;
 
+        console.log({
+            taskName,
+            shouldRunCron,
+            shouldRunRetry,
+            lastScheduledFire: lastScheduledFire ? lastScheduledFire.toISOString() : null,
+        });
+
         if (shouldRunRetry && shouldRunCron) {
             // Both are due - choose the mode based on which is earlier (chronologically smaller)
             if (task.pendingRetryUntil && lastScheduledFire && task.pendingRetryUntil.isBefore(lastScheduledFire)) {
