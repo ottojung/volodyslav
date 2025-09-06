@@ -4,6 +4,21 @@
  */
 
 /**
+ * Error for invalid registration input.
+ */
+class InvalidRegistrationError extends Error {
+    /**
+     * @param {string} message
+     * @param {object} [details]
+     */
+    constructor(message, details) {
+        super(message);
+        this.name = "InvalidRegistrationError";
+        this.details = details;
+    }
+}
+
+/**
  * Error when registrations is not an array.
  */
 class RegistrationsNotArrayError extends Error {
@@ -84,6 +99,7 @@ function isScheduleDuplicateTaskError(object) {
 }
 
 module.exports = {
+    InvalidRegistrationError,
     RegistrationsNotArrayError,
     RegistrationShapeError,
     CronExpressionInvalidError,

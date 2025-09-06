@@ -7,6 +7,7 @@ const {
     taskRecordToTaskIdentity,
     taskIdentitiesEqual,
 } = require("../task/identity");
+const { InvalidRegistrationError } = require("../registration_validation/errors");
 
 /** @typedef {import('../types').Registration} Registration */
 
@@ -33,7 +34,7 @@ function analyzeStateChanges(registrations, persistedTasks, capabilities) {
             return registrationToTaskIdentity(registration);
         } catch (err) {
             const error = err instanceof Error ? err : new Error(String(err));
-            throw new Error(`Invalid registration at index ${index}: ${error.message}`);
+            throw new InvalidRegistrationError(`Invalid registration at index ${index}: ${error.message}`, { index, cause: error });
         }
     });
 
