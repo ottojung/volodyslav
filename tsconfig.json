@@ -16,7 +16,7 @@
         "typeRoots": ["./node_modules/@types"],
         "types": ["node", "jest"],
         "target": "ES2019",
-        "lib": ["ES2019", "DOM"],
+        "lib": ["ES2019", "DOM", "WebWorker"],
         "strictNullChecks": true,
         "strictFunctionTypes": true,
         "strictBindCallApply": true,
@@ -39,5 +39,8 @@
         "frontend/src/**/*.jsx",
         "frontend/src/**/*.d.ts",
         "backend/src/**/*.js"
+    ],
+    "exclude": [
+        "frontend/src/sw.js"
     ]
 }
