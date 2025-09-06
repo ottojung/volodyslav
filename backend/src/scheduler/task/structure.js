@@ -56,19 +56,9 @@ function makeTask(name, parsedCron, callback, retryDelay, lastSuccessTime, lastF
 }
 
 /**
- * Type guard for Task instances.
- * @param {unknown} object
- * @returns {object is TaskClass}
- */
-function isTask(object) {
-    return object instanceof TaskClass;
-}
-
-/**
  * @typedef {TaskClass} Task
  */
 
 module.exports = {
     makeTask,
-    isTask,
 };

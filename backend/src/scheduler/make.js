@@ -250,5 +250,4 @@ function make(getCapabilities) {
 
 module.exports = {
     make,
-    isScheduleDuplicateTaskError,
 };
