@@ -39,7 +39,7 @@ class StopSchedulerError extends Error {
 }
 
 const { validateRegistrations } = require("./registration_validation");
-const { validateTasksAgainstPersistedStateInner } = require("./state_validation");
+const { analyzeStateChanges } = require("./state_validation");
 
 /** @typedef {import('./types').Scheduler} Scheduler */
 /** @typedef {import('./types').Registration} Registration */
@@ -62,12 +62,12 @@ function make(getCapabilities) {
     const getCapabilitiesMemo = memconst(getCapabilities);
 
     /**
-     * Validate registrations and check against persisted state.
+     * Analyze and potentially override persisted state with registrations.
      * @param {Registration[]} registrations
      * @param {SchedulerCapabilities} capabilities
-     * @returns {Promise<{persistedTasks: import('../runtime_state_storage/types').TaskRecord[] | undefined}>}
+     * @returns {Promise<{persistedTasks: import('../runtime_state_storage/types').TaskRecord[] | undefined, shouldOverride: boolean}>}
      */
-    async function validateAndCheckPersistedState(registrations, capabilities) {
+    async function analyzeAndOverridePersistedState(registrations, capabilities) {
         validateRegistrations(registrations);
 
         /**
@@ -80,7 +80,7 @@ function make(getCapabilities) {
         const currentState = await capabilities.state.transaction(getStorage);
         const persistedTasks = currentState?.tasks;
 
-        // Always validate registrations against persisted state (unless first-time with empty state)
+        // Analyze state changes and determine if override is needed
         if (persistedTasks === undefined) {
             capabilities.logger.logInfo(
                 {
@@ -89,19 +89,20 @@ function make(getCapabilities) {
                 },
                 "First-time scheduler initialization: registering initial tasks"
             );
+            return { persistedTasks, shouldOverride: false };
         } else {
-            // Validate registrations match persisted state
+            // Analyze registrations against persisted state
             capabilities.logger.logDebug(
                 {
                     persistedTaskCount: persistedTasks.length,
                     registrationCount: registrations.length
                 },
-                "Validating task registrations against persisted state"
+                "Analyzing task registrations against persisted state"
             );
-            validateTasksAgainstPersistedStateInner(registrations, persistedTasks);
+            
+            const { shouldOverride } = analyzeStateChanges(registrations, persistedTasks, capabilities);
+            return { persistedTasks, shouldOverride };
         }
-
-        return { persistedTasks };
     }
 
     /**
@@ -179,15 +180,15 @@ function make(getCapabilities) {
                 {},
                 "Scheduler already initialized"
             );
-            // Still validate registrations against persisted state for consistency.
-            await validateAndCheckPersistedState(registrations, capabilities);
+            // Still analyze registrations against persisted state for consistency.
+            await analyzeAndOverridePersistedState(registrations, capabilities);
             return;
         } else {
             pollingScheduler = makePollingScheduler(capabilities, parsedRegistrations);
         }
 
-        // Validate input and check persisted state
-        const { persistedTasks } = await validateAndCheckPersistedState(registrations, capabilities);
+        // Analyze input and override persisted state if needed
+        const { persistedTasks, shouldOverride } = await analyzeAndOverridePersistedState(registrations, capabilities);
 
         // Create polling scheduler
         capabilities.logger.logDebug(
@@ -195,8 +196,8 @@ function make(getCapabilities) {
             "Creating new polling scheduler"
         );
 
-        if (persistedTasks === undefined) {
-            // Persist tasks during first initialization.
+        if (persistedTasks === undefined || shouldOverride) {
+            // Persist tasks during first initialization or when override is needed.
             await mutateTasks(capabilities, parsedRegistrations, async () => undefined);
         }
 
