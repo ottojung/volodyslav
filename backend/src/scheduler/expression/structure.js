@@ -206,6 +206,11 @@ function parseCronExpression(expression) {
         throw new InvalidCronExpressionError(expression, "expression", "cannot be empty");
     }
 
+    // POSIX compliance: reject macro syntax at expression level
+    if (trimmed.startsWith("@")) {
+        throw new InvalidCronExpressionError(expression, "expression", "macro syntax not supported (POSIX violation)");
+    }
+
     const fields = trimmed.split(/\s+/);
     if (fields.length !== 5) {
         throw new InvalidCronExpressionError(

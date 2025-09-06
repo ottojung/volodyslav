@@ -202,11 +202,11 @@ describe("scheduler cron field parser edge cases", () => {
 
             // Test invalid range
             expect(() => parseField("5-3", FIELD_CONFIGS.minute))
-                .toThrow(/invalid range/);
+                .toThrow(/wrap-around ranges not supported/);
 
             // Test invalid step - now expects slash syntax rejection message
             expect(() => parseField("*/0", FIELD_CONFIGS.minute))
-                .toThrow(/slash syntax not supported/);
+                .toThrow(/slash syntax not supported.*POSIX violation/);
         });
     });
 
