@@ -483,8 +483,8 @@ describe("scheduler stories", () => {
 
         const registrations = [
             ["heavy-processing", "0,30 * * * *", resourceIntensiveTask, retryDelay],  // Every 30 minutes
-            ["lightweight-monitor", "*/15 * * * *", lightweightTask, retryDelay],      // Every 15 minutes
-            ["resource-monitor", "*/20 * * * *", resourceMonitorTask, retryDelay],     // Every 20 minutes
+            ["lightweight-monitor", "0,15,30,45 * * * *", lightweightTask, retryDelay],      // Every 15 minutes
+            ["resource-monitor", "0,20,40 * * * *", resourceMonitorTask, retryDelay],     // Every 20 minutes
         ];
 
         await capabilities.scheduler.initialize(registrations);
@@ -820,7 +820,7 @@ describe("scheduler stories", () => {
 
         const registrations = [
             ["every-2h", "0 0,2,4,6,8,10,12,14,16,18,20,22 * * *", every2HourTask, retryDelay],    // Every 2 hours (0, 2, 4, 6, 8, 10, 12, ...)
-            ["every-4h", "0 */4 * * *", every4HourTask, retryDelay],    // Every 4 hours (0, 4, 8, 12, ...)
+            ["every-4h", "0 0,4,8,12,16,20 * * *", every4HourTask, retryDelay],    // Every 4 hours (0, 4, 8, 12, ...)
         ];
 
         await capabilities.scheduler.initialize(registrations);
@@ -892,7 +892,7 @@ describe("scheduler stories", () => {
 
         const registrations = [
             ["every-2h", "0 0,2,4,6,8,10,12,14,16,18,20,22 * * *", every2HourTask, retryDelay],    // Every 2 hours (0, 2, 4, 6, 8, 10, 12, ...)
-            ["every-4h", "0 */4 * * *", every4HourTask, retryDelay],    // Every 4 hours (0, 4, 8, 12, ...)
+            ["every-4h", "0 0,4,8,12,16,20 * * *", every4HourTask, retryDelay],    // Every 4 hours (0, 4, 8, 12, ...)
         ];
 
         await capabilities.scheduler.initialize(registrations);
@@ -964,7 +964,7 @@ describe("scheduler stories", () => {
 
         const registrations = [
             ["every-2h", "0 0,2,4,6,8,10,12,14,16,18,20,22 * * *", every2HourTask, retryDelay],    // Every 2 hours
-            ["every-6h", "0 */6 * * *", every6HourTask, retryDelay],    // Every 6 hours
+            ["every-6h", "0 0,6,12,18 * * *", every6HourTask, retryDelay],    // Every 6 hours
         ];
 
         await capabilities.scheduler.initialize(registrations);
