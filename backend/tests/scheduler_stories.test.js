@@ -7,6 +7,8 @@ const { Duration } = require("luxon");
 const { getMockedRootCapabilities } = require("./spies");
 const { stubEnvironment, stubLogger, stubDatetime, stubSleeper, getDatetimeControl, stubRuntimeStateStorage, stubScheduler, getSchedulerControl } = require("./stubs");
 const { fromISOString, fromHours, fromMinutes, fromMilliseconds, fromDays } = require("../src/datetime");
+const { parseCronExpression } = require("../src/scheduler/expression");
+const { getMostRecentExecution, getNextExecution } = require("../src/scheduler/calculator");
 
 function getTestCapabilities() {
     const capabilities = getMockedRootCapabilities();
@@ -1109,5 +1111,14 @@ describe("scheduler stories", () => {
         expect(slowTask.mock.calls.length).toEqual(2); // Both can execute since slow task only takes 1 second
 
         await capabilities.scheduler.stop();
+    });
+
+    test.failing("should compute next execution correctly after retrieving previous execution", () => {
+        const expr = parseCronExpression("0 0 10,20 * *");
+        const originForPrevious = fromISOString("2021-04-01T00:00:00.000Z");
+        getMostRecentExecution(expr, originForPrevious);
+        const origin = fromISOString("2021-03-01T00:00:00.000Z");
+        const next = getNextExecution(expr, origin);
+        expect(next.toISOString()).toBe("2021-03-10T00:00:00.000Z");
     });
 });
