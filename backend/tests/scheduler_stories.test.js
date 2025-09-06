@@ -71,6 +71,22 @@ describe("scheduler stories", () => {
         await capabilities.scheduler.stop();
     });
 
+    test.failing("should reject non-integer cron field values", async () => {
+        const capabilities = getTestCapabilities();
+        const timeControl = getDatetimeControl(capabilities);
+        const schedulerControl = getSchedulerControl(capabilities);
+        const retryDelay = Duration.fromMillis(5000);
+        timeControl.setDateTime(fromISOString("2021-01-01T00:00:00.000Z"));
+        schedulerControl.setPollingInterval(fromMilliseconds(1));
+        try {
+            await expect(capabilities.scheduler.initialize([
+                ["invalid-decimal", "1.5 * * * *", jest.fn(), retryDelay]
+            ])).rejects.toThrow();
+        } finally {
+            await capabilities.scheduler.stop();
+        }
+    });
+
     test("should handle multiple tasks with different schedules", async () => {
         const capabilities = getTestCapabilities();
         const timeControl = getDatetimeControl(capabilities);
