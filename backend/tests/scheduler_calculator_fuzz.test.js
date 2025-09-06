@@ -1,8 +1,7 @@
 
-const { parseCronExpression } = require("../expression");
-const { matchesCronExpression } = require("../calculator/current");
-const { fromObject, fromISOString } = require("../../datetime");
-const { getMostRecentExecution } = require("../calculator/previous");
+const { parseCronExpression } = require("../src/scheduler/expression");
+const { fromObject, fromISOString } = require("../src/datetime");
+const { matchesCronExpression, getMostRecentExecution } = require("../src/scheduler/calculator");
 
 function prev(cronExprStr, fromISOStringStr) {
     const expr = parseCronExpression(cronExprStr);
