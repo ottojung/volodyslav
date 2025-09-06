@@ -66,7 +66,9 @@ function evaluateTasksForExecution(tasks, scheduledTasks, now, capabilities) {
             taskName,
             shouldRunCron,
             shouldRunRetry,
+            lastAttemt: task.lastAttemptTime ? task.lastAttemptTime.toISOString() : null,
             lastScheduledFire: lastScheduledFire ? lastScheduledFire.toISOString() : null,
+            now: now.toISOString(),
         });
 
         if (shouldRunRetry && shouldRunCron) {
