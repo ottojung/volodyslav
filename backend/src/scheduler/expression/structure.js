@@ -145,7 +145,7 @@ class CronExpressionClass {
                         validDays.push(day);
                     }
                     day = day + 1;
-                    weekday = 1 + ((weekday + 1) % 7);
+                    weekday = (weekday + 1) % 7;
                 }
                 return validDays;
             };
