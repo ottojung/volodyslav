@@ -111,16 +111,16 @@ describe("scheduler cron expression equivalence edge cases", () => {
             expect(cron1.equivalent(cron2)).toBe(false);
         });
 
-        test("should handle step expressions", () => {
-            const cron1 = parseCronExpression("*/5 * * * *");
-            const cron2 = parseCronExpression("*/5 * * * *");
+        test("should handle equivalent explicit comma-separated expressions", () => {
+            const cron1 = parseCronExpression("0,5,10,15,20,25,30,35,40,45,50,55 * * * *");
+            const cron2 = parseCronExpression("0,5,10,15,20,25,30,35,40,45,50,55 * * * *");
 
             expect(cron1.equivalent(cron2)).toBe(true);
         });
 
-        test("should detect differences in step expressions", () => {
-            const cron1 = parseCronExpression("*/5 * * * *");
-            const cron2 = parseCronExpression("*/10 * * * *");
+        test("should detect differences in explicit comma-separated expressions", () => {
+            const cron1 = parseCronExpression("0,5,10,15,20,25,30,35,40,45,50,55 * * * *");
+            const cron2 = parseCronExpression("0,10,20,30,40,50 * * * *");
 
             expect(cron1.equivalent(cron2)).toBe(false);
         });
@@ -188,8 +188,8 @@ describe("scheduler cron expression equivalence edge cases", () => {
         });
 
         test("should be symmetric - if A equals B, then B equals A", () => {
-            const cron1 = parseCronExpression("*/15 9-17 * * 1-5");
-            const cron2 = parseCronExpression("*/15 9-17 * * 1-5");
+            const cron1 = parseCronExpression("0,15,30,45 9-17 * * 1-5");
+            const cron2 = parseCronExpression("0,15,30,45 9-17 * * 1-5");
 
             expect(cron1.equivalent(cron2)).toBe(cron2.equivalent(cron1));
         });
@@ -208,9 +208,8 @@ describe("scheduler cron expression equivalence edge cases", () => {
             const cron1 = parseCronExpression("* * * * *");
             const cron2 = parseCronExpression("0-59 0-23 1-31 1-12 0-6");
 
-            // These should be equivalent but the current implementation might not detect it
-            // since it compares parsed arrays directly
-            expect(cron1.equivalent(cron2)).toBe(true);
+            // These should not be equivalent because wildcards enable different DOM/DOW interactions.
+            expect(cron1.equivalent(cron2)).toBe(false);
         });
 
         test("should handle single-element ranges", () => {
@@ -269,14 +268,13 @@ describe("scheduler cron expression equivalence edge cases", () => {
             const largeCron1 = parseCronExpression("* * * * *");
             const largeCron2 = parseCronExpression("* * * * *");
 
-            // eslint-disable-next-line volodyslav/no-date-class -- Performance timing test
-            const startTime = Date.now();
+            const startTime = process.hrtime.bigint();
             const result = largeCron1.equivalent(largeCron2);
-            // eslint-disable-next-line volodyslav/no-date-class -- Performance timing test
-            const endTime = Date.now();
+            const endTime = process.hrtime.bigint();
 
             expect(result).toBe(true);
-            expect(endTime - startTime).toBeLessThan(100); // Should be fast
+            const durationMs = Number(endTime - startTime) / 1000000;
+            expect(durationMs).toBeLessThan(100); // Should be fast
         });
 
         test("should short-circuit on length differences", () => {
@@ -284,14 +282,13 @@ describe("scheduler cron expression equivalence edge cases", () => {
             const cron2 = parseCronExpression("0 * * * *");
 
             // Should return false quickly due to length difference
-            // eslint-disable-next-line volodyslav/no-date-class -- Performance timing test
-            const startTime = Date.now();
+            const startTime = process.hrtime.bigint();
             const result = cron1.equivalent(cron2);
-            // eslint-disable-next-line volodyslav/no-date-class -- Performance timing test
-            const endTime = Date.now();
+            const endTime = process.hrtime.bigint();
 
             expect(result).toBe(false);
-            expect(endTime - startTime).toBeLessThan(50);
+            const durationMs = Number(endTime - startTime) / 1000000;
+            expect(durationMs).toBeLessThan(50);
         });
     });
 });

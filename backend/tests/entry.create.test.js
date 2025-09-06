@@ -1,5 +1,6 @@
 const { createEntry } = require("../src/entry");
-const { toEpochMs, fromEpochMs } = require("../src/datetime");
+const { fromISOString } = require("../src/datetime");
+
 const { getMockedRootCapabilities } = require("./spies");
 const { stubEnvironment, stubEventLogRepository, stubDatetime, stubLogger } = require("./stubs");
 
@@ -15,9 +16,9 @@ async function getTestCapabilities() {
 describe("createEntry (integration, with real capabilities)", () => {
     it("creates an event log entry with correct data (no file)", async () => {
         const capabilities = await getTestCapabilities();
-        const fixedTime = 1698314400000; // 2023-10-26T10:00:00.000Z
+        const fixedDateTime = fromISOString("2023-10-26T10:00:00.000Z");
         capabilities.datetime.now.mockReturnValue(
-            fromEpochMs(fixedTime)
+            fixedDateTime
         );
         
         const entryData = {
@@ -34,7 +35,7 @@ describe("createEntry (integration, with real capabilities)", () => {
         expect(event.type).toBe(entryData.type);
         expect(event.description).toBe(entryData.description);
         expect(event.modifiers).toEqual(entryData.modifiers);
-        expect(toEpochMs(event.date)).toBe(fixedTime);
+        expect(event.date).toEqual(fixedDateTime);
         expect(event.id).toBeDefined();
         expect(event.creator).toBeDefined();
         expect(capabilities.logger.logInfo).toHaveBeenCalledWith(
@@ -131,16 +132,13 @@ describe("createEntry (integration, with real capabilities)", () => {
 
         // Use datetime capability instead of Date.now() for consistent time
         const beforeDateTime = capabilities.datetime.now();
-        const before = toEpochMs(beforeDateTime);
         
         const event = await createEntry(capabilities, entryData);
         
         const afterDateTime = capabilities.datetime.now();
-        const after = toEpochMs(afterDateTime);
         
-        const eventTime = toEpochMs(event.date);
-        expect(eventTime).toBeGreaterThanOrEqual(before);
-        expect(eventTime).toBeLessThanOrEqual(after);
+        expect(event.date.isAfterOrEqual(beforeDateTime)).toBe(true);
+        expect(event.date.isBeforeOrEqual(afterDateTime)).toBe(true);
     });
 
     it("creates an event log entry with empty modifiers if not provided", async () => {

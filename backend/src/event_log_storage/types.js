@@ -12,6 +12,7 @@
 /** @typedef {import('../subprocess/command').Command} Command */
 /** @typedef {import('../environment').Environment} Environment */
 /** @typedef {import('../logger').Logger} Logger */
+/** @typedef {import('../datetime').Datetime} Datetime */
 
 /**
  * @typedef {object} Capabilities
@@ -31,6 +32,7 @@
  * Minimal capabilities needed for appending entries to files
  * @typedef {object} AppendCapabilities
  * @property {FileAppender} appender - A file appender instance
+ * @property {Datetime} datetime - Datetime utilities
  */
 
 /**

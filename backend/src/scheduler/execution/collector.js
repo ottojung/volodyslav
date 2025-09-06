@@ -27,7 +27,7 @@ class TaskEvaluationNotFoundError extends Error {
  * @param {Map<string, import('../task').Task>} tasks - Task map
  * @param {Set<string>} scheduledTasks - Set of scheduled task names
  * @param {import('../../datetime').DateTime} now - Current datetime
- * @param {import('../../capabilities/root').Capabilities} capabilities - Capabilities for logging
+ * @param {import('../types').SchedulerCapabilities} capabilities - Capabilities for logging
  * @returns {{
  *   dueTasks: Array<{taskName: string, mode: "retry"|"cron", callback: Callback}>,
  *   stats: {dueRetry: number, dueCron: number, skippedRunning: number, skippedRetryFuture: number, skippedNotDue: number}
@@ -57,17 +57,8 @@ function evaluateTasksForExecution(tasks, scheduledTasks, now, capabilities) {
         }
 
         // Check both cron schedule and retry timing
-        const lastEvaluatedFireDate = task.lastEvaluatedFire ? task.lastEvaluatedFire : undefined;
-        const { lastScheduledFire, newLastEvaluatedFire } = getMostRecentExecution(task.parsedCron, now, lastEvaluatedFireDate);
-
-        // Update lastEvaluatedFire cache for performance optimization
-        if (newLastEvaluatedFire) {
-            task.lastEvaluatedFire = newLastEvaluatedFire;
-        }
-
-        const shouldRunCron = lastScheduledFire &&
-            (!task.lastAttemptTime || task.lastAttemptTime.isBefore(lastScheduledFire));
-
+        const lastScheduledFire = getMostRecentExecution(task.parsedCron, now);
+        const shouldRunCron = !task.lastAttemptTime || task.lastAttemptTime.isBefore(lastScheduledFire);
         const shouldRunRetry = task.pendingRetryUntil && now.isAfterOrEqual(task.pendingRetryUntil);
         const callback = task.callback;
 

@@ -1,51 +1,88 @@
 /**
- * Previous fire time calculation API wrapper for mathematical algorithm.
- * Maintains API compatibility with existing code.
+ * Previous fire time calculation API.
  */
 
-const { calculatePreviousExecution } = require("./previous_mathematical");
+const { matchesCronExpression } = require("./current");
+const { dateTimeFromObject } = require("../../datetime");
+const { iterateValidDaysBackwards } = require("../expression/structure");
 
 /**
- * Finds the most recent time a cron expression would have fired before the given reference time.
- * 
- * @param {import('../expression').CronExpression} parsedCron - The parsed cron expression
- * @param {import('../../datetime').DateTime} now - The reference point (current time)
- * @returns {{previousFire: import('../../datetime').DateTime|undefined, newCacheTime: import('../../datetime').DateTime|undefined}}
+ * Calculates the previous execution time for a cron expression.
+ * Note: it is inclusive. I.e. if `fromDateTime` matches the cron expression,
+ * it will be returned as the previous execution time.
+ * @param {import('../expression').CronExpression} cronExpr - Parsed cron expression
+ * @param {import('../../datetime').DateTime} origin - DateTime to calculate from
+ * @returns {import('../../datetime').DateTime} Previous execution datetime, or null if none found
  */
-function findPreviousFire(parsedCron, now) {
-    try {
-        // Use the new mathematical algorithm
-        const previousFire = calculatePreviousExecution(parsedCron, now);
-        
-        return {
-            previousFire: previousFire || undefined,
-            newCacheTime: previousFire || undefined  // Cache the actual fire time, not evaluation time
+function getMostRecentExecution(cronExpr, origin) {
+    for (const { year, month, day } of iterateValidDaysBackwards(cronExpr, origin)) {
+        const getTime = () => {
+            const validHours = cronExpr.validHours;
+            const validMinutes = cronExpr.validMinutes;
+            if (day === origin.day && year === origin.year && month === origin.month) {
+                const filteredHours = validHours.filter(h => h <= origin.hour);
+                const hour = filteredHours[filteredHours.length - 1];
+                if (hour === undefined) {
+                    return null;
+                }
+
+                const filteredMinutes = validMinutes.filter(m => m <= origin.minute);
+                const minute = hour === origin.hour
+                    ? filteredMinutes[filteredMinutes.length - 1]
+                    : validMinutes[validMinutes.length - 1];
+                if (minute === undefined) {
+                    const filteredHours = validHours.filter(h => h < origin.hour);
+                    const hour = filteredHours[filteredHours.length - 1];
+                    if (hour === undefined) {
+                        return null;
+                    }
+                    const minute = validMinutes[validMinutes.length - 1];
+                    if (minute === undefined) {
+                        throw new Error("Internal error: no valid minutes in cron expression");
+                    }
+                    return { hour, minute };
+                }
+
+                return { hour, minute };
+            } else {
+                const hour = validHours[validHours.length - 1];
+                const minute = validMinutes[validMinutes.length - 1];
+                return { hour, minute };
+            }
         };
-    } catch (error) {
-        // Return undefined for any calculation errors
-        return {
-            previousFire: undefined,
-            newCacheTime: undefined
-        };
+
+        const time = getTime();
+        if (time === null) {
+            continue;
+        }
+
+        const { hour, minute } = time;
+
+        const candidate = dateTimeFromObject({
+            year,
+            month,
+            day,
+            hour,
+            minute,
+            second: 0,
+            millisecond: 0,
+        }, {
+            zone: origin.zone ? origin.zone : undefined,
+        });
+
+        if (candidate.isValid === false) {
+            throw new Error(`Invalid candidate datetime: ${candidate}`);
+        }
+        if (matchesCronExpression(cronExpr, candidate)) {
+            return candidate;
+        } else {
+            throw new Error("Internal error: candidate does not match cron expression");
+        }
     }
-}
 
-/**
- * Get the most recent execution time for a cron expression.
- * @param {import('../expression').CronExpression} parsedCron
- * @param {import('../../datetime').DateTime} now
- * @param {import('../../datetime').DateTime|undefined} _lastEvaluatedFire - Unused in mathematical implementation
- * @returns {{lastScheduledFire: import('../../datetime').DateTime|undefined, newLastEvaluatedFire: import('../../datetime').DateTime|undefined}}
- */
-function getMostRecentExecution(parsedCron, now, _lastEvaluatedFire) {
-    const { previousFire, newCacheTime } = findPreviousFire(parsedCron, now);
-    return {
-        lastScheduledFire: previousFire,
-        newLastEvaluatedFire: newCacheTime
-    };
+    throw new Error("No valid next execution time found");
 }
 
 module.exports = {
-    findPreviousFire,
     getMostRecentExecution,
 };

@@ -4,8 +4,10 @@
  */
 
 const { DateTime: LuxonDateTime } = require("luxon");
-const { parseCronExpression, matchesCronExpression, getNextExecution } = require("../src/scheduler");
-const { fromEpochMs } = require("../src/datetime");
+const { parseCronExpression } = require("../src/scheduler/expression");
+const { matchesCronExpression, getNextExecution } = require("../src/scheduler/calculator");
+const { fromISOString } = require("../src/datetime");
+
 const DateTime = require('../src/datetime/structure');
 
 describe("Timezone weekday bug", () => {
@@ -28,7 +30,7 @@ describe("Timezone weekday bug", () => {
 
     test("should handle UTC midnight vs timezone midnight", () => {
         // 2024-01-01T00:00:00Z (UTC) - this is Monday
-        const utcMidnight = fromEpochMs(1704067200000); // 2024-01-01T00:00:00.000Z
+        const utcMidnight = fromISOString("2024-01-01T00:00:00.000Z");
         
         // 2024-01-01T00:00:00 in UTC-05 timezone - this is also Monday locally 
         const easternMidnight = DateTime.fromLuxon(LuxonDateTime.fromISO("2024-01-01T00:00:00", { zone: "UTC-5" }));
@@ -42,7 +44,7 @@ describe("Timezone weekday bug", () => {
 
     test("should handle boundary case around timezone offset", () => {
         // 2024-01-01T02:00:00Z - this is Monday in UTC  
-        const utcDateTime = fromEpochMs(1704074400000); // 2024-01-01T02:00:00.000Z
+        const utcDateTime = fromISOString("2024-01-01T02:00:00.000Z");
         
         // Same UTC time but in UTC+02 timezone - still Monday locally
         const localDateTime = DateTime.fromLuxon(LuxonDateTime.fromMillis(1704074400000, { zone: "UTC+2" }));

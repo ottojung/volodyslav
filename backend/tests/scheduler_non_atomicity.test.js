@@ -3,6 +3,7 @@ const taskExecutor = require("../src/scheduler/execution");
 const { Duration } = require("luxon");
 const { getMockedRootCapabilities } = require("./spies");
 const { stubEnvironment, stubLogger, stubDatetime, stubSleeper, getDatetimeControl, stubScheduler, getSchedulerControl, stubRuntimeStateStorage } = require("./stubs");
+const { fromHours, fromMilliseconds, fromISOString } = require("../src/datetime");
 
 function getTestCapabilities() {
     const capabilities = getMockedRootCapabilities();
@@ -21,7 +22,7 @@ describe("scheduler atomicity testing", () => {
     test("attempt map state corruption with direct manipulation", async () => {
         const capabilities = getTestCapabilities();
         const schedulerControl = getSchedulerControl(capabilities);
-        schedulerControl.setPollingInterval(1);
+        schedulerControl.setPollingInterval(fromMilliseconds(1));
         const timeControl = getDatetimeControl(capabilities);
         const retryDelay = Duration.fromMillis(20000);
 
@@ -48,8 +49,8 @@ describe("scheduler atomicity testing", () => {
         ];
 
         // Set time to avoid immediate execution for "0 * * * *" schedule
-        const startTime = 1704107100000 // 2024-01-01T11:05:00.000Z;
-        timeControl.setTime(startTime);
+        const startTime = fromISOString("2024-01-01T11:05:00.000Z");
+        timeControl.setDateTime(startTime);
 
         await capabilities.scheduler.initialize(registrations);
 
@@ -62,7 +63,7 @@ describe("scheduler atomicity testing", () => {
         expect(task3Finished).toBe(false);
 
         // Advance to next scheduled execution (12:00:00)
-        timeControl.advanceTime(60 * 60 * 1000); // 1 hour to 12:00:00
+        timeControl.advanceByDuration(fromHours(1)); // 1 hour to 12:00:00
         await schedulerControl.waitForNextCycleEnd();
 
         expect(task1Finished).toBe(true);
@@ -92,7 +93,7 @@ describe("scheduler atomicity testing", () => {
     test("attempts to create a controlled race condition in task map serialization", async () => {
         const capabilities = getTestCapabilities();
         const schedulerControl = getSchedulerControl(capabilities);
-        schedulerControl.setPollingInterval(1);
+        schedulerControl.setPollingInterval(fromMilliseconds(1));
         const timeControl = getDatetimeControl(capabilities);
         const retryDelay = Duration.fromMillis(25000);
 
@@ -115,7 +116,7 @@ describe("scheduler atomicity testing", () => {
                         event: 'task_start',
                         callId,
                         taskName: task.name,
-                        timestamp: capabilities.datetime.getCurrentTime()
+                        timestamp: capabilities.datetime.now().toISOString()
                     });
 
                     // Execute the original task
@@ -125,7 +126,7 @@ describe("scheduler atomicity testing", () => {
                         event: 'task_complete',
                         callId,
                         taskName: task.name,
-                        timestamp: capabilities.datetime.getCurrentTime()
+                        timestamp: capabilities.datetime.now().toISOString()
                     });
                 }
             };
@@ -150,8 +151,8 @@ describe("scheduler atomicity testing", () => {
                 ["controlled-task-2", "0 * * * *", task2, retryDelay]
             ];
 
-            const startTime = 1704114300000 // 2024-01-01T13:05:00.000Z;
-            timeControl.setTime(startTime);
+            const startTime = fromISOString("2024-01-01T13:05:00.000Z");
+            timeControl.setDateTime(startTime);
 
             await capabilities.scheduler.initialize(registrations);
 
@@ -163,7 +164,7 @@ describe("scheduler atomicity testing", () => {
             expect(task2Done).toBe(false);
 
             // Advance to next scheduled execution (14:00:00)
-            timeControl.advanceTime(60 * 60 * 1000); // 1 hour to 14:00:00
+            timeControl.advanceByDuration(fromHours(1)); // 1 hour to 14:00:00
             await schedulerControl.waitForNextCycleEnd();
 
             expect(task1Done).toBe(true);

@@ -3,7 +3,8 @@
  * Ensures proper guarding against overlapping scheduler operations.
  */
 
-const { Duration, DateTime } = require("luxon");
+const { Duration } = require("luxon");
+const { fromHours, fromMilliseconds, fromISOString } = require("../src/datetime");
 const { getMockedRootCapabilities } = require("./spies");
 const { stubEnvironment, stubLogger, stubDatetime, stubSleeper, stubScheduler, getSchedulerControl, getDatetimeControl, stubRuntimeStateStorage } = require("./stubs");
 
@@ -23,12 +24,12 @@ describe("declarative scheduler re-entrancy protection", () => {
         const capabilities = getTestCapabilities();
         const timeControl = getDatetimeControl(capabilities);
         const schedulerControl = getSchedulerControl(capabilities);
-        schedulerControl.setPollingInterval(1);
+        schedulerControl.setPollingInterval(fromMilliseconds(1));
         const retryDelay = Duration.fromMillis(5000);
 
         // Set time to avoid immediate execution for "0 * * * *" schedule
-        const startTime = DateTime.fromISO("2021-01-01T00:05:00.000Z").toMillis();
-        timeControl.setTime(startTime);
+        const startTime = fromISOString("2021-01-01T00:05:00.000Z");
+        timeControl.setDateTime(startTime);
 
         let taskStartCount = 0;
         let taskEndCount = 0;
@@ -60,7 +61,7 @@ describe("declarative scheduler re-entrancy protection", () => {
         expect(taskEndCount).toBe(0);
 
         // Advance to next scheduled execution (01:00:00)
-        timeControl.advanceTime(60 * 60 * 1000); // 1 hour
+        timeControl.advanceByDuration(fromHours(1)); // 1 hour
         await schedulerControl.waitForNextCycleEnd();
         
         // Give a bit more time for task completion
@@ -76,7 +77,7 @@ describe("declarative scheduler re-entrancy protection", () => {
     test("should allow multiple initialize at the start", async () => {
         const capabilities = getTestCapabilities();
         const schedulerControl = getSchedulerControl(capabilities);
-        schedulerControl.setPollingInterval(1);
+        schedulerControl.setPollingInterval(fromMilliseconds(1));
         const timeControl = getDatetimeControl(capabilities);
         const retryDelay = Duration.fromMillis(5000);
         let taskExecutionCount = 0;
@@ -86,8 +87,8 @@ describe("declarative scheduler re-entrancy protection", () => {
         });
         
         // Set time to avoid immediate execution for "0 * * * *" schedule
-        const startTime = DateTime.fromISO("2021-01-01T00:05:00.000Z").toMillis();
-        timeControl.setTime(startTime);
+        const startTime = fromISOString("2021-01-01T00:05:00.000Z");
+        timeControl.setDateTime(startTime);
         
         const registrations = [
             ["quick-task", "0 * * * *", quickTask, retryDelay]
@@ -104,7 +105,7 @@ describe("declarative scheduler re-entrancy protection", () => {
         expect(taskExecutionCount).toBe(0);
 
         // Advance to next scheduled execution (01:00:00)
-        timeControl.advanceTime(60 * 60 * 1000); // 1 hour
+        timeControl.advanceByDuration(fromHours(1)); // 1 hour
         await schedulerControl.waitForNextCycleEnd();
         
         expect(taskExecutionCount).toBe(1);
@@ -120,7 +121,7 @@ describe("declarative scheduler re-entrancy protection", () => {
     test("should allow multiple initialize calls after completion", async () => {
         const capabilities = getTestCapabilities();
         const schedulerControl = getSchedulerControl(capabilities);
-        schedulerControl.setPollingInterval(1);
+        schedulerControl.setPollingInterval(fromMilliseconds(1));
         const timeControl = getDatetimeControl(capabilities);
         const retryDelay = Duration.fromMillis(5000);
         let taskExecutionCount = 0;
@@ -130,8 +131,8 @@ describe("declarative scheduler re-entrancy protection", () => {
         });
         
         // Set time to avoid immediate execution for "0 * * * *" schedule
-        const startTime = DateTime.fromISO("2021-01-01T00:05:00.000Z").toMillis();
-        timeControl.setTime(startTime);
+        const startTime = fromISOString("2021-01-01T00:05:00.000Z");
+        timeControl.setDateTime(startTime);
         
         const registrations = [
             ["quick-task", "0 * * * *", quickTask, retryDelay]
@@ -145,7 +146,7 @@ describe("declarative scheduler re-entrancy protection", () => {
         expect(taskExecutionCount).toBe(0);
 
         // Advance to next scheduled execution (01:00:00)
-        timeControl.advanceTime(60 * 60 * 1000); // 1 hour
+        timeControl.advanceByDuration(fromHours(1)); // 1 hour
         await schedulerControl.waitForNextCycleEnd();
         
         expect(taskExecutionCount).toBe(1);
@@ -163,7 +164,7 @@ describe("declarative scheduler re-entrancy protection", () => {
     test("should handle errors during task execution gracefully", async () => {
         const capabilities = getTestCapabilities();
         const schedulerControl = getSchedulerControl(capabilities);
-        schedulerControl.setPollingInterval(1);
+        schedulerControl.setPollingInterval(fromMilliseconds(1));
         const timeControl = getDatetimeControl(capabilities);
         const retryDelay = Duration.fromMillis(5000);
         let taskExecutionCount = 0;
@@ -174,8 +175,8 @@ describe("declarative scheduler re-entrancy protection", () => {
         });
         
         // Set time to avoid immediate execution for "0 * * * *" schedule
-        const startTime = DateTime.fromISO("2021-01-01T00:05:00.000Z").toMillis();
-        timeControl.setTime(startTime);
+        const startTime = fromISOString("2021-01-01T00:05:00.000Z");
+        timeControl.setDateTime(startTime);
         
         const registrations = [
             ["error-task", "0 * * * *", errorTask, retryDelay]
@@ -191,7 +192,7 @@ describe("declarative scheduler re-entrancy protection", () => {
         expect(taskExecutionCount).toBe(0);
         
         // Advance to next scheduled execution (01:00:00)
-        timeControl.advanceTime(60 * 60 * 1000); // 1 hour
+        timeControl.advanceByDuration(fromHours(1)); // 1 hour
         await schedulerControl.waitForNextCycleEnd();
         
         expect(taskExecutionCount).toBe(1);
@@ -202,7 +203,7 @@ describe("declarative scheduler re-entrancy protection", () => {
         await capabilities.scheduler.stop();
     });
 
-    test("should handle task validation errors properly", async () => {
+    test("should handle task validation differences properly", async () => {
         const capabilities = getTestCapabilities();
         const retryDelay = Duration.fromMillis(5000);
         
@@ -215,13 +216,14 @@ describe("declarative scheduler re-entrancy protection", () => {
         // First call to establish state
         await capabilities.scheduler.initialize(registrations);
         
-        // Different registrations should cause validation error
+        // Different registrations should now override state instead of throwing error
         const differentRegistrations = [
             ["different-task", "0 * * * *", validTask, retryDelay]
         ];
         
+        // This should now succeed (override behavior) instead of throwing
         await expect(capabilities.scheduler.initialize(differentRegistrations))
-            .rejects.toThrow(/Task list mismatch detected/);
+            .resolves.toBeUndefined();
         
         await capabilities.scheduler.stop();
     });

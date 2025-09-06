@@ -15,12 +15,7 @@ class DateTimeClass {
         }
     }
 
-    /**
-     * @returns {number}
-     */
-    getTime() {
-        return this._luxonDateTime.toMillis();
-    }
+
 
     /**
      * @returns {string}
@@ -83,6 +78,22 @@ class DateTimeClass {
     }
 
     /**
+     * Get the Luxon weekday number (1=Monday, 7=Sunday).
+     * @returns {number} Luxon weekday number
+     */
+    get luxonWeekday() {
+        return this._luxonDateTime.weekday;
+    }
+
+    /**
+     * Get the timezone name.
+     * @returns {string|null} Timezone name (e.g., 'UTC', 'America/New_York')
+     */
+    get zone() {
+        return this._luxonDateTime.zoneName;
+    }
+
+    /**
      * Advance this DateTime by the given Duration.
      * @param {import('luxon').Duration} duration - Duration to advance by
      * @returns {DateTime} New DateTime advanced by the duration
@@ -106,10 +117,8 @@ class DateTimeClass {
      * @returns {number} -1 if this is before other, 0 if equal, 1 if this is after other
      */
     compare(other) {
-        const thisMs = this._luxonDateTime.toMillis();
-        const otherMs = other._luxonDateTime.toMillis();
-        if (thisMs < otherMs) return -1;
-        if (thisMs > otherMs) return 1;
+        if (this._luxonDateTime < other._luxonDateTime) return -1;
+        if (this._luxonDateTime > other._luxonDateTime) return 1;
         return 0;
     }
 

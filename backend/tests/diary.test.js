@@ -80,7 +80,7 @@ describe("processDiaryAudios", () => {
                 const date = formatFileTimestamp(filenames[i], capabilities.datetime);
                 expect(obj).toEqual({
                     id: obj.id,
-                    date: dateFormatter.format(date),
+                    date: dateFormatter.format(capabilities, date),
                     original: "diary [when 0 hours ago] [audiorecording]",
                     input: "diary [when 0 hours ago] [audiorecording]",
                     modifiers: { when: "0 hours ago", audiorecording: "" },

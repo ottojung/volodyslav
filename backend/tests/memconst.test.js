@@ -105,15 +105,15 @@ describe('memconst', () => {
   test('should work with real async functions and delays', async () => {
     // Setup
     const sleeper = require('../src/sleeper').make();
+    const { fromMilliseconds } = require('../src/datetime/duration');
     const delayedFn = jest.fn(async () => {
-      await sleeper.sleep(100);
+      await sleeper.sleep(fromMilliseconds(100));
       return 'delayed-value';
     });
     const memoized = memconst(delayedFn);
 
     // Execute
-    // eslint-disable-next-line volodyslav/no-date-class -- Performance timing test
-    const start = Date.now();
+    const start = process.hrtime.bigint();
     const promise1 = memoized();
     const promise2 = memoized();
 
@@ -122,8 +122,7 @@ describe('memconst', () => {
 
     // Wait for the promises to resolve
     const [result1, result2] = await Promise.all([promise1, promise2]);
-    // eslint-disable-next-line volodyslav/no-date-class -- Performance timing test
-    const end = Date.now();
+    const end = process.hrtime.bigint();
 
     // Verify
     expect(delayedFn).toHaveBeenCalledTimes(1);
@@ -132,7 +131,9 @@ describe('memconst', () => {
     
     // We should see only one delay of ~100ms, not two delays
     // Using a large margin to account for Jest overhead
-    expect(end - start).toBeLessThan(200);
+    // Convert nanoseconds to milliseconds for comparison
+    const durationMs = Number(end - start) / 1000000;
+    expect(durationMs).toBeLessThan(200);
   });
 
   test('should handle async functions that return primitives', async () => {

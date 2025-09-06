@@ -3,7 +3,8 @@
  * Ensures tasks can run concurrently without blocking each other.
  */
 
-const { Duration, DateTime } = require("luxon");
+const { Duration } = require("luxon");
+const { fromISOString, fromHours, fromMilliseconds, fromMinutes } = require("../src/datetime");
 const { getMockedRootCapabilities } = require("./spies");
 const { stubEnvironment, stubLogger, stubDatetime, stubSleeper, getDatetimeControl, stubScheduler, getSchedulerControl, stubRuntimeStateStorage } = require("./stubs");
 
@@ -22,20 +23,20 @@ describe("declarative scheduler parallel execution", () => {
     test("should execute multiple due tasks in parallel", async () => {
         const capabilities = getTestCapabilities();
         const schedulerControl = getSchedulerControl(capabilities);
-        schedulerControl.setPollingInterval(1);
+        schedulerControl.setPollingInterval(fromMilliseconds(1));
         const retryDelay = Duration.fromMillis(5000);
 
         let task1StartTime = null;
         let task2StartTime = null;
 
         const task1 = jest.fn(async () => {
-            task1StartTime = capabilities.datetime.getCurrentTime();
+            task1StartTime = capabilities.datetime.now();
             // Add a small delay to make parallelism more observable
             await new Promise(resolve => setTimeout(resolve, 100));
         });
 
         const task2 = jest.fn(async () => {
-            task2StartTime = capabilities.datetime.getCurrentTime();
+            task2StartTime = capabilities.datetime.now();
             // Add a small delay to make parallelism more observable
             await new Promise(resolve => setTimeout(resolve, 100));
         });
@@ -59,7 +60,7 @@ describe("declarative scheduler parallel execution", () => {
         // Tasks should have started around the same time (parallel execution)
         expect(task1StartTime).toBeDefined();
         expect(task2StartTime).toBeDefined();
-        const startTimeDiff = Math.abs(task1StartTime - task2StartTime);
+        const startTimeDiff = Math.abs(task1StartTime.diff(task2StartTime).toMillis());
         expect(startTimeDiff).toBeLessThan(100); // Should start within 100ms of each other
 
         await capabilities.scheduler.stop();
@@ -69,12 +70,12 @@ describe("declarative scheduler parallel execution", () => {
         const capabilities = getTestCapabilities();
         const timeControl = getDatetimeControl(capabilities);
         const schedulerControl = getSchedulerControl(capabilities);
-        schedulerControl.setPollingInterval(1);
+        schedulerControl.setPollingInterval(fromMilliseconds(1));
         const retryDelay = Duration.fromMillis(5000);
 
         // Set time to avoid immediate execution for "0 * * * *" schedule
-        const startTime = DateTime.fromISO("2021-01-01T00:05:00.000Z").toMillis(); // 2021-01-01T00:05:00.000Z
-        timeControl.setTime(startTime);
+        const startTime = fromISOString("2021-01-01T00:05:00.000Z"); // 2021-01-01T00:05:00.000Z
+        timeControl.setDateTime(startTime);
 
         let concurrentExecutions = 0;
         let maxConcurrentExecutions = 0;
@@ -106,7 +107,7 @@ describe("declarative scheduler parallel execution", () => {
         expect(concurrencyTask).toHaveBeenCalledTimes(0);
 
         // Advance to next scheduled execution (01:00:00)
-        timeControl.advanceTime(60 * 60 * 1000); // 1 hour
+        timeControl.advanceByDuration(fromHours(1)); // 1 hour
         await schedulerControl.waitForNextCycleEnd();
 
         // Should execute all tasks and allow multiple to run concurrently
@@ -120,12 +121,12 @@ describe("declarative scheduler parallel execution", () => {
         const capabilities = getTestCapabilities();
         const timeControl = getDatetimeControl(capabilities);
         const schedulerControl = getSchedulerControl(capabilities);
-        schedulerControl.setPollingInterval(1);
+        schedulerControl.setPollingInterval(fromMilliseconds(1));
         const retryDelay = Duration.fromMillis(5000);
 
         // Set time to avoid immediate execution for "0 * * * *" schedule
-        const startTime = DateTime.fromISO("2021-01-01T00:05:00.000Z").toMillis(); // 2021-01-01T00:05:00.000Z
-        timeControl.setTime(startTime);
+        const startTime = fromISOString("2021-01-01T00:05:00.000Z"); // 2021-01-01T00:05:00.000Z
+        timeControl.setDateTime(startTime);
 
         let fastTaskCompleted = false;
         let slowTaskStarted = false;
@@ -155,7 +156,7 @@ describe("declarative scheduler parallel execution", () => {
         expect(fastTaskCompleted).toBe(false);
 
         // Advance to next scheduled execution (01:00:00)
-        timeControl.advanceTime(60 * 60 * 1000); // 1 hour
+        timeControl.advanceByDuration(fromHours(1)); // 1 hour
         await schedulerControl.waitForNextCycleEnd();
 
         // Both tasks should have started and the fast one should complete
@@ -169,12 +170,12 @@ describe("declarative scheduler parallel execution", () => {
         const capabilities = getTestCapabilities();
         const timeControl = getDatetimeControl(capabilities);
         const schedulerControl = getSchedulerControl(capabilities);
-        schedulerControl.setPollingInterval(1);
+        schedulerControl.setPollingInterval(fromMilliseconds(1));
         const retryDelay = Duration.fromMillis(1000);
 
         // Set time to avoid immediate execution for "0 * * * *" schedule
-        const startTime = DateTime.fromISO("2021-01-01T00:05:00.000Z").toMillis(); // 2021-01-01T00:05:00.000Z
-        timeControl.setTime(startTime);
+        const startTime = fromISOString("2021-01-01T00:05:00.000Z"); // 2021-01-01T00:05:00.000Z
+        timeControl.setDateTime(startTime);
 
         let goodTaskExecuted = false;
         let badTaskExecuted = false;
@@ -202,7 +203,7 @@ describe("declarative scheduler parallel execution", () => {
         expect(badTaskExecuted).toBe(false);
 
         // Advance to next scheduled execution (01:00:00)
-        timeControl.advanceTime(60 * 60 * 1000); // 1 hour
+        timeControl.advanceByDuration(fromHours(1)); // 1 hour
         await schedulerControl.waitForNextCycleEnd();
 
         // Both tasks should have been attempted
@@ -217,13 +218,13 @@ describe("declarative scheduler parallel execution", () => {
     test("should handle many parallel tasks with retries", async () => {
         const capabilities = getTestCapabilities();
         const schedulerControl = getSchedulerControl(capabilities);
-        schedulerControl.setPollingInterval(1);
+        schedulerControl.setPollingInterval(fromMilliseconds(1));
         const timeControl = getDatetimeControl(capabilities);
         const retryDelay = Duration.fromMillis(500); // Short retry for faster testing
 
         // Set time to avoid immediate execution for "0 * * * *" schedule
-        const startTime = DateTime.fromISO("2021-01-01T00:05:00.000Z").toMillis(); // 2021-01-01T00:05:00.000Z
-        timeControl.setTime(startTime);
+        const startTime = fromISOString("2021-01-01T00:05:00.000Z"); // 2021-01-01T00:05:00.000Z
+        timeControl.setDateTime(startTime);
 
         let taskExecutions = {};
 
@@ -258,7 +259,7 @@ describe("declarative scheduler parallel execution", () => {
         expect(task3).toHaveBeenCalledTimes(0);
 
         // Advance to next scheduled execution (01:00:00)
-        timeControl.advanceTime(59.5 * 60 * 1000); // 59.5 minutes to reach 01:00:00
+        timeControl.advanceByDuration(fromMinutes(59.5)); // 59.5 minutes to reach 01:00:00
         await schedulerControl.waitForNextCycleEnd();
 
         // Wait for initial executions
@@ -267,7 +268,7 @@ describe("declarative scheduler parallel execution", () => {
         expect(task3).toHaveBeenCalledTimes(1);
 
         // Advance time by retry delay to trigger retries
-        timeControl.advanceTime(1000); // 1000ms - double the 500ms retry delay
+        timeControl.advanceByDuration(fromMilliseconds(1000)); // 1000ms - double the 500ms retry delay
         await schedulerControl.waitForNextCycleEnd(); // Wait for polling
 
         // All tasks should have been retried at least once

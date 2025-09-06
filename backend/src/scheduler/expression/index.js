@@ -4,7 +4,7 @@
  */
 
 // Import functions and predicates from sub-modules
-const { parseCronExpression, isCronExpression, isInvalidCronExpressionError } = require("./structure");
+const { parseCronExpression, isCronExpression, isInvalidCronExpressionError, iterateValidDays } = require("./structure");
 const { isFieldParseError } = require("./field_parser");
 
 // Re-export types from sub-modules
@@ -18,4 +18,7 @@ module.exports = {
     isCronExpression,
     isInvalidCronExpressionError,
     isFieldParseError,
+
+    // Helpers
+    iterateValidDays,
 };

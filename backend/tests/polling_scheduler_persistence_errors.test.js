@@ -5,6 +5,7 @@
  */
 
 const { Duration } = require("luxon");
+const { fromMilliseconds, fromISOString } = require("../src/datetime");
 const { getMockedRootCapabilities } = require("./spies");
 const { stubEnvironment, stubLogger, stubDatetime, stubSleeper, stubScheduler, getSchedulerControl } = require("./stubs");
 
@@ -19,17 +20,10 @@ function getTestCapabilities() {
 }
 
 describe("declarative scheduler persistence and error handling", () => {
-    // Use real timers for testing actual scheduler behavior
-    beforeEach(() => {
-        // Don't use fake timers - let the scheduler run with real timing
-    });
-
-
-
     test("should handle task execution errors gracefully", async () => {
         const capabilities = getTestCapabilities();
         const schedulerControl = getSchedulerControl(capabilities);
-        schedulerControl.setPollingInterval(1);
+        schedulerControl.setPollingInterval(fromMilliseconds(1));
         const retryDelay = Duration.fromMillis(5000);
 
         let callCount = 0;
@@ -62,7 +56,7 @@ describe("declarative scheduler persistence and error handling", () => {
     test("should handle different types of callback errors", async () => {
         const capabilities = getTestCapabilities();
         const schedulerControl = getSchedulerControl(capabilities);
-        schedulerControl.setPollingInterval(1);
+        schedulerControl.setPollingInterval(fromMilliseconds(1));
         const retryDelay = Duration.fromMillis(1000);
 
         // Test basic error handling without complex loops
@@ -89,7 +83,7 @@ describe("declarative scheduler persistence and error handling", () => {
     test("should maintain task state consistency after errors", async () => {
         const capabilities = getTestCapabilities();
         const schedulerControl = getSchedulerControl(capabilities);
-        schedulerControl.setPollingInterval(1);
+        schedulerControl.setPollingInterval(fromMilliseconds(1));
         const retryDelay = Duration.fromMillis(2000);
 
         const successCallback = jest.fn().mockResolvedValue(undefined);
@@ -173,8 +167,11 @@ describe("declarative scheduler persistence and error handling", () => {
             ];
 
             for (const timeStr of testTimes) {
-                // eslint-disable-next-line volodyslav/no-date-class -- Jest system time mocking
-                jest.setSystemTime(new Date(timeStr));
+                // Convert ISO string to DateTime then get the JS timestamp for Jest mocking
+                const dateTime = fromISOString(timeStr);
+                // Use Luxon's toMillis() to get the timestamp without using Date
+                const timestamp = dateTime._luxonDateTime.toMillis();
+                jest.setSystemTime(timestamp);
 
                 // Should be able to initialize at any time
                 await expect(capabilities.scheduler.initialize(registrations)).resolves.toBeUndefined();
@@ -195,7 +192,7 @@ describe("declarative scheduler persistence and error handling", () => {
 
         // Valid case
         const registrations = [
-            ["valid-task", "0 */4 * * *", validCallback, retryDelay]
+            ["valid-task", "0 0,4,8,12,16,20 * * *", validCallback, retryDelay]
         ];
 
         await expect(capabilities.scheduler.initialize(registrations)).resolves.toBeUndefined();

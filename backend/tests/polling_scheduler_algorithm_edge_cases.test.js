@@ -3,7 +3,8 @@
  * Focuses on observable behavior and edge case handling.
  */
 
-const { Duration, DateTime } = require("luxon");
+const { Duration } = require("luxon");
+const { fromISOString, fromHours, fromMilliseconds } = require("../src/datetime");
 const { getMockedRootCapabilities } = require("./spies");
 const { stubEnvironment, stubLogger, stubDatetime, stubSleeper, getDatetimeControl, stubScheduler, getSchedulerControl, stubRuntimeStateStorage } = require("./stubs");
 
@@ -22,7 +23,7 @@ describe("declarative scheduler algorithm robustness", () => {
     test("should handle basic task scheduling correctly", async () => {
         const capabilities = getTestCapabilities();
         const schedulerControl = getSchedulerControl(capabilities);
-        schedulerControl.setPollingInterval(1);
+        schedulerControl.setPollingInterval(fromMilliseconds(1));
         const retryDelay = Duration.fromMillis(5000);
         const taskCallback = jest.fn();
 
@@ -44,7 +45,7 @@ describe("declarative scheduler algorithm robustness", () => {
     test("should handle frequent task scheduling without issues", async () => {
         const capabilities = getTestCapabilities();
         const schedulerControl = getSchedulerControl(capabilities);
-        schedulerControl.setPollingInterval(1);
+        schedulerControl.setPollingInterval(fromMilliseconds(1));
         const retryDelay = Duration.fromMillis(5000);
         const taskCallback = jest.fn();
 
@@ -65,7 +66,7 @@ describe("declarative scheduler algorithm robustness", () => {
     test("should handle multiple different cron schedules", async () => {
         const capabilities = getTestCapabilities();
         const schedulerControl = getSchedulerControl(capabilities);
-        schedulerControl.setPollingInterval(1);
+        schedulerControl.setPollingInterval(fromMilliseconds(1));
         const retryDelay = Duration.fromMillis(5000);
 
         const hourlyTask = jest.fn();
@@ -94,7 +95,7 @@ describe("declarative scheduler algorithm robustness", () => {
         const capabilities = getTestCapabilities();
         const timeControl = getDatetimeControl(capabilities);
         const schedulerControl = getSchedulerControl(capabilities);
-        schedulerControl.setPollingInterval(1);
+        schedulerControl.setPollingInterval(fromMilliseconds(1));
         const retryDelay = Duration.fromMillis(1000); // 1 second
         let callCount = 0;
 
@@ -106,8 +107,8 @@ describe("declarative scheduler algorithm robustness", () => {
         });
 
         // Set initial time to avoid immediate execution
-        const startTime = DateTime.fromISO("2021-01-01T00:05:00.000Z").toMillis(); // 2021-01-01T00:05:00.000Z
-        timeControl.setTime(startTime);
+        const startTime = fromISOString("2021-01-01T00:05:00.000Z"); // 2021-01-01T00:05:00.000Z
+        timeControl.setDateTime(startTime);
 
         const registrations = [
             ["precision-test", "0 * * * *", precisionCallback, retryDelay]
@@ -120,12 +121,12 @@ describe("declarative scheduler algorithm robustness", () => {
         expect(precisionCallback).toHaveBeenCalledTimes(0);
 
         // Advance to next scheduled execution (01:00:00)
-        timeControl.advanceTime(60 * 60 * 1000); // 1 hour
+        timeControl.advanceByDuration(fromHours(1)); // 1 hour
         await schedulerControl.waitForNextCycleEnd();
         expect(precisionCallback).toHaveBeenCalledTimes(1);
 
         // Advance time by retry delay to trigger retry
-        timeControl.advanceTime(1000); // 1 second retry delay
+        timeControl.advanceByDuration(fromMilliseconds(1000)); // 1 second retry delay
         await schedulerControl.waitForNextCycleEnd(); // Wait for polling
         expect(precisionCallback).toHaveBeenCalledTimes(2);
 
@@ -135,7 +136,7 @@ describe("declarative scheduler algorithm robustness", () => {
     test("should handle complex cron expressions gracefully", async () => {
         const capabilities = getTestCapabilities();
         const schedulerControl = getSchedulerControl(capabilities);
-        schedulerControl.setPollingInterval(1);
+        schedulerControl.setPollingInterval(fromMilliseconds(1));
         const retryDelay = Duration.fromMillis(5000);
         const taskCallback = jest.fn();
 
@@ -158,7 +159,7 @@ describe("declarative scheduler algorithm robustness", () => {
     test("should handle multiple tasks with different schedules and retries", async () => {
         const capabilities = getTestCapabilities();
         const schedulerControl = getSchedulerControl(capabilities);
-        schedulerControl.setPollingInterval(1);
+        schedulerControl.setPollingInterval(fromMilliseconds(1));
 
         const task1 = jest.fn();
         const task2 = jest.fn();
@@ -166,7 +167,7 @@ describe("declarative scheduler algorithm robustness", () => {
 
         const registrations = [
             ["multi-field-task1", "0 * * * *", task1, Duration.fromMillis(1000)], // Every minute
-            ["multi-field-task2", "*/15 * * * *", task2, Duration.fromMillis(2000)], // Every 5 minutes  
+            ["multi-field-task2", "0,15,30,45 * * * *", task2, Duration.fromMillis(2000)], // Every 15 minutes  
             ["multi-field-task3", "0 * * * *", task3, Duration.fromMillis(3000)] // Every hour
         ];
 
@@ -185,7 +186,7 @@ describe("declarative scheduler algorithm robustness", () => {
     test("should handle error propagation gracefully", async () => {
         const capabilities = getTestCapabilities();
         const schedulerControl = getSchedulerControl(capabilities);
-        schedulerControl.setPollingInterval(1);
+        schedulerControl.setPollingInterval(fromMilliseconds(1));
         const retryDelay = Duration.fromMillis(5000);
         const goodTask = jest.fn();
         const badTask = jest.fn(() => {
@@ -232,13 +233,13 @@ describe("declarative scheduler algorithm robustness", () => {
         const capabilities = getTestCapabilities();
         const timeControl = getDatetimeControl(capabilities);
         const schedulerControl = getSchedulerControl(capabilities);
-        schedulerControl.setPollingInterval(1);
+        schedulerControl.setPollingInterval(fromMilliseconds(1));
         const retryDelay = Duration.fromMillis(5000);
         const taskCallback = jest.fn();
 
         // Set time to avoid immediate execution for "0 * * * *" schedule
-        const startTime = DateTime.fromISO("2021-01-01T00:05:00.000Z").toMillis(); // 2021-01-01T00:05:00.000Z
-        timeControl.setTime(startTime);
+        const startTime = fromISOString("2021-01-01T00:05:00.000Z"); // 2021-01-01T00:05:00.000Z
+        timeControl.setDateTime(startTime);
 
         const registrations = [
             ["idempotent-test", "0 * * * *", taskCallback, retryDelay]
@@ -254,7 +255,7 @@ describe("declarative scheduler algorithm robustness", () => {
         expect(taskCallback).toHaveBeenCalledTimes(0);
 
         // Advance to next scheduled execution (01:00:00)
-        timeControl.advanceTime(60 * 60 * 1000); // 1 hour
+        timeControl.advanceByDuration(fromHours(1)); // 1 hour
         await schedulerControl.waitForNextCycleEnd();
 
         // Should only execute once despite multiple initializations

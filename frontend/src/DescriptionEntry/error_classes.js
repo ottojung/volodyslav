@@ -1,6 +1,8 @@
 // Error classes for the DescriptionEntry module
 // Extracted from errors.js
 
+import { DateTime } from 'luxon';
+
 /**
  * Base class for all DescriptionEntry-related errors
  */
@@ -13,8 +15,7 @@ export class DescriptionEntryError extends Error {
         super(message);
         this.name = this.constructor.name;
         this.cause = cause;
-        // eslint-disable-next-line volodyslav/no-date-class -- Frontend error timestamping
-        this.timestamp = new Date().toISOString();
+        this.timestamp = DateTime.now().toISO();
     }
 }
 

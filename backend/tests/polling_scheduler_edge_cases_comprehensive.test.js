@@ -3,9 +3,12 @@
  * Tests boundary conditions, error scenarios, and complex edge cases.
  */
 
-const { Duration, DateTime } = require("luxon");
+const { Duration } = require("luxon");
+const { fromISOString, fromHours, fromMilliseconds } = require("../src/datetime");
 const { getMockedRootCapabilities } = require("./spies");
 const { stubEnvironment, stubLogger, stubDatetime, stubSleeper, stubRuntimeStateStorage, stubScheduler, getSchedulerControl, getDatetimeControl } = require("./stubs");
+const { parseCronExpression } = require("../src/scheduler/expression");
+
 
 function getTestCapabilities() {
     const capabilities = getMockedRootCapabilities();
@@ -23,12 +26,12 @@ describe("declarative scheduler comprehensive edge cases", () => {
         test("should handle task scheduled exactly at polling interval", async () => {
             const capabilities = getTestCapabilities();
             const schedulerControl = getSchedulerControl(capabilities);
-            schedulerControl.setPollingInterval(1);
+            schedulerControl.setPollingInterval(fromMilliseconds(1));
             const retryDelay = Duration.fromMillis(1000);
             const taskCallback = jest.fn();
 
             const registrations = [
-                ["exact-timing", "*/10 * * * *", taskCallback, retryDelay]
+                ["exact-timing", "0,10,20,30,40,50 * * * *", taskCallback, retryDelay]
             ];
 
             // Initialize scheduler should not throw errors
@@ -47,15 +50,15 @@ describe("declarative scheduler comprehensive edge cases", () => {
             const capabilities = getTestCapabilities();
             const timeControl = getDatetimeControl(capabilities);
             const schedulerControl = getSchedulerControl(capabilities);
-            schedulerControl.setPollingInterval(1);
+            schedulerControl.setPollingInterval(fromMilliseconds(1));
             const retryDelay = Duration.fromMillis(1000);
             const callback1 = jest.fn();
             const callback2 = jest.fn();
             const callback3 = jest.fn();
 
             // Set time to avoid immediate execution for "0 * * * *" schedule
-            const startTime = DateTime.fromISO("2021-01-01T00:05:00.000Z").toMillis(); // 2021-01-01T00:05:00.000Z
-            timeControl.setTime(startTime);
+            const startTime = fromISOString("2021-01-01T00:05:00.000Z"); // 2021-01-01T00:05:00.000Z
+            timeControl.setDateTime(startTime);
 
             const registrations = [
                 ["task1", "0 * * * *", callback1, retryDelay], // Every minute
@@ -73,7 +76,7 @@ describe("declarative scheduler comprehensive edge cases", () => {
             expect(callback3).toHaveBeenCalledTimes(0);
 
             // Advance to next scheduled execution (01:00:00)
-            timeControl.advanceTime(60 * 60 * 1000); // 1 hour
+            timeControl.advanceByDuration(fromHours(1)); // 1 hour
             await schedulerControl.waitForNextCycleEnd();
 
             // All tasks should execute
@@ -87,7 +90,7 @@ describe("declarative scheduler comprehensive edge cases", () => {
         test("should handle very short retry delays", async () => {
             const capabilities = getTestCapabilities();
             const schedulerControl = getSchedulerControl(capabilities);
-            schedulerControl.setPollingInterval(1);
+            schedulerControl.setPollingInterval(fromMilliseconds(1));
             const retryDelay = Duration.fromMillis(100); // Very short retry delay
             let callCount = 0;
             const flakyCallback = jest.fn(() => {
@@ -117,9 +120,6 @@ describe("declarative scheduler comprehensive edge cases", () => {
 
     describe("complex cron expressions", () => {
         test("should handle leap year specific schedules", async () => {
-            // Test that leap year cron expressions can be parsed without errors
-            const { parseCronExpression } = require("../src/scheduler");
-            
             // This should not throw errors
             expect(() => parseCronExpression("0 12 29 2 *")).not.toThrow(); // Feb 29th leap year
             
@@ -129,8 +129,6 @@ describe("declarative scheduler comprehensive edge cases", () => {
         test("should handle very sparse schedules", async () => {
             // Test that sparse cron expressions can be parsed without errors
             // by using the main scheduler import which re-exports parseCronExpression
-            const { parseCronExpression } = require("../src/scheduler");
-            
             // These should not throw errors
             expect(() => parseCronExpression("0 0 1 * *")).not.toThrow(); // Monthly
             expect(() => parseCronExpression("0 0 * * 0")).not.toThrow(); // Weekly  
@@ -142,7 +140,7 @@ describe("declarative scheduler comprehensive edge cases", () => {
         test("should handle complex multi-field constraints", async () => {
             const capabilities = getTestCapabilities();
             const schedulerControl = getSchedulerControl(capabilities);
-            schedulerControl.setPollingInterval(1);
+            schedulerControl.setPollingInterval(fromMilliseconds(1));
             const retryDelay = Duration.fromMillis(1000);
             const taskCallback = jest.fn();
 
@@ -167,12 +165,12 @@ describe("declarative scheduler comprehensive edge cases", () => {
             const capabilities = getTestCapabilities();
             const timeControl = getDatetimeControl(capabilities);
             const schedulerControl = getSchedulerControl(capabilities);
-            schedulerControl.setPollingInterval(1);
+            schedulerControl.setPollingInterval(fromMilliseconds(1));
             const retryDelay = Duration.fromMillis(1000);
 
             // Set time to avoid immediate execution for "0 * * * *" schedule
-            const startTime = DateTime.fromISO("2021-01-01T00:05:00.000Z").toMillis(); // 2021-01-01T00:05:00.000Z
-            timeControl.setTime(startTime);
+            const startTime = fromISOString("2021-01-01T00:05:00.000Z"); // 2021-01-01T00:05:00.000Z
+            timeControl.setDateTime(startTime);
 
             // Schedule 15 tasks all due at the same time
             const callbacks = [];
@@ -192,7 +190,7 @@ describe("declarative scheduler comprehensive edge cases", () => {
             expect(executedCount).toBe(0);
 
             // Advance to next scheduled execution (01:00:00)
-            timeControl.advanceTime(60 * 60 * 1000); // 1 hour
+            timeControl.advanceByDuration(fromHours(1)); // 1 hour
             await schedulerControl.waitForNextCycleEnd();
 
             // Should be able to schedule many tasks without crashing
@@ -210,7 +208,7 @@ describe("declarative scheduler comprehensive edge cases", () => {
         test("should handle callbacks that throw specific error types", async () => {
             const capabilities = getTestCapabilities();
             const schedulerControl = getSchedulerControl(capabilities);
-            schedulerControl.setPollingInterval(1);
+            schedulerControl.setPollingInterval(fromMilliseconds(1));
             const retryDelay = Duration.fromMillis(1000);
             
             const customError = new TypeError("Custom error type");
@@ -237,7 +235,7 @@ describe("declarative scheduler comprehensive edge cases", () => {
         test("should handle callbacks that return both promises and sync values", async () => {
             const capabilities = getTestCapabilities();
             const schedulerControl = getSchedulerControl(capabilities);
-            schedulerControl.setPollingInterval(1);
+            schedulerControl.setPollingInterval(fromMilliseconds(1));
             const retryDelay = Duration.fromMillis(1000);
 
             const syncCallback = jest.fn(() => "sync result");
@@ -267,7 +265,7 @@ describe("declarative scheduler comprehensive edge cases", () => {
         test("should handle minute boundary precision schedules", async () => {
             const capabilities = getTestCapabilities();
             const schedulerControl = getSchedulerControl(capabilities);
-            schedulerControl.setPollingInterval(1);
+            schedulerControl.setPollingInterval(fromMilliseconds(1));
             const retryDelay = Duration.fromMillis(1000);
             const taskCallback = jest.fn();
 
@@ -289,7 +287,7 @@ describe("declarative scheduler comprehensive edge cases", () => {
         test("should handle second precision in task timing", async () => {
             const capabilities = getTestCapabilities();
             const schedulerControl = getSchedulerControl(capabilities);
-            schedulerControl.setPollingInterval(1);
+            schedulerControl.setPollingInterval(fromMilliseconds(1));
             const retryDelay = Duration.fromMillis(1000);
             const taskCallback = jest.fn();
 

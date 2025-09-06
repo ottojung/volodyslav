@@ -51,8 +51,7 @@ async function withRetry(capabilities, callbackName, retryableCallback) {
         return difference(current, startTime);
     }
 
-    // eslint-disable-next-line no-constant-condition
-    while (true) {
+    for (;;) {
         capabilities.logger.logDebug(
             {
                 callbackName,

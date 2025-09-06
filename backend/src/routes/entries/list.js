@@ -136,7 +136,7 @@ async function handleEntriesGet(req, res, capabilities, reqId) {
 
         res.json({
             /** @type {Array<import('../../event/structure').SerializedEvent>} */
-            results: result.results.map(serialize),
+            results: result.results.map(event => serialize(capabilities, event)),
             next,
         });
     } catch (error) {

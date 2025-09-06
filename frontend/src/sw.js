@@ -1,5 +1,3 @@
-/* eslint-disable @typescript-eslint/ban-ts-comment */
-// @ts-nocheck
 // Simple service worker for Termux compatibility
 // This avoids the complex workbox-build process that uses terser
 //
@@ -8,8 +6,7 @@
 // This service worker is specifically designed for the injectManifest strategy
 // to work around Terser minification issues in resource-constrained environments
 //
-// TypeScript checking is disabled because this runs in a Service Worker context,
-// not the main browser context, so self, __WB_MANIFEST, etc. are available globally
+// Service worker runs in its own context with specific globals like self and __WB_MANIFEST
 
 import { precacheAndRoute, cleanupOutdatedCaches } from "workbox-precaching";
 import { logger } from "./DescriptionEntry/logger.js";

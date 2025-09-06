@@ -1,7 +1,7 @@
 
 /**
  * @typedef {import('../../logger').Logger} Logger
- * @typedef {import('luxon').Duration} Duration
+ * @typedef {import('../../datetime').Duration} Duration
  * @typedef {import('../types').CronExpression} CronExpression
  * @typedef {import('../../datetime').DateTime} DateTime
  * @typedef {import('../types').Callback} Callback
@@ -23,9 +23,8 @@ class TaskClass {
      * @param {DateTime|undefined} lastFailureTime
      * @param {DateTime|undefined} lastAttemptTime
      * @param {DateTime|undefined} pendingRetryUntil
-     * @param {DateTime|undefined} lastEvaluatedFire
      */
-    constructor(name, parsedCron, callback, retryDelay, lastSuccessTime, lastFailureTime, lastAttemptTime, pendingRetryUntil, lastEvaluatedFire) {
+    constructor(name, parsedCron, callback, retryDelay, lastSuccessTime, lastFailureTime, lastAttemptTime, pendingRetryUntil) {
         if (this.__brand !== undefined) {
             throw new Error("Task is a nominal type and cannot be instantiated directly. Use makeTask() instead.");
         }
@@ -37,7 +36,6 @@ class TaskClass {
         this.lastFailureTime = lastFailureTime;
         this.lastAttemptTime = lastAttemptTime;
         this.pendingRetryUntil = pendingRetryUntil;
-        this.lastEvaluatedFire = lastEvaluatedFire;
     }
 }
 
@@ -51,20 +49,10 @@ class TaskClass {
  * @param {DateTime|undefined} lastFailureTime
  * @param {DateTime|undefined} lastAttemptTime
  * @param {DateTime|undefined} pendingRetryUntil
- * @param {DateTime|undefined} lastEvaluatedFire
  * @returns {TaskClass}
  */
-function makeTask(name, parsedCron, callback, retryDelay, lastSuccessTime, lastFailureTime, lastAttemptTime, pendingRetryUntil, lastEvaluatedFire) {
-    return new TaskClass(name, parsedCron, callback, retryDelay, lastSuccessTime, lastFailureTime, lastAttemptTime, pendingRetryUntil, lastEvaluatedFire);
-}
-
-/**
- * Type guard for Task instances.
- * @param {unknown} object
- * @returns {object is TaskClass}
- */
-function isTask(object) {
-    return object instanceof TaskClass;
+function makeTask(name, parsedCron, callback, retryDelay, lastSuccessTime, lastFailureTime, lastAttemptTime, pendingRetryUntil) {
+    return new TaskClass(name, parsedCron, callback, retryDelay, lastSuccessTime, lastFailureTime, lastAttemptTime, pendingRetryUntil);
 }
 
 /**
@@ -73,5 +61,4 @@ function isTask(object) {
 
 module.exports = {
     makeTask,
-    isTask,
 };

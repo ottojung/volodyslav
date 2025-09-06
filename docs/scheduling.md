@@ -15,8 +15,9 @@ imperative APIs for adding or removing tasks while the process is running.
 
 - **Declarative configuration** – the set of tasks is described entirely by the
   registrations provided during initialisation.
-- **Deterministic behaviour** – persisted runtime state must match the declared
-  tasks exactly or the scheduler refuses to start.
+- **Adaptive configuration** – when declared tasks differ from persisted state,
+  the scheduler automatically adapts by overriding disk data with the new
+  declarations.
 - **Durable state** – task definitions and minimal execution history are stored
   atomically so a restart continues from the last known state.
 - **Minimal surface area** – the scheduler exposes only initialisation and stop
@@ -32,9 +33,11 @@ and a retry interval. All definitions are supplied during start‑up and
 represent the complete list of tasks the application expects to exist.
 
 At initialisation the scheduler loads the previously persisted definitions and
-checks that they exactly match the ones provided at start‑up. If the sets differ
-the scheduler refuses to run. This validation eliminates configuration drift and
-ensures that a process restart reproduces the intended schedule.
+compares them with the ones provided at start‑up. If the sets differ, the
+scheduler logs the differences and overrides the persisted state with the new
+registrations. This approach prioritizes the current declarations over stale
+disk data, ensuring that the scheduler adapts to configuration changes without
+manual intervention.
 
 The declarative approach has several implications:
 
@@ -44,8 +47,9 @@ The declarative approach has several implications:
    predictable.
 2. **Reproducibility** – given the same declarations and persisted state, the
    scheduler behaves deterministically across hosts and restarts.
-3. **State validation** – by verifying definitions on every start, stale tasks
-   from previous deployments cannot linger unnoticed.
+3. **State override** – when task definitions change between deployments, the
+   new definitions automatically override persisted state, with changes logged
+   for transparency.
 
 Because behaviour derives solely from declarations and stored state, the
 scheduler exposes no API for ad‑hoc scheduling once it is running.
@@ -118,6 +122,62 @@ The scheduler follows specific rules for task execution during the very first st
 ### Subsequent Startup Behavior
 
 After the first startup, the scheduler loads persisted execution history and continues normal scheduling based on the last known state. No special first-startup logic applies to subsequent restarts.
+
+## Cron Expression Format (POSIX Only)
+
+The scheduler accepts **strictly POSIX-compliant cron expressions** as defined in IEEE Std 1003.1 ([Open Group Base Specifications](https://pubs.opengroup.org/onlinepubs/9699919799/utilities/crontab.html)).
+
+### Format Specification
+
+Cron expressions consist of **exactly 5 time fields** separated by whitespace:
+
+```
+minute hour day-of-month month day-of-week
+```
+
+**Field Ranges:**
+- **minute**: 0–59
+- **hour**: 0–23  
+- **day-of-month**: 1–31
+- **month**: 1–12
+- **day-of-week**: 0–6 (0 = Sunday, 6 = Saturday)
+
+### Supported Syntax (POSIX Only)
+
+Each field accepts:
+- **`*`** – all valid values
+- **Numbers** – single values (e.g., `15`, `3`)
+- **Ranges** – inclusive ranges (e.g., `1-5`, `9-17`)
+- **Lists** – comma-separated elements (e.g., `1,15,30`, `1-3,10,20-25`)
+
+**Examples:**
+- `15 3 * * 1-5` – 3:15 AM on weekdays
+- `0 0 1,15 * 1` – midnight on 1st, 15th, and Mondays (DOM/DOW OR logic)
+- `0 12 14 2 *` – noon on February 14th
+- `0,30 * * * *` – every 30 minutes
+
+### Rejected Non-POSIX Extensions
+
+The scheduler **explicitly rejects** common cron extensions not in the POSIX standard:
+
+- **Step syntax**: `*/15`, `0-30/5` (use explicit lists instead: `0,15,30,45`)
+- **Names**: `mon`, `jan`, `sunday` (use numbers: `1`, `1`, `0`)
+- **Macros**: `@hourly`, `@daily`, `@reboot` (use explicit expressions)
+- **Quartz tokens**: `?`, `L`, `W`, `#` (not supported)
+- **Extended ranges**: DOW `7` for Sunday (use `0`)
+- **Wrap-around ranges**: `22-2` (use separate fields or lists)
+
+### Day-of-Month/Day-of-Week Semantics
+
+Following POSIX specification, when both day-of-month and day-of-week are specified (not wildcards), a job runs if **either** condition matches:
+
+- `0 0 1,15 * 1` runs on the 1st, 15th **OR** any Monday
+- `0 0 * * 1` runs **only** on Mondays  
+- `0 0 15 * *` runs **only** on the 15th of each month
+
+For authoritative documentation, refer to:
+- [The Open Group Base Specifications: crontab](https://pubs.opengroup.org/onlinepubs/9699919799/utilities/crontab.html)
+- [POSIX Programmer's Manual: crontab(1p)](https://man7.org/linux/man-pages/man1/crontab.1p.html)
 
 ## Limitations and Tradeoffs
 

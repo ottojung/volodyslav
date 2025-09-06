@@ -2,7 +2,7 @@
  * State initialization and persistence core functionality.
  */
 
-const { Duration } = require('luxon');
+const { fromMinutes } = require("../../datetime");
 const { makeDefault } = require('../../runtime_state_storage/structure');
 const { materializeTasks, serializeTasks } = require('./materialization');
 
@@ -26,7 +26,7 @@ const { materializeTasks, serializeTasks } = require('./materialization');
  */
 async function getCurrentState(storage, registrations, datetime) {
     const now = datetime.now();    
-    const lastMinute = now.subtract(Duration.fromObject({ minutes: 1 }));
+    const lastMinute = now.subtract(fromMinutes(1));
     const existingState = await storage.getExistingState();
     if (existingState === null) {
         const ret = makeDefault(datetime);
@@ -50,7 +50,7 @@ async function getCurrentState(storage, registrations, datetime) {
 /**
  * Persist current scheduler state to disk
  * @template T
- * @param {import('../../capabilities/root').Capabilities} capabilities
+ * @param {import('../types').SchedulerCapabilities} capabilities
  * @param {ParsedRegistrations} registrations
  * @param {Transformation<T>} transformation
  * @returns {Promise<T>}
@@ -79,6 +79,5 @@ async function mutateTasks(capabilities, registrations, transformation) {
 }
 
 module.exports = {
-    getCurrentState,
     mutateTasks,
 };

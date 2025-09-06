@@ -3,7 +3,6 @@ import { Link } from 'react-router-dom';
 import { Button, Box, VStack, Heading, Text } from '@chakra-ui/react';
 import { logger } from './DescriptionEntry/logger.js';
 
-/* eslint-disable @typescript-eslint/no-explicit-any */
 function App() {
   const [deferredPrompt, setDeferredPrompt] = useState(null);
   const [isInstallable, setIsInstallable] = useState(false);
@@ -92,6 +91,5 @@ function App() {
     </Box>
   );
 }
-/* eslint-enable @typescript-eslint/no-explicit-any */
 
 export default App;

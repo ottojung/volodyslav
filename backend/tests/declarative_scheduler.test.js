@@ -3,9 +3,6 @@
  */
 
 const {
-    isTaskListMismatchError,
-} = require("../src/scheduler");
-const {
     stubLogger,
     stubEnvironment,
     stubSleeper,
@@ -16,7 +13,8 @@ const {
     stubRuntimeStateStorage,
 } = require("./stubs");
 const { getMockedRootCapabilities } = require("./spies");
-const { Duration, DateTime } = require("luxon");
+const { Duration } = require("luxon");
+const { fromISOString, fromMilliseconds } = require("../src/datetime");
 
 function getTestCapabilities() {
     const capabilities = getMockedRootCapabilities();
@@ -72,7 +70,7 @@ describe("Declarative Scheduler", () => {
             await capabilities.scheduler.stop();
         });
 
-        test("throws TaskListMismatchError when tasks differ from persisted state", async () => {
+        test("overrides persisted state when tasks differ from registrations", async () => {
             const capabilities = getTestCapabilities();
 
             // First, set up some initial persisted state by calling initialize
@@ -89,11 +87,22 @@ describe("Declarative Scheduler", () => {
                 ["task3", "0 0 * * *", jest.fn(), Duration.fromObject({minutes: 10})], // different name
             ];
 
-            await expect(capabilities.scheduler.initialize(differentRegistrations)).rejects.toThrow(/Task list mismatch detected/);
+            // This should now succeed (override behavior) instead of throwing
+            await expect(capabilities.scheduler.initialize(differentRegistrations)).resolves.toBeUndefined();
+            
+            // Verify override was logged
+            expect(capabilities.logger.logInfo).toHaveBeenCalledWith(
+                expect.objectContaining({
+                    removedTasks: ["task2"], // task2 was removed
+                    addedTasks: ["task3"], // task3 was added
+                }),
+                "Scheduler state override: registrations differ from persisted state, applying changes"
+            );
+            
             await capabilities.scheduler.stop();
         });
 
-        test("throws TaskListMismatchError when cron expression differs", async () => {
+        test("overrides persisted state when cron expression differs", async () => {
             const capabilities = getTestCapabilities();
 
             // Set up initial state
@@ -108,11 +117,28 @@ describe("Declarative Scheduler", () => {
                 ["task1", "0 0 * * *", jest.fn(), Duration.fromObject({minutes: 5})], // different cron
             ];
 
-            await expect(capabilities.scheduler.initialize(changedRegistrations)).rejects.toThrow(/Task list mismatch detected/);
+            // This should now succeed (override behavior) instead of throwing
+            await expect(capabilities.scheduler.initialize(changedRegistrations)).resolves.toBeUndefined();
+            
+            // Verify override was logged for modified task
+            expect(capabilities.logger.logInfo).toHaveBeenCalledWith(
+                expect.objectContaining({
+                    modifiedTasks: [
+                        expect.objectContaining({
+                            name: "task1",
+                            field: "cronExpression",
+                            from: "0 * * * *",
+                            to: "0 0 * * *"
+                        })
+                    ]
+                }),
+                "Scheduler state override: registrations differ from persisted state, applying changes"
+            );
+            
             await capabilities.scheduler.stop();
         });
 
-        test("throws TaskListMismatchError when retry delay differs", async () => {
+        test("overrides persisted state when retry delay differs", async () => {
             const capabilities = getTestCapabilities();
 
             // Set up initial state
@@ -127,11 +153,28 @@ describe("Declarative Scheduler", () => {
                 ["task1", "0 * * * *", jest.fn(), Duration.fromObject({minutes: 10})], // different retry delay
             ];
 
-            await expect(capabilities.scheduler.initialize(changedRegistrations)).rejects.toThrow(/Task list mismatch detected/);
+            // This should now succeed (override behavior) instead of throwing
+            await expect(capabilities.scheduler.initialize(changedRegistrations)).resolves.toBeUndefined();
+            
+            // Verify override was logged for modified task
+            expect(capabilities.logger.logInfo).toHaveBeenCalledWith(
+                expect.objectContaining({
+                    modifiedTasks: [
+                        expect.objectContaining({
+                            name: "task1",
+                            field: "retryDelayMs",
+                            from: 300000, // 5 minutes in ms
+                            to: 600000    // 10 minutes in ms
+                        })
+                    ]
+                }),
+                "Scheduler state override: registrations differ from persisted state, applying changes"
+            );
+            
             await capabilities.scheduler.stop();
         });
 
-        test("throws TaskListMismatchError when task is missing from registrations", async () => {
+        test("overrides persisted state when task is missing from registrations", async () => {
             const capabilities = getTestCapabilities();
 
             // Set up initial state with two tasks
@@ -147,14 +190,21 @@ describe("Declarative Scheduler", () => {
                 ["task1", "0 * * * *", jest.fn(), Duration.fromObject({minutes: 5})],
             ];
 
-            const error = await capabilities.scheduler.initialize(missingTaskRegistrations).catch(e => e);
-
-            expect(isTaskListMismatchError(error)).toBe(true);
-            expect(error.mismatchDetails.missing).toContain("task2");
+            // This should now succeed (override behavior) instead of throwing
+            await expect(capabilities.scheduler.initialize(missingTaskRegistrations)).resolves.toBeUndefined();
+            
+            // Verify override was logged for removed task
+            expect(capabilities.logger.logInfo).toHaveBeenCalledWith(
+                expect.objectContaining({
+                    removedTasks: ["task2"]
+                }),
+                "Scheduler state override: registrations differ from persisted state, applying changes"
+            );
+            
             await capabilities.scheduler.stop();
         });
 
-        test("throws TaskListMismatchError when extra task is in registrations", async () => {
+        test("overrides persisted state when extra task is in registrations", async () => {
             const capabilities = getTestCapabilities();
 
             // Set up initial state with one task
@@ -170,14 +220,21 @@ describe("Declarative Scheduler", () => {
                 ["task2", "0 0 * * *", jest.fn(), Duration.fromObject({minutes: 10})], // extra task
             ];
 
-            const error = await capabilities.scheduler.initialize(extraTaskRegistrations).catch(e => e);
-
-            expect(isTaskListMismatchError(error)).toBe(true);
-            expect(error.mismatchDetails.extra).toContain("task2");
+            // This should now succeed (override behavior) instead of throwing
+            await expect(capabilities.scheduler.initialize(extraTaskRegistrations)).resolves.toBeUndefined();
+            
+            // Verify override was logged for added task
+            expect(capabilities.logger.logInfo).toHaveBeenCalledWith(
+                expect.objectContaining({
+                    addedTasks: ["task2"]
+                }),
+                "Scheduler state override: registrations differ from persisted state, applying changes"
+            );
+            
             await capabilities.scheduler.stop();
         });
 
-        test("provides detailed mismatch information in error", async () => {
+        test("provides detailed override information when applying complex changes", async () => {
             const capabilities = getTestCapabilities();
 
             // Set up initial state
@@ -190,30 +247,37 @@ describe("Declarative Scheduler", () => {
 
             // Create complex mismatch scenario using same capabilities
             const mismatchedRegistrations = [
-                ["task1", "0 */2 * * *", jest.fn(), Duration.fromObject({minutes: 30})], // different cron + retry delay
+                ["task1", "0 0,2,4,6,8,10,12,14,16,18,20,22 * * *", jest.fn(), Duration.fromObject({minutes: 30})], // different cron + retry delay
                 ["task3", "0 0 * * *", jest.fn(), Duration.fromObject({minutes: 10})], // extra task (task2 is missing)
             ];
 
-            const error = await capabilities.scheduler.initialize(mismatchedRegistrations).catch(e => e);
+            // This should now succeed (override behavior) instead of throwing
+            await expect(capabilities.scheduler.initialize(mismatchedRegistrations)).resolves.toBeUndefined();
 
-            expect(isTaskListMismatchError(error)).toBe(true);
-            expect(error.mismatchDetails.missing).toEqual(["task2"]);
-            expect(error.mismatchDetails.extra).toEqual(["task3"]);
-            expect(error.mismatchDetails.differing).toHaveLength(2); // task1 has 2 differing fields
-
-            // Check that differing details are specific
-            const cronDiff = error.mismatchDetails.differing.find(d => d.field === 'cronExpression');
-            const retryDiff = error.mismatchDetails.differing.find(d => d.field === 'retryDelayMs');
-
-            expect(cronDiff).toBeTruthy();
-            expect(cronDiff.name).toBe("task1");
-            expect(cronDiff.expected).toBe("0 * * * *");
-            expect(cronDiff.actual).toBe("0 */2 * * *");
-
-            expect(retryDiff).toBeTruthy();
-            expect(retryDiff.name).toBe("task1");
-            expect(retryDiff.expected).toBe(Duration.fromObject({minutes: 5}).toMillis());
-            expect(retryDiff.actual).toBe(Duration.fromObject({minutes: 30}).toMillis());
+            // Verify detailed override information was logged
+            expect(capabilities.logger.logInfo).toHaveBeenCalledWith(
+                expect.objectContaining({
+                    removedTasks: ["task2"],
+                    addedTasks: ["task3"],
+                    modifiedTasks: expect.arrayContaining([
+                        expect.objectContaining({
+                            name: "task1",
+                            field: "cronExpression",
+                            from: "0 * * * *",
+                            to: "0 0,2,4,6,8,10,12,14,16,18,20,22 * * *"
+                        }),
+                        expect.objectContaining({
+                            name: "task1",
+                            field: "retryDelayMs",
+                            from: Duration.fromObject({minutes: 5}).toMillis(),
+                            to: Duration.fromObject({minutes: 30}).toMillis()
+                        })
+                    ]),
+                    totalChanges: 4 // 1 removed + 1 added + 2 modified fields
+                }),
+                "Scheduler state override: registrations differ from persisted state, applying changes"
+            );
+            
             await capabilities.scheduler.stop();
         });
 
@@ -259,7 +323,7 @@ describe("Declarative Scheduler", () => {
 
             const registrations = [
                 // Task that should run every 15 minutes
-                ["test-task", "*/15 * * * *", taskCallback, Duration.fromObject({minutes: 5})],
+                ["test-task", "0,15,30,45 * * * *", taskCallback, Duration.fromObject({minutes: 5})],
             ];
 
             const capabilities = getTestCapabilities();
@@ -267,9 +331,9 @@ describe("Declarative Scheduler", () => {
             const timeControl = getDatetimeControl(capabilities);
             
             // Set time to 00:05:00 to avoid immediate execution (task runs at 0, 15, 30, 45 minutes)
-            const startTime = DateTime.fromISO("2021-01-01T00:05:00.000Z").toMillis(); // 2021-01-01T00:05:00.000Z
-            timeControl.setTime(startTime);
-            control.setPollingInterval(1);
+            const startTime = fromISOString("2021-01-01T00:05:00.000Z"); // 2021-01-01T00:05:00.000Z
+            timeControl.setDateTime(startTime);
+            control.setPollingInterval(fromMilliseconds(1));
 
             // Initialize the scheduler with very short poll interval for testing
             await capabilities.scheduler.initialize(registrations);
@@ -294,9 +358,9 @@ describe("Declarative Scheduler", () => {
             const timeControl = getDatetimeControl(capabilities);
             
             // Set time to 00:30:00 to avoid immediate execution (task runs at 0 minutes of each hour)
-            const startTime = 1609461000000; // 2021-01-01T00:30:00.000Z
-            timeControl.setTime(startTime);
-            control.setPollingInterval(1);
+            const startTime = fromISOString("2021-01-01T00:30:00.000Z");
+            timeControl.setDateTime(startTime);
+            control.setPollingInterval(fromMilliseconds(1));
 
             // First call to initialize
             await capabilities.scheduler.initialize(registrations);

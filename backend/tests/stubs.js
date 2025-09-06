@@ -93,7 +93,7 @@ function stubDailyTasksExecutable(capabilities) {
 }
 
 function stubSleeper(capabilities) {
-    capabilities.sleeper.sleep = jest.fn().mockImplementation((_ms) => {
+    capabilities.sleeper.sleep = jest.fn().mockImplementation((_duration) => {
         return Promise.resolve(); // Immediately resolve when stubbed
     });
 }
@@ -105,22 +105,23 @@ function stubDatetime(capabilities) {
     const originalNow = capabilities.datetime.now;
 
     // Initialize with a fixed time for tests (January 1, 2024 00:00:00 UTC)
-    let currentTimeMs = 1704067200000;
+    let currentDateTime = datetime.fromISOString("2024-01-01T00:00:00.000Z");
 
     // Override the now method to return the controlled time
-    originalNow.mockImplementation(() => datetime.fromEpochMs(currentTimeMs));
+    originalNow.mockImplementation(() => currentDateTime);
+    capabilities.datetime.timeZone = () => "UTC";
 
-    // Add time control methods to the datetime object
-    capabilities.datetime.setTime = (ms) => {
-        currentTimeMs = ms;
+    // DateTime/Duration-only API - no milliseconds support
+    capabilities.datetime.setDateTime = (dateTime) => {
+        currentDateTime = dateTime;
     };
 
-    capabilities.datetime.advanceTime = (ms) => {
-        currentTimeMs += ms;
+    capabilities.datetime.advanceByDuration = (duration) => {
+        currentDateTime = currentDateTime.advance(duration);
     };
 
-    capabilities.datetime.getCurrentTime = () => {
-        return currentTimeMs;
+    capabilities.datetime.getCurrentDateTime = () => {
+        return currentDateTime;
     };
 
     // Mark it as mocked for type guard
@@ -129,17 +130,19 @@ function stubDatetime(capabilities) {
 
 /**
  * Provides access to datetime manipulation functions when datetime is stubbed.
+ * Works only with DateTime/Duration objects - no milliseconds support.
  * @param {any} capabilities - The capabilities object with stubbed datetime
- * @returns {{setTime: (ms: number) => void, advanceTime: (ms: number) => void, getCurrentTime: () => number}}
+ * @returns {{setDateTime: (dateTime: import('../src/datetime').DateTime) => void, advanceByDuration: (duration: import('luxon').Duration) => void, getCurrentDateTime: () => import('../src/datetime').DateTime}}
  */
 function getDatetimeControl(capabilities) {
     if (!capabilities.datetime.__isMockedDatetime) {
         throw new Error("Datetime must be stubbed with stubDatetime() to use datetime control");
     }
     return {
-        setTime: (ms) => capabilities.datetime.setTime(ms),
-        advanceTime: (ms) => capabilities.datetime.advanceTime(ms),
-        getCurrentTime: () => capabilities.datetime.getCurrentTime(),
+        // DateTime/Duration-only API
+        setDateTime: (dateTime) => capabilities.datetime.setDateTime(dateTime),
+        advanceByDuration: (duration) => capabilities.datetime.advanceByDuration(duration),
+        getCurrentDateTime: () => capabilities.datetime.getCurrentDateTime(),
     };
 }
 
@@ -321,6 +324,7 @@ function stubScheduler(capabilities) {
     let periodOverride = null;
 
     function setPollingInterval(newPeriod) {
+        // Only accept Duration objects - no backwards compatibility
         periodOverride = newPeriod;
     }
 
@@ -359,6 +363,7 @@ function stubScheduler(capabilities) {
         const setPollingInterval = (newPeriod) => {
             const wasRunning = thread.isRunning();
             thread.stop();
+            // Only accept Duration objects - no backwards compatibility
             thread.period = newPeriod;
             if (wasRunning) {
                 thread.start();
@@ -414,7 +419,7 @@ function stubScheduler(capabilities) {
 
 /**
  * @typedef {object} SchedulerControl
- * @property { (newPeriod: number) => void } setPollingInterval
+ * @property { (newPeriod: import('luxon').Duration) => void } setPollingInterval
  * @property {import('../src/threading').PeriodicThread} thread
  * @property {() => Promise<void>} waitForNextCycleEnd
  */

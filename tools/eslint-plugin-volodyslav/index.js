@@ -10,7 +10,6 @@ for (const file of fs.readdirSync(rulesDir)) {
   if (!file.endsWith(".js")) continue;
   const id = path.basename(file, ".js");
   // Each rule module must export { meta, create }
-  // eslint-disable-next-line global-require, import/no-dynamic-require
   rules[id] = require(path.join(rulesDir, file));
 }
 

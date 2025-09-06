@@ -49,7 +49,7 @@ describe("event_log_storage", () => {
             const dataFile = await capabilities.checker.instantiate(dataPath);
             const objects = await readObjects(capabilities, dataFile);
             expect(objects).toHaveLength(1);
-            expect(objects[0]).toEqual(event.serialize(testEvent));
+            expect(objects[0]).toEqual(event.serialize(capabilities, testEvent));
         });
     });
 
@@ -114,8 +114,8 @@ describe("event_log_storage", () => {
             const dataFile = await capabilities.checker.instantiate(dataPath);
             const objects = await readObjects(capabilities, dataFile);
             expect(objects).toHaveLength(2);
-            expect(objects[0]).toEqual(event.serialize(event1));
-            expect(objects[1]).toEqual(event.serialize(event2));
+            expect(objects[0]).toEqual(event.serialize(capabilities, event1));
+            expect(objects[1]).toEqual(event.serialize(capabilities, event2));
         });
     });
 

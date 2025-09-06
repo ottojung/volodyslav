@@ -62,7 +62,7 @@ function tryDeserialize(obj) {
         return new InvalidTypeError("startTime", startTimeRaw, "string");
     }
     const startTime = fromISOString(startTimeRaw);
-    if (isNaN(startTime.getTime())) {
+    if (!startTime.isValid) {
         return new InvalidTypeError("startTime", startTimeRaw, "valid ISO string");
     }
 
@@ -127,7 +127,7 @@ function tryDeserialize(obj) {
                     taskErrors.push(new TaskInvalidTypeError("lastSuccessTime", t.lastSuccessTime, "string", i));
                 } else {
                     const d = fromISOString(t.lastSuccessTime);
-                    if (isNaN(d.getTime())) {
+                    if (!d.isValid) {
                         taskErrors.push(new TaskInvalidValueError("lastSuccessTime", t.lastSuccessTime, "valid ISO", i));
                     } else {
                         rec.lastSuccessTime = d;
@@ -139,7 +139,7 @@ function tryDeserialize(obj) {
                     taskErrors.push(new TaskInvalidTypeError("lastFailureTime", t.lastFailureTime, "string", i));
                 } else {
                     const d = fromISOString(t.lastFailureTime);
-                    if (isNaN(d.getTime())) {
+                    if (!d.isValid) {
                         taskErrors.push(new TaskInvalidValueError("lastFailureTime", t.lastFailureTime, "valid ISO", i));
                     } else {
                         rec.lastFailureTime = d;
@@ -151,7 +151,7 @@ function tryDeserialize(obj) {
                     taskErrors.push(new TaskInvalidTypeError("lastAttemptTime", t.lastAttemptTime, "string", i));
                 } else {
                     const d = fromISOString(t.lastAttemptTime);
-                    if (isNaN(d.getTime())) {
+                    if (!d.isValid) {
                         taskErrors.push(new TaskInvalidValueError("lastAttemptTime", t.lastAttemptTime, "valid ISO", i));
                     } else {
                         rec.lastAttemptTime = d;
@@ -163,7 +163,7 @@ function tryDeserialize(obj) {
                     taskErrors.push(new TaskInvalidTypeError("pendingRetryUntil", t.pendingRetryUntil, "string", i));
                 } else {
                     const d = fromISOString(t.pendingRetryUntil);
-                    if (isNaN(d.getTime())) {
+                    if (!d.isValid) {
                         taskErrors.push(new TaskInvalidValueError("pendingRetryUntil", t.pendingRetryUntil, "valid ISO", i));
                     } else {
                         rec.pendingRetryUntil = d;

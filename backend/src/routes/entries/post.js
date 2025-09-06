@@ -201,7 +201,7 @@ async function handleEntryPost(req, res, capabilities, reqId) {
             "Entry created successfully",
         );
 
-        return res.status(201).json({ success: true, entry: serialize(event) });
+        return res.status(201).json({ success: true, entry: serialize(capabilities, event) });
     } catch (error) {
         if (isEntryValidationError(error) || error instanceof FileValidationError) {
             capabilities.logger.logInfo(

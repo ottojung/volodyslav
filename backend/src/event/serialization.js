@@ -51,11 +51,17 @@ const {
  */
 
 /**
+ * @typedef {object} SerializeCapabilities
+ * @property {import('../datetime').Datetime} datetime - Datetime capability.
+ */
+
+/**
+ * @param {SerializeCapabilities} capabilities
  * @param {Event} event - The event object to serialize.
  * @returns {SerializedEvent} - The serialized event object.
  */
-function serialize(event) {
-    const date = format(event.date);
+function serialize(capabilities, event) {
+    const date = format(capabilities, event.date);
     const id = event.id.identifier;
     const { original, input, modifiers, type, description, creator } = event;
     return {

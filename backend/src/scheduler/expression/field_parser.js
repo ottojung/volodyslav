@@ -46,51 +46,77 @@ const FIELD_CONFIGS = {
 };
 
 /**
+ * Validates that a field value is POSIX compliant.
+ * Rejects non-POSIX extensions like names, macros, and Quartz tokens.
+ * @param {string} value - The field value to validate
+ * @param {FieldConfig} config - Field configuration
+ * @throws {FieldParseError} If the field value contains non-POSIX extensions
+ */
+function validatePosixCompliance(value, config) {
+    // Reject macro syntax (@hourly, @reboot, etc.)
+    if (value.startsWith("@")) {
+        throw new FieldParseError(`macro syntax not supported (POSIX violation) "${value}"`, value, config.name);
+    }
+    
+    // Reject Quartz tokens (?, L, W, #)
+    const quartz_tokens = ["?", "L", "W", "#"];
+    for (const token of quartz_tokens) {
+        if (value.includes(token)) {
+            throw new FieldParseError(`Quartz token '${token}' not supported (POSIX violation) "${value}"`, value, config.name);
+        }
+    }
+    
+    // Reject names (mon, jan, etc.) - detect alphabetic characters
+    // Allow digits, decimal points, scientific notation, wildcards (*), ranges (-), commas (,), and whitespace
+    // This allows parseInt to handle decimal/scientific notation naturally while rejecting named tokens
+    const allowedPattern = /^[\d\s,*.\-eE+]+$/;
+    if (!allowedPattern.test(value)) {
+        throw new FieldParseError(`names not supported, use numbers only (POSIX violation) "${value}"`, value, config.name);
+    }
+}
+
+/**
  * Parses a single cron field value.
  * @param {string} value - The field value to parse
  * @param {FieldConfig} config - Field configuration
- * @returns {number[]} Array of valid values for this field
+ * @returns {boolean[]} Boolean mask where index indicates if value is valid
  * @throws {FieldParseError} If the field value is invalid
  */
 function parseField(value, config) {
+    // Create boolean mask with correct length for the field
+    const maskLength = config.max + 1; // +1 to include the max value
+    
     if (value === "*") {
-        return Array.from({ length: config.max - config.min + 1 }, (_, i) => config.min + i);
+        const mask = new Array(maskLength).fill(false);
+        // Set all valid values to true
+        for (let i = config.min; i <= config.max; i++) {
+            mask[i] = true;
+        }
+        return mask;
     }
 
     if (value.includes(",")) {
         const parts = value.split(",");
-        const result = [];
+        const mask = new Array(maskLength).fill(false);
+        
         for (const part of parts) {
-            result.push(...parseField(part.trim(), config));
+            const partMask = parseField(part.trim(), config);
+            // Merge the part mask into the main mask
+            for (let i = 0; i < partMask.length; i++) {
+                if (partMask[i]) {
+                    mask[i] = true;
+                }
+            }
         }
-        return [...new Set(result)].sort((a, b) => a - b);
+        return mask;
     }
 
     if (value.includes("/")) {
-        const parts = value.split("/");
-        if (parts.length !== 2) {
-            throw new FieldParseError(`invalid step format "${value}"`, value, config.name);
-        }
-        const range = parts[0];
-        const stepStr = parts[1];
-        if (!range || !stepStr) {
-            throw new FieldParseError(`invalid step format "${value}"`, value, config.name);
-        }
-        const stepNum = parseInt(stepStr, 10);
-        if (isNaN(stepNum) || stepNum <= 0) {
-            throw new FieldParseError(`invalid step value "${stepStr}"`, value, config.name);
-        }
-
-        const baseValues = parseField(range, config);
-        const result = [];
-        for (let i = 0; i < baseValues.length; i += stepNum) {
-            const val = baseValues[i];
-            if (val !== undefined) {
-                result.push(val);
-            }
-        }
-        return result;
+        throw new FieldParseError(`slash syntax not supported (POSIX violation) "${value}"`, value, config.name);
     }
+
+    // POSIX compliance validation - reject non-POSIX extensions after checking for slashes
+    validatePosixCompliance(value, config);
 
     if (value.includes("-")) {
         const parts = value.split("-");
@@ -118,10 +144,14 @@ function parseField(value, config) {
         }
 
         if (startNum > endNum) {
-            throw new FieldParseError(`invalid range (start > end)`, value, config.name);
+            throw new FieldParseError(`wrap-around ranges not supported (POSIX violation) "${value}"`, value, config.name);
         }
 
-        return Array.from({ length: endNum - startNum + 1 }, (_, i) => startNum + i);
+        const mask = new Array(maskLength).fill(false);
+        for (let i = startNum; i <= endNum; i++) {
+            mask[i] = true;
+        }
+        return mask;
     }
 
     const num = parseInt(value, 10);
@@ -133,7 +163,9 @@ function parseField(value, config) {
         throw new FieldParseError(`out of range (${config.min}-${config.max})`, value, config.name);
     }
 
-    return [num];
+    const mask = new Array(maskLength).fill(false);
+    mask[num] = true;
+    return mask;
 }
 
 module.exports = {

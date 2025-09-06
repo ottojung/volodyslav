@@ -3,7 +3,8 @@
  * This test verifies that task execution timing follows expected precedence behavior
  */
 
-const { Duration, DateTime } = require("luxon");
+const { Duration } = require("luxon");
+const { fromHours, fromMilliseconds, fromISOString } = require("../src/datetime");
 const { getMockedRootCapabilities } = require("./spies");
 const { stubEnvironment, stubLogger, stubDatetime, stubSleeper, stubScheduler, getSchedulerControl, getDatetimeControl, stubRuntimeStateStorage } = require("./stubs");
 
@@ -30,9 +31,9 @@ describe("declarative scheduler precedence logic verification", () => {
         const task = jest.fn().mockResolvedValue(undefined);
         
         // Set time to avoid immediate execution for "0 * * * *" schedule
-        const startTime = DateTime.fromISO("2021-01-01T00:05:00.000Z").toMillis();
-        timeControl.setTime(startTime);
-        schedulerControl.setPollingInterval(1);
+        const startTime = fromISOString("2021-01-01T00:05:00.000Z");
+        timeControl.setDateTime(startTime);
+        schedulerControl.setPollingInterval(fromMilliseconds(1));
         
         // Task runs at minute 0 of every hour
         const registrations = [
@@ -47,7 +48,7 @@ describe("declarative scheduler precedence logic verification", () => {
         expect(task).not.toHaveBeenCalled();
         
         // Advance time to next scheduled execution (01:00:00)
-        timeControl.advanceTime(60 * 60 * 1000); // 1 hour
+        timeControl.advanceByDuration(fromHours(1)); // 1 hour
         await schedulerControl.waitForNextCycleEnd();
         
         expect(task).toHaveBeenCalled();
@@ -64,9 +65,9 @@ describe("declarative scheduler precedence logic verification", () => {
         const task = jest.fn().mockResolvedValue(undefined);
         
         // Set time to avoid immediate execution for "0 * * * *" schedule
-        const startTime = DateTime.fromISO("2021-01-01T00:05:00.000Z").toMillis();
-        timeControl.setTime(startTime);
-        schedulerControl.setPollingInterval(1);
+        const startTime = fromISOString("2021-01-01T00:05:00.000Z");
+        timeControl.setDateTime(startTime);
+        schedulerControl.setPollingInterval(fromMilliseconds(1));
         
         // Task runs at minute 0 of every hour
         const registrations = [
@@ -81,7 +82,7 @@ describe("declarative scheduler precedence logic verification", () => {
         expect(task).not.toHaveBeenCalled();
         
         // Advance time to next scheduled execution (01:00:00)
-        timeControl.advanceTime(60 * 60 * 1000); // 1 hour
+        timeControl.advanceByDuration(fromHours(1)); // 1 hour
         await schedulerControl.waitForNextCycleEnd();
         
         expect(task).toHaveBeenCalled();
@@ -96,11 +97,11 @@ describe("declarative scheduler precedence logic verification", () => {
         const retryDelay = Duration.fromMillis(5 * 60 * 1000); // 5 minutes
         const task = jest.fn().mockResolvedValue(undefined);
         
-        schedulerControl.setPollingInterval(1);
+        schedulerControl.setPollingInterval(fromMilliseconds(1));
         
         // Task runs every 15 minutes
         const registrations = [
-            ["precedence-test", "*/15 * * * *", task, retryDelay]
+            ["precedence-test", "0,15,30,45 * * * *", task, retryDelay]
         ];
         
         // Multiple calls should be idempotent - only the first should have effect

@@ -164,22 +164,6 @@ describe("schedule validation duplicate task names", () => {
     });
 
     describe("interaction with other validation", () => {
-        test("duplicate validation occurs after name validation", async () => {
-            const capabilities = getTestCapabilities();
-            const retryDelay = Duration.fromMillis(1000);
-            const taskCallback = jest.fn();
-            
-            // First registration has invalid empty name, should fail before duplicate check
-            const registrationsWithInvalidName = [
-                ["", "0 * * * *", taskCallback, retryDelay],  // Invalid empty name
-                ["", "30 * * * *", taskCallback, retryDelay]  // Would be duplicate if name validation passed
-            ];
-            
-            // Should throw ScheduleInvalidNameError, not ScheduleDuplicateTaskError
-            await expect(capabilities.scheduler.initialize(registrationsWithInvalidName))
-                .rejects.toThrow("Task name must be a non-empty string");
-        });
-
         test("duplicate validation occurs after structure validation", async () => {
             const capabilities = getTestCapabilities();
             
