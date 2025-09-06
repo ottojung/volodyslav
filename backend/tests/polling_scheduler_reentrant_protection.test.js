@@ -203,7 +203,7 @@ describe("declarative scheduler re-entrancy protection", () => {
         await capabilities.scheduler.stop();
     });
 
-    test("should handle task validation errors properly", async () => {
+    test("should handle task validation differences properly", async () => {
         const capabilities = getTestCapabilities();
         const retryDelay = Duration.fromMillis(5000);
         
@@ -216,13 +216,14 @@ describe("declarative scheduler re-entrancy protection", () => {
         // First call to establish state
         await capabilities.scheduler.initialize(registrations);
         
-        // Different registrations should cause validation error
+        // Different registrations should now override state instead of throwing error
         const differentRegistrations = [
             ["different-task", "0 * * * *", validTask, retryDelay]
         ];
         
+        // This should now succeed (override behavior) instead of throwing
         await expect(capabilities.scheduler.initialize(differentRegistrations))
-            .rejects.toThrow(/Task list mismatch detected/);
+            .resolves.toBeUndefined();
         
         await capabilities.scheduler.stop();
     });

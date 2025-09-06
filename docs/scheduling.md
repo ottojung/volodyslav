@@ -15,8 +15,9 @@ imperative APIs for adding or removing tasks while the process is running.
 
 - **Declarative configuration** – the set of tasks is described entirely by the
   registrations provided during initialisation.
-- **Deterministic behaviour** – persisted runtime state must match the declared
-  tasks exactly or the scheduler refuses to start.
+- **Adaptive configuration** – when declared tasks differ from persisted state,
+  the scheduler automatically adapts by overriding disk data with the new
+  declarations.
 - **Durable state** – task definitions and minimal execution history are stored
   atomically so a restart continues from the last known state.
 - **Minimal surface area** – the scheduler exposes only initialisation and stop
@@ -32,9 +33,11 @@ and a retry interval. All definitions are supplied during start‑up and
 represent the complete list of tasks the application expects to exist.
 
 At initialisation the scheduler loads the previously persisted definitions and
-checks that they exactly match the ones provided at start‑up. If the sets differ
-the scheduler refuses to run. This validation eliminates configuration drift and
-ensures that a process restart reproduces the intended schedule.
+compares them with the ones provided at start‑up. If the sets differ, the
+scheduler logs the differences and overrides the persisted state with the new
+registrations. This approach prioritizes the current declarations over stale
+disk data, ensuring that the scheduler adapts to configuration changes without
+manual intervention.
 
 The declarative approach has several implications:
 
@@ -44,8 +47,9 @@ The declarative approach has several implications:
    predictable.
 2. **Reproducibility** – given the same declarations and persisted state, the
    scheduler behaves deterministically across hosts and restarts.
-3. **State validation** – by verifying definitions on every start, stale tasks
-   from previous deployments cannot linger unnoticed.
+3. **State override** – when task definitions change between deployments, the
+   new definitions automatically override persisted state, with changes logged
+   for transparency.
 
 Because behaviour derives solely from declarations and stored state, the
 scheduler exposes no API for ad‑hoc scheduling once it is running.
