@@ -73,7 +73,7 @@ describe("scheduler stories", () => {
         await capabilities.scheduler.stop();
     });
 
-    test.failing("should reject non-integer cron field values", async () => {
+    test("should reject non-integer cron field values", async () => {
         const capabilities = getTestCapabilities();
         const timeControl = getDatetimeControl(capabilities);
         const schedulerControl = getSchedulerControl(capabilities);
@@ -1129,7 +1129,7 @@ describe("scheduler stories", () => {
         await capabilities.scheduler.stop();
     });
 
-    test.failing("getNextExecution after getMostRecentExecution should not skip earlier valid days", () => {
+    test("getNextExecution after getMostRecentExecution should not skip earlier valid days", () => {
         const expr = parseCronExpression("0 0 30,31 * *");
         // Compute previous execution to mutate internal cache for earlier months
         getMostRecentExecution(expr, fromISOString("2021-03-01T00:00:00.000Z"));

@@ -334,7 +334,7 @@ function* iterateValidDaysBackwards(cronExpr, startDate) {
             validDays = validDays.filter(d => d <= origin.day);
         }
 
-        for (const day of validDays.reverse()) {
+        for (const day of [...validDays].reverse()) {
             yield { year, month, day };
         }
 
