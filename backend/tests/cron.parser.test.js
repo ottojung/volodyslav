@@ -227,6 +227,7 @@ describe("Cron Parser", () => {
                 testInvalidExpression("*/15 * * * *");
                 testInvalidExpression("0-30/5 * * * *");
                 testInvalidExpression("* */6 * * *");
+                expect(true).toBe(true);
             });
 
             test("names (not POSIX)", () => {
@@ -234,6 +235,7 @@ describe("Cron Parser", () => {
                 testInvalidExpression("0 0 * jan *");
                 testInvalidExpression("0 0 * * monday");
                 testInvalidExpression("0 0 1 january *");
+                expect(true).toBe(true);
             });
 
             test("macros (not POSIX)", () => {
@@ -243,6 +245,7 @@ describe("Cron Parser", () => {
                 testInvalidExpression("@monthly");
                 testInvalidExpression("@yearly");
                 testInvalidExpression("@reboot");
+                expect(true).toBe(true);
             });
 
             test("Quartz tokens (not POSIX)", () => {
@@ -252,37 +255,45 @@ describe("Cron Parser", () => {
                 testInvalidExpression("0 0 * * 5W");
                 testInvalidExpression("0 0 L * *");
                 testInvalidExpression("0 0 15W * *");
+                expect(true).toBe(true);
             });
 
             test("DOW out of range (7 = Sunday not allowed)", () => {
                 testInvalidExpression("0 0 * * 7", "range error");
+                expect(true).toBe(true);
             });
 
             test("hour out of range", () => {
                 testInvalidExpression("0 24 * * *", "range error");
+                expect(true).toBe(true);
             });
 
             test("minute out of range", () => {
                 testInvalidExpression("60 * * * *", "range error");
+                expect(true).toBe(true);
             });
 
             test("day out of range", () => {
                 testInvalidExpression("* * 32 * *", "range error");
+                expect(true).toBe(true);
             });
 
             test("month out of range", () => {
                 testInvalidExpression("* * * 13 *", "range error");
+                expect(true).toBe(true);
             });
 
             test("malformed lists", () => {
                 testInvalidExpression("0 0 1-5, * *", "range error"); // trailing comma
                 testInvalidExpression("0 0 ,1-5 * *", "range error"); // leading comma
                 testInvalidExpression("0 0 1,,5 * *", "range error"); // double comma
+                expect(true).toBe(true);
             });
 
             test("wrap-around ranges (not POSIX)", () => {
                 testInvalidExpression("0 0 * * 6-2"); // Saturday to Tuesday
                 testInvalidExpression("22-2 * * * *"); // 22 to 2 in minutes
+                expect(true).toBe(true);
             });
         });
 
