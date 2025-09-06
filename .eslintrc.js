@@ -49,5 +49,5 @@ module.exports = {
         // Disable prop-types validation since we use TypeScript
         "react/prop-types": "off",
     },
-    ignorePatterns: ["dist/", "node_modules/", "coverage/", "docs/build/"],
+    ignorePatterns: ["dist/", "node_modules/", "coverage/", "docs/build/", "tools/eslint-plugin-volodyslav"],
 };
