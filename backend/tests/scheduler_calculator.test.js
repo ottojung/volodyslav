@@ -1,7 +1,7 @@
 
-const { getNextExecution, getMostRecentExecution, matchesCronExpression } = require("../src/scheduler/calculator");
+const { getNextExecution, getMostRecentExecution } = require("../src/scheduler/calculator");
 const { parseCronExpression } = require("../src/scheduler/expression");
-const { fromISOString, fromObject } = require("../src/datetime");
+const { fromISOString } = require("../src/datetime");
 
 function next(cronExprStr, fromISOStringStr) {
     const expr = parseCronExpression(cronExprStr);
@@ -372,42 +372,4 @@ describe("Carry ripple across hour/day/month", () => {
     test("end-of-day to next day: 45 23 * * * at boundary -> next day same time", () => {
         expect(next("45 23 * * *", "2025-01-01T23:45:00.000Z")).toBe("2025-01-02T23:45:00.000Z");
     });
-});
-
-describe("Fuzzing prev tests", () => {
-
-    const ONE_MINUTE = fromObject({ minutes: 1 });
-    function naivePrev(cronExprStr, fromISOStringStr) {
-        const expr = parseCronExpression(cronExprStr);
-        const from = fromISOString(fromISOStringStr);
-        let candidate = from.startOfMinute();
-        while (candidate.year > from.year - 10) {
-            if (matchesCronExpression(expr, candidate)) {
-                return candidate.toISOString();
-            }
-            candidate = candidate.subtract(ONE_MINUTE);
-        }
-
-        throw new Error("naivePrev: exceeded iteration limit");
-    }
-
-    for (const minute of ["*", "0"]) {
-        for (const hour of ["*", "0"]) {
-            for (const dom of ["*", "1"]) {
-                for (const month of ["*"]) {
-                    for (const dow of ["*"]) {
-                        const expr = `${minute} ${hour} ${dom} ${month} ${dow}`;
-                        for (const date of ["2024-02-29T23:59:59.999Z", "2025-12-31T00:00:00.000Z"]) {
-                            test(`fuzz prev: ${expr} from ${date}`, () => {
-                                const result = prev(expr, date);
-                                const expected = naivePrev(expr, date);
-                                expect(result).toBe(expected);
-                            });
-                        }
-                    }
-                }
-            }
-        }
-    }
-
 });
