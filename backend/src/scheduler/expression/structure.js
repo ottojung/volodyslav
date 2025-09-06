@@ -286,8 +286,7 @@ function* iterateValidDays(cronExpr, startDate) {
     let year = origin.year;
     let month = origin.month;
 
-    // eslint-disable-next-line no-constant-condition
-    while (true) {
+    for (;;) {
         let validDays = cronExpr.validDays(year, month);
         if (month === omonth && year === oyear) {
             validDays = validDays.filter(d => d >= origin.day);
@@ -306,9 +305,43 @@ function* iterateValidDays(cronExpr, startDate) {
 }
 
 
+/**
+ * Generator that yields valid (year, month, day) tuples starting from the given date.
+ * @param {CronExpression} cronExpr
+ * @param {import("../../datetime").DateTime} startDate
+ * @returns {Generator<{year: number, month: number, day: number}>} Tuples
+ */
+function* iterateValidDaysBackwards(cronExpr, startDate) {
+    const origin = startDate;
+
+    const oyear = origin.year;
+    const omonth = origin.month;
+    let year = origin.year;
+    let month = origin.month;
+
+    for (;;) {
+        let validDays = cronExpr.validDays(year, month);
+        if (month === omonth && year === oyear) {
+            validDays = validDays.filter(d => d <= origin.day);
+        }
+
+        for (const day of validDays.reverse()) {
+            yield { year, month, day };
+        }
+
+        month -= 1;
+        if (month < 1) {
+            month = 12;
+            year -= 1;
+        }
+    }
+}
+
+
 module.exports = {
     parseCronExpression,
     isCronExpression,
     isInvalidCronExpressionError,
     iterateValidDays,
+    iterateValidDaysBackwards,
 };
