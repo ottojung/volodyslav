@@ -82,39 +82,7 @@ function parseField(value, config) {
     }
 
     if (value.includes("/")) {
-        const parts = value.split("/");
-        if (parts.length !== 2) {
-            throw new FieldParseError(`invalid step format "${value}"`, value, config.name);
-        }
-        const range = parts[0];
-        const stepStr = parts[1];
-        if (!range || !stepStr) {
-            throw new FieldParseError(`invalid step format "${value}"`, value, config.name);
-        }
-        const stepNum = parseInt(stepStr, 10);
-        if (isNaN(stepNum) || stepNum <= 0) {
-            throw new FieldParseError(`invalid step value "${stepStr}"`, value, config.name);
-        }
-
-        const baseMask = parseField(range, config);
-        const mask = new Array(maskLength).fill(false);
-        
-        // Find valid values from base mask and apply step
-        const validValues = [];
-        for (let i = 0; i < baseMask.length; i++) {
-            if (baseMask[i]) {
-                validValues.push(i);
-            }
-        }
-        
-        // Apply step to valid values
-        for (let i = 0; i < validValues.length; i += stepNum) {
-            const val = validValues[i];
-            if (val !== undefined) {
-                mask[val] = true;
-            }
-        }
-        return mask;
+        throw new FieldParseError(`slash syntax not supported "${value}"`, value, config.name);
     }
 
     if (value.includes("-")) {

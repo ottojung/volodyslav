@@ -167,7 +167,7 @@ describe("declarative scheduler algorithm robustness", () => {
 
         const registrations = [
             ["multi-field-task1", "0 * * * *", task1, Duration.fromMillis(1000)], // Every minute
-            ["multi-field-task2", "*/15 * * * *", task2, Duration.fromMillis(2000)], // Every 5 minutes  
+            ["multi-field-task2", "0,15,30,45 * * * *", task2, Duration.fromMillis(2000)], // Every 15 minutes  
             ["multi-field-task3", "0 * * * *", task3, Duration.fromMillis(3000)] // Every hour
         ];
 

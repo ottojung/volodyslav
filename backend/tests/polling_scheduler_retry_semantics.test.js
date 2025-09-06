@@ -35,7 +35,7 @@ describe("declarative scheduler retry semantics", () => {
 
         const registrations = [
             // Task runs every 15 minutes (compatible with 10-minute polling)
-            ["retry-test", "*/15 * * * *", task, retryDelay]
+            ["retry-test", "0,15,30,45 * * * *", task, retryDelay]
         ];
 
         // Set a fixed starting time to 00:05:00 (so 00:00:00 was 5 minutes ago - will catch up)
@@ -75,7 +75,7 @@ describe("declarative scheduler retry semantics", () => {
 
         const registrations = [
             // Task runs every 15 minutes (compatible with 10-minute polling)
-            ["retry-test", "*/15 * * * *", task, retryDelay]
+            ["retry-test", "0,15,30,45 * * * *", task, retryDelay]
         ];
 
         // Set a fixed starting time to 00:05:00 (so 00:00:00 was 5 minutes ago - will catch up)
@@ -121,7 +121,7 @@ describe("declarative scheduler retry semantics", () => {
         });
 
         const registrations = [
-            ["clear-retry-test", "*/15 * * * *", task, retryDelay]
+            ["clear-retry-test", "0,15,30,45 * * * *", task, retryDelay]
         ];
 
         // Set a fixed starting time to 00:05:00 (so 00:00:00 was 5 minutes ago - will catch up)
@@ -177,8 +177,8 @@ describe("declarative scheduler retry semantics", () => {
         });
 
         const registrations = [
-            ["task1", "*/15 * * * *", task1, shortRetryDelay],
-            ["task2", "*/15 * * * *", task2, longRetryDelay]
+            ["task1", "0,15,30,45 * * * *", task1, shortRetryDelay],
+            ["task2", "0,15,30,45 * * * *", task2, longRetryDelay]
         ];
 
         // Set a fixed starting time to 00:05:00 (so 00:00:00 was 5 minutes ago - will catch up)

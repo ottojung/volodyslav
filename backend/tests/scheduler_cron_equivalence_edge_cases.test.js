@@ -111,16 +111,16 @@ describe("scheduler cron expression equivalence edge cases", () => {
             expect(cron1.equivalent(cron2)).toBe(false);
         });
 
-        test("should handle step expressions", () => {
-            const cron1 = parseCronExpression("*/5 * * * *");
-            const cron2 = parseCronExpression("*/5 * * * *");
+        test("should handle equivalent explicit comma-separated expressions", () => {
+            const cron1 = parseCronExpression("0,5,10,15,20,25,30,35,40,45,50,55 * * * *");
+            const cron2 = parseCronExpression("0,5,10,15,20,25,30,35,40,45,50,55 * * * *");
 
             expect(cron1.equivalent(cron2)).toBe(true);
         });
 
-        test("should detect differences in step expressions", () => {
-            const cron1 = parseCronExpression("*/5 * * * *");
-            const cron2 = parseCronExpression("*/10 * * * *");
+        test("should detect differences in explicit comma-separated expressions", () => {
+            const cron1 = parseCronExpression("0,5,10,15,20,25,30,35,40,45,50,55 * * * *");
+            const cron2 = parseCronExpression("0,10,20,30,40,50 * * * *");
 
             expect(cron1.equivalent(cron2)).toBe(false);
         });
@@ -188,8 +188,8 @@ describe("scheduler cron expression equivalence edge cases", () => {
         });
 
         test("should be symmetric - if A equals B, then B equals A", () => {
-            const cron1 = parseCronExpression("*/15 9-17 * * 1-5");
-            const cron2 = parseCronExpression("*/15 9-17 * * 1-5");
+            const cron1 = parseCronExpression("0,15,30,45 9-17 * * 1-5");
+            const cron2 = parseCronExpression("0,15,30,45 9-17 * * 1-5");
 
             expect(cron1.equivalent(cron2)).toBe(cron2.equivalent(cron1));
         });

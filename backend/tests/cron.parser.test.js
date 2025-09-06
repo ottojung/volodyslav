@@ -49,8 +49,8 @@ describe("Cron Parser", () => {
             expect(expr.minute).toEqual(createMask([0, 1, 2, 3, 4, 5], 59));
         });
 
-        test("parses step expressions", () => {
-            const expr = parseCronExpression("*/15 * * * *");
+        test("parses comma-separated expressions equivalent to former step expressions", () => {
+            const expr = parseCronExpression("0,15,30,45 * * * *");
             expect(expr.minute).toEqual(createMask([0, 15, 30, 45], 59));
         });
 
@@ -89,6 +89,10 @@ describe("Cron Parser", () => {
             testInvalidExpression("* * 32 * *");
             testInvalidExpression("* * * 13 *");
             testInvalidExpression("* * * * 7");
+            // Test that slash syntax is now rejected
+            testInvalidExpression("*/15 * * * *");
+            testInvalidExpression("0-30/5 * * * *");
+            testInvalidExpression("* */6 * * *");
         });
 
         test("throws on non-string input", () => {

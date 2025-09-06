@@ -213,7 +213,7 @@ describe("scheduler calculator edge cases", () => {
 
         // Cron expression: run every 15 minutes of the 20th day of each month  
         const registrations = [
-            ["20th-only-task", "*/15 * 20 * *", taskCallback, retryDelay]
+            ["20th-only-task", "0,15,30,45 * 20 * *", taskCallback, retryDelay]
         ];
 
         await capabilities.scheduler.initialize(registrations);
@@ -307,7 +307,7 @@ describe("scheduler calculator edge cases", () => {
         // Cron expression: run every 15 minutes, but only on the 15th day of month
         // This avoids the frequency validation issue while still testing the bug
         const registrations = [
-            ["15th-only-task", "*/15 * 15 * *", taskCallback, retryDelay]
+            ["15th-only-task", "0,15,30,45 * 15 * *", taskCallback, retryDelay]
         ];
 
         await capabilities.scheduler.initialize(registrations);
@@ -371,7 +371,7 @@ describe("scheduler calculator edge cases", () => {
 
         // Cron expression: run every 15 minutes, but only on the 15th day of month
         const registrations = [
-            ["15th-only-task", "*/15 * 15 * *", taskCallback, retryDelay]
+            ["15th-only-task", "0,15,30,45 * 15 * *", taskCallback, retryDelay]
         ];
 
         await capabilities.scheduler.initialize(registrations);
@@ -413,7 +413,7 @@ describe("scheduler calculator edge cases", () => {
         });
 
         await newCapabilities.scheduler.initialize([
-            ["15th-only-task", "*/15 * 15 * *", newTaskCallback, retryDelay]
+            ["15th-only-task", "0,15,30,45 * 15 * *", newTaskCallback, retryDelay]
         ]);
         await newSchedulerControl.waitForNextCycleEnd();
 
@@ -859,8 +859,8 @@ describe("scheduler calculator edge cases", () => {
         await capabilities.scheduler.stop();
     });
 
-    // 8) Minute steps alignment: */15 from :07 → first at :15, then :30
-    test("Minute step alignment (*/15): first at :15, then :30", async () => {
+    // 8) Minute explicit values alignment: 0,15,30,45 from :07 → first at :15, then :30
+    test("Minute explicit values alignment (0,15,30,45): first at :15, then :30", async () => {
         const capabilities = getTestCapabilities();
         const timeControl = getDatetimeControl(capabilities);
         const schedulerControl = getSchedulerControl(capabilities);
@@ -872,7 +872,7 @@ describe("scheduler calculator edge cases", () => {
         schedulerControl.setPollingInterval(fromMilliseconds(1));
 
         await capabilities.scheduler.initialize([
-            ["qtr", "*/15 * * * *", cb, retryDelay],
+            ["qtr", "0,15,30,45 * * * *", cb, retryDelay],
         ]);
         await schedulerControl.waitForNextCycleEnd();
         expect(cb).toHaveBeenCalledTimes(0);
@@ -1045,7 +1045,7 @@ describe("scheduler calculator edge cases", () => {
     });
 
     // 14) Multiple executions in a day: every 15 minutes on 20th only
-    test("Multiple executions restricted to allowed DOM (*/15 * 20 * *)", async () => {
+    test("Multiple executions restricted to allowed DOM (0,15,30,45 * 20 * *)", async () => {
         const capabilities = getTestCapabilities();
         const timeControl = getDatetimeControl(capabilities);
         const schedulerControl = getSchedulerControl(capabilities);
@@ -1058,7 +1058,7 @@ describe("scheduler calculator edge cases", () => {
         schedulerControl.setPollingInterval(fromMilliseconds(1));
 
         await capabilities.scheduler.initialize([
-            ["qtr-on-20th", "*/15 * 20 * *", cb, retryDelay],
+            ["qtr-on-20th", "0,15,30,45 * 20 * *", cb, retryDelay],
         ]);
         await schedulerControl.waitForNextCycleEnd();
         expect(cb).toHaveBeenCalledTimes(1); // 00:00
