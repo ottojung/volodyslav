@@ -364,8 +364,8 @@ describe("declarative scheduler state management robustness", () => {
         test("should handle tasks with complex cron patterns", async () => {
             // Test that complex cron expressions can be parsed without errors
             const complexPatterns = [
-                "*/15 * * * *",      // Every 15 minutes
-                "0 */2 * * *",     // Every 2 hours
+                "0,15,30,45 * * * *",      // Every 15 minutes
+                "0 0,2,4,6,8,10,12,14,16,18,20,22 * * *",     // Every 2 hours
                 "30 9 * * 1-5",    // 9:30 AM on weekdays
                 "0 0 1 * *",       // First day of month
                 "0 0 * * 0"        // Every Sunday

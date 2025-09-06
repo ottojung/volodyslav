@@ -31,7 +31,7 @@ describe("declarative scheduler comprehensive edge cases", () => {
             const taskCallback = jest.fn();
 
             const registrations = [
-                ["exact-timing", "*/10 * * * *", taskCallback, retryDelay]
+                ["exact-timing", "0,10,20,30,40,50 * * * *", taskCallback, retryDelay]
             ];
 
             // Initialize scheduler should not throw errors

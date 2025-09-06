@@ -166,9 +166,9 @@ describe("declarative scheduler long downtime catchup behavior", () => {
         timeControl.setDateTime(startTime);
 
         const registrations = [
-            ["every-15min", "*/15 * * * *", every15MinTask, retryDelay], // Every 15 minutes
+            ["every-15min", "0,15,30,45 * * * *", every15MinTask, retryDelay], // Every 15 minutes
             ["hourly", "0 * * * *", hourlyTask, retryDelay],            // Every hour
-            ["every-6h", "0 */6 * * *", every6HourTask, retryDelay]     // Every 6 hours
+            ["every-6h", "0 0,6,12,18 * * *", every6HourTask, retryDelay]     // Every 6 hours
         ];
 
         await capabilities.scheduler.initialize(registrations);
@@ -260,7 +260,7 @@ describe("declarative scheduler long downtime catchup behavior", () => {
         timeControl.setDateTime(startTime);
 
         const registrations = [
-            ["every-30min", "*/30 * * * *", task30Min, retryDelay],   // Every 30 minutes
+            ["every-30min", "0,30 * * * *", task30Min, retryDelay],   // Every 30 minutes
             ["hourly-task", "0 * * * *", taskHourly, retryDelay],    // Every hour
             ["daily-task", "0 9 * * *", taskDaily, retryDelay]       // Daily at 9 AM
         ];

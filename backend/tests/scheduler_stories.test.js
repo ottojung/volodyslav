@@ -119,7 +119,7 @@ describe("scheduler stories", () => {
 
         // Use fast polling to allow minute-level tasks
         const registrations = [
-            ["every-minute", "*/30 * * * *", taskCallback, retryDelay] // Every 30 minutes
+            ["every-minute", "0,30 * * * *", taskCallback, retryDelay] // Every 30 minutes
         ];
 
         await capabilities.scheduler.initialize(registrations);
@@ -257,8 +257,8 @@ describe("scheduler stories", () => {
         schedulerControl.setPollingInterval(fromMilliseconds(100));
 
         const registrations = [
-            ["stable-frequent", "*/30 * * * *", stableTask, retryDelay],       // Every 30 minutes
-            ["flaky-frequent", "*/45 * * * *", flakyTask, retryDelay],         // Every 45 minutes
+            ["stable-frequent", "0,30 * * * *", stableTask, retryDelay],       // Every 30 minutes
+            ["flaky-frequent", "0,45 * * * *", flakyTask, retryDelay],         // Every 45 minutes
         ];
 
         await capabilities.scheduler.initialize(registrations);
@@ -374,9 +374,9 @@ describe("scheduler stories", () => {
         schedulerControl.setPollingInterval(fromMilliseconds(1));
 
         const registrations = [
-            ["primary-system", "*/30 * * * *", primaryTask, quickRetryDelay],     // Every 30 minutes, quick retry
+            ["primary-system", "0,30 * * * *", primaryTask, quickRetryDelay],     // Every 30 minutes, quick retry
             ["dependent-process", "0 * * * *", dependentTask, normalRetryDelay], // Every hour, normal retry
-            ["cleanup-job", "0 */2 * * *", cleanupTask, slowRetryDelay],         // Every 2 hours, slow retry
+            ["cleanup-job", "0 0,2,4,6,8,10,12,14,16,18,20,22 * * *", cleanupTask, slowRetryDelay],         // Every 2 hours, slow retry
         ];
 
         await capabilities.scheduler.initialize(registrations);
@@ -431,7 +431,7 @@ describe("scheduler stories", () => {
         schedulerControl.setPollingInterval(fromMilliseconds(100));
 
         const registrations = [
-            ["frequent-task", "*/30 * * * *", frequentTask, retryDelay],    // Every 30 minutes
+            ["frequent-task", "0,30 * * * *", frequentTask, retryDelay],    // Every 30 minutes
         ];
 
         await capabilities.scheduler.initialize(registrations);
@@ -482,7 +482,7 @@ describe("scheduler stories", () => {
         schedulerControl.setPollingInterval(fromMilliseconds(1));
 
         const registrations = [
-            ["heavy-processing", "*/30 * * * *", resourceIntensiveTask, retryDelay],  // Every 30 minutes
+            ["heavy-processing", "0,30 * * * *", resourceIntensiveTask, retryDelay],  // Every 30 minutes
             ["lightweight-monitor", "*/15 * * * *", lightweightTask, retryDelay],      // Every 15 minutes
             ["resource-monitor", "*/20 * * * *", resourceMonitorTask, retryDelay],     // Every 20 minutes
         ];
@@ -819,7 +819,7 @@ describe("scheduler stories", () => {
         schedulerControl.setPollingInterval(fromMilliseconds(1));
 
         const registrations = [
-            ["every-2h", "0 */2 * * *", every2HourTask, retryDelay],    // Every 2 hours (0, 2, 4, 6, 8, 10, 12, ...)
+            ["every-2h", "0 0,2,4,6,8,10,12,14,16,18,20,22 * * *", every2HourTask, retryDelay],    // Every 2 hours (0, 2, 4, 6, 8, 10, 12, ...)
             ["every-4h", "0 */4 * * *", every4HourTask, retryDelay],    // Every 4 hours (0, 4, 8, 12, ...)
         ];
 
@@ -891,7 +891,7 @@ describe("scheduler stories", () => {
         schedulerControl.setPollingInterval(fromMilliseconds(1));
 
         const registrations = [
-            ["every-2h", "0 */2 * * *", every2HourTask, retryDelay],    // Every 2 hours (0, 2, 4, 6, 8, 10, 12, ...)
+            ["every-2h", "0 0,2,4,6,8,10,12,14,16,18,20,22 * * *", every2HourTask, retryDelay],    // Every 2 hours (0, 2, 4, 6, 8, 10, 12, ...)
             ["every-4h", "0 */4 * * *", every4HourTask, retryDelay],    // Every 4 hours (0, 4, 8, 12, ...)
         ];
 
@@ -963,7 +963,7 @@ describe("scheduler stories", () => {
         schedulerControl.setPollingInterval(fromMilliseconds(1));
 
         const registrations = [
-            ["every-2h", "0 */2 * * *", every2HourTask, retryDelay],    // Every 2 hours
+            ["every-2h", "0 0,2,4,6,8,10,12,14,16,18,20,22 * * *", every2HourTask, retryDelay],    // Every 2 hours
             ["every-6h", "0 */6 * * *", every6HourTask, retryDelay],    // Every 6 hours
         ];
 

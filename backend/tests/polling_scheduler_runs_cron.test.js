@@ -29,7 +29,7 @@ describe("declarative scheduler cron expression validation", () => {
             ["daily-task", "0 9 * * *", taskCallback, retryDelay],       // Daily at 9 AM
             ["weekly-task", "0 9 * * 1", taskCallback, retryDelay],      // Mondays (1) at 9 AM
             ["monthly-task", "0 9 1 * *", taskCallback, retryDelay],     // 1st of month at 9 AM
-            ["minute-task", "*/15 * * * *", taskCallback, retryDelay]     // Every 5 minutes
+            ["minute-task", "0,15,30,45 * * * *", taskCallback, retryDelay]     // Every 15 minutes
         ];
         
         // Should succeed with valid cron expressions

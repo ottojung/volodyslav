@@ -49,7 +49,7 @@ describe("declarative scheduler frequency validation", () => {
 
         // Initialize with task that runs every 10 minutes (matches polling interval)
         const registrations = [
-            ["equal-freq-task", "*/10 * * * *", taskCallback, retryDelay]
+            ["equal-freq-task", "0,10,20,30,40,50 * * * *", taskCallback, retryDelay]
         ];
 
         await expect(capabilities.scheduler.initialize(registrations))
@@ -83,7 +83,7 @@ describe("declarative scheduler frequency validation", () => {
 
         // Try to initialize with task that runs every 5 minutes (higher frequency than 10-minute polling)
         const invalidRegistrations = [
-            ["complex-high-freq", "*/5 * * * *", taskCallback, retryDelay]
+            ["complex-high-freq", "0,5,10,15,20,25,30,35,40,45,50,55 * * * *", taskCallback, retryDelay]
         ];
 
         await expect(capabilities1.scheduler.initialize(invalidRegistrations))
@@ -92,14 +92,14 @@ describe("declarative scheduler frequency validation", () => {
             expect.objectContaining({
                 minCronInterval: expect.any(Number),
                 pollIntervalMs: expect.any(Number),
-                cron: "*/5 * * * *"
+                cron: "0,5,10,15,20,25,30,35,40,45,50,55 * * * *"
             }),
             expect.stringMatching(/minimum interval.*less than the polling interval/i)
         );
 
         // Initialize with task that runs every 2 hours (lower frequency than 10-minute polling)
         const validRegistrations = [
-            ["complex-low-freq", "0 */2 * * *", taskCallback, retryDelay]
+            ["complex-low-freq", "0 0,2,4,6,8,10,12,14,16,18,20,22 * * *", taskCallback, retryDelay]
         ];
 
         await expect(capabilities2.scheduler.initialize(validRegistrations))
