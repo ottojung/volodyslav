@@ -6,7 +6,9 @@
 const { Duration } = require("luxon");
 const { getMockedRootCapabilities } = require("./spies");
 const { stubEnvironment, stubLogger, stubDatetime, stubSleeper, getDatetimeControl, stubRuntimeStateStorage, stubScheduler, getSchedulerControl } = require("./stubs");
-const { fromISOString, fromHours, fromMinutes, fromMilliseconds, fromDays } = require("../src/datetime");
+const { fromISOString, fromHours, fromMinutes, fromMilliseconds, fromDays, toISOString } = require("../src/datetime");
+const { parseCronExpression } = require("../src/scheduler/expression");
+const { getNextExecution, getMostRecentExecution } = require("../src/scheduler/calculator");
 
 function getTestCapabilities() {
     const capabilities = getMockedRootCapabilities();
@@ -1125,5 +1127,14 @@ describe("scheduler stories", () => {
         expect(slowTask.mock.calls.length).toEqual(2); // Both can execute since slow task only takes 1 second
 
         await capabilities.scheduler.stop();
+    });
+
+    test.failing("getNextExecution after getMostRecentExecution should not skip earlier valid days", () => {
+        const expr = parseCronExpression("0 0 30,31 * *");
+        // Compute previous execution to mutate internal cache for earlier months
+        getMostRecentExecution(expr, fromISOString("2021-03-01T00:00:00.000Z"));
+        // Next execution from January 1st should be January 30th, but due to mutation becomes 31st
+        const next = getNextExecution(expr, fromISOString("2021-01-01T00:00:00.000Z"));
+        expect(toISOString(next)).toBe("2021-01-30T00:00:00.000Z");
     });
 });
