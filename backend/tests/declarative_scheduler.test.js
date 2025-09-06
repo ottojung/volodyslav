@@ -191,7 +191,7 @@ describe("Declarative Scheduler", () => {
 
             // Create complex mismatch scenario using same capabilities
             const mismatchedRegistrations = [
-                ["task1", "0 */2 * * *", jest.fn(), Duration.fromObject({minutes: 30})], // different cron + retry delay
+                ["task1", "0 0,2,4,6,8,10,12,14,16,18,20,22 * * *", jest.fn(), Duration.fromObject({minutes: 30})], // different cron + retry delay
                 ["task3", "0 0 * * *", jest.fn(), Duration.fromObject({minutes: 10})], // extra task (task2 is missing)
             ];
 
@@ -209,7 +209,7 @@ describe("Declarative Scheduler", () => {
             expect(cronDiff).toBeTruthy();
             expect(cronDiff.name).toBe("task1");
             expect(cronDiff.expected).toBe("0 * * * *");
-            expect(cronDiff.actual).toBe("0 */2 * * *");
+            expect(cronDiff.actual).toBe("0 0,2,4,6,8,10,12,14,16,18,20,22 * * *");
 
             expect(retryDiff).toBeTruthy();
             expect(retryDiff.name).toBe("task1");
@@ -260,7 +260,7 @@ describe("Declarative Scheduler", () => {
 
             const registrations = [
                 // Task that should run every 15 minutes
-                ["test-task", "*/15 * * * *", taskCallback, Duration.fromObject({minutes: 5})],
+                ["test-task", "0,15,30,45 * * * *", taskCallback, Duration.fromObject({minutes: 5})],
             ];
 
             const capabilities = getTestCapabilities();

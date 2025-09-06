@@ -192,7 +192,7 @@ describe("declarative scheduler persistence and error handling", () => {
 
         // Valid case
         const registrations = [
-            ["valid-task", "0 */4 * * *", validCallback, retryDelay]
+            ["valid-task", "0 0,4,8,12,16,20 * * *", validCallback, retryDelay]
         ];
 
         await expect(capabilities.scheduler.initialize(registrations)).resolves.toBeUndefined();

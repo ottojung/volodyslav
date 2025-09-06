@@ -101,7 +101,7 @@ describe("declarative scheduler precedence logic verification", () => {
         
         // Task runs every 15 minutes
         const registrations = [
-            ["precedence-test", "*/15 * * * *", task, retryDelay]
+            ["precedence-test", "0,15,30,45 * * * *", task, retryDelay]
         ];
         
         // Multiple calls should be idempotent - only the first should have effect
