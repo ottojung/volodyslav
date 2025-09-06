@@ -69,10 +69,12 @@ function getNextExecution(cronExpr, origin) {
                 millisecond: 0,
             });
             if (candidate.isValid === false) {
-                continue;
+                throw new Error(`Invalid candidate datetime: ${candidate}`);
             }
             if (matchesCronExpression(cronExpr, candidate)) {
                 return candidate;
+            } else {
+                throw new Error("Internal error: candidate does not match cron expression");
             }
         }
 
