@@ -1,6 +1,13 @@
 /**
  * Polling execution logic.
  * Handles the core polling behavior including re-entrancy protection.
+ * 
+ * CRITICAL: Reentrancy protection is absolutely required in this implementation
+ * because long-running tasks must not block newly due tasks from being executed.
+ * Without this protection, a single slow task could prevent the scheduler from
+ * detecting and executing other tasks that become due while it's running.
+ * The polling loop must remain responsive to new tasks regardless of how long
+ * individual task executions take.
  */
 
 const { mutateTasks } = require('../persistence');
@@ -32,6 +39,8 @@ function makePollingFunction(capabilities, registrations, scheduledTasks, taskEx
     }
 
     return async function poll() {
+        // Reentrancy protection: prevent overlapping polls to ensure that long-running
+        // tasks don't block the detection and execution of newly due tasks
         if (parallelCounter > 0) {
             // Somebody is already polling;
             return;
