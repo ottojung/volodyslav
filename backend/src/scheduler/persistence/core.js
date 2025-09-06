@@ -79,6 +79,5 @@ async function mutateTasks(capabilities, registrations, transformation) {
 }
 
 module.exports = {
-    getCurrentState,
     mutateTasks,
 };
