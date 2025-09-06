@@ -15,18 +15,17 @@ const { matchesCronExpression } = require('./current');
 function getNextExecution(cronExpr, origin) {
     let year = origin.year;
     let month = origin.month;
-    let dayCount = 0;
 
     // eslint-disable-next-line no-constant-condition
     while (true) {
         let validDays = cronExpr.validDays(year, month);
-        if (dayCount === 0) {
+        if (year === origin.year && month === origin.month) {
             validDays = validDays.filter(d => d >= origin.day);
         }
 
         for (const day of validDays) {
             const getTime = () => {
-                if (dayCount === 0) {
+                if (day === origin.day && year === origin.year && month === origin.month) {
                     const hour = cronExpr.validHours.filter(h => h >= origin.hour)[0];
                     if (hour === undefined) {
                         return null;
@@ -54,7 +53,7 @@ function getNextExecution(cronExpr, origin) {
             };
 
             const time = getTime();
-            dayCount++;
+            console.log({ day, time });
             if (time === null) {
                 continue;
             }
