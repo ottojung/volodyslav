@@ -58,7 +58,10 @@ function getNextExecution(cronExpr, origin) {
             minute,
             second: 0,
             millisecond: 0,
+        }, {
+            zone: origin.zone ? origin.zone : undefined,
         });
+
         if (candidate.isValid === false) {
             throw new Error(`Invalid candidate datetime: ${candidate}`);
         }
