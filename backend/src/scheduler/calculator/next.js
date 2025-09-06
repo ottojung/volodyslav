@@ -53,7 +53,6 @@ function getNextExecution(cronExpr, origin) {
             };
 
             const time = getTime();
-            console.log({ day, time });
             if (time === null) {
                 continue;
             }
