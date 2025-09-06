@@ -291,7 +291,9 @@ function* iterateValidDays(cronExpr, startDate) {
     let year = origin.year;
     let month = origin.month;
 
-    for (;;) {
+    // Limit to 10 years forward to prevent infinite loops.
+    // It must be impossible to have a valid cron expression that doesn't for that long.
+    while (year < oyear + 10) {
         let validDays = cronExpr.validDays(year, month);
         if (month === omonth && year === oyear) {
             validDays = validDays.filter(d => d >= origin.day);
@@ -324,7 +326,9 @@ function* iterateValidDaysBackwards(cronExpr, startDate) {
     let year = origin.year;
     let month = origin.month;
 
-    for (;;) {
+    // Limit to 10 years back to prevent infinite loops.
+    // It must be impossible to have a valid cron expression that doesn't for that long.
+    while (year > oyear - 10) {
         let validDays = cronExpr.validDays(year, month);
         if (month === omonth && year === oyear) {
             validDays = validDays.filter(d => d <= origin.day);
