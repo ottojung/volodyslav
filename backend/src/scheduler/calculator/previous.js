@@ -28,10 +28,10 @@ function getMostRecentExecution(cronExpr, origin) {
 
                 const filteredMinutes = validMinutes.filter(m => m <= origin.minute);
                 const minute = hour === origin.hour
-                    ? filteredMinutes[0]
+                    ? filteredMinutes[filteredMinutes.length - 1]
                     : validMinutes[validMinutes.length - 1];
                 if (minute === undefined) {
-                    const filteredHours = cronExpr.validHours.filter(h => h < origin.hour);
+                    const filteredHours = validHours.filter(h => h < origin.hour);
                     const hour = filteredHours[filteredHours.length - 1];
                     if (hour === undefined) {
                         return null;
