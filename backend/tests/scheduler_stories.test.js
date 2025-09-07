@@ -1137,4 +1137,8 @@ describe("scheduler stories", () => {
         const next = getNextExecution(expr, fromISOString("2021-01-01T00:00:00.000Z"));
         expect(toISOString(next)).toBe("2021-01-30T00:00:00.000Z");
     });
+
+    test.failing("should parse cron expressions with leading zeros", () => {
+        expect(() => parseCronExpression("0 0 01 * *")).not.toThrow();
+    });
 });
