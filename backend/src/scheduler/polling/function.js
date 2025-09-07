@@ -1,13 +1,16 @@
 /**
  * Polling execution logic.
- * Handles the core polling behavior including re-entrancy protection.
+ * Handles the core polling behavior with collection exclusivity optimization.
  * 
- * CRITICAL: Reentrancy protection is absolutely required in this implementation
- * because long-running tasks must not block newly due tasks from being executed.
- * Without this protection, a single slow task could prevent the scheduler from
- * detecting and executing other tasks that become due while it's running.
- * The polling loop must remain responsive to new tasks regardless of how long
- * individual task executions take.
+ * IMPORTANT: The polling loop is intentionally reentrant for task execution.
+ * This reentrancy is essential because long-running tasks must not block newly 
+ * due tasks from being executed. Task execution happens in parallel to ensure
+ * the scheduler remains responsive regardless of individual task duration.
+ * 
+ * The only exclusivity protection is during the collection phase: when a thread
+ * starts collecting due tasks and sees another thread is already collecting
+ * (via parallelCounter), it exits early. This optimization reduces wasteful
+ * duplicate collection work, not reentrancy itself.
  */
 
 const { mutateTasks } = require('../persistence');
@@ -39,10 +42,10 @@ function makePollingFunction(capabilities, registrations, scheduledTasks, taskEx
     }
 
     return async function poll() {
-        // Reentrancy protection: prevent overlapping polls to ensure that long-running
-        // tasks don't block the detection and execution of newly due tasks
+        // Collection exclusivity optimization: prevent overlapping collection phases
+        // to reduce wasteful duplicate work. Task execution itself remains reentrant.
         if (parallelCounter > 0) {
-            // Somebody is already polling;
+            // Another thread is already collecting due tasks; skip to avoid duplication
             return;
         } else {
             parallelCounter++;
