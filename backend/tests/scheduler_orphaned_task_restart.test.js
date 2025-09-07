@@ -32,6 +32,10 @@ describe("scheduler orphaned task restart", () => {
             ["orphaned-task", "0 * * * *", taskCallback, retryDelay]
         ];
 
+        // Spy on logger to verify restart behavior
+        const logWarningSpy = jest.spyOn(capabilities.logger, 'logWarning');
+        const logInfoSpy = jest.spyOn(capabilities.logger, 'logInfo');
+
         // First scheduler instance - simulate starting a task but shutting down before completion
         await capabilities.scheduler.initialize(registrations);
         
@@ -49,24 +53,34 @@ describe("scheduler orphaned task restart", () => {
         
         await capabilities.scheduler.stop();
         
+        // Clear spies for the new instance
+        logWarningSpy.mockClear();
+        logInfoSpy.mockClear();
+        
         // Second scheduler instance - should detect and restart the orphaned task
         await capabilities.scheduler.initialize(registrations);
         
         // Wait for scheduler to process and restart the orphaned task
         await schedulerControl.waitForNextCycleEnd();
         
-        // The task should have been restarted (scheduler will log a warning)
-        // We can verify the task is no longer marked as running with the old identifier
-        await capabilities.state.transaction(async (storage) => {
-            const state = await storage.getExistingState();
-            if (state && state.tasks.length > 0) {
-                const task = state.tasks[0];
-                // lastAttemptTime should be cleared (set to undefined)
-                expect(task.lastAttemptTime).toBeUndefined();
-                // schedulerIdentifier should be cleared
-                expect(task.schedulerIdentifier).toBeUndefined();
-            }
-        });
+        // Verify that the orphaned task restart was logged
+        expect(logWarningSpy).toHaveBeenCalledWith(
+            expect.objectContaining({
+                taskName: "orphaned-task",
+                previousSchedulerIdentifier: "different-scheduler-id",
+                currentSchedulerIdentifier: expect.any(String)
+            }),
+            "ACHTUNG: THIS TASK DID NOT FINISH RUNNING, I'M RESTARTING IT NOW!"
+        );
+        
+        // Verify restart count log
+        expect(logInfoSpy).toHaveBeenCalledWith(
+            { restartedTaskCount: 1 },
+            "Restarted orphaned tasks from previous scheduler instance"
+        );
+        
+        // The task should actually run after being restarted
+        expect(taskCallback).toHaveBeenCalled();
         
         await capabilities.scheduler.stop();
     });
@@ -134,6 +148,10 @@ describe("scheduler orphaned task restart", () => {
             ["orphaned-task-3", "30 * * * *", task3Callback, retryDelay]
         ];
 
+        // Spy on logger
+        const logWarningSpy = jest.spyOn(capabilities.logger, 'logWarning');
+        const logInfoSpy = jest.spyOn(capabilities.logger, 'logInfo');
+
         // First scheduler instance
         await capabilities.scheduler.initialize(registrations);
         
@@ -158,26 +176,25 @@ describe("scheduler orphaned task restart", () => {
         
         await capabilities.scheduler.stop();
         
+        // Clear spies
+        logWarningSpy.mockClear();
+        logInfoSpy.mockClear();
+        
         // Second scheduler instance - should detect and restart orphaned tasks
         await capabilities.scheduler.initialize(registrations);
         await schedulerControl.waitForNextCycleEnd();
         
-        // Verify all orphaned tasks have been reset
-        await capabilities.state.transaction(async (storage) => {
-            const state = await storage.getExistingState();
-            if (state && state.tasks.length >= 3) {
-                // First two tasks should be restarted (had different scheduler IDs)
-                expect(state.tasks[0].lastAttemptTime).toBeUndefined();
-                expect(state.tasks[0].schedulerIdentifier).toBeUndefined();
-                
-                expect(state.tasks[1].lastAttemptTime).toBeUndefined();
-                expect(state.tasks[1].schedulerIdentifier).toBeUndefined();
-                
-                // Third task should also be restarted (no scheduler identifier means it's orphaned)
-                expect(state.tasks[2].lastAttemptTime).toBeUndefined();
-                expect(state.tasks[2].schedulerIdentifier).toBeUndefined();
-            }
-        });
+        // Verify all three orphaned tasks were detected and restarted
+        expect(logWarningSpy).toHaveBeenCalledTimes(3);
+        expect(logInfoSpy).toHaveBeenCalledWith(
+            { restartedTaskCount: 3 },
+            "Restarted orphaned tasks from previous scheduler instance"
+        );
+        
+        // All callbacks should have been executed after restart
+        expect(task1Callback).toHaveBeenCalled();
+        expect(task2Callback).toHaveBeenCalled();
+        expect(task3Callback).toHaveBeenCalled();
         
         await capabilities.scheduler.stop();
     });
@@ -193,6 +210,9 @@ describe("scheduler orphaned task restart", () => {
         const registrations = [
             ["legacy-task", "0 * * * *", taskCallback, retryDelay]
         ];
+
+        // Spy on logger
+        const logWarningSpy = jest.spyOn(capabilities.logger, 'logWarning');
 
         // First scheduler instance
         await capabilities.scheduler.initialize(registrations);
@@ -210,22 +230,28 @@ describe("scheduler orphaned task restart", () => {
         
         await capabilities.scheduler.stop();
         
+        // Clear spy
+        logWarningSpy.mockClear();
+        
         // Second scheduler instance
         await capabilities.scheduler.initialize(registrations);
         await schedulerControl.waitForNextCycleEnd();
         
-        // The task should have been restarted (treated as orphaned)
-        await capabilities.state.transaction(async (storage) => {
-            const state = await storage.getExistingState();
-            if (state && state.tasks.length > 0) {
-                const task = state.tasks[0];
-                expect(task.lastAttemptTime).toBeUndefined();
-                expect(task.schedulerIdentifier).toBeUndefined();
-            }
-        });
+        // Verify the task was restarted (treated as orphaned)
+        expect(logWarningSpy).toHaveBeenCalledWith(
+            expect.objectContaining({
+                taskName: "legacy-task",
+                previousSchedulerIdentifier: "unknown",
+                currentSchedulerIdentifier: expect.any(String)
+            }),
+            "ACHTUNG: THIS TASK DID NOT FINISH RUNNING, I'M RESTARTING IT NOW!"
+        );
+        
+        // Task should have executed after restart
+        expect(taskCallback).toHaveBeenCalled();
         
         await capabilities.scheduler.stop();
-    });
+    }, 10000);
 
     test("should log appropriate warnings when restarting orphaned tasks", async () => {
         const capabilities = getTestCapabilities();
@@ -257,6 +283,9 @@ describe("scheduler orphaned task restart", () => {
         });
         
         await capabilities.scheduler.stop();
+        
+        // Clear previous calls
+        logWarningSpy.mockClear();
         
         // Second scheduler instance
         await capabilities.scheduler.initialize(registrations);

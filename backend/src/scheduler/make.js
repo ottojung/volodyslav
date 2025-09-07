@@ -68,12 +68,13 @@ function make(getCapabilities) {
 
     /**
      * Detect and restart tasks that were running under a different scheduler instance.
+     * @param {ParsedRegistrations} parsedRegistrations
      * @param {SchedulerCapabilities} capabilities
      * @param {string} currentSchedulerIdentifier
      * @returns {Promise<void>}
      */
-    async function detectAndRestartOrphanedTasks(capabilities, currentSchedulerIdentifier) {
-        await mutateTasks(capabilities, new Map(), (tasks) => {
+    async function detectAndRestartOrphanedTasks(parsedRegistrations, capabilities, currentSchedulerIdentifier) {
+        await mutateTasks(capabilities, parsedRegistrations, (tasks) => {
             let restartedCount = 0;
             
             for (const task of tasks.values()) {
@@ -244,7 +245,7 @@ function make(getCapabilities) {
         }
 
         // Detect and restart orphaned tasks first
-        await detectAndRestartOrphanedTasks(capabilities, schedulerIdentifier);
+        await detectAndRestartOrphanedTasks(parsedRegistrations, capabilities, schedulerIdentifier);
 
         // Analyze input and override persisted state if needed
         const { persistedTasks, shouldOverride } = await analyzeAndOverridePersistedState(registrations, capabilities);
