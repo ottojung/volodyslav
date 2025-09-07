@@ -98,6 +98,7 @@ function makeTaskExecutor(capabilities, mutateTasks) {
                 task.lastSuccessTime = end;
                 task.lastFailureTime = undefined;
                 task.pendingRetryUntil = undefined;
+                task.schedulerIdentifier = undefined; // Clear scheduler identifier on completion
             });
 
             capabilities.logger.logInfo(
@@ -110,6 +111,7 @@ function makeTaskExecutor(capabilities, mutateTasks) {
                 task.lastSuccessTime = undefined;
                 task.lastFailureTime = end;
                 task.pendingRetryUntil = retryAt;
+                task.schedulerIdentifier = undefined; // Clear scheduler identifier on failure too
             });
 
             const message = maybeError.message;

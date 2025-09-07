@@ -16,6 +16,7 @@
  * @property {import('../logger').Logger} logger - A logger instance
  * @property {import('../runtime_state_storage').RuntimeStateStorage} state - A runtime state storage instance
  * @property {import('../threading').Threading} threading - A threading instance
+ * @property {import('../random/seed').NonDeterministicSeed} seed - A random number generator instance
  */
 
 /**

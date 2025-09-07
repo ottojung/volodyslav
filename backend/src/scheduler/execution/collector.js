@@ -28,12 +28,13 @@ class TaskEvaluationNotFoundError extends Error {
  * @param {Set<string>} scheduledTasks - Set of scheduled task names
  * @param {import('../../datetime').DateTime} now - Current datetime
  * @param {import('../types').SchedulerCapabilities} capabilities - Capabilities for logging
+ * @param {string} schedulerIdentifier - Identifier of the current scheduler instance
  * @returns {{
  *   dueTasks: Array<{taskName: string, mode: "retry"|"cron", callback: Callback}>,
  *   stats: {dueRetry: number, dueCron: number, skippedRunning: number, skippedRetryFuture: number, skippedNotDue: number}
  * }}
  */
-function evaluateTasksForExecution(tasks, scheduledTasks, now, capabilities) {
+function evaluateTasksForExecution(tasks, scheduledTasks, now, capabilities, schedulerIdentifier) {
     let dueRetry = 0;
     let dueCron = 0;
     let skippedRunning = 0;
@@ -67,19 +68,23 @@ function evaluateTasksForExecution(tasks, scheduledTasks, now, capabilities) {
             if (task.pendingRetryUntil && lastScheduledFire && task.pendingRetryUntil.isBefore(lastScheduledFire)) {
                 dueTasks.push({ taskName, mode: "retry", callback });
                 task.lastAttemptTime = now;
+                task.schedulerIdentifier = schedulerIdentifier;
                 dueRetry++;
             } else {
                 dueTasks.push({ taskName, mode: "cron", callback });
                 task.lastAttemptTime = now;
+                task.schedulerIdentifier = schedulerIdentifier;
                 dueCron++;
             }
         } else if (shouldRunCron) {
             dueTasks.push({ taskName, mode: "cron", callback });
             task.lastAttemptTime = now;
+            task.schedulerIdentifier = schedulerIdentifier;
             dueCron++;
         } else if (shouldRunRetry) {
             dueTasks.push({ taskName, mode: "retry", callback });
             task.lastAttemptTime = now;
+            task.schedulerIdentifier = schedulerIdentifier;
             dueRetry++;
         } else if (task.pendingRetryUntil) {
             skippedRetryFuture++;

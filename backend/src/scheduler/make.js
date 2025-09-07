@@ -6,6 +6,8 @@ const { parseCronExpression } = require("./expression");
 const { makePollingScheduler } = require("./polling");
 const { mutateTasks } = require("./persistence");
 const { isScheduleDuplicateTaskError } = require("./registration_validation");
+const { generateSchedulerIdentifier } = require("./scheduler_identifier");
+const { isRunning } = require("./task");
 const memconst = require("../memconst");
 
 /**
@@ -58,8 +60,53 @@ const { analyzeStateChanges } = require("./state_validation");
 function make(getCapabilities) {
     /** @type {ReturnType<makePollingScheduler> | null} */
     let pollingScheduler = null;
+    
+    /** @type {string | null} */
+    let schedulerIdentifier = null;
 
     const getCapabilitiesMemo = memconst(getCapabilities);
+
+    /**
+     * Detect and restart tasks that were running under a different scheduler instance.
+     * @param {SchedulerCapabilities} capabilities
+     * @param {string} currentSchedulerIdentifier
+     * @returns {Promise<void>}
+     */
+    async function detectAndRestartOrphanedTasks(capabilities, currentSchedulerIdentifier) {
+        await mutateTasks(capabilities, new Map(), (tasks) => {
+            let restartedCount = 0;
+            
+            for (const task of tasks.values()) {
+                if (isRunning(task) && 
+                    (!task.schedulerIdentifier || task.schedulerIdentifier !== currentSchedulerIdentifier)) {
+                    
+                    // This task was running under a different scheduler instance or has no identifier
+                    capabilities.logger.logWarning(
+                        { 
+                            taskName: task.name,
+                            previousSchedulerIdentifier: task.schedulerIdentifier || "unknown",
+                            currentSchedulerIdentifier: currentSchedulerIdentifier
+                        },
+                        "ACHTUNG: THIS TASK DID NOT FINISH RUNNING, I'M RESTARTING IT NOW!"
+                    );
+                    
+                    // Unmark the task as running by clearing lastAttemptTime
+                    task.lastAttemptTime = undefined;
+                    task.schedulerIdentifier = undefined;
+                    restartedCount++;
+                }
+            }
+            
+            if (restartedCount > 0) {
+                capabilities.logger.logInfo(
+                    { restartedTaskCount: restartedCount },
+                    "Restarted orphaned tasks from previous scheduler instance"
+                );
+            }
+            
+            return undefined;
+        });
+    }
 
     /**
      * Analyze and potentially override persisted state with registrations.
@@ -173,6 +220,15 @@ function make(getCapabilities) {
         const capabilities = getCapabilitiesMemo();
         const parsedRegistrations = parseRegistrations(registrations);
 
+        // Generate scheduler identifier if not already done
+        if (schedulerIdentifier === null) {
+            schedulerIdentifier = generateSchedulerIdentifier(capabilities);
+            capabilities.logger.logDebug(
+                { schedulerIdentifier },
+                "Generated scheduler identifier"
+            );
+        }
+
         // Handle polling scheduler lifecycle
         if (pollingScheduler !== null) {
             // Scheduler already running
@@ -184,8 +240,11 @@ function make(getCapabilities) {
             await analyzeAndOverridePersistedState(registrations, capabilities);
             return;
         } else {
-            pollingScheduler = makePollingScheduler(capabilities, parsedRegistrations);
+            pollingScheduler = makePollingScheduler(capabilities, parsedRegistrations, schedulerIdentifier);
         }
+
+        // Detect and restart orphaned tasks first
+        await detectAndRestartOrphanedTasks(capabilities, schedulerIdentifier);
 
         // Analyze input and override persisted state if needed
         const { persistedTasks, shouldOverride } = await analyzeAndOverridePersistedState(registrations, capabilities);
