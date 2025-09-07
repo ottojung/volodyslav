@@ -305,4 +305,55 @@ describe("scheduler orphaned task restart", () => {
         
         await capabilities.scheduler.stop();
     });
+
+    test("should handle unknown tasks during startup without failing", async () => {
+        const capabilities = getTestCapabilities();
+        const schedulerControl = getSchedulerControl(capabilities);
+        const retryDelay = Duration.fromMillis(5000);
+        
+        schedulerControl.setPollingInterval(fromMilliseconds(1));
+        
+        const taskCallback = jest.fn();
+        const registrations = [
+            ["known-task", "0 * * * *", taskCallback, retryDelay]
+        ];
+
+        // First, initialize with a different set of registrations that includes an extra task
+        const initialRegistrations = [
+            ["known-task", "0 * * * *", taskCallback, retryDelay],
+            ["unknown-task", "15 * * * *", jest.fn(), retryDelay]
+        ];
+
+        await capabilities.scheduler.initialize(initialRegistrations);
+        
+        // Manually add an orphaned task to the unknown task 
+        await capabilities.state.transaction(async (storage) => {
+            const state = await storage.getExistingState();
+            if (state && state.tasks.length >= 2) {
+                // Mark the unknown task as orphaned 
+                const unknownTask = state.tasks.find(task => task.name === "unknown-task");
+                if (unknownTask) {
+                    unknownTask.lastAttemptTime = capabilities.datetime.now();
+                    unknownTask.schedulerIdentifier = "different-scheduler-id";
+                    storage.setState(state);
+                }
+            }
+        });
+        
+        await capabilities.scheduler.stop();
+
+        // Now try to initialize with only the known task
+        // This should NOT fail even though persisted state contains unknown tasks
+        // The unknown task should be ignored during orphaned detection, 
+        // then handled by state reconciliation
+        await expect(capabilities.scheduler.initialize(registrations)).resolves.not.toThrow();
+        
+        // Wait for scheduler to process 
+        await schedulerControl.waitForNextCycleEnd();
+        
+        // The known task should be running normally
+        expect(taskCallback).toHaveBeenCalled();
+        
+        await capabilities.scheduler.stop();
+    });
 });
