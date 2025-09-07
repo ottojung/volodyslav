@@ -99,6 +99,9 @@ function tryDeserialize(obj, registrations) {
         if (typeof retryDelayMs !== "number" || !Number.isFinite(retryDelayMs) || retryDelayMs < 0) {
             return new TaskInvalidTypeError("retryDelayMs", retryDelayMs, "non-negative number");
         }
+        if (!Number.isInteger(retryDelayMs)) {
+            return new TaskInvalidTypeError("retryDelayMs", retryDelayMs, "integer");
+        }
 
         // Validate optional DateTime fields
         const lastSuccessTime = ("lastSuccessTime" in obj) ? obj.lastSuccessTime : undefined;
@@ -113,7 +116,10 @@ function tryDeserialize(obj, registrations) {
             ["lastAttemptTime", lastAttemptTime],
             ["pendingRetryUntil", pendingRetryUntil],
         ]) {
-            if (value !== undefined && value !== null) {
+            if (value !== undefined) {
+                if (value === null) {
+                    return new TaskInvalidTypeError(String(fieldName), value, "DateTime or undefined (not null)");
+                }
                 if (!isDateTime(value)) {
                     return new TaskInvalidTypeError(String(fieldName), value, "DateTime or undefined");
                 }

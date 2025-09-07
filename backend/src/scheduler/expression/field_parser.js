@@ -138,8 +138,9 @@ function parseField(value, config) {
             throw new FieldParseError(`invalid range "${value}"`, value, config.name);
         }
         
-        // Verify the parsed numbers match the original strings to catch cases like "1e" -> 1
-        if (startNum.toString() !== startStr || endNum.toString() !== endStr) {
+        // Verify the parsed numbers match the original strings to catch cases like "1e" -> 1 or "1e10" -> 1e10
+        // Allow leading zeros by using specific pattern matches
+        if (!(/^\d+$/.test(startStr)) || !(/^\d+$/.test(endStr))) {
             throw new FieldParseError(`invalid range format "${value}"`, value, config.name);
         }
 
@@ -180,8 +181,9 @@ function parseField(value, config) {
         throw new FieldParseError(`invalid number "${value}"`, value, config.name);
     }
     
-    // Verify the parsed number matches the original string to catch cases like "1.5" -> 1
-    if (num.toString() !== value) {
+    // Verify the parsed number matches the original string to catch cases like "1.5" -> 1 or "1e10" -> 1e10
+    // Allow leading zeros by using a specific pattern match
+    if (!(/^\d+$/.test(value))) {
         throw new FieldParseError(`invalid number format "${value}"`, value, config.name);
     }
 

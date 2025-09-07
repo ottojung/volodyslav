@@ -1130,7 +1130,7 @@ describe("scheduler stories", () => {
         await capabilities.scheduler.stop();
     });
 
-    test.failing("should reject fractional retryDelayMs during task deserialization", () => {
+    test("should reject fractional retryDelayMs during task deserialization", () => {
         const cron = parseCronExpression("0 * * * *");
         const registrations = new Map([
             ["fractional-delay", { name: "fractional-delay", parsedCron: cron, callback: () => {}, retryDelay: Duration.fromMillis(5000.5) }]
@@ -1153,11 +1153,11 @@ describe("scheduler stories", () => {
         expect(toISOString(next)).toBe("2021-01-30T00:00:00.000Z");
     });
 
-    test.failing("should parse cron expressions with leading zeros", () => {
+    test("should parse cron expressions with leading zeros", () => {
         expect(() => parseCronExpression("0 0 01 * *")).not.toThrow();
     });
 
-    test.failing("should reject null lastSuccessTime during task deserialization", () => {
+    test("should reject null lastSuccessTime during task deserialization", () => {
         const registrations = new Map([
             [
                 "demo",
