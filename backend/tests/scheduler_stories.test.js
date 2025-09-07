@@ -9,6 +9,7 @@ const { stubEnvironment, stubLogger, stubDatetime, stubSleeper, getDatetimeContr
 const { fromISOString, fromHours, fromMinutes, fromMilliseconds, fromDays, toISOString } = require("../src/datetime");
 const { parseCronExpression } = require("../src/scheduler/expression");
 const { getNextExecution, getMostRecentExecution } = require("../src/scheduler/calculator");
+const { tryDeserialize, isTaskTryDeserializeError } = require("../src/scheduler/task");
 
 function getTestCapabilities() {
     const capabilities = getMockedRootCapabilities();
@@ -1127,6 +1128,20 @@ describe("scheduler stories", () => {
         expect(slowTask.mock.calls.length).toEqual(2); // Both can execute since slow task only takes 1 second
 
         await capabilities.scheduler.stop();
+    });
+
+    test.failing("should reject fractional retryDelayMs during task deserialization", () => {
+        const cron = parseCronExpression("0 * * * *");
+        const registrations = new Map([
+            ["fractional-delay", { name: "fractional-delay", parsedCron: cron, callback: () => {}, retryDelay: Duration.fromMillis(5000.5) }]
+        ]);
+        const record = {
+            name: "fractional-delay",
+            cronExpression: "0 * * * *",
+            retryDelayMs: 5000.5,
+        };
+        const result = tryDeserialize(record, registrations);
+        expect(isTaskTryDeserializeError(result)).toBe(true);
     });
 
     test("getNextExecution after getMostRecentExecution should not skip earlier valid days", () => {
