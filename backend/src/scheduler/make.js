@@ -76,7 +76,7 @@ function make(getCapabilities) {
      */
     async function detectAndRestartOrphanedTasks(parsedRegistrations, capabilities, currentSchedulerIdentifier) {
         const restartedTasks = await mutateTasks(capabilities, parsedRegistrations, (tasks) => {
-            let restarted = [];
+            const restarted = [];
 
             for (const [taskName, task] of tasks) {
                 // Check if this task appears to be running (has lastAttemptTime but different/missing scheduler ID)
