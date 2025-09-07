@@ -1137,4 +1137,10 @@ describe("scheduler stories", () => {
         const next = getNextExecution(expr, fromISOString("2021-01-01T00:00:00.000Z"));
         expect(toISOString(next)).toBe("2021-01-30T00:00:00.000Z");
     });
+
+    test.failing("getMostRecentExecution uses 'previous' wording when no prior execution exists", () => {
+        const expr = parseCronExpression("0 0 31 2 *");
+        expect(() => getMostRecentExecution(expr, fromISOString("2021-03-01T00:00:00.000Z")))
+            .toThrow("No valid previous execution time found");
+    });
 });
