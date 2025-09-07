@@ -258,9 +258,33 @@ describe("Cron Parser", () => {
                 expect(true).toBe(true);
             });
 
-            test("DOW out of range (7 = Sunday not allowed)", () => {
-                testInvalidExpression("0 0 * * 7", "range error");
-                expect(true).toBe(true);
+            test("DOW out of range (7 = Sunday not allowed, POSIX compliance)", () => {
+                // Helper to test expressions that should fail with POSIX compliance message
+                const testSundaySevenRejection = (expr) => {
+                    expect(() => parseCronExpression(expr)).toThrow();
+                    
+                    let thrownError;
+                    try {
+                        parseCronExpression(expr);
+                    } catch (error) {
+                        thrownError = error;
+                    }
+                    expect(thrownError).toBeDefined();
+                    expect(isInvalidCronExpressionError(thrownError)).toBe(true);
+                    expect(thrownError.message).toContain("Sunday must be 0, not 7");
+                    expect(thrownError.message).toContain("POSIX compliance");
+                };
+                
+                // Test single value 7
+                testSundaySevenRejection("0 0 * * 7");
+                
+                // Test ranges containing 7
+                testSundaySevenRejection("0 0 * * 1-7");
+                testSundaySevenRejection("0 0 * * 6-7");
+                
+                // Test lists containing 7
+                testSundaySevenRejection("0 0 * * 1,7");
+                testSundaySevenRejection("0 0 * * 0,1,7");
             });
 
             test("hour out of range", () => {

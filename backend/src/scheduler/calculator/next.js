@@ -5,6 +5,7 @@
 const { dateTimeFromObject } = require('../../datetime');
 const { iterateValidDays } = require('../expression');
 const { matchesCronExpression } = require('./current');
+const { CronCalculationError } = require('./errors');
 
 /**
  * Calculates the next execution time for a cron expression.
@@ -72,7 +73,10 @@ function getNextExecution(cronExpr, origin) {
         }
     }
 
-    throw new Error("No valid next execution time found");
+    throw new CronCalculationError("No valid next execution time found for cron expression", {
+        cronExpression: cronExpr,
+        origin: origin
+    });
 }
 
 module.exports = {

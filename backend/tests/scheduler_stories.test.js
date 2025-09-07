@@ -8,7 +8,9 @@ const { getMockedRootCapabilities } = require("./spies");
 const { stubEnvironment, stubLogger, stubDatetime, stubSleeper, getDatetimeControl, stubRuntimeStateStorage, stubScheduler, getSchedulerControl } = require("./stubs");
 const { fromISOString, fromHours, fromMinutes, fromMilliseconds, fromDays, toISOString } = require("../src/datetime");
 const { parseCronExpression } = require("../src/scheduler/expression");
+const { tryDeserialize, isTaskInvalidTypeError } = require("../src/scheduler/task");
 const { getNextExecution, getMostRecentExecution } = require("../src/scheduler/calculator");
+const { tryDeserialize, isTaskTryDeserializeError } = require("../src/scheduler/task");
 
 function getTestCapabilities() {
     const capabilities = getMockedRootCapabilities();
@@ -1129,6 +1131,20 @@ describe("scheduler stories", () => {
         await capabilities.scheduler.stop();
     });
 
+    test.failing("should reject fractional retryDelayMs during task deserialization", () => {
+        const cron = parseCronExpression("0 * * * *");
+        const registrations = new Map([
+            ["fractional-delay", { name: "fractional-delay", parsedCron: cron, callback: () => {}, retryDelay: Duration.fromMillis(5000.5) }]
+        ]);
+        const record = {
+            name: "fractional-delay",
+            cronExpression: "0 * * * *",
+            retryDelayMs: 5000.5,
+        };
+        const result = tryDeserialize(record, registrations);
+        expect(isTaskTryDeserializeError(result)).toBe(true);
+    });
+
     test("getNextExecution after getMostRecentExecution should not skip earlier valid days", () => {
         const expr = parseCronExpression("0 0 30,31 * *");
         // Compute previous execution to mutate internal cache for earlier months
@@ -1140,5 +1156,29 @@ describe("scheduler stories", () => {
 
     test.failing("should parse cron expressions with leading zeros", () => {
         expect(() => parseCronExpression("0 0 01 * *")).not.toThrow();
+    });
+
+    test.failing("should reject null lastSuccessTime during task deserialization", () => {
+        const registrations = new Map([
+            [
+                "demo",
+                {
+                    name: "demo",
+                    parsedCron: parseCronExpression("0 * * * *"),
+                    callback: () => {},
+                    retryDelay: Duration.fromMillis(1000),
+                },
+            ],
+        ]);
+
+        const serialized = {
+            name: "demo",
+            cronExpression: "0 * * * *",
+            retryDelayMs: 1000,
+            lastSuccessTime: null,
+        };
+
+        const result = tryDeserialize(serialized, registrations);
+        expect(isTaskInvalidTypeError(result)).toBe(true);
     });
 });
