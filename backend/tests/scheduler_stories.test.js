@@ -8,6 +8,7 @@ const { getMockedRootCapabilities } = require("./spies");
 const { stubEnvironment, stubLogger, stubDatetime, stubSleeper, getDatetimeControl, stubRuntimeStateStorage, stubScheduler, getSchedulerControl } = require("./stubs");
 const { fromISOString, fromHours, fromMinutes, fromMilliseconds, fromDays, toISOString } = require("../src/datetime");
 const { parseCronExpression } = require("../src/scheduler/expression");
+const { tryDeserialize, isTaskInvalidTypeError } = require("../src/scheduler/task");
 const { getNextExecution, getMostRecentExecution } = require("../src/scheduler/calculator");
 const { tryDeserialize, isTaskTryDeserializeError } = require("../src/scheduler/task");
 
@@ -1151,5 +1152,29 @@ describe("scheduler stories", () => {
         // Next execution from January 1st should be January 30th, but due to mutation becomes 31st
         const next = getNextExecution(expr, fromISOString("2021-01-01T00:00:00.000Z"));
         expect(toISOString(next)).toBe("2021-01-30T00:00:00.000Z");
+    });
+
+    test.failing("should reject null lastSuccessTime during task deserialization", () => {
+        const registrations = new Map([
+            [
+                "demo",
+                {
+                    name: "demo",
+                    parsedCron: parseCronExpression("0 * * * *"),
+                    callback: () => {},
+                    retryDelay: Duration.fromMillis(1000),
+                },
+            ],
+        ]);
+
+        const serialized = {
+            name: "demo",
+            cronExpression: "0 * * * *",
+            retryDelayMs: 1000,
+            lastSuccessTime: null,
+        };
+
+        const result = tryDeserialize(serialized, registrations);
+        expect(isTaskInvalidTypeError(result)).toBe(true);
     });
 });
