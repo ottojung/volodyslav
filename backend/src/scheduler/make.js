@@ -104,9 +104,9 @@ function make(getCapabilities) {
         for (const { taskName, previousSchedulerIdentifier } of restartedTasks) {
             capabilities.logger.logWarning(
                 {
-                    taskName: taskName,
-                    previousSchedulerIdentifier: previousSchedulerIdentifier,
-                    currentSchedulerIdentifier: currentSchedulerIdentifier
+                    taskName,
+                    previousSchedulerIdentifier,
+                    currentSchedulerIdentifier,
                 },
                 "Task was interrupted during shutdown and will be restarted");
         }
