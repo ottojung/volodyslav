@@ -7,9 +7,12 @@
 const { matchesCronExpression } = require("./current");
 const { getNextExecution } = require("./next");
 const { getMostRecentExecution } = require("./previous");
+const { CronCalculationError, isCronCalculationError } = require("./errors");
 
 module.exports = {
     matchesCronExpression,
     getNextExecution,
     getMostRecentExecution,
+    CronCalculationError,
+    isCronCalculationError,
 };

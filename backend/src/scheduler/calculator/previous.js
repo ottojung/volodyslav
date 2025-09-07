@@ -5,6 +5,7 @@
 const { matchesCronExpression } = require("./current");
 const { dateTimeFromObject } = require("../../datetime");
 const { iterateValidDaysBackwards } = require("../expression/structure");
+const { CronCalculationError } = require("./errors");
 
 /**
  * Calculates the previous execution time for a cron expression.
@@ -80,7 +81,10 @@ function getMostRecentExecution(cronExpr, origin) {
         }
     }
 
-    throw new Error("No valid next execution time found");
+    throw new CronCalculationError("No valid previous execution time found for cron expression", {
+        cronExpression: cronExpr,
+        origin: origin
+    });
 }
 
 module.exports = {
