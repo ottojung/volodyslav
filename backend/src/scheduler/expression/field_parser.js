@@ -36,13 +36,16 @@ function isFieldParseError(object) {
 
 /**
  * Field configuration for cron expression validation.
+ * Enforces POSIX-compliant ranges as defined in IEEE Std 1003.1.
  */
 const FIELD_CONFIGS = {
     minute: { min: 0, max: 59, name: "minute" },
     hour: { min: 0, max: 23, name: "hour" },
     day: { min: 1, max: 31, name: "day" },
     month: { min: 1, max: 12, name: "month" },
-    weekday: { min: 0, max: 6, name: "weekday" } // 0 = Sunday, 6 = Saturday
+    // POSIX weekday range: 0-6 (0 = Sunday, 6 = Saturday)
+    // Explicitly rejects 7 for Sunday as this is a non-POSIX extension
+    weekday: { min: 0, max: 6, name: "weekday" }
 };
 
 /**
@@ -141,10 +144,18 @@ function parseField(value, config) {
         }
 
         if (startNum < config.min || startNum > config.max) {
+            // Special case: provide clear error message for common Sunday=7 mistake
+            if (config.name === "weekday" && startNum === 7) {
+                throw new FieldParseError(`out of range (${config.min}-${config.max}): Sunday must be 0, not 7 (POSIX compliance)`, value, config.name);
+            }
             throw new FieldParseError(`out of range (${config.min}-${config.max})`, value, config.name);
         }
 
         if (endNum < config.min || endNum > config.max) {
+            // Special case: provide clear error message for common Sunday=7 mistake
+            if (config.name === "weekday" && endNum === 7) {
+                throw new FieldParseError(`out of range (${config.min}-${config.max}): Sunday must be 0, not 7 (POSIX compliance)`, value, config.name);
+            }
             throw new FieldParseError(`out of range (${config.min}-${config.max})`, value, config.name);
         }
 
@@ -175,6 +186,10 @@ function parseField(value, config) {
     }
 
     if (num < config.min || num > config.max) {
+        // Special case: provide clear error message for common Sunday=7 mistake
+        if (config.name === "weekday" && num === 7) {
+            throw new FieldParseError(`out of range (${config.min}-${config.max}): Sunday must be 0, not 7 (POSIX compliance)`, value, config.name);
+        }
         throw new FieldParseError(`out of range (${config.min}-${config.max})`, value, config.name);
     }
 
