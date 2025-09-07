@@ -70,7 +70,7 @@ describe("scheduler orphaned task restart", () => {
                 previousSchedulerIdentifier: "different-scheduler-id",
                 currentSchedulerIdentifier: expect.any(String)
             }),
-            "ACHTUNG: THIS TASK DID NOT FINISH RUNNING, I'M RESTARTING IT NOW!"
+            "Task was interrupted during shutdown and will be restarted"
         );
         
         // Verify restart count log
@@ -119,14 +119,16 @@ describe("scheduler orphaned task restart", () => {
         await schedulerControl.waitForNextCycleEnd();
         
         // The task should still be marked as running (not restarted)
-        await capabilities.state.transaction(async (storage) => {
-            const state = await storage.getExistingState();
-            if (state && state.tasks.length > 0) {
-                const task = state.tasks[0];
-                // lastAttemptTime should still be set since this task is legitimately running
-                expect(task.lastAttemptTime).toBeDefined();
-            }
+        const finalState = await capabilities.state.transaction(async (storage) => {
+            return await storage.getExistingState();
         });
+        
+        expect(finalState).toBeTruthy();
+        expect(finalState.tasks).toHaveLength(1);
+        
+        const task = finalState.tasks[0];
+        // lastAttemptTime should still be set since this task is legitimately running
+        expect(task.lastAttemptTime).toBeDefined();
         
         await capabilities.scheduler.stop();
     });
@@ -244,7 +246,7 @@ describe("scheduler orphaned task restart", () => {
                 previousSchedulerIdentifier: "unknown",
                 currentSchedulerIdentifier: expect.any(String)
             }),
-            "ACHTUNG: THIS TASK DID NOT FINISH RUNNING, I'M RESTARTING IT NOW!"
+            "Task was interrupted during shutdown and will be restarted"
         );
         
         // Task should have executed after restart
@@ -298,7 +300,7 @@ describe("scheduler orphaned task restart", () => {
                 previousSchedulerIdentifier: "old-scheduler-instance",
                 currentSchedulerIdentifier: expect.any(String)
             }),
-            "ACHTUNG: THIS TASK DID NOT FINISH RUNNING, I'M RESTARTING IT NOW!"
+            "Task was interrupted during shutdown and will be restarted"
         );
         
         await capabilities.scheduler.stop();

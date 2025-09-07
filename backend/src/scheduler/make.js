@@ -7,7 +7,7 @@ const { makePollingScheduler } = require("./polling");
 const { mutateTasks } = require("./persistence");
 const { isScheduleDuplicateTaskError } = require("./registration_validation");
 const { generateSchedulerIdentifier } = require("./scheduler_identifier");
-const { isRunning } = require("./task");
+const { fromMinutes } = require("../datetime");
 const memconst = require("../memconst");
 
 /**
@@ -68,44 +68,75 @@ function make(getCapabilities) {
 
     /**
      * Detect and restart tasks that were running under a different scheduler instance.
+     * Only processes tasks that are still registered to avoid conflicts with state validation.
      * @param {ParsedRegistrations} parsedRegistrations
      * @param {SchedulerCapabilities} capabilities
      * @param {string} currentSchedulerIdentifier
      * @returns {Promise<void>}
      */
     async function detectAndRestartOrphanedTasks(parsedRegistrations, capabilities, currentSchedulerIdentifier) {
-        await mutateTasks(capabilities, parsedRegistrations, (tasks) => {
-            let restartedCount = 0;
+        await capabilities.state.transaction(async (storage) => {
+            const currentState = await storage.getExistingState();
+            if (!currentState || !currentState.tasks) {
+                return; // No persisted state to check
+            }
             
-            for (const task of tasks.values()) {
-                if (isRunning(task) && 
-                    (!task.schedulerIdentifier || task.schedulerIdentifier !== currentSchedulerIdentifier)) {
-                    
+            let restartedCount = 0;
+            const updatedTasks = [...currentState.tasks];
+            
+            // Only check tasks that are still registered (ignore unknown tasks)
+            for (let i = 0; i < updatedTasks.length; i++) {
+                const taskRecord = updatedTasks[i];
+                
+                // Type guard to ensure taskRecord is defined
+                if (!taskRecord) {
+                    continue;
+                }
+                
+                // Skip tasks that are not in current registrations
+                if (!parsedRegistrations.has(taskRecord.name)) {
+                    continue;
+                }
+                
+                // Check if this task appears to be running (has lastAttemptTime but different/missing scheduler ID)
+                const hasLastAttemptTime = taskRecord.lastAttemptTime !== undefined;
+                const isFromDifferentScheduler = !taskRecord.schedulerIdentifier || 
+                    taskRecord.schedulerIdentifier !== currentSchedulerIdentifier;
+                
+                if (hasLastAttemptTime && isFromDifferentScheduler) {
                     // This task was running under a different scheduler instance or has no identifier
                     capabilities.logger.logWarning(
                         { 
-                            taskName: task.name,
-                            previousSchedulerIdentifier: task.schedulerIdentifier || "unknown",
+                            taskName: taskRecord.name,
+                            previousSchedulerIdentifier: taskRecord.schedulerIdentifier || "unknown",
                             currentSchedulerIdentifier: currentSchedulerIdentifier
                         },
-                        "ACHTUNG: THIS TASK DID NOT FINISH RUNNING, I'M RESTARTING IT NOW!"
+                        "Task was interrupted during shutdown and will be restarted"
                     );
                     
-                    // Unmark the task as running by clearing lastAttemptTime
-                    task.lastAttemptTime = undefined;
-                    task.schedulerIdentifier = undefined;
+                    // Unmark the task as running by clearing lastAttemptTime and schedulerIdentifier
+                    updatedTasks[i] = {
+                        ...taskRecord,
+                        lastAttemptTime: undefined,
+                        schedulerIdentifier: undefined,
+                    };
                     restartedCount++;
                 }
             }
             
             if (restartedCount > 0) {
+                // Update the state with the modified tasks
+                const newState = {
+                    ...currentState,
+                    tasks: updatedTasks,
+                };
+                storage.setState(newState);
+                
                 capabilities.logger.logInfo(
                     { restartedTaskCount: restartedCount },
                     "Restarted orphaned tasks from previous scheduler instance"
                 );
             }
-            
-            return undefined;
         });
     }
 
@@ -257,8 +288,75 @@ function make(getCapabilities) {
         );
 
         if (persistedTasks === undefined || shouldOverride) {
-            // Persist tasks during first initialization or when override is needed.
-            await mutateTasks(capabilities, parsedRegistrations, async () => undefined);
+            // When overriding, we need to create fresh tasks from registrations
+            // without trying to materialize potentially incompatible existing tasks
+            if (shouldOverride) {
+                // Direct state override - create fresh tasks from registrations
+                // but preserve any unknown tasks from the previous state
+                // Also preserve any orphaned task restart work that was already done
+                await capabilities.state.transaction(async (storage) => {
+                    const currentState = await storage.getExistingState();
+                    const now = capabilities.datetime.now();
+                    const lastMinute = now.subtract(fromMinutes(1));
+                    
+                    // Start with existing tasks (unknown ones will be preserved)
+                    const existingTasks = currentState?.tasks || [];
+                    const registeredTaskNames = new Set(Array.from(parsedRegistrations.keys()));
+                    
+                    // Separate existing tasks into registered and unknown
+                    const unknownTasks = existingTasks.filter(task => !registeredTaskNames.has(task.name));
+                    const existingRegisteredTasks = existingTasks.filter(task => registeredTaskNames.has(task.name));
+                    
+                    // Create fresh tasks for registered tasks, but preserve orphaned task restart work
+                    const freshTasks = [];
+                    for (const registration of parsedRegistrations.values()) {
+                        // Check if this task already exists and was potentially processed by orphaned task detection
+                        const existingTask = existingRegisteredTasks.find(task => task.name === registration.name);
+                        
+                        if (existingTask) {
+                            // Preserve the existing task (which may have been modified by orphaned task detection)
+                            // but update the configuration to match registration
+                            freshTasks.push({
+                                ...existingTask,
+                                cronExpression: registration.parsedCron.original,
+                                retryDelayMs: registration.retryDelay.toMillis(),
+                            });
+                        } else {
+                            // Create a completely fresh task
+                            freshTasks.push({
+                                name: registration.name,
+                                cronExpression: registration.parsedCron.original,
+                                retryDelayMs: registration.retryDelay.toMillis(),
+                                lastAttemptTime: lastMinute,
+                                lastSuccessTime: lastMinute,
+                            });
+                        }
+                    }
+                    
+                    // Combine preserved unknown tasks with fresh/updated registered tasks
+                    const allTasks = [...unknownTasks, ...freshTasks];
+                    
+                    // Create new state, using current state as base if it exists
+                    const newState = currentState ? {
+                        ...currentState,
+                        tasks: allTasks,
+                    } : {
+                        version: 1,
+                        startTime: now,
+                        tasks: allTasks,
+                    };
+                    storage.setState(newState);
+                    
+                    capabilities.logger.logDebug({ 
+                        freshTaskCount: freshTasks.length,
+                        unknownTaskCount: unknownTasks.length,
+                        totalTaskCount: allTasks.length
+                    }, "State overridden: updated registered tasks and preserved unknown tasks");
+                });
+            } else {
+                // First initialization - use mutateTasks as normal
+                await mutateTasks(capabilities, parsedRegistrations, async () => undefined);
+            }
         }
 
         // Schedule all tasks
