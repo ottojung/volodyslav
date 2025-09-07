@@ -8,9 +8,8 @@ const { getMockedRootCapabilities } = require("./spies");
 const { stubEnvironment, stubLogger, stubDatetime, stubSleeper, getDatetimeControl, stubRuntimeStateStorage, stubScheduler, getSchedulerControl } = require("./stubs");
 const { fromISOString, fromHours, fromMinutes, fromMilliseconds, fromDays, toISOString } = require("../src/datetime");
 const { parseCronExpression } = require("../src/scheduler/expression");
-const { tryDeserialize, isTaskInvalidTypeError } = require("../src/scheduler/task");
+const { tryDeserialize, isTaskInvalidTypeError, isTaskTryDeserializeError } = require("../src/scheduler/task");
 const { getNextExecution, getMostRecentExecution } = require("../src/scheduler/calculator");
-const { tryDeserialize, isTaskTryDeserializeError } = require("../src/scheduler/task");
 
 function getTestCapabilities() {
     const capabilities = getMockedRootCapabilities();
