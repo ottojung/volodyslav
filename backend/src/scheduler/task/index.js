@@ -1,6 +1,6 @@
 
 const { isRunning } = require('./methods');
-const { makeTask } = require('./structure');
+const { makeTask, isTask } = require('./structure');
 const { serialize, tryDeserialize } = require('./serialization');
 const {
     isTaskTryDeserializeError,
@@ -14,9 +14,14 @@ const {
  * @typedef {import('./structure').Task} Task
  */
 
+/**
+ * @typedef {import('./serialization_errors').TaskTryDeserializeError} TaskTryDeserializeError
+ */
+
 module.exports = {
     isRunning,
     makeTask,
+    isTask,
     serialize,
     tryDeserialize,
     isTaskTryDeserializeError,

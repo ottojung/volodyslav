@@ -626,18 +626,18 @@ describe("Declarative Scheduler", () => {
             expect(capabilities.logger.logDebug).toHaveBeenCalledWith(
                 {
                     count: 2,
-                    preservedTasks: [
+                    newTasks: [
                         {
                             "name": "task1",
-                            "reason": "exact_match",
+                            "reason": "no_persisted_state",
                         },
                         {
                             "name": "task2",
-                            "reason": "exact_match",
+                            "reason": "no_persisted_state",
                         },
                     ],
                 },
-                "Tasks preserved from persisted state"
+                "New tasks created"
             );
 
             await capabilities.scheduler.stop();
