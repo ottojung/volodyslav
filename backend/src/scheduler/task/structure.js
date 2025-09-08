@@ -23,6 +23,7 @@
 /**
  * @typedef {object} AwaitingRun
  * @property {DateTime | null} lastSuccessTime - Time of the last successful run, or null if never run
+ * @property {DateTime | null} lastAttemptTime - Time of the last attempt, or null if never attempted
  */
 
 /**

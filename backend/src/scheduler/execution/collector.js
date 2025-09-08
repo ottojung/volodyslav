@@ -7,6 +7,9 @@ const { getMostRecentExecution } = require("../calculator");
 const { isRunning } = require("../task");
 
 /** @typedef {import('../types').Callback} Callback */
+/** @typedef {import('../task').Running} Running */
+/** @typedef {import('../task').AwaitingRetry} AwaitingRetry */
+/** @typedef {import('../task').AwaitingRun} AwaitingRun */
 
 /**
  * Error thrown when a task is not found during evaluation for execution.
@@ -59,34 +62,29 @@ function evaluateTasksForExecution(tasks, scheduledTasks, now, capabilities, sch
 
         // Check both cron schedule and retry timing
         const lastScheduledFire = getMostRecentExecution(task.parsedCron, now);
-        const shouldRunCron = !task.lastAttemptTime || task.lastAttemptTime.isBefore(lastScheduledFire);
-        const shouldRunRetry = task.pendingRetryUntil && now.isAfterOrEqual(task.pendingRetryUntil);
+        const shouldRunCron = 'lastAttemptTime' in task.state && (task.state.lastAttemptTime === null || task.state.lastAttemptTime.isBefore(lastScheduledFire));
+        const shouldRunRetry = 'pendingRetryUntil' in task.state && now.isAfterOrEqual(task.state.pendingRetryUntil);
         const callback = task.callback;
 
-        if (shouldRunRetry && shouldRunCron) {
-            // Both are due - choose the mode based on which is earlier (chronologically smaller)
-            if (task.pendingRetryUntil && lastScheduledFire && task.pendingRetryUntil.isBefore(lastScheduledFire)) {
-                dueTasks.push({ taskName, mode: "retry", callback });
-                task.lastAttemptTime = now;
-                task.schedulerIdentifier = schedulerIdentifier;
-                dueRetry++;
-            } else {
-                dueTasks.push({ taskName, mode: "cron", callback });
-                task.lastAttemptTime = now;
-                task.schedulerIdentifier = schedulerIdentifier;
-                dueCron++;
-            }
-        } else if (shouldRunCron) {
+        if (shouldRunCron) {
             dueTasks.push({ taskName, mode: "cron", callback });
-            task.lastAttemptTime = now;
-            task.schedulerIdentifier = schedulerIdentifier;
+            /** @type {Running} */
+            const newState = {
+                lastAttemptTime: now,
+                schedulerIdentifier: schedulerIdentifier
+            };
+            task.state = newState;
             dueCron++;
         } else if (shouldRunRetry) {
             dueTasks.push({ taskName, mode: "retry", callback });
-            task.lastAttemptTime = now;
-            task.schedulerIdentifier = schedulerIdentifier;
+            /** @type {Running} */
+            const newState = {
+                lastAttemptTime: now,
+                schedulerIdentifier: schedulerIdentifier
+            };
+            task.state = newState;
             dueRetry++;
-        } else if (task.pendingRetryUntil) {
+        } else if ('pendingRetryUntil' in task.state) {
             skippedRetryFuture++;
             capabilities.logger.logDebug({ name: taskName, reason: "retryNotDue" }, "TaskSkip");
         } else {
