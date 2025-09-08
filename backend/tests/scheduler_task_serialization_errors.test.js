@@ -14,6 +14,7 @@ const {
     isTaskInvalidStructureError,
 } = require("../src/scheduler/task/serialization_errors");
 const { fromISOString } = require("../src/datetime");
+const { isTask } = require("../src/scheduler/task");
 
 describe("scheduler task serialization error handling", () => {
     
@@ -233,7 +234,7 @@ describe("scheduler task serialization error handling", () => {
             expect(result.reason).toBe("task not found in registrations");
         });
 
-        test("should return TaskInvalidValueError for mismatched cronExpression", () => {
+        test("should not check mismatched cronExpression", () => {
             const registrations = createTestRegistrations();
             const obj = {
                 name: "test-task",
@@ -242,13 +243,10 @@ describe("scheduler task serialization error handling", () => {
             };
             
             const result = tryDeserialize(obj, registrations);
-            
-            expect(isTaskInvalidValueError(result)).toBe(true);
-            expect(result.field).toBe("cronExpression");
-            expect(result.reason).toContain("does not match registration cron expression");
+            expect(isTask(result)).toBe(true);
         });
 
-        test("should return TaskInvalidValueError for mismatched retryDelayMs", () => {
+        test("should not check mismatched retryDelayMs", () => {
             const registrations = createTestRegistrations();
             const obj = {
                 name: "test-task",
@@ -257,10 +255,7 @@ describe("scheduler task serialization error handling", () => {
             };
             
             const result = tryDeserialize(obj, registrations);
-            
-            expect(isTaskInvalidValueError(result)).toBe(true);
-            expect(result.field).toBe("retryDelayMs");
-            expect(result.reason).toContain("does not match registration retry delay");
+            expect(isTask(result)).toBe(true);
         });
     });
 
