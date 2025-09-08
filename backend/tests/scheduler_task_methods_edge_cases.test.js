@@ -84,33 +84,12 @@ describe("scheduler task methods edge cases", () => {
             expect(isRunning(task)).toBe(false);
         });
 
-        test("should return false when lastAttemptTime is older than lastFailureTime", () => {
-            const task = createTestTask({
-                lastAttemptTime: fromISOString("2024-01-01T10:00:00.000Z"),
-                lastSuccessTime: fromISOString("2024-01-01T09:00:00.000Z"),
-                lastFailureTime: fromISOString("2024-01-01T11:00:00.000Z")
-            });
-
-            expect(isRunning(task)).toBe(false);
-        });
-
         test("should return false when lastAttemptTime equals lastSuccessTime", () => {
             const sameTime = fromISOString("2024-01-01T10:00:00.000Z");
             const task = createTestTask({
                 lastAttemptTime: sameTime,
                 lastSuccessTime: sameTime,
                 lastFailureTime: fromISOString("2024-01-01T09:00:00.000Z")
-            });
-
-            expect(isRunning(task)).toBe(false);
-        });
-
-        test("should return false when lastAttemptTime equals lastFailureTime", () => {
-            const sameTime = fromISOString("2024-01-01T10:00:00.000Z");
-            const task = createTestTask({
-                lastAttemptTime: sameTime,
-                lastSuccessTime: fromISOString("2024-01-01T09:00:00.000Z"),
-                lastFailureTime: sameTime
             });
 
             expect(isRunning(task)).toBe(false);

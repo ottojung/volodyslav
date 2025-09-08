@@ -166,47 +166,6 @@ function createStateFromProperties(lastSuccessTime, lastFailureTime, lastAttempt
         };
     }
     
-    // Priority 3: For migration - handle cases with lastAttemptTime and completion times
-    if (lastAttemptTime) {
-        // Determine the most recent completion time
-        let mostRecentCompletion = undefined;
-        let useMostRecentAsSuccess = true;
-        
-        if (lastSuccessTime && lastFailureTime) {
-            if (lastFailureTime.isAfter(lastSuccessTime)) {
-                mostRecentCompletion = lastFailureTime;
-                useMostRecentAsSuccess = false; // Most recent was a failure
-            } else {
-                mostRecentCompletion = lastSuccessTime;
-                useMostRecentAsSuccess = true;
-            }
-        } else if (lastSuccessTime) {
-            mostRecentCompletion = lastSuccessTime;
-            useMostRecentAsSuccess = true;
-        } else if (lastFailureTime) {
-            mostRecentCompletion = lastFailureTime;
-            useMostRecentAsSuccess = false;
-        }
-        
-        // If the most recent completion was a failure, and we don't have pendingRetryUntil,
-        // we can still use AwaitingRun but put the failure time as lastSuccessTime for comparison
-        // This is a hack for migration but preserves the comparison logic
-        if (!useMostRecentAsSuccess && !pendingRetryUntil) {
-            /** @type {AwaitingRun} */
-            return {
-                lastSuccessTime: mostRecentCompletion || null, // Using failure time as success for comparison
-                lastAttemptTime
-            };
-        }
-        
-        // Default: use AwaitingRun state with lastSuccessTime and lastAttemptTime
-        /** @type {AwaitingRun} */
-        return {
-            lastSuccessTime: mostRecentCompletion || null,
-            lastAttemptTime
-        };
-    }
-    
     // Default: AwaitingRun state
     /** @type {AwaitingRun} */
     return {
