@@ -1180,4 +1180,20 @@ describe("scheduler stories", () => {
         const result = tryDeserialize(serialized, registrations);
         expect(isTaskInvalidTypeError(result)).toBe(true);
     });
+
+    test.failing("should reject unsatisfiable cron expressions during initialization", async () => {
+        const capabilities = getTestCapabilities();
+        const timeControl = getDatetimeControl(capabilities);
+        const schedulerControl = getSchedulerControl(capabilities);
+        timeControl.setDateTime(fromISOString("2024-01-01T00:00:00.000Z"));
+        schedulerControl.setPollingInterval(fromMilliseconds(1));
+        const retryDelay = Duration.fromMillis(5000);
+        try {
+            await expect(capabilities.scheduler.initialize([
+                ["invalid-date-task", "0 0 31 2 *", jest.fn(), retryDelay]
+            ])).rejects.toThrow();
+        } finally {
+            await capabilities.scheduler.stop();
+        }
+    });
 });
