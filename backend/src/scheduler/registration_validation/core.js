@@ -54,7 +54,8 @@ function validateRegistrations(registrations) {
         try {
             parseCronExpression(cronExpression);
         } catch (error) {
-            throw new CronExpressionInvalidError(`Registration at index ${i} (${qname}): invalid cron expression '${cronExpression}'`, { index: i, name, value: cronExpression });
+            const message = typeof error === 'object' && error !== null && 'message' in error ? error.message : "unknown error";
+            throw new CronExpressionInvalidError(`Registration at index ${i} (${qname}): invalid cron expression '${cronExpression}': ${message}`, { index: i, name, value: cronExpression, error });
         }
 
         // Validate retry delay is reasonable (warn for very large delays but don't block)
