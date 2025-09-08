@@ -9,6 +9,7 @@
 /** @typedef {import('../runtime_state_storage').RuntimeState} RuntimeState */
 /** @typedef {() => Promise<void>} Callback */
 /** @typedef {import('./expression').CronExpression} CronExpression */
+/** @typedef {import('./task').TaskTryDeserializeError} TaskTryDeserializeError */
 
 /**
  * Restricted capabilities needed by the scheduler.

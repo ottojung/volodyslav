@@ -6,13 +6,16 @@ const { fromMinutes } = require("../../datetime");
 const { materializeTasks, serializeTasks } = require('./materialization');
 const { makeTask } = require('../task/structure');
 const { registrationToTaskIdentity, taskRecordToTaskIdentity, taskIdentitiesEqual } = require("../task/identity");
+const { tryDeserialize, isTaskTryDeserializeError } = require("../task");
 
 /** 
  * @typedef {import('../task').Task} Task 
+ * @typedef {import('../types').ParsedRegistration} ParsedRegistration
  * @typedef {import('../types').ParsedRegistrations} ParsedRegistrations
  * @typedef {import('../types').TaskRecord} TaskRecord
  * @typedef {import('../types').SchedulerCapabilities} SchedulerCapabilities
  * @typedef {import('../types').RuntimeState} RuntimeState
+ * @typedef {import('../types').TaskTryDeserializeError} TaskTryDeserializeError
  */
 
 /**
@@ -203,7 +206,11 @@ function materializeTasksWithCleanLogic(registrations, persistedTaskRecords, cap
         );
 
         // Create task based on decision
-        const task = createTaskFromDecision(decision, registration, persistedTask, lastMinute);
+        const task = createTaskFromDecision(decision, registration, registrations, persistedTask, lastMinute);
+        if (isTaskTryDeserializeError(task)) {
+            throw task;
+        }
+
         tasks.set(registration.name, task);
 
         // Track decision for logging
@@ -271,25 +278,28 @@ function decideTaskAction(persistedTask, registrationIdentity, persistedIdentity
 /**
  * Create a task based on the decision made.
  * @param {{type: 'new' | 'preserved' | 'overridden' | 'orphaned', reason: string}} decision
- * @param {{name: string, parsedCron: import('../expression/structure').CronExpression, callback: import('../types').Callback, retryDelay: import('../../datetime/duration').Duration}} registration
+ * @param {ParsedRegistration} registration
+ * @param {ParsedRegistrations} registrations
  * @param {TaskRecord | undefined} persistedTask
  * @param {import('../../datetime/structure').DateTime} lastMinute
- * @returns {Task}
+ * @returns {Task | TaskTryDeserializeError }
  */
-function createTaskFromDecision(decision, registration, persistedTask, lastMinute) {
+function createTaskFromDecision(decision, registration, registrations, persistedTask, lastMinute) {
+    if (persistedTask === undefined) {
+        if (decision.type !== 'new') {
+            throw new Error("Non-new task decision requires persisted task data");
+        }
+        persistedTask = {
+            name: registration.name,
+            cronExpression: registration.parsedCron.original,
+            retryDelayMs: registration.retryDelay.toMillis(),
+            lastAttemptTime: lastMinute, // Prevent immediate execution
+            lastSuccessTime: lastMinute, // Prevent immediate execution
+        };
+    }
+
     if (decision.type === 'new') {
-        // New task - create fresh
-        return makeTask(
-            registration.name,
-            registration.parsedCron,
-            registration.callback,
-            registration.retryDelay,
-            lastMinute,  // Use lastMinute to prevent immediate execution
-            undefined,   // No lastFailureTime
-            lastMinute,  // Use lastMinute to prevent immediate execution
-            undefined,   // No pendingRetryUntil
-            undefined    // Clear schedulerIdentifier for fresh start
-        );
+        return tryDeserialize(persistedTask, registrations);
     } else if (decision.type === 'orphaned') {
         // Orphaned task - create fresh but restart immediately
         if (!persistedTask) {
