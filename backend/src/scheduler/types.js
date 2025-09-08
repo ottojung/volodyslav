@@ -5,6 +5,8 @@
 
 /** @typedef {import('luxon').Duration} Duration */
 /** @typedef {import('./task').Task} Task */
+/** @typedef {import('../runtime_state_storage').TaskRecord} TaskRecord */
+/** @typedef {import('../runtime_state_storage').RuntimeState} RuntimeState */
 /** @typedef {() => Promise<void>} Callback */
 /** @typedef {import('./expression').CronExpression} CronExpression */
 
@@ -14,7 +16,7 @@
  * @typedef {object} SchedulerCapabilities
  * @property {import('../datetime').Datetime} datetime - Datetime utilities
  * @property {import('../logger').Logger} logger - A logger instance
- * @property {import('../runtime_state_storage').RuntimeStateStorage} state - A runtime state storage instance
+ * @property {import('../runtime_state_storage').RuntimeStateCapability} state - A runtime state storage instance
  * @property {import('../threading').Threading} threading - A threading instance
  * @property {import('../random/seed').NonDeterministicSeed} seed - A random number generator instance
  */
@@ -53,6 +55,11 @@
 /**
  * @template T
  * @typedef {(tasks: Map<string, Task>) => T} Transformation
+ */
+
+/**
+ * @template T
+ * @typedef {(tasks: TaskRecord[]) => T} RecordTransformation
  */
 
 /**

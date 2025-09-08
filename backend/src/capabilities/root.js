@@ -21,7 +21,7 @@
 /** @typedef {import('../datetime').Datetime} Datetime */
 /** @typedef {import('../sleeper').Sleeper} Sleeper */
 /** @typedef {import('../scheduler').Scheduler} Scheduler */
-/** @typedef {import('../runtime_state_storage').RuntimeStateStorage} RuntimeStateStorage */
+/** @typedef {import('../runtime_state_storage').RuntimeStateCapability} RuntimeStateCapability */
 /** @typedef {import('../threading').Threading} Threading */
 /** @typedef {import('../wifi').WifiConnectionChecker} WifiConnectionChecker */
 
@@ -47,7 +47,7 @@
  * @property {Sleeper} sleeper - A sleeper instance.
  * @property {Command} volodyslavDailyTasks - A command instance for daily tasks.
  * @property {Scheduler} scheduler - A scheduler instance.
- * @property {RuntimeStateStorage} state - A runtime state storage instance.
+ * @property {RuntimeStateCapability} state - A runtime state storage instance.
  * @property {Threading} threading - A threading instance.
  * @property {WifiConnectionChecker} wifiChecker - A WiFi connection checker instance.
  */

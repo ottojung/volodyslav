@@ -625,10 +625,19 @@ describe("Declarative Scheduler", () => {
             // Should log first-time initialization message
             expect(capabilities.logger.logDebug).toHaveBeenCalledWith(
                 {
-                    registeredTaskCount: 2,
-                    taskNames: ["task1", "task2"]
+                    count: 2,
+                    preservedTasks: [
+                        {
+                            "name": "task1",
+                            "reason": "exact_match",
+                        },
+                        {
+                            "name": "task2",
+                            "reason": "exact_match",
+                        },
+                    ],
                 },
-                "First-time scheduler initialization: registering initial tasks"
+                "Tasks preserved from persisted state"
             );
 
             await capabilities.scheduler.stop();
