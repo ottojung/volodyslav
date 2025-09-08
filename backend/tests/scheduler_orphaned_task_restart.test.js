@@ -3,10 +3,10 @@
  * Tests the behavior of detecting and restarting orphaned tasks from previous scheduler instances
  */
 
-const { fromMilliseconds } = require("../src/datetime");
+const { fromMilliseconds, fromISOString } = require("../src/datetime");
 const { Duration } = require("luxon");
 const { getMockedRootCapabilities } = require("./spies");
-const { stubEnvironment, stubLogger, stubDatetime, stubSleeper, stubScheduler, getSchedulerControl } = require("./stubs");
+const { stubEnvironment, stubLogger, stubDatetime, stubSleeper, stubScheduler, getSchedulerControl, getDatetimeControl } = require("./stubs");
 
 describe("scheduler orphaned task restart", () => {
 
@@ -75,6 +75,78 @@ describe("scheduler orphaned task restart", () => {
 
         // The task should actually run after being restarted
         expect(taskCallback).toHaveBeenCalled();
+
+        await capabilities.scheduler.stop();
+    });
+
+    test.failing("preserves scheduler timings for orphaned persistent tasks while loading new ones", async () => {
+        const capabilities = getTestCapabilities();
+        const dateControl = getDatetimeControl(capabilities);
+        const schedulerControl = getSchedulerControl(capabilities);
+
+        // Speed up scheduler polling for test
+        schedulerControl.setPollingInterval(fromMilliseconds(100));
+        dateControl.setDateTime(fromISOString("2021-01-01T00:00:00.000Z"));
+
+        const callback1 = jest.fn();
+        const callback2 = jest.fn();
+        const callback3 = jest.fn();
+
+        // Set up initial state
+        const initialRegistrations = [
+            ["task1", "0 0 * * *", callback1, Duration.fromObject({ minutes: 5 })],
+            ["task2", "0 0 * * *", callback2, Duration.fromObject({ minutes: 5 })],
+        ];
+
+        await capabilities.scheduler.initialize(initialRegistrations);
+
+        expect(callback1).not.toHaveBeenCalled();
+        expect(callback2).not.toHaveBeenCalled();
+        expect(callback3).not.toHaveBeenCalled();
+
+        await schedulerControl.waitForNextCycleEnd();
+
+        expect(callback1).toHaveBeenCalledTimes(1);
+        expect(callback2).toHaveBeenCalledTimes(1);
+        expect(callback3).not.toHaveBeenCalled();
+
+        // Create complex mismatch scenario using same capabilities
+        const mismatchedRegistrations = [
+            ["task1", "0 0 * * *", callback1, Duration.fromObject({ minutes: 5 })],
+            ["task3", "0 0 * * *", callback3, Duration.fromObject({ minutes: 5 })], // extra task (task2 is missing)
+        ];
+
+        await capabilities.scheduler.stop();
+
+        // Manually mark tasks as running with a different scheduler identifier
+        // This simulates the scenario where a task was started but the app was shut down
+        await capabilities.state.transaction(async (storage) => {
+            const state = await storage.getExistingState();
+            if (state && state.tasks.length > 0) {
+                for (const task of state.tasks) {
+                    task.lastAttemptTime = capabilities.datetime.now();
+                    task.schedulerIdentifier = "different-scheduler-id";
+                }
+                storage.setState(state);
+            }
+        });
+
+        dateControl.advanceByDuration(Duration.fromObject({ minutes: 10 }));
+
+        // This should now succeed (override behavior) instead of throwing
+        await expect(capabilities.scheduler.initialize(mismatchedRegistrations)).resolves.toBeUndefined();
+
+        // No additional calls at initialization time.
+        expect(callback1).toHaveBeenCalledTimes(1);
+        expect(callback2).toHaveBeenCalledTimes(1);
+        expect(callback3).not.toHaveBeenCalled();
+
+        await schedulerControl.waitForNextCycleEnd();
+
+        // The orphaned task should run immediately because it was interrupted.
+        expect(callback1).toHaveBeenCalledTimes(2);
+        expect(callback2).toHaveBeenCalledTimes(1);
+        expect(callback3).toHaveBeenCalledTimes(0);
 
         await capabilities.scheduler.stop();
     });
