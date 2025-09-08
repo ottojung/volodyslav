@@ -110,6 +110,57 @@ function make(getCapabilities) {
     }
 
     /**
+     * Handle both orphaned task detection and state override in a single operation.
+     * This prevents losing orphaned task information when override happens.
+     * @param {ParsedRegistrations} parsedRegistrations
+     * @param {SchedulerCapabilities} capabilities
+     * @param {string} currentSchedulerIdentifier
+     */
+    async function handleOverrideWithOrphanedTaskDetection(parsedRegistrations, capabilities, currentSchedulerIdentifier) {
+        // First, we need to detect orphaned tasks from persisted state before override
+        let orphanedTaskNames = new Set();
+        
+        // Get persisted state to detect orphaned tasks
+        /**
+         * @param {import('../runtime_state_storage/class').RuntimeStateStorage} storage
+         */
+        const getStorage = async (storage) => await storage.getExistingState();
+        const currentState = await capabilities.state.transaction(getStorage);
+        const persistedTasks = currentState?.tasks || [];
+        
+        // Detect orphaned tasks from persisted state
+        const restartedTasks = [];
+        for (const record of persistedTasks) {
+            const hasLastAttemptTime = record.lastAttemptTime !== undefined;
+            const isFromDifferentScheduler = record.schedulerIdentifier !== undefined && record.schedulerIdentifier !== currentSchedulerIdentifier;
+            
+            if (hasLastAttemptTime && isFromDifferentScheduler && parsedRegistrations.has(record.name)) {
+                // Only restart tasks that are still in the new registrations
+                orphanedTaskNames.add(record.name);
+                restartedTasks.push({
+                    taskName: record.name,
+                    previousSchedulerIdentifier: record.schedulerIdentifier || "unknown",
+                    currentSchedulerIdentifier
+                });
+            }
+        }
+
+        // Now perform override with orphaned task information
+        await mutateTasks(capabilities, parsedRegistrations, () => undefined, true, orphanedTaskNames);
+
+        // Log orphaned task warnings
+        for (const { taskName, previousSchedulerIdentifier } of restartedTasks) {
+            capabilities.logger.logWarning(
+                {
+                    taskName,
+                    previousSchedulerIdentifier,
+                    currentSchedulerIdentifier,
+                },
+                `Task was interrupted during shutdown and will be restarted`);
+        }
+    }
+
+    /**
      * Analyze and potentially override persisted state with registrations.
      * @param {Registration[]} registrations
      * @param {SchedulerCapabilities} capabilities
@@ -257,12 +308,12 @@ function make(getCapabilities) {
             // First initialization - persist initial tasks
             await mutateTasks(capabilities, parsedRegistrations, async () => undefined, false);
         } else {
-            // Check for orphaned tasks first, before any override
-            await detectAndRestartOrphanedTasks(parsedRegistrations, capabilities, schedulerIdentifier);
-            
             if (shouldOverride) {
-                // Override persisted state with new registrations
-                await mutateTasks(capabilities, parsedRegistrations, async () => undefined, true);
+                // For override, we need to handle orphaned task detection and override in one operation
+                await handleOverrideWithOrphanedTaskDetection(parsedRegistrations, capabilities, schedulerIdentifier);
+            } else {
+                // No override needed, just check for orphaned tasks
+                await detectAndRestartOrphanedTasks(parsedRegistrations, capabilities, schedulerIdentifier);
             }
         }
 

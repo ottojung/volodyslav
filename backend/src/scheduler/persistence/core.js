@@ -55,9 +55,10 @@ async function getCurrentState(storage, registrations, datetime) {
  * @param {ParsedRegistrations} registrations
  * @param {Transformation<T>} transformation
  * @param {boolean} [forceOverride=false] - If true, create fresh tasks from registrations instead of materializing persisted tasks
+ * @param {Set<string>} [orphanedTaskNames] - Names of tasks that were orphaned and should restart immediately
  * @returns {Promise<T>}
  */
-async function mutateTasks(capabilities, registrations, transformation, forceOverride = false) {
+async function mutateTasks(capabilities, registrations, transformation, forceOverride = false, orphanedTaskNames = new Set()) {
     return await capabilities.state.transaction(async (storage) => {
         const currentState = await getCurrentState(storage, registrations, capabilities.datetime);
         const currentTaskRecords = currentState.tasks;
@@ -66,7 +67,7 @@ async function mutateTasks(capabilities, registrations, transformation, forceOve
         if (forceOverride) {
             // Create fresh tasks from registrations, preserving timing information from persisted tasks
             const now = capabilities.datetime.now();
-            tasks = createFreshTasksFromRegistrations(registrations, currentTaskRecords, now);
+            tasks = createFreshTasksFromRegistrations(registrations, currentTaskRecords, now, orphanedTaskNames);
             capabilities.logger.logDebug({ taskCount: tasks.size }, "Created fresh tasks from registrations (override)");
         } else {
             // Use existing materialization logic
@@ -97,9 +98,10 @@ async function mutateTasks(capabilities, registrations, transformation, forceOve
  * @param {ParsedRegistrations} registrations
  * @param {import('../../runtime_state_storage/types').TaskRecord[]} persistedTaskRecords
  * @param {import('../../datetime').DateTime} now - Current time for setting default timing for new tasks
+ * @param {Set<string>} [orphanedTaskNames] - Names of tasks that were orphaned and should restart immediately
  * @returns {Map<string, Task>}
  */
-function createFreshTasksFromRegistrations(registrations, persistedTaskRecords, now) {
+function createFreshTasksFromRegistrations(registrations, persistedTaskRecords, now, orphanedTaskNames = new Set()) {
     /** @type {Map<string, Task>} */
     const tasks = new Map();
     
@@ -114,6 +116,7 @@ function createFreshTasksFromRegistrations(registrations, persistedTaskRecords, 
     for (const registration of registrations.values()) {
         // Check if there's a persisted task with the same name to preserve timing
         const persistedTask = persistedTaskMap.get(registration.name);
+        const isOrphaned = orphanedTaskNames.has(registration.name);
         
         const task = makeTask(
             registration.name,
@@ -121,9 +124,11 @@ function createFreshTasksFromRegistrations(registrations, persistedTaskRecords, 
             registration.callback,
             registration.retryDelay,
             // For existing tasks, preserve timing; for new tasks, use lastMinute to prevent immediate execution
-            persistedTask?.lastSuccessTime ?? lastMinute,
+            // For orphaned tasks, clear lastSuccessTime so they restart
+            isOrphaned ? undefined : (persistedTask?.lastSuccessTime ?? lastMinute),
             persistedTask?.lastFailureTime,
-            persistedTask?.lastAttemptTime ?? lastMinute,
+            // For orphaned tasks, clear lastAttemptTime so they restart
+            isOrphaned ? undefined : (persistedTask?.lastAttemptTime ?? lastMinute),
             persistedTask?.pendingRetryUntil,
             undefined  // Clear schedulerIdentifier for fresh start
         );
