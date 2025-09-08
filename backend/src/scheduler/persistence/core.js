@@ -6,6 +6,7 @@ const { fromMinutes } = require("../../datetime");
 const { materializeTasks, serializeTasks } = require('./materialization');
 const { makeTask } = require('../task/structure');
 const { registrationToTaskIdentity, taskRecordToTaskIdentity, taskIdentitiesEqual } = require("../task/identity");
+const { tryDeserialize } = require("../task");
 
 /** 
  * @typedef {import('../task').Task} Task 
@@ -304,7 +305,7 @@ function createTaskFromDecision(decision, registration, persistedTask, lastMinut
             persistedTask.lastFailureTime,
             undefined,   // Clear lastAttemptTime so it restarts
             persistedTask.pendingRetryUntil,
-            undefined    // Clear schedulerIdentifier for fresh start
+            persistedTask.schedulerIdentifier,  // Keep the original scheduler identifier
         );
     } else if (decision.type === 'overridden') {
         // Config changed - create fresh but preserve timing
@@ -320,7 +321,7 @@ function createTaskFromDecision(decision, registration, persistedTask, lastMinut
             persistedTask.lastFailureTime,
             persistedTask.lastAttemptTime,  // Preserve timing
             persistedTask.pendingRetryUntil,
-            undefined    // Clear schedulerIdentifier for fresh start
+            persistedTask.schedulerIdentifier,  // Keep the original scheduler identifier
         );
     } else {
         // Preserved task - create task directly from persisted data with current registration
