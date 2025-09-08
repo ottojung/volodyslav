@@ -190,8 +190,6 @@ function isCronExpression(object) {
     return object instanceof CronExpressionClass;
 }
 
-const FIRST_COMING = dateTimeFromObject({ year: 1, month: 1, day: 1, hour: 0, minute: 0 });
-
 /**
  * Parses and validates a cron expression.
  * @param {string} expression - The cron expression to parse
@@ -280,8 +278,6 @@ function parseCronExpression(expression) {
     }
 
     const ret = basicParse();
-    const { getNextExecution } = require("../calculator");
-    getNextExecution(ret, FIRST_COMING); // validate it can compute next execution
     return ret;
 }
 

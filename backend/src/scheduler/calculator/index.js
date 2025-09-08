@@ -8,6 +8,7 @@ const { matchesCronExpression } = require("./current");
 const { getNextExecution } = require("./next");
 const { getMostRecentExecution } = require("./previous");
 const { CronCalculationError, isCronCalculationError } = require("./errors");
+const { getMinimumCronInterval } = require("./min_interval");
 
 module.exports = {
     matchesCronExpression,
@@ -15,4 +16,5 @@ module.exports = {
     getMostRecentExecution,
     CronCalculationError,
     isCronCalculationError,
+    getMinimumCronInterval,
 };

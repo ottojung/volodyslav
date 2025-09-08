@@ -1354,16 +1354,19 @@ describe("scheduler stories", () => {
         await capabilities.scheduler.stop();
     });
 
-    test("should reject unsatisfiable cron expressions during initialization", async () => {
+    test("should accept syntactically valid but unsatisfiable cron expressions during initialization", async () => {
         const capabilities = getTestCapabilities();
         const timeControl = getDatetimeControl(capabilities);
         const schedulerControl = getSchedulerControl(capabilities);
         timeControl.setDateTime(fromISOString("2024-01-01T00:00:00.000Z"));
         schedulerControl.setPollingInterval(fromMilliseconds(1));
         const retryDelay = fromMilliseconds(5000);
+        
+        // Should not throw during initialization - parsing should succeed for syntactically valid expressions
         await expect(capabilities.scheduler.initialize([
             ["invalid-date-task", "0 0 31 2 *", jest.fn(), retryDelay]
-        ])).rejects.toThrow(/No valid next execution time found for cron expression/);
+        ])).resolves.toBeUndefined();
+        
         await capabilities.scheduler.stop();
     });
 });

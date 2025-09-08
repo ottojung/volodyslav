@@ -7,6 +7,8 @@ const { makePollingScheduler } = require("./polling");
 const { initializeTasks } = require("./persistence");
 const { isScheduleDuplicateTaskError, validateRegistrations } = require("./registration_validation");
 const { generateSchedulerIdentifier } = require("./scheduler_identifier");
+const { getMinimumCronInterval } = require("./calculator");
+const { POLL_INTERVAL } = require("./polling/interval");
 const memconst = require("../memconst");
 
 /**
@@ -81,6 +83,29 @@ function make(getCapabilities) {
     }
 
     /**
+     * Validate frequency constraints for all registrations.
+     * @param {Registration[]} registrations
+     * @param {SchedulerCapabilities} capabilities
+     */
+    function validateFrequencyConstraints(registrations, capabilities) {
+        for (const [name, cronExpression, , ] of registrations) {
+            const parsedCron = parseCronExpression(cronExpression);
+            const aCronInterval = getMinimumCronInterval(parsedCron);
+            
+            if (aCronInterval.toMillis() < POLL_INTERVAL.toMillis()) {
+                capabilities.logger.logWarning(
+                    {
+                        aCronInterval,
+                        pollInterval: POLL_INTERVAL,
+                        cron: cronExpression
+                    },
+                    `Task '${name}' has cron interval (${aCronInterval.toString()}) less than the polling interval (${POLL_INTERVAL.toString()}). This may result in missed executions.`
+                );
+            }
+        }
+    }
+
+    /**
      * Schedule all tasks and handle errors.
      * @param {Registration[]} registrations
      * @param {ReturnType<makePollingScheduler>} pollingScheduler
@@ -131,6 +156,9 @@ function make(getCapabilities) {
         
         // Validate registrations before any processing
         validateRegistrations(registrations);
+        
+        // Validate frequency constraints
+        validateFrequencyConstraints(registrations, capabilities);
         
         const parsedRegistrations = parseRegistrations(registrations);
 
