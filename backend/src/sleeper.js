@@ -4,15 +4,17 @@
 
 const { fromMilliseconds } = require('./datetime/duration');
 
+/** @typedef {import('./datetime').Duration} Duration */
+
 /**
  * @typedef {object} Sleeper
- * @property {(duration: import('luxon').Duration) => Promise<void>} sleep - Pause for the given duration.
+ * @property {(duration: Duration) => Promise<void>} sleep - Pause for the given duration.
  * @property {<T>(name: string, procedure: () => Promise<T>) => Promise<T>} withMutex - Execute a procedure with a mutex lock.
  */
 
 /**
  * Pauses execution for the specified duration.
- * @param {import('./datetime').Duration} duration - Duration to sleep.
+ * @param {Duration} duration - Duration to sleep.
  * @returns {Promise<void>} Resolves after the delay.
  */
 function sleep(duration) {
