@@ -371,7 +371,7 @@ describe("scheduler task methods edge cases", () => {
             );
 
             expect(getLastSuccessTime(awaitingRunTask)).toBe(lastSuccessTime);
-            expect(getLastAttemptTime(awaitingRunTask)).toBeUndefined(); // null gets converted to undefined
+            expect(getLastAttemptTime(awaitingRunTask)).toBeUndefined();
             expect(getLastFailureTime(awaitingRunTask)).toBeUndefined();
             expect(getPendingRetryUntil(awaitingRunTask)).toBeUndefined();
         });
