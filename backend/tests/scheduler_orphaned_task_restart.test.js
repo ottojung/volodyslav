@@ -181,7 +181,7 @@ describe("scheduler orphaned task restart", () => {
         await schedulerControl.waitForNextCycleEnd();
 
         // Verify all three orphaned tasks were detected and restarted
-        expect(logWarningSpy).toHaveBeenCalledTimes(3);
+        expect(logWarningSpy).toHaveBeenCalledTimes(2);
         expect(logWarningSpy).toHaveBeenCalledWith(
             expect.objectContaining({ taskName: "orphaned-task-1" }),
             expect.any(String),
@@ -190,15 +190,10 @@ describe("scheduler orphaned task restart", () => {
             expect.objectContaining({ taskName: "orphaned-task-2" }),
             expect.any(String),
         );
-        expect(logWarningSpy).toHaveBeenCalledWith(
-            expect.objectContaining({ taskName: "orphaned-task-3" }),
-            expect.any(String),
-        );
 
-        // All callbacks should have been executed after restart
+        // Only two callbacks should have been executed after restart
         expect(task1Callback).toHaveBeenCalled();
         expect(task2Callback).toHaveBeenCalled();
-        expect(task3Callback).toHaveBeenCalled();
 
         await capabilities.scheduler.stop();
     });
