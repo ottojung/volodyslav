@@ -4,7 +4,6 @@
 
 const { mutateTasks } = require("../persistence");
 const { makeTaskExecutor } = require("../execution");
-const { validateTaskFrequency } = require("../registration_validation");
 const { makePollingFunction } = require("./function");
 const { makeIntervalManager, POLL_INTERVAL } = require("./interval");
 
@@ -71,12 +70,6 @@ function makePollingScheduler(capabilities, registrations, schedulerIdentifier) 
             if (found === undefined) {
                 throw new TaskRegistrationNotFoundError(name);
             }
-
-            // Parse and validate cron expression from registration
-            const parsedCron = found.parsedCron;
-
-            // Validate task frequency against polling frequency
-            validateTaskFrequency(capabilities, parsedCron, POLL_INTERVAL);
 
             if (scheduledTasks.size === 0) {
                 start();
