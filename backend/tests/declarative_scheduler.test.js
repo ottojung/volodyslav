@@ -303,7 +303,7 @@ describe("Declarative Scheduler", () => {
             await capabilities.scheduler.initialize(registrations);
 
             // Should log first-time initialization message
-            expect(capabilities.logger.logInfo).toHaveBeenCalledWith(
+            expect(capabilities.logger.logDebug).toHaveBeenCalledWith(
                 {
                     registeredTaskCount: 2,
                     taskNames: ["task1", "task2"]
