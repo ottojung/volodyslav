@@ -66,16 +66,7 @@ function evaluateTasksForExecution(tasks, scheduledTasks, now, capabilities, sch
         const shouldRunRetry = 'pendingRetryUntil' in task.state && now.isAfterOrEqual(task.state.pendingRetryUntil);
         const callback = task.callback;
 
-        if (shouldRunCron) {
-            dueTasks.push({ taskName, mode: "cron", callback });
-            /** @type {Running} */
-            const newState = {
-                lastAttemptTime: now,
-                schedulerIdentifier: schedulerIdentifier
-            };
-            task.state = newState;
-            dueCron++;
-        } else if (shouldRunRetry) {
+        if (shouldRunRetry) {
             dueTasks.push({ taskName, mode: "retry", callback });
             /** @type {Running} */
             const newState = {
@@ -84,6 +75,15 @@ function evaluateTasksForExecution(tasks, scheduledTasks, now, capabilities, sch
             };
             task.state = newState;
             dueRetry++;
+        } else if (shouldRunCron) {
+            dueTasks.push({ taskName, mode: "cron", callback });
+            /** @type {Running} */
+            const newState = {
+                lastAttemptTime: now,
+                schedulerIdentifier: schedulerIdentifier
+            };
+            task.state = newState;
+            dueCron++;
         } else if ('pendingRetryUntil' in task.state) {
             skippedRetryFuture++;
             capabilities.logger.logDebug({ name: taskName, reason: "retryNotDue" }, "TaskSkip");
