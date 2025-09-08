@@ -65,60 +65,16 @@ function make(getCapabilities) {
 
     const getCapabilitiesMemo = memconst(getCapabilities);
 
+
     /**
-     * Detect and restart tasks that were running under a different scheduler instance.
+     * Handle orphaned task detection by detecting tasks that were running under different scheduler identifier.
      * @param {ParsedRegistrations} parsedRegistrations
      * @param {SchedulerCapabilities} capabilities
      * @param {string} currentSchedulerIdentifier
-     * @returns {Promise<void>}
+     * @returns {Promise<Set<string>>} Set of orphaned task names
      */
-    async function detectAndRestartOrphanedTasks(parsedRegistrations, capabilities, currentSchedulerIdentifier) {
-        const restartedTasks = await mutateTasks(capabilities, parsedRegistrations, (tasks) => {
-            const restarted = [];
-
-            for (const [taskName, task] of tasks) {
-                // Check if this task appears to be running (has lastAttemptTime but different scheduler ID)
-                const hasLastAttemptTime = task.lastAttemptTime !== undefined;
-                const isFromDifferentScheduler = task.schedulerIdentifier !== undefined && task.schedulerIdentifier !== currentSchedulerIdentifier;
-
-                if (hasLastAttemptTime && isFromDifferentScheduler) {
-                    // This task was running under a different scheduler instance or has no identifier
-                    restarted.push({
-                        taskName,
-                        previousSchedulerIdentifier: task.schedulerIdentifier || "unknown",
-                        currentSchedulerIdentifier
-                    });
-
-                    // Unmark the task as running by clearing lastAttemptTime and schedulerIdentifier
-                    task.lastAttemptTime = undefined;
-                    task.schedulerIdentifier = undefined;
-                }
-            }
-
-            return restarted;
-        });
-
-        for (const { taskName, previousSchedulerIdentifier } of restartedTasks) {
-            capabilities.logger.logWarning(
-                {
-                    taskName,
-                    previousSchedulerIdentifier,
-                    currentSchedulerIdentifier,
-                },
-                `Task was interrupted during shutdown and will be restarted`);
-        }
-    }
-
-    /**
-     * Handle both orphaned task detection and state override in a single operation.
-     * This prevents losing orphaned task information when override happens.
-     * @param {ParsedRegistrations} parsedRegistrations
-     * @param {SchedulerCapabilities} capabilities
-     * @param {string} currentSchedulerIdentifier
-     */
-    async function handleOverrideWithOrphanedTaskDetection(parsedRegistrations, capabilities, currentSchedulerIdentifier) {
-        // First, we need to detect orphaned tasks from persisted state before override
-        let orphanedTaskNames = new Set();
+    async function detectOrphanedTasks(parsedRegistrations, capabilities, currentSchedulerIdentifier) {
+        const orphanedTaskNames = new Set();
         
         // Get persisted state to detect orphaned tasks
         /**
@@ -145,9 +101,6 @@ function make(getCapabilities) {
             }
         }
 
-        // Now perform override with orphaned task information
-        await mutateTasks(capabilities, parsedRegistrations, () => undefined, true, orphanedTaskNames);
-
         // Log orphaned task warnings
         for (const { taskName, previousSchedulerIdentifier } of restartedTasks) {
             capabilities.logger.logWarning(
@@ -158,15 +111,17 @@ function make(getCapabilities) {
                 },
                 `Task was interrupted during shutdown and will be restarted`);
         }
+
+        return orphanedTaskNames;
     }
 
     /**
-     * Analyze and potentially override persisted state with registrations.
+     * Get persisted state for analysis.
      * @param {Registration[]} registrations
      * @param {SchedulerCapabilities} capabilities
-     * @returns {Promise<{persistedTasks: import('../runtime_state_storage/types').TaskRecord[] | undefined, shouldOverride: boolean}>}
+     * @returns {Promise<{persistedTasks: import('../runtime_state_storage/types').TaskRecord[] | undefined}>}
      */
-    async function analyzeAndOverridePersistedState(registrations, capabilities) {
+    async function getPersistedState(registrations, capabilities) {
         validateRegistrations(registrations);
 
         /**
@@ -179,7 +134,6 @@ function make(getCapabilities) {
         const currentState = await capabilities.state.transaction(getStorage);
         const persistedTasks = currentState?.tasks;
 
-        // Analyze state changes and determine if override is needed
         if (persistedTasks === undefined) {
             capabilities.logger.logDebug(
                 {
@@ -188,9 +142,7 @@ function make(getCapabilities) {
                 },
                 "First-time scheduler initialization: registering initial tasks"
             );
-            return { persistedTasks, shouldOverride: false };
         } else {
-            // Analyze registrations against persisted state
             capabilities.logger.logDebug(
                 {
                     persistedTaskCount: persistedTasks.length,
@@ -198,10 +150,11 @@ function make(getCapabilities) {
                 },
                 "Analyzing task registrations against persisted state"
             );
-
-            const { shouldOverride } = analyzeStateChanges(registrations, persistedTasks, capabilities);
-            return { persistedTasks, shouldOverride };
+            // Log changes that will be made
+            analyzeStateChanges(registrations, persistedTasks, capabilities);
         }
+
+        return { persistedTasks };
     }
 
     /**
@@ -281,7 +234,7 @@ function make(getCapabilities) {
             );
         }
 
-        // Handle polling scheduler lifecycle
+        // Check for existing polling scheduler
         if (pollingScheduler !== null) {
             // Scheduler already running
             capabilities.logger.logDebug(
@@ -289,32 +242,29 @@ function make(getCapabilities) {
                 "Scheduler already initialized"
             );
             // Still analyze registrations against persisted state for consistency.
-            await analyzeAndOverridePersistedState(registrations, capabilities);
+            await getPersistedState(registrations, capabilities);
             return;
-        } else {
-            pollingScheduler = makePollingScheduler(capabilities, parsedRegistrations, schedulerIdentifier);
         }
 
-        // Analyze input and override persisted state if needed
-        const { persistedTasks, shouldOverride } = await analyzeAndOverridePersistedState(registrations, capabilities);
-
         // Create polling scheduler
+        pollingScheduler = makePollingScheduler(capabilities, parsedRegistrations, schedulerIdentifier);
         capabilities.logger.logDebug(
             {},
             "Creating new polling scheduler"
         );
 
+        // Get persisted state 
+        const { persistedTasks } = await getPersistedState(registrations, capabilities);
+
         if (persistedTasks === undefined) {
             // First initialization - persist initial tasks
-            await mutateTasks(capabilities, parsedRegistrations, async () => undefined, false);
+            await mutateTasks(capabilities, parsedRegistrations, async () => undefined);
         } else {
-            if (shouldOverride) {
-                // For override, we need to handle orphaned task detection and override in one operation
-                await handleOverrideWithOrphanedTaskDetection(parsedRegistrations, capabilities, schedulerIdentifier);
-            } else {
-                // No override needed, just check for orphaned tasks
-                await detectAndRestartOrphanedTasks(parsedRegistrations, capabilities, schedulerIdentifier);
-            }
+            // Detect orphaned tasks
+            const orphanedTaskNames = await detectOrphanedTasks(parsedRegistrations, capabilities, schedulerIdentifier);
+            
+            // Persist tasks with per-task override logic and orphaned task handling
+            await mutateTasks(capabilities, parsedRegistrations, async () => undefined, orphanedTaskNames);
         }
 
         // Schedule all tasks
