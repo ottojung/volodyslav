@@ -184,7 +184,8 @@ For authoritative documentation, refer to:
 2. **No disabled state** – a task exists only while it is registered.
 3. **Fixed retry delay** – there is no exponential backoff or jitter.
 4. **Frequency guard** – cron expressions that would fire more frequently than
-   the polling loop can observe are rejected.
+   the polling loop can observe may log a warning, but are accepted because
+   precise enforcement is quite complex.
 5. **Immediate persistence** – state is written after each mutation which can
    increase I/O but ensures durability.
 6. **No callback persistence** – executable logic is provided anew at every
