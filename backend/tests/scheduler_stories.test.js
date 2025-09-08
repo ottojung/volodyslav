@@ -1190,7 +1190,7 @@ describe("scheduler stories", () => {
         const retryDelay = Duration.fromMillis(5000);
         await expect(capabilities.scheduler.initialize([
             ["invalid-date-task", "0 0 31 2 *", jest.fn(), retryDelay]
-        ])).rejects.toThrow();
+        ])).rejects.toThrow(/No valid next execution time found for cron expression/);
         await capabilities.scheduler.stop();
     });
 });
