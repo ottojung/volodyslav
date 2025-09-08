@@ -79,7 +79,7 @@ describe("scheduler orphaned task restart", () => {
         await capabilities.scheduler.stop();
     });
 
-    test.failing("preserves scheduler timings for orphaned persistent tasks while loading new ones", async () => {
+    test("preserves scheduler timings for orphaned persistent tasks while loading new ones", async () => {
         const capabilities = getTestCapabilities();
         const dateControl = getDatetimeControl(capabilities);
         const schedulerControl = getSchedulerControl(capabilities);
