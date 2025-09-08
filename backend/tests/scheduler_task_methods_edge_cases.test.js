@@ -4,7 +4,7 @@
  */
 
 const { isRunning } = require("../src/scheduler/task/methods");
-const { makeTask } = require("../src/scheduler/task/structure");
+const { makeTask, createStateFromProperties, getLastAttemptTime, getLastSuccessTime, getLastFailureTime, getPendingRetryUntil, getSchedulerIdentifier } = require("../src/scheduler/task/structure");
 const { parseCronExpression } = require("../src/scheduler/expression");
 const { Duration } = require("luxon");
 const { fromISOString } = require("../src/datetime");
@@ -21,19 +21,26 @@ describe("scheduler task methods edge cases", () => {
             lastFailureTime: undefined,
             lastAttemptTime: undefined,
             pendingRetryUntil: undefined,
+            schedulerIdentifier: undefined,
         };
 
         const config = { ...defaults, ...overrides };
+        
+        // Create state object from individual properties
+        const state = createStateFromProperties(
+            config.lastSuccessTime,
+            config.lastFailureTime,
+            config.lastAttemptTime,
+            config.pendingRetryUntil,
+            config.schedulerIdentifier
+        );
         
         return makeTask(
             config.name,
             config.parsedCron,
             config.callback,
             config.retryDelay,
-            config.lastSuccessTime,
-            config.lastFailureTime,
-            config.lastAttemptTime,
-            config.pendingRetryUntil,
+            state
         );
     }
 
@@ -291,63 +298,126 @@ describe("scheduler task methods edge cases", () => {
             });
 
             const beforeCall = {
-                attempt: task.lastAttemptTime,
-                success: task.lastSuccessTime,
-                failure: task.lastFailureTime
+                attempt: getLastAttemptTime(task),
+                success: getLastSuccessTime(task),
+                failure: getLastFailureTime(task)
             };
 
             isRunning(task);
 
-            expect(task.lastAttemptTime).toBe(beforeCall.attempt);
-            expect(task.lastSuccessTime).toBe(beforeCall.success);
-            expect(task.lastFailureTime).toBe(beforeCall.failure);
+            expect(getLastAttemptTime(task)).toBe(beforeCall.attempt);
+            expect(getLastSuccessTime(task)).toBe(beforeCall.success);
+            expect(getLastFailureTime(task)).toBe(beforeCall.failure);
         });
     });
 
     describe("task structure integrity", () => {
-        test("should preserve all task properties", () => {
+        test("should preserve task properties in appropriate state", () => {
             const name = "test-task";
             const parsedCron = parseCronExpression("0 * * * *");
             const callback = jest.fn();
             const retryDelay = Duration.fromMillis(5000);
-            const lastSuccessTime = fromISOString("2024-01-01T10:00:00.000Z"); // Fixed epoch for testing
-            const lastFailureTime = fromISOString("2024-01-01T11:00:00.000Z"); // Fixed epoch for testing
-            const lastAttemptTime = fromISOString("2024-01-01T12:00:00.000Z"); // Fixed epoch for testing
-            const pendingRetryUntil = fromISOString("2024-01-01T13:00:00.000Z"); // Fixed epoch for testing
+            
+            // Test AwaitingRetry state (pendingRetryUntil + lastFailureTime)
+            const lastFailureTime = fromISOString("2024-01-01T11:00:00.000Z");
+            const pendingRetryUntil = fromISOString("2024-01-01T13:00:00.000Z");
 
-            const task = makeTask(
+            const awaitingRetryState = createStateFromProperties(
+                undefined,
+                lastFailureTime,
+                undefined,
+                pendingRetryUntil,
+                undefined
+            );
+
+            const awaitingRetryTask = makeTask(
                 name,
                 parsedCron,
                 callback,
                 retryDelay,
-                lastSuccessTime,
-                lastFailureTime,
-                lastAttemptTime,
-                pendingRetryUntil,
+                awaitingRetryState
             );
 
-            expect(task.name).toBe(name);
-            expect(task.parsedCron).toBe(parsedCron);
-            expect(task.callback).toBe(callback);
-            expect(task.retryDelay).toBe(retryDelay);
-            expect(task.lastSuccessTime).toBe(lastSuccessTime);
-            expect(task.lastFailureTime).toBe(lastFailureTime);
-            expect(task.lastAttemptTime).toBe(lastAttemptTime);
-            expect(task.pendingRetryUntil).toBe(pendingRetryUntil);
+            expect(awaitingRetryTask.name).toBe(name);
+            expect(awaitingRetryTask.parsedCron).toBe(parsedCron);
+            expect(awaitingRetryTask.callback).toBe(callback);
+            expect(awaitingRetryTask.retryDelay).toBe(retryDelay);
+            expect(getLastFailureTime(awaitingRetryTask)).toBe(lastFailureTime);
+            expect(getPendingRetryUntil(awaitingRetryTask)).toBe(pendingRetryUntil);
+            expect(getLastSuccessTime(awaitingRetryTask)).toBeUndefined();
+            expect(getLastAttemptTime(awaitingRetryTask)).toBeUndefined();
+            
+            // Test Running state (lastAttemptTime + schedulerIdentifier)
+            const lastAttemptTime = fromISOString("2024-01-01T12:00:00.000Z");
+            const schedulerIdentifier = "test-scheduler";
+
+            const runningState = createStateFromProperties(
+                undefined,
+                undefined,
+                lastAttemptTime,
+                undefined,
+                schedulerIdentifier
+            );
+
+            const runningTask = makeTask(
+                name,
+                parsedCron,
+                callback,
+                retryDelay,
+                runningState
+            );
+
+            expect(getLastAttemptTime(runningTask)).toBe(lastAttemptTime);
+            expect(getSchedulerIdentifier(runningTask)).toBe(schedulerIdentifier);
+            expect(getLastSuccessTime(runningTask)).toBeUndefined();
+            expect(getLastFailureTime(runningTask)).toBeUndefined();
+            
+            // Test AwaitingRun state (lastSuccessTime + lastAttemptTime)
+            const lastSuccessTime = fromISOString("2024-01-01T10:00:00.000Z");
+
+            const awaitingRunState = createStateFromProperties(
+                lastSuccessTime,
+                undefined,
+                undefined,
+                undefined,
+                undefined
+            );
+
+            const awaitingRunTask = makeTask(
+                name,
+                parsedCron,
+                callback,
+                retryDelay,
+                awaitingRunState
+            );
+
+            expect(getLastSuccessTime(awaitingRunTask)).toBe(lastSuccessTime);
+            expect(getLastAttemptTime(awaitingRunTask)).toBeUndefined(); // null gets converted to undefined
+            expect(getLastFailureTime(awaitingRunTask)).toBeUndefined();
+            expect(getPendingRetryUntil(awaitingRunTask)).toBeUndefined();
         });
 
         test("should handle optional parameters as undefined", () => {
+            const state = createStateFromProperties(
+                undefined,
+                undefined,
+                undefined,
+                undefined,
+                undefined
+            );
+
             const task = makeTask(
                 "test-task",
                 parseCronExpression("0 * * * *"),
                 jest.fn(),
-                Duration.fromMillis(5000)
+                Duration.fromMillis(5000),
+                state
             );
 
-            expect(task.lastSuccessTime).toBeUndefined();
-            expect(task.lastFailureTime).toBeUndefined();
-            expect(task.lastAttemptTime).toBeUndefined();
-            expect(task.pendingRetryUntil).toBeUndefined();
+            expect(getLastSuccessTime(task)).toBeUndefined();
+            expect(getLastFailureTime(task)).toBeUndefined();
+            expect(getLastAttemptTime(task)).toBeUndefined();
+            // Note: pendingRetryUntil will be undefined for AwaitingRun state
         });
     });
 });
