@@ -3,7 +3,6 @@
  * multiple scheduler task invocations by advancing time.
  */
 
-const { Duration } = require("luxon");
 const { getMockedRootCapabilities } = require("./spies");
 const { stubEnvironment, stubLogger, stubDatetime, stubSleeper, getDatetimeControl, stubRuntimeStateStorage, stubScheduler, getSchedulerControl } = require("./stubs");
 const { fromISOString, fromHours, fromMinutes, fromMilliseconds, fromDays, toISOString } = require("../src/datetime");
@@ -28,7 +27,7 @@ describe("scheduler stories", () => {
         const capabilities = getTestCapabilities();
         const timeControl = getDatetimeControl(capabilities);
         const schedulerControl = getSchedulerControl(capabilities);
-        const retryDelay = Duration.fromMillis(5000);
+        const retryDelay = fromMilliseconds(5000);
         const taskCallback = jest.fn();
 
         // Set initial time to 00:05:00
@@ -79,7 +78,7 @@ describe("scheduler stories", () => {
         const capabilities = getTestCapabilities();
         const timeControl = getDatetimeControl(capabilities);
         const schedulerControl = getSchedulerControl(capabilities);
-        const retryDelay = Duration.fromMillis(5000);
+        const retryDelay = fromMilliseconds(5000);
         timeControl.setDateTime(fromISOString("2021-01-01T00:00:00.000Z"));
         schedulerControl.setPollingInterval(fromMilliseconds(1));
         try {
@@ -95,7 +94,7 @@ describe("scheduler stories", () => {
         const capabilities = getTestCapabilities();
         const timeControl = getDatetimeControl(capabilities);
         const schedulerControl = getSchedulerControl(capabilities);
-        const retryDelay = Duration.fromMillis(5000);
+        const retryDelay = fromMilliseconds(5000);
 
         const hourlyTask = jest.fn();
         const dailyTask = jest.fn();
@@ -129,7 +128,7 @@ describe("scheduler stories", () => {
         const capabilities = getTestCapabilities();
         const timeControl = getDatetimeControl(capabilities);
         const schedulerControl = getSchedulerControl(capabilities);
-        const retryDelay = Duration.fromMillis(1000);
+        const retryDelay = fromMilliseconds(1000);
         const taskCallback = jest.fn();
 
         // Set initial time to 00:00:00 (midnight)
@@ -170,7 +169,7 @@ describe("scheduler stories", () => {
         const capabilities = getTestCapabilities();
         const timeControl = getDatetimeControl(capabilities);
         const schedulerControl = getSchedulerControl(capabilities);
-        const retryDelay = Duration.fromMillis(5000);
+        const retryDelay = fromMilliseconds(5000);
 
         const taskCallback = jest.fn().mockImplementation(() => {
             // Verify that during task execution, the scheduler sees consistent time
@@ -211,7 +210,7 @@ describe("scheduler stories", () => {
         const capabilities = getTestCapabilities();
         const timeControl = getDatetimeControl(capabilities);
         const schedulerControl = getSchedulerControl(capabilities);
-        const retryDelay = Duration.fromMillis(5000);
+        const retryDelay = fromMilliseconds(5000);
         const taskCallback = jest.fn();
 
         // Set initial time 
@@ -252,7 +251,7 @@ describe("scheduler stories", () => {
         const capabilities = getTestCapabilities();
         const timeControl = getDatetimeControl(capabilities);
         const schedulerControl = getSchedulerControl(capabilities);
-        const retryDelay = Duration.fromMillis(100); // Reduce retry delay
+        const retryDelay = fromMilliseconds(100); // Reduce retry delay
 
         // Create tasks with different failure patterns
         let stableTaskCallCount = 0;
@@ -307,7 +306,7 @@ describe("scheduler stories", () => {
         const capabilities = getTestCapabilities();
         const timeControl = getDatetimeControl(capabilities);
         const schedulerControl = getSchedulerControl(capabilities);
-        const retryDelay = Duration.fromMillis(3000);
+        const retryDelay = fromMilliseconds(3000);
 
         const hourlyTask = jest.fn();
         const dailyTask = jest.fn();
@@ -362,9 +361,9 @@ describe("scheduler stories", () => {
         const schedulerControl = getSchedulerControl(capabilities);
 
         // Different retry delays for different failure tolerance
-        const quickRetryDelay = Duration.fromMillis(500);
-        const normalRetryDelay = Duration.fromMillis(5000);
-        const slowRetryDelay = Duration.fromMillis(15000);
+        const quickRetryDelay = fromMilliseconds(500);
+        const normalRetryDelay = fromMilliseconds(5000);
+        const slowRetryDelay = fromMilliseconds(15000);
 
         let primaryTaskFails = false;
         let dependentTaskExecutions = 0;
@@ -436,7 +435,7 @@ describe("scheduler stories", () => {
         const capabilities = getTestCapabilities();
         const timeControl = getDatetimeControl(capabilities);
         const schedulerControl = getSchedulerControl(capabilities);
-        const retryDelay = Duration.fromMillis(100);
+        const retryDelay = fromMilliseconds(100);
 
         const executionLog = [];
 
@@ -472,7 +471,7 @@ describe("scheduler stories", () => {
         const capabilities = getTestCapabilities();
         const timeControl = getDatetimeControl(capabilities);
         const schedulerControl = getSchedulerControl(capabilities);
-        const retryDelay = Duration.fromMillis(2000);
+        const retryDelay = fromMilliseconds(2000);
 
         let systemResourceExhausted = false;
         let resourceIntensiveCallCount = 0;
@@ -546,7 +545,7 @@ describe("scheduler stories", () => {
         const capabilities = getTestCapabilities();
         const timeControl = getDatetimeControl(capabilities);
         const schedulerControl = getSchedulerControl(capabilities);
-        const retryDelay = Duration.fromMillis(1000);
+        const retryDelay = fromMilliseconds(1000);
         const hourlyTask = jest.fn();
 
         // Start at exactly 10:00:00 AM
@@ -594,7 +593,7 @@ describe("scheduler stories", () => {
         await capabilities.logger.setup();
         const timeControl = getDatetimeControl(capabilities);
         const schedulerControl = getSchedulerControl(capabilities);
-        const retryDelay = Duration.fromMillis(1000);
+        const retryDelay = fromMilliseconds(1000);
 
         const hourlyTask = jest.fn().mockImplementation(async () => await new Promise(resolve => setTimeout(resolve, 400))); // Runs hourly
         const daily2AMTask = jest.fn().mockImplementation(async () => await new Promise(resolve => setTimeout(resolve, 400))); // Runs daily at 2 AM
@@ -663,7 +662,7 @@ describe("scheduler stories", () => {
         const capabilities = getTestCapabilities();
         const timeControl = getDatetimeControl(capabilities);
         const schedulerControl = getSchedulerControl(capabilities);
-        const retryDelay = Duration.fromMillis(1000);
+        const retryDelay = fromMilliseconds(1000);
         const dailyTask = jest.fn();
 
         // Start at exactly midnight on January 1st
@@ -717,7 +716,7 @@ describe("scheduler stories", () => {
         const capabilities = getTestCapabilities();
         const timeControl = getDatetimeControl(capabilities);
         const schedulerControl = getSchedulerControl(capabilities);
-        const retryDelay = Duration.fromMillis(1000);
+        const retryDelay = fromMilliseconds(1000);
         const weeklyTask = jest.fn();
 
         // Start at exactly midnight on Sunday, January 3rd, 2021 (day 0 = Sunday)
@@ -770,7 +769,7 @@ describe("scheduler stories", () => {
         const capabilities = getTestCapabilities();
         const timeControl = getDatetimeControl(capabilities);
         const schedulerControl = getSchedulerControl(capabilities);
-        const retryDelay = Duration.fromMillis(1000);
+        const retryDelay = fromMilliseconds(1000);
         const persistentTask = jest.fn();
 
         // Start at exactly 14:00:00
@@ -828,7 +827,7 @@ describe("scheduler stories", () => {
         const capabilities = getTestCapabilities();
         const timeControl = getDatetimeControl(capabilities);
         const schedulerControl = getSchedulerControl(capabilities);
-        const retryDelay = Duration.fromMillis(500);
+        const retryDelay = fromMilliseconds(500);
 
         const every2HourTask = jest.fn();   // Every 2 hours 
         const every4HourTask = jest.fn();   // Every 4 hours
@@ -900,7 +899,7 @@ describe("scheduler stories", () => {
         const capabilities = getTestCapabilities();
         const timeControl = getDatetimeControl(capabilities);
         const schedulerControl = getSchedulerControl(capabilities);
-        const retryDelay = Duration.fromMillis(500);
+        const retryDelay = fromMilliseconds(500);
 
         const every2HourTask = jest.fn();   // Every 2 hours 
         const every4HourTask = jest.fn();   // Every 4 hours
@@ -972,7 +971,7 @@ describe("scheduler stories", () => {
         const capabilities = getTestCapabilities();
         const timeControl = getDatetimeControl(capabilities);
         const schedulerControl = getSchedulerControl(capabilities);
-        const retryDelay = Duration.fromMillis(1000);
+        const retryDelay = fromMilliseconds(1000);
 
         const every2HourTask = jest.fn();  // Runs every 2 hours
         const every6HourTask = jest.fn();  // Runs every 6 hours
@@ -1016,7 +1015,7 @@ describe("scheduler stories", () => {
         const capabilities = getTestCapabilities();
         const timeControl = getDatetimeControl(capabilities);
         const schedulerControl = getSchedulerControl(capabilities);
-        const retryDelay = Duration.fromMillis(1000);
+        const retryDelay = fromMilliseconds(1000);
 
         const midnightTask = jest.fn();  // Runs daily at midnight
         const noonTask = jest.fn();      // Runs daily at noon
@@ -1082,7 +1081,7 @@ describe("scheduler stories", () => {
         const capabilities = getTestCapabilities();
         const timeControl = getDatetimeControl(capabilities);
         const schedulerControl = getSchedulerControl(capabilities);
-        const retryDelay = Duration.fromMillis(5000);
+        const retryDelay = fromMilliseconds(5000);
 
         const fastTask = jest.fn();
 
@@ -1134,7 +1133,7 @@ describe("scheduler stories", () => {
     test("should reject fractional retryDelayMs during task deserialization", () => {
         const cron = parseCronExpression("0 * * * *");
         const registrations = new Map([
-            ["fractional-delay", { name: "fractional-delay", parsedCron: cron, callback: () => { }, retryDelay: Duration.fromMillis(5000.5) }]
+            ["fractional-delay", { name: "fractional-delay", parsedCron: cron, callback: () => { }, retryDelay: fromMilliseconds(5000.5) }]
         ]);
         const record = {
             name: "fractional-delay",
@@ -1149,7 +1148,7 @@ describe("scheduler stories", () => {
         const capabilities = getTestCapabilities();
         const timeControl = getDatetimeControl(capabilities);
         const schedulerControl = getSchedulerControl(capabilities);
-        const retryDelay = Duration.fromMillis(1000);
+        const retryDelay = fromMilliseconds(1000);
 
         const firstTask = jest.fn();
         const secondTask = jest.fn();
@@ -1201,7 +1200,7 @@ describe("scheduler stories", () => {
                     name: "demo",
                     parsedCron: parseCronExpression("0 * * * *"),
                     callback: () => { },
-                    retryDelay: Duration.fromMillis(1000),
+                    retryDelay: fromMilliseconds(1000),
                 },
             ],
         ]);
@@ -1218,7 +1217,7 @@ describe("scheduler stories", () => {
     });
 
     test("should reject non-string task names during registration validation", () => {
-        const retryDelay = Duration.fromMillis(5000);
+        const retryDelay = fromMilliseconds(5000);
         const registrations = [
             [123, "* * * * *", jest.fn(), retryDelay]
         ];
@@ -1227,7 +1226,7 @@ describe("scheduler stories", () => {
     });
 
     test("should reject null task names during registration validation", () => {
-        const retryDelay = Duration.fromMillis(5000);
+        const retryDelay = fromMilliseconds(5000);
         const registrations = [
             [null, "* * * * *", jest.fn(), retryDelay]
         ];
@@ -1236,7 +1235,7 @@ describe("scheduler stories", () => {
     });
 
     test("should reject undefined task names during registration validation", () => {
-        const retryDelay = Duration.fromMillis(5000);
+        const retryDelay = fromMilliseconds(5000);
         const registrations = [
             [undefined, "* * * * *", jest.fn(), retryDelay]
         ];
@@ -1245,7 +1244,7 @@ describe("scheduler stories", () => {
     });
 
     test("should reject object task names during registration validation", () => {
-        const retryDelay = Duration.fromMillis(5000);
+        const retryDelay = fromMilliseconds(5000);
         const registrations = [
             [{name: "test"}, "* * * * *", jest.fn(), retryDelay]
         ];
@@ -1254,7 +1253,7 @@ describe("scheduler stories", () => {
     });
 
     test("should reject array task names during registration validation", () => {
-        const retryDelay = Duration.fromMillis(5000);
+        const retryDelay = fromMilliseconds(5000);
         const registrations = [
             [["test"], "* * * * *", jest.fn(), retryDelay]
         ];
@@ -1263,7 +1262,7 @@ describe("scheduler stories", () => {
     });
 
     test("should accept valid string task names during registration validation", () => {
-        const retryDelay = Duration.fromMillis(5000);
+        const retryDelay = fromMilliseconds(5000);
         const registrations = [
             ["valid-task-name", "* * * * *", jest.fn(), retryDelay]
         ];
@@ -1275,7 +1274,7 @@ describe("scheduler stories", () => {
         const capabilities = getTestCapabilities();
         const timeControl = getDatetimeControl(capabilities);
         const schedulerControl = getSchedulerControl(capabilities);
-        const retryDelay = Duration.fromMillis(1000);
+        const retryDelay = fromMilliseconds(1000);
 
         const task1 = jest.fn();
         const task2 = jest.fn();
@@ -1322,7 +1321,7 @@ describe("scheduler stories", () => {
         const capabilities = getTestCapabilities();
         const timeControl = getDatetimeControl(capabilities);
         const schedulerControl = getSchedulerControl(capabilities);
-        const retryDelay = Duration.fromMillis(1000);
+        const retryDelay = fromMilliseconds(1000);
 
         const task1 = jest.fn();
         const task2 = jest.fn();
@@ -1361,7 +1360,7 @@ describe("scheduler stories", () => {
         const schedulerControl = getSchedulerControl(capabilities);
         timeControl.setDateTime(fromISOString("2024-01-01T00:00:00.000Z"));
         schedulerControl.setPollingInterval(fromMilliseconds(1));
-        const retryDelay = Duration.fromMillis(5000);
+        const retryDelay = fromMilliseconds(5000);
         await expect(capabilities.scheduler.initialize([
             ["invalid-date-task", "0 0 31 2 *", jest.fn(), retryDelay]
         ])).rejects.toThrow(/No valid next execution time found for cron expression/);

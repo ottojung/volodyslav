@@ -3,7 +3,7 @@
  * Focuses on testing various error classes and edge cases in registration validation.
  */
 
-const { Duration } = require("luxon");
+const { fromMilliseconds } = require("../src/datetime");
 const { validateRegistrations, isScheduleDuplicateTaskError } = require("../src/scheduler/registration_validation");
 const { getMockedRootCapabilities } = require("./spies");
 const { stubLogger, stubEnvironment } = require("./stubs");
@@ -56,7 +56,7 @@ describe("scheduler registration validation error handling", () => {
             const capabilities = getTestCapabilities();
             
             const callback = jest.fn();
-            const retryDelay = Duration.fromMillis(5000);
+            const retryDelay = fromMilliseconds(5000);
             
             // Too few elements
             expect(() => validateRegistrations([["task"]], capabilities))
@@ -92,7 +92,7 @@ describe("scheduler registration validation error handling", () => {
             const capabilities = getTestCapabilities();
             const callback1 = jest.fn();
             const callback2 = jest.fn();
-            const retryDelay = Duration.fromMillis(5000);
+            const retryDelay = fromMilliseconds(5000);
             
             const registrations = [
                 ["duplicate-task", "0 * * * *", callback1, retryDelay],
@@ -106,7 +106,7 @@ describe("scheduler registration validation error handling", () => {
         test("should provide isScheduleDuplicateTaskError type guard", () => {
             const capabilities = getTestCapabilities();
             const callback = jest.fn();
-            const retryDelay = Duration.fromMillis(5000);
+            const retryDelay = fromMilliseconds(5000);
             
             const registrations = [
                 ["task", "0 * * * *", callback, retryDelay],
@@ -131,7 +131,7 @@ describe("scheduler registration validation error handling", () => {
         test("should allow same name in different validation calls", () => {
             const capabilities = getTestCapabilities();
             const callback = jest.fn();
-            const retryDelay = Duration.fromMillis(5000);
+            const retryDelay = fromMilliseconds(5000);
             
             const registrations = [["task", "0 * * * *", callback, retryDelay]];
 
@@ -147,7 +147,7 @@ describe("scheduler registration validation error handling", () => {
         test("should throw CronExpressionInvalidError for invalid cron expressions", () => {
             const capabilities = getTestCapabilities();
             const callback = jest.fn();
-            const retryDelay = Duration.fromMillis(5000);
+            const retryDelay = fromMilliseconds(5000);
             
             const invalidCronExpressions = [
                 "invalid-cron",
@@ -171,7 +171,7 @@ describe("scheduler registration validation error handling", () => {
         test("should include cron expression details in error", () => {
             const capabilities = getTestCapabilities();
             const callback = jest.fn();
-            const retryDelay = Duration.fromMillis(5000);
+            const retryDelay = fromMilliseconds(5000);
             
             expect(() => validateRegistrations([["task", "invalid-cron", callback, retryDelay]], capabilities))
                 .toThrow(expect.objectContaining({
@@ -186,7 +186,7 @@ describe("scheduler registration validation error handling", () => {
     describe("CallbackTypeError scenarios", () => {
         test("should throw CallbackTypeError for non-function callbacks", () => {
             const capabilities = getTestCapabilities();
-            const retryDelay = Duration.fromMillis(5000);
+            const retryDelay = fromMilliseconds(5000);
             
             const invalidCallbacks = [
                 null,
@@ -206,7 +206,7 @@ describe("scheduler registration validation error handling", () => {
 
         test("should accept valid function callbacks", () => {
             const capabilities = getTestCapabilities();
-            const retryDelay = Duration.fromMillis(5000);
+            const retryDelay = fromMilliseconds(5000);
             
             const validCallbacks = [
                 jest.fn(),
@@ -259,7 +259,7 @@ describe("scheduler registration validation error handling", () => {
         test("should validate multiple registrations and report first error", () => {
             const capabilities = getTestCapabilities();
             const callback = jest.fn();
-            const retryDelay = Duration.fromMillis(5000);
+            const retryDelay = fromMilliseconds(5000);
             
             const registrations = [
                 ["valid-task", "0 * * * *", callback, retryDelay],
@@ -275,7 +275,7 @@ describe("scheduler registration validation error handling", () => {
         test("should include correct index in error messages", () => {
             const capabilities = getTestCapabilities();
             const callback = jest.fn();
-            const retryDelay = Duration.fromMillis(5000);
+            const retryDelay = fromMilliseconds(5000);
             
             const registrations = [
                 ["task1", "0 * * * *", callback, retryDelay],

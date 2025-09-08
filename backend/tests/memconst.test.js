@@ -1,4 +1,5 @@
 const memconst = require('../src/memconst');
+const { fromMilliseconds } = require('../src/datetime');
 
 describe('memconst', () => {
   test('should memoize a synchronous function call', () => {
@@ -105,7 +106,6 @@ describe('memconst', () => {
   test('should work with real async functions and delays', async () => {
     // Setup
     const sleeper = require('../src/sleeper').make();
-    const { fromMilliseconds } = require('../src/datetime/duration');
     const delayedFn = jest.fn(async () => {
       await sleeper.sleep(fromMilliseconds(100));
       return 'delayed-value';

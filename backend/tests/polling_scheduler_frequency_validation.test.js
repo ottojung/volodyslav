@@ -3,7 +3,7 @@
  * Ensures scheduler throws errors when task frequency is higher than polling frequency.
  */
 
-const { Duration } = require("luxon");
+const { fromMilliseconds } = require("../src/datetime");
 const { getMockedRootCapabilities } = require("./spies");
 const { stubEnvironment, stubLogger, stubDatetime, stubSleeper } = require("./stubs");
 const { POLL_INTERVAL } = require("../src/scheduler/polling/interval");
@@ -23,7 +23,7 @@ describe("declarative scheduler frequency validation", () => {
     test("should throw error when task frequency is higher than polling frequency", async () => {
         // Use default 10-minute (600000ms) polling interval
         const capabilities = getTestCapabilities();
-        const retryDelay = Duration.fromMillis(5000);
+        const retryDelay = fromMilliseconds(5000);
         const taskCallback = jest.fn();
 
         // Try to initialize with task that runs every minute (higher frequency than 10-minute polling interval)
@@ -45,7 +45,7 @@ describe("declarative scheduler frequency validation", () => {
 
     test("should allow task frequency equal to polling frequency", async () => {
         const capabilities = getTestCapabilities();
-        const retryDelay = Duration.fromMillis(5000);
+        const retryDelay = fromMilliseconds(5000);
         const taskCallback = jest.fn();
 
         // Initialize with task that runs every 10 minutes (matches polling interval)
@@ -61,7 +61,7 @@ describe("declarative scheduler frequency validation", () => {
 
     test("should allow task frequency lower than polling frequency", async () => {
         const capabilities = getTestCapabilities();
-        const retryDelay = Duration.fromMillis(5000);
+        const retryDelay = fromMilliseconds(5000);
         const taskCallback = jest.fn();
 
         // Initialize with task that runs every hour (lower frequency than 10-minute polling)
@@ -79,7 +79,7 @@ describe("declarative scheduler frequency validation", () => {
         // Use separate capabilities instances to avoid task list mismatch
         const capabilities1 = getTestCapabilities();
         const capabilities2 = getTestCapabilities();
-        const retryDelay = Duration.fromMillis(5000);
+        const retryDelay = fromMilliseconds(5000);
         const taskCallback = jest.fn();
 
         // Try to initialize with task that runs every 5 minutes (higher frequency than 10-minute polling)
@@ -113,7 +113,7 @@ describe("declarative scheduler frequency validation", () => {
     test("should provide clear error message with frequency details", async () => {
         const capabilities1 = getTestCapabilities();
         const capabilities2 = getTestCapabilities();
-        const retryDelay = Duration.fromMillis(5000);
+        const retryDelay = fromMilliseconds(5000);
         const taskCallback = jest.fn();
 
         // Try to initialize with task that runs every minute (higher frequency than 10-minute polling interval)

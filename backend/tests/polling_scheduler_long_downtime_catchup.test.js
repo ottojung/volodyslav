@@ -3,7 +3,6 @@
  * Focuses on scenarios where the scheduler missed a bunch of executions.
  */
 
-const { Duration } = require("luxon");
 const { fromISOString, fromHours, fromDays, fromMilliseconds } = require("../src/datetime");
 const { getMockedRootCapabilities } = require("./spies");
 const { stubEnvironment, stubLogger, stubDatetime, stubSleeper, getDatetimeControl, stubScheduler, getSchedulerControl, stubRuntimeStateStorage } = require("./stubs");
@@ -26,7 +25,7 @@ describe("declarative scheduler long downtime catchup behavior", () => {
         const schedulerControl = getSchedulerControl(capabilities);
 
         schedulerControl.setPollingInterval(fromMilliseconds(1));
-        const retryDelay = Duration.fromMillis(5000);
+        const retryDelay = fromMilliseconds(5000);
         const hourlyTask = jest.fn();
 
         // Start at a non-scheduled time to avoid immediate execution
@@ -67,7 +66,7 @@ describe("declarative scheduler long downtime catchup behavior", () => {
         const schedulerControl = getSchedulerControl(capabilities);
 
         schedulerControl.setPollingInterval(fromMilliseconds(1));
-        const retryDelay = Duration.fromMillis(5000);
+        const retryDelay = fromMilliseconds(5000);
         const hourlyTask = jest.fn();
 
         // Start at a non-scheduled time to avoid immediate execution  
@@ -111,7 +110,7 @@ describe("declarative scheduler long downtime catchup behavior", () => {
         const schedulerControl = getSchedulerControl(capabilities);
 
         schedulerControl.setPollingInterval(fromMilliseconds(1));
-        const retryDelay = Duration.fromMillis(3000);
+        const retryDelay = fromMilliseconds(3000);
 
         const hourlyTask = jest.fn();
         const dailyTask = jest.fn();
@@ -155,7 +154,7 @@ describe("declarative scheduler long downtime catchup behavior", () => {
         const schedulerControl = getSchedulerControl(capabilities);
 
         schedulerControl.setPollingInterval(fromMilliseconds(1));
-        const retryDelay = Duration.fromMillis(5000);
+        const retryDelay = fromMilliseconds(5000);
 
         const every15MinTask = jest.fn();
         const hourlyTask = jest.fn();
@@ -200,7 +199,7 @@ describe("declarative scheduler long downtime catchup behavior", () => {
         const schedulerControl = getSchedulerControl(capabilities);
 
         schedulerControl.setPollingInterval(fromMilliseconds(1));
-        const retryDelay = Duration.fromMillis(3000);
+        const retryDelay = fromMilliseconds(3000);
         const hourlyTask = jest.fn();
 
         // Start at 10:00 AM
@@ -249,7 +248,7 @@ describe("declarative scheduler long downtime catchup behavior", () => {
         const schedulerControl = getSchedulerControl(capabilities);
 
         schedulerControl.setPollingInterval(fromMilliseconds(1));
-        const retryDelay = Duration.fromMillis(5000);
+        const retryDelay = fromMilliseconds(5000);
 
         const task30Min = jest.fn();
         const taskHourly = jest.fn();
@@ -296,7 +295,7 @@ describe("declarative scheduler long downtime catchup behavior", () => {
         const schedulerControl = getSchedulerControl(capabilities);
 
         schedulerControl.setPollingInterval(fromMilliseconds(1));
-        const retryDelay = Duration.fromMillis(1000);
+        const retryDelay = fromMilliseconds(1000);
         const hourlyTask = jest.fn();
 
         // Start at a non-scheduled time to avoid immediate execution
@@ -344,7 +343,7 @@ describe("declarative scheduler long downtime catchup behavior", () => {
         const schedulerControl = getSchedulerControl(capabilities);
 
         schedulerControl.setPollingInterval(fromMilliseconds(1));
-        const retryDelay = Duration.fromMillis(5000);
+        const retryDelay = fromMilliseconds(5000);
         const complexTask = jest.fn();
 
         // Start at midnight for predictable cron behavior

@@ -4,7 +4,7 @@
  * JSON-stringified, parsed, and then deserialized.
  */
 
-const { Duration } = require("luxon");
+const { fromMilliseconds } = require("../src/datetime");
 const { parseCronExpression } = require("../src/scheduler/expression");
 const { serialize, tryDeserialize } = require("../src/scheduler/task/serialization");
 const { makeTask, createStateFromProperties, getLastSuccessTime, getLastFailureTime, getLastAttemptTime, getPendingRetryUntil, getSchedulerIdentifier } = require("../src/scheduler/task/structure");
@@ -18,7 +18,7 @@ describe("scheduler task serialization roundtrip (real-world scenario)", () => {
         registrations.set("test-task", {
             parsedCron: parseCronExpression("0 * * * *"),
             callback: () => Promise.resolve(),
-            retryDelay: Duration.fromMillis(5000),
+            retryDelay: fromMilliseconds(5000),
         });
         return registrations;
     }
@@ -42,7 +42,7 @@ describe("scheduler task serialization roundtrip (real-world scenario)", () => {
             "test-task",
             parseCronExpression("0 * * * *"),
             () => Promise.resolve(),
-            Duration.fromMillis(5000),
+            fromMilliseconds(5000),
             state
         );
 
@@ -110,7 +110,7 @@ describe("scheduler task serialization roundtrip (real-world scenario)", () => {
             "test-task",
             parseCronExpression("0 * * * *"),
             () => Promise.resolve(),
-            Duration.fromMillis(5000),
+            fromMilliseconds(5000),
             state
         );
 

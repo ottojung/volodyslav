@@ -4,7 +4,6 @@
  * even if their cron expression matches the current time.
  */
 
-const { Duration } = require("luxon");
 const { fromISOString, fromMilliseconds } = require("../src/datetime");
 const { getMockedRootCapabilities } = require("./spies");
 const { stubEnvironment, stubLogger, stubDatetime, stubSleeper, stubRuntimeStateStorage, stubScheduler, getSchedulerControl, getDatetimeControl } = require("./stubs");
@@ -32,7 +31,7 @@ describe("scheduler first startup semantics", () => {
             datetimeControl.setDateTime(tuesdayAt1530);
             
             schedulerControl.setPollingInterval(fromMilliseconds(1));
-            const retryDelay = Duration.fromMillis(5000);
+            const retryDelay = fromMilliseconds(5000);
 
             const taskCallback = jest.fn();
             
@@ -60,7 +59,7 @@ describe("scheduler first startup semantics", () => {
             datetimeControl.setDateTime(tuesdayAt1530);
             
             schedulerControl.setPollingInterval(fromMilliseconds(1));
-            const retryDelay = Duration.fromMillis(5000);
+            const retryDelay = fromMilliseconds(5000);
 
             const taskCallback = jest.fn();
             
@@ -88,7 +87,7 @@ describe("scheduler first startup semantics", () => {
             datetimeControl.setDateTime(tuesdayAt1530);
             
             schedulerControl.setPollingInterval(fromMilliseconds(1));
-            const retryDelay = Duration.fromMillis(5000);
+            const retryDelay = fromMilliseconds(5000);
 
             const taskCallback = jest.fn();
             
@@ -125,7 +124,7 @@ describe("scheduler first startup semantics", () => {
             datetimeControl.setDateTime(tuesdayAt1530);
             
             schedulerControl.setPollingInterval(fromMilliseconds(1));
-            const retryDelay = Duration.fromMillis(5000);
+            const retryDelay = fromMilliseconds(5000);
 
             const matchingTaskCallback = jest.fn();
             const nonMatchingTaskCallback1 = jest.fn();
@@ -158,7 +157,7 @@ describe("scheduler first startup semantics", () => {
             datetimeControl.setDateTime(tuesdayAt1530);
             
             schedulerControl.setPollingInterval(fromMilliseconds(1));
-            const retryDelay = Duration.fromMillis(5000);
+            const retryDelay = fromMilliseconds(5000);
 
             const exactMatchCallback = jest.fn();
             const oneMinuteOffCallback = jest.fn();
@@ -191,7 +190,7 @@ describe("scheduler first startup semantics", () => {
             
             // Set a very short polling interval BEFORE creating registrations
             schedulerControl.setPollingInterval(fromMilliseconds(1));
-            const retryDelay = Duration.fromMillis(5000);
+            const retryDelay = fromMilliseconds(5000);
 
             const everyMinuteCallback = jest.fn();
             const everyHourCallback = jest.fn();
@@ -221,7 +220,7 @@ describe("scheduler first startup semantics", () => {
             datetimeControl.setDateTime(tuesdayAt1530); // Tuesday
             
             schedulerControl.setPollingInterval(fromMilliseconds(1));
-            const retryDelay = Duration.fromMillis(5000);
+            const retryDelay = fromMilliseconds(5000);
 
             const tuesdayCallback = jest.fn();
             const wednesdayCallback = jest.fn();

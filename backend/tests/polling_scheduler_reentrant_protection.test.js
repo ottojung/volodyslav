@@ -3,7 +3,6 @@
  * Ensures proper guarding against overlapping scheduler operations.
  */
 
-const { Duration } = require("luxon");
 const { fromHours, fromMilliseconds, fromISOString } = require("../src/datetime");
 const { getMockedRootCapabilities } = require("./spies");
 const { stubEnvironment, stubLogger, stubDatetime, stubSleeper, stubScheduler, getSchedulerControl, getDatetimeControl, stubRuntimeStateStorage } = require("./stubs");
@@ -25,7 +24,7 @@ describe("declarative scheduler re-entrancy protection", () => {
         const timeControl = getDatetimeControl(capabilities);
         const schedulerControl = getSchedulerControl(capabilities);
         schedulerControl.setPollingInterval(fromMilliseconds(1));
-        const retryDelay = Duration.fromMillis(5000);
+        const retryDelay = fromMilliseconds(5000);
 
         // Set time to avoid immediate execution for "0 * * * *" schedule
         const startTime = fromISOString("2021-01-01T00:05:00.000Z");
@@ -79,7 +78,7 @@ describe("declarative scheduler re-entrancy protection", () => {
         const schedulerControl = getSchedulerControl(capabilities);
         schedulerControl.setPollingInterval(fromMilliseconds(1));
         const timeControl = getDatetimeControl(capabilities);
-        const retryDelay = Duration.fromMillis(5000);
+        const retryDelay = fromMilliseconds(5000);
         let taskExecutionCount = 0;
         
         const quickTask = jest.fn(() => {
@@ -123,7 +122,7 @@ describe("declarative scheduler re-entrancy protection", () => {
         const schedulerControl = getSchedulerControl(capabilities);
         schedulerControl.setPollingInterval(fromMilliseconds(1));
         const timeControl = getDatetimeControl(capabilities);
-        const retryDelay = Duration.fromMillis(5000);
+        const retryDelay = fromMilliseconds(5000);
         let taskExecutionCount = 0;
         
         const quickTask = jest.fn(() => {
@@ -166,7 +165,7 @@ describe("declarative scheduler re-entrancy protection", () => {
         const schedulerControl = getSchedulerControl(capabilities);
         schedulerControl.setPollingInterval(fromMilliseconds(1));
         const timeControl = getDatetimeControl(capabilities);
-        const retryDelay = Duration.fromMillis(5000);
+        const retryDelay = fromMilliseconds(5000);
         let taskExecutionCount = 0;
         
         const errorTask = jest.fn(() => {
@@ -205,7 +204,7 @@ describe("declarative scheduler re-entrancy protection", () => {
 
     test("should handle task validation differences properly", async () => {
         const capabilities = getTestCapabilities();
-        const retryDelay = Duration.fromMillis(5000);
+        const retryDelay = fromMilliseconds(5000);
         
         const validTask = jest.fn().mockResolvedValue(undefined);
         

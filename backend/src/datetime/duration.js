@@ -7,6 +7,14 @@ const luxon = require("luxon");
 /** @typedef {import('luxon').Duration} Duration */
 
 /**
+ * @param {unknown} value 
+ * @returns {value is Duration}
+ */
+function isDuration(value) {
+    return luxon.Duration.isDuration(value);
+}
+
+/**
  * Calculate the difference between two DateTimes as a Duration.
  * @param {import('./structure').DateTime} laterDateTime - The later DateTime
  * @param {import('./structure').DateTime} earlierDateTime - The earlier DateTime
@@ -23,6 +31,15 @@ function difference(laterDateTime, earlierDateTime) {
  */
 function fromMilliseconds(ms) {
     return luxon.Duration.fromMillis(ms);
+}
+
+ /**
+ * Create a Duration from seconds.
+ * @param {number} seconds - Seconds
+ * @returns {Duration} Duration object
+ */
+function fromSeconds(seconds) {
+    return luxon.Duration.fromMillis(seconds * 1000);
 }
 
 /**
@@ -80,8 +97,10 @@ function fromObject(spec) {
 }
 
 module.exports = {
+    isDuration,
     difference,
     fromMilliseconds,
+    fromSeconds,
     fromMinutes,
     fromHours,
     fromDays,

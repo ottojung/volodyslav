@@ -3,7 +3,6 @@
  * These tests ensure the scheduler handles time-based scheduling correctly.
  */
 
-const { Duration } = require("luxon");
 const { fromMilliseconds } = require("../src/datetime");
 const { getMockedRootCapabilities } = require("./spies");
 const { stubEnvironment, stubLogger, stubDatetime, stubSleeper, stubScheduler, getSchedulerControl } = require("./stubs");
@@ -24,7 +23,7 @@ describe("declarative scheduler time handling", () => {
     test("should handle tasks scheduled at specific times", async () => {
         const capabilities = getTestCapabilities();
         const schedulerControl = getSchedulerControl(capabilities);
-        const retryDelay = Duration.fromMillis(5000);
+        const retryDelay = fromMilliseconds(5000);
         const callback = jest.fn();
 
         schedulerControl.setPollingInterval(fromMilliseconds(1));
@@ -48,7 +47,7 @@ describe("declarative scheduler time handling", () => {
     test("should handle hourly tasks correctly", async () => {
         const capabilities = getTestCapabilities();
         const schedulerControl = getSchedulerControl(capabilities);
-        const retryDelay = Duration.fromMillis(5000);
+        const retryDelay = fromMilliseconds(5000);
         const callback = jest.fn();
 
         schedulerControl.setPollingInterval(fromMilliseconds(1));
@@ -72,7 +71,7 @@ describe("declarative scheduler time handling", () => {
     test("should maintain correct scheduling across time", async () => {
         const capabilities = getTestCapabilities();
         const schedulerControl = getSchedulerControl(capabilities);
-        const retryDelay = Duration.fromMillis(5000);
+        const retryDelay = fromMilliseconds(5000);
         const callback = jest.fn();
 
         schedulerControl.setPollingInterval(fromMilliseconds(1));
@@ -95,7 +94,7 @@ describe("declarative scheduler time handling", () => {
     test("should handle timezone-independent scheduling", async () => {
         const capabilities = getTestCapabilities();
         const schedulerControl = getSchedulerControl(capabilities);
-        const retryDelay = Duration.fromMillis(5000);
+        const retryDelay = fromMilliseconds(5000);
         const callback = jest.fn();
 
         schedulerControl.setPollingInterval(fromMilliseconds(1));
@@ -119,7 +118,7 @@ describe("declarative scheduler time handling", () => {
     test("should handle edge case scheduling for weekly and daily tasks", async () => {
         const capabilities = getTestCapabilities();
         const schedulerControl = getSchedulerControl(capabilities);
-        const retryDelay = Duration.fromMillis(5000);
+        const retryDelay = fromMilliseconds(5000);
         const callback = jest.fn();
 
         schedulerControl.setPollingInterval(fromMilliseconds(1));
@@ -142,7 +141,7 @@ describe("declarative scheduler time handling", () => {
     test("should maintain execution history correctly", async () => {
         const capabilities = getTestCapabilities();
         const schedulerControl = getSchedulerControl(capabilities);
-        const retryDelay = Duration.fromMillis(5000);
+        const retryDelay = fromMilliseconds(5000);
         
         schedulerControl.setPollingInterval(fromMilliseconds(1));
         
@@ -175,7 +174,7 @@ describe("declarative scheduler time handling", () => {
     test("should handle multiple timezone-aware tasks consistently", async () => {
         const capabilities = getTestCapabilities();
         const schedulerControl = getSchedulerControl(capabilities);
-        const retryDelay = Duration.fromMillis(5000);
+        const retryDelay = fromMilliseconds(5000);
         
         schedulerControl.setPollingInterval(fromMilliseconds(1));
         
@@ -202,7 +201,7 @@ describe("declarative scheduler time handling", () => {
     test("should handle complex scheduling patterns", async () => {
         const capabilities = getTestCapabilities();
         const schedulerControl = getSchedulerControl(capabilities);
-        const retryDelay = Duration.fromMillis(5000);
+        const retryDelay = fromMilliseconds(5000);
         const callback = jest.fn();
 
         schedulerControl.setPollingInterval(fromMilliseconds(1));
@@ -226,7 +225,7 @@ describe("declarative scheduler time handling", () => {
     test("should handle scheduler restart with time consistency", async () => {
         const capabilities = getTestCapabilities();
         const schedulerControl = getSchedulerControl(capabilities);
-        const retryDelay = Duration.fromMillis(1000);
+        const retryDelay = fromMilliseconds(1000);
         
         schedulerControl.setPollingInterval(fromMilliseconds(1));
         

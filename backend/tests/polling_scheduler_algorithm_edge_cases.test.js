@@ -3,7 +3,6 @@
  * Focuses on observable behavior and edge case handling.
  */
 
-const { Duration } = require("luxon");
 const { fromISOString, fromHours, fromMilliseconds } = require("../src/datetime");
 const { getMockedRootCapabilities } = require("./spies");
 const { stubEnvironment, stubLogger, stubDatetime, stubSleeper, getDatetimeControl, stubScheduler, getSchedulerControl, stubRuntimeStateStorage } = require("./stubs");
@@ -24,7 +23,7 @@ describe("declarative scheduler algorithm robustness", () => {
         const capabilities = getTestCapabilities();
         const schedulerControl = getSchedulerControl(capabilities);
         schedulerControl.setPollingInterval(fromMilliseconds(1));
-        const retryDelay = Duration.fromMillis(5000);
+        const retryDelay = fromMilliseconds(5000);
         const taskCallback = jest.fn();
 
         const registrations = [
@@ -46,7 +45,7 @@ describe("declarative scheduler algorithm robustness", () => {
         const capabilities = getTestCapabilities();
         const schedulerControl = getSchedulerControl(capabilities);
         schedulerControl.setPollingInterval(fromMilliseconds(1));
-        const retryDelay = Duration.fromMillis(5000);
+        const retryDelay = fromMilliseconds(5000);
         const taskCallback = jest.fn();
 
         const registrations = [
@@ -67,7 +66,7 @@ describe("declarative scheduler algorithm robustness", () => {
         const capabilities = getTestCapabilities();
         const schedulerControl = getSchedulerControl(capabilities);
         schedulerControl.setPollingInterval(fromMilliseconds(1));
-        const retryDelay = Duration.fromMillis(5000);
+        const retryDelay = fromMilliseconds(5000);
 
         const hourlyTask = jest.fn();
         const dailyTask = jest.fn();
@@ -96,7 +95,7 @@ describe("declarative scheduler algorithm robustness", () => {
         const timeControl = getDatetimeControl(capabilities);
         const schedulerControl = getSchedulerControl(capabilities);
         schedulerControl.setPollingInterval(fromMilliseconds(1));
-        const retryDelay = Duration.fromMillis(1000); // 1 second
+        const retryDelay = fromMilliseconds(1000); // 1 second
         let callCount = 0;
 
         const precisionCallback = jest.fn(() => {
@@ -137,7 +136,7 @@ describe("declarative scheduler algorithm robustness", () => {
         const capabilities = getTestCapabilities();
         const schedulerControl = getSchedulerControl(capabilities);
         schedulerControl.setPollingInterval(fromMilliseconds(1));
-        const retryDelay = Duration.fromMillis(5000);
+        const retryDelay = fromMilliseconds(5000);
         const taskCallback = jest.fn();
 
         const registrations = [
@@ -166,9 +165,9 @@ describe("declarative scheduler algorithm robustness", () => {
         const task3 = jest.fn();
 
         const registrations = [
-            ["multi-field-task1", "0 * * * *", task1, Duration.fromMillis(1000)], // Every minute
-            ["multi-field-task2", "0,15,30,45 * * * *", task2, Duration.fromMillis(2000)], // Every 15 minutes  
-            ["multi-field-task3", "0 * * * *", task3, Duration.fromMillis(3000)] // Every hour
+            ["multi-field-task1", "0 * * * *", task1, fromMilliseconds(1000)], // Every minute
+            ["multi-field-task2", "0,15,30,45 * * * *", task2, fromMilliseconds(2000)], // Every 15 minutes  
+            ["multi-field-task3", "0 * * * *", task3, fromMilliseconds(3000)] // Every hour
         ];
 
         await capabilities.scheduler.initialize(registrations);
@@ -187,7 +186,7 @@ describe("declarative scheduler algorithm robustness", () => {
         const capabilities = getTestCapabilities();
         const schedulerControl = getSchedulerControl(capabilities);
         schedulerControl.setPollingInterval(fromMilliseconds(1));
-        const retryDelay = Duration.fromMillis(5000);
+        const retryDelay = fromMilliseconds(5000);
         const goodTask = jest.fn();
         const badTask = jest.fn(() => {
             throw new Error("Task execution error");
@@ -215,7 +214,7 @@ describe("declarative scheduler algorithm robustness", () => {
 
     test("should reject invalid cron expressions", async () => {
         const capabilities = getTestCapabilities();
-        const retryDelay = Duration.fromMillis(5000);
+        const retryDelay = fromMilliseconds(5000);
         const taskCallback = jest.fn();
 
         const registrations = [
@@ -234,7 +233,7 @@ describe("declarative scheduler algorithm robustness", () => {
         const timeControl = getDatetimeControl(capabilities);
         const schedulerControl = getSchedulerControl(capabilities);
         schedulerControl.setPollingInterval(fromMilliseconds(1));
-        const retryDelay = Duration.fromMillis(5000);
+        const retryDelay = fromMilliseconds(5000);
         const taskCallback = jest.fn();
 
         // Set time to avoid immediate execution for "0 * * * *" schedule

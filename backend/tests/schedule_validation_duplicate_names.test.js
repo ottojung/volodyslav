@@ -3,7 +3,7 @@
  * Tests the ScheduleDuplicateTaskError behavior comprehensively.
  */
 
-const { Duration } = require("luxon");
+const { fromMilliseconds } = require("../src/datetime");
 const { getMockedRootCapabilities } = require("./spies");
 const { stubEnvironment, stubLogger, stubDatetime, stubSleeper } = require("./stubs");
 const { isScheduleDuplicateTaskError } = require("../src/scheduler");
@@ -21,7 +21,7 @@ describe("schedule validation duplicate task names", () => {
     describe("ScheduleDuplicateTaskError behavior", () => {
         test("throws ScheduleDuplicateTaskError for duplicate task names", async () => {
             const capabilities = getTestCapabilities();
-            const retryDelay = Duration.fromMillis(1000);
+            const retryDelay = fromMilliseconds(1000);
             const taskCallback = jest.fn();
             
             const registrationsWithDuplicate = [
@@ -36,7 +36,7 @@ describe("schedule validation duplicate task names", () => {
 
         test("error message contains the duplicate task name", async () => {
             const capabilities = getTestCapabilities();
-            const retryDelay = Duration.fromMillis(1000);
+            const retryDelay = fromMilliseconds(1000);
             const taskCallback = jest.fn();
             
             const registrationsWithDuplicate = [
@@ -50,7 +50,7 @@ describe("schedule validation duplicate task names", () => {
 
         test("error has correct taskName property", async () => {
             const capabilities = getTestCapabilities();
-            const retryDelay = Duration.fromMillis(1000);
+            const retryDelay = fromMilliseconds(1000);
             const taskCallback = jest.fn();
             
             const registrationsWithDuplicate = [
@@ -77,7 +77,7 @@ describe("schedule validation duplicate task names", () => {
 
         test("first duplicate is detected (second occurrence throws error)", async () => {
             const capabilities = getTestCapabilities();
-            const retryDelay = Duration.fromMillis(1000);
+            const retryDelay = fromMilliseconds(1000);
             const taskCallback = jest.fn();
             
             // Place duplicate at different positions to ensure it's the second occurrence that triggers the error
@@ -96,7 +96,7 @@ describe("schedule validation duplicate task names", () => {
     describe("edge cases", () => {
         test("multiple different duplicates throw error for first duplicate found", async () => {
             const capabilities = getTestCapabilities();
-            const retryDelay = Duration.fromMillis(1000);
+            const retryDelay = fromMilliseconds(1000);
             const taskCallback = jest.fn();
             
             const registrationsWithMultipleDuplicates = [
@@ -113,7 +113,7 @@ describe("schedule validation duplicate task names", () => {
 
         test("case-sensitive duplicate detection", async () => {
             const capabilities = getTestCapabilities();
-            const retryDelay = Duration.fromMillis(1000);
+            const retryDelay = fromMilliseconds(1000);
             const taskCallback = jest.fn();
             
             // Different case should be treated as different tasks
@@ -132,7 +132,7 @@ describe("schedule validation duplicate task names", () => {
 
         test("whitespace differences treated as different task names", async () => {
             const capabilities = getTestCapabilities();
-            const retryDelay = Duration.fromMillis(1000);
+            const retryDelay = fromMilliseconds(1000);
             const taskCallback = jest.fn();
             
             const registrationsWithWhitespace = [
@@ -150,7 +150,7 @@ describe("schedule validation duplicate task names", () => {
 
         test("exact duplicate detection - same name exactly", async () => {
             const capabilities = getTestCapabilities();
-            const retryDelay = Duration.fromMillis(1000);
+            const retryDelay = fromMilliseconds(1000);
             const taskCallback = jest.fn();
             
             const registrationsWithExactDuplicate = [
@@ -170,8 +170,8 @@ describe("schedule validation duplicate task names", () => {
             // Invalid registration structure should fail before duplicate check
             const registrationsWithInvalidStructure = [
                 ["valid-task", "0 * * * *"],  // Missing callback and retryDelay
-                ["duplicate-task", "30 * * * *", jest.fn(), Duration.fromMillis(1000)],
-                ["duplicate-task", "45 * * * *", jest.fn(), Duration.fromMillis(1000)]  // Would be duplicate
+                ["duplicate-task", "30 * * * *", jest.fn(), fromMilliseconds(1000)],
+                ["duplicate-task", "45 * * * *", jest.fn(), fromMilliseconds(1000)]  // Would be duplicate
             ];
             
             // Should throw RegistrationShapeError, not ScheduleDuplicateTaskError
@@ -188,8 +188,8 @@ describe("schedule validation duplicate task names", () => {
             let duplicateError = null;
             try {
                 await capabilities.scheduler.initialize([
-                    ["duplicate", "0 * * * *", async () => {}, Duration.fromMillis(1000)],
-                    ["duplicate", "0 * * * *", async () => {}, Duration.fromMillis(1000)]
+                    ["duplicate", "0 * * * *", async () => {}, fromMilliseconds(1000)],
+                    ["duplicate", "0 * * * *", async () => {}, fromMilliseconds(1000)]
                 ]);
             } catch (error) {
                 duplicateError = error;

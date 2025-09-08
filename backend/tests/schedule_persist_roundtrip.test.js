@@ -2,7 +2,7 @@
  * Tests for schedule persistence roundtrip.
  */
 
-const { Duration } = require("luxon");
+const { fromMilliseconds } = require("../src/datetime");
 const { getMockedRootCapabilities } = require("./spies");
 const { stubEnvironment, stubLogger, stubDatetime, stubRuntimeStateStorage } = require("./stubs");
 
@@ -20,7 +20,7 @@ describe("schedule persist roundtrip", () => {
         const capabilities = getTestCapabilities();
         
         // Initialize scheduler with registrations
-        const retryDelay = Duration.fromMillis(5000);
+        const retryDelay = fromMilliseconds(5000);
         const callback = jest.fn();
         const registrations = [
             ["hourly-task", "0 * * * *", callback, retryDelay]

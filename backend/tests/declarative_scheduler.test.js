@@ -13,8 +13,7 @@ const {
     stubRuntimeStateStorage,
 } = require("./stubs");
 const { getMockedRootCapabilities } = require("./spies");
-const { Duration } = require("luxon");
-const { fromISOString, fromMilliseconds } = require("../src/datetime");
+const { fromISOString, fromMilliseconds, fromMinutes, fromDays } = require("../src/datetime");
 
 function getTestCapabilities() {
     const capabilities = getMockedRootCapabilities();
@@ -34,7 +33,7 @@ describe("Declarative Scheduler", () => {
             // This test verifies that first-time initialization works
             const capabilities = getTestCapabilities();
             const registrations = [
-                ["test-task", "0 * * * *", jest.fn(), Duration.fromObject({minutes: 5})],
+                ["test-task", "0 * * * *", jest.fn(), fromMinutes(5)],
             ];
 
             // Non-empty registrations should succeed on first-time setup (empty persisted state)
@@ -55,7 +54,7 @@ describe("Declarative Scheduler", () => {
         test("is idempotent - multiple calls have no additional effect", async () => {
             const capabilities = getTestCapabilities();
             const registrations = [
-                ["task1", "0 * * * *", jest.fn(), Duration.fromObject({minutes: 5})],
+                ["task1", "0 * * * *", jest.fn(), fromMinutes(5)],
             ];
 
             // First call should succeed
@@ -75,16 +74,16 @@ describe("Declarative Scheduler", () => {
 
             // First, set up some initial persisted state by calling initialize
             const initialRegistrations = [
-                ["task1", "0 * * * *", jest.fn(), Duration.fromObject({minutes: 5})],
-                ["task2", "0 0 * * *", jest.fn(), Duration.fromObject({minutes: 10})],
+                ["task1", "0 * * * *", jest.fn(), fromMinutes(5)],
+                ["task2", "0 0 * * *", jest.fn(), fromMinutes(10)],
             ];
 
             await capabilities.scheduler.initialize(initialRegistrations);
 
             // Now try to initialize with different tasks using SAME capabilities (same working directory)
             const differentRegistrations = [
-                ["task1", "0 * * * *", jest.fn(), Duration.fromObject({minutes: 5})], // same
-                ["task3", "0 0 * * *", jest.fn(), Duration.fromObject({minutes: 10})], // different name
+                ["task1", "0 * * * *", jest.fn(), fromMinutes(5)], // same
+                ["task3", "0 0 * * *", jest.fn(), fromMinutes(10)], // different name
             ];
 
             // This should now succeed (override behavior) instead of throwing
@@ -107,14 +106,14 @@ describe("Declarative Scheduler", () => {
 
             // Set up initial state
             const initialRegistrations = [
-                ["task1", "0 * * * *", jest.fn(), Duration.fromObject({minutes: 5})],
+                ["task1", "0 * * * *", jest.fn(), fromMinutes(5)],
             ];
 
             await capabilities.scheduler.initialize(initialRegistrations);
 
             // Try with different cron expression using same capabilities
             const changedRegistrations = [
-                ["task1", "0 0 * * *", jest.fn(), Duration.fromObject({minutes: 5})], // different cron
+                ["task1", "0 0 * * *", jest.fn(), fromMinutes(5)], // different cron
             ];
 
             // This should now succeed (override behavior) instead of throwing
@@ -143,14 +142,14 @@ describe("Declarative Scheduler", () => {
 
             // Set up initial state
             const initialRegistrations = [
-                ["task1", "0 * * * *", jest.fn(), Duration.fromObject({minutes: 5})],
+                ["task1", "0 * * * *", jest.fn(), fromMinutes(5)],
             ];
 
             await capabilities.scheduler.initialize(initialRegistrations);
 
             // Try with different retry delay using same capabilities
             const changedRegistrations = [
-                ["task1", "0 * * * *", jest.fn(), Duration.fromObject({minutes: 10})], // different retry delay
+                ["task1", "0 * * * *", jest.fn(), fromMinutes(10)], // different retry delay
             ];
 
             // This should now succeed (override behavior) instead of throwing
@@ -179,8 +178,8 @@ describe("Declarative Scheduler", () => {
 
             // First, set up some initial persisted state by calling initialize
             const initialRegistrations = [
-                ["task1", "0 * * * *", jest.fn(), Duration.fromObject({minutes: 5})],
-                ["task2", "0 0 * * *", jest.fn(), Duration.fromObject({minutes: 10})],
+                ["task1", "0 * * * *", jest.fn(), fromMinutes(5)],
+                ["task2", "0 0 * * *", jest.fn(), fromMinutes(10)],
             ];
 
             await capabilities.scheduler.initialize(initialRegistrations);
@@ -188,8 +187,8 @@ describe("Declarative Scheduler", () => {
 
             // Now try to initialize with different tasks using SAME capabilities (same working directory)
             const differentRegistrations = [
-                ["task1", "0 * * * *", jest.fn(), Duration.fromObject({minutes: 5})], // same
-                ["task3", "0 0 * * *", jest.fn(), Duration.fromObject({minutes: 10})], // different name
+                ["task1", "0 * * * *", jest.fn(), fromMinutes(5)], // same
+                ["task3", "0 0 * * *", jest.fn(), fromMinutes(10)], // different name
             ];
 
             // This should now succeed (override behavior) instead of throwing
@@ -212,7 +211,7 @@ describe("Declarative Scheduler", () => {
 
             // Set up initial state
             const initialRegistrations = [
-                ["task1", "0 * * * *", jest.fn(), Duration.fromObject({minutes: 5})],
+                ["task1", "0 * * * *", jest.fn(), fromMinutes(5)],
             ];
 
             await capabilities.scheduler.initialize(initialRegistrations);
@@ -220,7 +219,7 @@ describe("Declarative Scheduler", () => {
 
             // Try with different cron expression using same capabilities
             const changedRegistrations = [
-                ["task1", "0 0 * * *", jest.fn(), Duration.fromObject({minutes: 5})], // different cron
+                ["task1", "0 0 * * *", jest.fn(), fromMinutes(5)], // different cron
             ];
 
             // This should now succeed (override behavior) instead of throwing
@@ -249,7 +248,7 @@ describe("Declarative Scheduler", () => {
 
             // Set up initial state
             const initialRegistrations = [
-                ["task1", "0 * * * *", jest.fn(), Duration.fromObject({minutes: 5})],
+                ["task1", "0 * * * *", jest.fn(), fromMinutes(5)],
             ];
 
             await capabilities.scheduler.initialize(initialRegistrations);
@@ -257,7 +256,7 @@ describe("Declarative Scheduler", () => {
 
             // Try with different retry delay using same capabilities
             const changedRegistrations = [
-                ["task1", "0 * * * *", jest.fn(), Duration.fromObject({minutes: 10})], // different retry delay
+                ["task1", "0 * * * *", jest.fn(), fromMinutes(10)], // different retry delay
             ];
 
             // This should now succeed (override behavior) instead of throwing
@@ -286,15 +285,15 @@ describe("Declarative Scheduler", () => {
 
             // Set up initial state with two tasks
             const initialRegistrations = [
-                ["task1", "0 * * * *", jest.fn(), Duration.fromObject({minutes: 5})],
-                ["task2", "0 0 * * *", jest.fn(), Duration.fromObject({minutes: 10})],
+                ["task1", "0 * * * *", jest.fn(), fromMinutes(5)],
+                ["task2", "0 0 * * *", jest.fn(), fromMinutes(10)],
             ];
 
             await capabilities.scheduler.initialize(initialRegistrations);
 
             // Try with only one task (missing task2) using same capabilities
             const missingTaskRegistrations = [
-                ["task1", "0 * * * *", jest.fn(), Duration.fromObject({minutes: 5})],
+                ["task1", "0 * * * *", jest.fn(), fromMinutes(5)],
             ];
 
             // This should now succeed (override behavior) instead of throwing
@@ -316,15 +315,15 @@ describe("Declarative Scheduler", () => {
 
             // Set up initial state with one task
             const initialRegistrations = [
-                ["task1", "0 * * * *", jest.fn(), Duration.fromObject({minutes: 5})],
+                ["task1", "0 * * * *", jest.fn(), fromMinutes(5)],
             ];
 
             await capabilities.scheduler.initialize(initialRegistrations);
 
             // Try with extra task using same capabilities
             const extraTaskRegistrations = [
-                ["task1", "0 * * * *", jest.fn(), Duration.fromObject({minutes: 5})],
-                ["task2", "0 0 * * *", jest.fn(), Duration.fromObject({minutes: 10})], // extra task
+                ["task1", "0 * * * *", jest.fn(), fromMinutes(5)],
+                ["task2", "0 0 * * *", jest.fn(), fromMinutes(10)], // extra task
             ];
 
             // This should now succeed (override behavior) instead of throwing
@@ -346,8 +345,8 @@ describe("Declarative Scheduler", () => {
 
             // Set up initial state with two tasks
             const initialRegistrations = [
-                ["task1", "0 * * * *", jest.fn(), Duration.fromObject({minutes: 5})],
-                ["task2", "0 0 * * *", jest.fn(), Duration.fromObject({minutes: 10})],
+                ["task1", "0 * * * *", jest.fn(), fromMinutes(5)],
+                ["task2", "0 0 * * *", jest.fn(), fromMinutes(10)],
             ];
 
             await capabilities.scheduler.initialize(initialRegistrations);
@@ -356,7 +355,7 @@ describe("Declarative Scheduler", () => {
 
             // Try with only one task (missing task2) using same capabilities
             const missingTaskRegistrations = [
-                ["task1", "0 * * * *", jest.fn(), Duration.fromObject({minutes: 5})],
+                ["task1", "0 * * * *", jest.fn(), fromMinutes(5)],
             ];
 
             // This should now succeed (override behavior) instead of throwing
@@ -378,7 +377,7 @@ describe("Declarative Scheduler", () => {
 
             // Set up initial state with one task
             const initialRegistrations = [
-                ["task1", "0 * * * *", jest.fn(), Duration.fromObject({minutes: 5})],
+                ["task1", "0 * * * *", jest.fn(), fromMinutes(5)],
             ];
 
             await capabilities.scheduler.initialize(initialRegistrations);
@@ -387,8 +386,8 @@ describe("Declarative Scheduler", () => {
 
             // Try with extra task using same capabilities
             const extraTaskRegistrations = [
-                ["task1", "0 * * * *", jest.fn(), Duration.fromObject({minutes: 5})],
-                ["task2", "0 0 * * *", jest.fn(), Duration.fromObject({minutes: 10})], // extra task
+                ["task1", "0 * * * *", jest.fn(), fromMinutes(5)],
+                ["task2", "0 0 * * *", jest.fn(), fromMinutes(10)], // extra task
             ];
 
             // This should now succeed (override behavior) instead of throwing
@@ -410,16 +409,16 @@ describe("Declarative Scheduler", () => {
 
             // Set up initial state
             const initialRegistrations = [
-                ["task1", "0 * * * *", jest.fn(), Duration.fromObject({minutes: 5})],
-                ["task2", "0 0 * * *", jest.fn(), Duration.fromObject({minutes: 10})],
+                ["task1", "0 * * * *", jest.fn(), fromMinutes(5)],
+                ["task2", "0 0 * * *", jest.fn(), fromMinutes(10)],
             ];
 
             await capabilities.scheduler.initialize(initialRegistrations);
 
             // Create complex mismatch scenario using same capabilities
             const mismatchedRegistrations = [
-                ["task1", "0 0,2,4,6,8,10,12,14,16,18,20,22 * * *", jest.fn(), Duration.fromObject({minutes: 30})], // different cron + retry delay
-                ["task3", "0 0 * * *", jest.fn(), Duration.fromObject({minutes: 10})], // extra task (task2 is missing)
+                ["task1", "0 0,2,4,6,8,10,12,14,16,18,20,22 * * *", jest.fn(), fromMinutes(30)], // different cron + retry delay
+                ["task3", "0 0 * * *", jest.fn(), fromMinutes(10)], // extra task (task2 is missing)
             ];
 
             // This should now succeed (override behavior) instead of throwing
@@ -440,8 +439,8 @@ describe("Declarative Scheduler", () => {
                         expect.objectContaining({
                             name: "task1",
                             field: "retryDelayMs",
-                            from: Duration.fromObject({minutes: 5}).toMillis(),
-                            to: Duration.fromObject({minutes: 30}).toMillis()
+                            from: fromMinutes(5).toMillis(),
+                            to: fromMinutes(30).toMillis()
                         })
                     ]),
                     totalChanges: 4 // 1 removed + 1 added + 2 modified fields
@@ -467,8 +466,8 @@ describe("Declarative Scheduler", () => {
 
             // Set up initial state
             const initialRegistrations = [
-                ["task1", "0 * * * *", callback1, Duration.fromObject({minutes: 5})],
-                ["task2", "0 * * * *", callback2, Duration.fromObject({minutes: 10})],
+                ["task1", "0 * * * *", callback1, fromMinutes(5)],
+                ["task2", "0 * * * *", callback2, fromMinutes(10)],
             ];
 
             await capabilities.scheduler.initialize(initialRegistrations);
@@ -485,12 +484,12 @@ describe("Declarative Scheduler", () => {
 
             // Create complex mismatch scenario using same capabilities
             const mismatchedRegistrations = [
-                ["task1", "0 0 * * *", callback1, Duration.fromObject({minutes: 30})], // different cron + retry delay
-                ["task3", "0 * * * *", callback3, Duration.fromObject({minutes: 10})], // extra task (task2 is missing)
+                ["task1", "0 0 * * *", callback1, fromMinutes(30)], // different cron + retry delay
+                ["task3", "0 * * * *", callback3, fromMinutes(10)], // extra task (task2 is missing)
             ];
 
             await capabilities.scheduler.stop();
-            dateControl.advanceByDuration(Duration.fromObject({ days: 1 }));
+            dateControl.advanceByDuration(fromDays(1));
 
             // This should now succeed (override behavior) instead of throwing
             await expect(capabilities.scheduler.initialize(mismatchedRegistrations)).resolves.toBeUndefined();
@@ -510,8 +509,8 @@ describe("Declarative Scheduler", () => {
                         expect.objectContaining({
                             name: "task1",
                             field: "retryDelayMs",
-                            from: Duration.fromObject({minutes: 5}).toMillis(),
-                            to: Duration.fromObject({minutes: 30}).toMillis()
+                            from: fromMinutes(5).toMillis(),
+                            to: fromMinutes(30).toMillis()
                         })
                     ]),
                     totalChanges: 4 // 1 removed + 1 added + 2 modified fields
@@ -549,8 +548,8 @@ describe("Declarative Scheduler", () => {
 
             // Set up initial state
             const initialRegistrations = [
-                ["task1", "0 0 * * *", callback1, Duration.fromObject({minutes: 5})],
-                ["task2", "0 0 * * *", callback2, Duration.fromObject({minutes: 5})],
+                ["task1", "0 0 * * *", callback1, fromMinutes(5)],
+                ["task2", "0 0 * * *", callback2, fromMinutes(5)],
             ];
 
             await capabilities.scheduler.initialize(initialRegistrations);
@@ -567,12 +566,12 @@ describe("Declarative Scheduler", () => {
 
             // Create complex mismatch scenario using same capabilities
             const mismatchedRegistrations = [
-                ["task1", "0 0 * * *", callback1, Duration.fromObject({minutes: 5})],
-                ["task3", "0 0 * * *", callback3, Duration.fromObject({minutes: 5})], // extra task (task2 is missing)
+                ["task1", "0 0 * * *", callback1, fromMinutes(5)],
+                ["task3", "0 0 * * *", callback3, fromMinutes(5)], // extra task (task2 is missing)
             ];
 
             await capabilities.scheduler.stop();
-            dateControl.advanceByDuration(Duration.fromObject({ minutes: 10 }));
+            dateControl.advanceByDuration(fromMinutes(10));
 
             // This should now succeed (override behavior) instead of throwing
             await expect(capabilities.scheduler.initialize(mismatchedRegistrations)).resolves.toBeUndefined();
@@ -589,7 +588,7 @@ describe("Declarative Scheduler", () => {
             expect(callback2).toHaveBeenCalledTimes(1);
             expect(callback3).toHaveBeenCalledTimes(0);
 
-            dateControl.advanceByDuration(Duration.fromObject({ days: 10 }));
+            dateControl.advanceByDuration(fromDays(10));
 
             await schedulerControl.waitForNextCycleEnd();
 
@@ -616,8 +615,8 @@ describe("Declarative Scheduler", () => {
         test("logs appropriate messages for first-time initialization", async () => {
             const capabilities = getTestCapabilities();
             const registrations = [
-                ["task1", "0 * * * *", jest.fn(), Duration.fromObject({minutes: 5})],
-                ["task2", "0 0 * * *", jest.fn(), Duration.fromObject({minutes: 10})],
+                ["task1", "0 * * * *", jest.fn(), fromMinutes(5)],
+                ["task2", "0 0 * * *", jest.fn(), fromMinutes(10)],
             ];
 
             await capabilities.scheduler.initialize(registrations);
@@ -648,9 +647,9 @@ describe("Declarative Scheduler", () => {
 
             // Set up initial state with 3 tasks
             const initialRegistrations = [
-                ["task1", "0 * * * *", jest.fn(), Duration.fromObject({minutes: 5})],
-                ["task2", "0 0 * * *", jest.fn(), Duration.fromObject({minutes: 10})],
-                ["task3", "0 2 * * *", jest.fn(), Duration.fromObject({minutes: 15})],
+                ["task1", "0 * * * *", jest.fn(), fromMinutes(5)],
+                ["task2", "0 0 * * *", jest.fn(), fromMinutes(10)],
+                ["task3", "0 2 * * *", jest.fn(), fromMinutes(15)],
             ];
 
             await capabilities.scheduler.initialize(initialRegistrations);
@@ -658,9 +657,9 @@ describe("Declarative Scheduler", () => {
 
             // Mixed scenario: task1 unchanged, task2 cron change, task3 retry change
             const mixedRegistrations = [
-                ["task1", "0 * * * *", jest.fn(), Duration.fromObject({minutes: 5})], // unchanged
-                ["task2", "0 1 * * *", jest.fn(), Duration.fromObject({minutes: 10})], // cron changed
-                ["task3", "0 2 * * *", jest.fn(), Duration.fromObject({minutes: 30})], // retry changed
+                ["task1", "0 * * * *", jest.fn(), fromMinutes(5)], // unchanged
+                ["task2", "0 1 * * *", jest.fn(), fromMinutes(10)], // cron changed
+                ["task3", "0 2 * * *", jest.fn(), fromMinutes(30)], // retry changed
             ];
 
             await expect(capabilities.scheduler.initialize(mixedRegistrations)).resolves.toBeUndefined();
@@ -680,8 +679,8 @@ describe("Declarative Scheduler", () => {
                         expect.objectContaining({
                             name: "task3",
                             field: "retryDelayMs",
-                            from: Duration.fromObject({minutes: 15}).toMillis(),
-                            to: Duration.fromObject({minutes: 30}).toMillis()
+                            from: fromMinutes(15).toMillis(),
+                            to: fromMinutes(30).toMillis()
                         })
                     ]),
                     totalChanges: 2
@@ -705,8 +704,8 @@ describe("Declarative Scheduler", () => {
 
             // Set up initial state
             const initialRegistrations = [
-                ["task1", "0 0 * * *", callback1, Duration.fromObject({minutes: 5})],
-                ["task2", "0 0 * * *", callback2, Duration.fromObject({minutes: 5})],
+                ["task1", "0 0 * * *", callback1, fromMinutes(5)],
+                ["task2", "0 0 * * *", callback2, fromMinutes(5)],
             ];
 
             await capabilities.scheduler.initialize(initialRegistrations);
@@ -727,12 +726,12 @@ describe("Declarative Scheduler", () => {
                 }
             });
 
-            dateControl.advanceByDuration(Duration.fromObject({ minutes: 10 }));
+            dateControl.advanceByDuration(fromMinutes(10));
 
             // Restart with configuration change for task2 (both override and orphaned tasks)
             const changedRegistrations = [
-                ["task1", "0 0 * * *", callback1, Duration.fromObject({minutes: 5})], // same config, but orphaned
-                ["task2", "0 1 * * *", callback2, Duration.fromObject({minutes: 10})], // config changed
+                ["task1", "0 0 * * *", callback1, fromMinutes(5)], // same config, but orphaned
+                ["task2", "0 1 * * *", callback2, fromMinutes(10)], // config changed
             ];
 
             await expect(capabilities.scheduler.initialize(changedRegistrations)).resolves.toBeUndefined();
@@ -786,7 +785,7 @@ describe("Declarative Scheduler", () => {
 
             // Set up initial state with one task
             const initialRegistrations = [
-                ["task1", "0 0 * * *", callback1, Duration.fromObject({minutes: 5})],
+                ["task1", "0 0 * * *", callback1, fromMinutes(5)],
             ];
 
             await capabilities.scheduler.initialize(initialRegistrations);
@@ -794,8 +793,8 @@ describe("Declarative Scheduler", () => {
 
             // Add a new task that should NOT execute immediately (cron doesn't match current time)
             const registrationsWithNewTask = [
-                ["task1", "0 1 * * *", callback1, Duration.fromObject({minutes: 5})], // config changed 
-                ["task2", "0 0 * * *", callback2, Duration.fromObject({minutes: 5})], // new task, cron doesn't match 00:05
+                ["task1", "0 1 * * *", callback1, fromMinutes(5)], // config changed 
+                ["task2", "0 0 * * *", callback2, fromMinutes(5)], // new task, cron doesn't match 00:05
             ];
 
             await expect(capabilities.scheduler.initialize(registrationsWithNewTask)).resolves.toBeUndefined();
@@ -818,7 +817,7 @@ describe("Declarative Scheduler", () => {
 
             const registrations = [
                 // Task that should run every 15 minutes
-                ["test-task", "0,15,30,45 * * * *", taskCallback, Duration.fromObject({minutes: 5})],
+                ["test-task", "0,15,30,45 * * * *", taskCallback, fromMinutes(5)],
             ];
 
             const capabilities = getTestCapabilities();
@@ -845,7 +844,7 @@ describe("Declarative Scheduler", () => {
             const taskCallback = jest.fn().mockResolvedValue(undefined);
 
             const registrations = [
-                ["test-task", "0 * * * *", taskCallback, Duration.fromObject({minutes: 5})],
+                ["test-task", "0 * * * *", taskCallback, fromMinutes(5)],
             ];
 
             const capabilities = getTestCapabilities();

@@ -2,7 +2,7 @@
  * Tests for declarative scheduler duplicate task handling.
  */
 
-const { Duration } = require("luxon");
+const { fromMilliseconds } = require("../src/datetime");
 const { getMockedRootCapabilities } = require("./spies");
 const { stubEnvironment, stubLogger, stubDatetime, stubSleeper, stubScheduler } = require("./stubs");
 
@@ -19,7 +19,7 @@ function getTestCapabilities() {
 describe("declarative scheduler duplicate task handling", () => {
     test("allows idempotent initialization with same registrations", async () => {
         const capabilities = getTestCapabilities();
-        const retryDelay = Duration.fromMillis(0);
+        const retryDelay = fromMilliseconds(0);
         const taskCallback = jest.fn();
         
         const registrations = [
@@ -39,7 +39,7 @@ describe("declarative scheduler duplicate task handling", () => {
 
     test("throws ScheduleDuplicateTaskError for duplicate task names within registration set", async () => {
         const capabilities = getTestCapabilities();
-        const retryDelay = Duration.fromMillis(0);
+        const retryDelay = fromMilliseconds(0);
         const taskCallback = jest.fn();
         
         // The declarative scheduler now strictly prohibits duplicate names

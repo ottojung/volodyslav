@@ -6,7 +6,7 @@
 const { isRunning } = require("../src/scheduler/task/methods");
 const { makeTask, createStateFromProperties, getLastAttemptTime, getLastSuccessTime, getLastFailureTime, getPendingRetryUntil, getSchedulerIdentifier } = require("../src/scheduler/task/structure");
 const { parseCronExpression } = require("../src/scheduler/expression");
-const { Duration } = require("luxon");
+const { fromMilliseconds } = require("../src/datetime");
 const { fromISOString } = require("../src/datetime");
 
 describe("scheduler task methods edge cases", () => {
@@ -16,7 +16,7 @@ describe("scheduler task methods edge cases", () => {
             name: "test-task",
             parsedCron: parseCronExpression("0 * * * *"),
             callback: jest.fn(),
-            retryDelay: Duration.fromMillis(5000),
+            retryDelay: fromMilliseconds(5000),
             lastSuccessTime: undefined,
             lastFailureTime: undefined,
             lastAttemptTime: undefined,
@@ -295,7 +295,7 @@ describe("scheduler task methods edge cases", () => {
             const name = "test-task";
             const parsedCron = parseCronExpression("0 * * * *");
             const callback = jest.fn();
-            const retryDelay = Duration.fromMillis(5000);
+            const retryDelay = fromMilliseconds(5000);
             
             // Test AwaitingRetry state (pendingRetryUntil + lastFailureTime)
             const lastFailureTime = fromISOString("2024-01-01T11:00:00.000Z");
@@ -389,7 +389,7 @@ describe("scheduler task methods edge cases", () => {
                 "test-task",
                 parseCronExpression("0 * * * *"),
                 jest.fn(),
-                Duration.fromMillis(5000),
+                fromMilliseconds(5000),
                 state
             );
 

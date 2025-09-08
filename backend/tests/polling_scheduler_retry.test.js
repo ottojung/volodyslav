@@ -3,7 +3,7 @@
  * Focuses on retry delay validation and configuration rather than execution.
  */
 
-const { Duration } = require("luxon");
+const { fromMilliseconds } = require("../src/datetime");
 const { getMockedRootCapabilities } = require("./spies");
 const { stubEnvironment, stubLogger, stubDatetime, stubSleeper, stubScheduler } = require("./stubs");
 
@@ -24,9 +24,9 @@ describe("declarative scheduler retry configuration", () => {
         
         // Test various valid retry delays
         const registrations = [
-            ["retry-task-1", "0 * * * *", taskCallback, Duration.fromMillis(100)],
-            ["retry-task-2", "0 * * * *", taskCallback, Duration.fromMillis(5000)],
-            ["retry-task-3", "0 * * * *", taskCallback, Duration.fromMillis(60000)]
+            ["retry-task-1", "0 * * * *", taskCallback, fromMilliseconds(100)],
+            ["retry-task-2", "0 * * * *", taskCallback, fromMilliseconds(5000)],
+            ["retry-task-3", "0 * * * *", taskCallback, fromMilliseconds(60000)]
         ];
         
         // Should succeed with valid retry configurations
@@ -41,7 +41,7 @@ describe("declarative scheduler retry configuration", () => {
         const taskCallback = jest.fn();
         
         const registrations = [
-            ["no-retry-task", "0 * * * *", taskCallback, Duration.fromMillis(0)]
+            ["no-retry-task", "0 * * * *", taskCallback, fromMilliseconds(0)]
         ];
         
         // Zero retry delay should be valid (immediate retry)

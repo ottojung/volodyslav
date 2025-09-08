@@ -3,7 +3,7 @@
  * These tests specifically validate the new DateTime deserialization capabilities.
  */
 
-const { Duration } = require("luxon");
+const { fromMilliseconds } = require("../src/datetime");
 const { parseCronExpression } = require("../src/scheduler/expression");
 const { tryDeserialize } = require("../src/scheduler/task/serialization");
 const { getLastSuccessTime, getLastFailureTime, getLastAttemptTime, getPendingRetryUntil } = require("../src/scheduler/task/structure");
@@ -20,7 +20,7 @@ describe("scheduler task DateTime deserialization", () => {
         registrations.set("test-task", {
             parsedCron: parseCronExpression("0 * * * *"),
             callback: () => {},
-            retryDelay: Duration.fromMillis(5000),
+            retryDelay: fromMilliseconds(5000),
         });
         return registrations;
     }

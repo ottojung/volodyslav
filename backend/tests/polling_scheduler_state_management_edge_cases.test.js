@@ -3,7 +3,6 @@
  * Focuses on scheduler robustness, error handling, and consistent behavior.
  */
 
-const { Duration } = require("luxon");
 const { fromISOString, fromHours, fromMilliseconds } = require("../src/datetime");
 const { getMockedRootCapabilities } = require("./spies");
 const { stubEnvironment, stubLogger, stubDatetime, stubSleeper, stubRuntimeStateStorage, stubScheduler, getSchedulerControl, getDatetimeControl } = require("./stubs");
@@ -25,7 +24,7 @@ describe("declarative scheduler state management robustness", () => {
     describe("initialization edge cases", () => {
         test("should throw ScheduleDuplicateTaskError for duplicate task names in registration", async () => {
             const capabilities = getTestCapabilities();
-            const retryDelay = Duration.fromMillis(5000);
+            const retryDelay = fromMilliseconds(5000);
             const taskCallback = jest.fn();
             
             // Registrations with duplicate task names should throw an error
@@ -43,7 +42,7 @@ describe("declarative scheduler state management robustness", () => {
             const capabilities = getTestCapabilities();
         const schedulerControl = getSchedulerControl(capabilities);
         schedulerControl.setPollingInterval(fromMilliseconds(1));
-            const retryDelay = Duration.fromMillis(5000);
+            const retryDelay = fromMilliseconds(5000);
             const taskCallback = jest.fn();
             
             const registrations = [
@@ -71,7 +70,7 @@ describe("declarative scheduler state management robustness", () => {
             const capabilities = getTestCapabilities();
         const schedulerControl = getSchedulerControl(capabilities);
         schedulerControl.setPollingInterval(fromMilliseconds(1));
-            const veryLargeDelay = Duration.fromMillis(365 * 24 * 60 * 60 * 1000); // 1 year
+            const veryLargeDelay = fromMilliseconds(365 * 24 * 60 * 60 * 1000); // 1 year
             const taskCallback = jest.fn(() => {
                 throw new Error("Task failure");
             });
@@ -96,7 +95,7 @@ describe("declarative scheduler state management robustness", () => {
             const capabilities = getTestCapabilities();
         const schedulerControl = getSchedulerControl(capabilities);
         schedulerControl.setPollingInterval(fromMilliseconds(1));
-            const veryShortDelay = Duration.fromMillis(1); // 1ms
+            const veryShortDelay = fromMilliseconds(1); // 1ms
             let callCount = 0;
             const taskCallback = jest.fn(() => {
                 callCount++;
@@ -128,7 +127,7 @@ describe("declarative scheduler state management robustness", () => {
             const timeControl = getDatetimeControl(capabilities);
             const schedulerControl = getSchedulerControl(capabilities);
             schedulerControl.setPollingInterval(fromMilliseconds(1));
-            const retryDelay = Duration.fromMillis(5000);
+            const retryDelay = fromMilliseconds(5000);
             
             // Set time to avoid immediate execution for "0 * * * *" schedule  
             const startTime = fromISOString("2021-01-01T00:05:00.000Z"); // 2021-01-01T00:05:00.000Z
@@ -170,7 +169,7 @@ describe("declarative scheduler state management robustness", () => {
             const capabilities = getTestCapabilities();
         const schedulerControl = getSchedulerControl(capabilities);
         schedulerControl.setPollingInterval(fromMilliseconds(1));
-            const retryDelay = Duration.fromMillis(5000);
+            const retryDelay = fromMilliseconds(5000);
             
             let memoryAccumulator = [];
             const memoryLeakingCallback = jest.fn(() => {
@@ -205,7 +204,7 @@ describe("declarative scheduler state management robustness", () => {
             const capabilities = getTestCapabilities();
         const schedulerControl = getSchedulerControl(capabilities);
         schedulerControl.setPollingInterval(fromMilliseconds(1));
-            const retryDelay = Duration.fromMillis(5000);
+            const retryDelay = fromMilliseconds(5000);
             
             let throwCount = 0;
             const weirdThrowingCallback = jest.fn(() => {
@@ -244,7 +243,7 @@ describe("declarative scheduler state management robustness", () => {
             const capabilities = getTestCapabilities();
         const schedulerControl = getSchedulerControl(capabilities);
         schedulerControl.setPollingInterval(fromMilliseconds(1));
-            const retryDelay = Duration.fromMillis(5000);
+            const retryDelay = fromMilliseconds(5000);
             const taskCallback = jest.fn();
             
             const registrations = [
@@ -267,7 +266,7 @@ describe("declarative scheduler state management robustness", () => {
             const capabilities = getTestCapabilities();
         const schedulerControl = getSchedulerControl(capabilities);
         schedulerControl.setPollingInterval(fromMilliseconds(1));
-            const retryDelay = Duration.fromMillis(5000);
+            const retryDelay = fromMilliseconds(5000);
             const taskCallback = jest.fn();
             
             const registrations = [
@@ -300,7 +299,7 @@ describe("declarative scheduler state management robustness", () => {
 
         test("should handle multiple stop calls", async () => {
             const capabilities = getTestCapabilities();
-            const retryDelay = Duration.fromMillis(5000);
+            const retryDelay = fromMilliseconds(5000);
             const taskCallback = jest.fn();
             
             const registrations = [
@@ -325,7 +324,7 @@ describe("declarative scheduler state management robustness", () => {
             const timeControl = getDatetimeControl(capabilities);
             const schedulerControl = getSchedulerControl(capabilities);
             schedulerControl.setPollingInterval(fromMilliseconds(1));
-            const retryDelay = Duration.fromMillis(5000);
+            const retryDelay = fromMilliseconds(5000);
             
             // Set time to avoid immediate execution for "0 * * * *" schedule
             const startTime = fromISOString("2021-01-01T00:05:00.000Z"); // 2021-01-01T00:05:00.000Z

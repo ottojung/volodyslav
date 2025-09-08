@@ -3,7 +3,6 @@
  * Ensures tasks can run concurrently without blocking each other.
  */
 
-const { Duration } = require("luxon");
 const { fromISOString, fromHours, fromMilliseconds, fromMinutes } = require("../src/datetime");
 const { getMockedRootCapabilities } = require("./spies");
 const { stubEnvironment, stubLogger, stubDatetime, stubSleeper, getDatetimeControl, stubScheduler, getSchedulerControl, stubRuntimeStateStorage } = require("./stubs");
@@ -24,7 +23,7 @@ describe("declarative scheduler parallel execution", () => {
         const capabilities = getTestCapabilities();
         const schedulerControl = getSchedulerControl(capabilities);
         schedulerControl.setPollingInterval(fromMilliseconds(1));
-        const retryDelay = Duration.fromMillis(5000);
+        const retryDelay = fromMilliseconds(5000);
 
         let task1StartTime = null;
         let task2StartTime = null;
@@ -71,7 +70,7 @@ describe("declarative scheduler parallel execution", () => {
         const timeControl = getDatetimeControl(capabilities);
         const schedulerControl = getSchedulerControl(capabilities);
         schedulerControl.setPollingInterval(fromMilliseconds(1));
-        const retryDelay = Duration.fromMillis(5000);
+        const retryDelay = fromMilliseconds(5000);
 
         // Set time to avoid immediate execution for "0 * * * *" schedule
         const startTime = fromISOString("2021-01-01T00:05:00.000Z"); // 2021-01-01T00:05:00.000Z
@@ -122,7 +121,7 @@ describe("declarative scheduler parallel execution", () => {
         const timeControl = getDatetimeControl(capabilities);
         const schedulerControl = getSchedulerControl(capabilities);
         schedulerControl.setPollingInterval(fromMilliseconds(1));
-        const retryDelay = Duration.fromMillis(5000);
+        const retryDelay = fromMilliseconds(5000);
 
         // Set time to avoid immediate execution for "0 * * * *" schedule
         const startTime = fromISOString("2021-01-01T00:05:00.000Z"); // 2021-01-01T00:05:00.000Z
@@ -171,7 +170,7 @@ describe("declarative scheduler parallel execution", () => {
         const timeControl = getDatetimeControl(capabilities);
         const schedulerControl = getSchedulerControl(capabilities);
         schedulerControl.setPollingInterval(fromMilliseconds(1));
-        const retryDelay = Duration.fromMillis(1000);
+        const retryDelay = fromMilliseconds(1000);
 
         // Set time to avoid immediate execution for "0 * * * *" schedule
         const startTime = fromISOString("2021-01-01T00:05:00.000Z"); // 2021-01-01T00:05:00.000Z
@@ -220,7 +219,7 @@ describe("declarative scheduler parallel execution", () => {
         const schedulerControl = getSchedulerControl(capabilities);
         schedulerControl.setPollingInterval(fromMilliseconds(1));
         const timeControl = getDatetimeControl(capabilities);
-        const retryDelay = Duration.fromMillis(500); // Short retry for faster testing
+        const retryDelay = fromMilliseconds(500); // Short retry for faster testing
 
         // Set time to avoid immediate execution for "0 * * * *" schedule
         const startTime = fromISOString("2021-01-01T00:05:00.000Z"); // 2021-01-01T00:05:00.000Z

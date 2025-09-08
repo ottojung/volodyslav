@@ -7,7 +7,6 @@
  *
  */
 
-const { Duration } = require("luxon");
 const { getMockedRootCapabilities } = require("./spies");
 const { stubEnvironment, stubLogger, stubDatetime, stubSleeper, getDatetimeControl, stubRuntimeStateStorage, stubScheduler, getSchedulerControl } = require("./stubs");
 const { fromISOString, fromDays, fromMilliseconds, fromHours, fromMinutes } = require("../src/datetime");
@@ -28,7 +27,7 @@ describe("scheduler calculator edge cases", () => {
         const capabilities = getTestCapabilities();
         const timeControl = getDatetimeControl(capabilities);
         const schedulerControl = getSchedulerControl(capabilities);
-        const retryDelay = Duration.fromMillis(1000);
+        const retryDelay = fromMilliseconds(1000);
 
         const taskCallback = jest.fn();
         const executionTimes = [];
@@ -110,7 +109,7 @@ describe("scheduler calculator edge cases", () => {
         const capabilities = getTestCapabilities();
         const timeControl = getDatetimeControl(capabilities);
         const schedulerControl = getSchedulerControl(capabilities);
-        const retryDelay = Duration.fromMillis(1000);
+        const retryDelay = fromMilliseconds(1000);
 
         const taskCallback = jest.fn();
         const executionTimes = [];
@@ -192,7 +191,7 @@ describe("scheduler calculator edge cases", () => {
         const capabilities = getTestCapabilities();
         const timeControl = getDatetimeControl(capabilities);
         const schedulerControl = getSchedulerControl(capabilities);
-        const retryDelay = Duration.fromMillis(1000);
+        const retryDelay = fromMilliseconds(1000);
 
         const taskCallback = jest.fn();
         const executionTimes = [];
@@ -284,7 +283,7 @@ describe("scheduler calculator edge cases", () => {
         const capabilities = getTestCapabilities();
         const timeControl = getDatetimeControl(capabilities);
         const schedulerControl = getSchedulerControl(capabilities);
-        const retryDelay = Duration.fromMillis(1000);
+        const retryDelay = fromMilliseconds(1000);
 
         const taskCallback = jest.fn();
         const executionTimes = [];
@@ -349,7 +348,7 @@ describe("scheduler calculator edge cases", () => {
         const capabilities = getTestCapabilities();
         const timeControl = getDatetimeControl(capabilities);
         const schedulerControl = getSchedulerControl(capabilities);
-        const retryDelay = Duration.fromMillis(1000);
+        const retryDelay = fromMilliseconds(1000);
 
         const taskCallback = jest.fn();
         const executionTimes = [];
@@ -439,7 +438,7 @@ describe("scheduler calculator edge cases", () => {
         const capabilities = getTestCapabilities();
         const timeControl = getDatetimeControl(capabilities);
         const schedulerControl = getSchedulerControl(capabilities);
-        const retryDelay = Duration.fromMillis(1000);
+        const retryDelay = fromMilliseconds(1000);
 
         const taskCallback = jest.fn();
 
@@ -482,7 +481,7 @@ describe("scheduler calculator edge cases", () => {
         const capabilities = getTestCapabilities();
         const timeControl = getDatetimeControl(capabilities);
         const schedulerControl = getSchedulerControl(capabilities);
-        const retryDelay = Duration.fromMillis(1000);
+        const retryDelay = fromMilliseconds(1000);
 
         const taskCallback = jest.fn();
         const executionTimes = [];
@@ -533,7 +532,7 @@ describe("scheduler calculator edge cases", () => {
         const capabilities = getTestCapabilities();
         const timeControl = getDatetimeControl(capabilities);
         const schedulerControl = getSchedulerControl(capabilities);
-        const retryDelay = Duration.fromMillis(1000);
+        const retryDelay = fromMilliseconds(1000);
 
         const taskCallback = jest.fn();
 
@@ -574,7 +573,7 @@ describe("scheduler calculator edge cases", () => {
         const capabilities = getTestCapabilities();
         const timeControl = getDatetimeControl(capabilities);
         const schedulerControl = getSchedulerControl(capabilities);
-        const retryDelay = Duration.fromMillis(1000);
+        const retryDelay = fromMilliseconds(1000);
 
         const taskCallback = jest.fn();
 
@@ -615,7 +614,7 @@ describe("scheduler calculator edge cases", () => {
         const capabilities = getTestCapabilities();
         const timeControl = getDatetimeControl(capabilities);
         const schedulerControl = getSchedulerControl(capabilities);
-        const retryDelay = Duration.fromMillis(1000);
+        const retryDelay = fromMilliseconds(1000);
 
         const taskCallback = jest.fn();
 
@@ -662,7 +661,7 @@ describe("scheduler calculator edge cases", () => {
         const capabilities = getTestCapabilities();
         const timeControl = getDatetimeControl(capabilities);
         const schedulerControl = getSchedulerControl(capabilities);
-        const retryDelay = Duration.fromMillis(1000);
+        const retryDelay = fromMilliseconds(1000);
 
         const taskCallback = jest.fn();
         const start = fromISOString("2025-01-02T10:00:00.000Z");
@@ -692,7 +691,7 @@ describe("scheduler calculator edge cases", () => {
         const capabilities = getTestCapabilities();
         const timeControl = getDatetimeControl(capabilities);
         const schedulerControl = getSchedulerControl(capabilities);
-        const retryDelay = Duration.fromMillis(1000);
+        const retryDelay = fromMilliseconds(1000);
         const cb = jest.fn();
 
         // Jan 1, 2025 (Wed). Cron: 09:00 on day 1 OR any Monday 09:00
@@ -725,7 +724,7 @@ describe("scheduler calculator edge cases", () => {
         const capabilities = getTestCapabilities();
         const timeControl = getDatetimeControl(capabilities);
         const schedulerControl = getSchedulerControl(capabilities);
-        const retryDelay = Duration.fromMillis(1000);
+        const retryDelay = fromMilliseconds(1000);
         const cb = jest.fn();
 
         // Cron: 10:15 daily
@@ -757,7 +756,7 @@ describe("scheduler calculator edge cases", () => {
         const capabilities = getTestCapabilities();
         const timeControl = getDatetimeControl(capabilities);
         const schedulerControl = getSchedulerControl(capabilities);
-        const retryDelay = Duration.fromMillis(1000);
+        const retryDelay = fromMilliseconds(1000);
         const cb = jest.fn();
 
         const start = fromISOString("2025-01-02T10:00:00.000Z");
@@ -784,7 +783,7 @@ describe("scheduler calculator edge cases", () => {
         const capabilities = getTestCapabilities();
         const timeControl = getDatetimeControl(capabilities);
         const schedulerControl = getSchedulerControl(capabilities);
-        const retryDelay = Duration.fromMillis(1000);
+        const retryDelay = fromMilliseconds(1000);
         const cb = jest.fn();
 
         // Start April 1st, 2025
@@ -812,7 +811,7 @@ describe("scheduler calculator edge cases", () => {
         const capabilities = getTestCapabilities();
         const timeControl = getDatetimeControl(capabilities);
         const schedulerControl = getSchedulerControl(capabilities);
-        const retryDelay = Duration.fromMillis(1000);
+        const retryDelay = fromMilliseconds(1000);
         const cb = jest.fn();
 
         // Start Feb 1, 2025 (non-leap)
@@ -840,7 +839,7 @@ describe("scheduler calculator edge cases", () => {
         const capabilities = getTestCapabilities();
         const timeControl = getDatetimeControl(capabilities);
         const schedulerControl = getSchedulerControl(capabilities);
-        const retryDelay = Duration.fromMillis(1000);
+        const retryDelay = fromMilliseconds(1000);
         const cb = jest.fn();
 
         // Start exactly at 2025-01-20 00:00Z, cron fires at 00:00 on day 20
@@ -864,7 +863,7 @@ describe("scheduler calculator edge cases", () => {
         const capabilities = getTestCapabilities();
         const timeControl = getDatetimeControl(capabilities);
         const schedulerControl = getSchedulerControl(capabilities);
-        const retryDelay = Duration.fromMillis(1000);
+        const retryDelay = fromMilliseconds(1000);
         const cb = jest.fn();
 
         const start = fromISOString("2025-01-14T10:07:00.000Z");
@@ -895,7 +894,7 @@ describe("scheduler calculator edge cases", () => {
         const capabilities = getTestCapabilities();
         const timeControl = getDatetimeControl(capabilities);
         const schedulerControl = getSchedulerControl(capabilities);
-        const retryDelay = Duration.fromMillis(1000);
+        const retryDelay = fromMilliseconds(1000);
         const cb = jest.fn();
 
         const start = fromISOString("2025-01-14T18:30:00.000Z");
@@ -922,7 +921,7 @@ describe("scheduler calculator edge cases", () => {
         const capabilities = getTestCapabilities();
         const timeControl = getDatetimeControl(capabilities);
         const schedulerControl = getSchedulerControl(capabilities);
-        const retryDelay = Duration.fromMillis(1000);
+        const retryDelay = fromMilliseconds(1000);
 
         const cb1 = jest.fn();
         const cb2 = jest.fn();
@@ -952,7 +951,7 @@ describe("scheduler calculator edge cases", () => {
         const capabilities = getTestCapabilities();
         const timeControl = getDatetimeControl(capabilities);
         const schedulerControl = getSchedulerControl(capabilities);
-        const retryDelay = Duration.fromMillis(1000);
+        const retryDelay = fromMilliseconds(1000);
         const cb = jest.fn();
 
         // Start Wed Jan 1, 2025; next Monday is Jan 6
@@ -980,7 +979,7 @@ describe("scheduler calculator edge cases", () => {
         const capabilities = getTestCapabilities();
         const timeControl = getDatetimeControl(capabilities);
         const schedulerControl = getSchedulerControl(capabilities);
-        const retryDelay = Duration.fromMillis(1000);
+        const retryDelay = fromMilliseconds(1000);
         const cb = jest.fn();
 
         // Start Jun 1, 2025
@@ -1017,7 +1016,7 @@ describe("scheduler calculator edge cases", () => {
         const capabilities = getTestCapabilities();
         const timeControl = getDatetimeControl(capabilities);
         const schedulerControl = getSchedulerControl(capabilities);
-        const retryDelay = Duration.fromMillis(1000);
+        const retryDelay = fromMilliseconds(1000);
         const cb = jest.fn();
 
         // Start on Saturday Jan 4, 2025 11:59, should skip to Monday 12:00
@@ -1049,7 +1048,7 @@ describe("scheduler calculator edge cases", () => {
         const capabilities = getTestCapabilities();
         const timeControl = getDatetimeControl(capabilities);
         const schedulerControl = getSchedulerControl(capabilities);
-        const retryDelay = Duration.fromMillis(1000);
+        const retryDelay = fromMilliseconds(1000);
         const cb = jest.fn();
 
         // Start 2025-01-20 00:00 — day 20
@@ -1086,7 +1085,7 @@ describe("scheduler calculator edge cases", () => {
         const capabilities = getTestCapabilities();
         const timeControl = getDatetimeControl(capabilities);
         const schedulerControl = getSchedulerControl(capabilities);
-        const retryDelay = Duration.fromMillis(1000);
+        const retryDelay = fromMilliseconds(1000);
         const cb = jest.fn();
 
         // Start after Jan occurrence has passed: Jan 2, 00:00
@@ -1114,7 +1113,7 @@ describe("scheduler calculator edge cases", () => {
         const capabilities = getTestCapabilities();
         const timeControl = getDatetimeControl(capabilities);
         const schedulerControl = getSchedulerControl(capabilities);
-        const retryDelay = Duration.fromMillis(1000);
+        const retryDelay = fromMilliseconds(1000);
         const cb = jest.fn();
 
         // Start Jan 1, 2026 00:00; Dec 31, 2025 was last run
@@ -1139,7 +1138,7 @@ describe("scheduler calculator edge cases", () => {
         const capabilities = getTestCapabilities();
         const timeControl = getDatetimeControl(capabilities);
         const schedulerControl = getSchedulerControl(capabilities);
-        const retryDelay = Duration.fromMillis(1000);
+        const retryDelay = fromMilliseconds(1000);
         const cb = jest.fn();
 
         // Start 2025-01-12 11:59 (Sun). Next is 2025-01-13 (Mon) 12:00 OR 2025-02-13 12:00 etc.

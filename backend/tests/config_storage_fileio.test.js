@@ -22,6 +22,7 @@ async function getTestPath() {
     await fs.mkdir(testDir, { recursive: true });
     return path.join(testDir, "test-config.json");
 }
+
 describe("config storage", () => {
 
     describe("file I/O operations", () => {

@@ -2,7 +2,6 @@
  * Tests for failure retry persistence.
  */
 
-const { Duration } = require("luxon");
 const { fromMilliseconds, fromISOString } = require("../src/datetime");
 const { getMockedRootCapabilities } = require("./spies");
 const { stubEnvironment, stubLogger, stubDatetime, stubSleeper, getDatetimeControl, stubRuntimeStateStorage, stubScheduler, getSchedulerControl } = require("./stubs");
@@ -31,7 +30,7 @@ describe("failure retry persistence", () => {
             timeControl.setDateTime(startTime);
 
             // Initialize scheduler with registrations
-            const retryDelay = Duration.fromMillis(5000); // 5 second retry delay
+            const retryDelay = fromMilliseconds(5000); // 5 second retry delay
             const callback = jest.fn(() => {
                 throw new Error("Task failed");
             });

@@ -3,8 +3,7 @@
  * Tests the behavior of detecting and restarting orphaned tasks from previous scheduler instances
  */
 
-const { fromMilliseconds, fromISOString } = require("../src/datetime");
-const { Duration } = require("luxon");
+const { fromMilliseconds, fromMinutes, fromISOString } = require("../src/datetime");
 const { getMockedRootCapabilities } = require("./spies");
 const { stubEnvironment, stubLogger, stubDatetime, stubSleeper, stubScheduler, getSchedulerControl, getDatetimeControl } = require("./stubs");
 
@@ -23,7 +22,7 @@ describe("scheduler orphaned task restart", () => {
     test("should restart tasks that were running under a different scheduler instance", async () => {
         const capabilities = getTestCapabilities();
         const schedulerControl = getSchedulerControl(capabilities);
-        const retryDelay = Duration.fromMillis(5000);
+        const retryDelay = fromMilliseconds(5000);
 
         schedulerControl.setPollingInterval(fromMilliseconds(1));
 
@@ -94,8 +93,8 @@ describe("scheduler orphaned task restart", () => {
 
         // Set up initial state
         const initialRegistrations = [
-            ["task1", "0 0 * * *", callback1, Duration.fromObject({ minutes: 5 })],
-            ["task2", "0 0 * * *", callback2, Duration.fromObject({ minutes: 5 })],
+            ["task1", "0 0 * * *", callback1, fromMinutes(5)],
+            ["task2", "0 0 * * *", callback2, fromMinutes(5)],
         ];
 
         await capabilities.scheduler.initialize(initialRegistrations);
@@ -112,8 +111,8 @@ describe("scheduler orphaned task restart", () => {
 
         // Create complex mismatch scenario using same capabilities
         const mismatchedRegistrations = [
-            ["task1", "0 0 * * *", callback1, Duration.fromObject({ minutes: 5 })],
-            ["task3", "0 0 * * *", callback3, Duration.fromObject({ minutes: 5 })], // extra task (task2 is missing)
+            ["task1", "0 0 * * *", callback1, fromMinutes(5)],
+            ["task3", "0 0 * * *", callback3, fromMinutes(5)], // extra task (task2 is missing)
         ];
 
         await capabilities.scheduler.stop();
@@ -131,7 +130,7 @@ describe("scheduler orphaned task restart", () => {
             }
         });
 
-        dateControl.advanceByDuration(Duration.fromObject({ minutes: 10 }));
+        dateControl.advanceByDuration(fromMinutes(10));
 
         // This should now succeed (override behavior) instead of throwing
         await expect(capabilities.scheduler.initialize(mismatchedRegistrations)).resolves.toBeUndefined();
@@ -154,7 +153,7 @@ describe("scheduler orphaned task restart", () => {
     test("should not restart tasks that were running under the current scheduler instance", async () => {
         const capabilities = getTestCapabilities();
         const schedulerControl = getSchedulerControl(capabilities);
-        const retryDelay = Duration.fromMillis(5000);
+        const retryDelay = fromMilliseconds(5000);
 
         schedulerControl.setPollingInterval(fromMilliseconds(1));
 
@@ -202,7 +201,7 @@ describe("scheduler orphaned task restart", () => {
     test("should handle multiple orphaned tasks from different scheduler instances", async () => {
         const capabilities = getTestCapabilities();
         const schedulerControl = getSchedulerControl(capabilities);
-        const retryDelay = Duration.fromMillis(5000);
+        const retryDelay = fromMilliseconds(5000);
 
         schedulerControl.setPollingInterval(fromMilliseconds(1));
 
@@ -279,7 +278,7 @@ describe("scheduler orphaned task restart", () => {
     test("should not handle tasks with no scheduler identifier as orphaned", async () => {
         const capabilities = getTestCapabilities();
         const schedulerControl = getSchedulerControl(capabilities);
-        const retryDelay = Duration.fromMillis(5000);
+        const retryDelay = fromMilliseconds(5000);
 
         schedulerControl.setPollingInterval(fromMilliseconds(1));
 
@@ -323,7 +322,7 @@ describe("scheduler orphaned task restart", () => {
     test("should log appropriate warnings when restarting orphaned tasks", async () => {
         const capabilities = getTestCapabilities();
         const schedulerControl = getSchedulerControl(capabilities);
-        const retryDelay = Duration.fromMillis(5000);
+        const retryDelay = fromMilliseconds(5000);
 
         schedulerControl.setPollingInterval(fromMilliseconds(1));
 
@@ -377,7 +376,7 @@ describe("scheduler orphaned task restart", () => {
     test("should handle unknown tasks during startup without failing", async () => {
         const capabilities = getTestCapabilities();
         const schedulerControl = getSchedulerControl(capabilities);
-        const retryDelay = Duration.fromMillis(5000);
+        const retryDelay = fromMilliseconds(5000);
 
         schedulerControl.setPollingInterval(fromMilliseconds(1));
 
