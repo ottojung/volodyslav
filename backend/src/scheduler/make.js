@@ -7,7 +7,6 @@ const { makePollingScheduler } = require("./polling");
 const { mutateTasks } = require("./persistence");
 const { isScheduleDuplicateTaskError } = require("./registration_validation");
 const { generateSchedulerIdentifier } = require("./scheduler_identifier");
-const { fromMinutes } = require("../datetime");
 const memconst = require("../memconst");
 
 /**
@@ -100,14 +99,13 @@ function make(getCapabilities) {
         });
 
         for (const { taskName, previousSchedulerIdentifier } of restartedTasks) {
-            const qname = JSON.stringify(taskName);    
             capabilities.logger.logWarning(
                 {
                     taskName,
                     previousSchedulerIdentifier,
                     currentSchedulerIdentifier,
                 },
-                `Task ${qname} was interrupted during shutdown and will be restarted`);
+                `Task was interrupted during shutdown and will be restarted`);
         }
     }
 
