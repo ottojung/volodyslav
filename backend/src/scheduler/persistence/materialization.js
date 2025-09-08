@@ -49,7 +49,7 @@ function materializeTasks(registrations, taskRecords) {
 
         const taskOrError = tryDeserialize(record, registrations);
         if (isTaskTryDeserializeError(taskOrError)) {
-            throw new Error(`Failed to deserialize task ${name}: ${taskOrError.message}`);
+            throw taskOrError;
         }
 
         tasks.set(name, taskOrError);
