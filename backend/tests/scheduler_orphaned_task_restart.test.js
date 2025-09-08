@@ -39,6 +39,8 @@ describe("scheduler orphaned task restart", () => {
         // First scheduler instance - simulate starting a task but shutting down before completion
         await capabilities.scheduler.initialize(registrations);
 
+        await capabilities.scheduler.stop();
+
         // Manually mark a task as running with a different scheduler identifier
         // This simulates the scenario where a task was started but the app was shut down
         await capabilities.state.transaction(async (storage) => {
@@ -50,8 +52,6 @@ describe("scheduler orphaned task restart", () => {
                 storage.setState(state);
             }
         });
-
-        await capabilities.scheduler.stop();
 
         // Clear spies for the new instance
         logWarningSpy.mockClear();
