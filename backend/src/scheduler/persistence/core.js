@@ -4,8 +4,9 @@
 
 const { fromMinutes } = require("../../datetime");
 const { makeDefault } = require('../../runtime_state_storage/structure');
-const { materializeTasks, serializeTasks } = require('./materialization');
+const { serializeTasks } = require('./materialization');
 const { makeTask } = require('../task/structure');
+const { registrationToTaskIdentity, taskRecordToTaskIdentity, taskIdentitiesEqual } = require("../task/identity");
 
 /** 
  * @typedef {import('../task').Task} Task 
@@ -54,16 +55,16 @@ async function getCurrentState(storage, registrations, datetime) {
  * @param {import('../types').SchedulerCapabilities} capabilities
  * @param {ParsedRegistrations} registrations
  * @param {Transformation<T>} transformation
- * @param {Set<string>} [orphanedTaskNames] - Names of tasks that were orphaned and should restart immediately
+ * @param {string} schedulerIdentifier - Current scheduler identifier for orphaned task detection
  * @returns {Promise<T>}
  */
-async function mutateTasks(capabilities, registrations, transformation, orphanedTaskNames = new Set()) {
+async function mutateTasks(capabilities, registrations, transformation, schedulerIdentifier) {
     return await capabilities.state.transaction(async (storage) => {
         const currentState = await getCurrentState(storage, registrations, capabilities.datetime);
         const currentTaskRecords = currentState.tasks;
         
-        // Apply per-task logic for materialization/override
-        const tasks = materializeTasksWithPerTaskOverride(registrations, currentTaskRecords, capabilities, orphanedTaskNames);
+        // Apply materialization logic to handle all scenarios
+        const tasks = materializeTasksWithCleanLogic(registrations, currentTaskRecords, capabilities, schedulerIdentifier);
         
         const result = transformation(tasks);
 
@@ -84,17 +85,15 @@ async function mutateTasks(capabilities, registrations, transformation, orphaned
 }
 
 /**
- * Materialize tasks using per-task logic to decide whether to use persisted state or create fresh.
- * This replaces the binary forceOverride approach with individual task decisions.
+ * Materialize tasks using clean per-task logic.
+ * Handles orphaned task detection internally and makes individual decisions for each task.
  * @param {ParsedRegistrations} registrations
  * @param {import('../../runtime_state_storage/types').TaskRecord[]} persistedTaskRecords
  * @param {import('../types').SchedulerCapabilities} capabilities
- * @param {Set<string>} [orphanedTaskNames] - Names of tasks that were orphaned and should restart immediately
+ * @param {string} schedulerIdentifier - Current scheduler identifier for orphaned task detection
  * @returns {Map<string, Task>}
  */
-function materializeTasksWithPerTaskOverride(registrations, persistedTaskRecords, capabilities, orphanedTaskNames = new Set()) {
-    const { registrationToTaskIdentity, taskRecordToTaskIdentity, taskIdentitiesEqual } = require("../task/identity");
-    
+function materializeTasksWithCleanLogic(registrations, persistedTaskRecords, capabilities, schedulerIdentifier) {
     /** @type {Map<string, Task>} */
     const tasks = new Map();
     
@@ -109,10 +108,13 @@ function materializeTasksWithPerTaskOverride(registrations, persistedTaskRecords
     const now = capabilities.datetime.now();
     const lastMinute = now.subtract(fromMinutes(1));
     
-    // Track what decisions we make for logging
-    const overriddenTasks = [];
-    const preservedTasks = [];
-    const newTasks = [];
+    // Track decisions made for logging
+    const decisions = {
+        new: [],
+        preserved: [],
+        overridden: [],
+        orphaned: []
+    };
 
     for (const registration of registrations.values()) {
         const registrationIdentity = registrationToTaskIdentity([
@@ -124,107 +126,174 @@ function materializeTasksWithPerTaskOverride(registrations, persistedTaskRecords
         
         const persistedTask = persistedTaskMap.get(registration.name);
         const persistedIdentity = persistedIdentityMap.get(registration.name);
-        const isOrphaned = orphanedTaskNames.has(registration.name);
         
-        if (!persistedTask) {
-            // New task - create fresh
-            const task = makeTask(
-                registration.name,
-                registration.parsedCron,
-                registration.callback,
-                registration.retryDelay,
-                lastMinute,  // Use lastMinute to prevent immediate execution
-                undefined,   // No lastFailureTime
-                lastMinute,  // Use lastMinute to prevent immediate execution
-                undefined,   // No pendingRetryUntil
-                undefined    // Clear schedulerIdentifier for fresh start
-            );
-            tasks.set(registration.name, task);
-            newTasks.push(registration.name);
-        } else if (isOrphaned || !taskIdentitiesEqual(registrationIdentity, persistedIdentity)) {
-            // Task needs override (config changed) or is orphaned - create fresh but preserve timing where appropriate
-            const task = makeTask(
-                registration.name,
-                registration.parsedCron,
-                registration.callback,
-                registration.retryDelay,
-                // For orphaned tasks, clear lastSuccessTime so they restart; for config changes, preserve timing
-                isOrphaned ? undefined : persistedTask.lastSuccessTime,
-                persistedTask.lastFailureTime,
-                // For orphaned tasks, clear lastAttemptTime so they restart; for config changes, preserve timing  
-                isOrphaned ? undefined : persistedTask.lastAttemptTime,
-                persistedTask.pendingRetryUntil,
-                undefined  // Clear schedulerIdentifier for fresh start
-            );
-            tasks.set(registration.name, task);
-            overriddenTasks.push({
-                name: registration.name,
-                reason: isOrphaned ? 'orphaned' : 'config_changed'
-            });
-        } else {
-            // Task matches exactly - use existing materialization logic
-            try {
-                const materializedTasks = materializeTasks(
-                    new Map([[registration.name, registration]]), 
-                    [persistedTask]
-                );
-                const task = materializedTasks.get(registration.name);
-                if (task) {
-                    tasks.set(registration.name, task);
-                    preservedTasks.push(registration.name);
-                }
-            } catch (error) {
-                // Fall back to creating fresh task if materialization fails
-                capabilities.logger.logWarning(
-                    { taskName: registration.name, error: error.message },
-                    "Failed to materialize persisted task, creating fresh task"
-                );
-                const task = makeTask(
-                    registration.name,
-                    registration.parsedCron,
-                    registration.callback,
-                    registration.retryDelay,
-                    persistedTask.lastSuccessTime,
-                    persistedTask.lastFailureTime,
-                    persistedTask.lastAttemptTime,
-                    persistedTask.pendingRetryUntil,
-                    undefined  // Clear schedulerIdentifier for fresh start
-                );
-                tasks.set(registration.name, task);
-                overriddenTasks.push({
-                    name: registration.name,
-                    reason: 'materialization_failed'
-                });
-            }
-        }
+        // Determine task decision
+        const decision = decideTaskAction(
+            registration,
+            persistedTask,
+            registrationIdentity,
+            persistedIdentity,
+            schedulerIdentifier
+        );
+        
+        // Create task based on decision
+        const task = createTaskFromDecision(decision, registration, persistedTask, lastMinute);
+        tasks.set(registration.name, task);
+        
+        // Track decision for logging
+        decisions[decision.type].push({
+            name: registration.name,
+            reason: decision.reason
+        });
     }
     
-    // Log the decisions made
-    if (overriddenTasks.length > 0) {
+    // Log decisions made
+    logMaterializationDecisions(capabilities, decisions);
+
+    return tasks;
+}
+
+/**
+ * Decide what action to take for a single task.
+ * @param {object} registration
+ * @param {object} persistedTask
+ * @param {object} registrationIdentity
+ * @param {object} persistedIdentity
+ * @param {string} schedulerIdentifier
+ * @returns {{type: string, reason: string}}
+ */
+function decideTaskAction(registration, persistedTask, registrationIdentity, persistedIdentity, schedulerIdentifier) {
+    if (!persistedTask) {
+        return { type: 'new', reason: 'no_persisted_state' };
+    }
+    
+    // Check if task is orphaned (from different scheduler)
+    const isOrphaned = persistedTask.lastAttemptTime !== undefined && 
+                      persistedTask.schedulerIdentifier !== undefined && 
+                      persistedTask.schedulerIdentifier !== schedulerIdentifier;
+    
+    if (isOrphaned) {
+        return { type: 'orphaned', reason: 'different_scheduler' };
+    }
+    
+    // Check if configuration changed
+    if (!taskIdentitiesEqual(registrationIdentity, persistedIdentity)) {
+        return { type: 'overridden', reason: 'config_changed' };
+    }
+    
+    // Task matches exactly - preserve
+    return { type: 'preserved', reason: 'exact_match' };
+}
+
+/**
+ * Create a task based on the decision made.
+ * @param {{type: string, reason: string}} decision
+ * @param {object} registration
+ * @param {object} persistedTask
+ * @param {object} lastMinute
+ * @returns {Task}
+ */
+function createTaskFromDecision(decision, registration, persistedTask, lastMinute) {
+    if (decision.type === 'new') {
+        // New task - create fresh
+        return makeTask(
+            registration.name,
+            registration.parsedCron,
+            registration.callback,
+            registration.retryDelay,
+            lastMinute,  // Use lastMinute to prevent immediate execution
+            undefined,   // No lastFailureTime
+            lastMinute,  // Use lastMinute to prevent immediate execution
+            undefined,   // No pendingRetryUntil
+            undefined    // Clear schedulerIdentifier for fresh start
+        );
+    } else if (decision.type === 'orphaned') {
+        // Orphaned task - create fresh but restart immediately
+        return makeTask(
+            registration.name,
+            registration.parsedCron,
+            registration.callback,
+            registration.retryDelay,
+            undefined,   // Clear lastSuccessTime so it restarts
+            persistedTask.lastFailureTime,
+            undefined,   // Clear lastAttemptTime so it restarts
+            persistedTask.pendingRetryUntil,
+            undefined    // Clear schedulerIdentifier for fresh start
+        );
+    } else if (decision.type === 'overridden') {
+        // Config changed - create fresh but preserve timing
+        return makeTask(
+            registration.name,
+            registration.parsedCron,
+            registration.callback,
+            registration.retryDelay,
+            persistedTask.lastSuccessTime,  // Preserve timing
+            persistedTask.lastFailureTime,
+            persistedTask.lastAttemptTime,  // Preserve timing
+            persistedTask.pendingRetryUntil,
+            undefined    // Clear schedulerIdentifier for fresh start
+        );
+    } else {
+        // Preserved task - create task directly from persisted data with current registration
+        return makeTask(
+            registration.name,
+            registration.parsedCron,
+            registration.callback,
+            registration.retryDelay,
+            persistedTask.lastSuccessTime,
+            persistedTask.lastFailureTime,
+            persistedTask.lastAttemptTime,
+            persistedTask.pendingRetryUntil,
+            persistedTask.schedulerIdentifier  // Keep the original scheduler identifier
+        );
+    }
+}
+
+/**
+ * Log materialization decisions made.
+ * @param {import('../types').SchedulerCapabilities} capabilities
+ * @param {object} decisions
+ */
+function logMaterializationDecisions(capabilities, decisions) {
+    if (decisions.overridden.length > 0) {
         capabilities.logger.logDebug(
             { 
-                overriddenTasks: overriddenTasks.map(t => ({ name: t.name, reason: t.reason })),
-                count: overriddenTasks.length
+                overriddenTasks: decisions.overridden,
+                count: decisions.overridden.length
             },
             "Tasks overridden with fresh configuration"
         );
     }
     
-    if (preservedTasks.length > 0) {
+    if (decisions.orphaned.length > 0) {
+        capabilities.logger.logWarning(
+            { 
+                orphanedTasks: decisions.orphaned,
+                count: decisions.orphaned.length
+            },
+            "Orphaned tasks detected and restarted"
+        );
+    }
+    
+    if (decisions.preserved.length > 0) {
         capabilities.logger.logDebug(
-            { preservedTasks, count: preservedTasks.length },
+            { 
+                preservedTasks: decisions.preserved, 
+                count: decisions.preserved.length 
+            },
             "Tasks preserved from persisted state"
         );
     }
     
-    if (newTasks.length > 0) {
+    if (decisions.new.length > 0) {
         capabilities.logger.logDebug(
-            { newTasks, count: newTasks.length },
+            { 
+                newTasks: decisions.new, 
+                count: decisions.new.length 
+            },
             "New tasks created"
         );
     }
-
-    return tasks;
 }
 
 module.exports = {

@@ -67,55 +67,6 @@ function make(getCapabilities) {
 
 
     /**
-     * Handle orphaned task detection by detecting tasks that were running under different scheduler identifier.
-     * @param {ParsedRegistrations} parsedRegistrations
-     * @param {SchedulerCapabilities} capabilities
-     * @param {string} currentSchedulerIdentifier
-     * @returns {Promise<Set<string>>} Set of orphaned task names
-     */
-    async function detectOrphanedTasks(parsedRegistrations, capabilities, currentSchedulerIdentifier) {
-        const orphanedTaskNames = new Set();
-        
-        // Get persisted state to detect orphaned tasks
-        /**
-         * @param {import('../runtime_state_storage/class').RuntimeStateStorage} storage
-         */
-        const getStorage = async (storage) => await storage.getExistingState();
-        const currentState = await capabilities.state.transaction(getStorage);
-        const persistedTasks = currentState?.tasks || [];
-        
-        // Detect orphaned tasks from persisted state
-        const restartedTasks = [];
-        for (const record of persistedTasks) {
-            const hasLastAttemptTime = record.lastAttemptTime !== undefined;
-            const isFromDifferentScheduler = record.schedulerIdentifier !== undefined && record.schedulerIdentifier !== currentSchedulerIdentifier;
-            
-            if (hasLastAttemptTime && isFromDifferentScheduler && parsedRegistrations.has(record.name)) {
-                // Only restart tasks that are still in the new registrations
-                orphanedTaskNames.add(record.name);
-                restartedTasks.push({
-                    taskName: record.name,
-                    previousSchedulerIdentifier: record.schedulerIdentifier || "unknown",
-                    currentSchedulerIdentifier
-                });
-            }
-        }
-
-        // Log orphaned task warnings
-        for (const { taskName, previousSchedulerIdentifier } of restartedTasks) {
-            capabilities.logger.logWarning(
-                {
-                    taskName,
-                    previousSchedulerIdentifier,
-                    currentSchedulerIdentifier,
-                },
-                `Task was interrupted during shutdown and will be restarted`);
-        }
-
-        return orphanedTaskNames;
-    }
-
-    /**
      * Get persisted state for analysis.
      * @param {Registration[]} registrations
      * @param {SchedulerCapabilities} capabilities
@@ -258,13 +209,10 @@ function make(getCapabilities) {
 
         if (persistedTasks === undefined) {
             // First initialization - persist initial tasks
-            await mutateTasks(capabilities, parsedRegistrations, async () => undefined);
+            await mutateTasks(capabilities, parsedRegistrations, async () => undefined, schedulerIdentifier);
         } else {
-            // Detect orphaned tasks
-            const orphanedTaskNames = await detectOrphanedTasks(parsedRegistrations, capabilities, schedulerIdentifier);
-            
-            // Persist tasks with per-task override logic and orphaned task handling
-            await mutateTasks(capabilities, parsedRegistrations, async () => undefined, orphanedTaskNames);
+            // Persist tasks with clean logic (orphaned task detection is handled internally)
+            await mutateTasks(capabilities, parsedRegistrations, async () => undefined, schedulerIdentifier);
         }
 
         // Schedule all tasks
