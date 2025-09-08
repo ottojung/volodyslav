@@ -3,10 +3,9 @@
  * Handles the timing and execution of polling operations.
  */
 
-const { fromMilliseconds } = require('../../datetime/duration');
+const { fromMinutes } = require('../../datetime/duration');
 
-const POLL_INTERVAL_MS = 600000;
-const POLL_INTERVAL = fromMilliseconds(POLL_INTERVAL_MS);
+const POLL_INTERVAL = fromMinutes(10);
 const THREAD_NAME = "volodyslav:scheduler:poll"
 
 /**
@@ -34,6 +33,6 @@ function makeIntervalManager(pollFunction, capabilities) {
 
 module.exports = {
     makeIntervalManager,
-    POLL_INTERVAL_MS,
+    POLL_INTERVAL,
     THREAD_NAME,
 };

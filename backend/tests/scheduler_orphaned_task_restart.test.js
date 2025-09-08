@@ -223,26 +223,30 @@ describe("scheduler orphaned task restart", () => {
         // First scheduler instance
         await capabilities.scheduler.initialize(registrations);
 
+        await capabilities.scheduler.stop();
+
         // Manually mark multiple tasks as running with different scheduler identifiers
         await capabilities.state.transaction(async (storage) => {
             const state = await storage.getExistingState();
-            if (state && state.tasks.length >= 3) {
-                const now = capabilities.datetime.now();
-                state.tasks[0].lastAttemptTime = now;
-                state.tasks[0].schedulerIdentifier = "old-scheduler-1";
+            expect(state).toBeTruthy();
+            expect(state.tasks).toHaveLength(3);
 
-                state.tasks[1].lastAttemptTime = now;
-                state.tasks[1].schedulerIdentifier = "old-scheduler-2";
+            const now = capabilities.datetime.now();
 
-                // Leave the third task without scheduler identifier
-                state.tasks[2].lastAttemptTime = now;
-                state.tasks[2].schedulerIdentifier = undefined;
+            state.tasks[0].lastAttemptTime = now;
+            state.tasks[0].schedulerIdentifier = "old-scheduler-1";
+            state.tasks[0].lastSuccessTime = undefined;
+            state.tasks[0].lastFailureTime = undefined;
+            state.tasks[0].pendingRetryUntil = undefined;
 
-                storage.setState(state);
-            }
+            state.tasks[1].lastAttemptTime = now;
+            state.tasks[1].schedulerIdentifier = "old-scheduler-2";
+            state.tasks[1].lastSuccessTime = undefined;
+            state.tasks[1].lastFailureTime = undefined;
+            state.tasks[1].pendingRetryUntil = undefined;
+
+            storage.setState(state);
         });
-
-        await capabilities.scheduler.stop();
 
         // Clear spies
         logWarningSpy.mockClear();
@@ -250,6 +254,8 @@ describe("scheduler orphaned task restart", () => {
 
         // Second scheduler instance - should detect and restart orphaned tasks
         await capabilities.scheduler.initialize(registrations);
+        await schedulerControl.waitForNextCycleEnd();
+        await schedulerControl.waitForNextCycleEnd();
         await schedulerControl.waitForNextCycleEnd();
 
         // Verify all three orphaned tasks were detected and restarted
@@ -339,6 +345,9 @@ describe("scheduler orphaned task restart", () => {
                 const task = state.tasks[0];
                 task.lastAttemptTime = capabilities.datetime.now();
                 task.schedulerIdentifier = "old-scheduler-instance";
+                task.lastSuccessTime = undefined;
+                task.lastFailureTime = undefined;
+                task.pendingRetryUntil = undefined;
                 storage.setState(state);
             }
         });

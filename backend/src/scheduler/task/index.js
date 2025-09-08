@@ -15,6 +15,12 @@ const {
  */
 
 /**
+ * @typedef {import('./structure').Running} Running
+ * @typedef {import('./structure').AwaitingRetry} AwaitingRetry
+ * @typedef {import('./structure').AwaitingRun} AwaitingRun
+ */
+
+/**
  * @typedef {import('./serialization_errors').TaskTryDeserializeError} TaskTryDeserializeError
  */
 

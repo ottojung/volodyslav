@@ -685,14 +685,14 @@ describe("scheduler stories", () => {
         // Advance 24 hours to next midnight (January 2nd)
         timeControl.advanceByDuration(fromHours(24));
         await schedulerControl.waitForNextCycleEnd();
-        
+
         // Should execute at midnight on January 2nd
         expect(dailyTask.mock.calls.length).toBe(initialCount + 1);
 
         // Advance 12 hours to noon on Jan 2nd (should not execute - not midnight)
         timeControl.advanceByDuration(fromHours(12));
         await schedulerControl.waitForNextCycleEnd();
-        
+
         // Should not execute again (not midnight)
         expect(dailyTask.mock.calls.length).toBe(initialCount + 1);
 
@@ -1134,7 +1134,7 @@ describe("scheduler stories", () => {
     test("should reject fractional retryDelayMs during task deserialization", () => {
         const cron = parseCronExpression("0 * * * *");
         const registrations = new Map([
-            ["fractional-delay", { name: "fractional-delay", parsedCron: cron, callback: () => {}, retryDelay: Duration.fromMillis(5000.5) }]
+            ["fractional-delay", { name: "fractional-delay", parsedCron: cron, callback: () => { }, retryDelay: Duration.fromMillis(5000.5) }]
         ]);
         const record = {
             name: "fractional-delay",
@@ -1165,7 +1165,7 @@ describe("scheduler stories", () => {
                 {
                     name: "demo",
                     parsedCron: parseCronExpression("0 * * * *"),
-                    callback: () => {},
+                    callback: () => { },
                     retryDelay: Duration.fromMillis(1000),
                 },
             ],
@@ -1189,5 +1189,18 @@ describe("scheduler stories", () => {
         ];
 
         expect(() => validateRegistrations(registrations)).toThrow();
+    });
+
+    test("should reject unsatisfiable cron expressions during initialization", async () => {
+        const capabilities = getTestCapabilities();
+        const timeControl = getDatetimeControl(capabilities);
+        const schedulerControl = getSchedulerControl(capabilities);
+        timeControl.setDateTime(fromISOString("2024-01-01T00:00:00.000Z"));
+        schedulerControl.setPollingInterval(fromMilliseconds(1));
+        const retryDelay = Duration.fromMillis(5000);
+        await expect(capabilities.scheduler.initialize([
+            ["invalid-date-task", "0 0 31 2 *", jest.fn(), retryDelay]
+        ])).rejects.toThrow(/No valid next execution time found for cron expression/);
+        await capabilities.scheduler.stop();
     });
 });

@@ -8,7 +8,8 @@ const { registrationToTaskIdentity, taskRecordToTaskIdentity, taskIdentitiesEqua
 const { tryDeserialize, isTaskTryDeserializeError } = require("../task");
 
 /** 
- * @typedef {import('../task').Task} Task 
+ * @typedef {import('../task').Task} Task
+ * @typedef {import('../task').AwaitingRetry} AwaitingRetry
  * @typedef {import('../types').ParsedRegistration} ParsedRegistration
  * @typedef {import('../types').ParsedRegistrations} ParsedRegistrations
  * @typedef {import('../types').TaskRecord} TaskRecord
@@ -304,7 +305,14 @@ function createTaskFromDecision(decision, registration, registrations, persisted
 
     if (decision.type === 'orphaned') {
         // Create fresh but restart immediately
-        task.lastAttemptTime = undefined; // Clear so it restarts
+        /**
+         * @type {AwaitingRetry}
+         */
+        const newState = {
+            lastFailureTime: lastMinute,
+            pendingRetryUntil: lastMinute,
+        };
+        task.state = newState;
     }
 
     return task;
