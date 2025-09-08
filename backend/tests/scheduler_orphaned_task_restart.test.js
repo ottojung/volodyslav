@@ -198,7 +198,7 @@ describe("scheduler orphaned task restart", () => {
         await capabilities.scheduler.stop();
     });
 
-    test("should handle tasks with no scheduler identifier as orphaned", async () => {
+    test("should not handle tasks with no scheduler identifier as orphaned", async () => {
         const capabilities = getTestCapabilities();
         const schedulerControl = getSchedulerControl(capabilities);
         const retryDelay = Duration.fromMillis(5000);
@@ -236,18 +236,8 @@ describe("scheduler orphaned task restart", () => {
         await capabilities.scheduler.initialize(registrations);
         await schedulerControl.waitForNextCycleEnd();
 
-        // Verify the task was restarted (treated as orphaned)
-        expect(logWarningSpy).toHaveBeenCalledWith(
-            expect.objectContaining({
-                taskName: "legacy-task",
-                previousSchedulerIdentifier: "unknown",
-                currentSchedulerIdentifier: expect.any(String)
-            }),
-            "Task was interrupted during shutdown and will be restarted"
-        );
-
-        // Task should have executed after restart
-        expect(taskCallback).toHaveBeenCalled();
+        expect(logWarningSpy).toHaveBeenCalledTimes(0);
+        expect(taskCallback).toHaveBeenCalledTimes(0);
 
         await capabilities.scheduler.stop();
     }, 10000);
