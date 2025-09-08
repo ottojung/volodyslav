@@ -10,6 +10,7 @@ const { fromISOString, fromHours, fromMinutes, fromMilliseconds, fromDays, toISO
 const { parseCronExpression } = require("../src/scheduler/expression");
 const { tryDeserialize, isTaskInvalidTypeError, isTaskTryDeserializeError } = require("../src/scheduler/task");
 const { getNextExecution, getMostRecentExecution } = require("../src/scheduler/calculator");
+const { validateRegistrations } = require("../src/scheduler/registration_validation");
 
 function getTestCapabilities() {
     const capabilities = getMockedRootCapabilities();
@@ -1179,5 +1180,14 @@ describe("scheduler stories", () => {
 
         const result = tryDeserialize(serialized, registrations);
         expect(isTaskInvalidTypeError(result)).toBe(true);
+    });
+
+    test.failing("should reject non-string task names during registration validation", () => {
+        const retryDelay = Duration.fromMillis(5000);
+        const registrations = [
+            [123, "* * * * *", jest.fn(), retryDelay]
+        ];
+
+        expect(() => validateRegistrations(registrations)).toThrow();
     });
 });
