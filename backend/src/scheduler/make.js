@@ -5,7 +5,7 @@
 const { parseCronExpression } = require("./expression");
 const { makePollingScheduler } = require("./polling");
 const { materializeAndPersistTasks } = require("./persistence");
-const { isScheduleDuplicateTaskError } = require("./registration_validation");
+const { isScheduleDuplicateTaskError, validateRegistrations } = require("./registration_validation");
 const { generateSchedulerIdentifier } = require("./scheduler_identifier");
 const memconst = require("../memconst");
 
@@ -39,9 +39,6 @@ class StopSchedulerError extends Error {
     }
 }
 
-const { validateRegistrations } = require("./registration_validation");
-const { analyzeStateChanges } = require("./state_validation");
-
 /** @typedef {import('./types').Scheduler} Scheduler */
 /** @typedef {import('./types').Registration} Registration */
 /** @typedef {import('./types').Initialize} Initialize */
@@ -64,49 +61,6 @@ function make(getCapabilities) {
     let schedulerIdentifier = null;
 
     const getCapabilitiesMemo = memconst(getCapabilities);
-
-
-    /**
-     * Get persisted state for analysis.
-     * @param {Registration[]} registrations
-     * @param {SchedulerCapabilities} capabilities
-     * @returns {Promise<{persistedTasks: import('../runtime_state_storage/types').TaskRecord[] | undefined}>}
-     */
-    async function getPersistedState(registrations, capabilities) {
-        validateRegistrations(registrations);
-
-        /**
-         * @param {import('../runtime_state_storage/class').RuntimeStateStorage} storage
-         */
-        async function getStorage(storage) {
-            return await storage.getExistingState();
-        }
-
-        const currentState = await capabilities.state.transaction(getStorage);
-        const persistedTasks = currentState?.tasks;
-
-        if (persistedTasks === undefined) {
-            capabilities.logger.logDebug(
-                {
-                    registeredTaskCount: registrations.length,
-                    taskNames: registrations.map(([name]) => name)
-                },
-                "First-time scheduler initialization: registering initial tasks"
-            );
-        } else {
-            capabilities.logger.logDebug(
-                {
-                    persistedTaskCount: persistedTasks.length,
-                    registrationCount: registrations.length
-                },
-                "Analyzing task registrations against persisted state"
-            );
-            // Log changes that will be made
-            analyzeStateChanges(registrations, persistedTasks, capabilities);
-        }
-
-        return { persistedTasks };
-    }
 
     /**
      * Parse registrations into internal format.
@@ -174,6 +128,10 @@ function make(getCapabilities) {
      */
     async function initialize(registrations) {
         const capabilities = getCapabilitiesMemo();
+        
+        // Validate registrations before any processing
+        validateRegistrations(registrations);
+        
         const parsedRegistrations = parseRegistrations(registrations);
 
         // Generate scheduler identifier if not already done
@@ -187,13 +145,14 @@ function make(getCapabilities) {
 
         // Check for existing polling scheduler
         if (pollingScheduler !== null) {
-            // Scheduler already running
+            // Scheduler already running - still analyze and apply changes to persisted state
             capabilities.logger.logDebug(
                 {},
-                "Scheduler already initialized"
+                "Scheduler already initialized, analyzing registration changes"
             );
-            // Still analyze registrations against persisted state for consistency.
-            await getPersistedState(registrations, capabilities);
+            
+            // Apply materialization logic to detect and log changes, and update persisted state
+            await materializeAndPersistTasks(capabilities, parsedRegistrations, schedulerIdentifier);
             return;
         }
 
@@ -204,16 +163,8 @@ function make(getCapabilities) {
             "Creating new polling scheduler"
         );
 
-        // Get persisted state 
-        const { persistedTasks } = await getPersistedState(registrations, capabilities);
-
-        if (persistedTasks === undefined) {
-            // First initialization - persist initial tasks
-            await materializeAndPersistTasks(capabilities, parsedRegistrations, schedulerIdentifier);
-        } else {
-            // Apply clean materialization logic (handles orphaned tasks internally)
-            await materializeAndPersistTasks(capabilities, parsedRegistrations, schedulerIdentifier);
-        }
+        // Apply clean materialization logic (handles persisted state, logging, and orphaned tasks internally)
+        await materializeAndPersistTasks(capabilities, parsedRegistrations, schedulerIdentifier);
 
         // Schedule all tasks
         const { scheduledCount, skippedCount } = await scheduleAllTasks(registrations, pollingScheduler, capabilities);

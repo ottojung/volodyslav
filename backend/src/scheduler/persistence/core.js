@@ -24,7 +24,7 @@ const { registrationToTaskIdentity, taskRecordToTaskIdentity, taskIdentitiesEqua
  * @param {import('../../runtime_state_storage/class').RuntimeStateStorage} storage
  * @param {ParsedRegistrations} registrations
  * @param {import('../../datetime').Datetime} datetime
- * @returns {Promise<import('../../runtime_state_storage/types').RuntimeState>}
+ * @returns {Promise<{state: import('../../runtime_state_storage/types').RuntimeState, wasFirstTime: boolean}>}
  */
 async function getCurrentState(storage, registrations, datetime) {
     const now = datetime.now();    
@@ -43,9 +43,9 @@ async function getCurrentState(storage, registrations, datetime) {
             });
         }
 
-        return ret;
+        return { state: ret, wasFirstTime: true };
     } else {
-        return existingState;
+        return { state: existingState, wasFirstTime: false };
     }
 }
 
@@ -59,7 +59,7 @@ async function getCurrentState(storage, registrations, datetime) {
  */
 async function mutateTasks(capabilities, registrations, transformation) {
     return await capabilities.state.transaction(async (storage) => {
-        const currentState = await getCurrentState(storage, registrations, capabilities.datetime);
+        const { state: currentState } = await getCurrentState(storage, registrations, capabilities.datetime);
         const currentTaskRecords = currentState.tasks;
         
         // Use existing materialization logic for normal operation
@@ -93,11 +93,11 @@ async function mutateTasks(capabilities, registrations, transformation) {
  */
 async function materializeAndPersistTasks(capabilities, registrations, schedulerIdentifier) {
     return await capabilities.state.transaction(async (storage) => {
-        const currentState = await getCurrentState(storage, registrations, capabilities.datetime);
+        const { state: currentState, wasFirstTime } = await getCurrentState(storage, registrations, capabilities.datetime);
         const currentTaskRecords = currentState.tasks;
         
         // Apply clean materialization logic with override and orphaned task handling
-        const tasks = materializeTasksWithCleanLogic(registrations, currentTaskRecords, capabilities, schedulerIdentifier);
+        const tasks = materializeTasksWithCleanLogic(registrations, currentTaskRecords, capabilities, schedulerIdentifier, wasFirstTime);
         
         // Convert tasks to serializable format
         const taskRecords = serializeTasks(tasks);
@@ -121,11 +121,23 @@ async function materializeAndPersistTasks(capabilities, registrations, scheduler
  * @param {import('../../runtime_state_storage/types').TaskRecord[]} persistedTaskRecords
  * @param {import('../types').SchedulerCapabilities} capabilities
  * @param {string} schedulerIdentifier - Current scheduler identifier for orphaned task detection
+ * @param {boolean} wasFirstTime - Whether this was first-time initialization
  * @returns {Map<string, Task>}
  */
-function materializeTasksWithCleanLogic(registrations, persistedTaskRecords, capabilities, schedulerIdentifier) {
+function materializeTasksWithCleanLogic(registrations, persistedTaskRecords, capabilities, schedulerIdentifier, wasFirstTime) {
     /** @type {Map<string, Task>} */
     const tasks = new Map();
+    
+    // Check if this is first-time initialization
+    if (wasFirstTime) {
+        capabilities.logger.logDebug(
+            {
+                registeredTaskCount: registrations.size,
+                taskNames: Array.from(registrations.keys())
+            },
+            "First-time scheduler initialization: registering initial tasks"
+        );
+    }
     
     // Create a map of persisted task records by name for quick lookup
     const persistedTaskMap = new Map();
@@ -135,10 +147,66 @@ function materializeTasksWithCleanLogic(registrations, persistedTaskRecords, cap
         persistedIdentityMap.set(record.name, taskRecordToTaskIdentity(record));
     }
     
+    // Analyze what changes will be made for high-level logging
+    const registrationNames = new Set(Array.from(registrations.keys()));
+    const persistedNames = new Set(persistedTaskMap.keys());
+    
+    const addedTasks = Array.from(registrationNames).filter(name => !persistedNames.has(name));
+    const removedTasks = Array.from(persistedNames).filter(name => !registrationNames.has(name));
+    
+    // Detect modified tasks (configuration changes)
+    const modifiedTasks = [];
+    for (const registration of registrations.values()) {
+        const persistedTask = persistedTaskMap.get(registration.name);
+        if (persistedTask && !removedTasks.includes(registration.name)) {
+            const registrationIdentity = registrationToTaskIdentity([
+                registration.name,
+                registration.parsedCron.original,
+                registration.callback,
+                registration.retryDelay
+            ]);
+            const persistedIdentity = taskRecordToTaskIdentity(persistedTask);
+            
+            if (!taskIdentitiesEqual(registrationIdentity, persistedIdentity)) {
+                // Check which fields differ
+                if (registrationIdentity.cronExpression !== persistedIdentity.cronExpression) {
+                    modifiedTasks.push({
+                        name: registration.name,
+                        field: 'cronExpression',
+                        from: persistedIdentity.cronExpression,
+                        to: registrationIdentity.cronExpression
+                    });
+                }
+                if (registrationIdentity.retryDelayMs !== persistedIdentity.retryDelayMs) {
+                    modifiedTasks.push({
+                        name: registration.name,
+                        field: 'retryDelayMs',
+                        from: persistedIdentity.retryDelayMs,
+                        to: registrationIdentity.retryDelayMs
+                    });
+                }
+            }
+        }
+    }
+    
+    // Log high-level changes if any exist
+    if (addedTasks.length > 0 || removedTasks.length > 0 || modifiedTasks.length > 0) {
+        capabilities.logger.logInfo(
+            {
+                removedTasks,
+                addedTasks,
+                modifiedTasks,
+                totalChanges: addedTasks.length + removedTasks.length + modifiedTasks.length
+            },
+            "Scheduler state override: registrations differ from persisted state, applying changes"
+        );
+    }
+    
     const now = capabilities.datetime.now();
     const lastMinute = now.subtract(fromMinutes(1));
     
     // Track decisions made for logging
+    /** @type {{new: Array<{name: string, reason: string}>, preserved: Array<{name: string, reason: string}>, overridden: Array<{name: string, reason: string}>, orphaned: Array<{name: string, reason: string}>}} */
     const decisions = {
         new: [],
         preserved: [],
@@ -159,7 +227,6 @@ function materializeTasksWithCleanLogic(registrations, persistedTaskRecords, cap
         
         // Determine task decision
         const decision = decideTaskAction(
-            registration,
             persistedTask,
             registrationIdentity,
             persistedIdentity,
@@ -171,10 +238,28 @@ function materializeTasksWithCleanLogic(registrations, persistedTaskRecords, cap
         tasks.set(registration.name, task);
         
         // Track decision for logging
-        decisions[decision.type].push({
-            name: registration.name,
-            reason: decision.reason
-        });
+        const decisionType = decision.type;
+        if (decisionType === 'new') {
+            decisions.new.push({
+                name: registration.name,
+                reason: decision.reason
+            });
+        } else if (decisionType === 'preserved') {
+            decisions.preserved.push({
+                name: registration.name,
+                reason: decision.reason
+            });
+        } else if (decisionType === 'overridden') {
+            decisions.overridden.push({
+                name: registration.name,
+                reason: decision.reason
+            });
+        } else if (decisionType === 'orphaned') {
+            decisions.orphaned.push({
+                name: registration.name,
+                reason: decision.reason
+            });
+        }
     }
     
     // Log decisions made
@@ -185,14 +270,13 @@ function materializeTasksWithCleanLogic(registrations, persistedTaskRecords, cap
 
 /**
  * Decide what action to take for a single task.
- * @param {object} registration
- * @param {object} persistedTask
- * @param {object} registrationIdentity
- * @param {object} persistedIdentity
+ * @param {TaskRecord | undefined} persistedTask
+ * @param {{name: string, cronExpression: string, retryDelayMs: number}} registrationIdentity
+ * @param {{name: string, cronExpression: string, retryDelayMs: number} | undefined} persistedIdentity
  * @param {string} schedulerIdentifier
- * @returns {{type: string, reason: string}}
+ * @returns {{type: 'new' | 'preserved' | 'overridden' | 'orphaned', reason: string}}
  */
-function decideTaskAction(registration, persistedTask, registrationIdentity, persistedIdentity, schedulerIdentifier) {
+function decideTaskAction(persistedTask, registrationIdentity, persistedIdentity, schedulerIdentifier) {
     if (!persistedTask) {
         return { type: 'new', reason: 'no_persisted_state' };
     }
@@ -207,7 +291,7 @@ function decideTaskAction(registration, persistedTask, registrationIdentity, per
     }
     
     // Check if configuration changed
-    if (!taskIdentitiesEqual(registrationIdentity, persistedIdentity)) {
+    if (!persistedIdentity || !taskIdentitiesEqual(registrationIdentity, persistedIdentity)) {
         return { type: 'overridden', reason: 'config_changed' };
     }
     
@@ -217,10 +301,10 @@ function decideTaskAction(registration, persistedTask, registrationIdentity, per
 
 /**
  * Create a task based on the decision made.
- * @param {{type: string, reason: string}} decision
- * @param {object} registration
- * @param {object} persistedTask
- * @param {object} lastMinute
+ * @param {{type: 'new' | 'preserved' | 'overridden' | 'orphaned', reason: string}} decision
+ * @param {{name: string, parsedCron: import('../expression/structure').CronExpression, callback: import('../types').Callback, retryDelay: import('../../datetime/duration').Duration}} registration
+ * @param {TaskRecord | undefined} persistedTask
+ * @param {import('../../datetime/structure').DateTime} lastMinute
  * @returns {Task}
  */
 function createTaskFromDecision(decision, registration, persistedTask, lastMinute) {
@@ -239,6 +323,9 @@ function createTaskFromDecision(decision, registration, persistedTask, lastMinut
         );
     } else if (decision.type === 'orphaned') {
         // Orphaned task - create fresh but restart immediately
+        if (!persistedTask) {
+            throw new Error("Orphaned task decision requires persisted task data");
+        }
         return makeTask(
             registration.name,
             registration.parsedCron,
@@ -252,6 +339,9 @@ function createTaskFromDecision(decision, registration, persistedTask, lastMinut
         );
     } else if (decision.type === 'overridden') {
         // Config changed - create fresh but preserve timing
+        if (!persistedTask) {
+            throw new Error("Overridden task decision requires persisted task data");
+        }
         return makeTask(
             registration.name,
             registration.parsedCron,
@@ -265,6 +355,9 @@ function createTaskFromDecision(decision, registration, persistedTask, lastMinut
         );
     } else {
         // Preserved task - create task directly from persisted data with current registration
+        if (!persistedTask) {
+            throw new Error("Preserved task decision requires persisted task data");
+        }
         return makeTask(
             registration.name,
             registration.parsedCron,
@@ -282,8 +375,8 @@ function createTaskFromDecision(decision, registration, persistedTask, lastMinut
 /**
  * Log materialization decisions made.
  * @param {import('../types').SchedulerCapabilities} capabilities
- * @param {object} decisions
- * @param {Map<string, object>} persistedTaskMap
+ * @param {{new: Array<{name: string, reason: string}>, preserved: Array<{name: string, reason: string}>, overridden: Array<{name: string, reason: string}>, orphaned: Array<{name: string, reason: string}>}} decisions
+ * @param {Map<string, TaskRecord>} persistedTaskMap
  * @param {string} schedulerIdentifier
  */
 function logMaterializationDecisions(capabilities, decisions, persistedTaskMap, schedulerIdentifier) {
