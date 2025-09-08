@@ -39,7 +39,7 @@ function validateTaskFrequency(capabilities, parsedCron, pollInterval) {
 
     if (aCronInterval < pollInterval) {
         capabilities.logger.logWarning(
-            { minCronInterval: aCronInterval, pollInterval, cron: parsedCron.original },
+            { aCronInterval, pollInterval, cron: parsedCron.original },
             `Task with cron expression "${parsedCron.original}" has an interval of ` +
             `${aCronInterval}, which is less than the polling interval of ${pollInterval}.`
         );
