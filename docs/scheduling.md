@@ -60,9 +60,7 @@ The scheduler uses a periodic polling loop to evaluate when tasks should run.
 For each scheduled task the scheduler records the times of the latest attempt
 and whether it succeeded or failed. A poll determines whether a task is due
 either because a cron occurrence has arrived or a previously scheduled retry
-time has passed. When both conditions hold, the earlier time determines the
-next run. Due tasks execute asynchronously and their updated history is
-persisted.
+time has passed. If so, the task's callback is invoked.
 
 ### No Make‑Up Execution Policy
 
@@ -186,7 +184,8 @@ For authoritative documentation, refer to:
 2. **No disabled state** – a task exists only while it is registered.
 3. **Fixed retry delay** – there is no exponential backoff or jitter.
 4. **Frequency guard** – cron expressions that would fire more frequently than
-   the polling loop can observe are rejected.
+   the polling loop can observe may log a warning, but are accepted because
+   precise enforcement is quite complex.
 5. **Immediate persistence** – state is written after each mutation which can
    increase I/O but ensures durability.
 6. **No callback persistence** – executable logic is provided anew at every
