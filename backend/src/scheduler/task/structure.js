@@ -194,7 +194,7 @@ function createStateFromProperties(lastSuccessTime, lastFailureTime, lastAttempt
         if (!useMostRecentAsSuccess && !pendingRetryUntil) {
             /** @type {AwaitingRun} */
             return {
-                lastSuccessTime: mostRecentCompletion, // Using failure time as success for comparison
+                lastSuccessTime: mostRecentCompletion || null, // Using failure time as success for comparison
                 lastAttemptTime
             };
         }
