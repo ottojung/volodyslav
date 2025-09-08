@@ -32,6 +32,12 @@ function validateRegistrations(registrations) {
         }
 
         const [name, cronExpression, callback, retryDelay] = registration;
+        
+        // Validate task name is a string
+        if (typeof name !== 'string') {
+            throw new RegistrationShapeError(`Registration at index ${i}: task name must be a string, got: ${typeof name}`, { index: i, name, value: name });
+        }
+        
         if (callback === undefined || typeof callback !== 'function') {
             throw new RegistrationShapeError(`Registration at index ${i} (${JSON.stringify(name)}): callback must be a function, got: ${typeof callback}`, { index: i, name, value: callback });
         }
