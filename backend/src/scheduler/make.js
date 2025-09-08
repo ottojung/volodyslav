@@ -154,10 +154,11 @@ function make(getCapabilities) {
             // Apply materialization logic to detect and log changes, and update persisted state
             await materializeAndPersistTasks(capabilities, parsedRegistrations, schedulerIdentifier);
             return;
+        } else {
+            pollingScheduler = makePollingScheduler(capabilities, parsedRegistrations, schedulerIdentifier);
         }
 
         // Create polling scheduler
-        pollingScheduler = makePollingScheduler(capabilities, parsedRegistrations, schedulerIdentifier);
         capabilities.logger.logDebug(
             {},
             "Creating new polling scheduler"
