@@ -1144,6 +1144,41 @@ describe("scheduler stories", () => {
         expect(isTaskTryDeserializeError(result)).toBe(true);
     });
 
+    test.failing("should schedule newly added tasks after reinitialization", async () => {
+        const capabilities = getTestCapabilities();
+        const timeControl = getDatetimeControl(capabilities);
+        const schedulerControl = getSchedulerControl(capabilities);
+        const retryDelay = Duration.fromMillis(1000);
+
+        const firstTask = jest.fn();
+        const secondTask = jest.fn();
+
+        const startTime = fromISOString("2021-01-01T00:05:00.000Z");
+        timeControl.setDateTime(startTime);
+        schedulerControl.setPollingInterval(fromMilliseconds(1));
+
+        await capabilities.scheduler.initialize([
+            ["first-task", "0 * * * *", firstTask, retryDelay],
+        ]);
+
+        await schedulerControl.waitForNextCycleEnd();
+
+        await capabilities.scheduler.initialize([
+            ["first-task", "0 * * * *", firstTask, retryDelay],
+            ["second-task", "0 * * * *", secondTask, retryDelay],
+        ]);
+
+        await schedulerControl.waitForNextCycleEnd();
+
+        timeControl.advanceByDuration(fromMinutes(55));
+        await schedulerControl.waitForNextCycleEnd();
+
+        expect(firstTask.mock.calls.length).toBe(1);
+        expect(secondTask.mock.calls.length).toBe(1);
+
+        await capabilities.scheduler.stop();
+    });
+
     test("getNextExecution after getMostRecentExecution should not skip earlier valid days", () => {
         const expr = parseCronExpression("0 0 30,31 * *");
         // Compute previous execution to mutate internal cache for earlier months
