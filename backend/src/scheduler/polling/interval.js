@@ -34,6 +34,6 @@ function makeIntervalManager(pollFunction, capabilities) {
 
 module.exports = {
     makeIntervalManager,
-    POLL_INTERVAL_MS,
+    POLL_INTERVAL,
     THREAD_NAME,
 };
