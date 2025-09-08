@@ -111,10 +111,8 @@ async function mutateTasks(capabilities, registrations, transformation) {
  * @returns {Promise<void>}
  */
 async function initializeTasks(capabilities, registrations, schedulerIdentifier) {
-    return await capabilities.state.transaction(async (storage) => {
-        const currentState = await getCurrentState(storage, registrations, capabilities.datetime);
-        const currentTaskRecords = currentState.tasks;
-
+    return await mutateTaskRecords(capabilities, async (currentTaskRecords) => {
+    
         // Apply clean materialization logic with override and orphaned task handling
         const tasks = materializeTasksWithCleanLogic(registrations, currentTaskRecords, capabilities, schedulerIdentifier);
 
@@ -122,12 +120,8 @@ async function initializeTasks(capabilities, registrations, schedulerIdentifier)
         const taskRecords = serializeTasks(tasks);
 
         // Update state with new task records while preserving other state fields
-        const newState = {
-            ...currentState,
-            tasks: taskRecords,
-        };
-
-        storage.setState(newState);
+        currentTaskRecords.length = 0; // Clear array in-place
+        currentTaskRecords.push(...taskRecords);
 
         capabilities.logger.logDebug({ taskCount: tasks.size }, "Initial state materialized and persisted");
     });
