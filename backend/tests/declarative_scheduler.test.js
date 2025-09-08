@@ -534,6 +534,73 @@ describe("Declarative Scheduler", () => {
             await capabilities.scheduler.stop();
         });
 
+        test.failing("preserves scheduler timings for persistant tasks while loading new ones", async () => {
+            const capabilities = getTestCapabilities();
+            const dateControl = getDatetimeControl(capabilities);
+            const schedulerControl = getSchedulerControl(capabilities);
+
+            // Speed up scheduler polling for test
+            schedulerControl.setPollingInterval(fromMilliseconds(100));
+            dateControl.setDateTime(fromISOString("2021-01-01T00:00:00.000Z"));
+
+            const callback1 = jest.fn();
+            const callback2 = jest.fn();
+            const callback3 = jest.fn();            
+
+            // Set up initial state
+            const initialRegistrations = [
+                ["task1", "0 0 * * *", callback1, Duration.fromObject({minutes: 5})],
+                ["task2", "0 0 * * *", callback2, Duration.fromObject({minutes: 5})],
+            ];
+
+            await capabilities.scheduler.initialize(initialRegistrations);
+
+            expect(callback1).not.toHaveBeenCalled();
+            expect(callback2).not.toHaveBeenCalled();
+            expect(callback3).not.toHaveBeenCalled();
+
+            await schedulerControl.waitForNextCycleEnd();
+
+            expect(callback1).toHaveBeenCalledTimes(1);
+            expect(callback2).toHaveBeenCalledTimes(1);
+            expect(callback3).not.toHaveBeenCalled();
+
+            // Create complex mismatch scenario using same capabilities
+            const mismatchedRegistrations = [
+                ["task1", "0 0 * * *", callback1, Duration.fromObject({minutes: 5})],
+                ["task3", "0 0 * * *", callback3, Duration.fromObject({minutes: 5})], // extra task (task2 is missing)
+            ];
+
+            await capabilities.scheduler.stop();
+            dateControl.advanceByDuration(Duration.fromObject({ minutes: 10 }));
+
+            // This should now succeed (override behavior) instead of throwing
+            await expect(capabilities.scheduler.initialize(mismatchedRegistrations)).resolves.toBeUndefined();
+
+            // No additional calls at initialization time.
+            expect(callback1).toHaveBeenCalledTimes(1);
+            expect(callback2).toHaveBeenCalledTimes(1);
+            expect(callback3).not.toHaveBeenCalled();
+
+            await schedulerControl.waitForNextCycleEnd();
+
+            // Nothing is due, so no calls yet.
+            expect(callback1).toHaveBeenCalledTimes(1);
+            expect(callback2).toHaveBeenCalledTimes(1);
+            expect(callback3).toHaveBeenCalledTimes(0);
+
+            dateControl.advanceByDuration(Duration.fromObject({ days: 10 }));
+
+            await schedulerControl.waitForNextCycleEnd();
+
+            // Some tasks should run now
+            expect(callback1).toHaveBeenCalledTimes(2);
+            expect(callback2).toHaveBeenCalledTimes(1);
+            expect(callback3).toHaveBeenCalledTimes(1);
+
+            await capabilities.scheduler.stop();
+        });
+
         test("handles empty registrations with empty persisted state", async () => {
             const capabilities = getTestCapabilities();
             const registrations = [];
