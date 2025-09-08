@@ -253,12 +253,18 @@ function make(getCapabilities) {
             "Creating new polling scheduler"
         );
 
-        if (persistedTasks === undefined || shouldOverride) {
-            // Persist tasks during first initialization or when override is needed.
-            await mutateTasks(capabilities, parsedRegistrations, async () => undefined);
+        if (persistedTasks === undefined) {
+            // First initialization - persist initial tasks
+            await mutateTasks(capabilities, parsedRegistrations, async () => undefined, false);
+        } else {
+            // Check for orphaned tasks first, before any override
+            await detectAndRestartOrphanedTasks(parsedRegistrations, capabilities, schedulerIdentifier);
+            
+            if (shouldOverride) {
+                // Override persisted state with new registrations
+                await mutateTasks(capabilities, parsedRegistrations, async () => undefined, true);
+            }
         }
-
-        await detectAndRestartOrphanedTasks(parsedRegistrations, capabilities, schedulerIdentifier);
 
         // Schedule all tasks
         const { scheduledCount, skippedCount } = await scheduleAllTasks(registrations, pollingScheduler, capabilities);
