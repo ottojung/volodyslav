@@ -24,7 +24,7 @@ const { registrationToTaskIdentity, taskRecordToTaskIdentity, taskIdentitiesEqua
  * @param {import('../../runtime_state_storage/class').RuntimeStateStorage} storage
  * @param {ParsedRegistrations} registrations
  * @param {import('../../datetime').Datetime} datetime
- * @returns {Promise<{state: import('../../runtime_state_storage/types').RuntimeState, wasFirstTime: boolean}>}
+ * @returns {Promise<import('../../runtime_state_storage/types').RuntimeState>}
  */
 async function getCurrentState(storage, registrations, datetime) {
     const now = datetime.now();    
@@ -43,9 +43,9 @@ async function getCurrentState(storage, registrations, datetime) {
             });
         }
 
-        return { state: ret, wasFirstTime: true };
+        return ret;
     } else {
-        return { state: existingState, wasFirstTime: false };
+        return existingState;
     }
 }
 
@@ -59,7 +59,7 @@ async function getCurrentState(storage, registrations, datetime) {
  */
 async function mutateTasks(capabilities, registrations, transformation) {
     return await capabilities.state.transaction(async (storage) => {
-        const { state: currentState } = await getCurrentState(storage, registrations, capabilities.datetime);
+        const currentState = await getCurrentState(storage, registrations, capabilities.datetime);
         const currentTaskRecords = currentState.tasks;
         
         // Use existing materialization logic for normal operation
@@ -93,11 +93,11 @@ async function mutateTasks(capabilities, registrations, transformation) {
  */
 async function materializeAndPersistTasks(capabilities, registrations, schedulerIdentifier) {
     return await capabilities.state.transaction(async (storage) => {
-        const { state: currentState, wasFirstTime } = await getCurrentState(storage, registrations, capabilities.datetime);
+        const currentState = await getCurrentState(storage, registrations, capabilities.datetime);
         const currentTaskRecords = currentState.tasks;
         
         // Apply clean materialization logic with override and orphaned task handling
-        const tasks = materializeTasksWithCleanLogic(registrations, currentTaskRecords, capabilities, schedulerIdentifier, wasFirstTime);
+        const tasks = materializeTasksWithCleanLogic(registrations, currentTaskRecords, capabilities, schedulerIdentifier);
         
         // Convert tasks to serializable format
         const taskRecords = serializeTasks(tasks);
@@ -121,23 +121,11 @@ async function materializeAndPersistTasks(capabilities, registrations, scheduler
  * @param {import('../../runtime_state_storage/types').TaskRecord[]} persistedTaskRecords
  * @param {import('../types').SchedulerCapabilities} capabilities
  * @param {string} schedulerIdentifier - Current scheduler identifier for orphaned task detection
- * @param {boolean} wasFirstTime - Whether this was first-time initialization
  * @returns {Map<string, Task>}
  */
-function materializeTasksWithCleanLogic(registrations, persistedTaskRecords, capabilities, schedulerIdentifier, wasFirstTime) {
+function materializeTasksWithCleanLogic(registrations, persistedTaskRecords, capabilities, schedulerIdentifier) {
     /** @type {Map<string, Task>} */
     const tasks = new Map();
-    
-    // Check if this is first-time initialization
-    if (wasFirstTime) {
-        capabilities.logger.logDebug(
-            {
-                registeredTaskCount: registrations.size,
-                taskNames: Array.from(registrations.keys())
-            },
-            "First-time scheduler initialization: registering initial tasks"
-        );
-    }
     
     // Create a map of persisted task records by name for quick lookup
     const persistedTaskMap = new Map();
