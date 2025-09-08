@@ -3,7 +3,6 @@
  */
 
 const { fromMinutes } = require("../../datetime");
-const { makeDefault } = require('../../runtime_state_storage/structure');
 const { materializeTasks, serializeTasks } = require('./materialization');
 const { makeTask } = require('../task/structure');
 const { registrationToTaskIdentity, taskRecordToTaskIdentity, taskIdentitiesEqual } = require("../task/identity");
@@ -25,36 +24,6 @@ const { registrationToTaskIdentity, taskRecordToTaskIdentity, taskIdentitiesEqua
  * @template T
  * @typedef {import('../types').RecordTransformation<T>} RecordTransformation
  */
-
-/**
- * Get or create current state for the scheduler.
- * @param {import('../../runtime_state_storage').RuntimeStateStorage} storage
- * @param {ParsedRegistrations} registrations
- * @param {import('../../datetime').Datetime} datetime
- * @returns {Promise<import('../../runtime_state_storage').RuntimeState>}
- */
-async function getCurrentState(storage, registrations, datetime) {
-    const now = datetime.now();
-    const lastMinute = now.subtract(fromMinutes(1));
-    const existingState = await storage.getExistingState();
-    if (existingState === null) {
-        const ret = makeDefault(datetime);
-
-        for (const registration of registrations.values()) {
-            ret.tasks.push({
-                name: registration.name,
-                cronExpression: registration.parsedCron.original,
-                retryDelayMs: registration.retryDelay.toMillis(),
-                lastAttemptTime: lastMinute,
-                lastSuccessTime: lastMinute,
-            });
-        }
-
-        return ret;
-    } else {
-        return existingState;
-    }
-}
 
 /**
  * @template T
@@ -112,7 +81,6 @@ async function mutateTasks(capabilities, registrations, transformation) {
  */
 async function initializeTasks(capabilities, registrations, schedulerIdentifier) {
     return await mutateTaskRecords(capabilities, async (currentTaskRecords) => {
-    
         // Apply clean materialization logic with override and orphaned task handling
         const tasks = materializeTasksWithCleanLogic(registrations, currentTaskRecords, capabilities, schedulerIdentifier);
 
