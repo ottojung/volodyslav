@@ -233,15 +233,17 @@ describe("scheduler orphaned task restart", () => {
 
             const now = capabilities.datetime.now();
 
-            state.tasks[0].state = {
-                lastAttemptTime: now,
-                schedulerIdentifier: "old-scheduler-1",
-            }
+            state.tasks[0].lastAttemptTime = now;
+            state.tasks[0].schedulerIdentifier = "old-scheduler-1";
+            state.tasks[0].lastSuccessTime = undefined;
+            state.tasks[0].lastFailureTime = undefined;
+            state.tasks[0].pendingRetryUntil = undefined;
 
-            state.tasks[1].state = {
-                lastAttemptTime: now,
-                schedulerIdentifier: "old-scheduler-2",
-            }
+            state.tasks[1].lastAttemptTime = now;
+            state.tasks[1].schedulerIdentifier = "old-scheduler-2";
+            state.tasks[1].lastSuccessTime = undefined;
+            state.tasks[1].lastFailureTime = undefined;
+            state.tasks[1].pendingRetryUntil = undefined;
 
             storage.setState(state);
         });
@@ -256,16 +258,16 @@ describe("scheduler orphaned task restart", () => {
         await schedulerControl.waitForNextCycleEnd();
         await schedulerControl.waitForNextCycleEnd();
 
-        // // Verify all three orphaned tasks were detected and restarted
-        // expect(logWarningSpy).toHaveBeenCalledTimes(2);
-        // expect(logWarningSpy).toHaveBeenCalledWith(
-        //     expect.objectContaining({ taskName: "orphaned-task-1" }),
-        //     expect.any(String),
-        // );
-        // expect(logWarningSpy).toHaveBeenCalledWith(
-        //     expect.objectContaining({ taskName: "orphaned-task-2" }),
-        //     expect.any(String),
-        // );
+        // Verify all three orphaned tasks were detected and restarted
+        expect(logWarningSpy).toHaveBeenCalledTimes(2);
+        expect(logWarningSpy).toHaveBeenCalledWith(
+            expect.objectContaining({ taskName: "orphaned-task-1" }),
+            expect.any(String),
+        );
+        expect(logWarningSpy).toHaveBeenCalledWith(
+            expect.objectContaining({ taskName: "orphaned-task-2" }),
+            expect.any(String),
+        );
 
         // Only two callbacks should have been executed after restart
         expect(task1Callback).toHaveBeenCalled();
