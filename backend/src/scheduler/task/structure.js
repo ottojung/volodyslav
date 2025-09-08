@@ -59,9 +59,18 @@ function makeTask(name, parsedCron, callback, retryDelay, lastSuccessTime, lastF
 }
 
 /**
+ * @param {unknown} value 
+ * @returns {value is TaskClass}
+ */
+function isTask(value) {
+    return value instanceof TaskClass;
+}
+
+/**
  * @typedef {TaskClass} Task
  */
 
 module.exports = {
+    isTask,
     makeTask,
 };
