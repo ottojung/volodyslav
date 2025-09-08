@@ -24,9 +24,10 @@ const { evaluateTasksForExecution } = require('../execution');
  * @param {import('../types').ParsedRegistrations} registrations
  * @param {Set<string>} scheduledTasks
  * @param {ReturnType<import('../execution').makeTaskExecutor>} taskExecutor
+ * @param {string} schedulerIdentifier
  * @returns {() => Promise<void>}
  */
-function makePollingFunction(capabilities, registrations, scheduledTasks, taskExecutor) {
+function makePollingFunction(capabilities, registrations, scheduledTasks, taskExecutor, schedulerIdentifier) {
     const dt = capabilities.datetime;
     let parallelCounter = 0;
 
@@ -34,7 +35,7 @@ function makePollingFunction(capabilities, registrations, scheduledTasks, taskEx
         try {
             const now = dt.now();
             return await mutateTasks(capabilities, registrations, (tasks) => {
-                return evaluateTasksForExecution(tasks, scheduledTasks, now, capabilities);
+                return evaluateTasksForExecution(tasks, scheduledTasks, now, capabilities, schedulerIdentifier);
             });
         } finally {
             parallelCounter--;

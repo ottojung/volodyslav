@@ -23,8 +23,9 @@ class TaskClass {
      * @param {DateTime|undefined} lastFailureTime
      * @param {DateTime|undefined} lastAttemptTime
      * @param {DateTime|undefined} pendingRetryUntil
+     * @param {string|undefined} schedulerIdentifier
      */
-    constructor(name, parsedCron, callback, retryDelay, lastSuccessTime, lastFailureTime, lastAttemptTime, pendingRetryUntil) {
+    constructor(name, parsedCron, callback, retryDelay, lastSuccessTime, lastFailureTime, lastAttemptTime, pendingRetryUntil, schedulerIdentifier) {
         if (this.__brand !== undefined) {
             throw new Error("Task is a nominal type and cannot be instantiated directly. Use makeTask() instead.");
         }
@@ -36,6 +37,7 @@ class TaskClass {
         this.lastFailureTime = lastFailureTime;
         this.lastAttemptTime = lastAttemptTime;
         this.pendingRetryUntil = pendingRetryUntil;
+        this.schedulerIdentifier = schedulerIdentifier;
     }
 }
 
@@ -49,10 +51,11 @@ class TaskClass {
  * @param {DateTime|undefined} lastFailureTime
  * @param {DateTime|undefined} lastAttemptTime
  * @param {DateTime|undefined} pendingRetryUntil
+ * @param {string|undefined} schedulerIdentifier
  * @returns {TaskClass}
  */
-function makeTask(name, parsedCron, callback, retryDelay, lastSuccessTime, lastFailureTime, lastAttemptTime, pendingRetryUntil) {
-    return new TaskClass(name, parsedCron, callback, retryDelay, lastSuccessTime, lastFailureTime, lastAttemptTime, pendingRetryUntil);
+function makeTask(name, parsedCron, callback, retryDelay, lastSuccessTime, lastFailureTime, lastAttemptTime, pendingRetryUntil, schedulerIdentifier) {
+    return new TaskClass(name, parsedCron, callback, retryDelay, lastSuccessTime, lastFailureTime, lastAttemptTime, pendingRetryUntil, schedulerIdentifier);
 }
 
 /**

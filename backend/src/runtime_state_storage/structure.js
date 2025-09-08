@@ -170,6 +170,13 @@ function tryDeserialize(obj) {
                     }
                 }
             }
+            if (t.schedulerIdentifier !== undefined) {
+                if (typeof t.schedulerIdentifier !== "string") {
+                    taskErrors.push(new TaskInvalidTypeError("schedulerIdentifier", t.schedulerIdentifier, "string", i));
+                } else {
+                    rec.schedulerIdentifier = t.schedulerIdentifier;
+                }
+            }
             tasks.push(rec);
         }
     }
@@ -197,6 +204,7 @@ function serialize(state) {
             if (t.lastFailureTime) rec.lastFailureTime = toISOString(t.lastFailureTime);
             if (t.lastAttemptTime) rec.lastAttemptTime = toISOString(t.lastAttemptTime);
             if (t.pendingRetryUntil) rec.pendingRetryUntil = toISOString(t.pendingRetryUntil);
+            if (t.schedulerIdentifier) rec.schedulerIdentifier = t.schedulerIdentifier;
             return rec;
         });
     return {

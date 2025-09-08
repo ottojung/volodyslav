@@ -39,8 +39,9 @@ class TaskRegistrationNotFoundError extends Error {
 /**
  * @param {import('../types').SchedulerCapabilities} capabilities
  * @param {ParsedRegistrations} registrations
+ * @param {string} schedulerIdentifier
  */
-function makePollingScheduler(capabilities, registrations) {
+function makePollingScheduler(capabilities, registrations, schedulerIdentifier) {
     /** @type {Set<string>} */
     const scheduledTasks = new Set(); // Task names that are enabled. Is a subset of names in `registrations`.
     const dt = capabilities.datetime;
@@ -49,7 +50,7 @@ function makePollingScheduler(capabilities, registrations) {
     const taskExecutor = makeTaskExecutor(capabilities, (transformation) => mutateTasks(capabilities, registrations, transformation));
 
     // Create polling function with lifecycle management
-    const pollFunction = makePollingFunction(capabilities, registrations, scheduledTasks, taskExecutor);
+    const pollFunction = makePollingFunction(capabilities, registrations, scheduledTasks, taskExecutor, schedulerIdentifier);
     const intervalManager = makeIntervalManager(pollFunction, capabilities);
 
     function start() {

@@ -30,6 +30,7 @@ const {
  * @property {DateTime} [lastFailureTime] - Last failed execution time
  * @property {DateTime} [lastAttemptTime] - Last attempt time
  * @property {DateTime} [pendingRetryUntil] - Pending retry until time
+ * @property {string} [schedulerIdentifier] - Identifier of the scheduler instance that started this task
  */
 
 /**
@@ -57,6 +58,9 @@ function serialize(task) {
     }
     if (task.pendingRetryUntil !== undefined) {
         serialized.pendingRetryUntil = task.pendingRetryUntil;
+    }
+    if (task.schedulerIdentifier !== undefined) {
+        serialized.schedulerIdentifier = task.schedulerIdentifier;
     }
     return serialized;
 }
@@ -108,6 +112,12 @@ function tryDeserialize(obj, registrations) {
         const lastFailureTime = ("lastFailureTime" in obj) ? obj.lastFailureTime : undefined;
         const lastAttemptTime = ("lastAttemptTime" in obj) ? obj.lastAttemptTime : undefined;
         const pendingRetryUntil = ("pendingRetryUntil" in obj) ? obj.pendingRetryUntil : undefined;
+        const schedulerIdentifier = ("schedulerIdentifier" in obj) ? obj.schedulerIdentifier : undefined;
+
+        // Validate schedulerIdentifier field if present
+        if (schedulerIdentifier !== undefined && typeof schedulerIdentifier !== "string") {
+            return new TaskInvalidTypeError("schedulerIdentifier", schedulerIdentifier, "string or undefined");
+        }
 
         // Validate DateTime fields
         for (const [fieldName, value] of [
@@ -166,6 +176,7 @@ function tryDeserialize(obj, registrations) {
             /** @type {DateTime|undefined} */ (lastFailureTime),
             /** @type {DateTime|undefined} */ (lastAttemptTime),
             /** @type {DateTime|undefined} */ (pendingRetryUntil),
+            /** @type {string|undefined} */ (schedulerIdentifier),
         );
 
     } catch (error) {

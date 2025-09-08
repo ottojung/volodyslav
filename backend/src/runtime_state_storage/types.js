@@ -44,6 +44,7 @@
  * @property {import('../datetime').DateTime} [lastFailureTime] - Last failed execution time
  * @property {import('../datetime').DateTime} [lastAttemptTime] - Last execution attempt time (success or failure)
  * @property {import('../datetime').DateTime} [pendingRetryUntil] - Retry deadline for failed tasks
+ * @property {string} [schedulerIdentifier] - Identifier of the scheduler instance that started this task
  */
 
 /**
