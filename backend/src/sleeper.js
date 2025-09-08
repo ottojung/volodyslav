@@ -12,7 +12,7 @@ const { fromMilliseconds } = require('./datetime/duration');
 
 /**
  * Pauses execution for the specified duration.
- * @param {import('luxon').Duration} duration - Duration to sleep.
+ * @param {import('./datetime').Duration} duration - Duration to sleep.
  * @returns {Promise<void>} Resolves after the delay.
  */
 function sleep(duration) {
