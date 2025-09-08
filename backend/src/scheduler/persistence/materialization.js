@@ -42,9 +42,14 @@ function materializeTasks(registrations, taskRecords) {
             throw new TaskAlreadyRegisteredError(name);
         }
 
+        if (!registrations.has(name)) {
+            // Skip tasks not in current registrations
+            continue;
+        }
+
         const taskOrError = tryDeserialize(record, registrations);
         if (isTaskTryDeserializeError(taskOrError)) {
-            throw new Error(`Failed to deserialize task ${name}: ${taskOrError.message}`);
+            throw taskOrError;
         }
 
         tasks.set(name, taskOrError);
