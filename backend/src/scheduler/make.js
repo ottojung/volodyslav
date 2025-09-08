@@ -130,7 +130,7 @@ function make(getCapabilities) {
 
         // Analyze state changes and determine if override is needed
         if (persistedTasks === undefined) {
-            capabilities.logger.logInfo(
+            capabilities.logger.logDebug(
                 {
                     registeredTaskCount: registrations.length,
                     taskNames: registrations.map(([name]) => name)
