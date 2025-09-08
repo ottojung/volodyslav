@@ -6,6 +6,7 @@
 const { Duration } = require("luxon");
 const { getMockedRootCapabilities } = require("./spies");
 const { stubEnvironment, stubLogger, stubDatetime, stubSleeper } = require("./stubs");
+const { POLL_INTERVAL } = require("../src/scheduler/polling/interval");
 
 function getTestCapabilities() {
     const capabilities = getMockedRootCapabilities();
@@ -33,11 +34,11 @@ describe("declarative scheduler frequency validation", () => {
         await expect(capabilities.scheduler.initialize(registrations)).resolves.toBeUndefined();
         expect(capabilities.logger.logWarning).toHaveBeenCalledWith(
             expect.objectContaining({
-                minCronInterval: expect.any(Number),
-                pollIntervalMs: expect.any(Number),
+                aCronInterval: expect.anything(),
+                pollInterval: POLL_INTERVAL,
                 cron: "* * * * *"
             }),
-            expect.stringMatching(/minimum interval.*less than the polling interval/i)
+            expect.stringMatching(/interval.*less than the polling interval/i)
         );
         await capabilities.scheduler.stop();
     });
@@ -90,11 +91,11 @@ describe("declarative scheduler frequency validation", () => {
             .resolves.toBeUndefined();
         expect(capabilities1.logger.logWarning).toHaveBeenCalledWith(
             expect.objectContaining({
-                minCronInterval: expect.any(Number),
-                pollIntervalMs: expect.any(Number),
+                aCronInterval: expect.anything(),
+                pollInterval: POLL_INTERVAL,
                 cron: "0,5,10,15,20,25,30,35,40,45,50,55 * * * *"
             }),
-            expect.stringMatching(/minimum interval.*less than the polling interval/i)
+            expect.stringMatching(/interval.*less than the polling interval/i)
         );
 
         // Initialize with task that runs every 2 hours (lower frequency than 10-minute polling)
@@ -124,22 +125,22 @@ describe("declarative scheduler frequency validation", () => {
             .resolves.toBeUndefined();
         expect(capabilities1.logger.logWarning).toHaveBeenCalledWith(
             expect.objectContaining({
-                minCronInterval: expect.any(Number),
-                pollIntervalMs: expect.any(Number),
+                aCronInterval: expect.anything(),
+                pollInterval: POLL_INTERVAL,
                 cron: "* * * * *"
             }),
-            expect.stringMatching(/minimum interval.*less than the polling interval/i)
+            expect.stringMatching(/interval.*less than the polling interval/i)
         );
 
         await expect(capabilities2.scheduler.initialize(registrations))
             .resolves.toBeUndefined();
         expect(capabilities2.logger.logWarning).toHaveBeenCalledWith(
             expect.objectContaining({
-                minCronInterval: expect.any(Number),
-                pollIntervalMs: expect.any(Number),
+                aCronInterval: expect.anything(),
+                pollInterval: POLL_INTERVAL,
                 cron: "* * * * *"
             }),
-            expect.stringMatching(/minimum interval.*less than the polling interval/i)
+            expect.stringMatching(/interval.*less than the polling interval/i)
         );
 
         await capabilities1.scheduler.stop();
