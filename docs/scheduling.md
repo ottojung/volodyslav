@@ -60,9 +60,7 @@ The scheduler uses a periodic polling loop to evaluate when tasks should run.
 For each scheduled task the scheduler records the times of the latest attempt
 and whether it succeeded or failed. A poll determines whether a task is due
 either because a cron occurrence has arrived or a previously scheduled retry
-time has passed. When both conditions hold, the earlier time determines the
-next run. Due tasks execute asynchronously and their updated history is
-persisted.
+time has passed. If so, the task's callback is invoked.
 
 ### No Make‑Up Execution Policy
 
