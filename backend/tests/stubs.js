@@ -132,7 +132,7 @@ function stubDatetime(capabilities) {
  * Provides access to datetime manipulation functions when datetime is stubbed.
  * Works only with DateTime/Duration objects - no milliseconds support.
  * @param {any} capabilities - The capabilities object with stubbed datetime
- * @returns {{setDateTime: (dateTime: import('../src/datetime').DateTime) => void, advanceByDuration: (duration: import('luxon').Duration) => void, getCurrentDateTime: () => import('../src/datetime').DateTime}}
+ * @returns {{setDateTime: (dateTime: import('../src/datetime').DateTime) => void, advanceByDuration: (duration: import('../src/datetime').Duration) => void, getCurrentDateTime: () => import('../src/datetime').DateTime}}
  */
 function getDatetimeControl(capabilities) {
     if (!capabilities.datetime.__isMockedDatetime) {
@@ -419,7 +419,7 @@ function stubScheduler(capabilities) {
 
 /**
  * @typedef {object} SchedulerControl
- * @property { (newPeriod: import('luxon').Duration) => void } setPollingInterval
+ * @property { (newPeriod: import('../src/datetime').Duration) => void } setPollingInterval
  * @property {import('../src/threading').PeriodicThread} thread
  * @property {() => Promise<void>} waitForNextCycleEnd
  */

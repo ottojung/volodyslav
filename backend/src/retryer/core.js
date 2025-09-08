@@ -7,9 +7,11 @@
 
 const { difference } = require("../datetime");
 
+/** @typedef {import('../datetime').Duration} Duration */
+
 /**
  * @template T
- * @typedef {(args: {attempt: number, timePassed: () => import('luxon').Duration, retry: () => T}) => Promise<T>} RetryableCallback
+ * @typedef {(args: {attempt: number, timePassed: () => Duration, retry: () => T}) => Promise<T>} RetryableCallback
  */
 
 /**

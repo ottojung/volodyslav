@@ -2,6 +2,10 @@
 // FIXME: develop this subfolder into a proper module.
 
 /**
+ * @typedef {import('../datetime').Duration} Duration
+ */
+
+/**
  * @typedef {() => Promise<void>} Callback
  */
 
@@ -15,17 +19,17 @@ class PeriodicThread {
     /** @type {string} */
     name;
 
-    /** @type {import('luxon').Duration} */
+    /** @type {Duration} */
     period;
 
     /** @type {Callback} */
     callback;
 
     /**
-     * 
-     * @param {string} name 
-     * @param {import('luxon').Duration} period 
-     * @param {Callback} callback 
+     *
+     * @param {string} name
+     * @param {Duration} period
+     * @param {Callback} callback
      */
     constructor(name, period, callback) {
         this.name = name;
@@ -86,7 +90,7 @@ function make() {
 
     /**
      * @param {string} name
-     * @param {import('luxon').Duration} interval
+     * @param {Duration} interval
      * @param {Callback} callback
      * @returns {PeriodicThread}
      */

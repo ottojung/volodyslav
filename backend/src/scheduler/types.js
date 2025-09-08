@@ -3,7 +3,7 @@
  * Type definitions for the declarative scheduler.
  */
 
-/** @typedef {import('luxon').Duration} Duration */
+/** @typedef {import('../datetime').Duration} Duration */
 /** @typedef {import('./task').Task} Task */
 /** @typedef {import('../runtime_state_storage').TaskRecord} TaskRecord */
 /** @typedef {import('../runtime_state_storage').RuntimeState} RuntimeState */
