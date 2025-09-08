@@ -6,7 +6,6 @@ const { fromMinutes } = require("../../datetime");
 const { materializeTasks, serializeTasks } = require('./materialization');
 const { makeTask } = require('../task/structure');
 const { registrationToTaskIdentity, taskRecordToTaskIdentity, taskIdentitiesEqual } = require("../task/identity");
-const { tryDeserialize } = require("../task");
 
 /** 
  * @typedef {import('../task').Task} Task 
