@@ -179,18 +179,18 @@ For authoritative documentation, refer to:
 
 ## Limitations and Tradeoffs
 
-1. **Local time only** – scheduling uses the host's clock without timezone
-   abstraction.
-2. **No disabled state** – a task exists only while it is registered.
-3. **Fixed retry delay** – there is no exponential backoff or jitter.
-4. **Frequency guard** – cron expressions that would fire more frequently than
-   the polling loop can observe may log a warning, but are accepted because
-   precise enforcement is quite complex.
-5. **Immediate persistence** – state is written after each mutation which can
-   increase I/O but ensures durability.
-6. **No callback persistence** – executable logic is provided anew at every
-   start; only task identity and history are stored.
-7. **Advanced features omitted** – priority scheduling, metrics, dynamic
-   registration, time‑zone handling and similar complexities are intentionally
-   excluded to keep the scheduler simple and predictable.
+- **Local time only** – scheduling uses the host's clock without timezone
+  abstraction.
+- **No disabled state** – a task exists only while it is registered.
+- **Fixed retry delay** – there is no exponential backoff or jitter.
+- **Frequency guard** – cron expressions that would fire more frequently than
+  the polling loop can observe may log a warning, but are accepted because
+  precise enforcement is quite complex.
+- **Immediate persistence** – state is written after each mutation which can
+  increase I/O but ensures durability.
+- **No callback persistence** – executable logic is provided anew at every
+  start; only task identity and history are stored.
+- **Advanced features omitted** – priority scheduling, metrics, dynamic
+  registration, time‑zone handling and similar complexities are intentionally
+  excluded to keep the scheduler simple and predictable.
 
