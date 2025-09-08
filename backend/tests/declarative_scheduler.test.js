@@ -207,7 +207,7 @@ describe("Declarative Scheduler", () => {
             await capabilities.scheduler.stop();
         });
 
-        test.failing("overrides persisted state when cron expression differs after restart", async () => {
+        test("overrides persisted state when cron expression differs after restart", async () => {
             const capabilities = getTestCapabilities();
 
             // Set up initial state
@@ -244,7 +244,7 @@ describe("Declarative Scheduler", () => {
             await capabilities.scheduler.stop();
         });
 
-        test.failing("overrides persisted state when retry delay differs after restart", async () => {
+        test("overrides persisted state when retry delay differs after restart", async () => {
             const capabilities = getTestCapabilities();
 
             // Set up initial state
@@ -452,7 +452,7 @@ describe("Declarative Scheduler", () => {
             await capabilities.scheduler.stop();
         });
 
-        test.failing("provides detailed override information when applying complex changes after restart", async () => {
+        test("provides detailed override information when applying complex changes after restart", async () => {
             const capabilities = getTestCapabilities();
             const dateControl = getDatetimeControl(capabilities);
             const schedulerControl = getSchedulerControl(capabilities);

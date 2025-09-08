@@ -255,7 +255,7 @@ function make(getCapabilities) {
 
         if (persistedTasks === undefined || shouldOverride) {
             // Persist tasks during first initialization or when override is needed.
-            await mutateTasks(capabilities, parsedRegistrations, async () => undefined);
+            await mutateTasks(capabilities, parsedRegistrations, async () => undefined, shouldOverride);
         }
 
         await detectAndRestartOrphanedTasks(parsedRegistrations, capabilities, schedulerIdentifier);
