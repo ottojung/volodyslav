@@ -1145,7 +1145,7 @@ describe("scheduler stories", () => {
         expect(isTaskTryDeserializeError(result)).toBe(true);
     });
 
-    test.failing("should schedule newly added tasks after reinitialization", async () => {
+    test("should schedule newly added tasks after reinitialization", async () => {
         const capabilities = getTestCapabilities();
         const timeControl = getDatetimeControl(capabilities);
         const schedulerControl = getSchedulerControl(capabilities);
@@ -1217,13 +1217,142 @@ describe("scheduler stories", () => {
         expect(isTaskInvalidTypeError(result)).toBe(true);
     });
 
-    test.failing("should reject non-string task names during registration validation", () => {
+    test("should reject non-string task names during registration validation", () => {
         const retryDelay = Duration.fromMillis(5000);
         const registrations = [
             [123, "* * * * *", jest.fn(), retryDelay]
         ];
 
         expect(() => validateRegistrations(registrations)).toThrow();
+    });
+
+    test("should reject null task names during registration validation", () => {
+        const retryDelay = Duration.fromMillis(5000);
+        const registrations = [
+            [null, "* * * * *", jest.fn(), retryDelay]
+        ];
+
+        expect(() => validateRegistrations(registrations)).toThrow();
+    });
+
+    test("should reject undefined task names during registration validation", () => {
+        const retryDelay = Duration.fromMillis(5000);
+        const registrations = [
+            [undefined, "* * * * *", jest.fn(), retryDelay]
+        ];
+
+        expect(() => validateRegistrations(registrations)).toThrow();
+    });
+
+    test("should reject object task names during registration validation", () => {
+        const retryDelay = Duration.fromMillis(5000);
+        const registrations = [
+            [{name: "test"}, "* * * * *", jest.fn(), retryDelay]
+        ];
+
+        expect(() => validateRegistrations(registrations)).toThrow();
+    });
+
+    test("should reject array task names during registration validation", () => {
+        const retryDelay = Duration.fromMillis(5000);
+        const registrations = [
+            [["test"], "* * * * *", jest.fn(), retryDelay]
+        ];
+
+        expect(() => validateRegistrations(registrations)).toThrow();
+    });
+
+    test("should accept valid string task names during registration validation", () => {
+        const retryDelay = Duration.fromMillis(5000);
+        const registrations = [
+            ["valid-task-name", "* * * * *", jest.fn(), retryDelay]
+        ];
+
+        expect(() => validateRegistrations(registrations)).not.toThrow();
+    });
+
+    test("should handle multiple reinitialization cycles correctly", async () => {
+        const capabilities = getTestCapabilities();
+        const timeControl = getDatetimeControl(capabilities);
+        const schedulerControl = getSchedulerControl(capabilities);
+        const retryDelay = Duration.fromMillis(1000);
+
+        const task1 = jest.fn();
+        const task2 = jest.fn();
+        const task3 = jest.fn();
+
+        const startTime = fromISOString("2021-01-01T00:05:00.000Z");
+        timeControl.setDateTime(startTime);
+        schedulerControl.setPollingInterval(fromMilliseconds(1));
+
+        // Initial registration with one task
+        await capabilities.scheduler.initialize([
+            ["task1", "0 * * * *", task1, retryDelay],
+        ]);
+        await schedulerControl.waitForNextCycleEnd();
+
+        // First reinitialization - add task2
+        await capabilities.scheduler.initialize([
+            ["task1", "0 * * * *", task1, retryDelay],
+            ["task2", "0 * * * *", task2, retryDelay],
+        ]);
+        await schedulerControl.waitForNextCycleEnd();
+
+        // Second reinitialization - add task3
+        await capabilities.scheduler.initialize([
+            ["task1", "0 * * * *", task1, retryDelay],
+            ["task2", "0 * * * *", task2, retryDelay],
+            ["task3", "0 * * * *", task3, retryDelay],
+        ]);
+        await schedulerControl.waitForNextCycleEnd();
+
+        // Advance time to trigger execution
+        timeControl.advanceByDuration(fromMinutes(55));
+        await schedulerControl.waitForNextCycleEnd();
+
+        // All three tasks should execute
+        expect(task1.mock.calls.length).toBe(1);
+        expect(task2.mock.calls.length).toBe(1);
+        expect(task3.mock.calls.length).toBe(1);
+
+        await capabilities.scheduler.stop();
+    });
+
+    test("should handle task removal during reinitialization", async () => {
+        const capabilities = getTestCapabilities();
+        const timeControl = getDatetimeControl(capabilities);
+        const schedulerControl = getSchedulerControl(capabilities);
+        const retryDelay = Duration.fromMillis(1000);
+
+        const task1 = jest.fn();
+        const task2 = jest.fn();
+
+        const startTime = fromISOString("2021-01-01T00:05:00.000Z");
+        timeControl.setDateTime(startTime);
+        schedulerControl.setPollingInterval(fromMilliseconds(1));
+
+        // Initial registration with two tasks
+        await capabilities.scheduler.initialize([
+            ["task1", "0 * * * *", task1, retryDelay],
+            ["task2", "0 * * * *", task2, retryDelay],
+        ]);
+        await schedulerControl.waitForNextCycleEnd();
+
+        // Reinitialization - remove task2
+        await capabilities.scheduler.initialize([
+            ["task1", "0 * * * *", task1, retryDelay],
+        ]);
+        await schedulerControl.waitForNextCycleEnd();
+
+        // Advance time to trigger execution
+        timeControl.advanceByDuration(fromMinutes(55));
+        await schedulerControl.waitForNextCycleEnd();
+
+        // Only task1 should execute
+        expect(task1.mock.calls.length).toBe(1);
+        expect(task2.mock.calls.length).toBe(0);
+
+        await capabilities.scheduler.stop();
     });
 
     test("should reject unsatisfiable cron expressions during initialization", async () => {

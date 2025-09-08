@@ -145,14 +145,33 @@ function make(getCapabilities) {
 
         // Check for existing polling scheduler
         if (pollingScheduler !== null) {
-            // Scheduler already running - still analyze and apply changes to persisted state
+            // Scheduler already running - need to update with new registrations
             capabilities.logger.logDebug(
                 {},
-                "Scheduler already initialized, analyzing registration changes"
+                "Scheduler already initialized, stopping current scheduler and recreating with new registrations"
             );
+            
+            // Stop the existing scheduler
+            await pollingScheduler.stopLoop();
+            pollingScheduler = null;
+            
+            // Create new polling scheduler with updated registrations
+            pollingScheduler = makePollingScheduler(capabilities, parsedRegistrations, schedulerIdentifier);
             
             // Apply materialization logic to detect and log changes, and update persisted state
             await initializeTasks(capabilities, parsedRegistrations, schedulerIdentifier);
+            
+            // Schedule all tasks (including newly added ones)
+            const { scheduledCount, skippedCount } = await scheduleAllTasks(registrations, pollingScheduler, capabilities);
+            
+            capabilities.logger.logDebug(
+                {
+                    totalRegistrations: registrations.length,
+                    scheduledCount,
+                    skippedCount
+                },
+                "Scheduler reinitialization completed"
+            );
             return;
         } else {
             pollingScheduler = makePollingScheduler(capabilities, parsedRegistrations, schedulerIdentifier);
