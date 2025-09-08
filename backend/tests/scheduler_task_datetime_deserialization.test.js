@@ -6,6 +6,7 @@
 const { Duration } = require("luxon");
 const { parseCronExpression } = require("../src/scheduler/expression");
 const { tryDeserialize } = require("../src/scheduler/task/serialization");
+const { getLastSuccessTime, getLastFailureTime, getLastAttemptTime, getPendingRetryUntil } = require("../src/scheduler/task/structure");
 const {
     isTaskTryDeserializeError,
     isTaskInvalidTypeError,
@@ -28,28 +29,42 @@ describe("scheduler task DateTime deserialization", () => {
         test("should deserialize ISO string DateTime fields", () => {
             const registrations = createTestRegistrations();
             const isoString = "2022-01-01T00:00:00.000Z";
-            const obj = {
+            
+            // Test AwaitingRetry state deserialization
+            const awaitingRetryObj = {
+                name: "test-task",
+                cronExpression: "0 * * * *",
+                retryDelayMs: 5000,
+                lastFailureTime: isoString,
+                pendingRetryUntil: isoString
+            };
+            
+            const awaitingRetryResult = tryDeserialize(awaitingRetryObj, registrations);
+            
+            expect(isTaskTryDeserializeError(awaitingRetryResult)).toBe(false);
+            expect(awaitingRetryResult.name).toBe("test-task");
+            expect(isDateTime(getLastFailureTime(awaitingRetryResult))).toBe(true);
+            expect(getLastFailureTime(awaitingRetryResult).toISOString()).toBe(isoString);
+            expect(isDateTime(getPendingRetryUntil(awaitingRetryResult))).toBe(true);
+            expect(getPendingRetryUntil(awaitingRetryResult).toISOString()).toBe(isoString);
+            
+            // Test AwaitingRun state deserialization
+            const awaitingRunObj = {
                 name: "test-task",
                 cronExpression: "0 * * * *",
                 retryDelayMs: 5000,
                 lastSuccessTime: isoString,
-                lastFailureTime: isoString,
-                lastAttemptTime: isoString,
-                pendingRetryUntil: isoString
+                lastAttemptTime: isoString
             };
             
-            const result = tryDeserialize(obj, registrations);
+            const awaitingRunResult = tryDeserialize(awaitingRunObj, registrations);
             
-            expect(isTaskTryDeserializeError(result)).toBe(false);
-            expect(result.name).toBe("test-task");
-            expect(isDateTime(result.lastSuccessTime)).toBe(true);
-            expect(result.lastSuccessTime.toISOString()).toBe(isoString);
-            expect(isDateTime(result.lastFailureTime)).toBe(true);
-            expect(result.lastFailureTime.toISOString()).toBe(isoString);
-            expect(isDateTime(result.lastAttemptTime)).toBe(true);
-            expect(result.lastAttemptTime.toISOString()).toBe(isoString);
-            expect(isDateTime(result.pendingRetryUntil)).toBe(true);
-            expect(result.pendingRetryUntil.toISOString()).toBe(isoString);
+            expect(isTaskTryDeserializeError(awaitingRunResult)).toBe(false);
+            expect(awaitingRunResult.name).toBe("test-task");
+            expect(isDateTime(getLastSuccessTime(awaitingRunResult))).toBe(true);
+            expect(getLastSuccessTime(awaitingRunResult).toISOString()).toBe(isoString);
+            expect(isDateTime(getLastAttemptTime(awaitingRunResult))).toBe(true);
+            expect(getLastAttemptTime(awaitingRunResult).toISOString()).toBe(isoString);
         });
 
         test("should deserialize JSON-parsed DateTime objects", () => {
@@ -71,8 +86,8 @@ describe("scheduler task DateTime deserialization", () => {
             
             expect(isTaskTryDeserializeError(result)).toBe(false);
             expect(result.name).toBe("test-task");
-            expect(isDateTime(result.lastSuccessTime)).toBe(true);
-            expect(result.lastSuccessTime.toISOString()).toBe("2022-01-01T00:00:00.000Z");
+            expect(isDateTime(getLastSuccessTime(result))).toBe(true);
+            expect(getLastSuccessTime(result).toISOString()).toBe("2022-01-01T00:00:00.000Z");
         });
 
         test("should continue to accept existing DateTime objects", () => {
@@ -89,8 +104,8 @@ describe("scheduler task DateTime deserialization", () => {
             
             expect(isTaskTryDeserializeError(result)).toBe(false);
             expect(result.name).toBe("test-task");
-            expect(isDateTime(result.lastSuccessTime)).toBe(true);
-            expect(result.lastSuccessTime.toISOString()).toBe("2022-01-01T00:00:00.000Z");
+            expect(isDateTime(getLastSuccessTime(result))).toBe(true);
+            expect(getLastSuccessTime(result).toISOString()).toBe("2022-01-01T00:00:00.000Z");
         });
 
         test("should return error for invalid ISO string", () => {
@@ -130,27 +145,25 @@ describe("scheduler task DateTime deserialization", () => {
             const dateTime = fromISOString("2022-01-01T00:00:00.000Z");
             const isoString = "2022-06-15T12:30:00.000Z";
             
-            // Mix of DateTime object and ISO string
+            // Test with AwaitingRun state (lastSuccessTime and lastAttemptTime)
             const obj = {
                 name: "test-task",
                 cronExpression: "0 * * * *",
                 retryDelayMs: 5000,
                 lastSuccessTime: dateTime,           // DateTime object
-                lastFailureTime: isoString,          // ISO string
-                lastAttemptTime: undefined,          // undefined (should remain undefined)
-                // pendingRetryUntil not present (should be undefined)
+                lastAttemptTime: isoString,          // ISO string
             };
             
             const result = tryDeserialize(obj, registrations);
             
             expect(isTaskTryDeserializeError(result)).toBe(false);
             expect(result.name).toBe("test-task");
-            expect(isDateTime(result.lastSuccessTime)).toBe(true);
-            expect(result.lastSuccessTime.toISOString()).toBe("2022-01-01T00:00:00.000Z");
-            expect(isDateTime(result.lastFailureTime)).toBe(true);
-            expect(result.lastFailureTime.toISOString()).toBe(isoString);
-            expect(result.lastAttemptTime).toBe(undefined);
-            expect(result.pendingRetryUntil).toBe(undefined);
+            expect(isDateTime(getLastSuccessTime(result))).toBe(true);
+            expect(getLastSuccessTime(result).toISOString()).toBe("2022-01-01T00:00:00.000Z");
+            expect(isDateTime(getLastAttemptTime(result))).toBe(true);
+            expect(getLastAttemptTime(result).toISOString()).toBe(isoString);
+            expect(getLastFailureTime(result)).toBe(undefined);
+            expect(getPendingRetryUntil(result)).toBe(undefined);
         });
     });
 
@@ -172,8 +185,8 @@ describe("scheduler task DateTime deserialization", () => {
             
             expect(isTaskTryDeserializeError(result)).toBe(false);
             expect(result.name).toBe("test-task");
-            expect(isDateTime(result.lastSuccessTime)).toBe(true);
-            expect(result.lastSuccessTime.toISOString()).toBe("2022-01-01T00:00:00.000Z");
+            expect(isDateTime(getLastSuccessTime(result))).toBe(true);
+            expect(getLastSuccessTime(result).toISOString()).toBe("2022-01-01T00:00:00.000Z");
         });
 
         test("should return error for object with toISOString that throws", () => {

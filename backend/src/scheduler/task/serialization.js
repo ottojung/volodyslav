@@ -2,7 +2,7 @@
  * Task serialization and deserialization functions.
  */
 
-const { makeTask } = require('./structure');
+const { makeTask, getLastSuccessTime, getLastFailureTime, getLastAttemptTime, getPendingRetryUntil, getSchedulerIdentifier, createStateFromProperties } = require('./structure');
 const { tryDeserialize: dateTimeTryDeserialize, isDateTimeTryDeserializeError } = require('../../datetime');
 const {
     TaskMissingFieldError,
@@ -46,21 +46,27 @@ function serialize(task) {
         retryDelayMs: task.retryDelay.toMillis(),
     };
     
-    // Only include DateTime fields if they are defined
-    if (task.lastSuccessTime !== undefined) {
-        serialized.lastSuccessTime = task.lastSuccessTime;
+    // Extract values from state using helper functions and only include DateTime fields if they are defined
+    const lastSuccessTime = getLastSuccessTime(task);
+    const lastFailureTime = getLastFailureTime(task);
+    const lastAttemptTime = getLastAttemptTime(task);
+    const pendingRetryUntil = getPendingRetryUntil(task);
+    const schedulerIdentifier = getSchedulerIdentifier(task);
+    
+    if (lastSuccessTime !== undefined) {
+        serialized.lastSuccessTime = lastSuccessTime;
     }
-    if (task.lastFailureTime !== undefined) {
-        serialized.lastFailureTime = task.lastFailureTime;
+    if (lastFailureTime !== undefined) {
+        serialized.lastFailureTime = lastFailureTime;
     }
-    if (task.lastAttemptTime !== undefined) {
-        serialized.lastAttemptTime = task.lastAttemptTime;
+    if (lastAttemptTime !== undefined) {
+        serialized.lastAttemptTime = lastAttemptTime;
     }
-    if (task.pendingRetryUntil !== undefined) {
-        serialized.pendingRetryUntil = task.pendingRetryUntil;
+    if (pendingRetryUntil !== undefined) {
+        serialized.pendingRetryUntil = pendingRetryUntil;
     }
-    if (task.schedulerIdentifier !== undefined) {
-        serialized.schedulerIdentifier = task.schedulerIdentifier;
+    if (schedulerIdentifier !== undefined) {
+        serialized.schedulerIdentifier = schedulerIdentifier;
     }
     return serialized;
 }
@@ -157,17 +163,22 @@ function tryDeserialize(obj, registrations) {
 
         const { parsedCron, callback, retryDelay } = registration;
 
-        // Create the task using the factory function
+        // Create state from individual properties using helper function
+        const state = createStateFromProperties(
+            deserializedDateTimes["lastSuccessTime"],
+            deserializedDateTimes["lastFailureTime"],
+            deserializedDateTimes["lastAttemptTime"],
+            deserializedDateTimes["pendingRetryUntil"],
+            schedulerIdentifier
+        );
+
+        // Create the task using the factory function with the new signature
         return makeTask(
             name,
             parsedCron,
             callback,
             retryDelay,
-            deserializedDateTimes["lastSuccessTime"],
-            deserializedDateTimes["lastFailureTime"],
-            deserializedDateTimes["lastAttemptTime"],
-            deserializedDateTimes["pendingRetryUntil"],
-            schedulerIdentifier,
+            state
         );
 
     } catch (error) {
