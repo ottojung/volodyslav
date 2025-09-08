@@ -158,7 +158,7 @@ function tryDeserialize(obj, registrations) {
             /** @type {DateTime|undefined} */ (lastFailureTime),
             /** @type {DateTime|undefined} */ (lastAttemptTime),
             /** @type {DateTime|undefined} */ (pendingRetryUntil),
-            /** @type {string|undefined} */ (schedulerIdentifier),
+            schedulerIdentifier,
         );
 
     } catch (error) {
