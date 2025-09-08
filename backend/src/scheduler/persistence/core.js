@@ -4,7 +4,6 @@
 
 const { fromMinutes } = require("../../datetime");
 const { materializeTasks, serializeTasks } = require('./materialization');
-const { makeTask } = require('../task/structure');
 const { registrationToTaskIdentity, taskRecordToTaskIdentity, taskIdentitiesEqual } = require("../task/identity");
 const { tryDeserialize, isTaskTryDeserializeError } = require("../task");
 
@@ -298,57 +297,17 @@ function createTaskFromDecision(decision, registration, registrations, persisted
         };
     }
 
-    if (decision.type === 'new') {
-        return tryDeserialize(persistedTask, registrations);
-    } else if (decision.type === 'orphaned') {
-        // Orphaned task - create fresh but restart immediately
-        if (!persistedTask) {
-            throw new Error("Orphaned task decision requires persisted task data");
-        }
-        return makeTask(
-            registration.name,
-            registration.parsedCron,
-            registration.callback,
-            registration.retryDelay,
-            persistedTask.lastSuccessTime,
-            persistedTask.lastFailureTime,
-            undefined,   // Clear lastAttemptTime so it restarts
-            persistedTask.pendingRetryUntil,
-            persistedTask.schedulerIdentifier,  // Keep the original scheduler identifier
-        );
-    } else if (decision.type === 'overridden') {
-        // Config changed - create fresh but preserve timing
-        if (!persistedTask) {
-            throw new Error("Overridden task decision requires persisted task data");
-        }
-        return makeTask(
-            registration.name,
-            registration.parsedCron,
-            registration.callback,
-            registration.retryDelay,
-            persistedTask.lastSuccessTime,  // Preserve timing
-            persistedTask.lastFailureTime,
-            persistedTask.lastAttemptTime,  // Preserve timing
-            persistedTask.pendingRetryUntil,
-            persistedTask.schedulerIdentifier,  // Keep the original scheduler identifier
-        );
-    } else {
-        // Preserved task - create task directly from persisted data with current registration
-        if (!persistedTask) {
-            throw new Error("Preserved task decision requires persisted task data");
-        }
-        return makeTask(
-            registration.name,
-            registration.parsedCron,
-            registration.callback,
-            registration.retryDelay,
-            persistedTask.lastSuccessTime,
-            persistedTask.lastFailureTime,
-            persistedTask.lastAttemptTime,
-            persistedTask.pendingRetryUntil,
-            persistedTask.schedulerIdentifier  // Keep the original scheduler identifier
-        );
+    const task = tryDeserialize(persistedTask, registrations);
+    if (isTaskTryDeserializeError(task)) {
+        return task;
     }
+
+    if (decision.type === 'orphaned') {
+        // Create fresh but restart immediately
+        task.lastAttemptTime = undefined; // Clear so it restarts
+    }
+
+    return task;
 }
 
 /**

@@ -148,24 +148,6 @@ function tryDeserialize(obj, registrations) {
 
         const { parsedCron, callback, retryDelay } = registration;
 
-        // Verify that the serialized cron expression matches the registration
-        if (cronExpression !== parsedCron.original) {
-            return new TaskInvalidValueError(
-                "cronExpression",
-                cronExpression,
-                `does not match registration cron expression: ${parsedCron.original}`
-            );
-        }
-
-        // Verify that the retry delay matches
-        if (retryDelayMs !== retryDelay.toMillis()) {
-            return new TaskInvalidValueError(
-                "retryDelayMs",
-                retryDelayMs,
-                `does not match registration retry delay: ${retryDelay.toMillis()}`
-            );
-        }
-
         // Create the task using the factory function
         return makeTask(
             name,
