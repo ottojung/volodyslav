@@ -4,7 +4,7 @@
 
 const { fromMinutes } = require("../../datetime");
 const { makeDefault } = require('../../runtime_state_storage/structure');
-const { serializeTasks } = require('./materialization');
+const { materializeTasks, serializeTasks } = require('./materialization');
 const { makeTask } = require('../task/structure');
 const { registrationToTaskIdentity, taskRecordToTaskIdentity, taskIdentitiesEqual } = require("../task/identity");
 
@@ -55,16 +55,15 @@ async function getCurrentState(storage, registrations, datetime) {
  * @param {import('../types').SchedulerCapabilities} capabilities
  * @param {ParsedRegistrations} registrations
  * @param {Transformation<T>} transformation
- * @param {string} schedulerIdentifier - Current scheduler identifier for orphaned task detection
  * @returns {Promise<T>}
  */
-async function mutateTasks(capabilities, registrations, transformation, schedulerIdentifier) {
+async function mutateTasks(capabilities, registrations, transformation) {
     return await capabilities.state.transaction(async (storage) => {
         const currentState = await getCurrentState(storage, registrations, capabilities.datetime);
         const currentTaskRecords = currentState.tasks;
         
-        // Apply materialization logic to handle all scenarios
-        const tasks = materializeTasksWithCleanLogic(registrations, currentTaskRecords, capabilities, schedulerIdentifier);
+        // Use existing materialization logic for normal operation
+        const tasks = materializeTasks(registrations, currentTaskRecords);
         
         const result = transformation(tasks);
 
@@ -81,6 +80,37 @@ async function mutateTasks(capabilities, registrations, transformation, schedule
 
         capabilities.logger.logDebug({ taskCount: tasks.size }, "State persisted");
         return result;
+    });
+}
+
+/**
+ * Materialize and persist tasks during scheduler initialization.
+ * This handles override logic, orphaned task detection, and initial state setup.
+ * @param {import('../types').SchedulerCapabilities} capabilities
+ * @param {ParsedRegistrations} registrations
+ * @param {string} schedulerIdentifier - Current scheduler identifier
+ * @returns {Promise<void>}
+ */
+async function materializeAndPersistTasks(capabilities, registrations, schedulerIdentifier) {
+    return await capabilities.state.transaction(async (storage) => {
+        const currentState = await getCurrentState(storage, registrations, capabilities.datetime);
+        const currentTaskRecords = currentState.tasks;
+        
+        // Apply clean materialization logic with override and orphaned task handling
+        const tasks = materializeTasksWithCleanLogic(registrations, currentTaskRecords, capabilities, schedulerIdentifier);
+        
+        // Convert tasks to serializable format
+        const taskRecords = serializeTasks(tasks);
+
+        // Update state with new task records while preserving other state fields
+        const newState = {
+            ...currentState,
+            tasks: taskRecords,
+        };
+
+        storage.setState(newState);
+
+        capabilities.logger.logDebug({ taskCount: tasks.size }, "Initial state materialized and persisted");
     });
 }
 
@@ -148,7 +178,7 @@ function materializeTasksWithCleanLogic(registrations, persistedTaskRecords, cap
     }
     
     // Log decisions made
-    logMaterializationDecisions(capabilities, decisions);
+    logMaterializationDecisions(capabilities, decisions, persistedTaskMap, schedulerIdentifier);
 
     return tasks;
 }
@@ -253,8 +283,10 @@ function createTaskFromDecision(decision, registration, persistedTask, lastMinut
  * Log materialization decisions made.
  * @param {import('../types').SchedulerCapabilities} capabilities
  * @param {object} decisions
+ * @param {Map<string, object>} persistedTaskMap
+ * @param {string} schedulerIdentifier
  */
-function logMaterializationDecisions(capabilities, decisions) {
+function logMaterializationDecisions(capabilities, decisions, persistedTaskMap, schedulerIdentifier) {
     if (decisions.overridden.length > 0) {
         capabilities.logger.logDebug(
             { 
@@ -266,13 +298,18 @@ function logMaterializationDecisions(capabilities, decisions) {
     }
     
     if (decisions.orphaned.length > 0) {
-        capabilities.logger.logWarning(
-            { 
-                orphanedTasks: decisions.orphaned,
-                count: decisions.orphaned.length
-            },
-            "Orphaned tasks detected and restarted"
-        );
+        // Log each orphaned task individually to match expected test format
+        for (const orphanedTask of decisions.orphaned) {
+            const persistedTask = persistedTaskMap.get(orphanedTask.name);
+            capabilities.logger.logWarning(
+                {
+                    taskName: orphanedTask.name,
+                    previousSchedulerIdentifier: persistedTask?.schedulerIdentifier || "unknown",
+                    currentSchedulerIdentifier: schedulerIdentifier,
+                },
+                "Task was interrupted during shutdown and will be restarted"
+            );
+        }
     }
     
     if (decisions.preserved.length > 0) {
@@ -298,4 +335,5 @@ function logMaterializationDecisions(capabilities, decisions) {
 
 module.exports = {
     mutateTasks,
+    materializeAndPersistTasks,
 };

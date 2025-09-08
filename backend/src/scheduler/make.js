@@ -4,7 +4,7 @@
 
 const { parseCronExpression } = require("./expression");
 const { makePollingScheduler } = require("./polling");
-const { mutateTasks } = require("./persistence");
+const { materializeAndPersistTasks } = require("./persistence");
 const { isScheduleDuplicateTaskError } = require("./registration_validation");
 const { generateSchedulerIdentifier } = require("./scheduler_identifier");
 const memconst = require("../memconst");
@@ -209,10 +209,10 @@ function make(getCapabilities) {
 
         if (persistedTasks === undefined) {
             // First initialization - persist initial tasks
-            await mutateTasks(capabilities, parsedRegistrations, async () => undefined, schedulerIdentifier);
+            await materializeAndPersistTasks(capabilities, parsedRegistrations, schedulerIdentifier);
         } else {
-            // Persist tasks with clean logic (orphaned task detection is handled internally)
-            await mutateTasks(capabilities, parsedRegistrations, async () => undefined, schedulerIdentifier);
+            // Apply clean materialization logic (handles orphaned tasks internally)
+            await materializeAndPersistTasks(capabilities, parsedRegistrations, schedulerIdentifier);
         }
 
         // Schedule all tasks
