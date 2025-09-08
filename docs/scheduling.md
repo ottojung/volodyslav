@@ -86,9 +86,6 @@ This design aligns with the scheduler's declarative philosophy: tasks follow
 their ongoing schedule rather than trying to reconstruct past execution
 history.
 
-To avoid schedules that cannot be observed, the scheduler validates that a
-cron expression's minimum interval is not shorter than the polling interval.
-
 ## Persistence and Recovery
 
 Scheduler state is persisted through a runtime storage layer. 
@@ -183,9 +180,6 @@ For authoritative documentation, refer to:
   abstraction.
 - **No disabled state** – a task exists only while it is registered.
 - **Fixed retry delay** – there is no exponential backoff or jitter.
-- **Frequency guard** – cron expressions that would fire more frequently than
-  the polling loop can observe may log a warning, but are accepted because
-  precise enforcement is quite complex.
 - **Immediate persistence** – state is written after each mutation which can
   increase I/O but ensures durability.
 - **No callback persistence** – executable logic is provided anew at every
