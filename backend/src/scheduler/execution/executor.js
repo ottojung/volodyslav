@@ -19,6 +19,9 @@ class TaskExecutionNotFoundError extends Error {
 }
 
 /** @typedef {import('../task').Task} Task */
+/** @typedef {import('../task').Running} Running */
+/** @typedef {import('../task').AwaitingRetry} AwaitingRetry */
+/** @typedef {import('../task').AwaitingRun} AwaitingRun */
 
 /**
  * @template T
@@ -95,10 +98,12 @@ function makeTaskExecutor(capabilities, mutateTasks) {
 
         if (maybeError === null) {
             await mutateThis((task) => {
-                task.lastSuccessTime = end;
-                task.lastFailureTime = undefined;
-                task.pendingRetryUntil = undefined;
-                task.schedulerIdentifier = undefined; // Clear scheduler identifier on completion
+                /** @type {AwaitingRun} */
+                const newState = {
+                    lastAttemptTime: end,
+                    lastSuccessTime: end,
+                };
+                task.state = newState;
             });
 
             capabilities.logger.logInfo(
@@ -108,10 +113,12 @@ function makeTaskExecutor(capabilities, mutateTasks) {
         } else {
             await mutateThis((task) => {
                 const retryAt = end.advance(task.retryDelay);
-                task.lastSuccessTime = undefined;
-                task.lastFailureTime = end;
-                task.pendingRetryUntil = retryAt;
-                task.schedulerIdentifier = undefined; // Clear scheduler identifier on failure too
+                /** @type {AwaitingRetry} */
+                const newState = {
+                    lastFailureTime: end,
+                    pendingRetryUntil: retryAt,
+                };
+                task.state = newState;
             });
 
             const message = maybeError.message;

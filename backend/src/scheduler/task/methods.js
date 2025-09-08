@@ -3,31 +3,37 @@
  * @typedef {import('./structure').Task} Task
  */
 
+const { getLastAttemptTime, getLastSuccessTime, getLastFailureTime } = require('./structure');
+
 /**
  * Check if a task is currently running.
  * @param {Task} task
  * @returns {boolean}
  */
 function isRunning(task) {
-    if (task.lastAttemptTime === undefined || task.lastAttemptTime === null) {
+    const lastAttemptTime = getLastAttemptTime(task);
+    
+    if (lastAttemptTime === undefined || lastAttemptTime === null) {
         return false;
     }
 
     // A task is running if the last attempt is more recent than any completion
-    const lastAttemptTime = task.lastAttemptTime;
     
     // Find the most recent completion time using DateTime methods
     let lastCompletionTime = undefined;
     
-    if (task.lastSuccessTime && task.lastFailureTime) {
+    const lastSuccessTime = getLastSuccessTime(task);
+    const lastFailureTime = getLastFailureTime(task);
+    
+    if (lastSuccessTime && lastFailureTime) {
         // Both exist, find the later one
-        lastCompletionTime = task.lastSuccessTime.isAfter(task.lastFailureTime) 
-            ? task.lastSuccessTime 
-            : task.lastFailureTime;
-    } else if (task.lastSuccessTime) {
-        lastCompletionTime = task.lastSuccessTime;
-    } else if (task.lastFailureTime) {
-        lastCompletionTime = task.lastFailureTime;
+        lastCompletionTime = lastSuccessTime.isAfter(lastFailureTime) 
+            ? lastSuccessTime 
+            : lastFailureTime;
+    } else if (lastSuccessTime) {
+        lastCompletionTime = lastSuccessTime;
+    } else if (lastFailureTime) {
+        lastCompletionTime = lastFailureTime;
     }
     
     // If no completion time, task is running since last attempt
