@@ -330,9 +330,6 @@ describe("scheduler orphaned task restart", () => {
         await capabilities.scheduler.stop();
 
         // Now try to initialize with only the known task
-        // This should NOT fail even though persisted state contains unknown tasks
-        // The unknown task should be ignored during orphaned detection, 
-        // then handled by state reconciliation
         await expect(capabilities.scheduler.initialize(registrations)).resolves.not.toThrow();
 
         // Wait for scheduler to process 
