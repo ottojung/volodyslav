@@ -174,6 +174,113 @@ describe("Declarative Scheduler", () => {
             await capabilities.scheduler.stop();
         });
 
+        test("overrides persisted state when tasks differ from registrations after restart", async () => {
+            const capabilities = getTestCapabilities();
+
+            // First, set up some initial persisted state by calling initialize
+            const initialRegistrations = [
+                ["task1", "0 * * * *", jest.fn(), Duration.fromObject({minutes: 5})],
+                ["task2", "0 0 * * *", jest.fn(), Duration.fromObject({minutes: 10})],
+            ];
+
+            await capabilities.scheduler.initialize(initialRegistrations);
+            await capabilities.scheduler.stop();
+
+            // Now try to initialize with different tasks using SAME capabilities (same working directory)
+            const differentRegistrations = [
+                ["task1", "0 * * * *", jest.fn(), Duration.fromObject({minutes: 5})], // same
+                ["task3", "0 0 * * *", jest.fn(), Duration.fromObject({minutes: 10})], // different name
+            ];
+
+            // This should now succeed (override behavior) instead of throwing
+            await expect(capabilities.scheduler.initialize(differentRegistrations)).resolves.toBeUndefined();
+            
+            // Verify override was logged
+            expect(capabilities.logger.logInfo).toHaveBeenCalledWith(
+                expect.objectContaining({
+                    removedTasks: ["task2"], // task2 was removed
+                    addedTasks: ["task3"], // task3 was added
+                }),
+                "Scheduler state override: registrations differ from persisted state, applying changes"
+            );
+            
+            await capabilities.scheduler.stop();
+        });
+
+        test.failing("overrides persisted state when cron expression differs after restart", async () => {
+            const capabilities = getTestCapabilities();
+
+            // Set up initial state
+            const initialRegistrations = [
+                ["task1", "0 * * * *", jest.fn(), Duration.fromObject({minutes: 5})],
+            ];
+
+            await capabilities.scheduler.initialize(initialRegistrations);
+            await capabilities.scheduler.stop();
+
+            // Try with different cron expression using same capabilities
+            const changedRegistrations = [
+                ["task1", "0 0 * * *", jest.fn(), Duration.fromObject({minutes: 5})], // different cron
+            ];
+
+            // This should now succeed (override behavior) instead of throwing
+            await expect(capabilities.scheduler.initialize(changedRegistrations)).resolves.toBeUndefined();
+            
+            // Verify override was logged for modified task
+            expect(capabilities.logger.logInfo).toHaveBeenCalledWith(
+                expect.objectContaining({
+                    modifiedTasks: [
+                        expect.objectContaining({
+                            name: "task1",
+                            field: "cronExpression",
+                            from: "0 * * * *",
+                            to: "0 0 * * *"
+                        })
+                    ]
+                }),
+                "Scheduler state override: registrations differ from persisted state, applying changes"
+            );
+            
+            await capabilities.scheduler.stop();
+        });
+
+        test.failing("overrides persisted state when retry delay differs after restart", async () => {
+            const capabilities = getTestCapabilities();
+
+            // Set up initial state
+            const initialRegistrations = [
+                ["task1", "0 * * * *", jest.fn(), Duration.fromObject({minutes: 5})],
+            ];
+
+            await capabilities.scheduler.initialize(initialRegistrations);
+            await capabilities.scheduler.stop();
+
+            // Try with different retry delay using same capabilities
+            const changedRegistrations = [
+                ["task1", "0 * * * *", jest.fn(), Duration.fromObject({minutes: 10})], // different retry delay
+            ];
+
+            // This should now succeed (override behavior) instead of throwing
+            await expect(capabilities.scheduler.initialize(changedRegistrations)).resolves.toBeUndefined();
+            
+            // Verify override was logged for modified task
+            expect(capabilities.logger.logInfo).toHaveBeenCalledWith(
+                expect.objectContaining({
+                    modifiedTasks: [
+                        expect.objectContaining({
+                            name: "task1",
+                            field: "retryDelayMs",
+                            from: 300000, // 5 minutes in ms
+                            to: 600000    // 10 minutes in ms
+                        })
+                    ]
+                }),
+                "Scheduler state override: registrations differ from persisted state, applying changes"
+            );
+            
+            await capabilities.scheduler.stop();
+        });
+
         test("overrides persisted state when task is missing from registrations", async () => {
             const capabilities = getTestCapabilities();
 
@@ -213,6 +320,70 @@ describe("Declarative Scheduler", () => {
             ];
 
             await capabilities.scheduler.initialize(initialRegistrations);
+
+            // Try with extra task using same capabilities
+            const extraTaskRegistrations = [
+                ["task1", "0 * * * *", jest.fn(), Duration.fromObject({minutes: 5})],
+                ["task2", "0 0 * * *", jest.fn(), Duration.fromObject({minutes: 10})], // extra task
+            ];
+
+            // This should now succeed (override behavior) instead of throwing
+            await expect(capabilities.scheduler.initialize(extraTaskRegistrations)).resolves.toBeUndefined();
+            
+            // Verify override was logged for added task
+            expect(capabilities.logger.logInfo).toHaveBeenCalledWith(
+                expect.objectContaining({
+                    addedTasks: ["task2"]
+                }),
+                "Scheduler state override: registrations differ from persisted state, applying changes"
+            );
+            
+            await capabilities.scheduler.stop();
+        });
+
+        test("overrides persisted state when task is missing from registrations after restart", async () => {
+            const capabilities = getTestCapabilities();
+
+            // Set up initial state with two tasks
+            const initialRegistrations = [
+                ["task1", "0 * * * *", jest.fn(), Duration.fromObject({minutes: 5})],
+                ["task2", "0 0 * * *", jest.fn(), Duration.fromObject({minutes: 10})],
+            ];
+
+            await capabilities.scheduler.initialize(initialRegistrations);
+
+            await capabilities.scheduler.stop();
+
+            // Try with only one task (missing task2) using same capabilities
+            const missingTaskRegistrations = [
+                ["task1", "0 * * * *", jest.fn(), Duration.fromObject({minutes: 5})],
+            ];
+
+            // This should now succeed (override behavior) instead of throwing
+            await expect(capabilities.scheduler.initialize(missingTaskRegistrations)).resolves.toBeUndefined();
+            
+            // Verify override was logged for removed task
+            expect(capabilities.logger.logInfo).toHaveBeenCalledWith(
+                expect.objectContaining({
+                    removedTasks: ["task2"]
+                }),
+                "Scheduler state override: registrations differ from persisted state, applying changes"
+            );
+            
+            await capabilities.scheduler.stop();
+        });
+
+        test("overrides persisted state when extra task is in registrations after restart", async () => {
+            const capabilities = getTestCapabilities();
+
+            // Set up initial state with one task
+            const initialRegistrations = [
+                ["task1", "0 * * * *", jest.fn(), Duration.fromObject({minutes: 5})],
+            ];
+
+            await capabilities.scheduler.initialize(initialRegistrations);
+
+            await capabilities.scheduler.stop();
 
             // Try with extra task using same capabilities
             const extraTaskRegistrations = [
@@ -278,6 +449,88 @@ describe("Declarative Scheduler", () => {
                 "Scheduler state override: registrations differ from persisted state, applying changes"
             );
             
+            await capabilities.scheduler.stop();
+        });
+
+        test.failing("provides detailed override information when applying complex changes after restart", async () => {
+            const capabilities = getTestCapabilities();
+            const dateControl = getDatetimeControl(capabilities);
+            const schedulerControl = getSchedulerControl(capabilities);
+
+            // Speed up scheduler polling for test
+            schedulerControl.setPollingInterval(fromMilliseconds(100));
+            dateControl.setDateTime(fromISOString("2021-01-01T00:00:00.000Z"));
+
+            const callback1 = jest.fn();
+            const callback2 = jest.fn();
+            const callback3 = jest.fn();            
+
+            // Set up initial state
+            const initialRegistrations = [
+                ["task1", "0 * * * *", callback1, Duration.fromObject({minutes: 5})],
+                ["task2", "0 * * * *", callback2, Duration.fromObject({minutes: 10})],
+            ];
+
+            await capabilities.scheduler.initialize(initialRegistrations);
+
+            expect(callback1).not.toHaveBeenCalled();
+            expect(callback2).not.toHaveBeenCalled();
+            expect(callback3).not.toHaveBeenCalled();
+
+            await schedulerControl.waitForNextCycleEnd();
+
+            expect(callback1).toHaveBeenCalledTimes(1);
+            expect(callback2).toHaveBeenCalledTimes(1);
+            expect(callback3).not.toHaveBeenCalled();
+
+            // Create complex mismatch scenario using same capabilities
+            const mismatchedRegistrations = [
+                ["task1", "0 0 * * *", callback1, Duration.fromObject({minutes: 30})], // different cron + retry delay
+                ["task3", "0 * * * *", callback3, Duration.fromObject({minutes: 10})], // extra task (task2 is missing)
+            ];
+
+            await capabilities.scheduler.stop();
+            dateControl.advanceByDuration(Duration.fromObject({ days: 1 }));
+
+            // This should now succeed (override behavior) instead of throwing
+            await expect(capabilities.scheduler.initialize(mismatchedRegistrations)).resolves.toBeUndefined();
+
+            // Verify detailed override information was logged
+            expect(capabilities.logger.logInfo).toHaveBeenCalledWith(
+                expect.objectContaining({
+                    removedTasks: ["task2"],
+                    addedTasks: ["task3"],
+                    modifiedTasks: expect.arrayContaining([
+                        expect.objectContaining({
+                            name: "task1",
+                            field: "cronExpression",
+                            from: "0 * * * *",
+                            to: "0 0 * * *"
+                        }),
+                        expect.objectContaining({
+                            name: "task1",
+                            field: "retryDelayMs",
+                            from: Duration.fromObject({minutes: 5}).toMillis(),
+                            to: Duration.fromObject({minutes: 30}).toMillis()
+                        })
+                    ]),
+                    totalChanges: 4 // 1 removed + 1 added + 2 modified fields
+                }),
+                "Scheduler state override: registrations differ from persisted state, applying changes"
+            );
+            
+            // No additional calls at initialization time.
+            expect(callback1).toHaveBeenCalledTimes(1);
+            expect(callback2).toHaveBeenCalledTimes(1);
+            expect(callback3).not.toHaveBeenCalled();
+
+            await schedulerControl.waitForNextCycleEnd();
+
+            // task2 should NOT run again because its missing from registrations.
+            expect(callback1).toHaveBeenCalledTimes(2);
+            expect(callback2).toHaveBeenCalledTimes(1);
+            expect(callback3).toHaveBeenCalledTimes(1);
+
             await capabilities.scheduler.stop();
         });
 
