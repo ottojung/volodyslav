@@ -7,6 +7,29 @@
  * @typedef {import('../types').Callback} Callback
  */
 
+
+/**
+ * @typedef {object} Running
+ * @property {DateTime} lastAttemptTime - Time of the last attempt
+ * @property {string} schedulerIdentifier - Identifier of the scheduler that started this task
+ */
+
+/**
+ * @typedef {object} AwaitingRetry
+ * @property {DateTime} lastFailureTime - Time of the last failure
+ * @property {DateTime} pendingRetryUntil - Time until which the task is pending retry
+ */
+
+/**
+ * @typedef {object} AwaitingRun
+ * @property {DateTime | null} lastSuccessTime - Time of the last successful run, or null if never run
+ */
+
+/**
+ * @typedef {Running | AwaitingRetry | AwaitingRun } State
+ */
+
+
 /**
  * Nominal type for Task to prevent external instantiation.
  */
@@ -19,13 +42,9 @@ class TaskClass {
      * @param {CronExpression} parsedCron
      * @param {Callback} callback
      * @param {Duration} retryDelay
-     * @param {DateTime|undefined} lastSuccessTime
-     * @param {DateTime|undefined} lastFailureTime
-     * @param {DateTime|undefined} lastAttemptTime
-     * @param {DateTime|undefined} pendingRetryUntil
-     * @param {string|undefined} schedulerIdentifier
+     * @param {State} state
      */
-    constructor(name, parsedCron, callback, retryDelay, lastSuccessTime, lastFailureTime, lastAttemptTime, pendingRetryUntil, schedulerIdentifier) {
+    constructor(name, parsedCron, callback, retryDelay, state) {
         if (this.__brand !== undefined) {
             throw new Error("Task is a nominal type and cannot be instantiated directly. Use makeTask() instead.");
         }
@@ -33,11 +52,7 @@ class TaskClass {
         this.parsedCron = parsedCron;
         this.callback = callback;
         this.retryDelay = retryDelay;
-        this.lastSuccessTime = lastSuccessTime;
-        this.lastFailureTime = lastFailureTime;
-        this.lastAttemptTime = lastAttemptTime;
-        this.pendingRetryUntil = pendingRetryUntil;
-        this.schedulerIdentifier = schedulerIdentifier;
+        this.state = state;
     }
 }
 
@@ -47,15 +62,11 @@ class TaskClass {
  * @param {CronExpression} parsedCron
  * @param {Callback} callback
  * @param {Duration} retryDelay
- * @param {DateTime|undefined} lastSuccessTime
- * @param {DateTime|undefined} lastFailureTime
- * @param {DateTime|undefined} lastAttemptTime
- * @param {DateTime|undefined} pendingRetryUntil
- * @param {string|undefined} schedulerIdentifier
+ * @param {State} state
  * @returns {TaskClass}
  */
-function makeTask(name, parsedCron, callback, retryDelay, lastSuccessTime, lastFailureTime, lastAttemptTime, pendingRetryUntil, schedulerIdentifier) {
-    return new TaskClass(name, parsedCron, callback, retryDelay, lastSuccessTime, lastFailureTime, lastAttemptTime, pendingRetryUntil, schedulerIdentifier);
+function makeTask(name, parsedCron, callback, retryDelay, state) {
+    return new TaskClass(name, parsedCron, callback, retryDelay, state);
 }
 
 /**
