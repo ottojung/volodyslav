@@ -301,7 +301,7 @@ function createTaskFromDecision(decision, registration, persistedTask, lastMinut
             registration.parsedCron,
             registration.callback,
             registration.retryDelay,
-            undefined,   // Clear lastSuccessTime so it restarts
+            persistedTask.lastSuccessTime,
             persistedTask.lastFailureTime,
             undefined,   // Clear lastAttemptTime so it restarts
             persistedTask.pendingRetryUntil,
