@@ -5,10 +5,11 @@
 const { fromMinutes } = require("../../datetime");
 const { materializeTasks, serializeTasks } = require('./materialization');
 const { registrationToTaskIdentity, taskRecordToTaskIdentity, taskIdentitiesEqual } = require("../task/identity");
-const { tryDeserialize, isTaskTryDeserializeError, serialize } = require("../task");
+const { tryDeserialize, isTaskTryDeserializeError } = require("../task");
 
 /** 
- * @typedef {import('../task').Task} Task 
+ * @typedef {import('../task').Task} Task
+ * @typedef {import('../task').AwaitingRetry} AwaitingRetry
  * @typedef {import('../types').ParsedRegistration} ParsedRegistration
  * @typedef {import('../types').ParsedRegistrations} ParsedRegistrations
  * @typedef {import('../types').TaskRecord} TaskRecord
@@ -304,16 +305,14 @@ function createTaskFromDecision(decision, registration, registrations, persisted
 
     if (decision.type === 'orphaned') {
         // Create fresh but restart immediately
-        // For orphaned tasks, we need to clear lastAttemptTime so they restart
-        // We create a new serialized task without lastAttemptTime and deserialize it
-        const serializedWithoutAttempt = serialize(task);
-        delete serializedWithoutAttempt.lastAttemptTime;
-        
-        const freshTask = tryDeserialize(serializedWithoutAttempt, registrations);
-        if (isTaskTryDeserializeError(freshTask)) {
-            return freshTask;
-        }
-        return freshTask;
+        /**
+         * @type {AwaitingRetry}
+         */
+        const newState = {
+            lastFailureTime: lastMinute,
+            pendingRetryUntil: lastMinute,
+        };
+        task.state = newState;
     }
 
     return task;
