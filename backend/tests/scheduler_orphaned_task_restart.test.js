@@ -345,6 +345,9 @@ describe("scheduler orphaned task restart", () => {
                 const task = state.tasks[0];
                 task.lastAttemptTime = capabilities.datetime.now();
                 task.schedulerIdentifier = "old-scheduler-instance";
+                task.lastSuccessTime = undefined;
+                task.lastFailureTime = undefined;
+                task.pendingRetryUntil = undefined;
                 storage.setState(state);
             }
         });
