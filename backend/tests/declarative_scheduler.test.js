@@ -566,6 +566,295 @@ describe("Declarative Scheduler", () => {
 
             await capabilities.scheduler.stop();
         });
+
+        // Additional comprehensive tests for scheduler override functionality
+        test("overrides with both cron expression and retry delay changes simultaneously", async () => {
+            const capabilities = getTestCapabilities();
+
+            // Set up initial state
+            const initialRegistrations = [
+                ["task1", "0 * * * *", jest.fn(), Duration.fromObject({minutes: 5})],
+            ];
+
+            await capabilities.scheduler.initialize(initialRegistrations);
+            await capabilities.scheduler.stop();
+
+            // Change both cron and retry delay
+            const changedRegistrations = [
+                ["task1", "0 0,12 * * *", jest.fn(), Duration.fromObject({minutes: 15})], // different cron AND retry delay
+            ];
+
+            await expect(capabilities.scheduler.initialize(changedRegistrations)).resolves.toBeUndefined();
+            
+            // Verify both changes were logged
+            expect(capabilities.logger.logInfo).toHaveBeenCalledWith(
+                expect.objectContaining({
+                    modifiedTasks: expect.arrayContaining([
+                        expect.objectContaining({
+                            name: "task1",
+                            field: "cronExpression",
+                            from: "0 * * * *",
+                            to: "0 0,12 * * *"
+                        }),
+                        expect.objectContaining({
+                            name: "task1",
+                            field: "retryDelayMs",
+                            from: 300000, // 5 minutes
+                            to: 900000    // 15 minutes
+                        })
+                    ]),
+                    totalChanges: 2
+                }),
+                "Scheduler state override: registrations differ from persisted state, applying changes"
+            );
+            
+            await capabilities.scheduler.stop();
+        });
+
+        test("overrides with complex mixed changes - multiple tasks with adds, removes, and modifications", async () => {
+            const capabilities = getTestCapabilities();
+
+            // Set up initial state with 4 tasks
+            const initialRegistrations = [
+                ["task1", "0 * * * *", jest.fn(), Duration.fromObject({minutes: 5})],
+                ["task2", "0 0 * * *", jest.fn(), Duration.fromObject({minutes: 10})],
+                ["task3", "30 * * * *", jest.fn(), Duration.fromObject({minutes: 7})],
+                ["task4", "0 0,12 * * *", jest.fn(), Duration.fromObject({minutes: 20})],
+            ];
+
+            await capabilities.scheduler.initialize(initialRegistrations);
+            await capabilities.scheduler.stop();
+
+            // Complex changes: remove task2, modify task1 and task3, keep task4, add task5
+            const complexChangedRegistrations = [
+                ["task1", "15 * * * *", jest.fn(), Duration.fromObject({minutes: 8})], // cron + retry change
+                ["task3", "30 * * * *", jest.fn(), Duration.fromObject({minutes: 12})], // retry change only  
+                ["task4", "0 0,12 * * *", jest.fn(), Duration.fromObject({minutes: 20})], // no change
+                ["task5", "45 * * * *", jest.fn(), Duration.fromObject({minutes: 3})], // new task
+            ];
+
+            await expect(capabilities.scheduler.initialize(complexChangedRegistrations)).resolves.toBeUndefined();
+            
+            // Verify all changes were logged correctly
+            expect(capabilities.logger.logInfo).toHaveBeenCalledWith(
+                expect.objectContaining({
+                    removedTasks: ["task2"],
+                    addedTasks: ["task5"],
+                    modifiedTasks: expect.arrayContaining([
+                        expect.objectContaining({
+                            name: "task1",
+                            field: "cronExpression",
+                            from: "0 * * * *",
+                            to: "15 * * * *"
+                        }),
+                        expect.objectContaining({
+                            name: "task1", 
+                            field: "retryDelayMs",
+                            from: 300000, // 5 minutes
+                            to: 480000    // 8 minutes
+                        }),
+                        expect.objectContaining({
+                            name: "task3",
+                            field: "retryDelayMs", 
+                            from: 420000, // 7 minutes
+                            to: 720000    // 12 minutes
+                        })
+                    ]),
+                    totalChanges: 5 // 1 removed + 1 added + 3 field modifications
+                }),
+                "Scheduler state override: registrations differ from persisted state, applying changes"
+            );
+            
+            await capabilities.scheduler.stop();
+        });
+
+        test("overrides from populated state to empty registrations", async () => {
+            const capabilities = getTestCapabilities();
+
+            // Set up initial state with multiple tasks
+            const initialRegistrations = [
+                ["task1", "0 * * * *", jest.fn(), Duration.fromObject({minutes: 5})],
+                ["task2", "0 0 * * *", jest.fn(), Duration.fromObject({minutes: 10})],
+                ["task3", "30 * * * *", jest.fn(), Duration.fromObject({minutes: 7})],
+            ];
+
+            await capabilities.scheduler.initialize(initialRegistrations);
+            await capabilities.scheduler.stop();
+
+            // Clear all tasks
+            const emptyRegistrations = [];
+
+            await expect(capabilities.scheduler.initialize(emptyRegistrations)).resolves.toBeUndefined();
+            
+            // Verify all tasks were removed
+            expect(capabilities.logger.logInfo).toHaveBeenCalledWith(
+                expect.objectContaining({
+                    removedTasks: expect.arrayContaining(["task1", "task2", "task3"]),
+                    addedTasks: [],
+                    modifiedTasks: [],
+                    totalChanges: 3
+                }),
+                "Scheduler state override: registrations differ from persisted state, applying changes"
+            );
+            
+            await capabilities.scheduler.stop();
+        });
+
+        test("overrides with complex cron expressions", async () => {
+            const capabilities = getTestCapabilities();
+
+            // Set up initial state
+            const initialRegistrations = [
+                ["complex-task", "0 8,12,18 * * 1-5", jest.fn(), Duration.fromObject({minutes: 10})],
+            ];
+
+            await capabilities.scheduler.initialize(initialRegistrations);
+            await capabilities.scheduler.stop();
+
+            // Change to different complex cron
+            const changedRegistrations = [
+                ["complex-task", "30 9,13,17 * * 0,6", jest.fn(), Duration.fromObject({minutes: 10})],
+            ];
+
+            await expect(capabilities.scheduler.initialize(changedRegistrations)).resolves.toBeUndefined();
+            
+            // Verify complex cron change was logged
+            expect(capabilities.logger.logInfo).toHaveBeenCalledWith(
+                expect.objectContaining({
+                    modifiedTasks: [
+                        expect.objectContaining({
+                            name: "complex-task",
+                            field: "cronExpression",
+                            from: "0 8,12,18 * * 1-5",
+                            to: "30 9,13,17 * * 0,6"
+                        })
+                    ]
+                }),
+                "Scheduler state override: registrations differ from persisted state, applying changes"
+            );
+            
+            await capabilities.scheduler.stop();
+        });
+
+        test("overrides with very large retry delays", async () => {
+            const capabilities = getTestCapabilities();
+
+            // Set up initial state
+            const initialRegistrations = [
+                ["long-retry-task", "0 0 * * *", jest.fn(), Duration.fromObject({minutes: 30})],
+            ];
+
+            await capabilities.scheduler.initialize(initialRegistrations);
+            await capabilities.scheduler.stop();
+
+            // Change to very large retry delay
+            const changedRegistrations = [
+                ["long-retry-task", "0 0 * * *", jest.fn(), Duration.fromObject({hours: 2, minutes: 30})],
+            ];
+
+            await expect(capabilities.scheduler.initialize(changedRegistrations)).resolves.toBeUndefined();
+            
+            // Verify large retry delay change was logged
+            expect(capabilities.logger.logInfo).toHaveBeenCalledWith(
+                expect.objectContaining({
+                    modifiedTasks: [
+                        expect.objectContaining({
+                            name: "long-retry-task",
+                            field: "retryDelayMs",
+                            from: 1800000, // 30 minutes
+                            to: 9000000    // 2.5 hours
+                        })
+                    ]
+                }),
+                "Scheduler state override: registrations differ from persisted state, applying changes"
+            );
+            
+            await capabilities.scheduler.stop();
+        });
+
+        test("idempotent overrides - calling initialize multiple times with same changed registrations", async () => {
+            const capabilities = getTestCapabilities();
+
+            // Set up initial state
+            const initialRegistrations = [
+                ["task1", "0 * * * *", jest.fn(), Duration.fromObject({minutes: 5})],
+            ];
+
+            await capabilities.scheduler.initialize(initialRegistrations);
+            await capabilities.scheduler.stop();
+
+            // Change the task
+            const changedRegistrations = [
+                ["task1", "0 0 * * *", jest.fn(), Duration.fromObject({minutes: 10})],
+            ];
+
+            // First override should log the change
+            await expect(capabilities.scheduler.initialize(changedRegistrations)).resolves.toBeUndefined();
+            const firstCallCount = capabilities.logger.logInfo.mock.calls.filter(call => 
+                call[1] === "Scheduler state override: registrations differ from persisted state, applying changes"
+            ).length;
+
+            // Second call with same registrations should not trigger another override
+            await expect(capabilities.scheduler.initialize(changedRegistrations)).resolves.toBeUndefined();
+            const secondCallCount = capabilities.logger.logInfo.mock.calls.filter(call => 
+                call[1] === "Scheduler state override: registrations differ from persisted state, applying changes"
+            ).length;
+
+            // Should only log override once
+            expect(secondCallCount).toBe(firstCallCount);
+            
+            await capabilities.scheduler.stop();
+        });
+
+        test("override logging includes detailed debug information", async () => {
+            const capabilities = getTestCapabilities();
+
+            // Set up initial state
+            const initialRegistrations = [
+                ["task1", "0 * * * *", jest.fn(), Duration.fromObject({minutes: 5})],
+                ["task2", "0 0 * * *", jest.fn(), Duration.fromObject({minutes: 10})],
+            ];
+
+            await capabilities.scheduler.initialize(initialRegistrations);
+            await capabilities.scheduler.stop();
+
+            // Change the tasks
+            const changedRegistrations = [
+                ["task1", "0 0 * * *", jest.fn(), Duration.fromObject({minutes: 8})],
+                ["task3", "30 * * * *", jest.fn(), Duration.fromObject({minutes: 15})],
+            ];
+
+            await expect(capabilities.scheduler.initialize(changedRegistrations)).resolves.toBeUndefined();
+            
+            // Verify detailed debug logging was called
+            expect(capabilities.logger.logDebug).toHaveBeenCalledWith(
+                { taskNames: ["task2"] },
+                "Removing tasks from persisted state (no longer in registrations)"
+            );
+            
+            expect(capabilities.logger.logDebug).toHaveBeenCalledWith(
+                { taskNames: ["task3"] },
+                "Adding new tasks to persisted state"
+            );
+            
+            expect(capabilities.logger.logDebug).toHaveBeenCalledWith(
+                expect.objectContaining({
+                    modifications: expect.arrayContaining([
+                        expect.objectContaining({
+                            name: "task1",
+                            field: "cronExpression"
+                        }),
+                        expect.objectContaining({
+                            name: "task1", 
+                            field: "retryDelayMs"
+                        })
+                    ])
+                }),
+                "Updating task configurations in persisted state"
+            );
+            
+            await capabilities.scheduler.stop();
+        });
     });
 
     describe("task execution behavior during initialize", () => {
@@ -627,6 +916,94 @@ describe("Declarative Scheduler", () => {
             // Second call to initialize with same capabilities - should be idempotent
             // This should not cause errors or duplicate scheduling issues
             await expect(capabilities.scheduler.initialize(registrations)).resolves.toBeUndefined();
+            await capabilities.scheduler.stop();
+        });
+
+        test("task execution behavior is preserved during restart override scenarios", async () => {
+            const capabilities = getTestCapabilities();
+            const dateControl = getDatetimeControl(capabilities);
+            const schedulerControl = getSchedulerControl(capabilities);
+
+            // Speed up scheduler polling for test
+            schedulerControl.setPollingInterval(fromMilliseconds(50));
+            dateControl.setDateTime(fromISOString("2021-01-01T12:00:00.000Z"));
+
+            const callback1 = jest.fn().mockResolvedValue(undefined);
+            const callback2 = jest.fn().mockResolvedValue(undefined);
+
+            // Set up initial state with task that runs every hour at 0 minutes
+            const initialRegistrations = [
+                ["hourly-task", "0 * * * *", callback1, Duration.fromObject({minutes: 5})],
+            ];
+
+            await capabilities.scheduler.initialize(initialRegistrations);
+
+            // Wait for execution at 12:00 (should execute because we're at exactly 12:00:00)
+            await schedulerControl.waitForNextCycleEnd();
+            expect(callback1).toHaveBeenCalledTimes(1);
+
+            await capabilities.scheduler.stop();
+
+            // Advance time and restart with different cron but same task name
+            dateControl.setDateTime(fromISOString("2021-01-01T13:30:00.000Z"));
+            
+            const changedRegistrations = [
+                ["hourly-task", "30 * * * *", callback2, Duration.fromObject({minutes: 10})], // now runs at 30 minutes past each hour
+            ];
+
+            // This should override the persisted state successfully
+            await capabilities.scheduler.initialize(changedRegistrations);
+            
+            // Wait for execution at 13:30 (should execute because we're at exactly 13:30:00)
+            await schedulerControl.waitForNextCycleEnd();
+            expect(callback2).toHaveBeenCalledTimes(1);
+            expect(callback1).toHaveBeenCalledTimes(1); // should not be called again
+
+            await capabilities.scheduler.stop();
+        });
+
+        test("override behavior works correctly with tasks that have different callback signatures", async () => {
+            const capabilities = getTestCapabilities();
+
+            const asyncCallback = jest.fn().mockResolvedValue("async result");
+            const syncCallback = jest.fn().mockReturnValue("sync result");
+            const throwingCallback = jest.fn().mockRejectedValue(new Error("intentional error"));
+
+            // Set up initial state
+            const initialRegistrations = [
+                ["async-task", "0 * * * *", asyncCallback, Duration.fromObject({minutes: 5})],
+                ["sync-task", "0 * * * *", syncCallback, Duration.fromObject({minutes: 5})],
+            ];
+
+            await capabilities.scheduler.initialize(initialRegistrations);
+            await capabilities.scheduler.stop();
+
+            // Change to different callback types and modify one task
+            const changedRegistrations = [
+                ["async-task", "0 * * * *", throwingCallback, Duration.fromObject({minutes: 10})], // different callback and retry delay
+                ["sync-task", "30 * * * *", syncCallback, Duration.fromObject({minutes: 5})], // different cron, same callback
+            ];
+
+            // Should override successfully despite different callback types
+            await expect(capabilities.scheduler.initialize(changedRegistrations)).resolves.toBeUndefined();
+            
+            // Verify override was logged correctly
+            expect(capabilities.logger.logInfo).toHaveBeenCalledWith(
+                expect.objectContaining({
+                    modifiedTasks: expect.arrayContaining([
+                        expect.objectContaining({
+                            name: "async-task",
+                            field: "retryDelayMs"
+                        }),
+                        expect.objectContaining({
+                            name: "sync-task",
+                            field: "cronExpression"
+                        })
+                    ])
+                }),
+                "Scheduler state override: registrations differ from persisted state, applying changes"
+            );
+            
             await capabilities.scheduler.stop();
         });
     });
