@@ -281,7 +281,14 @@ function parseCronExpression(expression) {
 
     const ret = basicParse();
     const { getNextExecution } = require("../calculator");
-    getNextExecution(ret, FIRST_COMING); // validate it can compute next execution
+    try {
+        getNextExecution(ret, FIRST_COMING); // validate it can compute next execution
+    } catch (error) {
+        const innerMessage = error instanceof Error ? error.message : String(error);
+        const message = `no valid execution times: ${innerMessage}`;
+        throw new InvalidCronExpressionError(expression, "expression", message);
+    }
+
     return ret;
 }
 
