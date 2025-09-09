@@ -107,7 +107,7 @@ describe('memconst', () => {
     // Setup
     const sleeper = require('../src/sleeper').make();
     const delayedFn = jest.fn(async () => {
-      await sleeper.sleep(fromMilliseconds(100));
+      await sleeper.sleep("test1", fromMilliseconds(100));
       return 'delayed-value';
     });
     const memoized = memconst(delayedFn);
