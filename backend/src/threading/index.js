@@ -148,12 +148,19 @@ class ManualThread {
 }
 
 /**
- *
  * @param {unknown} obj
  * @returns {obj is PeriodicThread}
  */
 function isPeriodicThread(obj) {
     return obj instanceof PeriodicThread;
+}
+
+/**
+ * @param {unknown} obj
+ * @returns {obj is ManualThread}
+ */
+function isManualThread(obj) {
+    return obj instanceof ManualThread;
 }
 
 function make() {
@@ -190,4 +197,5 @@ function make() {
 module.exports = {
     make,
     isPeriodicThread,
+    isManualThread,
 };
