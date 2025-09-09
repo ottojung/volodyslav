@@ -60,7 +60,7 @@ function make() {
                     }
                 }
                 resolve();
-            };    
+            };
             const timeout = setTimeout(finish, duration.toMillis());
             const existing = sleeps.get(name);
             if (existing === undefined) {
@@ -73,7 +73,20 @@ function make() {
         });
     }
 
-    return { sleep, withMutex };
+    /**
+     * Clears any pending sleeps with the given name.
+     * @param {string} name
+     * @returns {void}
+     */
+    function wake(name) {
+        const existing = sleeps.get(name);
+        if (existing !== undefined) {
+            existing.forEach(t => clearTimeout(t));
+            sleeps.delete(name);
+        }
+    }
+
+    return { sleep, wake, withMutex };
 }
 
 module.exports = {
