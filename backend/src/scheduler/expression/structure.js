@@ -190,6 +190,8 @@ function isCronExpression(object) {
     return object instanceof CronExpressionClass;
 }
 
+const FIRST_COMING = dateTimeFromObject({ year: 1, month: 1, day: 1, hour: 0, minute: 0 });
+
 /**
  * Parses and validates a cron expression.
  * @param {string} expression - The cron expression to parse
@@ -226,131 +228,72 @@ function parseCronExpression(expression) {
     const monthStr = fields[3];
     const weekdayStr = fields[4];
 
-    if (!minuteStr || !hourStr || !dayStr || !monthStr || !weekdayStr) {
-        throw new InvalidCronExpressionError(expression, "expression", "contains empty fields");
-    }
-
     const fieldNames = ["minute", "hour", "day", "month", "weekday"];
 
-    try {
-        const minute = parseField(minuteStr, FIELD_CONFIGS.minute);
-        const hour = parseField(hourStr, FIELD_CONFIGS.hour);
-        const day = parseField(dayStr, FIELD_CONFIGS.day);
-        const month = parseField(monthStr, FIELD_CONFIGS.month);
-        const weekday = parseField(weekdayStr, FIELD_CONFIGS.weekday);
-        const isDomDowRestricted = dayStr !== "*" && weekdayStr !== "*";
+    function basicParse() {
+        if (!minuteStr || !hourStr || !dayStr || !monthStr || !weekdayStr) {
+            throw new InvalidCronExpressionError(expression, "expression", "contains empty fields");
+        }
 
-        return new CronExpressionClass(expression, minute, hour, day, month, weekday, isDomDowRestricted);
-    } catch (error) {
-        const fieldStrings = [minuteStr, hourStr, dayStr, monthStr, weekdayStr];
-        const fieldIndex = fieldStrings.findIndex((field, index) => {
-            try {
-                const configKey = fieldNames[index];
-                let config;
-                if (configKey === "minute") config = FIELD_CONFIGS.minute;
-                else if (configKey === "hour") config = FIELD_CONFIGS.hour;
-                else if (configKey === "day") config = FIELD_CONFIGS.day;
-                else if (configKey === "month") config = FIELD_CONFIGS.month;
-                else if (configKey === "weekday") config = FIELD_CONFIGS.weekday;
-                else return false;
+        try {
+            const minute = parseField(minuteStr, FIELD_CONFIGS.minute);
+            const hour = parseField(hourStr, FIELD_CONFIGS.hour);
+            const day = parseField(dayStr, FIELD_CONFIGS.day);
+            const month = parseField(monthStr, FIELD_CONFIGS.month);
+            const weekday = parseField(weekdayStr, FIELD_CONFIGS.weekday);
+            const isDomDowRestricted = dayStr !== "*" && weekdayStr !== "*";
 
-                parseField(field, config);
-                return false;
-            } catch {
-                return true;
+            return new CronExpressionClass(expression, minute, hour, day, month, weekday, isDomDowRestricted);
+        } catch (error) {
+            const fieldStrings = [minuteStr, hourStr, dayStr, monthStr, weekdayStr];
+            const fieldIndex = fieldStrings.findIndex((field, index) => {
+                try {
+                    const configKey = fieldNames[index];
+                    let config;
+                    if (configKey === "minute") config = FIELD_CONFIGS.minute;
+                    else if (configKey === "hour") config = FIELD_CONFIGS.hour;
+                    else if (configKey === "day") config = FIELD_CONFIGS.day;
+                    else if (configKey === "month") config = FIELD_CONFIGS.month;
+                    else if (configKey === "weekday") config = FIELD_CONFIGS.weekday;
+                    else return false;
+
+                    parseField(field, config);
+                    return false;
+                } catch {
+                    return true;
+                }
+            });
+
+            const fieldName = fieldNames[fieldIndex] || "unknown";
+            let errorMessage = "unknown error";
+
+            if (isFieldParseError(error)) {
+                errorMessage = error.message;
+            } else if (error instanceof Error) {
+                errorMessage = error.message;
+            } else {
+                errorMessage = String(error);
             }
-        });
 
-        const fieldName = fieldNames[fieldIndex] || "unknown";
-        let errorMessage = "unknown error";
-
-        if (isFieldParseError(error)) {
-            errorMessage = error.message;
-        } else if (error instanceof Error) {
-            errorMessage = error.message;
-        } else {
-            errorMessage = String(error);
-        }
-
-        throw new InvalidCronExpressionError(expression, fieldName, errorMessage);
-    }
-}
-
-
-/**
- * Generator that yields valid (year, month, day) tuples starting from the given date.
- * @param {CronExpression} cronExpr
- * @param {import("../../datetime").DateTime} startDate
- * @returns {Generator<{year: number, month: number, day: number}>} Tuples
- */
-function* iterateValidDays(cronExpr, startDate) {
-    const origin = startDate;
-
-    const oyear = origin.year;
-    const omonth = origin.month;
-    let year = origin.year;
-    let month = origin.month;
-
-    // Limit to 10 years forward to prevent infinite loops.
-    // It must be impossible to have a valid cron expression that doesn't for that long.
-    while (year < oyear + 10) {
-        let validDays = cronExpr.validDays(year, month);
-        if (month === omonth && year === oyear) {
-            validDays = validDays.filter(d => d >= origin.day);
-        }
-
-        for (const day of validDays) {
-            yield { year, month, day };
-        }
-
-        month += 1;
-        if (month > 12) {
-            month = 1;
-            year += 1;
+            throw new InvalidCronExpressionError(expression, fieldName, errorMessage);
         }
     }
-}
 
-
-/**
- * Generator that yields valid (year, month, day) tuples starting from the given date.
- * @param {CronExpression} cronExpr
- * @param {import("../../datetime").DateTime} startDate
- * @returns {Generator<{year: number, month: number, day: number}>} Tuples
- */
-function* iterateValidDaysBackwards(cronExpr, startDate) {
-    const origin = startDate;
-
-    const oyear = origin.year;
-    const omonth = origin.month;
-    let year = origin.year;
-    let month = origin.month;
-
-    // Limit to 10 years back to prevent infinite loops.
-    // It must be impossible to have a valid cron expression that doesn't for that long.
-    while (year > oyear - 10) {
-        let validDays = cronExpr.validDays(year, month);
-        if (month === omonth && year === oyear) {
-            validDays = validDays.filter(d => d <= origin.day);
-        }
-
-        for (const day of [...validDays].reverse()) {
-            yield { year, month, day };
-        }
-
-        month -= 1;
-        if (month < 1) {
-            month = 12;
-            year -= 1;
-        }
+    const ret = basicParse();
+    const { getNextExecution } = require("../calculator");
+    try {
+        getNextExecution(ret, FIRST_COMING); // validate it can compute next execution
+    } catch (error) {
+        const innerMessage = error instanceof Error ? error.message : String(error);
+        const message = `no valid execution times: ${innerMessage}`;
+        throw new InvalidCronExpressionError(expression, "expression", message);
     }
-}
 
+    return ret;
+}
 
 module.exports = {
     parseCronExpression,
     isCronExpression,
     isInvalidCronExpressionError,
-    iterateValidDays,
-    iterateValidDaysBackwards,
 };

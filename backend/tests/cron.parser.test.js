@@ -371,13 +371,9 @@ describe("Cron Parser", () => {
         });
 
         describe("calendar edge cases", () => {
-            test("April 31 with wildcard DOW never runs", () => {
+            test("April 31 with wildcard DOW throws", () => {
                 // This is valid syntax but April only has 30 days
-                const expr = parseCronExpression("0 0 31 4 *");
-                
-                // Should be empty list for April (month 4)
-                const validDays = expr.validDays(2024, 4);
-                expect(validDays).toEqual([]);
+                expect(() => parseCronExpression("0 0 31 4 *")).toThrow(/No valid next execution/);
             });
 
             test("April 31 with DOW runs on DOW matches", () => {

@@ -4,7 +4,7 @@
 
 const { matchesCronExpression } = require("./current");
 const { dateTimeFromObject } = require("../../datetime");
-const { iterateValidDaysBackwards } = require("../expression/structure");
+const { iterateValidDaysBackwards } = require("../expression");
 const { CronCalculationError } = require("./errors");
 
 /**

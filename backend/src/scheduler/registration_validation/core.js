@@ -37,12 +37,12 @@ function validateRegistrations(registrations) {
         if (typeof name !== 'string') {
             throw new RegistrationShapeError(`Registration at index ${i}: task name must be a string, got: ${typeof name}`, { index: i, name, value: name });
         }
-        
-        if (callback === undefined || typeof callback !== 'function') {
-            throw new RegistrationShapeError(`Registration at index ${i} (${JSON.stringify(name)}): callback must be a function, got: ${typeof callback}`, { index: i, name, value: callback });
-        }
 
         const qname = JSON.stringify(name);
+        
+        if (callback === undefined || typeof callback !== 'function') {
+            throw new RegistrationShapeError(`Registration at index ${i} (${qname}): callback must be a function, got: ${typeof callback}`, { index: i, name, value: callback });
+        }
 
         // Check for duplicate task names - this is now a hard error
         if (seenNames.has(name)) {
@@ -54,7 +54,8 @@ function validateRegistrations(registrations) {
         try {
             parseCronExpression(cronExpression);
         } catch (error) {
-            throw new CronExpressionInvalidError(`Registration at index ${i} (${qname}): invalid cron expression '${cronExpression}'`, { index: i, name, value: cronExpression });
+            const message = typeof error === 'object' && error !== null && 'message' in error ? error.message : "unknown error";
+            throw new CronExpressionInvalidError(`Registration at index ${i} (${qname}): invalid cron expression '${cronExpression}': ${message}`, { index: i, name, value: cronExpression, error });
         }
 
         // Validate retry delay is reasonable (warn for very large delays but don't block)
