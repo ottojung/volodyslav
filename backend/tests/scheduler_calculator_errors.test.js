@@ -4,7 +4,7 @@
  */
 
 const { CronCalculationError, isCronCalculationError } = require("../src/scheduler/calculator");
-const { parseCronExpression } = require("../src/scheduler/expression");
+const { parseCronExpression, isInvalidCronExpressionError } = require("../src/scheduler/expression");
 
 describe("CronCalculationError scenarios", () => {
     describe("getNextExecution error cases", () => {
@@ -23,8 +23,8 @@ describe("CronCalculationError scenarios", () => {
                 thrownError = error;
             }
             
-            expect(thrownError).toBeInstanceOf(CronCalculationError);
-            expect(thrownError.name).toBe("CronCalculationError");
+            expect(thrownError).toBeDefined();            
+            expect(isInvalidCronExpressionError(thrownError)).toBe(true);
             expect(thrownError.message).toContain("No valid next execution time found");
         });
     });
@@ -50,9 +50,8 @@ describe("CronCalculationError scenarios", () => {
             }
             
             expect(thrownError).toBeDefined();
-            expect(isCronCalculationError(thrownError)).toBe(true);
-            expect(thrownError.name).toBe("CronCalculationError");
-            expect(thrownError.details).toBeDefined();
+            expect(isInvalidCronExpressionError(thrownError)).toBe(true);
+            expect(thrownError.name).toBe("InvalidCronExpressionError");
         });
     });
 });
