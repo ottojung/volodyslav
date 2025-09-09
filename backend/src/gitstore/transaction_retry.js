@@ -138,7 +138,7 @@ async function transactionWithRetry(capabilities, workingPath, initial_state, tr
             }
 
             logRetryAttempt(capabilities.logger, loggingContext, delay.toString() || `${delayMs}ms`, error);
-            await capabilities.sleeper.sleep(delay);
+            await capabilities.sleeper.sleep("transaction retry delay", delay);
             return retry();
         }
     });

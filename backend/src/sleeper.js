@@ -8,20 +8,9 @@ const { fromMilliseconds } = require('./datetime/duration');
 
 /**
  * @typedef {object} SleepCapability
- * @property {(duration: Duration) => Promise<void>} sleep - Pause for the given duration.
+ * @property {(name: string, duration: Duration) => Promise<void>} sleep - Pause for the given duration.
  * @property {<T>(name: string, procedure: () => Promise<T>) => Promise<T>} withMutex - Execute a procedure with a mutex lock.
  */
-
-/**
- * Pauses execution for the specified duration.
- * @param {Duration} duration - Duration to sleep.
- * @returns {Promise<void>} Resolves after the delay.
- */
-function sleep(duration) {
-    return new Promise((resolve) => {
-        setTimeout(resolve, duration.toMillis());
-    });
-}
 
 function make() {
 
@@ -46,6 +35,18 @@ function make() {
         } finally {
             mutexes.delete(name);
         }
+    }
+
+    /**
+     * Pauses execution for the specified duration.
+     * @param {string} _name - Optional name for the sleep operation.
+     * @param {Duration} duration - Duration to sleep.
+     * @returns {Promise<void>} Resolves after the delay.
+     */
+    function sleep(_name, duration) {
+        return new Promise((resolve) => {
+            setTimeout(resolve, duration.toMillis());
+        });
     }
 
     return { sleep, withMutex };
