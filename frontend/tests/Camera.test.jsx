@@ -1,10 +1,6 @@
 import React from 'react';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import '@testing-library/jest-dom';
-import { make as makeSleeper } from '../../backend/src/sleeper.js';
-import { fromMilliseconds } from '../../backend/src/datetime/duration.js';
-
-const sleeper = makeSleeper();
 
 // Mock Chakra UI useToast
 const mockToast = jest.fn();
@@ -18,6 +14,8 @@ jest.mock('@chakra-ui/react', () => {
 });
 
 import Camera from '../src/Camera/Camera.jsx';
+
+const passThread = () => new Promise(resolve => setTimeout(resolve, 0));
 
 describe('Camera component', () => {
     let getUserMediaMock;
@@ -79,7 +77,7 @@ describe('Camera component', () => {
                     objectStore: jest.fn().mockImplementation(() => ({
                         put: jest.fn().mockImplementation((data, key) => {
                             mockStore.set(key, data);
-                            sleeper.sleep(fromMilliseconds(0)).then(() => {
+                            passThread().then(() => {
                                 if (typeof transaction.oncomplete === 'function') {
                                     transaction.oncomplete();
                                 }
@@ -104,7 +102,7 @@ describe('Camera component', () => {
         };
         const mockOpen = jest.fn().mockImplementation(() => {
             const req = {};
-            sleeper.sleep(fromMilliseconds(0)).then(() => {
+            passThread().then(() => {
                 if (typeof req.onupgradeneeded === 'function') {
                     req.result = mockDB;
                     req.onupgradeneeded({ target: req });
@@ -199,7 +197,7 @@ describe('Camera component', () => {
         await waitFor(() => screen.getByAltText('Preview'));
         
         // Wait a bit for the blob to be processed
-        await sleeper.sleep(fromMilliseconds(100));
+        await new Promise(resolve => setTimeout(resolve, 100));
         
         fireEvent.click(screen.getByText('Done'));
 
