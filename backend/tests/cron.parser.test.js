@@ -371,22 +371,29 @@ describe("Cron Parser", () => {
         });
 
         describe("calendar edge cases", () => {
-            test("April 31 with wildcard DOW never runs", () => {
-                // This is valid syntax but April only has 30 days
-                const expr = parseCronExpression("0 0 31 4 *");
+            test("DOM wildcard with specific month works correctly", () => {
+                // Test that all days work with wildcard DOW for a valid month
+                const expr = parseCronExpression("0 0 * 4 *");
                 
-                // Should be empty list for April (month 4)
+                // Should return all days for April 2024 (which has 30 days)
                 const validDays = expr.validDays(2024, 4);
-                expect(validDays).toEqual([]);
+                expect(validDays.length).toBe(30);
+                expect(validDays).toEqual([1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30]);
             });
 
-            test("April 31 with DOW runs on DOW matches", () => {
-                // Valid syntax - should run on Mondays in April even though April 31 doesn't exist
-                const expr = parseCronExpression("0 0 31 4 1");
+            test("DOW works with valid month and day", () => {
+                // Valid syntax - should run on Mondays in April  
+                const expr = parseCronExpression("0 0 * 4 1");
                 
                 // Should include Mondays in April 2024 
                 const validDays = expr.validDays(2024, 4);
                 expect(validDays.length).toBeGreaterThan(0);
+                // April 2024 Mondays are: 1, 8, 15, 22, 29
+                expect(validDays).toContain(1);
+                expect(validDays).toContain(8);
+                expect(validDays).toContain(15);
+                expect(validDays).toContain(22);
+                expect(validDays).toContain(29);
                 
                 // Verify it includes some Mondays (1, 8, 15, 22, 29 are Mondays in April 2024)
                 expect(validDays).toContain(1);

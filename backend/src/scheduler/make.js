@@ -2,8 +2,9 @@
  * Scheduler factory implementation for the declarative scheduler.
  */
 
-const { parseCronExpression } = require("./expression");
+const { parseCronExpression, calculateCronInterval } = require("./expression");
 const { makePollingScheduler } = require("./polling");
+const { POLL_INTERVAL } = require("./polling/interval");
 const { initializeTasks } = require("./persistence");
 const { isScheduleDuplicateTaskError, validateRegistrations } = require("./registration_validation");
 const { generateSchedulerIdentifier } = require("./scheduler_identifier");
@@ -81,6 +82,41 @@ function make(getCapabilities) {
     }
 
     /**
+     * Validate frequency of cron expressions against polling interval.
+     * Logs warnings for tasks that run more frequently than the polling interval.
+     * @param {Registration[]} registrations
+     * @param {SchedulerCapabilities} capabilities
+     */
+    function validateFrequencies(registrations, capabilities) {
+        for (const [name, cronExpression] of registrations) {
+            try {
+                const parsedCron = parseCronExpression(cronExpression);
+                const aCronInterval = calculateCronInterval(parsedCron);
+                
+                // Compare cron interval with polling interval
+                if (aCronInterval.toMillis() < POLL_INTERVAL.toMillis()) {
+                    capabilities.logger.logWarning(
+                        {
+                            aCronInterval,
+                            pollInterval: POLL_INTERVAL,
+                            cron: cronExpression
+                        },
+                        `Task '${name}' has interval less than the polling interval and may not execute as expected`
+                    );
+                }
+            } catch (error) {
+                // If we can't parse the cron expression or calculate its interval,
+                // the error will be caught elsewhere in validation
+                const errorMessage = error && typeof error === 'object' && 'message' in error ? error.message : String(error);
+                capabilities.logger.logDebug(
+                    { taskName: name, cronExpression, error: errorMessage },
+                    "Could not validate frequency for task"
+                );
+            }
+        }
+    }
+
+    /**
      * Schedule all tasks and handle errors.
      * @param {Registration[]} registrations
      * @param {ReturnType<makePollingScheduler>} pollingScheduler
@@ -131,6 +167,9 @@ function make(getCapabilities) {
         
         // Validate registrations before any processing
         validateRegistrations(registrations);
+        
+        // Validate frequency compatibility with polling interval
+        validateFrequencies(registrations, capabilities);
         
         const parsedRegistrations = parseRegistrations(registrations);
 

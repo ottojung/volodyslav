@@ -7,6 +7,7 @@
 const { parseCronExpression, isCronExpression, isInvalidCronExpressionError } = require("./structure");
 const { iterateValidDays, iterateValidDaysBackwards } = require("./methods");
 const { isFieldParseError } = require("./field_parser");
+const { calculateCronInterval } = require("./interval");
 
 // Re-export types from sub-modules
 /** @typedef {import('./structure').CronExpression} CronExpression */
@@ -23,4 +24,5 @@ module.exports = {
     // Helpers
     iterateValidDays,
     iterateValidDaysBackwards,
+    calculateCronInterval,
 };
