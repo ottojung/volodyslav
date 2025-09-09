@@ -17,6 +17,11 @@ function make() {
     /** @type {Set<string>} */
     const mutexes = new Set();
 
+    /** @type {Map<string, NodeJS.Timeout[]>} */
+    const sleeps = new Map();
+
+    const shortDelayMs = fromMilliseconds(1).toMillis();
+
     /**
      * @template T
      * @param {string} name
@@ -25,8 +30,7 @@ function make() {
      */
     async function withMutex(name, procedure) {
         while (mutexes.has(name)) {
-            const shortDelay = fromMilliseconds(1);
-            await new Promise(resolve => setTimeout(resolve, shortDelay.toMillis()));
+            await new Promise(resolve => setTimeout(resolve, shortDelayMs));
         }
 
         mutexes.add(name);
@@ -39,13 +43,33 @@ function make() {
 
     /**
      * Pauses execution for the specified duration.
-     * @param {string} _name - Optional name for the sleep operation.
+     * @param {string} name - Name for the sleep operation.
      * @param {Duration} duration - Duration to sleep.
      * @returns {Promise<void>} Resolves after the delay.
      */
-    function sleep(_name, duration) {
+    function sleep(name, duration) {
         return new Promise((resolve) => {
-            setTimeout(resolve, duration.toMillis());
+            const finish = () => {
+                const existing = sleeps.get(name);
+                if (existing !== undefined) {
+                    if (existing.length === 1) {
+                        sleeps.delete(name);
+                    } else {
+                        const filtered = existing.filter(t => t !== timeout);
+                        sleeps.set(name, filtered);
+                    }
+                }
+                resolve();
+            };    
+            const timeout = setTimeout(finish, duration.toMillis());
+            const existing = sleeps.get(name);
+            if (existing === undefined) {
+                sleeps.set(name, [timeout]);
+                return;
+            } else {
+                existing.push(timeout);
+                sleeps.set(name, existing);
+            }
         });
     }
 
