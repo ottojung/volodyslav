@@ -77,6 +77,76 @@ class PeriodicThread {
     }
 }
 
+class ManualThread {
+        /**
+     * @private
+     * @type {undefined} 
+     */
+    __brand = undefined; // nominal typing brand
+
+    /** @type {string} */
+    name;
+
+    /** @type {Callback} */
+    callback;
+
+    /**
+     *
+     * @param {string} name
+     * @param {Callback} callback
+     */
+    constructor(name, callback) {
+        this.name = name;
+        this.callback = callback;
+        /** @type {NodeJS.Timeout[]} */
+        this.timeouts = [];
+        this.runningCount = 0;
+        if (this.__brand !== undefined) {
+            throw new Error("PeriodicThread is a nominal type.");
+        }
+    }
+
+    /**
+     * Start the thread after the given delay.
+     * Multiple concurrent runs are allowed.
+     * @param {Duration} after
+     * @returns {void}
+     */    
+    start(after) {
+        const wrapped = async () => {
+            this.timeouts = this.timeouts.filter(t => t !== timeout);
+            this.runningCount++;
+            try {
+                return await this.callback();
+            } finally {
+                this.runningCount--;
+            }
+        }
+
+        const timeout = setTimeout(wrapped, after.toMillis());
+        this.timeouts.push(timeout);
+    }
+
+    async stop() {
+        if (this.timeouts.length > 0) {
+            this.timeouts.forEach(t => clearTimeout(t));
+            this.timeouts = [];
+        }
+
+        await this.join();
+    }
+
+    isRunning() {
+        return this.runningCount > 0 || this.timeouts.length > 0;
+    }
+
+    async join() {
+        while (this.isRunning()) {
+            await new Promise(resolve => setTimeout(resolve, 0));
+        }
+    }
+}
+
 /**
  *
  * @param {unknown} obj
@@ -98,8 +168,18 @@ function make() {
         return new PeriodicThread(name, interval, callback);
     }
 
+    /**
+     * A version `periodic` that only runs once.
+     * @param {string} name
+     * @param {Callback} callback
+     */
+    function manual(name, callback) {
+        return new ManualThread(name, callback);
+    }
+
     return {
         periodic,
+        manual,
     };
 }
 
