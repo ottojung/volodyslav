@@ -21,7 +21,7 @@ describe("logger capability", () => {
         logger.logWarning({ bar: 2 }, "warn message");
         logger.logError({ baz: 3 }, "error message");
         logger.logDebug({ qux: 4 }, "debug message");
-        await capabilities.sleeper.sleep(fromMilliseconds(1000));
+        await capabilities.sleeper.sleep("test2-kdjalkdjad", fromMilliseconds(1000));
         const content = fs.readFileSync(logFilePath, "utf8");
         expect(content).toMatch(/info message/);
         expect(content).toMatch(/warn message/);
