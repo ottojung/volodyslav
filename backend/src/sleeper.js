@@ -9,6 +9,7 @@ const { fromMilliseconds } = require('./datetime/duration');
 /**
  * @typedef {object} SleepCapability
  * @property {(name: string, duration: Duration) => Promise<void>} sleep - Pause for the given duration.
+ * @property {(name: string) => Promise<void>} wake - Clear any pending sleeps with the given name.
  * @property {<T>(name: string, procedure: () => Promise<T>) => Promise<T>} withMutex - Execute a procedure with a mutex lock.
  */
 
