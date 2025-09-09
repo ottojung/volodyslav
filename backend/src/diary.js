@@ -18,7 +18,7 @@ const creatorMake = require("./creator");
 /** @typedef {import('./subprocess/command').Command} Command */
 /** @typedef {import('./environment').Environment} Environment */
 /** @typedef {import('./logger').Logger} Logger */
-/** @typedef {import('./sleeper').Sleeper} Sleeper */
+/** @typedef {import('./sleeper').SleepCapability} SleepCapability */
 
 /**
  * @typedef {object} Capabilities
@@ -35,7 +35,7 @@ const creatorMake = require("./creator");
  * @property {Logger} logger - A logger instance.
  * @property {import('./filesystem/reader').FileReader} reader - A file reader instance.
  * @property {import('./datetime').Datetime} datetime - Datetime utilities.
- * @property {Sleeper} sleeper - A sleeper instance for delays.
+ * @property {SleepCapability} sleeper - A sleeper instance for delays.
  */
 
 /**

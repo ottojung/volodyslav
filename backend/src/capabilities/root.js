@@ -19,7 +19,7 @@
 /** @typedef {import('../notifications').Notifier} Notifier */
 /** @typedef {import('../ai/transcription').AITranscription} AITranscription */
 /** @typedef {import('../datetime').Datetime} Datetime */
-/** @typedef {import('../sleeper').Sleeper} Sleeper */
+/** @typedef {import('../sleeper').SleepCapability} SleepCapability */
 /** @typedef {import('../scheduler').Scheduler} Scheduler */
 /** @typedef {import('../runtime_state_storage').RuntimeStateCapability} RuntimeStateCapability */
 /** @typedef {import('../threading').Threading} Threading */
@@ -44,7 +44,7 @@
  * @property {Notifier} notifier - A notifier instance.
  * @property {AITranscription} aiTranscription - An AI transcription instance.
  * @property {Datetime} datetime - Datetime utilities.
- * @property {Sleeper} sleeper - A sleeper instance.
+ * @property {SleepCapability} sleeper - A sleeper instance.
  * @property {Command} volodyslavDailyTasks - A command instance for daily tasks.
  * @property {Scheduler} scheduler - A scheduler instance.
  * @property {RuntimeStateCapability} state - A runtime state storage instance.

@@ -75,7 +75,7 @@
  * @property {Environment} environment - An environment instance
  * @property {Logger} logger - A logger instance
  * @property {import('../datetime').Datetime} datetime - Datetime utilities
- * @property {import('../sleeper').Sleeper} sleeper - A sleeper instance for delays
+ * @property {import('../sleeper').SleepCapability} sleeper - A sleeper instance for delays
  */
 
 module.exports = {};

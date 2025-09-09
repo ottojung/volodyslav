@@ -27,7 +27,7 @@ const fs = require("fs").promises;
 
 /** @typedef {import('./file').ExistingFile} ExistingFile */
 /** @typedef {import('../datetime').Datetime} Datetime */
-/** @typedef {import('../sleeper').Sleeper} Sleeper */
+/** @typedef {import('../sleeper').SleepCapability} SleepCapability */
 
 class FileCheckerError extends Error {
     /**
@@ -134,7 +134,7 @@ async function instantiate(path) {
  * 1. It hasn't been modified for at least the specified age threshold
  * 2. Its size hasn't changed between two checks separated by a delay
  *
- * @param {Sleeper} sleeper - Sleeper capability for pausing.
+ * @param {SleepCapability} sleeper - SleepCapability capability for pausing.
  * @param {import('../datetime').Datetime} datetime - Datetime capability for getting current time.
  * @param {ExistingFile} file - The path to the file to check.
  * @param {object} options - Stability check options.
@@ -186,7 +186,7 @@ async function isFileStable(sleeper, datetime, file, options = {}) {
 
 /** 
  * @typedef {object} Capabilities
- * @property {import('../sleeper').Sleeper} sleeper - Sleeper capabilities.
+ * @property {import('../sleeper').SleepCapability} sleeper - SleepCapability capabilities.
  * @property {import('../datetime').Datetime} datetime - Datetime capabilities.
  */
 

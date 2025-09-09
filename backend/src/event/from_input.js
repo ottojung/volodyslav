@@ -52,7 +52,7 @@
  * @property {import('../random/seed').NonDeterministicSeed} seed - Random seed (required by config API)
  * @property {import('../datetime').Datetime} datetime - Datetime utilities (required by config API)
  * @property {import('../logger').Logger} logger - Logger for error reporting
- * @property {import('../sleeper').Sleeper} sleeper - A sleeper instance for delays
+ * @property {import('../sleeper').SleepCapability} sleeper - A sleeper instance for delays
  */
 
 /** @typedef {import('./parsers').ParsedInput} ParsedInput */

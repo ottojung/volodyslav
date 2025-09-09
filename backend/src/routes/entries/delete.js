@@ -12,7 +12,7 @@ const { deleteEntry } = require("../../entry");
  * @typedef {import('../../filesystem/creator').FileCreator} FileCreator
  * @typedef {import('../../filesystem/checker').FileChecker} FileChecker
  * @typedef {import('../../subprocess/command').Command} Command
- * @typedef {import('../../sleeper').Sleeper} Sleeper
+ * @typedef {import('../../sleeper').SleepCapability} SleepCapability
  */
 
 /**
@@ -29,7 +29,7 @@ const { deleteEntry } = require("../../entry");
  * @property {Command} git - A command instance for Git operations.
  * @property {import('../../filesystem/reader').FileReader} reader - A file reader instance.
  * @property {import('../../datetime').Datetime} datetime - Datetime utilities.
- * @property {Sleeper} sleeper - A sleeper instance for delays.
+ * @property {SleepCapability} sleeper - A sleeper instance for delays.
  */
 
 /**

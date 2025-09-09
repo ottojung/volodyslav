@@ -23,7 +23,7 @@ const { withRetry } = require("../retryer");
 /** @typedef {import('../filesystem/writer').FileWriter} FileWriter */
 /** @typedef {import('../environment').Environment} Environment */
 /** @typedef {import('../logger').Logger} Logger */
-/** @typedef {import('../sleeper').Sleeper} Sleeper */
+/** @typedef {import('../sleeper').SleepCapability} SleepCapability */
 /** @typedef {import('../datetime').Datetime} Datetime */
 /** @typedef {import('./transaction_attempt').GitStore} GitStore */
 
@@ -42,7 +42,7 @@ const { withRetry } = require("../retryer");
  * @property {Environment} environment - An environment instance.
  * @property {Logger} logger - A logger instance.
  * @property {Datetime} datetime - Datetime utilities.
- * @property {Sleeper} sleeper - A sleeper instance.
+ * @property {SleepCapability} sleeper - A sleeper instance.
  */
 
 /**

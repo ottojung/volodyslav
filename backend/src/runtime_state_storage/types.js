@@ -11,7 +11,7 @@
 /** @typedef {import('../environment').Environment} Environment */
 /** @typedef {import('../logger').Logger} Logger */
 /** @typedef {import('../datetime').Datetime} Datetime */
-/** @typedef {import('../sleeper').Sleeper} Sleeper */
+/** @typedef {import('../sleeper').SleepCapability} SleepCapability */
 
 /**
  * @typedef {object} Capabilities
@@ -59,7 +59,7 @@
  * @property {Environment} environment - An environment instance
  * @property {Logger} logger - A logger instance
  * @property {Datetime} datetime - Datetime utilities
- * @property {Sleeper} sleeper - A sleeper instance for delays
+ * @property {SleepCapability} sleeper - A sleeper instance for delays
  */
 
 module.exports = {};

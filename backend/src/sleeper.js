@@ -1,5 +1,5 @@
 /**
- * Sleeper capability for pausing execution.
+ * SleepCapability capability for pausing execution.
  */
 
 const { fromMilliseconds } = require('./datetime/duration');
@@ -7,7 +7,7 @@ const { fromMilliseconds } = require('./datetime/duration');
 /** @typedef {import('./datetime').Duration} Duration */
 
 /**
- * @typedef {object} Sleeper
+ * @typedef {object} SleepCapability
  * @property {(duration: Duration) => Promise<void>} sleep - Pause for the given duration.
  * @property {<T>(name: string, procedure: () => Promise<T>) => Promise<T>} withMutex - Execute a procedure with a mutex lock.
  */
