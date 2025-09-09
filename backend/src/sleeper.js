@@ -18,7 +18,7 @@ function make() {
     /** @type {Set<string>} */
     const mutexes = new Set();
 
-    /** @type {Map<string, NodeJS.Timeout[]>} */
+    /** @type {Map<string, {timeout: NodeJS.Timeout, resolve: () => void}[]>} */
     const sleeps = new Map();
 
     const shortDelayMs = fromMilliseconds(1).toMillis();
@@ -56,7 +56,7 @@ function make() {
                     if (existing.length === 1) {
                         sleeps.delete(name);
                     } else {
-                        const filtered = existing.filter(t => t !== timeout);
+                        const filtered = existing.filter(t => t.timeout !== timeout);
                         sleeps.set(name, filtered);
                     }
                 }
@@ -65,10 +65,10 @@ function make() {
             const timeout = setTimeout(finish, duration.toMillis());
             const existing = sleeps.get(name);
             if (existing === undefined) {
-                sleeps.set(name, [timeout]);
+                sleeps.set(name, [{ timeout, resolve }]);
                 return;
             } else {
-                existing.push(timeout);
+                existing.push({ timeout, resolve });
                 sleeps.set(name, existing);
             }
         });
@@ -82,7 +82,7 @@ function make() {
     function wake(name) {
         const existing = sleeps.get(name);
         if (existing !== undefined) {
-            existing.forEach(t => clearTimeout(t));
+            existing.forEach(t => { clearTimeout(t.timeout); t.resolve(); });
             sleeps.delete(name);
         }
     }
