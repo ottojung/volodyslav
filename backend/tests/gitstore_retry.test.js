@@ -230,7 +230,7 @@ describe("gitstore retry functionality", () => {
 
         // Mock sleeper to capture delay values
         const sleepDelays = [];
-        capabilities.sleeper.sleep = jest.fn().mockImplementation((duration) => {
+        capabilities.sleeper.sleep = jest.fn().mockImplementation((_name, duration) => {
             sleepDelays.push(duration.toMillis());
             return Promise.resolve();
         });
