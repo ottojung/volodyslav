@@ -93,7 +93,7 @@ function stubDailyTasksExecutable(capabilities) {
 }
 
 function stubSleeper(capabilities) {
-    capabilities.sleeper.sleep = jest.fn().mockImplementation((_duration) => {
+    capabilities.sleeper.sleep = jest.fn().mockImplementation((_name, _duration) => {
         return Promise.resolve(); // Immediately resolve when stubbed
     });
 }
