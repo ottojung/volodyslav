@@ -39,7 +39,7 @@ describe("logger capability", () => {
             const logger = make();
             const sleeper = makeSleeper();
             logger.logError({}, "should fallback");
-            await sleeper.sleep(fromMilliseconds(50));
+            await sleeper.sleep("test1", fromMilliseconds(50));
             expect(called).toBe(true);
         } finally {
             console.error = origError;
@@ -57,7 +57,7 @@ describe("logger capability", () => {
         await logger.setup();
         logger.logInfo({}, "info should not appear");
         logger.logError({}, "error should appear");
-        await capabilities.sleeper.sleep(fromMilliseconds(1000));
+        await capabilities.sleeper.sleep("test1", fromMilliseconds(1000));
         const content = fs.readFileSync(logFilePath, "utf8");
         expect(content).not.toMatch(/info should not appear/);
         expect(content).toMatch(/error should appear/);
