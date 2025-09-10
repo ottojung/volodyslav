@@ -363,7 +363,7 @@ function stubScheduler(capabilities) {
 
     async function waitForNextCycleEnd() {
         const originalCount = cycleCount;
-        while (originalCount <= cycleCount) {
+        while (originalCount >= cycleCount) {
             await new Promise(resolve => setTimeout(resolve, 1));
         }
     }
