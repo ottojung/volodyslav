@@ -15,7 +15,7 @@
 
 const { mutateTasks } = require('../persistence');
 const { evaluateTasksForExecution } = require('../execution');
-const { fromMinutes } = require('../../datetime');
+const { fromMinutes, difference } = require('../../datetime');
 const { THREAD_NAME } = require('./interval');
 
 const POLL_INTERVAL = fromMinutes(10);
@@ -81,12 +81,13 @@ function makePollingFunction(capabilities, registrations, scheduledTasks, taskEx
         
         // Check the actual polling interval being used by testing a brief sleep.
         // This handles the case where test stubs override the sleep duration.
-        const testStartTime = Date.now();
+        const testStartTime = dt.now();
         const testSleep = sleeper.sleep(POLL_INTERVAL);
         const testTimeout = new Promise(resolve => setTimeout(resolve, 200));
         
         await Promise.race([testSleep, testTimeout]);
-        const actualDuration = Date.now() - testStartTime;
+        const testEndTime = dt.now();
+        const actualDuration = difference(testEndTime, testStartTime).toMillis();
         
         // Wake up the sleeper in case it's still sleeping
         sleeper.wake();
