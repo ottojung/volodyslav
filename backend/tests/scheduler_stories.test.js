@@ -1103,7 +1103,7 @@ describe("scheduler stories", () => {
         await capabilities.scheduler.initialize(registrations);
 
         // Wait some time.
-        await new Promise(resolve => setTimeout(resolve, 200));
+        await schedulerControl.waitForNextCycleEnd();
 
         // Should NOT execute immediately on first startup
         expect(fastTask.mock.calls.length).toEqual(0);
@@ -1112,8 +1112,6 @@ describe("scheduler stories", () => {
         // Advance to next hour (02:00:00)
         timeControl.advanceByDuration(fromMilliseconds(45 * 60 * 1000)); // 45 minutes to reach 02:00:00
         await schedulerControl.waitForNextCycleEnd();
-        // Wait some time.
-        await new Promise(resolve => setTimeout(resolve, 200));
 
         expect(fastTask.mock.calls.length).toEqual(1);
         expect(slowTask.mock.calls.length).toEqual(1);
@@ -1121,11 +1119,18 @@ describe("scheduler stories", () => {
         // Advance by one hour to 03:00:00
         timeControl.advanceByDuration(fromHours(1));
         await schedulerControl.waitForNextCycleEnd();
-        // Wait some time.
-        await new Promise(resolve => setTimeout(resolve, 200));
 
         expect(fastTask.mock.calls.length).toEqual(2);
-        expect(slowTask.mock.calls.length).toEqual(2); // Both can execute since slow task only takes 1 second
+        expect(slowTask.mock.calls.length).toEqual(1); // The slow task is still running, so it should not have executed again yet.
+
+        // Advance to next hour
+        await new Promise(resolve => setTimeout(resolve, 1500)); // Wait for slow task to finish
+        timeControl.advanceByDuration(fromHours(1));
+
+        // Wait enough time for the scheduler to pick up the next cycle
+        await schedulerControl.waitForNextCycleEnd();
+        expect(fastTask.mock.calls.length).toEqual(3);
+        expect(slowTask.mock.calls.length).toEqual(2); // The slow task should be done now and execute again.
 
         await capabilities.scheduler.stop();
     });
