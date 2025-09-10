@@ -1251,7 +1251,7 @@ describe("scheduler stories", () => {
     test("should reject object task names during registration validation", () => {
         const retryDelay = fromMilliseconds(5000);
         const registrations = [
-            [{name: "test"}, "* * * * *", jest.fn(), retryDelay]
+            [{ name: "test" }, "* * * * *", jest.fn(), retryDelay]
         ];
 
         expect(() => validateRegistrations(registrations)).toThrow();
@@ -1370,5 +1370,47 @@ describe("scheduler stories", () => {
             ["invalid-date-task", "0 0 31 2 *", jest.fn(), retryDelay]
         ])).rejects.toThrow(/No valid next execution time found for cron expression/);
         await capabilities.scheduler.stop();
+    });
+
+    test("should tolerate parallel transactions", async () => {
+        const capabilities = getTestCapabilities();
+
+        // Test scheduler behavior with first-time initialization
+        const retryDelay = fromMilliseconds(1000);
+        const registrations = [
+            ["test-task", "0 * * * *", jest.fn(), retryDelay]
+        ];
+
+        // This should succeed as first-time initialization
+        await capabilities.scheduler.initialize(registrations);
+
+        // An out-of transaction operation to ensure that it doesn't mess up the scheduler.
+        await capabilities.state.transaction(async () => 0);
+
+        await capabilities.scheduler.stop();
+
+        expect(true).toBe(true); // Dummy assertion to mark test as passed
+    });
+
+    test("should tolerate parallel transactions on real storage", async () => {
+        const capabilities = getMockedRootCapabilities();
+        stubEnvironment(capabilities);
+        stubLogger(capabilities);
+
+        // Test scheduler behavior with first-time initialization
+        const retryDelay = fromMilliseconds(1000);
+        const registrations = [
+            ["test-task", "0 * * * *", jest.fn(), retryDelay]
+        ];
+
+        // This should succeed as first-time initialization
+        await capabilities.scheduler.initialize(registrations);
+
+        // An out-of transaction operation to ensure that it doesn't mess up the scheduler.
+        await capabilities.state.transaction(async () => 0);
+
+        await capabilities.scheduler.stop();
+
+        expect(true).toBe(true); // Dummy assertion to mark test as passed
     });
 });
