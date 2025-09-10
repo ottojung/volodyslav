@@ -15,6 +15,7 @@
 
 const { mutateTasks } = require('../persistence');
 const { evaluateTasksForExecution } = require('../execution');
+const { POLL_INTERVAL } = require('./interval');
 
 /** @typedef {import('../types').Callback} Callback */
 
@@ -64,8 +65,10 @@ function makePollingFunction(capabilities, registrations, scheduledTasks, taskEx
     }
 
     async function loop() {
+        await new Promise((resolve) => setImmediate(resolve));
         while (isActive) {
             await pollWrapper();
+            await new Promise((resolve) => setTimeout(resolve, POLL_INTERVAL.toMillis()));
         }
     }
 
