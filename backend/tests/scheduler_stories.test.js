@@ -1412,6 +1412,30 @@ describe("scheduler stories", () => {
         // An out-of transaction operation to ensure that it doesn't mess up the scheduler.
         await capabilities.state.transaction(() => 0);
 
+        await new Promise(resolve => setTimeout(resolve, 2000)); // Wait a bit to ensure no issues
+
+        await capabilities.scheduler.stop();
+
+        expect(true).toBe(true); // Dummy assertion to mark test as passed
+    });
+
+    test("should tolerate parallel transactions on real storage without a safe delay", async () => {
+        const capabilities = getMockedRootCapabilities();
+        stubEnvironment(capabilities);
+        stubLogger(capabilities);
+
+        // Test scheduler behavior with first-time initialization
+        const retryDelay = fromMilliseconds(1000);
+        const registrations = [
+            ["test-task", "0 * * * *", jest.fn(), retryDelay]
+        ];
+
+        // This should succeed as first-time initialization
+        await capabilities.scheduler.initialize(registrations);
+
+        // An out-of transaction operation to ensure that it doesn't mess up the scheduler.
+        await capabilities.state.transaction(() => 0);
+
         await capabilities.scheduler.stop();
 
         expect(true).toBe(true); // Dummy assertion to mark test as passed
