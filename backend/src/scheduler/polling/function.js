@@ -35,6 +35,8 @@ function makePollingFunction(capabilities, registrations, scheduledTasks, taskEx
     let parallelCounter = 0;
     let isActive = false;
     const sleeper = capabilities.sleeper.makeSleeper(THREAD_NAME);
+    /** @type {Promise<void> | null} */
+    let loopThread = null;
 
     /**
      * Wrap a promise to ensure it is removed from the running pool when done
@@ -52,17 +54,18 @@ function makePollingFunction(capabilities, registrations, scheduledTasks, taskEx
      * @returns {Promise<void>}
      */
     async function join() {
-        await Promise.all(runningPool);
+        await Promise.all([...runningPool]);
     }
 
     function start() {
         isActive = true;
-        loop();
+        loopThread = loop();
     }
 
     async function stop() {
         isActive = false;
         sleeper.wake();
+        await loopThread;
         await join();
     }
 
