@@ -45,8 +45,6 @@ describe("scheduler stories", () => {
         // Wait for scheduler to start 
         await schedulerControl.waitForNextCycleEnd();
 
-        console.log("after waitForNextCycleEnd");
-
         // Should not execute at 05 minutes.
         const initialCalls = taskCallback.mock.calls.length;
         expect(initialCalls).toBe(0);
