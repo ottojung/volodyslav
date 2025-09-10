@@ -22,7 +22,7 @@ describe("declarative scheduler persistence and error handling", () => {
     test("should handle task execution errors gracefully", async () => {
         const capabilities = getTestCapabilities();
         const schedulerControl = getSchedulerControl(capabilities);
-        schedulerControl.setPollingInterval(fromMilliseconds(1));
+        schedulerControl.setPollingInterval(fromMilliseconds(100));
         const retryDelay = fromMilliseconds(5000);
 
         let callCount = 0;
@@ -55,7 +55,7 @@ describe("declarative scheduler persistence and error handling", () => {
     test("should handle different types of callback errors", async () => {
         const capabilities = getTestCapabilities();
         const schedulerControl = getSchedulerControl(capabilities);
-        schedulerControl.setPollingInterval(fromMilliseconds(1));
+        schedulerControl.setPollingInterval(fromMilliseconds(100));
         const retryDelay = fromMilliseconds(1000);
 
         // Test basic error handling without complex loops
@@ -82,7 +82,7 @@ describe("declarative scheduler persistence and error handling", () => {
     test("should maintain task state consistency after errors", async () => {
         const capabilities = getTestCapabilities();
         const schedulerControl = getSchedulerControl(capabilities);
-        schedulerControl.setPollingInterval(fromMilliseconds(1));
+        schedulerControl.setPollingInterval(fromMilliseconds(100));
         const retryDelay = fromMilliseconds(2000);
 
         const successCallback = jest.fn().mockResolvedValue(undefined);

@@ -32,7 +32,7 @@ describe("declarative scheduler precedence logic verification", () => {
         // Set time to avoid immediate execution for "0 * * * *" schedule
         const startTime = fromISOString("2021-01-01T00:05:00.000Z");
         timeControl.setDateTime(startTime);
-        schedulerControl.setPollingInterval(fromMilliseconds(1));
+        schedulerControl.setPollingInterval(fromMilliseconds(100));
         
         // Task runs at minute 0 of every hour
         const registrations = [
@@ -66,7 +66,7 @@ describe("declarative scheduler precedence logic verification", () => {
         // Set time to avoid immediate execution for "0 * * * *" schedule
         const startTime = fromISOString("2021-01-01T00:05:00.000Z");
         timeControl.setDateTime(startTime);
-        schedulerControl.setPollingInterval(fromMilliseconds(1));
+        schedulerControl.setPollingInterval(fromMilliseconds(100));
         
         // Task runs at minute 0 of every hour
         const registrations = [
@@ -96,7 +96,7 @@ describe("declarative scheduler precedence logic verification", () => {
         const retryDelay = fromMilliseconds(5 * 60 * 1000); // 5 minutes
         const task = jest.fn().mockResolvedValue(undefined);
         
-        schedulerControl.setPollingInterval(fromMilliseconds(1));
+        schedulerControl.setPollingInterval(fromMilliseconds(100));
         
         // Task runs every 15 minutes
         const registrations = [

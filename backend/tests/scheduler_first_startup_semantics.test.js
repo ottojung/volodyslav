@@ -30,7 +30,7 @@ describe("scheduler first startup semantics", () => {
             const tuesdayAt1530 = fromISOString("2024-01-02T15:30:00.000Z"); // Tuesday, 15:30
             datetimeControl.setDateTime(tuesdayAt1530);
             
-            schedulerControl.setPollingInterval(fromMilliseconds(1));
+            schedulerControl.setPollingInterval(fromMilliseconds(100));
             const retryDelay = fromMilliseconds(5000);
 
             const taskCallback = jest.fn();
@@ -58,7 +58,7 @@ describe("scheduler first startup semantics", () => {
             const tuesdayAt1530 = fromISOString("2024-01-02T15:30:00.000Z"); // Tuesday, 15:30
             datetimeControl.setDateTime(tuesdayAt1530);
             
-            schedulerControl.setPollingInterval(fromMilliseconds(1));
+            schedulerControl.setPollingInterval(fromMilliseconds(100));
             const retryDelay = fromMilliseconds(5000);
 
             const taskCallback = jest.fn();
@@ -86,7 +86,7 @@ describe("scheduler first startup semantics", () => {
             const tuesdayAt1530 = fromISOString("2024-01-02T15:30:00.000Z"); // Tuesday, 15:30
             datetimeControl.setDateTime(tuesdayAt1530);
             
-            schedulerControl.setPollingInterval(fromMilliseconds(1));
+            schedulerControl.setPollingInterval(fromMilliseconds(100));
             const retryDelay = fromMilliseconds(5000);
 
             const taskCallback = jest.fn();
@@ -123,7 +123,7 @@ describe("scheduler first startup semantics", () => {
             const tuesdayAt1530 = fromISOString("2024-01-02T15:30:00.000Z"); // Tuesday, 15:30
             datetimeControl.setDateTime(tuesdayAt1530);
             
-            schedulerControl.setPollingInterval(fromMilliseconds(1));
+            schedulerControl.setPollingInterval(fromMilliseconds(100));
             const retryDelay = fromMilliseconds(5000);
 
             const matchingTaskCallback = jest.fn();
@@ -156,7 +156,7 @@ describe("scheduler first startup semantics", () => {
             const tuesdayAt1530 = fromISOString("2024-01-02T15:30:00.000Z");
             datetimeControl.setDateTime(tuesdayAt1530);
             
-            schedulerControl.setPollingInterval(fromMilliseconds(1));
+            schedulerControl.setPollingInterval(fromMilliseconds(100));
             const retryDelay = fromMilliseconds(5000);
 
             const exactMatchCallback = jest.fn();
@@ -189,7 +189,7 @@ describe("scheduler first startup semantics", () => {
             datetimeControl.setDateTime(tuesdayAt1530);
             
             // Set a very short polling interval BEFORE creating registrations
-            schedulerControl.setPollingInterval(fromMilliseconds(1));
+            schedulerControl.setPollingInterval(fromMilliseconds(100));
             const retryDelay = fromMilliseconds(5000);
 
             const everyMinuteCallback = jest.fn();
@@ -219,7 +219,7 @@ describe("scheduler first startup semantics", () => {
             const tuesdayAt1530 = fromISOString("2024-01-02T15:30:00.000Z");
             datetimeControl.setDateTime(tuesdayAt1530); // Tuesday
             
-            schedulerControl.setPollingInterval(fromMilliseconds(1));
+            schedulerControl.setPollingInterval(fromMilliseconds(100));
             const retryDelay = fromMilliseconds(5000);
 
             const tuesdayCallback = jest.fn();

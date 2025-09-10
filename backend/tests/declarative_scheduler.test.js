@@ -827,7 +827,7 @@ describe("Declarative Scheduler", () => {
             // Set time to 00:05:00 to avoid immediate execution (task runs at 0, 15, 30, 45 minutes)
             const startTime = fromISOString("2021-01-01T00:05:00.000Z"); // 2021-01-01T00:05:00.000Z
             timeControl.setDateTime(startTime);
-            control.setPollingInterval(fromMilliseconds(1));
+            control.setPollingInterval(fromMilliseconds(100));
 
             // Initialize the scheduler with very short poll interval for testing
             await capabilities.scheduler.initialize(registrations);
@@ -854,7 +854,7 @@ describe("Declarative Scheduler", () => {
             // Set time to 00:30:00 to avoid immediate execution (task runs at 0 minutes of each hour)
             const startTime = fromISOString("2021-01-01T00:30:00.000Z");
             timeControl.setDateTime(startTime);
-            control.setPollingInterval(fromMilliseconds(1));
+            control.setPollingInterval(fromMilliseconds(100));
 
             // First call to initialize
             await capabilities.scheduler.initialize(registrations);

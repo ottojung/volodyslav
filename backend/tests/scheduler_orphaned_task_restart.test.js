@@ -24,7 +24,7 @@ describe("scheduler orphaned task restart", () => {
         const schedulerControl = getSchedulerControl(capabilities);
         const retryDelay = fromMilliseconds(5000);
 
-        schedulerControl.setPollingInterval(fromMilliseconds(1));
+        schedulerControl.setPollingInterval(fromMilliseconds(100));
 
         const taskCallback = jest.fn();
         const registrations = [
@@ -159,7 +159,7 @@ describe("scheduler orphaned task restart", () => {
         const schedulerControl = getSchedulerControl(capabilities);
         const retryDelay = fromMilliseconds(5000);
 
-        schedulerControl.setPollingInterval(fromMilliseconds(1));
+        schedulerControl.setPollingInterval(fromMilliseconds(100));
 
         const taskCallback = jest.fn();
         const registrations = [
@@ -207,7 +207,7 @@ describe("scheduler orphaned task restart", () => {
         const schedulerControl = getSchedulerControl(capabilities);
         const retryDelay = fromMilliseconds(5000);
 
-        schedulerControl.setPollingInterval(fromMilliseconds(1));
+        schedulerControl.setPollingInterval(fromMilliseconds(100));
 
         const task1Callback = jest.fn();
         const task2Callback = jest.fn();
@@ -284,7 +284,7 @@ describe("scheduler orphaned task restart", () => {
         const schedulerControl = getSchedulerControl(capabilities);
         const retryDelay = fromMilliseconds(5000);
 
-        schedulerControl.setPollingInterval(fromMilliseconds(1));
+        schedulerControl.setPollingInterval(fromMilliseconds(100));
 
         const taskCallback = jest.fn();
         const registrations = [
@@ -328,7 +328,7 @@ describe("scheduler orphaned task restart", () => {
         const schedulerControl = getSchedulerControl(capabilities);
         const retryDelay = fromMilliseconds(5000);
 
-        schedulerControl.setPollingInterval(fromMilliseconds(1));
+        schedulerControl.setPollingInterval(fromMilliseconds(100));
 
         const taskCallback = jest.fn();
         const registrations = [
@@ -382,7 +382,7 @@ describe("scheduler orphaned task restart", () => {
         const schedulerControl = getSchedulerControl(capabilities);
         const retryDelay = fromMilliseconds(5000);
 
-        schedulerControl.setPollingInterval(fromMilliseconds(1));
+        schedulerControl.setPollingInterval(fromMilliseconds(100));
 
         const taskCallback = jest.fn();
         const registrations = [

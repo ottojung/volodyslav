@@ -22,7 +22,7 @@ describe("declarative scheduler parallel execution", () => {
     test("should execute multiple due tasks in parallel", async () => {
         const capabilities = getTestCapabilities();
         const schedulerControl = getSchedulerControl(capabilities);
-        schedulerControl.setPollingInterval(fromMilliseconds(1));
+        schedulerControl.setPollingInterval(fromMilliseconds(100));
         const retryDelay = fromMilliseconds(5000);
 
         let task1StartTime = null;
@@ -69,7 +69,7 @@ describe("declarative scheduler parallel execution", () => {
         const capabilities = getTestCapabilities();
         const timeControl = getDatetimeControl(capabilities);
         const schedulerControl = getSchedulerControl(capabilities);
-        schedulerControl.setPollingInterval(fromMilliseconds(1));
+        schedulerControl.setPollingInterval(fromMilliseconds(100));
         const retryDelay = fromMilliseconds(5000);
 
         // Set time to avoid immediate execution for "0 * * * *" schedule
@@ -120,7 +120,7 @@ describe("declarative scheduler parallel execution", () => {
         const capabilities = getTestCapabilities();
         const timeControl = getDatetimeControl(capabilities);
         const schedulerControl = getSchedulerControl(capabilities);
-        schedulerControl.setPollingInterval(fromMilliseconds(1));
+        schedulerControl.setPollingInterval(fromMilliseconds(100));
         const retryDelay = fromMilliseconds(5000);
 
         // Set time to avoid immediate execution for "0 * * * *" schedule
@@ -176,7 +176,7 @@ describe("declarative scheduler parallel execution", () => {
         const capabilities = getTestCapabilities();
         const timeControl = getDatetimeControl(capabilities);
         const schedulerControl = getSchedulerControl(capabilities);
-        schedulerControl.setPollingInterval(fromMilliseconds(1));
+        schedulerControl.setPollingInterval(fromMilliseconds(100));
         const retryDelay = fromMilliseconds(1000);
 
         // Set time to avoid immediate execution for "0 * * * *" schedule
@@ -228,7 +228,7 @@ describe("declarative scheduler parallel execution", () => {
     test("should handle many parallel tasks with retries", async () => {
         const capabilities = getTestCapabilities();
         const schedulerControl = getSchedulerControl(capabilities);
-        schedulerControl.setPollingInterval(fromMilliseconds(1));
+        schedulerControl.setPollingInterval(fromMilliseconds(100));
         const timeControl = getDatetimeControl(capabilities);
         const retryDelay = fromMilliseconds(500); // Short retry for faster testing
 

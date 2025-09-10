@@ -21,7 +21,7 @@ describe("scheduler atomicity testing", () => {
     test("attempt map state corruption with direct manipulation", async () => {
         const capabilities = getTestCapabilities();
         const schedulerControl = getSchedulerControl(capabilities);
-        schedulerControl.setPollingInterval(fromMilliseconds(1));
+        schedulerControl.setPollingInterval(fromMilliseconds(100));
         const timeControl = getDatetimeControl(capabilities);
         const retryDelay = fromMilliseconds(20000);
 
@@ -92,7 +92,7 @@ describe("scheduler atomicity testing", () => {
     test("attempts to create a controlled race condition in task map serialization", async () => {
         const capabilities = getTestCapabilities();
         const schedulerControl = getSchedulerControl(capabilities);
-        schedulerControl.setPollingInterval(fromMilliseconds(1));
+        schedulerControl.setPollingInterval(fromMilliseconds(100));
         const timeControl = getDatetimeControl(capabilities);
         const retryDelay = fromMilliseconds(25000);
 

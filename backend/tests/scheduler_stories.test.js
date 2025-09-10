@@ -33,7 +33,7 @@ describe("scheduler stories", () => {
         // Set initial time to 00:05:00
         const startTime = fromISOString("2021-01-01T00:05:00Z");
         timeControl.setDateTime(startTime);
-        schedulerControl.setPollingInterval(fromMilliseconds(1));
+        schedulerControl.setPollingInterval(fromMilliseconds(100));
 
         // Schedule a task that runs at 30 minutes past each hour
         const registrations = [
@@ -80,7 +80,7 @@ describe("scheduler stories", () => {
         const schedulerControl = getSchedulerControl(capabilities);
         const retryDelay = fromMilliseconds(5000);
         timeControl.setDateTime(fromISOString("2021-01-01T00:00:00.000Z"));
-        schedulerControl.setPollingInterval(fromMilliseconds(1));
+        schedulerControl.setPollingInterval(fromMilliseconds(100));
         try {
             await expect(capabilities.scheduler.initialize([
                 ["invalid-decimal", "1.5 * * * *", jest.fn(), retryDelay]
@@ -102,7 +102,7 @@ describe("scheduler stories", () => {
         // Set start time to 01:15:00 on Jan 1, 2021
         const startTime = fromISOString("2021-01-01T01:15:00.000Z");
         timeControl.setDateTime(startTime);
-        schedulerControl.setPollingInterval(fromMilliseconds(1));
+        schedulerControl.setPollingInterval(fromMilliseconds(100));
 
         const registrations = [
             ["hourly-task", "0 * * * *", hourlyTask, retryDelay],   // Every hour at 0 minutes
@@ -134,7 +134,7 @@ describe("scheduler stories", () => {
         // Set initial time to 00:00:00 (midnight)
         const startTime = fromISOString("2021-01-01T00:00:00.000Z");
         timeControl.setDateTime(startTime);
-        schedulerControl.setPollingInterval(fromMilliseconds(1));
+        schedulerControl.setPollingInterval(fromMilliseconds(100));
 
         // Use fast polling to allow minute-level tasks
         const registrations = [
@@ -181,7 +181,7 @@ describe("scheduler stories", () => {
         // Set specific start time
         const startTime = fromISOString("2021-01-01T00:15:00.000Z");
         timeControl.setDateTime(startTime);
-        schedulerControl.setPollingInterval(fromMilliseconds(1));
+        schedulerControl.setPollingInterval(fromMilliseconds(100));
 
         const registrations = [
             ["time-check-task", "0 * * * *", taskCallback, retryDelay] // Every hour at 0 minutes
@@ -216,7 +216,7 @@ describe("scheduler stories", () => {
         // Set initial time 
         const startTime = fromISOString("2021-01-01T00:10:00.000Z");
         timeControl.setDateTime(startTime);
-        schedulerControl.setPollingInterval(fromMilliseconds(1));
+        schedulerControl.setPollingInterval(fromMilliseconds(100));
 
         const registrations = [
             ["hourly-task", "0 * * * *", taskCallback, retryDelay] // Every hour at 0 minutes
@@ -314,7 +314,7 @@ describe("scheduler stories", () => {
         // Start scheduler at specific time
         const startTime = fromISOString("2021-01-01T12:00:00.000Z");
         timeControl.setDateTime(startTime);
-        schedulerControl.setPollingInterval(fromMilliseconds(1));
+        schedulerControl.setPollingInterval(fromMilliseconds(100));
 
         const registrations = [
             ["hourly-recovery", "0 * * * *", hourlyTask, retryDelay],
@@ -343,7 +343,7 @@ describe("scheduler stories", () => {
 
         // Set the same advanced time for the new scheduler
         newTimeControl.setDateTime(timeControl.getCurrentDateTime());
-        newSchedulerControl.setPollingInterval(fromMilliseconds(1));
+        newSchedulerControl.setPollingInterval(fromMilliseconds(100));
 
         await newCapabilities.scheduler.initialize(registrations);
         await newSchedulerControl.waitForNextCycleEnd();
@@ -390,7 +390,7 @@ describe("scheduler stories", () => {
 
         const startTime = fromISOString("2021-01-01T10:00:00.000Z");
         timeControl.setDateTime(startTime);
-        schedulerControl.setPollingInterval(fromMilliseconds(1));
+        schedulerControl.setPollingInterval(fromMilliseconds(100));
 
         const registrations = [
             ["primary-system", "0,30 * * * *", primaryTask, quickRetryDelay],     // Every 30 minutes, quick retry
@@ -498,7 +498,7 @@ describe("scheduler stories", () => {
 
         const startTime = fromISOString("2021-01-01T08:00:00.000Z");
         timeControl.setDateTime(startTime);
-        schedulerControl.setPollingInterval(fromMilliseconds(1));
+        schedulerControl.setPollingInterval(fromMilliseconds(100));
 
         const registrations = [
             ["heavy-processing", "0,30 * * * *", resourceIntensiveTask, retryDelay],  // Every 30 minutes
@@ -551,7 +551,7 @@ describe("scheduler stories", () => {
         // Start at exactly 10:00:00 AM
         const startTime = fromISOString("2021-01-01T10:00:00.000Z");
         timeControl.setDateTime(startTime);
-        schedulerControl.setPollingInterval(fromMilliseconds(1));
+        schedulerControl.setPollingInterval(fromMilliseconds(100));
 
         const registrations = [
             ["precise-hourly", "0 * * * *", hourlyTask, retryDelay], // Every hour at minute 0
@@ -601,7 +601,7 @@ describe("scheduler stories", () => {
         // Start at exactly 1 AM on Jan 1st
         const startTime = fromISOString("2021-01-01T01:00:00.000Z");
         timeControl.setDateTime(startTime);
-        schedulerControl.setPollingInterval(fromMilliseconds(1));
+        schedulerControl.setPollingInterval(fromMilliseconds(100));
 
         const registrations = [
             ["hourly-precise", "0 * * * *", hourlyTask, retryDelay],      // Every hour at minute 0
@@ -668,7 +668,7 @@ describe("scheduler stories", () => {
         // Start at exactly midnight on January 1st
         const startTime = fromISOString("2021-01-01T00:00:00.000Z");
         timeControl.setDateTime(startTime);
-        schedulerControl.setPollingInterval(fromMilliseconds(1));
+        schedulerControl.setPollingInterval(fromMilliseconds(100));
 
         const registrations = [
             ["precise-daily", "0 0 * * *", dailyTask, retryDelay], // Daily at midnight
@@ -722,7 +722,7 @@ describe("scheduler stories", () => {
         // Start at exactly midnight on Sunday, January 3rd, 2021 (day 0 = Sunday)
         const startTime = fromISOString("2021-01-03T00:00:00.000Z");
         timeControl.setDateTime(startTime);
-        schedulerControl.setPollingInterval(fromMilliseconds(1));
+        schedulerControl.setPollingInterval(fromMilliseconds(100));
 
         const registrations = [
             ["precise-weekly", "0 0 * * 0", weeklyTask, retryDelay], // Weekly on Sunday (0) at midnight
@@ -775,7 +775,7 @@ describe("scheduler stories", () => {
         // Start at exactly 14:00:00
         const startTime = fromISOString("2021-01-01T14:00:00.000Z");
         timeControl.setDateTime(startTime);
-        schedulerControl.setPollingInterval(fromMilliseconds(1));
+        schedulerControl.setPollingInterval(fromMilliseconds(100));
 
         const registrations = [
             ["persistent-hourly", "0 * * * *", persistentTask, retryDelay], // Every hour
@@ -805,7 +805,7 @@ describe("scheduler stories", () => {
 
         // Set time to 16:00:00 (2 hours later)
         newTimeControl.setDateTime(startTime.advance(fromHours(2)));
-        newSchedulerControl.setPollingInterval(fromMilliseconds(1));
+        newSchedulerControl.setPollingInterval(fromMilliseconds(100));
 
         await newCapabilities.scheduler.initialize(registrations);
         await newSchedulerControl.waitForNextCycleEnd();
@@ -835,7 +835,7 @@ describe("scheduler stories", () => {
         // Start at exactly midnight - both should match
         const startTime = fromISOString("2021-01-01T00:00:00.000Z");
         timeControl.setDateTime(startTime);
-        schedulerControl.setPollingInterval(fromMilliseconds(1));
+        schedulerControl.setPollingInterval(fromMilliseconds(100));
 
         const registrations = [
             ["every-2h", "0 0,2,4,6,8,10,12,14,16,18,20,22 * * *", every2HourTask, retryDelay],    // Every 2 hours (0, 2, 4, 6, 8, 10, 12, ...)
@@ -907,7 +907,7 @@ describe("scheduler stories", () => {
         // Start at 2am - both should match
         const startTime = fromISOString("2021-01-01T02:00:00.000Z");
         timeControl.setDateTime(startTime);
-        schedulerControl.setPollingInterval(fromMilliseconds(1));
+        schedulerControl.setPollingInterval(fromMilliseconds(100));
 
         const registrations = [
             ["every-2h", "0 0,2,4,6,8,10,12,14,16,18,20,22 * * *", every2HourTask, retryDelay],    // Every 2 hours (0, 2, 4, 6, 8, 10, 12, ...)
@@ -979,7 +979,7 @@ describe("scheduler stories", () => {
         // Start at exactly midnight
         const startTime = fromISOString("2021-01-01T00:00:00.000Z");
         timeControl.setDateTime(startTime);
-        schedulerControl.setPollingInterval(fromMilliseconds(1));
+        schedulerControl.setPollingInterval(fromMilliseconds(100));
 
         const registrations = [
             ["every-2h", "0 0,2,4,6,8,10,12,14,16,18,20,22 * * *", every2HourTask, retryDelay],    // Every 2 hours
@@ -1023,7 +1023,7 @@ describe("scheduler stories", () => {
         // Start at exactly 11 PM on Dec 31st, 2020
         const startTime = fromISOString("2020-12-31T23:00:00.000Z");
         timeControl.setDateTime(startTime);
-        schedulerControl.setPollingInterval(fromMilliseconds(1));
+        schedulerControl.setPollingInterval(fromMilliseconds(100));
 
         const registrations = [
             ["midnight-daily", "0 0 * * *", midnightTask, retryDelay],    // Daily at midnight
@@ -1093,7 +1093,7 @@ describe("scheduler stories", () => {
         // Set start time to 01:15:00 on Jan 1, 2021
         const startTime = fromISOString("2021-01-01T01:15:00.000Z");
         timeControl.setDateTime(startTime);
-        schedulerControl.setPollingInterval(fromMilliseconds(1));
+        schedulerControl.setPollingInterval(fromMilliseconds(100));
 
         const registrations = [
             ["fast-task", "0 * * * *", fastTask, retryDelay],   // Every hour at 0 minutes
@@ -1160,7 +1160,7 @@ describe("scheduler stories", () => {
 
         const startTime = fromISOString("2021-01-01T00:05:00.000Z");
         timeControl.setDateTime(startTime);
-        schedulerControl.setPollingInterval(fromMilliseconds(1));
+        schedulerControl.setPollingInterval(fromMilliseconds(100));
 
         await capabilities.scheduler.initialize([
             ["first-task", "0 * * * *", firstTask, retryDelay],
@@ -1287,7 +1287,7 @@ describe("scheduler stories", () => {
 
         const startTime = fromISOString("2021-01-01T00:05:00.000Z");
         timeControl.setDateTime(startTime);
-        schedulerControl.setPollingInterval(fromMilliseconds(1));
+        schedulerControl.setPollingInterval(fromMilliseconds(100));
 
         // Initial registration with one task
         await capabilities.scheduler.initialize([
@@ -1333,7 +1333,7 @@ describe("scheduler stories", () => {
 
         const startTime = fromISOString("2021-01-01T00:05:00.000Z");
         timeControl.setDateTime(startTime);
-        schedulerControl.setPollingInterval(fromMilliseconds(1));
+        schedulerControl.setPollingInterval(fromMilliseconds(100));
 
         // Initial registration with two tasks
         await capabilities.scheduler.initialize([
@@ -1364,7 +1364,7 @@ describe("scheduler stories", () => {
         const timeControl = getDatetimeControl(capabilities);
         const schedulerControl = getSchedulerControl(capabilities);
         timeControl.setDateTime(fromISOString("2024-01-01T00:00:00.000Z"));
-        schedulerControl.setPollingInterval(fromMilliseconds(1));
+        schedulerControl.setPollingInterval(fromMilliseconds(100));
         const retryDelay = fromMilliseconds(5000);
         await expect(capabilities.scheduler.initialize([
             ["invalid-date-task", "0 0 31 2 *", jest.fn(), retryDelay]
