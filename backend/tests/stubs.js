@@ -93,9 +93,42 @@ function stubDailyTasksExecutable(capabilities) {
 }
 
 function stubSleeper(capabilities) {
-    capabilities.sleeper.sleep = jest.fn().mockImplementation((_name, _duration) => {
-        return Promise.resolve(); // Immediately resolve when stubbed
+    const original = capabilities.sleeper;   
+    const withMutex = original.withMutex; 
+
+    const sleep = jest.fn().mockImplementation(async (_name, _duration) => {
+        await new Promise((resolve) => setTimeout(resolve, 1));
     });
+
+    const makeSleeper = jest.fn().mockImplementation((_name) => {
+        /** @type {NodeJS.Timeout | undefined} */
+        let timeout = undefined;
+        /** @type {undefined | ((value: unknown) => void)} */
+        let savedResolve = undefined;
+
+        /**
+         * @param {import('../src/datetime').Duration} duration
+         */
+        async function sleep(_duration) {
+            await new Promise((resolve) => {
+                savedResolve = resolve;
+                timeout = setTimeout(resolve, 1);
+            });
+        }
+
+        function wake() {
+            clearTimeout(timeout);
+            savedResolve?.(0);
+        }
+
+        return { sleep, wake };
+    });
+
+    capabilities.sleeper = {
+        sleep,
+        makeSleeper,
+        withMutex,
+    };
 }
 
 const datetime = require("../src/datetime");
