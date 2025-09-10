@@ -16,6 +16,11 @@
  *   • Factory Pattern - Exposes a make() function for easy dependency injection or mocking.
  */
 
+const fs = require("fs").promises;
+const path = require("path");
+const { fromExisting } = require("./file");
+
+
 class DirScannerError extends Error {
     /**
      * @param {string} message
@@ -82,21 +87,17 @@ class DirectoryMemberClass {
  * @returns {Promise<ExistingFile[]>} - A promise that resolves to an array of ExistingFile objects representing the directory contents.
  */
 async function scanDirectory(dirPath) {
-    const fs = require("fs").promises;
-    const path = require("path");
-    const { fromExisting } = require("./file");
-
     try {
         const files = await fs.readdir(dirPath);
         const existingFiles = [];
-        
+
         for (const file of files) {
             const filePath = path.join(dirPath, file);
             const proof = new DirectoryMemberClass(filePath);
             const existingFile = fromExisting(filePath, proof);
             existingFiles.push(existingFile);
         }
-        
+
         return existingFiles;
     } catch (err) {
         throw new DirScannerError(
