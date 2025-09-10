@@ -1388,7 +1388,7 @@ describe("scheduler stories", () => {
         await capabilities.scheduler.initialize(registrations);
 
         // An out-of transaction operation to ensure that it doesn't mess up the scheduler.
-        await capabilities.state.transaction(async () => 0);
+        await capabilities.state.transaction(() => 0);
 
         await capabilities.scheduler.stop();
 
