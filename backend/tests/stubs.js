@@ -356,6 +356,8 @@ function stubScheduler(capabilities) {
     const originalPeriodic = capabilities.threading.periodic;
     let periodOverride = null;
 
+    stubSleeper(capabilities);
+
     function setPollingInterval(newPeriod) {
         // Only accept Duration objects - no backwards compatibility
         periodOverride = newPeriod;
