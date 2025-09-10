@@ -15,7 +15,7 @@
 
 const { mutateTasks } = require('../persistence');
 const { evaluateTasksForExecution } = require('../execution');
-const { fromMinutes, difference } = require('../../datetime');
+const { fromMinutes } = require('../../datetime');
 const { THREAD_NAME } = require('./interval');
 
 const POLL_INTERVAL = fromMinutes(10);
@@ -63,7 +63,14 @@ function makePollingFunction(capabilities, registrations, scheduledTasks, taskEx
     function start() {
         if (isActive === false) {
             isActive = true;
-            loopThread = loop();
+            // Defer the loop start to the next event loop iteration to ensure
+            // initialization completes before any mutex acquisition attempts
+            loopThread = new Promise((resolve) => {
+                setImmediate(async () => {
+                    await loop();
+                    resolve();
+                });
+            });
         }
     }
 
@@ -77,29 +84,11 @@ function makePollingFunction(capabilities, registrations, scheduledTasks, taskEx
     }
 
     async function loop() {
+        // Yield control completely to allow scheduler initialization to complete 
+        // before starting the first poll. This prevents deadlocks where the 
+        // initialization process and the first poll both try to acquire the 
+        // same mutex simultaneously.
         await new Promise((resolve) => setImmediate(resolve));
-        
-        // Check the actual polling interval being used by testing a brief sleep.
-        // This handles the case where test stubs override the sleep duration.
-        const testStartTime = dt.now();
-        const testSleep = sleeper.sleep(POLL_INTERVAL);
-        const testTimeout = new Promise(resolve => setTimeout(resolve, 200));
-        
-        await Promise.race([testSleep, testTimeout]);
-        const testEndTime = dt.now();
-        const actualDuration = difference(testEndTime, testStartTime).toMillis();
-        
-        // Wake up the sleeper in case it's still sleeping
-        sleeper.wake();
-        
-        // If the actual sleep duration suggests a long interval (> 1 second),
-        // add a delay before the first poll to prevent race conditions.
-        // This specifically handles the case where the default 10-minute interval
-        // is being used, which can cause deadlocks with immediate transactions.
-        if (actualDuration >= 200) {
-            // Long interval detected - add a short delay before first poll
-            await sleeper.sleep(fromMinutes(1));
-        }
         
         while (isActive) {
             await pollWrapper();
@@ -115,6 +104,11 @@ function makePollingFunction(capabilities, registrations, scheduledTasks, taskEx
     }
 
     async function pollWrapper() {
+        // Yield to any other pending operations before attempting to poll
+        // This ensures that operations queued during initialization (like test transactions)
+        // get a chance to run before the scheduler tries to acquire mutexes
+        await new Promise(resolve => setImmediate(resolve));
+        
         // Collection exclusivity optimization: prevent overlapping collection phases
         // to reduce wasteful duplicate work. Task execution itself remains reentrant.
         if (parallelCounter > 0) {
