@@ -73,14 +73,10 @@ function makePollingFunction(capabilities, registrations, scheduledTasks, taskEx
     }
 
     async function getDueTasks() {
-        try {
-            const now = dt.now();
-            return await mutateTasks(capabilities, registrations, (tasks) => {
-                return evaluateTasksForExecution(tasks, scheduledTasks, now, capabilities, schedulerIdentifier);
-            });
-        } finally {
-            parallelCounter--;
-        }
+        const now = dt.now();
+        return await mutateTasks(capabilities, registrations, (tasks) =>
+            evaluateTasksForExecution(tasks, scheduledTasks, now, capabilities, schedulerIdentifier)
+        );
     }
 
     async function pollWrapper() {
