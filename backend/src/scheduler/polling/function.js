@@ -34,6 +34,7 @@ function makePollingFunction(capabilities, registrations, scheduledTasks, taskEx
     const runningPool = new Set();
     let parallelCounter = 0;
     let isActive = false;
+    const sleeper = capabilities.sleeper.makeSleeper("polling-function");
 
     /**
      * Wrap a promise to ensure it is removed from the running pool when done
@@ -68,7 +69,7 @@ function makePollingFunction(capabilities, registrations, scheduledTasks, taskEx
         await new Promise((resolve) => setImmediate(resolve));
         while (isActive) {
             await pollWrapper();
-            await new Promise((resolve) => setTimeout(resolve, POLL_INTERVAL.toMillis()));
+            await sleeper.sleep(POLL_INTERVAL);
         }
     }
 
