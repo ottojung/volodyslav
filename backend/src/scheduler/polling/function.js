@@ -58,15 +58,19 @@ function makePollingFunction(capabilities, registrations, scheduledTasks, taskEx
     }
 
     function start() {
-        isActive = true;
-        loopThread = loop();
+        if (isActive === false) {
+            isActive = true;
+            loopThread = loop();
+        }
     }
 
     async function stop() {
-        isActive = false;
-        sleeper.wake();
-        await loopThread;
-        await join();
+        if (isActive === true) {
+            isActive = false;
+            sleeper.wake();
+            await loopThread;
+            await join();
+        }
     }
 
     async function loop() {
