@@ -19,6 +19,11 @@ function getTestCapabilities() {
 }
 
 describe("declarative scheduler persistence and error handling", () => {
+    // Ensure real timers are restored after each test to prevent interference
+    afterEach(() => {
+        jest.useRealTimers();
+    });
+
     test("should handle task execution errors gracefully", async () => {
         const capabilities = getTestCapabilities();
         const schedulerControl = getSchedulerControl(capabilities);
@@ -142,9 +147,6 @@ describe("declarative scheduler persistence and error handling", () => {
     });
 
     test("should handle time manipulation edge cases", async () => {
-        // This test specifically needs fake timers for time manipulation
-        jest.useFakeTimers();
-        
         const capabilities = getTestCapabilities();
         const retryDelay = fromMilliseconds(5000);
         const callback = jest.fn().mockResolvedValue(undefined);
@@ -153,33 +155,27 @@ describe("declarative scheduler persistence and error handling", () => {
             ["time-test-task", "0 12 * * *", callback, retryDelay]
         ];
 
-        try {
-            // Test various time manipulations
-            const testTimes = [
-                "2024-01-15T12:00:00Z", // Exactly scheduled time
-                "2024-01-15T11:59:59Z", // Just before
-                "2024-01-15T12:00:01Z", // Just after
-                "2024-01-15T23:59:59Z", // End of day
-                "2024-01-16T00:00:00Z", // Start of next day
-                "2100-01-15T12:00:00Z", // Far future
-                "1970-01-01T12:00:00Z", // Unix epoch
-            ];
+        // Test various time manipulations using the stubbed datetime capability
+        const testTimes = [
+            "2024-01-15T12:00:00Z", // Exactly scheduled time
+            "2024-01-15T11:59:59Z", // Just before
+            "2024-01-15T12:00:01Z", // Just after
+            "2024-01-15T23:59:59Z", // End of day
+            "2024-01-16T00:00:00Z", // Start of next day
+            "2100-01-15T12:00:00Z", // Far future
+            "1970-01-01T12:00:00Z", // Unix epoch
+        ];
 
-            for (const timeStr of testTimes) {
-                // Convert ISO string to DateTime then get the JS timestamp for Jest mocking
-                const dateTime = fromISOString(timeStr);
-                // Use Luxon's toMillis() to get the timestamp without using Date
-                const timestamp = dateTime._luxonDateTime.toMillis();
-                jest.setSystemTime(timestamp);
+        for (const timeStr of testTimes) {
+            // Use the datetime mock control instead of Jest fake timers
+            const dateTime = fromISOString(timeStr);
+            capabilities.datetime.now = jest.fn().mockReturnValue(dateTime);
 
-                // Should be able to initialize at any time
-                await expect(capabilities.scheduler.initialize(registrations)).resolves.toBeUndefined();
-            }
-
-            await capabilities.scheduler.stop();
-        } finally {
-            jest.useRealTimers();
+            // Should be able to initialize at any time
+            await expect(capabilities.scheduler.initialize(registrations)).resolves.toBeUndefined();
         }
+
+        await capabilities.scheduler.stop();
     });
 
     test("should handle invalid callback types gracefully", async () => {
