@@ -2,7 +2,7 @@ const path = require("path");
 const fs = require("fs");
 const os = require("os");
 const { stubEventLogRepository } = require("./stub_event_log_repository");
-const { THREAD_NAME } = require("../src/scheduler/polling/interval");
+const { THREAD_NAME } = require("../src/scheduler/polling/function");
 
 /**
  * Stubs the environment capabilities for testing.
