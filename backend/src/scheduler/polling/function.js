@@ -87,7 +87,9 @@ function makePollingFunction(capabilities, registrations, scheduledTasks, taskEx
             console.log("LOOPING");
             await pollWrapper();
             console.log("SLEEPING");
-            await sleeper.sleep(POLL_INTERVAL);
+            if (isActive) {
+                await sleeper.sleep(POLL_INTERVAL);
+            }
             console.log("AWOKE");
         }
     }
