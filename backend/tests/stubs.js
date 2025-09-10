@@ -383,8 +383,6 @@ function stubScheduler(capabilities) {
          * @param {import('../src/datetime').Duration} duration
          */
         async function sleep(duration) {
-            cycleCount++;
-
             if (durationOverride !== null) {
                 duration = durationOverride;
             }
@@ -393,6 +391,8 @@ function stubScheduler(capabilities) {
                 savedResolve = resolve;
                 timeout = setTimeout(resolve, duration.toMillis());
             });
+
+            cycleCount++;
         }
 
         function wake() {
