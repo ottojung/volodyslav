@@ -16,9 +16,9 @@
 const { mutateTasks } = require('../persistence');
 const { evaluateTasksForExecution } = require('../execution');
 const { fromMinutes } = require('../../datetime');
+const { THREAD_NAME } = require('./interval');
 
 const POLL_INTERVAL = fromMinutes(10);
-const THREAD_NAME = "volodyslav:scheduler:poll";
 
 /** @typedef {import('../types').Callback} Callback */
 
