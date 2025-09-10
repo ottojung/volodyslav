@@ -31,21 +31,25 @@ function make() {
      * @returns {Promise<T>}
      */
     async function withMutex(name, procedure) {
-        for (; ;) {
-            const existing = mutexes.get(name);
-            if (existing === undefined) {
-                break;
-            }
+        const existing = mutexes.get(name);
+        if (existing !== undefined) {
             await existing();
+            if (mutexes.has(name)) {
+                const qname = JSON.stringify(name);
+                throw new Error(`Mutex for ${qname} is already held`);
+            }
         }
 
         const wrapped = memconst(procedure);
         mutexes.set(name, wrapped);
+
+        let result;
         try {
-            return await wrapped();
+            result = await wrapped();
         } finally {
             mutexes.delete(name);
         }
+        return result;
     }
 
     /**
