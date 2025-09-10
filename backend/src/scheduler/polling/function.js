@@ -62,6 +62,7 @@ function makePollingFunction(capabilities, registrations, scheduledTasks, taskEx
 
     async function stop() {
         isActive = false;
+        sleeper.wake();
         await join();
     }
 
