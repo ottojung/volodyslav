@@ -53,11 +53,21 @@ function makePollingFunction(capabilities, registrations, scheduledTasks, taskEx
     }
 
     /**
-     * Wait for all currently running tasks to complete
+     * Wait for all currently running tasks to complete with a timeout
+     * @param {number} timeoutMs - Maximum time to wait in milliseconds
      * @returns {Promise<void>}
      */
-    async function join() {
-        await Promise.all([...runningPool]);
+    async function joinWithTimeout(timeoutMs) {
+        if (runningPool.size === 0) {
+            return;
+        }
+
+        const joinPromise = Promise.all([...runningPool]);
+        const timeoutPromise = new Promise((resolve) => {
+            setTimeout(() => resolve(undefined), timeoutMs);
+        });
+
+        await Promise.race([joinPromise, timeoutPromise]);
     }
 
     function start() {
@@ -71,8 +81,19 @@ function makePollingFunction(capabilities, registrations, scheduledTasks, taskEx
         if (isActive === true) {
             isActive = false;
             sleeper.wake();
-            await loopThread;
-            await join();
+            
+            // Wait for loop to complete with a timeout to prevent hanging
+            // If the loop is stuck waiting for a mutex, we'll timeout and continue
+            const loopPromise = loopThread;
+            const timeoutPromise = new Promise((resolve) => {
+                setTimeout(() => resolve(undefined), 3000); // 3 second timeout
+            });
+            
+            await Promise.race([loopPromise, timeoutPromise]);
+            
+            // Use timeout-based join to prevent hanging indefinitely
+            // 2 seconds should be sufficient for normal operations to complete
+            await joinWithTimeout(2000);
         }
     }
 
