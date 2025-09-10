@@ -40,11 +40,7 @@ describe("scheduler stories", () => {
             ["half-hour-task", "30 * * * *", taskCallback, retryDelay] // Runs at minute 30 of each hour
         ];
 
-        console.log({registrations});
-
         await capabilities.scheduler.initialize(registrations);
-
-        console.log("after initialize");
 
         // Wait for scheduler to start 
         await schedulerControl.waitForNextCycleEnd();
