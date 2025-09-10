@@ -142,6 +142,10 @@ describe("scheduler orphaned task restart", () => {
 
         await schedulerControl.waitForNextCycleEnd();
 
+        while (callback1.mock.calls.length < 2 || callback2.mock.calls.length < 1) {
+            await new Promise(resolve => setTimeout(resolve, 1));
+        }
+
         // The orphaned task should run immediately because it was interrupted.
         expect(callback1).toHaveBeenCalledTimes(2);
         expect(callback2).toHaveBeenCalledTimes(1);
