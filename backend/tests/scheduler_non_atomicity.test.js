@@ -166,6 +166,9 @@ describe("scheduler atomicity testing", () => {
             timeControl.advanceByDuration(fromHours(1)); // 1 hour to 14:00:00
             await schedulerControl.waitForNextCycleEnd();
 
+            while (task1Done === false || task2Done === false) {
+                await new Promise(resolve => setTimeout(resolve, 1));
+            }
             expect(task1Done).toBe(true);
             expect(task2Done).toBe(true);
 
