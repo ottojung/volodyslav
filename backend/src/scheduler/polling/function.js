@@ -68,7 +68,6 @@ function makePollingFunction(capabilities, registrations, scheduledTasks, taskEx
     }
 
     async function stop() {
-        console.log("STOPPING POLL");
         if (isActive === true) {
             isActive = false;
             sleeper.wake();
