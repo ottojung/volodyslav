@@ -595,8 +595,8 @@ describe("scheduler stories", () => {
         const schedulerControl = getSchedulerControl(capabilities);
         const retryDelay = fromMilliseconds(1000);
 
-        const hourlyTask = jest.fn().mockImplementation(async () => await new Promise(resolve => setTimeout(resolve, 400))); // Runs hourly
-        const daily2AMTask = jest.fn().mockImplementation(async () => await new Promise(resolve => setTimeout(resolve, 400))); // Runs daily at 2 AM
+        const hourlyTask = jest.fn();
+        const daily2AMTask = jest.fn();
 
         // Start at exactly 1 AM on Jan 1st
         const startTime = fromISOString("2021-01-01T01:00:00.000Z");
@@ -638,7 +638,7 @@ describe("scheduler stories", () => {
 
         const hourlyAt3AM = hourlyTask.mock.calls.length;
 
-        // Advance exactly 100 hours to 2 AM next day
+        // Advance to 2 AM next day
         timeControl.advanceByDuration(fromHours(23));
         await schedulerControl.waitForNextCycleEnd();
 
