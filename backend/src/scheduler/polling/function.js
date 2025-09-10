@@ -15,12 +15,9 @@
 
 const { mutateTasks } = require('../persistence');
 const { evaluateTasksForExecution } = require('../execution');
-const { fromMinutes } = require('../../datetime');
+const { POLL_INTERVAL, THREAD_NAME } = require('./interval');
 
 /** @typedef {import('../types').Callback} Callback */
-
-const POLL_INTERVAL = fromMinutes(10);
-const THREAD_NAME = "volodyslav:scheduler:poll"
 
 /**
  * Create a polling function that evaluates and executes due tasks.
