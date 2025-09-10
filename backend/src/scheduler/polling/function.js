@@ -68,19 +68,27 @@ function makePollingFunction(capabilities, registrations, scheduledTasks, taskEx
     }
 
     async function stop() {
+        console.log("STOPPING POLL");
         if (isActive === true) {
             isActive = false;
+            console.log("WAKING SLEEPER");
             sleeper.wake();
+            console.log("AWAITING LOOP TO END");
             await loopThread;
+            console.log("AWAITING ALL TASKS TO COMPLETE");
             await join();
+            console.log("STOPPED POLL");
         }
     }
 
     async function loop() {
         await new Promise((resolve) => setImmediate(resolve));
         while (isActive) {
+            console.log("LOOPING");
             await pollWrapper();
+            console.log("SLEEPING");
             await sleeper.sleep(POLL_INTERVAL);
+            console.log("AWOKE");
         }
     }
 
