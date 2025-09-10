@@ -15,7 +15,7 @@
 
 const { mutateTasks } = require('../persistence');
 const { evaluateTasksForExecution } = require('../execution');
-const { POLL_INTERVAL } = require('./interval');
+const { POLL_INTERVAL, THREAD_NAME } = require('./interval');
 
 /** @typedef {import('../types').Callback} Callback */
 
@@ -34,7 +34,7 @@ function makePollingFunction(capabilities, registrations, scheduledTasks, taskEx
     const runningPool = new Set();
     let parallelCounter = 0;
     let isActive = false;
-    const sleeper = capabilities.sleeper.makeSleeper("polling-function");
+    const sleeper = capabilities.sleeper.makeSleeper(THREAD_NAME);
 
     /**
      * Wrap a promise to ensure it is removed from the running pool when done
