@@ -2,7 +2,7 @@
  * SleepCapability capability for pausing execution.
  */
 
-const { fromMilliseconds } = require('./datetime/duration');
+const memconst = require('./memconst');
 
 /** @typedef {import('./datetime').Duration} Duration */
 
@@ -21,10 +21,8 @@ const { fromMilliseconds } = require('./datetime/duration');
 
 function make() {
 
-    /** @type {Set<string>} */
-    const mutexes = new Set();
-
-    const shortDelayMs = fromMilliseconds(1).toMillis();
+    /** @type {Map<string, () => Promise<unknown>>} */
+    const mutexes = new Map();
 
     /**
      * @template T
@@ -33,13 +31,18 @@ function make() {
      * @returns {Promise<T>}
      */
     async function withMutex(name, procedure) {
-        while (mutexes.has(name)) {
-            await new Promise(resolve => setTimeout(resolve, shortDelayMs));
+        for (; ;) {
+            const existing = mutexes.get(name);
+            if (existing === undefined) {
+                break;
+            }
+            await existing();
         }
 
-        mutexes.add(name);
+        const wrapped = memconst(procedure);
+        mutexes.set(name, wrapped);
         try {
-            return await procedure();
+            return await wrapped();
         } finally {
             mutexes.delete(name);
         }
