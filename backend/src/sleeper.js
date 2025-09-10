@@ -31,12 +31,12 @@ function make() {
      * @returns {Promise<T>}
      */
     async function withMutex(name, procedure) {
-        for (; ;) {
-            const existing = mutexes.get(name);
-            if (existing === undefined) {
-                break;
-            }
+        const existing = mutexes.get(name);
+        if (existing !== undefined) {
             await existing();
+            if (mutexes.has(name)) {
+                throw new Error(`Mutex for '${name}' is already held`);
+            }
         }
 
         const wrapped = memconst(procedure);
