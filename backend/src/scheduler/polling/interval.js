@@ -6,7 +6,7 @@
 const { fromMinutes } = require('../../datetime');
 
 const POLL_INTERVAL = fromMinutes(10);
-const THREAD_NAME = "volodyslav:scheduler:poll"
+const THREAD_NAME = "volodyslav:scheduler:poll";
 
 module.exports = {
     POLL_INTERVAL,
