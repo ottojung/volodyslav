@@ -38,8 +38,6 @@ function makePollingFunction(capabilities, registrations, scheduledTasks, taskEx
     let parallelCounter = 0;
     let isActive = false;
     const sleeper = capabilities.sleeper.makeSleeper(THREAD_NAME);
-    /** @type {Promise<void> | null} */
-    let loopThread = null;
 
     /**
      * Wrap a promise to ensure it is removed from the running pool when done
@@ -63,14 +61,7 @@ function makePollingFunction(capabilities, registrations, scheduledTasks, taskEx
     function start() {
         if (isActive === false) {
             isActive = true;
-            // Defer the loop start to the next event loop iteration to ensure
-            // initialization completes before any mutex acquisition attempts
-            loopThread = new Promise((resolve) => {
-                setImmediate(async () => {
-                    await loop();
-                    resolve();
-                });
-            });
+            loop();
         }
     }
 
@@ -78,18 +69,14 @@ function makePollingFunction(capabilities, registrations, scheduledTasks, taskEx
         if (isActive === true) {
             isActive = false;
             sleeper.wake();
-            await loopThread;
+            // Only wait for running tasks to complete, not the loop thread itself
+            // The loop will exit on its own when it checks isActive
             await join();
         }
     }
 
     async function loop() {
-        // Yield control completely to allow scheduler initialization to complete 
-        // before starting the first poll. This prevents deadlocks where the 
-        // initialization process and the first poll both try to acquire the 
-        // same mutex simultaneously.
         await new Promise((resolve) => setImmediate(resolve));
-        
         while (isActive) {
             await pollWrapper();
             await sleeper.sleep(POLL_INTERVAL);
@@ -104,10 +91,10 @@ function makePollingFunction(capabilities, registrations, scheduledTasks, taskEx
     }
 
     async function pollWrapper() {
-        // Yield to any other pending operations before attempting to poll
-        // This ensures that operations queued during initialization (like test transactions)
-        // get a chance to run before the scheduler tries to acquire mutexes
-        await new Promise(resolve => setImmediate(resolve));
+        // Check if we should still be active before doing any work
+        if (!isActive) {
+            return;
+        }
         
         // Collection exclusivity optimization: prevent overlapping collection phases
         // to reduce wasteful duplicate work. Task execution itself remains reentrant.
