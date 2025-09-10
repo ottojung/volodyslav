@@ -51,33 +51,33 @@ describe("scheduler stories", () => {
 
         console.log("after waitForNextCycleEnd");
 
-        // // Should not execute at 05 minutes.
-        // const initialCalls = taskCallback.mock.calls.length;
-        // expect(initialCalls).toBe(0);
+        // Should not execute at 05 minutes.
+        const initialCalls = taskCallback.mock.calls.length;
+        expect(initialCalls).toBe(0);
 
-        // // Now test that advancing time triggers new executions
-        // // Advance time to 00:30:00 (first execution after initialization)
-        // timeControl.advanceByDuration(fromMilliseconds(25 * 60 * 1000)); // 25 minutes to reach 00:30:00
-        // await schedulerControl.waitForNextCycleEnd();
+        // Now test that advancing time triggers new executions
+        // Advance time to 00:30:00 (first execution after initialization)
+        timeControl.advanceByDuration(fromMilliseconds(25 * 60 * 1000)); // 25 minutes to reach 00:30:00
+        await schedulerControl.waitForNextCycleEnd();
 
-        // // Should have one more call
-        // expect(taskCallback.mock.calls.length).toBe(initialCalls + 1);
+        // Should have one more call
+        expect(taskCallback.mock.calls.length).toBe(initialCalls + 1);
 
-        // const afterFirstAdvance = taskCallback.mock.calls.length;
+        const afterFirstAdvance = taskCallback.mock.calls.length;
 
-        // // Advance to 01:30:00
-        // timeControl.advanceByDuration(fromHours(1)); // 1 hour
-        // await schedulerControl.waitForNextCycleEnd();
-        // expect(taskCallback.mock.calls.length).toBe(afterFirstAdvance + 1);
+        // Advance to 01:30:00
+        timeControl.advanceByDuration(fromHours(1)); // 1 hour
+        await schedulerControl.waitForNextCycleEnd();
+        expect(taskCallback.mock.calls.length).toBe(afterFirstAdvance + 1);
 
-        // const afterSecondAdvance = taskCallback.mock.calls.length;
+        const afterSecondAdvance = taskCallback.mock.calls.length;
 
-        // // Advance to 02:30:00
-        // timeControl.advanceByDuration(fromHours(1)); // 1 hour
-        // await schedulerControl.waitForNextCycleEnd();
-        // expect(taskCallback.mock.calls.length).toBe(afterSecondAdvance + 1);
+        // Advance to 02:30:00
+        timeControl.advanceByDuration(fromHours(1)); // 1 hour
+        await schedulerControl.waitForNextCycleEnd();
+        expect(taskCallback.mock.calls.length).toBe(afterSecondAdvance + 1);
 
-        // await capabilities.scheduler.stop();
+        await capabilities.scheduler.stop();
     });
 
     test("should reject non-integer cron field values", async () => {
