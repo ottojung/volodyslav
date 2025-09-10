@@ -35,7 +35,8 @@ function make() {
         if (existing !== undefined) {
             await existing();
             if (mutexes.has(name)) {
-                throw new Error(`Mutex for '${name}' is already held`);
+                const qname = JSON.stringify(name);
+                throw new Error(`Mutex for ${qname} is already held`);
             }
         }
 
