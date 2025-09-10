@@ -25,11 +25,49 @@ const { evaluateTasksForExecution } = require('../execution');
  * @param {Set<string>} scheduledTasks
  * @param {ReturnType<import('../execution').makeTaskExecutor>} taskExecutor
  * @param {string} schedulerIdentifier
- * @returns {() => Promise<void>}
+ * @returns {{start: () => void, stop: () => Promise<void>}} Loop manager with start/stop methods
  */
 function makePollingFunction(capabilities, registrations, scheduledTasks, taskExecutor, schedulerIdentifier) {
     const dt = capabilities.datetime;
+    /** @type {Set<Promise<void>>} */
+    const runningPool = new Set();
     let parallelCounter = 0;
+    let isActive = false;
+
+    /**
+     * Wrap a promise to ensure it is removed from the running pool when done
+     * @param {Promise<void>} promise
+     */
+    function wrap(promise) {
+        const wrapped = promise.finally(() => {
+            runningPool.delete(wrapped);
+        });
+        return wrapped;
+    }
+
+    /**
+     * Wait for all currently running tasks to complete
+     * @returns {Promise<void>}
+     */
+    async function join() {
+        await Promise.all(runningPool);
+    }
+
+    function start() {
+        isActive = true;
+        loop();
+    }
+
+    async function stop() {
+        isActive = false;
+        await join();
+    }
+
+    async function loop() {
+        while (isActive) {
+            await pollWrapper();
+        }
+    }
 
     async function getDueTasks() {
         try {
@@ -42,7 +80,7 @@ function makePollingFunction(capabilities, registrations, scheduledTasks, taskEx
         }
     }
 
-    return async function poll() {
+    async function pollWrapper() {
         // Collection exclusivity optimization: prevent overlapping collection phases
         // to reduce wasteful duplicate work. Task execution itself remains reentrant.
         if (parallelCounter > 0) {
@@ -50,13 +88,21 @@ function makePollingFunction(capabilities, registrations, scheduledTasks, taskEx
             return;
         } else {
             parallelCounter++;
+            try {
+                await poll();
+            } finally {
+                parallelCounter--;
+            }
         }
+    }
 
+    async function poll() {
         // Collect tasks and stats.
         const { dueTasks, stats } = await getDueTasks();
 
         // Execute all due tasks in parallel
-        await taskExecutor.executeTasks(dueTasks);
+        const todo = taskExecutor.executeTasks(dueTasks);
+        runningPool.add(wrap(todo));
 
         capabilities.logger.logDebug(
             {
@@ -69,7 +115,9 @@ function makePollingFunction(capabilities, registrations, scheduledTasks, taskEx
             },
             "PollSummary"
         );
-    };
+    }
+
+    return { start, stop };
 }
 
 module.exports = {

@@ -5,7 +5,6 @@
 const { mutateTasks } = require("../persistence");
 const { makeTaskExecutor } = require("../execution");
 const { makePollingFunction } = require("./function");
-const { makeIntervalManager } = require("./interval");
 
 /**
  * Error thrown when a task registration is not found in the polling scheduler.
@@ -48,8 +47,7 @@ function makePollingScheduler(capabilities, registrations, schedulerIdentifier) 
     const taskExecutor = makeTaskExecutor(capabilities, (transformation) => mutateTasks(capabilities, registrations, transformation));
 
     // Create polling function with lifecycle management
-    const pollFunction = makePollingFunction(capabilities, registrations, scheduledTasks, taskExecutor, schedulerIdentifier);
-    const intervalManager = makeIntervalManager(pollFunction, capabilities);
+    const intervalManager = makePollingFunction(capabilities, registrations, scheduledTasks, taskExecutor, schedulerIdentifier);
 
     function start() {
         intervalManager.start();
