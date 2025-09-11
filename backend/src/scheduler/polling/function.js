@@ -16,7 +16,7 @@
 const { mutateTasks } = require('../persistence');
 const { evaluateTasksForExecution } = require('../execution');
 const { fromMinutes } = require('../../datetime');
-const { THREAD_NAME } = require('./interval');
+const { POLLING_LOOP_NAME } = require('./identifiers');
 
 /**
  * Minimum polling interval is determined by cron job granularity (1 minute).
@@ -40,7 +40,7 @@ function makePollingFunction(capabilities, registrations, scheduledTasks, taskEx
     const runningPool = new Set();
     let parallelCounter = 0;
     let isActive = false;
-    const sleeper = capabilities.sleeper.makeSleeper(THREAD_NAME);
+    const sleeper = capabilities.sleeper.makeSleeper(POLLING_LOOP_NAME);
     /** @type {Promise<void> | null} */
     let loopThread = null;
 

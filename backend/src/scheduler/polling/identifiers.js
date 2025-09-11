@@ -3,8 +3,8 @@
  * Handles the timing and execution of polling operations.
  */
 
-const THREAD_NAME = "volodyslav:scheduler:poll";
+const POLLING_LOOP_NAME = "volodyslav:scheduler:poll";
 
 module.exports = {
-    THREAD_NAME,
+    POLLING_LOOP_NAME,
 };

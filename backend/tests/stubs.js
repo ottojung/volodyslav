@@ -2,7 +2,7 @@ const path = require("path");
 const fs = require("fs");
 const os = require("os");
 const { stubEventLogRepository } = require("./stub_event_log_repository");
-const { THREAD_NAME } = require("../src/scheduler/polling/interval");
+const { POLLING_LOOP_NAME } = require("../src/scheduler/polling/identifiers");
 
 /**
  * Stubs the environment capabilities for testing.
@@ -404,7 +404,7 @@ function stubScheduler(capabilities) {
     }    
 
     function makeSleeper(name) {
-        if (name === THREAD_NAME) {
+        if (name === POLLING_LOOP_NAME) {
             return fakeSleeper(name);
         } else {
             return originalMakeSleeper(name);
