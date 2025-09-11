@@ -22,7 +22,7 @@ describe("declarative scheduler parallel execution", () => {
     test("should execute multiple due tasks in parallel", async () => {
         const capabilities = getTestCapabilities();
         const schedulerControl = getSchedulerControl(capabilities);
-        schedulerControl.setPollingInterval(fromMilliseconds(1));
+        schedulerControl.setPollingInterval(fromMilliseconds(100));
         const retryDelay = fromMilliseconds(5000);
 
         let task1StartTime = null;
@@ -69,7 +69,7 @@ describe("declarative scheduler parallel execution", () => {
         const capabilities = getTestCapabilities();
         const timeControl = getDatetimeControl(capabilities);
         const schedulerControl = getSchedulerControl(capabilities);
-        schedulerControl.setPollingInterval(fromMilliseconds(1));
+        schedulerControl.setPollingInterval(fromMilliseconds(100));
         const retryDelay = fromMilliseconds(5000);
 
         // Set time to avoid immediate execution for "0 * * * *" schedule
@@ -120,24 +120,25 @@ describe("declarative scheduler parallel execution", () => {
         const capabilities = getTestCapabilities();
         const timeControl = getDatetimeControl(capabilities);
         const schedulerControl = getSchedulerControl(capabilities);
-        schedulerControl.setPollingInterval(fromMilliseconds(1));
+        schedulerControl.setPollingInterval(fromMilliseconds(100));
         const retryDelay = fromMilliseconds(5000);
 
         // Set time to avoid immediate execution for "0 * * * *" schedule
         const startTime = fromISOString("2021-01-01T00:05:00.000Z"); // 2021-01-01T00:05:00.000Z
         timeControl.setDateTime(startTime);
 
+        let fastTaskStarted = false;
         let fastTaskCompleted = false;
         let slowTaskStarted = false;
 
         const slowTask = jest.fn(async () => {
             slowTaskStarted = true;
             // Simulate slow task with a longer delay
-            await new Promise(resolve => setTimeout(resolve, 200));
+            await new Promise(resolve => setTimeout(resolve, 500));
         });
 
         const fastTask = jest.fn(async () => {
-            // Fast task
+            fastTaskStarted = true;
             await new Promise(resolve => setTimeout(resolve, 0));
             fastTaskCompleted = true;
         });
@@ -159,7 +160,13 @@ describe("declarative scheduler parallel execution", () => {
         await schedulerControl.waitForNextCycleEnd();
 
         // Both tasks should have started and the fast one should complete
+        expect(fastTaskStarted).toBe(true);
         expect(slowTaskStarted).toBe(true);
+
+        while (!fastTaskCompleted) {
+            await new Promise(resolve => setTimeout(resolve, 1));
+        }
+
         expect(fastTaskCompleted).toBe(true);
 
         await capabilities.scheduler.stop();
@@ -169,7 +176,7 @@ describe("declarative scheduler parallel execution", () => {
         const capabilities = getTestCapabilities();
         const timeControl = getDatetimeControl(capabilities);
         const schedulerControl = getSchedulerControl(capabilities);
-        schedulerControl.setPollingInterval(fromMilliseconds(1));
+        schedulerControl.setPollingInterval(fromMilliseconds(100));
         const retryDelay = fromMilliseconds(1000);
 
         // Set time to avoid immediate execution for "0 * * * *" schedule
@@ -205,6 +212,10 @@ describe("declarative scheduler parallel execution", () => {
         timeControl.advanceByDuration(fromHours(1)); // 1 hour
         await schedulerControl.waitForNextCycleEnd();
 
+        while (!goodTaskExecuted || !badTaskExecuted) {
+            await new Promise(resolve => setTimeout(resolve, 1));
+        }
+
         // Both tasks should have been attempted
         expect(goodTaskExecuted).toBe(true);
         expect(badTaskExecuted).toBe(true);
@@ -217,7 +228,7 @@ describe("declarative scheduler parallel execution", () => {
     test("should handle many parallel tasks with retries", async () => {
         const capabilities = getTestCapabilities();
         const schedulerControl = getSchedulerControl(capabilities);
-        schedulerControl.setPollingInterval(fromMilliseconds(1));
+        schedulerControl.setPollingInterval(fromMilliseconds(100));
         const timeControl = getDatetimeControl(capabilities);
         const retryDelay = fromMilliseconds(500); // Short retry for faster testing
 

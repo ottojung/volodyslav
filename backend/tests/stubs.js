@@ -93,9 +93,42 @@ function stubDailyTasksExecutable(capabilities) {
 }
 
 function stubSleeper(capabilities) {
-    capabilities.sleeper.sleep = jest.fn().mockImplementation((_name, _duration) => {
-        return Promise.resolve(); // Immediately resolve when stubbed
+    const original = capabilities.sleeper;   
+    const withMutex = original.withMutex; 
+
+    const sleep = jest.fn().mockImplementation(async (_name, _duration) => {
+        await new Promise((resolve) => setTimeout(resolve, 1));
     });
+
+    const makeSleeper = jest.fn().mockImplementation((_name) => {
+        /** @type {NodeJS.Timeout | undefined} */
+        let timeout = undefined;
+        /** @type {undefined | ((value: unknown) => void)} */
+        let savedResolve = undefined;
+
+        /**
+         * @param {import('../src/datetime').Duration} duration
+         */
+        async function sleep(_duration) {
+            await new Promise((resolve) => {
+                savedResolve = resolve;
+                timeout = setTimeout(resolve, 1);
+            });
+        }
+
+        function wake() {
+            clearTimeout(timeout);
+            savedResolve?.(0);
+        }
+
+        return { sleep, wake };
+    });
+
+    capabilities.sleeper = {
+        sleep,
+        makeSleeper,
+        withMutex,
+    };
 }
 
 const datetime = require("../src/datetime");
@@ -320,19 +353,19 @@ function stubRuntimeStateStorage(capabilities) {
 }
 
 function stubScheduler(capabilities) {
-    const originalPeriodic = capabilities.threading.periodic;
-    let periodOverride = null;
+    const originalMakeSleeper = capabilities.sleeper.makeSleeper;
+    let cycleCount = 0;
+    let durationOverride = null;
 
-    function setPollingInterval(newPeriod) {
-        // Only accept Duration objects - no backwards compatibility
-        periodOverride = newPeriod;
+    function setPollingInterval(newDuration) {
+        durationOverride = newDuration;
     }
 
     async function waitForNextCycleEnd() {
-        while (capabilities._stubbedScheduler.thread === undefined) {
+        const originalCount = cycleCount;
+        while (originalCount >= cycleCount) {
             await new Promise(resolve => setTimeout(resolve, 1));
         }
-        await capabilities._stubbedScheduler.waitForNextCycleEnd();
     }
 
     capabilities._stubbedScheduler = {
@@ -340,81 +373,45 @@ function stubScheduler(capabilities) {
         waitForNextCycleEnd,
     };
 
-    function fakePeriodic(name, originalPeriod, callback) {
-        let callbackIndex = 0;
-        const startedSet = new Set();
-        /** @type {Set<number>} */
-        const finishedSet = new Set();
+    function fakeSleeper(_name) {
+        /** @type {NodeJS.Timeout | undefined} */
+        let timeout = undefined;
+        /** @type {undefined | ((value: unknown) => void)} */
+        let savedResolve = undefined;
 
-        const callbackWrapper = async () => {
-            callbackIndex++;
-            const currentKey = callbackIndex;
-            startedSet.add(currentKey);
-            try {
-                return await callback();
-            } finally {
-                finishedSet.add(currentKey);
+        /**
+         * @param {import('../src/datetime').Duration} duration
+         */
+        async function sleep(duration) {
+            if (durationOverride !== null) {
+                duration = durationOverride;
             }
-        };
 
-        const thisPeriod = periodOverride !== null ? periodOverride : originalPeriod;
-        let thread = originalPeriodic(name, thisPeriod, callbackWrapper);
+            await new Promise((resolve) => {
+                savedResolve = resolve;
+                timeout = setTimeout(resolve, duration.toMillis());
+            });
 
-        const setPollingInterval = (newPeriod) => {
-            const wasRunning = thread.isRunning();
-            thread.stop();
-            // Only accept Duration objects - no backwards compatibility
-            thread.period = newPeriod;
-            if (wasRunning) {
-                thread.start();
-            }
-        };
+            cycleCount++;
+        }
 
-        const waitForNextCycleEnd = async () => {
-            await new Promise(resolve => setTimeout(resolve, 0));
-            const initialStarted = new Set([...startedSet]);
+        function wake() {
+            clearTimeout(timeout);
+            savedResolve?.(0);
+        }
 
-            const allStartedFinished = () => {
-                for (const key of initialStarted) {
-                    if (!finishedSet.has(key)) {
-                        return false;
-                    }
-                }
-                return true;
-            };
+        return { sleep, wake };
+    }    
 
-            const anyNewFinished = () => {
-                for (const key of finishedSet) {
-                    if (!initialStarted.has(key)) {
-                        return true;
-                    }
-                }
-                return false;
-            };
-
-            while (!(allStartedFinished() && anyNewFinished())) {
-                await new Promise(resolve => setTimeout(resolve, 1));
-            }
-        };
-
-        capabilities._stubbedScheduler = {
-            setPollingInterval,
-            thread,
-            waitForNextCycleEnd,
-        };
-
-        return thread;
-    }
-
-    function periodic(name, period, callback) {
+    function makeSleeper(name) {
         if (name === THREAD_NAME) {
-            return fakePeriodic(name, period, callback);
+            return fakeSleeper(name);
         } else {
-            return originalPeriodic(name, period, callback);
+            return originalMakeSleeper(name);
         }
     }
 
-    capabilities.threading.periodic = jest.fn().mockImplementation(periodic);
+    capabilities.sleeper.makeSleeper = jest.fn().mockImplementation(makeSleeper);
 }
 
 /**

@@ -15,6 +15,10 @@
 
 const { mutateTasks } = require('../persistence');
 const { evaluateTasksForExecution } = require('../execution');
+const { fromMinutes } = require('../../datetime');
+const { THREAD_NAME } = require('./interval');
+
+const POLL_INTERVAL = fromMinutes(10);
 
 /** @typedef {import('../types').Callback} Callback */
 
@@ -25,24 +29,71 @@ const { evaluateTasksForExecution } = require('../execution');
  * @param {Set<string>} scheduledTasks
  * @param {ReturnType<import('../execution').makeTaskExecutor>} taskExecutor
  * @param {string} schedulerIdentifier
- * @returns {() => Promise<void>}
+ * @returns {{start: () => void, stop: () => Promise<void>}} Loop manager with start/stop methods
  */
 function makePollingFunction(capabilities, registrations, scheduledTasks, taskExecutor, schedulerIdentifier) {
     const dt = capabilities.datetime;
+    /** @type {Set<Promise<void>>} */
+    const runningPool = new Set();
     let parallelCounter = 0;
+    let isActive = false;
+    const sleeper = capabilities.sleeper.makeSleeper(THREAD_NAME);
+    /** @type {Promise<void> | null} */
+    let loopThread = null;
 
-    async function getDueTasks() {
-        try {
-            const now = dt.now();
-            return await mutateTasks(capabilities, registrations, (tasks) => {
-                return evaluateTasksForExecution(tasks, scheduledTasks, now, capabilities, schedulerIdentifier);
-            });
-        } finally {
-            parallelCounter--;
+    /**
+     * Wrap a promise to ensure it is removed from the running pool when done
+     * @param {Promise<void>} promise
+     */
+    function wrap(promise) {
+        const wrapped = promise.finally(() => {
+            runningPool.delete(wrapped);
+        });
+        return wrapped;
+    }
+
+    /**
+     * Wait for all currently running tasks to complete
+     * @returns {Promise<void>}
+     */
+    async function join() {
+        await Promise.all([...runningPool]);
+    }
+
+    function start() {
+        if (isActive === false) {
+            isActive = true;
+            loopThread = loop();
         }
     }
 
-    return async function poll() {
+    async function stop() {
+        if (isActive === true) {
+            isActive = false;
+            sleeper.wake();
+            await loopThread;
+            await join();
+        }
+    }
+
+    async function loop() {
+        await new Promise((resolve) => setImmediate(resolve));
+        while (isActive) {
+            await pollWrapper();
+            if (isActive) {
+                await sleeper.sleep(POLL_INTERVAL);
+            }
+        }
+    }
+
+    async function getDueTasks() {
+        const now = dt.now();
+        return await mutateTasks(capabilities, registrations, (tasks) =>
+            evaluateTasksForExecution(tasks, scheduledTasks, now, capabilities, schedulerIdentifier)
+        );
+    }
+
+    async function pollWrapper() {
         // Collection exclusivity optimization: prevent overlapping collection phases
         // to reduce wasteful duplicate work. Task execution itself remains reentrant.
         if (parallelCounter > 0) {
@@ -50,13 +101,21 @@ function makePollingFunction(capabilities, registrations, scheduledTasks, taskEx
             return;
         } else {
             parallelCounter++;
+            try {
+                await poll();
+            } finally {
+                parallelCounter--;
+            }
         }
+    }
 
+    async function poll() {
         // Collect tasks and stats.
         const { dueTasks, stats } = await getDueTasks();
 
         // Execute all due tasks in parallel
-        await taskExecutor.executeTasks(dueTasks);
+        const todo = taskExecutor.executeTasks(dueTasks);
+        runningPool.add(wrap(todo));
 
         capabilities.logger.logDebug(
             {
@@ -69,7 +128,9 @@ function makePollingFunction(capabilities, registrations, scheduledTasks, taskEx
             },
             "PollSummary"
         );
-    };
+    }
+
+    return { start, stop };
 }
 
 module.exports = {

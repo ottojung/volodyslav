@@ -44,7 +44,7 @@ describe("scheduler calculator edge cases", () => {
 
         const startTime = fromISOString("2025-01-14T10:00:00.000Z");
         timeControl.setDateTime(startTime);
-        schedulerControl.setPollingInterval(fromMilliseconds(1));
+        schedulerControl.setPollingInterval(fromMilliseconds(100));
 
         // Cron expression: run at midnight of the 20th day of each month
         const registrations = [
@@ -126,7 +126,7 @@ describe("scheduler calculator edge cases", () => {
 
         const startTime = fromISOString("2025-01-14T10:00:00.000Z");
         timeControl.setDateTime(startTime);
-        schedulerControl.setPollingInterval(fromMilliseconds(1));
+        schedulerControl.setPollingInterval(fromMilliseconds(100));
 
         // Cron expression: run every hour of the 20th day of each month  
         const registrations = [
@@ -208,7 +208,7 @@ describe("scheduler calculator edge cases", () => {
 
         const startTime = fromISOString("2025-01-14T10:00:00.000Z");
         timeControl.setDateTime(startTime);
-        schedulerControl.setPollingInterval(fromMilliseconds(1));
+        schedulerControl.setPollingInterval(fromMilliseconds(100));
 
         // Cron expression: run every 15 minutes of the 20th day of each month  
         const registrations = [
@@ -301,7 +301,7 @@ describe("scheduler calculator edge cases", () => {
         // Set time to 2025-01-14 10:00:00 (day 14, which is NOT allowed by the cron)
         const startTime = fromISOString("2025-01-14T10:00:00.000Z");
         timeControl.setDateTime(startTime);
-        schedulerControl.setPollingInterval(fromMilliseconds(1));
+        schedulerControl.setPollingInterval(fromMilliseconds(100));
 
         // Cron expression: run every 15 minutes, but only on the 15th day of month
         // This avoids the frequency validation issue while still testing the bug
@@ -366,7 +366,7 @@ describe("scheduler calculator edge cases", () => {
         // Start on the 15th to let task execute normally first
         const day15Time = fromISOString("2025-01-15T10:00:00.000Z");
         timeControl.setDateTime(day15Time);
-        schedulerControl.setPollingInterval(fromMilliseconds(1));
+        schedulerControl.setPollingInterval(fromMilliseconds(100));
 
         // Cron expression: run every 15 minutes, but only on the 15th day of month
         const registrations = [
@@ -396,7 +396,7 @@ describe("scheduler calculator edge cases", () => {
         const newSchedulerControl = getSchedulerControl(newCapabilities);
 
         newTimeControl.setDateTime(day16Time);
-        newSchedulerControl.setPollingInterval(fromMilliseconds(1));
+        newSchedulerControl.setPollingInterval(fromMilliseconds(100));
 
         const newTaskCallback = jest.fn();
         const newExecutionTimes = [];
@@ -446,7 +446,7 @@ describe("scheduler calculator edge cases", () => {
         // Use a simpler constraint that's easier to test
         const startTime = fromISOString("2025-01-01T10:00:00.000Z");
         timeControl.setDateTime(startTime);
-        schedulerControl.setPollingInterval(fromMilliseconds(1));
+        schedulerControl.setPollingInterval(fromMilliseconds(100));
 
         // Use a simpler cron expression that should work: run at noon every Friday
         // This tests weekday constraints without the complex day-of-month intersection
@@ -498,7 +498,7 @@ describe("scheduler calculator edge cases", () => {
         // Set time to a known date 
         const startTime = fromISOString("2025-01-01T10:00:00.000Z"); // Jan 1, 2025 (Wednesday)
         timeControl.setDateTime(startTime);
-        schedulerControl.setPollingInterval(fromMilliseconds(1));
+        schedulerControl.setPollingInterval(fromMilliseconds(100));
 
         // Cron expression: run on Friday the 3rd (3 * * * 5)
         // January 3, 2025 is indeed a Friday, so this should work
@@ -539,7 +539,7 @@ describe("scheduler calculator edge cases", () => {
         // Jan 1, 2025 is Wednesday; cron is "0 9 1 * 1" (9:00 on 1st OR every Monday)
         const startTime = fromISOString("2025-01-01T08:59:00.000Z");
         timeControl.setDateTime(startTime);
-        schedulerControl.setPollingInterval(fromMilliseconds(1));
+        schedulerControl.setPollingInterval(fromMilliseconds(100));
 
         const registrations = [
             ["or-semantics", "0 9 1 * 1", taskCallback, retryDelay],
@@ -580,7 +580,7 @@ describe("scheduler calculator edge cases", () => {
         // Start just before 11:15Z on Jan 1, 2025
         const start = fromISOString("2025-01-01T11:14:00.000Z");
         timeControl.setDateTime(start);
-        schedulerControl.setPollingInterval(fromMilliseconds(1));
+        schedulerControl.setPollingInterval(fromMilliseconds(100));
 
         const registrations = [
             ["hour-validity", "15 10 * * *", taskCallback, retryDelay], // 10:15 daily
@@ -621,7 +621,7 @@ describe("scheduler calculator edge cases", () => {
         // Start Jan 2, 2025 (Thu). Next month with 1st=Monday is Sep 1, 2025.
         const start = fromISOString("2025-01-02T10:00:00.000Z");
         timeControl.setDateTime(start);
-        schedulerControl.setPollingInterval(fromMilliseconds(1));
+        schedulerControl.setPollingInterval(fromMilliseconds(100));
 
         const registrations = [
             ["beyond-7d", "0 12 1 * *", taskCallback, retryDelay],
@@ -667,7 +667,7 @@ describe("scheduler calculator edge cases", () => {
         const start = fromISOString("2025-01-02T10:00:00.000Z");
 
         timeControl.setDateTime(start);
-        schedulerControl.setPollingInterval(fromMilliseconds(1));
+        schedulerControl.setPollingInterval(fromMilliseconds(100));
 
         const registrations = [
             ["far-weekday-intersection", "0 12 1 * 1", taskCallback, retryDelay],
@@ -697,7 +697,7 @@ describe("scheduler calculator edge cases", () => {
         // Jan 1, 2025 (Wed). Cron: 09:00 on day 1 OR any Monday 09:00
         const start = fromISOString("2025-01-01T08:59:00.000Z");
         timeControl.setDateTime(start);
-        schedulerControl.setPollingInterval(fromMilliseconds(1));
+        schedulerControl.setPollingInterval(fromMilliseconds(100));
 
         await capabilities.scheduler.initialize([
             ["or-semantics", "0 9 1 * 1", cb, retryDelay],
@@ -730,7 +730,7 @@ describe("scheduler calculator edge cases", () => {
         // Cron: 10:15 daily
         const start = fromISOString("2025-01-01T11:14:00.000Z"); // invalid hour 11
         timeControl.setDateTime(start);
-        schedulerControl.setPollingInterval(fromMilliseconds(1));
+        schedulerControl.setPollingInterval(fromMilliseconds(100));
 
         await capabilities.scheduler.initialize([
             ["hour-validity", "15 10 * * *", cb, retryDelay],
@@ -761,7 +761,7 @@ describe("scheduler calculator edge cases", () => {
 
         const start = fromISOString("2025-01-02T10:00:00.000Z");
         timeControl.setDateTime(start);
-        schedulerControl.setPollingInterval(fromMilliseconds(1));
+        schedulerControl.setPollingInterval(fromMilliseconds(100));
 
         await capabilities.scheduler.initialize([
             ["beyond-7d", "0 12 1 * 1", cb, retryDelay],
@@ -789,7 +789,7 @@ describe("scheduler calculator edge cases", () => {
         // Start April 1st, 2025
         const start = fromISOString("2025-04-01T00:00:00.000Z");
         timeControl.setDateTime(start);
-        schedulerControl.setPollingInterval(fromMilliseconds(1));
+        schedulerControl.setPollingInterval(fromMilliseconds(100));
 
         await capabilities.scheduler.initialize([
             ["day-31", "0 0 31 * *", cb, retryDelay], // midnight on day 31
@@ -817,7 +817,7 @@ describe("scheduler calculator edge cases", () => {
         // Start Feb 1, 2025 (non-leap)
         const start = fromISOString("2025-02-01T00:00:00.000Z");
         timeControl.setDateTime(start);
-        schedulerControl.setPollingInterval(fromMilliseconds(1));
+        schedulerControl.setPollingInterval(fromMilliseconds(100));
 
         await capabilities.scheduler.initialize([
             ["leap", "0 0 29 2 *", cb, retryDelay], // midnight on Feb 29
@@ -845,7 +845,7 @@ describe("scheduler calculator edge cases", () => {
         // Start exactly at 2025-01-20 00:00Z, cron fires at 00:00 on day 20
         const start = fromISOString("2025-01-20T00:00:00.000Z");
         timeControl.setDateTime(start);
-        schedulerControl.setPollingInterval(fromMilliseconds(1));
+        schedulerControl.setPollingInterval(fromMilliseconds(100));
 
         await capabilities.scheduler.initialize([
             ["boundary", "0 0 20 * *", cb, retryDelay],
@@ -868,7 +868,7 @@ describe("scheduler calculator edge cases", () => {
 
         const start = fromISOString("2025-01-14T10:07:00.000Z");
         timeControl.setDateTime(start);
-        schedulerControl.setPollingInterval(fromMilliseconds(1));
+        schedulerControl.setPollingInterval(fromMilliseconds(100));
 
         await capabilities.scheduler.initialize([
             ["qtr", "0,15,30,45 * * * *", cb, retryDelay],
@@ -899,7 +899,7 @@ describe("scheduler calculator edge cases", () => {
 
         const start = fromISOString("2025-01-14T18:30:00.000Z");
         timeControl.setDateTime(start);
-        schedulerControl.setPollingInterval(fromMilliseconds(1));
+        schedulerControl.setPollingInterval(fromMilliseconds(100));
 
         await capabilities.scheduler.initialize([
             ["hours", "0 8-17 * * *", cb, retryDelay],
@@ -928,7 +928,7 @@ describe("scheduler calculator edge cases", () => {
 
         const start = fromISOString("2025-01-03T11:59:00.000Z"); // Jan 3, 2025
         timeControl.setDateTime(start);
-        schedulerControl.setPollingInterval(fromMilliseconds(1));
+        schedulerControl.setPollingInterval(fromMilliseconds(100));
 
         await capabilities.scheduler.initialize([
             ["dom-only", "0 12 3 * *", cb1, retryDelay],
@@ -957,7 +957,7 @@ describe("scheduler calculator edge cases", () => {
         // Start Wed Jan 1, 2025; next Monday is Jan 6
         const start = fromISOString("2025-01-01T11:59:00.000Z");
         timeControl.setDateTime(start);
-        schedulerControl.setPollingInterval(fromMilliseconds(1));
+        schedulerControl.setPollingInterval(fromMilliseconds(100));
 
         await capabilities.scheduler.initialize([
             ["monday-noon", "0 12 * * 1", cb, retryDelay], // Mondays at noon, DOM wildcard
@@ -985,7 +985,7 @@ describe("scheduler calculator edge cases", () => {
         // Start Jun 1, 2025
         const start = fromISOString("2025-06-01T00:00:00.000Z");
         timeControl.setDateTime(start);
-        schedulerControl.setPollingInterval(fromMilliseconds(1));
+        schedulerControl.setPollingInterval(fromMilliseconds(100));
 
         await capabilities.scheduler.initialize([
             ["long-months-31", "0 0 31 1,3,5,7,8,10,12 *", cb, retryDelay],
@@ -1022,7 +1022,7 @@ describe("scheduler calculator edge cases", () => {
         // Start on Saturday Jan 4, 2025 11:59, should skip to Monday 12:00
         const start = fromISOString("2025-01-04T11:59:00.000Z"); // Saturday
         timeControl.setDateTime(start);
-        schedulerControl.setPollingInterval(fromMilliseconds(1));
+        schedulerControl.setPollingInterval(fromMilliseconds(100));
 
         await capabilities.scheduler.initialize([
             ["weekdays-noon", "0 12 * * 1-5", cb, retryDelay],
@@ -1054,7 +1054,7 @@ describe("scheduler calculator edge cases", () => {
         // Start 2025-01-20 00:00 — day 20
         const start = fromISOString("2025-01-20T00:00:00.000Z");
         timeControl.setDateTime(start);
-        schedulerControl.setPollingInterval(fromMilliseconds(1));
+        schedulerControl.setPollingInterval(fromMilliseconds(100));
 
         await capabilities.scheduler.initialize([
             ["qtr-on-20th", "0,15,30,45 * 20 * *", cb, retryDelay],
@@ -1091,7 +1091,7 @@ describe("scheduler calculator edge cases", () => {
         // Start after Jan occurrence has passed: Jan 2, 00:00
         const start = fromISOString("2025-01-02T00:00:00.000Z");
         timeControl.setDateTime(start);
-        schedulerControl.setPollingInterval(fromMilliseconds(1));
+        schedulerControl.setPollingInterval(fromMilliseconds(100));
 
         // Fire on the 1st of months 1,4,7,10 at midnight
         await capabilities.scheduler.initialize([
@@ -1119,7 +1119,7 @@ describe("scheduler calculator edge cases", () => {
         // Start Jan 1, 2026 00:00; Dec 31, 2025 was last run
         const start = fromISOString("2026-01-01T00:00:00.000Z");
         timeControl.setDateTime(start);
-        schedulerControl.setPollingInterval(fromMilliseconds(1));
+        schedulerControl.setPollingInterval(fromMilliseconds(100));
 
         await capabilities.scheduler.initialize([
             ["dec31", "0 0 31 12 *", cb, retryDelay],
@@ -1144,7 +1144,7 @@ describe("scheduler calculator edge cases", () => {
         // Start 2025-01-12 11:59 (Sun). Next is 2025-01-13 (Mon) 12:00 OR 2025-02-13 12:00 etc.
         const start = fromISOString("2025-01-12T11:59:00.000Z");
         timeControl.setDateTime(start);
-        schedulerControl.setPollingInterval(fromMilliseconds(1));
+        schedulerControl.setPollingInterval(fromMilliseconds(100));
 
         await capabilities.scheduler.initialize([
             ["dom13-or-mon", "0 12 13 * 1", cb, retryDelay],

@@ -24,7 +24,7 @@ describe("scheduler orphaned task restart", () => {
         const schedulerControl = getSchedulerControl(capabilities);
         const retryDelay = fromMilliseconds(5000);
 
-        schedulerControl.setPollingInterval(fromMilliseconds(1));
+        schedulerControl.setPollingInterval(fromMilliseconds(100));
 
         const taskCallback = jest.fn();
         const registrations = [
@@ -142,6 +142,10 @@ describe("scheduler orphaned task restart", () => {
 
         await schedulerControl.waitForNextCycleEnd();
 
+        while (callback1.mock.calls.length < 2 || callback2.mock.calls.length < 1) {
+            await new Promise(resolve => setTimeout(resolve, 1));
+        }
+
         // The orphaned task should run immediately because it was interrupted.
         expect(callback1).toHaveBeenCalledTimes(2);
         expect(callback2).toHaveBeenCalledTimes(1);
@@ -155,7 +159,7 @@ describe("scheduler orphaned task restart", () => {
         const schedulerControl = getSchedulerControl(capabilities);
         const retryDelay = fromMilliseconds(5000);
 
-        schedulerControl.setPollingInterval(fromMilliseconds(1));
+        schedulerControl.setPollingInterval(fromMilliseconds(100));
 
         const taskCallback = jest.fn();
         const registrations = [
@@ -203,7 +207,7 @@ describe("scheduler orphaned task restart", () => {
         const schedulerControl = getSchedulerControl(capabilities);
         const retryDelay = fromMilliseconds(5000);
 
-        schedulerControl.setPollingInterval(fromMilliseconds(1));
+        schedulerControl.setPollingInterval(fromMilliseconds(100));
 
         const task1Callback = jest.fn();
         const task2Callback = jest.fn();
@@ -280,7 +284,7 @@ describe("scheduler orphaned task restart", () => {
         const schedulerControl = getSchedulerControl(capabilities);
         const retryDelay = fromMilliseconds(5000);
 
-        schedulerControl.setPollingInterval(fromMilliseconds(1));
+        schedulerControl.setPollingInterval(fromMilliseconds(100));
 
         const taskCallback = jest.fn();
         const registrations = [
@@ -324,7 +328,7 @@ describe("scheduler orphaned task restart", () => {
         const schedulerControl = getSchedulerControl(capabilities);
         const retryDelay = fromMilliseconds(5000);
 
-        schedulerControl.setPollingInterval(fromMilliseconds(1));
+        schedulerControl.setPollingInterval(fromMilliseconds(100));
 
         const taskCallback = jest.fn();
         const registrations = [
@@ -378,7 +382,7 @@ describe("scheduler orphaned task restart", () => {
         const schedulerControl = getSchedulerControl(capabilities);
         const retryDelay = fromMilliseconds(5000);
 
-        schedulerControl.setPollingInterval(fromMilliseconds(1));
+        schedulerControl.setPollingInterval(fromMilliseconds(100));
 
         const taskCallback = jest.fn();
         const registrations = [
@@ -396,14 +400,14 @@ describe("scheduler orphaned task restart", () => {
         // Manually add an orphaned task to the unknown task 
         await capabilities.state.transaction(async (storage) => {
             const state = await storage.getExistingState();
-            if (state && state.tasks.length >= 2) {
-                // Mark the unknown task as orphaned 
-                const unknownTask = state.tasks.find(task => task.name === "unknown-task");
-                if (unknownTask) {
-                    unknownTask.lastAttemptTime = capabilities.datetime.now();
-                    unknownTask.schedulerIdentifier = "different-scheduler-id";
-                    storage.setState(state);
-                }
+            expect(state).toBeDefined();
+            expect(state.tasks).toHaveLength(2);
+            // Mark the unknown task as orphaned
+            const unknownTask = state.tasks.find(task => task.name === "unknown-task");
+            if (unknownTask) {
+                unknownTask.lastAttemptTime = capabilities.datetime.now();
+                unknownTask.schedulerIdentifier = "different-scheduler-id";
+                storage.setState(state);
             }
         });
 
@@ -412,10 +416,14 @@ describe("scheduler orphaned task restart", () => {
         // Now try to initialize with only the known task
         await expect(capabilities.scheduler.initialize(registrations)).resolves.not.toThrow();
 
-        // Wait for scheduler to process 
+        // Wait for scheduler to process
         await schedulerControl.waitForNextCycleEnd();
 
-        // The known task should be running normally
+        while (taskCallback.mock.calls.length < 1) {
+            await new Promise(resolve => setTimeout(resolve, 1));
+        }       
+
+        // // The known task should be running normally
         expect(taskCallback).toHaveBeenCalled();
 
         await capabilities.scheduler.stop();

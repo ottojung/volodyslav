@@ -23,7 +23,7 @@ describe("declarative scheduler re-entrancy protection", () => {
         const capabilities = getTestCapabilities();
         const timeControl = getDatetimeControl(capabilities);
         const schedulerControl = getSchedulerControl(capabilities);
-        schedulerControl.setPollingInterval(fromMilliseconds(1));
+        schedulerControl.setPollingInterval(fromMilliseconds(100));
         const retryDelay = fromMilliseconds(5000);
 
         // Set time to avoid immediate execution for "0 * * * *" schedule
@@ -76,7 +76,7 @@ describe("declarative scheduler re-entrancy protection", () => {
     test("should allow multiple initialize at the start", async () => {
         const capabilities = getTestCapabilities();
         const schedulerControl = getSchedulerControl(capabilities);
-        schedulerControl.setPollingInterval(fromMilliseconds(1));
+        schedulerControl.setPollingInterval(fromMilliseconds(100));
         const timeControl = getDatetimeControl(capabilities);
         const retryDelay = fromMilliseconds(5000);
         let taskExecutionCount = 0;
@@ -120,7 +120,7 @@ describe("declarative scheduler re-entrancy protection", () => {
     test("should allow multiple initialize calls after completion", async () => {
         const capabilities = getTestCapabilities();
         const schedulerControl = getSchedulerControl(capabilities);
-        schedulerControl.setPollingInterval(fromMilliseconds(1));
+        schedulerControl.setPollingInterval(fromMilliseconds(100));
         const timeControl = getDatetimeControl(capabilities);
         const retryDelay = fromMilliseconds(5000);
         let taskExecutionCount = 0;
@@ -163,7 +163,7 @@ describe("declarative scheduler re-entrancy protection", () => {
     test("should handle errors during task execution gracefully", async () => {
         const capabilities = getTestCapabilities();
         const schedulerControl = getSchedulerControl(capabilities);
-        schedulerControl.setPollingInterval(fromMilliseconds(1));
+        schedulerControl.setPollingInterval(fromMilliseconds(100));
         const timeControl = getDatetimeControl(capabilities);
         const retryDelay = fromMilliseconds(5000);
         let taskExecutionCount = 0;

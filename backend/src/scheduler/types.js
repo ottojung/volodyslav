@@ -18,8 +18,8 @@
  * @property {import('../datetime').Datetime} datetime - Datetime utilities
  * @property {import('../logger').Logger} logger - A logger instance
  * @property {import('../runtime_state_storage').RuntimeStateCapability} state - A runtime state storage instance
- * @property {import('../threading').Threading} threading - A threading instance
  * @property {import('../random/seed').NonDeterministicSeed} seed - A random number generator instance
+ * @property {import('../sleeper').SleepCapability} sleeper - A sleeper instance
  */
 
 /**

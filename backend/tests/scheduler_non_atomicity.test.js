@@ -21,7 +21,7 @@ describe("scheduler atomicity testing", () => {
     test("attempt map state corruption with direct manipulation", async () => {
         const capabilities = getTestCapabilities();
         const schedulerControl = getSchedulerControl(capabilities);
-        schedulerControl.setPollingInterval(fromMilliseconds(1));
+        schedulerControl.setPollingInterval(fromMilliseconds(100));
         const timeControl = getDatetimeControl(capabilities);
         const retryDelay = fromMilliseconds(20000);
 
@@ -92,7 +92,7 @@ describe("scheduler atomicity testing", () => {
     test("attempts to create a controlled race condition in task map serialization", async () => {
         const capabilities = getTestCapabilities();
         const schedulerControl = getSchedulerControl(capabilities);
-        schedulerControl.setPollingInterval(fromMilliseconds(1));
+        schedulerControl.setPollingInterval(fromMilliseconds(100));
         const timeControl = getDatetimeControl(capabilities);
         const retryDelay = fromMilliseconds(25000);
 
@@ -166,6 +166,9 @@ describe("scheduler atomicity testing", () => {
             timeControl.advanceByDuration(fromHours(1)); // 1 hour to 14:00:00
             await schedulerControl.waitForNextCycleEnd();
 
+            while (task1Done === false || task2Done === false) {
+                await new Promise(resolve => setTimeout(resolve, 1));
+            }
             expect(task1Done).toBe(true);
             expect(task2Done).toBe(true);
 
