@@ -18,7 +18,10 @@ const { evaluateTasksForExecution } = require('../execution');
 const { fromMinutes } = require('../../datetime');
 const { THREAD_NAME } = require('./interval');
 
-const POLL_INTERVAL = fromMinutes(10);
+/**
+ * Minimum polling interval is determined by cron job granularity (1 minute).
+ */
+const POLL_INTERVAL = fromMinutes(1);
 
 /** @typedef {import('../types').Callback} Callback */
 
