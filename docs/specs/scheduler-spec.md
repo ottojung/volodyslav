@@ -353,6 +353,8 @@ When both day-of-month (DOM) and day-of-week (DOW) are restricted (not `*`), the
 - `@daily` - Macros not allowed
 - `0 0 ? * *` - Quartz tokens not allowed
 
+**See also:** The [Formal Model (Temporal Logic, Observable Only)](#formal-model-temporal-logic-observable-only) section provides a mathematical specification of how cron expressions are evaluated through the **Due(task, t)** predicate.
+
 ---
 
 ## Error Model
@@ -560,6 +562,166 @@ The following behaviors **MAY** vary between equivalent runs:
 - Exact execution timing within the same minute
 - Task execution order within a single poll
 - Specific polling interval timing (as long as all minutes are covered)
+
+---
+
+## Formal Model (Temporal Logic, Observable Only)
+
+This section provides a **time-point–based temporal logic** model that specifies **only the externally observable behaviour** of the declarative polling scheduler using **Linear Temporal Logic (LTL)** over a dense, totally ordered set of time instants.
+
+### Modelling Framework
+
+The model is **point-based over Q** (rational numbers) representing time instants, with no interval logic. The model is **self-contained**: all domains, constants, variables, functions, and predicates are defined within this specification.
+
+All safety and liveness requirements are stated as **Linear Temporal Logic (LTL)** formulas over the event predicates and time points. For simplicity, distinct observable events **MAY** be assumed to occur at distinct time points; concurrency is represented by arbitrarily close but unequal rationals.
+
+### Domain Definitions
+
+**Time Domain:** **Q** (rational numbers) representing time instants in minutes from an arbitrary epoch.
+
+**Task:** An abstract identifier from a finite set **TaskId**.
+
+**Callback(Task):** An abstract action associated with a task; represents the abstract effect to be performed when a task executes. In this model, it is not executable code, but rather denotes the occurrence of an observable event corresponding to the task's execution.
+
+**Registration:** A mapping from **Task** to **(Schedule, RetryDelay)** where **RetryDelay ≥ 0**.
+
+**Schedule:** Abstracted as a predicate **Due(task, t)** that is **true** at instants **t ∈ Q** when the task is scheduled to be eligible to start. This predicate is derived from the POSIX cron specification defined in the [Cron Language Specification](#cron-language-specification) section.
+
+**RetryDelay(task):** A non-negative rational delay **∈ Q≥0** in the same units as time points (minutes).
+
+**Result:** **{success, failure}** representing task execution outcomes.
+
+### Observable Event Predicates
+
+The following predicates over **Q** define the complete set of externally observable events:
+
+- **InitStart(t):** Scheduler initialization begins at time **t**
+- **InitEnd(R, t):** Scheduler initialization ends at time **t** with registration set **R**
+- **StopStart(t):** Scheduler stopping begins at time **t**
+- **StopEnd(t):** Scheduler stopping ends at time **t**
+- **RunStart(task, t):** Scheduler begins invoking **Callback(task)** at time **t**
+- **RunEnd(task, result, t):** Task invocation finishes at time **t** with **result ∈ {success, failure}**
+- **UnexpectedShutdown(t):** An unexpected system shutdown occurs at time **t**
+
+### LTL Safety Properties
+
+All safety properties **MUST** hold in every valid execution trace:
+
+**Property 1 (Well-formed runs):**
+```
+□(RunEnd(task, r, t) → ∃t'<t: RunStart(task, t') ∧ ¬∃t''∈(t',t): RunEnd(task, _, t''))
+```
+Every **RunEnd(task, r)** must be preceded by a matching **RunStart(task)** with no intervening **RunEnd(task, _)**.
+
+**Property 2 (Per-task non-overlap):**
+```
+□(RunStart(task, t₁) ∧ RunStart(task, t₂) ∧ t₁ < t₂ → ∃t'∈(t₁,t₂): RunEnd(task, _, t'))
+```
+No overlapping invocations for the same task are permitted.
+
+**Property 3 (Eligibility):**
+```
+□(RunStart(task, t) → 
+    (∃R,t'≤t: InitEnd(R, t') ∧ task ∈ dom(R) ∧ ¬∃t''∈(t',t]: StopStart(t'')) ∧
+    Due(task, t) ∧
+    (¬∃t_f<t: RunEnd(task, failure, t_f) ∨ 
+     ∃t_f<t: RunEnd(task, failure, t_f) ∧ t ≥ t_f + RetryDelay(task)))
+```
+**RunStart(task)** may only occur when: the scheduler has initialized with **task** registered, no stop is in progress, **Due(task, t)** holds, and retry gating conditions are satisfied.
+
+**Property 4 (No make-up executions):**
+```
+□(∃I=[t₁,t₂]: ¬∃t∈I: RunStart(task, t) ∧ InitEnd(R, t₃) ∧ t₃ > t₂ ∧ task ∈ dom(R) →
+    |{t ∈ (t₃, ∞): RunStart(task, t) ∧ ¬∃t'∈(t₃,t): Due(task, t')}| ≤ 1)
+```
+After a period of inactivity, at most one **RunStart(task)** occurs before the next future instant with **Due(task, t')**.
+
+**Property 5 (Stop quiescence):**
+```
+□(StopStart(t₁) ∧ ◊StopEnd(t₂) ∧ t₁ < t₂ →
+    ∀t₄ > t₂: (InitEnd(_, t₄) → ∀task, t ∈ (t₂, t₄): ¬RunStart(task, t)))
+```
+After **StopStart** eventually followed by **StopEnd**, no **RunStart(task)** occurs until subsequent **InitEnd**.
+
+**Property 6 (Crash consistency):**
+```
+□(UnexpectedShutdown(t_c) → 
+    (□(t > t_c → (RunEnd(task, _, t) → ∃t'≥t_c: RunStart(task, t') ∧ t' < t)) ∧
+     □(t > t_c → (RunStart(task, t) → ∃t'≥t_c: InitEnd(_, t') ∧ t' < t))))
+```
+After **UnexpectedShutdown**: no **RunEnd** occurs without a preceding **RunStart** after the crash, and no **RunStart** occurs without explicit re-initialization.
+
+### LTL Liveness Properties
+
+Under fairness assumptions, the following liveness properties **SHOULD** hold:
+
+**Property 7 (Eventual execution when continuously due):**
+```
+□(InitEnd(R, t₀) ∧ task ∈ dom(R) ∧ 
+    □◊Due(task, t) ∧ ¬◊StopStart(_) ∧ ¬◊UnexpectedShutdown(_) →
+    □◊RunStart(task, _))
+```
+For registered tasks with infinitely many due instants, if no stop or crash occurs, **RunStart(task)** occurs infinitely often.
+
+**Property 8 (Termination of stop):**
+```
+□(StopStart(t) → (◊StopEnd(_) ∧ 
+    □(StopEnd(t') ∧ t' > t → ¬∃task,t'': RunStart(task, t'') ∧ t'' > t' U InitEnd(_, t''))))
+```
+After **StopStart**, **StopEnd** eventually occurs, and no **RunStart** occurs thereafter until re-initialization.
+
+**Property 9 (Recovery after crash):**
+```
+□(UnexpectedShutdown(t_c) ∧ ◊InitEnd(R, t_r) ∧ t_r > t_c ∧ task ∈ dom(R) ∧ 
+    □◊Due(task, t) → □◊RunStart(task, _))
+```
+After **UnexpectedShutdown** followed by re-initialization, if **Due(task, t)** holds infinitely often, then **RunStart(task)** occurs infinitely often.
+
+### Bounded Lag Axiom
+
+**Fairness Assumption:** There exists **Δ ∈ Q≥0** such that whenever **Due(task, t)** holds under active initialization (after **InitEnd** and before **StopStart** or **UnexpectedShutdown**), some **RunStart(task, t')** occurs with **t ≤ t' ≤ t + Δ**, unless prevented by **RetryDelay** gating.
+
+### API Trace Constraints
+
+**Idempotent initialize:** Two consecutive **InitEnd(R, t₁)** and **InitEnd(R, t₂)** with identical **R** **SHOULD NOT** change future obligations beyond those already permitted by the properties above.
+
+**Re-initialize semantics:** A later **InitStart/InitEnd(R₂, t₂)** supersedes the prior registration set for all subsequent scheduling obligations.
+
+### Due Predicate Definition
+
+The **Due(task, t)** predicate is derived from the POSIX cron expression associated with **task** in the registration set, as specified in the [Cron Language Specification](#cron-language-specification) section. **Due(task, t)** evaluates to **true** if and only if time **t** corresponds to a minute boundary where the cron expression matches the calendar time representation of **t**.
+
+### Example Acceptable Traces
+
+The following traces illustrate valid scheduler behavior (informative, not normative):
+
+**Trace 1 (Normal operation):**
+```
+InitStart(0.0)
+InitEnd({task1 → ("0 * * * *", 5.0)}, 0.1)  
+Due(task1, 60.0)  // Next hour boundary
+RunStart(task1, 60.0)
+RunEnd(task1, success, 60.2)
+Due(task1, 120.0)  // Next hour boundary  
+RunStart(task1, 120.0)
+RunEnd(task1, failure, 120.1)
+Due(task1, 180.0)  // Next hour boundary
+// RunStart delayed due to retry gating until 120.1 + 5.0 = 125.1; next scheduled run is at 180.0, which is after the delay expires
+RunStart(task1, 180.0)  // Retry delay satisfied and next scheduled time reached
+```
+
+**Trace 2 (Stop and restart):**
+```
+InitStart(0.0)
+InitEnd({task1 → ("0 * * * *", 5.0)}, 0.1)
+StopStart(30.0)
+StopEnd(30.5)
+// No RunStart events occur until re-initialization
+InitStart(90.0)
+InitEnd({task1 → ("0 * * * *", 5.0)}, 90.1)
+Due(task1, 120.0)
+RunStart(task1, 120.0)
+```
 
 ---
 
