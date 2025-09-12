@@ -660,6 +660,22 @@ For all tasks `x`:
 **L3 — Crash‑interrupted callbacks are restarted after next init**
 `G( ( RS_x ∧ (¬RE_x U Crash) ) → F( IE ∧ F RS_x ) )`
 
+### Bounds & Fairness assumptions
+
+This subsection records assumptions and requirements with statements which do **not** extend LTL with metric operators. They are expressed in prose to clarify the relationship between the LTL model and real‑world timing.
+
+**A1 — Finite‑duration callbacks (assumption).**
+Every callback invocation (between `RS_x` and `RE_x`) completes in **finite** time unless pre‑empted by `Crash`. No uniform upper bound is required; the assumption only rules out infinite executions.
+
+**F1 — Progress fairness (assumption).**
+When the scheduler is **Active** and the process is not externally suspended or starved (e.g., not SIGSTOP/SIGPAUSE’d, no VM freeze, sufficient CPU), the polling loop makes progress and observable events continue to advance along the trace.
+
+**P1 — Scheduling‑lag.**
+In an environment satisfying F1, whenever `Active ∧ Registered_x ∧ Due_x ∧ RetryEligible_x` holds, a corresponding `RS_x` **SHOULD** occur within about **1 minute** of that due instant (i.e., an implementation target matching the polling interval). This is an engineering target, not a logical guarantee. External pauses, OS scheduling, or heavy load may widen the lag.
+
+**P2 — Post‑crash restart lag.**
+If a run was in flight at `Crash` (cf. L3), after the next `IE` and once `Registered_x ∧ RetryEligible_x` holds, a new `RS_x` **SHOULD** occur within approximately **1 minute** (same bound as P1), provided no `SS` intervenes. This is under the same assumptions as P1.
+
 ### Due Predicate (source of truth)
 
 `Due_x` is true exactly at instants where task `x`’s POSIX cron expression matches the host’s calendar time for that minute boundary (see the Cron Language Specification). This predicate is provided by the cron layer; it is not an emitted event.
