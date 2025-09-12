@@ -619,10 +619,6 @@ Once a run starts, no further `RS_x` may occur before a matching `RE_x` or `Cras
 `G( RE_x → OpenPre_x )`
 Every completion must correspond to a run that was already in flight before this position.
 
-**S3 — Starts eventually settle**
-`G( RS_x → F( RE_x ∨ SE ∨ Crash ) )`
-Every started run eventually completes or is pre‑empted by stop completion or crash.
-
 **S4 — Eligibility**
 `G( RS_x → (Active ∧ Registered_x ∧ Due_x ∧ RetryEligible_x) )`
 A start can occur only while active, registered, due, and not blocked by retry.
@@ -668,10 +664,11 @@ For all tasks `x`:
 
 This subsection records assumptions that cannot possibly be verified by the scheduler implementation.
 
-**A1 — Finite‑duration callbacks (assumption).**
+**A1 — Starts eventually settle**
+`G( RS_x → F( RE_x ∨ Crash ) )`
 Every callback invocation (between `RS_x` and `RE_x`) completes in **finite** time unless pre‑empted by `Crash`. No uniform upper bound is required; the assumption only rules out infinite executions.
 
-**F1 — Progress fairness (assumption).**
+**F1 — Progress fairness.**
 When the scheduler is **Active** and the process is not externally suspended or starved (e.g., not SIGSTOP/SIGPAUSE’d, no VM freeze, sufficient CPU), the polling loop makes progress and observable events continue to advance along the trace.
 
 ## Real-time bounds
