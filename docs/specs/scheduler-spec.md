@@ -627,6 +627,7 @@ G( Crash → G( RE_x → (¬RE_x U RS_x) ) )
 **S7 (No make-up bursts):**
 Between any two positions where `Due_x` is true with no `Due_x` in between, there is **at most one** `RS_x` unless a failure occurs (in which case retry may introduce an extra `RS_x` before the next `Due_x`).
 
+*Note: This property cannot be directly expressed in standard LTL, as it requires counting the number of `RS_x` events between two `Due_x` events, which is not possible in LTL due to its lack of counting capabilities. Therefore, S7 is stated in natural language. If a formalization is required, a more expressive logic such as Quantified LTL or a temporal logic with counting extensions would be needed.*
 **S8 (Stop flush completeness):**
 ```
 G( SE → ¬Open_x )
