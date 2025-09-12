@@ -632,7 +632,7 @@ No overlapping invocations for the same task are permitted.
 **Property 4 (No make-up executions):**
 ```
 □(∃I=[t₁,t₂]: ¬∃t∈I: RunStart(task, t) ∧ InitEnd(R, t₃) ∧ t₃ > t₂ ∧ task ∈ dom(R) →
-    |{t ∈ (t₃, inf): RunStart(task, t) ∧ ¬∃t'∈(t₃,t): Due(task, t')}| ≤ 1)
+    |{t ∈ (t₃, ∞): RunStart(task, t) ∧ ¬∃t'∈(t₃,t): Due(task, t')}| ≤ 1)
 ```
 After a period of inactivity, at most one **RunStart(task)** occurs before the next future instant with **Due(task, t')**.
 
