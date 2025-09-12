@@ -567,206 +567,127 @@ The following behaviors **MAY** vary between equivalent runs:
 
 ## Formal Model (Temporal Logic, Observable Only)
 
-This section provides a **time-point–based temporal logic** model that specifies **only the externally observable behaviour** of the declarative polling scheduler using **Linear Temporal Logic (LTL)** over a dense, totally ordered set of time instants.
+This section provides a **Linear Temporal Logic (LTL)** model that specifies **only the externally observable behaviour** of the declarative polling scheduler using propositional atomic formulas over an event-driven trace.
 
 ### Modelling Framework
 
-The model is **point-based over Q** (rational numbers) representing time instants, with no interval logic. The model is **self-contained**: all domains, constants, variables, functions, and predicates are defined within this specification.
+Use an **event-driven trace**: each trace position is an instant where at least one observable event occurs. Concurrency is linearized by total ordering of equal/nearby instants. Time bounds remain as background semantics (not inside formulas).
 
-All safety and liveness requirements are stated as **Linear Temporal Logic (LTL)** formulas over the event predicates and time points. For simplicity, distinct observable events **MAY** be assumed to occur at distinct time points; concurrency is represented by arbitrarily close but unequal rationals.
+**Atomic propositions at a trace position:**
 
-### Domain Definitions
+* `IS` (InitStart), `IE` (InitEnd), `SS` (StopStart), `SE` (StopEnd), `Crash` (UnexpectedShutdown)
+* For each task `x`: `RS_x` (RunStart(x)), `REs_x` (RunEnd(x, success)), `REf_x` (RunEnd(x, failure))
+* Also define `RE_x := REs_x ∨ REf_x`
+* Environment/input predicates: `Due_x` (cron due **now** for x), `Registered_x` (x is in the current registration set), `RetryEligible_x` (time since last `REf_x` ≥ RetryDelay(x))
 
-**Time Domain:** **Q** (rational numbers) representing time instants in minutes from an arbitrary epoch.
+### Derived Predicates
 
-**Task:** An abstract identifier from a finite set **TaskId**.
+**Registered_x**: Set to true at `IE` if x is present in that `IE`'s registration set, and remains true until the next `IE`, where it is updated based on the new registration set. This is a **macro definition** from events, not an internal state promise.
 
-**Callback(Task):** An abstract action associated with a task; represents the abstract effect to be performed when a task executes. In this model, it is not executable code, but rather denotes the occurrence of an observable event corresponding to the task's execution.
+**Open_x**: "Run is in flight for task x". Define inductively over the trace: initially `false`; at each step: `Open_x := (Open_x ∧ ¬RE_x) ∨ RS_x`.
 
-**Registration:** A mapping from **Task** to **(Schedule, RetryDelay)** where **RetryDelay ≥ 0**.
+**Active**: Between an `IE` and the next `SS` or `Crash`. Used only as a guard in properties.
 
-**Schedule:** Abstracted as a predicate **Due(task, t)** that is **true** at instants **t ∈ Q** when the task is scheduled to be eligible to start. This predicate is derived from the POSIX cron specification defined in the [Cron Language Specification](#cron-language-specification) section.
-
-**RetryDelay(task):** A non-negative rational delay **∈ Q≥0** in the same units as time points (minutes).
-
-**Result:** **{success, failure}** representing task execution outcomes.
-
-### Observable Event Predicates
-
-The following predicates over **Q** define the complete set of externally observable events:
-
-- **InitStart(t):** Scheduler initialization begins at time **t**
-- **InitEnd(R, t):** Scheduler initialization ends at time **t** with registration set **R**
-- **StopStart(t):** Scheduler stopping begins at time **t**
-- **StopEnd(t):** Scheduler stopping ends at time **t**
-- **RunStart(task, t):** Scheduler begins invoking **Callback(task)** at time **t**
-- **RunEnd(task, result, t):** Task invocation finishes at time **t** with **result ∈ {success, failure}**
-- **UnexpectedShutdown(t):** An unexpected system shutdown occurs at time **t**
+**RetryEligible_x**: True iff the time since the last `REf_x` ≥ RetryDelay(x).
 
 ### LTL Safety Properties
 
-All safety properties **MUST** hold in every valid execution trace:
+All safety properties **MUST** hold in every valid execution trace. Below, `G` = □, `F` = ◊, `U` = until, `X` = next. Quantification "for all tasks x" is intended over each line.
 
-**Property 1 (Well-formed runs):**
+**S1 (Per-task non-overlap):**
 ```
-□(RunEnd(task, r, t) → ∃t'<t: RunStart(task, t') ∧ ¬∃t''∈(t',t): RunEnd(task, _, t''))
+G( RS_x → X( ¬RS_x U RE_x ) )
 ```
-Every **RunEnd(task, r)** must be preceded by a matching **RunStart(task)** with no intervening **RunEnd(task, _)**.
 
-**Property 2 (Per-task non-overlap):**
+**S2 (Ends follow starts):**
 ```
-□(RunStart(task, t₁) ∧ RunStart(task, t₂) ∧ t₁ < t₂ → ∃t'∈(t₁,t₂): RunEnd(task, _, t'))
+G( RE_x → Open_x )
 ```
-No overlapping invocations for the same task are permitted.
 
-**Property 3 (Eligibility):**
+**S3 (Starts eventually settle):**
 ```
-□(RunStart(task, t) → 
-    (∃R,t'≤t: InitEnd(R, t') ∧ task ∈ dom(R) ∧ ¬∃t''∈(t',t]: StopStart(t'')) ∧
-    Due(task, t) ∧
-    (¬∃t_f<t: RunEnd(task, failure, t_f) ∨ 
-     ∃t_f<t: RunEnd(task, failure, t_f) ∧ t ≥ t_f + RetryDelay(task)))
+G( RS_x → F( RE_x ∨ SE ∨ Crash ) )
 ```
-**RunStart(task)** may only occur when: the scheduler has initialized with **task** registered, no stop is in progress, **Due(task, t)** holds, and retry gating conditions are satisfied.
 
-**Property 4 (No make-up executions):**
+**S4 (Eligibility):**
 ```
-□(∃I=[t₁,t₂]: ¬∃t∈I: RunStart(task, t) ∧ InitEnd(R, t₃) ∧ t₃ > t₂ ∧ task ∈ dom(R) →
-    |{t ∈ (t₃, ∞): RunStart(task, t) ∧ ¬∃t'∈(t₃,t): Due(task, t')}| ≤ 1)
+G( RS_x → (Active ∧ Registered_x ∧ Due_x ∧ RetryEligible_x) )
 ```
-After a period of inactivity, at most one **RunStart(task)** occurs before the next future instant with **Due(task, t')**.
 
-**Property 5 (Stop quiescence):**
+**S5 (Quiescence after StopEnd):**
 ```
-□(StopStart(t₁) ∧ ◊StopEnd(t₂) ∧ t₁ < t₂ →
-    ∀t₄ > t₂: (InitEnd(_, t₄) → ∀task, t ∈ (t₂, t₄): ¬RunStart(task, t)))
+G( SE → (¬RS_x U IE) )
 ```
-After **StopStart** eventually followed by **StopEnd**, no **RunStart(task)** occurs until subsequent **InitEnd**.
 
-**Property 6 (Crash consistency):**
+**S6 (Crash consistency: no fabricated completions):**
 ```
-□(UnexpectedShutdown(t_c) → 
-    (□(t > t_c → (RunEnd(task, _, t) → ∃t'≥t_c: RunStart(task, t') ∧ t' < t)) ∧
-     □(t > t_c → (RunStart(task, t) → ∃t'≥t_c: InitEnd(_, t') ∧ t' < t))))
+G( Crash → G( RE_x → (¬RE_x U RS_x) ) )
 ```
-After **UnexpectedShutdown**: no **RunEnd** occurs without a preceding **RunStart** after the crash, and no **RunStart** occurs without explicit re-initialization.
 
-**Property 9 (Stop flush completeness):**
-```
-□(StopStart(t₁) → 
-    (□(RunStart(task, t) ∧ t₁ ≤ t < StopEnd → ◊(RunEnd(task, _, t') ∨ UnexpectedShutdown(t'))) ∧
-     □(StopEnd(t₂) ∧ t₂ > t₁ → ∀t > t₂: (InitEnd(_, t) → ∀task, t' ∈ (t₂, t): ¬RunStart(task, t')))))
-```
-Once **StopStart** occurs, every **RunStart** before **StopEnd** must eventually complete or be preempted by crash; after **StopEnd**, no new **RunStart** occurs until re-initialization.
+**S7 (No make-up bursts):**
+Between any two positions where `Due_x` is true with no `Due_x` in between, there is **at most one** `RS_x` unless a failure occurs (in which case retry may introduce an extra `RS_x` before the next `Due_x`).
 
-**Property 10 (Crash-interrupted callback restart):**
+*Note: This property cannot be directly expressed in standard LTL, as it requires counting the number of `RS_x` events between two `Due_x` events, which is not possible in LTL due to its lack of counting capabilities. Therefore, S7 is stated in natural language. If a formalization is required, a more expressive logic such as Quantified LTL or a temporal logic with counting extensions would be needed.*
+**S8 (Stop flush completeness):**
 ```
-□(∃task: RunStart(task, t₁) ∧ (¬RunEnd(task, _, _) U UnexpectedShutdown(t_c)) ∧ t₁ < t_c →
-    F(InitEnd(_, t_r) ∧ t_r > t_c ∧ F≤Δ RunStart(task, t₃) ∧ t₃ > t_r))
+G( SE → ¬Open_x )
 ```
-If a callback was running at **UnexpectedShutdown**, then after the next **InitEnd**, it restarts within bounded delay **Δ**.
-
-**Property 11 (Retry gating dominates availability):**
-```
-□(∀task: ∀t₁,t₂: RunStart(task, t₁) ∧ RunStart(task, t₂) ∧ t₁ ≠ t₂ →
-    (|t₁ - t₂| > 0 ∨ ¬(Due(task, t₁) ∧ 'pendingRetryUntil' ≤ t₁)))
-```
-At any given time instant, if both cron and retry conditions are satisfied, at most one **RunStart** occurs (no duplicate triggering).
-
-**Property 12 (At-most-once between consecutive due instants if no failure):**
-```
-□(∀task: ∀t₁,t₂: Due(task, t₁) ∧ Due(task, t₂) ∧ t₁ < t₂ ∧ 
-    (¬∃t' ∈ (t₁,t₂): Due(task, t')) ∧ (¬∃t_f ∈ (t₁,t₂): RunEnd(task, failure, t_f)) →
-    |{t ∈ (t₁,t₂): RunStart(task, t)}| ≤ 1)
-```
-Between any two consecutive **Due** instants with no intervening failure, at most one **RunStart** occurs.
-
-**Property 13 (Bounded scheduling lag):**
-```
-□(∀task: Due(task, t) ∧ (∃R,t'≤t: InitEnd(R, t') ∧ task ∈ dom(R)) ∧ 
-    (¬∃t''∈(t',t]: StopStart(t'')) → 
-    (∃t₃: RunStart(task, t₃) ∧ t ≤ t₃ ≤ t + 1) ∨ 
-    (∃t_f<t: RunEnd(task, failure, t_f) ∧ t < t_f + RetryDelay(task)))
-```
-When **Due(task, t)** holds under active initialization, either **RunStart** occurs within 1 minute, or execution is prevented by retry gating.
-
-**Property 14 (No fabricated completions post-crash):**
-```
-□(UnexpectedShutdown(t_c) → 
-    □(t > t_c → (RunEnd(task, result, t) → ∃t' ∈ [t_c, t): RunStart(task, t'))))
-```
-After **UnexpectedShutdown**, every **RunEnd** must be preceded by a **RunStart** that occurred at or after the crash time.
 
 ### LTL Liveness Properties
 
 Under fairness assumptions, the following liveness properties **SHOULD** hold:
 
-**Property 15 (Eventual execution when continuously due):**
+**L1 (Stop terminates):**
 ```
-□(InitEnd(R, t₀) ∧ task ∈ dom(R) ∧ 
-    □◊Due(task, t) ∧ ¬◊StopStart(_) ∧ ¬◊UnexpectedShutdown(_) →
-    □◊RunStart(task, _))
+G( SS → F SE )
 ```
-For registered tasks with infinitely many due instants, if no stop or crash occurs, **RunStart(task)** occurs infinitely often.
 
-**Property 16 (Termination of stop):**
+**L2 (No starts after SE until re-init):**
 ```
-□(StopStart(t) → (◊StopEnd(_) ∧ 
-    □(StopEnd(t') ∧ t' > t → ¬∃task,t'': RunStart(task, t'') ∧ t'' > t' U InitEnd(_, t''))))
+G( SE → (¬RS_x U IE) )
 ```
-After **StopStart**, **StopEnd** eventually occurs, and no **RunStart** occurs thereafter until re-initialization.
 
-**Property 17 (Recovery after crash):**
+**L3 (Eventual execution under continuous due):**
 ```
-□(UnexpectedShutdown(t_c) ∧ ◊InitEnd(R, t_r) ∧ t_r > t_c ∧ task ∈ dom(R) ∧ 
-    □◊Due(task, t) → □◊RunStart(task, _))
+G( Active ∧ Registered_x ∧ G F Due_x → G F RS_x )
 ```
-After **UnexpectedShutdown** followed by re-initialization, if **Due(task, t)** holds infinitely often, then **RunStart(task)** occurs infinitely often.
 
-### Bounded Lag Axiom
-
-**Fairness Assumption:** There exists **Δ ∈ Q≥0** such that whenever **Due(task, t)** holds under active initialization (after **InitEnd** and before **StopStart** or **UnexpectedShutdown**), some **RunStart(task, t')** occurs with **t ≤ t' ≤ t + Δ**, unless prevented by **RetryDelay** gating.
-
-### API Trace Constraints
-
-**Idempotent initialize:** Two consecutive **InitEnd(R, t₁)** and **InitEnd(R, t₂)** with identical **R** **SHOULD NOT** change future obligations beyond those already permitted by the properties above.
-
-**Re-initialize semantics:** A later **InitStart/InitEnd(R₂, t₂)** supersedes the prior registration set for all subsequent scheduling obligations.
+**L4 (Crash-interrupted callbacks are restarted after next init):**
+```
+G( ( RS_x ∧ (¬RE_x U Crash) ) → F( IE ∧ F RS_x ) )
+```
 
 ### Due Predicate Definition
 
-The **Due(task, t)** predicate is derived from the POSIX cron expression associated with **task** in the registration set, as specified in the [Cron Language Specification](#cron-language-specification) section. **Due(task, t)** evaluates to **true** if and only if time **t** corresponds to a minute boundary where the cron expression matches the calendar time representation of **t**.
+The **Due_x** predicate is an **input predicate** from the cron layer that is true at certain instants when task x's cron expression matches the current time. **Due_x** evaluates to **true** if and only if the current time corresponds to a minute boundary where the cron expression matches the calendar time representation.
 
 ### Example Acceptable Traces
 
-The following traces illustrate valid scheduler behavior (informative, not normative):
+The following traces illustrate valid scheduler behavior (informative, not normative). Note that `Due_x` appears as an annotation that the predicate holds at that instant, not as an emitted event.
 
 **Trace 1 (Normal operation):**
 ```
-InitStart(0.0)
-InitEnd({task1 → ("0 * * * *", 5.0)}, 0.1)  
-Due(task1, 60.0)  // Next hour boundary
-RunStart(task1, 60.0)
-RunEnd(task1, success, 60.2)
-Due(task1, 120.0)  // Next hour boundary  
-RunStart(task1, 120.0)
-RunEnd(task1, failure, 120.1)
-Due(task1, 180.0)  // Next hour boundary
-// RunStart delayed due to retry gating until 120.1 + 5.0 = 125.1; next scheduled run is at 180.0, which is after the delay expires
-RunStart(task1, 180.0)  // Retry delay satisfied and next scheduled time reached
+IS
+IE (with task1 registered)
+[Due_x true] RS_x 
+REs_x
+[Due_x true] RS_x
+REf_x  
+[Due_x true] RS_x  // RetryEligible satisfied by this time
+REs_x
 ```
 
 **Trace 2 (Stop and restart):**
 ```
-InitStart(0.0)
-InitEnd({task1 → ("0 * * * *", 5.0)}, 0.1)
-StopStart(30.0)
-StopEnd(30.5)
-// No RunStart events occur until re-initialization
-InitStart(90.0)
-InitEnd({task1 → ("0 * * * *", 5.0)}, 90.1)
-Due(task1, 120.0)
-RunStart(task1, 120.0)
+IS
+IE (with task1 registered)
+SS
+SE
+// No RS_x events occur until re-initialization
+IS
+IE (with task1 registered)
+[Due_x true] RS_x
+REs_x
 ```
 
 ---
