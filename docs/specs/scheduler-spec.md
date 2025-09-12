@@ -521,7 +521,7 @@ The scheduler **MUST**:
 ### Reentrancy Protection
 
 The scheduler **MUST**:
-- Prevent multiple concurrent calls to `initialize()` on the same instance
+- Allow multiple concurrent calls to `initialize()`
 - Allow `stop()` to be called during `initialize()`
 - Ensure `stop()` waits for any in-progress `initialize()` to complete
 
