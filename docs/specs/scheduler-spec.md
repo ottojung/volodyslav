@@ -651,11 +651,57 @@ After **StopStart** eventually followed by **StopEnd**, no **RunStart(task)** oc
 ```
 After **UnexpectedShutdown**: no **RunEnd** occurs without a preceding **RunStart** after the crash, and no **RunStart** occurs without explicit re-initialization.
 
+**Property 9 (Stop flush completeness):**
+```
+□(StopStart(t₁) → 
+    (□(RunStart(task, t) ∧ t₁ ≤ t < StopEnd → ◊(RunEnd(task, _, t') ∨ UnexpectedShutdown(t'))) ∧
+     □(StopEnd(t₂) ∧ t₂ > t₁ → ∀t > t₂: (InitEnd(_, t) → ∀task, t' ∈ (t₂, t): ¬RunStart(task, t')))))
+```
+Once **StopStart** occurs, every **RunStart** before **StopEnd** must eventually complete or be preempted by crash; after **StopEnd**, no new **RunStart** occurs until re-initialization.
+
+**Property 10 (Crash-interrupted callback restart):**
+```
+□(∃task: RunStart(task, t₁) ∧ (¬RunEnd(task, _, _) U UnexpectedShutdown(t_c)) ∧ t₁ < t_c →
+    F(InitEnd(_, t_r) ∧ t_r > t_c ∧ F≤Δ RunStart(task, t₃) ∧ t₃ > t_r))
+```
+If a callback was running at **UnexpectedShutdown**, then after the next **InitEnd**, it restarts within bounded delay **Δ**.
+
+**Property 11 (Retry gating dominates availability):**
+```
+□(∀task: ∀t₁,t₂: RunStart(task, t₁) ∧ RunStart(task, t₂) ∧ t₁ ≠ t₂ →
+    (|t₁ - t₂| > 0 ∨ ¬(Due(task, t₁) ∧ 'pendingRetryUntil' ≤ t₁)))
+```
+At any given time instant, if both cron and retry conditions are satisfied, at most one **RunStart** occurs (no duplicate triggering).
+
+**Property 12 (At-most-once between consecutive due instants if no failure):**
+```
+□(∀task: ∀t₁,t₂: Due(task, t₁) ∧ Due(task, t₂) ∧ t₁ < t₂ ∧ 
+    (¬∃t' ∈ (t₁,t₂): Due(task, t')) ∧ (¬∃t_f ∈ (t₁,t₂): RunEnd(task, failure, t_f)) →
+    |{t ∈ (t₁,t₂): RunStart(task, t)}| ≤ 1)
+```
+Between any two consecutive **Due** instants with no intervening failure, at most one **RunStart** occurs.
+
+**Property 13 (Bounded scheduling lag):**
+```
+□(∀task: Due(task, t) ∧ (∃R,t'≤t: InitEnd(R, t') ∧ task ∈ dom(R)) ∧ 
+    (¬∃t''∈(t',t]: StopStart(t'')) → 
+    (∃t₃: RunStart(task, t₃) ∧ t ≤ t₃ ≤ t + 1) ∨ 
+    (∃t_f<t: RunEnd(task, failure, t_f) ∧ t < t_f + RetryDelay(task)))
+```
+When **Due(task, t)** holds under active initialization, either **RunStart** occurs within 1 minute, or execution is prevented by retry gating.
+
+**Property 14 (No fabricated completions post-crash):**
+```
+□(UnexpectedShutdown(t_c) → 
+    □(t > t_c → (RunEnd(task, result, t) → ∃t' ∈ [t_c, t): RunStart(task, t'))))
+```
+After **UnexpectedShutdown**, every **RunEnd** must be preceded by a **RunStart** that occurred at or after the crash time.
+
 ### LTL Liveness Properties
 
 Under fairness assumptions, the following liveness properties **SHOULD** hold:
 
-**Property 7 (Eventual execution when continuously due):**
+**Property 15 (Eventual execution when continuously due):**
 ```
 □(InitEnd(R, t₀) ∧ task ∈ dom(R) ∧ 
     □◊Due(task, t) ∧ ¬◊StopStart(_) ∧ ¬◊UnexpectedShutdown(_) →
@@ -663,14 +709,14 @@ Under fairness assumptions, the following liveness properties **SHOULD** hold:
 ```
 For registered tasks with infinitely many due instants, if no stop or crash occurs, **RunStart(task)** occurs infinitely often.
 
-**Property 8 (Termination of stop):**
+**Property 16 (Termination of stop):**
 ```
 □(StopStart(t) → (◊StopEnd(_) ∧ 
     □(StopEnd(t') ∧ t' > t → ¬∃task,t'': RunStart(task, t'') ∧ t'' > t' U InitEnd(_, t''))))
 ```
 After **StopStart**, **StopEnd** eventually occurs, and no **RunStart** occurs thereafter until re-initialization.
 
-**Property 9 (Recovery after crash):**
+**Property 17 (Recovery after crash):**
 ```
 □(UnexpectedShutdown(t_c) ∧ ◊InitEnd(R, t_r) ∧ t_r > t_c ∧ task ∈ dom(R) ∧ 
     □◊Due(task, t) → □◊RunStart(task, _))
@@ -722,6 +768,48 @@ InitEnd({task1 → ("0 * * * *", 5.0)}, 90.1)
 Due(task1, 120.0)
 RunStart(task1, 120.0)
 ```
+
+---
+
+## Property Catalogue & Implementation Mapping
+
+This section documents the relationship between the formal LTL properties and their implementation in the scheduler code, providing justification for each property's preservation.
+
+### Safety Properties Implementation Mapping
+
+**Property 9 (Stop flush completeness)** - `backend/src/scheduler/polling/function.js`:
+- **stop()** function (lines 73-80): `await loopThread; await join();`
+- **join()** function (lines 62-64): `await Promise.all([...runningPool]);`
+- **Justification**: The stop sequence explicitly waits for both the polling loop termination and all running tasks to complete before returning.
+
+**Property 10 (Crash-interrupted callback restart)** - `backend/src/scheduler/persistence/core.js`:
+- **decideTaskAction()** function (lines 260-266): Detects orphaned tasks via `schedulerIdentifier` mismatch
+- **createTaskFromDecision()** function (lines 306-316): Sets `pendingRetryUntil: lastMinute` for orphaned tasks
+- **Justification**: Orphaned tasks (running during crash) get immediate retry eligibility, causing prompt restart after initialization.
+
+**Property 11 (Retry gating dominates availability)** - `backend/src/scheduler/execution/collector.js`:
+- **evaluateTasksForExecution()** function (lines 69-87): `if (shouldRunRetry) {...} else if (shouldRunCron) {...}`
+- **Justification**: The if/else-if logic ensures exactly one execution mode is selected when both retry and cron conditions are satisfied.
+
+**Property 12 (At-most-once between consecutive due instants if no failure)** - `backend/src/scheduler/execution/collector.js`:
+- **Line 65**: `task.state.lastAttemptTime.isBefore(lastScheduledFire)` comparison
+- **getMostRecentExecution()** usage (line 64): Uses most-recent-due comparison logic
+- **Justification**: Tasks execute only when current due instant is more recent than last attempt, preventing duplicates between consecutive due instants.
+
+**Property 13 (Bounded scheduling lag)** - `backend/src/scheduler/polling/function.js`:
+- **POLL_INTERVAL** constant (line 24): `fromMinutes(1)` - exactly 1 minute
+- **loop()** function (lines 82-90): Regular polling at fixed 1-minute intervals
+- **Justification**: Fixed 1-minute polling interval provides deterministic upper bound on scheduling lag.
+
+**Property 14 (No fabricated completions post-crash)** - Architecture-wide property:
+- **No code path exists** that generates **RunEnd** events without corresponding **RunStart**
+- **Task execution flow**: `executor.js` only calls **RunEnd** after successful **RunStart** completion
+- **Justification**: The execution pipeline architecture prevents fabricated completions by design.
+
+### Constants Documentation
+
+- **Δ = 1 minute**: Bounded scheduling lag constant derived from `POLL_INTERVAL`
+- **Λ = 1 minute**: Crash restart bound - orphaned tasks get immediate retry eligibility, executed within next poll cycle
 
 ---
 
