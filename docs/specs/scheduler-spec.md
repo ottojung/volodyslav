@@ -565,9 +565,10 @@ The following behaviors **MAY** vary between equivalent runs:
 
 ---
 
-## Formal Model (Temporal Logic, Observable Only)
+## Formal Model in Temporal Logic
 
-This section gives a **Linear Temporal Logic (LTL)** model that specifies **only the externally observable behaviour** of the declarative polling scheduler using **propositional** atomic formulas over an **event‑driven trace**.
+This section gives a **Linear Temporal Logic (LTL)** model that specifies **the externally observable behaviour** of the declarative polling scheduler using **propositional** atomic formulas over an **event‑driven trace**.
+It does not include error handling part of the specification.
 
 ### Modelling Framework
 
