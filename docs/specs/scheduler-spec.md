@@ -572,7 +572,7 @@ This section gives a **Linear Temporal Logic (LTL)** model that specifies **only
 ### Modelling Framework
 
 * **Trace semantics:** Each trace position corresponds to an instant where ≥1 observable event occurs. Concurrency is linearised by total order (events that are “simultaneous” are ordered arbitrarily but consistently). Time bounds are background semantics only (not encoded in LTL).
-* **Logic:** Standard future‑time LTL over the event propositions below. We use `G` (□), `F` (◊), `X` (next), and `U` (until). Quantification “for all tasks x” is intended where noted.
+* **Logic:** Standard future‑time LTL over the event propositions below. We use `G` (□), `F` (◊), `X` (next), `U` (until), `W` (weak until). Quantification “for all tasks x” is intended where noted.
 
 ### Atomic Propositions (per trace position)
 
@@ -628,11 +628,11 @@ Every started run eventually completes or is pre‑empted by stop completion or 
 A start can occur only while active, registered, due, and not blocked by retry.
 
 **S5 — Quiescence after StopEnd**
-`G( SE → (¬RS_x U IE) )`
+`G( SE → (¬RS_x W IE) )`
 After `SE`, no new starts until re‑initialisation.
 
 **S6a — Crash quiescence**
-`G( Crash → (¬RS_x U IE) )`
+`G( Crash → (¬RS_x W IE) )`
 After a crash, no new starts until re‑initialisation.
 
 **S6b — Crash consistency (no fabricated completions)**
