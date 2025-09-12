@@ -578,38 +578,88 @@ This model focuses on externally observable behaviour and does not include the e
 * **Trace semantics:** Each trace position corresponds to an instant where ≥1 observable event occurs. Concurrency is linearised by total order (events that are “simultaneous” are ordered arbitrarily but consistently). Time bounds are background semantics only (not encoded in LTL).
 * **Logic:** A combination of first‑order quantification (over the universe of tasks) and future‑time LTL. Concretely, predicates below are considered parameterised by a task variable; when instantiated they yield propositional atomic formulas which LTL then operates on. We use `G` (□), `F` (◊), `X` (next), `U` (until), `W` (weak until). Unadorned formulas are intended to be read under the default universal quantifier "for all tasks x" where applicable.
 
-### Atomic Propositions (per trace position)
+### Definitions
 
-* Global control: `IS` (InitStart), `IE` (InitEnd), `SS` (StopStart), `SE` (StopEnd), `Crash` (UnexpectedShutdown).
-* For each task `x`:
+**Sorts**
 
-  * `RS_x` — RunStart(x)
-  * `REs_x` — RunEnd(x, success)
-  * `REf_x` — RunEnd(x, failure)
-  * Abbrev: `RE_x := REs_x ∨ REf_x`
-* Environment/input predicates:
+* **Time:** a dense, totally ordered domain $\langle Q,<\rangle$ of rational numbers (minutes as rationals).
+* **Index:** natural numbers $\mathbb{N}$, denoting positions in an event trace.
+* **Task:** a non-empty, finite set **TaskId** of task identifiers.
+* **Result:** the set $\{\textsf{success},\textsf{failure}\}$.
 
-  * `Due_x` — cron schedule is due **now** for `x` (minute boundary in host‑clock semantics from the cron spec)
-  * `Registered_x` — `x` is present in the **current** registration set (derived from the most recent `IE`)
-  * `RetryEligible_x` — sufficient time has elapsed since the last `REf_x` for `x` to satisfy its `RetryDelay(x)`
+**Functions and Constants**
 
-> `Due_x` and `RetryEligible_x` are observational inputs derived from the cron layer and wall clock; they are not emitted events.
+* $\tau : \mathbb{N} \to Q$ — strictly increasing timestamp function (for all $i<j$, $\tau(i) < \tau(j)$).
+* $\mathsf{RetryDelay} : \textsf{TaskId} \to Q_{\ge 0}$ — per-task non-negative retry delay (minutes, as rationals).
+* $\mathsf{due} : \textsf{TaskId} \times Q \to \{\top,\bot\}$ — cron “due now” predicate at a real-time instant (input from cron layer).
+* $\mathsf{RegSetAt} : \mathbb{N} \to \mathcal{P}(\textsf{TaskId})$ — registration set in force at each trace position (piecewise-constant; only changes at `InitEnd`).
 
-### Derived Predicates (macros)
+**Primitive Event Predicates (over Index)**
 
-**Registered\_x**
-Set at `IE` to reflect membership of `x` in that `IE`’s registration set; holds until the next `IE` updates it. (Unaffected by `SS/SE/Crash`.)
+All primitive events are predicates over trace positions; task-parameterised events additionally take a task.
 
-**Active**
-True iff there has been an `IE` and no `SS` nor `Crash` since that `IE`. (Intuitively: between `IE` and the next `SS` or `Crash`.)
+* $\mathsf{IS}(i)$ — `InitStart` at position $i$.
+* $\mathsf{IE}(i)$ — `InitEnd` at position $i$. The effective registration set is $\mathsf{RegSetAt}(i)$.
+* $\mathsf{SS}(i)$ — `StopStart` at position $i$.
+* $\mathsf{SE}(i)$ — `StopEnd` at position $i$.
+* $\mathsf{Crash}(i)$ — `UnexpectedShutdown` at position $i$.
+* $\mathsf{RS}(i,x)$ — `RunStart(x)` at position $i$.
+* $\mathsf{RE}(i,x,r)$ — `RunEnd(x, r)` at position $i$ with $r \in \{\textsf{success},\textsf{failure}\}$.
 
-**OpenPre\_x**
-“An invocation of `x` is in flight **strictly before** the current position.” Defined inductively from events **up to the previous position**:
+**Input Predicates (lifted to Index)**
 
-* Base (at the first position): `OpenPre_x := false`.
-* Step: on advancing one position, `OpenPre_x := (OpenPre_x ∧ ¬RE_x) ∨ RS_x` evaluated using the **previous** step’s values.
+* $\mathsf{Due}(i,x) \defeq \mathsf{due}(x,\tau(i))$.
+* $\mathsf{Registered}(i,x) \defeq x \in \mathsf{RegSetAt}(i)$.
+* $\mathsf{RetryEligible}(i,x)$ holds iff either no failure of $x$ appears before $i$, **or** letting $j<i$ be the last position with $\mathsf{RE}(j,x,\textsf{failure})$, we have $\tau(i)-\tau(j) \ge \mathsf{RetryDelay}(x)$.
 
-> `OpenPre_x` lets us state properties that refer to runs that started earlier and have not yet ended *before* the current events are observed, without introducing past operators.
+**Evolution Constraints (linking events to functions)**
+
+* **Registration set update:** $\mathsf{RegSetAt}(0)=\varnothing$ and, for all $i>0$:
+  – if $\mathsf{IE}(i)$ then $\mathsf{RegSetAt}(i)$ equals the registration set passed at that `InitEnd`;
+  – else $\mathsf{RegSetAt}(i) = \mathsf{RegSetAt}(i-1)$.
+* **Timestamp monotonicity:** already captured by $\tau$ being strictly increasing.
+
+> **Notation used in LTL below.** We write propositional atoms `IS`, `IE`, `SS`, `SE`, `Crash`, `RS_x`, `REs_x`, `REf_x`, `Due_x`, `Registered_x`, `RetryEligible_x`. Formally, these denote the corresponding predicates evaluated at the **current** trace position (and the task $x$, where applicable).
+
+---
+
+#### Interpretation of Symbols (Informative)
+
+* **InitStart (`IS`)** — the instant when the JavaScript runtime **enters** the public function `initialize(registrations)` (call made).
+* **InitEnd (`IE`)** — the instant when `initialize` **returns** to its caller. The set $\mathsf{RegSetAt}(i)$ is the registration mapping installed by that call.
+* **StopStart (`SS`)** — the instant when the runtime **enters** `stop()` (stop requested).
+* **StopEnd (`SE`)** — the instant when `stop()` **returns** to its caller (after graceful quiescence or preemption by crash).
+* **UnexpectedShutdown (`Crash`)** — an externally observable, in-flight process termination (e.g., host crash, kill -9, power loss). No events occur between `Crash` and the next `InitStart/InitEnd`.
+* **RunStart (`RS(x)`)** — the instant the scheduler invokes the registered `Callback(x)` (call entry for that invocation).
+* **RunEnd (`RE(x,success)` / `RE(x,failure)`)** — the instant the `Callback(x)` invocation **returns** normally (resolved promise) or **throws/rejects** (failed promise).
+* **RetryDelay(x)** — configured fixed backoff for task $x$ (minutes as rationals).
+* **due(x,t)** / **Due\_x** — `true` exactly at minute boundaries $t$ where $x$’s POSIX cron expression matches the host calendar (from the cron subsystem; not produced by the scheduler).
+* **τ(i)** — wall-clock timestamp of trace position $i$; used for real-time bounds (e.g., scheduling lag) and retry-eligibility comparisons.
+
+---
+
+### Derived (Macro) Predicates (Formal)
+
+Per position $i$ (the *current* LTL state), for any task $x$:
+
+* `REs_x` $\defeq \exists r.\, r=\textsf{success} \wedge \mathsf{RE}(i,x,r)$.
+* `REf_x` $\defeq \exists r.\, r=\textsf{failure} \wedge \mathsf{RE}(i,x,r)$.
+* `RE_x` $\defeq$ `REs_x ∨ REf_x`.
+* `Due_x` $\defeq \mathsf{Due}(i,x)$.
+* `Registered_x` $\defeq \mathsf{Registered}(i,x)$.
+* `RetryEligible_x` $\defeq \mathsf{RetryEligible}(i,x)$.
+
+**OpenPre\_x** (“an invocation of $x$ is in flight strictly *before* now”):
+
+$$
+\mathsf{OpenPre\_x}(i) \;\defeq\; \exists j<i.\, \mathsf{RS}(j,x)\ \wedge\ \forall k\,\big(j<k<i \Rightarrow \neg \exists r.\, \mathsf{RE}(k,x,r)\big).
+$$
+
+**Active** (“initialised and not stopped or crashed yet”):
+
+$$
+\mathsf{Active}(i) \;\defeq\; \exists j\le i.\, \mathsf{IE}(j)\ \wedge\ \neg\exists k.\, \big(j<k\le i \wedge (\mathsf{SS}(k)\vee\mathsf{Crash}(k))\big).
+$$
 
 ### LTL Safety Properties
 
