@@ -627,9 +627,13 @@ Every started run eventually completes or is pre‑empted by stop completion or 
 `G( RS_x → (Active ∧ Registered_x ∧ Due_x ∧ RetryEligible_x) )`
 A start can occur only while active, registered, due, and not blocked by retry.
 
-**S5 — Quiescence after StopEnd**
+**S5a — Quiescence after StopEnd**
 `G( SE → (¬RS_x W IE) )`
 After `SE`, no new starts until re‑initialisation.
+
+**S5b — StopEnd consistency**
+`G( SE → (¬RE_x W IE) )`
+After `SE`, no new ends until re‑initialisation.
 
 **S6a — Crash quiescence**
 `G( Crash → (¬RS_x W IE) )`
