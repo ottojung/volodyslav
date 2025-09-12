@@ -670,7 +670,7 @@ For all tasks `x`:
 
 ### Fairness assumptions
 
-This subsection records assumptions that cannot possibly be verified by the scheduler implementation.
+This subsection records assumptions that cannot possibly be verified by a scheduler implementation.
 
 **A1 — Starts eventually settle**
 `G( RS_x → F( RE_x ∨ Crash ) )`
