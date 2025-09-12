@@ -2,23 +2,6 @@
 
 This document provides a formal, normative specification for the backend declarative polling scheduler's public interface and externally observable operational semantics.
 
-## Table of Contents
-
-1. [Introduction & Normative Language](#introduction--normative-language)
-2. [Public API Surface](#public-api-surface)
-3. [Operational Model & Time Semantics](#operational-model--time-semantics)
-4. [Task Lifecycle](#task-lifecycle)
-5. [Polling Lifecycle](#polling-lifecycle)
-6. [Cron Language Specification](#cron-language-specification)
-7. [Error Model](#error-model)
-8. [Logging & Event Contract](#logging--event-contract)
-9. [Persistence Semantics & Overrides](#persistence-semantics--overrides)
-10. [Concurrency & Reentrancy](#concurrency--reentrancy)
-11. [Determinism & Idempotency](#determinism--idempotency)
-12. [Security & Performance Considerations](#security--performance-considerations)
-13. [Conformance Appendix](#conformance-appendix)
-14. [References & Glossary](#references--glossary)
-
 ---
 
 ## Introduction & Normative Language
