@@ -467,122 +467,6 @@ The scheduler **MUST**:
 - Use consistent error names and message formats across versions
 - Include sufficient detail in error messages for debugging without exposing security-sensitive information
 
----
-
-## Logging & Event Contract
-
-### Stable Log Events
-
-External systems **MAY** rely on the following log events and their required fields:
-
-#### Scheduler Lifecycle Events
-
-**SchedulerInitializationStarted**
-- **Level:** DEBUG
-- **Required Fields:** `totalRegistrations: number`
-
-**SchedulerInitializationCompleted**
-- **Level:** DEBUG
-- **Required Fields:** `totalRegistrations: number`, `scheduledCount: number`, `skippedCount: number`
-
-**SchedulerReinitializationStarted**
-- **Level:** DEBUG
-- **Required Fields:** None
-
-**SchedulerStopRequested**
-- **Level:** INFO
-- **Required Fields:** None
-
-**SchedulerStopped**
-- **Level:** INFO
-- **Required Fields:** None
-
-#### Task Execution Events
-
-**TaskRunStarted**
-- **Level:** INFO
-- **Required Fields:** `taskName: string`, `scheduledTime: string`, `actualTime: string`
-- **Optional Fields:** `isRetry: boolean`
-
-**TaskRunCompleted**
-- **Level:** INFO
-- **Required Fields:** `taskName: string`, `duration: number`, `success: true`
-
-**TaskRunFailed**
-- **Level:** WARNING
-- **Required Fields:** `taskName: string`, `duration: number`, `success: false`, `error: string`
-- **Optional Fields:** `nextRetryAt: string`
-
-**TaskRetryStarted**
-- **Level:** INFO
-- **Required Fields:** `taskName: string`, `retryCount: number`
-
-**TaskRetryPreempted**
-- **Level:** INFO
-- **Required Fields:** `taskName: string`, `reason: string`
-
-#### Polling Events
-
-**PollStarted**
-- **Level:** DEBUG
-- **Required Fields:** `pollTime: string`, `scheduledTaskCount: number`
-
-**PollCompleted**
-- **Level:** DEBUG
-- **Required Fields:** `pollTime: string`, `tasksEvaluated: number`, `tasksExecuted: number`, `duration: number`
-
-**PollingStarted**
-- **Level:** DEBUG
-- **Required Fields:** None
-
-**PollingStopped**
-- **Level:** DEBUG
-- **Required Fields:** None
-
-**PollingStopRequested**
-- **Level:** DEBUG
-- **Required Fields:** None
-
-#### State Management Events
-
-**TaskAdded**
-- **Level:** INFO
-- **Required Fields:** `taskName: string`, `cronExpression: string`, `retryDelayMs: number`
-
-**TaskPreserved**
-- **Level:** DEBUG
-- **Required Fields:** `taskName: string`
-
-**TaskOverridden**
-- **Level:** INFO
-- **Required Fields:** `taskName: string`, `changeType: string`, `oldState: object`, `newState: object`
-
-**TaskOrphaned**
-- **Level:** WARNING
-- **Required Fields:** `taskName: string`, `lastExecutionTime: string`, `schedulerIdentifier: string`
-
-#### Task Scheduling Events
-
-**TaskScheduled**
-- **Level:** DEBUG
-- **Required Fields:** `taskName: string`, `cronExpression: string`, `retryDelayMs: number`
-
-**TaskSkipped**
-- **Level:** DEBUG
-- **Required Fields:** `taskName: string`, `reason: string`
-
-### Logging Guarantees
-
-The scheduler **MUST**:
-- Use consistent log event names across versions
-- Include all required fields in their specified formats
-- Use appropriate log levels (INFO for normal operations, WARNING for noteworthy conditions, DEBUG for detailed tracing)
-- Generate events in causal order within each task's execution
-- Use structured logging with machine-readable field names
-- Include timestamps in ISO 8601 format for all time-related fields
-
----
-
 ## Persistence Semantics & Overrides
 
 ### Override Resolution
@@ -593,19 +477,15 @@ When `initialize()` is called, the scheduler **MUST** compare provided registrat
 
 **New Task:** Exists in registrations but not in persisted state
 - **Action:** Create new task state, apply first startup semantics
-- **Logging:** `TaskAdded` event
 
 **Preserved Task:** Exists in both with identical configuration
 - **Action:** Load existing state, continue normal scheduling
-- **Logging:** `TaskPreserved` event
 
 **Overridden Task:** Exists in both but with different configuration
 - **Action:** Update persisted state with new configuration, reset execution timestamps
-- **Logging:** `TaskOverridden` event with change details
 
 **Orphaned Task:** Exists in persisted state but not in registrations
 - **Action:** Remove from persistence, cancel any scheduled execution
-- **Logging:** `TaskOrphaned` event
 
 ### Configuration Comparison
 
