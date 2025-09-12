@@ -738,7 +738,7 @@ These are operational timing requirements for implementations and operators.
 They are engineering targets.
 
 **R1 — Scheduling latency target.**
-When the scheduler is running and a task is due according to the cron layer (i.e., the system clock reaches the minute boundary specified by the task's cron expression), the implementation MUST start the task's callback within approximately **1 minute** of that minute boundary under normal operating conditions.
+When the scheduler is running and a task is due according to the cron layer (i.e., the system clock reaches the minute boundary specified by the task's cron expression), the implementation MUST start the task's callback within approximately **1 minute** of that minute boundary, assuming no deliberate stop is in progress.
 
 **R2 — Post‑restart recovery target.**
 If the scheduler process restarts while a task callback was in flight, then after restart and once the task is present in the active registrations and eligible to run, the implementation MUST start the task's callback within approximately **1 minute** of the next eligible minute boundary, assuming no deliberate stop is in progress.
