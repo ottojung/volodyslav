@@ -578,38 +578,71 @@ This model focuses on externally observable behaviour and does not include the e
 * **Trace semantics:** Each trace position corresponds to an instant where ≥1 observable event occurs. Concurrency is linearised by total order (events that are “simultaneous” are ordered arbitrarily but consistently). Time bounds are background semantics only (not encoded in LTL).
 * **Logic:** A combination of first‑order quantification (over the universe of tasks) and future‑time LTL. Concretely, predicates below are considered parameterised by a task variable; when instantiated they yield propositional atomic formulas which LTL then operates on. We use `G` (□), `F` (◊), `X` (next), `U` (until), `W` (weak until). Unadorned formulas are intended to be read under the default universal quantifier "for all tasks x" where applicable.
 
-### Atomic Propositions (per trace position)
+### Definitions
 
-* Global control: `IS` (InitStart), `IE` (InitEnd), `SS` (StopStart), `SE` (StopEnd), `Crash` (UnexpectedShutdown).
-* For each task `x`:
+This subsection gives a signature-based, self-contained definition of the model, followed by interpretations of each symbol.
 
-  * `RS_x` — RunStart(x)
-  * `REs_x` — RunEnd(x, success)
-  * `REf_x` — RunEnd(x, failure)
-  * Abbrev: `RE_x := REs_x ∨ REf_x`
-* Environment/input predicates:
+#### Time and Traces
 
-  * `Due_x` — cron schedule is due **now** for `x` (minute boundary in host‑clock semantics from the cron spec)
-  * `Registered_x` — `x` is present in the **current** registration set (derived from the most recent `IE`)
-  * `RetryEligible_x` — sufficient time has elapsed since the last `REf_x` for `x` to satisfy its `RetryDelay(x)`
+* **Time domain:** `Q` (rational numbers), used to timestamp observable instants.
+* **Trace:** a sequence of positions `i = 0, 1, 2, …` with a timestamp function `tau(i) ∈ Q` that is strictly increasing.
+* At each position `i`, one or more observable events may hold. Concurrency is linearized by the total order of positions; events that are simultaneous in reality appear at distinct (possibly very close) rationals.
 
-> `Due_x` and `RetryEligible_x` are observational inputs derived from the cron layer and wall clock; they are not emitted events.
+#### Domains
 
-### Derived Predicates (macros)
+* `TaskId` — a finite, non-empty set of task identifiers.
+* `Result = { success, failure }`.
+* `RegistrationSet` — a finite mapping `R : TaskId → (Schedule, RetryDelay)`.
+* `Schedule` — an abstract predicate `Due(task: TaskId, t: Q) → Bool` (from the cron spec) indicating minute-boundary instants when a task is eligible to start.
+* `RetryDelay : TaskId → Q` with `RetryDelay(x) ≥ 0`.
 
-**Registered\_x**
-Set at `IE` to reflect membership of `x` in that `IE`’s registration set; holds until the next `IE` updates it. (Unaffected by `SS/SE/Crash`.)
+**Interpretation:**
+`TaskId` names externally visible tasks. A `RegistrationSet` is the public input provided at initialization. `Due` and `RetryDelay` are parameters determined by the registration set and the environment (host clock); they are not hidden internal state. Time units for `Due` and `RetryDelay` coincide (minutes modeled as rationals).
 
-**Active**
-True iff there has been an `IE` and no `SS` nor `Crash` since that `IE`. (Intuitively: between `IE` and the next `SS` or `Crash`.)
+#### Event Predicates (Observable Alphabet)
 
-**OpenPre\_x**
-“An invocation of `x` is in flight **strictly before** the current position.” Defined inductively from events **up to the previous position**:
+Each event predicate is evaluated at a trace position `i` (we omit `i` when clear from context):
 
-* Base (at the first position): `OpenPre_x := false`.
-* Step: on advancing one position, `OpenPre_x := (OpenPre_x ∧ ¬RE_x) ∨ RS_x` evaluated using the **previous** step’s values.
+* `InitStart` — the JavaScript interpreter calls `initialize(...)`.
+* `InitEnd(R)` — the `initialize(...)` call returns; the effective registration set is `R`.
+* `StopStart` — the JavaScript interpreter calls `stop()`.
+* `StopEnd` — the `stop()` call returns.
+* `UnexpectedShutdown` — an unexpected, in-flight system shutdown occurs (e.g., process or host crash). This may interrupt running callbacks and preempts further starts until a subsequent `InitEnd`.
+* `RunStart(x)` — the scheduler begins invoking the public callback for task `x`.
+* `RunEnd(x, r)` — that invocation completes with result `r ∈ Result`.
 
-> `OpenPre_x` lets us state properties that refer to runs that started earlier and have not yet ended *before* the current events are observed, without introducing past operators.
+**Interpretation:**
+Each predicate marks the instant the named public action occurs from the perspective of the embedding JavaScript runtime: function entry (`InitStart`, `StopStart`), function return (`InitEnd`, `StopEnd`), callback invocation begin/end (`RunStart`, `RunEnd`), and exogenous crash (`UnexpectedShutdown`). No logging or internal bookkeeping is modeled.
+
+#### Input Predicates (Derived from Time and Registrations)
+
+These are functions of the trace and registration parameters; they introduce no new observables.
+
+* `Registered_x` — true at position `i` iff there exists `j ≤ i` with `InitEnd(R)` at `j` and `x ∈ dom(R)`, and there is no `k` with `j < k ≤ i` such that `InitEnd(R')` holds and `x ∉ dom(R')`.
+  *Interpretation:* membership of `x` in the most recent observed registration set.
+
+* `Due_x` — shorthand for `Due(x, tau(i))`.
+  *Interpretation:* the cron schedule for `x` matches the current minute boundary at time `tau(i)`.
+
+* `RetryEligible_x` — true at position `i` iff either (a) there has been no prior `RunEnd(x, failure)`, or (b) letting `j` be the latest position `< i` with `RunEnd(x, failure)` and `t_f = tau(j)`, we have `tau(i) ≥ t_f + RetryDelay(x)`.
+  *Interpretation:* enough time has elapsed since the last failure of `x` to permit a retry.
+
+#### Derived Macros (State from Events)
+
+These macros are computed from the observable trace; they do not add observables.
+
+* `Active` — true at position `i` iff there exists `j ≤ i` with `InitEnd(_)` at `j` and there is no `k` with `j < k ≤ i` where `StopStart` or `UnexpectedShutdown` holds.
+  *Interpretation:* between an `InitEnd` and the next `StopStart` or `UnexpectedShutdown`.
+
+* `RE_x` — abbreviation for `RunEnd(x, success) ∨ RunEnd(x, failure)`.
+
+* `OpenPre_x` — “an invocation of `x` is in flight strictly before the current position”. Defined by recursion over positions:
+
+  * Base (`i = 0`): `OpenPre_x := false`.
+  * Step (from position `i` to `i+1`):
+    `OpenPre_x := (OpenPre_x ∧ ¬RE_x) ∨ RS_x`,
+    where `RS_x` and `RE_x` are evaluated at position `i`.
+    *Interpretation:* captures runs that started earlier and have not yet finished before the current position’s events are observed; useful to express “ends follow starts” without past-time operators.
 
 ### LTL Safety Properties
 
