@@ -706,8 +706,8 @@ Due(task1, 120.0)  // Next hour boundary
 RunStart(task1, 120.0)
 RunEnd(task1, failure, 120.1)
 Due(task1, 180.0)  // Next hour boundary
-// RunStart delayed due to retry gating until 120.1 + 5.0 = 125.1
-RunStart(task1, 180.0)  // Retry delay satisfied
+// RunStart delayed due to retry gating until 120.1 + 5.0 = 125.1; next scheduled run is at 180.0, which is after the delay expires
+RunStart(task1, 180.0)  // Retry delay satisfied and next scheduled time reached
 ```
 
 **Trace 2 (Stop and restart):**
