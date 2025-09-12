@@ -651,11 +651,57 @@ After **StopStart** eventually followed by **StopEnd**, no **RunStart(task)** oc
 ```
 After **UnexpectedShutdown**: no **RunEnd** occurs without a preceding **RunStart** after the crash, and no **RunStart** occurs without explicit re-initialization.
 
+**Property 9 (Stop flush completeness):**
+```
+□(StopStart(t₁) → 
+    (□(RunStart(task, t) ∧ t₁ ≤ t < StopEnd → ◊(RunEnd(task, _, t') ∨ UnexpectedShutdown(t'))) ∧
+     □(StopEnd(t₂) ∧ t₂ > t₁ → ∀t > t₂: (InitEnd(_, t) → ∀task, t' ∈ (t₂, t): ¬RunStart(task, t')))))
+```
+Once **StopStart** occurs, every **RunStart** before **StopEnd** must eventually complete or be preempted by crash; after **StopEnd**, no new **RunStart** occurs until re-initialization.
+
+**Property 10 (Crash-interrupted callback restart):**
+```
+□(∃task: RunStart(task, t₁) ∧ (¬RunEnd(task, _, _) U UnexpectedShutdown(t_c)) ∧ t₁ < t_c →
+    F(InitEnd(_, t_r) ∧ t_r > t_c ∧ F≤Δ RunStart(task, t₃) ∧ t₃ > t_r))
+```
+If a callback was running at **UnexpectedShutdown**, then after the next **InitEnd**, it restarts within bounded delay **Δ**.
+
+**Property 11 (Retry gating dominates availability):**
+```
+□(∀task: ∀t₁,t₂: RunStart(task, t₁) ∧ RunStart(task, t₂) ∧ t₁ ≠ t₂ →
+    (|t₁ - t₂| > 0 ∨ ¬(Due(task, t₁) ∧ 'pendingRetryUntil' ≤ t₁)))
+```
+At any given time instant, if both cron and retry conditions are satisfied, at most one **RunStart** occurs (no duplicate triggering).
+
+**Property 12 (At-most-once between consecutive due instants if no failure):**
+```
+□(∀task: ∀t₁,t₂: Due(task, t₁) ∧ Due(task, t₂) ∧ t₁ < t₂ ∧ 
+    (¬∃t' ∈ (t₁,t₂): Due(task, t')) ∧ (¬∃t_f ∈ (t₁,t₂): RunEnd(task, failure, t_f)) →
+    |{t ∈ (t₁,t₂): RunStart(task, t)}| ≤ 1)
+```
+Between any two consecutive **Due** instants with no intervening failure, at most one **RunStart** occurs.
+
+**Property 13 (Bounded scheduling lag):**
+```
+□(∀task: Due(task, t) ∧ (∃R,t'≤t: InitEnd(R, t') ∧ task ∈ dom(R)) ∧ 
+    (¬∃t''∈(t',t]: StopStart(t'')) → 
+    (∃t₃: RunStart(task, t₃) ∧ t ≤ t₃ ≤ t + 1) ∨ 
+    (∃t_f<t: RunEnd(task, failure, t_f) ∧ t < t_f + RetryDelay(task)))
+```
+When **Due(task, t)** holds under active initialization, either **RunStart** occurs within 1 minute, or execution is prevented by retry gating.
+
+**Property 14 (No fabricated completions post-crash):**
+```
+□(UnexpectedShutdown(t_c) → 
+    □(t > t_c → (RunEnd(task, result, t) → ∃t' ∈ [t_c, t): RunStart(task, t'))))
+```
+After **UnexpectedShutdown**, every **RunEnd** must be preceded by a **RunStart** that occurred at or after the crash time.
+
 ### LTL Liveness Properties
 
 Under fairness assumptions, the following liveness properties **SHOULD** hold:
 
-**Property 7 (Eventual execution when continuously due):**
+**Property 15 (Eventual execution when continuously due):**
 ```
 □(InitEnd(R, t₀) ∧ task ∈ dom(R) ∧ 
     □◊Due(task, t) ∧ ¬◊StopStart(_) ∧ ¬◊UnexpectedShutdown(_) →
@@ -663,14 +709,14 @@ Under fairness assumptions, the following liveness properties **SHOULD** hold:
 ```
 For registered tasks with infinitely many due instants, if no stop or crash occurs, **RunStart(task)** occurs infinitely often.
 
-**Property 8 (Termination of stop):**
+**Property 16 (Termination of stop):**
 ```
 □(StopStart(t) → (◊StopEnd(_) ∧ 
     □(StopEnd(t') ∧ t' > t → ¬∃task,t'': RunStart(task, t'') ∧ t'' > t' U InitEnd(_, t''))))
 ```
 After **StopStart**, **StopEnd** eventually occurs, and no **RunStart** occurs thereafter until re-initialization.
 
-**Property 9 (Recovery after crash):**
+**Property 17 (Recovery after crash):**
 ```
 □(UnexpectedShutdown(t_c) ∧ ◊InitEnd(R, t_r) ∧ t_r > t_c ∧ task ∈ dom(R) ∧ 
     □◊Due(task, t) → □◊RunStart(task, _))
