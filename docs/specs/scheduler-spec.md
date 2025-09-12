@@ -567,126 +567,144 @@ The following behaviors **MAY** vary between equivalent runs:
 
 ## Formal Model (Temporal Logic, Observable Only)
 
-This section provides a **Linear Temporal Logic (LTL)** model that specifies **only the externally observable behaviour** of the declarative polling scheduler using propositional atomic formulas over an event-driven trace.
+This section gives a **Linear Temporal Logic (LTL)** model that specifies **only the externally observable behaviour** of the declarative polling scheduler using **propositional** atomic formulas over an **event‑driven trace**.
 
 ### Modelling Framework
 
-Use an **event-driven trace**: each trace position is an instant where at least one observable event occurs. Concurrency is linearized by total ordering of equal/nearby instants. Time bounds remain as background semantics (not inside formulas).
+* **Trace semantics:** Each trace position corresponds to an instant where ≥1 observable event occurs. Concurrency is linearised by total order (events that are “simultaneous” are ordered arbitrarily but consistently). Time bounds are background semantics only (not encoded in LTL).
+* **Logic:** Standard future‑time LTL over the event propositions below. We use `G` (□), `F` (◊), `X` (next), and `U` (until). Quantification “for all tasks x” is intended where noted.
 
-**Atomic propositions at a trace position:**
+### Atomic Propositions (per trace position)
 
-* `IS` (InitStart), `IE` (InitEnd), `SS` (StopStart), `SE` (StopEnd), `Crash` (UnexpectedShutdown)
-* For each task `x`: `RS_x` (RunStart(x)), `REs_x` (RunEnd(x, success)), `REf_x` (RunEnd(x, failure))
-* Also define `RE_x := REs_x ∨ REf_x`
-* Environment/input predicates: `Due_x` (cron due **now** for x), `Registered_x` (x is in the current registration set), `RetryEligible_x` (time since last `REf_x` ≥ RetryDelay(x))
+* Global control: `IS` (InitStart), `IE` (InitEnd), `SS` (StopStart), `SE` (StopEnd), `Crash` (UnexpectedShutdown).
+* For each task `x`:
 
-### Derived Predicates
+  * `RS_x` — RunStart(x)
+  * `REs_x` — RunEnd(x, success)
+  * `REf_x` — RunEnd(x, failure)
+  * Abbrev: `RE_x := REs_x ∨ REf_x`
+* Environment/input predicates:
 
-**Registered_x**: Set to true at `IE` if x is present in that `IE`'s registration set, and remains true until the next `IE`, where it is updated based on the new registration set. This is a **macro definition** from events, not an internal state promise.
+  * `Due_x` — cron schedule is due **now** for `x` (minute boundary in host‑clock semantics from the cron spec)
+  * `Registered_x` — `x` is present in the **current** registration set (derived from the most recent `IE`)
+  * `RetryEligible_x` — sufficient time has elapsed since the last `REf_x` for `x` to satisfy its `RetryDelay(x)`
 
-**Open_x**: "Run is in flight for task x". Define inductively over the trace: initially `false`; at each step: `Open_x := (Open_x ∧ ¬RE_x) ∨ RS_x`.
+> `Due_x` and `RetryEligible_x` are observational inputs derived from the cron layer and wall clock; they are not emitted events.
 
-**Active**: Between an `IE` and the next `SS` or `Crash`. Used only as a guard in properties.
+### Derived Predicates (macros)
 
-**RetryEligible_x**: True iff the time since the last `REf_x` ≥ RetryDelay(x).
+**Registered\_x**
+Set at `IE` to reflect membership of `x` in that `IE`’s registration set; holds until the next `IE` updates it. (Unaffected by `SS/SE/Crash`.)
+
+**Active**
+True iff there has been an `IE` and no `SS` nor `Crash` since that `IE`. (Intuitively: between `IE` and the next `SS` or `Crash`.)
+
+**OpenPre\_x**
+“An invocation of `x` is in flight **strictly before** the current position.” Defined inductively from events **up to the previous position**:
+
+* Base (at the first position): `OpenPre_x := false`.
+* Step: on advancing one position, `OpenPre_x := (OpenPre_x ∧ ¬RE_x) ∨ RS_x` evaluated using the **previous** step’s values.
+
+> `OpenPre_x` lets us state properties that refer to runs that started earlier and have not yet ended *before* the current events are observed, without introducing past operators.
 
 ### LTL Safety Properties
 
-All safety properties **MUST** hold in every valid execution trace. Below, `G` = □, `F` = ◊, `U` = until, `X` = next. Quantification "for all tasks x" is intended over each line.
+For all tasks `x`:
 
-**S1 (Per-task non-overlap):**
-```
-G( RS_x → X( ¬RS_x U RE_x ) )
-```
+**S1 — Per‑task non‑overlap**
+`G( RS_x → (¬RS_x U RE_x) )`
+Once a run starts, no further `RS_x` may occur before a matching `RE_x`. (Allows `RE_x` at the same position.)
 
-**S2 (Ends follow starts):**
-```
-G( RE_x → Open_x )
-```
+**S2 — Ends follow starts**
+`G( RE_x → OpenPre_x )`
+Every completion must correspond to a run that was already in flight before this position.
 
-**S3 (Starts eventually settle):**
-```
-G( RS_x → F( RE_x ∨ SE ∨ Crash ) )
-```
+**S3 — Starts eventually settle**
+`G( RS_x → F( RE_x ∨ SE ∨ Crash ) )`
+Every started run eventually completes or is pre‑empted by stop completion or crash.
 
-**S4 (Eligibility):**
-```
-G( RS_x → (Active ∧ Registered_x ∧ Due_x ∧ RetryEligible_x) )
-```
+**S4 — Eligibility**
+`G( RS_x → (Active ∧ Registered_x ∧ Due_x ∧ RetryEligible_x) )`
+A start can occur only while active, registered, due, and not blocked by retry.
 
-**S5 (Quiescence after StopEnd):**
-```
-G( SE → (¬RS_x U IE) )
-```
+**S5 — Quiescence after StopEnd**
+`G( SE → (¬RS_x U IE) )`
+After `SE`, no new starts until re‑initialisation.
 
-**S6 (Crash consistency: no fabricated completions):**
-```
-G( Crash → G( RE_x → (¬RE_x U RS_x) ) )
-```
+**S6a — Crash quiescence**
+`G( Crash → (¬RS_x U IE) )`
+After a crash, no new starts until re‑initialisation.
 
-**S7 (No make-up bursts):**
-Between any two positions where `Due_x` is true with no `Due_x` in between, there is **at most one** `RS_x` unless a failure occurs (in which case retry may introduce an extra `RS_x` before the next `Due_x`).
+**S6b — Crash consistency (no fabricated completions)**
+`G( Crash → G( RE_x → (¬RE_x U RS_x) ) )`
+In any suffix beginning at a crash, completions must be preceded (in that suffix) by a start.
 
-*Note: This property cannot be directly expressed in standard LTL, as it requires counting the number of `RS_x` events between two `Due_x` events, which is not possible in LTL due to its lack of counting capabilities. Therefore, S7 is stated in natural language. If a formalization is required, a more expressive logic such as Quantified LTL or a temporal logic with counting extensions would be needed.*
-**S8 (Stop flush completeness):**
-```
-G( SE → ¬Open_x )
-```
+**S7 — No make‑up bursts (informative constraint)**
+Between any two positions where `Due_x` holds (with no `Due_x` in between), there is **at most one** `RS_x` unless a failure occurs in the segment (in which case a retry may introduce an extra `RS_x` before the next `Due_x`).
+*Note:* This constraint involves counting; exact formalisation is outside standard LTL. It can be enforced via an automaton or a trace‑checker macro.
+
+**S8 — Stop flush completeness**
+`G( SE → ¬OpenPre_x )`
+At the instant `SE` occurs, no invocation is in flight from **before** that instant; i.e., all runs have completed by `SE`.
 
 ### LTL Liveness Properties
 
-Under fairness assumptions, the following liveness properties **SHOULD** hold:
+For all tasks `x`:
 
-**L1 (Stop terminates):**
-```
-G( SS → F SE )
-```
+**L1 — Stop terminates**
+`G( SS → F SE )`
 
-**L2 (No starts after SE until re-init):**
-```
-G( SE → (¬RS_x U IE) )
-```
+**L3 — Eventual execution under continuous due**
+`G( Active ∧ Registered_x ∧ G F Due_x → G F RS_x )`
 
-**L3 (Eventual execution under continuous due):**
-```
-G( Active ∧ Registered_x ∧ G F Due_x → G F RS_x )
-```
+**L4 — Crash‑interrupted callbacks are restarted after next init**
+`G( ( RS_x ∧ (¬RE_x U Crash) ) → F( IE ∧ F RS_x ) )`
 
-**L4 (Crash-interrupted callbacks are restarted after next init):**
-```
-G( ( RS_x ∧ (¬RE_x U Crash) ) → F( IE ∧ F RS_x ) )
-```
+> We intentionally **remove** the previous L2 (which duplicated S5) to avoid redundancy.
 
-### Due Predicate Definition
+### Due Predicate (source of truth)
 
-The **Due_x** predicate is an **input predicate** from the cron layer that is true at certain instants when task x's cron expression matches the current time. **Due_x** evaluates to **true** if and only if the current time corresponds to a minute boundary where the cron expression matches the calendar time representation.
+`Due_x` is true exactly at instants where task `x`’s POSIX cron expression matches the host’s calendar time for that minute boundary (see the Cron Language Specification). This predicate is provided by the cron layer; it is not an emitted event.
 
-### Example Acceptable Traces
+### Example Acceptable Traces (informative)
 
-The following traces illustrate valid scheduler behavior (informative, not normative). Note that `Due_x` appears as an annotation that the predicate holds at that instant, not as an emitted event.
+**Trace 1 — Normal operation**
 
-**Trace 1 (Normal operation):**
 ```
 IS
-IE (with task1 registered)
-[Due_x true] RS_x 
+IE (task1 registered)
+[Due_x]  RS_x
 REs_x
-[Due_x true] RS_x
-REf_x  
-[Due_x true] RS_x  // RetryEligible satisfied by this time
+[Due_x]  RS_x
+REf_x
+[Due_x]  RS_x   // RetryEligible_x now true
 REs_x
 ```
 
-**Trace 2 (Stop and restart):**
+**Trace 2 — Stop and restart**
+
 ```
 IS
-IE (with task1 registered)
+IE (task1 registered)
 SS
-SE
-// No RS_x events occur until re-initialization
+SE                 // S8 requires no OpenPre_x here
+// No RS_x until re‑init (S5)
 IS
-IE (with task1 registered)
-[Due_x true] RS_x
+IE (task1 registered)
+[Due_x]  RS_x
+REs_x
+```
+
+**Trace 3 — Crash and restart**
+
+```
+IS
+IE (task1 registered)
+[Due_x]  RS_x
+Crash              // S6a: no RS_x until next IE
+IS
+IE (task1 registered)
+[Due_x]  RS_x      // L4: restart after re‑init
 REs_x
 ```
 
