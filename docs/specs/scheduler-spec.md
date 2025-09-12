@@ -619,31 +619,31 @@ Once a run starts, no further `RS_x` may occur before a matching `RE_x` or `Cras
 `G( RE_x → OpenPre_x )`
 Every completion must correspond to a run that was already in flight before this position.
 
-**S4 — Eligibility**
+**S3 — Eligibility**
 `G( RS_x → (Active ∧ Registered_x ∧ Due_x ∧ RetryEligible_x) )`
 A start can occur only while active, registered, due, and not blocked by retry.
 
-**S5a — Quiescence after StopEnd**
+**S4a — Quiescence after StopEnd**
 `G( SE → (¬RS_x W IE) )`
 After `SE`, no new starts until re‑initialisation.
 
-**S5b — StopEnd consistency**
+**S4b — StopEnd consistency**
 `G( SE → (¬RE_x W IE) )`
 After `SE`, no new ends until re‑initialisation.
 
-**S6a — Crash quiescence**
+**S5a — Crash quiescence**
 `G( Crash → (¬RS_x W IE) )`
 After a crash, no new starts until re‑initialisation.
 
-**S6b — Crash consistency (no fabricated completions)**
+**S5b — Crash consistency (no fabricated completions)**
 `G( Crash → (¬RE_x W IE) )`
 In any suffix beginning at a crash, completions must be preceded (in that suffix) by a start.
 
-**S7 — No make‑up bursts (informative constraint)**
+**S6 — No make‑up bursts (informative constraint)**
 Between any two positions where `Due_x` holds (with no `Due_x` in between), there is **at most one** `RS_x` unless a failure occurs in the segment (in which case a retry may introduce an extra `RS_x` before the next `Due_x`).
 *Note:* This constraint involves counting; exact formalisation is outside standard LTL. It can be enforced via an automaton or a trace‑checker macro.
 
-**S8 — Stop flush completeness**
+**S7 — Stop flush completeness**
 `G( SE → ¬OpenPre_x )`
 At the instant `SE` occurs, no invocation is in flight from **before** that instant; i.e., all runs have completed by `SE`.
 
