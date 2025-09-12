@@ -682,15 +682,7 @@ There are not infinitely many trace positions within any bounded real-time inter
 **F1 — Progress fairness.**
 When the scheduler is **Active** and the process is not externally suspended or starved (e.g., not SIGSTOP'ed, no VM freeze, sufficient CPU), the polling loop makes progress and observable events continue to advance along the trace.
 
-## Real-time bounds
- 
-This subsection gives formal timing requirements which are based on the model's vocabulary, but are **not** part of the LTL model. They are engineering targets for implementations. External pauses, OS scheduling, or heavy system load may widen the lag. They are expressed in prose to clarify the relationship between the LTL model and real‑world timing. 
 
-**P1 — Scheduling‑lag.**
-Whenever `Active ∧ Registered_x ∧ Due_x ∧ RetryEligible_x` holds, a corresponding `RS_x` **SHOULD** occur within about **1 minute** of that due instant.
-
-**P2 — Post‑crash restart lag.**
-If a run was in flight at `Crash`, after the next `IE` and once `Registered_x ∧ RetryEligible_x` holds, a new `RS_x` **SHOULD** occur within approximately **1 minute** (same bound as P1), provided no `SS` intervenes.
 
 ### Due Predicate (source of truth)
 
@@ -737,6 +729,23 @@ IE (task1 registered)
 [Due_x]  RS_x      // L4: restart after re‑init
 REs_x
 ```
+
+---
+
+## Real-time bounds
+
+These are operational timing requirements for implementations and operators.
+They are engineering targets.
+
+**R1 — Scheduling latency target.**
+When the scheduler is running and a task is due according to the cron layer (i.e., the system clock reaches the minute boundary specified by the task's cron expression), the implementation MUST start the task's callback within approximately **1 minute** of that minute boundary under normal operating conditions.
+
+**R2 — Post‑restart recovery target.**
+If the scheduler process restarts while a task callback was in flight, then after restart and once the task is present in the active registrations and eligible to run, the implementation MUST start the task's callback within approximately **1 minute** of the next eligible minute boundary, assuming no deliberate stop is in progress.
+
+### Assumptions & Notes
+
+External factors such as OS suspension, VM pauses, heavy load, or administrative throttling can and will extend observed latencies beyond these targets; implementations SHOULD surface such deviations in metrics/logs so operators can take corrective action.
 
 ---
 
