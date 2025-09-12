@@ -654,13 +654,11 @@ For all tasks `x`:
 **L1 — Stop terminates**
 `G( SS → F SE )`
 
-**L3 — Eventual execution under continuous due**
+**L2 — Eventual execution under continuous due**
 `G( Active ∧ Registered_x ∧ G F Due_x → G F RS_x )`
 
-**L4 — Crash‑interrupted callbacks are restarted after next init**
+**L3 — Crash‑interrupted callbacks are restarted after next init**
 `G( ( RS_x ∧ (¬RE_x U Crash) ) → F( IE ∧ F RS_x ) )`
-
-> We intentionally **remove** the previous L2 (which duplicated S5) to avoid redundancy.
 
 ### Due Predicate (source of truth)
 
