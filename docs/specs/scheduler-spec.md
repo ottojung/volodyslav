@@ -651,16 +651,6 @@ Initialization eventually completes.
 `G( SS → F SE )`
 Stop eventually completes.
 
-**S8 - Scheduler lifetime discreteness**
-
-```
-G ¬(IE ∧ SE)
-G ¬(SS ∧ SE)
-G ¬(Crash ∧ IE)
-```
-
-It is impossible for `IE` and `SE` to occur simultaneously, or for `SS` and `SE` to occur simultaneously, or for `Crash` and `IE` to occur simultaneously.
-
 ### LTL Liveness Properties
 
 For all tasks `x`:
