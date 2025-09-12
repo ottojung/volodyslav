@@ -638,8 +638,8 @@ After a period of inactivity, at most one **RunStart(task)** occurs before the n
 
 **Property 5 (Stop quiescence):**
 ```
-□(StopStart(t₁) ∧ ◊StopEnd(t₂) ∧ t₁ < t₂ → 
-    ¬∃task,t∈(t₂,inf): RunStart(task, t) U InitEnd(_, t))
+□(StopStart(t₁) ∧ ◊StopEnd(t₂) ∧ t₁ < t₂ →
+    ∀t₄ > t₂: (InitEnd(_, t₄) → ∀task, t ∈ (t₂, t₄): ¬RunStart(task, t)))
 ```
 After **StopStart** eventually followed by **StopEnd**, no **RunStart(task)** occurs until subsequent **InitEnd**.
 
