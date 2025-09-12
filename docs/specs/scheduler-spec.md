@@ -660,9 +660,9 @@ For all tasks `x`:
 **L3 — Crash‑interrupted callbacks are restarted after next init**
 `G( ( RS_x ∧ (¬RE_x U Crash) ) → F( IE ∧ F RS_x ) )`
 
-### Bounds & Fairness assumptions
+### Fairness assumptions
 
-This subsection records assumptions and requirements with statements which do **not** extend LTL with metric operators. They are expressed in prose to clarify the relationship between the LTL model and real‑world timing.
+This subsection records assumptions that cannot possibly be verified by the scheduler implementation.
 
 **A1 — Finite‑duration callbacks (assumption).**
 Every callback invocation (between `RS_x` and `RE_x`) completes in **finite** time unless pre‑empted by `Crash`. No uniform upper bound is required; the assumption only rules out infinite executions.
@@ -670,11 +670,15 @@ Every callback invocation (between `RS_x` and `RE_x`) completes in **finite** ti
 **F1 — Progress fairness (assumption).**
 When the scheduler is **Active** and the process is not externally suspended or starved (e.g., not SIGSTOP/SIGPAUSE’d, no VM freeze, sufficient CPU), the polling loop makes progress and observable events continue to advance along the trace.
 
+## Real-time bounds
+ 
+This subsection gives formal timing requirements which are based on the model's vocabulary, but are **not** part of the LTL model. They are engineering targets for implementations. External pauses, OS scheduling, or heavy system load may widen the lag. They are expressed in prose to clarify the relationship between the LTL model and real‑world timing. 
+
 **P1 — Scheduling‑lag.**
-In an environment satisfying F1, whenever `Active ∧ Registered_x ∧ Due_x ∧ RetryEligible_x` holds, a corresponding `RS_x` **SHOULD** occur within about **1 minute** of that due instant (i.e., an implementation target matching the polling interval). This is an engineering target, not a logical guarantee. External pauses, OS scheduling, or heavy load may widen the lag.
+Whenever `Active ∧ Registered_x ∧ Due_x ∧ RetryEligible_x` holds, a corresponding `RS_x` **SHOULD** occur within about **1 minute** of that due instant.
 
 **P2 — Post‑crash restart lag.**
-If a run was in flight at `Crash` (cf. L3), after the next `IE` and once `Registered_x ∧ RetryEligible_x` holds, a new `RS_x` **SHOULD** occur within approximately **1 minute** (same bound as P1), provided no `SS` intervenes. This is under the same assumptions as P1.
+If a run was in flight at `Crash`, after the next `IE` and once `Registered_x ∧ RetryEligible_x` holds, a new `RS_x` **SHOULD** occur within approximately **1 minute** (same bound as P1), provided no `SS` intervenes.
 
 ### Due Predicate (source of truth)
 
