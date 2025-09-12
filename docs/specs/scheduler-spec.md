@@ -567,13 +567,16 @@ The following behaviors **MAY** vary between equivalent runs:
 
 ## Formal Model in Temporal Logic
 
-This section gives a **Linear Temporal Logic (LTL)** model that specifies **the externally observable behaviour** of the declarative polling scheduler using **propositional** atomic formulas over an **event‑driven trace**.
-It does not include error handling part of the specification.
+This section gives a formal model that combines first‑order quantification over the universe of tasks with future‑time Linear Temporal Logic (LTL) formulas. In practice we treat the atomic predicates below as predicate symbols parameterised by a task variable (for example, `RS(x)`, `REs(x)`), and the LTL operators (`G`, `F`, `X`, `U`, `W`) are applied to propositional formulas obtained by instantiating those predicates for concrete tasks.
+
+The presentation uses the convenient shorthand of writing instantiated propositions like `RS_x` for `RS(x)`. Where a formula is stated without explicit quantifiers, the default intent is universal quantification over tasks (i.e. "for all tasks x"). This document therefore combines first‑order (over tasks) and propositional temporal reasoning: first‑order quantification ranges over the set of registered tasks, and temporal operators reason over event positions in the trace.
+
+This model focuses on externally observable behaviour and does not include the error‑handling internals of the implementation.
 
 ### Modelling Framework
 
 * **Trace semantics:** Each trace position corresponds to an instant where ≥1 observable event occurs. Concurrency is linearised by total order (events that are “simultaneous” are ordered arbitrarily but consistently). Time bounds are background semantics only (not encoded in LTL).
-* **Logic:** Standard future‑time LTL over the event propositions below. We use `G` (□), `F` (◊), `X` (next), `U` (until), `W` (weak until). Quantification “for all tasks x” is intended where noted.
+* **Logic:** A combination of first‑order quantification (over the universe of tasks) and future‑time LTL. Concretely, predicates below are considered parameterised by a task variable; when instantiated they yield propositional atomic formulas which LTL then operates on. We use `G` (□), `F` (◊), `X` (next), `U` (until), `W` (weak until). Unadorned formulas are intended to be read under the default universal quantifier "for all tasks x" where applicable.
 
 ### Atomic Propositions (per trace position)
 
