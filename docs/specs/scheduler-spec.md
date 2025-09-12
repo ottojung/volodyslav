@@ -612,8 +612,8 @@ True iff there has been an `IE` and no `SS` nor `Crash` since that `IE`. (Intuit
 For all tasks `x`:
 
 **S1 — Per‑task non‑overlap**
-`G( RS_x → (¬RS_x U RE_x) )`
-Once a run starts, no further `RS_x` may occur before a matching `RE_x`. (Allows `RE_x` at the same position.)
+`G( RS_x → (¬RS_x U (RE_x ∨ Crash)) )`
+Once a run starts, no further `RS_x` may occur before a matching `RE_x` or `Crash`.
 
 **S2 — Ends follow starts**
 `G( RE_x → OpenPre_x )`
