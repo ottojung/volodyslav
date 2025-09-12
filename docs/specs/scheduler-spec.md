@@ -563,31 +563,6 @@ The following behaviors **MAY** vary between equivalent runs:
 
 ---
 
-## Security & Performance Considerations
-
-### Resource Limits
-
-Implementations **SHOULD**:
-- Limit the maximum number of concurrent task executions
-- Implement reasonable timeouts for task execution
-- Prevent memory leaks from long-running polling loops
-
-### Input Validation
-
-The scheduler **MUST**:
-- Validate all inputs before processing
-- Reject potentially dangerous cron expressions
-- Sanitize task names for safe logging
-
-### Error Handling
-
-The scheduler **MUST**:
-- Never expose internal implementation details in error messages
-- Log security-relevant events (unauthorized access attempts, etc.)
-- Handle resource exhaustion gracefully
-
----
-
 ## Conformance Appendix
 
 ### Testable Invariants
