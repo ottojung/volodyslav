@@ -582,7 +582,7 @@ Use an **event-driven trace**: each trace position is an instant where at least 
 
 ### Derived Predicates
 
-**Registered_x**: Set to true at `IE` if x is present in that `IE`'s registration set, and reset on the next `IE`. This is a **macro definition** from events, not an internal state promise.
+**Registered_x**: Set to true at `IE` if x is present in that `IE`'s registration set, and remains true until the next `IE`, where it is updated based on the new registration set. This is a **macro definition** from events, not an internal state promise.
 
 **Open_x**: "Run is in flight for task x". Define inductively over the trace: initially `false`; at each step: `Open_x := (Open_x ∧ ¬RE_x) ∨ RS_x`.
 
