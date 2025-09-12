@@ -565,7 +565,7 @@ The following behaviors **MAY** vary between equivalent runs:
 
 ---
 
-## Formal Model in Temporal Logic
+## Formal Model of Observable Behavior
 
 This section gives a formal model that combines first‑order quantification over the universe of tasks with future‑time Linear Temporal Logic (LTL) formulas. In practice we treat the atomic predicates below as predicate symbols parameterised by a task variable (for example, `RS(x)`, `REs(x)`), and the LTL operators (`G`, `F`, `X`, `U`, `W`) are applied to propositional formulas obtained by instantiating those predicates for concrete tasks.
 
