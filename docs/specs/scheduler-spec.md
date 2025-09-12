@@ -1,9 +1,5 @@
 # Formal Specification for the Declarative Polling Scheduler
 
-**Version:** 1.0  
-**Date:** 2024  
-**Status:** Draft  
-
 This document provides a formal, normative specification for the backend declarative polling scheduler's public interface and externally observable operational semantics.
 
 ## Table of Contents
@@ -797,10 +793,3 @@ Conformance testing **SHOULD** cover:
 **Task:** A scheduled unit of work with associated execution state
 
 **Temporal Granularity:** The minimum time resolution for scheduling (1 minute)
-
----
-
-**Document Version:** 1.0  
-**Last Updated:** 2024  
-**Authors:** Generated for Volodyslav Project  
-**Status:** Draft Specification
