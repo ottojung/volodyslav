@@ -771,48 +771,6 @@ RunStart(task1, 120.0)
 
 ---
 
-## Property Catalogue & Implementation Mapping
-
-This section documents the relationship between the formal LTL properties and their implementation in the scheduler code, providing justification for each property's preservation.
-
-### Safety Properties Implementation Mapping
-
-**Property 9 (Stop flush completeness)** - `backend/src/scheduler/polling/function.js`:
-- **stop()** function (lines 73-80): `await loopThread; await join();`
-- **join()** function (lines 62-64): `await Promise.all([...runningPool]);`
-- **Justification**: The stop sequence explicitly waits for both the polling loop termination and all running tasks to complete before returning.
-
-**Property 10 (Crash-interrupted callback restart)** - `backend/src/scheduler/persistence/core.js`:
-- **decideTaskAction()** function (lines 260-266): Detects orphaned tasks via `schedulerIdentifier` mismatch
-- **createTaskFromDecision()** function (lines 306-316): Sets `pendingRetryUntil: lastMinute` for orphaned tasks
-- **Justification**: Orphaned tasks (running during crash) get immediate retry eligibility, causing prompt restart after initialization.
-
-**Property 11 (Retry gating dominates availability)** - `backend/src/scheduler/execution/collector.js`:
-- **evaluateTasksForExecution()** function (lines 69-87): `if (shouldRunRetry) {...} else if (shouldRunCron) {...}`
-- **Justification**: The if/else-if logic ensures exactly one execution mode is selected when both retry and cron conditions are satisfied.
-
-**Property 12 (At-most-once between consecutive due instants if no failure)** - `backend/src/scheduler/execution/collector.js`:
-- **Line 65**: `task.state.lastAttemptTime.isBefore(lastScheduledFire)` comparison
-- **getMostRecentExecution()** usage (line 64): Uses most-recent-due comparison logic
-- **Justification**: Tasks execute only when current due instant is more recent than last attempt, preventing duplicates between consecutive due instants.
-
-**Property 13 (Bounded scheduling lag)** - `backend/src/scheduler/polling/function.js`:
-- **POLL_INTERVAL** constant (line 24): `fromMinutes(1)` - exactly 1 minute
-- **loop()** function (lines 82-90): Regular polling at fixed 1-minute intervals
-- **Justification**: Fixed 1-minute polling interval provides deterministic upper bound on scheduling lag.
-
-**Property 14 (No fabricated completions post-crash)** - Architecture-wide property:
-- **No code path exists** that generates **RunEnd** events without corresponding **RunStart**
-- **Task execution flow**: `executor.js` only calls **RunEnd** after successful **RunStart** completion
-- **Justification**: The execution pipeline architecture prevents fabricated completions by design.
-
-### Constants Documentation
-
-- **Δ = 1 minute**: Bounded scheduling lag constant derived from `POLL_INTERVAL`
-- **Λ = 1 minute**: Crash restart bound - orphaned tasks get immediate retry eligibility, executed within next poll cycle
-
----
-
 ## References & Glossary
 
 ### References
