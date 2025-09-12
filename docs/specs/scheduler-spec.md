@@ -1,6 +1,6 @@
-# Formal Specification for the Declarative Polling Scheduler
+# Specification for the Declarative Polling Scheduler
 
-This document provides a formal, normative specification for the backend declarative polling scheduler's public interface and externally observable operational semantics.
+This document provides a normative specification for the backend declarative polling scheduler's public interface and externally observable operational semantics.
 
 ---
 
