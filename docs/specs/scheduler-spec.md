@@ -636,7 +636,7 @@ After `SE`, no new starts until re‑initialisation.
 After a crash, no new starts until re‑initialisation.
 
 **S6b — Crash consistency (no fabricated completions)**
-`G( Crash → G( RE_x → (¬RE_x U RS_x) ) )`
+`G( Crash → (¬RE_x W IE) )`
 In any suffix beginning at a crash, completions must be preceded (in that suffix) by a start.
 
 **S7 — No make‑up bursts (informative constraint)**
