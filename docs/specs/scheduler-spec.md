@@ -563,48 +563,6 @@ The following behaviors **MAY** vary between equivalent runs:
 
 ---
 
-## Conformance Appendix
-
-### Testable Invariants
-
-A conforming implementation **MUST** satisfy the following invariants:
-
-1. **API Contract Invariants:**
-   - `initialize([])` followed by `stop()` completes without error
-   - `initialize(validRegs)` followed by `initialize(validRegs)` is idempotent
-   - `stop()` on uninitialized scheduler completes without error
-
-2. **Timing Invariants:**
-   - Task scheduled for current minute executes within reasonable time
-   - Task scheduled for future minute does not execute early
-   - No make-up executions occur after extended downtime
-
-3. **State Invariants:**
-   - Task state persists across scheduler restarts
-   - Override detection correctly identifies configuration changes
-   - Orphaned tasks are properly cleaned up
-
-4. **Error Invariants:**
-   - Invalid registrations throw appropriate error types
-   - Error messages contain required fields
-   - Errors are thrown before any side effects occur
-
-5. **Concurrency Invariants:**
-   - Multiple tasks can execute simultaneously
-   - Same task never executes concurrently with itself
-   - `stop()` waits for all running tasks
-
-### Test Methodology
-
-Conformance testing **SHOULD** cover:
-- All error conditions and error types
-- Edge cases in cron expression evaluation
-- State persistence and override scenarios
-- Timing behavior under various conditions
-- Concurrent execution scenarios
-
----
-
 ## References & Glossary
 
 ### References
