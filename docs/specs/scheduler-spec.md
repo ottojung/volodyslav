@@ -154,7 +154,7 @@ stateDiagram-v2
     Running --> Stopping : stop() called
     Running --> Reinitializing : initialize() called again
     Reinitializing --> Running : Reinitialization succeeds
-    Reinitializing --> Stopping : Reinitialization fails
+    Reinitializing --> Uninitialized : Reinitialization fails
     Stopping --> Stopped : All tasks complete, cleanup done
     Stopped --> [*] : Scheduler destroyed
 ```
