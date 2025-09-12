@@ -673,7 +673,7 @@ This subsection records assumptions that cannot possibly be verified by the sche
 Every callback invocation (between `RS_x` and `RE_x`) completes in **finite** time unless pre‑empted by `Crash`. No uniform upper bound is required; the assumption only rules out infinite executions.
 
 **F1 — Progress fairness.**
-When the scheduler is **Active** and the process is not externally suspended or starved (e.g., not SIGSTOP/SIGPAUSE’d, no VM freeze, sufficient CPU), the polling loop makes progress and observable events continue to advance along the trace.
+When the scheduler is **Active** and the process is not externally suspended or starved (e.g., not SIGSTOP'ed, no VM freeze, sufficient CPU), the polling loop makes progress and observable events continue to advance along the trace.
 
 ## Real-time bounds
  
