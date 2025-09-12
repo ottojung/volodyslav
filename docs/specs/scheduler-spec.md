@@ -581,7 +581,7 @@ All safety and liveness requirements are stated as **Linear Temporal Logic (LTL)
 
 **Task:** An abstract identifier from a finite set **TaskId**.
 
-**Callback(Task):** An abstract action associated with a task; represents an event source, not executable code.
+**Callback(Task):** An abstract action associated with a task; represents the abstract effect to be performed when a task executes. In this model, it is not executable code, but rather denotes the occurrence of an observable event corresponding to the task's execution.
 
 **Registration:** A mapping from **Task** to **(Schedule, RetryDelay)** where **RetryDelay ≥ 0**.
 
