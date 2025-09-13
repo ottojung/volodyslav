@@ -682,6 +682,10 @@ After `SE`, no new starts until re‑initialisation.
 `G( SE → (¬RE_x W IE) )`
 After `SE`, no new ends until re‑initialisation.
 
+**S4b — StopEnd consistency 2**
+`G( SE → (¬RS_x W IE) )`
+After `SE`, no new starts until re‑initialisation.
+
 **S5a — Crash quiescence**
 `G( Crash → (¬RS_x W IE) )`
 After a crash, no new starts until re‑initialisation.
