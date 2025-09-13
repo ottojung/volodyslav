@@ -678,9 +678,19 @@ After a crash, no new starts until re‑initialisation.
 `G( Crash → (¬RE_x W IE) )`
 In any suffix beginning at a crash, completions must be preceded (in that suffix) by a start.
 
-**S6 — No make‑up bursts (informative constraint)**
+**S6 — No make‑up bursts**
+
+`G( Due_x → Segment(Due_x, RS_x, REf_x) )`
+
+where `Segment` is defined as:
+
+```
+AtMostOne(B, A) ∨ ( ¬A U ( A ∧ ( ¬A U ( F ∧ AtMostOne(B, A) ) ) ) )
+```
+
 Between any two positions where `Due_x` holds (with no `Due_x` in between), there is **at most one** `RS_x` unless a failure occurs in the segment (in which case a retry may introduce an extra `RS_x` before the next `Due_x`).
-*Note:* This constraint involves counting; exact formalisation is outside standard LTL. It can be enforced via an automaton or a trace‑checker macro.
+
+After each `Due_x`, either there is at most one `RS_x` before the next `Due_x`, or there is a first `RS_x`, then before any second `RS_x` a failure `REf_x` occurs, and after that failure there is at most one further `RS_x` until the next `Due_x`.
 
 **S8 — Initialization completes**
 `G( IS → F IE )`
