@@ -752,46 +752,46 @@ When the scheduler is **Active** and the process is not externally suspended or 
 
 ```
 IS
-IE              (task1 registered)
-Due_x
-RS_x
-REs_x
-Due_x
-RS_x
-REf_x
-Due_x
-RS_x            (RetryEligible_x now true)
-REs_x
+IE              (task "1" registered)
+Due_1
+RS_1
+REs_1
+Due_1
+RS_1
+REf_1
+Due_1
+RS_1            (RetryEligible_1 now true)
+REs_1
 ```
 
 **Trace 2 — Stop and restart**
 
 ```
 IS
-IE                 (task1 registered)
+IE                 (task "1" registered)
 SS
 SE
-                   (No RS_x until re‑init)
+                   (No RS_1 until re‑init)
 IS
-IE                 (task1 registered)
-Due_x
-RS_x
-REs_x
+IE                 (task "1" registered)
+Due_1
+RS_1
+REs_1
 ```
 
 **Trace 3 — Crash and restart**
 
 ```
 IS
-IE                 (task1 registered)
-Due_x
-RS_x
-Crash              (no RS_x until next IE)
+IE                 (task "1" registered)
+Due_1
+RS_1
+Crash              (no RS_1 until next IE)
 IS
-IE                 (task1 registered)
-Due_x
-RS_x               (restart after re‑init)
-REs_x
+IE                 (task "1" registered)
+Due_1
+RS_1               (restart after re‑init)
+REs_1
 ```
 
 ---
