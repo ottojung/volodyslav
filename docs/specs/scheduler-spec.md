@@ -623,7 +623,7 @@ These are functions of the trace and registration parameters; they introduce no 
 
 * `Due_x` — shorthand for `Due(x, tau(i))`.
   *Interpretation:* the cron schedule for `x` matches the current minute boundary at time `tau(i)`.
-  Minute boundary defined is defined as the exact start of that minute.
+  Minute boundary is defined as the exact start of that minute.
   For example, if for a cron expression `* * * * *`, a minute boundary occurs at `2024-01-01T12:34:00.00000000000000000000000000000000000000000000000000000Z` (infinitely many zeros), then `Due_x` holds at any position `i` where `tau(i) = 2024-01-01T12:34:00Z`.
 
 * `RetryEligible_x` — true at position `i` iff either (a) there has been no prior `RunEnd(x, failure)`, or (b) letting `j` be the latest position `< i` with `RunEnd(x, failure)` and `t_f = tau(j)`, we have `tau(i) ≥ t_f + RetryDelay(x)`.
