@@ -628,6 +628,7 @@ These are functions of the trace and registration parameters; they introduce no 
 
 * `RetryEligible_x` — true at position `i` iff either (a) there has been no prior `RunEnd(x, failure)`, or (b) letting `j` be the latest position `< i` with `RunEnd(x, failure)` and `t_f = tau(j)`, we have `tau(i) ≥ t_f + RetryDelay(x)`.
   *Interpretation:* enough time has elapsed since the last failure of `x` to permit a retry.
+  In other words, either no failure has completed for `x` yet, or at least `RetryDelay(x)` time has elapsed since the latest `RunEnd(x, failure)`.
 
 #### Derived Macros (State from Events)
 
