@@ -607,7 +607,7 @@ Each event predicate is evaluated at a trace position `i` (we omit `i` when clea
 * `InitEnd(R)` — the `initialize(...)` call returns; the effective registration set is `R`.
 * `StopStart` — the JavaScript interpreter calls `stop()`.
 * `StopEnd` — the `stop()` call returns.
-* `UnexpectedShutdown` — an unexpected, in-flight system shutdown occurs (e.g., process or host crash). This may interrupt running callbacks and preempts further starts until a subsequent `InitEnd`.
+* `UnexpectedShutdown` — an unexpected, in-flight system shutdown occurs (e.g., process or host crash). This interrupts running callbacks and preempts further starts until a subsequent `InitEnd`.
 * `RunStart(x)` — the scheduler begins invoking the public callback for task `x`.
 * `RunEnd(x, r)` — that invocation completes with result `r ∈ Result`.
 
