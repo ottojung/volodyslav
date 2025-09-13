@@ -705,14 +705,6 @@ Between any two positions where `Due_x` holds (with no `Due_x` in between), ther
 
 After each `Due_x`, either there is at most one `RS_x` before the next `Due_x`, or there is a first `RS_x`, then before any second `RS_x` a failure `REf_x` occurs, and after that failure there is at most one further `RS_x` until the next `Due_x`.
 
-**S8 — Initialization completes**
-`G( IS → F IE )`
-Initialization eventually completes.
-
-**S7 — Stop completes**
-`G( SS → F SE )`
-Stop eventually completes.
-
 ### LTL Liveness Properties
 
 For all tasks `x`:
@@ -725,6 +717,14 @@ For all tasks `x`:
 
 **L3 — Crash‑interrupted callbacks are restarted after next init**
 `G( ( RS_x ∧ (¬RE_x U Crash) ) → F( IE ∧ F RS_x ) )`
+
+**L4 — Initialization completes**
+`G( IS → F IE )`
+Initialization eventually completes.
+
+**L5 — Stop completes**
+`G( SS → F SE )`
+Stop eventually completes.
 
 ### Fairness assumptions
 
