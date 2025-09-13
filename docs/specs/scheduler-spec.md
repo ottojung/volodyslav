@@ -713,7 +713,7 @@ Right after each `IE`, for every position before the next `IE` where `Due_x` hol
 we must eventually see `RS_x` (or a new `IE`, which resets obligations).
 
 **P2 -- No execution until after init**
-`G( IE → X( ¬RS_x W Due_x ) )`
+`G( IE → ¬RS_x W Due_x )`
 
 From just after `IE` up to the first `Due_x`, there must be no start. If no `Due_x` occurs in the epoch, then no `RS_x` occurs either.
 
