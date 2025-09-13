@@ -633,6 +633,16 @@ These are functions of the trace and registration parameters; they introduce no 
 
 These macros are computed from the observable trace; they do not add observables.
 
+* `IS := InitStart`
+* `IE := ∃R. InitEnd(R)`
+* `SS := StopStart`
+* `SE := StopEnd`
+* `Crash := UnexpectedShutdown`
+* `RS_x := RunStart(x)`
+* `REs_x := RunEnd(x, success)`
+* `REf_x := RunEnd(x, failure)`
+* `RE_x := REs_x ∨ REf_x`
+
 * `Active` — true at position `i` iff there exists `j ≤ i` with `InitEnd(_)` at `j` and there is no `k` with `j < k ≤ i` where `StopStart` or `UnexpectedShutdown` holds.
   *Interpretation:* between an `InitEnd` and the next `StopStart` or `UnexpectedShutdown`.
 
