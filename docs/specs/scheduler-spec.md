@@ -644,6 +644,8 @@ These macros are computed from the observable trace; they do not add observables
     where `RS_x` and `RE_x` are evaluated at position `i`.
     *Interpretation:* captures runs that started earlier and have not yet finished before the current position’s events are observed; useful to express “ends follow starts” without past-time operators.
 
+ * `AtMostOne(B, A)` -- At most one `A` between consecutive `B`'s (or forever if no next `B`). Expands to `¬A W ( B ∨ ( A ∧ ( ¬A W B ) ) )`.
+
 ### LTL Safety Properties
 
 For all tasks `x`:
