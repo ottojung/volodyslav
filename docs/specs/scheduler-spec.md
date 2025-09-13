@@ -689,7 +689,7 @@ After a crash, no new starts until re‑initialisation.
 **S5b — Crash consistency (no fabricated completions)**
 `G( Crash → (¬RE_x W IE) )`
 A crash cannot be followed by any ends until re‑initialisation.
-This is more of a model definition, not a property of implementations.
+This is more of a model definition (a crash by definition is something that interrupts the completion of a task), not a property of implementations.
 
 **S6 — No make‑up bursts**
 
