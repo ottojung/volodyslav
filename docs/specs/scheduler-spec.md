@@ -706,6 +706,17 @@ Between any two positions where `Due_x` holds (with no `Due_x` in between), ther
 
 After each `Due_x`, either there is at most one `RS_x` before the next `Due_x`, or there is a first `RS_x`, then before any second `RS_x` a failure `REf_x` occurs, and after that failure there is at most one further `RS_x` until the next `Due_x`.
 
+**P1 -- Execution eventually follows due after init** 
+`G( IE → X( G( (¬IE ∧ Due_x) → F ( RS_x ∨ IE ) ) ) )`
+
+Right after each `IE`, for every position before the next `IE` where `Due_x` holds,
+we must eventually see `RS_x` (or a new `IE`, which resets obligations).
+
+**P2 -- No execution until after init**
+`G( IE → X( ¬RS_x W Due_x ) )`
+
+From just after `IE` up to the first `Due_x`, there must be no start. If no `Due_x` occurs in the epoch, then no `RS_x` occurs either.
+
 ### LTL Liveness Properties
 
 For all tasks `x`:
