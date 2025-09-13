@@ -671,8 +671,8 @@ Once a run starts, no further `RS_x` may occur before a matching `RE_x` or `Cras
 Every completion must correspond to a run that was already in flight before this position.
 
 **S3 — Eligibility**
-`G( RS_x → (Active ∧ Registered_x ∧ Due_x ∧ RetryEligible_x) )`
-A start can occur only while active, registered, due, and not blocked by retry.
+`G( RS_x → (Active ∧ Registered_x ∧ RetryEligible_x) )`
+A start can occur only while active, registered, and not blocked by retry.
 
 **S4a — Quiescence after StopEnd**
 `G( SE → (¬RS_x W IE) )`
