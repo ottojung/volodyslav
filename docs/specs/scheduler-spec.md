@@ -752,12 +752,15 @@ When the scheduler is **Active** and the process is not externally suspended or 
 
 ```
 IS
-IE (task1 registered)
-[Due_x]  RS_x
+IE              (task1 registered)
+Due_x
+RS_x
 REs_x
-[Due_x]  RS_x
+Due_x
+RS_x
 REf_x
-[Due_x]  RS_x   // RetryEligible_x now true
+Due_x
+RS_x            (RetryEligible_x now true)
 REs_x
 ```
 
@@ -765,13 +768,14 @@ REs_x
 
 ```
 IS
-IE (task1 registered)
+IE                 (task1 registered)
 SS
-SE                 // S8 requires no OpenPre_x here
-// No RS_x until re‑init (S5)
+SE
+                   (No RS_x until re‑init)
 IS
-IE (task1 registered)
-[Due_x]  RS_x
+IE                 (task1 registered)
+Due_x
+RS_x
 REs_x
 ```
 
@@ -779,12 +783,14 @@ REs_x
 
 ```
 IS
-IE (task1 registered)
-[Due_x]  RS_x
-Crash              // S6a: no RS_x until next IE
+IE                 (task1 registered)
+Due_x
+RS_x
+Crash              (no RS_x until next IE)
 IS
-IE (task1 registered)
-[Due_x]  RS_x      // L4: restart after re‑init
+IE                 (task1 registered)
+Due_x
+RS_x               (restart after re‑init)
 REs_x
 ```
 
