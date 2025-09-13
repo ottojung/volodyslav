@@ -685,7 +685,7 @@ In any suffix beginning at a crash, completions must be preceded (in that suffix
 where `Segment` is defined as:
 
 ```
-AtMostOne(B, A) ∨ ( ¬A U ( A ∧ ( ¬A U ( F ∧ AtMostOne(B, A) ) ) ) )
+Segment(A, B, C) = AtMostOne(B, A) ∨ ( ¬A U ( A ∧ ( ¬A U ( F ∧ AtMostOne(B, A) ) ) ) )
 ```
 
 Between any two positions where `Due_x` holds (with no `Due_x` in between), there is **at most one** `RS_x` unless a failure occurs in the segment (in which case a retry may introduce an extra `RS_x` before the next `Due_x`).
