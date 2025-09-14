@@ -625,6 +625,7 @@ These are functions of the trace and registration parameters; they introduce no 
   *Interpretation:* the cron schedule for `x` matches the current minute boundary at time `tau(i)`.
   Minute boundary is defined as the exact start of that minute.
   For example, for a cron expression `* * * * *`, a minute boundary occurs at `2024-01-01T12:34:00.00000000000000000000000000000000000000000000000000000Z` (infinitely many zeros), and then also `Due_x` holds at position `i` where `tau(i) = 2024-01-01T12:34:00Z` (exactly that time point with infinitely many zeroes).
+  Time is defined by the host system's local clock.
 
 * `RetryEligible_x` — true at position `i` iff either (a) there has been no prior `RunEnd(x, failure)`, or (b) letting `j` be the latest position `< i` with `RunEnd(x, failure)` and `t_f = tau(j)`, we have `tau(i) ≥ t_f + RetryDelay(x)`.
   *Interpretation:* enough time has elapsed since the last failure of `x` to permit a retry.
@@ -751,12 +752,6 @@ There are not infinitely many trace positions within any bounded real-time inter
 
 **F1 — Progress fairness.**
 When the scheduler is **Active** and the process is not externally suspended or starved (e.g., not SIGSTOP'ed, no VM freeze, sufficient CPU), the polling loop makes progress and observable events continue to advance along the trace.
-
-
-
-### Due Predicate (source of truth)
-
-`Due_x` is true exactly at instants where task `x`’s POSIX cron expression matches the host’s calendar time for that minute boundary (see the Cron Language Specification). This predicate is provided by the cron layer; it is not an emitted event.
 
 ### Example Acceptable Traces (informative)
 
