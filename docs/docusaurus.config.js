@@ -14,6 +14,7 @@ module.exports = {
     projectName: "docs",
     markdown: {
         format: "md",
+        mermaid: true,
     },
     stylesheets: [
         {
@@ -38,4 +39,5 @@ module.exports = {
             },
         ],
     ],
+    themes: ["@docusaurus/theme-mermaid"],
 };
