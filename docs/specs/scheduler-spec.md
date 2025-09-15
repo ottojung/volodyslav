@@ -577,6 +577,7 @@ This model focuses on externally observable behaviour, but does not include the 
 
 * **Trace semantics:** Each trace position corresponds to an instant where an observable event occurs. Concurrency is linearised by total order; events that are “simultaneous” appear at distinct (possibly very close) rationals. Time bounds are background semantics only (not encoded in LTL).
 * **Logic:** A combination of first-order quantification (over tasks) and **LTL with past**.
+
   * **Future operators:** `G` (□), `F` (◊), `X` (next), `U` (until), `W` (weak until).
   * **Past operators:** `H` (historically), `O` (once), `S` (since), `Y` (previous).
   * We prefer the **stutter-invariant** past operators (`S`, `H`, `O`) in this spec.
@@ -675,6 +676,7 @@ At most one `A` between consecutive `B`’s (or forever if no next `B`).
 ### Derived Macros (State from Events)
 
 Abbreviations:
+
 * `IS := InitStart`
 * `IE := ∃R. InitEnd(R)`
 * `SS := StopStart`
@@ -693,7 +695,7 @@ Stateful:
 Active := (¬(SS ∨ Crash)) S IE
 ```
 
-* **OpenPre_x** — “an invocation of `x` started strictly before now and has not finished before the current position”:
+* **OpenPre\_x** — “an invocation of `x` started strictly before now and has not finished before the current position”:
 
 ```js
 OpenPre_x := ¬RS_x ∧ (¬RE_x) S RS_x
@@ -705,34 +707,34 @@ OpenPre_x := ¬RS_x ∧ (¬RE_x) S RS_x
 BucketReset_x := IE ∨ Due_x
 ```
 
-* **Pending_x** — one outstanding obligation to perform the first start after a due tick, cleared by a start or re-init:
+* **Pending\_x** — one outstanding obligation to perform the first start after a due tick, cleared by a start or re-init:
 
 ```js
 Pending_x := Hold( Due_x, RS_x ∨ IE )
 := (¬(RS_x ∨ IE)) S Due_x
 ```
 
-* **FailedInBucket_x** — a failure observed since last `IE` or `Due_x`:
+* **FailedInBucket\_x** — a failure observed since last `IE` or `Due_x`:
 
 ```js
 FailedInBucket_x := Bucket( REf_x, IE ∨ Due_x )
 := (¬(IE ∨ Due_x)) S REf_x
 ```
 
-* **RetryEligAfterFail_x** — first time `RetryEligible_x` becomes true after a (bucket-resetting) failure/init/due:
+* **RetryEligAfterFail\_x** — first time `RetryEligible_x` becomes true after a (bucket-resetting) failure/init/due:
 
 ```js
 RetryEligAfterFail_x := EdgeAfterReset( RetryEligible_x, REf_x ∨ IE ∨ Due_x )
 ```
 
-* **RetryPending_x** — one retry obligation inside the current bucket; appears when eligibility first becomes true after a failure, cleared by `RS_x`/`IE`/`Due_x`:
+* **RetryPending\_x** — one retry obligation inside the current bucket; appears when eligibility first becomes true after a failure, cleared by `RS_x`/`IE`/`Due_x`:
 
 ```js
 RetryPending_x := Hold( RetryEligAfterFail_x ∧ FailedInBucket_x ∧ ¬Due_x, RS_x ∨ IE ∨ Due_x )
 := (¬(RS_x ∨ IE ∨ Due_x)) S (RetryEligAfterFail_x ∧ FailedInBucket_x ∧ ¬Due_x)
 ```
 
-* **EffectiveDue_x** — the scheduler **should actually start** task `x` now:
+* **EffectiveDue\_x** — the scheduler **should actually start** task `x` now:
 
 ```js
 EffectiveDue_x := Pending_x ∨ RetryPending_x
@@ -744,36 +746,37 @@ EffectiveDue_x := Pending_x ∨ RetryPending_x
 
 For all tasks `x`:
 
-**S1 — Per-task non-overlap**  
-`G( RS_x → (¬RS_x U (RE_x ∨ Crash)) )`  
+**S1 — Per-task non-overlap**
+`G( RS_x → (¬RS_x U (RE_x ∨ Crash)) )`
 Once a run starts, no further `RS_x` may occur before a matching `RE_x` or `Crash`.
 
-**S2 — Ends follow starts**  
-`G( RE_x → OpenPre_x )`  
+**S2 — Ends follow starts**
+`G( RE_x → OpenPre_x )`
 Every completion must correspond to a run that was already in flight before this position.
 
-**S3' — Start gating by EffectiveDue (and external conditions)**  
-`G( RS_x → ( Active ∧ Registered_x ∧ EffectiveDue_x ) )`  
+**S3' — Start gating by EffectiveDue (and external conditions)**
+`G( RS_x → ( Active ∧ Registered_x ∧ EffectiveDue_x ) )`
 A start can occur only while active, registered, and there is a current obligation to run.
 
-**S4a — Quiescence after StopEnd**  
-`G( SE → (¬RS_x W IE) )`  
+**S4a — Quiescence after StopEnd**
+`G( SE → (¬RS_x W IE) )`
 After `SE`, no new starts until re-initialisation.
 
-**S4b — StopEnd consistency**  
-`G( SE → (¬RE_x W IE) )`  
+**S4b — StopEnd consistency**
+`G( SE → (¬RE_x W IE) )`
 After `SE`, no new ends until re-initialisation.
 
-**S5a — Crash quiescence**  
-`G( Crash → (¬RS_x W IE) )`  
+**S5a — Crash quiescence**
+`G( Crash → (¬RS_x W IE) )`
 After a crash, no new starts until re-initialisation.
 
-**S5b — Crash consistency (no fabricated completions)**  
-`G( Crash → (¬RE_x W IE) )`  
+**S5b — Crash consistency (no fabricated completions)**
+`G( Crash → (¬RE_x W IE) )`
 A crash cannot be followed by any ends until re-initialisation.
 
-**S6' — No make-up bursts (bucketed form)**  
+**S6' — No make-up bursts (bucketed form)**
 Let `B_x := BucketReset_x = IE ∨ Due_x`. Between any two `B_x` positions (with no `B_x` in between), there is **at most one** `RS_x` unless a failure occurs in that segment (in which case a retry may introduce an extra `RS_x` before the next `B_x`):
+
 ```
 
 G( B_x →
@@ -782,8 +785,8 @@ G( B_x →
 
 ```
 
-**S7' — No obligations until first due after init**  
-`G( IE → ( ¬EffectiveDue_x W Due_x ) )`  
+**S7' — No obligations until first due after init**
+`G( IE → ( ¬EffectiveDue_x W Due_x ) )`
 From just after `IE` up to the first `Due_x`, there must be no obligation to start. If no `Due_x` occurs in the epoch, then no `EffectiveDue_x` occurs either.
 
 ---
@@ -792,23 +795,23 @@ From just after `IE` up to the first `Due_x`, there must be no obligation to sta
 
 For all tasks `x`:
 
-**L-Obl — Every obligation is eventually served (excludes single-shot schedulers)**  
-`G( IE → X( G( (¬IE ∧ EffectiveDue_x) → F ( RS_x ∨ IE ) ) ) )`  
+**L-Obl — Every obligation is eventually served (excludes single-shot schedulers)**
+`G( IE → X( G( (¬IE ∧ EffectiveDue_x) → F ( RS_x ∨ IE ) ) ) )`
 Right after each `IE`, for every position before the next `IE` where `EffectiveDue_x` holds, we must eventually see `RS_x` (or a new `IE`, which resets obligations).
 
-**L2 — Stop terminates**  
+**L2 — Stop terminates**
 `G( SS → F SE )`
 
-**L3' — Eventual execution under recurring obligations**  
+**L3' — Eventual execution under recurring obligations**
 `G( Active ∧ Registered_x ∧ G F EffectiveDue_x → G F RS_x )`
 
-**L4 — Crash-interrupted callbacks are restarted after next init**  
+**L4 — Crash-interrupted callbacks are restarted after next init**
 `G( ( RS_x ∧ (¬RE_x U Crash) ) → F( IE ∧ F RS_x ) )`
 
-**L5 — Initialization completes**  
+**L5 — Initialization completes**
 `G( IS → F IE )`
 
-**L6 — Stop completes**  
+**L6 — Stop completes**
 `G( SS → F SE )`
 
 ---
@@ -817,14 +820,14 @@ Right after each `IE`, for every position before the next `IE` where `EffectiveD
 
 Assumptions that cannot be verified by a scheduler implementation.
 
-**A1 — Starts eventually settle**  
-`G( RS_x → F( RE_x ∨ Crash ) )`  
+**A1 — Starts eventually settle**
+`G( RS_x → F( RE_x ∨ Crash ) )`
 Every callback invocation completes in **finite** time unless pre-empted by `Crash`. No uniform upper bound is required; the assumption only rules out infinite executions.
 
-**F0 — Non-Zeno trace.**  
+**F0 — Non-Zeno trace.**
 There are not infinitely many trace positions within any bounded real-time interval.
 
-**F1 — Progress fairness.**  
+**F1 — Progress fairness.**
 When the scheduler is **Active** and the process is not externally suspended or starved (e.g., not SIGSTOP’ed, no VM freeze, sufficient CPU), the polling loop makes progress and observable events continue to advance along the trace.
 
 ---
