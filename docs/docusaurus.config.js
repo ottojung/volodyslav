@@ -17,7 +17,7 @@ module.exports = {
         mermaid: true,
     },
     stylesheets: [
-        { href: '/katex/katex.min.css', type: 'text/css' },
+        { href: 'katex/katex.min.css', type: 'text/css' },
     ],
     presets: [
         [
