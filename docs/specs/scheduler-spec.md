@@ -578,9 +578,9 @@ This model focuses on externally observable behaviour, but does not include the 
 * **Trace semantics:** Each trace position corresponds to an instant where an observable event occurs. Concurrency is linearised by total order; events that are “simultaneous” appear at distinct (possibly very close) rationals. Time bounds are background semantics only (not encoded in LTL).
 * **Logic:** A combination of first-order quantification (over tasks) and **LTL with past**.
 
-  * **Future operators:** `G` (□), `F` (◊), `X` (next), `U` (until), `W` (weak until).
-  * **Past operators:** `H` (historically), `O` (once), `S` (since), `Y` (previous).
-  * We prefer the **stutter-invariant** past operators (`S`, `H`, `O`) in this spec.
+  * **Future operators:** $\texttt{G}$ (□), $\texttt{F}$ (◊), $\texttt{X}$ (next), $\texttt{U}$ (until), $\texttt{W}$ (weak until).
+  * **Past operators:** $\texttt{H}$ (historically), $\texttt{O}$ (once), $\texttt{S}$ (since), $\texttt{Y}$ (previous).
+  * We prefer the **stutter-invariant** past operators ($\texttt{S}$, $\texttt{H}$, $\texttt{O}$) in this spec.
 
 ### Definitions
 
@@ -589,31 +589,31 @@ This subsection gives a signature-based, self-contained definition of the model,
 #### Time and Traces
 
 * **Time domain:** $\mathbb{Q}$ (rational numbers), used to timestamp observable instants, no initial event.
-* **Trace:** a sequence of positions $i = 0, 1, 2, \dots$ with a timestamp function $\tau(i) \in \mathbf{Q}$ that is strictly increasing.
+* **Trace:** a sequence of positions $i = 0, 1, 2, \dots$ with a timestamp function $\tau(i) \in \mathbb{Q}$ that is strictly increasing.
 * At each position $i$, exactly one observable event occurs. Simultaneous real-time events are linearised into consecutive positions with strictly increasing $\tau$ values that may be arbitrarily close.
 
 #### Domains
 
-* `TaskId` — a finite, non-empty set of task identifiers.
-* `Result = { success, failure }`.
-* `RegistrationSet` — a finite mapping $R : TaskId \to (Schedule, RetryDelay)$.
-* `Schedule` — an abstract predicate $Due(task: TaskId, t: \mathbf{Q}) \to Bool$ (from the cron spec) indicating minute-boundary instants when a task is eligible to start.
-* `RetryDelay : TaskId \to \mathbf{Q}$ with $RetryDelay(x) \geq 0$.
+* $\texttt{TaskId}$ — a finite, non-empty set of task identifiers.
+* $\texttt{Result} = \{ \texttt{success}, \texttt{failure} \}$.
+* $\texttt{RegistrationSet}$ — a finite mapping $R : \texttt{TaskId} \to (\texttt{Schedule}, \texttt{RetryDelay})$.
+* $\texttt{Schedule}$ — an abstract predicate $\texttt{Due}(\texttt{task}: \texttt{TaskId}, t: \mathbb{Q}) \to \texttt{Bool}$ indicating minute-boundary instants when a task is eligible to start.
+* $\texttt{RetryDelay} : \texttt{TaskId} \to \mathbb{Q}$ with $\texttt{RetryDelay}(x) \geq 0$.
 
 **Interpretation:**
-`TaskId` names externally visible tasks. A `RegistrationSet` is the public input provided at initialization. $Due$ and $RetryDelay$ are parameters determined by the registration set and the environment (host clock); they are not hidden internal state. Time units for $Due$ and $RetryDelay$ coincide (minutes modeled as rationals).
+$\texttt{TaskId}$ names externally visible tasks. A $\texttt{RegistrationSet}$ is the public input provided at initialization. $Due$ and $\texttt{RetryDelay}$ are parameters determined by the registration set and the environment (host clock); they are not hidden internal state. Time units for $Due$ and $\texttt{RetryDelay}$ coincide (minutes modeled as rationals).
 
 #### Event Predicates (Observable Alphabet)
 
-Each event predicate is evaluated at a trace position `i` (we omit `i` when clear from context):
+Each event predicate is evaluated at a trace position $i$ (we omit $i$ when clear from context):
 
-* `InitStart` — the JavaScript interpreter calls `initialize(...)`.
-* `InitEnd(R)` — the `initialize(...)` call returns; the effective registration set is `R`.
-* `StopStart` — the JavaScript interpreter calls `stop()`.
-* `StopEnd` — the `stop()` call returns.
-* `UnexpectedShutdown` — an unexpected, in-flight system shutdown occurs (e.g., process or host crash). This interrupts running callbacks and preempts further starts until a subsequent `InitEnd`.
-* `RunStart(x)` — the scheduler begins invoking the public callback for task `x`.
-* `RunEnd(x, r)` — that invocation completes with result `r ∈ Result`.
+* $\texttt{InitStart}$ — the JavaScript interpreter calls `initialize(...)`.
+* $\texttt{InitEnd}(R)$ — the `initialize(...)` call returns; the effective registration set is $R$.
+* $\texttt{StopStart}$ — the JavaScript interpreter calls `stop()`.
+* $\texttt{StopEnd}$ — the `stop()` call returns.
+* $\texttt{UnexpectedShutdown}$ — an unexpected, in-flight system shutdown occurs (e.g., process or host crash). This interrupts running callbacks and preempts further starts until a subsequent $\texttt{InitEnd}$.
+* $\texttt{RunStart}(x)$ — the scheduler begins invoking the public callback for task $x$.
+* $\texttt{RunEnd}(x, r)$ — that invocation completes with result $r ∈ Result$.
 
 **Interpretation:**
 Each predicate marks the instant the named public action occurs from the perspective of the embedding JavaScript runtime: function entry (`InitStart`, `StopStart`), function return (`InitEnd`, `StopEnd`), callback invocation begin/end (`RunStart`, `RunEnd`), and exogenous crash (`UnexpectedShutdown`). No logging or internal bookkeeping is modeled.
@@ -631,7 +631,7 @@ These are functions of the trace and registration parameters; they introduce no 
   For example, for a cron expression `* * * * *`, a minute boundary occurs at `2024-01-01T12:34:00.00000000000000000000000000000000000000000000000000000Z` (infinitely many zeros), and then also `Due_x` holds at position $i$ where $\tau(i) = 2024-01-01T12:34:00Z$ (exactly that time point with infinitely many zeroes).
   Time is defined by the host system's local clock.
 
-* `RetryEligible_x` — true at position $i$ iff either (a) there has been no prior `RunEnd(x, failure)`, or (b) letting $j$ be the latest position $< i$ with `RunEnd(x, failure)` and $t_f = \tau(j)$, we have $\tau(i) \geq t_f + RetryDelay(x)$.
+* $\texttt{RetryEligible}_x$  — true at position $i$ iff either (a) there has been no prior `RunEnd(x, failure)`, or (b) letting $j$ be the latest position $< i$ with `RunEnd(x, failure)` and $t_f = \tau(j)$, we have $\tau(i) \geq t_f + RetryDelay(x)$.
   *Interpretation:* enough time has elapsed since the last failure of $x$ to permit a retry.
   In other words, either no failure has completed for $x$ yet, or at least $RetryDelay(x)$ time has elapsed since the latest `RunEnd(x, failure)`.
 
@@ -665,11 +665,11 @@ $$
 
 * **At most one**
 
-```js
-\texttt{AtMostOne}(\texttt{B}, \texttt{A}) := \neg\texttt{A} \; \texttt{W} \; ( \texttt{B} \vee ( \texttt{A} \wedge ( \neg\texttt{A} \; \texttt{W} \; \texttt{B} ) ) )
-```
+$$
+\texttt{AtMostOne}(B, A) := \neg A \; \texttt{W} \; ( B \vee ( A \wedge ( \neg A \; \texttt{W} \; B ) ) )
+$$
 
-At most one `A` between consecutive `B`’s (or forever if no next `B`).
+At most one $A$ between consecutive $B$’s (or forever if no next $B$).
 
 ---
 
