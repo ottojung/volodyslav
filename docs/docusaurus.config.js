@@ -17,12 +17,7 @@ module.exports = {
         mermaid: true,
     },
     stylesheets: [
-        {
-            href: 'https://cdn.jsdelivr.net/npm/katex@0.13.24/dist/katex.min.css',
-            type: 'text/css',
-            integrity: 'sha384-odtC9E8luH2fLNj2svR5C7L8FS25PymvSmOwpLyHsrpp9AiQ4G2IpgKtaZ0L04zv',
-            crossorigin: 'anonymous',
-        },
+        { href: '/katex/katex.min.css', type: 'text/css' },
     ],
     presets: [
         [
