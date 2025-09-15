@@ -588,20 +588,20 @@ This subsection gives a signature-based, self-contained definition of the model,
 
 #### Time and Traces
 
-* **Time domain:** `Q` (rational numbers), used to timestamp observable instants, no initial event.
-* **Trace:** a sequence of positions `i = 0, 1, 2, …` with a timestamp function `tau(i) ∈ Q` that is strictly increasing.
-* At each position `i`, exactly one observable event occurs. Simultaneous real-time events are linearised into consecutive positions with strictly increasing `tau` values that may be arbitrarily close.
+* **Time domain:** $\mathbb{Q}$ (rational numbers), used to timestamp observable instants, no initial event.
+* **Trace:** a sequence of positions $i = 0, 1, 2, \dots$ with a timestamp function $\tau(i) \in \mathbf{Q}$ that is strictly increasing.
+* At each position $i$, exactly one observable event occurs. Simultaneous real-time events are linearised into consecutive positions with strictly increasing $\tau$ values that may be arbitrarily close.
 
 #### Domains
 
 * `TaskId` — a finite, non-empty set of task identifiers.
 * `Result = { success, failure }`.
-* `RegistrationSet` — a finite mapping `R : TaskId → (Schedule, RetryDelay)`.
-* `Schedule` — an abstract predicate `Due(task: TaskId, t: Q) → Bool` (from the cron spec) indicating minute-boundary instants when a task is eligible to start.
-* `RetryDelay : TaskId → Q` with `RetryDelay(x) ≥ 0`.
+* `RegistrationSet` — a finite mapping $R : TaskId \to (Schedule, RetryDelay)$.
+* `Schedule` — an abstract predicate $Due(task: TaskId, t: \mathbf{Q}) \to Bool$ (from the cron spec) indicating minute-boundary instants when a task is eligible to start.
+* `RetryDelay : TaskId \to \mathbf{Q}$ with $RetryDelay(x) \geq 0$.
 
 **Interpretation:**
-`TaskId` names externally visible tasks. A `RegistrationSet` is the public input provided at initialization. `Due` and `RetryDelay` are parameters determined by the registration set and the environment (host clock); they are not hidden internal state. Time units for `Due` and `RetryDelay` coincide (minutes modeled as rationals).
+`TaskId` names externally visible tasks. A `RegistrationSet` is the public input provided at initialization. $Due$ and $RetryDelay$ are parameters determined by the registration set and the environment (host clock); they are not hidden internal state. Time units for $Due$ and $RetryDelay$ coincide (minutes modeled as rationals).
 
 #### Event Predicates (Observable Alphabet)
 
@@ -622,46 +622,46 @@ Each predicate marks the instant the named public action occurs from the perspec
 
 These are functions of the trace and registration parameters; they introduce no new observables.
 
-* `Registered_x` — true at position `i` iff there exists `j ≤ i` with `InitEnd(R)` at `j` and `x ∈ dom(R)`, and there is no `k` with `j < k ≤ i` such that `InitEnd(R')` holds and `x ∉ dom(R')`.
+* `Registered_x` — true at position $i$ iff there exists $j \leq i$ with `InitEnd(R)` at $j$ and $x \in dom(R)$, and there is no $k$ with $j < k \leq i$ such that `InitEnd(R')` holds and $x \notin dom(R')$.
   *Interpretation:* membership of `x` in the most recent observed registration set.
 
-* `Due_x` — shorthand for `Due(x, tau(i))`.
-  *Interpretation:* the cron schedule for `x` matches the current minute boundary at time `tau(i)`.
+* `Due_x` — shorthand for $Due(x, \tau(i))$.
+  *Interpretation:* the cron schedule for $x$ matches the current minute boundary at time $\tau(i)$.
   Minute boundary is defined as the exact start of that minute.
-  For example, for a cron expression `* * * * *`, a minute boundary occurs at `2024-01-01T12:34:00.00000000000000000000000000000000000000000000000000000Z` (infinitely many zeros), and then also `Due_x` holds at position `i` where `tau(i) = 2024-01-01T12:34:00Z` (exactly that time point with infinitely many zeroes).
+  For example, for a cron expression `* * * * *`, a minute boundary occurs at `2024-01-01T12:34:00.00000000000000000000000000000000000000000000000000000Z` (infinitely many zeros), and then also `Due_x` holds at position $i$ where $\tau(i) = 2024-01-01T12:34:00Z$ (exactly that time point with infinitely many zeroes).
   Time is defined by the host system's local clock.
 
-* `RetryEligible_x` — true at position `i` iff either (a) there has been no prior `RunEnd(x, failure)`, or (b) letting `j` be the latest position `< i` with `RunEnd(x, failure)` and `t_f = tau(j)`, we have `tau(i) ≥ t_f + RetryDelay(x)`.
-  *Interpretation:* enough time has elapsed since the last failure of `x` to permit a retry.
-  In other words, either no failure has completed for `x` yet, or at least `RetryDelay(x)` time has elapsed since the latest `RunEnd(x, failure)`.
+* `RetryEligible_x` — true at position $i$ iff either (a) there has been no prior `RunEnd(x, failure)`, or (b) letting $j$ be the latest position $< i$ with `RunEnd(x, failure)` and $t_f = \tau(j)$, we have $\tau(i) \geq t_f + RetryDelay(x)$.
+  *Interpretation:* enough time has elapsed since the last failure of $x$ to permit a retry.
+  In other words, either no failure has completed for $x$ yet, or at least $RetryDelay(x)$ time has elapsed since the latest `RunEnd(x, failure)`.
 
 ---
 
 ### Macros for Common Temporal Patterns
 
-We adopt the following macros, all definable in terms of `S` (and boolean connectives). They remove the need for step-indexed recursion.
+We adopt the following macros, all definable in terms of $S$ (and boolean connectives). They remove the need for step-indexed recursion.
 
 * **Hold-until-clear**
 
-```js
-Hold(set, clear) := (¬clear) S set
-```
+$$
+Hold(set, clear) := (\neg clear) S set
+$$
 
 There was a `set` in the past (or now), and no `clear` since.
 
 * **Bucket / set-with-reset**
 
-```js
-Bucket(set, reset) := (¬reset) S set
-```
+$$
+Bucket(set, reset) := (\neg reset) S set
+$$
 
 Remember `set` since the most recent `reset`.
 
-* **Edge after reset** (first occurrence of `φ` since `reset`, stutter-invariant)
+* **Edge after reset** (first occurrence of $\phi$ since `reset`, stutter-invariant)
 
-```js
-EdgeAfterReset(φ, reset) := φ ∧ (¬φ) S reset
-```
+$$
+EdgeAfterReset(\phi, reset) := \phi \wedge (\neg\phi) S reset
+$$
 
 * **At most one**
 
@@ -691,9 +691,9 @@ Stateful:
 
 * **Active** — between an `IE` and the next `SS` or `Crash`:
 
-```js
-Active := (¬(SS ∨ Crash)) S IE
-```
+$$
+Active := (\neg(SS \vee Crash)) S IE
+$$
 
 * **OpenPre\_x** — “an invocation of `x` started strictly before now and has not finished before the current position”:
 
@@ -703,42 +703,48 @@ OpenPre_x := ¬RS_x ∧ (¬RE_x) S RS_x
 
 * **Bucket reset**:
 
-```js
-BucketReset_x := IE ∨ Due_x
-```
+$$
+BucketReset_x := IE \vee Due_x
+$$
 
 * **Pending\_x** — one outstanding obligation to perform the first start after a due tick, cleared by a start or re-init:
 
-```js
-Pending_x := Hold( Due_x, RS_x ∨ IE )
-:= (¬(RS_x ∨ IE)) S Due_x
-```
+$$
+\begin{aligned}
+Pending_x &:= Hold( Due_x, RS_x \vee IE ) \\
+&:= (\neg(RS_x \vee IE)) S Due_x
+\end{aligned}
+$$
 
 * **FailedInBucket\_x** — a failure observed since last `IE` or `Due_x`:
 
-```js
-FailedInBucket_x := Bucket( REf_x, IE ∨ Due_x )
-:= (¬(IE ∨ Due_x)) S REf_x
-```
+$$
+\begin{aligned}
+FailedInBucket_x &:= Bucket( REf_x, IE \vee Due_x ) \\
+&:= (\neg(IE \vee Due_x)) S REf_x
+\end{aligned}
+$$
 
 * **RetryEligAfterFail\_x** — first time `RetryEligible_x` becomes true after a (bucket-resetting) failure/init/due:
 
-```js
-RetryEligAfterFail_x := EdgeAfterReset( RetryEligible_x, REf_x ∨ IE ∨ Due_x )
-```
+$$
+RetryEligAfterFail_x := EdgeAfterReset( RetryEligible_x, REf_x \vee IE \vee Due_x )
+$$
 
 * **RetryPending\_x** — one retry obligation inside the current bucket; appears when eligibility first becomes true after a failure, cleared by `RS_x`/`IE`/`Due_x`:
 
-```js
-RetryPending_x := Hold( RetryEligAfterFail_x ∧ FailedInBucket_x ∧ ¬Due_x, RS_x ∨ IE ∨ Due_x )
-:= (¬(RS_x ∨ IE ∨ Due_x)) S (RetryEligAfterFail_x ∧ FailedInBucket_x ∧ ¬Due_x)
-```
+$$
+\begin{aligned}
+RetryPending_x &:= Hold( RetryEligAfterFail_x \wedge FailedInBucket_x \wedge \neg Due_x, RS_x \vee IE \vee Due_x ) \\
+&:= (\neg(RS_x \vee IE \vee Due_x)) S (RetryEligAfterFail_x \wedge FailedInBucket_x \wedge \neg Due_x)
+\end{aligned}
+$$
 
 * **EffectiveDue\_x** — the scheduler **should actually start** task `x` now:
 
-```js
-EffectiveDue_x := Pending_x ∨ RetryPending_x
-```
+$$
+EffectiveDue_x := Pending_x \vee RetryPending_x
+$$
 
 ---
 
@@ -747,46 +753,60 @@ EffectiveDue_x := Pending_x ∨ RetryPending_x
 For all tasks `x`:
 
 **S1 — Per-task non-overlap**
-`G( RS_x → (¬RS_x U (RE_x ∨ Crash)) )`
+$$
+G( RS_x \rightarrow (\neg RS_x U (RE_x \vee Crash)) )
+$$
 Once a run starts, no further `RS_x` may occur before a matching `RE_x` or `Crash`.
 
 **S2 — Ends follow starts**
-`G( RE_x → OpenPre_x )`
+$$
+G( RE_x \rightarrow OpenPre_x )
+$$
 Every completion must correspond to a run that was already in flight before this position.
 
 **S3' — Start gating by EffectiveDue (and external conditions)**
-`G( RS_x → ( Active ∧ Registered_x ∧ EffectiveDue_x ) )`
+$$
+G( RS_x \rightarrow ( Active \wedge Registered_x \wedge EffectiveDue_x ) )
+$$
 A start can occur only while active, registered, and there is a current obligation to run.
 
 **S4a — Quiescence after StopEnd**
-`G( SE → (¬RS_x W IE) )`
+$$
+G( SE \rightarrow (\neg RS_x W IE) )
+$$
 After `SE`, no new starts until re-initialisation.
 
 **S4b — StopEnd consistency**
-`G( SE → (¬RE_x W IE) )`
+$$
+G( SE \rightarrow (\neg RE_x W IE) )
+$$
 After `SE`, no new ends until re-initialisation.
 
 **S5a — Crash quiescence**
-`G( Crash → (¬RS_x W IE) )`
+$$
+G( Crash \rightarrow (\neg RS_x W IE) )
+$$
 After a crash, no new starts until re-initialisation.
 
 **S5b — Crash consistency (no fabricated completions)**
-`G( Crash → (¬RE_x W IE) )`
+$$
+G( Crash \rightarrow (\neg RE_x W IE) )
+$$
 A crash cannot be followed by any ends until re-initialisation.
 
 **S6' — No make-up bursts (bucketed form)**
-Let `B_x := BucketReset_x = IE ∨ Due_x`. Between any two `B_x` positions (with no `B_x` in between), there is **at most one** `RS_x` unless a failure occurs in that segment (in which case a retry may introduce an extra `RS_x` before the next `B_x`):
+Let $B_x := BucketReset_x = IE \vee Due_x$. Between any two $B_x$ positions (with no $B_x$ in between), there is **at most one** `RS_x` unless a failure occurs in that segment (in which case a retry may introduce an extra `RS_x` before the next $B_x$):
 
-```
-
-G( B_x →
+$$
+G( B_x \rightarrow
 ( AtMostOne(B_x, RS_x)
-∨ ( ¬RS_x U ( REf_x ∧ AtMostOne(B_x, RS_x) ) ) ) )
-
-```
+\vee ( \neg RS_x U ( REf_x \wedge AtMostOne(B_x, RS_x) ) ) ) )
+$$
 
 **S7' — No obligations until first due after init**
-`G( IE → ( ¬EffectiveDue_x W Due_x ) )`
+$$
+G( IE \rightarrow ( \neg EffectiveDue_x W Due_x ) )
+$$
 From just after `IE` up to the first `Due_x`, there must be no obligation to start. If no `Due_x` occurs in the epoch, then no `EffectiveDue_x` occurs either.
 
 ---
@@ -796,23 +816,35 @@ From just after `IE` up to the first `Due_x`, there must be no obligation to sta
 For all tasks `x`:
 
 **L-Obl — Every obligation is eventually served (excludes single-shot schedulers)**
-`G( IE → X( G( (¬IE ∧ EffectiveDue_x) → F ( RS_x ∨ IE ) ) ) )`
+$$
+G( IE \rightarrow X( G( (\neg IE \wedge EffectiveDue_x) \rightarrow F ( RS_x \vee IE ) ) ) )
+$$
 Right after each `IE`, for every position before the next `IE` where `EffectiveDue_x` holds, we must eventually see `RS_x` (or a new `IE`, which resets obligations).
 
 **L2 — Stop terminates**
-`G( SS → F SE )`
+$$
+G( SS \rightarrow F SE )
+$$
 
 **L3' — Eventual execution under recurring obligations**
-`G( Active ∧ Registered_x ∧ G F EffectiveDue_x → G F RS_x )`
+$$
+G( Active \wedge Registered_x \wedge G F EffectiveDue_x \rightarrow G F RS_x )
+$$
 
 **L4 — Crash-interrupted callbacks are restarted after next init**
-`G( ( RS_x ∧ (¬RE_x U Crash) ) → F( IE ∧ F RS_x ) )`
+$$
+G( ( RS_x \wedge (\neg RE_x U Crash) ) \rightarrow F( IE \wedge F RS_x ) )
+$$
 
 **L5 — Initialization completes**
-`G( IS → F IE )`
+$$
+G( IS \rightarrow F IE )
+$$
 
 **L6 — Stop completes**
-`G( SS → F SE )`
+$$
+G( SS \rightarrow F SE )
+$$
 
 ---
 
@@ -821,7 +853,9 @@ Right after each `IE`, for every position before the next `IE` where `EffectiveD
 Assumptions that cannot be verified by a scheduler implementation.
 
 **A1 — Starts eventually settle**
-`G( RS_x → F( RE_x ∨ Crash ) )`
+$$
+G( RS_x \rightarrow F( RE_x \vee Crash ) )
+$$
 Every callback invocation completes in **finite** time unless pre-empted by `Crash`. No uniform upper bound is required; the assumption only rules out infinite executions.
 
 **F0 — Non-Zeno trace.**
