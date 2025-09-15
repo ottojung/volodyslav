@@ -8,6 +8,9 @@ module.exports = {
     favicon: "img/favicon.ico",
     organizationName: "volodyslav",
     projectName: "docs",
+    markdown: {
+        format: "md",
+    },
     stylesheets: [
         {
             href: 'https://cdn.jsdelivr.net/npm/katex@0.13.24/dist/katex.min.css',
