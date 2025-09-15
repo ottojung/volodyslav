@@ -1,3 +1,7 @@
+
+const remark = require('remark-math').default;
+const rehype = require('rehype-katex').default;
+
 module.exports = {
     title: "Volodyslav Documentation",
     tagline: "Documentation for the Volodyslav project",
@@ -27,8 +31,8 @@ module.exports = {
                     routeBasePath: "/",
                     sidebarPath: require.resolve("./sidebars.js"),
                     path: ".",
-                    remarkPlugins: [require("remark-math").default],
-                    rehypePlugins: [require("rehype-katex").default],
+                    remarkPlugins: [remark],
+                    rehypePlugins: [rehype],
                 },
                 blog: false,
             },
