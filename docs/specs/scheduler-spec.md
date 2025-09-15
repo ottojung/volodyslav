@@ -589,7 +589,7 @@ This subsection gives a signature-based, self-contained definition of the model,
 #### Time and Traces
 
 * **Time domain:** $\mathbb{Q}$ (rational numbers), used to timestamp observable instants, no initial event.
-* **Trace:** a sequence of positions $i = 0, 1, 2, \dots$ with a timestamp function $\tau(i) \in \mathbb{Q}$ that is strictly increasing.
+* **Trace:** a sequence of positions $i = 0, 1, 2, \dots$ with a timestamp function $\tau(i) \in \mathbf{Q}$ that is strictly increasing.
 * At each position $i$, exactly one observable event occurs. Simultaneous real-time events are linearised into consecutive positions with strictly increasing $\tau$ values that may be arbitrarily close.
 
 #### Domains
@@ -597,8 +597,8 @@ This subsection gives a signature-based, self-contained definition of the model,
 * `TaskId` — a finite, non-empty set of task identifiers.
 * `Result = { success, failure }`.
 * `RegistrationSet` — a finite mapping $R : TaskId \to (Schedule, RetryDelay)$.
-* `Schedule` — an abstract predicate $Due(task: TaskId, t: \mathbb{Q}) \to Bool$ (from the cron spec) indicating minute-boundary instants when a task is eligible to start.
-* `RetryDelay : TaskId \to \mathbb{Q}$ with $RetryDelay(x) \geq 0$.
+* `Schedule` — an abstract predicate $Due(task: TaskId, t: \mathbf{Q}) \to Bool$ (from the cron spec) indicating minute-boundary instants when a task is eligible to start.
+* `RetryDelay : TaskId \to \mathbf{Q}$ with $RetryDelay(x) \geq 0$.
 
 **Interpretation:**
 `TaskId` names externally visible tasks. A `RegistrationSet` is the public input provided at initialization. $Due$ and $RetryDelay$ are parameters determined by the registration set and the environment (host clock); they are not hidden internal state. Time units for $Due$ and $RetryDelay$ coincide (minutes modeled as rationals).

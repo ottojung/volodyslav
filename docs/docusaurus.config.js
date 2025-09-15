@@ -24,6 +24,8 @@ module.exports = {
                     routeBasePath: "/",
                     sidebarPath: require.resolve("./sidebars.js"),
                     path: ".",
+                    remarkPlugins: [require("remark-math").default],
+                    rehypePlugins: [require("rehype-katex").default],
                 },
                 blog: false,
             },
