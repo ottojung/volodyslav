@@ -677,15 +677,15 @@ At most one `A` between consecutive `B`’s (or forever if no next `B`).
 
 Abbreviations:
 
-* `\texttt{IS} := \texttt{InitStart}`
-* `\texttt{IE} := \exists R. \texttt{InitEnd}(R)`
-* `\texttt{SS} := \texttt{StopStart}`
-* `\texttt{SE} := \texttt{StopEnd}`
-* `\texttt{Crash} := \texttt{UnexpectedShutdown}`
-* `\texttt{RS}_x := \texttt{RunStart}(x)`
-* `\texttt{REs}_x := \texttt{RunEnd}(x, \texttt{success})`
-* `\texttt{REf}_x := \texttt{RunEnd}(x, \texttt{failure})`
-* `\texttt{RE}_x := \texttt{REs}_x \vee \texttt{REf}_x`
+* $\texttt{IS} := \texttt{InitStart}$
+* $\texttt{IE} := \exists R. \texttt{InitEnd}(R)$
+* $\texttt{SS} := \texttt{StopStart}$
+* $\texttt{SE} := \texttt{StopEnd}$
+* $\texttt{Crash} := \texttt{UnexpectedShutdown}$
+* $\texttt{RS}_x := \texttt{RunStart}(x)$
+* $\texttt{REs}_x := \texttt{RunEnd}(x, \texttt{success})$
+* $\texttt{REf}_x := \texttt{RunEnd}(x, \texttt{failure})$
+* $\texttt{RE}_x := \texttt{REs}_x \vee \texttt{REf}_x$
 
 Stateful:
 
