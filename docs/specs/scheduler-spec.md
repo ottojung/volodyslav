@@ -567,16 +567,19 @@ The following behaviors **MAY** vary between equivalent runs:
 
 ## Formal Model of Observable Behavior
 
-This section gives a formal model that combines first‑order quantification over the universe of tasks with future‑time Linear Temporal Logic (LTL) formulas. In practice we treat the atomic predicates below as predicate symbols parameterised by a task variable (for example, `RS(x)`, `REs(x)`), and the LTL operators (`G`, `F`, `X`, `U`, `W`) are applied to propositional formulas obtained by instantiating those predicates for concrete tasks.
+This model combines first-order quantification over the universe of tasks with **future- and past-time LTL** formulas. Atomic predicates below are predicate symbols parameterised by a task variable (for example, `RS(x)`, `REs(x)`), and temporal operators apply to propositional formulas obtained by instantiating those predicates for concrete tasks.
 
-The presentation uses the convenient shorthand of writing instantiated propositions like `RS_x` for `RS(x)`. Where a formula is stated without explicit quantifiers, the default intent is universal quantification over tasks (i.e. "for all tasks x"). This document therefore combines first‑order (over tasks) and propositional temporal reasoning: first‑order quantification ranges over the set of registered tasks, and temporal operators reason over event positions in the trace.
+We use the convenient shorthand of writing instantiated propositions like `RS_x` for `RS(x)`. Where a formula is stated without explicit quantifiers, the default intent is universal quantification over tasks (i.e. “for all tasks x”). First-order quantification ranges over the set of registered tasks; temporal operators reason over event positions in the trace.
 
-This model focuses on externally observable behaviour and does not include the error‑handling internals of the implementation.
+This model focuses on externally observable behaviour, but does not include the error-handling part.
 
 ### Modelling Framework
 
-* **Trace semantics:** Each trace position corresponds to an instant where an observable event occurs. Concurrency is linearised by total order; events that are "simultaneous" -- appear at distinct (possibly very close) rationals. Time bounds are background semantics only (not encoded in LTL).
-* **Logic:** A combination of first‑order quantification (over the universe of tasks) and future‑time LTL. Concretely, predicates below are considered parameterised by a task variable; when instantiated they yield propositional atomic formulas which LTL then operates on. We use `G` (□), `F` (◊), `X` (next), `U` (until), `W` (weak until). Unadorned formulas are intended to be read under the default universal quantifier "for all tasks x" where applicable.
+* **Trace semantics:** Each trace position corresponds to an instant where an observable event occurs. Concurrency is linearised by total order; events that are “simultaneous” appear at distinct (possibly very close) rationals. Time bounds are background semantics only (not encoded in LTL).
+* **Logic:** A combination of first-order quantification (over tasks) and **LTL with past**.
+  * **Future operators:** `G` (□), `F` (◊), `X` (next), `U` (until), `W` (weak until).
+  * **Past operators:** `H` (historically), `O` (once), `S` (since), `Y` (previous).
+  * We prefer the **stutter-invariant** past operators (`S`, `H`, `O`) in this spec.
 
 ### Definitions
 
@@ -584,7 +587,7 @@ This subsection gives a signature-based, self-contained definition of the model,
 
 #### Time and Traces
 
-* **Time domain:** `Q` (rational numbers), used to timestamp observable instants.
+* **Time domain:** `Q` (rational numbers), used to timestamp observable instants, no initial event.
 * **Trace:** a sequence of positions `i = 0, 1, 2, …` with a timestamp function `tau(i) ∈ Q` that is strictly increasing.
 * At each position `i`, exactly one observable event occurs. Simultaneous real-time events are linearised into consecutive positions with strictly increasing `tau` values that may be arbitrarily close.
 
@@ -631,10 +634,47 @@ These are functions of the trace and registration parameters; they introduce no 
   *Interpretation:* enough time has elapsed since the last failure of `x` to permit a retry.
   In other words, either no failure has completed for `x` yet, or at least `RetryDelay(x)` time has elapsed since the latest `RunEnd(x, failure)`.
 
-#### Derived Macros (State from Events)
+---
 
-These macros are computed from the observable trace; they do not add observables.
+### Macros for Common Temporal Patterns
 
+We adopt the following macros, all definable in terms of `S` (and boolean connectives). They remove the need for step-indexed recursion.
+
+* **Hold-until-clear**
+
+```js
+Hold(set, clear) := (¬clear) S set
+```
+
+There was a `set` in the past (or now), and no `clear` since.
+
+* **Bucket / set-with-reset**
+
+```js
+Bucket(set, reset) := (¬reset) S set
+```
+
+Remember `set` since the most recent `reset`.
+
+* **Edge after reset** (first occurrence of `φ` since `reset`, stutter-invariant)
+
+```js
+EdgeAfterReset(φ, reset) := φ ∧ (¬φ) S reset
+```
+
+* **At most one**
+
+```js
+AtMostOne(B, A) := ¬A W ( B ∨ ( A ∧ ( ¬A W B ) ) )
+```
+
+At most one `A` between consecutive `B`’s (or forever if no next `B`).
+
+---
+
+### Derived Macros (State from Events)
+
+Abbreviations:
 * `IS := InitStart`
 * `IE := ∃R. InitEnd(R)`
 * `SS := StopStart`
@@ -645,142 +685,178 @@ These macros are computed from the observable trace; they do not add observables
 * `REf_x := RunEnd(x, failure)`
 * `RE_x := REs_x ∨ REf_x`
 
-* `Active` — true at position `i` iff there exists `j ≤ i` with `InitEnd(_)` at `j` and there is no `k` with `j < k ≤ i` where `StopStart` or `UnexpectedShutdown` holds.
-  *Interpretation:* between an `InitEnd` and the next `StopStart` or `UnexpectedShutdown`.
+Stateful:
 
-* `RE_x` — abbreviation for `RunEnd(x, success) ∨ RunEnd(x, failure)`.
+* **Active** — between an `IE` and the next `SS` or `Crash`:
 
-* `OpenPre_x` — “an invocation of `x` is in flight strictly before the current position”. Defined by recursion over positions:
+```js
+Active := (¬(SS ∨ Crash)) S IE
+```
 
-  * Base (`i = 0`): `OpenPre_x := false`.
-  * Step (from position `i` to `i+1`):
-    `OpenPre_x := (OpenPre_x ∧ ¬RE_x) ∨ RS_x`,
-    where `RS_x` and `RE_x` are evaluated at position `i`.
-    *Interpretation:* captures runs that started earlier and have not yet finished before the current position’s events are observed; useful to express “ends follow starts” without past-time operators.
+* **OpenPre_x** — “an invocation of `x` started strictly before now and has not finished before the current position”:
 
-* `AtMostOne(B, A) :=  ¬A W ( B ∨ ( A ∧ ( ¬A W B ) ) )` -- At most one `A` between consecutive `B`'s (or forever if no next `B`).
+```js
+OpenPre_x := ¬RS_x ∧ (¬RE_x) S RS_x
+```
+
+* **Bucket reset**:
+
+```js
+BucketReset_x := IE ∨ Due_x
+```
+
+* **Pending_x** — one outstanding obligation to perform the first start after a due tick, cleared by a start or re-init:
+
+```js
+Pending_x := Hold( Due_x, RS_x ∨ IE )
+:= (¬(RS_x ∨ IE)) S Due_x
+```
+
+* **FailedInBucket_x** — a failure observed since last `IE` or `Due_x`:
+
+```js
+FailedInBucket_x := Bucket( REf_x, IE ∨ Due_x )
+:= (¬(IE ∨ Due_x)) S REf_x
+```
+
+* **RetryEligAfterFail_x** — first time `RetryEligible_x` becomes true after a (bucket-resetting) failure/init/due:
+
+```js
+RetryEligAfterFail_x := EdgeAfterReset( RetryEligible_x, REf_x ∨ IE ∨ Due_x )
+```
+
+* **RetryPending_x** — one retry obligation inside the current bucket; appears when eligibility first becomes true after a failure, cleared by `RS_x`/`IE`/`Due_x`:
+
+```js
+RetryPending_x := Hold( RetryEligAfterFail_x ∧ FailedInBucket_x ∧ ¬Due_x, RS_x ∨ IE ∨ Due_x )
+:= (¬(RS_x ∨ IE ∨ Due_x)) S (RetryEligAfterFail_x ∧ FailedInBucket_x ∧ ¬Due_x)
+```
+
+* **EffectiveDue_x** — the scheduler **should actually start** task `x` now:
+
+```js
+EffectiveDue_x := Pending_x ∨ RetryPending_x
+```
+
+---
 
 ### LTL Safety Properties
 
 For all tasks `x`:
 
-**S1 — Per‑task non‑overlap**
-`G( RS_x → (¬RS_x U (RE_x ∨ Crash)) )`
+**S1 — Per-task non-overlap**  
+`G( RS_x → (¬RS_x U (RE_x ∨ Crash)) )`  
 Once a run starts, no further `RS_x` may occur before a matching `RE_x` or `Crash`.
 
-**S2 — Ends follow starts**
-`G( RE_x → OpenPre_x )`
+**S2 — Ends follow starts**  
+`G( RE_x → OpenPre_x )`  
 Every completion must correspond to a run that was already in flight before this position.
 
-**S3 — Eligibility**
-`G( RS_x → (Active ∧ Registered_x ∧ RetryEligible_x) )`
-A start can occur only while active, registered, and not blocked by retry.
+**S3' — Start gating by EffectiveDue (and external conditions)**  
+`G( RS_x → ( Active ∧ Registered_x ∧ EffectiveDue_x ) )`  
+A start can occur only while active, registered, and there is a current obligation to run.
 
-**S4a — Quiescence after StopEnd**
-`G( SE → (¬RS_x W IE) )`
-After `SE`, no new starts until re‑initialisation.
+**S4a — Quiescence after StopEnd**  
+`G( SE → (¬RS_x W IE) )`  
+After `SE`, no new starts until re-initialisation.
 
-**S4b — StopEnd consistency**
-`G( SE → (¬RE_x W IE) )`
-After `SE`, no new ends until re‑initialisation.
+**S4b — StopEnd consistency**  
+`G( SE → (¬RE_x W IE) )`  
+After `SE`, no new ends until re-initialisation.
 
-**S5a — Crash quiescence**
-`G( Crash → (¬RS_x W IE) )`
-After a crash, no new starts until re‑initialisation.
+**S5a — Crash quiescence**  
+`G( Crash → (¬RS_x W IE) )`  
+After a crash, no new starts until re-initialisation.
 
-**S5b — Crash consistency (no fabricated completions)**
-`G( Crash → (¬RE_x W IE) )`
-A crash cannot be followed by any ends until re‑initialisation.
-This is more of a model definition (a crash by definition is something that interrupts the completion of a task), not a property of implementations.
+**S5b — Crash consistency (no fabricated completions)**  
+`G( Crash → (¬RE_x W IE) )`  
+A crash cannot be followed by any ends until re-initialisation.
 
-**S6 — No make‑up bursts**
-
-`G( Due_x → Segment(Due_x, RS_x, REf_x) )`
-
-where `Segment` is defined as:
-
-```
-Segment(B, A, C) = AtMostOne(B, A) ∨ ( ¬A U ( A ∧ ( ¬A U ( C ∧ AtMostOne(B, A) ) ) ) )
+**S6' — No make-up bursts (bucketed form)**  
+Let `B_x := BucketReset_x = IE ∨ Due_x`. Between any two `B_x` positions (with no `B_x` in between), there is **at most one** `RS_x` unless a failure occurs in that segment (in which case a retry may introduce an extra `RS_x` before the next `B_x`):
 ```
 
-Between any two positions where `Due_x` holds (with no `Due_x` in between), there is **at most one** `RS_x` unless a failure occurs in the segment (in which case a retry may introduce an extra `RS_x` before the next `Due_x`).
+G( B_x →
+( AtMostOne(B_x, RS_x)
+∨ ( ¬RS_x U ( REf_x ∧ AtMostOne(B_x, RS_x) ) ) ) )
 
-After each `Due_x`, either there is at most one `RS_x` before the next `Due_x`, or there is a first `RS_x`, then before any second `RS_x` a failure `REf_x` occurs, and after that failure there is at most one further `RS_x` until the next `Due_x`.
+```
 
-**S7 -- No execution until after init**
-`G( IE → ¬RS_x W Due_x )`
+**S7' — No obligations until first due after init**  
+`G( IE → ( ¬EffectiveDue_x W Due_x ) )`  
+From just after `IE` up to the first `Due_x`, there must be no obligation to start. If no `Due_x` occurs in the epoch, then no `EffectiveDue_x` occurs either.
 
-From just after `IE` up to the first `Due_x`, there must be no start. If no `Due_x` occurs in the epoch, then no `RS_x` occurs either.
+---
 
 ### LTL Liveness Properties
 
 For all tasks `x`:
 
-**L1 -- Execution eventually follows due after init** 
-`G( IE → X( G( (¬IE ∧ Due_x) → F ( RS_x ∨ IE ) ) ) )`
+**L-Obl — Every obligation is eventually served (excludes single-shot schedulers)**  
+`G( IE → X( G( (¬IE ∧ EffectiveDue_x) → F ( RS_x ∨ IE ) ) ) )`  
+Right after each `IE`, for every position before the next `IE` where `EffectiveDue_x` holds, we must eventually see `RS_x` (or a new `IE`, which resets obligations).
 
-Right after each `IE`, for every position before the next `IE` where `Due_x` holds,
-we must eventually see `RS_x` (or a new `IE`, which resets obligations).
-
-**L2 — Stop terminates**
+**L2 — Stop terminates**  
 `G( SS → F SE )`
 
-**L3 — Eventual execution under continuous due**
-`G( Active ∧ Registered_x ∧ G F Due_x → G F RS_x )`
+**L3' — Eventual execution under recurring obligations**  
+`G( Active ∧ Registered_x ∧ G F EffectiveDue_x → G F RS_x )`
 
-**L4 — Crash‑interrupted callbacks are restarted after next init**
+**L4 — Crash-interrupted callbacks are restarted after next init**  
 `G( ( RS_x ∧ (¬RE_x U Crash) ) → F( IE ∧ F RS_x ) )`
 
-**L5 — Initialization completes**
+**L5 — Initialization completes**  
 `G( IS → F IE )`
-Initialization eventually completes.
 
-**L6 — Stop completes**
+**L6 — Stop completes**  
 `G( SS → F SE )`
-Stop eventually completes.
 
-### Fairness assumptions
+---
 
-This subsection records assumptions that cannot possibly be verified by a scheduler implementation.
+### Fairness Assumptions
 
-**A1 — Starts eventually settle**
-`G( RS_x → F( RE_x ∨ Crash ) )`
-Every callback invocation (between `RS_x` and `RE_x`) completes in **finite** time unless pre‑empted by `Crash`. No uniform upper bound is required; the assumption only rules out infinite executions.
+Assumptions that cannot be verified by a scheduler implementation.
 
-**F0 — Non-Zeno trace.**
+**A1 — Starts eventually settle**  
+`G( RS_x → F( RE_x ∨ Crash ) )`  
+Every callback invocation completes in **finite** time unless pre-empted by `Crash`. No uniform upper bound is required; the assumption only rules out infinite executions.
+
+**F0 — Non-Zeno trace.**  
 There are not infinitely many trace positions within any bounded real-time interval.
 
-**F1 — Progress fairness.**
-When the scheduler is **Active** and the process is not externally suspended or starved (e.g., not SIGSTOP'ed, no VM freeze, sufficient CPU), the polling loop makes progress and observable events continue to advance along the trace.
+**F1 — Progress fairness.**  
+When the scheduler is **Active** and the process is not externally suspended or starved (e.g., not SIGSTOP’ed, no VM freeze, sufficient CPU), the polling loop makes progress and observable events continue to advance along the trace.
+
+---
 
 ### Example Acceptable Traces (informative)
 
 **Trace 1 — Normal operation**
 
-```
+```js
 IS
-IE              (task "1" registered)
+IE              // task "1" registered
 Due_1
-RS_1
+RS_1            // consumes Pending_1
 REs_1
 Due_1
 RS_1
-REf_1
-Due_1
-RS_1            (RetryEligible_1 now true)
+REf_1           // (FailedInBucket_1 true)
+...             // (later RetryEligible_1 becomes true ⇒ RetryPending_1)
+RS_1            // (consumes RetryPending_1)
 REs_1
 ```
 
 **Trace 2 — Stop and restart**
 
-```
+```js
 IS
-IE                 (task "1" registered)
+IE                 // task "1" registered
 SS
 SE
-                   (No RS_1 until re‑init)
+                   // No RS_1 until re-init; no EffectiveDue_1 obligations either
 IS
-IE                 (task "1" registered)
+IE                 // task "1" registered
 Due_1
 RS_1
 REs_1
@@ -788,16 +864,16 @@ REs_1
 
 **Trace 3 — Crash and restart**
 
-```
+```js
 IS
-IE                 (task "1" registered)
+IE                 // task "1" registered
 Due_1
 RS_1
-Crash              (no RS_1 until next IE)
+Crash              // no RS_1 until next IE
 IS
-IE                 (task "1" registered)
+IE                 // task "1" registered
 Due_1
-RS_1               (restart after re‑init)
+RS_1               // restart after re-init
 REs_1
 ```
 
