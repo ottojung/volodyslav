@@ -644,7 +644,7 @@ We adopt the following macros, all definable in terms of $S$ (and boolean connec
 * **Hold-until-clear**
 
 $$
-Hold(set, clear) := (\neg clear) S set
+\texttt{Hold}(\texttt{set}, \texttt{clear}) := (\neg \texttt{clear}) \; \texttt{S} \; \texttt{set}
 $$
 
 There was a `set` in the past (or now), and no `clear` since.
@@ -652,7 +652,7 @@ There was a `set` in the past (or now), and no `clear` since.
 * **Bucket / set-with-reset**
 
 $$
-Bucket(set, reset) := (\neg reset)\; S \; set
+\texttt{Bucket}(\texttt{set}, \texttt{reset}) := (\neg \texttt{reset})\; \texttt{S} \; \texttt{set}
 $$
 
 Remember `set` since the most recent `reset`.
@@ -660,13 +660,13 @@ Remember `set` since the most recent `reset`.
 * **Edge after reset** (first occurrence of $\phi$ since `reset`, stutter-invariant)
 
 $$
-EdgeAfterReset(\phi, reset) := \phi \wedge (\neg\phi) S reset
+\texttt{EdgeAfterReset}(\phi, \texttt{reset}) := \phi \wedge (\neg\phi) \; \texttt{S} \; \texttt{reset}
 $$
 
 * **At most one**
 
 ```js
-AtMostOne(B, A) := ¬A W ( B ∨ ( A ∧ ( ¬A W B ) ) )
+\texttt{AtMostOne}(\texttt{B}, \texttt{A}) := \neg\texttt{A} \; \texttt{W} \; ( \texttt{B} \vee ( \texttt{A} \wedge ( \neg\texttt{A} \; \texttt{W} \; \texttt{B} ) ) )
 ```
 
 At most one `A` between consecutive `B`’s (or forever if no next `B`).
@@ -677,22 +677,22 @@ At most one `A` between consecutive `B`’s (or forever if no next `B`).
 
 Abbreviations:
 
-* `IS := InitStart`
-* `IE := ∃R. InitEnd(R)`
-* `SS := StopStart`
-* `SE := StopEnd`
-* `Crash := UnexpectedShutdown`
-* `RS_x := RunStart(x)`
-* `REs_x := RunEnd(x, success)`
-* `REf_x := RunEnd(x, failure)`
-* `RE_x := REs_x ∨ REf_x`
+* `\texttt{IS} := \texttt{InitStart}`
+* `\texttt{IE} := \exists R. \texttt{InitEnd}(R)`
+* `\texttt{SS} := \texttt{StopStart}`
+* `\texttt{SE} := \texttt{StopEnd}`
+* `\texttt{Crash} := \texttt{UnexpectedShutdown}`
+* `\texttt{RS}_x := \texttt{RunStart}(x)`
+* `\texttt{REs}_x := \texttt{RunEnd}(x, \texttt{success})`
+* `\texttt{REf}_x := \texttt{RunEnd}(x, \texttt{failure})`
+* `\texttt{RE}_x := \texttt{REs}_x \vee \texttt{REf}_x`
 
 Stateful:
 
 * **Active** — between an `IE` and the next `SS` or `Crash`:
 
 $$
-Active := (\neg(SS \vee Crash)) S IE
+\texttt{Active} := (\neg(\texttt{SS} \vee \texttt{Crash})) \; \texttt{S} \; \texttt{IE}
 $$
 
 * **OpenPre\_x** — “an invocation of `x` started strictly before now and has not finished before the current position”:
@@ -704,15 +704,15 @@ OpenPre_x := ¬RS_x ∧ (¬RE_x) S RS_x
 * **Bucket reset**:
 
 $$
-BucketReset_x := IE \vee Due_x
+\texttt{BucketReset}_x := \texttt{IE} \vee \texttt{Due}_x
 $$
 
 * **Pending\_x** — one outstanding obligation to perform the first start after a due tick, cleared by a start or re-init:
 
 $$
 \begin{aligned}
-Pending_x &:= Hold( Due_x, RS_x \vee IE ) \\
-&:= (\neg(RS_x \vee IE)) S Due_x
+\texttt{Pending}_x &:= \texttt{Hold}( \texttt{Due}_x, \texttt{RS}_x \vee \texttt{IE} ) \\
+&:= (\neg(\texttt{RS}_x \vee \texttt{IE})) \; \texttt{S} \; \texttt{Due}_x
 \end{aligned}
 $$
 
@@ -720,30 +720,30 @@ $$
 
 $$
 \begin{aligned}
-FailedInBucket_x &:= Bucket( REf_x, IE \vee Due_x ) \\
-&:= (\neg(IE \vee Due_x)) S REf_x
+\texttt{FailedInBucket}_x &:= \texttt{Bucket}( \texttt{REf}_x, \texttt{IE} \vee \texttt{Due}_x ) \\
+&:= (\neg(\texttt{IE} \vee \texttt{Due}_x)) \; \texttt{S} \; \texttt{REf}_x
 \end{aligned}
 $$
 
 * **RetryEligAfterFail\_x** — first time `RetryEligible_x` becomes true after a (bucket-resetting) failure/init/due:
 
 $$
-RetryEligAfterFail_x := EdgeAfterReset( RetryEligible_x, REf_x \vee IE \vee Due_x )
+\texttt{RetryEligAfterFail}_x := \texttt{EdgeAfterReset}( \texttt{RetryEligible}_x, \texttt{REf}_x \vee \texttt{IE} \vee \texttt{Due}_x )
 $$
 
 * **RetryPending\_x** — one retry obligation inside the current bucket; appears when eligibility first becomes true after a failure, cleared by `RS_x`/`IE`/`Due_x`:
 
 $$
 \begin{aligned}
-RetryPending_x &:= Hold( RetryEligAfterFail_x \wedge FailedInBucket_x \wedge \neg Due_x, RS_x \vee IE \vee Due_x ) \\
-&:= (\neg(RS_x \vee IE \vee Due_x)) S (RetryEligAfterFail_x \wedge FailedInBucket_x \wedge \neg Due_x)
+\texttt{RetryPending}_x &:= \texttt{Hold}( \texttt{RetryEligAfterFail}_x \wedge \texttt{FailedInBucket}_x \wedge \neg \texttt{Due}_x, \texttt{RS}_x \vee \texttt{IE} \vee \texttt{Due}_x ) \\
+&:= (\neg(\texttt{RS}_x \vee \texttt{IE} \vee \texttt{Due}_x)) \; \texttt{S} \; (\texttt{RetryEligAfterFail}_x \wedge \texttt{FailedInBucket}_x \wedge \neg \texttt{Due}_x)
 \end{aligned}
 $$
 
 * **EffectiveDue\_x** — the scheduler **should actually start** task `x` now:
 
 $$
-EffectiveDue_x := Pending_x \vee RetryPending_x
+\texttt{EffectiveDue}_x := \texttt{Pending}_x \vee \texttt{RetryPending}_x
 $$
 
 ---
@@ -754,58 +754,58 @@ For all tasks `x`:
 
 **S1 — Per-task non-overlap**
 $$
-G( RS_x \rightarrow (\neg RS_x U (RE_x \vee Crash)) )
+G( \texttt{RS}_x \rightarrow (\neg \texttt{RS}_x \; \texttt{U} \; (\texttt{RE}_x \vee \texttt{Crash})) )
 $$
 Once a run starts, no further `RS_x` may occur before a matching `RE_x` or `Crash`.
 
 **S2 — Ends follow starts**
 $$
-G( RE_x \rightarrow OpenPre_x )
+G( \texttt{RE}_x \rightarrow \texttt{OpenPre}_x )
 $$
 Every completion must correspond to a run that was already in flight before this position.
 
 **S3' — Start gating by EffectiveDue (and external conditions)**
 $$
-G( RS_x \rightarrow ( Active \wedge Registered_x \wedge EffectiveDue_x ) )
+G( \texttt{RS}_x \rightarrow ( \texttt{Active} \wedge \texttt{Registered}_x \wedge \texttt{EffectiveDue}_x ) )
 $$
 A start can occur only while active, registered, and there is a current obligation to run.
 
 **S4a — Quiescence after StopEnd**
 $$
-G( SE \rightarrow (\neg RS_x W IE) )
+G( \texttt{SE} \rightarrow (\neg \texttt{RS}_x \; \texttt{W} \; \texttt{IE}) )
 $$
 After `SE`, no new starts until re-initialisation.
 
 **S4b — StopEnd consistency**
 $$
-G( SE \rightarrow (\neg RE_x W IE) )
+G( \texttt{SE} \rightarrow (\neg \texttt{RE}_x \; \texttt{W} \; \texttt{IE}) )
 $$
 After `SE`, no new ends until re-initialisation.
 
 **S5a — Crash quiescence**
 $$
-G( Crash \rightarrow (\neg RS_x W IE) )
+G( \texttt{Crash} \rightarrow (\neg \texttt{RS}_x \; \texttt{W} \; \texttt{IE}) )
 $$
 After a crash, no new starts until re-initialisation.
 
 **S5b — Crash consistency (no fabricated completions)**
 $$
-G( Crash \rightarrow (\neg RE_x W IE) )
+G( \texttt{Crash} \rightarrow (\neg \texttt{RE}_x \; \texttt{W} \; \texttt{IE}) )
 $$
 A crash cannot be followed by any ends until re-initialisation.
 
 **S6' — No make-up bursts (bucketed form)**
-Let $B_x := BucketReset_x = IE \vee Due_x$. Between any two $B_x$ positions (with no $B_x$ in between), there is **at most one** `RS_x` unless a failure occurs in that segment (in which case a retry may introduce an extra `RS_x` before the next $B_x$):
+Let $\texttt{B}_x := \texttt{BucketReset}_x = \texttt{IE} \vee \texttt{Due}_x$. Between any two $\texttt{B}_x$ positions (with no $\texttt{B}_x$ in between), there is **at most one** $\texttt{RS}_x$ unless a failure occurs in that segment (in which case a retry may introduce an extra $\texttt{RS}_x$ before the next $\texttt{B}_x$):
 
 $$
-G( B_x \rightarrow
-( AtMostOne(B_x, RS_x)
-\vee ( \neg RS_x U ( REf_x \wedge AtMostOne(B_x, RS_x) ) ) ) )
+G( \texttt{B}_x \rightarrow
+( \texttt{AtMostOne}(\texttt{B}_x, \texttt{RS}_x)
+\vee ( \neg \texttt{RS}_x \; \texttt{U} \; ( \texttt{REf}_x \wedge \texttt{AtMostOne}(\texttt{B}_x, \texttt{RS}_x) ) ) ) )
 $$
 
 **S7' — No obligations until first due after init**
 $$
-G( IE \rightarrow ( \neg EffectiveDue_x W Due_x ) )
+G( \texttt{IE} \rightarrow ( \neg \texttt{EffectiveDue}_x \; \texttt{W} \; \texttt{Due}_x ) )
 $$
 From just after `IE` up to the first `Due_x`, there must be no obligation to start. If no `Due_x` occurs in the epoch, then no `EffectiveDue_x` occurs either.
 
@@ -817,33 +817,33 @@ For all tasks `x`:
 
 **L-Obl — Every obligation is eventually served (excludes single-shot schedulers)**
 $$
-G( IE \rightarrow X( G( (\neg IE \wedge EffectiveDue_x) \rightarrow F ( RS_x \vee IE ) ) ) )
+G( \texttt{IE} \rightarrow \texttt{X}( \texttt{G}( (\neg \texttt{IE} \wedge \texttt{EffectiveDue}_x) \rightarrow \texttt{F} ( \texttt{RS}_x \vee \texttt{IE} ) ) ) )
 $$
 Right after each `IE`, for every position before the next `IE` where `EffectiveDue_x` holds, we must eventually see `RS_x` (or a new `IE`, which resets obligations).
 
 **L2 — Stop terminates**
 $$
-G( SS \rightarrow F SE )
+G( \texttt{SS} \rightarrow \texttt{F} \texttt{SE} )
 $$
 
 **L3' — Eventual execution under recurring obligations**
 $$
-G( Active \wedge Registered_x \wedge G F EffectiveDue_x \rightarrow G F RS_x )
+G( \texttt{Active} \wedge \texttt{Registered}_x \wedge \texttt{G} \texttt{F} \texttt{EffectiveDue}_x \rightarrow \texttt{G} \texttt{F} \texttt{RS}_x )
 $$
 
 **L4 — Crash-interrupted callbacks are restarted after next init**
 $$
-G( ( RS_x \wedge (\neg RE_x U Crash) ) \rightarrow F( IE \wedge F RS_x ) )
+G( ( \texttt{RS}_x \wedge (\neg \texttt{RE}_x \; \texttt{U} \; \texttt{Crash}) ) \rightarrow \texttt{F}( \texttt{IE} \wedge \texttt{F} \texttt{RS}_x ) )
 $$
 
 **L5 — Initialization completes**
 $$
-G( IS \rightarrow F IE )
+G( \texttt{IS} \rightarrow \texttt{F} \texttt{IE} )
 $$
 
 **L6 — Stop completes**
 $$
-G( SS \rightarrow F SE )
+G( \texttt{SS} \rightarrow \texttt{F} \texttt{SE} )
 $$
 
 ---
@@ -854,7 +854,7 @@ Assumptions that cannot be verified by a scheduler implementation.
 
 **A1 — Starts eventually settle**
 $$
-G( RS_x \rightarrow F( RE_x \vee Crash ) )
+G( \texttt{RS}_x \rightarrow \texttt{F}( \texttt{RE}_x \vee \texttt{Crash} ) )
 $$
 Every callback invocation completes in **finite** time unless pre-empted by `Crash`. No uniform upper bound is required; the assumption only rules out infinite executions.
 
