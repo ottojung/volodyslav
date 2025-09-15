@@ -33,7 +33,7 @@ module.exports = {
                     sidebarPath: require.resolve("./sidebars.js"),
                     path: ".",
                     remarkPlugins: [remark],
-                    rehypePlugins: [[rehype, { throwOnError: true, errorColor: '#cc0000' }]],
+                    rehypePlugins: [rehype],
                 },
                 blog: false,
             },
