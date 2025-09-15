@@ -569,7 +569,7 @@ The following behaviors **MAY** vary between equivalent runs:
 
 This model combines first-order quantification over the universe of tasks with **future- and past-time LTL** formulas. Atomic predicates below are predicate symbols parameterised by a task variable (for example, `RS(x)`, `REs(x)`), and temporal operators apply to propositional formulas obtained by instantiating those predicates for concrete tasks.
 
-We use the convenient shorthand of writing instantiated propositions like `RS_x` for `RS(x)`. Where a formula is stated without explicit quantifiers, the default intent is universal quantification over tasks (i.e. “for all tasks x”). First-order quantification ranges over the set of registered tasks; temporal operators reason over event positions in the trace.
+We use the convenient shorthand of writing instantiated propositions like $\texttt{RS}_x$ for `RS(x)`. Where a formula is stated without explicit quantifiers, the default intent is universal quantification over tasks (i.e. “for all tasks x”). First-order quantification ranges over the set of registered tasks; temporal operators reason over event positions in the trace.
 
 This model focuses on externally observable behaviour, but does not include the error-handling part.
 
@@ -616,24 +616,25 @@ Each event predicate is evaluated at a trace position $i$ (we omit $i$ when clea
 * $\texttt{RunEnd}(x, r)$ — that invocation completes with result $r ∈ Result$.
 
 **Interpretation:**
-Each predicate marks the instant the named public action occurs from the perspective of the embedding JavaScript runtime: function entry (`InitStart`, `StopStart`), function return (`InitEnd`, `StopEnd`), callback invocation begin/end (`RunStart`, `RunEnd`), and exogenous crash (`UnexpectedShutdown`). No logging or internal bookkeeping is modeled.
+Each predicate marks the instant the named public action occurs from the perspective of the embedding JavaScript runtime: function entry ($\texttt{InitStart}$, $\texttt{StopStart}$), function return ($\texttt{InitEnd}$, $\texttt{StopEnd}$), callback invocation begin/end ($\texttt{RunStart}$, $\texttt{RunEnd}$), and exogenous crash ($\texttt{UnexpectedShutdown}$). No logging or internal bookkeeping is modeled.
 
-#### Input Predicates (Derived from Time and Registrations)
+#### Input Predicates
 
 These are functions of the trace and registration parameters; they introduce no new observables.
 
-* `Registered_x` — true at position $i$ iff there exists $j \leq i$ with `InitEnd(R)` at $j$ and $x \in dom(R)$, and there is no $k$ with $j < k \leq i$ such that `InitEnd(R')` holds and $x \notin dom(R')$.
+* `Registered_x` — true at position $i$ iff there exists $j \leq i$ with $\texttt{InitEnd}(R)$ at $j$ and $x \in dom(R)$, and there is no $k$ with $j < k \leq i$ such that $\texttt{InitEnd}(R')$ holds and $x \notin dom(R')$.
   *Interpretation:* membership of `x` in the most recent observed registration set.
 
-* `Due_x` — shorthand for $Due(x, \tau(i))$.
+* $\texttt{Due}_x$ — shorthand for $\texttt{Due}(x, \tau(i))$.
   *Interpretation:* the cron schedule for $x$ matches the current minute boundary at time $\tau(i)$.
   Minute boundary is defined as the exact start of that minute.
-  For example, for a cron expression `* * * * *`, a minute boundary occurs at `2024-01-01T12:34:00.00000000000000000000000000000000000000000000000000000Z` (infinitely many zeros), and then also `Due_x` holds at position $i$ where $\tau(i) = 2024-01-01T12:34:00Z$ (exactly that time point with infinitely many zeroes).
+  For example, for a cron expression `* * * * *`, a minute boundary occurs at `2024-01-01T12:34:00.00000000000000000000000000000000000000000000000000000Z` (infinitely many zeros), and then also $\texttt{Due}_x$ holds at position $i$ where $\tau(i) = 2024-01-01T12:34:00Z$ (exactly that time point with infinitely many zeroes).
   Time is defined by the host system's local clock.
 
-* $\texttt{RetryEligible}_x$  — true at position $i$ iff either (a) there has been no prior `RunEnd(x, failure)`, or (b) letting $j$ be the latest position $< i$ with `RunEnd(x, failure)` and $t_f = \tau(j)$, we have $\tau(i) \geq t_f + RetryDelay(x)$.
+* $\texttt{RetryEligible}_x$  — true at position $i$ iff either (a) there has been no prior $\texttt{RunEnd}(x, \texttt{failure})$, or (b) letting $j$ be the latest position $< i$ with $\texttt{RunEnd}(x, \texttt{failure})$ and $t_f = \tau(j)$, we have $\tau(i) \geq t_f + \texttt{RetryDelay}(x)$.
+
   *Interpretation:* enough time has elapsed since the last failure of $x$ to permit a retry.
-  In other words, either no failure has completed for $x$ yet, or at least $RetryDelay(x)$ time has elapsed since the latest `RunEnd(x, failure)`.
+  In other words, either no failure has completed for $x$ yet, or at least $\texttt{RetryDelay}(x)$ time has elapsed since the latest $\texttt{RunEnd}(x, \texttt{failure})$.
 
 ---
 
@@ -647,7 +648,7 @@ $$
 \texttt{Hold}(\texttt{set}, \texttt{clear}) := (\neg \texttt{clear}) \; \texttt{S} \; \texttt{set}
 $$
 
-There was a `set` in the past (or now), and no `clear` since.
+There was a $\texttt{set}$ in the past (or now), and no $\texttt{clear}$ since.
 
 * **Bucket / set-with-reset**
 
@@ -655,9 +656,9 @@ $$
 \texttt{Bucket}(\texttt{set}, \texttt{reset}) := (\neg \texttt{reset})\; \texttt{S} \; \texttt{set}
 $$
 
-Remember `set` since the most recent `reset`.
+Remember $\texttt{set}$ since the most recent $\texttt{reset}$.
 
-* **Edge after reset** (first occurrence of $\phi$ since `reset`, stutter-invariant)
+* **Edge after reset** (first occurrence of $\phi$ since $\texttt{reset}$, stutter-invariant)
 
 $$
 \texttt{EdgeAfterReset}(\phi, \texttt{reset}) := \phi \wedge (\neg\phi) \; \texttt{S} \; \texttt{reset}
@@ -689,17 +690,17 @@ Abbreviations:
 
 Stateful:
 
-* **Active** — between an `IE` and the next `SS` or `Crash`:
+* **Active** — between an $\texttt{IE}$ and the next `SS` or `Crash`:
 
 $$
 \texttt{Active} := (\neg(\texttt{SS} \vee \texttt{Crash})) \; \texttt{S} \; \texttt{IE}
 $$
 
-* **OpenPre\_x** — “an invocation of `x` started strictly before now and has not finished before the current position”:
+* $\texttt{OpenPre}_x$ — “an invocation of `x` started strictly before now and has not finished before the current position”:
 
-```js
-OpenPre_x := ¬RS_x ∧ (¬RE_x) S RS_x
-```
+$$
+\texttt{OpenPre}_x := \neg \texttt{RS}_x \land (\neg \texttt{RE}_x) \; \texttt{S} \; \texttt{RS}_x
+$$
 
 * **Bucket reset**:
 
@@ -716,7 +717,7 @@ $$
 \end{aligned}
 $$
 
-* **FailedInBucket\_x** — a failure observed since last `IE` or `Due_x`:
+* **FailedInBucket\_x** — a failure observed since last $\texttt{IE}$ or $\texttt{Due}_x$:
 
 $$
 \begin{aligned}
@@ -731,7 +732,7 @@ $$
 \texttt{RetryEligAfterFail}_x := \texttt{EdgeAfterReset}( \texttt{RetryEligible}_x, \texttt{REf}_x \vee \texttt{IE} \vee \texttt{Due}_x )
 $$
 
-* **RetryPending\_x** — one retry obligation inside the current bucket; appears when eligibility first becomes true after a failure, cleared by `RS_x`/`IE`/`Due_x`:
+* **RetryPending\_x** — one retry obligation inside the current bucket; appears when eligibility first becomes true after a failure, cleared by $\texttt{RS}_x$/$\texttt{IE}$/$\texttt{Due}_x$:
 
 $$
 \begin{aligned}
@@ -750,13 +751,13 @@ $$
 
 ### LTL Safety Properties
 
-For all tasks `x`:
+For all tasks $x$:
 
 **S1 — Per-task non-overlap**
 $$
 G( \texttt{RS}_x \rightarrow (\neg \texttt{RS}_x \; \texttt{U} \; (\texttt{RE}_x \vee \texttt{Crash})) )
 $$
-Once a run starts, no further `RS_x` may occur before a matching `RE_x` or `Crash`.
+Once a run starts, no further $\texttt{RS}_x$ may occur before a matching $\texttt{RE}_x$ or `Crash`.
 
 **S2 — Ends follow starts**
 $$
@@ -807,19 +808,19 @@ $$
 $$
 G( \texttt{IE} \rightarrow ( \neg \texttt{EffectiveDue}_x \; \texttt{W} \; \texttt{Due}_x ) )
 $$
-From just after `IE` up to the first `Due_x`, there must be no obligation to start. If no `Due_x` occurs in the epoch, then no `EffectiveDue_x` occurs either.
+From just after $\texttt{IE}$ up to the first $\texttt{Due}_x$, there must be no obligation to start. If no $\texttt{Due}_x$ occurs in the epoch, then no `EffectiveDue_x` occurs either.
 
 ---
 
 ### LTL Liveness Properties
 
-For all tasks `x`:
+For all tasks $x$:
 
 **L-Obl — Every obligation is eventually served (excludes single-shot schedulers)**
 $$
 G( \texttt{IE} \rightarrow \texttt{X}( \texttt{G}( (\neg \texttt{IE} \wedge \texttt{EffectiveDue}_x) \rightarrow \texttt{F} ( \texttt{RS}_x \vee \texttt{IE} ) ) ) )
 $$
-Right after each `IE`, for every position before the next `IE` where `EffectiveDue_x` holds, we must eventually see `RS_x` (or a new `IE`, which resets obligations).
+Right after each $\texttt{IE}$, for every position before the next $\texttt{IE}$ where `EffectiveDue_x` holds, we must eventually see $\texttt{RS}_x$ (or a new $\texttt{IE}$, which resets obligations).
 
 **L2 — Stop terminates**
 $$
