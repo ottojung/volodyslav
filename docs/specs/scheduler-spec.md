@@ -623,7 +623,7 @@ Each predicate marks the instant the named public action occurs from the perspec
 These are functions of the trace and registration parameters; they introduce no new observables.
 
 * `Registered_x` — true at position $i$ iff there exists $j \leq i$ with $\texttt{InitEnd}(R)$ at $j$ and $x \in dom(R)$, and there is no $k$ with $j < k \leq i$ such that $\texttt{InitEnd}(R')$ holds and $x \notin dom(R')$.
-  *Interpretation:* membership of `x` in the most recent observed registration set.
+  *Interpretation:* membership of $x$ in the most recent observed registration set.
 
 * $\texttt{Due}_x$ — shorthand for $\texttt{Due}(x, \tau(i))$.
   *Interpretation:* the cron schedule for $x$ matches the current minute boundary at time $\tau(i)$.
@@ -690,13 +690,13 @@ Abbreviations:
 
 Stateful:
 
-* **Active** — between an $\texttt{IE}$ and the next `SS` or `Crash`:
+* **Active** — between an $\texttt{IE}$ and the next $\texttt{SS}$ or $\texttt{Crash}$:
 
 $$
 \texttt{Active} := (\neg(\texttt{SS} \vee \texttt{Crash})) \; \texttt{S} \; \texttt{IE}
 $$
 
-* $\texttt{OpenPre}_x$ — “an invocation of `x` started strictly before now and has not finished before the current position”:
+* $\texttt{OpenPre}_x$ — “an invocation of $x$ started strictly before now and has not finished before the current position”:
 
 $$
 \texttt{OpenPre}_x := \neg \texttt{RS}_x \land (\neg \texttt{RE}_x) \; \texttt{S} \; \texttt{RS}_x
@@ -741,7 +741,7 @@ $$
 \end{aligned}
 $$
 
-* **EffectiveDue\_x** — the scheduler **should actually start** task `x` now:
+* **EffectiveDue\_x** — the scheduler **should actually start** task $x$ now:
 
 $$
 \texttt{EffectiveDue}_x := \texttt{Pending}_x \vee \texttt{RetryPending}_x
@@ -757,7 +757,7 @@ For all tasks $x$:
 $$
 G( \texttt{RS}_x \rightarrow (\neg \texttt{RS}_x \; \texttt{U} \; (\texttt{RE}_x \vee \texttt{Crash})) )
 $$
-Once a run starts, no further $\texttt{RS}_x$ may occur before a matching $\texttt{RE}_x$ or `Crash`.
+Once a run starts, no further $\texttt{RS}_x$ may occur before a matching $\texttt{RE}_x$ or $\texttt{Crash}$.
 
 **S2 — Ends follow starts**
 $$
@@ -775,13 +775,13 @@ A start can occur only while active, registered, and there is a current obligati
 $$
 G( \texttt{SE} \rightarrow (\neg \texttt{RS}_x \; \texttt{W} \; \texttt{IE}) )
 $$
-After `SE`, no new starts until re-initialisation.
+After $\texttt{SE}$, no new starts until re-initialisation.
 
 **S4b — StopEnd consistency**
 $$
 G( \texttt{SE} \rightarrow (\neg \texttt{RE}_x \; \texttt{W} \; \texttt{IE}) )
 $$
-After `SE`, no new ends until re-initialisation.
+After $\texttt{SE}$, no new ends until re-initialisation.
 
 **S5a — Crash quiescence**
 $$
@@ -857,7 +857,7 @@ Assumptions that cannot be verified by a scheduler implementation.
 $$
 G( \texttt{RS}_x \rightarrow \texttt{F}( \texttt{RE}_x \vee \texttt{Crash} ) )
 $$
-Every callback invocation completes in **finite** time unless pre-empted by `Crash`. No uniform upper bound is required; the assumption only rules out infinite executions.
+Every callback invocation completes in **finite** time unless pre-empted by $\texttt{Crash}$. No uniform upper bound is required; the assumption only rules out infinite executions.
 
 **F0 — Non-Zeno trace.**
 There are not infinitely many trace positions within any bounded real-time interval.
