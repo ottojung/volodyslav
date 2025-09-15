@@ -652,7 +652,7 @@ There was a `set` in the past (or now), and no `clear` since.
 * **Bucket / set-with-reset**
 
 $$
-Bucket(set, reset) := (\neg reset) S set
+Bucket(set, reset) := (\neg reset)\; S \; set
 $$
 
 Remember `set` since the most recent `reset`.
