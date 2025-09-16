@@ -850,17 +850,17 @@ $$
 \texttt{G}( \texttt{SS} \rightarrow \texttt{F} \; \texttt{SE} )
 $$
 
-**L4 — Crash-interrupted callbacks are restarted after next init**
+**L3 — Crash-interrupted callbacks are restarted after next init**
 $$
 \texttt{G}( ( \texttt{RS}_x \wedge (\neg \texttt{RE}_x \; \texttt{U} \; \texttt{Crash}) ) \rightarrow \texttt{F}( \texttt{IE} \wedge \texttt{F} \; \texttt{RS}_x ) )
 $$
 
-**L5 — Initialization completes**
+**L4 — Initialization completes**
 $$
 \texttt{G}( \texttt{IS} \rightarrow \texttt{F} \; \texttt{IE} )
 $$
 
-**L6 — Stop completes**
+**L5 — Stop completes**
 $$
 \texttt{G}( \texttt{SS} \rightarrow \texttt{F} \; \texttt{SE} )
 $$
