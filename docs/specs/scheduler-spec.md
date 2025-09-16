@@ -862,12 +862,12 @@ $$
 
 **L5 — Initialization completes**
 $$
-\texttt{G}( \texttt{IS} \rightarrow \texttt{F} \texttt{IE} )
+\texttt{G}( \texttt{IS} \rightarrow \texttt{F} \; \texttt{IE} )
 $$
 
 **L6 — Stop completes**
 $$
-\texttt{G}( \texttt{SS} \rightarrow \texttt{F} \texttt{SE} )
+\texttt{G}( \texttt{SS} \rightarrow \texttt{F} \; \texttt{SE} )
 $$
 
 ---
@@ -897,14 +897,14 @@ When the scheduler is **Active** and the process is not externally suspended or 
 ```js
 IS
 IE              // task "1" registered
-Due_1
+[Due_1]
 RS_1            // consumes Pending_1
 REs_1
-Due_1
+[Due_1]
 RS_1
-REf_1           // (FailedInBucket_1 true)
-...             // (later RetryDue_1 occurs at t_f + RetryDelay(1); eligibility becomes true then)
-RS_1            // (consumes RetryPending_1)
+REf_1
+[RetryDue_1]    // RetryDue_1 occurs at t_f + RetryDelay(1); eligibility becomes true then
+RS_1            // consumes RetryPending_1
 REs_1
 ```
 
@@ -918,7 +918,7 @@ SE
                    // No RS_1 until re-init; no EffectiveDue_1 obligations either
 IS
 IE                 // task "1" registered
-Due_1
+[Due_1]
 RS_1
 REs_1
 ```
@@ -928,12 +928,12 @@ REs_1
 ```js
 IS
 IE                 // task "1" registered
-Due_1
+[Due_1]
 RS_1
 Crash              // no RS_1 until next IE
 IS
 IE                 // task "1" registered
-Due_1
+[Due_1]
 RS_1               // restart after re-init
 REs_1
 ```
