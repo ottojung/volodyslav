@@ -199,7 +199,7 @@ stateDiagram-v2
 - **Running:** Task callback is currently executing
 - **AwaitingRetry:** Task failed and is waiting for retry delay to pass
 
-### State Transitions
+### Task State Transitions
 
 #### From AwaitingRun to Running
 **Guard:** Current time matches cron expression OR task has never run and cron expression matches current time exactly (first startup only)
