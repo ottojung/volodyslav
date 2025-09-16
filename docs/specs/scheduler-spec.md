@@ -702,10 +702,10 @@ $$
 \texttt{Active} := (\neg(\texttt{SS} \vee \texttt{Crash})) \; \texttt{S} \; \texttt{IE}
 $$
 
-* $\texttt{OpenPre}_x$ — “an invocation of $x$ has begun and has not finished before the current position”:
+* $\texttt{Running}_x$ — “an invocation of $x$ has begun and has not finished before the current position”:
 
 $$
-\texttt{OpenPre}_x := (\neg \texttt{RE}_x) \; \texttt{S} \; \texttt{RS}_x \land (\neg \texttt{Crash}) \; \texttt{S} \; \texttt{RS}_x
+\texttt{Running}_x := (\neg \texttt{RE}_x) \; \texttt{S} \; \texttt{RS}_x \land (\neg \texttt{Crash}) \; \texttt{S} \; \texttt{RS}_x
 $$
 
 * **Bucket reset**:
@@ -767,7 +767,7 @@ Once a run starts, no further $\texttt{RS}_x$ may occur before a matching $\text
 
 **S2 — Ends follow starts**
 $$
-G( \texttt{RE}_x \rightarrow \texttt{OpenPre}_x )
+G( \texttt{RE}_x \rightarrow \texttt{Running}_x )
 $$
 Every completion must correspond to a run that was already in flight before this position.
 
