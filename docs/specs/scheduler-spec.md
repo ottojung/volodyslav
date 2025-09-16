@@ -644,7 +644,7 @@ Input predicates:
 
   *Interpretation:* non-membership of $x$ in the registration set provided at the most recent initialization.
 
-* $\texttt{Registered}_x := \texttt{Bucket}(IE^{\text{in}}_x,\; IE^{\text{out}}_x) \;\equiv\; (\neg IE^{\text{out}}_x)\; \texttt{S}\; IE^{\text{in}}_x$
+* $\texttt{Registered}_x := \texttt{Bucket}(IE^{\text{in}}_x,\; IE^{\text{out}}_x)$
 
   *Interpretation:* membership of $x$ in the most recent observed registration set.
 
