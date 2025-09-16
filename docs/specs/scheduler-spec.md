@@ -817,7 +817,7 @@ From just after $\texttt{IE}$ up to the first $\texttt{Due}_x$, there must be no
 
 For all tasks $x$:
 
-**L-Obl — Every obligation is eventually served (excludes single-shot schedulers)**
+**L1 — Every obligation is eventually served**
 $$
 G( \texttt{IE} \rightarrow \texttt{X}( \texttt{G}( (\neg \texttt{IE} \wedge \texttt{EffectiveDue}_x) \rightarrow \texttt{F} ( \texttt{RS}_x \vee \texttt{IE} ) ) ) )
 $$
