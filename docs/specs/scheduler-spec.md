@@ -632,7 +632,7 @@ This model focuses on externally observable behaviour, but does not include the 
 
 ### Modelling Framework
 
-* **Trace semantics:** Each trace position corresponds to an instant where an observable event occurs. Concurrency is linearised by total order; events that are “simultaneous” appear at distinct (possibly very close) rationals. Time bounds are background semantics only (not encoded in LTL).
+* **Trace semantics:** Each trace position corresponds to an instant where an observable event occurs. Events that are simultaneous appear at the same rationals. Time bounds are background semantics only (not encoded in LTL).
 * **Logic:** A combination of first-order quantification (over tasks) and **LTL with past**.
 
   * **Future operators:** $\texttt{G}$ (□), $\texttt{F}$ (◊), $\texttt{X}$ (next), $\texttt{U}$ (until), $\texttt{W}$ (weak until).
@@ -646,8 +646,8 @@ This subsection gives a signature-based, self-contained definition of the model,
 #### Time and Traces
 
 * **Time domain:** $\mathbb{Q}$ (rational numbers), used to timestamp observable instants, no initial event.
-* **Trace:** a sequence of positions $i = 0, 1, 2, \dots$ with a timestamp function $\tau(i) \in \mathbb{Q}$ that is strictly increasing.
-* At each position $i$, exactly one observable event occurs. Simultaneous real-time events are linearised into consecutive positions with strictly increasing $\tau$ values that may be arbitrarily close.
+* **Trace:** a sequence of positions $i = 0, 1, 2, \dots$ with a timestamp function $\tau(i) \in \mathbb{Q}$ that is non-strictly increasing.
+* At each position $i$, one or more observable events may occur.
 
 #### Domains
 
