@@ -653,7 +653,7 @@ Input predicates:
   *Interpretation:* the cron schedule for $x$ matches the current minute boundary at time $\tau(i)$.
   Minute boundary is defined as the exact start of that minute.
 
-  For example, for a cron expression `* * * * *`, a minute boundary occurs at `2024-01-01T12:34:00.00000000000000000000000000000000000000000000000000000Z` (infinitely many zeros), and then also $\texttt{Due}_x$ holds at position $i$ where $\tau(i) = 2024-01-01T12:34:00Z$ (exactly that time point with infinitely many zeroes).
+  For example, for a cron expression `* * * * *`, a minute boundary occurs at `2024-01-01T12:34:00.00000000000000000000000000000000000000000000000000000Z` (infinitely many zeros), and then also $\texttt{Due}_x$ holds at position $i$ where $\tau(i) = \texttt{2024-01-01T12:34:00Z}$ (exactly that time point with infinitely many zeroes).
 
   Time is defined by the host system's local clock.
 
