@@ -711,10 +711,7 @@ $$
 * **Pending\_x** — one outstanding obligation to perform the first start after a due tick, cleared by a start or re-init:
 
 $$
-\begin{aligned}
-\texttt{Pending}_x &:= \texttt{Hold}( \texttt{Due}_x, \texttt{RS}_x \vee \texttt{IE} ) \\
-&:= (\neg(\texttt{RS}_x \vee \texttt{IE})) \; \texttt{S} \; \texttt{Due}_x
-\end{aligned}
+\texttt{Pending}_x := \texttt{Hold}( \texttt{Due}_x, \texttt{RS}_x \vee \texttt{IE} )
 $$
 
 * **FailedInBucket\_x** — a failure observed since last $\texttt{IE}$ or $\texttt{Due}_x$:
