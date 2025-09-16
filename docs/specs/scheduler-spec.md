@@ -874,15 +874,15 @@ When the scheduler is **Active** and the process is not externally suspended or 
 ```js
 IS
 IE              // task "1" registered
-$\texttt{Due}_1$
-$\texttt{RS}_1$            // consumes $\texttt{Pending}_1$
-$\texttt{REs}_1$
-$\texttt{Due}_1$
-$\texttt{RS}_1$
-$\texttt{REf}_1$           // ($\texttt{FailedInBucket}_1$ true)
-...             // (later $\texttt{RetryEligible}_1$ becomes true ⇒ $\texttt{RetryPending}_1$)
-$\texttt{RS}_1$            // (consumes $\texttt{RetryPending}_1$)
-$\texttt{REs}_1$
+Due_1
+RS_1            // consumes Pending_1
+REs_1
+Due_1
+RS_1
+REf_1           // (FailedInBucket_1 true)
+...             // (later RetryEligible_1 becomes true ⇒ RetryPending_1)
+RS_1            // (consumes RetryPending_1)
+REs_1
 ```
 
 **Trace 2 — Stop and restart**
@@ -892,12 +892,12 @@ IS
 IE                 // task "1" registered
 SS
 SE
-                   // No $\texttt{RS}_1$ until re-init; no $\texttt{EffectiveDue}_1$ obligations either
+                   // No RS_1 until re-init; no EffectiveDue_1 obligations either
 IS
 IE                 // task "1" registered
-$\texttt{Due}_1$
-$\texttt{RS}_1$
-$\texttt{REs}_1$
+Due_1
+RS_1
+REs_1
 ```
 
 **Trace 3 — Crash and restart**
@@ -905,14 +905,14 @@ $\texttt{REs}_1$
 ```js
 IS
 IE                 // task "1" registered
-$\texttt{Due}_1$
-$\texttt{RS}_1$
-Crash              // no $\texttt{RS}_1$ until next IE
+Due_1
+RS_1
+Crash              // no RS_1 until next IE
 IS
 IE                 // task "1" registered
-$\texttt{Due}_1$
-$\texttt{RS}_1$               // restart after re-init
-$\texttt{REs}_1$
+Due_1
+RS_1               // restart after re-init
+REs_1
 ```
 
 ---
