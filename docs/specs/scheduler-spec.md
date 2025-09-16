@@ -601,7 +601,7 @@ This subsection gives a signature-based, self-contained definition of the model,
 * $\texttt{RetryDelay} : \texttt{TaskId} \to \mathbb{Q}$ with $\texttt{RetryDelay}(x) \geq 0$.
 
 **Interpretation:**
-$\texttt{TaskId}$ names externally visible tasks. A $\texttt{RegistrationSet}$ is the public input provided at initialization. $Due$ and $\texttt{RetryDelay}$ are parameters determined by the registration set and the environment (host clock); they are not hidden internal state. Time units for $Due$ and $\texttt{RetryDelay}$ coincide (minutes modeled as rationals).
+$\texttt{TaskId}$ names externally visible tasks. A $\texttt{RegistrationSet}$ is the public input provided at initialization. $\texttt{Due}$ and $\texttt{RetryDelay}$ are parameters determined by the registration set and the environment (host clock); they are not hidden internal state. Time units for $\texttt{Due}$ and $\texttt{RetryDelay}$ coincide (minutes modeled as rationals).
 
 #### Event Predicates (Observable Alphabet)
 
