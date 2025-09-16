@@ -739,12 +739,6 @@ $$
 
 The primitive point event $\texttt{RetryDue}_x$ is constrained by these stutter-invariant LTL conditions:
 
-**RD0 — Pointness**
-
-$$
-G( \texttt{RetryDue}_x ) \rightarrow \neg \texttt{X} \; \texttt{RetryDue}_x )
-$$
-
 **RD1 — No spurious pulses before any failure**
 
 $$
