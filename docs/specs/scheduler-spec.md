@@ -789,6 +789,30 @@ $$
 \texttt{EffectiveDue}_x := \texttt{Pending}_x \vee \texttt{RetryPending}_x
 $$
 
+---
+
+### Liveness Properties
+
+These properties state progress guarantees.
+They prevent deadlocks, starvation, livelocks, and unbounded postponement of obligations.
+
+**L1 — Every obligation is eventually served**
+$$
+\texttt{G}( (\texttt{Active} \wedge \texttt{Registered}_x \wedge \texttt{EffectiveDue}_x) \rightarrow \texttt{F} (\texttt{RS}_x \vee  \neg \texttt{Active} ) )
+$$
+
+For every position before $\texttt{IE}$ where $\texttt{EffectiveDue}_x$ holds, we must eventually see $\texttt{RS}_x$ (or a $\texttt{Crash}$, or $\texttt{SE}$, which reset obligations).
+
+**L2 — Stop terminates**
+$$
+\texttt{G}( \texttt{SS} \rightarrow \texttt{F} \; \texttt{SE} )
+$$
+
+**L3 — Initialization completes**
+$$
+\texttt{G}( \texttt{IS} \rightarrow \texttt{F} \; \texttt{IE} )
+$$
+
 ### Safety Properties
 
 These properties state scheduler invariants.
@@ -842,30 +866,6 @@ Let $\texttt{B}_x := \texttt{IE} \vee \texttt{Due}_x \vee \texttt{REf}_x$. Betwe
 
 $$
 \texttt{G}( \texttt{AtMostOne}(\texttt{B}_x, \texttt{RS}_x) )
-$$
-
----
-
-### Liveness Properties
-
-These properties state progress guarantees.
-They prevent deadlocks, starvation, livelocks, and unbounded postponement of obligations.
-
-**L1 — Every obligation is eventually served**
-$$
-\texttt{G}( (\texttt{Active} \wedge \texttt{Registered}_x \wedge \texttt{EffectiveDue}_x) \rightarrow \texttt{F} (\texttt{RS}_x \vee  \neg \texttt{Active} ) )
-$$
-
-For every position before $\texttt{IE}$ where $\texttt{EffectiveDue}_x$ holds, we must eventually see $\texttt{RS}_x$ (or a $\texttt{Crash}$, or $\texttt{SE}$, which reset obligations).
-
-**L2 — Stop terminates**
-$$
-\texttt{G}( \texttt{SS} \rightarrow \texttt{F} \; \texttt{SE} )
-$$
-
-**L3 — Initialization completes**
-$$
-\texttt{G}( \texttt{IS} \rightarrow \texttt{F} \; \texttt{IE} )
 $$
 
 ---
