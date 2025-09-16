@@ -181,7 +181,7 @@ stateDiagram-v2
 
 **Guard:** Subsequent call to `initialize(registrations)` returned.
 
-**Action:** Either complete override resolution and continue, or fail and revert to previous running state.
+**Action:** Either complete override resolution and continue, or fail keeping previous running state.
 
 **Events:** `SchedulerReinitializationCompleted`
 
