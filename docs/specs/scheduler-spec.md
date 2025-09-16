@@ -146,33 +146,51 @@ stateDiagram-v2
 ### Scheduler State Transitions
 
 #### Uninitialized to Initializing
+
 **Guard:** `initialize(registrations)` called with valid input
+
 **Action:** Begin validation, persistence override resolution
+
 **Events:** `SchedulerInitializationStarted`
 
 #### Initializing to Running
+
 **Guard:** All registrations validated, overrides applied, tasks scheduled
+
 **Action:** Start polling loop, mark scheduler as active
+
 **Events:** `SchedulerInitializationCompleted`
 
 #### Initializing to Uninitialized
+
 **Guard:** Initialization fails due to validation or scheduling errors
+
 **Action:** Clean up partial state, reset to uninitialized
+
 **Events:** `SchedulerInitializationFailed`
 
 #### Running to Reinitializing
+
 **Guard:** `initialize(registrations)` called again (idempotent behavior)
+
 **Action:** Compare new registrations with current state
+
 **Events:** `SchedulerReinitializationStarted`
 
 #### Running to Stopping
+
 **Guard:** `stop()` called
+
 **Action:** Stop accepting new polls, wait for running tasks
+
 **Events:** `SchedulerStopRequested`
 
 #### Stopping to Stopped
+
 **Guard:** All running tasks complete, polling stopped
+
 **Action:** Final cleanup, release resources
+
 **Events:** `SchedulerStopped`
 
 ---
@@ -280,23 +298,35 @@ stateDiagram-v2
 ### State Transitions
 
 #### Inactive to Active
+
 **Guard:** First task is scheduled via `schedule()` call
+
 **Action:** Start polling loop
+
 **Events:** `PollingStarted`
 
 #### Active to Inactive
+
 **Guard:** Last scheduled task is cancelled via `cancel()` call
+
 **Action:** Stop polling loop
+
 **Events:** `PollingStopped`
 
 #### Active to Stopping
+
 **Guard:** `stopLoop()` is called
+
 **Action:** Mark scheduler as stopping, complete current poll cycle
+
 **Events:** `PollingStopRequested`
 
 #### Stopping to Inactive
+
 **Guard:** All currently running tasks complete execution
+
 **Action:** Final cleanup, release resources
+
 **Events:** `PollingStopped`
 
 ---
