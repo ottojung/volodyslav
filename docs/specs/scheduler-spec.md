@@ -567,9 +567,9 @@ The following behaviors **MAY** vary between equivalent runs:
 
 ## Formal Model of Observable Behavior
 
-This model combines first-order quantification over the universe of tasks with **future- and past-time LTL** formulas. Atomic predicates below are predicate symbols parameterised by a task variable (for example, `RS(x)`, `REs(x)`), and temporal operators apply to propositional formulas obtained by instantiating those predicates for concrete tasks.
+This model combines first-order quantification over the universe of tasks with **future- and past-time LTL** formulas. Atomic predicates below are predicate symbols parameterised by a task variable (for example, $\texttt{RS}_x$, $\texttt{REs}_x$), and temporal operators apply to propositional formulas obtained by instantiating those predicates for concrete tasks.
 
-We use the convenient shorthand of writing instantiated propositions like $\texttt{RS}_x$ for `RS(x)`. Where a formula is stated without explicit quantifiers, the default intent is universal quantification over tasks (i.e. “for all tasks x”). First-order quantification ranges over the set of registered tasks; temporal operators reason over event positions in the trace.
+We use the convenient shorthand of writing instantiated propositions like $\texttt{RS}_x$ for $\texttt{RS}_x$. Where a formula is stated without explicit quantifiers, the default intent is universal quantification over tasks (i.e. “for all tasks x”). First-order quantification ranges over the set of registered tasks; temporal operators reason over event positions in the trace.
 
 This model focuses on externally observable behaviour, but does not include the error-handling part.
 
