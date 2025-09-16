@@ -615,6 +615,19 @@ Each event predicate is evaluated at a trace position $i$ (we omit $i$ when clea
 * $\texttt{RunStart}(x)$ — the scheduler begins invoking the public callback for task $x$.
 * $\texttt{RunEnd}(x, r)$ — that invocation completes with result $r \in \texttt{Result}$.
 
+* $\texttt{Due}_x$ — is is start of a minute that the cron schedule for task $x$ matches.
+
+  *Interpretation:* the cron schedule for $x$ matches the current minute boundary.
+  Minute boundary is defined as the exact start of that minute.
+
+  For example, for a cron expression `* * * * *`, a minute boundary occurs at `2024-01-01T12:34:00.00000000000000000000000000000000000000000000000000000Z` (infinitely many zeros), and then also $\texttt{Due}_x$ holds at time $t = \texttt{2024-01-01T12:34:00Z}$ (exactly that time point with infinitely many zeroes).
+
+  Time is defined by the host system's local clock.
+
+* $\texttt{RetryDue}_x$ — is the instant when the backoff for the most recent failure of $x$ expires.
+
+  *Interpretation:* is a primitive point event (like $\texttt{Due}_x$), supplied by the environment/clock. If the latest $\texttt{RunEnd}(x,\texttt{failure})$ occurs at time $t_f$, then $\texttt{RetryDue}_x$ holds at time $t_f + \texttt{RetryDelay}(x)$.
+
 **Interpretation:**
 Each predicate marks the instant the named public action occurs from the perspective of the embedding JavaScript runtime: function entry ($\texttt{InitStart}$, $\texttt{StopStart}$), function return ($\texttt{InitEnd}$, $\texttt{StopEnd}$), callback invocation begin/end ($\texttt{RunStart}$, $\texttt{RunEnd}$), and exogenous crash ($\texttt{UnexpectedShutdown}$). No logging or internal bookkeeping is modeled.
 
@@ -647,21 +660,6 @@ Input predicates:
 * $\texttt{Registered}_x := \texttt{Bucket}(IE^{\text{in}}_x,\; IE^{\text{out}}_x)$
 
   *Interpretation:* membership of $x$ in the most recent observed registration set.
-
-* $\texttt{Due}_x$ — shorthand for $\texttt{Due}(x, \tau(i))$.
-
-  *Interpretation:* the cron schedule for $x$ matches the current minute boundary at time $\tau(i)$.
-  Minute boundary is defined as the exact start of that minute.
-
-  For example, for a cron expression `* * * * *`, a minute boundary occurs at `2024-01-01T12:34:00.00000000000000000000000000000000000000000000000000000Z` (infinitely many zeros), and then also $\texttt{Due}_x$ holds at position $i$ where $\tau(i) = \texttt{2024-01-01T12:34:00Z}$ (exactly that time point with infinitely many zeroes).
-
-  Time is defined by the host system's local clock.
-
-* $\texttt{RetryDue}_x$ — a point predicate true exactly at the instant when the backoff for the most recent failure of $x$ expires.
-
-  *Interpretation:* $\texttt{RetryDue}_x$ is a primitive point event (like $\texttt{Due}_x$), supplied by the environment/clock. 
-
-  Background semantics (not encoded in LTL): if the latest $\texttt{RunEnd}(x,\texttt{failure})$ occurs at time $t_f$, then $\texttt{RetryDue}_x$ holds at time $t_f + \texttt{RetryDelay}(x)$.
 
 * $\texttt{RetryEligible}_x := (\neg \texttt{O}\ \texttt{REf}_x) \ \vee \ \texttt{Bucket}(\texttt{RetryDue}_x,\ \texttt{REf}_x)$
 
@@ -854,13 +852,13 @@ There are not infinitely many trace positions within any bounded real-time inter
 ```js
 IS
 IE              // task "1" registered
-[Due_1]
+Due_1
 RS_1            // consumes Pending_1
 REs_1
-[Due_1]
+Due_1
 RS_1
 REf_1
-[RetryDue_1]    // RetryDue_1 occurs at t_f + RetryDelay(1); eligibility becomes true then
+RetryDue_1     // RetryDue_1 occurs at t_f + RetryDelay(1); eligibility becomes true then
 RS_1            // consumes RetryPending_1
 REs_1
 ```
@@ -875,7 +873,7 @@ SE
                    // No RS_1 until re-init; no EffectiveDue_1 obligations either
 IS
 IE                 // task "1" registered
-[Due_1]
+Due_1
 RS_1
 REs_1
 ```
@@ -885,12 +883,12 @@ REs_1
 ```js
 IS
 IE                 // task "1" registered
-[Due_1]
+Due_1
 RS_1
 Crash              // no RS_1 until next IE
 IS
 IE                 // task "1" registered
-[Due_1]
+Due_1
 RS_1               // restart after re-init
 REs_1
 ```
