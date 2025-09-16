@@ -632,6 +632,8 @@ Abbreviations:
 * $\texttt{REf}_x := \texttt{RunEnd}(x, \texttt{failure})$
 * $\texttt{RE}_x := \texttt{REs}_x \vee \texttt{REf}_x$
 
+---
+
 Input predicates:
 
 * $\texttt{Registered}_x$ — true at position $i$ iff there exists $j \leq i$ with $\texttt{InitEnd}(R)$ at $j$ and $x \in \dom(R)$, and there is no $k$ with $j < k \leq i$ such that $\texttt{InitEnd}(R')$ holds and $x \notin \dom(R')$.
@@ -647,6 +649,8 @@ Input predicates:
 
   *Interpretation:* enough time has elapsed since the last failure of $x$ to permit a retry.
   In other words, either no failure has completed for $x$ yet, or at least $\texttt{RetryDelay}(x)$ time has elapsed since the latest $\texttt{RunEnd}(x, \texttt{failure})$.
+
+---  
 
 Stateful:
 
