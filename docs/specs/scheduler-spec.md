@@ -708,12 +708,6 @@ $$
 \texttt{Running}_x := (\neg \texttt{RE}_x) \; \texttt{S} \; \texttt{RS}_x \land (\neg \texttt{Crash}) \; \texttt{S} \; \texttt{RS}_x
 $$
 
-* **Bucket reset**:
-
-$$
-\texttt{BucketReset}_x := \texttt{IE} \vee \texttt{Due}_x
-$$
-
 * **Pending\_x** — one outstanding obligation to perform the first start after a due tick, cleared by a start or re-init:
 
 $$
@@ -801,8 +795,9 @@ G( \texttt{Crash} \rightarrow (\neg \texttt{RE}_x \; \texttt{W} \; \texttt{IE}) 
 $$
 A crash cannot be followed by any ends until re-initialisation.
 
-**S6' — No make-up bursts (bucketed form)**
-Let $\texttt{B}_x := \texttt{BucketReset}_x = \texttt{IE} \vee \texttt{Due}_x$. Between any two $\texttt{B}_x$ positions (with no $\texttt{B}_x$ in between), there is **at most one** $\texttt{RS}_x$ unless a failure occurs in that segment (in which case a retry may introduce an extra $\texttt{RS}_x$ before the next $\texttt{B}_x$):
+**S6' — No make-up bursts**
+
+Let $\texttt{B}_x := \texttt{IE} \vee \texttt{Due}_x$. Between any two $\texttt{B}_x$ positions (with no $\texttt{B}_x$ in between), there is **at most one** $\texttt{RS}_x$ unless a failure occurs in that segment (in which case a retry may introduce an extra $\texttt{RS}_x$ before the next $\texttt{B}_x$):
 
 $$
 G( \texttt{B}_x \rightarrow
