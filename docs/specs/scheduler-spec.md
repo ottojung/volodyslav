@@ -732,12 +732,11 @@ $$
 \texttt{RetryEligAfterFail}_x := \texttt{EdgeAfterReset}( \texttt{RetryEligible}_x, \texttt{REf}_x \vee \texttt{IE} \vee \texttt{Due}_x )
 $$
 
-* **RetryPending\_x** — one retry obligation inside the current bucket; appears when eligibility first becomes true after a failure, cleared by $\texttt{RS}_x$/$\texttt{IE}$/$\texttt{Due}_x$:
+* **RetryPending\_x** — one retry obligation inside the current bucket; appears when eligibility first becomes true after a failure, cleared by $\texttt{REs}_x$:
 
 $$
 \begin{aligned}
-\texttt{RetryPending}_x &:= \texttt{Hold}( \texttt{RetryEligAfterFail}_x \wedge \texttt{FailedInBucket}_x \wedge \neg \texttt{Due}_x, \texttt{RS}_x \vee \texttt{IE} \vee \texttt{Due}_x ) \\
-&:= (\neg(\texttt{RS}_x \vee \texttt{IE} \vee \texttt{Due}_x)) \; \texttt{S} \; (\texttt{RetryEligAfterFail}_x \wedge \texttt{FailedInBucket}_x \wedge \neg \texttt{Due}_x)
+\texttt{RetryPending}_x &:= \texttt{Hold}( \texttt{RetryEligAfterFail}_x \wedge \texttt{FailedInBucket}_x \wedge \neg \texttt{Due}_x, \texttt{REs}_x)
 \end{aligned}
 $$
 
