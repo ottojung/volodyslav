@@ -131,7 +131,7 @@ stateDiagram-v2
     Reinitializing --> Running : Reinitialization succeeds
     Reinitializing --> Running : Reinitialization fails
     Stopping --> Stopped : All tasks complete, cleanup done
-    Stopped --> [*] : Scheduler destroyed
+    Stopped --> Uninitialized : Scheduler destroyed
 ```
 
 ### Scheduler State Definitions
