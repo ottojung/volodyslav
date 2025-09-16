@@ -791,7 +791,8 @@ $$
 
 ### Safety Properties
 
-For all tasks $x$:
+These properties state scheduler invariants.
+They prevent invalid sequences of events.
 
 **S1 — Per-task non-overlap**
 $$
@@ -847,7 +848,8 @@ $$
 
 ### Liveness Properties
 
-For all tasks $x$:
+These properties state progress guarantees.
+They prevent deadlocks, starvation, livelocks, and unbounded postponement of obligations.
 
 **L1 — Every obligation is eventually served**
 $$
