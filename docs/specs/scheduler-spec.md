@@ -742,25 +742,25 @@ The primitive point event $\texttt{RetryDue}_x$ is constrained by these stutter-
 **RD1 — No spurious pulses before any failure**
 
 $$
-G( ( \neg \texttt{O} \ \texttt{REf}_x ) \rightarrow \neg \texttt{RetryDue}_x )
+\texttt{G}( ( \neg \texttt{O} \ \texttt{REf}_x ) \rightarrow \neg \texttt{RetryDue}_x )
 $$
 
 **RD2 — Exactly one pulse between consecutive failures (uniqueness per epoch)**
 
 $$
-G( \texttt{AtMostOne}(\texttt{REf}_x,\ \texttt{RetryDue}_x) )
+\texttt{G}( \texttt{AtMostOne}(\texttt{REf}_x,\ \texttt{RetryDue}_x) )
 $$
 
 **RD3 — Existence after each failure**
 
 $$
-G( \texttt{REf}_x \rightarrow \texttt{F} \ \texttt{RetryDue}_x )
+\texttt{G}( \texttt{REf}_x \rightarrow \texttt{F} \ \texttt{RetryDue}_x )
 $$
 
 **RD4 — First-after-last-failure (associates each pulse to the most recent failure)**
 
 $$
-G( \texttt{RetryDue}_x \rightarrow ( \neg \texttt{RetryDue}_x \ \texttt{S} \ \texttt{REf}_x ) )
+\texttt{G}( \texttt{RetryDue}_x \rightarrow ( \neg \texttt{RetryDue}_x \ \texttt{S} \ \texttt{REf}_x ) )
 $$
 
 *Notes:*  
@@ -776,43 +776,43 @@ For all tasks $x$:
 
 **S1 — Per-task non-overlap**
 $$
-G( \texttt{RS}_x \rightarrow (\neg \texttt{RS}_x \; \texttt{U} \; (\texttt{RE}_x \vee \texttt{Crash})) )
+\texttt{G}( \texttt{RS}_x \rightarrow (\neg \texttt{RS}_x \; \texttt{U} \; (\texttt{RE}_x \vee \texttt{Crash})) )
 $$
 Once a run starts, no further $\texttt{RS}_x$ may occur before a matching $\texttt{RE}_x$ or $\texttt{Crash}$.
 
 **S2 — Ends follow starts**
 $$
-G( \texttt{RE}_x \rightarrow \texttt{Y} \; \texttt{Running}_x )
+\texttt{G}( \texttt{RE}_x \rightarrow \texttt{Y} \; \texttt{Running}_x )
 $$
 Every completion must correspond to a run that was already in flight before this position.
 
 **S3 — Start safety**
 $$
-G( \texttt{RS}_x \rightarrow ( \texttt{Active} \wedge \texttt{Registered}_x \wedge \texttt{EffectiveDue}_x ) )
+\texttt{G}( \texttt{RS}_x \rightarrow ( \texttt{Active} \wedge \texttt{Registered}_x \wedge \texttt{EffectiveDue}_x ) )
 $$
 A start can occur only while active, registered, and there is a current obligation to run.
 
 **S4a — Quiescence after StopEnd**
 $$
-G( \texttt{SE} \rightarrow (\neg \texttt{RS}_x \; \texttt{W} \; \texttt{IE}) )
+\texttt{G}( \texttt{SE} \rightarrow (\neg \texttt{RS}_x \; \texttt{W} \; \texttt{IE}) )
 $$
 After $\texttt{SE}$, no new starts until re-initialisation.
 
 **S4b — StopEnd consistency**
 $$
-G( \texttt{SE} \rightarrow (\neg \texttt{RE}_x \; \texttt{W} \; \texttt{IE}) )
+\texttt{G}( \texttt{SE} \rightarrow (\neg \texttt{RE}_x \; \texttt{W} \; \texttt{IE}) )
 $$
 After $\texttt{SE}$, no new ends until re-initialisation.
 
 **S5a — Crash quiescence**
 $$
-G( \texttt{Crash} \rightarrow (\neg \texttt{RS}_x \; \texttt{W} \; \texttt{IE}) )
+\texttt{G}( \texttt{Crash} \rightarrow (\neg \texttt{RS}_x \; \texttt{W} \; \texttt{IE}) )
 $$
 After a crash, no new starts until re-initialisation.
 
 **S5b — Crash consistency (no fabricated completions)**
 $$
-G( \texttt{Crash} \rightarrow (\neg \texttt{RE}_x \; \texttt{W} \; \texttt{IE}) )
+\texttt{G}( \texttt{Crash} \rightarrow (\neg \texttt{RE}_x \; \texttt{W} \; \texttt{IE}) )
 $$
 A crash cannot be followed by any ends until re-initialisation.
 
@@ -821,14 +821,14 @@ A crash cannot be followed by any ends until re-initialisation.
 Let $\texttt{B}_x := \texttt{IE} \vee \texttt{Due}_x$. Between any two $\texttt{B}_x$ positions (with no $\texttt{B}_x$ in between), there is **at most one** $\texttt{RS}_x$ unless a failure occurs in that segment (in which case a retry may introduce an extra $\texttt{RS}_x$ before the next $\texttt{B}_x$):
 
 $$
-G( \texttt{B}_x \rightarrow
+\texttt{G}( \texttt{B}_x \rightarrow
 ( \texttt{AtMostOne}(\texttt{B}_x, \texttt{RS}_x)
 \vee ( \neg \texttt{RS}_x \; \texttt{U} \; ( \texttt{REf}_x \wedge \texttt{AtMostOne}(\texttt{B}_x, \texttt{RS}_x) ) ) ) )
 $$
 
 **S7 — No obligations until first due after init**
 $$
-G( \texttt{IE} \rightarrow ( \neg \texttt{EffectiveDue}_x \; \texttt{W} \; \texttt{Due}_x ) )
+\texttt{G}( \texttt{IE} \rightarrow ( \neg \texttt{EffectiveDue}_x \; \texttt{W} \; \texttt{Due}_x ) )
 $$
 From just after $\texttt{IE}$ up to the first $\texttt{Due}_x$, there must be no obligation to start. If no $\texttt{Due}_x$ occurs in the epoch, then no $\texttt{EffectiveDue}_x$ occurs either.
 
@@ -840,34 +840,34 @@ For all tasks $x$:
 
 **L1 — Every obligation is eventually served**
 $$
-G( (\texttt{Active} \wedge \texttt{EffectiveDue}_x) \rightarrow \texttt{F} ( \texttt{RS}_x \vee \texttt{IE} \vee \texttt{Crash} ) )
+\texttt{G}( (\texttt{Active} \wedge \texttt{EffectiveDue}_x) \rightarrow \texttt{F} ( \texttt{RS}_x \vee \texttt{IE} \vee \texttt{Crash} ) )
 $$
 
 For every position before $\texttt{IE}$ where $\texttt{EffectiveDue}_x$ holds, we must eventually see $\texttt{RS}_x$ (or a $\texttt{Crash}$ a new $\texttt{IE}$, which reset obligations).
 
 **L2 — Stop terminates**
 $$
-G( \texttt{SS} \rightarrow \texttt{F} \; \texttt{SE} )
+\texttt{G}( \texttt{SS} \rightarrow \texttt{F} \; \texttt{SE} )
 $$
 
 **L3' — Eventual execution under recurring obligations**
 $$
-G( \texttt{Active} \wedge \texttt{Registered}_x \wedge \texttt{G} \; \texttt{F} \; \texttt{EffectiveDue}_x \rightarrow \texttt{G} \; \texttt{F} \; \texttt{RS}_x )
+\texttt{G}( \texttt{Active} \wedge \texttt{Registered}_x \wedge \texttt{G} \; \texttt{F} \; \texttt{EffectiveDue}_x \rightarrow \texttt{G} \; \texttt{F} \; \texttt{RS}_x )
 $$
 
 **L4 — Crash-interrupted callbacks are restarted after next init**
 $$
-G( ( \texttt{RS}_x \wedge (\neg \texttt{RE}_x \; \texttt{U} \; \texttt{Crash}) ) \rightarrow \texttt{F}( \texttt{IE} \wedge \texttt{F} \texttt{RS}_x ) )
+\texttt{G}( ( \texttt{RS}_x \wedge (\neg \texttt{RE}_x \; \texttt{U} \; \texttt{Crash}) ) \rightarrow \texttt{F}( \texttt{IE} \wedge \texttt{F} \texttt{RS}_x ) )
 $$
 
 **L5 — Initialization completes**
 $$
-G( \texttt{IS} \rightarrow \texttt{F} \texttt{IE} )
+\texttt{G}( \texttt{IS} \rightarrow \texttt{F} \texttt{IE} )
 $$
 
 **L6 — Stop completes**
 $$
-G( \texttt{SS} \rightarrow \texttt{F} \texttt{SE} )
+\texttt{G}( \texttt{SS} \rightarrow \texttt{F} \texttt{SE} )
 $$
 
 ---
@@ -878,7 +878,7 @@ Assumptions that cannot be verified by a scheduler implementation.
 
 **A1 — Starts eventually settle**
 $$
-G( \texttt{RS}_x \rightarrow \texttt{F}( \texttt{RE}_x \vee \texttt{Crash} ) )
+\texttt{G}( \texttt{RS}_x \rightarrow \texttt{F}( \texttt{RE}_x \vee \texttt{Crash} ) )
 $$
 Every callback invocation completes in **finite** time unless pre-empted by $\texttt{Crash}$. No uniform upper bound is required; the assumption only rules out infinite executions.
 
