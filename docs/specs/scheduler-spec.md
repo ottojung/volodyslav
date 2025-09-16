@@ -751,7 +751,10 @@ G( \texttt{REf}_x \rightarrow \texttt{F} \ \texttt{RetryDue}_x )
 $$
 
 **RD4 — First-after-last-failure (associates each pulse to the most recent failure)**
+
+$$
 G( \texttt{RetryDue}_x \rightarrow ( \neg \texttt{RetryDue}_x \ \texttt{S} \ \texttt{REf}_x ) )
+$$
 
 *Notes:*  
 - RD2+RD4 ensure any previously scheduled pulse is “canceled” by a subsequent failure; at most one $\texttt{RetryDue}_x$ can occur in the epoch since the last $\texttt{REf}_x$, and if it occurs, it is the first in that epoch.  
