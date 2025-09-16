@@ -743,7 +743,7 @@ $$
 
 ---
 
-### LTL Safety Properties
+### Safety Properties
 
 For all tasks $x$:
 
@@ -806,7 +806,7 @@ From just after $\texttt{IE}$ up to the first $\texttt{Due}_x$, there must be no
 
 ---
 
-### LTL Liveness Properties
+### Liveness Properties
 
 For all tasks $x$:
 
