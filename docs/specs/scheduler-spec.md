@@ -857,7 +857,7 @@ $$
 
 **L4 — Crash-interrupted callbacks are restarted after next init**
 $$
-\texttt{G}( ( \texttt{RS}_x \wedge (\neg \texttt{RE}_x \; \texttt{U} \; \texttt{Crash}) ) \rightarrow \texttt{F}( \texttt{IE} \wedge \texttt{F} \texttt{RS}_x ) )
+\texttt{G}( ( \texttt{RS}_x \wedge (\neg \texttt{RE}_x \; \texttt{U} \; \texttt{Crash}) ) \rightarrow \texttt{F}( \texttt{IE} \wedge \texttt{F} \; \texttt{RS}_x ) )
 $$
 
 **L5 — Initialization completes**
