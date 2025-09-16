@@ -636,7 +636,16 @@ Abbreviations:
 
 Input predicates:
 
-* $\texttt{Registered}_x$ — true at position $i$ iff there exists $j \leq i$ with $\texttt{InitEnd}(R)$ at $j$ and $x \in \dom(R)$, and there is no $k$ with $j < k \leq i$ such that $\texttt{InitEnd}(R')$ holds and $x \notin \dom(R')$.
+* $IE^{\text{in}}_x := \exists R.\,(\texttt{InitEnd}(R)\wedge x\in\text{dom}(R))$
+
+  *Interpretation:* membership of $x$ in the registration set provided at the most recent initialization.
+
+* $IE^{\text{out}}_x := \exists R.\,(\texttt{InitEnd}(R)\wedge x\notin\text{dom}(R))$
+
+  *Interpretation:* non-membership of $x$ in the registration set provided at the most recent initialization.
+
+* $\texttt{Registered}_x := \texttt{Bucket}(IE^{\text{in}}_x,\; IE^{\text{out}}_x) \;\equiv\; (\neg IE^{\text{out}}_x)\; \texttt{S}\; IE^{\text{in}}_x$
+
   *Interpretation:* membership of $x$ in the most recent observed registration set.
 
 * $\texttt{Due}_x$ — shorthand for $\texttt{Due}(x, \tau(i))$.
