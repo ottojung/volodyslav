@@ -1,12 +1,12 @@
-# Specification for the Declarative Polling Scheduler
+# Specification for the Declarative Scheduler
 
-This document provides a normative specification for the backend declarative polling scheduler's public interface and externally observable operational semantics.
+This document provides a normative specification for the backend declarative scheduler's public interface and externally observable operational semantics.
 
 ---
 
 ## Introduction & Normative Language
 
-This specification defines the externally observable behavior of the Declarative Polling Scheduler. It serves as:
+This specification defines the externally observable behavior of the Declarative Scheduler. It serves as:
 
 - An integration contract for other teams
 - A foundation for conformance testing
@@ -71,14 +71,10 @@ The scheduler **MUST**:
 - Evaluate task schedules at each minute boundary
 - Consider a minute boundary to occur at the start of each minute (seconds = 0)
 
-### Polling Behavior
+### Timely Behavior
 
 The scheduler **MUST**:
-- Poll for due tasks at regular intervals (implementation-defined frequency ≥ 1 minute)
-- Execute all due tasks discovered during a poll
 - Handle multiple due tasks in parallel with no ordering guarantees
-- Continue polling as long as at least one task is scheduled
-- Stop polling when no tasks are scheduled (optimization)
 
 The scheduler **MUST**:
 - Use the host system's local timezone for all time calculations
