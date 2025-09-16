@@ -782,7 +782,7 @@ Once a run starts, no further $\texttt{RS}_x$ may occur before a matching $\text
 
 **S2 — Ends follow starts**
 $$
-\texttt{G}( \texttt{RE}_x \rightarrow \texttt{Y} \; \texttt{Running}_x )
+\texttt{G}( \texttt{RE}_x \rightarrow \texttt{O} \; \texttt{Running}_x )
 $$
 Every completion must correspond to a run that was already in flight before this position.
 
