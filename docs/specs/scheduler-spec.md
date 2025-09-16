@@ -733,9 +733,9 @@ $$
 \texttt{EffectiveDue}_x := \texttt{Pending}_x \vee \texttt{RetryPending}_x
 $$
 
-### Axioms for \texttt{RetryDue} (environment constraints)
+### Axioms for $\texttt{RetryDue}$
 
-We constrain the primitive point event $\texttt{RetryDue}_x$ with minimal, stutter-invariant LTL conditions:
+The primitive point event $\texttt{RetryDue}_x$ is constrained by these stutter-invariant LTL conditions:
 
 **RD1 — No spurious pulses before any failure**
 
