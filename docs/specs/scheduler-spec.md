@@ -866,11 +866,6 @@ $$
 \texttt{G}( \texttt{IS} \rightarrow \texttt{F} \; \texttt{IE} )
 $$
 
-**L4 — Stop completes**
-$$
-\texttt{G}( \texttt{SS} \rightarrow \texttt{F} \; \texttt{SE} )
-$$
-
 ---
 
 ### Fairness Assumptions
