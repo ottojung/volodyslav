@@ -840,7 +840,7 @@ For all tasks $x$:
 
 **L1 — Every obligation is eventually served**
 $$
-\texttt{G}( (\texttt{Active} \wedge \texttt{Registered}_x \wedge \texttt{EffectiveDue}_x) \rightarrow \texttt{F} ( \texttt{RS}_x \vee (\texttt{SE} \; \texttt{W} \; \texttt{IE}) \vee (\texttt{Crash} \; \texttt{W} \; \texttt{IE})) )
+\texttt{G}( (\texttt{Active} \wedge \texttt{Registered}_x \wedge \texttt{EffectiveDue}_x) \rightarrow (\texttt{F} \; \texttt{RS}_x \vee (\texttt{SE} \; \vee \texttt{Crash}) \; \texttt{W} \; \texttt{IS}) )
 $$
 
 For every position before $\texttt{IE}$ where $\texttt{EffectiveDue}_x$ holds, we must eventually see $\texttt{RS}_x$ (or a $\texttt{Crash}$, or $\texttt{SE}$, which reset obligations).
