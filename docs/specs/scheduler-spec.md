@@ -353,7 +353,7 @@ When both day-of-month (DOM) and day-of-week (DOW) are restricted (not `*`), the
 - `@daily` - Macros not allowed
 - `0 0 ? * *` - Quartz tokens not allowed
 
-**See also:** The [Formal Model (Temporal Logic, Observable Only)](#formal-model-temporal-logic-observable-only) section provides a mathematical specification of how cron expressions are evaluated through the **Due(task, t)** predicate.
+**See also:** The [Formal Model (Temporal Logic, Observable Only)](#formal-model-temporal-logic-observable-only) section provides a mathematical specification of how cron expressions are evaluated through the $\texttt{Due}(\texttt{task}, t)$ predicate.
 
 ---
 
@@ -613,7 +613,7 @@ Each event predicate is evaluated at a trace position $i$ (we omit $i$ when clea
 * $\texttt{StopEnd}$ — the `stop()` call returns.
 * $\texttt{UnexpectedShutdown}$ — an unexpected, in-flight system shutdown occurs (e.g., process or host crash). This interrupts running callbacks and preempts further starts until a subsequent $\texttt{InitEnd}$.
 * $\texttt{RunStart}(x)$ — the scheduler begins invoking the public callback for task $x$.
-* $\texttt{RunEnd}(x, r)$ — that invocation completes with result $r ∈ Result$.
+* $\texttt{RunEnd}(x, r)$ — that invocation completes with result $r \in \texttt{Result}$.
 
 **Interpretation:**
 Each predicate marks the instant the named public action occurs from the perspective of the embedding JavaScript runtime: function entry ($\texttt{InitStart}$, $\texttt{StopStart}$), function return ($\texttt{InitEnd}$, $\texttt{StopEnd}$), callback invocation begin/end ($\texttt{RunStart}$, $\texttt{RunEnd}$), and exogenous crash ($\texttt{UnexpectedShutdown}$). No logging or internal bookkeeping is modeled.
@@ -622,7 +622,7 @@ Each predicate marks the instant the named public action occurs from the perspec
 
 These are functions of the trace and registration parameters; they introduce no new observables.
 
-* `Registered_x` — true at position $i$ iff there exists $j \leq i$ with $\texttt{InitEnd}(R)$ at $j$ and $x \in dom(R)$, and there is no $k$ with $j < k \leq i$ such that $\texttt{InitEnd}(R')$ holds and $x \notin dom(R')$.
+* $\texttt{Registered}_x$ — true at position $i$ iff there exists $j \leq i$ with $\texttt{InitEnd}(R)$ at $j$ and $x \in \dom(R)$, and there is no $k$ with $j < k \leq i$ such that $\texttt{InitEnd}(R')$ holds and $x \notin \dom(R')$.
   *Interpretation:* membership of $x$ in the most recent observed registration set.
 
 * $\texttt{Due}_x$ — shorthand for $\texttt{Due}(x, \tau(i))$.
@@ -726,7 +726,7 @@ $$
 \end{aligned}
 $$
 
-* **RetryEligAfterFail\_x** — first time `RetryEligible_x` becomes true after a (bucket-resetting) failure/init/due:
+* **RetryEligAfterFail\_x** — first time $\texttt{RetryEligible}_x$ becomes true after a (bucket-resetting) failure/init/due:
 
 $$
 \texttt{RetryEligAfterFail}_x := \texttt{EdgeAfterReset}( \texttt{RetryEligible}_x, \texttt{REf}_x \vee \texttt{IE} \vee \texttt{Due}_x )
@@ -808,7 +808,7 @@ $$
 $$
 G( \texttt{IE} \rightarrow ( \neg \texttt{EffectiveDue}_x \; \texttt{W} \; \texttt{Due}_x ) )
 $$
-From just after $\texttt{IE}$ up to the first $\texttt{Due}_x$, there must be no obligation to start. If no $\texttt{Due}_x$ occurs in the epoch, then no `EffectiveDue_x` occurs either.
+From just after $\texttt{IE}$ up to the first $\texttt{Due}_x$, there must be no obligation to start. If no $\texttt{Due}_x$ occurs in the epoch, then no $\texttt{EffectiveDue}_x$ occurs either.
 
 ---
 
@@ -820,7 +820,7 @@ For all tasks $x$:
 $$
 G( \texttt{IE} \rightarrow \texttt{X}( \texttt{G}( (\neg \texttt{IE} \wedge \texttt{EffectiveDue}_x) \rightarrow \texttt{F} ( \texttt{RS}_x \vee \texttt{IE} ) ) ) )
 $$
-Right after each $\texttt{IE}$, for every position before the next $\texttt{IE}$ where `EffectiveDue_x` holds, we must eventually see $\texttt{RS}_x$ (or a new $\texttt{IE}$, which resets obligations).
+Right after each $\texttt{IE}$, for every position before the next $\texttt{IE}$ where $\texttt{EffectiveDue}_x$ holds, we must eventually see $\texttt{RS}_x$ (or a new $\texttt{IE}$, which resets obligations).
 
 **L2 — Stop terminates**
 $$
@@ -874,15 +874,15 @@ When the scheduler is **Active** and the process is not externally suspended or 
 ```js
 IS
 IE              // task "1" registered
-Due_1
-RS_1            // consumes Pending_1
-REs_1
-Due_1
-RS_1
-REf_1           // (FailedInBucket_1 true)
-...             // (later RetryEligible_1 becomes true ⇒ RetryPending_1)
-RS_1            // (consumes RetryPending_1)
-REs_1
+$\texttt{Due}_1$
+$\texttt{RS}_1$            // consumes $\texttt{Pending}_1$
+$\texttt{REs}_1$
+$\texttt{Due}_1$
+$\texttt{RS}_1$
+$\texttt{REf}_1$           // ($\texttt{FailedInBucket}_1$ true)
+...             // (later $\texttt{RetryEligible}_1$ becomes true ⇒ $\texttt{RetryPending}_1$)
+$\texttt{RS}_1$            // (consumes $\texttt{RetryPending}_1$)
+$\texttt{REs}_1$
 ```
 
 **Trace 2 — Stop and restart**
@@ -892,12 +892,12 @@ IS
 IE                 // task "1" registered
 SS
 SE
-                   // No RS_1 until re-init; no EffectiveDue_1 obligations either
+                   // No $\texttt{RS}_1$ until re-init; no $\texttt{EffectiveDue}_1$ obligations either
 IS
 IE                 // task "1" registered
-Due_1
-RS_1
-REs_1
+$\texttt{Due}_1$
+$\texttt{RS}_1$
+$\texttt{REs}_1$
 ```
 
 **Trace 3 — Crash and restart**
@@ -905,14 +905,14 @@ REs_1
 ```js
 IS
 IE                 // task "1" registered
-Due_1
-RS_1
-Crash              // no RS_1 until next IE
+$\texttt{Due}_1$
+$\texttt{RS}_1$
+Crash              // no $\texttt{RS}_1$ until next IE
 IS
 IE                 // task "1" registered
-Due_1
-RS_1               // restart after re-init
-REs_1
+$\texttt{Due}_1$
+$\texttt{RS}_1$               // restart after re-init
+$\texttt{REs}_1$
 ```
 
 ---
