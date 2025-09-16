@@ -843,7 +843,7 @@ $$
 \texttt{G}( (\texttt{Active} \wedge \texttt{Registered}_x \wedge \texttt{EffectiveDue}_x) \rightarrow \texttt{F} ( \texttt{RS}_x \vee \texttt{IE} \vee \texttt{Crash} ) )
 $$
 
-For every position before $\texttt{IE}$ where $\texttt{EffectiveDue}_x$ holds, we must eventually see $\texttt{RS}_x$ (or a $\texttt{Crash}$ a new $\texttt{IE}$, which reset obligations).
+For every position before $\texttt{IE}$ where $\texttt{EffectiveDue}_x$ holds, we must eventually see $\texttt{RS}_x$ (or a $\texttt{Crash}$, or a new $\texttt{IE}$, which reset obligations).
 
 **L2 — Stop terminates**
 $$
