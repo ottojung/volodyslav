@@ -718,7 +718,7 @@ $$
 
 $$
 \begin{aligned}
-\texttt{RetryPending}_x &:= \texttt{Hold}( \texttt{REf}_x, \texttt{REs}_x)
+\texttt{RetryPending}_x &:= \texttt{RetryEligible}_x \wedge \texttt{Hold}( \texttt{REf}_x, \texttt{REs}_x)
 \end{aligned}
 $$
 
