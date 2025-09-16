@@ -850,11 +850,6 @@ $$
 \texttt{G}( \texttt{SS} \rightarrow \texttt{F} \; \texttt{SE} )
 $$
 
-**L3 — Eventual execution under recurring obligations**
-$$
-\texttt{G}( \texttt{Active} \wedge \texttt{Registered}_x \wedge \texttt{G} \; \texttt{F} \; \texttt{EffectiveDue}_x \rightarrow \texttt{G} \; \texttt{F} \; \texttt{RS}_x )
-$$
-
 **L4 — Crash-interrupted callbacks are restarted after next init**
 $$
 \texttt{G}( ( \texttt{RS}_x \wedge (\neg \texttt{RE}_x \; \texttt{U} \; \texttt{Crash}) ) \rightarrow \texttt{F}( \texttt{IE} \wedge \texttt{F} \; \texttt{RS}_x ) )
