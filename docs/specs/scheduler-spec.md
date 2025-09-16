@@ -702,10 +702,10 @@ $$
 \texttt{Active} := (\neg(\texttt{SS} \vee \texttt{Crash})) \; \texttt{S} \; \texttt{IE}
 $$
 
-* $\texttt{OpenPre}_x$ — “an invocation of $x$ started strictly before now and has not finished before the current position”:
+* $\texttt{OpenPre}_x$ — “an invocation of $x$ has begun and has not finished before the current position”:
 
 $$
-\texttt{OpenPre}_x := \neg \texttt{RS}_x \land (\neg \texttt{RE}_x) \; \texttt{S} \; \texttt{RS}_x \land (\neg \texttt{Crash}) \; \texttt{S} \; \texttt{RS}_x
+\texttt{OpenPre}_x := (\neg \texttt{RE}_x) \; \texttt{S} \; \texttt{RS}_x \land (\neg \texttt{Crash}) \; \texttt{S} \; \texttt{RS}_x
 $$
 
 * **Bucket reset**:
