@@ -649,9 +649,12 @@ Input predicates:
   *Interpretation:* membership of $x$ in the most recent observed registration set.
 
 * $\texttt{Due}_x$ — shorthand for $\texttt{Due}(x, \tau(i))$.
+
   *Interpretation:* the cron schedule for $x$ matches the current minute boundary at time $\tau(i)$.
   Minute boundary is defined as the exact start of that minute.
+
   For example, for a cron expression `* * * * *`, a minute boundary occurs at `2024-01-01T12:34:00.00000000000000000000000000000000000000000000000000000Z` (infinitely many zeros), and then also $\texttt{Due}_x$ holds at position $i$ where $\tau(i) = 2024-01-01T12:34:00Z$ (exactly that time point with infinitely many zeroes).
+
   Time is defined by the host system's local clock.
 
 * $\texttt{RetryEligible}_x$  — true at position $i$ iff either (a) there has been no prior $\texttt{RunEnd}(x, \texttt{failure})$, or (b) letting $j$ be the latest position $< i$ with $\texttt{RunEnd}(x, \texttt{failure})$ and $t_f = \tau(j)$, we have $\tau(i) \geq t_f + \texttt{RetryDelay}(x)$.
