@@ -819,9 +819,9 @@ For all tasks $x$:
 
 **L1 — Every obligation is eventually served**
 $$
-G( \texttt{IE} \rightarrow \texttt{X}( \texttt{G}( (\neg \texttt{IE} \wedge \texttt{EffectiveDue}_x) \rightarrow \texttt{F} ( \texttt{RS}_x \vee \texttt{IE} ) ) ) )
+G( \texttt{IE} \rightarrow \texttt{X}( \texttt{G}( (\neg \texttt{IE} \wedge \texttt{EffectiveDue}_x) \rightarrow \texttt{F} ( \texttt{RS}_x \vee \texttt{IE} \vee \texttt{Crash} ) ) ) )
 $$
-Right after each $\texttt{IE}$, for every position before the next $\texttt{IE}$ where $\texttt{EffectiveDue}_x$ holds, we must eventually see $\texttt{RS}_x$ (or a new $\texttt{IE}$, which resets obligations).
+Right after each $\texttt{IE}$, for every position before the next $\texttt{IE}$ where $\texttt{EffectiveDue}_x$ holds, we must eventually see $\texttt{RS}_x$ (or a $\texttt{Crash}$ a new $\texttt{IE}$, which reset obligations).
 
 **L2 — Stop terminates**
 $$
