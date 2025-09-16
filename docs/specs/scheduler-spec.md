@@ -657,10 +657,13 @@ Input predicates:
 
   Time is defined by the host system's local clock.
 
-* $\texttt{RetryEligible}_x$  — true at position $i$ iff either (a) there has been no prior $\texttt{RunEnd}(x, \texttt{failure})$, or (b) letting $j$ be the latest position $< i$ with $\texttt{RunEnd}(x, \texttt{failure})$ and $t_f = \tau(j)$, we have $\tau(i) \geq t_f + \texttt{RetryDelay}(x)$.
+* $\texttt{RetryDue}_x$ — a point predicate true exactly at the instant when the backoff for the most recent failure of $x$ expires.
 
-  *Interpretation:* enough time has elapsed since the last failure of $x$ to permit a retry.
-  In other words, either no failure has completed for $x$ yet, or at least $\texttt{RetryDelay}(x)$ time has elapsed since the latest $\texttt{RunEnd}(x, \texttt{failure})$.
+  *Interpretation:* $\texttt{RetryDue}_x$ is a primitive point event (like $\texttt{Due}_x$), supplied by the environment/clock. Background semantics (not encoded in LTL): if the latest $\texttt{RunEnd}(x,\texttt{failure})$ occurs at time $t_f$, then $\texttt{RetryDue}_x$ holds at time $t_f + \texttt{RetryDelay}(x)$. If $\texttt{RetryDelay}(x) = 0$, $\texttt{RetryDue}_x$ may coincide with $\texttt{REf}_x$.
+
+* $\texttt{RetryEligible}_x := (\neg \texttt{O}\ \texttt{REf}_x) \ \vee \ \texttt{Bucket}(\texttt{RetryDue}_x,\ \texttt{REf}_x)$
+
+  *Interpretation:* before any failure of $x$ has completed, retries are allowed (eligible). After a failure completes, eligibility becomes true at the first $\texttt{RetryDue}_x$ pulse since that failure and remains true until cleared by a subsequent failure.
 
 ---
 
@@ -722,11 +725,38 @@ $$
 \end{aligned}
 $$
 
+  *Interpretation:* a retry obligation exists after a failure and persists until a success clears it; the obligation is gated by eligibility, which becomes true at the $\texttt{RetryDue}_x$ pulse for the most recent failure.
+
 * **EffectiveDue\_x** — the scheduler **should actually start** task $x$ now:
 
 $$
 \texttt{EffectiveDue}_x := \texttt{Pending}_x \vee \texttt{RetryPending}_x
 $$
+
+### Axioms for \texttt{RetryDue} (environment constraints)
+
+We constrain the primitive point event $\texttt{RetryDue}_x$ with minimal, stutter-invariant LTL conditions:
+
+**RD1 — No spurious pulses before any failure**
+$$
+G( ( \neg \texttt{O} \ \texttt{REf}_x ) \rightarrow \neg \texttt{RetryDue}_x )
+$$
+
+**RD2 — Exactly one pulse between consecutive failures (uniqueness per epoch)**
+G( \texttt{AtMostOne}(\texttt{REf}_x,\ \texttt{RetryDue}_x) )
+
+**RD3 — Existence after each failure**
+$$
+G( \texttt{REf}_x \rightarrow \texttt{F} \ \texttt{RetryDue}_x )
+$$
+
+**RD4 — First-after-last-failure (associates each pulse to the most recent failure)**
+G( \texttt{RetryDue}_x \rightarrow ( \neg \texttt{RetryDue}_x \ \texttt{S} \ \texttt{REf}_x ) )
+
+*Notes:*  
+- RD2+RD4 ensure any previously scheduled pulse is “canceled” by a subsequent failure; at most one $\texttt{RetryDue}_x$ can occur in the epoch since the last $\texttt{REf}_x$, and if it occurs, it is the first in that epoch.  
+- RD3 guarantees progress of backoff timers.  
+- Zero-delay is allowed: if $\texttt{RetryDelay}(x)=0$, RD4 permits $\texttt{RetryDue}_x$ to coincide with $\texttt{REf}_x$.
 
 ---
 
@@ -862,7 +892,7 @@ REs_1
 Due_1
 RS_1
 REf_1           // (FailedInBucket_1 true)
-...             // (later RetryEligible_1 becomes true ⇒ RetryPending_1)
+...             // (later RetryDue_1 occurs at t_f + RetryDelay(1); eligibility becomes true then)
 RS_1            // (consumes RetryPending_1)
 REs_1
 ```
