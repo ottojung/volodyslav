@@ -203,7 +203,15 @@ stateDiagram-v2
 
 #### From AwaitingRun to Running
 
-**Guard:** Current time matches cron expression OR task has never run and cron expression matches current time exactly (first startup only)
+**Guard:**
+
+Either Case A or Case B.
+
+- Case A:
+  Current minute matches the cron expression AND the task has not been run this minute
+
+- Case B:
+  There has been a time in the past when the cron expression matched, but the scheduler missed it, except if the task has never run before.
 
 **Action:** Invoke task callback, record attempt timestamp
 
