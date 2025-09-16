@@ -746,7 +746,9 @@ $$
 G( \texttt{AtMostOne}(\texttt{REf}_x,\ \texttt{RetryDue}_x) )
 
 **RD3 — Existence after each failure**
+$$
 G( \texttt{REf}_x \rightarrow \texttt{F} \ \texttt{RetryDue}_x )
+$$
 
 **RD4 — First-after-last-failure (associates each pulse to the most recent failure)**
 G( \texttt{RetryDue}_x \rightarrow ( \neg \texttt{RetryDue}_x \ \texttt{S} \ \texttt{REf}_x ) )
