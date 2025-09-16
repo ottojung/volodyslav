@@ -847,7 +847,7 @@ For every position before $\texttt{IE}$ where $\texttt{EffectiveDue}_x$ holds, w
 
 **L2 — Stop terminates**
 $$
-G( \texttt{SS} \rightarrow \texttt{F} \texttt{SE} )
+G( \texttt{SS} \rightarrow \texttt{F} \; \texttt{SE} )
 $$
 
 **L3' — Eventual execution under recurring obligations**
