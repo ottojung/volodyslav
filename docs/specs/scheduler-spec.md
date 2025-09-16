@@ -765,7 +765,7 @@ G( \texttt{RE}_x \rightarrow \texttt{Running}_x )
 $$
 Every completion must correspond to a run that was already in flight before this position.
 
-**S3' — Start gating by EffectiveDue (and external conditions)**
+**S3 — Start gating by EffectiveDue (and external conditions)**
 $$
 G( \texttt{RS}_x \rightarrow ( \texttt{Active} \wedge \texttt{Registered}_x \wedge \texttt{EffectiveDue}_x ) )
 $$
