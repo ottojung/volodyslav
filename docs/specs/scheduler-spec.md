@@ -861,12 +861,12 @@ $$
 \texttt{G}( \texttt{SS} \rightarrow \texttt{F} \; \texttt{SE} )
 $$
 
-**L4 — Initialization completes**
+**L3 — Initialization completes**
 $$
 \texttt{G}( \texttt{IS} \rightarrow \texttt{F} \; \texttt{IE} )
 $$
 
-**L5 — Stop completes**
+**L4 — Stop completes**
 $$
 \texttt{G}( \texttt{SS} \rightarrow \texttt{F} \; \texttt{SE} )
 $$
