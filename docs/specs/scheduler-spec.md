@@ -941,10 +941,10 @@ These are operational timing requirements for implementations and operators.
 They are engineering targets.
 
 **R1 — Scheduling latency target.**
-When the scheduler is running and a task is due according to the cron layer (i.e., the system clock reaches the minute boundary specified by the task's cron expression), the implementation SHOULD start the task's callback within approximately **1 minute** of that minute boundary, assuming no deliberate stop is in progress. This upper bound SHOULD scale linearly with the number of scheduled tasks (e.g., 100000 tasks = 10 minutes, 1000000 tasks = 100 minutes), but implementations SHOULD keep this as low as possible through efficient scheduling algorithms.
+When the scheduler is running and a task is due according to the cron layer (i.e., the system clock reaches the minute boundary specified by the task's cron expression), the implementation SHOULD start the task's callback within approximately **1 minute** of that minute boundary, assuming no deliberate stop is in progress and the task is not running already. This upper bound SHOULD scale linearly with the number of scheduled tasks (e.g., 100000 tasks = 10 minutes, 1000000 tasks = 100 minutes), but implementations SHOULD keep this as low as possible through efficient scheduling algorithms.
 
 **R2 — Post‑restart recovery target.**
-If the scheduler process restarts while a task callback was in flight, then after restart and once the task is present in the active registrations and eligible to run, the implementation SHOULD start the task's callback within approximately **1 minute** of the next eligible minute boundary, assuming no deliberate stop is in progress. This upper bound SHOULD scale linearly with the number of scheduled tasks (e.g., 100000 tasks = 10 minutes, 1000000 tasks = 100 minutes), but implementations SHOULD keep this as low as possible through efficient scheduling algorithms.
+If the scheduler process restarts while a task callback was in flight, then after restart and once the task is present in the active registrations and eligible to run, the implementation SHOULD start the task's callback within approximately **1 minute** of the next eligible minute boundary, assuming no deliberate stop is in progress and the task is not running already. This upper bound SHOULD scale linearly with the number of scheduled tasks (e.g., 100000 tasks = 10 minutes, 1000000 tasks = 100 minutes), but implementations SHOULD keep this as low as possible through efficient scheduling algorithms.
 
 ### Assumptions & Notes
 
