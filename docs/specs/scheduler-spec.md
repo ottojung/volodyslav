@@ -781,12 +781,10 @@ A crash cannot be followed by any ends until re-initialisation.
 
 **S6 — Conservation of starts**
 
-Let $\texttt{B}_x := \texttt{IE} \vee \texttt{Due}_x$. Between any two $\texttt{B}_x$ positions (with no $\texttt{B}_x$ in between), there is **at most one** $\texttt{RS}_x$ unless a failure occurs in that segment (in which case a retry may introduce an extra $\texttt{RS}_x$ before the next $\texttt{B}_x$):
+Let $\texttt{B}_x := \texttt{IE} \vee \texttt{Due}_x \vee \texttt{REf}_x$. Between any two $\texttt{B}_x$ positions (with no $\texttt{B}_x$ in between), there is **at most one** $\texttt{RS}_x$.
 
 $$
-\texttt{G}( \texttt{B}_x \rightarrow
-( \texttt{AtMostOne}(\texttt{B}_x, \texttt{RS}_x)
-\vee ( \neg \texttt{RS}_x \; \texttt{U} \; ( \texttt{REf}_x \wedge \texttt{AtMostOne}(\texttt{B}_x, \texttt{RS}_x) ) ) ) )
+\texttt{G}( \texttt{AtMostOne}(\texttt{B}_x, \texttt{RS}_x) )
 $$
 
 **S7 — No obligations until first due after init**
