@@ -843,12 +843,6 @@ $$
 \texttt{G}( \texttt{AtMostOne}(\texttt{B}_x, \texttt{RS}_x) )
 $$
 
-**S7 — No obligations until first due after init**
-$$
-\texttt{G}( \texttt{IE} \rightarrow ( \neg \texttt{EffectiveDue}_x \; \texttt{W} \; \texttt{Due}_x ) )
-$$
-From just after $\texttt{IE}$ up to the first $\texttt{Due}_x$, there must be no obligation to start. If no $\texttt{Due}_x$ occurs in the epoch, then no $\texttt{EffectiveDue}_x$ occurs either.
-
 ---
 
 ### Liveness Properties
