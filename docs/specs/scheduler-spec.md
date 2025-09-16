@@ -857,7 +857,7 @@ Every callback invocation completes in **finite** time unless pre-empted by $\te
 There are not infinitely many trace positions within any bounded real-time interval.
 
 **F1 — Progress fairness.**
-When the scheduler is **Active** and the process is not externally suspended or starved (e.g., not SIGSTOP’ed, no VM freeze, sufficient CPU), the polling loop makes progress and observable events continue to advance along the trace.
+When the scheduler is **Active** and the process is not externally suspended or starved (e.g., not `SIGSTOP`’ed, no VM freeze, sufficient CPU), the polling loop makes progress and observable events continue to advance along the trace.
 
 ---
 
