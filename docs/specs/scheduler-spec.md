@@ -738,14 +738,19 @@ $$
 We constrain the primitive point event $\texttt{RetryDue}_x$ with minimal, stutter-invariant LTL conditions:
 
 **RD1 — No spurious pulses before any failure**
+
 $$
 G( ( \neg \texttt{O} \ \texttt{REf}_x ) \rightarrow \neg \texttt{RetryDue}_x )
 $$
 
 **RD2 — Exactly one pulse between consecutive failures (uniqueness per epoch)**
+
+$$
 G( \texttt{AtMostOne}(\texttt{REf}_x,\ \texttt{RetryDue}_x) )
+$$
 
 **RD3 — Existence after each failure**
+
 $$
 G( \texttt{REf}_x \rightarrow \texttt{F} \ \texttt{RetryDue}_x )
 $$
@@ -757,8 +762,8 @@ G( \texttt{RetryDue}_x \rightarrow ( \neg \texttt{RetryDue}_x \ \texttt{S} \ \te
 $$
 
 *Notes:*  
-- RD2+RD4 ensure any previously scheduled pulse is “canceled” by a subsequent failure; at most one $\texttt{RetryDue}_x$ can occur in the epoch since the last $\texttt{REf}_x$, and if it occurs, it is the first in that epoch.  
-- RD3 guarantees progress of backoff timers.  
+- **RD2**+**RD4** ensure any previously scheduled pulse is “canceled” by a subsequent failure; at most one $\texttt{RetryDue}_x$ can occur in the epoch since the last $\texttt{REf}_x$, and if it occurs, it is the first in that epoch.  
+- **RD3** guarantees progress of backoff timers.  
 - Zero-delay is allowed: if $\texttt{RetryDelay}(x)=0$, RD4 permits $\texttt{RetryDue}_x$ to coincide with $\texttt{REf}_x$.
 
 ---
