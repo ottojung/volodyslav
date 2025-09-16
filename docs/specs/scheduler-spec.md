@@ -235,7 +235,7 @@ Either Case A or Case B.
 
 #### From AwaitingRetry to Running
 
-**Guard:** Current time ≥ `pendingRetryUntil`
+**Guard:** Current time $\geq$ `pendingRetryUntil`
 
 **Action:** Clear retry state, invoke task callback, record attempt timestamp
 
