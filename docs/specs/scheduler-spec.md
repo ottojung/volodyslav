@@ -208,7 +208,7 @@ stateDiagram-v2
 Either Case A or Case B.
 
 - Case A:
-  Current minute matches the cron expression AND the task has not been run this minute
+  Current minute matches the cron expression AND the task has not been run this minute.
 
 - Case B:
   There has been a time in the past when the cron expression matched, but the scheduler missed it, except if the task has never run before.
