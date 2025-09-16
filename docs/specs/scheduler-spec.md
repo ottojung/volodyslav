@@ -852,7 +852,7 @@ $$
 
 **L3' — Eventual execution under recurring obligations**
 $$
-G( \texttt{Active} \wedge \texttt{Registered}_x \wedge \texttt{G} \texttt{F} \texttt{EffectiveDue}_x \rightarrow \texttt{G} \texttt{F} \texttt{RS}_x )
+G( \texttt{Active} \wedge \texttt{Registered}_x \wedge \texttt{G} \; \texttt{F} \; \texttt{EffectiveDue}_x \rightarrow \texttt{G} \; \texttt{F} \; \texttt{RS}_x )
 $$
 
 **L4 — Crash-interrupted callbacks are restarted after next init**
