@@ -618,9 +618,21 @@ Each event predicate is evaluated at a trace position $i$ (we omit $i$ when clea
 **Interpretation:**
 Each predicate marks the instant the named public action occurs from the perspective of the embedding JavaScript runtime: function entry ($\texttt{InitStart}$, $\texttt{StopStart}$), function return ($\texttt{InitEnd}$, $\texttt{StopEnd}$), callback invocation begin/end ($\texttt{RunStart}$, $\texttt{RunEnd}$), and exogenous crash ($\texttt{UnexpectedShutdown}$). No logging or internal bookkeeping is modeled.
 
-#### Input Predicates
+### Macros
 
-These are functions of the trace and registration parameters; they introduce no new observables.
+Abbreviations:
+
+* $\texttt{IS} := \texttt{InitStart}$
+* $\texttt{IE} := \exists R. \texttt{InitEnd}(R)$
+* $\texttt{SS} := \texttt{StopStart}$
+* $\texttt{SE} := \texttt{StopEnd}$
+* $\texttt{Crash} := \texttt{UnexpectedShutdown}$
+* $\texttt{RS}_x := \texttt{RunStart}(x)$
+* $\texttt{REs}_x := \texttt{RunEnd}(x, \texttt{success})$
+* $\texttt{REf}_x := \texttt{RunEnd}(x, \texttt{failure})$
+* $\texttt{RE}_x := \texttt{REs}_x \vee \texttt{REf}_x$
+
+Input predicates:
 
 * $\texttt{Registered}_x$ — true at position $i$ iff there exists $j \leq i$ with $\texttt{InitEnd}(R)$ at $j$ and $x \in \dom(R)$, and there is no $k$ with $j < k \leq i$ such that $\texttt{InitEnd}(R')$ holds and $x \notin \dom(R')$.
   *Interpretation:* membership of $x$ in the most recent observed registration set.
@@ -636,11 +648,7 @@ These are functions of the trace and registration parameters; they introduce no 
   *Interpretation:* enough time has elapsed since the last failure of $x$ to permit a retry.
   In other words, either no failure has completed for $x$ yet, or at least $\texttt{RetryDelay}(x)$ time has elapsed since the latest $\texttt{RunEnd}(x, \texttt{failure})$.
 
----
-
-### Macros for Common Temporal Patterns
-
-We adopt the following macros, all definable in terms of $S$ (and boolean connectives). They remove the need for step-indexed recursion.
+Stateful:
 
 * **Hold-until-clear**
 
@@ -671,24 +679,6 @@ $$
 $$
 
 At most one $A$ between consecutive $B$’s (or forever if no next $B$).
-
----
-
-### Derived Macros (State from Events)
-
-Abbreviations:
-
-* $\texttt{IS} := \texttt{InitStart}$
-* $\texttt{IE} := \exists R. \texttt{InitEnd}(R)$
-* $\texttt{SS} := \texttt{StopStart}$
-* $\texttt{SE} := \texttt{StopEnd}$
-* $\texttt{Crash} := \texttt{UnexpectedShutdown}$
-* $\texttt{RS}_x := \texttt{RunStart}(x)$
-* $\texttt{REs}_x := \texttt{RunEnd}(x, \texttt{success})$
-* $\texttt{REf}_x := \texttt{RunEnd}(x, \texttt{failure})$
-* $\texttt{RE}_x := \texttt{REs}_x \vee \texttt{REf}_x$
-
-Stateful:
 
 * **Active** — between an $\texttt{IE}$ and the next $\texttt{SS}$ or $\texttt{Crash}$:
 
