@@ -650,7 +650,7 @@ Input predicates:
   *Interpretation:* enough time has elapsed since the last failure of $x$ to permit a retry.
   In other words, either no failure has completed for $x$ yet, or at least $\texttt{RetryDelay}(x)$ time has elapsed since the latest $\texttt{RunEnd}(x, \texttt{failure})$.
 
----  
+---
 
 Stateful:
 
