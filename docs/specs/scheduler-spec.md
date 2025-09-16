@@ -598,7 +598,7 @@ This subsection gives a signature-based, self-contained definition of the model,
 * $\texttt{Result} = \{ \texttt{success}, \texttt{failure} \}$.
 * $\texttt{RegistrationSet}$ — a finite mapping $R : \texttt{TaskId} \to (\texttt{Schedule}, \texttt{RetryDelay})$.
 * $\texttt{Schedule}$ — an abstract predicate $\texttt{Due}(\texttt{task}: \texttt{TaskId}, t: \mathbb{Q}) \to \texttt{Bool}$ indicating minute-boundary instants when a task is eligible to start.
-* $\texttt{RetryDelay} : \texttt{TaskId} \to \mathbb{Q}$ with $\texttt{RetryDelay}(x) \geq 0$.
+* $\texttt{RetryDelay} : \texttt{TaskId} \to \mathbb{Q}^+$. Retries are strictly positive.
 
 **Interpretation:**
 $\texttt{TaskId}$ names externally visible tasks. A $\texttt{RegistrationSet}$ is the public input provided at initialization. $\texttt{Due}$ and $\texttt{RetryDelay}$ are parameters determined by the registration set and the environment (host clock); they are not hidden internal state. Time units for $\texttt{Due}$ and $\texttt{RetryDelay}$ coincide.
@@ -659,7 +659,9 @@ Input predicates:
 
 * $\texttt{RetryDue}_x$ — a point predicate true exactly at the instant when the backoff for the most recent failure of $x$ expires.
 
-  *Interpretation:* $\texttt{RetryDue}_x$ is a primitive point event (like $\texttt{Due}_x$), supplied by the environment/clock. Background semantics (not encoded in LTL): if the latest $\texttt{RunEnd}(x,\texttt{failure})$ occurs at time $t_f$, then $\texttt{RetryDue}_x$ holds at time $t_f + \texttt{RetryDelay}(x)$. If $\texttt{RetryDelay}(x) = 0$, $\texttt{RetryDue}_x$ may coincide with $\texttt{REf}_x$.
+  *Interpretation:* $\texttt{RetryDue}_x$ is a primitive point event (like $\texttt{Due}_x$), supplied by the environment/clock. 
+
+  Background semantics (not encoded in LTL): if the latest $\texttt{RunEnd}(x,\texttt{failure})$ occurs at time $t_f$, then $\texttt{RetryDue}_x$ holds at time $t_f + \texttt{RetryDelay}(x)$.
 
 * $\texttt{RetryEligible}_x := (\neg \texttt{O}\ \texttt{REf}_x) \ \vee \ \texttt{Bucket}(\texttt{RetryDue}_x,\ \texttt{REf}_x)$
 
