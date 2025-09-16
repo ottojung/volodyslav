@@ -738,7 +738,9 @@ $$
 We constrain the primitive point event $\texttt{RetryDue}_x$ with minimal, stutter-invariant LTL conditions:
 
 **RD1 — No spurious pulses before any failure**
+$$
 G( ( \neg \texttt{O} \ \texttt{REf}_x ) \rightarrow \neg \texttt{RetryDue}_x )
+$$
 
 **RD2 — Exactly one pulse between consecutive failures (uniqueness per epoch)**
 G( \texttt{AtMostOne}(\texttt{REf}_x,\ \texttt{RetryDue}_x) )
