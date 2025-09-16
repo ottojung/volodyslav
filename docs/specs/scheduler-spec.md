@@ -177,6 +177,14 @@ stateDiagram-v2
 
 **Events:** `SchedulerReinitializationStarted`
 
+#### Reinitializing to Running
+
+**Guard:** Subsequent call to `initialize(registrations)` returned.
+
+**Action:** Either complete override resolution and continue, or fail and revert to previous running state.
+
+**Events:** `SchedulerReinitializationCompleted`
+
 #### Running to Stopping
 
 **Guard:** `stop()` called
