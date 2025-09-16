@@ -850,7 +850,7 @@ $$
 \texttt{G}( \texttt{SS} \rightarrow \texttt{F} \; \texttt{SE} )
 $$
 
-**L3' — Eventual execution under recurring obligations**
+**L3 — Eventual execution under recurring obligations**
 $$
 \texttt{G}( \texttt{Active} \wedge \texttt{Registered}_x \wedge \texttt{G} \; \texttt{F} \; \texttt{EffectiveDue}_x \rightarrow \texttt{G} \; \texttt{F} \; \texttt{RS}_x )
 $$
