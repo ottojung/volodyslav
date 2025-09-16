@@ -795,7 +795,7 @@ G( \texttt{Crash} \rightarrow (\neg \texttt{RE}_x \; \texttt{W} \; \texttt{IE}) 
 $$
 A crash cannot be followed by any ends until re-initialisation.
 
-**S6 — No parallel executions**
+**S6 — Conservation of starts**
 
 Let $\texttt{B}_x := \texttt{IE} \vee \texttt{Due}_x$. Between any two $\texttt{B}_x$ positions (with no $\texttt{B}_x$ in between), there is **at most one** $\texttt{RS}_x$ unless a failure occurs in that segment (in which case a retry may introduce an extra $\texttt{RS}_x$ before the next $\texttt{B}_x$):
 
