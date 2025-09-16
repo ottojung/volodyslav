@@ -202,28 +202,43 @@ stateDiagram-v2
 ### Task State Transitions
 
 #### From AwaitingRun to Running
+
 **Guard:** Current time matches cron expression OR task has never run and cron expression matches current time exactly (first startup only)
+
 **Action:** Invoke task callback, record attempt timestamp
+
 **Events:** `TaskRunStarted`
 
 #### From Running to AwaitingRun
+
 **Guard:** Task callback completes successfully
+
 **Action:** Record success timestamp, clear any pending retry
+
 **Events:** `TaskRunCompleted`
 
 #### From Running to AwaitingRetry
+
 **Guard:** Task callback throws an error or rejects
+
 **Action:** Record failure timestamp, calculate `pendingRetryUntil = now + retryDelay`
+
 **Events:** `TaskRunFailed`
 
 #### From AwaitingRetry to Running
+
 **Guard:** Current time ≥ `pendingRetryUntil`
+
 **Action:** Clear retry state, invoke task callback, record attempt timestamp
+
 **Events:** `TaskRetryStarted`
 
 #### From AwaitingRetry to AwaitingRun
+
 **Guard:** New cron occurrence is due while task is in retry state
+
 **Action:** Clear retry state, proceed with cron execution
+
 **Events:** `TaskRetryPreempted`, `TaskRunStarted`
 
 ### Timestamp Management
