@@ -353,7 +353,7 @@ $$
 
 For every task $x$, the cron schedule matches infinitely often, in both directions.
 
-**E5 - Pointness**
+**E5 - Due pointness**
 
 $$
 \texttt{G}( \texttt{Due}_x \rightarrow \neg \texttt{X}(\texttt{Due}_x) )
