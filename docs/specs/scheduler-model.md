@@ -148,6 +148,13 @@ After a failure completes (or at, if retry delay is 0), a retry becomes eligible
 
 ---
 
+* $\texttt{FirstIE} := \texttt{IE} \wedge \neg \texttt{O} \; \texttt{IE}$
+
+This is the very first initialization in the trace.
+It is treated specially to prevent spurious obligations right after the first initialization.
+
+---
+
 #### Stateful
 
 ---
@@ -177,10 +184,11 @@ An invocation of $x$ has begun and has not finished before the current position.
 
 ---
 
+* $\texttt{Pending}_x := \texttt{Hold}( \texttt{Due}_x, \texttt{RS}_x \lor \texttt{FirstIE} )$
 
-* $\texttt{Pending}_x := \texttt{Hold}( \texttt{Due}_x, \texttt{RS}_x )$
+An outstanding signal to perform a start after a due tick, cleared by a start and by $\texttt{FirstIE}$.
 
-An outstanding obligation to perform the first start after a due tick, cleared by a start.
+The reason that $\texttt{FirstIE}$ clears $\texttt{Pending}_x$ is that the scheduler should not start all tasks at once after the very first initialization, but only when they are next due.
 
 ---
 
