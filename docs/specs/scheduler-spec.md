@@ -630,49 +630,6 @@ We use the convenient shorthand of writing instantiated propositions like $\text
 
 This model focuses on externally observable behaviour, but does not include the error-handling part.
 
-### Execution Environment Model
-
-The scheduler operates against an abstract **execution environment** $\mathcal{E}$ that constrains which traces are admissible without prescribing scheduler internals. The environment contributes two orthogonal ingredients:
-
-1. **Crash generator** — a predicate $\texttt{Crash}(t)$ over $\mathbb{Q}$ (equivalently, a set of crash times $C \subseteq \mathbb{Q}$). When true, the environment marks an exogenous interruption that preempts in-flight callbacks and halts the scheduler itself; properties S5a/S5b enforce the resulting quiescence in the trace.
-2. **Work density function** — a dimensionless function
-
-   $$
-   \texttt{compute} : (\mathbb{Q} \times \mathbb{Q}) \to \mathbb{Q}_{\ge 0}
-   $$
-
-   assigning the potential amount of computational progress available over any real-time interval $[t,u)$. It satisfies, for all $t \le u \le v$:
-
-   * **T1 (identity):** $\texttt{compute}(t,t) = 0$.
-   * **T2 (additivity):** $\texttt{compute}(t,v) = \texttt{compute}(t,u) + \texttt{compute}(u,v)$.
-   * **T3 (monotonicity & nonnegativity):** $\texttt{compute}(t,u) \ge 0$ and $\texttt{compute}(t,u) \le \texttt{compute}(t,v)$.
-
-   No positivity is assumed; the environment may set $\texttt{compute}(t,u) = 0$ on arbitrary (even unbounded) intervals, modelling **freezes** where no work can progress. We write $\texttt{Frozen}(t,u)$ when $\texttt{compute}(t,u) = 0$.
-
-#### Environment taxonomy (informative)
-
-The following labels identify useful environment classes for later theorems. They are descriptive definitions, not global assumptions:
-
-* **Freezing environments:** admit arbitrarily long intervals $[t,u)$ with $\texttt{compute}(t,u) = 0$.
-* **Eventually thawing environments:** there exists $U$ such that every interval of length $\ge U$ supplies some positive compute.
-* **Lower-bounded-density environments:** there exist parameters $\varepsilon > 0$ and $\Delta \ge 0$ such that for all $t$ and $T \ge \Delta$, $\texttt{compute}(t,t+T) \ge \varepsilon\cdot T$ (average density after $\Delta$ never drops below $\varepsilon$).
-* **Burst environments:** concentrate density in sporadic spikes; for every $M$ there are intervals of length $> M$ with arbitrarily small compute alternating with brief, high-density bursts.
-
-These classes enable scheduler-specific liveness or SLO theorems that explicitly quantify over the applicable environments.
-
-#### Crash semantics
-
-The environment selects the crash set $C$ and must satisfy the **crash–compute coupling** axiom: for each crash time $c \in C$ there exists $d > c$ with $\texttt{compute}(c,d) = 0$. Intuitively, from the instant a crash occurs, the environment withholds compute for some subsequent period (possibly infinitesimal, possibly unbounded). Freezes may also occur without a crash; the only mandated linkage is the zero-density stretch beginning at each crash.
-
-#### Conditional compatibility schemas (informative)
-
-When reasoning about a concrete scheduler, the environment model supports conditional theorems of the following schematic forms:
-
-* **Tighter “only-if miss” schema:** if an obligation $\texttt{EffectiveDue}_x$ goes unserved, then either the local compute density around that obligation window is insufficient for the scheduler’s minimal needs for $x$, or a $\texttt{Crash}$ (or its crash-induced frozen interval $[c,d]$) overlaps the window and blocks execution.
-* **Crash-sparse + not-too-slow $\Rightarrow P$:** if the environment provides recurring crash-free windows (arbitrarily large intervals with no $\texttt{Crash}$) and belongs to an adequate density class (e.g., eventually thawing or lower-bounded-density), then the scheduler satisfies property $P$ such as eventual or bounded service of obligations.
-* **Finitely many crashes per epoch $\Rightarrow$ liveness:** if every epoch contains only finitely many crash events, qualitative liveness properties (e.g., $L\text{-}Obl$) hold.
-* **Density-conditioned bounds:** in lower-bounded-density environments with parameters $(\varepsilon, \Delta)$, quantitative response-time bounds can be expressed as functions of $(\varepsilon, \Delta)$ and scheduler-specific constants. Without such density premises, only qualitative guarantees apply.
-
 ### Modelling Framework
 
 * **Trace semantics:** Each trace position corresponds to an instant where an observable event occurs. Events that are simultaneous appear at the same rationals. Time bounds are background semantics only (not encoded in LTL).
@@ -976,6 +933,49 @@ Due_1
 RS_1               // restart after re-init
 REs_1
 ```
+
+### Execution Environment Model
+
+The scheduler operates against an abstract **execution environment** $\mathcal{E}$ that constrains which traces are admissible without prescribing scheduler internals. The environment contributes two orthogonal ingredients:
+
+1. **Crash generator** — a predicate $\texttt{Crash}(t)$ over $\mathbb{Q}$ (equivalently, a set of crash times $C \subseteq \mathbb{Q}$). When true, the environment marks an exogenous interruption that preempts in-flight callbacks and halts the scheduler itself; properties S5a/S5b enforce the resulting quiescence in the trace.
+2. **Work density function** — a dimensionless function
+
+   $$
+   \texttt{compute} : (\mathbb{Q} \times \mathbb{Q}) \to \mathbb{Q}_{\ge 0}
+   $$
+
+   assigning the potential amount of computational progress available over any real-time interval $[t,u)$. It satisfies, for all $t \le u \le v$:
+
+   * **T1 (identity):** $\texttt{compute}(t,t) = 0$.
+   * **T2 (additivity):** $\texttt{compute}(t,v) = \texttt{compute}(t,u) + \texttt{compute}(u,v)$.
+   * **T3 (monotonicity & nonnegativity):** $\texttt{compute}(t,u) \ge 0$ and $\texttt{compute}(t,u) \le \texttt{compute}(t,v)$.
+
+   No positivity is assumed; the environment may set $\texttt{compute}(t,u) = 0$ on arbitrary (even unbounded) intervals, modelling **freezes** where no work can progress. We write $\texttt{Frozen}(t,u)$ when $\texttt{compute}(t,u) = 0$.
+
+#### Environment taxonomy (informative)
+
+The following labels identify useful environment classes for later theorems. They are descriptive definitions, not global assumptions:
+
+* **Freezing environments:** admit arbitrarily long intervals $[t,u)$ with $\texttt{compute}(t,u) = 0$.
+* **Eventually thawing environments:** there exists $U$ such that every interval of length $\ge U$ supplies some positive compute.
+* **Lower-bounded-density environments:** there exist parameters $\varepsilon > 0$ and $\Delta \ge 0$ such that for all $t$ and $T \ge \Delta$, $\texttt{compute}(t,t+T) \ge \varepsilon\cdot T$ (average density after $\Delta$ never drops below $\varepsilon$).
+* **Burst environments:** concentrate density in sporadic spikes; for every $M$ there are intervals of length $> M$ with arbitrarily small compute alternating with brief, high-density bursts.
+
+These classes enable scheduler-specific liveness or SLO theorems that explicitly quantify over the applicable environments.
+
+#### Crash semantics
+
+The environment selects the crash set $C$ and must satisfy the **crash–compute coupling** axiom: for each crash time $c \in C$ there exists $d > c$ with $\texttt{compute}(c,d) = 0$. Intuitively, from the instant a crash occurs, the environment withholds compute for some subsequent period (possibly infinitesimal, possibly unbounded). Freezes may also occur without a crash; the only mandated linkage is the zero-density stretch beginning at each crash.
+
+#### Conditional compatibility schemas (informative)
+
+When reasoning about a concrete scheduler, the environment model supports conditional theorems of the following schematic forms:
+
+* **Tighter “only-if miss” schema:** if an obligation $\texttt{EffectiveDue}_x$ goes unserved, then either the local compute density around that obligation window is insufficient for the scheduler’s minimal needs for $x$, or a $\texttt{Crash}$ (or its crash-induced frozen interval $[c,d]$) overlaps the window and blocks execution.
+* **Crash-sparse + not-too-slow $\Rightarrow P$:** if the environment provides recurring crash-free windows (arbitrarily large intervals with no $\texttt{Crash}$) and belongs to an adequate density class (e.g., eventually thawing or lower-bounded-density), then the scheduler satisfies property $P$ such as eventual or bounded service of obligations.
+* **Finitely many crashes per epoch $\Rightarrow$ liveness:** if every epoch contains only finitely many crash events, qualitative liveness properties (e.g., $L\text{-}Obl$) hold.
+* **Density-conditioned bounds:** in lower-bounded-density environments with parameters $(\varepsilon, \Delta)$, quantitative response-time bounds can be expressed as functions of $(\varepsilon, \Delta)$ and scheduler-specific constants. Without such density premises, only qualitative guarantees apply.
 
 ---
 
