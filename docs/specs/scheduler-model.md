@@ -374,14 +374,14 @@ $$
 	\texttt{G}\big( \texttt{AtMostOne}(\texttt{REf}_x,\ \texttt{RetryDue}_x) \big)
 $$
 
-Exactly one pulse between consecutive failures (or none if no failure occurs).
+At most one pulse between consecutive failures (or none if no failure occurs).
 
 **RD3 — Existence**
 $$
 	\texttt{G}\big( \texttt{REf}_x \rightarrow \texttt{F}\ \texttt{RetryDue}_x \big)
 $$
 
-A $\texttt{RetryDue}$ tick appears after each failure.
+At least one $\texttt{RetryDue}$ tick appears after each failure.
 
 **RD4 — First-after-last-failure**
 $$
