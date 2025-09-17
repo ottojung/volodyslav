@@ -45,7 +45,7 @@ This subsection gives a signature-based, self-contained definition of the model,
 **Interpretation:**
 $\texttt{TaskId}$ names externally visible tasks. A $\texttt{RegistrationSet}$ is the public input provided at initialization. $\texttt{Due}$ and $\texttt{RetryDelay}$ are parameters determined by the registration set and the environment (host clock); they are not hidden internal state. Time units for $\texttt{Due}$ and $\texttt{RetryDelay}$ coincide.
 
-## Notation & Helper Modalities
+## Helper Modalities
 
 **Encodings and bit-length.** Fix a canonical, prefix-free, computable encoding $\llbracket\cdot\rrbracket$ from objects to bitstrings with linear-time decoding. For any object $X$, write $|X| := |\llbracket X \rrbracket|$ for the bit length of its encoding.
 
@@ -72,14 +72,6 @@ $$
 $$
 
 This asserts that $P$ will occur after spending at most $a \cdot |X| + b$ units of environment-provided compute from the current position.
-
-**Symbols introduced.**
-
-* $\llbracket\cdot\rrbracket$ — canonical, prefix-free encoding of objects as bitstrings.
-* $|\cdot|$ — bit-length operator applied to the encoding $\llbracket\cdot\rrbracket$.
-* $a, b$ — global non-negative rational constants parameterising linear compute bounds.
-* $F^{\leq C}_{\texttt{comp}}(\cdot)$ — compute-bounded eventuality modality defined above.
-* $F^{\texttt{lin}|X|}_{\texttt{comp}}(\cdot)$ — syntactic sugar for an $F^{\leq C}_{\texttt{comp}}(\cdot)$ bound linear in the size of object $X$.
 
 ## Event Predicates (Observable Alphabet)
 
