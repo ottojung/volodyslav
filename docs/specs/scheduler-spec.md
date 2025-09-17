@@ -843,6 +843,8 @@ $$
 
 Should not start a task more than once for the same due period unless it fails.
 
+Looking directly, this is a restriction on the number of successful **completions** per due period, not starts. But since starts and successful completions are in one-to-one correspondence (by **S1** and **S2**), it also limits the number of starts per due period. This way of stating the property is more convenient.
+
 **S5a — Quiescence after StopEnd**
 $$
 \texttt{G}( \texttt{SE} \rightarrow (\neg \texttt{RS}_x \; \texttt{W} \; \texttt{IE}) )
