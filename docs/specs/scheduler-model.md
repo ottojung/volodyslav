@@ -49,30 +49,56 @@ $\texttt{TaskId}$ names externally visible tasks. A $\texttt{RegistrationSet}$ i
 
 Each event predicate is evaluated at a trace position $i$ (we omit $i$ when clear from context):
 
+---
+
 * $\texttt{InitStart}$ — the JavaScript interpreter calls `initialize(...)`.
+
+---
+
 * $\texttt{InitEnd}(R)$ — the `initialize(...)` call returns; the effective registration set is $R$.
+
+---
+
 * $\texttt{StopStart}$ — the JavaScript interpreter calls `stop()`.
+
+---
+
 * $\texttt{StopEnd}$ — the `stop()` call returns.
+
+---
+
 * $\texttt{UnexpectedShutdown}$ — an unexpected, in-flight system shutdown occurs (e.g., process or host crash). This interrupts running callbacks and preempts further starts until a subsequent $\texttt{InitEnd}$. This predicate is supplied by the environment’s crash generator.
+
+---
+
 * $\texttt{RunStart}(x)$ — the scheduler begins invoking the public callback for task $x$.
+
+---
+
 * $\texttt{RunEnd}(x, r)$ — that invocation completes with result $r \in \texttt{Result}$.
+
+---
 
 * $\texttt{Due}_x$ — is start of a minute that the cron schedule for task $x$ matches.
 
-  *Interpretation:* the cron schedule for $x$ matches the current minute boundary.
-  Minute boundary is defined as the exact start of that minute.
+*Interpretation:* the cron schedule for $x$ matches the current minute boundary.
+Minute boundary is defined as the exact start of that minute.
 
-  For example, for a cron expression `* * * * *`, a minute boundary occurs at `2024-01-01T12:34:00.00000000000000000000000000000000000000000000000000000` (infinitely many zeros) local time.
+For example, for a cron expression `* * * * *`, a minute boundary occurs at `2024-01-01T12:34:00.00000000000000000000000000000000000000000000000000000` (infinitely many zeros) local time.
 
-  Time is defined by the host system's local clock (see [Execution Environment Model](#execution-environment-model)).
+Time is defined by the host system's local clock (see [Execution Environment Model](#execution-environment-model)).
 
-  Important: task does not have to be registered for $\texttt{Due}_x$ to occur.
+Important: task does not have to be registered for $\texttt{Due}_x$ to occur.
+
+---  
 
 * $\texttt{RetryDue}_x$ — is the instant when the backoff for the most recent failure of $x$ expires.
 
-  *Interpretation:* is a primitive point event (like $\texttt{Due}_x$), supplied by the environment/clock. If the latest $\texttt{RunEnd}(x,\texttt{failure})$ occurs at time $t_f$, then $\texttt{RetryDue}_x$ holds at time $t_f + \texttt{RetryDelay}(x)$. These pulses are truths about the environment.
+*Interpretation:* is a primitive point event (like $\texttt{Due}_x$), supplied by the environment/clock. If the latest $\texttt{RunEnd}(x,\texttt{failure})$ occurs at time $t_f$, then $\texttt{RetryDue}_x$ holds at time $t_f + \texttt{RetryDelay}(x)$. These pulses are truths about the environment.
 
-  Important: task does not have to be registered for $\texttt{RetryDue}_x$ to occur.
+Important: task does not have to be registered for $\texttt{RetryDue}_x$ to occur.
+
+---  
 
 Each predicate marks the instant the named public action occurs from the perspective of the embedding JavaScript runtime: function entry ($\texttt{InitStart}$, $\texttt{StopStart}$), function return ($\texttt{InitEnd}$, $\texttt{StopEnd}$), callback invocation begin/end ($\texttt{RunStart}$, $\texttt{RunEnd}$), and exogenous crash ($\texttt{UnexpectedShutdown}$). No logging or internal bookkeeping is modeled.
 
@@ -94,82 +120,85 @@ Each predicate marks the instant the named public action occurs from the perspec
 
 #### Input predicates
 
+---
+
 * $IE^{\text{in}}_x := \exists R.\,(\texttt{InitEnd}(R)\wedge x\in\text{dom}(R))$
 
-  *Interpretation:* membership of $x$ in the registration set provided at the most recent initialization.
+Membership of $x$ in the registration set provided at the most recent initialization.
+
+---
 
 * $IE^{\text{out}}_x := \exists R.\,(\texttt{InitEnd}(R)\wedge x\notin\text{dom}(R))$
 
-  *Interpretation:* non-membership of $x$ in the registration set provided at the most recent initialization.
+Non-membership of $x$ in the registration set provided at the most recent initialization.
+
+---    
 
 * $\texttt{Registered}_x := \texttt{Hold}(IE^{\text{in}}_x,\; IE^{\text{out}}_x)$
 
-  *Interpretation:* membership of $x$ in the most recent observed registration set.
+Membership of $x$ in the most recent observed registration set.
+
+---  
 
 * $\texttt{RetryEligible}_x := \texttt{Hold}(\texttt{RetryDue}_x,\ \texttt{REf}_x)$
 
-  *Interpretation:* after a failure completes (or at, if retry delay is 0), a retry becomes eligible at the first $\texttt{RetryDue}_x$ pulse since that failure and remains true until cleared by a subsequent failure.
+After a failure completes (or at, if retry delay is 0), a retry becomes eligible at the first $\texttt{RetryDue}_x$ pulse since that failure and remains true until cleared by a subsequent failure.
 
 ---
 
 #### Stateful
 
-* **Hold-until-clear**
+---
 
-$$
-\texttt{Hold}(\texttt{set}, \texttt{clear}) := (\neg \texttt{clear}) \; \texttt{S} \; \texttt{set}
-$$
+* $\texttt{Hold}(\texttt{set}, \texttt{clear}) := (\neg \texttt{clear}) \; \texttt{S} \; \texttt{set}$
 
 There was a $\texttt{set}$ in the past (or now), and no $\texttt{clear}$ since.
 
-* **At most one**
+---
 
-$$
-\texttt{AtMostOne}(B, A) := \texttt{G} (A \implies \ (\neg A \; \texttt{W} \; B ) )
-$$
+* $\texttt{AtMostOne}(B, A) := \texttt{G} (A \implies \ (\neg A \; \texttt{W} \; B ) )$
 
 At most one $A$ between consecutive $B$’s.
 One single $A$ is allowed if there is no next $B$.
 
-* **Active** — between an $\texttt{IE}$ and the next $\texttt{SS}$ or $\texttt{Crash}$:
+---
 
-$$
-\texttt{Active}_R := (\neg(\texttt{SS} \vee \texttt{Crash})) \; \texttt{S} \; \texttt{IE}_R
-$$
+* $\texttt{Active}_R := (\neg(\texttt{SS} \vee \texttt{Crash})) \; \texttt{S} \; \texttt{IE}_R$
 
-* **Running** — “an invocation of $x$ has begun and has not finished before the current position”:
+Between an $\texttt{IE}$ and the next $\texttt{SS}$ or $\texttt{Crash}$.
 
-$$
-\texttt{Running}_x := (\neg \texttt{RE}_x) \; \texttt{S} \; \texttt{RS}_x \land (\neg \texttt{Crash}) \; \texttt{S} \; \texttt{RS}_x
-$$
+---
 
-* **Pending** — one outstanding obligation to perform the first start after a due tick, cleared by a start:
+* $\texttt{Running}_x := (\neg \texttt{RE}_x) \; \texttt{S} \; \texttt{RS}_x \land (\neg \texttt{Crash}) \; \texttt{S} \; \texttt{RS}_x$
 
-$$
-\texttt{Pending}_x := \texttt{Hold}( \texttt{Due}_x, \texttt{RS}_x )
-$$
+An invocation of $x$ has begun and has not finished before the current position.
 
-* **RetryPending** — a retry obligation that is true after a failure and cleared by $\texttt{REs}_x$:
+---
 
-$$
-\begin{aligned}
-\texttt{RetryPending}_x &:= \texttt{RetryEligible}_x \wedge \texttt{Hold}( \texttt{REf}_x, \texttt{REs}_x)
-\end{aligned}
-$$
 
-  *Interpretation:* a retry obligation exists after a failure and persists until a success clears it; the obligation is gated by eligibility, which becomes true at the $\texttt{RetryDue}_x$ pulse for the most recent failure.
+* $\texttt{Pending}_x := \texttt{Hold}( \texttt{Due}_x, \texttt{RS}_x )$
 
-* **EffectiveDue** — task $x$ is ready to run:
+An outstanding obligation to perform the first start after a due tick, cleared by a start.
 
-$$
-\texttt{EffectiveDue}_x := \texttt{Pending}_x \vee \texttt{RetryPending}_x
-$$
+---
 
-* **Obligation** —  the scheduler **should actually start** task $x$ now:
+* $\texttt{RetryPending}_x := \texttt{RetryEligible}_x \wedge \texttt{Hold}( \texttt{REf}_x, \texttt{REs}_x)$
 
-$$
-\texttt{Obligation}_{R, x} := \texttt{Active}_R \wedge \texttt{Registered}_x \wedge \texttt{EffectiveDue}_x
-$$
+A retry obligation that is true after a failure and cleared by $\texttt{REs}_x$.
+
+A retry obligation exists after a failure and persists until a success clears it; the obligation is gated by eligibility, which becomes true at the $\texttt{RetryDue}_x$ pulse for the most recent failure.
+
+---
+
+* $\texttt{EffectiveDue}_x := \texttt{Pending}_x \vee \texttt{RetryPending}_x$
+
+A task $x$ is ready to run.
+
+---
+
+* $\texttt{Obligation}_{R, x} := \texttt{Active}_R \wedge \texttt{Registered}_x \wedge \texttt{EffectiveDue}_x$
+
+The scheduler **should actually start** task $x$ now.
 
 ---
 
