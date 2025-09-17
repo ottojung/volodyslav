@@ -341,6 +341,19 @@ $$
 
 Every completion must correspond to a run that was already in flight before this position.
 
+## Nice progress properties (informative)
+
+Following are additional, **informative** assumptions that may hold in some environments. They are not part of the core model.
+
+**A1 — Starts eventually settle**
+$$
+\texttt{G}( \texttt{RS}_x \rightarrow \texttt{F}( \texttt{RE}_x \vee \texttt{Crash} ) )
+$$
+
+Every callback invocation completes in **finite** time unless pre-empted by $\texttt{Crash}$. No uniform upper bound is required; the assumption only rules out infinite executions.
+
+Without this, **L1** cannot be satisfied for any scheduler implementation.
+
 ## Environment taxonomy (informative)
 
 The following labels identify illustrative environment classes. They are informative definitions, not global assumptions:
