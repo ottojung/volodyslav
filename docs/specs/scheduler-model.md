@@ -66,9 +66,13 @@ Each event predicate is evaluated at a trace position $i$ (we omit $i$ when clea
 
   Time is defined by the host system's local clock (see [Execution Environment Model](#execution-environment-model)).
 
+  Important: task does not have to be registered for $\texttt{Due}_x$ to occur.
+
 * $\texttt{RetryDue}_x$ — is the instant when the backoff for the most recent failure of $x$ expires.
 
   *Interpretation:* is a primitive point event (like $\texttt{Due}_x$), supplied by the environment/clock. If the latest $\texttt{RunEnd}(x,\texttt{failure})$ occurs at time $t_f$, then $\texttt{RetryDue}_x$ holds at time $t_f + \texttt{RetryDelay}(x)$. These pulses are truths about the environment.
+
+  Important: task does not have to be registered for $\texttt{RetryDue}_x$ to occur.
 
 Each predicate marks the instant the named public action occurs from the perspective of the embedding JavaScript runtime: function entry ($\texttt{InitStart}$, $\texttt{StopStart}$), function return ($\texttt{InitEnd}$, $\texttt{StopEnd}$), callback invocation begin/end ($\texttt{RunStart}$, $\texttt{RunEnd}$), and exogenous crash ($\texttt{UnexpectedShutdown}$). No logging or internal bookkeeping is modeled.
 
