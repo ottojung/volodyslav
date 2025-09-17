@@ -118,12 +118,6 @@ $$
 
 There was a $\texttt{set}$ in the past (or now), and no $\texttt{clear}$ since.
 
-* **Edge after reset** (first occurrence of $\phi$ since $\texttt{reset}$, stutter-invariant)
-
-$$
-\texttt{EdgeAfterReset}(\phi, \texttt{reset}) := \phi \wedge (\neg\phi) \; \texttt{S} \; \texttt{reset}
-$$
-
 * **At most one**
 
 $$
