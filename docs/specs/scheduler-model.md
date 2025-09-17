@@ -128,10 +128,11 @@ $$
 * **At most one**
 
 $$
-\texttt{AtMostOne}(B, A) := \neg A \; \texttt{W} \; ( B \vee ( A \wedge ( \neg A \; \texttt{W} \; B ) ) )
+\texttt{AtMostOne}(B, A) := \texttt{G} (A \implies \ (\neg A \; \texttt{W} \; B ) )
 $$
 
-At most one $A$ between consecutive $B$’s (or forever if no next $B$).
+At most one $A$ between consecutive $B$’s.
+One single $A$ is allowed if there is no next $B$.
 
 * **Active** — between an $\texttt{IE}$ and the next $\texttt{SS}$ or $\texttt{Crash}$:
 
