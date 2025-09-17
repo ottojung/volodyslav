@@ -182,6 +182,12 @@ $$
 
 When a task is supposed to be executed, we must eventually see that execution in the form of $\texttt{RS}_x$ (or a $\texttt{Crash}$, or $\texttt{SE}$).
 
+**L1s — Strong obligation fulfillment**
+
+TODO
+
+Task execution occurs within a bounded **compute** after the obligation arises, unless preempted by $\texttt{Crash}$ or $\texttt{SE}$.
+
 **L2 — Stop terminates**
 $$
 \texttt{G}( \texttt{SS} \rightarrow \texttt{F} \; \texttt{SE} )
@@ -295,6 +301,9 @@ This section is descriptive, not normative. More specifically:
 - All formal statements in this section are truths about environments.
 - All possible real-world environments do satisfy these statements.
 - Formal statements in this section need not to be checked, they are true by definition. Implementors task is to map this model to real-world phenomena.
+
+Some environments make it impossible to implement a compliant scheduler (for example, permanently freezing environments).
+The value of this section is to clarify the blame assignment between scheduler and environment.
 
 The environment contributes two ingredients:
 
