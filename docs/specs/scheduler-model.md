@@ -347,14 +347,6 @@ $$
 
 For every task $x$, the cron schedule matches infinitely often.
 
-**E5 - Due pointness**
-
-$$
-\texttt{G}( \texttt{Due}_x \rightarrow \neg \texttt{X}(\texttt{Due}_x) )
-$$
-
-No two $\texttt{Due}_x$ events are simultaneous.
-
 **RD1 — Nonprecedence**
 $$
 	\texttt{G}\big( ( \neg \texttt{O}\ \texttt{REf}_x ) \rightarrow \neg \texttt{RetryDue}_x \big)
