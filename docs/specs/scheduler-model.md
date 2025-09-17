@@ -220,7 +220,8 @@ $$
 
 Should prevent multiple successful completions per due period.
 
-Looking directly, this is a restriction on the number of successful **completions** per due period, not starts. However, the possibility that the callback will return before the next due period prevents the scheduler from starting the task again in that same period. Thus, the restriction on successful completions indirectly restricts starts. This indirect restriction is in fact infinitely strong - it is a logical guarantee about starts.
+Conceptually, however, this is a restriction on the number of **starts** per due period, not completions.
+This is because the possibility that the callback will return before the next due period prevents the scheduler from starting the task again in that same period. Thus, the restriction on successful completions indirectly restricts starts. This indirect restriction is in fact infinitely strong - it is a logical guarantee about starts.
 
 **S4 — Quiescence after StopEnd**
 $$
