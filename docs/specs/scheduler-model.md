@@ -1,0 +1,357 @@
+
+# Formal Model of Scheduler's Observable Behavior
+
+This model combines first-order quantification over the universe scheduler objects with **future- and past-time LTL** formulas. Atomic predicates below are predicate symbols parameterised by a scheduler object variable (for example, $\texttt{RS}_x$, $\texttt{InitEnd}(R)$), and temporal operators apply to propositional formulas obtained by instantiating those predicates for concrete objects.
+
+We use the convenient shorthand of writing instantiated propositions like $\texttt{RS}_x$ for $\texttt{RunStart}(x)$. Where a formula is stated without explicit quantifiers, the default intent is universal quantification (eg. “for all tasks x”). First-order quantification ranges over the set of scheduler objects; temporal operators reason over event positions in the trace.
+
+This model focuses on externally observable behaviour, but does not include the error-handling part.
+
+## Modelling Framework
+
+* **Trace semantics:** Each trace position corresponds to an instant where an observable event occurs. Events that are simultaneous appear at the same rationals. Time bounds are background semantics only (not encoded in LTL).
+* **Logic:** A combination of first-order quantification (over tasks) and **LTL with past**.
+
+  * **Future operators:** $\texttt{G}$ (□), $\texttt{F}$ (◊), $\texttt{X}$ (next), $\texttt{U}$ (until), $\texttt{W}$ (weak until).
+  * **Past operators:** $\texttt{H}$ (historically), $\texttt{O}$ (once), $\texttt{S}$ (since), $\texttt{Y}$ (previous).
+  * We prefer the **stutter-invariant** past operators ($\texttt{S}$, $\texttt{H}$, $\texttt{O}$) in this spec.
+
+## Definitions
+
+This subsection gives a signature-based, self-contained definition of the model, followed by interpretations of each symbol.
+
+### Time and Traces
+
+* **Time domain:** $\mathbb{Q}$ (rational numbers), used to timestamp observable instants, no initial event.
+* **Trace:** a sequence of positions $i = 0, 1, 2, \dots$ with a timestamp function $\tau(i) \in \mathbb{Q}$ that is non-strictly increasing. At each position $i$, one or more observable events may occur.
+
+### Domains
+
+* $\texttt{TaskId}$ — a finite, non-empty set of task identifiers.
+* $\texttt{Result} = \{ \texttt{success}, \texttt{failure} \}$.
+* $\texttt{RegistrationSet}$ — a finite mapping $R : \texttt{TaskId} \to (\texttt{Schedule}, \texttt{RetryDelay})$.
+* $\texttt{Schedule}$ — an abstract predicate $\texttt{Due}(\texttt{task}: \texttt{TaskId}, t: \mathbb{Q}) \to \texttt{Bool}$ indicating minute-boundary instants when a task is eligible to start.
+* $\texttt{RetryDelay} : \texttt{TaskId} \to \mathbb{Q}_{\geq 0}$ $-$ the function that maps each task to its non-negative retry delay.
+
+**Interpretation:**
+$\texttt{TaskId}$ names externally visible tasks. A $\texttt{RegistrationSet}$ is the public input provided at initialization. $\texttt{Due}$ and $\texttt{RetryDelay}$ are parameters determined by the registration set and the environment (host clock); they are not hidden internal state. Time units for $\texttt{Due}$ and $\texttt{RetryDelay}$ coincide.
+
+### Event Predicates (Observable Alphabet)
+
+Each event predicate is evaluated at a trace position $i$ (we omit $i$ when clear from context):
+
+* $\texttt{InitStart}$ — the JavaScript interpreter calls `initialize(...)`.
+* $\texttt{InitEnd}(R)$ — the `initialize(...)` call returns; the effective registration set is $R$.
+* $\texttt{StopStart}$ — the JavaScript interpreter calls `stop()`.
+* $\texttt{StopEnd}$ — the `stop()` call returns.
+* $\texttt{UnexpectedShutdown}$ — an unexpected, in-flight system shutdown occurs (e.g., process or host crash). This interrupts running callbacks and preempts further starts until a subsequent $\texttt{InitEnd}$.
+* $\texttt{RunStart}(x)$ — the scheduler begins invoking the public callback for task $x$.
+* $\texttt{RunEnd}(x, r)$ — that invocation completes with result $r \in \texttt{Result}$.
+
+* $\texttt{Due}_x$ — is is start of a minute that the cron schedule for task $x$ matches.
+
+  *Interpretation:* the cron schedule for $x$ matches the current minute boundary.
+  Minute boundary is defined as the exact start of that minute.
+
+  For example, for a cron expression `* * * * *`, a minute boundary occurs at `2024-01-01T12:34:00.00000000000000000000000000000000000000000000000000000Z` (infinitely many zeros).
+
+  Time is defined by the host system's local clock.
+
+* $\texttt{RetryDue}_x$ — is the instant when the backoff for the most recent failure of $x$ expires.
+
+  *Interpretation:* is a primitive point event (like $\texttt{Due}_x$), supplied by the environment/clock. If the latest $\texttt{RunEnd}(x,\texttt{failure})$ occurs at time $t_f$, then $\texttt{RetryDue}_x$ holds at time $t_f + \texttt{RetryDelay}(x)$.
+
+Each predicate marks the instant the named public action occurs from the perspective of the embedding JavaScript runtime: function entry ($\texttt{InitStart}$, $\texttt{StopStart}$), function return ($\texttt{InitEnd}$, $\texttt{StopEnd}$), callback invocation begin/end ($\texttt{RunStart}$, $\texttt{RunEnd}$), and exogenous crash ($\texttt{UnexpectedShutdown}$). No logging or internal bookkeeping is modeled.
+
+## Macros
+
+Abbreviations:
+
+* $\texttt{IS} := \texttt{InitStart}$
+* $\texttt{IE} := \exists R. \texttt{InitEnd}(R)$
+* $\texttt{SS} := \texttt{StopStart}$
+* $\texttt{SE} := \texttt{StopEnd}$
+* $\texttt{Crash} := \texttt{UnexpectedShutdown}$
+* $\texttt{RS}_x := \texttt{RunStart}(x)$
+* $\texttt{REs}_x := \texttt{RunEnd}(x, \texttt{success})$
+* $\texttt{REf}_x := \texttt{RunEnd}(x, \texttt{failure})$
+* $\texttt{RE}_x := \texttt{REs}_x \vee \texttt{REf}_x$
+
+---
+
+Input predicates:
+
+* $IE^{\text{in}}_x := \exists R.\,(\texttt{InitEnd}(R)\wedge x\in\text{dom}(R))$
+
+  *Interpretation:* membership of $x$ in the registration set provided at the most recent initialization.
+
+* $IE^{\text{out}}_x := \exists R.\,(\texttt{InitEnd}(R)\wedge x\notin\text{dom}(R))$
+
+  *Interpretation:* non-membership of $x$ in the registration set provided at the most recent initialization.
+
+* $\texttt{Registered}_x := \texttt{Bucket}(IE^{\text{in}}_x,\; IE^{\text{out}}_x)$
+
+  *Interpretation:* membership of $x$ in the most recent observed registration set.
+
+* $\texttt{RetryEligible}_x := (\neg \texttt{O}\ \texttt{REf}_x) \ \vee \ \texttt{Bucket}(\texttt{RetryDue}_x,\ \texttt{REf}_x)$
+
+  *Interpretation:* before any failure of $x$ has completed, retries are allowed (eligible). After a failure completes, eligibility becomes true at the first $\texttt{RetryDue}_x$ pulse since that failure and remains true until cleared by a subsequent failure.
+
+---
+
+Stateful:
+
+* **Hold-until-clear**
+
+$$
+\texttt{Hold}(\texttt{set}, \texttt{clear}) := (\neg \texttt{clear}) \; \texttt{S} \; \texttt{set}
+$$
+
+There was a $\texttt{set}$ in the past (or now), and no $\texttt{clear}$ since.
+
+* **Bucket / set-with-reset**
+
+$$
+\texttt{Bucket}(\texttt{set}, \texttt{reset}) := (\neg \texttt{reset})\; \texttt{S} \; \texttt{set}
+$$
+
+Remember $\texttt{set}$ since the most recent $\texttt{reset}$.
+
+* **Edge after reset** (first occurrence of $\phi$ since $\texttt{reset}$, stutter-invariant)
+
+$$
+\texttt{EdgeAfterReset}(\phi, \texttt{reset}) := \phi \wedge (\neg\phi) \; \texttt{S} \; \texttt{reset}
+$$
+
+* **At most one**
+
+$$
+\texttt{AtMostOne}(B, A) := \neg A \; \texttt{W} \; ( B \vee ( A \wedge ( \neg A \; \texttt{W} \; B ) ) )
+$$
+
+At most one $A$ between consecutive $B$’s (or forever if no next $B$).
+
+* **Active** — between an $\texttt{IE}$ and the next $\texttt{SS}$ or $\texttt{Crash}$:
+
+$$
+\texttt{Active} := (\neg(\texttt{SS} \vee \texttt{Crash})) \; \texttt{S} \; \texttt{IE}
+$$
+
+* $\texttt{Running}_x$ — “an invocation of $x$ has begun and has not finished before the current position”:
+
+$$
+\texttt{Running}_x := (\neg \texttt{RE}_x) \; \texttt{S} \; \texttt{RS}_x \land (\neg \texttt{Crash}) \; \texttt{S} \; \texttt{RS}_x
+$$
+
+* **Pending\_x** — one outstanding obligation to perform the first start after a due tick, cleared by a start:
+
+$$
+\texttt{Pending}_x := \texttt{Hold}( \texttt{Due}_x, \texttt{RS}_x )
+$$
+
+* **RetryPending\_x** — a retry obligation that is true after a failure and cleared by $\texttt{REs}_x$:
+
+$$
+\begin{aligned}
+\texttt{RetryPending}_x &:= \texttt{RetryEligible}_x \wedge \texttt{Hold}( \texttt{REf}_x, \texttt{REs}_x)
+\end{aligned}
+$$
+
+  *Interpretation:* a retry obligation exists after a failure and persists until a success clears it; the obligation is gated by eligibility, which becomes true at the $\texttt{RetryDue}_x$ pulse for the most recent failure.
+
+* **EffectiveDue\_x** — the scheduler **should actually start** task $x$ now:
+
+$$
+\texttt{EffectiveDue}_x := \texttt{Pending}_x \vee \texttt{RetryPending}_x
+$$
+
+---
+
+## Liveness Properties
+
+These properties state progress guarantees.
+They prevent deadlocks, starvation, livelocks, and unbounded postponement of obligations.
+
+**L1 — Every obligation is eventually served**
+$$
+\texttt{G}( (\texttt{Active} \wedge \texttt{Registered}_x \wedge \texttt{EffectiveDue}_x) \rightarrow \texttt{F} (\texttt{RS}_x \vee  \neg \texttt{Active} ) )
+$$
+
+For every position before $\texttt{IE}$ where $\texttt{EffectiveDue}_x$ holds, we must eventually see $\texttt{RS}_x$ (or a $\texttt{Crash}$, or $\texttt{SE}$, which reset obligations).
+
+**L2 — Stop terminates**
+$$
+\texttt{G}( \texttt{SS} \rightarrow \texttt{F} \; \texttt{SE} )
+$$
+
+**L3 — Initialization completes**
+$$
+\texttt{G}( \texttt{IS} \rightarrow \texttt{F} \; \texttt{IE} )
+$$
+
+## Safety Properties
+
+These properties state scheduler invariants.
+They prevent invalid sequences of events.
+
+**S1 — Per-task non-overlap**
+$$
+\texttt{G}( \texttt{RS}_x \rightarrow (\neg \texttt{RS}_x \; \texttt{W} \; (\texttt{RE}_x \vee \texttt{Crash})) )
+$$
+Once a run starts, no further $\texttt{RS}_x$ may occur before a matching $\texttt{RE}_x$ or $\texttt{Crash}$.
+
+**S2 — Start safety**
+$$
+\texttt{G}( \texttt{RS}_x \rightarrow ( \texttt{Active} \wedge \texttt{Registered}_x \wedge \texttt{EffectiveDue}_x ) )
+$$
+A start can occur only while active, registered, and there is a current obligation to run.
+
+**S3 — Conservation of starts**
+
+$$
+\texttt{G}( \texttt{AtMostOne}(\texttt{Due}_x, \texttt{REs}_x) )
+$$
+
+Should not start a task more than once for the same due period unless it fails.
+
+Looking directly, this is a restriction on the number of successful **completions** per due period, not starts. However, the possibility that the callback will return before the next due period prevents the scheduler from starting the task again in that same period. Thus, the restriction on successful completions indirectly restricts starts.
+
+**S4 — Quiescence after StopEnd**
+$$
+\texttt{G}( \texttt{SE} \rightarrow (\neg \texttt{RS}_x \; \texttt{W} \; \texttt{IE}) )
+$$
+After $\texttt{SE}$, no new starts until re-initialisation.
+
+**S5 — StopEnd consistency**
+$$
+\texttt{G}( \texttt{SE} \rightarrow (\neg \texttt{RE}_x \; \texttt{W} \; \texttt{IE}) )
+$$
+After $\texttt{SE}$, no new ends until re-initialisation.
+
+---
+
+## Fairness Assumptions
+
+Assumptions that cannot be verified by a scheduler implementation.
+
+**A1 — Starts eventually settle**
+$$
+\texttt{G}( \texttt{RS}_x \rightarrow \texttt{F}( \texttt{RE}_x \vee \texttt{Crash} ) )
+$$
+Every callback invocation completes in **finite** time unless pre-empted by $\texttt{Crash}$. No uniform upper bound is required; the assumption only rules out infinite executions.
+
+**F0 — Non-Zeno trace.**
+There are not infinitely many trace positions within any bounded real-time interval.
+
+---
+
+## Example Acceptable Traces (informative)
+
+**Trace 1 — Normal operation**
+
+```js
+IS
+IE              // task "1" registered
+Due_1
+RS_1            // consumes Pending_1
+REs_1
+Due_1
+RS_1
+REf_1
+RetryDue_1     // RetryDue_1 occurs at t_f + RetryDelay(1); eligibility becomes true then
+RS_1            // consumes RetryPending_1
+REs_1
+```
+
+**Trace 2 — Stop and restart**
+
+```js
+IS
+IE                 // task "1" registered
+SS
+SE
+                   // No RS_1 until re-init; no EffectiveDue_1 obligations either
+IS
+IE                 // task "1" registered
+Due_1
+RS_1
+REs_1
+```
+
+**Trace 3 — Crash and restart**
+
+```js
+IS
+IE                 // task "1" registered
+Due_1
+RS_1
+Crash              // no RS_1 until next IE
+IS
+IE                 // task "1" registered
+Due_1
+RS_1               // restart after re-init
+REs_1
+```
+
+## Execution Environment Model
+
+The scheduler operates against an abstract **execution environment** $\mathcal{E}$ that constrains which traces are admissible without prescribing scheduler internals.
+
+The environment is an orthogonal concern to the scheduler design; it is not part of the implementation. The environment is a source of non-determinism that influences observable behaviour.
+
+This section is descriptive, not normative. More specifically:
+- All formal statements in this section are truths about environments.
+- All possible real-world environments do satisfy these statements.
+- Formal statements in this section need not to be checked, they are true by definition. Implementors task is to map this model to real-world phenomena.
+
+The environment contributes two orthogonal ingredients:
+
+1. **Crash generator** — a predicate $\texttt{Crash}(t)$ over $\mathbb{Q}$. When true, the environment marks an exogenous interruption that preempts in-flight callbacks and halts the scheduler itself; properties **E1**/**E2** enforce the resulting quiescence in the trace.
+
+2. **Work density function** — a dimensionless function
+
+   $$
+   \texttt{compute} : \mathbb{Q} \times \mathbb{Q} \to \mathbb{Q}_{\ge 0}
+   $$
+
+   assigning the potential amount of computational progress available over any real-time interval $[t,u)$. It satisfies, for all $t \le u \le v$:
+
+   * **T1 (identity):** $\texttt{compute}(t,t) = 0$.
+   * **T2 (additivity):** $\texttt{compute}(t,v) = \texttt{compute}(t,u) + \texttt{compute}(u,v)$.
+   * **T3 (monotonicity & nonnegativity):** $\texttt{compute}(t,u) \ge 0$ and $\texttt{compute}(t,u) \le \texttt{compute}(t,v)$.
+
+   No positivity is assumed; the environment may set $\texttt{compute}(t,u) = 0$ on arbitrary (even unbounded) intervals, modelling **freezes** where no work can progress. We write $\texttt{Frozen}(t,u)$ when $\texttt{compute}(t,u) = 0$.
+
+### Crash semantics
+
+The environment selects the crash set $C$ and must satisfy the **crash–compute coupling** axiom: for each crash time $c \in C$ there exists $d > c$ with $\texttt{compute}(c,d) = 0$. Intuitively, from the instant a crash occurs, the environment withholds compute for some subsequent (possibly unbounded) period. Freezes may also occur without a crash; the only mandated linkage is the zero-density stretch beginning at each crash.
+
+### Environment properties
+
+**E1 — Crash consistency (no fabricated completions)**
+
+$$
+\texttt{G}( \texttt{Crash} \rightarrow (\neg \texttt{RE}_x \; \texttt{W} \; \texttt{RS}_x) )
+$$
+
+A crash cannot be followed by any ends until restarts.
+
+**E2 — Ends follow starts**
+
+$$
+\texttt{G}( \texttt{RE}_x \rightarrow \texttt{Y} \; \texttt{Running}_x)
+$$
+
+Every completion must correspond to a run that was already in flight before this position.
+
+### Environment taxonomy (informative)
+
+The following labels identify illustrative environment classes. They are informative definitions, not global assumptions:
+
+* **Freezing environments:** admit arbitrarily long intervals $[t,u)$ with $\texttt{compute}(t,u) = 0$.
+
+* **Eventually thawing environments:** there exists $U$ such that every interval of length $\ge U$ supplies some positive compute.
+
+* **Lower-bounded-density environments:** there exist parameters $\varepsilon > 0$ and $\Delta \ge 0$ such that for all $t$ and $T \ge \Delta$, $\texttt{compute}(t,t+T) \ge \varepsilon\cdot T$ (average density after $\Delta$ never drops below $\varepsilon$).
+
+* **Burst environments:** concentrate density in sporadic spikes; for every $M$ there are intervals of length $> M$ with arbitrarily small compute alternating with brief, high-density bursts.
