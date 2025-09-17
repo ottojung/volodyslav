@@ -242,21 +242,6 @@ After $\texttt{SE}$, no new ends until re-initialisation.
 
 ---
 
-# Fairness Assumptions
-
-Assumptions that cannot be verified by a scheduler implementation.
-
-**A1 — Starts eventually settle**
-$$
-\texttt{G}( \texttt{RS}_x \rightarrow \texttt{F}( \texttt{RE}_x \vee \texttt{Crash} ) )
-$$
-Every callback invocation completes in **finite** time unless pre-empted by $\texttt{Crash}$. No uniform upper bound is required; the assumption only rules out infinite executions.
-
-**F0 — Non-Zeno trace.**
-There are not infinitely many trace positions within any bounded real-time interval.
-
----
-
 # Example Acceptable Traces (informative)
 
 **Trace 1 — Normal operation**
