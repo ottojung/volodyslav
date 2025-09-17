@@ -151,7 +151,7 @@ After a failure completes (or at, if retry delay is 0), a retry becomes eligible
 * $\texttt{FirstIE} := \texttt{IE} \wedge \neg \texttt{O} \; \texttt{IE}$
 
 This is the very first initialization in the trace.
-It is treated specially to prevent spurious obligations right after the first initialization.
+It is treated specially to prevent spurious task starts immediately after the first initialization.
 
 ---
 
@@ -186,7 +186,7 @@ An invocation of $x$ has begun and has not finished before the current position.
 
 * $\texttt{Pending}_x := \texttt{Hold}( \texttt{Due}_x, \texttt{RS}_x \lor \texttt{FirstIE} )$
 
-An outstanding signal to perform a start after a due tick, cleared by a start and by $\texttt{FirstIE}$.
+An outstanding request to perform a start after a due tick, cleared by a start and by $\texttt{FirstIE}$.
 
 The reason that $\texttt{FirstIE}$ clears $\texttt{Pending}_x$ is that the scheduler should not start all tasks at once after the very first initialization, but only when they are next due.
 
@@ -194,9 +194,9 @@ The reason that $\texttt{FirstIE}$ clears $\texttt{Pending}_x$ is that the sched
 
 * $\texttt{RetryPending}_x := \texttt{RetryEligible}_x \wedge \texttt{Hold}( \texttt{REf}_x, \texttt{REs}_x)$
 
-A retry obligation that is true after a failure and cleared by $\texttt{REs}_x$.
+A retry request that is true after a failure and cleared by $\texttt{REs}_x$.
 
-A retry obligation exists after a failure and persists until a success clears it; the obligation is gated by eligibility, which becomes true at the $\texttt{RetryDue}_x$ pulse for the most recent failure.
+A retry request exists after a failure and persists until a success clears it; the request is gated by eligibility, which becomes true at the $\texttt{RetryDue}_x$ pulse for the most recent failure.
 
 ---
 
