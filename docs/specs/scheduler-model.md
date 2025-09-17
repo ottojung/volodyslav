@@ -7,6 +7,14 @@ We use the convenient shorthand of writing instantiated propositions like $\text
 
 This model focuses on externally observable behaviour, but does not include the error-handling part.
 
+### Relation to the Environment Model
+
+The scheduler model is parametric in an external execution environment ($\mathcal{E}$) (see [Execution Environment Model](#execution-environment-model)).
+
+The environment supplies exogenous phenomena and background structure: crash instants (the $\texttt{Crash}$ predicate), the real-time axis and clock alignment used by cron ($\mathbb{Q}$ time, minute boundaries), and retry pulses ($\texttt{RetryDue}_x$). It also constrains progress via a compute density function (see [Crash semantics](#crash-semantics)).
+
+We split the models to separate scheduler obligations/choices (this section) from assumptions about the host and world (environment). This keeps safety properties independent of the host and makes progress claims explicit about their environmental preconditions (see [Environment taxonomy](#environment-taxonomy-informative)).
+
 ## Modelling Framework
 
 * **Trace semantics:** Each trace position corresponds to an instant where an observable event occurs. Events that are simultaneous appear at the same rationals. Time bounds are background semantics only (not encoded in LTL).
@@ -22,7 +30,7 @@ This subsection gives a signature-based, self-contained definition of the model,
 
 ### Time and Traces
 
-* **Time domain:** $\mathbb{Q}$ (rational numbers), used to timestamp observable instants, no initial event.
+* **Time domain:** $\mathbb{Q}$ (rational numbers), used to timestamp observable instants, no initial event. Time and “minute boundaries” are interpreted using the host clock as provided by the environment (see [Execution Environment Model](#execution-environment-model)).
 * **Trace:** a sequence of positions $i = 0, 1, 2, \dots$ with a timestamp function $\tau(i) \in \mathbb{Q}$ that is non-strictly increasing. At each position $i$, one or more observable events may occur.
 
 ### Domains
@@ -44,7 +52,7 @@ Each event predicate is evaluated at a trace position $i$ (we omit $i$ when clea
 * $\texttt{InitEnd}(R)$ — the `initialize(...)` call returns; the effective registration set is $R$.
 * $\texttt{StopStart}$ — the JavaScript interpreter calls `stop()`.
 * $\texttt{StopEnd}$ — the `stop()` call returns.
-* $\texttt{UnexpectedShutdown}$ — an unexpected, in-flight system shutdown occurs (e.g., process or host crash). This interrupts running callbacks and preempts further starts until a subsequent $\texttt{InitEnd}$.
+* $\texttt{UnexpectedShutdown}$ — an unexpected, in-flight system shutdown occurs (e.g., process or host crash). This interrupts running callbacks and preempts further starts until a subsequent $\texttt{InitEnd}$. This predicate is supplied by the environment’s crash generator (see [Crash semantics](#crash-semantics)).
 * $\texttt{RunStart}(x)$ — the scheduler begins invoking the public callback for task $x$.
 * $\texttt{RunEnd}(x, r)$ — that invocation completes with result $r \in \texttt{Result}$.
 
@@ -55,11 +63,11 @@ Each event predicate is evaluated at a trace position $i$ (we omit $i$ when clea
 
   For example, for a cron expression `* * * * *`, a minute boundary occurs at `2024-01-01T12:34:00.00000000000000000000000000000000000000000000000000000Z` (infinitely many zeros).
 
-  Time is defined by the host system's local clock.
+  Time is defined by the host system's local clock (see [Execution Environment Model](#execution-environment-model)).
 
 * $\texttt{RetryDue}_x$ — is the instant when the backoff for the most recent failure of $x$ expires.
 
-  *Interpretation:* is a primitive point event (like $\texttt{Due}_x$), supplied by the environment/clock. If the latest $\texttt{RunEnd}(x,\texttt{failure})$ occurs at time $t_f$, then $\texttt{RetryDue}_x$ holds at time $t_f + \texttt{RetryDelay}(x)$.
+  *Interpretation:* is a primitive point event (like $\texttt{Due}_x$), supplied by the environment/clock. If the latest $\texttt{RunEnd}(x,\texttt{failure})$ occurs at time $t_f$, then $\texttt{RetryDue}_x$ holds at time $t_f + \texttt{RetryDelay}(x)$. These pulses are truths about the environment.
 
 Each predicate marks the instant the named public action occurs from the perspective of the embedding JavaScript runtime: function entry ($\texttt{InitStart}$, $\texttt{StopStart}$), function return ($\texttt{InitEnd}$, $\texttt{StopEnd}$), callback invocation begin/end ($\texttt{RunStart}$, $\texttt{RunEnd}$), and exogenous crash ($\texttt{UnexpectedShutdown}$). No logging or internal bookkeeping is modeled.
 
@@ -171,6 +179,8 @@ $$
 
 These properties state progress guarantees.
 They prevent deadlocks, starvation, livelocks, and unbounded postponement of obligations.
+
+Progress is always read relative to the environment’s willingness to provide compute. In fully freezing environments (see [Environment taxonomy](#environment-taxonomy-informative)), obligations may accumulate without violating safety; in eventually thawing or lower-bounded-density environments, the fairness assumptions below become reasonable or derivable premises for liveness. In other words, in some environments, it is impossible to implement a scheduler.
 
 **L1 — Every obligation is eventually served**
 $$
