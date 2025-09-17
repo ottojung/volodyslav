@@ -20,7 +20,7 @@ We split the models to separate scheduler obligations/choices (this section) fro
 # Modelling Framework
 
 * **Trace semantics:** Each trace position corresponds to an instant where an observable event occurs. Events that are simultaneous appear at the same integer time points. Time bounds are background semantics only (not encoded in LTL).
-* **Logic:** A combination of first-order quantification (over tasks) and **LTL with past**.
+* **Logic:** A combination of first-order quantification (over tasks) and **LTL with past**, **extended with two derived helper modalities** that reference the environment's `compute` function and information sizes: `F^{≤C}_{comp}(·)` (compute-bounded eventually) and `F^{lin|R+t|}_{comp}(·)` (linear-in-input compute bound). These operators are definitional sugar with precise semantics given in [Notation & Helper Modalities](#notation--helper-modalities).
 
   * **Future operators:** $\texttt{G}$ (□), $\texttt{F}$ (◊), $\texttt{X}$ (next), $\texttt{U}$ (until), $\texttt{W}$ (weak until).
   * **Past operators:** $\texttt{H}$ (historically), $\texttt{O}$ (once), $\texttt{S}$ (since), $\texttt{Y}$ (previous).
@@ -201,6 +201,50 @@ A task $x$ is ready to run.
 The scheduler **should actually start** task $x$ now.
 
 ---
+
+## Notation & Helper Modalities
+
+**Encodings and bit-length.**
+Fix a canonical, prefix-free, computable encoding $⟦·⟧$ from objects to bitstrings with linear-time decoding. For any object $X$, write $|X| := |⟦X⟧|$ (bit length).
+
+**Current registration set and its size.**
+At any trace position $i$, let $R_i$ be the effective registration set of the most recent initialization that is currently active (i.e., the unique $R$ such that $\texttt{Active}_R$ holds at $i$). Write $|R|$ for $|R_i| = |⟦R_i⟧|$.
+*Remark:* any reasonable encoding of a finite map $\texttt{TaskId} \to (\texttt{Schedule}, \texttt{RetryDelay})$ suffices; the spec is parametric in the encoding, assuming only standard per-entry overhead.
+
+**Background time value and its size.**
+Each position $i$ is associated with a background timestamp value $t := \tau(i) \in \mathbb{Z}$. Define $|t| := |⟦t⟧|$ using a standard signed binary encoding (so $|t| = 1 + \lceil\log_2(1+|t|)\rceil$).
+*Important:* $|t|$ measures the **value** of the clock, not event density; events may be sparse.
+
+**Compute-bounded eventually.**
+For $C \in \mathbb{Q}_{\geq 0}$, the modality
+
+$$
+\boxed{\,F^{\leq C}_{\texttt{comp}}(P)\,}
+$$
+
+holds at position $i$ iff there exists $j \geq i$ such that $P$ holds at $j$ and
+
+$$
+\texttt{compute}\big(\tau(i),\,\tau(j)\big) \leq C.
+$$
+
+**Linear-in-input compute bound.**
+Fix global non-negative constants $a, b \in \mathbb{Q}_{\geq 0}$. Define
+
+$$
+\boxed{\,F^{\texttt{lin}|R+t|}_{\texttt{comp}}(P)\ :=\ F^{\leq\;a\cdot(|R|+|t|)\;+\;b}_{\texttt{comp}}(P)\,}.
+$$
+
+This asserts that $P$ will occur after spending at most $a\cdot(|R|+|t|)+b$ units of environment compute from the current position.
+
+*Example usage (informative):*
+A strong progress claim may be written as
+
+$$
+\texttt{G}\big(\texttt{Obligation}_{R,x} \rightarrow F^{\texttt{lin}|R+t|}_{\texttt{comp}}(\texttt{RS}_x \vee \texttt{Crash} \vee \texttt{SE})\big),
+$$
+
+parameterized by constants $a,b$, as defined above.
 
 # Liveness Properties (normative)
 
