@@ -58,7 +58,7 @@ Each event predicate is evaluated at a trace position $i$ (we omit $i$ when clea
 * $\texttt{RunStart}(x)$ — the scheduler begins invoking the public callback for task $x$.
 * $\texttt{RunEnd}(x, r)$ — that invocation completes with result $r \in \texttt{Result}$.
 
-* $\texttt{Due}_x$ — is is start of a minute that the cron schedule for task $x$ matches.
+* $\texttt{Due}_x$ — is start of a minute that the cron schedule for task $x$ matches.
 
   *Interpretation:* the cron schedule for $x$ matches the current minute boundary.
   Minute boundary is defined as the exact start of that minute.
