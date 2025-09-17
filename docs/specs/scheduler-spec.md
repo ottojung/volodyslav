@@ -836,37 +836,37 @@ $$
 $$
 A start can occur only while active, registered, and there is a current obligation to run.
 
-**S4a — Quiescence after StopEnd**
-$$
-\texttt{G}( \texttt{SE} \rightarrow (\neg \texttt{RS}_x \; \texttt{W} \; \texttt{IE}) )
-$$
-After $\texttt{SE}$, no new starts until re-initialisation.
-
-**S4b — StopEnd consistency**
-$$
-\texttt{G}( \texttt{SE} \rightarrow (\neg \texttt{RE}_x \; \texttt{W} \; \texttt{IE}) )
-$$
-After $\texttt{SE}$, no new ends until re-initialisation.
-
-**S5a — Crash quiescence**
-$$
-\texttt{G}( \texttt{Crash} \rightarrow (\neg \texttt{RS}_x \; \texttt{W} \; \texttt{IE}) )
-$$
-After a crash, no new starts until re-initialisation.
-
-**S5b — Crash consistency (no fabricated completions)**
-$$
-\texttt{G}( \texttt{Crash} \rightarrow (\neg \texttt{RE}_x \; \texttt{W} \; \texttt{IE}) )
-$$
-A crash cannot be followed by any ends until re-initialisation.
-
-**S6 — Conservation of starts**
+**S4 — Conservation of starts**
 
 $$
 \texttt{G}( \texttt{AtMostOne}(\texttt{Due}_x, \texttt{REs}_x) )
 $$
 
 Should not start a task more than once for the same due period unless it fails.
+
+**S5a — Quiescence after StopEnd**
+$$
+\texttt{G}( \texttt{SE} \rightarrow (\neg \texttt{RS}_x \; \texttt{W} \; \texttt{IE}) )
+$$
+After $\texttt{SE}$, no new starts until re-initialisation.
+
+**S5b — StopEnd consistency**
+$$
+\texttt{G}( \texttt{SE} \rightarrow (\neg \texttt{RE}_x \; \texttt{W} \; \texttt{IE}) )
+$$
+After $\texttt{SE}$, no new ends until re-initialisation.
+
+**S6a — Crash quiescence**
+$$
+\texttt{G}( \texttt{Crash} \rightarrow (\neg \texttt{RS}_x \; \texttt{W} \; \texttt{IE}) )
+$$
+After a crash, no new starts until re-initialisation.
+
+**S6b — Crash consistency (no fabricated completions)**
+$$
+\texttt{G}( \texttt{Crash} \rightarrow (\neg \texttt{RE}_x \; \texttt{W} \; \texttt{IE}) )
+$$
+A crash cannot be followed by any ends until re-initialisation.
 
 ---
 
