@@ -938,6 +938,13 @@ REs_1
 
 The scheduler operates against an abstract **execution environment** $\mathcal{E}$ that constrains which traces are admissible without prescribing scheduler internals.
 
+The environment is an orthogonal concern to the scheduler design; it is not part of the implementation. The environment is a source of non-determinism that influences observable behaviour.
+
+This section is descriptive, not normative. More specifically:
+- All formal statements in this section are truths about environments.
+- All possible real-world environments do satisfy these statements.
+- Formal statements in this section need not to be checked, they are true by definition. Implementors task is to map this model to real-world phenomena.
+
 The environment contributes two orthogonal ingredients:
 
 1. **Crash generator** — a predicate $\texttt{Crash}(t)$ over $\mathbb{Q}$. When true, the environment marks an exogenous interruption that preempts in-flight callbacks and halts the scheduler itself; properties **S5a**/**S5b** enforce the resulting quiescence in the trace.
