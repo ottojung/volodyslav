@@ -221,15 +221,20 @@ When a task is supposed to be executed, we must eventually see that execution in
 
 Furthermore, that execution occurs within a bounded **compute** (as a linear function of the sizes of the current registration set and timestamp) after the obligation arises.
 
-**L2 — Stop terminates**
+**L2 — Initialization completes**
+
+$$
+\texttt{G}( \texttt{IS}_R \rightarrow \texttt{F}_{\texttt{comp}}^{\texttt{lin}(R, \,t)} \; \texttt{IE}_R )
+$$
+
+Similar to L1, this property ensures that once an initialization starts, it must eventually complete within a bounded amount of compute.
+
+**L3 — Stop terminates**
 $$
 \texttt{G}( \texttt{SS} \rightarrow \texttt{F} \; \texttt{SE} )
 $$
 
-**L3 — Initialization completes**
-$$
-\texttt{G}( \texttt{IS}_R \rightarrow \texttt{F}_{\texttt{comp}}^{\texttt{lin}(R, \,t)} \; \texttt{IE}_R )
-$$
+No bound on compute here, as the scheduler may need to wait for in-flight callbacks to complete. The callbacks are not bounded in number, so no bound on stop can be given.
 
 # Safety Properties (normative)
 
