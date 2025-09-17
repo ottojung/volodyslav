@@ -20,7 +20,7 @@ We split the models to separate scheduler obligations/choices (this section) fro
 # Modelling Framework
 
 * **Trace semantics:** Each trace position corresponds to an instant where an observable event occurs. Events that are simultaneous appear at the same integer time points. Time bounds are background semantics only (not encoded in LTL).
-* **Logic:** A combination of first-order quantification (over tasks) and **LTL with past**, extended with two derived helper modalities that reference the environment’s `compute` function and information sizes: $F^{\leq C}_{\texttt{comp}}(\cdot)$ (compute-bounded eventually) and $F^{\texttt{lin}|R+t|}_{\texttt{comp}}(\cdot)$ (linear-in-input compute bound). Their semantics are given in [Notation & Helper Modalities](#notation--helper-modalities).
+* **Logic:** A combination of first-order quantification (over tasks) and **LTL with past**, extended with two derived helper modalities that reference the environment’s `compute` function and information sizes: $F^{\leq C}_{\texttt{comp}}(\cdot)$ (compute-bounded eventually) and $F^{\texttt{lin}|X|}_{\texttt{comp}}(\cdot)$ (linear-in-input compute bound). Their semantics are given in [Notation & Helper Modalities](#notation--helper-modalities).
 
   * **Future operators:** $\texttt{G}$ (□), $\texttt{F}$ (◊), $\texttt{X}$ (next), $\texttt{U}$ (until), $\texttt{W}$ (weak until).
   * **Past operators:** $\texttt{H}$ (historically), $\texttt{O}$ (once), $\texttt{S}$ (since), $\texttt{Y}$ (previous).
