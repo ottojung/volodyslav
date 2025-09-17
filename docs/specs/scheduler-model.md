@@ -332,13 +332,20 @@ $$
 
 Every completion must correspond to a run that was already in flight before this position.
 
-**E3 - Ends require work**
+**E3 - Actions require work**
 
 $$
-\texttt{G}( \texttt{RE}_x \rightarrow \neg \texttt{Frozen} )
+\texttt{G}( \texttt{RE}_x \rightarrow \neg \texttt{Frozen} ) \\
+\texttt{G}( \texttt{RS}_x \rightarrow \neg \texttt{Frozen} ) \\
+\texttt{G}( \texttt{IS} \rightarrow \neg \texttt{Frozen} ) \\
+\texttt{G}( \texttt{IE} \rightarrow \neg \texttt{Frozen} ) \\
+\texttt{G}( \texttt{SS} \rightarrow \neg \texttt{Frozen} ) \\
+\texttt{G}( \texttt{SE} \rightarrow \neg \texttt{Frozen} ) \\
 $$
 
-Ending a run requires that some work has been spent on it.
+Observable events, including end of a callback, require that some work has been spent on them.
+
+Importantly, $\texttt{Due}_x$ and $\texttt{RetryDue}_x$ are not included here, as they are primitive truths about the environment.
 
 **E4 - Unlimited dues**
 
