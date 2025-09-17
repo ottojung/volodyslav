@@ -196,7 +196,7 @@ A task $x$ is ready to run.
 
 ---
 
-* $\texttt{Obligation}_{R, x} := \texttt{Active}_R \wedge \texttt{Registered}_x \wedge \texttt{EffectiveDue}_x$
+* $\texttt{Obligation}_{R, x} :=  \texttt{EffectiveDue}_x \wedge \texttt{Registered}_x \wedge \texttt{Active}_R$
 
 The scheduler **should actually start** task $x$ now.
 
