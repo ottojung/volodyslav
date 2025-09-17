@@ -354,7 +354,7 @@ The environment contributes two ingredients:
    * **T2 (monotonicity):** $\texttt{compute}(t,u) \le \texttt{compute}(t,v)$.
    * **T3 (boundedness):** $\texttt{compute}(t, u) \leq \lambda \cdot (u - t)$.
 
-   No positivity is assumed; the environment may set $\texttt{compute}(t,u) = 0$ on arbitrary (even unbounded) intervals, modelling **freezes** where no work can progress. We write $\texttt{Frozen}(t,u)$ when $\texttt{compute}(t,u) = 0$. We write $\texttt{Frozen}$ at a trace position $i$ when $\texttt{Frozen}(\tau(\max(0, i-1)), \tau(i+1))$. This means no work progressed in the interval surrounding the trace position.
+   No positivity is assumed; the environment may set $\texttt{compute}(t,u) = 0$ on arbitrary (even unbounded) intervals, modelling **freezes** where no work can progress. We write $\texttt{Frozen}(t,u)$ when $\texttt{compute}(t,u) = 0$. We write $\texttt{Frozen}$ at a trace position $i$ when there exists $\delta > 0$ such that $\texttt{Frozen}(\tau(i) - \delta, \tau(i) + \delta)$. This means no work progressed in the interval surrounding the trace position.
 
    Compute is only spent on scheduler's actions.
    So, in particular, progress of callbacks does not consume compute.
