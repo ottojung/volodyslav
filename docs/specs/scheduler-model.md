@@ -137,19 +137,19 @@ $$
 \texttt{Active}_R := (\neg(\texttt{SS} \vee \texttt{Crash})) \; \texttt{S} \; \texttt{IE}_R
 $$
 
-* $\texttt{Running}_x$ — “an invocation of $x$ has begun and has not finished before the current position”:
+* **Running** — “an invocation of $x$ has begun and has not finished before the current position”:
 
 $$
 \texttt{Running}_x := (\neg \texttt{RE}_x) \; \texttt{S} \; \texttt{RS}_x \land (\neg \texttt{Crash}) \; \texttt{S} \; \texttt{RS}_x
 $$
 
-* **Pending\_x** — one outstanding obligation to perform the first start after a due tick, cleared by a start:
+* **Pending** — one outstanding obligation to perform the first start after a due tick, cleared by a start:
 
 $$
 \texttt{Pending}_x := \texttt{Hold}( \texttt{Due}_x, \texttt{RS}_x )
 $$
 
-* **RetryPending\_x** — a retry obligation that is true after a failure and cleared by $\texttt{REs}_x$:
+* **RetryPending** — a retry obligation that is true after a failure and cleared by $\texttt{REs}_x$:
 
 $$
 \begin{aligned}
@@ -159,13 +159,13 @@ $$
 
   *Interpretation:* a retry obligation exists after a failure and persists until a success clears it; the obligation is gated by eligibility, which becomes true at the $\texttt{RetryDue}_x$ pulse for the most recent failure.
 
-* **EffectiveDue\_x** — task $x$ is ready to run:
+* **EffectiveDue** — task $x$ is ready to run:
 
 $$
 \texttt{EffectiveDue}_x := \texttt{Pending}_x \vee \texttt{RetryPending}_x
 $$
 
-* **Obligation\_x** —  the scheduler **should actually start** task $x$ now:
+* **Obligation** —  the scheduler **should actually start** task $x$ now:
 
 $$
 \texttt{Obligation}_{R, x} := \texttt{Active}_R \wedge \texttt{Registered}_x \wedge \texttt{EffectiveDue}_x
