@@ -654,7 +654,7 @@ This subsection gives a signature-based, self-contained definition of the model,
 * $\texttt{Result} = \{ \texttt{success}, \texttt{failure} \}$.
 * $\texttt{RegistrationSet}$ — a finite mapping $R : \texttt{TaskId} \to (\texttt{Schedule}, \texttt{RetryDelay})$.
 * $\texttt{Schedule}$ — an abstract predicate $\texttt{Due}(\texttt{task}: \texttt{TaskId}, t: \mathbb{Q}) \to \texttt{Bool}$ indicating minute-boundary instants when a task is eligible to start.
-* $\texttt{RetryDelay} : \texttt{TaskId} \to \mathbb{Q}^+$. Retries are strictly positive.
+* $\texttt{RetryDelay} : \texttt{TaskId} \to \mathbb{Q}_{\geq 0}$ $-$ the function that maps each task to its non-negative retry delay.
 
 **Interpretation:**
 $\texttt{TaskId}$ names externally visible tasks. A $\texttt{RegistrationSet}$ is the public input provided at initialization. $\texttt{Due}$ and $\texttt{RetryDelay}$ are parameters determined by the registration set and the environment (host clock); they are not hidden internal state. Time units for $\texttt{Due}$ and $\texttt{RetryDelay}$ coincide.
