@@ -159,10 +159,16 @@ $$
 
   *Interpretation:* a retry obligation exists after a failure and persists until a success clears it; the obligation is gated by eligibility, which becomes true at the $\texttt{RetryDue}_x$ pulse for the most recent failure.
 
-* **EffectiveDue\_x** — the scheduler **should actually start** task $x$ now:
+* **EffectiveDue\_x** — task $x$ is ready to run:
 
 $$
 \texttt{EffectiveDue}_x := \texttt{Pending}_x \vee \texttt{RetryPending}_x
+$$
+
+* **Obligation\_x** —  the scheduler **should actually start** task $x$ now:
+
+$$
+\texttt{Obligation}_{R, x} := \texttt{Active}_R \wedge \texttt{Registered}_x \wedge \texttt{EffectiveDue}_x
 $$
 
 ---
@@ -177,7 +183,7 @@ Progress is always read relative to the environment’s willingness to provide c
 **L1 — Obligation fulfillment**
 
 $$
-\texttt{G}( (\texttt{Active}_R \wedge \texttt{Registered}_x \wedge \texttt{EffectiveDue}_x) \rightarrow \texttt{F} (\texttt{RS}_x \vee \neg \texttt{Active}_R ) )
+\texttt{G}( \texttt{Obligation}_{R, x} \rightarrow \texttt{F} (\texttt{RS}_x \vee \neg \texttt{Active}_R ))
 $$
 
 When a task is supposed to be executed, we must eventually see that execution in the form of $\texttt{RS}_x$ (or a $\texttt{Crash}$, or $\texttt{SE}$).
@@ -211,9 +217,9 @@ Once a run starts, no further $\texttt{RS}_x$ may occur before a matching $\text
 
 **S2 — Start safety**
 $$
-\texttt{G}( \texttt{RS}_x \rightarrow ( \texttt{Active} \wedge \texttt{Registered}_x \wedge \texttt{EffectiveDue}_x ) )
+\texttt{G}( \texttt{RS}_x \rightarrow \texttt{Obligation}_{R, x} )
 $$
-A start can occur only while active, registered, and there is a current obligation to run.
+A start can occur only while there is a current obligation to run.
 
 **S3 — Conservation of starts**
 
