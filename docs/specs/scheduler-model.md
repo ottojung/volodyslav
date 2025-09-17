@@ -358,6 +358,11 @@ The environment contributes two ingredients:
 
    No positivity is assumed; the environment may set $\texttt{compute}(t,u) = 0$ on arbitrary (even unbounded) intervals, modelling **freezes** where no work can progress. We write $\texttt{Frozen}(t,u)$ when $\texttt{compute}(t,u) = 0$. We write $\texttt{Frozen}$ at a trace position $i$ when $\texttt{Frozen}(\tau(max(0, i-1)), \tau(i+1))$. This means no work progressed in the interval surrounding the trace position.
 
+   Compute is only spent on scheduler's actions.
+   So, in particular, progress of callbacks does not consume compute.
+   It is expected that the scheduler will have access to less compute when more callbacks are running, but this is a very vague assumption, so not formalising it here.
+   The important point is that compute is a resource dedicated to the scheduler's own actions, not anything else that happens in the embedding environment.
+
 ## Environment properties (descriptive)
 
 **E1 — Busy crashing**
