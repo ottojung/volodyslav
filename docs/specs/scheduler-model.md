@@ -364,9 +364,12 @@ $$
 \texttt{G}( \texttt{RS}_x \rightarrow \texttt{F}( \texttt{RE}_x \vee \texttt{Crash} ) )
 $$
 
-Every callback invocation completes in **finite** time unless pre-empted by $\texttt{Crash}$. No uniform upper bound is required; the assumption only rules out infinite executions.
+Every callback invocation completes in **finite** time unless pre-empted by $\texttt{Crash}$.
+No uniform upper bound is required; the property only rules out infinite executions.
+Note that this is not guaranteed - users may write non-terminating callbacks.
+That's why this is an **informative** property, not a core property.
 
-Without this, liveness cannot be satisfied for any scheduler implementation.
+But without this property, liveness cannot be satisfied for any scheduler implementation.
 
 ## Environment taxonomy (informative)
 
