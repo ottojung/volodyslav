@@ -130,7 +130,7 @@ One single $A$ is allowed if there is no next $B$.
 * **Active** — between an $\texttt{IE}$ and the next $\texttt{SS}$ or $\texttt{Crash}$:
 
 $$
-\texttt{Active} := (\neg(\texttt{SS} \vee \texttt{Crash})) \; \texttt{S} \; \texttt{IE}
+\texttt{Active}_R := (\neg(\texttt{SS} \vee \texttt{Crash})) \; \texttt{S} \; \texttt{IE}_R
 $$
 
 * $\texttt{Running}_x$ — “an invocation of $x$ has begun and has not finished before the current position”:
@@ -173,7 +173,7 @@ Progress is always read relative to the environment’s willingness to provide c
 **L1 — Obligation fulfillment**
 
 $$
-\texttt{G}( (\texttt{Active} \wedge \texttt{Registered}_x \wedge \texttt{EffectiveDue}_x) \rightarrow \texttt{F} (\texttt{RS}_x \vee \neg \texttt{Active} ) )
+\texttt{G}( (\texttt{Active}_R \wedge \texttt{Registered}_x \wedge \texttt{EffectiveDue}_x) \rightarrow \texttt{F} (\texttt{RS}_x \vee \neg \texttt{Active}_R ) )
 $$
 
 When a task is supposed to be executed, we must eventually see that execution in the form of $\texttt{RS}_x$ (or a $\texttt{Crash}$, or $\texttt{SE}$, which reset obligations).
