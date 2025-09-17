@@ -343,11 +343,9 @@ Ending a run requires that some work has been spent on it.
 
 $$
 \texttt{G} \; \texttt{F} \; \texttt{Due}_x
-\\
-\texttt{H} \; \texttt{O} \; \texttt{Due}_x
 $$
 
-For every task $x$, the cron schedule matches infinitely often, in both directions.
+For every task $x$, the cron schedule matches infinitely often.
 
 **E5 - Due pointness**
 
