@@ -475,17 +475,19 @@ This section defines the helper modalities $F^{\leq C}_{\texttt{comp}}$ and $F^{
 
 **Background time value and its size.** Each position $i$ is associated with a background timestamp value $t := \tau(i) \in \mathbb{Z}$. Define $|t| := |\llbracket t \rrbracket|$ using a standard signed binary encoding (so this equals $1 + \lceil \log_2(1 + |t|_{\text{abs}}) \rceil$, where $|t|_{\text{abs}}$ is the absolute value of $t$). *Important:* $|t|$ measures the value of the clock, not the density of events; events may be sparse in $i$ even when $|t|$ grows.
 
-**Compute-bounded eventually.** For $C \in \mathbb{Q}_{\geq 0}$, the modality
+**Compute-bounded eventually.** Fix global non-negative constant $t_{\texttt{lag}}$. For $C \in \mathbb{Q}_{\geq 0}$, the modality
 
 $$
 \boxed{\,F^{\leq C}_{\texttt{comp}}(P)\,}
 $$
 
-holds at position $i$ iff there exists $j \geq i$ such that $P$ holds at $j$ and
+holds at position $i$ iff there exists $i \leq j \leq k$ such that $P$ holds at $k$ and $\tau(k) - \tau(j) \leq t_{\texttt{lag}}$ and
 
 $$
 \texttt{compute}\big(\tau(i),\,\tau(j)\big) \leq C.
 $$
+
+Intuitively, this asserts that $P$ will occur after spending at most $C$ units of environment-provided compute from the current position, plus a small lag $t_{\texttt{lag}}$ to account for a constant delay.
 
 **Linear-in-input compute bound.** Fix global non-negative constants $a, b \in \mathbb{Q}_{\geq 0}$. Define
 
