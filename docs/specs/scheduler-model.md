@@ -1,5 +1,5 @@
 
-Formal Model of Scheduler's Observable Behavior
+# Formal Model of Scheduler's Observable Behavior
 
 ---
 
