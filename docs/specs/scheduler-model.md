@@ -455,7 +455,7 @@ But without this property, liveness cannot be satisfied for any scheduler implem
 
 The following labels identify illustrative environment classes. They are informative definitions, not global assumptions:
 
-* **Freezing environments:** admit arbitrarily long intervals $[t,u)$ with $\texttt{compute}(t,u) = 0$.
+* **Freezing environments:** admit arbitrarily long intervals $(t,u)$ with $\texttt{compute}(t,u) = 0$.
 
 * **Eventually thawing environments:** there exists $U$ such that every interval of length $\ge U$ supplies some positive compute.
 
