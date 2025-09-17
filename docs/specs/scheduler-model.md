@@ -63,7 +63,7 @@ Each event predicate is evaluated at a trace position $i$ (we omit $i$ when clea
   *Interpretation:* the cron schedule for $x$ matches the current minute boundary.
   Minute boundary is defined as the exact start of that minute.
 
-  For example, for a cron expression `* * * * *`, a minute boundary occurs at `2024-01-01T12:34:00.00000000000000000000000000000000000000000000000000000Z` (infinitely many zeros).
+  For example, for a cron expression `* * * * *`, a minute boundary occurs at `2024-01-01T12:34:00.00000000000000000000000000000000000000000000000000000` (infinitely many zeros) local time.
 
   Time is defined by the host system's local clock (see [Execution Environment Model](#execution-environment-model)).
 
