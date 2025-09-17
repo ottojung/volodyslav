@@ -25,7 +25,7 @@ We split the models to separate scheduler obligations/choices (this section) fro
   * **Future operators:** $\texttt{G}$ (□), $\texttt{F}$ (◊), $\texttt{X}$ (next), $\texttt{U}$ (until), $\texttt{W}$ (weak until).
   * **Past operators:** $\texttt{H}$ (historically), $\texttt{O}$ (once), $\texttt{S}$ (since), $\texttt{Y}$ (previous).
 
-  Extended with two derived helper modalities that reference the environment’s $\texttt{compute}$ function and information sizes: $F^{\leq C}_{\texttt{comp}}(\cdot)$ (compute-bounded eventually) and $F^{\texttt{lin}|X|}_{\texttt{comp}}(\cdot)$ (linear-in-input compute bound). Their semantics are given in [Notation & Helper Modalities](#notation--helper-modalities).
+  Extended with two derived helper modalities that reference the environment’s $\texttt{compute}$ function and information sizes: $F^{\leq C}_{\texttt{comp}}$ (compute-bounded eventually) and $F^{\texttt{lin}}_{\texttt{comp}}$ (linear-in-input compute bound). Their semantics are given in [Notation & Helper Modalities](#notation--helper-modalities).
 
 # Definitions
 
@@ -214,7 +214,7 @@ Progress is always read relative to the environment’s willingness to provide c
 **L1 — Obligation fulfillment**
 
 $$
-\texttt{G}( \texttt{Obligation}_{R, x} \rightarrow \texttt{F}_{\texttt{comp}}^{\texttt{lin}|R+t|} (\texttt{RS}_x \vee \neg \texttt{Active}_R ))
+\texttt{G}( \texttt{Obligation}_{R, x} \rightarrow \texttt{F}_{\texttt{comp}}^{\texttt{lin}(R, \,t)} (\texttt{RS}_x \vee \neg \texttt{Active}_R ))
 $$
 
 When a task is supposed to be executed, we must eventually see that execution in the form of $\texttt{RS}_x$ (or a $\texttt{Crash}$, or $\texttt{SE}$).
@@ -467,7 +467,7 @@ The following labels identify illustrative environment classes. They are informa
 
 ## Helper Modalities
 
-This section defines the helper modalities $F^{\leq C}_{\texttt{comp}}(\cdot)$ and $F^{\texttt{lin}|X|}_{\texttt{comp}}(\cdot)$ used in the scheduler properties.
+This section defines the helper modalities $F^{\leq C}_{\texttt{comp}}$ and $F^{\texttt{lin}}_{\texttt{comp}}$ used in the scheduler properties.
 
 **Encodings and bit-length.** Fix a canonical, prefix-free, computable encoding $\llbracket\cdot\rrbracket$ from objects to bitstrings with linear-time decoding. For any object $X$, write $|X| := |\llbracket X \rrbracket|$ for the bit length of its encoding.
 
@@ -490,7 +490,7 @@ $$
 **Linear-in-input compute bound.** Fix global non-negative constants $a, b \in \mathbb{Q}_{\geq 0}$. Define
 
 $$
-\boxed{\,F^{\texttt{lin}|X|}_{\texttt{comp}}(P)\ :=\ F^{\leq\; a\cdot|X|+b}_{\texttt{comp}}(P)\,}.
+\boxed{\,F^{\texttt{lin}(X_1, \dots, X_n)}_{\texttt{comp}}(P)\ :=\ F^{\leq\; a\cdot(|X_1|+\dots+|X_n|)+b}_{\texttt{comp}}(P)\,}.
 $$
 
-This asserts that $P$ will occur after spending at most $a \cdot |X| + b$ units of environment-provided compute from the current position.
+This asserts that $P$ will occur after spending at most $a \cdot (|X_1|+\dots+|X_n|) + b$ units of environment-provided compute from the current position.
