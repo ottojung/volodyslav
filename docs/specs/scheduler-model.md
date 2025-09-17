@@ -1,5 +1,7 @@
 
-# Formal Model of Scheduler's Observable Behavior
+Formal Model of Scheduler's Observable Behavior
+
+---
 
 This model combines first-order quantification over the universe scheduler objects with **future- and past-time LTL** formulas. Atomic predicates below are predicate symbols parameterised by a scheduler object variable (for example, $\texttt{RS}_x$, $\texttt{InitEnd}(R)$), and temporal operators apply to propositional formulas obtained by instantiating those predicates for concrete objects.
 
@@ -7,7 +9,7 @@ We use the convenient shorthand of writing instantiated propositions like $\text
 
 This model focuses on externally observable behaviour, but does not include the error-handling part.
 
-### Relation to the Environment Model
+## Relation to the Environment Model
 
 The scheduler model is parametric in an external execution environment ($\mathcal{E}$) (see [Execution Environment Model](#execution-environment-model)).
 
@@ -15,7 +17,7 @@ The environment supplies exogenous phenomena and background structure: crash ins
 
 We split the models to separate scheduler obligations/choices (this section) from assumptions about the host and world (environment). This keeps safety properties independent of the host and makes progress claims explicit about their environmental preconditions (see [Environment taxonomy](#environment-taxonomy-informative)).
 
-## Modelling Framework
+# Modelling Framework
 
 * **Trace semantics:** Each trace position corresponds to an instant where an observable event occurs. Events that are simultaneous appear at the same rationals. Time bounds are background semantics only (not encoded in LTL).
 * **Logic:** A combination of first-order quantification (over tasks) and **LTL with past**.
@@ -24,16 +26,16 @@ We split the models to separate scheduler obligations/choices (this section) fro
   * **Past operators:** $\texttt{H}$ (historically), $\texttt{O}$ (once), $\texttt{S}$ (since), $\texttt{Y}$ (previous).
   * We prefer the **stutter-invariant** past operators ($\texttt{S}$, $\texttt{H}$, $\texttt{O}$) in this spec.
 
-## Definitions
+# Definitions
 
 This subsection gives a signature-based, self-contained definition of the model, followed by interpretations of each symbol.
 
-### Time and Traces
+## Time and Traces
 
 * **Time domain:** $\mathbb{Q}$ (rational numbers), used to timestamp observable instants, no initial event. Time and “minute boundaries” are interpreted using the host clock as provided by the environment (see [Execution Environment Model](#execution-environment-model)).
 * **Trace:** a sequence of positions $i = 0, 1, 2, \dots$ with a timestamp function $\tau(i) \in \mathbb{Q}$ that is non-strictly increasing. At each position $i$, one or more observable events may occur.
 
-### Domains
+## Domains
 
 * $\texttt{TaskId}$ — a finite, non-empty set of task identifiers.
 * $\texttt{Result} = \{ \texttt{success}, \texttt{failure} \}$.
@@ -44,7 +46,7 @@ This subsection gives a signature-based, self-contained definition of the model,
 **Interpretation:**
 $\texttt{TaskId}$ names externally visible tasks. A $\texttt{RegistrationSet}$ is the public input provided at initialization. $\texttt{Due}$ and $\texttt{RetryDelay}$ are parameters determined by the registration set and the environment (host clock); they are not hidden internal state. Time units for $\texttt{Due}$ and $\texttt{RetryDelay}$ coincide.
 
-### Event Predicates (Observable Alphabet)
+## Event Predicates (Observable Alphabet)
 
 Each event predicate is evaluated at a trace position $i$ (we omit $i$ when clear from context):
 
@@ -73,7 +75,7 @@ Each predicate marks the instant the named public action occurs from the perspec
 
 ## Macros
 
-Abbreviations:
+#### Abbreviations
 
 * $\texttt{IS} := \texttt{InitStart}$
 * $\texttt{IE} := \exists R. \texttt{InitEnd}(R)$
@@ -87,7 +89,7 @@ Abbreviations:
 
 ---
 
-Input predicates:
+#### Input predicates
 
 * $IE^{\text{in}}_x := \exists R.\,(\texttt{InitEnd}(R)\wedge x\in\text{dom}(R))$
 
@@ -107,7 +109,7 @@ Input predicates:
 
 ---
 
-Stateful:
+#### Stateful
 
 * **Hold-until-clear**
 
@@ -175,7 +177,7 @@ $$
 
 ---
 
-## Liveness Properties
+# Liveness Properties
 
 These properties state progress guarantees.
 They prevent deadlocks, starvation, livelocks, and unbounded postponement of obligations.
@@ -199,7 +201,7 @@ $$
 \texttt{G}( \texttt{IS} \rightarrow \texttt{F} \; \texttt{IE} )
 $$
 
-## Safety Properties
+# Safety Properties
 
 These properties state scheduler invariants.
 They prevent invalid sequences of events.
@@ -240,7 +242,7 @@ After $\texttt{SE}$, no new ends until re-initialisation.
 
 ---
 
-## Fairness Assumptions
+# Fairness Assumptions
 
 Assumptions that cannot be verified by a scheduler implementation.
 
@@ -255,7 +257,7 @@ There are not infinitely many trace positions within any bounded real-time inter
 
 ---
 
-## Example Acceptable Traces (informative)
+# Example Acceptable Traces (informative)
 
 **Trace 1 — Normal operation**
 
@@ -303,7 +305,7 @@ RS_1               // restart after re-init
 REs_1
 ```
 
-## Execution Environment Model
+# Execution Environment Model
 
 The scheduler operates against an abstract **execution environment** $\mathcal{E}$ that constrains which traces are admissible without prescribing scheduler internals.
 
@@ -332,11 +334,11 @@ The environment contributes two orthogonal ingredients:
 
    No positivity is assumed; the environment may set $\texttt{compute}(t,u) = 0$ on arbitrary (even unbounded) intervals, modelling **freezes** where no work can progress. We write $\texttt{Frozen}(t,u)$ when $\texttt{compute}(t,u) = 0$.
 
-### Crash semantics
+## Crash semantics
 
 The environment selects the crash set $C$ and must satisfy the **crash–compute coupling** axiom: for each crash time $c \in C$ there exists $d > c$ with $\texttt{compute}(c,d) = 0$. Intuitively, from the instant a crash occurs, the environment withholds compute for some subsequent (possibly unbounded) period. Freezes may also occur without a crash; the only mandated linkage is the zero-density stretch beginning at each crash.
 
-### Environment properties
+## Environment properties
 
 **E1 — Crash consistency (no fabricated completions)**
 
@@ -354,7 +356,7 @@ $$
 
 Every completion must correspond to a run that was already in flight before this position.
 
-### Environment taxonomy (informative)
+## Environment taxonomy (informative)
 
 The following labels identify illustrative environment classes. They are informative definitions, not global assumptions:
 
