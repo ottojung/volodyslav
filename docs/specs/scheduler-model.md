@@ -333,7 +333,7 @@ Every completion must correspond to a run that was already in flight before this
 **E3 - Ends require work**
 
 $$
-\texttt{G}( \texttt{RE}_x \rightarrow \neg \texttt{Y} ( \texttt{Frozen} ))
+\texttt{G}( \texttt{RE}_x \rightarrow \neg (\texttt{Y} \; \texttt{Frozen} ))
 $$
 
 Ending a run requires that some work has been spent on it.
