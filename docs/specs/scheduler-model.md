@@ -392,7 +392,7 @@ $$
 
 Observable events, including end of a callback, require that some work has been spent on them.
 
-Importantly, $\texttt{Due}_x$ and $\texttt{RetryDue}_x$ are not included here, as they are primitive truths about the environment.
+Importantly, $\texttt{Due}_x$ and $\texttt{RetryDue}_x$ are not included here, as they are primitive truths about the environment, not actions.
 
 **E4 - Unlimited dues**
 
