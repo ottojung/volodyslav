@@ -303,7 +303,7 @@ This section is descriptive, not normative. More specifically:
 
 The environment contributes two orthogonal ingredients:
 
-1. **Crash generator** — a predicate $\texttt{Crash}(t)$ over $\mathbb{Z}$. When true, the environment marks an exogenous interruption that preempts in-flight callbacks and halts the scheduler itself; properties **E1**/**E2** enforce the resulting quiescence in the trace.
+1. **Crash generator** — a predicate $\texttt{Crash}(t)$ over $\mathbb{Z}$. When true, the environment marks an exogenous interruption that preempts in-flight callbacks and halts the scheduler itself; property **E1** enforce the resulting quiescence in the trace.
 
 2. **Work density function** — a dimensionless function
 
