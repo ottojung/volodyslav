@@ -24,7 +24,6 @@ We split the models to separate scheduler obligations/choices (this section) fro
 
   * **Future operators:** $\texttt{G}$ (□), $\texttt{F}$ (◊), $\texttt{X}$ (next), $\texttt{U}$ (until), $\texttt{W}$ (weak until).
   * **Past operators:** $\texttt{H}$ (historically), $\texttt{O}$ (once), $\texttt{S}$ (since), $\texttt{Y}$ (previous).
-  * We prefer the **stutter-invariant** past operators ($\texttt{S}$, $\texttt{H}$, $\texttt{O}$) in this spec.
 
 # Definitions
 
