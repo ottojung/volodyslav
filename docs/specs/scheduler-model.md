@@ -311,17 +311,13 @@ The environment contributes two orthogonal ingredients:
    \texttt{compute} : \mathbb{Q} \times \mathbb{Q} \to \mathbb{Q}_{\ge 0}
    $$
 
-   assigning the potential amount of computational progress available over any real-time interval $[t,u)$. It satisfies, for all $t \le u \le v$:
+   assigning the potential amount of computational progress available over any real-time, open interval $(t,u)$. It satisfies, for all $t \le u \le v$:
 
    * **T1 (identity):** $\texttt{compute}(t,t) = 0$.
    * **T2 (additivity):** $\texttt{compute}(t,v) = \texttt{compute}(t,u) + \texttt{compute}(u,v)$.
    * **T3 (monotonicity & nonnegativity):** $\texttt{compute}(t,u) \ge 0$ and $\texttt{compute}(t,u) \le \texttt{compute}(t,v)$.
 
-   No positivity is assumed; the environment may set $\texttt{compute}(t,u) = 0$ on arbitrary (even unbounded) intervals, modelling **freezes** where no work can progress. We write $\texttt{Frozen}(t,u)$ when $\texttt{compute}(t,u) = 0$.
-
-## Crash semantics
-
-The environment selects the crash set $C$ and must satisfy the **crash–compute coupling** axiom: for each crash time $c \in C$ there exists $d > c$ with $\texttt{compute}(c,d) = 0$. Intuitively, from the instant a crash occurs, the environment withholds compute for some subsequent (possibly unbounded) period. Freezes may also occur without a crash; the only mandated linkage is the zero-density stretch beginning at each crash.
+   No positivity is assumed; the environment may set $\texttt{compute}(t,u) = 0$ on arbitrary (even unbounded) intervals, modelling **freezes** where no work can progress. We write $\texttt{Frozen}(t,u)$ when $\texttt{compute}(t,u) = 0$. We write $\texttt{Frozen}$ at a trace position $i$ when $\texttt{Frozen}(\tau(i-1), \tau(i+1))$.
 
 ## Environment properties (descriptive)
 
