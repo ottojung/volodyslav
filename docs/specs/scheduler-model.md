@@ -453,6 +453,15 @@ That's why this is an **informative** property, not a core property.
 
 But without this property, liveness cannot be satisfied for any scheduler implementation.
 
+**A3 - Low lag**
+
+$$
+t_{\texttt{lag}} < 1 \; \text{minute}
+$$
+
+If this is true, then whether any task is ever going to be missed is determined purely by $\texttt{compute}$.
+In other words, if the environment provides enough compute, no tasks are ever missed.
+
 ## Environment taxonomy (informative)
 
 The following labels identify illustrative environment classes. They are informative definitions, not global assumptions:
