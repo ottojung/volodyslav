@@ -308,7 +308,7 @@ The environment contributes two orthogonal ingredients:
 2. **Work density function** — a dimensionless function
 
    $$
-   \texttt{compute} : \mathbb{Z} \times \mathbb{Z} \to \mathbb{Z}_{\ge 0}
+   \texttt{compute} : \mathbb{Z} \times \mathbb{Z} \to \mathbb{Q}_{\ge 0}
    $$
 
    assigning the potential amount of computational progress available over any real-time, open interval $(t,u)$. It satisfies, for all $t \le u \le v$:
