@@ -104,7 +104,7 @@ Each predicate marks the instant the named public action occurs from the perspec
 
 * $\texttt{RetryEligible}_x := \texttt{Hold}(\texttt{RetryDue}_x,\ \texttt{REf}_x)$
 
-  *Interpretation:* after a failure completes, a retry becomes eligible at the first $\texttt{RetryDue}_x$ pulse since that failure and remains true until cleared by a subsequent failure.
+  *Interpretation:* after a failure completes (or at, if retry delay is 0), a retry becomes eligible at the first $\texttt{RetryDue}_x$ pulse since that failure and remains true until cleared by a subsequent failure.
 
 ---
 
