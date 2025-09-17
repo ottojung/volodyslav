@@ -862,11 +862,11 @@ A crash cannot be followed by any ends until re-initialisation.
 
 **S6 — Conservation of starts**
 
-Let $\texttt{B}_x := \texttt{IE} \vee \texttt{Due}_x \vee \texttt{REf}_x$. Between any two $\texttt{B}_x$ positions (with no $\texttt{B}_x$ in between), there is **at most one** $\texttt{RS}_x$.
+$$
+\texttt{G}( \texttt{AtMostOne}(\texttt{Due}_x, \texttt{REs}_x) )
+$$
 
-$$
-\texttt{G}( \texttt{AtMostOne}(\texttt{B}_x, \texttt{RS}_x) )
-$$
+Should not start a task more than once for the same due tick unless it fails.
 
 ---
 
