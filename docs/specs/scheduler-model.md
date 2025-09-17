@@ -349,7 +349,9 @@ Ending a run requires that some work has been spent on it.
 **E4 - Unlimited dues**
 
 $$
-\texttt{G}( \texttt{F} \; \texttt{Due}_x )
+\texttt{G} \; \texttt{F} \; \texttt{Due}_x
+\\
+\texttt{H} \; \texttt{O} \; \texttt{Due}_x
 $$
 
 For every task $x$, the cron schedule matches infinitely often, in both directions.
