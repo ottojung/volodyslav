@@ -294,7 +294,7 @@ This section is descriptive, not normative. More specifically:
 - All possible real-world environments do satisfy these statements.
 - Formal statements in this section need not to be checked, they are true by definition. Implementors task is to map this model to real-world phenomena.
 
-The environment contributes two independent ingredients:
+The environment contributes two ingredients:
 
 1. **Crash generator** — a predicate $\texttt{Crash}(t)$ over $\mathbb{Z}$. When true, the environment marks an exogenous interruption that preempts in-flight callbacks and halts the scheduler itself; property **E1** enforce the resulting quiescence in the trace.
 
