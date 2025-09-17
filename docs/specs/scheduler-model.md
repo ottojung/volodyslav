@@ -13,7 +13,7 @@ This model focuses on externally observable behaviour, but does not include the 
 
 The scheduler model is parametric in an external execution environment ($\mathcal{E}$) (see [Execution Environment Model](#execution-environment-model)).
 
-The environment supplies exogenous phenomena and background structure: crash instants (the $\texttt{Crash}$ predicate), the real-time axis and clock alignment used by cron ($\mathbb{Z}$ time, minute boundaries), and retry pulses ($\texttt{RetryDue}_x$). It also constrains progress via a compute density function (see [Crash semantics](#crash-semantics)).
+The environment supplies exogenous phenomena and background structure: crash instants (the $\texttt{Crash}$ predicate), the real-time axis and clock alignment used by cron ($\mathbb{Z}$ time, minute boundaries), and retry pulses ($\texttt{RetryDue}_x$). It also constrains progress via a compute density function.
 
 We split the models to separate scheduler obligations/choices (this section) from assumptions about the host and world (environment). This keeps safety properties independent of the host and makes progress claims explicit about their environmental preconditions (see [Environment taxonomy](#environment-taxonomy-informative)).
 
@@ -54,7 +54,7 @@ Each event predicate is evaluated at a trace position $i$ (we omit $i$ when clea
 * $\texttt{InitEnd}(R)$ — the `initialize(...)` call returns; the effective registration set is $R$.
 * $\texttt{StopStart}$ — the JavaScript interpreter calls `stop()`.
 * $\texttt{StopEnd}$ — the `stop()` call returns.
-* $\texttt{UnexpectedShutdown}$ — an unexpected, in-flight system shutdown occurs (e.g., process or host crash). This interrupts running callbacks and preempts further starts until a subsequent $\texttt{InitEnd}$. This predicate is supplied by the environment’s crash generator (see [Crash semantics](#crash-semantics)).
+* $\texttt{UnexpectedShutdown}$ — an unexpected, in-flight system shutdown occurs (e.g., process or host crash). This interrupts running callbacks and preempts further starts until a subsequent $\texttt{InitEnd}$. This predicate is supplied by the environment’s crash generator.
 * $\texttt{RunStart}(x)$ — the scheduler begins invoking the public callback for task $x$.
 * $\texttt{RunEnd}(x, r)$ — that invocation completes with result $r \in \texttt{Result}$.
 
