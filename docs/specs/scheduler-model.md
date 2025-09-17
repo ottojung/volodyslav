@@ -176,7 +176,7 @@ They prevent deadlocks, starvation, livelocks, and unbounded postponement of obl
 
 Progress is always read relative to the environment’s willingness to provide compute. In fully freezing environments (see [Environment taxonomy](#environment-taxonomy-informative)), obligations may accumulate without violating safety; in eventually thawing or lower-bounded-density environments, the fairness assumptions below become reasonable or derivable premises for liveness. In other words, in some environments, it is impossible to implement a scheduler.
 
-**L1 — Best effort eventuality**
+**L1 — Obligation fulfillment**
 
 $$
 \texttt{G}( (\texttt{Active} \wedge \texttt{Registered}_x \wedge \texttt{EffectiveDue}_x) \rightarrow \texttt{F} (\texttt{RS}_x \vee \neg \texttt{Active} ) )
