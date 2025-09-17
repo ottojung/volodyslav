@@ -377,17 +377,6 @@ $$
 
 At least one $\texttt{RetryDue}$ tick appears after each failure.
 
-**RD4 — First-after-last-failure**
-$$
-	\texttt{G}\big( \texttt{RetryDue}_x \rightarrow ( \neg \texttt{RetryDue}_x \ \texttt{S} \ \texttt{REf}_x ) \big)
-$$
-
-This associates each pulse to the most recent failure.
-
-*Notes:*  
-- **RD2** + **RD4** ensure any previously scheduled pulse is ``canceled'' by a subsequent failure; at most one $\texttt{RetryDue}_x$ can occur in the epoch since the last $\texttt{REf}_x$, and if it occurs, it is the first in that epoch.  
-- **RD3** guarantees progress of backoff timers.
-
 ## Nice progress properties (informative)
 
 Following are additional, **informative** assumptions that may hold in some environments. They are not part of the core model.
