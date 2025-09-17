@@ -321,7 +321,7 @@ The environment contributes two orthogonal ingredients:
 
 ## Environment properties (descriptive)
 
-**E1 — Crash consistency (no work progression)**
+**E1 — Busy crashing**
 
 $$
 \texttt{G}( \texttt{Crash} \rightarrow \texttt{Frozen} )
