@@ -248,24 +248,12 @@ Progress is always read relative to the environment’s willingness to provide c
 **L1 — Obligation fulfillment**
 
 $$
-\texttt{G}( \texttt{Obligation}_{R, x} \rightarrow \texttt{F} (\texttt{RS}_x \vee \neg \texttt{Active}_R ))
+\texttt{G}( \texttt{Obligation}_{R, x} \rightarrow \texttt{F}_{\texttt{comp}}^{\texttt{lin}|R+x|} (\texttt{RS}_x \vee \neg \texttt{Active}_R ))
 $$
 
 When a task is supposed to be executed, we must eventually see that execution in the form of $\texttt{RS}_x$ (or a $\texttt{Crash}$, or $\texttt{SE}$).
 
-**L1s — Strong obligation fulfillment**
-
-TODO
-
-Task execution occurs within a bounded **compute** after the obligation arises, unless preempted by $\texttt{Crash}$ or $\texttt{SE}$.
-
-*Example usage (informative):*
-
-$$
-\texttt{G}\big(\texttt{OblBirth}_x \rightarrow F^{\texttt{lin}|R+t|}_{\texttt{comp}}(\texttt{RS}_x \vee \texttt{Crash} \vee \texttt{SE})\big)
-$$
-
-expresses that, parameterised by the constants $a$ and $b$ above, strong progress holds within compute that grows linearly with the sizes of the current registration set and timestamp.
+Furthermore, that execution occurs within a bounded **compute** (as a linear function of the sizes of the current registration set and timestamp) after the obligation arises.
 
 **L2 — Stop terminates**
 $$
