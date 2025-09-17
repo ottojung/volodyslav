@@ -177,7 +177,7 @@ $$
 
 ---
 
-# Liveness Properties
+# Liveness Properties (normative)
 
 These properties state progress guarantees.
 They prevent deadlocks, starvation, livelocks, and unbounded postponement of obligations.
@@ -201,7 +201,7 @@ $$
 \texttt{G}( \texttt{IS} \rightarrow \texttt{F} \; \texttt{IE} )
 $$
 
-# Safety Properties
+# Safety Properties (normative)
 
 These properties state scheduler invariants.
 They prevent invalid sequences of events.
@@ -323,7 +323,7 @@ The environment contributes two orthogonal ingredients:
 
 The environment selects the crash set $C$ and must satisfy the **crash–compute coupling** axiom: for each crash time $c \in C$ there exists $d > c$ with $\texttt{compute}(c,d) = 0$. Intuitively, from the instant a crash occurs, the environment withholds compute for some subsequent (possibly unbounded) period. Freezes may also occur without a crash; the only mandated linkage is the zero-density stretch beginning at each crash.
 
-## Environment properties
+## Environment properties (descriptive)
 
 **E1 — Crash consistency (no fabricated completions)**
 
