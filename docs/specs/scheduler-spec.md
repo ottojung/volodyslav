@@ -766,10 +766,10 @@ $$
 \texttt{Running}_x := (\neg \texttt{RE}_x) \; \texttt{S} \; \texttt{RS}_x \land (\neg \texttt{Crash}) \; \texttt{S} \; \texttt{RS}_x
 $$
 
-* **Pending\_x** — one outstanding obligation to perform the first start after a due tick, cleared by a start or re-init:
+* **Pending\_x** — one outstanding obligation to perform the first start after a due tick, cleared by a start:
 
 $$
-\texttt{Pending}_x := \texttt{Hold}( \texttt{Due}_x, \texttt{RS}_x \vee \texttt{IE} )
+\texttt{Pending}_x := \texttt{Hold}( \texttt{Due}_x, \texttt{RS}_x )
 $$
 
 * **RetryPending\_x** — a retry obligation that is true after a failure and cleared by $\texttt{REs}_x$:
