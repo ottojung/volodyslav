@@ -182,7 +182,7 @@ $$
 \texttt{G}( (\texttt{Active} \wedge \texttt{Registered}_x \wedge \texttt{EffectiveDue}_x) \rightarrow \texttt{F} (\texttt{RS}_x \vee \neg \texttt{Active} ) )
 $$
 
-When a task is supposed to be executed, we must eventually see $\texttt{RS}_x$ (or a $\texttt{Crash}$, or $\texttt{SE}$, which reset obligations).
+When a task is supposed to be executed, we must eventually see that execution in the form of $\texttt{RS}_x$ (or a $\texttt{Crash}$, or $\texttt{SE}$, which reset obligations).
 
 **L2 — Stop terminates**
 $$
