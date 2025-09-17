@@ -823,13 +823,13 @@ $$
 $$
 Once a run starts, no further $\texttt{RS}_x$ may occur before a matching $\texttt{RE}_x$ or $\texttt{Crash}$.
 
-**S3 — Start safety**
+**S2 — Start safety**
 $$
 \texttt{G}( \texttt{RS}_x \rightarrow ( \texttt{Active} \wedge \texttt{Registered}_x \wedge \texttt{EffectiveDue}_x ) )
 $$
 A start can occur only while active, registered, and there is a current obligation to run.
 
-**S4 — Conservation of starts**
+**S3 — Conservation of starts**
 
 $$
 \texttt{G}( \texttt{AtMostOne}(\texttt{Due}_x, \texttt{REs}_x) )
@@ -839,13 +839,13 @@ Should not start a task more than once for the same due period unless it fails.
 
 Looking directly, this is a restriction on the number of successful **completions** per due period, not starts. However, the possibility that the callback will return before the next due period prevents the scheduler from starting the task again in that same period. Thus, the restriction on successful completions indirectly restricts starts.
 
-**S5a — Quiescence after StopEnd**
+**S4 — Quiescence after StopEnd**
 $$
 \texttt{G}( \texttt{SE} \rightarrow (\neg \texttt{RS}_x \; \texttt{W} \; \texttt{IE}) )
 $$
 After $\texttt{SE}$, no new starts until re-initialisation.
 
-**S5b — StopEnd consistency**
+**S5 — StopEnd consistency**
 $$
 \texttt{G}( \texttt{SE} \rightarrow (\neg \texttt{RE}_x \; \texttt{W} \; \texttt{IE}) )
 $$
