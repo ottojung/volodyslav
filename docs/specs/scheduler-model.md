@@ -356,7 +356,7 @@ Eventually, the environment provides some positive compute in every future inter
 This rules out permanently freezing environments.
 It is a weak form of fairness that ensures the environment does not permanently withhold all compute.
 
-Without this, **L1** cannot be satisfied for any scheduler implementation.
+Without this, liveness cannot be satisfied for any scheduler implementation.
 
 **A2 — Starts eventually settle**
 
@@ -366,7 +366,7 @@ $$
 
 Every callback invocation completes in **finite** time unless pre-empted by $\texttt{Crash}$. No uniform upper bound is required; the assumption only rules out infinite executions.
 
-Without this, **L1** cannot be satisfied for any scheduler implementation.
+Without this, liveness cannot be satisfied for any scheduler implementation.
 
 ## Environment taxonomy (informative)
 
