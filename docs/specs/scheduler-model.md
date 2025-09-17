@@ -321,13 +321,13 @@ The environment contributes two orthogonal ingredients:
 
 ## Environment properties (descriptive)
 
-**E1 — Crash consistency (no fabricated completions)**
+**E1 — Crash consistency (no work progression)**
 
 $$
-\texttt{G}( \texttt{Crash} \rightarrow (\neg \texttt{RE}_x \; \texttt{W} \; \texttt{RS}_x) )
+\texttt{G}( \texttt{Crash} \rightarrow \texttt{Frozen} )
 $$
 
-A crash cannot be followed by any ends until restarts.
+No work progresses around a crash instant.
 
 **E2 — Ends follow starts**
 
