@@ -140,7 +140,7 @@ Non-membership of $x$ in the registration set provided at the most recent initia
 
 Membership of $x$ in the most recent observed registration set.
 
----  
+---
 
 * $\texttt{RetryEligible}_x := \texttt{Hold}(\texttt{RetryDue}_x,\ \texttt{REf}_x)$
 
