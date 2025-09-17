@@ -99,11 +99,11 @@ Each predicate marks the instant the named public action occurs from the perspec
 
   *Interpretation:* non-membership of $x$ in the registration set provided at the most recent initialization.
 
-* $\texttt{Registered}_x := \texttt{Bucket}(IE^{\text{in}}_x,\; IE^{\text{out}}_x)$
+* $\texttt{Registered}_x := \texttt{Hold}(IE^{\text{in}}_x,\; IE^{\text{out}}_x)$
 
   *Interpretation:* membership of $x$ in the most recent observed registration set.
 
-* $\texttt{RetryEligible}_x := (\neg \texttt{O}\ \texttt{REf}_x) \ \vee \ \texttt{Bucket}(\texttt{RetryDue}_x,\ \texttt{REf}_x)$
+* $\texttt{RetryEligible}_x := (\neg \texttt{O}\ \texttt{REf}_x) \ \vee \ \texttt{Hold}(\texttt{RetryDue}_x,\ \texttt{REf}_x)$
 
   *Interpretation:* before any failure of $x$ has completed, retries are allowed (eligible). After a failure completes, eligibility becomes true at the first $\texttt{RetryDue}_x$ pulse since that failure and remains true until cleared by a subsequent failure.
 
@@ -118,14 +118,6 @@ $$
 $$
 
 There was a $\texttt{set}$ in the past (or now), and no $\texttt{clear}$ since.
-
-* **Bucket / set-with-reset**
-
-$$
-\texttt{Bucket}(\texttt{set}, \texttt{reset}) := (\neg \texttt{reset})\; \texttt{S} \; \texttt{set}
-$$
-
-Remember $\texttt{set}$ since the most recent $\texttt{reset}$.
 
 * **Edge after reset** (first occurrence of $\phi$ since $\texttt{reset}$, stutter-invariant)
 
