@@ -234,7 +234,7 @@ $$
 \texttt{G}( \texttt{SS} \rightarrow \texttt{F} \; \texttt{SE} )
 $$
 
-No bound on compute here, as the scheduler may need to wait for in-flight callbacks to complete. The callbacks are not bounded in number, so no unconditional bound on stop can be given.
+No bound on compute here, as the scheduler may need to wait for in-flight callbacks to complete. The callbacks are not bounded, so no unconditional bound on stop can be given.
 
 # Safety Properties (normative)
 
