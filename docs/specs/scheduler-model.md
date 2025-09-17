@@ -345,6 +345,14 @@ $$
 
 Ending a run requires that some work has been spent on it.
 
+**E4 - Unlimited dues**
+
+$$
+\texttt{G}( \texttt{F} \; \texttt{Due}_x )
+$$
+
+For every task $x$, the cron schedule matches infinitely often, in both directions.
+
 ## Nice progress properties (informative)
 
 Following are additional, **informative** assumptions that may hold in some environments. They are not part of the core model.
