@@ -353,7 +353,7 @@ The environment contributes two ingredients:
    \texttt{compute} : \mathbb{Z} \times \mathbb{Z} \to \mathbb{Q}_{\ge 0}
    $$
 
-   assigning the potential amount of computational progress available over any real-time, inclusive interval $[t,u]$. For some $\lambda > 0$ and for all $t \le u \le v$, it satisfies:
+   assigning the potential amount of computational progress available to the scheduler over any real-time, inclusive interval $[t,u]$. For some $\lambda > 0$ and for all $t \le u \le v$, it satisfies:
 
    * **T1 (additivity):** $\texttt{compute}(t,v) = \texttt{compute}(t,u) + \texttt{compute}(u,v)$.
    * **T2 (monotonicity):** $\texttt{compute}(t,u) \le \texttt{compute}(t,v)$.
