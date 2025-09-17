@@ -343,7 +343,7 @@ $$
 \texttt{G}( \texttt{RE}_x \rightarrow \neg \texttt{Y} ( \texttt{Frozen} ))
 $$
 
-To end a run, some work must have progressed since it started.
+Ending a run requires that some work has been spent on it.
 
 ## Nice progress properties (informative)
 
