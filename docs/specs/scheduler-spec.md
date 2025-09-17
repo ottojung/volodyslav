@@ -823,12 +823,6 @@ $$
 $$
 Once a run starts, no further $\texttt{RS}_x$ may occur before a matching $\texttt{RE}_x$ or $\texttt{Crash}$.
 
-**S2 — Ends follow starts**
-$$
-\texttt{G}( \texttt{RE}_x \rightarrow \texttt{Y} \; \texttt{Running}_x)
-$$
-Every completion must correspond to a run that was already in flight before this position.
-
 **S3 — Start safety**
 $$
 \texttt{G}( \texttt{RS}_x \rightarrow ( \texttt{Active} \wedge \texttt{Registered}_x \wedge \texttt{EffectiveDue}_x ) )
@@ -856,18 +850,6 @@ $$
 \texttt{G}( \texttt{SE} \rightarrow (\neg \texttt{RE}_x \; \texttt{W} \; \texttt{IE}) )
 $$
 After $\texttt{SE}$, no new ends until re-initialisation.
-
-**S6a — Crash quiescence**
-$$
-\texttt{G}( \texttt{Crash} \rightarrow (\neg \texttt{RS}_x \; \texttt{W} \; \texttt{IE}) )
-$$
-After a crash, no new starts until re-initialisation.
-
-**S6b — Crash consistency (no fabricated completions)**
-$$
-\texttt{G}( \texttt{Crash} \rightarrow (\neg \texttt{RE}_x \; \texttt{W} \; \texttt{IE}) )
-$$
-A crash cannot be followed by any ends until re-initialisation.
 
 ---
 
@@ -947,7 +929,7 @@ This section is descriptive, not normative. More specifically:
 
 The environment contributes two orthogonal ingredients:
 
-1. **Crash generator** — a predicate $\texttt{Crash}(t)$ over $\mathbb{Q}$. When true, the environment marks an exogenous interruption that preempts in-flight callbacks and halts the scheduler itself; properties **S5a**/**S5b** enforce the resulting quiescence in the trace.
+1. **Crash generator** — a predicate $\texttt{Crash}(t)$ over $\mathbb{Q}$. When true, the environment marks an exogenous interruption that preempts in-flight callbacks and halts the scheduler itself; properties **E1**/**E2** enforce the resulting quiescence in the trace.
 
 2. **Work density function** — a dimensionless function
 
@@ -965,7 +947,22 @@ The environment contributes two orthogonal ingredients:
 
 #### Crash semantics
 
-The environment selects the crash set $C$ and must satisfy the **crash–compute coupling** axiom: for each crash time $c \in C$ there exists $d > c$ with $\texttt{compute}(c,d) = 0$. Intuitively, from the instant a crash occurs, the environment withholds compute for some subsequent period (possibly infinitesimal, possibly unbounded). Freezes may also occur without a crash; the only mandated linkage is the zero-density stretch beginning at each crash.
+The environment selects the crash set $C$ and must satisfy the **crash–compute coupling** axiom: for each crash time $c \in C$ there exists $d > c$ with $\texttt{compute}(c,d) = 0$. Intuitively, from the instant a crash occurs, the environment withholds compute for some subsequent (possibly unbounded) period. Freezes may also occur without a crash; the only mandated linkage is the zero-density stretch beginning at each crash.
+
+### Environment properties
+
+**E1 — Crash consistency (no fabricated completions)**
+$$
+\texttt{G}( \texttt{Crash} \rightarrow (\neg \texttt{RE}_x \; \texttt{W} \; \texttt{RS}_x) )
+$$
+A crash cannot be followed by any ends until restarts.
+
+**E2 — Ends follow starts**
+$$
+\texttt{G}( \texttt{RE}_x \rightarrow \texttt{Y} \; \texttt{Running}_x)
+$$
+Every completion must correspond to a run that was already in flight before this position.
+
 
 #### Environment taxonomy (informative)
 
