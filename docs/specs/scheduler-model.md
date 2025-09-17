@@ -68,10 +68,10 @@ $$
 **Linear-in-input compute bound.** Fix global non-negative constants $a, b \in \mathbb{Q}_{\geq 0}$. Define
 
 $$
-\boxed{\,F^{\texttt{lin}|R+t|}_{\texttt{comp}}(P)\ :=\ F^{\leq\; a\cdot(|R| + |t|)\; +\; b}_{\texttt{comp}}(P)\,}.
+\boxed{\,F^{\texttt{lin}|X|}_{\texttt{comp}}(P)\ :=\ F^{\leq\; a\cdot|X|+b}_{\texttt{comp}}(P)\,}.
 $$
 
-This asserts that $P$ will occur after spending at most $a \cdot (|R| + |t|) + b$ units of environment-provided compute from the current position.
+This asserts that $P$ will occur after spending at most $a \cdot |X| + b$ units of environment-provided compute from the current position.
 
 **Symbols introduced.**
 
@@ -79,7 +79,7 @@ This asserts that $P$ will occur after spending at most $a \cdot (|R| + |t|) + b
 * $|\cdot|$ — bit-length operator applied to the encoding $\llbracket\cdot\rrbracket$.
 * $a, b$ — global non-negative rational constants parameterising linear compute bounds.
 * $F^{\leq C}_{\texttt{comp}}(\cdot)$ — compute-bounded eventuality modality defined above.
-* $F^{\texttt{lin}|R+t|}_{\texttt{comp}}(\cdot)$ — syntactic sugar for an $F^{\leq C}_{\texttt{comp}}(\cdot)$ bound linear in $|R| + |t|$.
+* $F^{\texttt{lin}|X|}_{\texttt{comp}}(\cdot)$ — syntactic sugar for an $F^{\leq C}_{\texttt{comp}}(\cdot)$ bound linear in the size of object $X$.
 
 ## Event Predicates (Observable Alphabet)
 
