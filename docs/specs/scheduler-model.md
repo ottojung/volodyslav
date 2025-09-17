@@ -45,34 +45,6 @@ This subsection gives a signature-based, self-contained definition of the model,
 **Interpretation:**
 $\texttt{TaskId}$ names externally visible tasks. A $\texttt{RegistrationSet}$ is the public input provided at initialization. $\texttt{Due}$ and $\texttt{RetryDelay}$ are parameters determined by the registration set and the environment (host clock); they are not hidden internal state. Time units for $\texttt{Due}$ and $\texttt{RetryDelay}$ coincide.
 
-## Helper Modalities
-
-**Encodings and bit-length.** Fix a canonical, prefix-free, computable encoding $\llbracket\cdot\rrbracket$ from objects to bitstrings with linear-time decoding. For any object $X$, write $|X| := |\llbracket X \rrbracket|$ for the bit length of its encoding.
-
-**Current registration set and its size.** At any trace position $i$, let $R_i$ be the effective registration set of the most recent initialization that is currently active (that is, the unique $R$ such that $\texttt{Active}_R$ holds at $i$). Write $|R|$ for $|R_i| = |\llbracket R_i \rrbracket|$. *Remark:* any reasonable encoding of a finite map $\texttt{TaskId} \to (\texttt{Schedule}, \texttt{RetryDelay})$ suffices; the spec is parametric in the encoding, assuming only standard per-entry overhead.
-
-**Background time value and its size.** Each position $i$ is associated with a background timestamp value $t := \tau(i) \in \mathbb{Z}$. Define $|t| := |\llbracket t \rrbracket|$ using a standard signed binary encoding (so this equals $1 + \lceil \log_2(1 + |t|_{\text{abs}}) \rceil$, where $|t|_{\text{abs}}$ is the absolute value of $t$). *Important:* $|t|$ measures the value of the clock, not the density of events; events may be sparse in $i$ even when $|t|$ grows.
-
-**Compute-bounded eventually.** For $C \in \mathbb{Q}_{\geq 0}$, the modality
-
-$$
-\boxed{\,F^{\leq C}_{\texttt{comp}}(P)\,}
-$$
-
-holds at position $i$ iff there exists $j \geq i$ such that $P$ holds at $j$ and
-
-$$
-\texttt{compute}\big(\tau(i),\,\tau(j)\big) \leq C.
-$$
-
-**Linear-in-input compute bound.** Fix global non-negative constants $a, b \in \mathbb{Q}_{\geq 0}$. Define
-
-$$
-\boxed{\,F^{\texttt{lin}|X|}_{\texttt{comp}}(P)\ :=\ F^{\leq\; a\cdot|X|+b}_{\texttt{comp}}(P)\,}.
-$$
-
-This asserts that $P$ will occur after spending at most $a \cdot |X| + b$ units of environment-provided compute from the current position.
-
 ## Event Predicates (Observable Alphabet)
 
 Each event predicate is evaluated at a trace position $i$ (we omit $i$ when clear from context):
@@ -490,3 +462,33 @@ The following labels identify illustrative environment classes. They are informa
 * **Lower-bounded-density environments:** there exist parameters $\varepsilon > 0$ and $\Delta \ge 0$ such that for all $t$ and $T \ge \Delta$, $\texttt{compute}(t,t+T) \ge \varepsilon\cdot T$ (average density after $\Delta$ never drops below $\varepsilon$).
 
 * **Burst environments:** concentrate density in sporadic spikes; for every $M$ there are intervals of length $> M$ with arbitrarily small compute alternating with brief, high-density bursts.
+
+## Helper Modalities
+
+This section defines the helper modalities $F^{\leq C}_{\texttt{comp}}(\cdot)$ and $F^{\texttt{lin}|X|}_{\texttt{comp}}(\cdot)$ used in the scheduler properties.
+
+**Encodings and bit-length.** Fix a canonical, prefix-free, computable encoding $\llbracket\cdot\rrbracket$ from objects to bitstrings with linear-time decoding. For any object $X$, write $|X| := |\llbracket X \rrbracket|$ for the bit length of its encoding.
+
+**Current registration set and its size.** At any trace position $i$, let $R_i$ be the effective registration set of the most recent initialization that is currently active (that is, the unique $R$ such that $\texttt{Active}_R$ holds at $i$). Write $|R|$ for $|R_i| = |\llbracket R_i \rrbracket|$. *Remark:* any reasonable encoding of a finite map $\texttt{TaskId} \to (\texttt{Schedule}, \texttt{RetryDelay})$ suffices; the spec is parametric in the encoding, assuming only standard per-entry overhead.
+
+**Background time value and its size.** Each position $i$ is associated with a background timestamp value $t := \tau(i) \in \mathbb{Z}$. Define $|t| := |\llbracket t \rrbracket|$ using a standard signed binary encoding (so this equals $1 + \lceil \log_2(1 + |t|_{\text{abs}}) \rceil$, where $|t|_{\text{abs}}$ is the absolute value of $t$). *Important:* $|t|$ measures the value of the clock, not the density of events; events may be sparse in $i$ even when $|t|$ grows.
+
+**Compute-bounded eventually.** For $C \in \mathbb{Q}_{\geq 0}$, the modality
+
+$$
+\boxed{\,F^{\leq C}_{\texttt{comp}}(P)\,}
+$$
+
+holds at position $i$ iff there exists $j \geq i$ such that $P$ holds at $j$ and
+
+$$
+\texttt{compute}\big(\tau(i),\,\tau(j)\big) \leq C.
+$$
+
+**Linear-in-input compute bound.** Fix global non-negative constants $a, b \in \mathbb{Q}_{\geq 0}$. Define
+
+$$
+\boxed{\,F^{\texttt{lin}|X|}_{\texttt{comp}}(P)\ :=\ F^{\leq\; a\cdot|X|+b}_{\texttt{comp}}(P)\,}.
+$$
+
+This asserts that $P$ will occur after spending at most $a \cdot |X| + b$ units of environment-provided compute from the current position.
