@@ -20,7 +20,7 @@ We split the models to separate scheduler obligations/choices (this section) fro
 # Modelling Framework
 
 * **Trace semantics:** Each trace position corresponds to an instant where an observable event occurs. Events that are simultaneous appear at the same integer time points. Time bounds are background semantics only (not encoded in LTL).
-* **Logic:** A combination of first-order quantification (over tasks) and **LTL with past**.
+* **Logic:** A combination of first-order quantification (over tasks) and **LTL with past**, extended with two derived helper modalities that reference the environment’s `compute` function and information sizes: $F^{\leq C}_{\texttt{comp}}(\cdot)$ (compute-bounded eventually) and $F^{\texttt{lin}|R+t|}_{\texttt{comp}}(\cdot)$ (linear-in-input compute bound). Their semantics are given in [Notation & Helper Modalities](#notation--helper-modalities).
 
   * **Future operators:** $\texttt{G}$ (□), $\texttt{F}$ (◊), $\texttt{X}$ (next), $\texttt{U}$ (until), $\texttt{W}$ (weak until).
   * **Past operators:** $\texttt{H}$ (historically), $\texttt{O}$ (once), $\texttt{S}$ (since), $\texttt{Y}$ (previous).
@@ -44,6 +44,42 @@ This subsection gives a signature-based, self-contained definition of the model,
 
 **Interpretation:**
 $\texttt{TaskId}$ names externally visible tasks. A $\texttt{RegistrationSet}$ is the public input provided at initialization. $\texttt{Due}$ and $\texttt{RetryDelay}$ are parameters determined by the registration set and the environment (host clock); they are not hidden internal state. Time units for $\texttt{Due}$ and $\texttt{RetryDelay}$ coincide.
+
+## Notation & Helper Modalities
+
+**Encodings and bit-length.** Fix a canonical, prefix-free, computable encoding $\llbracket\cdot\rrbracket$ from objects to bitstrings with linear-time decoding. For any object $X$, write $|X| := |\llbracket X \rrbracket|$ for the bit length of its encoding.
+
+**Current registration set and its size.** At any trace position $i$, let $R_i$ be the effective registration set of the most recent initialization that is currently active (that is, the unique $R$ such that $\texttt{Active}_R$ holds at $i$). Write $|R|$ for $|R_i| = |\llbracket R_i \rrbracket|$. *Remark:* any reasonable encoding of a finite map $\texttt{TaskId} \to (\texttt{Schedule}, \texttt{RetryDelay})$ suffices; the spec is parametric in the encoding, assuming only standard per-entry overhead.
+
+**Background time value and its size.** Each position $i$ is associated with a background timestamp value $t := \tau(i) \in \mathbb{Z}$. Define $|t| := |\llbracket t \rrbracket|$ using a standard signed binary encoding (so this equals $1 + \lceil \log_2(1 + |t|_{\text{abs}}) \rceil$, where $|t|_{\text{abs}}$ is the absolute value of $t$). *Important:* $|t|$ measures the value of the clock, not the density of events; events may be sparse in $i$ even when $|t|$ grows.
+
+**Compute-bounded eventually.** For $C \in \mathbb{Q}_{\geq 0}$, the modality
+
+$$
+\boxed{\,F^{\leq C}_{\texttt{comp}}(P)\,}
+$$
+
+holds at position $i$ iff there exists $j \geq i$ such that $P$ holds at $j$ and
+
+$$
+\texttt{compute}\big(\tau(i),\,\tau(j)\big) \leq C.
+$$
+
+**Linear-in-input compute bound.** Fix global non-negative constants $a, b \in \mathbb{Q}_{\geq 0}$. Define
+
+$$
+\boxed{\,F^{\texttt{lin}|R+t|}_{\texttt{comp}}(P)\ :=\ F^{\leq\; a\cdot(|R| + |t|)\; +\; b}_{\texttt{comp}}(P)\,}.
+$$
+
+This asserts that $P$ will occur after spending at most $a \cdot (|R| + |t|) + b$ units of environment-provided compute from the current position.
+
+**Symbols introduced.**
+
+* $\llbracket\cdot\rrbracket$ — canonical, prefix-free encoding of objects as bitstrings.
+* $|\cdot|$ — bit-length operator applied to the encoding $\llbracket\cdot\rrbracket$.
+* $a, b$ — global non-negative rational constants parameterising linear compute bounds.
+* $F^{\leq C}_{\texttt{comp}}(\cdot)$ — compute-bounded eventuality modality defined above.
+* $F^{\texttt{lin}|R+t|}_{\texttt{comp}}(\cdot)$ — syntactic sugar for an $F^{\leq C}_{\texttt{comp}}(\cdot)$ bound linear in $|R| + |t|$.
 
 ## Event Predicates (Observable Alphabet)
 
@@ -222,6 +258,14 @@ When a task is supposed to be executed, we must eventually see that execution in
 TODO
 
 Task execution occurs within a bounded **compute** after the obligation arises, unless preempted by $\texttt{Crash}$ or $\texttt{SE}$.
+
+*Example usage (informative):*
+
+$$
+\texttt{G}\big(\texttt{OblBirth}_x \rightarrow F^{\texttt{lin}|R+t|}_{\texttt{comp}}(\texttt{RS}_x \vee \texttt{Crash} \vee \texttt{SE})\big)
+$$
+
+expresses that, parameterised by the constants $a$ and $b$ above, strong progress holds within compute that grows linearly with the sizes of the current registration set and timestamp.
 
 **L2 — Stop terminates**
 $$
