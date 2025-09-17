@@ -230,10 +230,13 @@ $$
 After $\texttt{SE}$, no new starts until re-initialisation.
 
 **S5 — StopEnd consistency**
+
 $$
 \texttt{G}( \texttt{SE} \rightarrow (\neg \texttt{RE}_x \; \texttt{W} \; \texttt{IE}) )
 $$
+
 After $\texttt{SE}$, no new ends until re-initialisation.
+This means that call to `stop()` waits for in-flight callbacks to complete.
 
 ---
 
