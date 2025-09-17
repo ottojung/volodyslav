@@ -13,13 +13,13 @@ This model focuses on externally observable behaviour, but does not include the 
 
 The scheduler model is parametric in an external execution environment ($\mathcal{E}$) (see [Execution Environment Model](#execution-environment-model)).
 
-The environment supplies exogenous phenomena and background structure: crash instants (the $\texttt{Crash}$ predicate), the real-time axis and clock alignment used by cron ($\mathbb{Q}$ time, minute boundaries), and retry pulses ($\texttt{RetryDue}_x$). It also constrains progress via a compute density function (see [Crash semantics](#crash-semantics)).
+The environment supplies exogenous phenomena and background structure: crash instants (the $\texttt{Crash}$ predicate), the real-time axis and clock alignment used by cron ($\mathbb{Z}$ time, minute boundaries), and retry pulses ($\texttt{RetryDue}_x$). It also constrains progress via a compute density function (see [Crash semantics](#crash-semantics)).
 
 We split the models to separate scheduler obligations/choices (this section) from assumptions about the host and world (environment). This keeps safety properties independent of the host and makes progress claims explicit about their environmental preconditions (see [Environment taxonomy](#environment-taxonomy-informative)).
 
 # Modelling Framework
 
-* **Trace semantics:** Each trace position corresponds to an instant where an observable event occurs. Events that are simultaneous appear at the same rationals. Time bounds are background semantics only (not encoded in LTL).
+* **Trace semantics:** Each trace position corresponds to an instant where an observable event occurs. Events that are simultaneous appear at the same integer time points. Time bounds are background semantics only (not encoded in LTL).
 * **Logic:** A combination of first-order quantification (over tasks) and **LTL with past**.
 
   * **Future operators:** $\texttt{G}$ (□), $\texttt{F}$ (◊), $\texttt{X}$ (next), $\texttt{U}$ (until), $\texttt{W}$ (weak until).
@@ -32,16 +32,16 @@ This subsection gives a signature-based, self-contained definition of the model,
 
 ## Time and Traces
 
-* **Time domain:** $\mathbb{Q}$ (rational numbers), used to timestamp observable instants, no initial event. Time and “minute boundaries” are interpreted using the host clock as provided by the environment (see [Execution Environment Model](#execution-environment-model)).
-* **Trace:** a sequence of positions $i = 0, 1, 2, \dots$ with a timestamp function $\tau(i) \in \mathbb{Q}$ that is non-strictly increasing. At each position $i$, one or more observable events may occur.
+* **Time domain:** $\mathbb{Z}$ (integer numbers), used to timestamp observable instants, no initial event. Time and “minute boundaries” are interpreted using the host clock as provided by the environment (see [Execution Environment Model](#execution-environment-model)).
+* **Trace:** a sequence of positions $i = 0, 1, 2, \dots$ with a timestamp function $\tau(i) \in \mathbb{Z}$ that is non-strictly increasing. At each position $i$, one or more observable events may occur.
 
 ## Domains
 
 * $\texttt{TaskId}$ — a finite, non-empty set of task identifiers.
 * $\texttt{Result} = \{ \texttt{success}, \texttt{failure} \}$.
 * $\texttt{RegistrationSet}$ — a finite mapping $R : \texttt{TaskId} \to (\texttt{Schedule}, \texttt{RetryDelay})$.
-* $\texttt{Schedule}$ — an abstract predicate $\texttt{Due}(\texttt{task}: \texttt{TaskId}, t: \mathbb{Q}) \to \texttt{Bool}$ indicating minute-boundary instants when a task is eligible to start.
-* $\texttt{RetryDelay} : \texttt{TaskId} \to \mathbb{Q}_{\geq 0}$ $-$ the function that maps each task to its non-negative retry delay.
+* $\texttt{Schedule}$ — an abstract predicate $\texttt{Due}(\texttt{task}: \texttt{TaskId}, t: \mathbb{Z}) \to \texttt{Bool}$ indicating minute-boundary instants when a task is eligible to start.
+* $\texttt{RetryDelay} : \texttt{TaskId} \to \mathbb{Z}_{\geq 0}$ $-$ the function that maps each task to its non-negative retry delay.
 
 **Interpretation:**
 $\texttt{TaskId}$ names externally visible tasks. A $\texttt{RegistrationSet}$ is the public input provided at initialization. $\texttt{Due}$ and $\texttt{RetryDelay}$ are parameters determined by the registration set and the environment (host clock); they are not hidden internal state. Time units for $\texttt{Due}$ and $\texttt{RetryDelay}$ coincide.
@@ -303,12 +303,12 @@ This section is descriptive, not normative. More specifically:
 
 The environment contributes two orthogonal ingredients:
 
-1. **Crash generator** — a predicate $\texttt{Crash}(t)$ over $\mathbb{Q}$. When true, the environment marks an exogenous interruption that preempts in-flight callbacks and halts the scheduler itself; properties **E1**/**E2** enforce the resulting quiescence in the trace.
+1. **Crash generator** — a predicate $\texttt{Crash}(t)$ over $\mathbb{Z}$. When true, the environment marks an exogenous interruption that preempts in-flight callbacks and halts the scheduler itself; properties **E1**/**E2** enforce the resulting quiescence in the trace.
 
 2. **Work density function** — a dimensionless function
 
    $$
-   \texttt{compute} : \mathbb{Q} \times \mathbb{Q} \to \mathbb{Q}_{\ge 0}
+   \texttt{compute} : \mathbb{Z} \times \mathbb{Z} \to \mathbb{Z}_{\ge 0}
    $$
 
    assigning the potential amount of computational progress available over any real-time, open interval $(t,u)$. It satisfies, for all $t \le u \le v$:
