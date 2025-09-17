@@ -337,6 +337,14 @@ $$
 
 Every completion must correspond to a run that was already in flight before this position.
 
+**E3 - Ends require work**
+
+$$
+\texttt{G}( \texttt{RE}_x \rightarrow \neg \texttt{Y} ( \texttt{Frozen} ))
+$$
+
+To end a run, some work must have progressed since it started.
+
 ## Nice progress properties (informative)
 
 Following are additional, **informative** assumptions that may hold in some environments. They are not part of the core model.
