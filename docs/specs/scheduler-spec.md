@@ -866,7 +866,7 @@ $$
 \texttt{G}( \texttt{AtMostOne}(\texttt{Due}_x, \texttt{REs}_x) )
 $$
 
-Should not start a task more than once for the same due tick unless it fails.
+Should not start a task more than once for the same due period unless it fails.
 
 ---
 
