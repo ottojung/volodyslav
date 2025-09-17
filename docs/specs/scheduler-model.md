@@ -345,7 +345,21 @@ Every completion must correspond to a run that was already in flight before this
 
 Following are additional, **informative** assumptions that may hold in some environments. They are not part of the core model.
 
-**A1 — Starts eventually settle**
+**A1 - Eventual thawing**
+
+$$
+\texttt{G}( \texttt{F}( \neg \texttt{Frozen} ) )
+$$
+
+Eventually, the environment provides some positive compute in every future interval.
+
+This rules out permanently freezing environments.
+It is a weak form of fairness that ensures the environment does not permanently withhold all compute.
+
+Without this, **L1** cannot be satisfied for any scheduler implementation.
+
+**A2 — Starts eventually settle**
+
 $$
 \texttt{G}( \texttt{RS}_x \rightarrow \texttt{F}( \texttt{RE}_x \vee \texttt{Crash} ) )
 $$
