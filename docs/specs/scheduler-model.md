@@ -228,7 +228,7 @@ $$
 
 **L3 — Initialization completes**
 $$
-\texttt{G}( \texttt{IS} \rightarrow \texttt{F} \; \texttt{IE} )
+\texttt{G}( \texttt{IS}_R \rightarrow \texttt{F}_{\texttt{comp}}^{\texttt{lin}(R, \,t)} \; \texttt{IE}_R )
 $$
 
 # Safety Properties (normative)
