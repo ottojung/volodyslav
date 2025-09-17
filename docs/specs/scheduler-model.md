@@ -380,7 +380,7 @@ $$
 	\texttt{G}\big( \texttt{REf}_x \rightarrow \texttt{F}\ \texttt{RetryDue}_x \big)
 $$
 
-A $\texttt{RetryDue}$ tick appear after each failure.
+A $\texttt{RetryDue}$ tick appears after each failure.
 
 **RD4 — First-after-last-failure**
 $$
