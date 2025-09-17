@@ -353,6 +353,38 @@ $$
 
 For every task $x$, the cron schedule matches infinitely often, in both directions.
 
+**RD1 — Nonprecedence**
+$$
+	\texttt{G}\big( ( \neg \texttt{O}\ \texttt{REf}_x ) \rightarrow \neg \texttt{RetryDue}_x \big)
+$$
+
+No spurious pulses before any failure.
+
+**RD2 — Uniqueness**
+$$
+	\texttt{G}\big( \texttt{AtMostOne}(\texttt{REf}_x,\ \texttt{RetryDue}_x) \big)
+$$
+
+Exactly one pulse between consecutive failures (or none if no failure occurs).
+
+**RD3 — Existence**
+$$
+	\texttt{G}\big( \texttt{REf}_x \rightarrow \texttt{F}\ \texttt{RetryDue}_x \big)
+$$
+
+A $\texttt{RetryDue}$ tick appear after each failure.
+
+**RD4 — First-after-last-failure**
+$$
+	\texttt{G}\big( \texttt{RetryDue}_x \rightarrow ( \neg \texttt{RetryDue}_x \ \texttt{S} \ \texttt{REf}_x ) \big)
+$$
+
+This associates each pulse to the most recent failure.
+
+*Notes:*  
+- **RD2** + **RD4** ensure any previously scheduled pulse is ``canceled'' by a subsequent failure; at most one $\texttt{RetryDue}_x$ can occur in the epoch since the last $\texttt{REf}_x$, and if it occurs, it is the first in that epoch.  
+- **RD3** guarantees progress of backoff timers.
+
 ## Nice progress properties (informative)
 
 Following are additional, **informative** assumptions that may hold in some environments. They are not part of the core model.
