@@ -351,7 +351,7 @@ The environment contributes two ingredients:
    assigning the potential amount of computational progress available over any real-time, open interval $(t,u)$. For some $\lambda > 0$ and for all $t \le u \le v$, it satisfies:
 
    * **T1 (additivity):** $\texttt{compute}(t,v) = \texttt{compute}(t,u) + \texttt{compute}(u,v)$.
-   * **T2 (monotonicity & nonnegativity):** $\texttt{compute}(t,u) \ge 0$ and $\texttt{compute}(t,u) \le \texttt{compute}(t,v)$.
+   * **T2 (monotonicity):** $\texttt{compute}(t,u) \le \texttt{compute}(t,v)$.
    * **T3 (boundedness):** $\texttt{compute}(t, u) \leq \lambda \cdot (u - t)$.
 
    No positivity is assumed; the environment may set $\texttt{compute}(t,u) = 0$ on arbitrary (even unbounded) intervals, modelling **freezes** where no work can progress. We write $\texttt{Frozen}(t,u)$ when $\texttt{compute}(t,u) = 0$. We write $\texttt{Frozen}$ at a trace position $i$ when $\texttt{Frozen}(\tau(\max(0, i-1)), \tau(i+1))$. This means no work progressed in the interval surrounding the trace position.
