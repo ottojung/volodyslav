@@ -495,10 +495,10 @@ $$
 \boxed{\,F^{\leq C}_{\texttt{comp}}(P)\,}
 $$
 
-holds at position $i$ iff there exists $i \leq j \leq k$ such that $P$ holds at $k$ and $\tau(k) - \tau(j) \leq t_{\texttt{lag}}$ and
+holds at position $i$ iff there exists $t$ and $i \leq j$ such that $P$ holds at $j$ and $\tau(j) - t \leq t_{\texttt{lag}}$ and
 
 $$
-\texttt{compute}\big(\tau(i),\,\tau(j)\big) \leq C.
+\texttt{compute}\big(\tau(i),\, t \big) \leq C.
 $$
 
 Intuitively, this asserts that $P$ will occur after receiving at most $C$ units of environment-provided compute from the current position, plus a small lag $t_{\texttt{lag}}$ to account for a constant delay.
