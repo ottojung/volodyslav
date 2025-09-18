@@ -358,21 +358,27 @@ The environment contributes two ingredients:
 2. **Work density function** — a dimensionless function
 
    $$
-   \texttt{compute} : \mathbb{Z} \times \mathbb{Z} \to \mathbb{Q}_{\ge 0}
+   \texttt{compute} : \mathcal{P}(\mathbb{Z}) \to \mathbb{Q}_{\ge 0}
    $$
 
-   assigning the potential amount of computational progress available to the scheduler over any real-time, inclusive interval $[t,u]$. For some $\lambda > 0$ and for all $t \le u \le v$, it satisfies:
+   assigning the potential amount of computational progress available to the scheduler over any real-time interval. For some $\lambda > 0$ and for all $S, V \subset \mathbb{Z}$, it satisfies:
 
-   * **T1 (additivity):** $\texttt{compute}(t,v) = \texttt{compute}(t,u) + \texttt{compute}(u,v)$.
-   * **T2 (monotonicity):** $\texttt{compute}(t,u) \le \texttt{compute}(t,v)$.
-   * **T3 (boundedness):** $\texttt{compute}(t, u) \leq \lambda \cdot (u - t)$.
+   * **T1 (additivity):** $\texttt{compute}(S \cup V) = \texttt{compute}(S) + \texttt{compute}(V) - \texttt{compute}(S \cap V)$.
+   * **T2 (boundedness):** $\texttt{compute}(S) \leq \lambda \cdot |\max(S) - \min(S)|$.
 
-   No positivity is assumed; the environment may set $\texttt{compute}(t,u) = 0$ on arbitrary (even unbounded) intervals, modelling **freezes** where no work can progress. We write $\texttt{Frozen}(t,u)$ when $\texttt{compute}(t,u) = 0$. We write $\texttt{Frozen}$ at a trace position $i$ when there exists $l, r \geq 0$ such that $l + r > 0 \wedge \texttt{Frozen}(\tau(i) - l, \tau(i) + r)$. This means no work progressed in the interval surrounding the trace position.
+   No positivity is assumed; the environment may set $\texttt{compute}([t,u]) = 0$ on arbitrary (even unbounded) intervals, modelling **freezes** where no work can progress. We write $\texttt{Frozen}(t,u)$ when $\texttt{compute}([t,u]) = 0$. We write $\texttt{Frozen}$ at a trace position $i$ when there exists $l, r \geq 0$ such that $l + r > 0 \wedge \texttt{Frozen}(\tau(i) - l, \tau(i) + r)$. This means no work progressed in the interval surrounding the trace position.
 
    Compute is only spent on scheduler's actions.
-   So, in particular, progress of callbacks does not consume compute.
+   So, in particular, these events do not require or "consume" compute:
+   - progress of callbacks,
+   - IO operations,
+   - scheduler's sleeping or waiting,
+   - garbage collection,
+   - other activity of the embedding JavaScript runtime.
+   
+   More specifically, the compute function measures the potential for executing the scheduler's own code (and of its JavaScript dependencies), not anything else.
+
    It is expected that the scheduler will have access to less compute when more callbacks are running, but this is a very vague assumption, so not formalising it here.
-   The important point is that compute is a resource dedicated to the scheduler's own actions, not anything else that happens in the embedding environment.
 
 ## Environment properties (descriptive)
 
@@ -503,11 +509,11 @@ $$
 \boxed{\,F^{\leq C}_{\texttt{comp}}(P)\,}
 $$
 
-holds at position $i$ iff there exists $j \geq i$ and $t \in \mathbb{Z}$ such that:
+holds at time $i = \tau(i)$ iff there exists $j \geq i$, $U = [i, j]$ and $S \subseteq U$ such that:
 
 - $P$ holds at $j$,
-- and $\tau(j) - t \leq t_{\texttt{lag}}$,
-- and $\texttt{compute}\big(\tau(i),\, t \big) \leq C$.
+- and $\texttt{compute}(S) \leq C$.
+- and $|U| - |S| \leq t_{\texttt{lag}}$,
 
 Intuitively, this asserts that $P$ will occur after receiving at most $C$ units of environment-provided compute from the current position, plus a small lag $t_{\texttt{lag}}$ to account for a constant delay.
 
