@@ -512,8 +512,8 @@ $$
 holds at time $i = \tau(i)$ iff there exists $j \geq i$, $U = [i, j]$ and $S \subseteq U$ such that:
 
 - $P$ holds at $j$,
-- and $\texttt{compute}(S) \leq C$.
-- and $|U| - |S| \leq t_{\texttt{lag}}$,
+- and $\texttt{compute}(S) \leq C$,
+- and $|U| - |S| \leq t_{\texttt{lag}}$.
 
 Intuitively, this asserts that $P$ will occur after receiving at most $C$ units of environment-provided compute from the current position, plus a small lag $t_{\texttt{lag}}$ to account for a constant delay.
 
