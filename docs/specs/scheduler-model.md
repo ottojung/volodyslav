@@ -148,7 +148,7 @@ After a failure completes (or at, if retry delay is 0), a retry becomes eligible
 
 ---
 
-* $\texttt{FirstIE} := \texttt{IE} \wedge \neg \texttt{O} \; \texttt{IE}$
+* $\texttt{FirstIE} := \texttt{IE} \wedge \neg (\texttt{Y} \; \texttt{O} \; \texttt{IE})$
 
 This is the very first initialization in the trace.
 It is treated specially to prevent spurious task starts immediately after the first initialization.
