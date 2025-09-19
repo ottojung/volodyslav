@@ -180,12 +180,12 @@ An invocation of $x$ has begun and has not finished before the current position.
 
 ---
 
-* $\texttt{Pending}_x := \texttt{Hold}( \texttt{Due}_x, \texttt{RS}_x \lor \texttt{FirstIE} ) \wedge \neg \texttt{Running}_x$
+* $\texttt{DuePending}_x := \texttt{Hold}( \texttt{Due}_x, \texttt{RS}_x \lor \texttt{FirstIE} ) \wedge \neg \texttt{Running}_x$
 
 An outstanding request to perform a start after a due tick, cleared by a start and by $\texttt{FirstIE}$.
 But the task is not pending if it is currently running.
 
-The reason that $\texttt{FirstIE}$ clears $\texttt{Pending}_x$ is that the scheduler should not start all tasks at once after the very first initialization - not to overwhelm the system.
+The reason that $\texttt{FirstIE}$ clears $\texttt{DuePending}_x$ is that the scheduler should not start all tasks at once after the very first initialization - not to overwhelm the system.
 
 ---
 
@@ -193,17 +193,17 @@ The reason that $\texttt{FirstIE}$ clears $\texttt{Pending}_x$ is that the sched
 
 A retry request exists after a failure and persists until it is retried.
 
-Similarly to $\texttt{Pending}_x$, the task is not retry-pending if it is currently running.
+Similarly to $\texttt{DuePending}_x$, the task is not retry-pending if it is currently running.
 
 ---
 
-* $\texttt{EffectiveDue}_x := \texttt{Pending}_x \vee \texttt{RetryPending}_x$
+* $\texttt{Pending}_x := \texttt{DuePending}_x \vee \texttt{RetryPending}_x$
 
 A task $x$ is ready to run.
 
 ---
 
-* $\texttt{Obligation}_{R, x} :=  \texttt{EffectiveDue}_x \wedge \texttt{Registered}_x \wedge \texttt{Active}_R$
+* $\texttt{Obligation}_{R, x} :=  \texttt{Pending}_x \wedge \texttt{Registered}_x \wedge \texttt{Active}_R$
 
 The scheduler **should actually start** task $x$ now.
 
