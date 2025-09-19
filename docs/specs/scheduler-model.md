@@ -130,6 +130,19 @@ Each predicate marks the instant the named public action occurs from the perspec
 
 ---
 
+* $\texttt{AtMostOne}(B, A) := \texttt{G} (A \implies \ (\neg A \; \texttt{W} \; B ) )$
+
+At most one $A$ between consecutive $B$’s.
+One single $A$ is allowed if there is no next $B$.
+
+---
+
+* $\texttt{Hold}(\texttt{set}, \texttt{clear}) := (\neg \texttt{clear}) \; \texttt{S} \; \texttt{set}$
+
+There was a $\texttt{set}$ in the past (or now), and no $\texttt{clear}$ since.
+
+---
+
 * $IE^{\text{in}}_{R, x} := \texttt{InitEnd}(R)\wedge x\in\text{dom}(R)$
 
 Task $x$ got registered at current initialization.
@@ -158,19 +171,6 @@ It is treated specially to prevent spurious task starts immediately after the fi
 * $\texttt{RSucc}_x := \texttt{RS}_x \wedge \big( \neg (\texttt{REf}_x \lor \texttt{Crash}) \; \texttt{U} \; \texttt{REs}_x \big)$
 
 A start of run that eventually completes successfully (not preempted by failure or crash).
-
----
-
-* $\texttt{Hold}(\texttt{set}, \texttt{clear}) := (\neg \texttt{clear}) \; \texttt{S} \; \texttt{set}$
-
-There was a $\texttt{set}$ in the past (or now), and no $\texttt{clear}$ since.
-
----
-
-* $\texttt{AtMostOne}(B, A) := \texttt{G} (A \implies \ (\neg A \; \texttt{W} \; B ) )$
-
-At most one $A$ between consecutive $B$’s.
-One single $A$ is allowed if there is no next $B$.
 
 ---
 
