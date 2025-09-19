@@ -130,7 +130,7 @@ Each predicate marks the instant the named public action occurs from the perspec
 
 ---
 
-* $\texttt{AtMostOne}(B, A) := \texttt{G} (A \implies \ (\neg A \; \texttt{W} \; B ) )$
+* $\texttt{AtMostOne}(B, A) := \texttt{G} (A \rightarrow \ \texttt{X} (\neg A \; \texttt{W} \; B ) )$
 
 At most one $A$ between consecutive $B$’s.
 One single $A$ is allowed if there is no next $B$.
