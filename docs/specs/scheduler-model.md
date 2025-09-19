@@ -144,12 +144,6 @@ Membership of $x$ in the most recent observed registration set.
 
 ---
 
-* $\texttt{RetryEligible}_x := \texttt{Hold}(\texttt{RetryDue}_x,\ \texttt{REf}_x)$
-
-After a failure completes (or at, if retry delay is 0), a retry becomes eligible at the first $\texttt{RetryDue}_x$ pulse since that failure and remains true until cleared by a subsequent failure.
-
----
-
 * $\texttt{FirstIE} := \texttt{IE} \wedge \neg (\texttt{Y} \; \texttt{O} \; \texttt{IE})$
 
 This is the very first initialization in the trace.
@@ -195,11 +189,9 @@ The reason that $\texttt{FirstIE}$ clears $\texttt{Pending}_x$ is that the sched
 
 ---
 
-* $\texttt{RetryPending}_x := \texttt{RetryEligible}_x \wedge \texttt{Hold}( \texttt{REf}_x, \texttt{REs}_x) \wedge \neg \texttt{Running}_x$
+* $\texttt{RetryPending}_x := \texttt{Hold}( \texttt{RetryDue}_x, \texttt{RS}_x) \wedge \neg \texttt{Running}_x$
 
-A retry request that is true after a failure and cleared by $\texttt{REs}_x$.
-
-A retry request exists after a failure and persists until a success clears it; the request is gated by eligibility, which becomes true at the $\texttt{RetryDue}_x$ pulse for the most recent failure.
+A retry request exists after a failure and persists until it is retried.
 
 Similarly to $\texttt{Pending}_x$, the task is not retry-pending if it is currently running.
 
