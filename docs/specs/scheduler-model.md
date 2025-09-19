@@ -288,6 +288,12 @@ $$
 After $\texttt{SE}$, no new ends until re-initialisation.
 This means that call to `stop()` waits for in-flight callbacks to complete.
 
+**S6 — Quiescence after Crash**
+$$
+\texttt{G}( \texttt{Crash} \rightarrow (\neg \texttt{RS}_x \; \texttt{W} \; \texttt{IE}) )
+$$
+After $\texttt{Crash}$, no new starts until re-initialisation.
+
 ---
 
 # Example Acceptable Traces (informative)
