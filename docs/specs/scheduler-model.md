@@ -140,7 +140,7 @@ Task $x$ got registered at current initialization.
 
 Task $x$ is not registered at current initialization.
 
----  
+---
 
 * $\texttt{Registered}_{R, x} := \texttt{Hold}(IE^{\text{in}}_{R, x},\; IE^{\text{out}}_{R, x})$
 
