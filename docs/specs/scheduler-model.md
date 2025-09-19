@@ -155,6 +155,12 @@ It is treated specially to prevent spurious task starts immediately after the fi
 
 ---
 
+* $\texttt{RSucc}_x := \texttt{RS}_x \wedge \neg \big( (\texttt{REf}_x \lor \texttt{Crash}) \; \texttt{U} \; \texttt{REs}_x \big)$
+
+A start of run that eventually completes successfully (not preempted by failure or crash).
+
+---
+
 #### Stateful
 
 ---
