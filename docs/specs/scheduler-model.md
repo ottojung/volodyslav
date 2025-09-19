@@ -172,7 +172,7 @@ One single $A$ is allowed if there is no next $B$.
 
 ---
 
-* $\texttt{Active}_R := (\neg(\texttt{SS}_R \vee \texttt{Crash})) \; \texttt{S} \; \texttt{IE}_R$
+* $\texttt{Active}_R := \texttt{Hold}(\texttt{IE}_R, \texttt{SS}_R \vee \texttt{Crash})$
 
 Between an $\texttt{IE}$ and the next $\texttt{SS}$ or $\texttt{Crash}$.
 
