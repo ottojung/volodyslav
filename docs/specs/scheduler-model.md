@@ -259,9 +259,11 @@ These properties state scheduler invariants.
 They prevent invalid sequences of events.
 
 **S1 — Per-task non-overlap**
+
 $$
-\texttt{G}( \texttt{RS}_x \rightarrow \texttt{X} (\neg \texttt{RS}_x \; \texttt{W} \; (\texttt{RE}_x \vee \texttt{Crash})) )
+\texttt{G}\big( \texttt{AtMostOne}(\texttt{RE}_x \vee \texttt{Crash}, \texttt{RS}_x) \big)
 $$
+
 Once a run starts, no further $\texttt{RS}_x$ may occur before a matching $\texttt{RE}_x$ or $\texttt{Crash}$.
 
 **S2 — Start safety**
