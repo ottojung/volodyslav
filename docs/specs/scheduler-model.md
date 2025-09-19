@@ -250,7 +250,7 @@ No bound on compute here, as the scheduler may need to wait for in-flight callba
 The $\texttt{ELoop}$ disjunct accounts for callbacks that never terminate. This is a concession to the fact that users may write non-terminating callbacks. It is defined as:
 
 $$
-\texttt{ELoop} := \exists x. \; \texttt{G}( \texttt{Running}_x \wedge \neg \texttt{F} \; \texttt{RE}_x )
+\texttt{ELoop} := \exists x. \; (\texttt{Running}_x \wedge \neg \texttt{F} \; \texttt{RE}_x)
 $$
 
 # Safety Properties (normative)
