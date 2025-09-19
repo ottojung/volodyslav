@@ -425,7 +425,7 @@ $$
 
 For every task $x$, the cron schedule matches infinitely often.
 
-**S5 — Crash/RE consistency**
+**E5 — Crash/RE consistency**
 
 $$
 \texttt{G}( \texttt{Crash} \rightarrow (\neg \texttt{RE}_x \; \texttt{W} \; \texttt{RS}_x) )
