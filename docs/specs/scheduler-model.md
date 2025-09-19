@@ -538,6 +538,6 @@ This asserts that $P$ will occur after receiving at most $a \cdot (|X_1|+\dots+|
 
 **Theorem1 — Quiescence after Crash**
 $$
-\texttt{G}( \texttt{Crash} \rightarrow (\neg \texttt{Active} \; \texttt{W} \; \texttt{IE}) )
+\texttt{G}( \texttt{Crash} \rightarrow (\neg \texttt{RS} \; \texttt{W} \; \texttt{IE}) )
 $$
-After $\texttt{Crash}$ the scheduler is quiescent until re-initialisation.
+After $\texttt{Crash}$ no new starts until re-initialisation.
