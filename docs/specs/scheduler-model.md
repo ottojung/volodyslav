@@ -38,6 +38,8 @@ This subsection gives a signature-based, self-contained definition of the model,
 
 ## Domains
 
+* $\texttt{duration}(S) := |S|$ *(the cardinality of the interval $S$)*
+
 * $\texttt{TaskId}$ — a finite, non-empty set of task identifiers.
 * $\texttt{Result} = \{ \texttt{success}, \texttt{failure} \}$.
 * $\texttt{RegistrationSet}$ — a finite mapping $R : \texttt{TaskId} \to (\texttt{Schedule}, \texttt{RetryDelay})$.
@@ -513,7 +515,7 @@ holds at time $i = \tau(i)$ iff there exists $j \geq i$, $U = [i, j]$ and $S \su
 
 - $P$ holds at $j$,
 - and $\texttt{compute}(S) \leq C$,
-- and $|U| - |S| \leq t_{\texttt{lag}}$.
+- and $\texttt{duration}(S) + t_{\texttt{lag}} \leq \texttt{duration}(U)$.
 
 Intuitively, this asserts that $P$ will occur after receiving at most $C$ units of environment-provided compute from the current position, plus a small lag $t_{\texttt{lag}}$ to account for a constant delay.
 
