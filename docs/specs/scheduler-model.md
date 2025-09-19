@@ -195,11 +195,13 @@ The reason that $\texttt{FirstIE}$ clears $\texttt{Pending}_x$ is that the sched
 
 ---
 
-* $\texttt{RetryPending}_x := \texttt{RetryEligible}_x \wedge \texttt{Hold}( \texttt{REf}_x, \texttt{REs}_x)$
+* $\texttt{RetryPending}_x := \texttt{RetryEligible}_x \wedge \texttt{Hold}( \texttt{REf}_x, \texttt{REs}_x) \wedge \neg \texttt{Running}_x$
 
 A retry request that is true after a failure and cleared by $\texttt{REs}_x$.
 
 A retry request exists after a failure and persists until a success clears it; the request is gated by eligibility, which becomes true at the $\texttt{RetryDue}_x$ pulse for the most recent failure.
+
+Similarly to $\texttt{Pending}_x$, the task is not retry-pending if it is currently running.
 
 ---
 
