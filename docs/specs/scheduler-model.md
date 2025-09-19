@@ -204,7 +204,11 @@ A task $x$ is ready to run.
 
 ---
 
-* $\texttt{Obligation}_{R, x} :=  \texttt{Pending}_x \wedge \texttt{Registered}_x \wedge \texttt{Active}_R$
+$$
+\begin{aligned}\texttt{Obligation}_{x} & :=  \texttt{Pending}_x \wedge \texttt{Registered}_x \wedge \texttt{Active}_R \\
+\text{where} & \; R = \texttt{dom}(\texttt{IE}^{\text{in}}_x) \\
+\end{aligned}
+$$
 
 The scheduler **should actually start** task $x$ now.
 
@@ -220,7 +224,7 @@ Progress is always read relative to the environment’s willingness to provide c
 **L1 — Obligation fulfillment**
 
 $$
-\texttt{G}( \texttt{Obligation}_{R, x} \rightarrow \texttt{F}_{\texttt{comp}}^{\texttt{lin}(R, \,t)} (\texttt{RS}_x \vee \neg \texttt{Active}_R ))
+\texttt{G}( \texttt{Obligation}_{x} \rightarrow \texttt{F}_{\texttt{comp}}^{\texttt{lin}(R, \,t)} (\texttt{RS}_x \vee \neg \texttt{Active}_R ))
 $$
 
 When a task is supposed to be executed, we must eventually see that execution in the form of $\texttt{RS}_x$ (or a $\texttt{Crash}$, or $\texttt{SS}$).
@@ -255,7 +259,7 @@ Once a run starts, no further $\texttt{RS}_x$ may occur before a matching $\text
 
 **S2 — Start safety**
 $$
-\texttt{G}( \texttt{RS}_x \rightarrow \texttt{Obligation}_{R, x} )
+\texttt{G}( \texttt{RS}_x \rightarrow \texttt{Obligation}_{x} )
 $$
 A start can occur only while there is a current obligation to run.
 
