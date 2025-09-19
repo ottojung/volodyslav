@@ -191,7 +191,7 @@ An invocation of $x$ has begun and has not finished before the current position.
 An outstanding request to perform a start after a due tick, cleared by a start and by $\texttt{FirstIE}$.
 But the task is not pending if it is currently running.
 
-The reason that $\texttt{FirstIE}$ clears $\texttt{Pending}_x$ is that the scheduler should not start all tasks at once after the very first initialization, but only when they are next due.
+The reason that $\texttt{FirstIE}$ clears $\texttt{Pending}_x$ is that the scheduler should not start all tasks at once after the very first initialization - not to overwhelm the system.
 
 ---
 
