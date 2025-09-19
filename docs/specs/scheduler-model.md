@@ -239,14 +239,14 @@ Furthermore, that execution occurs within a bounded **compute** (as a linear fun
 **L2 — Initialization completes**
 
 $$
-\texttt{G}( \texttt{IS}_R \rightarrow \texttt{F}_{\texttt{comp}}^{\texttt{lin}(R, \,t)} \; \texttt{IE}_R )
+\texttt{G}\big( \texttt{IS}_R \rightarrow \texttt{F}_{\texttt{comp}}^{\texttt{lin}(R, \,t)} \; (\texttt{IE}_R \lor \texttt{Crash}) \big)
 $$
 
-Similar to L1, this property ensures that once an initialization starts, it must eventually complete within a bounded amount of compute.
+Similar to L1, this property ensures that once an initialization starts, it must eventually complete within a bounded amount of compute (unless preempted by a crash).
 
 **L3 — Stop terminates**
 $$
-\texttt{G}( \texttt{SS} \rightarrow \texttt{F} \; \texttt{SE} )
+\texttt{G}\big( \texttt{SS} \rightarrow \texttt{F} \; (\texttt{SE} \lor \texttt{Crash})\big)
 $$
 
 No bound on compute here, as the scheduler may need to wait for in-flight callbacks to complete. The callbacks are not bounded, so no unconditional bound on stop can be given.
