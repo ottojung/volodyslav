@@ -155,7 +155,7 @@ Task $x$ is not registered at current initialization.
 
 ---
 
-* $\texttt{Registered}_{R, x} := \texttt{Hold}(IE^{\text{in}}_{R, x},\; IE^{\text{out}}_{R, x})$
+* $\texttt{Registered}_{R, x} := \texttt{Hold}(IE^{\text{in}}_{R, x},\; \neg \texttt{Active}_R)$
 
 Membership of $x$ in the most recent observed registration set.
 
