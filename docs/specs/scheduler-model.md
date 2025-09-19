@@ -469,8 +469,6 @@ Eventually, the environment provides some positive compute in every future inter
 This rules out permanently freezing environments.
 It is a weak form of fairness that ensures the environment does not permanently withhold all compute.
 
-Without this, liveness cannot be satisfied for any scheduler implementation.
-
 **A2 — Starts eventually settle**
 
 $$
@@ -481,8 +479,6 @@ Every callback invocation completes in **finite** time unless pre-empted by $\te
 No uniform upper bound is required; the property only rules out infinite executions.
 Note that this is not guaranteed - users may write non-terminating callbacks.
 That's why this is an **informative** property, not a core property.
-
-But without this property, liveness cannot be satisfied for any scheduler implementation.
 
 **A3 - Low lag**
 
