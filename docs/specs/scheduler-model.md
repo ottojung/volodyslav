@@ -139,7 +139,7 @@ Non-membership of $x$ in the registration set provided at the most recent initia
 
 ---    
 
-* $\texttt{Registered}_{x} := \exists R.\, \texttt{Hold}(IE^{\text{in}}_{R, x},\; IE^{\text{out}}_{R, x})$
+* $\texttt{Registered}_{R, x} := \texttt{Hold}(IE^{\text{in}}_{R, x},\; IE^{\text{out}}_{R, x})$
 
 Membership of $x$ in the most recent observed registration set.
 
@@ -169,7 +169,7 @@ One single $A$ is allowed if there is no next $B$.
 
 ---
 
-* $\texttt{Active}_R := (\neg(\texttt{SS} \vee \texttt{Crash})) \; \texttt{S} \; \texttt{IE}_R$
+* $\texttt{Active}_R := (\neg(\texttt{SS}_R \vee \texttt{Crash})) \; \texttt{S} \; \texttt{IE}_R$
 
 Between an $\texttt{IE}$ and the next $\texttt{SS}$ or $\texttt{Crash}$.
 
@@ -204,11 +204,7 @@ A task $x$ is ready to run.
 
 ---
 
-$$
-\begin{aligned}\texttt{Obligation}_{x} & :=  \texttt{Pending}_x \wedge \texttt{Registered}_x \wedge \texttt{Active}_R \\
-\text{where} & \; R = \texttt{dom}(\texttt{IE}^{\text{in}}_x) \\
-\end{aligned}
-$$
+* $\texttt{Obligation}_{x} := \exists R \; (\texttt{Pending}_x \wedge \texttt{Registered}_{R, x} \wedge \texttt{Active}_{R})$
 
 The scheduler **should actually start** task $x$ now.
 
