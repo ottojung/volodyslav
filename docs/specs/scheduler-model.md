@@ -261,7 +261,7 @@ They prevent invalid sequences of events.
 **S1 — Per-task non-overlap**
 
 $$
-\texttt{G}\big( \texttt{AtMostOne}(\texttt{RE}_x \vee \texttt{Crash}, \texttt{RS}_x) \big)
+\texttt{G}\big( \texttt{RS}_x \rightarrow \neg \texttt{Y} \;\texttt{Running}_x) \big)
 $$
 
 Once a run starts, no further $\texttt{RS}_x$ may occur before a matching $\texttt{RE}_x$ or $\texttt{Crash}$.
