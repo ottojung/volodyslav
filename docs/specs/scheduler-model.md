@@ -132,13 +132,13 @@ Each predicate marks the instant the named public action occurs from the perspec
 
 * $IE^{\text{in}}_{R, x} := \texttt{InitEnd}(R)\wedge x\in\text{dom}(R)$
 
-Membership of $x$ in the registration set provided at the most recent initialization.
+Task $x$ got registered at current initialization.
 
 ---
 
 * $IE^{\text{out}}_{R, x} := \texttt{InitEnd}(R)\wedge x\notin\text{dom}(R)$
 
-Non-membership of $x$ in the registration set provided at the most recent initialization.
+Task $x$ is not registered at current initialization.
 
 ---    
 
