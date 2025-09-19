@@ -5,7 +5,7 @@
 
 This model combines first-order quantification over the universe scheduler objects with **future- and past-time LTL** formulas. Atomic predicates below are predicate symbols parameterised by a scheduler object variable (for example, $\texttt{RS}_x$, $\texttt{InitEnd}(R)$), and temporal operators apply to propositional formulas obtained by instantiating those predicates for concrete objects.
 
-We use the convenient shorthand of writing instantiated propositions like $\texttt{RS}_x$ for $\texttt{RunStart}(x)$. Where a formula is stated without explicit quantifiers, the default intent is universal quantification (eg. “for all tasks x”). First-order quantification ranges over the set of scheduler objects; temporal operators reason over event positions in the trace.
+We use the convenient shorthand of writing instantiated propositions like $\texttt{RS}_x$ for $\texttt{RunStart}(x)$. Where a formula is stated without explicit quantifiers, the default intent is universal quantification (eg. "for all tasks x", "for all registrations R"). First-order quantification ranges over the set of scheduler objects; temporal operators reason over event positions in the trace.
 
 This model focuses on externally observable behaviour, but does not include the error-handling part.
 
