@@ -13,7 +13,7 @@ This model focuses on externally observable behaviour, but does not include the 
 
 The scheduler model is parametric in an external execution environment ($\mathcal{E}$) (see [Execution Environment Model](#execution-environment-model)).
 
-The environment supplies exogenous phenomena and background structure: crash instants (the $\texttt{Crash}$ predicate), the real-time axis and clock alignment used by cron ($\mathbb{Z}$ time, minute boundaries), and retry pulses ($\texttt{RetryDue}_x$). It also constrains progress via a compute density function.
+The environment supplies exogenous phenomena and background structure: crash instants (the $\texttt{Crash}$ predicate), the real-time axis and clock alignment used by cron ($\mathbb{T}$ time, minute boundaries), and retry pulses ($\texttt{RetryDue}_x$). It also constrains progress via a compute density function.
 
 We split the models to separate scheduler obligations/choices (this section) from assumptions about the host and world (environment). This keeps safety properties independent of the host and makes progress claims explicit about their environmental preconditions (see [Environment taxonomy](#environment-taxonomy-informative)).
 
@@ -43,8 +43,8 @@ This subsection gives a signature-based, self-contained definition of the model,
 * $\texttt{TaskId}$ — a finite, non-empty set of task identifiers.
 * $\texttt{Result} = \{ \texttt{success}, \texttt{failure} \}$.
 * $\texttt{RegistrationSet}$ — a finite mapping $R : \texttt{TaskId} \to (\texttt{Schedule}, \texttt{RetryDelay})$.
-* $\texttt{Schedule}$ — an abstract predicate $\texttt{Due}(\texttt{task}: \texttt{TaskId}, t: \mathbb{Z}) \to \texttt{Bool}$ indicating minute-boundary instants when a task is eligible to start.
-* $\texttt{RetryDelay} : \texttt{TaskId} \to \mathbb{Z}_{\geq 0}$ $-$ the function that maps each task to its non-negative retry delay.
+* $\texttt{Schedule}$ — an abstract predicate $\texttt{Due}(\texttt{task}: \texttt{TaskId}, t: \mathbb{T}) \to \texttt{Bool}$ indicating minute-boundary instants when a task is eligible to start.
+* $\texttt{RetryDelay} : \texttt{TaskId} \to \mathbb{T}_{\geq 0}$ $-$ the function that maps each task to its non-negative retry delay.
 
 **Interpretation:**
 $\texttt{TaskId}$ names externally visible tasks. A $\texttt{RegistrationSet}$ is the public input provided at initialization. $\texttt{Due}$ and $\texttt{RetryDelay}$ are parameters determined by the environment (host clock); they are not hidden internal state. Time units for $\texttt{Due}$ and $\texttt{RetryDelay}$ coincide.
@@ -110,6 +110,7 @@ Each predicate marks the instant the named public action occurs from the perspec
 
 #### Abbreviations
 
+* $\mathbb{T} := \mathbb{T}$
 * $\texttt{IS}_R := \texttt{InitStart}(R)$
 * $\texttt{IE}_R := \texttt{InitEnd}(R)$
 * $\texttt{SS}_R := \texttt{StopStart}(R)$
@@ -350,15 +351,15 @@ The value of this section is to clarify the blame assignment between scheduler a
 
 The environment contributes two ingredients:
 
-1. **Crash generator** — a predicate $\texttt{Crash}(t)$ over $\mathbb{Z}$. When true, the environment marks an exogenous interruption that preempts in-flight callbacks and halts the scheduler itself; property **E1** enforce the resulting quiescence in the trace.
+1. **Crash generator** — a predicate $\texttt{Crash}(t)$ over $\mathbb{T}$. When true, the environment marks an exogenous interruption that preempts in-flight callbacks and halts the scheduler itself; property **E1** enforce the resulting quiescence in the trace.
 
 2. **Work density function** — a dimensionless function
 
    $$
-   \texttt{compute} : \mathcal{P}(\mathbb{Z}) \to \mathbb{Q}_{\ge 0}
+   \texttt{compute} : \mathcal{P}(\mathbb{T}) \to \mathbb{Q}_{\ge 0}
    $$
 
-   assigning the potential amount of computational progress available to the scheduler over any real-time interval. For some $\lambda > 0$ and for all $S, V \subset \mathbb{Z}$, it satisfies:
+   assigning the potential amount of computational progress available to the scheduler over any real-time interval. For some $\lambda > 0$ and for all $S, V \subset \mathbb{T}$, it satisfies:
 
    * **T1 (additivity):** $\texttt{compute}(S \cup V) = \texttt{compute}(S) + \texttt{compute}(V) - \texttt{compute}(S \cap V)$.
    * **T2 (boundedness):** $\texttt{compute}(S) \leq \lambda \cdot \texttt{duration}(S)$.
@@ -498,7 +499,7 @@ This section defines the helper modalities $F^{\leq C}_{\texttt{comp}}$ and $F^{
 
 **Current registration set and its size.** At any trace position $i$, let $R_i$ be the effective registration set of the most recent initialization that is currently active (that is, the unique $R$ such that $\texttt{Active}_R$ holds at $i$). Write $|R|$ for $|R_i| = |\llbracket R_i \rrbracket|$. *Remark:* any reasonable encoding of a finite map $\texttt{TaskId} \to (\texttt{Schedule}, \texttt{RetryDelay})$ suffices; the spec is parametric in the encoding, assuming only standard per-entry overhead.
 
-**Background time value and its size.** Each position $i$ is associated with a background timestamp value $t := \tau(i) \in \mathbb{Z}$. Define $|t| := |\llbracket t \rrbracket|$ using a standard signed binary encoding (so this equals $1 + \lceil \log_2(1 + |t|_{\text{abs}}) \rceil$, where $|t|_{\text{abs}}$ is the absolute value of $t$). *Important:* $|t|$ measures the value of the clock, not the density of events; events may be sparse in $i$ even when $|t|$ grows.
+**Background time value and its size.** Each position $i$ is associated with a background timestamp value $t := \tau(i) \in \mathbb{T}$. Define $|t| := |\llbracket t \rrbracket|$ using a standard signed binary encoding (so this equals $1 + \lceil \log_2(1 + |t|_{\text{abs}}) \rceil$, where $|t|_{\text{abs}}$ is the absolute value of $t$). *Important:* $|t|$ measures the value of the clock, not the density of events; events may be sparse in $i$ even when $|t|$ grows.
 
 **Compute-bounded eventually.** Fix global non-negative constant $t_{\texttt{lag}}$. For $C \in \mathbb{Q}_{\geq 0}$, the modality
 
