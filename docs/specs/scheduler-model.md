@@ -55,7 +55,7 @@ Each event predicate is evaluated at a trace position $i$ (we omit $i$ when clea
 
 ---
 
-* $\texttt{InitStart}$ — the JavaScript interpreter calls `initialize(...)`.
+* $\texttt{InitStart}(R)$ — the JavaScript interpreter calls `initialize(...)`. The effective registration set is $R$.
 
 ---
 
@@ -63,11 +63,11 @@ Each event predicate is evaluated at a trace position $i$ (we omit $i$ when clea
 
 ---
 
-* $\texttt{StopStart}$ — the JavaScript interpreter calls `stop()`.
+* $\texttt{StopStart}(R)$ — the JavaScript interpreter calls `stop()`. The effective registration set is $R$.
 
 ---
 
-* $\texttt{StopEnd}$ — the `stop()` call returns.
+* $\texttt{StopEnd}(R)$ — the `stop()` call returns. The effective registration set is $R$.
 
 ---
 
@@ -110,10 +110,10 @@ Each predicate marks the instant the named public action occurs from the perspec
 
 #### Abbreviations
 
-* $\texttt{IS} := \texttt{InitStart}$
-* $\texttt{IE} := \exists R. \texttt{InitEnd}(R)$
-* $\texttt{SS} := \texttt{StopStart}$
-* $\texttt{SE} := \texttt{StopEnd}$
+* $\texttt{IS}_R := \texttt{InitStart}(R)$
+* $\texttt{IE}_R := \texttt{InitEnd}(R)$
+* $\texttt{SS}_R := \texttt{StopStart}(R)$
+* $\texttt{SE}_R := \texttt{StopEnd}(R)$
 * $\texttt{Crash} := \texttt{UnexpectedShutdown}$
 * $\texttt{RS}_x := \texttt{RunStart}(x)$
 * $\texttt{REs}_x := \texttt{RunEnd}(x, \texttt{success})$
