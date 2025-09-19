@@ -127,19 +127,19 @@ Each predicate marks the instant the named public action occurs from the perspec
 
 ---
 
-* $IE^{\text{in}}_x := \exists R.\,(\texttt{InitEnd}(R)\wedge x\in\text{dom}(R))$
+* $IE^{\text{in}}_{R, x} := \texttt{InitEnd}(R)\wedge x\in\text{dom}(R)$
 
 Membership of $x$ in the registration set provided at the most recent initialization.
 
 ---
 
-* $IE^{\text{out}}_x := \exists R.\,(\texttt{InitEnd}(R)\wedge x\notin\text{dom}(R))$
+* $IE^{\text{out}}_{R, x} := \texttt{InitEnd}(R)\wedge x\notin\text{dom}(R)$
 
 Non-membership of $x$ in the registration set provided at the most recent initialization.
 
 ---    
 
-* $\texttt{Registered}_x := \texttt{Hold}(IE^{\text{in}}_x,\; IE^{\text{out}}_x)$
+* $\texttt{Registered}_{x} := \exists R.\, \texttt{Hold}(IE^{\text{in}}_{R, x},\; IE^{\text{out}}_{R, x})$
 
 Membership of $x$ in the most recent observed registration set.
 
