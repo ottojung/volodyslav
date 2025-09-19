@@ -315,7 +315,7 @@ IS
 IE                 // task "1" registered
 SS
 SE
-                   // No RS_1 until re-init; no EffectiveDue_1 obligations either
+                   // No RS_1 until re-init; no obligations either
 IS
 IE                 // task "1" registered
 Due_1
