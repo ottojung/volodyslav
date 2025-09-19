@@ -250,7 +250,7 @@ No bound on compute here, as the scheduler may need to wait for in-flight callba
 The $\neg\texttt{AllTerm}$ disjunct accounts for callbacks that never terminate. This is a concession to the fact that users may write non-terminating callbacks. It is defined as:
 
 $$
-\texttt{AllTerm} := \forall_{y} \; (\texttt{Running}_y \implies \texttt{F} \; \texttt{RE}_y)
+\texttt{AllTerm} := \forall_{y} \; (\texttt{Running}_y \rightarrow \texttt{F} \; \texttt{RE}_y)
 $$
 
 # Safety Properties (normative)
