@@ -288,12 +288,6 @@ $$
 After $\texttt{SE}$, no new ends until re-initialisation.
 This means that call to `stop()` waits for in-flight callbacks to complete.
 
-**S6 — Quiescence after Crash**
-$$
-\texttt{G}( \texttt{Crash} \rightarrow (\neg \texttt{Active} \; \texttt{W} \; \texttt{IE}) )
-$$
-After $\texttt{Crash}$ the scheduler is quiescent until re-initialisation.
-
 ---
 
 # Example Acceptable Traces (informative)
@@ -539,3 +533,11 @@ $$
 $$
 
 This asserts that $P$ will occur after receiving at most $a \cdot (|X_1|+\dots+|X_n|) + b$ units of environment-provided compute from the current position.
+
+## Theorems
+
+**Theorem1 — Quiescence after Crash**
+$$
+\texttt{G}( \texttt{Crash} \rightarrow (\neg \texttt{Active} \; \texttt{W} \; \texttt{IE}) )
+$$
+After $\texttt{Crash}$ the scheduler is quiescent until re-initialisation.
