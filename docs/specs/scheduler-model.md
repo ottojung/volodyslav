@@ -258,7 +258,7 @@ They prevent invalid sequences of events.
 
 **S1 — Per-task non-overlap**
 $$
-\texttt{G}( \texttt{RS}_x \rightarrow (\neg \texttt{RS}_x \; \texttt{W} \; (\texttt{RE}_x \vee \texttt{Crash})) )
+\texttt{G}( \texttt{RS}_x \rightarrow \texttt{X} (\neg \texttt{RS}_x \; \texttt{W} \; (\texttt{RE}_x \vee \texttt{Crash})) )
 $$
 Once a run starts, no further $\texttt{RS}_x$ may occur before a matching $\texttt{RE}_x$ or $\texttt{Crash}$.
 
