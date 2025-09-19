@@ -119,10 +119,10 @@ Each predicate marks the instant the named public action occurs from the perspec
 * $\texttt{SS} := \texttt{SS}_R := \texttt{StopStart}(R)$
 * $\texttt{SE} := \texttt{SE}_R := \texttt{StopEnd}(R)$
 * $\texttt{Crash} := \texttt{UnexpectedShutdown}$
-* $\texttt{RS}_x := \texttt{RunStart}(x)$
-* $\texttt{REs}_x := \texttt{RunEnd}(x, \texttt{success})$
-* $\texttt{REf}_x := \texttt{RunEnd}(x, \texttt{failure})$
-* $\texttt{RE}_x := \texttt{REs}_x \vee \texttt{REf}_x$
+* $\texttt{RS}_x := \texttt{RS}_x := \texttt{RunStart}(x)$
+* $\texttt{REs} := \texttt{REs}_x := \texttt{RunEnd}(x, \texttt{success})$
+* $\texttt{REf} := \texttt{REf}_x := \texttt{RunEnd}(x, \texttt{failure})$
+* $\texttt{RE} := \texttt{RE}_x := \texttt{REs}_x \vee \texttt{REf}_x$
 
 ---
 
