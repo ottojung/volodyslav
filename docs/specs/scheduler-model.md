@@ -114,10 +114,10 @@ Each predicate marks the instant the named public action occurs from the perspec
 #### Abbreviations
 
 * $\mathbb{T} := \mathbb{Z}$
-* $\texttt{IS}_R := \texttt{InitStart}(R)$
-* $\texttt{IE}_R := \texttt{InitEnd}(R)$
-* $\texttt{SS}_R := \texttt{StopStart}(R)$
-* $\texttt{SE}_R := \texttt{StopEnd}(R)$
+* $\texttt{IS} := \texttt{IS}_R := \texttt{InitStart}(R)$
+* $\texttt{IE} := \texttt{IE}_R := \texttt{InitEnd}(R)$
+* $\texttt{SS} := \texttt{SS}_R := \texttt{StopStart}(R)$
+* $\texttt{SE} := \texttt{SE}_R := \texttt{StopEnd}(R)$
 * $\texttt{Crash} := \texttt{UnexpectedShutdown}$
 * $\texttt{RS}_x := \texttt{RunStart}(x)$
 * $\texttt{REs}_x := \texttt{RunEnd}(x, \texttt{success})$
