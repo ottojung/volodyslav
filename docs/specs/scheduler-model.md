@@ -178,7 +178,7 @@ Between an $\texttt{IE}$ and the next $\texttt{SS}$ or $\texttt{Crash}$.
 
 ---
 
-* $\texttt{Running}_x := (\neg \texttt{RE}_x) \; \texttt{S} \; \texttt{RS}_x \land (\neg \texttt{Crash}) \; \texttt{S} \; \texttt{RS}_x$
+* $\texttt{Running}_x := \texttt{Hold}(\texttt{RS}_x, \texttt{RE}_x \lor \texttt{Crash})$
 
 An invocation of $x$ has begun and has not finished before the current position.
 
