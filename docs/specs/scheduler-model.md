@@ -186,9 +186,10 @@ An invocation of $x$ has begun and has not finished before the current position.
 
 ---
 
-* $\texttt{Pending}_x := \texttt{Hold}( \texttt{Due}_x, \texttt{RS}_x \lor \texttt{FirstIE} )$
+* $\texttt{Pending}_x := \texttt{Hold}( \texttt{Due}_x, \texttt{RS}_x \lor \texttt{FirstIE} ) \wedge \neg \texttt{Running}_x$
 
 An outstanding request to perform a start after a due tick, cleared by a start and by $\texttt{FirstIE}$.
+But the task is not pending if it is currently running.
 
 The reason that $\texttt{FirstIE}$ clears $\texttt{Pending}_x$ is that the scheduler should not start all tasks at once after the very first initialization, but only when they are next due.
 
