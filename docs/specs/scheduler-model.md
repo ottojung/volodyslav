@@ -290,9 +290,9 @@ This means that call to `stop()` waits for in-flight callbacks to complete.
 
 **S6 — Quiescence after Crash**
 $$
-\texttt{G}( \texttt{Crash} \rightarrow (\neg \texttt{RS}_x \; \texttt{W} \; \texttt{IE}) )
+\texttt{G}( \texttt{Crash} \rightarrow (\neg \texttt{Active} \; \texttt{W} \; \texttt{IE}) )
 $$
-After $\texttt{Crash}$, no new starts until re-initialisation.
+After $\texttt{Crash}$ the scheduler is quiescent until re-initialisation.
 
 ---
 
