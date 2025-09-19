@@ -374,10 +374,10 @@ The environment contributes two ingredients:
 
    Compute is only spent on scheduler's actions.
    So, in particular, these events do not require or "consume" compute:
-   - progress of callbacks,
    - IO operations,
    - scheduler's sleeping or waiting,
    - garbage collection,
+   - progress of callbacks (except for starting and ending them),
    - other activity of the embedding JavaScript runtime.
    
    More specifically, the compute function measures the potential for executing the scheduler's own code (and of its JavaScript dependencies), not anything else.
