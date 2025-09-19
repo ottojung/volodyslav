@@ -13,7 +13,7 @@ This model focuses on externally observable behaviour, but does not include the 
 
 The scheduler model is parametric in an external execution environment ($\mathcal{E}$) (see [Execution Environment Model](#execution-environment-model)).
 
-The environment supplies exogenous phenomena and background structure: crash instants (the $\texttt{Crash}$ predicate), the real-time axis and clock alignment used by cron ($\mathbb{T}$ time, minute boundaries), and retry pulses ($\texttt{RetryDue}_x$). It also constrains progress via a compute density function.
+The environment supplies exogenous phenomena and background structure: crash instants (the $\texttt{Crash}$ predicate), the real-time axis and clock alignment used by cron, and retry pulses ($\texttt{RetryDue}_x$). It also constrains progress via a compute density function.
 
 We split the models to separate scheduler obligations/choices (this section) from assumptions about the host and world (environment). This keeps safety properties independent of the host and makes progress claims explicit about their environmental preconditions (see [Environment taxonomy](#environment-taxonomy-informative)).
 
