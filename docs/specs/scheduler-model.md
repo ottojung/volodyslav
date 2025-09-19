@@ -38,8 +38,7 @@ This subsection gives a signature-based, self-contained definition of the model,
 
 ## Domains
 
-* $\texttt{duration}(S) := |S|$ *(the cardinality of the interval $S$)*
-
+* $\texttt{duration}(S) := |S|$ 
 * $\texttt{TaskId}$ — a finite, non-empty set of task identifiers.
 * $\texttt{Result} = \{ \texttt{success}, \texttt{failure} \}$.
 * $\texttt{RegistrationSet}$ — a finite mapping $R : \texttt{TaskId} \to (\texttt{Schedule}, \texttt{RetryDelay})$.
@@ -48,6 +47,10 @@ This subsection gives a signature-based, self-contained definition of the model,
 
 **Interpretation:**
 $\texttt{TaskId}$ names externally visible tasks. A $\texttt{RegistrationSet}$ is the public input provided at initialization. $\texttt{Due}$ and $\texttt{RetryDelay}$ are parameters determined by the environment (host clock); they are not hidden internal state. Time units for $\texttt{Due}$ and $\texttt{RetryDelay}$ coincide.
+
+Duration is the cardinality of the interval $S$.
+It corresponds to *some* real-time duration.
+For example, it could be that $\texttt{duration}([0, 999])$ is one hour.
 
 ## Event Predicates (Observable Alphabet)
 
