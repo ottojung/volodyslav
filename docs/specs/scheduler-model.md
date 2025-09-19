@@ -428,6 +428,14 @@ $$
 
 For every task $x$, the cron schedule matches infinitely often.
 
+**S5 — Crash/RE consistency**
+
+$$
+\texttt{G}( \texttt{Crash} \rightarrow (\neg \texttt{RE}_x \; \texttt{W} \; \texttt{RS}_x) )
+$$
+
+After a $\texttt{Crash}$, no new ends until a new start.
+
 **RD1 — Nonprecedence**
 $$
 	\texttt{G}\big( ( \neg \texttt{O}\ \texttt{REf}_x ) \rightarrow \neg \texttt{RetryDue}_x \big)
