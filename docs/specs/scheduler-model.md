@@ -278,7 +278,7 @@ Should prevent multiple successful executions per single due period.
 **S3 — StopEnd consistency**
 
 $$
-\texttt{G}( \texttt{SE} \rightarrow (\neg \texttt{RE}_x \; \texttt{W} \; \texttt{IE}) )
+\texttt{G}( \texttt{SE}_{a} \rightarrow (\neg \texttt{RE}_x \; \texttt{W} \; \texttt{IE}_{b}) )
 $$
 
 After $\texttt{SE}$, no new ends until re-initialisation.
