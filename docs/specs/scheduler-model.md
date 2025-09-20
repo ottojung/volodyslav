@@ -527,7 +527,7 @@ This asserts that $P$ will occur after receiving at most $a \cdot (|X_1|+\dots+|
 
 ---
 
-**Theorem1 — Quiescence after Crash**
+**Theorem 1 — Quiescence after Crash**
 $$
 \texttt{G}( \texttt{Crash} \rightarrow (\neg \texttt{RS} \; \texttt{W} \; \texttt{IE}) )
 $$
