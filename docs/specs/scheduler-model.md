@@ -272,7 +272,7 @@ $$
 
 Should prevent multiple successful executions per single due period.
 
-**S4 — StopEnd consistency**
+**S3 — StopEnd consistency**
 
 $$
 \texttt{G}( \texttt{SE} \rightarrow (\neg \texttt{RE}_x \; \texttt{W} \; \texttt{IE}) )
