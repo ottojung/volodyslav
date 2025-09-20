@@ -164,7 +164,7 @@ Membership of $x$ in the most recent observed registration set.
 
 ---
 
-* $\texttt{FirstIE} := \texttt{IE} \wedge \neg (\texttt{Y} \; \texttt{O} \; \texttt{IE})$
+* $\texttt{FirstIE}_R := \texttt{IE}_R \wedge \neg (\texttt{Y} \; \texttt{O} \; \texttt{IE}_b)$
 
 This is the very first initialization in the trace.
 It is treated specially to prevent spurious task starts immediately after the first initialization.
