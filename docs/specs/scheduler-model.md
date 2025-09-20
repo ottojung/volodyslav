@@ -146,19 +146,19 @@ There was a $\texttt{set}$ in the past (or now), and no $\texttt{clear}$ since.
 
 ---
 
-* $IE^{\text{in}}_{R, x} := \texttt{InitEnd}(R)\wedge x\in\text{dom}(R)$
+* $\texttt{IE}^{\text{in}}_{R, x} := \texttt{InitEnd}(R)\wedge x\in\text{dom}(R)$
 
 Task $x$ got registered at current initialization.
 
 ---
 
-* $IE^{\text{out}}_{R, x} := \texttt{InitEnd}(R)\wedge x\notin\text{dom}(R)$
+* $\texttt{IE}^{\text{out}}_{R, x} := \texttt{InitEnd}(R)\wedge x\notin\text{dom}(R)$
 
 Task $x$ is not registered at current initialization.
 
 ---
 
-* $\texttt{Registered}_{R, x} := \texttt{Hold}(IE^{\text{in}}_{R, x},\; \neg \texttt{Active}_R)$
+* $\texttt{Registered}_{R, x} := \texttt{Hold}(\texttt{IE}^{\text{in}}_{R, x},\; \texttt{IE}^{\text{out}}_{R, x} \vee \neg \texttt{Active}_R)$
 
 Membership of $x$ in the most recent observed registration set.
 
