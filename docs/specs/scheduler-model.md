@@ -258,13 +258,13 @@ $$
 These properties state scheduler invariants.
 They prevent invalid sequences of events.
 
-**S2 — Start safety**
+**S1 — Start safety**
 $$
 \texttt{G}( \texttt{RS}_x \rightarrow \exists R. \; \texttt{Obligation}_{R, x} )
 $$
 A start can occur only while there is a current obligation to run.
 
-**S3 — Conservation of starts**
+**S2 — Conservation of starts**
 
 $$
 \texttt{G}( \texttt{AtMostOne}(\texttt{Due}_x, \texttt{RSucc}_x) )
@@ -272,13 +272,13 @@ $$
 
 Should prevent multiple successful executions per single due period.
 
-**S4 — Quiescence after StopEnd**
+**S3 — Quiescence after StopEnd**
 $$
 \texttt{G}( \texttt{SE} \rightarrow (\neg \texttt{RS}_x \; \texttt{W} \; \texttt{IE}) )
 $$
 After $\texttt{SE}$, no new starts until re-initialisation.
 
-**S5 — StopEnd consistency**
+**S4 — StopEnd consistency**
 
 $$
 \texttt{G}( \texttt{SE} \rightarrow (\neg \texttt{RE}_x \; \texttt{W} \; \texttt{IE}) )
