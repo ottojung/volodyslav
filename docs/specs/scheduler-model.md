@@ -272,12 +272,6 @@ $$
 
 Should prevent multiple successful executions per single due period.
 
-**S3 — Quiescence after StopEnd**
-$$
-\texttt{G}( \texttt{SE} \rightarrow (\neg \texttt{RS}_x \; \texttt{W} \; \texttt{IE}) )
-$$
-After $\texttt{SE}$, no new starts until re-initialisation.
-
 **S4 — StopEnd consistency**
 
 $$
@@ -552,3 +546,16 @@ Once a run starts, no further $\texttt{RS}_x$ may occur before a matching $\text
 Follows from **S1** and the fact that $\texttt{Pending}$ requires $\neg \texttt{Running}$.
 
 ---
+
+**Theorem 3 — Quiescence after StopEnd**
+
+$$
+\texttt{G}( \texttt{SE} \rightarrow (\neg \texttt{RS}_x \; \texttt{W} \; \texttt{IE}) )
+$$
+
+After $\texttt{SE}$, no new starts until re-initialisation.
+
+Follows from **S1** and the fact that $\texttt{Obligation}$ requires $\texttt{Active}$.
+
+---
+
