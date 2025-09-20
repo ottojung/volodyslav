@@ -258,14 +258,6 @@ $$
 These properties state scheduler invariants.
 They prevent invalid sequences of events.
 
-**S1 — Per-task non-overlap**
-
-$$
-\texttt{G}\big( \texttt{RS}_x \rightarrow \neg \texttt{Y} \;\texttt{Running}_x) \big)
-$$
-
-Once a run starts, no further $\texttt{RS}_x$ may occur before a matching $\texttt{RE}_x$ or $\texttt{Crash}$.
-
 **S2 — Start safety**
 $$
 \texttt{G}( \texttt{RS}_x \rightarrow \exists R. \; \texttt{Obligation}_{R, x} )
@@ -539,8 +531,24 @@ This asserts that $P$ will occur after receiving at most $a \cdot (|X_1|+\dots+|
 
 ## Theorems
 
+---
+
 **Theorem1 — Quiescence after Crash**
 $$
 \texttt{G}( \texttt{Crash} \rightarrow (\neg \texttt{RS} \; \texttt{W} \; \texttt{IE}) )
 $$
 After $\texttt{Crash}$ no new starts until re-initialisation.
+
+---
+
+**Theorem 2 — Per-task non-overlap**
+
+$$
+\texttt{G}\big( \texttt{RS}_x \rightarrow \neg \texttt{Y} \;\texttt{Running}_x) \big)
+$$
+
+Once a run starts, no further $\texttt{RS}_x$ may occur before a matching $\texttt{RE}_x$ or $\texttt{Crash}$.
+
+Follows from **S1** and the fact that $\texttt{Pending}$ requires $\neg \texttt{Running}$.
+
+---
