@@ -267,7 +267,7 @@ A start can occur only while there is a current obligation to run.
 **S2 — Conservation of starts**
 
 $$
-\texttt{G}( \texttt{AtMostOne}(\texttt{Due}_x, \texttt{RSucc}_x) )
+\texttt{AtMostOne}(\texttt{Due}_x, \texttt{RSucc}_x)
 $$
 
 Should prevent multiple successful executions per single due period.
@@ -432,7 +432,7 @@ No spurious pulses before any failure.
 
 **RD2 — Uniqueness**
 $$
-	\texttt{G}\big( \texttt{AtMostOne}(\texttt{REf}_x,\ \texttt{RetryDue}_x) \big)
+	\texttt{AtMostOne}(\texttt{REf}_x,\ \texttt{RetryDue}_x)
 $$
 
 At most one pulse between consecutive failures (or none if no failure occurs).
