@@ -245,12 +245,12 @@ Similar to L1, this property ensures that once an initialization starts, it must
 
 **L3 — Stop terminates**
 $$
-\texttt{G}\big( \texttt{SS} \land \texttt{AllTerm} \rightarrow \texttt{F} \; (\texttt{SE} \lor \texttt{Crash})\big)
+\texttt{G}\big( \texttt{SS} \rightarrow \texttt{AllTerm} \rightarrow \texttt{F} \; (\texttt{SE} \lor \texttt{Crash})\big)
 $$
 
 No bound on compute here, as the scheduler may need to wait for in-flight callbacks to complete. The callbacks are not bounded, so no unconditional bound on stop can be given.
 
-The $\neg\texttt{AllTerm}$ conjunct accounts for callbacks that never terminate. This is a concession to the fact that users may write non-terminating callbacks. It is defined as:
+The $\texttt{AllTerm}$ condition accounts for callbacks that never terminate. This is a concession to the fact that users may write non-terminating callbacks. It is defined as:
 
 $$
 \texttt{AllTerm} := \forall_{y} \; (\texttt{Running}_y \rightarrow \texttt{F} \; \texttt{RE}_y)
