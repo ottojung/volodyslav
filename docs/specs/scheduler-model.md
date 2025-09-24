@@ -156,7 +156,7 @@ There was a $\texttt{set}$ in the past (or now), and no $\texttt{clear}$ since.
 ---
 
 $$
-\texttt{IS/IS}_{R} := \texttt{Hold}(\texttt{IS}_{R}, \texttt{IS}_{R'}) \\
+\texttt{IS}^+_{R} := \texttt{Hold}(\texttt{IS}_{R}, \texttt{IS}_{R'}) \\
 \text{for some } R'
 $$
 
@@ -164,19 +164,19 @@ Reference to the most recent initialization start **for a specific** registratio
 
 ---
 
-* $\texttt{IE}_R := \texttt{IE} \land \texttt{IS/IS}_{R}$
+* $\texttt{IE}_R := \texttt{IE} \land \texttt{IS}^+_{R}$
 
 Initialization ended **for a specific** registration list $R$.
 
 ---
 
-* $\texttt{SS}_R := \texttt{SS} \land \texttt{IS/IS}_{R}$
+* $\texttt{SS}_R := \texttt{SS} \land \texttt{IS}^+_{R}$
 
 Stop started **for a specific** registration list $R$.
 
 ---
 
-* $\texttt{SE}_R := \texttt{SE} \land \texttt{IS/IS}_{R}$
+* $\texttt{SE}_R := \texttt{SE} \land \texttt{IS}^+_{R}$
 
 Stop ended **for a specific** registration list $R$.
 
