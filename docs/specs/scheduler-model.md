@@ -39,18 +39,33 @@ This subsection gives a signature-based, self-contained definition of the model,
 ## Domains
 
 * $\texttt{duration}(S) := |S|$ 
-* $\texttt{TaskId}$ — a finite, non-empty set of task identifiers.
+* $\texttt{TaskId}$ — a (possibly infinite) set of task identifiers.
 * $\texttt{Result} = \{ \texttt{success}, \texttt{failure} \}$.
-* $\texttt{RegistrationSet}$ — a finite mapping $R : \texttt{TaskId} \to (\texttt{Schedule}, \texttt{RetryDelay})$.
 * $\texttt{Schedule}$ — an abstract predicate $\texttt{Due}(\texttt{task}: \texttt{TaskId}, t: \mathbb{T}) \to \texttt{Bool}$ indicating minute-boundary instants when a task is eligible to start.
 * $\texttt{RetryDelay} : \texttt{TaskId} \to \mathbb{T}_{\geq 0}$ $-$ the function that maps each task to its non-negative retry delay.
+* $\texttt{Callback}$ — the set of callback functions.
+* $\texttt{Opaque}$ — an infinite set of uninterpreted atoms (only equality is meaningful).
+* $\texttt{Task} := \texttt{TaskId} \times \texttt{Schedule} \times \texttt{RetryDelay} \times \texttt{Callback} \times \texttt{Opaque}$ — a 5-tuple $(\textsf{id}, \textsf{sch}, \textsf{rd}, \textsf{cb}, \textsf{key})$ with projections $\textsf{id}(x)$, $\textsf{sch}(x)$, $\textsf{rd}(x)$, $\textsf{cb}(x)$, $\textsf{key}(x)$.
+* $\texttt{RegistrationList}$ — a finite ordered list of tasks $R = [x_0, \dots, x_{n-1}]$. List-membership (strong): $x \in_{\text{list}} R \iff \exists i.\ R[i] = x$. Duplicate $\texttt{TaskId}$s are permitted.
+
+**Terminology note:** The registration denotes an ordered list, despite references elsewhere to "set."
 
 **Interpretation:**
-$\texttt{TaskId}$ names externally visible tasks. A $\texttt{RegistrationSet}$ is the public input provided at initialization. $\texttt{Due}$ and $\texttt{RetryDelay}$ are parameters determined by the environment (host clock); they are not hidden internal state. Time units for $\texttt{Due}$ and $\texttt{RetryDelay}$ coincide.
+$\texttt{TaskId}$ names externally visible tasks. A $\texttt{RegistrationList}$ is the public input provided at initialization. $\texttt{Due}$ and $\texttt{RetryDelay}$ are parameters determined by the environment (host clock); they are not hidden internal state. Time units for $\texttt{Due}$ and $\texttt{RetryDelay}$ coincide.
+
+**Opaque key:** $\textsf{key}(x)$ is an equality-only argument attached to a task instance at registration time. It enables precise reference to that exact raw task without imposing pointer semantics or conflating with $\texttt{TaskId}$. No assumptions are made about how keys are generated or reused.
 
 Duration is the cardinality of the set $S$.
 It corresponds to *some* real-time duration.
 For example, it could be that $\texttt{duration}([0, 999])$ is one hour.
+
+## Helper Equalities
+
+**Task id-equality:** $x \approx_{\text{id}} y \iff \textsf{id}(x) = \textsf{id}(y)$.
+
+**List lifting (position-preserving):** $R \equiv_{\text{id}} R' \iff |R| = |R'| \wedge \forall i.\ R[i] \approx_{\text{id}} R'[i]$.
+
+*(Defined for future use; not referenced elsewhere.)*
 
 ## Event Predicates (Observable Alphabet)
 
@@ -146,13 +161,13 @@ There was a $\texttt{set}$ in the past (or now), and no $\texttt{clear}$ since.
 
 ---
 
-* $\texttt{IE}^{\text{in}}_{R, x} := \texttt{InitEnd}(R)\wedge x\in\text{dom}(R)$
+* $\texttt{IE}^{\text{in}}_{R, x} := \texttt{InitEnd}(R)\wedge x\in_{\text{list}} R$
 
 Task $x$ got registered at current initialization.
 
 ---
 
-* $\texttt{IE}^{\text{out}}_{R, x} := \texttt{InitEnd}(R)\wedge x\notin\text{dom}(R)$
+* $\texttt{IE}^{\text{out}}_{R, x} := \texttt{InitEnd}(R)\wedge x\notin_{\text{list}} R$
 
 Task $x$ is not registered at current initialization.
 
@@ -500,7 +515,7 @@ This section defines the helper modalities $F^{\leq C}_{\texttt{comp}}$ and $F^{
 
 **Encodings and bit-length.** Fix a canonical, prefix-free, computable encoding $\llbracket\cdot\rrbracket$ from objects to bitstrings with linear-time decoding. For any object $X$, write $|X| := |\llbracket X \rrbracket|$ for the bit length of its encoding.
 
-**Current registration set and its size.** At any trace position $i$, let $R_i$ be the effective registration set of the most recent initialization that is currently active (that is, the unique $R$ such that $\texttt{Active}_R$ holds at $i$). Write $|R|$ for $|R_i| = |\llbracket R_i \rrbracket|$. *Remark:* any reasonable encoding of a finite map $\texttt{TaskId} \to (\texttt{Schedule}, \texttt{RetryDelay})$ suffices; the spec is parametric in the encoding, assuming only standard per-entry overhead.
+**Current registration list and its size.** At any trace position $i$, let $R_i$ be the effective registration list of the most recent initialization that is currently active (that is, the unique $R$ such that $\texttt{Active}_R$ holds at $i$). Write $|R|$ for $|R_i| = |\llbracket R_i \rrbracket|$ using a canonical **list** encoding that includes order. *Remark:* any reasonable encoding of a finite ordered list suffices; the spec is parametric in the encoding, assuming only standard per-entry overhead.
 
 **Background time value and its size.** Each position $i$ is associated with a background timestamp value $t := \tau(i) \in \mathbb{T}$. Define $|t| := |\llbracket t \rrbracket|$ using a standard signed binary encoding (so this equals $1 + \lceil \log_2(1 + |t|_{\text{abs}}) \rceil$, where $|t|_{\text{abs}}$ is the absolute value of $t$). *Important:* $|t|$ measures the value of the clock, not the density of events; events may be sparse in $i$ even when $|t|$ grows.
 
