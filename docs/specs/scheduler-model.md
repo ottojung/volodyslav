@@ -105,7 +105,7 @@ Time is defined by the host system's local clock (see [Execution Environment Mod
 
 Important: task does not have to be registered for $\texttt{Due}_x$ to occur.
 
----  
+---
 
 * $\texttt{RetryDue}_x$ — is the instant when the backoff for the most recent failure of $x$ expires.
 
@@ -113,7 +113,7 @@ Important: task does not have to be registered for $\texttt{Due}_x$ to occur.
 
 Important: task does not have to be registered for $\texttt{RetryDue}_x$ to occur.
 
----  
+---
 
 Each predicate marks the instant the named public action occurs from the perspective of the embedding JavaScript runtime: function entry ($\texttt{InitStart}$, $\texttt{StopStart}$), function return ($\texttt{InitEnd}$, $\texttt{StopEnd}$), callback invocation begin/end ($\texttt{RunStart}$, $\texttt{RunEnd}$), and exogenous crash ($\texttt{UnexpectedShutdown}$). No logging or internal bookkeeping is modeled.
 
