@@ -71,15 +71,15 @@ Each event predicate is evaluated at a trace position $i$ (we omit $i$ when clea
 
 ---
 
-* $\texttt{InitEnd}(R)$ — the `initialize(...)` call returns; the effective registration set is $R$.
+* $\texttt{InitEnd}$ — the `initialize(...)` call returns.
 
 ---
 
-* $\texttt{StopStart}(R)$ — the JavaScript interpreter calls `stop()`. The effective registration set is $R$.
+* $\texttt{StopStart}$ — the JavaScript interpreter calls `stop()`.
 
 ---
 
-* $\texttt{StopEnd}(R)$ — the `stop()` call returns. The effective registration set is $R$.
+* $\texttt{StopEnd}$ — the `stop()` call returns.
 
 ---
 
@@ -87,11 +87,11 @@ Each event predicate is evaluated at a trace position $i$ (we omit $i$ when clea
 
 ---
 
-* $\texttt{RunStart}(x)$ — the scheduler begins invoking the public callback for task $x$.
+* $\texttt{RunStart}(x)$ — the public callback of task $x$ is called.
 
 ---
 
-* $\texttt{RunEnd}(x, r)$ — that invocation completes with result $r \in \texttt{Result}$.
+* $\texttt{RunEnd}(x, r)$ — an invocation completes with result $r \in \texttt{Result}$.
 
 ---
 
@@ -122,16 +122,16 @@ Each predicate marks the instant the named public action occurs from the perspec
 
 #### Abbreviations
 
-* $\texttt{duration}(S) := |S|$
 * $\texttt{IS} := \texttt{IS}_R := \texttt{InitStart}(R)$
-* $\texttt{IE} := \texttt{IE}_R := \texttt{InitEnd}(R)$
-* $\texttt{SS} := \texttt{SS}_R := \texttt{StopStart}(R)$
-* $\texttt{SE} := \texttt{SE}_R := \texttt{StopEnd}(R)$
+* $\texttt{IE} := \texttt{InitEnd}$
+* $\texttt{SS} := \texttt{StopStart}$
+* $\texttt{SE} := \texttt{StopEnd}$
 * $\texttt{Crash} := \texttt{UnexpectedShutdown}$
 * $\texttt{RS} := \texttt{RS}_x := \texttt{RunStart}(x)$
 * $\texttt{REs} := \texttt{REs}_x := \texttt{RunEnd}(x, \texttt{success})$
 * $\texttt{REf} := \texttt{REf}_x := \texttt{RunEnd}(x, \texttt{failure})$
 * $\texttt{RE} := \texttt{RE}_x := \texttt{REs}_x \vee \texttt{REf}_x$
+* $\texttt{duration}(S) := |S|$
 
 These abbreviations are syntactic sugar, they must be expanded without any change to the letters $R$ and $x$.
 For example, a formula $\texttt{RE} \rightarrow \neg\texttt{RS}$ stands for $\forall_{x} \; (\texttt{REs}_x \vee \texttt{REf}_x) \rightarrow \neg\texttt{RS}_x$.
