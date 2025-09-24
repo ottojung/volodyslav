@@ -51,8 +51,6 @@ This subsection gives a signature-based, self-contained definition of the model,
 **Interpretation:**
 $\texttt{TaskId}$ names externally visible tasks. A $\texttt{Task}$ is the raw 5-tuple provided at registration time, and $\textsf{key}(x)$ is an equality-only argument attached to that tuple so the specification can refer to that exact instance without implying pointer semantics or constraining key generation or reuse. A $\texttt{RegistrationList}$ is the public input provided at initialization; its order and multiplicities are significant, and duplicate identifiers may appear both within a single list and across successive initializations. $\texttt{Due}$ and $\texttt{RetryDelay}$ are parameters determined by the environment (host clock); they are not hidden internal state. Time units for $\texttt{Due}$ and $\texttt{RetryDelay}$ coincide.
 
-Whenever $x \in \text{dom}(R)$ appears, it abbreviates $x \in_{\text{list}} R$.
-
 ### Helper Equalities on Tasks
 
 Define id-only equality for raw tasks by $x \approx_{\text{id}} y \iff \textsf{id}(x) = \textsf{id}(y)$.
