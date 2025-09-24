@@ -154,13 +154,13 @@ There was a $\texttt{set}$ in the past (or now), and no $\texttt{clear}$ since.
 
 ---
 
-* $\texttt{IE}^{\text{in}}_{R, x} := \texttt{InitEnd}(R)\wedge x\in\text{dom}(R)$
+* $\texttt{IE}^{\text{in}}_{R, x} := \texttt{InitEnd}(R)\wedge x\in_\text{list}(R)$
 
 Task $x$ got registered at current initialization.
 
 ---
 
-* $\texttt{IE}^{\text{out}}_{R, x} := \texttt{InitEnd}(R)\wedge x\notin\text{dom}(R)$
+* $\texttt{IE}^{\text{out}}_{R, x} := \texttt{InitEnd}(R)\wedge x\notin_\text{list}(R)$
 
 Task $x$ is not registered at current initialization.
 
