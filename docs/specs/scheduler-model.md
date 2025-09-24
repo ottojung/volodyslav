@@ -157,7 +157,7 @@ There was a $\texttt{set}$ in the past (or now), and no $\texttt{clear}$ since.
 
 $$
 \texttt{IS/IS}_{R} := \texttt{Hold}(\texttt{IS}_{R}, \texttt{IS}_{R'}) \\
-\text{for some } R' \neq R
+\text{for some } R'
 $$
 
 Reference to the most recent initialization start **for a specific** registration list $R$.
