@@ -122,7 +122,7 @@ Each predicate marks the instant the named public action occurs from the perspec
 
 #### Abbreviations
 
-* $\texttt{IS} := \texttt{IS}_R := \texttt{InitStart}(R)$
+* $\texttt{IS}_R := \texttt{InitStart}(R)$
 * $\texttt{IE} := \texttt{InitEnd}$
 * $\texttt{SS} := \texttt{StopStart}$
 * $\texttt{SE} := \texttt{StopEnd}$
