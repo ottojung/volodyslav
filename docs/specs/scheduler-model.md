@@ -196,7 +196,7 @@ Task $x$ is not registered at current initialization.
 
 * $\texttt{Registered}_{R, x} := \texttt{Hold}(\texttt{IE}^{\text{in}}_{R, x},\; \texttt{IE}^{\text{out}}_{R, x} \vee \neg \texttt{Active}_R)$
 
-Membership of $x$ in the most recent observed registration set.
+Membership of $x$ in the most recent observed registration list.
 
 ---
 
@@ -269,7 +269,7 @@ $$
 
 When a task is supposed to be executed, we must eventually see that execution in the form of $\texttt{RS}_x$ (or a $\texttt{Crash}$, or $\texttt{SS}$).
 
-Furthermore, that execution occurs within a bounded **compute** (as a linear function of the sizes of the current registration set and timestamp) after the obligation arises.
+Furthermore, that execution occurs within a bounded **compute** (as a linear function of the sizes of the current registration list and timestamp) after the obligation arises.
 
 **L2 — Initialization completes**
 
