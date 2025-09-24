@@ -55,7 +55,7 @@ $\texttt{TaskId}$ names externally visible tasks. A $\texttt{Task}$ is the raw 5
 
 Define id-only equality for raw tasks by $x \approx_{\text{id}} y \iff \textsf{id}(x) = \textsf{id}(y)$.
 
-Lift this pointwise to registration lists with $R \equiv_{\text{id}} R' \iff |R| = |R'| \wedge \forall i.\; R[i] \approx_{\text{id}} R'[i]$.
+Lift this pointwise to registration lists with $R \approx_{\text{id}} R' \iff |R| = |R'| \wedge \forall i.\; R[i] \approx_{\text{id}} R'[i]$.
 
 Duration is the cardinality of the set $S$.
 It corresponds to *some* real-time duration.
