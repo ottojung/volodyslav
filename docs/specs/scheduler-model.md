@@ -33,7 +33,7 @@ This subsection gives a signature-based, self-contained definition of the model,
 
 ## Time and Traces
 
-* **Time domain:** $\mathbb{T}$ used to timestamp observable instants. Time and “minute boundaries” are interpreted using the host clock as provided by the environment (see [Execution Environment Model](#execution-environment-model)).
+* **Time domain:** a set $\mathbb{T}$ used to timestamp observable instants. Time and “minute boundaries” are interpreted using the host clock as provided by the environment (see [Execution Environment Model](#execution-environment-model)).
 * **Trace:** a sequence of positions $i = 0, 1, 2, \dots$ with a timestamp function $\tau(i) \in \mathbb{T}$ that is non-strictly increasing. At each position $i$, one or more observable events may occur.
 
 ## Domains
