@@ -182,13 +182,13 @@ Stop ended **for a specific** registration list $R$.
 
 ---
 
-* $\texttt{IE}^{\text{in}}_{R, x} := \texttt{IE}_R \wedge x\in_\text{list}(R)$
+* $\texttt{IE}^{\text{in}}_{R, x} := \texttt{IE}_R \wedge x\in_\text{list}R$
 
 Task $x$ got registered at current initialization.
 
 ---
 
-* $\texttt{IE}^{\text{out}}_{R, x} := \texttt{IE}_R \wedge x\notin_\text{list}(R)$
+* $\texttt{IE}^{\text{out}}_{R, x} := \texttt{IE}_R \wedge x\notin_\text{list}R$
 
 Task $x$ is not registered at current initialization.
 
