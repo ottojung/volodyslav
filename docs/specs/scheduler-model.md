@@ -39,7 +39,7 @@ This subsection gives a signature-based, self-contained definition of the model,
 ## Domains
 
 * $\texttt{duration}(S) := |S|$
-* $\texttt{TaskId}$ — a (possibly infinite) set of public task identifiers.
+* $\texttt{TaskId}$ — a set of public task identifiers.
 * $\texttt{Result} = \{ \texttt{success}, \texttt{failure} \}$.
 * $\texttt{Opaque}$ — an infinite set of uninterpreted atoms where only equality is meaningful.
 * $\texttt{Callback}$ — the set of externally observable callback behaviours (abstracted here to equality).
