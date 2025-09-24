@@ -522,7 +522,7 @@ holds at time $t = \tau(i)$ iff there exists $j \geq i$, $U = [i, j]$ and $S \su
 
 - $P$ holds at $j$,
 - and $\texttt{compute}(S) \leq C$,
-- and $\texttt{duration}(U) - \texttt{duration}(S) \leq t_{\texttt{lag}}$.
+- and $\texttt{duration}(U \setminus S) \leq t_{\texttt{lag}}$.
 
 Intuitively, this asserts that $P$ will occur after receiving at most $C$ units of environment-provided compute from the current position, plus a small lag $t_{\texttt{lag}}$ to account for a constant delay.
 
