@@ -38,15 +38,26 @@ This subsection gives a signature-based, self-contained definition of the model,
 
 ## Domains
 
-* $\texttt{duration}(S) := |S|$ 
-* $\texttt{TaskId}$ — a finite, non-empty set of task identifiers.
+* $\texttt{duration}(S) := |S|$
+* $\texttt{TaskId}$ — a (possibly infinite) set of public task identifiers.
 * $\texttt{Result} = \{ \texttt{success}, \texttt{failure} \}$.
-* $\texttt{RegistrationSet}$ — a finite mapping $R : \texttt{TaskId} \to (\texttt{Schedule}, \texttt{RetryDelay})$.
-* $\texttt{Schedule}$ — an abstract predicate $\texttt{Due}(\texttt{task}: \texttt{TaskId}, t: \mathbb{T}) \to \texttt{Bool}$ indicating minute-boundary instants when a task is eligible to start.
-* $\texttt{RetryDelay} : \texttt{TaskId} \to \mathbb{T}_{\geq 0}$ $-$ the function that maps each task to its non-negative retry delay.
+* $\texttt{Opaque}$ — an infinite set of uninterpreted atoms where only equality is meaningful.
+* $\texttt{Callback}$ — the set of externally observable callback behaviours (abstracted here to equality).
+* $\texttt{Schedule}$ — an abstract object interpreted by the predicate $\texttt{Due}(\texttt{schedule}: \texttt{Schedule}, t: \mathbb{T}) \to \texttt{Bool}$ indicating minute-boundary instants when a task is eligible to start.
+* $\texttt{RetryDelay} := \mathbb{T}_{\geq 0}$ — non-negative time durations.
+* $\texttt{Task} := \texttt{TaskId} \times \texttt{Schedule} \times \texttt{RetryDelay} \times \texttt{Callback} \times \texttt{Opaque}$ with projections $\textsf{id}$, $\textsf{sch}$, $\textsf{rd}$, $\textsf{cb}$, $\textsf{key}$.
+* $\texttt{RegistrationSet}$ — a finite ordered list $R = [x_0,\dots,x_{n-1}]$ of tasks. Indexing uses $R[i]$ for $0 \le i < n$ and strong list membership $x \in_{\text{list}} R \iff \exists i.\; R[i] = x$. Duplicate tasks and duplicate task identifiers are permitted. *Terminology note:* despite the historical name, $\texttt{RegistrationSet}$ denotes this ordered list.
 
 **Interpretation:**
-$\texttt{TaskId}$ names externally visible tasks. A $\texttt{RegistrationSet}$ is the public input provided at initialization. $\texttt{Due}$ and $\texttt{RetryDelay}$ are parameters determined by the environment (host clock); they are not hidden internal state. Time units for $\texttt{Due}$ and $\texttt{RetryDelay}$ coincide.
+$\texttt{TaskId}$ names externally visible tasks. A $\texttt{Task}$ is the raw 5-tuple provided at registration time, and $\textsf{key}(x)$ is an equality-only argument attached to that tuple so the specification can refer to that exact instance without implying pointer semantics or constraining key generation or reuse. A $\texttt{RegistrationSet}$ is the public input provided at initialization; its order and multiplicities are significant, and duplicate identifiers may appear both within a single list and across successive initializations. $\texttt{Due}$ and $\texttt{RetryDelay}$ are parameters determined by the environment (host clock); they are not hidden internal state. Time units for $\texttt{Due}$ and $\texttt{RetryDelay}$ coincide.
+
+Whenever $x \in \text{dom}(R)$ appears, it abbreviates $x \in_{\text{list}} R$.
+
+### Helper Equalities on Tasks
+
+Define id-only equality for raw tasks by $x \approx_{\text{id}} y \iff \textsf{id}(x) = \textsf{id}(y)$.
+
+Lift this pointwise to registration lists with $R \equiv_{\text{id}} R' \iff |R| = |R'| \wedge \forall i.\; R[i] \approx_{\text{id}} R'[i]$.
 
 Duration is the cardinality of the set $S$.
 It corresponds to *some* real-time duration.
@@ -101,7 +112,7 @@ Important: task does not have to be registered for $\texttt{Due}_x$ to occur.
 
 * $\texttt{RetryDue}_x$ — is the instant when the backoff for the most recent failure of $x$ expires.
 
-*Interpretation:* is a primitive point event (like $\texttt{Due}_x$), supplied by the environment/clock. If the latest $\texttt{RunEnd}(x,\texttt{failure})$ occurs at time $t_f$, then $\texttt{RetryDue}_x$ holds at time $t_f + \texttt{RetryDelay}(x)$. These pulses are truths about the environment.
+*Interpretation:* is a primitive point event (like $\texttt{Due}_x$), supplied by the environment/clock. If the latest $\texttt{RunEnd}(x,\texttt{failure})$ occurs at time $t_f$, then $\texttt{RetryDue}_x$ holds at time $t_f + \textsf{rd}(x)$. These pulses are truths about the environment.
 
 Important: task does not have to be registered for $\texttt{RetryDue}_x$ to occur.
 
@@ -500,7 +511,7 @@ This section defines the helper modalities $F^{\leq C}_{\texttt{comp}}$ and $F^{
 
 **Encodings and bit-length.** Fix a canonical, prefix-free, computable encoding $\llbracket\cdot\rrbracket$ from objects to bitstrings with linear-time decoding. For any object $X$, write $|X| := |\llbracket X \rrbracket|$ for the bit length of its encoding.
 
-**Current registration set and its size.** At any trace position $i$, let $R_i$ be the effective registration set of the most recent initialization that is currently active (that is, the unique $R$ such that $\texttt{Active}_R$ holds at $i$). Write $|R|$ for $|R_i| = |\llbracket R_i \rrbracket|$. *Remark:* any reasonable encoding of a finite map $\texttt{TaskId} \to (\texttt{Schedule}, \texttt{RetryDelay})$ suffices; the spec is parametric in the encoding, assuming only standard per-entry overhead.
+**Current registration set and its size.** At any trace position $i$, let $R_i$ be the effective registration set of the most recent initialization that is currently active (that is, the unique $R$ such that $\texttt{Active}_R$ holds at $i$). Write $|R|$ for $|R_i| = |\llbracket R_i \rrbracket|$. *Remark:* the encoding of $R$ is the canonical finite-list encoding that preserves order and duplicates; the specification is otherwise parametric in the concrete representation, assuming only standard per-entry overhead.
 
 **Background time value and its size.** Each position $i$ is associated with a background timestamp value $t := \tau(i) \in \mathbb{T}$. Define $|t| := |\llbracket t \rrbracket|$ using a standard signed binary encoding (so this equals $1 + \lceil \log_2(1 + |t|_{\text{abs}}) \rceil$, where $|t|_{\text{abs}}$ is the absolute value of $t$). *Important:* $|t|$ measures the value of the clock, not the density of events; events may be sparse in $i$ even when $|t|$ grows.
 
