@@ -155,13 +155,19 @@ There was a $\texttt{set}$ in the past (or now), and no $\texttt{clear}$ since.
 
 ---
 
-* $\texttt{IE}^{\text{in}}_{R, x} := \texttt{InitEnd}(R)\wedge x\in_\text{list}(R)$
+* $\texttt{IE}_R := \texttt{IE} \land \texttt{Hold}(\texttt{IS}_R, \texttt{SS}_R \lor \texttt{Crash})$
+
+Initialization completed **for** a specific registration list $R$.
+
+---
+
+* $\texttt{IE}^{\text{in}}_{R, x} := \texttt{IE}_R \wedge x\in_\text{list}(R)$
 
 Task $x$ got registered at current initialization.
 
 ---
 
-* $\texttt{IE}^{\text{out}}_{R, x} := \texttt{InitEnd}(R)\wedge x\notin_\text{list}(R)$
+* $\texttt{IE}^{\text{out}}_{R, x} := \texttt{IE}_R \wedge x\notin_\text{list}(R)$
 
 Task $x$ is not registered at current initialization.
 
