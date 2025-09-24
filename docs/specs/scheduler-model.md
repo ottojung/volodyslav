@@ -33,18 +33,19 @@ This subsection gives a signature-based, self-contained definition of the model,
 
 ## Time and Traces
 
-* **Time domain:** $\mathbb{Z}$ (integer numbers), used to timestamp observable instants. Time and “minute boundaries” are interpreted using the host clock as provided by the environment (see [Execution Environment Model](#execution-environment-model)).
-* **Trace:** a sequence of positions $i = 0, 1, 2, \dots$ with a timestamp function $\tau(i) \in \mathbb{Z}$ that is non-strictly increasing. At each position $i$, one or more observable events may occur.
+* **Time domain:** $\mathbb{T}$ used to timestamp observable instants. Time and “minute boundaries” are interpreted using the host clock as provided by the environment (see [Execution Environment Model](#execution-environment-model)).
+* **Trace:** a sequence of positions $i = 0, 1, 2, \dots$ with a timestamp function $\tau(i) \in \mathbb{T}$ that is non-strictly increasing. At each position $i$, one or more observable events may occur.
 
 ## Domains
 
-* $\mathbb{T} = \mathbb{Z_{\geq 0}}$ - the domain of durations.
+* $\mathbb{T} = \mathbb{Z}$ — the time domain.
+* $\mathbb{D} = \mathbb{Z_{\geq 0}}$ — the domain of durations.
 * $\texttt{TaskId}$ — a set of public task identifiers.
 * $\texttt{Result} = \{ \texttt{success}, \texttt{failure} \}$.
 * $\texttt{Opaque}$ — an infinite set of uninterpreted atoms where only equality is meaningful.
 * $\texttt{Callback}$ — the set of externally observable callback behaviours (abstracted here to equality).
 * $\texttt{Schedule}$ — an abstract object interpreted by the predicate $\texttt{Due}(\texttt{schedule}: \texttt{Schedule}, t: \mathbb{T}) \to \texttt{Bool}$ indicating minute-boundary instants when a task is eligible to start.
-* $\texttt{RetryDelay} := \mathbb{T}$ — non-negative time durations.
+* $\texttt{RetryDelay} := \mathbb{D}$ — non-negative time durations.
 * $\texttt{Task} := \texttt{TaskId} \times \texttt{Schedule} \times \texttt{RetryDelay} \times \texttt{Callback} \times \texttt{Opaque}$ with projections $\textsf{id}$, $\textsf{sch}$, $\textsf{rd}$, $\textsf{cb}$, $\textsf{key}$.
 * $\texttt{RegistrationList}$ — a finite ordered list $R = \langle x_1,\dots,x_{n} \rangle$ of tasks. Indexing uses $R[i]$ for $1 \le i \leq n$ and strong list membership $x \in_{\text{list}} R \iff \exists i.\; R[i] = x$. Duplicate tasks and duplicate task identifiers are permitted.
 
@@ -507,8 +508,6 @@ The following labels identify illustrative environment classes. They are informa
 This section defines the helper modalities $F^{\leq C}_{\texttt{comp}}$ and $F^{\texttt{lin}}_{\texttt{comp}}$ used in the scheduler properties.
 
 **Encodings and bit-length.** Fix a canonical, prefix-free, computable encoding $\llbracket\cdot\rrbracket$ from objects to bitstrings with linear-time decoding. For any object $X$, write $|X| := |\llbracket X \rrbracket|$ for the bit length of its encoding.
-
-**Current registration set and its size.** At any trace position $i$, let $R_i$ be the effective registration set of the most recent initialization that is currently active (that is, the unique $R$ such that $\texttt{Active}_R$ holds at $i$). Write $|R|$ for $|R_i| = |\llbracket R_i \rrbracket|$. *Remark:* the encoding of $R$ is the canonical finite-list encoding that preserves order and duplicates; the specification is otherwise parametric in the concrete representation, assuming only standard per-entry overhead.
 
 **Background time value and its size.** Each position $i$ is associated with a background timestamp value $t := \tau(i) \in \mathbb{T}$. Define $|t| := |\llbracket t \rrbracket|$ using a standard signed binary encoding (so this equals $1 + \lceil \log_2(1 + |t|_{\text{abs}}) \rceil$, where $|t|_{\text{abs}}$ is the absolute value of $t$). *Important:* $|t|$ measures the value of the clock, not the density of events; events may be sparse in $i$ even when $|t|$ grows.
 
