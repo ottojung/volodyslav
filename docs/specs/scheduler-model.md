@@ -530,10 +530,16 @@ Intuitively, this asserts that $P$ will occur after receiving at most $C$ units 
 **Linear-in-input compute bound.** Fix global non-negative constants $a, b \in \mathbb{Q}_{\geq 0}$. Define
 
 $$
-\boxed{\,F^{\texttt{lin}(X_1, \dots, X_n)}_{\texttt{comp}}(P)\ :=\ F^{\leq\; a\cdot(|X_1|+\dots+|X_n|)+b}_{\texttt{comp}}(P)\,}.
+\boxed{\,F^{\texttt{lin}(X)}_{\texttt{comp}}(P)\ :=\ F^{\leq\; a\cdot|X|+b}_{\texttt{comp}}(P)\,}
 $$
 
-This asserts that $P$ will occur after receiving at most $a \cdot (|X_1|+\dots+|X_n|) + b$ units of environment-provided compute from the current position.
+This asserts that $P$ will occur after receiving at most $a \cdot |X| + b$ units of environment-provided compute from the current position.
+
+A natural extension is to multiple parameters:
+
+$$
+\boxed{\,F^{\texttt{lin}(X_1, \dots, X_n)}_{\texttt{comp}}\ :=\ F^{\texttt{lin}(\langle X_1, \dots, X_n \rangle)}_{\texttt{comp}}}
+$$
 
 ## Theorems
 
