@@ -38,13 +38,13 @@ This subsection gives a signature-based, self-contained definition of the model,
 
 ## Domains
 
-* $\texttt{duration}(S) := |S|$
+* $\mathbb{T} = \mathbb{Z_{\geq 0}}$ - the domain of durations.
 * $\texttt{TaskId}$ — a set of public task identifiers.
 * $\texttt{Result} = \{ \texttt{success}, \texttt{failure} \}$.
 * $\texttt{Opaque}$ — an infinite set of uninterpreted atoms where only equality is meaningful.
 * $\texttt{Callback}$ — the set of externally observable callback behaviours (abstracted here to equality).
 * $\texttt{Schedule}$ — an abstract object interpreted by the predicate $\texttt{Due}(\texttt{schedule}: \texttt{Schedule}, t: \mathbb{T}) \to \texttt{Bool}$ indicating minute-boundary instants when a task is eligible to start.
-* $\texttt{RetryDelay} := \mathbb{T}_{\geq 0}$ — non-negative time durations.
+* $\texttt{RetryDelay} := \mathbb{T}$ — non-negative time durations.
 * $\texttt{Task} := \texttt{TaskId} \times \texttt{Schedule} \times \texttt{RetryDelay} \times \texttt{Callback} \times \texttt{Opaque}$ with projections $\textsf{id}$, $\textsf{sch}$, $\textsf{rd}$, $\textsf{cb}$, $\textsf{key}$.
 * $\texttt{RegistrationList}$ — a finite ordered list $R = [x_0,\dots,x_{n-1}]$ of tasks. Indexing uses $R[i]$ for $0 \le i < n$ and strong list membership $x \in_{\text{list}} R \iff \exists i.\; R[i] = x$. Duplicate tasks and duplicate task identifiers are permitted. *Terminology note:* despite the historical name, $\texttt{RegistrationList}$ denotes this ordered list.
 
@@ -124,7 +124,7 @@ Each predicate marks the instant the named public action occurs from the perspec
 
 #### Abbreviations
 
-* $\mathbb{T} := \mathbb{Z}$
+* $\texttt{duration}(S) := |S|$
 * $\texttt{IS} := \texttt{IS}_R := \texttt{InitStart}(R)$
 * $\texttt{IE} := \texttt{IE}_R := \texttt{InitEnd}(R)$
 * $\texttt{SS} := \texttt{SS}_R := \texttt{StopStart}(R)$
