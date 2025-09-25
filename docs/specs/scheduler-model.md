@@ -179,6 +179,12 @@ Initialization succeeded **for a specific** registration list $R$.
 
 ---
 
+* $\texttt{IEf}_R := \texttt{IEf} \land \texttt{IS}^+_{R}$
+
+Initialization failed **for a specific** registration list $R$.
+
+---
+
 $$
 \texttt{Registered}_{R} := \texttt{Hold}(\texttt{IEs}_{R}, \texttt{IEs}_{R'}) \\
 \text{for some } R'
