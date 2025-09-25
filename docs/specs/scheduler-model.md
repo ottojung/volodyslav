@@ -41,7 +41,6 @@ This subsection gives a signature-based, self-contained definition of the model,
 * $\mathbb{T} := \mathbb{Z}$ — the time domain.
 * $\mathbb{D} := \mathbb{Z_{\geq 0}}$ — the domain of durations.
 * $\texttt{TaskId}$ — a set of public task identifiers.
-* $\texttt{Result} := \{ \texttt{success}, \texttt{failure} \}$.
 * $\texttt{Opaque}$ — an infinite set of uninterpreted atoms where only equality is meaningful.
 * $\texttt{Callback}$ — the set of externally observable callback behaviours (abstracted here to equality).
 * $\texttt{Schedule}$ — an abstract object interpreted by the predicate $\texttt{Due}(\texttt{schedule}: \texttt{Schedule}, t: \mathbb{T}) \to \texttt{Bool}$ indicating minute-boundary instants when a task is eligible to start.
@@ -95,7 +94,11 @@ Each event predicate is evaluated at a trace position $i$ (we omit $i$ when clea
 
 ---
 
-* $\texttt{RunEnd}(x, r)$ — an invocation completes with result $r \in \texttt{Result}$.
+* $\texttt{RunSuccess}(x)$ — an invocation completes and returns normally.
+
+---
+
+* $\texttt{RunFailure}(x)$ — an invocation ends by throwing an error.
 
 ---
 
@@ -114,7 +117,7 @@ Important: task does not have to be registered for $\texttt{Due}_x$ to occur.
 
 * $\texttt{RetryDue}_x$ — is the instant when the backoff for the most recent failure of $x$ expires.
 
-*Interpretation:* is a primitive point event (like $\texttt{Due}_x$), supplied by the environment/clock. If the latest $\texttt{RunEnd}(x,\texttt{failure})$ occurs at time $t_f$, then $\texttt{RetryDue}_x$ holds at time $t_f + \textsf{rd}(x)$. These pulses are truths about the environment.
+*Interpretation:* is a primitive point event (like $\texttt{Due}_x$), supplied by the environment/clock. If the latest $\texttt{RunFailure}(x)$ occurs at time $t_f$, then $\texttt{RetryDue}_x$ holds at time $t_f + \textsf{rd}(x)$. These pulses are truths about the environment.
 
 Important: task does not have to be registered for $\texttt{RetryDue}_x$ to occur.
 
@@ -134,8 +137,8 @@ Each predicate marks the instant the named public action occurs from the perspec
 * $\texttt{SE} := \texttt{StopEnd}$
 * $\texttt{Crash} := \texttt{UnexpectedShutdown}$
 * $\texttt{RS}_x := \texttt{RunStart}(x)$
-* $\texttt{REs}_x := \texttt{RunEnd}(x, \texttt{success})$
-* $\texttt{REf}_x := \texttt{RunEnd}(x, \texttt{failure})$
+* $\texttt{REs}_x := \texttt{RunSuccess}(x)$
+* $\texttt{REf}_x := \texttt{RunFailure}(x)$
 * $\texttt{RE}_x := \texttt{REs}_x \vee \texttt{REf}_x$
 * $\texttt{duration}(S) := |S|$
 
