@@ -455,7 +455,7 @@ Every completion must correspond to a run that was already in flight before this
 $$
 \texttt{G}( \texttt{RE}_x \rightarrow \neg \texttt{Frozen} ) \\
 \texttt{G}( \texttt{RS}_x \rightarrow \neg \texttt{Frozen} ) \\
-\texttt{G}( \texttt{IS} \rightarrow \neg \texttt{Frozen} ) \\
+\texttt{G}( \texttt{IS}_R \rightarrow \neg \texttt{Frozen} ) \\
 \texttt{G}( \texttt{IE} \rightarrow \neg \texttt{Frozen} ) \\
 \texttt{G}( \texttt{SS} \rightarrow \neg \texttt{Frozen} ) \\
 \texttt{G}( \texttt{SE} \rightarrow \neg \texttt{Frozen} ) \\
