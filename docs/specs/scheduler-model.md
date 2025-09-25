@@ -499,6 +499,14 @@ $$
 
 At least one $\texttt{RetryDue}$ tick appears after each failure.
 
+**RD4 — TaskId uniqueness**
+
+$$
+  \forall{x, y}.\; \textsf{id}(x) = \textsf{id}(y) \rightarrow \texttt{G}( \texttt{RetryDue}_x \leftrightarrow \texttt{RetryDue}_y )
+$$
+
+All tasks with the same $\texttt{TaskId}$ have the same $\texttt{RetryDue}_x$.
+
 ## Nice progress properties
 
 Following are additional, **informative** assumptions that may hold in some environments. They are not part of the core model.
