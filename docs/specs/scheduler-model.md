@@ -71,7 +71,11 @@ Each event predicate is evaluated at a trace position $i$ (we omit $i$ when clea
 
 ---
 
-* $\texttt{InitEnd}$ — the `initialize(...)` call returns.
+* $\texttt{InitSuccess}$ — the `initialize(...)` call returns normally.
+
+---
+
+* $\texttt{InitFailure}$ — the `initialize(...)` call throws an error.
 
 ---
 
@@ -123,14 +127,16 @@ Each predicate marks the instant the named public action occurs from the perspec
 #### Abbreviations
 
 * $\texttt{IS}_R := \texttt{InitStart}(R)$
-* $\texttt{IE} := \texttt{InitEnd}$
+* $\texttt{IEs} := \texttt{InitSuccess}$
+* $\texttt{IEf} := \texttt{InitFailure}$
+* $\texttt{IE} := \texttt{IEs} \vee \texttt{IEf}$
 * $\texttt{SS} := \texttt{StopStart}$
 * $\texttt{SE} := \texttt{StopEnd}$
 * $\texttt{Crash} := \texttt{UnexpectedShutdown}$
-* $\texttt{RS} := \texttt{RS}_x := \texttt{RunStart}(x)$
-* $\texttt{REs} := \texttt{REs}_x := \texttt{RunEnd}(x, \texttt{success})$
-* $\texttt{REf} := \texttt{REf}_x := \texttt{RunEnd}(x, \texttt{failure})$
-* $\texttt{RE} := \texttt{RE}_x := \texttt{REs}_x \vee \texttt{REf}_x$
+* $\texttt{RS}_x := \texttt{RunStart}(x)$
+* $\texttt{REs}_x := \texttt{RunEnd}(x, \texttt{success})$
+* $\texttt{REf}_x := \texttt{RunEnd}(x, \texttt{failure})$
+* $\texttt{RE}_x := \texttt{REs}_x \vee \texttt{REf}_x$
 * $\texttt{duration}(S) := |S|$
 
 These abbreviations are syntactic sugar, they must be expanded without any change to the letters $R$ and $x$.
