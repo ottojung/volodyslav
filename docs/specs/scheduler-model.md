@@ -3,7 +3,7 @@
 
 ---
 
-This model combines first-order quantification over the universe scheduler objects with **future- and past-time LTL** formulas. Atomic predicates below are predicate symbols parameterised by a scheduler object variable (for example, $\texttt{RS}_x$, $\texttt{InitEnd}(R)$), and temporal operators apply to propositional formulas obtained by instantiating those predicates for concrete objects.
+This model combines first-order quantification over the universe scheduler objects with **future- and past-time LTL** formulas. Atomic predicates below are predicate symbols parameterised by a scheduler object variable (for example, $\texttt{RS}_x$, $\texttt{InitStart}(R)$), and temporal operators apply to propositional formulas obtained by instantiating those predicates for concrete objects.
 
 We use the convenient shorthand of writing instantiated propositions like $\texttt{RS}_x$ for $\texttt{RunStart}(x)$. Where a formula is stated without explicit quantifiers, the default intent is universal quantification (eg. "for all tasks x", "for all registrations R"). First-order quantification ranges over the set of scheduler objects; temporal operators reason over event positions in the trace.
 
@@ -33,39 +33,32 @@ This subsection gives a signature-based, self-contained definition of the model,
 
 ## Time and Traces
 
-* **Time domain:** $\mathbb{Z}$ (integer numbers), used to timestamp observable instants. Time and “minute boundaries” are interpreted using the host clock as provided by the environment (see [Execution Environment Model](#execution-environment-model)).
-* **Trace:** a sequence of positions $i = 0, 1, 2, \dots$ with a timestamp function $\tau(i) \in \mathbb{Z}$ that is non-strictly increasing. At each position $i$, one or more observable events may occur.
+* **Time domain:** a set $\mathbb{T}$ used to timestamp observable instants. Time and “minute boundaries” are interpreted using the host clock as provided by the environment (see [Execution Environment Model](#execution-environment-model)).
+* **Trace:** a sequence of positions $i = 0, 1, 2, \dots$ with a timestamp function $\tau(i) \in \mathbb{T}$ that is non-strictly increasing. At each position $i$, one or more observable events may occur.
 
 ## Domains
 
-* $\texttt{duration}(S) := |S|$ 
-* $\texttt{TaskId}$ — a (possibly infinite) set of task identifiers.
-* $\texttt{Result} = \{ \texttt{success}, \texttt{failure} \}$.
-* $\texttt{Schedule}$ — an abstract predicate $\texttt{Due}(\texttt{task}: \texttt{TaskId}, t: \mathbb{T}) \to \texttt{Bool}$ indicating minute-boundary instants when a task is eligible to start.
-* $\texttt{RetryDelay} : \texttt{TaskId} \to \mathbb{T}_{\geq 0}$ $-$ the function that maps each task to its non-negative retry delay.
-* $\texttt{Callback}$ — the set of callback functions.
-* $\texttt{Opaque}$ — an infinite set of uninterpreted atoms (only equality is meaningful).
-* $\texttt{Task} := \texttt{TaskId} \times \texttt{Schedule} \times \texttt{RetryDelay} \times \texttt{Callback} \times \texttt{Opaque}$ — a 5-tuple $(\textsf{id}, \textsf{sch}, \textsf{rd}, \textsf{cb}, \textsf{key})$ with projections $\textsf{id}(x)$, $\textsf{sch}(x)$, $\textsf{rd}(x)$, $\textsf{cb}(x)$, $\textsf{key}(x)$.
-* $\texttt{RegistrationList}$ — a finite ordered list of tasks $R = [x_0, \dots, x_{n-1}]$. List-membership (strong): $x \in_{\text{list}} R \iff \exists i.\ R[i] = x$. Duplicate $\texttt{TaskId}$s are permitted.
-
-**Terminology note:** The registration denotes an ordered list, despite references elsewhere to "set."
+* $\mathbb{T} := \mathbb{Z}$ — the time domain.
+* $\mathbb{D} := \mathbb{Z_{\geq 0}}$ — the domain of durations.
+* $\texttt{TaskId}$ — a set of public task identifiers.
+* $\texttt{Opaque}$ — an infinite set of uninterpreted atoms where only equality is meaningful.
+* $\texttt{Callback}$ — the set of externally observable callback behaviours (abstracted here to equality).
+* $\texttt{Schedule}$ — an abstract object interpreted by the predicate $\texttt{Due}(\texttt{schedule}: \texttt{Schedule}, t: \mathbb{T}) \to \texttt{Bool}$ indicating minute-boundary instants when a task is eligible to start.
+* $\texttt{RetryDelay} := \mathbb{D}$ — non-negative time durations.
+* $\texttt{Task} := \texttt{TaskId} \times \texttt{Schedule} \times \texttt{RetryDelay} \times \texttt{Callback} \times \texttt{Opaque}$ with projections $\textsf{id}$, $\textsf{sch}$, $\textsf{rd}$, $\textsf{cb}$, $\textsf{key}$.
+* $\texttt{RegistrationList}$ — a finite ordered list $R = \langle x_1,\dots,x_{n} \rangle$ of tasks. Indexing uses $R[i]$ for $1 \le i \leq n$ and strong list membership $x \in_{\text{list}} R \iff \exists i.\; R[i] = x$. Duplicate tasks and duplicate task identifiers are permitted.
 
 **Interpretation:**
-$\texttt{TaskId}$ names externally visible tasks. A $\texttt{RegistrationList}$ is the public input provided at initialization. $\texttt{Due}$ and $\texttt{RetryDelay}$ are parameters determined by the environment (host clock); they are not hidden internal state. Time units for $\texttt{Due}$ and $\texttt{RetryDelay}$ coincide.
+$\texttt{TaskId}$ names externally visible tasks. A $\texttt{Task}$ is the raw 5-tuple provided at registration time, and $\textsf{key}(x)$ is an equality-only argument attached to that tuple so the specification can refer to that exact instance without implying pointer semantics or constraining key generation or reuse. A $\texttt{RegistrationList}$ is the public input provided at initialization; its order and multiplicities are significant, and duplicate identifiers may appear both within a single list and across successive initializations. $\texttt{Due}$ and $\texttt{RetryDelay}$ are parameters determined by the environment (host clock); they are not hidden internal state. Time units for $\texttt{Due}$ and $\texttt{RetryDelay}$ coincide.
 
-**Opaque key:** $\textsf{key}(x)$ is an equality-only argument attached to a task instance at registration time. It enables precise reference to that exact raw task without imposing pointer semantics or conflating with $\texttt{TaskId}$. No assumptions are made about how keys are generated or reused.
-
-Duration is the cardinality of the set $S$.
-It corresponds to *some* real-time duration.
+Duration corresponds to *some* real-time duration.
 For example, it could be that $\texttt{duration}([0, 999])$ is one hour.
 
-## Helper Equalities
+### Helper Equalities on Tasks
 
-**Task id-equality:** $x \approx_{\text{id}} y \iff \textsf{id}(x) = \textsf{id}(y)$.
+Define id-only equality for raw tasks by $x \approx_{\text{id}} y \iff \textsf{id}(x) = \textsf{id}(y)$.
 
-**List lifting (position-preserving):** $R \equiv_{\text{id}} R' \iff |R| = |R'| \wedge \forall i.\ R[i] \approx_{\text{id}} R'[i]$.
-
-*(Defined for future use; not referenced elsewhere.)*
+Lift this pointwise to registration lists with $R \approx_{\text{id}} R' \iff |R| = |R'| \wedge \forall i.\; R[i] \approx_{\text{id}} R'[i]$.
 
 ## Event Predicates (Observable Alphabet)
 
@@ -77,27 +70,35 @@ Each event predicate is evaluated at a trace position $i$ (we omit $i$ when clea
 
 ---
 
-* $\texttt{InitEnd}(R)$ — the `initialize(...)` call returns; the effective registration set is $R$.
+* $\texttt{InitSuccess}$ — the `initialize(...)` call returns normally.
 
 ---
 
-* $\texttt{StopStart}(R)$ — the JavaScript interpreter calls `stop()`. The effective registration set is $R$.
+* $\texttt{InitFailure}$ — the `initialize(...)` call throws an error.
 
 ---
 
-* $\texttt{StopEnd}(R)$ — the `stop()` call returns. The effective registration set is $R$.
+* $\texttt{StopStart}$ — the JavaScript interpreter calls `stop()`.
+
+---
+
+* $\texttt{StopEnd}$ — the `stop()` call returns.
+
+---
+
+* $\texttt{RunStart}(x)$ — the public callback of task $x$ is called.
+
+---
+
+* $\texttt{RunSuccess}(x)$ — an invocation completes and returns normally.
+
+---
+
+* $\texttt{RunFailure}(x)$ — an invocation ends by throwing an error.
 
 ---
 
 * $\texttt{UnexpectedShutdown}$ — an unexpected, in-flight system shutdown occurs (e.g., process or host crash). This interrupts running callbacks and preempts further starts until a subsequent $\texttt{InitEnd}$. This predicate is supplied by the environment’s crash generator.
-
----
-
-* $\texttt{RunStart}(x)$ — the scheduler begins invoking the public callback for task $x$.
-
----
-
-* $\texttt{RunEnd}(x, r)$ — that invocation completes with result $r \in \texttt{Result}$.
 
 ---
 
@@ -112,15 +113,15 @@ Time is defined by the host system's local clock (see [Execution Environment Mod
 
 Important: task does not have to be registered for $\texttt{Due}_x$ to occur.
 
----  
+---
 
 * $\texttt{RetryDue}_x$ — is the instant when the backoff for the most recent failure of $x$ expires.
 
-*Interpretation:* is a primitive point event (like $\texttt{Due}_x$), supplied by the environment/clock. If the latest $\texttt{RunEnd}(x,\texttt{failure})$ occurs at time $t_f$, then $\texttt{RetryDue}_x$ holds at time $t_f + \texttt{RetryDelay}(x)$. These pulses are truths about the environment.
+*Interpretation:* is a primitive point event (like $\texttt{Due}_x$), supplied by the environment/clock. If the latest $\texttt{RunFailure}(x)$ occurs at time $t_f$, then $\texttt{RetryDue}_x$ holds at time $t_f + \textsf{rd}(x)$. These pulses are truths about the environment.
 
 Important: task does not have to be registered for $\texttt{RetryDue}_x$ to occur.
 
----  
+---
 
 Each predicate marks the instant the named public action occurs from the perspective of the embedding JavaScript runtime: function entry ($\texttt{InitStart}$, $\texttt{StopStart}$), function return ($\texttt{InitEnd}$, $\texttt{StopEnd}$), callback invocation begin/end ($\texttt{RunStart}$, $\texttt{RunEnd}$), and exogenous crash ($\texttt{UnexpectedShutdown}$). No logging or internal bookkeeping is modeled.
 
@@ -128,19 +129,18 @@ Each predicate marks the instant the named public action occurs from the perspec
 
 #### Abbreviations
 
-* $\mathbb{T} := \mathbb{Z}$
-* $\texttt{IS} := \texttt{IS}_R := \texttt{InitStart}(R)$
-* $\texttt{IE} := \texttt{IE}_R := \texttt{InitEnd}(R)$
-* $\texttt{SS} := \texttt{SS}_R := \texttt{StopStart}(R)$
-* $\texttt{SE} := \texttt{SE}_R := \texttt{StopEnd}(R)$
+* $\texttt{IS}_R := \texttt{InitStart}(R)$
+* $\texttt{IEs} := \texttt{InitSuccess}$
+* $\texttt{IEf} := \texttt{InitFailure}$
+* $\texttt{IE} := \texttt{IEs} \vee \texttt{IEf}$
+* $\texttt{SS} := \texttt{StopStart}$
+* $\texttt{SE} := \texttt{StopEnd}$
 * $\texttt{Crash} := \texttt{UnexpectedShutdown}$
-* $\texttt{RS} := \texttt{RS}_x := \texttt{RunStart}(x)$
-* $\texttt{REs} := \texttt{REs}_x := \texttt{RunEnd}(x, \texttt{success})$
-* $\texttt{REf} := \texttt{REf}_x := \texttt{RunEnd}(x, \texttt{failure})$
-* $\texttt{RE} := \texttt{RE}_x := \texttt{REs}_x \vee \texttt{REf}_x$
-
-These abbreviations are syntactic sugar, they must be expanded without any change to the letters $R$ and $x$.
-For example, a formula $\texttt{RE} \rightarrow \neg\texttt{RS}$ stands for $\forall_{x} \; (\texttt{REs}_x \vee \texttt{REf}_x) \rightarrow \neg\texttt{RS}_x$.
+* $\texttt{RS}_x := \texttt{RunStart}(x)$
+* $\texttt{REs}_x := \texttt{RunSuccess}(x)$
+* $\texttt{REf}_x := \texttt{RunFailure}(x)$
+* $\texttt{RE}_x := \texttt{REs}_x \vee \texttt{REf}_x$
+* $\texttt{duration}(S) := |S|$
 
 ---
 
@@ -161,25 +161,57 @@ There was a $\texttt{set}$ in the past (or now), and no $\texttt{clear}$ since.
 
 ---
 
-* $\texttt{IE}^{\text{in}}_{R, x} := \texttt{InitEnd}(R)\wedge x\in_{\text{list}} R$
+$$
+\texttt{IS}^+_{R} := \texttt{Hold}(\texttt{IS}_{R}, \texttt{IS}_{R'}) \\
+\text{for some } R'
+$$
 
-Task $x$ got registered at current initialization.
-
----
-
-* $\texttt{IE}^{\text{out}}_{R, x} := \texttt{InitEnd}(R)\wedge x\notin_{\text{list}} R$
-
-Task $x$ is not registered at current initialization.
+Reference to the most recent initialization attempt **for a specific** registration list $R$.
 
 ---
 
-* $\texttt{Registered}_{R, x} := \texttt{Hold}(\texttt{IE}^{\text{in}}_{R, x},\; \texttt{IE}^{\text{out}}_{R, x} \vee \neg \texttt{Active}_R)$
+* $\texttt{IEs}_R := \texttt{IEs} \land \texttt{IS}^+_{R}$
 
-Membership of $x$ in the most recent observed registration set.
+Initialization succeeded **for a specific** registration list $R$.
 
 ---
 
-* $\texttt{FirstIE}_R := \texttt{IE}_R \wedge \neg (\texttt{Y} \; \texttt{O} \; \texttt{IE}_b)$
+* $\texttt{IEf}_R := \texttt{IEf} \land \texttt{IS}^+_{R}$
+
+Initialization failed **for a specific** registration list $R$.
+
+---
+
+$$
+\texttt{Registered}_{R} := \texttt{Hold}(\texttt{IEs}_{R}, \texttt{IEs}_{R'}) \\
+\text{for some } R'
+$$
+
+Reference to the most recent successful initialization **of a specific** registration list $R$.
+
+---
+
+* $\texttt{Registered}_{R, x} := \texttt{Registered}_{R} \land x\in_\text{list}R$
+
+Membership of $x$ in the most recent observed registration list.
+
+Note that this does not imply $\texttt{Active}$.
+
+---
+
+* $\texttt{SS}_R := \texttt{SS} \land \texttt{Registered}_R$
+
+Stop started **for a specific** registration list $R$.
+
+---
+
+* $\texttt{SE}_R := \texttt{SE} \land \texttt{Registered}_R$
+
+Stop ended **for a specific** registration list $R$.
+
+---
+
+* $\texttt{FirstIE}_R := \texttt{IEs}_R \wedge \neg (\texttt{Y} \; \texttt{O} \; \texttt{IEs}_b)$
 
 This is the very first initialization in the trace.
 It is treated specially to prevent spurious task starts immediately after the first initialization.
@@ -192,9 +224,9 @@ A start of run that eventually completes successfully (not preempted by failure 
 
 ---
 
-* $\texttt{Active}_R := \texttt{Hold}(\texttt{IE}_R, \texttt{SS}_R \vee \texttt{Crash})$
+* $\texttt{Active}_R := \texttt{Hold}(\texttt{IEs}_R, \texttt{SS}_R \vee \texttt{Crash})$
 
-Between an $\texttt{IE}$ and the next $\texttt{SS}$ or $\texttt{Crash}$.
+Between an $\texttt{IEs}$ and the next $\texttt{SS}$ or $\texttt{Crash}$.
 
 ---
 
@@ -233,9 +265,10 @@ The scheduler **should actually start** task $x$ now.
 
 ---
 
-# Liveness Properties (normative)
+# Liveness Properties
 
-These properties state progress guarantees.
+These are normative properties.
+They state progress guarantees.
 They prevent deadlocks, starvation, livelocks, and unbounded postponement of obligations.
 
 Progress is always read relative to the environment’s willingness to provide compute. In fully freezing environments (see [Environment taxonomy](#environment-taxonomy-informative)), obligations may accumulate without violating safety; in eventually thawing or lower-bounded-density environments, the fairness assumptions below become reasonable or derivable premises for liveness. In other words, in some environments, it is impossible to implement a scheduler.
@@ -248,7 +281,7 @@ $$
 
 When a task is supposed to be executed, we must eventually see that execution in the form of $\texttt{RS}_x$ (or a $\texttt{Crash}$, or $\texttt{SS}$).
 
-Furthermore, that execution occurs within a bounded **compute** (as a linear function of the sizes of the current registration set and timestamp) after the obligation arises.
+Furthermore, that execution occurs within a bounded **compute** (as a linear function of the sizes of the current registration list and timestamp) after the obligation arises.
 
 **L2 — Initialization completes**
 
@@ -260,7 +293,7 @@ Similar to L1, this property ensures that once an initialization starts, it must
 
 **L3 — Stop terminates**
 $$
-\texttt{G}\big( \texttt{SS} \rightarrow \texttt{AllTerm} \rightarrow \texttt{F} \; (\texttt{SE} \lor \texttt{Crash})\big)
+\texttt{G}\big( \texttt{SS}_R \rightarrow \texttt{AllTerm} \rightarrow \texttt{F} \; (\texttt{SE}_R \lor \texttt{Crash})\big)
 $$
 
 No bound on compute here, as the scheduler may need to wait for in-flight callbacks to complete. The callbacks are not bounded, so no unconditional bound on stop can be given.
@@ -271,9 +304,10 @@ $$
 \texttt{AllTerm} := \forall_{y} \; (\texttt{Running}_y \rightarrow \texttt{F} \; \texttt{RE}_y)
 $$
 
-# Safety Properties (normative)
+# Safety Properties
 
-These properties state scheduler invariants.
+These are normative properties.
+They properties state scheduler invariants.
 They prevent invalid sequences of events.
 
 **S1 — Start safety**
@@ -293,7 +327,7 @@ Should prevent multiple successful executions per single due period.
 **S3 — StopEnd consistency**
 
 $$
-\texttt{G}( \texttt{SE}_{a} \rightarrow (\neg \texttt{RE}_x \; \texttt{W} \; \texttt{IE}_{b}) )
+\texttt{G}( \texttt{SE}_{a} \rightarrow (\neg \texttt{RE}_x \; \texttt{W} \; \texttt{IEs}_{b}) )
 $$
 
 After $\texttt{SE}$, no new ends until re-initialisation.
@@ -392,7 +426,10 @@ The environment contributes two ingredients:
 
    It is expected that the scheduler will have access to less compute when more callbacks are running, but this is a very vague assumption, so not formalising it here.
 
-## Environment properties (descriptive)
+## Environment properties
+
+These are descriptive properties.
+They state truths that all real-world environments satisfy.
 
 **E1 — Busy crashing**
 
@@ -415,7 +452,7 @@ Every completion must correspond to a run that was already in flight before this
 $$
 \texttt{G}( \texttt{RE}_x \rightarrow \neg \texttt{Frozen} ) \\
 \texttt{G}( \texttt{RS}_x \rightarrow \neg \texttt{Frozen} ) \\
-\texttt{G}( \texttt{IS} \rightarrow \neg \texttt{Frozen} ) \\
+\texttt{G}( \texttt{IS}_R \rightarrow \neg \texttt{Frozen} ) \\
 \texttt{G}( \texttt{IE} \rightarrow \neg \texttt{Frozen} ) \\
 \texttt{G}( \texttt{SS} \rightarrow \neg \texttt{Frozen} ) \\
 \texttt{G}( \texttt{SE} \rightarrow \neg \texttt{Frozen} ) \\
@@ -462,7 +499,7 @@ $$
 
 At least one $\texttt{RetryDue}$ tick appears after each failure.
 
-## Nice progress properties (informative)
+## Nice progress properties
 
 Following are additional, **informative** assumptions that may hold in some environments. They are not part of the core model.
 
@@ -497,7 +534,7 @@ $$
 If this is true, then whether any task is ever going to be missed is determined purely by $\texttt{compute}$.
 A corollary is that if the environment provides enough compute, no tasks are ever missed.
 
-## Environment taxonomy (informative)
+## Environment taxonomy
 
 The following labels identify illustrative environment classes. They are informative definitions, not global assumptions:
 
@@ -515,8 +552,6 @@ This section defines the helper modalities $F^{\leq C}_{\texttt{comp}}$ and $F^{
 
 **Encodings and bit-length.** Fix a canonical, prefix-free, computable encoding $\llbracket\cdot\rrbracket$ from objects to bitstrings with linear-time decoding. For any object $X$, write $|X| := |\llbracket X \rrbracket|$ for the bit length of its encoding.
 
-**Current registration list and its size.** At any trace position $i$, let $R_i$ be the effective registration list of the most recent initialization that is currently active (that is, the unique $R$ such that $\texttt{Active}_R$ holds at $i$). Write $|R|$ for $|R_i| = |\llbracket R_i \rrbracket|$ using a canonical **list** encoding that includes order. *Remark:* any reasonable encoding of a finite ordered list suffices; the spec is parametric in the encoding, assuming only standard per-entry overhead.
-
 **Background time value and its size.** Each position $i$ is associated with a background timestamp value $t := \tau(i) \in \mathbb{T}$. Define $|t| := |\llbracket t \rrbracket|$ using a standard signed binary encoding (so this equals $1 + \lceil \log_2(1 + |t|_{\text{abs}}) \rceil$, where $|t|_{\text{abs}}$ is the absolute value of $t$). *Important:* $|t|$ measures the value of the clock, not the density of events; events may be sparse in $i$ even when $|t|$ grows.
 
 **Compute-bounded eventually.** Fix global non-negative constant $t_{\texttt{lag}}$. For $C \in \mathbb{Q}_{\geq 0}$, the modality
@@ -529,17 +564,23 @@ holds at time $t = \tau(i)$ iff there exists $j \geq i$, $U = [i, j]$ and $S \su
 
 - $P$ holds at $j$,
 - and $\texttt{compute}(S) \leq C$,
-- and $\texttt{duration}(U) - \texttt{duration}(S) \leq t_{\texttt{lag}}$.
+- and $\texttt{duration}(U \setminus S) \leq t_{\texttt{lag}}$.
 
 Intuitively, this asserts that $P$ will occur after receiving at most $C$ units of environment-provided compute from the current position, plus a small lag $t_{\texttt{lag}}$ to account for a constant delay.
 
 **Linear-in-input compute bound.** Fix global non-negative constants $a, b \in \mathbb{Q}_{\geq 0}$. Define
 
 $$
-\boxed{\,F^{\texttt{lin}(X_1, \dots, X_n)}_{\texttt{comp}}(P)\ :=\ F^{\leq\; a\cdot(|X_1|+\dots+|X_n|)+b}_{\texttt{comp}}(P)\,}.
+\boxed{\,F^{\texttt{lin}(X)}_{\texttt{comp}}(P)\ :=\ F^{\leq\; a\cdot|X|+b}_{\texttt{comp}}(P)\,}
 $$
 
-This asserts that $P$ will occur after receiving at most $a \cdot (|X_1|+\dots+|X_n|) + b$ units of environment-provided compute from the current position.
+This asserts that $P$ will occur after receiving at most $a \cdot |X| + b$ units of environment-provided compute from the current position.
+
+A natural extension is to multiple parameters:
+
+$$
+\boxed{\,F^{\texttt{lin}(X_1, \dots, X_n)}_{\texttt{comp}}\ :=\ F^{\texttt{lin}(\langle X_1, \dots, X_n \rangle)}_{\texttt{comp}}}
+$$
 
 ## Theorems
 
@@ -547,7 +588,7 @@ This asserts that $P$ will occur after receiving at most $a \cdot (|X_1|+\dots+|
 
 **Theorem 1 — Quiescence after Crash**
 $$
-\texttt{G}( \texttt{Crash} \rightarrow (\neg \texttt{RS} \; \texttt{W} \; \texttt{IE}) )
+\texttt{G}( \texttt{Crash} \rightarrow (\neg \texttt{RS} \; \texttt{W} \; \texttt{IEs}) )
 $$
 After $\texttt{Crash}$ no new starts until re-initialisation.
 
@@ -568,7 +609,7 @@ Follows from **S1** and the fact that $\texttt{Pending}$ requires $\neg \texttt{
 **Theorem 3 — Quiescence after StopEnd**
 
 $$
-\texttt{G}( \texttt{SE} \rightarrow (\neg \texttt{RS}_x \; \texttt{W} \; \texttt{IE}) )
+\texttt{G}( \texttt{SE} \rightarrow (\neg \texttt{RS}_x \; \texttt{W} \; \texttt{IEs}) )
 $$
 
 After $\texttt{SE}$, no new starts until re-initialisation.
