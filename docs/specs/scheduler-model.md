@@ -227,9 +227,9 @@ A start of run that eventually completes successfully (not preempted by failure 
 
 ---
 
-* $\texttt{Active}_R := \texttt{Hold}(\texttt{IE}_R, \texttt{SS}_R \vee \texttt{Crash})$
+* $\texttt{Active}_R := \texttt{Hold}(\texttt{IEs}_R, \texttt{SS}_R \vee \texttt{Crash})$
 
-Between an $\texttt{IE}$ and the next $\texttt{SS}$ or $\texttt{Crash}$.
+Between an $\texttt{IEs}$ and the next $\texttt{SS}$ or $\texttt{Crash}$.
 
 ---
 
@@ -330,7 +330,7 @@ Should prevent multiple successful executions per single due period.
 **S3 — StopEnd consistency**
 
 $$
-\texttt{G}( \texttt{SE}_{a} \rightarrow (\neg \texttt{RE}_x \; \texttt{W} \; \texttt{IE}_{b}) )
+\texttt{G}( \texttt{SE}_{a} \rightarrow (\neg \texttt{RE}_x \; \texttt{W} \; \texttt{IEs}_{b}) )
 $$
 
 After $\texttt{SE}$, no new ends until re-initialisation.
