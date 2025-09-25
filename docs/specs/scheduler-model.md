@@ -169,7 +169,7 @@ $$
 \text{for some } R'
 $$
 
-Reference to the most recent initialization start **for a specific** registration list $R$.
+Reference to the most recent initialization attempt **for a specific** registration list $R$.
 
 ---
 
