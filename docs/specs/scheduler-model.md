@@ -505,7 +505,7 @@ $$
   \forall{x, y}.\; x \approx_{\texttt{id}} y \rightarrow \texttt{G}( \texttt{RetryDue}_x \leftrightarrow \texttt{RetryDue}_y )
 $$
 
-All tasks with the same $\texttt{TaskId}$ have the same $\texttt{RetryDue}_x$.
+All tasks with the same $\texttt{TaskId}$ have the same $\texttt{RetryDue}$.
 
 ## Nice progress properties
 
