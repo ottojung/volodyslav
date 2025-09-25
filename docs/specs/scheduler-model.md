@@ -173,9 +173,9 @@ Reference to the most recent initialization start **for a specific** registratio
 
 ---
 
-* $\texttt{IE}_R := \texttt{IE} \land \texttt{IS}^+_{R}$
+* $\texttt{IEs}_R := \texttt{IEs} \land \texttt{IS}^+_{R}$
 
-Initialization ended **for a specific** registration list $R$.
+Initialization succeeded **for a specific** registration list $R$.
 
 ---
 
