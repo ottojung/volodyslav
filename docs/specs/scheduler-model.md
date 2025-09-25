@@ -86,10 +86,6 @@ Each event predicate is evaluated at a trace position $i$ (we omit $i$ when clea
 
 ---
 
-* $\texttt{UnexpectedShutdown}$ — an unexpected, in-flight system shutdown occurs (e.g., process or host crash). This interrupts running callbacks and preempts further starts until a subsequent $\texttt{InitEnd}$. This predicate is supplied by the environment’s crash generator.
-
----
-
 * $\texttt{RunStart}(x)$ — the public callback of task $x$ is called.
 
 ---
@@ -99,6 +95,10 @@ Each event predicate is evaluated at a trace position $i$ (we omit $i$ when clea
 ---
 
 * $\texttt{RunFailure}(x)$ — an invocation ends by throwing an error.
+
+---
+
+* $\texttt{UnexpectedShutdown}$ — an unexpected, in-flight system shutdown occurs (e.g., process or host crash). This interrupts running callbacks and preempts further starts until a subsequent $\texttt{InitEnd}$. This predicate is supplied by the environment’s crash generator.
 
 ---
 
