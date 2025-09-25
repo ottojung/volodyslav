@@ -268,9 +268,10 @@ The scheduler **should actually start** task $x$ now.
 
 ---
 
-# Liveness Properties (normative)
+# Liveness Properties
 
-These properties state progress guarantees.
+These are normative properties.
+They state progress guarantees.
 They prevent deadlocks, starvation, livelocks, and unbounded postponement of obligations.
 
 Progress is always read relative to the environment’s willingness to provide compute. In fully freezing environments (see [Environment taxonomy](#environment-taxonomy-informative)), obligations may accumulate without violating safety; in eventually thawing or lower-bounded-density environments, the fairness assumptions below become reasonable or derivable premises for liveness. In other words, in some environments, it is impossible to implement a scheduler.
@@ -306,9 +307,10 @@ $$
 \texttt{AllTerm} := \forall_{y} \; (\texttt{Running}_y \rightarrow \texttt{F} \; \texttt{RE}_y)
 $$
 
-# Safety Properties (normative)
+# Safety Properties
 
-These properties state scheduler invariants.
+These are normative properties.
+They properties state scheduler invariants.
 They prevent invalid sequences of events.
 
 **S1 — Start safety**
@@ -427,7 +429,10 @@ The environment contributes two ingredients:
 
    It is expected that the scheduler will have access to less compute when more callbacks are running, but this is a very vague assumption, so not formalising it here.
 
-## Environment properties (descriptive)
+## Environment properties
+
+These are descriptive properties.
+They state truths that all real-world environments satisfy.
 
 **E1 — Busy crashing**
 
@@ -497,7 +502,7 @@ $$
 
 At least one $\texttt{RetryDue}$ tick appears after each failure.
 
-## Nice progress properties (informative)
+## Nice progress properties
 
 Following are additional, **informative** assumptions that may hold in some environments. They are not part of the core model.
 
@@ -532,7 +537,7 @@ $$
 If this is true, then whether any task is ever going to be missed is determined purely by $\texttt{compute}$.
 A corollary is that if the environment provides enough compute, no tasks are ever missed.
 
-## Environment taxonomy (informative)
+## Environment taxonomy
 
 The following labels identify illustrative environment classes. They are informative definitions, not global assumptions:
 
