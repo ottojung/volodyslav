@@ -214,7 +214,7 @@ Stop ended **for a specific** registration list $R$.
 
 ---
 
-* $\texttt{FirstIE}_R := \texttt{IE}_R \wedge \neg (\texttt{Y} \; \texttt{O} \; \texttt{IE}_b)$
+* $\texttt{FirstIE}_R := \texttt{IEs}_R \wedge \neg (\texttt{Y} \; \texttt{O} \; \texttt{IEs}_b)$
 
 This is the very first initialization in the trace.
 It is treated specially to prevent spurious task starts immediately after the first initialization.
