@@ -142,9 +142,6 @@ Each predicate marks the instant the named public action occurs from the perspec
 * $\texttt{RE}_x := \texttt{REs}_x \vee \texttt{REf}_x$
 * $\texttt{duration}(S) := |S|$
 
-These abbreviations are syntactic sugar, they must be expanded without any change to the letters $R$ and $x$.
-For example, a formula $\texttt{RE} \rightarrow \neg\texttt{RS}$ stands for $\forall_{x} \; (\texttt{REs}_x \vee \texttt{REf}_x) \rightarrow \neg\texttt{RS}_x$.
-
 ---
 
 #### Stateful
