@@ -63,7 +63,13 @@ Lift this pointwise to registration lists with $R \approx R' \iff |R| = |R'| \we
 Also define an id-based $\texttt{RetryDue}$ predicate:
 
 $$
-\texttt{RetryDue}^{\approx}_x := \bigcup_{y \approx x} \texttt{RetryDue}_y
+\texttt{RetryDue}^{\approx}_x := \exists_{y \approx x} \; \texttt{RetryDue}_y
+$$
+
+And define an id-based $\texttt{REf}$ predicate:
+
+$$
+\texttt{REf}^{\approx}_x := \exists_{y \approx x} \; \texttt{REf}_y
 $$
 
 ## Event Predicates (Observable Alphabet)
@@ -529,7 +535,7 @@ After a $\texttt{Crash}$, no new ends until a new start.
 
 **RD1 — Nonprecedence**
 $$
-	\texttt{G}\big( ( \neg \texttt{O}\ \texttt{REf}_x ) \rightarrow \neg \texttt{RetryDue}_x \big)
+	\texttt{G}\big( ( \neg \texttt{O}\ \texttt{REf}^{\approx}_x ) \rightarrow \neg \texttt{RetryDue}^{\approx}_x \big)
 $$
 
 No spurious pulses before any failure.
@@ -538,7 +544,7 @@ No spurious pulses before any failure.
 
 **RD2 — Uniqueness**
 $$
-	\texttt{AtMostOne}(\texttt{REf}_x,\ \texttt{RetryDue}_x)
+	\texttt{AtMostOne}(\texttt{REf}^{\approx}_x,\ \texttt{RetryDue}^{\approx}_x)
 $$
 
 At most one pulse between consecutive failures (or none if no failure occurs).
@@ -547,7 +553,7 @@ At most one pulse between consecutive failures (or none if no failure occurs).
 
 **RD3 — Existence**
 $$
-	\texttt{G}\big( \texttt{REf}_x \rightarrow \texttt{F}\ \texttt{RetryDue}_x \big)
+	\texttt{G}\big( \texttt{REf}^{\approx}_x \rightarrow \texttt{F}\ \texttt{RetryDue}^{\approx}_x \big)
 $$
 
 At least one $\texttt{RetryDue}$ tick appears after each failure.
