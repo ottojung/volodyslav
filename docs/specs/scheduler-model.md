@@ -611,7 +611,7 @@ $$
 
 **Theorem 1 — Quiescence after Crash**
 $$
-\texttt{G}( \texttt{Crash} \rightarrow (\neg \texttt{RS} \; \texttt{W} \; \texttt{IEs}) )
+\texttt{G}( \texttt{Crash} \rightarrow (\neg \texttt{RS}_x \; \texttt{W} \; \texttt{IEs}) )
 $$
 After $\texttt{Crash}$ no new starts until re-initialisation.
 
