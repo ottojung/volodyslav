@@ -167,9 +167,10 @@ One single $A$ is allowed if there is no next $B$.
 
 ---
 
-* $\texttt{Hold}(\texttt{set}, \texttt{clear}) := (\neg \texttt{clear}) \; \texttt{S} \; \texttt{set}$
+* $\texttt{Hold}(\texttt{set}, \texttt{clear}) := ((\neg \texttt{clear}) \; \texttt{S} \; \texttt{set}) \lor (\texttt{set} \land \texttt{clear})$
 
 There was a $\texttt{set}$ in the past (or now), and no $\texttt{clear}$ since.
+Also true at the moment of $\texttt{set}$.
 
 ---
 
