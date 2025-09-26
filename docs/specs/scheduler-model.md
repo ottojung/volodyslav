@@ -290,6 +290,8 @@ They prevent deadlocks, starvation, livelocks, and unbounded postponement of obl
 
 Progress is always read relative to the environment’s willingness to provide compute. In fully freezing environments (see [Environment taxonomy](#environment-taxonomy-informative)), obligations may accumulate without violating safety; in eventually thawing or lower-bounded-density environments, the fairness assumptions below become reasonable or derivable premises for liveness. In other words, in some environments, it is impossible to implement a scheduler.
 
+---
+
 **L1 — Obligation fulfillment**
 
 $$
@@ -300,6 +302,8 @@ When a task is supposed to be executed, we must eventually see that execution in
 
 Furthermore, that execution occurs within a bounded **compute** (as a linear function of the sizes of the current registration list and timestamp) after the obligation arises.
 
+---
+
 **L2 — Initialization completes**
 
 $$
@@ -307,6 +311,8 @@ $$
 $$
 
 Similar to L1, this property ensures that once an initialization starts, it must eventually complete within a bounded amount of compute (unless preempted by a crash).
+
+---
 
 **L3 — Stop terminates**
 $$
@@ -321,17 +327,23 @@ $$
 \texttt{AllTerm} := \forall_{y} \; (\texttt{Running}_y \rightarrow \texttt{F} \; \texttt{RE}_y)
 $$
 
+---
+
 # Safety Properties
 
 These are normative properties.
 They properties state scheduler invariants.
 They prevent invalid sequences of events.
 
+---
+
 **S1 — Start safety**
 $$
 \texttt{G}( \texttt{RS}_x \rightarrow \exists R. \; \texttt{Obligation}_{R, x} )
 $$
 A start can occur only while there is a current obligation to run.
+
+---
 
 **S2 — Conservation of starts**
 
@@ -340,6 +352,8 @@ $$
 $$
 
 Should prevent multiple successful executions per single due period.
+
+---
 
 **S3 — StopEnd consistency**
 
@@ -448,6 +462,8 @@ The environment contributes two ingredients:
 These are descriptive properties.
 They state truths that all real-world environments satisfy.
 
+---
+
 **E1 — Busy crashing**
 
 $$
@@ -456,6 +472,8 @@ $$
 
 No work progresses around a crash instant.
 
+---
+
 **E2 — Ends follow starts**
 
 $$
@@ -463,6 +481,8 @@ $$
 $$
 
 Every completion must correspond to a run that was already in flight before this position.
+
+---
 
 **E3 - Actions require work**
 
@@ -479,6 +499,8 @@ Observable events, including end of a callback, require that some work has been 
 
 Importantly, $\texttt{Due}_x$ and $\texttt{RetryDue}_x$ are not included here, as they are primitive truths about the environment, not actions.
 
+---
+
 **E4 - Unlimited dues**
 
 $$
@@ -486,6 +508,8 @@ $$
 $$
 
 For every task $x$, the cron schedule matches infinitely often.
+
+---
 
 **E5 — Crash/RE consistency**
 
@@ -495,12 +519,16 @@ $$
 
 After a $\texttt{Crash}$, no new ends until a new start.
 
+---
+
 **RD1 — Nonprecedence**
 $$
 	\texttt{G}\big( ( \neg \texttt{O}\ \texttt{REf}_x ) \rightarrow \neg \texttt{RetryDue}_x \big)
 $$
 
 No spurious pulses before any failure.
+
+---
 
 **RD2 — Uniqueness**
 $$
@@ -509,12 +537,16 @@ $$
 
 At most one pulse between consecutive failures (or none if no failure occurs).
 
+---
+
 **RD3 — Existence**
 $$
 	\texttt{G}\big( \texttt{REf}_x \rightarrow \texttt{F}\ \texttt{RetryDue}_x \big)
 $$
 
 At least one $\texttt{RetryDue}$ tick appears after each failure.
+
+---
 
 **RD4 — TaskId uniqueness**
 
@@ -524,9 +556,13 @@ $$
 
 All tasks with the same $\texttt{TaskId}$ have the same $\texttt{RetryDue}$.
 
+---
+
 ## Nice progress properties
 
 Following are additional, **informative** assumptions that may hold in some environments. They are not part of the core model.
+
+---
 
 **A1 - Eventual thawing**
 
@@ -539,6 +575,8 @@ Eventually, the environment provides some positive compute in every future inter
 This rules out permanently freezing environments.
 It is a weak form of fairness that ensures the environment does not permanently withhold all compute.
 
+---
+
 **A2 — Starts eventually settle**
 
 $$
@@ -550,6 +588,8 @@ No uniform upper bound is required; the property only rules out infinite executi
 Note that this is not guaranteed - users may write non-terminating callbacks.
 That's why this is an **informative** property, not a core property.
 
+---
+
 **A3 - Low lag**
 
 $$
@@ -558,6 +598,8 @@ $$
 
 If this is true, then whether any task is ever going to be missed is determined purely by $\texttt{compute}$.
 A corollary is that if the environment provides enough compute, no tasks are ever missed.
+
+---
 
 ## Environment taxonomy
 
