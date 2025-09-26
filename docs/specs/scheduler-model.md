@@ -246,11 +246,13 @@ The reason that $\texttt{FirstComing}_x$ clears $\texttt{DuePending}_x$ is that 
 
 ---
 
-* $\texttt{RetryPending}_x := \texttt{Hold}( \texttt{RetryDue}_x, \texttt{RS}_x) \wedge \neg \texttt{Running}_x$
+* $\texttt{RetryPending}_x := \texttt{Hold}( \texttt{RetryDue}_x, \texttt{RS}_x \lor \texttt{FirstComing}_x) \wedge \neg \texttt{Running}_x$
 
 A retry request exists after a failure and persists until it is retried.
 
 Similarly to $\texttt{DuePending}_x$, the task is not retry-pending if it is currently running.
+
+Similarly to $\texttt{DuePending}_x$, $\texttt{FirstComing}_x$ clears $\texttt{RetryPending}_x$.
 
 ---
 
