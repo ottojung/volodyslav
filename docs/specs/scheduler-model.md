@@ -348,7 +348,7 @@ They prevent invalid sequences of events.
 $$
 \texttt{G}( \texttt{RS}_x \rightarrow \exists R. \; \texttt{Y} \; \texttt{Obligation}_{R, x} )
 $$
-A start can occur only while there is a current obligation to run.
+A run can occur only after an obligation to run.
 
 ---
 
