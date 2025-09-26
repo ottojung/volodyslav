@@ -211,10 +211,11 @@ Stop ended **for a specific** registration list $R$.
 
 ---
 
-* $\texttt{FirstIE}_R := \texttt{IEs}_R \wedge \neg (\texttt{Y} \; \texttt{O} \; \texttt{IEs}_b)$
+$$
+\texttt{FirstComing}_x := \big(\exists R . \; \texttt{Registered}_{R, x}\big) \wedge \neg (\exists R . \; (\texttt{Y} \; \texttt{Registered}_{R, x}))
+$$
 
-This is the very first initialization in the trace.
-It is treated specially to prevent spurious task starts immediately after the first initialization.
+The moment of appearance of task $x$ such that it was not present in the previous registration list.
 
 ---
 
@@ -236,12 +237,12 @@ An invocation of $x$ has begun and has not finished before the current position.
 
 ---
 
-* $\texttt{DuePending}_x := \texttt{Hold}( \texttt{Due}_x, \texttt{RS}_x \lor \texttt{FirstIE} ) \wedge \neg \texttt{Running}_x$
+* $\texttt{DuePending}_x := \texttt{Hold}( \texttt{Due}_x, \texttt{RS}_x \lor \texttt{FirstComing}_x ) \wedge \neg \texttt{Running}_x$
 
-An outstanding request to perform a start after a due tick, cleared by a start and by $\texttt{FirstIE}$.
+An outstanding request to perform a start after a due tick, cleared by a start and by $\texttt{FirstComing}_x$.
 But the task is not pending if it is currently running.
 
-The reason that $\texttt{FirstIE}$ clears $\texttt{DuePending}_x$ is that the scheduler should not start all tasks at once after the very first initialization - not to overwhelm the system.
+The reason that $\texttt{FirstComing}_x$ clears $\texttt{DuePending}_x$ is that the scheduler should not start all tasks at once after the first initialization - not to overwhelm the system.
 
 ---
 
