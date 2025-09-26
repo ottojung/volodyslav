@@ -199,6 +199,12 @@ Note that this does not imply $\texttt{Active}$.
 
 ---
 
+* $\texttt{Registered}^{\approx}_{R, x} := \exists_{x' \approx_{\texttt{id}} x} \; \; \texttt{Registered}_{R, x'}$
+
+A weaker version of $\texttt{Register}$ that considers only task identifier, not the full task tuple.
+
+---
+
 * $\texttt{SS}_R := \texttt{SS} \land \texttt{Registered}_R$
 
 Stop started **for a specific** registration list $R$.
@@ -211,15 +217,11 @@ Stop ended **for a specific** registration list $R$.
 
 ---
 
-* $\texttt{FirstComing}^{=}_x := \big(\exists R . \; \texttt{Registered}_{R, x}\big) \wedge \neg (\exists R . \; (\texttt{Y} \; \texttt{Registered}_{R, x}))$
+* $\texttt{FirstComing}_x := \big(\exists R . \; \texttt{Registered}^{\approx}_{R, x}\big) \wedge \neg (\exists R . \; (\texttt{Y} \; \texttt{Registered}^{\approx}_{R, x}))$
 
 The moment of appearance of task $x$ such that it was not present in the previous registration list.
 
----
-
-* $\texttt{FirstComing}_x := \exists_{x' \approx_{\texttt{id}} x} \; \; \texttt{FirstComing}_{x'}$
-
-A weaker version of $\texttt{FirstComing}$ that considers only task identifier, not the full task tuple.
+Note that the comparison is by identifiers, not by full task tuple.
 
 ---
 
