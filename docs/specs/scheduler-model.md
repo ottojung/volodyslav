@@ -346,7 +346,7 @@ They prevent invalid sequences of events.
 
 **S1 — Start safety**
 $$
-\texttt{G}( \texttt{RS}_x \rightarrow \exists R. \; \texttt{Obligation}_{R, x} )
+\texttt{G}( \texttt{RS}_x \rightarrow \exists R. \; \texttt{Y} \; \texttt{Obligation}_{R, x} )
 $$
 A start can occur only while there is a current obligation to run.
 
