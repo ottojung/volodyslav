@@ -229,6 +229,8 @@ The moment of appearance of task $x$ such that it was not present in the previou
 
 Note that the comparison is by identifiers, not by full task tuple.
 
+This property allows completely "forgetting" a task after it has been removed instead of tracking its retry/due states forever.
+
 ---
 
 * $\texttt{RSucc}_x := \texttt{RS}_x \wedge \big( \neg (\texttt{REf}_x \lor \texttt{Crash}) \; \texttt{U} \; \texttt{REs}_x \big)$
