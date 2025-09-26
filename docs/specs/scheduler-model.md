@@ -129,7 +129,7 @@ Important: task does not have to be registered for $\texttt{Due}_x$ to occur.
 
 * $\texttt{RetryDue}_x$ — is the instant when the backoff for the most recent failure of $x$ expires.
 
-*Interpretation:* is a primitive point event (like $\texttt{Due}_x$), supplied by the environment/clock. If the latest $\texttt{RunFailure}(x)$ occurs at time $t_f$, then $\texttt{RetryDue}_x$ holds at time $t_f + \textsf{rd}(x)$. These pulses are truths about the environment.
+*Interpretation:* is a primitive point event (like $\texttt{Due}_x$), supplied by the environment/clock. If the latest $\texttt{RunFailure}(x)$ occurs at time $t_f$, then $\texttt{RetryDue}^{\approx}_x$ holds at time $t_f + \textsf{rd}(x)$. These pulses are truths about the environment.
 
 Important: task does not have to be registered for $\texttt{RetryDue}_x$ to occur.
 
