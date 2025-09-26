@@ -56,9 +56,9 @@ For example, it could be that $\texttt{duration}([0, 999])$ is one hour.
 
 ### Helper Equalities on Tasks
 
-Define id-only equality for raw tasks by $x \approx_{\text{id}} y \iff \textsf{id}(x) = \textsf{id}(y)$.
+Define id-only equality for raw tasks by $x \approx y \iff \textsf{id}(x) = \textsf{id}(y)$.
 
-Lift this pointwise to registration lists with $R \approx_{\text{id}} R' \iff |R| = |R'| \wedge \forall i.\; R[i] \approx_{\text{id}} R'[i]$.
+Lift this pointwise to registration lists with $R \approx R' \iff |R| = |R'| \wedge \forall i.\; R[i] \approx R'[i]$.
 
 ## Event Predicates (Observable Alphabet)
 
@@ -199,7 +199,7 @@ Note that this does not imply $\texttt{Active}$.
 
 ---
 
-* $\texttt{Registered}^{\approx}_{R, x} := \exists_{x' \approx_{\texttt{id}} x} \; \; \texttt{Registered}_{R, x'}$
+* $\texttt{Registered}^{\approx}_{R, x} := \exists_{x' \approx x} \; \; \texttt{Registered}_{R, x'}$
 
 A weaker version of $\texttt{Register}$ that considers only task identifier, not the full task tuple.
 
@@ -511,7 +511,7 @@ At least one $\texttt{RetryDue}$ tick appears after each failure.
 **RD4 — TaskId uniqueness**
 
 $$
-  \forall{x, y}.\; x \approx_{\texttt{id}} y \rightarrow \texttt{G}( \texttt{RetryDue}_x \leftrightarrow \texttt{RetryDue}_y )
+  \forall{x, y}.\; x \approx y \rightarrow \texttt{G}( \texttt{RetryDue}_x \leftrightarrow \texttt{RetryDue}_y )
 $$
 
 All tasks with the same $\texttt{TaskId}$ have the same $\texttt{RetryDue}$.
