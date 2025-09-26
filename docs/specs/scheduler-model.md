@@ -131,8 +131,6 @@ Important: task does not have to be registered for $\texttt{Due}_x$ to occur.
 
 *Interpretation:* is a primitive point event (like $\texttt{Due}_x$), supplied by the environment/clock. If the latest $\texttt{RunFailure}(x)$ occurs at time $t_f$, then $\texttt{RetryDue}^{\approx}_x$ holds at time $t_f + \textsf{rd}(x)$. These pulses are truths about the environment.
 
-Important: task does not have to be registered for $\texttt{RetryDue}_x$ to occur.
-
 ---
 
 Each predicate marks the instant the named public action occurs from the perspective of the embedding JavaScript runtime: function entry ($\texttt{InitStart}$, $\texttt{StopStart}$), function return ($\texttt{IE}$, $\texttt{StopEnd}$), callback invocation begin/end ($\texttt{RunStart}$, $\texttt{RE}$), and exogenous crash ($\texttt{UnexpectedShutdown}$). No logging or internal bookkeeping is modeled.
