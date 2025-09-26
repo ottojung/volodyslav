@@ -217,6 +217,12 @@ The moment of appearance of task $x$ such that it was not present in the previou
 
 ---
 
+* $\texttt{FirstComing}^{\approx}_x := \exists_{x' \approx_{\texttt{id}} x} \; \; \texttt{FirstComing}_{x'}$
+
+A weaker version of $\texttt{FirstComing}$ that considers only task identifier, not the full task tuple.
+
+---
+
 * $\texttt{RSucc}_x := \texttt{RS}_x \wedge \big( \neg (\texttt{REf}_x \lor \texttt{Crash}) \; \texttt{U} \; \texttt{REs}_x \big)$
 
 A start of run that eventually completes successfully (not preempted by failure or crash).
