@@ -506,6 +506,18 @@ Importantly, $\texttt{Due}_x$ and $\texttt{RetryDue}_x$ are not included here, a
 
 ---
 
+**E3 - No infinite freeze**
+
+$$
+\texttt{G}(\neg \texttt{Crash} \rightarrow \texttt{F}(\neg \texttt{Frozen}))
+$$
+
+It is impossible to have an infinite interval of time during which no work progresses, unless a crash occurs.
+
+This supports **L3**.
+
+---
+
 **E4 - Unlimited dues**
 
 $$
