@@ -371,6 +371,16 @@ This means that call to `stop()` waits for in-flight callbacks to complete.
 
 ---
 
+**S4 — Ends follow starts**
+
+$$
+\texttt{G}( \texttt{RE}_x \rightarrow \texttt{Y} \; \texttt{Running}_x)
+$$
+
+Every completion must correspond to a run that was already in flight before this position.
+
+---
+
 # Example Acceptable Traces (informative)
 
 **Trace 1 — Normal operation**
@@ -479,17 +489,7 @@ No work progresses around a crash instant.
 
 ---
 
-**E2 — Ends follow starts**
-
-$$
-\texttt{G}( \texttt{RE}_x \rightarrow \texttt{Y} \; \texttt{Running}_x)
-$$
-
-Every completion must correspond to a run that was already in flight before this position.
-
----
-
-**E3 - Actions require work**
+**E2 - Actions require work**
 
 $$
 \texttt{G}( \texttt{RE}_x \rightarrow \neg \texttt{Frozen} ) \\
