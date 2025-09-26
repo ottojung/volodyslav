@@ -41,7 +41,7 @@ This subsection gives a signature-based, self-contained definition of the model,
 * $\mathbb{T} := \mathbb{Z}$ — the time domain.
 * $\mathbb{D} := \mathbb{Z_{\geq 0}}$ — the domain of durations.
 * $\texttt{TaskId}$ — a set of public task identifiers.
-* $\texttt{Opaque}$ — an infinite set of uninterpreted atoms where only equality is meaningful.
+* $\texttt{Opaque}$ — a set of uninterpreted atoms where only equality is meaningful.
 * $\texttt{Callback}$ — the set of externally observable callback behaviours (abstracted here to equality).
 * $\texttt{Schedule}$ — an abstract object interpreted by the predicate $\texttt{Due}(\texttt{schedule}: \texttt{Schedule}, t: \mathbb{T}) \to \texttt{Bool}$ indicating minute-boundary instants when a task is eligible to start.
 * $\texttt{RetryDelay} := \mathbb{D}$ — non-negative time durations.
