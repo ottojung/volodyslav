@@ -674,7 +674,7 @@ After $\texttt{Crash}$ no new starts until re-initialisation.
 **Theorem 2 — Per-task non-overlap**
 
 $$
-\texttt{G}\big( \texttt{RS}_x \rightarrow \neg \texttt{Y} \;\texttt{Running}_x) \big)
+\texttt{G}\big( \texttt{RS}_x \rightarrow \neg \texttt{Y} \;\texttt{Running}_x \big)
 $$
 
 Once a run starts, no further $\texttt{RS}_x$ may occur before a matching $\texttt{RE}_x$ or $\texttt{Crash}$.
