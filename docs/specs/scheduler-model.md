@@ -583,7 +583,7 @@ $$
 \boxed{\,F^{\leq C}_{\texttt{comp}}(P)\,}
 $$
 
-holds at time $t = \tau(i)$ iff there exists $j \geq i$, $U = [i, j]$ and $S \subseteq U$ such that:
+holds at time $\tau(i)$ iff there exists $j \geq i$, $U = [\tau(i), \tau(j)]$, and $S \subseteq U$ such that:
 
 - $P$ holds at $j$,
 - and $\texttt{compute}(S) \leq C$,
