@@ -644,7 +644,7 @@ Follows from **S1** and the fact that $\texttt{Obligation}$ requires $\texttt{Ac
 **Theorem 4 — No duplicate TaskIds**
 
 $$
-\texttt{G}\big( \texttt{IEs}_R \rightarrow \forall_{x, y \in_{\text{list}} R} \; (x \approx y \rightarrow x = y) \big)
+\texttt{G}\big( \texttt{IEs}_R \rightarrow \neg \exists_{x, y \in_{\text{list}} R} \; (x \neq y \land x \approx y) \big)
 $$
 
 So each successful initialization does not contain duplicate task identifiers.
