@@ -60,6 +60,12 @@ Define id-only equality for raw tasks by $x \approx y \iff \textsf{id}(x) = \tex
 
 Lift this pointwise to registration lists with $R \approx R' \iff |R| = |R'| \wedge \forall i.\; R[i] \approx R'[i]$.
 
+Also define an id-based $\texttt{RetryDue}$ predicate:
+
+$$
+\texttt{RetryDue}^{\approx}_x := \bigcup_{y \approx x} \texttt{RetryDue}_y
+$$
+
 ## Event Predicates (Observable Alphabet)
 
 Each event predicate is evaluated at a trace position $i$ (we omit $i$ when clear from context):
