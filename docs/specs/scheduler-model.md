@@ -323,7 +323,7 @@ Similar to L1, this property ensures that once an initialization starts, it must
 
 **L3 — Stop terminates**
 $$
-\texttt{G}\big( \texttt{SS}_R \rightarrow \texttt{AllTerm} \rightarrow \texttt{F} \; (\texttt{SE}_R \lor \texttt{Crash})\big)
+\texttt{G}\big( \texttt{SS}_R \rightarrow (\texttt{AllTerm} \rightarrow \texttt{F} \; (\texttt{SE}_R \lor \texttt{Crash}))\big)
 $$
 
 No bound on compute here, as the scheduler may need to wait for in-flight callbacks to complete. The callbacks are not bounded, so no unconditional bound on stop can be given.
