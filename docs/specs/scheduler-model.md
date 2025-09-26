@@ -650,8 +650,6 @@ $$
 So each successful initialization does not contain duplicate task identifiers.
 It should be that the scheduler must reject any registration list with duplicate task identifiers by throwing an error from `initialize(...)`.
 
-This is a design invariant of the scheduler, not a property of the environment.
-
 The key property is **RD4** - which ensures that tasks with the same identifier share retry state.
 
 ---
