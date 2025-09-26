@@ -211,9 +211,7 @@ Stop ended **for a specific** registration list $R$.
 
 ---
 
-$$
-\texttt{FirstComing}_x := \big(\exists R . \; \texttt{Registered}_{R, x}\big) \wedge \neg (\exists R . \; (\texttt{Y} \; \texttt{Registered}_{R, x}))
-$$
+* $\texttt{FirstComing}_x := \big(\exists R . \; \texttt{Registered}_{R, x}\big) \wedge \neg (\exists R . \; (\texttt{Y} \; \texttt{Registered}_{R, x}))$
 
 The moment of appearance of task $x$ such that it was not present in the previous registration list.
 
