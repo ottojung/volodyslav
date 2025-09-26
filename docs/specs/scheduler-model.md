@@ -516,6 +516,9 @@ $$
 
 For every task $x$, the cron schedule matches infinitely often.
 
+This comes from the fact that cron schedules are periodic and unbounded in time.
+It is impossible to have a valid cron expression that matches only finitely many times.
+
 ---
 
 **E5 — Crash/RE consistency**
