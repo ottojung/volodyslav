@@ -111,6 +111,8 @@ For example, for a cron expression `* * * * *`, a due fires at `2024-01-01T12:34
 
 Important: task does not have to be registered for $\texttt{Due}_x$ to occur.
 
+Note: because of DST and other irregularities of a civil clock, minute starts are not uniformly spaced in $\mathbb{T}$.
+
 ---
 
 * $\texttt{RetryDue}_x$ — is the instant when the backoff for the most recent failure of $x$ expires.
