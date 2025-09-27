@@ -518,7 +518,7 @@ $$
 \texttt{G} \; \texttt{F} \; \texttt{Frozen} 
 $$
 
-There are infinitely many intervals of time during which no work progresses.
+There are infinitely many intervals of time during which no work progresses. This asserts density of time within compute.
 
 ---
 
