@@ -238,9 +238,11 @@ A start of run that eventually completes successfully (not preempted by failure 
 
 ---
 
-* $\texttt{Active}_R := \texttt{Hold}(\texttt{IEs}_R, \texttt{SS}_R \vee \texttt{Crash})$
+* $\texttt{Active}_R := \texttt{Hold}(\texttt{IEs}_R, \texttt{SS}_R \vee \texttt{Crash} \lor \exists{R' \neq R} . \; \texttt{IEs}_{R'})$
 
-Between an $\texttt{IEs}$ and the next $\texttt{SS}$ or $\texttt{Crash}$.
+True for an active registration list $R$.
+Determines boundary of when tasks in $R$ can start.
+The last disjunct ensures that $\texttt{Active}_R$ is false if a new initialization has occurred.
 
 ---
 
