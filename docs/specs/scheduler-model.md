@@ -121,7 +121,7 @@ Important: task does not have to be registered for $\texttt{Due}_x$ to occur.
   It is formally defined as:
 
   $$
-  \texttt{RetryDue}_x(i) := \exists_{j} \; (\tau(j) + \textsf{rd}(x) = \tau(i)) \land \texttt{REf}_x(j)
+  \texttt{RetryDue}_x \texttt{ at } i := \exists_{j} \; (\tau(j) + \textsf{rd}(x) = \tau(i)) \land (\texttt{REf}_x \texttt{ at } j)
   $$
 
 *Interpretation:* is a primitive point event (like $\texttt{Due}_x$), supplied by the environment/clock. If the latest $\texttt{RunFailure}(x)$ occurs at time $t_f$, then $\texttt{RetryDue}_x$ holds at time $t_f + \textsf{rd}(x)$. These pulses are truths about the environment.
@@ -454,7 +454,7 @@ The environment contributes two ingredients:
    * **T1 (additivity):** $\texttt{compute}(S \cup V) = \texttt{compute}(S) + \texttt{compute}(V) - \texttt{compute}(S \cap V)$.
    * **T2 (boundedness):** $\texttt{compute}(S) \leq \lambda \cdot \texttt{duration}(S)$.
 
-   No positivity is assumed; the environment may set $\texttt{compute}([t,u]) = 0$ on arbitrary (even unbounded) intervals, modelling **freezes** where no work can progress. We write $\texttt{Frozen}(t,u)$ when $\texttt{compute}([t,u]) = 0$. We write $\texttt{Frozen}$ at a trace position $i$ when there exists $l, r \geq 0$ such that $l + r > 0 \wedge \texttt{Frozen}(\tau(i) - l, \tau(i) + r)$. This means no work progressed in the interval surrounding the trace position. Similarly, $\texttt{Unfrozen}$ means that compute is positive in some interval surrounding the position.
+   No positivity is assumed; the environment may set $\texttt{compute}([t,u]) = 0$ on arbitrary (even unbounded) intervals, modelling **freezes** where no work can progress. We write $\texttt{Frozen}(t,u)$ when $\texttt{compute}([t,u]) = 0$. We write $\texttt{Frozen} \texttt{ at } i$ when there exists $l, r \geq 0$ such that $l + r > 0 \wedge \texttt{Frozen}(\tau(i) - l, \tau(i) + r)$. This means no work progressed in the interval surrounding the trace position. Similarly, $\texttt{Unfrozen}$ means that compute is positive in some interval surrounding the position.
 
    Compute is only spent on scheduler's actions.
    So, in particular, these events do not require or "consume" compute:
@@ -505,7 +505,7 @@ Importantly, $\texttt{Due}_x$ and $\texttt{RetryDue}_x$ are not included here, a
 **E3 - No infinite freeze**
 
 $$
-\forall_{t} \big((\forall_{v \geq t} \; \texttt{Frozen}(t, v)) \rightarrow \exists_{i} \; t \leq \tau(i) \land \texttt{Crash}(i)\big)
+\forall_{t} \big((\forall_{v \geq t} \; \texttt{Frozen}(t, v)) \rightarrow \exists_{i} \; t \leq \tau(i) \land (\texttt{Crash} \texttt{ at } i) \big)
 $$
 
 It is impossible to have an infinite interval of time during which no work progresses, unless a crash occurs.
