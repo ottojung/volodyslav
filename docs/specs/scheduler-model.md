@@ -659,18 +659,3 @@ $$
 After $\texttt{SE}$, no new starts until re-initialisation.
 
 Follows from **S1** and the fact that $\texttt{Obligation}$ requires $\texttt{Active}$.
-
-<!-- ---
-
-**Theorem 4 — No duplicate TaskIds**
-
-$$
-\texttt{G}\big( \texttt{IEs}_R \rightarrow \neg \exists_{x, y \in_{\text{list}} R} \; (x \neq y \land x \approx y) \big)
-$$
-
-So each successful initialization does not contain duplicate task identifiers.
-It should be that the scheduler must reject any registration list with duplicate task identifiers by throwing an error from `initialize(...)`.
-
-The key property is **RD4** - which ensures that tasks with the same identifier share retry state. So, if duplicate identifiers were allowed, one of them could fail and cause unexpected retries of the other.
-
---- -->
