@@ -145,6 +145,7 @@ Each predicate marks the instant the named public action occurs from the perspec
 * $\texttt{REf}_x := \texttt{RunFailure}(x)$
 * $\texttt{RE}_x := \texttt{REs}_x \vee \texttt{REf}_x$
 * $\texttt{duration}(S) := |S|$
+* $\texttt{Uninstalled} := \neg \texttt{F} \; \texttt{Unfreeze}$
 
 ---
 
@@ -318,7 +319,7 @@ Similar to L1, this property ensures that once an initialization starts, it must
 
 **L3 — Stop terminates**
 $$
-\texttt{G}\big( \texttt{SS}_R \rightarrow (\texttt{AllTerm} \rightarrow \texttt{F} \; (\texttt{SE}_R \lor \texttt{Crash}))\big)
+\texttt{G}\big( \texttt{SS}_R \rightarrow (\texttt{AllTerm} \rightarrow \texttt{F} \; (\texttt{SE}_R \lor \texttt{Crash} \lor \texttt{Uninstalled}))\big)
 $$
 
 No bound on compute here, as the scheduler may need to wait for in-flight callbacks to complete. The callbacks are not bounded, so no unconditional bound on stop can be given.
