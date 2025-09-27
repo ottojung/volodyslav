@@ -626,8 +626,6 @@ holds at time $\tau(i)$ iff there exists $j \geq i$, $U = [\tau(i), \tau(j)]$, a
 - and $\texttt{compute}(S) \leq C$,
 - and $\texttt{duration}(U \setminus S) \leq t_{\texttt{lag}}$.
 
-Also, $F^{\leq C}_{\texttt{comp}}(P)$ holds if $F^{< \infty}_{\texttt{comp}}(P)$ fails (i.e., if the environment never provides enough compute).
-
 Intuitively, this asserts that $P$ will occur after receiving at most $C$ units of environment-provided compute from the current position, plus a small lag $t_{\texttt{lag}}$ to account for a constant delay.
 
 **Linear-in-input compute bound.** Fix global non-negative constants $a, b \in \mathbb{Z}_{\geq 0}$. Define
