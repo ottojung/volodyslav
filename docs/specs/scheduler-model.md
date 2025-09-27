@@ -512,9 +512,17 @@ It is impossible to have an infinite interval of time during which no work progr
 
 This supports **L3**.
 
+**E4 - Unlimited freeze**
+
+$$
+\texttt{G} \; \texttt{F} \; \texttt{Frozen} 
+$$
+
+There are infinitely many intervals of time during which no work progresses.
+
 ---
 
-**E4 - Unlimited dues**
+**E5 - Unlimited dues**
 
 $$
 \texttt{G} \; \texttt{F} \; \texttt{Due}_x
@@ -527,7 +535,7 @@ It is impossible to have a valid cron expression that matches only finitely many
 
 ---
 
-**E5 — Crash/RE consistency**
+**E6 — Crash/RE consistency**
 
 $$
 \texttt{G}( \texttt{Crash} \rightarrow (\neg \texttt{RE}_x \; \texttt{W} \; \texttt{RS}_x) )
