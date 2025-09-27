@@ -297,7 +297,7 @@ Progress is always read relative to the environment’s willingness to provide c
 **L1 — Obligation fulfillment**
 
 $$
-\texttt{G}( \texttt{Obligation}_{R, x} \rightarrow \texttt{F}_{\texttt{comp}}^{\texttt{lin}(R, \,t)} (\texttt{RS}_x \vee \neg \texttt{Active}_R ))
+\texttt{G}( \texttt{Obligation}_{R, x} \rightarrow \texttt{F}_{\texttt{comp}}^{\texttt{lin}(R, \,\tau(i))} (\texttt{RS}_x \vee \neg \texttt{Active}_R ))
 $$
 
 When a task is supposed to be executed, we must eventually see that execution in the form of $\texttt{RS}_x$ (or a $\texttt{Crash}$, or $\texttt{SS}$).
@@ -309,7 +309,7 @@ Furthermore, that execution occurs within a bounded **compute** (as a linear fun
 **L2 — Initialization completes**
 
 $$
-\texttt{G}\big( \texttt{IS}_R \rightarrow \texttt{F}_{\texttt{comp}}^{\texttt{lin}(R, \,t)} \; (\texttt{IE}_R \lor \texttt{Crash}) \big)
+\texttt{G}\big( \texttt{IS}_R \rightarrow \texttt{F}_{\texttt{comp}}^{\texttt{lin}(R, \,\tau(i))} \; (\texttt{IE}_R \lor \texttt{Crash}) \big)
 $$
 
 Similar to L1, this property ensures that once an initialization starts, it must eventually complete within a bounded amount of compute (unless preempted by a crash).
