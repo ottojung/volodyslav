@@ -160,9 +160,11 @@ One single $A$ is allowed if there is no next $B$.
 
 ---
 
-* $\texttt{Hold}(\texttt{set}, \texttt{clear}) := (\neg \texttt{clear}) \; \texttt{S} \; \texttt{set}
+* $\texttt{Hold}(\texttt{set}, \texttt{clear}) := \big((\neg \texttt{clear}) \; \texttt{S} \; \texttt{set}\big) \land \neg \texttt{clear}$
 
 There was a $\texttt{set}$ in the past (or now), and no $\texttt{clear}$ since.
+
+This is a strict version - if clear and set occur simultaneously, the result is false.
 
 ---
 
