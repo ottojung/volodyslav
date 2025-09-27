@@ -448,7 +448,7 @@ The environment contributes two ingredients:
    \texttt{compute} : \mathcal{P}(\mathbb{T}) \to \mathbb{P}
    $$
 
-   assigning the potential amount of computational progress available to the scheduler over any real-time interval. For some $\lambda > 0$ and for all $S, V \subset \mathbb{T}$, it satisfies:
+   assigning the potential amount of computational progress available to the scheduler over any collection of time intervals. For some $\lambda > 0$ and for all $S, V \subset \mathbb{T}$, it satisfies:
 
    * **T1 (additivity):** $\texttt{compute}(S \cup V) = \texttt{compute}(S) + \texttt{compute}(V) - \texttt{compute}(S \cap V)$.
    * **T2 (boundedness):** $\texttt{compute}(S) \leq \lambda \cdot \texttt{duration}(S)$.
