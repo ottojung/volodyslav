@@ -40,6 +40,7 @@ This subsection gives a signature-based, self-contained definition of the model,
 
 * $\mathbb{T} := \mathbb{Z}$ — the time domain.
 * $\mathbb{D} := \mathbb{Z_{\geq 0}}$ — the domain of durations.
+* $\mathbb{P} := \mathbb{Z_{\geq 0}}$ — the domain of compute.
 * $\texttt{TaskId}$ — a set of public task identifiers.
 * $\texttt{Opaque}$ — a set of uninterpreted atoms where only equality is meaningful.
 * $\texttt{Callback}$ — the set of externally observable callback behaviours (abstracted here to equality).
@@ -444,7 +445,7 @@ The environment contributes two ingredients:
 2. **Work density function** — a dimensionless function
 
    $$
-   \texttt{compute} : \mathcal{P}(\mathbb{T}) \to \mathbb{Q}_{\ge 0}
+   \texttt{compute} : \mathcal{P}(\mathbb{T}) \to \mathbb{P}
    $$
 
    assigning the potential amount of computational progress available to the scheduler over any real-time interval. For some $\lambda > 0$ and for all $S, V \subset \mathbb{T}$, it satisfies:
@@ -598,7 +599,7 @@ This section defines the helper modalities $F^{\leq C}_{\texttt{comp}}$ and $F^{
 
 **Background time value and its size.** Each position $i$ is associated with a background timestamp value $t := \tau(i) \in \mathbb{T}$. Define $|t| := |\llbracket t \rrbracket|$ using a standard signed binary encoding (so this equals $1 + \lceil \log_2(1 + |t|_{\text{abs}}) \rceil$, where $|t|_{\text{abs}}$ is the absolute value of $t$). *Important:* $|t|$ measures the value of the clock, not the density of events; events may be sparse in $i$ even when $|t|$ grows.
 
-**Compute-bounded eventually.** Fix global non-negative constant $t_{\texttt{lag}}$. For $C \in \mathbb{Q}_{\geq 0}$, the modality
+**Compute-bounded eventually.** Fix global non-negative constant $t_{\texttt{lag}}$. For $C \in \mathbb{P}$, the modality
 
 $$
 \boxed{\,F^{\leq C}_{\texttt{comp}}(P)\,}
