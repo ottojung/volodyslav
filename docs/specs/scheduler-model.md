@@ -673,33 +673,4 @@ It should be that the scheduler must reject any registration list with duplicate
 
 The key property is **RD4** - which ensures that tasks with the same identifier share retry state. So, if duplicate identifiers were allowed, one of them could fail and cause unexpected retries of the other.
 
----
-
-
-**RD1 — Nonprecedence**
-$$
-	\texttt{G}\big( ( \neg \texttt{O}\ \texttt{REf}^{\approx}_x ) \rightarrow \neg \texttt{RetryDue}_x \big)
-$$
-
-No spurious pulses before any failure.
-
----
-
-**RD3 — Existence**
-$$
-	\texttt{G}\big( \texttt{REf}^{\approx}_x \rightarrow \texttt{F}\ \texttt{RetryDue}_x \big)
-$$
-
-At least one $\texttt{RetryDue}$ tick appears after each failure.
-
----
-
-**RD4 — TaskId uniqueness**
-
-$$
-  \forall{x, y}.\; x \approx y \rightarrow \texttt{G}( \texttt{RetryDue}_x \leftrightarrow \texttt{RetryDue}_y )
-$$
-
-All tasks with the same $\texttt{TaskId}$ have the same $\texttt{RetryDue}$.
-
 --- -->
