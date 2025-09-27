@@ -105,12 +105,9 @@ Each event predicate is evaluated at a trace position $i$ (we omit $i$ when clea
 
 * $\texttt{Due}_x$ — is start of a minute that the cron schedule for task $x$ matches.
 
-*Interpretation:* the cron schedule for $x$ matches the current minute boundary.
-Minute boundary is defined as the exact start of that minute.
+*Interpretation:* the cron schedule for $x$ matches the start of a *civil* minute according to the host system's local clock.
 
-For example, for a cron expression `* * * * *`, a minute boundary occurs at `2024-01-01T12:34:00.00000000000000000000000000000000000000000000000000000` (infinitely many zeros) local time.
-
-Time is defined by the host system's local clock (see [Execution Environment Model](#execution-environment-model)).
+For example, for a cron expression `* * * * *`, a due fires at `2024-01-01T12:34:00` local time, at the exact start of that minute.
 
 Important: task does not have to be registered for $\texttt{Due}_x$ to occur.
 
