@@ -670,3 +670,22 @@ $$
 After $\texttt{SE}$, no new starts until re-initialisation.
 
 Follows from **S1** and the fact that $\texttt{Obligation}$ requires $\texttt{Active}$.
+
+---
+
+**Theorem 4 — Crash dominance**
+
+$$
+\texttt{G}( \texttt{Crash} \rightarrow \neg \texttt{RS}_x ) \\
+\texttt{G}( \texttt{Crash} \rightarrow \neg \texttt{RE}_x ) \\
+\texttt{G}( \texttt{Crash} \rightarrow \neg \texttt{IS}_R ) \\
+\texttt{G}( \texttt{Crash} \rightarrow \neg \texttt{IE} ) \\
+\texttt{G}( \texttt{Crash} \rightarrow \neg \texttt{SS} ) \\
+\texttt{G}( \texttt{Crash} \rightarrow \neg \texttt{SE} ) \\
+$$
+
+A crash cannot cooccur with any action.
+
+Follows from **E1** and **E2**.
+
+---
