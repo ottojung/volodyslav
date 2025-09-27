@@ -505,7 +505,7 @@ Importantly, $\texttt{Due}_x$ and $\texttt{RetryDue}_x$ are not included here, a
 **E3 - No infinite freeze**
 
 $$
-\forall_{t} \big((\forall_{v \geq t} \; \texttt{compute}([t, v]) = 0) \rightarrow \exists_{i} \; t \leq \tau(i) \land \texttt{Crash}(i)\big)
+\forall_{t} \big((\forall_{v \geq t} \; \texttt{Frozen}(t, v)) \rightarrow \exists_{i} \; t \leq \tau(i) \land \texttt{Crash}(i)\big)
 $$
 
 It is impossible to have an infinite interval of time during which no work progresses, unless a crash occurs.
