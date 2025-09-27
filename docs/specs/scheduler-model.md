@@ -504,7 +504,7 @@ Importantly, $\texttt{Due}_x$ and $\texttt{RetryDue}_x$ are not included here, a
 **E3 - No infinite freeze**
 
 $$
-\exists_{t} \forall_{v \geq t} .\; \texttt{Frozen}(t, v) \rightarrow \exists_{k \geq t} .\; \texttt{Crash}(k)
+\forall_{t} \big((\forall_{v \geq t} .\; \texttt{Frozen}(t, v)) \rightarrow \exists_{k \geq t} .\; \texttt{Crash}(k)\big)
 $$
 
 It is impossible to have an infinite interval of time during which no work progresses, unless a crash occurs.
