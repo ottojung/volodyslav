@@ -554,7 +554,7 @@ Following are additional, **informative** assumptions that may hold in some envi
 **A1 - Eventual thawing**
 
 $$
-\texttt{G}( \texttt{F}( \neg \texttt{Frozen} ) )
+\texttt{G} \; \texttt{F} \; \texttt{Unfrozen}
 $$
 
 Eventually, the environment provides some positive compute in every future interval.
