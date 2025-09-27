@@ -334,7 +334,7 @@ $$
 # Safety Properties
 
 These are normative properties.
-They properties state scheduler invariants.
+They state scheduler invariants.
 They prevent invalid sequences of events.
 
 ---
