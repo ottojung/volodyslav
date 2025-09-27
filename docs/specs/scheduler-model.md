@@ -517,16 +517,6 @@ Two actions cannot happen simultaneously.
 
 ---
 
-**E3 - No infinite freeze**
-
-$$
-\forall_{t} \big((\forall_{v \geq t} \; \texttt{Frozen}(t, v)) \rightarrow \exists_{i} \; t \leq \tau(i) \land (\texttt{Crash} \texttt{ at } i) \big)
-$$
-
-It is impossible to have an infinite interval of time during which no work progresses, unless a crash occurs.
-
-This supports **L3**.
-
 **E4 - Unlimited freeze**
 
 $$
