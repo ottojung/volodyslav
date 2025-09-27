@@ -60,18 +60,6 @@ Define id-only equality for raw tasks by $x \approx y \iff \textsf{id}(x) = \tex
 
 Lift this pointwise to registration lists with $R \approx R' \iff |R| = |R'| \wedge \forall i.\; R[i] \approx R'[i]$.
 
-Also define an id-based $\texttt{RetryDue}$ predicate:
-
-$$
-\texttt{RetryDue}^{\approx}_x := \exists_{y \approx x} \; \texttt{RetryDue}_y
-$$
-
-And define an id-based $\texttt{REf}$ predicate:
-
-$$
-\texttt{REf}^{\approx}_x := \exists_{y \approx x} \; \texttt{REf}_y
-$$
-
 ## Event Predicates (Observable Alphabet)
 
 Each event predicate is evaluated at a trace position $i$ (we omit $i$ when clear from context):
@@ -129,7 +117,13 @@ Important: task does not have to be registered for $\texttt{Due}_x$ to occur.
 
 * $\texttt{RetryDue}_x$ — is the instant when the backoff for the most recent failure of $x$ expires.
 
-*Interpretation:* is a primitive point event (like $\texttt{Due}_x$), supplied by the environment/clock. If the latest $\texttt{RunFailure}(x)$ occurs at time $t_f$, then $\texttt{RetryDue}^{\approx}_x$ holds at time $t_f + \textsf{rd}(x)$. These pulses are truths about the environment.
+  It is formally defined as:
+
+  $$
+  \texttt{RetryDue}_x(i) := \exists_{j} \; (\tau(j) + \textsf{rd}(x) = \tau(i)) \rightarrow \texttt{REf}_x(j)
+  $$
+
+*Interpretation:* is a primitive point event (like $\texttt{Due}_x$), supplied by the environment/clock. If the latest $\texttt{RunFailure}(x)$ occurs at time $t_f$, then $\texttt{RetryDue}_x$ holds at time $t_f + \textsf{rd}(x)$. These pulses are truths about the environment.
 
 ---
 
@@ -541,43 +535,6 @@ After a $\texttt{Crash}$, no new ends until a new start.
 
 ---
 
-**RD1 — Nonprecedence**
-$$
-	\texttt{G}\big( ( \neg \texttt{O}\ \texttt{REf}^{\approx}_x ) \rightarrow \neg \texttt{RetryDue}^{\approx}_x \big)
-$$
-
-No spurious pulses before any failure.
-
----
-
-**RD2 — Uniqueness**
-$$
-	\texttt{AtMostOne}(\texttt{REf}^{\approx}_x,\ \texttt{RetryDue}^{\approx}_x)
-$$
-
-At most one pulse between consecutive failures (or none if no failure occurs).
-
----
-
-**RD3 — Existence**
-$$
-	\texttt{G}\big( \texttt{REf}^{\approx}_x \rightarrow \texttt{F}\ \texttt{RetryDue}^{\approx}_x \big)
-$$
-
-At least one $\texttt{RetryDue}$ tick appears after each failure.
-
----
-
-**RD4 — TaskId uniqueness**
-
-$$
-  \forall{x, y}.\; x \approx y \rightarrow \texttt{G}( \texttt{RetryDue}_x \leftrightarrow \texttt{RetryDue}_y )
-$$
-
-All tasks with the same $\texttt{TaskId}$ have the same $\texttt{RetryDue}$.
-
----
-
 ## Nice progress properties
 
 Following are additional, **informative** assumptions that may hold in some environments. They are not part of the core model.
@@ -703,7 +660,7 @@ After $\texttt{SE}$, no new starts until re-initialisation.
 
 Follows from **S1** and the fact that $\texttt{Obligation}$ requires $\texttt{Active}$.
 
----
+<!-- ---
 
 **Theorem 4 — No duplicate TaskIds**
 
@@ -717,3 +674,32 @@ It should be that the scheduler must reject any registration list with duplicate
 The key property is **RD4** - which ensures that tasks with the same identifier share retry state. So, if duplicate identifiers were allowed, one of them could fail and cause unexpected retries of the other.
 
 ---
+
+
+**RD1 — Nonprecedence**
+$$
+	\texttt{G}\big( ( \neg \texttt{O}\ \texttt{REf}^{\approx}_x ) \rightarrow \neg \texttt{RetryDue}_x \big)
+$$
+
+No spurious pulses before any failure.
+
+---
+
+**RD3 — Existence**
+$$
+	\texttt{G}\big( \texttt{REf}^{\approx}_x \rightarrow \texttt{F}\ \texttt{RetryDue}_x \big)
+$$
+
+At least one $\texttt{RetryDue}$ tick appears after each failure.
+
+---
+
+**RD4 — TaskId uniqueness**
+
+$$
+  \forall{x, y}.\; x \approx y \rightarrow \texttt{G}( \texttt{RetryDue}_x \leftrightarrow \texttt{RetryDue}_y )
+$$
+
+All tasks with the same $\texttt{TaskId}$ have the same $\texttt{RetryDue}$.
+
+--- -->
