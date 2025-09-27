@@ -593,6 +593,8 @@ A corollary is that if the environment provides enough compute, no tasks are eve
 
 The following labels identify illustrative environment classes. They are informative definitions, not global assumptions:
 
+* **Freezing environments:** admit arbitrarily long intervals $(t,u)$ with $\texttt{Frozen}(t, u)$.
+
 * **Eventually thawing environments:** there exists $U$ such that every interval of length $\ge U$ supplies some positive compute.
 
 * **Lower-bounded-density environments:** there exist parameters $\varepsilon > 0$ and $\Delta \ge 0$ such that for all $t$ and $T \ge \Delta$, $\texttt{compute}([t,t+T]) \ge \varepsilon\cdot T$ (average density after $\Delta$ never drops below $\varepsilon$).
