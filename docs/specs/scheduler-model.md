@@ -243,7 +243,7 @@ A start of run that eventually completes successfully (not preempted by failure 
 
 True for an active registration list $R$.
 Determines boundary of when tasks in $R$ can start.
-The last disjunct ensures that $\texttt{Active}_R$ is false if a new initialization has occurred.
+The last disjunct ensures that $\texttt{Active}_R$ becomes false if a new initialization with a different list occurs.
 
 ---
 
