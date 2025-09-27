@@ -525,10 +525,10 @@ There are infinitely many intervals of time during which no work progresses. Thi
 **E5 - Unlimited dues**
 
 $$
-\texttt{G} \; \texttt{F} \; \texttt{Due}_x
+\texttt{G} \; \texttt{F} \; \texttt{Due}_x \lor \texttt{G}(\neg \texttt{Due}_x)
 $$
 
-For every task $x$, the cron schedule matches infinitely often.
+For every task $x$, the cron schedule matches infinitely often or never at all.
 
 This comes from the fact that cron schedules are periodic and unbounded in time.
 It is impossible to have a valid cron expression that matches only finitely many times.
