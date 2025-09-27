@@ -121,7 +121,7 @@ Important: task does not have to be registered for $\texttt{Due}_x$ to occur.
   It is formally defined as:
 
   $$
-  \texttt{RetryDue}_x(i) := \exists_{j} \; (\tau(j) + \textsf{rd}(x) = \tau(i)) \rightarrow \texttt{REf}_x(j)
+  \texttt{RetryDue}_x(i) := \exists_{j} \; (\tau(j) + \textsf{rd}(x) = \tau(i)) \land \texttt{REf}_x(j)
   $$
 
 *Interpretation:* is a primitive point event (like $\texttt{Due}_x$), supplied by the environment/clock. If the latest $\texttt{RunFailure}(x)$ occurs at time $t_f$, then $\texttt{RetryDue}_x$ holds at time $t_f + \textsf{rd}(x)$. These pulses are truths about the environment.
