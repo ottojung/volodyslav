@@ -526,7 +526,7 @@ There are infinitely many intervals of time during which no work progresses. Thi
 **E5 - Unlimited dues**
 
 $$
-\texttt{G} \; \texttt{F} \; \texttt{Due}_x \lor \texttt{G}(\neg \texttt{Due}_x)
+\texttt{G} \big( \texttt{F} \; \texttt{Due}_x \big) \lor \texttt{G}(\neg \texttt{Due}_x)
 $$
 
 For every task $x$, the cron schedule matches infinitely often or never at all.
