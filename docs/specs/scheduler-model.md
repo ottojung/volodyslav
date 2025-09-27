@@ -454,7 +454,7 @@ The environment contributes two ingredients:
    * **T1 (additivity):** $\texttt{compute}(S \cup V) = \texttt{compute}(S) + \texttt{compute}(V) - \texttt{compute}(S \cap V)$.
    * **T2 (boundedness):** $\texttt{compute}(S) \leq \lambda \cdot \texttt{duration}(S)$.
 
-   No positivity is assumed; the environment may set $\texttt{compute}([t,u]) = 0$ on arbitrary (even unbounded) intervals, modelling **freezes** where no work can progress. We write $\texttt{Frozen}(t,u)$ when $\texttt{compute}([t,u]) = 0$. We write $\texttt{Frozen}$ at a trace position $i$ when there exists $l, r \geq 0$ such that $l + r > 0 \wedge \texttt{Frozen}(\tau(i) - l, \tau(i) + r)$. This means no work progressed in the interval surrounding the trace position.
+   No positivity is assumed; the environment may set $\texttt{compute}([t,u]) = 0$ on arbitrary (even unbounded) intervals, modelling **freezes** where no work can progress. We write $\texttt{Frozen}(t,u)$ when $\texttt{compute}([t,u]) = 0$. We write $\texttt{Frozen}$ at a trace position $i$ when there exists $l, r \geq 0$ such that $l + r > 0 \wedge \texttt{Frozen}(\tau(i) - l, \tau(i) + r)$. This means no work progressed in the interval surrounding the trace position. Similarly, $\texttt{Unfrozen}$ means that compute is positive in some interval surrounding the position.
 
    Compute is only spent on scheduler's actions.
    So, in particular, these events do not require or "consume" compute:
@@ -488,12 +488,12 @@ No work progresses around a crash instant.
 **E2 - Actions require work**
 
 $$
-\texttt{G}( \texttt{RE}_x \rightarrow \neg \texttt{Frozen} ) \\
-\texttt{G}( \texttt{RS}_x \rightarrow \neg \texttt{Frozen} ) \\
-\texttt{G}( \texttt{IS}_R \rightarrow \neg \texttt{Frozen} ) \\
-\texttt{G}( \texttt{IE} \rightarrow \neg \texttt{Frozen} ) \\
-\texttt{G}( \texttt{SS} \rightarrow \neg \texttt{Frozen} ) \\
-\texttt{G}( \texttt{SE} \rightarrow \neg \texttt{Frozen} ) \\
+\texttt{G}( \texttt{RE}_x \rightarrow \texttt{Unfrozen} ) \\
+\texttt{G}( \texttt{RS}_x \rightarrow \texttt{Unfrozen} ) \\
+\texttt{G}( \texttt{IS}_R \rightarrow \texttt{Unfrozen} ) \\
+\texttt{G}( \texttt{IE} \rightarrow \texttt{Unfrozen} ) \\
+\texttt{G}( \texttt{SS} \rightarrow \texttt{Unfrozen} ) \\
+\texttt{G}( \texttt{SE} \rightarrow \texttt{Unfrozen} ) \\
 $$
 
 Observable events, including end of a callback, require that some work has been spent on them.
