@@ -190,7 +190,7 @@ Initialization ended **for a specific** registration list $R$.
 
 ---
 
-* $\texttt{Registered}_{R} := \texttt{Hold}(\texttt{IEs}_{R}, \exists R' . \; \texttt{IEs}_{R'})$
+* $\texttt{Registered}_{R} := \texttt{Hold}(\texttt{IEs}_{R}, \exists R' \neq R . \; \texttt{IEs}_{R'})$
 
 Reference to the most recent successful initialization **of a specific** registration list $R$.
 
