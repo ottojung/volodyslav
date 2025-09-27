@@ -166,7 +166,7 @@ There was a $\texttt{set}$ in the past (or now), and no $\texttt{clear}$ since.
 
 ---
 
-* $\texttt{IS}^+_{R} := \texttt{Hold}(\texttt{IS}_{R}, \exists R' .\; \texttt{IS}_{R'})$
+* $\texttt{IS}^+_{R} := \texttt{Hold}(\texttt{IS}_{R}, \exists R' \neq R .\; \texttt{IS}_{R'})$
 
 Reference to the most recent initialization attempt **for a specific** registration list $R$.
 
