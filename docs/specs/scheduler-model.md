@@ -115,7 +115,7 @@ Note: because of DST and other irregularities of a civil clock, minute starts ar
 
 ---
 
-* $\texttt{RetryDue}_x$ — is the instant when the backoff for the most recent failure of $x$ expires.
+* $\texttt{RetryDue}_x$ — is the instant when the backoff for a failure of $x$ expires.
 
   It is formally defined as:
 
