@@ -623,7 +623,7 @@ holds at time $\tau(i)$ iff there exists $j \geq i$, $U = [\tau(i), \tau(j)]$, a
 
 Intuitively, this asserts that $P$ will occur after receiving at most $C$ units of environment-provided compute from the current position, plus a small lag $t_{\texttt{lag}}$ to account for a constant delay.
 
-**Linear-in-input compute bound.** Fix global non-negative constants $a, b \in \mathbb{Q}_{\geq 0}$. Define
+**Linear-in-input compute bound.** Fix global non-negative constants $a, b \in \mathbb{Z}_{\geq 0}$. Define
 
 $$
 \boxed{\,F^{\texttt{lin}(X)}_{\texttt{comp}}(P)\ :=\ F^{\leq\; a\cdot|X|+b}_{\texttt{comp}}(P)\,}
