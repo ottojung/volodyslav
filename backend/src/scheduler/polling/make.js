@@ -7,20 +7,6 @@ const { makeTaskExecutor } = require("../execution");
 const { makePollingFunction } = require("./function");
 
 /**
- * Error thrown when a task registration is not found in the polling scheduler.
- */
-class TaskRegistrationNotFoundError extends Error {
-    /**
-     * @param {string} taskName
-     */
-    constructor(taskName) {
-        super(`Task ${JSON.stringify(taskName)} not found in registrations`);
-        this.name = "TaskRegistrationNotFoundError";
-        this.taskName = taskName;
-    }
-}
-
-/**
  * @typedef {import('../../logger').Logger} Logger
  * @typedef {import('../../datetime').Duration} Duration
  * @typedef {import('../types').CronExpression} CronExpression
@@ -66,7 +52,7 @@ function makePollingScheduler(capabilities, registrations, schedulerIdentifier) 
         async schedule(name) {
             const found = registrations.get(name);
             if (found === undefined) {
-                throw new TaskRegistrationNotFoundError(name);
+                throw new Error(`Impossible: registration ${JSON.stringify(name)} not found`);
             }
 
             if (scheduledTasks.size === 0) {

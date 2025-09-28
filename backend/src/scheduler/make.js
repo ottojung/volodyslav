@@ -5,24 +5,9 @@
 const { parseCronExpression } = require("./expression");
 const { makePollingScheduler } = require("./polling");
 const { initializeTasks } = require("./persistence");
-const { isScheduleDuplicateTaskError, validateRegistrations } = require("./registration_validation");
+const { validateRegistrations } = require("./registration_validation");
 const { generateSchedulerIdentifier } = require("./scheduler_identifier");
 const memconst = require("../memconst");
-
-/**
- * Error for task scheduling failures.
- */
-class ScheduleTaskError extends Error {
-    /**
-     * @param {string} message
-     * @param {object} [details]
-     */
-    constructor(message, details) {
-        super(message);
-        this.name = "ScheduleTaskError";
-        this.details = details;
-    }
-}
 
 /**
  * Error for scheduler stop failures.
@@ -85,41 +70,20 @@ function make(getCapabilities) {
      * @param {Registration[]} registrations
      * @param {ReturnType<makePollingScheduler>} pollingScheduler
      * @param {SchedulerCapabilities} capabilities
-     * @returns {Promise<{scheduledCount: number, skippedCount: number}>}
+     * @returns {Promise<void>}
      */
     async function scheduleAllTasks(registrations, pollingScheduler, capabilities) {
-        let scheduledCount = 0;
-        let skippedCount = 0;
-
         for (const [name, cronExpression, , retryDelay] of registrations) {
-            try {
-                await pollingScheduler.schedule(name);
-                scheduledCount++;
-                capabilities.logger.logDebug(
-                    {
-                        taskName: name,
-                        cronExpression,
-                        retryDelayMs: retryDelay.toMillis()
-                    },
-                    "Task scheduled successfully"
-                );
-            } catch (error) {
-                // If the task is already scheduled with a callback, that's fine for idempotency
-                if (isScheduleDuplicateTaskError(error)) {
-                    skippedCount++;
-                    capabilities.logger.logDebug(
-                        { taskName: name },
-                        "Task already scheduled - scheduler already initialized"
-                    );
-                } else {
-                    // Enhanced error context for debugging
-                    const errorObj = error instanceof Error ? error : new Error(String(error));
-                    throw new ScheduleTaskError(`Failed to schedule task '${name}': ${errorObj.message}`, { name, cronExpression, cause: errorObj });
-                }
-            }
+            await pollingScheduler.schedule(name);
+            capabilities.logger.logDebug(
+                {
+                    taskName: name,
+                    cronExpression,
+                    retryDelayMs: retryDelay.toMillis()
+                },
+                "Task scheduled successfully"
+            );
         }
-
-        return { scheduledCount, skippedCount };
     }
 
     /**
@@ -162,13 +126,11 @@ function make(getCapabilities) {
             await initializeTasks(capabilities, parsedRegistrations, schedulerIdentifier);
             
             // Schedule all tasks (including newly added ones)
-            const { scheduledCount, skippedCount } = await scheduleAllTasks(registrations, pollingScheduler, capabilities);
+            await scheduleAllTasks(registrations, pollingScheduler, capabilities);
             
             capabilities.logger.logDebug(
                 {
                     totalRegistrations: registrations.length,
-                    scheduledCount,
-                    skippedCount
                 },
                 "Scheduler reinitialization completed"
             );
@@ -187,13 +149,11 @@ function make(getCapabilities) {
         await initializeTasks(capabilities, parsedRegistrations, schedulerIdentifier);
 
         // Schedule all tasks
-        const { scheduledCount, skippedCount } = await scheduleAllTasks(registrations, pollingScheduler, capabilities);
+        await scheduleAllTasks(registrations, pollingScheduler, capabilities);
 
         capabilities.logger.logDebug(
             {
                 totalRegistrations: registrations.length,
-                scheduledCount,
-                skippedCount
             },
             "Scheduler initialization completed"
         );
