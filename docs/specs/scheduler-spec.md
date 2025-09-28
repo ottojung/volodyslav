@@ -163,7 +163,7 @@ stateDiagram-v2
 
 #### Initializing to Uninitialized
 
-**Guard:** Initialization fails due to validation or scheduling errors
+**Guard:** Initialization fails due to validation errors
 
 **Action:** Clean up partial state, reset to uninitialized
 
@@ -452,18 +452,6 @@ The scheduler **MUST** throw the following error types under the specified condi
 - **Message:** `"Retry delay must be non-negative"`
 - **Details:** `{ retryDelayMs: number }`
 
-#### Scheduler Lifecycle Errors
-
-**ScheduleTaskError**
-- **When:** Task scheduling fails during `initialize()`
-- **Message:** `"Failed to schedule task '<name>': <cause>"`
-- **Details:** `{ name: string, cronExpression: string, cause: Error }`
-
-**StopSchedulerError**
-- **When:** Scheduler shutdown fails during `stop()`
-- **Message:** `"Failed to stop scheduler: <cause>"`
-- **Details:** `{ cause: Error }`
-
 #### Cron Expression Parsing Errors
 
 **InvalidCronExpressionError** (from expression module)
@@ -479,7 +467,7 @@ The scheduler **MUST** throw the following error types under the specified condi
 #### Cron Calculation Errors
 
 **CronCalculationError**
-- **When:** Date calculation fails for valid expression
+- **When:** Date calculation fails: no future or previous occurrences
 - **Message:** `"Failed to calculate next occurrence: <cause>"`
 - **Details:** `{ expression: string, currentTime: string, cause: Error }`
 
@@ -509,13 +497,6 @@ The scheduler **MUST** throw the following error types under the specified condi
 - **When:** Task state structure is fundamentally invalid
 - **Message:** Varies based on structural issue
 - **Details:** `{ value: any }`
-
-#### State Validation Errors
-
-**TaskListMismatchError**
-- **When:** Persisted tasks don't match current scheduler expectations
-- **Message:** Varies based on mismatch type
-- **Details:** `{ expected: any, actual: any }`
 
 ### Error Throwing Guarantees
 
@@ -564,7 +545,7 @@ The scheduler **MUST**:
 
 ### Override Atomicity
 
-All persistence override operations **MUST** be applied atomically. If any override operation fails, the scheduler **MUST** restore the previous state and throw a `ScheduleTaskError`.
+All persistence override operations **MUST** be applied atomically. If any override operation fails, the scheduler **MUST** restore the previous state and throw an error.
 
 ---
 
