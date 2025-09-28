@@ -40,6 +40,8 @@ function makePollingFunction(capabilities, registrations, scheduledTasks, taskEx
     const runningPool = new Set();
     let parallelCounter = 0;
     let isActive = false;
+    /** @type {Promise<void> | null} */
+    let stoppingThread = null;
     const sleeper = capabilities.sleeper.makeSleeper(POLLING_LOOP_NAME);
     /** @type {Promise<void> | null} */
     let loopThread = null;
@@ -70,13 +72,22 @@ function makePollingFunction(capabilities, registrations, scheduledTasks, taskEx
         }
     }
 
-    async function stop() {
+    async function actualStop() {
         if (isActive === true) {
             isActive = false;
             sleeper.wake();
             await loopThread;
             await join();
         }
+    }
+
+    async function stop() {
+        if (stoppingThread === null) {
+            stoppingThread = actualStop().finally(() => {
+                stoppingThread = null;
+            });
+        }
+        return await stoppingThread;
     }
 
     async function loop() {
