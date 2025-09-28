@@ -9,21 +9,6 @@ const { validateRegistrations } = require("./registration_validation");
 const { generateSchedulerIdentifier } = require("./scheduler_identifier");
 const memconst = require("../memconst");
 
-/**
- * Error for scheduler stop failures.
- */
-class StopSchedulerError extends Error {
-    /**
-     * @param {string} message
-     * @param {object} [details]
-     */
-    constructor(message, details) {
-        super(message);
-        this.name = "StopSchedulerError";
-        this.details = details;
-    }
-}
-
 /** @typedef {import('./types').Scheduler} Scheduler */
 /** @typedef {import('./types').Registration} Registration */
 /** @typedef {import('./types').Initialize} Initialize */
@@ -166,22 +151,15 @@ function make(getCapabilities) {
     async function stop() {
         const capabilities = getCapabilitiesMemo();
         if (pollingScheduler !== null) {
-            try {
-                capabilities.logger.logInfo(
-                    {},
-                    "Stopping scheduler gracefully"
-                );
+            capabilities.logger.logInfo(
+                {},
+                "Stopping scheduler gracefully"
+            );
 
-                await pollingScheduler.stopLoop();
-                pollingScheduler = null;
+            await pollingScheduler.stopLoop();
+            pollingScheduler = null;
 
-                capabilities.logger.logInfo({}, "Scheduler stopped successfully");
-            } catch (err) {
-                const error = err instanceof Error ? err : new Error(String(err));
-                // Still clean up state even if stop failed
-                pollingScheduler = null;
-                throw new StopSchedulerError(`Failed to stop scheduler: ${error.message}`, { cause: error });
-            }
+            capabilities.logger.logInfo({}, "Scheduler stopped successfully");
         } else {
             capabilities.logger.logDebug({}, "Scheduler already stopped or not initialized");
         }
