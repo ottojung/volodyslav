@@ -390,8 +390,8 @@ Every completion must correspond to a run that was already in flight before this
 **S6 — Registration consistency**
 
 $$
-R \in \texttt{ValidRegistrations} \implies \texttt{G}( \neg \texttt{IEs}_R ) \\
-R \notin \texttt{ValidRegistrations} \implies \texttt{G}( \neg \texttt{IEf}_R ) \\
+R \in \texttt{ValidRegistrations} \implies \texttt{G}( \neg \texttt{IEf}_R ) \\
+R \notin \texttt{ValidRegistrations} \implies \texttt{G}( \neg \texttt{IEs}_R ) \\
 $$
 
 The scheduler must accept any registration list from the set of valid lists, and must reject any list not in that set.
