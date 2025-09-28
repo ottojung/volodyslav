@@ -544,7 +544,7 @@ When `initialize()` is called, the scheduler **MUST** compare provided registrat
 - **Action:** Update persisted state with new configuration, keep execution history (attempts, successes, failures)
 
 **Orphaned Task:** Exists in both. Was started by previous instance, but has not finished under it.
-- **Action:** Load existing state, but set to restart immediately.
+- **Action:** Update persisted state with new configuration, but set to restart immediately.
 
 ### Configuration Comparison
 
