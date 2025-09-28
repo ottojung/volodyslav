@@ -541,7 +541,7 @@ When `initialize()` is called, the scheduler **MUST** compare provided registrat
 - **Action:** Load existing state, continue normal scheduling
 
 **Overridden Task:** Exists in both but with different configuration
-- **Action:** Update persisted state with new configuration, reset execution timestamps
+- **Action:** Update persisted state with new configuration, keep execution history (attempts, successes, failures)
 
 **Orphaned Task:** Exists in persisted state but not in registrations
 - **Action:** Remove from persistence, cancel any scheduled execution
