@@ -295,7 +295,7 @@ A task $x$ that was interrupted by a crash and has not yet been restarted.
 
 ---
 
-* $\texttt{Pending}_x := \texttt{DuePending}_x \vee \texttt{RetryPending}_x$
+* $\texttt{Pending}_x := \texttt{DuePending}_x \vee \texttt{RetryPending}_x \vee \texttt{OrphanedPending}_x$
 
 A task $x$ is ready to run.
 
