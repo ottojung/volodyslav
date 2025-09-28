@@ -56,7 +56,7 @@ $\texttt{TaskId}$ names externally visible tasks. A $\texttt{Task}$ is the raw 5
 Durations in $\mathbb{D}$ correspond to *some* real-world durations.
 For example, it could be that $\texttt{duration}([0, 999])$ is one hour.
 
-Even though duplicates are possible in a registration list, they are not in $\texttt{ValidRegistrations}$. Therefore, the scheduler must reject any list with duplicates.
+Even though duplicates are possible in a registration list, the $\texttt{ValidRegistrations}$ has those lists excluded. Therefore, the scheduler must reject any list with duplicates. This is to model the situation where users may supply lists with duplicates, but they are invalid and must be rejected.
 
 ### Helper Equalities on Tasks
 
