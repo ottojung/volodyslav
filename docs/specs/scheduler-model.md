@@ -244,7 +244,7 @@ This property allows completely "forgetting" a task after it has been removed in
 
 ---
 
-* $\texttt{Orphaned}_x := \texttt{Crash} \wedge \texttt{Y} \; \texttt{Running}_x$
+* $\texttt{Orphaned}_x := \texttt{Crash} \wedge \texttt{Hold}(\texttt{RS}_x, \texttt{RE}_x)$
 
 An interruption of task $x$ by a crash.
 
