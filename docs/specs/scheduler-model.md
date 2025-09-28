@@ -155,7 +155,7 @@ Each predicate marks the instant the named public action occurs from the perspec
 * $\texttt{REf}_x := \texttt{RunFailure}(x)$
 * $\texttt{RE}_x := \texttt{REs}_x \vee \texttt{REf}_x$
 * $\texttt{duration}(S) := |S|$
-* $\texttt{Uninstalled} := \neg \texttt{F} \; \texttt{Unfreeze}$
+* $\texttt{Uninstalled} := \neg \texttt{F} \; \texttt{Unfrozen}$
 
 ---
 
