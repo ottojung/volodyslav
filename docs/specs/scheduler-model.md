@@ -56,6 +56,8 @@ $\texttt{TaskId}$ names externally visible tasks. A $\texttt{Task}$ is the raw 5
 Durations in $\mathbb{D}$ correspond to *some* real-world durations.
 For example, it could be that $\texttt{duration}([0, 999])$ is one hour.
 
+Even though duplicates are possible in a registration list, they are not in $\texttt{ValidRegistrations}$. Therefore, the scheduler must reject any list with duplicates.
+
 ### Helper Equalities on Tasks
 
 Define id-only equality for raw tasks by $x \approx y \iff \textsf{id}(x) = \textsf{id}(y)$.
