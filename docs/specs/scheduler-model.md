@@ -100,7 +100,7 @@ This event is an environment-supplied truth that occurs when the callback return
 
 * $\texttt{RunFailure}(x)$ — an invocation ends by throwing an error.
 
-This event is an environment-supplied truth that occurs when the callback returns without throwing. It cannot be caused by the scheduler. The scheduler may not know whether the callback will succeed or fail or loop forever.
+This event is an environment-supplied truth that occurs when the callback returns by throwing an error. It cannot be caused by the scheduler. The scheduler may not know whether the callback will succeed or fail or loop forever.
 
 ---
 
