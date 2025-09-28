@@ -236,7 +236,7 @@ Stop ended **for a specific** registration list $R$.
 
 * $\texttt{FirstComing}_x := \big(\exists R . \; \texttt{Registered}^{\approx}_{R, x}\big) \wedge \neg (\exists R . \; (\texttt{Y} \; \texttt{Registered}^{\approx}_{R, x}))$
 
-The moment of appearance of task $x$ such that it was not present in the previous registration list.
+The moment of appearance of task named $\textsf{id}(x)$ such that it was not present in the previous registration list.
 
 Note that the comparison is by identifiers, not by full task tuple.
 
