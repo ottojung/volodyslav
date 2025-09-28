@@ -178,6 +178,12 @@ This is a strict version - if clear and set occur simultaneously, the result is 
 
 ---
 
+* $\texttt{Hold}^{+}(\texttt{set}, \texttt{clear}) := \texttt{Hold}(\texttt{set}, \texttt{clear}) \lor \texttt{set}$
+
+An inclusive version of $\texttt{Hold}$ - if set and clear occur simultaneously, the result is true.
+
+---
+
 * $\texttt{IS}^+_{R} := \texttt{Hold}(\texttt{IS}_{R}, \exists R' \neq R .\; \texttt{IS}_{R'})$
 
 Reference to the most recent initialization attempt **for a specific** registration list $R$.
@@ -270,7 +276,7 @@ An invocation of $x$ has begun and has not finished before the current position.
 
 ---
 
-* $\texttt{DuePending}_x := \texttt{Hold}( \texttt{Due}_x, \texttt{RS}_x \lor \texttt{FirstComing}_x ) \wedge \neg \texttt{Running}_x$
+* $\texttt{DuePending}_x := \texttt{Hold}^{+}( \texttt{Due}_x, \texttt{RS}_x \lor \texttt{FirstComing}_x ) \wedge \neg \texttt{Running}_x$
 
 An outstanding request to perform a start after a due tick, cleared by a start and by $\texttt{FirstComing}_x$.
 But the task is not pending if it is currently running.
@@ -279,7 +285,7 @@ The reason that $\texttt{FirstComing}_x$ clears $\texttt{DuePending}_x$ is that 
 
 ---
 
-* $\texttt{RetryPending}_x := \texttt{Hold}( \texttt{RetryDue}_x, \texttt{RS}_x \lor \texttt{FirstComing}_x) \wedge \neg \texttt{Running}_x$
+* $\texttt{RetryPending}_x := \texttt{Hold}^{+}( \texttt{RetryDue}_x, \texttt{RS}_x \lor \texttt{FirstComing}_x) \wedge \neg \texttt{Running}_x$
 
 A retry request exists after a failure and persists until it is retried.
 
