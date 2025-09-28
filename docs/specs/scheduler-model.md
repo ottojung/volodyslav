@@ -74,11 +74,11 @@ Each event predicate is evaluated at a trace position $i$ (we omit $i$ when clea
 
 ---
 
-* $\texttt{InitSuccess}$ — the `initialize(...)` call returns normally.
+* $\texttt{InitSuccess}(R)$ — the `initialize(...)` call returns normally. The effective registration set is $R$.
 
 ---
 
-* $\texttt{InitFailure}$ — the `initialize(...)` call throws an error.
+* $\texttt{InitFailure}(R)$ — the `initialize(...)` call throws an error. The effective registration set is $R$.
 
 ---
 
@@ -144,9 +144,12 @@ Each predicate marks the instant the named public action occurs from the perspec
 #### Abbreviations
 
 * $\texttt{IS}_R := \texttt{InitStart}(R)$
-* $\texttt{IEs} := \texttt{InitSuccess}$
-* $\texttt{IEf} := \texttt{InitFailure}$
-* $\texttt{IE} := \texttt{IEs} \vee \texttt{IEf}$
+* $\texttt{IEs}_R := \texttt{InitSuccess}(R)$
+* $\texttt{IEf}_R := \texttt{InitFailure}(R)$
+* $\texttt{IE}_R := \texttt{IEs}_R \vee \texttt{IEf}_R$
+* $\texttt{IEs} := \exists R . \; \texttt{IEs}_R$
+* $\texttt{IEf} := \exists R . \; \texttt{IEf}_R$
+* $\texttt{IE} := \exists R . \; \texttt{IE}_R$
 * $\texttt{SS} := \texttt{StopStart}$
 * $\texttt{SE} := \texttt{StopEnd}$
 * $\texttt{Crash} := \texttt{UnexpectedShutdown}$
@@ -181,30 +184,6 @@ This is a strict version - if clear and set occur simultaneously, the result is 
 * $\texttt{Hold}^{+}(\texttt{set}, \texttt{clear}) := \texttt{Hold}(\texttt{set}, \texttt{clear}) \lor \texttt{set}$
 
 An inclusive version of $\texttt{Hold}$ - if set and clear occur simultaneously, the result is true.
-
----
-
-* $\texttt{IS}^+_{R} := \texttt{Hold}(\texttt{IS}_{R}, \exists R' \neq R .\; \texttt{IS}_{R'})$
-
-Reference to the most recent initialization attempt **for a specific** registration list $R$.
-
----
-
-* $\texttt{IEs}_R := \texttt{IEs} \land \texttt{IS}^+_{R}$
-
-Initialization succeeded **for a specific** registration list $R$.
-
----
-
-* $\texttt{IEf}_R := \texttt{IEf} \land \texttt{IS}^+_{R}$
-
-Initialization failed **for a specific** registration list $R$.
-
----
-
-* $\texttt{IE}_R := \texttt{IEs}_R \vee \texttt{IEf}_R$
-
-Initialization ended **for a specific** registration list $R$.
 
 ---
 
