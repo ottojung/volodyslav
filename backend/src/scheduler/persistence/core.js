@@ -285,20 +285,27 @@ function decideTaskAction(persistedTask, registrationIdentity, persistedIdentity
  * @returns {Task | TaskTryDeserializeError }
  */
 function createTaskFromDecision(decision, registration, registrations, persistedTask, lastMinute) {
+    let baseTask;
     if (persistedTask === undefined) {
         if (decision.type !== 'new') {
             throw new Error("Non-new task decision requires persisted task data");
         }
-        persistedTask = {
+        baseTask = {
             name: registration.name,
             cronExpression: registration.parsedCron.original,
             retryDelayMs: registration.retryDelay.toMillis(),
             lastAttemptTime: lastMinute, // Prevent immediate execution
             lastSuccessTime: lastMinute, // Prevent immediate execution
         };
+    } else {
+        baseTask = {
+            ...persistedTask,
+            cronExpression: registration.parsedCron.original,
+            retryDelayMs: registration.retryDelay.toMillis()
+        };
     }
 
-    const task = tryDeserialize(persistedTask, registrations);
+    const task = tryDeserialize(baseTask, registrations);
     if (isTaskTryDeserializeError(task)) {
         return task;
     }
