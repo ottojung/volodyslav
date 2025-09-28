@@ -24,6 +24,10 @@ const {
  * @typedef {import('./serialization_errors').TaskTryDeserializeError} TaskTryDeserializeError
  */
 
+/**
+ * @typedef {import('./serialization').SerializedTask} SerializedTask
+ */
+
 module.exports = {
     isRunning,
     makeTask,

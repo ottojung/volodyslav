@@ -10,6 +10,7 @@
 /** @typedef {() => Promise<void>} Callback */
 /** @typedef {import('./expression').CronExpression} CronExpression */
 /** @typedef {import('./task').TaskTryDeserializeError} TaskTryDeserializeError */
+/** @typedef {import('./task').SerializedTask} SerializedTask */
 
 /**
  * Restricted capabilities needed by the scheduler.

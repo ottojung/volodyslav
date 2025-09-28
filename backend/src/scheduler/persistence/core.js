@@ -16,6 +16,7 @@ const { tryDeserialize, isTaskTryDeserializeError } = require("../task");
  * @typedef {import('../types').SchedulerCapabilities} SchedulerCapabilities
  * @typedef {import('../types').RuntimeState} RuntimeState
  * @typedef {import('../types').TaskTryDeserializeError} TaskTryDeserializeError
+ * @typedef {import('../types').SerializedTask} SerializedTask
  */
 
 /**
@@ -285,6 +286,7 @@ function decideTaskAction(persistedTask, registrationIdentity, persistedIdentity
  * @returns {Task | TaskTryDeserializeError }
  */
 function createTaskFromDecision(decision, registration, registrations, persistedTask, lastMinute) {
+    /** @type {SerializedTask} */
     let baseTask;
     if (persistedTask === undefined) {
         if (decision.type !== 'new') {
