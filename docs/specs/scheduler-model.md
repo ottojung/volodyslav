@@ -64,7 +64,63 @@ Define id-only equality for raw tasks by $x \approx y \iff \textsf{id}(x) = \tex
 
 Lift this pointwise to registration lists with $R \approx R' \iff |R| = |R'| \wedge \forall i.\; R[i] \approx R'[i]$.
 
+## Core Signatures: Environment and Scheduler
+
+We separate **providers of truths** (the Environment) from **producers of actions** (the Scheduler). Both are interpreted over the time domain and trace timestamps defined above.
+
+### Event Ownership
+
+Let
+- $\Sigma_{\textsf{env}} := \{\texttt{Crash},\ \texttt{Due}_x,\ \texttt{RetryDue}_x,\ \texttt{REs}_x,\ \texttt{REf}_x\}$ (environment–owned),
+- $\Sigma_{\textsf{sch}} := \{\texttt{IS}_R,\ \texttt{IE}_R,\ \texttt{SS},\ \texttt{SE},\ \texttt{RS}_x\}$ (scheduler–owned),
+
+and $\texttt{RE}_x := \texttt{REs}_x \lor \texttt{REf}_x$ as a derived abbreviation.
+
+### Environment (signature and lifting)
+
+An **Environment** is a tuple
+$$
+\mathcal{E} \;=\; \langle \mathbb{T},\ \texttt{compute},\ \texttt{Crash},\ \texttt{Due},\ \texttt{RetryDue},\ \texttt{REs},\ \texttt{REf}\rangle
+$$
+
+with components:
+- $\mathbb{T}$ the time domain (here $\mathbb{Z}$, as fixed in **Domains**),
+- $\texttt{compute} : \mathcal{P}(\mathbb{T}) \to \mathbb{P}$ (work density function),
+- $\texttt{Crash} : \mathbb{T} \to \mathbb{B}$,
+- $\texttt{Due} : \texttt{Task} \times \mathbb{T} \to \mathbb{B}$,
+- $\texttt{RetryDue} : \texttt{Task} \times \mathbb{T} \to \mathbb{B}$,
+- $\texttt{REs} : \texttt{Task} \times \mathbb{T} \to \mathbb{B}$ and $\texttt{REf} : \texttt{Task} \times \mathbb{T} \to \mathbb{B}$.
+
+Given a trace with timestamps $\tau : \mathbb{N} \to \mathbb{T}$, we **lift** environment components to predicates at positions $i$ by composition:
+- $\texttt{Crash at } i \iff \texttt{Crash}(\tau(i))$,
+- $\texttt{Due}_x \texttt{ at } i \iff \texttt{Due}(x,\tau(i))$,
+- $\texttt{RetryDue}_x \texttt{ at } i \iff \texttt{RetryDue}(x,\tau(i))$,
+- $\texttt{REs}_x \texttt{ at } i \iff \texttt{REs}(x,\tau(i))$,
+- $\texttt{REf}_x \texttt{ at } i \iff \texttt{REf}(x,\tau(i))$.
+
+**Constraint (semantics of RetryDue).** For every task $x$ and trace positions $i$:
+$$
+\texttt{RetryDue}_x \texttt{ at } i \iff \exists j \le i.\ \big(\tau(i) = \tau(j) + \textsf{rd}(x)\big)\ \wedge\ \texttt{REf}_x \texttt{ at } j.
+$$
+
+The **Execution Environment Model** section (below) provides the universal truths (E1–E6) that well-formed environments satisfy. Those truths are stated over the lifted predicates above and the given `compute`.
+
+### Scheduler (signature and parameters)
+
+A **Scheduler with linearity witnesses $(a,b)\in \mathbb{Z}_{\ge 0}^2$** is an abstract producer of actions over $\Sigma_{\textsf{sch}}$ that, when composed with any environment $\mathcal{E}$, yields traces satisfying all **Safety** (S1–S6) and **Liveness** (L1–L3) properties, where every use of $F^{\texttt{lin}}_{\texttt{comp}}$ is instantiated with the **same** $(a,b)$.
+
+We write $\textsf{Scheduler}(a,b)$ for this class. Intuitively, $(a,b)$ are a **witness** that the scheduler fulfills its progress obligations within a compute budget linear in the size of the inputs singled out by the modality.
+
+### Admissible Traces (composition)
+
+A trace over the combined alphabet $\Sigma_{\textsf{env}} \cup \Sigma_{\textsf{sch}}$ with timestamps $\tau$ is **admissible for $(\mathcal{E}, \textsf{Scheduler}(a,b))$** iff:
+1. All environment-owned predicates are exactly the lifts of $\mathcal{E}$ defined above.
+2. All scheduler-owned predicates are produced by the scheduler (at most one per position, cf. E3).
+3. The trace satisfies the global axioms already stated in this document (time monotonicity, Safety S1–S6, Liveness L1–L3, and Environment truths E1–E6), with $F^{\texttt{lin}}_{\texttt{comp}}$ parameterized by $(a,b)$.
+
 ## Event Predicates (Observable Alphabet)
+
+> **Ownership note.** Predicates below are partitioned by ownership as established in **Core Signatures: Environment and Scheduler**: $\Sigma_{\textsf{env}}$ vs. $\Sigma_{\textsf{sch}}$. This section only lists their observable meaning; generation/constraints are given by the Environment truths (E1–E6) and the Scheduler obligations (S1–S6, L1–L3).
 
 Each event predicate is evaluated at a trace position $i$ (we omit $i$ when clear from context):
 
@@ -446,7 +502,7 @@ REs_1
 
 # Execution Environment Model
 
-The scheduler operates against an abstract **execution environment** $\mathcal{E}$ that constrains which traces are admissible without prescribing scheduler internals.
+The scheduler operates against an abstract **Environment** $\mathcal{E}$, as defined in **Core Signatures**, that constrains which traces are admissible without prescribing scheduler internals.
 
 The environment is an orthogonal concern to the scheduler design; it is not part of the implementation. The environment is a source of non-determinism that influences observable behaviour.
 
@@ -642,19 +698,13 @@ holds at time $\tau(i)$ iff there exists $j \geq i$, $U = [\tau(i), \tau(j)]$, a
 
 Intuitively, this asserts that $P$ will occur after receiving at most $C$ units of environment-provided compute from the current position, plus a small lag $t_{\texttt{lag}}$ to account for a constant delay.
 
-**Linear-in-input compute bound.** Fix global non-negative constants $a, b \in \mathbb{Z}_{\geq 0}$. Define
-
+**Linear-in-input compute bound (scheduler-parameterized).**
+For a given scheduler $\textsf{Scheduler}(a,b)$ with non-negative witnesses $(a,b)$, define
 $$
-\boxed{\,F^{\texttt{lin}(X)}_{\texttt{comp}}(P)\ :=\ F^{\leq\; a\cdot|X|+b}_{\texttt{comp}}(P)\,}
+F^{\texttt{lin}(X)}_{\texttt{comp}}(P) \;:=\; F^{\le\; a\cdot|X|+b}_{\texttt{comp}}(P).
 $$
-
-This asserts that $P$ will occur after receiving at most $a \cdot |X| + b$ units of environment-provided compute from the current position.
-
-A natural extension is to multiple parameters:
-
-$$
-\boxed{\,F^{\texttt{lin}(X_1, \dots, X_n)}_{\texttt{comp}}\ :=\ F^{\texttt{lin}(\langle X_1, \dots, X_n \rangle)}_{\texttt{comp}}}
-$$
+When several parameters are involved, we continue to use the tuple encoding:
+$F^{\texttt{lin}(X_1,\dots,X_n)}_{\texttt{comp}} := F^{\texttt{lin}(\langle X_1,\dots,X_n\rangle)}_{\texttt{comp}}$.
 
 ## Theorems
 
