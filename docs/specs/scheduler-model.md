@@ -100,7 +100,7 @@ Given a trace with timestamps $\tau : \mathbb{N} \to \mathbb{T}$, we **lift** en
 
 **Constraint (semantics of RetryDue).** For every task $x$ and trace positions $i$:
 $$
-\texttt{RetryDue}_x \texttt{ at } i \iff \exists j \le i.\ \big(\tau(i) = \tau(j) + \textsf{rd}(x)\big)\ \wedge\ \texttt{REf}_x \texttt{ at } j.
+\texttt{RetryDue}_x \texttt{ at } i \iff \exists j \le i.\ \big(\tau(i) = \tau(j) + \textsf{rd}(x)\big)\ \wedge\ (\texttt{REf}_x \texttt{ at } j).
 $$
 
 The **Execution Environment Model** section (below) provides the universal truths (E1–E6) that well-formed environments satisfy. Those truths are stated over the lifted predicates above and the given `compute`.
