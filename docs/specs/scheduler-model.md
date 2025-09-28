@@ -244,6 +244,12 @@ This property allows completely "forgetting" a task after it has been removed in
 
 ---
 
+* $\texttt{Orphaned}_x := \texttt{Crash} \wedge \texttt{Y} \; \texttt{Running}_x$
+
+An interruption of task $x$ by a crash.
+
+---
+
 * $\texttt{RSucc}_x := \texttt{RS}_x \wedge \big( \neg (\texttt{REf}_x \lor \texttt{Crash}) \; \texttt{U} \; \texttt{REs}_x \big)$
 
 A start of run that eventually completes successfully (not preempted by failure or crash).
@@ -280,6 +286,12 @@ A retry request exists after a failure and persists until it is retried.
 Similarly to $\texttt{DuePending}_x$, the task is not retry-pending if it is currently running.
 
 Similarly to $\texttt{DuePending}_x$, $\texttt{FirstComing}_x$ clears $\texttt{RetryPending}_x$.
+
+---
+
+* $\texttt{OrphanedPending}_x := \texttt{Hold}( \texttt{Orphaned}_x, \texttt{RS}_x \lor \texttt{FirstComing}_x )$
+
+A task $x$ that was interrupted by a crash and has not yet been restarted.
 
 ---
 
