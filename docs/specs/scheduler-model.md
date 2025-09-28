@@ -71,8 +71,8 @@ We separate **providers of truths** (the Environment) from **producers of action
 ### Event Ownership
 
 Let
-- $\Sigma_{\textsf{env}} := \{\texttt{Crash},\ \texttt{Due}_x,\ \texttt{RetryDue}_x,\ \texttt{REs}_x,\ \texttt{REf}_x\}$ (environment–owned),
-- $\Sigma_{\textsf{sch}} := \{\texttt{IS}_R,\ \texttt{IE}_R,\ \texttt{SS},\ \texttt{SE},\ \texttt{RS}_x\}$ (scheduler–owned),
+- $\Sigma_{\textsf{env}} := \{\texttt{Crash},\ \texttt{Due}_x,\ \texttt{RetryDue}_x,\ \texttt{REs}_x,\ \texttt{REf}_x, \, \texttt{SS}, \, \texttt{IS}_R\}$ (environment–owned),
+- $\Sigma_{\textsf{sch}} := \{\texttt{IE}_R,\ \texttt{SE},\ \texttt{RS}_x\}$ (scheduler–owned),
 
 and $\texttt{RE}_x := \texttt{REs}_x \lor \texttt{REf}_x$ as a derived abbreviation.
 
@@ -80,7 +80,7 @@ and $\texttt{RE}_x := \texttt{REs}_x \lor \texttt{REf}_x$ as a derived abbreviat
 
 An **Environment** is a tuple
 $$
-\mathcal{E} \;=\; \langle \mathbb{T},\ \texttt{compute},\ \texttt{Crash},\ \texttt{Due},\ \texttt{RetryDue},\ \texttt{REs},\ \texttt{REf}\rangle
+\mathcal{E} \;=\; \langle \mathbb{T},\ \texttt{compute},\ \texttt{Crash},\ \texttt{Due},\ \texttt{RetryDue},\ \texttt{REs},\ \texttt{REf}, \, \texttt{SS}, \, \texttt{IS}_R \rangle
 $$
 
 with components:
@@ -90,18 +90,8 @@ with components:
 - $\texttt{Due} : \texttt{Task} \times \mathbb{T} \to \mathbb{B}$,
 - $\texttt{RetryDue} : \texttt{Task} \times \mathbb{T} \to \mathbb{B}$,
 - $\texttt{REs} : \texttt{Task} \times \mathbb{T} \to \mathbb{B}$ and $\texttt{REf} : \texttt{Task} \times \mathbb{T} \to \mathbb{B}$.
-
-Given a trace with timestamps $\tau : \mathbb{N} \to \mathbb{T}$, we **lift** environment components to predicates at positions $i$ by composition:
-- $\texttt{Crash at } i \iff \texttt{Crash}(\tau(i))$,
-- $\texttt{Due}_x \texttt{ at } i \iff \texttt{Due}(x,\tau(i))$,
-- $\texttt{RetryDue}_x \texttt{ at } i \iff \texttt{RetryDue}(x,\tau(i))$,
-- $\texttt{REs}_x \texttt{ at } i \iff \texttt{REs}(x,\tau(i))$,
-- $\texttt{REf}_x \texttt{ at } i \iff \texttt{REf}(x,\tau(i))$.
-
-**Constraint (semantics of RetryDue).** For every task $x$ and trace positions $i$:
-$$
-\texttt{RetryDue}_x \texttt{ at } i \iff \exists j \le i.\ \big(\tau(i) = \tau(j) + \textsf{rd}(x)\big)\ \wedge\ (\texttt{REf}_x \texttt{ at } j).
-$$
+- $\texttt{SS} : \mathbb{T} \to \mathbb{B}$,
+- $\texttt{IS}_R : \texttt{RegistrationList} \times \mathbb{T} \to \mathbb{B}$.
 
 The **Execution Environment Model** section (below) provides the universal truths (E1–E6) that well-formed environments satisfy. Those truths are stated over the lifted predicates above and the given `compute`.
 
