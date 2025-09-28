@@ -85,7 +85,7 @@ The scheduler **MUST**:
 
 **DST Transition Behavior:**
 - **Spring Forward (Lost Hour):** Tasks scheduled during the skipped hour **MUST NOT** execute that day
-- **Fall Back (Repeated Hour):** Tasks scheduled during the repeated hour **MUST** execute only during the first occurrence
+- **Fall Back (Repeated Hour):** Tasks scheduled during the repeated hour **MUST** execute both times the minute occurs
 - **Next Execution Calculation:** **MUST** correctly account for DST transitions when calculating future occurrences
 
 ### No Make-Up Execution Policy
