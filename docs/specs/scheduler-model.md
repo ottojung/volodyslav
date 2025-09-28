@@ -48,6 +48,7 @@ This subsection gives a signature-based, self-contained definition of the model,
 * $\texttt{RetryDelay} := \mathbb{D}$ — non-negative time durations.
 * $\texttt{Task} := \texttt{TaskId} \times \texttt{Schedule} \times \texttt{Callback} \times \texttt{RetryDelay} \times \texttt{Opaque}$ with projections $\textsf{id}$, $\textsf{sch}$, $\textsf{cb}$, $\textsf{rd}$, $\textsf{key}$.
 * $\texttt{RegistrationList}$ — a finite ordered list $R = \langle x_1,\dots,x_{n} \rangle$ of tasks. Indexing uses $R[i]$ for $1 \le i \leq n$ and strong list membership $x \in_{\text{list}} R \iff \exists i.\; R[i] = x$. Duplicate tasks are possible in a list.
+* $\texttt{ValidRegistrations}$ — a set of valid registration lists. They are truths about the environment. The scheduler must handle any $R \in \texttt{ValidRegistrations}$.
 
 **Interpretation:**
 $\texttt{TaskId}$ names externally visible tasks. A $\texttt{Task}$ is the raw 5-tuple provided at registration time, and $\textsf{key}(x)$ is an equality-only argument attached to that tuple so the specification can refer to that exact instance without implying pointer semantics or constraining key generation or reuse. A $\texttt{RegistrationList}$ is the public input provided at initialization; its order and multiplicities are significant, and duplicate identifiers may appear both within a single list and across successive initializations. $\texttt{Due}$ and $\texttt{RetryDelay}$ are parameters determined by the environment (host clock); they are not hidden internal state. Time units for $\texttt{Due}$ and $\texttt{RetryDelay}$ coincide.
@@ -383,6 +384,17 @@ $$
 $$
 
 Every completion must correspond to a run that was already in flight before this position.
+
+---
+
+**S6 — Registration consistency**
+
+$$
+R \in \texttt{ValidRegistrations} \implies \texttt{G}( \neg \texttt{IEs}_R ) \\
+R \notin \texttt{ValidRegistrations} \implies \texttt{G}( \neg \texttt{IEf}_R ) \\
+$$
+
+The scheduler must accept any registration list from the set of valid lists, and must reject any list not in that set.
 
 ---
 
