@@ -93,13 +93,20 @@ Each event predicate is evaluated at a trace position $i$ (we omit $i$ when clea
 
 * $\texttt{RunSuccess}(x)$ — an invocation completes and returns normally.
 
+This event is an environment-supplied truth that occurs when the callback returns without throwing. It cannot be caused by the scheduler. The scheduler may not know whether the callback will succeed or fail or loop forever.
+
 ---
 
 * $\texttt{RunFailure}(x)$ — an invocation ends by throwing an error.
 
+This event is an environment-supplied truth that occurs when the callback returns without throwing. It cannot be caused by the scheduler. The scheduler may not know whether the callback will succeed or fail or loop forever.
+
 ---
 
-* $\texttt{UnexpectedShutdown}$ — an unexpected, in-flight system shutdown occurs (e.g., process or host crash). This interrupts running callbacks and preempts further starts until a subsequent $\texttt{IE}$. This predicate is supplied by the environment’s crash generator.
+* $\texttt{UnexpectedShutdown}$ — an unexpected, in-flight system shutdown occurs (e.g., process or host crash). This interrupts running callbacks and preempts further starts until a subsequent $\texttt{IE}$. 
+
+This predicate is supplied by the environment’s crash generator.
+It is not controlled by the scheduler. The scheduler may not know when a crash will occur.
 
 ---
 
