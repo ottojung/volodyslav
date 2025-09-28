@@ -703,8 +703,12 @@ For a given scheduler $\textsf{Scheduler}(a,b)$ with non-negative witnesses $(a,
 $$
 F^{\texttt{lin}(X)}_{\texttt{comp}}(P) \;:=\; F^{\le\; a\cdot|X|+b}_{\texttt{comp}}(P).
 $$
-When several parameters are involved, we continue to use the tuple encoding:
-$F^{\texttt{lin}(X_1,\dots,X_n)}_{\texttt{comp}} := F^{\texttt{lin}(\langle X_1,\dots,X_n\rangle)}_{\texttt{comp}}$.
+
+A natural extension is to multiple inputs:
+
+$$
+F^{\texttt{lin}(X_1,\dots,X_n)}_{\texttt{comp}} := F^{\texttt{lin}(\langle X_1,\dots,X_n\rangle)}_{\texttt{comp}}
+$$
 
 ## Theorems
 
