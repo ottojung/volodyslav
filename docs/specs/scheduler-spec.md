@@ -80,7 +80,7 @@ The scheduler **MUST**:
 - Use the host system's local timezone for all time calculations
 - Handle Daylight Saving Time (DST) transitions according to the host system's clock
 - Consider a minute that does not exist during DST transitions (e.g., 2:30 AM during "spring forward") as automatically skipped
-- Execute tasks **at most once** for minutes that occur twice during DST transitions (e.g., 2:30 AM during "fall back")
+- Execute tasks **multiple times** for minutes that occur twice during DST transitions (e.g., 2:30 AM during "fall back")
 - Continue normal scheduling after DST transitions without requiring restart
 
 **DST Transition Behavior:**
