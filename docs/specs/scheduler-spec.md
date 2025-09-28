@@ -94,7 +94,7 @@ The scheduler **MUST**:
 
 **Rationale:** This prevents resource overwhelming and maintains predictable load patterns.
 
-**Example:** A task scheduled `*/10 * * * *` (every 10 minutes) that misses 6 executions during a 1-hour outage **MUST** run only once when the scheduler resumes, not 6 times.
+**Example:** A task scheduled `15,30,45,0 * * * *` (every 15 minutes) that misses 4 executions during a 1-hour outage **MUST** run only once when the scheduler resumes, not 4 times.
 
 ### Startup Semantics
 
