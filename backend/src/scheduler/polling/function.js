@@ -83,6 +83,10 @@ function makePollingFunction(capabilities, registrations, scheduledTasks, taskEx
 
     async function stop() {
         if (stoppingThread === null) {
+            if (isActive === false) {
+                // Already stopped; nothing to do
+                return;
+            }
             stoppingThread = actualStop().finally(() => {
                 stoppingThread = null;
             });
