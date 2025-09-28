@@ -94,13 +94,13 @@ Each event predicate is evaluated at a trace position $i$ (we omit $i$ when clea
 
 * $\texttt{RunSuccess}(x)$ — an invocation completes and returns normally.
 
-This event is an environment-supplied truth that occurs when the callback returns without throwing. It cannot be caused by the scheduler. The scheduler may not know whether the callback will succeed or fail or loop forever.
+This event is an environment-supplied truth that occurs when the callback returns without throwing. It cannot be caused or prevented by the scheduler. The scheduler may not know whether the callback will succeed or fail or loop forever.
 
 ---
 
 * $\texttt{RunFailure}(x)$ — an invocation ends by throwing an error.
 
-This event is an environment-supplied truth that occurs when the callback returns by throwing an error. It cannot be caused by the scheduler. The scheduler may not know whether the callback will succeed or fail or loop forever.
+This event is an environment-supplied truth that occurs when the callback returns by throwing an error. It cannot be caused or prevented by the scheduler. The scheduler may not know whether the callback will succeed or fail or loop forever.
 
 ---
 
