@@ -4,9 +4,7 @@
  */
 
 const { analyzeStateChanges } = require("./core");
-const { isTaskListMismatchError } = require("./errors");
 
 module.exports = {
     analyzeStateChanges,
-    isTaskListMismatchError,
 };
