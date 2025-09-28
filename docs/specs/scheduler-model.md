@@ -383,10 +383,9 @@ Should prevent multiple successful executions per single due period.
 **S3 — StopEnd consistency**
 
 $$
-\texttt{G}( \texttt{SE} \rightarrow (\neg \texttt{RE}_x \; \texttt{W} \; \texttt{IEs}) )
+\texttt{G}( \texttt{SE} \rightarrow \neg \texttt{Running}_x)
 $$
 
-After $\texttt{SE}$, no new ends until re-initialisation.
 This means that call to `stop()` waits for in-flight callbacks to complete.
 
 ---
