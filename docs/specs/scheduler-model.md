@@ -540,11 +540,9 @@ Importantly, $\texttt{Due}_x$ and $\texttt{RetryDue}_x$ are not included here, a
 **E3 - No simultaneous actions**
 
 $$
-\texttt{G}( \texttt{RE}_x \rightarrow \neg \texttt{RS}_x ) \\
-\texttt{G}( \texttt{RE}_x \rightarrow \neg \texttt{IS}_x ) \\
-\dots \\
-\texttt{G}( \texttt{SE} \rightarrow \neg \texttt{IE} ) \\
-\texttt{G}( \texttt{SE} \rightarrow \neg \texttt{SS} ) \\
+
+\text{For any two actions } A \neq B \text{ in } \{ \texttt{RE}_x, \texttt{RS}_x, \texttt{IS}_R, \texttt{IE}, \texttt{SS}, \texttt{SE} \}, \text{ we have:} \\
+\texttt{G}( A \rightarrow \neg B ) \\
 $$
 
 Two actions cannot happen simultaneously.
