@@ -21,6 +21,11 @@ The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL NOT", "SHOULD", "S
 
 Sections are explicitly marked as **Normative** or **Informative** where applicable.
 
+
+### Conformance
+
+Given an environment $\mathcal{E}$, a scheduler implementation is said to **conform** to this specification if, there exist non-negative integers $(a,b)$, a constant $t_{\texttt{lag}} \geq 0$, such that the implementation behaves as a $\textsf{Scheduler}(a,b)$ when composed with $\mathcal{E}$, as defined in **Composition Model**.
+
 ---
 
 ## 2. Scope & Non-Goals
