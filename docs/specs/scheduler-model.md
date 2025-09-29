@@ -237,6 +237,14 @@ and $\texttt{RE}_x := \texttt{REs}_x \lor \texttt{REf}_x$ as a derived abbreviat
 
 #### Stateful
 
+* $\texttt{Hold}(\texttt{set}, \texttt{clear}) := \big((\neg \texttt{clear}) \; \texttt{S} \; \texttt{set}\big) \land \neg \texttt{clear}$
+
+There was a $\texttt{set}$ in the past (or now), and no $\texttt{clear}$ since.
+
+This is a strict version - if clear and set occur simultaneously, the result is false.
+
+---
+
 * $\texttt{Hold}^{+}(\texttt{set}, \texttt{clear}) := \texttt{Hold}(\texttt{set}, \texttt{clear}) \lor \texttt{set}$
 
 An inclusive version of $\texttt{Hold}$ - if set and clear occur simultaneously, the result is true.
@@ -372,14 +380,6 @@ A task $x$ is ready to run.
 * $\texttt{Obligation}_{R, x} := \texttt{Pending}_x \wedge \texttt{Registered}_{R, x} \wedge \texttt{Active}_{R}$
 
 The scheduler **should actually start** task $x$ now.
-
-#### Inclusive/Exclusive Hold Combinators
-
-* $\texttt{Hold}(\texttt{set}, \texttt{clear}) := \big((\neg \texttt{clear}) \; \texttt{S} \; \texttt{set}\big) \land \neg \texttt{clear}$
-
-There was a $\texttt{set}$ in the past (or now), and no $\texttt{clear}$ since.
-
-This is a strict version - if clear and set occur simultaneously, the result is false.
 
 ---
 
