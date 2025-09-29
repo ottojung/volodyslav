@@ -9,7 +9,7 @@ We use the convenient shorthand of writing instantiated propositions like $\text
 
 This model focuses on externally observable behaviour, but does not include the error-handling part.
 
-## Relation to the Environment Model
+### Relation to the Environment Model
 
 The scheduler model is parametric in an external execution environment ($\mathcal{E}$) (see [Execution Environment Model](#execution-environment-model)).
 
@@ -17,7 +17,7 @@ The environment supplies exogenous phenomena and background structure: crash ins
 
 We split the models to separate scheduler obligations/choices (this section) from assumptions about the host and world (environment). This keeps safety properties independent of the host and makes progress claims explicit about their environmental preconditions (see [Environment taxonomy](#environment-taxonomy)).
 
-# Modelling Framework
+## Modelling Framework
 
 * **Trace semantics:** Each trace position corresponds to an instant where an observable event occurs. Events that are simultaneous appear at the same integer time points. Time bounds are background semantics only (not encoded in LTL).
 * **Logic:** A combination of first-order quantification (over tasks) and **LTL with past**:
@@ -27,16 +27,16 @@ We split the models to separate scheduler obligations/choices (this section) fro
 
   Extended with two derived helper modalities that reference the environment’s $\texttt{compute}$ function and information sizes: $F^{\leq C}_{\texttt{comp}}$ (compute-bounded eventually) and $F^{\texttt{lin}}_{\texttt{comp}}$ (linear-in-input compute bound). Their semantics are given in [Notation & Helper Modalities](#notation--helper-modalities).
 
-# Definitions
+## Definitions
 
 This subsection gives a signature-based, self-contained definition of the model, followed by interpretations of each symbol.
 
-## Time and Traces
+### Time and Traces
 
 * **Time domain:** a set $\mathbb{T}$ used to timestamp observable instants. The timestamps have abstract resolution (i.e., they are not tied to any specific real-world clock). But they do correspond to real time, in the sense that for every real-world instance, there is a corresponding timestamp in $\mathbb{T}$.
 * **Trace:** a sequence of positions $i = 0, 1, 2, \dots$ with a timestamp function $\tau(i) \in \mathbb{T}$ that is non-strictly increasing. At each position $i$, one or more observable events may occur.
 
-## Domains
+### Domains
 
 * $\mathbb{T} := \mathbb{Z}$ — the time domain.
 * $\mathbb{D} := \mathbb{Z_{\geq 0}}$ — the domain of durations.
@@ -58,17 +58,17 @@ For example, it could be that $\texttt{duration}([0, 999])$ is one hour.
 
 Even though duplicates are possible in a registration list, the $\texttt{ValidRegistrations}$ has those lists excluded. Therefore, the scheduler must reject any list with duplicates. This is to model the situation where users may supply lists with duplicates, but they are invalid and must be rejected.
 
-### Helper Equalities on Tasks
+#### Helper Equalities on Tasks
 
 Define id-only equality for raw tasks by $x \approx y \iff \textsf{id}(x) = \textsf{id}(y)$.
 
 Lift this pointwise to registration lists with $R \approx R' \iff |R| = |R'| \wedge \forall i.\; R[i] \approx R'[i]$.
 
-## Core Signatures: Environment and Scheduler
+### Core Signatures: Environment and Scheduler
 
 We separate **providers of truths** (the Environment) from **producers of actions** (the Scheduler). Both are interpreted over the time domain and trace timestamps defined above.
 
-### Event Ownership
+#### Event Ownership
 
 Let
 - $\Sigma_{\textsf{env}} := \{\texttt{Crash},\ \texttt{Due}_x,\ \texttt{RetryDue}_x,\ \texttt{REs}_x,\ \texttt{REf}_x, \, \texttt{SS}, \, \texttt{IS}_R\}$ (environment–owned),
@@ -76,7 +76,7 @@ Let
 
 and $\texttt{RE}_x := \texttt{REs}_x \lor \texttt{REf}_x$ as a derived abbreviation.
 
-### Environment (signature and lifting)
+#### Environment (signature and lifting)
 
 An **Environment** is a tuple
 $$
@@ -95,20 +95,20 @@ with components:
 
 The **Execution Environment Model** section (below) provides the universal truths (E1–E6) that well-formed environments satisfy. Those truths are stated over the lifted predicates above and the given `compute`.
 
-### Scheduler (signature and parameters)
+#### Scheduler (signature and parameters)
 
 A **Scheduler with linearity witnesses $(a,b)\in \mathbb{Z}_{\ge 0}^2$** is an abstract producer of actions over $\Sigma_{\textsf{sch}}$ that, when composed with any environment $\mathcal{E}$, yields traces satisfying all **Safety** (S1–S6) and **Liveness** (L1–L3) properties, where every use of $F^{\texttt{lin}}_{\texttt{comp}}$ is instantiated with the **same** $(a,b)$.
 
 We write $\textsf{Scheduler}(a,b)$ for this class. Intuitively, $(a,b)$ are a **witness** that the scheduler fulfills its progress obligations within a compute budget linear in the size of the inputs singled out by the modality.
 
-### Admissible Traces (composition)
+#### Admissible Traces (composition)
 
 A trace over the combined alphabet $\Sigma_{\textsf{env}} \cup \Sigma_{\textsf{sch}}$ with timestamps $\tau$ is **admissible for $(\mathcal{E}, \textsf{Scheduler}(a,b))$** iff:
 1. All environment-owned predicates are exactly the lifts of $\mathcal{E}$ defined above.
 2. All scheduler-owned predicates are produced by the scheduler (at most one per position, cf. E3).
 3. The trace satisfies the global axioms already stated in this document (time monotonicity, Safety S1–S6, Liveness L1–L3, and Environment truths E1–E6), with $F^{\texttt{lin}}_{\texttt{comp}}$ parameterized by $(a,b)$.
 
-## Event Predicates (Observable Alphabet)
+### Event Predicates (Observable Alphabet)
 
 > **Ownership note.** Predicates below are partitioned by ownership as established in **Core Signatures: Environment and Scheduler**: $\Sigma_{\textsf{env}}$ vs. $\Sigma_{\textsf{sch}}$. This section only lists their observable meaning; generation/constraints are given by the Environment truths (E1–E6) and the Scheduler obligations (S1–S6, L1–L3).
 
@@ -185,9 +185,9 @@ Note: because of DST and other irregularities of a civil clock, minute starts ar
 
 Each predicate marks the instant the named public action occurs from the perspective of the embedding JavaScript runtime: function entry ($\texttt{InitStart}$, $\texttt{StopStart}$), function return ($\texttt{IE}$, $\texttt{StopEnd}$), callback invocation begin/end ($\texttt{RunStart}$, $\texttt{RE}$), and exogenous crash ($\texttt{UnexpectedShutdown}$). No logging or internal bookkeeping is modeled.
 
-## Macros
+### Macros
 
-#### Abbreviations
+##### Abbreviations
 
 * $\texttt{IS}_R := \texttt{InitStart}(R)$
 * $\texttt{IEs}_R := \texttt{InitSuccess}(R)$
@@ -208,7 +208,7 @@ Each predicate marks the instant the named public action occurs from the perspec
 
 ---
 
-#### Stateful
+##### Stateful
 
 ---
 
@@ -338,7 +338,7 @@ The scheduler **should actually start** task $x$ now.
 
 ---
 
-# Liveness Properties
+## Liveness Properties
 
 These are normative properties.
 They state progress guarantees.
@@ -385,7 +385,7 @@ $$
 
 ---
 
-# Safety Properties
+## Safety Properties
 
 These are normative properties.
 They state scheduler invariants.
@@ -442,7 +442,7 @@ The scheduler must accept any registration list from the set of valid lists, and
 
 ---
 
-# Example Acceptable Traces (informative)
+## Example Acceptable Traces (informative)
 
 **Trace 1 — Normal operation**
 
@@ -490,7 +490,7 @@ RS_1               // restart after re-init
 REs_1
 ```
 
-# Execution Environment Model
+## Execution Environment Model
 
 The scheduler operates against an abstract **Environment** $\mathcal{E}$, as defined in **Core Signatures**, that constrains which traces are admissible without prescribing scheduler internals.
 
@@ -533,7 +533,7 @@ The environment contributes two ingredients:
 
    It is expected that the scheduler will have access to less compute when more callbacks are running, but this is a very vague assumption, so not formalising it here.
 
-## Environment properties
+### Environment properties
 
 These are descriptive properties.
 They state truths that all real-world environments satisfy.
@@ -611,7 +611,7 @@ After a $\texttt{Crash}$, no new ends until a new start.
 
 ---
 
-## Nice progress properties
+### Nice progress properties
 
 Following are additional, **informative** assumptions that may hold in some environments. They are not part of the core model.
 
@@ -654,7 +654,7 @@ A corollary is that if the environment provides enough compute, no tasks are eve
 
 ---
 
-## Environment taxonomy
+### Environment taxonomy
 
 The following labels identify illustrative environment classes. They are informative definitions, not global assumptions:
 
@@ -666,7 +666,7 @@ The following labels identify illustrative environment classes. They are informa
 
 * **Burst environments:** concentrate density in sporadic spikes; for every $M$ there are intervals of length $> M$ with arbitrarily small compute alternating with brief, high-density bursts.
 
-## Helper Modalities
+### Helper Modalities
 
 This section defines the helper modalities $F^{\leq C}_{\texttt{comp}}$ and $F^{\texttt{lin}}_{\texttt{comp}}$ used in the scheduler properties.
 
@@ -700,7 +700,7 @@ $$
 F^{\texttt{lin}(X_1,\dots,X_n)}_{\texttt{comp}} := F^{\texttt{lin}(\langle X_1,\dots,X_n\rangle)}_{\texttt{comp}}
 $$
 
-## Theorems
+### Theorems
 
 ---
 
