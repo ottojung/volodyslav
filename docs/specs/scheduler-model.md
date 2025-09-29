@@ -70,7 +70,7 @@ This specification does **not** cover:
 **Compute-bounded eventually.** Fix global non-negative constant $t_{\texttt{lag}}$. For $C \in \mathbb{P}$, the modality
 
 $$
-\boxed{\,F^{\leq C}_{\texttt{comp}}(P)\,}
+F^{\leq C}_{\texttt{comp}}(P)
 $$
 
 holds at time $\tau(i)$ iff there exists $j \geq i$, $U = [\tau(i), \tau(j)]$, and $S \subseteq U$ such that:
