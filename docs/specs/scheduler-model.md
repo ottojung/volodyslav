@@ -263,12 +263,10 @@ Therefore the existential over all tasks captures exactly the instants that are 
 
 * $\texttt{MountainDue}_x := (\neg \texttt{MinuteStart}) \; \texttt{S} \; \texttt{Due}_x$
 
-This macro holds continuously from the instant of $\texttt{Due}_x$ until, but not including, the next $\texttt{MinuteStart}$,
-effectively keeping the duty cycle "high" for the entire minute. The past-time $\texttt{S}$ operator requires that the most
-recent $\texttt{Due}_x$ occurred before the current position and that no $\texttt{MinuteStart}$ has happened since, which means
-$\texttt{MountainDue}_x$ is true exactly while the civil minute that began with $\texttt{Due}_x$ is still in progress. The
-playful name favors "mountain" over "top" to evoke a slope from the base of the minute ($\texttt{Due}_x$) to its peak (the last
-instant before the next minute start).
+This macro holds continuously from the instant of $\texttt{Due}_x$ until, but not including, the next $\texttt{MinuteStart}$.
+
+Effectively this keeps the duty cycle "high" for the entire minute.
+The past-time $\texttt{S}$ operator requires that the most recent $\texttt{Due}_x$ occurred before the current position and that no $\texttt{MinuteStart}$ has happened since, which means $\texttt{MountainDue}_x$ is true exactly while the civil minute that began with $\texttt{Due}_x$ is still in progress.
 
 ---
 
