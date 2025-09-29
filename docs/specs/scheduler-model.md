@@ -214,7 +214,7 @@ and $\texttt{RE}_x := \texttt{REs}_x \lor \texttt{REf}_x$ as a derived abbreviat
 
 **Trace semantics:** Each trace position corresponds to an instant where an observable event occurs. Events that are simultaneous appear at the same integer time points. Time bounds are background semantics only (not encoded in LTL). Reference to simultaneity rules is provided in property **E3**.
 
-### Stateful Abbreviations (Macros)
+### Macros
 
 #### Abbreviations
 
@@ -235,7 +235,20 @@ and $\texttt{RE}_x := \texttt{REs}_x \lor \texttt{REf}_x$ as a derived abbreviat
 * $\texttt{duration}(S) := |S|$
 * $\texttt{Uninstalled} := \neg \texttt{F} \; \texttt{Unfrozen}$
 
-#### Registration/Activation Macros
+#### Stateful
+
+* $\texttt{Hold}^{+}(\texttt{set}, \texttt{clear}) := \texttt{Hold}(\texttt{set}, \texttt{clear}) \lor \texttt{set}$
+
+An inclusive version of $\texttt{Hold}$ - if set and clear occur simultaneously, the result is true.
+
+---
+
+* $\texttt{AtMostOne}(B, A) := \texttt{G} (A \rightarrow \ \texttt{X} (\neg A \; \texttt{W} \; B ) )$
+
+At most one $A$ between consecutive $B$'s.
+One single $A$ is allowed if there is no next $B$.
+
+---
 
 * $\texttt{Registered}_{R} := \texttt{Hold}(\texttt{IEs}_{R}, \exists R' \neq R . \; \texttt{IEs}_{R'})$
 
@@ -285,7 +298,7 @@ True for an active registration list $R$.
 Determines boundary of when tasks in $R$ can start.
 The last disjunct ensures that $\texttt{Active}_R$ becomes false if a new initialization with a different list occurs.
 
-#### Execution Macros
+---
 
 * $\texttt{Running}_x := \texttt{Hold}(\texttt{RS}_x, \texttt{RE}_x \lor \texttt{Crash})$
 
@@ -303,7 +316,7 @@ An interruption of task $x$ by a crash.
 
 A start of run that eventually completes successfully (not preempted by failure or crash).
 
-#### Eligibility Macros 
+---
 
 * $\texttt{DuePending}_x := \texttt{Hold}^{+}( \texttt{Due}_x, \texttt{RS}_x \lor \texttt{FirstComing}_x ) \wedge \neg \texttt{Running}_x$
 
@@ -347,19 +360,6 @@ The scheduler **should actually start** task $x$ now.
 There was a $\texttt{set}$ in the past (or now), and no $\texttt{clear}$ since.
 
 This is a strict version - if clear and set occur simultaneously, the result is false.
-
----
-
-* $\texttt{Hold}^{+}(\texttt{set}, \texttt{clear}) := \texttt{Hold}(\texttt{set}, \texttt{clear}) \lor \texttt{set}$
-
-An inclusive version of $\texttt{Hold}$ - if set and clear occur simultaneously, the result is true.
-
-#### One-Per-Window Combinator
-
-* $\texttt{AtMostOne}(B, A) := \texttt{G} (A \rightarrow \ \texttt{X} (\neg A \; \texttt{W} \; B ) )$
-
-At most one $A$ between consecutive $B$'s.
-One single $A$ is allowed if there is no next $B$.
 
 ---
 
