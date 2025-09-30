@@ -67,43 +67,52 @@ This specification does **not** cover:
 
 ### Helper Modalities
 
-**Strict compute-bounded eventually.** For a scheduler with witnesses $(a,b,t_{\texttt{lag}})$ and $C \in \mathbb{P}$, the modality
+#### Strict compute-bounded eventually
+
+For a given scheduler $\textsf{Scheduler}(a,b,t_{\texttt{lag}})$ and $C \in \mathbb{P}$, the modality
 
 $$
 F^{\leq C}_{\texttt{comp}!}(P)
 $$
 
-holds at position $i$ with $t = \tau(i)$ iff there exists $j \geq i$, $U = [\tau(i), \tau(j)]$, and $S \subseteq U$ such that:
+holds at time $\tau(i)$ iff there exists $j \geq i$, $U = [\tau(i), \tau(j)]$, and $S \subseteq U$ such that:
 
 - $P$ holds at $j$,
 - $\texttt{compute}(S) \leq C$,
 - $\texttt{duration}(U \setminus S) \leq t_{\texttt{lag}}$.
 
+Intuitively, this asserts that $P$ will occur after receiving at most $C$ units of environment-provided compute from the current position, plus a small lag $t_{\texttt{lag}}$ to account for a constant delay.
+
 This is the strict progress condition that attributes all delay to the scheduler except for the fixed lag in its witnesses.
 
-**Compute-bounded eventually (conditional).**
+#### Compute-bounded eventually
+
+At time $\tau(i)$ and for $C \in \mathbb{P}$,
 
 $$
-F^{\le C}_{\texttt{comp}}(P) \;:=\; \texttt{Grant}_{\ge C} \Rightarrow F^{\le C}_{\texttt{comp}!}(P).
+\texttt{Grant}_{\ge C} \;:=\; \exists j \ge i.\; \texttt{compute}\big([\tau(i), \tau(j)]\big) \ge C.
 $$
 
-The regular modality only promises progress when the environment has granted at least $C$ units of compute from the current instant onward.
+Intuitively, once $\texttt{Grant}_{\ge C}$ holds, the environment will cumulatively offer at least $C$ units of compute starting at the current instant.
 
-**Linear-in-input compute bound (scheduler-parameterized).**
-For a given scheduler $\textsf{Scheduler}(a,b,t_{\texttt{lag}})$ with non-negative witnesses $(a,b)$, define
 $$
-F^{\texttt{lin}(X)}_{\texttt{comp}!}(P) \;:=\; F^{\le\; a\cdot|X|+b}_{\texttt{comp}!}(P),
+F^{\le C}_{\texttt{comp}}(P) \;:=\; \texttt{Grant}_{\ge C} \Rightarrow F^{\le C}_{\texttt{comp}!}(P)
 $$
-and
+
+The regular modality only promises progress when the environment has the potential to provide at least $C$ units of compute from the current instant onward.
+
+#### Linear-in-input compute bound
+
+For a given scheduler $\textsf{Scheduler}(a,b,t_{\texttt{lag}})$, define:
+
 $$
-F^{\texttt{lin}(X)}_{\texttt{comp}}(P) \;:=\; \texttt{Grant}_{\ge a\cdot|X|+b} \Rightarrow F^{\texttt{lin}(X)}_{\texttt{comp}!}(P).
+F^{\texttt{lin}(X)}_{\texttt{comp}} \;:=\; F^{\le\; a\cdot|X|+b}_{\texttt{comp}}
 $$
 
 A natural extension is to multiple inputs:
 
 $$
-F^{\texttt{lin}(X_1,\dots,X_n)}_{\texttt{comp}!} := F^{\texttt{lin}(\langle X_1,\dots,X_n\rangle)}_{\texttt{comp}!}, \qquad
-F^{\texttt{lin}(X_1,\dots,X_n)}_{\texttt{comp}} := F^{\texttt{lin}(\langle X_1,\dots,X_n\rangle)}_{\texttt{comp}}.
+F^{\texttt{lin}(X_1,\dots,X_n)}_{\texttt{comp}} \; := \; F^{\texttt{lin}(\langle X_1,\dots,X_n\rangle)}_{\texttt{comp}}
 $$
 
 ---
@@ -481,20 +490,6 @@ The environment contributes two ingredients:
 
    It is expected that the scheduler will have access to less compute when more callbacks are running, but this is a very vague assumption, so not formalising it here.
 
-#### Derived predicate: Grant of compute
-
-**Grant of compute.** *(Environment-owned, informative definition)*
-
-At position $i$ with $t = \tau(i)$ and for $C \in \mathbb{P}$,
-
-$$
-\texttt{Grant}_{\ge C} \;:=\; \exists j \ge i.\; \texttt{compute}\big([\tau(i), \tau(j)]\big) \ge C.
-$$
-
-Intuitively, once $\texttt{Grant}_{\ge C}$ holds, the environment will cumulatively offer at least $C$ units of compute starting at the current instant (possibly after some finite waiting period).
-
-> Because $\texttt{compute}(\cdot) \in \mathbb{Z}_{\ge 0}$ and is additive over disjoint intervals, this predicate is monotone in the horizon and captures bursty as well as steady forms of compute supply.
-
 ### Environment Properties (Informative)
 
 These are **informative** properties.
@@ -617,7 +612,9 @@ That's why this is an **informative** property, not a core property.
 
 **A3 - Low lag** *(Informative)*
 
-For the conforming scheduler's witness, $t_{\texttt{lag}} < 1 \; \text{minute}$.
+$$
+t_{\texttt{lag}} < 1 \; \text{minute}
+$$
 
 If this is true, then whether any task is ever going to be missed is determined purely by $\texttt{compute}$.
 A corollary is that if the environment provides enough compute, no tasks are ever missed.
