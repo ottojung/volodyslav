@@ -410,7 +410,7 @@ When both day-of-month (DOM) and day-of-week (DOW) are restricted (not `*`), the
 - `@daily` - Macros not allowed
 - `0 0 ? * *` - Quartz tokens not allowed
 
-**See also:** The [Formal Model (Temporal Logic, Observable Only)](#formal-model-temporal-logic-observable-only) section provides a mathematical specification of how cron expressions are evaluated through the $\texttt{Due}(\texttt{task}, t)$ predicate.
+**See also:** The [Formal Theory (Temporal Logic, Observable Only)](#formal-theory-temporal-logic-observable-only) section provides a mathematical specification of how cron expressions are evaluated through the $\texttt{Due}(\texttt{task}, t)$ predicate.
 
 ---
 
@@ -603,10 +603,10 @@ The following behaviors **MAY** vary between equivalent runs:
 
 ---
 
-## Formal Model of Observable Behavior
+## Formal Theory of Observable Behavior
 
 This specification contains a formal, mathematical model of the scheduler's observable behavior.
-This model is defined in the companion document [scheduler-model.md](scheduler-model.md).
+This model is defined in the companion document [scheduler-theory.md](scheduler-theory.md).
 
 ---
 
