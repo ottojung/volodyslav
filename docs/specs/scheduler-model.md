@@ -2,7 +2,7 @@
 
 ---
 
-## 1. Preamble & Status
+## Preamble & Status
 
 ### Purpose
 
@@ -28,7 +28,7 @@ Given an environment $\mathcal{E}$, a scheduler implementation is said to **conf
 
 ---
 
-## 2. Scope & Non-Goals
+## Scope & Non-Goals
 
 ### Scope
 
@@ -47,7 +47,7 @@ This specification does **not** cover:
 
 ---
 
-## 3. Mathematical Preliminaries & Notation
+## Mathematical Preliminaries & Notation
 
 ### Time & Traces
 
@@ -117,7 +117,7 @@ $$
 
 ---
 
-## 4. Domains & Data Types
+## Domains & Data Types
 
 * $\mathbb{T} := \mathbb{Z}$ — the time domain.
 * $\mathbb{D} := \mathbb{Z_{\geq 0}}$ — the domain of durations.
@@ -147,7 +147,7 @@ Lift this pointwise to registration lists with $R \approx R' \iff |R| = |R'| \we
 
 ---
 
-## 5. Observable Alphabet & Ownership
+## Observable Alphabet & Ownership
 
 ### Event Predicates (Observable Alphabet)
 
@@ -405,7 +405,7 @@ The scheduler **should actually start** task $x$ now.
 
 ---
 
-## 6. Composition Model
+## Composition Model
 
 ### Environment Tuple
 
@@ -447,7 +447,7 @@ We split the models to separate scheduler obligations/choices (this section) fro
 
 ---
 
-## 7. Environment Model (Informative)
+## Environment Model (Informative)
 
 The scheduler operates against an abstract **Environment** $\mathcal{E}$, as defined in **Composition Model**, that constrains which traces are admissible without prescribing scheduler internals.
 
@@ -621,7 +621,7 @@ A corollary is that if the environment provides enough compute, no tasks are eve
 
 ---
 
-## 8. Scheduler Contract (Normative)
+## Scheduler Contract (Normative)
 
 ### Safety Properties (Normative)
 
@@ -725,7 +725,7 @@ $$
 
 ---
 
-## 9. Derived Properties (Theorems & Corollaries)
+## Derived Properties (Theorems & Corollaries)
 
 ---
 
@@ -778,7 +778,7 @@ Follows from **E1** and **E2**.
 
 ---
 
-## 10. Examples
+## Examples
 
 ### Trace 1 — Normal operation
 
@@ -840,11 +840,11 @@ This demonstrates that liveness obligations defer to the environment: without a 
 
 ---
 
-## 11. Design Notes (Informative)
+## Design Notes (Informative)
 
 ### Design Rationale
 
-This section explains key design decisions in the scheduler model:
+This section explains some design decisions in the scheduler model:
 
 **Environment ownership of `Due`/`RetryDue`:** These predicates represent environmental truths (clock ticks, timeout expiration) rather than scheduler decisions. This separation clarifies that the scheduler reacts to timing events but does not control when they occur.
 
