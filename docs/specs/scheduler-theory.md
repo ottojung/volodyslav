@@ -479,7 +479,7 @@ This section is **informative**. The formulas enumerated here are axioms about t
 - All possible real-world environments in scope satisfy these statements.
 - Implementors need not prove these axioms; the task is to map environments to this theory.
 
-Some environments make it impossible to implement a compliant scheduler (for example, permanently freezing environments). The value of this section is to clarify the blame assignment between scheduler and environment.
+Some environments make it impossible to implement a useful scheduler (for example, permanently freezing environments), but for all environments there exist conformant schedulers. The value of this section is to clarify the blame assignment between scheduler and environment.
 
 The environment contributes two ingredients:
 
