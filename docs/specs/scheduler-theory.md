@@ -840,15 +840,3 @@ Due_1
 RS_1               // restart after re-init
 REs_1
 ```
-
-### Trace 4 — Vacuous liveness without grant
-
-```js
-// Environment permanently withholds compute beyond an initial prefix
-¬Grant_{≥ C}
-Obligation_{R,x}          // scheduler owes a start but receives no compute
-// L1 holds because the implication's premise is false, yet safety still restricts behaviour
-G(Obligation_{R,x} → F_comp^{≤ C}(RS_x ∨ ¬Active_R))
-```
-
-This demonstrates that liveness obligations defer to the environment: without a sufficient compute grant, the regular modality vacuously holds while safety axioms (S1–S5) continue to constrain observable traces.
