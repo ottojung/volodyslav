@@ -481,7 +481,7 @@ This section is **informative**. The formulas enumerated here are axioms about t
 
 Some environments make it impossible to implement a useful scheduler (for example, permanently freezing environments), but for all environments there exist conformant schedulers. The value of this section is to clarify the blame assignment between scheduler and environment.
 
-The environment contributes two ingredients:
+Among others, environments contribute these two ingredients:
 
 1. **Crash generator** — a predicate $\texttt{Crash}(t)$ over $\mathbb{T}$. When true, the environment marks an exogenous interruption that preempts in-flight callbacks and halts the scheduler itself; axiom **EA1** enforces the resulting quiescence in the trace.
 
