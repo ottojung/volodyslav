@@ -62,8 +62,6 @@ We work over **timestamped linear traces** ($\langle i \mapsto \tau(i) \in \math
 
 ### Helper Modalities
 
-> **Definition schemata.** $F_{\texttt{comp}!}$, $F_{\texttt{comp}}$, and $F^{\texttt{lin}}_{\texttt{comp}}$ are definition schemata over $\Sigma_{\textsf{sched}}$. They expand to temporal formulas referencing $\texttt{compute}$, $\texttt{duration}$, and the lag parameter $t_{\texttt{lag}}$; they are not standalone axioms.
-
 #### Strict compute-bounded eventually
 
 For a given scheduler $\textsf{Scheduler}(a,b,t_{\texttt{lag}})$ and $C \in \mathbb{P}$, the modality
