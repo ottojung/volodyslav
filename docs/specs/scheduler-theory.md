@@ -420,7 +420,7 @@ The free constants $(a,b,t_{\texttt{lag}})$ are theory parameters that instantia
 An environment is packaged as the tuple
 
 $$
-\mathcal{E} = \langle \mathbb{T}, \texttt{compute}, \texttt{Crash}, \texttt{Due}, \texttt{RetryDue}, \texttt{REs}, \texttt{REf}, \texttt{SS}, \texttt{IS}_R \rangle,
+\mathcal{E} = \langle \mathbb{T}, \texttt{compute}, \texttt{Crash}, \texttt{Due}_x, \texttt{RetryDue}_x, \texttt{REs}, \texttt{REf}, \texttt{SS}, \texttt{IS}_R \rangle,
 $$
 
 providing the interpretations for environment-owned functions and predicates listed above.
