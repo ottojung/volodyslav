@@ -453,7 +453,7 @@ Optional environment classes extend $T$ with subsets of $\{\text{A1}, \text{A2},
 |-----------|--------|----------|
 | $T_{\textsf{sched}}(a,b,t_{\texttt{lag}})$ | Normative | Scheduler axioms S1–S5, L1–L3 with parameters $(a,b,t_{\texttt{lag}})$ |
 | $T_{\textsf{env}}$ | Informative | Environment axioms EA1–EA6 |
-| $T \cup A$ | Informative add-on | Optional assumptions A1–A3 describing refined environment classes |
+| $T \cup A$ | Informative | Optional assumptions A1–A3 describing refined environment classes |
 
 ### Models of the Theory
 
