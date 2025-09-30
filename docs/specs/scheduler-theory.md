@@ -547,7 +547,7 @@ Importantly, $\texttt{Due}_x$ and $\texttt{RetryDue}_x$ are not included here, a
 **EA3 - No simultaneous actions**
 
 $$
-\text{For any two actions } A \neq B \text{ in } \{ \texttt{RE}_x, \texttt{RS}_x, \texttt{IS}_R, \texttt{IE}, \texttt{SS}, \texttt{SE} \}, \text{ we have:} \\
+\text{For any two actions } A \neq B, \text{ and any different } R, x \text{ in } \{ \texttt{RE}_x, \texttt{RS}_x, \texttt{IS}_R, \texttt{IE}, \texttt{SS}, \texttt{SE} \}, \text{ we have:} \\
 \texttt{G}( A \rightarrow \neg B ) \\
 $$
 
