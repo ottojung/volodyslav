@@ -37,7 +37,7 @@ $$
 \langle \mathcal{E}, \textsf{Sch}, \tau \rangle \models T_{\textsf{env}} \cup T_{\textsf{sched}}(a,b,t_{\texttt{lag}}).
 $$
 
-This satisfaction relation is defined in [Structures & Satisfaction](#structures--satisfaction-normative).
+This satisfaction relation is defined in [Structures & Satisfaction](#structures--satisfaction).
 
 ## Mathematical Preliminaries & Notation
 
@@ -397,9 +397,9 @@ The scheduler **should actually start** task $x$ now.
 
 ---
 
-## Structures & Satisfaction (Normative)
+## Structures & Satisfaction
 
-### Signature & Structures (Normative)
+### Signature & Structures
 
 We work over a multi-sorted first-order signature $\Sigma_{\textsf{sched}}$ with the following sorts:
 
@@ -427,11 +427,11 @@ providing the interpretations for environment-owned functions and predicates lis
 
 > **Informative ownership note.** We classify predicate symbols by ownership: environment-owned predicates are interpreted directly from the environment tuple $\mathcal{E}$, while scheduler-owned predicates are produced by the scheduler implementation. This classification is informative; it explains which component determines the symbol's interpretation inside any structure.
 
-### Satisfaction & Models (Normative)
+### Satisfaction & Models
 
 The satisfaction judgment uses linear-time temporal logic with past over trace positions equipped with $\tau$. Definition schemata $F_{\texttt{comp}!}$, $F_{\texttt{comp}}$, and $F^{\texttt{lin}}_{\texttt{comp}}$ are macros over this signature. They depend on $\texttt{compute}$, $\texttt{duration}$, and the lag parameter $t_{\texttt{lag}}$, but they are **not axioms**—they merely abbreviate recurring formulas.
 
-Let $T_{\textsf{sched}}(a,b,t_{\texttt{lag}})$ denote the set of **Scheduler Axioms (Normative)**: S1–S5 and L1–L3 with every modality instantiated using the same witnesses $(a,b,t_{\texttt{lag}})$. Let $T_{\textsf{env}}$ denote the **Environment Axioms (Informative)** EA1–EA6. Optional assumptions A1–A3 may be conjoined to $T_{\textsf{env}}$ to describe specific environment classes, but they are not part of the core theory.
+Let $T_{\textsf{sched}}(a,b,t_{\texttt{lag}})$ denote the set of **Scheduler Axioms**: S1–S5 and L1–L3 with every modality instantiated using the same witnesses $(a,b,t_{\texttt{lag}})$. Let $T_{\textsf{env}}$ denote the **Environment Axioms** EA1–EA6. Optional assumptions A1–A3 may be conjoined to $T_{\textsf{env}}$ to describe specific environment classes, but they are not part of the core theory.
 
 We write
 
@@ -455,7 +455,7 @@ Optional environment classes extend $T$ with subsets of $\{\text{A1}, \text{A2},
 | $T_{\textsf{env}}$ | Informative | Environment axioms EA1–EA6 |
 | $T \cup A$ | Informative add-on | Optional assumptions A1–A3 describing refined environment classes |
 
-### Models of the Theory (Normative)
+### Models of the Theory
 
 A trace over $\Sigma_{\textsf{env}} \cup \Sigma_{\textsf{sch}}$ with timestamps $\tau$ yields a **structure** $\langle \mathcal{E}, \textsf{Sch}, \tau \rangle$. The structure is a **model of the theory** iff:
 
@@ -640,17 +640,17 @@ A corollary is that if the environment provides enough compute, no tasks are eve
 
 ---
 
-## Scheduler Axioms (Normative)
+## Scheduler Axioms
 
 The formulas in this section constitute $T_{\textsf{sched}}(a,b,t_{\texttt{lag}})$. Each axiom is parameterised by the witnesses $(a,b,t_{\texttt{lag}})$ that appear in the compute-bounded modalities.
 
-### Safety Axioms (Normative)
+### Safety Axioms
 
 These axioms state scheduler invariants and prevent invalid sequences of events.
 
 ---
 
-**S1 — Start safety** *(Normative)*
+**S1 — Start safety**
 $$
 \texttt{G}( \texttt{RS}_x \rightarrow \exists R. \; \texttt{Y} \; \texttt{Obligation}_{R, x} )
 $$
@@ -658,7 +658,7 @@ A run can occur only after an obligation to run.
 
 ---
 
-**S2 — Conservation of starts** *(Normative)*
+**S2 — Conservation of starts**
 
 $$
 \texttt{AtMostOne}(\texttt{Due}_x, \texttt{RSucc}_x)
@@ -668,7 +668,7 @@ Should prevent multiple successful executions per single due period.
 
 ---
 
-**S3 — StopEnd consistency** *(Normative)*
+**S3 — StopEnd consistency**
 
 $$
 \texttt{G}( \texttt{SE} \rightarrow \neg \texttt{Running}_x)
@@ -678,7 +678,7 @@ This means that call to `stop()` waits for in-flight callbacks to complete.
 
 ---
 
-**S4 — Ends follow starts** *(Normative)*
+**S4 — Ends follow starts**
 
 $$
 \texttt{G}( \texttt{RE}_x \rightarrow \texttt{Y} \; \texttt{Running}_x)
@@ -688,7 +688,7 @@ Every completion must correspond to a run that was already in flight before this
 
 ---
 
-**S5 — Registration consistency** *(Normative)*
+**S5 — Registration consistency**
 
 $$
 R \in \texttt{ValidRegistrations} \implies \texttt{G}( \neg \texttt{IEf}_R ) \\
@@ -697,7 +697,7 @@ $$
 
 The scheduler must accept any registration list from the set of valid lists, and must reject any list not in that set.
 
-### Liveness Axioms (Normative)
+### Liveness Axioms
 
 These **normative** axioms state progress guarantees.
 They prevent deadlocks, starvation, livelocks, and unbounded postponement of obligations.
@@ -706,7 +706,7 @@ Progress is always read relative to the environment's willingness to provide com
 
 ---
 
-**L1 — Obligation fulfillment** *(Normative)*
+**L1 — Obligation fulfillment**
 
 $$
 \texttt{G}( \texttt{Obligation}_{R, x} \rightarrow \texttt{F}_{\texttt{comp}}^{\texttt{lin}(R, \,\tau(i))} (\texttt{RS}_x \vee \neg \texttt{Active}_R ))
@@ -718,7 +718,7 @@ Furthermore, that execution occurs within a bounded **compute** (as a linear fun
 
 ---
 
-**L2 — Initialization completes** *(Normative)*
+**L2 — Initialization completes**
 
 $$
 \texttt{G}\big( \texttt{IS}_R \rightarrow \texttt{F}_{\texttt{comp}}^{\texttt{lin}(R, \,\tau(i))} \; (\texttt{IE}_R \lor \texttt{Crash}) \big)
@@ -728,7 +728,8 @@ Similar to L1, this property ensures that once an initialization starts, it must
 
 ---
 
-**L3 — Stop terminates** *(Normative)*
+**L3 — Stop terminates**
+
 $$
 \texttt{G}\big( \texttt{SS}_R \rightarrow (\texttt{AllTerm} \rightarrow \texttt{F} \; (\texttt{SE}_R \lor \texttt{Crash} \lor \texttt{Uninstalled}))\big)
 $$
