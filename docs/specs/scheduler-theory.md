@@ -467,9 +467,9 @@ This perspective separates scheduler obligations from environmental truths (see 
 
 ---
 
-## Environment Axioms (Informative)
+## Environment Axioms
 
-The scheduler operates against an abstract **Environment** $\mathcal{E}$ that constrains which structures qualify as models without prescribing scheduler internals.
+The scheduler operates against an abstract **Environment** $\mathcal{E}$.
 
 The environment is an orthogonal concern to the scheduler design; it is a source of non-determinism that influences observable behaviour.
 
