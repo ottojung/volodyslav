@@ -24,7 +24,7 @@ Sections are explicitly marked as **Normative** or **Informative** where applica
 
 ### Conformance
 
-Given an environment $\mathcal{E}$, a scheduler implementation is said to **conform** to this specification if, there exist non-negative integers $(a,b)$, a constant $t_{\texttt{lag}} \geq 0$, such that the implementation behaves as a $\textsf{Scheduler}(a,b)$ when composed with $\mathcal{E}$, as defined in **Composition Model**.
+Given an environment $\mathcal{E}$, a scheduler implementation is said to **conform** to this specification if there exist witnesses $(a,b,t_{\texttt{lag}}) \in \mathbb{Z}_{\ge 0}^2 \times \mathbb{D}$ such that the implementation behaves as a $\textsf{Scheduler}(a,b,t_{\texttt{lag}})$ when composed with $\mathcal{E}$, as defined in **Composition Model**.
 
 ---
 
@@ -67,30 +67,43 @@ This specification does **not** cover:
 
 ### Helper Modalities
 
-**Compute-bounded eventually.** Fix global non-negative constant $t_{\texttt{lag}}$. For $C \in \mathbb{P}$, the modality
+**Strict compute-bounded eventually.** For a scheduler with witnesses $(a,b,t_{\texttt{lag}})$ and $C \in \mathbb{P}$, the modality
 
 $$
-F^{\leq C}_{\texttt{comp}}(P)
+F^{\leq C}_{\texttt{comp}!}(P)
 $$
 
-holds at time $\tau(i)$ iff there exists $j \geq i$, $U = [\tau(i), \tau(j)]$, and $S \subseteq U$ such that:
+holds at position $i$ with $t = \tau(i)$ iff there exists $j \geq i$, $U = [\tau(i), \tau(j)]$, and $S \subseteq U$ such that:
 
 - $P$ holds at $j$,
-- and $\texttt{compute}(S) \leq C$,
-- and $\texttt{duration}(U \setminus S) \leq t_{\texttt{lag}}$.
+- $\texttt{compute}(S) \leq C$,
+- $\texttt{duration}(U \setminus S) \leq t_{\texttt{lag}}$.
 
-Intuitively, this asserts that $P$ will occur after receiving at most $C$ units of environment-provided compute from the current position, plus a small lag $t_{\texttt{lag}}$ to account for a constant delay.
+This is the strict progress condition that attributes all delay to the scheduler except for the fixed lag in its witnesses.
+
+**Compute-bounded eventually (conditional).**
+
+$$
+F^{\le C}_{\texttt{comp}}(P) \;:=\; \texttt{Grant}_{\ge C} \Rightarrow F^{\le C}_{\texttt{comp}!}(P).
+$$
+
+The regular modality only promises progress when the environment has granted at least $C$ units of compute from the current instant onward.
 
 **Linear-in-input compute bound (scheduler-parameterized).**
-For a given scheduler $\textsf{Scheduler}(a,b)$ with non-negative witnesses $(a,b)$, define
+For a given scheduler $\textsf{Scheduler}(a,b,t_{\texttt{lag}})$ with non-negative witnesses $(a,b)$, define
 $$
-F^{\texttt{lin}(X)}_{\texttt{comp}}(P) \;:=\; F^{\le\; a\cdot|X|+b}_{\texttt{comp}}(P).
+F^{\texttt{lin}(X)}_{\texttt{comp}!}(P) \;:=\; F^{\le\; a\cdot|X|+b}_{\texttt{comp}!}(P),
+$$
+and
+$$
+F^{\texttt{lin}(X)}_{\texttt{comp}}(P) \;:=\; \texttt{Grant}_{\ge a\cdot|X|+b} \Rightarrow F^{\texttt{lin}(X)}_{\texttt{comp}!}(P).
 $$
 
 A natural extension is to multiple inputs:
 
 $$
-F^{\texttt{lin}(X_1,\dots,X_n)}_{\texttt{comp}} := F^{\texttt{lin}(\langle X_1,\dots,X_n\rangle)}_{\texttt{comp}}
+F^{\texttt{lin}(X_1,\dots,X_n)}_{\texttt{comp}!} := F^{\texttt{lin}(\langle X_1,\dots,X_n\rangle)}_{\texttt{comp}!}, \qquad
+F^{\texttt{lin}(X_1,\dots,X_n)}_{\texttt{comp}} := F^{\texttt{lin}(\langle X_1,\dots,X_n\rangle)}_{\texttt{comp}}.
 $$
 
 ---
@@ -402,18 +415,18 @@ with components:
 - $\texttt{SS} : \mathbb{T} \to \mathbb{B}$,
 - $\texttt{IS}_R : \texttt{RegistrationList} \times \mathbb{T} \to \mathbb{B}$.
 
-### Scheduler with Linearity Witnesses
+### Scheduler with Witnesses $(a,b,t_{\texttt{lag}})$
 
-A **Scheduler with linearity witnesses $(a,b)\in \mathbb{Z}_{\ge 0}^2$** is an abstract producer of actions over $\Sigma_{\textsf{sch}}$ that, when composed with any environment $\mathcal{E}$, yields traces satisfying all **Safety** (S1–S6) and **Liveness** (L1–L3) properties, where every use of $F^{\texttt{lin}}_{\texttt{comp}}$ is instantiated with the **same** $(a,b)$.
+A **Scheduler with witnesses $(a,b,t_{\texttt{lag}})\in \mathbb{Z}_{\ge 0}^2 \times \mathbb{D}$** is an abstract producer of actions over $\Sigma_{\textsf{sch}}$ that, when composed with any environment $\mathcal{E}$, yields traces satisfying all **Safety** (S1–S6) and **Liveness** (L1–L3) properties, where every use of $F^{\texttt{lin}}_{\texttt{comp}}$ and $F^{\texttt{lin}}_{\texttt{comp}!}$ is instantiated with the **same** $(a,b,t_{\texttt{lag}})$.
 
-We write $\textsf{Scheduler}(a,b)$ for this class. Intuitively, $(a,b)$ are a **witness** that the scheduler fulfills its progress obligations within a compute budget linear in the size of the inputs singled out by the modality.
+We write $\textsf{Scheduler}(a,b,t_{\texttt{lag}})$ for this class. Intuitively, $(a,b,t_{\texttt{lag}})$ are **witnesses** that the scheduler fulfills its progress obligations within compute budgets linear in the designated inputs while bounding any residual lag by $t_{\texttt{lag}}$.
 
 ### Admissible Traces
 
-A trace over the combined alphabet $\Sigma_{\textsf{env}} \cup \Sigma_{\textsf{sch}}$ with timestamps $\tau$ is **admissible for $(\mathcal{E}, \textsf{Scheduler}(a,b))$** iff:
+A trace over the combined alphabet $\Sigma_{\textsf{env}} \cup \Sigma_{\textsf{sch}}$ with timestamps $\tau$ is **admissible for $(\mathcal{E}, \textsf{Scheduler}(a,b,t_{\texttt{lag}}))$** iff:
 1. All environment-owned predicates are exactly the lifts of $\mathcal{E}$ defined above.
 2. All scheduler-owned predicates are produced by the scheduler (at most one per position, cf. E3).
-3. The trace satisfies the global axioms already stated in this document (time monotonicity, Safety S1–S6, Liveness L1–L3, and Environment truths E1–E6), with $F^{\texttt{lin}}_{\texttt{comp}}$ parameterized by $(a,b)$.
+3. The trace satisfies the global axioms already stated in this document (time monotonicity, Safety S1–S6, Liveness L1–L3, and Environment truths E1–E6), with $F^{\texttt{lin}}_{\texttt{comp}}$ and $F^{\texttt{lin}}_{\texttt{comp}!}$ parameterized by $(a,b,t_{\texttt{lag}})$.
 
 ### Relation to the Environment Model
 
@@ -467,6 +480,20 @@ The environment contributes two ingredients:
    More specifically, the compute function measures the potential for executing the scheduler's own code (and of its JavaScript dependencies), not anything else.
 
    It is expected that the scheduler will have access to less compute when more callbacks are running, but this is a very vague assumption, so not formalising it here.
+
+#### Derived predicate: Grant of compute
+
+**Grant of compute.** *(Environment-owned, informative definition)*
+
+At position $i$ with $t = \tau(i)$ and for $C \in \mathbb{P}$,
+
+$$
+\texttt{Grant}_{\ge C} \;:=\; \exists j \ge i.\; \texttt{compute}\big([\tau(i), \tau(j)]\big) \ge C.
+$$
+
+Intuitively, once $\texttt{Grant}_{\ge C}$ holds, the environment will cumulatively offer at least $C$ units of compute starting at the current instant (possibly after some finite waiting period).
+
+> Because $\texttt{compute}(\cdot) \in \mathbb{Z}_{\ge 0}$ and is additive over disjoint intervals, this predicate is monotone in the horizon and captures bursty as well as steady forms of compute supply.
 
 ### Environment Properties (Informative)
 
@@ -590,9 +617,7 @@ That's why this is an **informative** property, not a core property.
 
 **A3 - Low lag** *(Informative)*
 
-$$
-t_{\texttt{lag}} < 1 \; \text{minute}
-$$
+For the conforming scheduler's witness, $t_{\texttt{lag}} < 1 \; \text{minute}$.
 
 If this is true, then whether any task is ever going to be missed is determined purely by $\texttt{compute}$.
 A corollary is that if the environment provides enough compute, no tasks are ever missed.
@@ -674,7 +699,7 @@ $$
 
 When a task is supposed to be executed, we must eventually see that execution in the form of $\texttt{RS}_x$ (or a $\texttt{Crash}$, or $\texttt{SS}$).
 
-Furthermore, that execution occurs within a bounded **compute** (as a linear function of the sizes of the current registration list and timestamp) after the obligation arises.
+Furthermore, that execution occurs within a bounded **compute** (as a linear function of the sizes of the current registration list and timestamp) after the obligation arises, provided the environment actually grants that much compute from the current point onward.
 
 ---
 
@@ -684,7 +709,7 @@ $$
 \texttt{G}\big( \texttt{IS}_R \rightarrow \texttt{F}_{\texttt{comp}}^{\texttt{lin}(R, \,\tau(i))} \; (\texttt{IE}_R \lor \texttt{Crash}) \big)
 $$
 
-Similar to L1, this property ensures that once an initialization starts, it must eventually complete within a bounded amount of compute (unless preempted by a crash).
+Similar to L1, this property ensures that once an initialization starts, it must eventually complete within a bounded amount of compute (unless preempted by a crash) whenever the environment supplies that budget.
 
 ---
 
@@ -804,6 +829,18 @@ RS_1               // restart after re-init
 REs_1
 ```
 
+### Trace 4 — Vacuous liveness without grant
+
+```js
+// Environment permanently withholds compute beyond an initial prefix
+¬Grant_{≥ C}
+Obligation_{R,x}          // scheduler owes a start but receives no compute
+// L1 holds because the implication's premise is false, yet safety still restricts behaviour
+G(Obligation_{R,x} → F_comp^{≤ C}(RS_x ∨ ¬Active_R))
+```
+
+This demonstrates that liveness obligations defer to the environment: without a sufficient compute grant, the regular modality vacuously holds while safety properties (S1–S6) continue to constrain observable traces.
+
 ---
 
 ## 11. Design Notes (Informative)
@@ -835,6 +872,7 @@ This section explains key design decisions in the scheduler model:
 | $\texttt{Crash}$ | 0 | ENV | Unexpected system shutdown | §5 |
 | $\texttt{Due}_x$ | 1 | ENV | Cron schedule matches for task x | §5 |
 | $\texttt{RetryDue}_x$ | 1 | ENV | Retry backoff expires for task x | §5 |
+| $\texttt{Grant}_{\ge C}$ | 1 | ENV | Environment offers at least $C$ compute from now on | §7 |
 | $\texttt{REs}_x$ | 1 | ENV | Task x callback succeeds | §5 |
 | $\texttt{REf}_x$ | 1 | ENV | Task x callback fails | §5 |
 | $\texttt{SS}$ | 0 | ENV | Stop operation starts | §5 |
