@@ -425,7 +425,7 @@ $$
 
 providing the interpretations for environment-owned functions and predicates listed above.
 
-> **Informative ownership note.** We classify predicate symbols by ownership: environment-owned predicates are interpreted directly from the environment tuple $\mathcal{E}$, while scheduler-owned predicates are produced by the scheduler implementation. This classification is informative; it explains which component determines the symbol's interpretation inside any structure.
+> **ownership note.** We classify predicate symbols by ownership: environment-owned predicates are interpreted directly from the environment tuple $\mathcal{E}$, while scheduler-owned predicates are produced by the scheduler implementation. This classification is informative; it explains which component determines the symbol's interpretation inside any structure.
 
 ### Satisfaction & Models
 
