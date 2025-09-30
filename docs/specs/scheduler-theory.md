@@ -587,7 +587,7 @@ After a $\texttt{Crash}$, no new ends until a new start.
 
 ### Environment Taxonomy
 
-The following labels identify illustrative environment classes. They are **informative** definitions, not global assumptions:
+The following labels identify illustrative environment classes:
 
 * **Freezing environments:** admit arbitrarily long intervals $(t,u)$ with $\texttt{Frozen}(t, u)$.
 
