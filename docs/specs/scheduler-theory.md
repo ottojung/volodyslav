@@ -744,13 +744,13 @@ $$
 
 ---
 
-## Theorems (Derived from the Axioms)
+## Theorems
 
-The statements in this section follow from $T_{\textsf{env}} \cup T_{\textsf{sched}}(a,b,t_{\texttt{lag}})$ and explicitly cite the axioms used in each derivation.
+The statements in this section follow from $T_{\textsf{env}} \cup T_{\textsf{sched}}(a,b,t_{\texttt{lag}})$.
 
 ---
 
-**Theorem 1 — Quiescence after Crash** *(from EA1, EA2, EA6)*
+**Theorem 1 — Quiescence after Crash**
 $$
 \texttt{G}( \texttt{Crash} \rightarrow (\neg \texttt{RS}_x \; \texttt{W} \; \texttt{IEs}) )
 $$
@@ -758,7 +758,7 @@ After $\texttt{Crash}$ no new starts until re-initialisation. Uses environment a
 
 ---
 
-**Theorem 2 — Per-task non-overlap** *(from S1)*
+**Theorem 2 — Per-task non-overlap**
 
 $$
 \texttt{G}\big( \texttt{RS}_x \rightarrow \neg \texttt{Y} \;\texttt{Running}_x \big)
@@ -768,7 +768,7 @@ Once a run starts, no further $\texttt{RS}_x$ may occur before a matching $\text
 
 ---
 
-**Theorem 3 — Quiescence after StopEnd** *(from S1)*
+**Theorem 3 — Quiescence after StopEnd**
 
 $$
 \texttt{G}( \texttt{SE} \rightarrow (\neg \texttt{RS}_x \; \texttt{W} \; \texttt{IEs}) )
@@ -778,7 +778,7 @@ After $\texttt{SE}$, no new starts until re-initialisation. Derived from **S1** 
 
 ---
 
-**Theorem 4 — Crash dominance** *(from EA1, EA2)*
+**Theorem 4 — Crash dominance**
 
 $$
 \texttt{G}( \texttt{Crash} \rightarrow \neg \texttt{RS}_x ) \\
