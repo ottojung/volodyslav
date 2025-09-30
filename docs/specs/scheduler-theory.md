@@ -702,7 +702,7 @@ The scheduler must accept any registration list from the set of valid lists, and
 These **normative** axioms state progress guarantees.
 They prevent deadlocks, starvation, livelocks, and unbounded postponement of obligations.
 
-Progress is always read relative to the environment's willingness to provide compute. In fully freezing environments (see [Environment taxonomy](#environment-taxonomy-informative)), obligations may accumulate without violating safety; in eventually thawing or lower-bounded-density environments, the fairness assumptions below become reasonable or derivable premises for liveness. In other words, in some environments, it is impossible to implement a scheduler.
+Progress is always read relative to the environment's willingness to provide compute. In fully freezing environments (see [Environment taxonomy](#environment-taxonomy-informative)), obligations may accumulate without violating safety; in eventually thawing or lower-bounded-density environments, the fairness assumptions below become reasonable or derivable premises for liveness. In other words, in some environments, a conformant scheduler may be useless.
 
 ---
 
