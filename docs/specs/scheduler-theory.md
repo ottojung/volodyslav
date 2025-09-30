@@ -8,7 +8,10 @@
 
 We tell implementers exactly what **must be observable** for a scheduler to be correct. We write axioms about starts, ends, initialization, stopping, due/retry pulses, and crashes; we bound progress by the environment’s granted compute; and we keep internals out of scope. The result is a portable yardstick for **conformance, fairness assumptions**, and **failure attribution**.
 
-The goals are to (i) specify conformance precisely, (ii) enable proofs and model checking of behaviors, and (iii) support portable tests/oracles that attribute responsibility to the scheduler vs. the environment.
+The goals are to
+- specify conformance precisely,
+- enable proofs and model checking of behaviors,
+- support portable tests/oracles that attribute responsibility to the scheduler vs. the environment.
 
 ### Scope
 
