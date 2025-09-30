@@ -10,17 +10,6 @@ This document provides a formal specification of the scheduler's observable beha
 
 We use the convenient shorthand of writing instantiated propositions like $\texttt{RS}_x$ for $\texttt{RunStart}(x)$. Where a formula is stated without explicit quantifiers, the default intent is universal quantification (e.g., "for all tasks x", "for all registrations R"). First-order quantification ranges over the set of scheduler objects; temporal operators reason over event positions in the trace.
 
-### Normative Language
-
-The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL NOT", "SHOULD", "SHOULD NOT", "RECOMMENDED", "MAY", and "OPTIONAL" in this document are to be interpreted as described in [RFC 2119](https://tools.ietf.org/html/rfc2119) and [RFC 8174](https://tools.ietf.org/html/rfc8174).
-
-### Normative vs. Informative Content
-
-- **Normative** sections establish requirements that scheduler implementations MUST satisfy. They contribute axioms to $T_{\textsf{sched}}(a,b,t_{\texttt{lag}})$.
-- **Informative** sections provide context, examples, and background information that aid understanding but do not establish requirements. They contribute axioms to $T_{\textsf{env}}$ or optional informative assumptions.
-
-Sections are explicitly marked as **Normative** or **Informative** where applicable.
-
 ## Scope & Non-Goals
 
 ### Scope
