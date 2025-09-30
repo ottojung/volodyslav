@@ -1,4 +1,4 @@
-# Formal Model of Scheduler's Observable Behavior
+# Axiomatized Theory of Declarative Schedulers
 
 ---
 
@@ -6,7 +6,7 @@
 
 ### Purpose
 
-This document provides a formal specification of the scheduler's observable behavior using first-order quantification over scheduler objects with **future- and past-time LTL** formulas. Atomic predicates are parameterized by scheduler object variables (e.g., $\texttt{RS}_x$, $\texttt{InitStart}(R)$), and temporal operators apply to propositional formulas obtained by instantiating those predicates for concrete objects.
+This document provides a formal specification of the scheduler's observable behavior using first-order quantification over scheduler objects with **future- and past-time LTL** formulas. Atomic predicates are parameterized by scheduler object variables (e.g., $\texttt{RS}_x$, $\texttt{InitStart}(R)$), and temporal operators apply to propositional formulas obtained by instantiating those predicates for concrete objects. We frame the specification as a **theory** whose models capture observable runs of scheduler/environment compositions.
 
 We use the convenient shorthand of writing instantiated propositions like $\texttt{RS}_x$ for $\texttt{RunStart}(x)$. Where a formula is stated without explicit quantifiers, the default intent is universal quantification (e.g., "for all tasks x", "for all registrations R"). First-order quantification ranges over the set of scheduler objects; temporal operators reason over event positions in the trace.
 
@@ -16,21 +16,27 @@ The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL NOT", "SHOULD", "S
 
 ### Normative vs. Informative Content
 
-- **Normative** sections establish requirements that scheduler implementations MUST satisfy.
-- **Informative** sections provide context, examples, and background information that aid understanding but do not establish requirements.
+- **Normative** sections establish requirements that scheduler implementations MUST satisfy. They contribute axioms to $T_{\textsf{sched}}(a,b,t_{\texttt{lag}})$.
+- **Informative** sections provide context, examples, and background information that aid understanding but do not establish requirements. They contribute axioms to $T_{\textsf{env}}$ or optional informative assumptions.
 
 Sections are explicitly marked as **Normative** or **Informative** where applicable.
 
 
 ### Conformance
 
-Given an environment $\mathcal{E}$, a scheduler implementation is said to **conform** to this specification if there exist witnesses $(a,b,t_{\texttt{lag}}) \in \mathbb{Z}_{\ge 0}^2 \times \mathbb{D}$ such that the implementation behaves as a $\textsf{Scheduler}(a,b,t_{\texttt{lag}})$ when composed with $\mathcal{E}$, as defined in **Composition Model**.
+Given an environment $\mathcal{E}$, a scheduler implementation $\textsf{Sch}$ is **conformant** iff there exist witnesses $(a,b,t_{\texttt{lag}}) \in \mathbb{Z}_{\ge 0}^2 \times \mathbb{D}$ such that for every run produced by composing $\textsf{Sch}$ with $\mathcal{E}$ we obtain a structure (with timestamp function $\tau$) satisfying the combined theory:
+
+$$
+\langle \mathcal{E}, \textsf{Sch}, \tau \rangle \models T_{\textsf{env}} \cup T_{\textsf{sched}}(a,b,t_{\texttt{lag}}).
+$$
+
+This satisfaction relation is defined in [Structures & Satisfaction](#structures--satisfaction-normative).
 
 ## Scope & Non-Goals
 
 ### Scope
 
-This model focuses on **externally observable behavior** of the scheduler, defining:
+This theory focuses on **externally observable behavior** of the scheduler, defining:
 - The observable event alphabet and timing semantics
 - Safety and liveness properties that schedulers MUST satisfy
 - The interface contract between scheduler and execution environment
@@ -64,6 +70,8 @@ This specification does **not** cover:
 **Background time value and its size.** Each position $i$ is associated with a background timestamp value $t := \tau(i) \in \mathbb{T}$. Define $|t| := |\llbracket t \rrbracket|$ using a standard signed binary encoding (so this equals $1 + \lceil \log_2(1 + |t|_{\text{abs}}) \rceil$, where $|t|_{\text{abs}}$ is the absolute value of $t$). *Important:* $|t|$ measures the value of the clock, not the density of events; events may be sparse in $i$ even when $|t|$ grows.
 
 ### Helper Modalities
+
+> **Definition schemata.** $F_{\texttt{comp}!}$, $F_{\texttt{comp}}$, and $F^{\texttt{lin}}_{\texttt{comp}}$ are definition schemata over $\Sigma_{\textsf{sched}}$. They expand to temporal formulas referencing $\texttt{compute}$, $\texttt{duration}$, and the lag parameter $t_{\texttt{lag}}$; they are not standalone axioms.
 
 #### Strict compute-bounded eventually
 
@@ -232,7 +240,7 @@ and $\texttt{RE}_x := \texttt{REs}_x \lor \texttt{REf}_x$ as a derived abbreviat
 
 ### Timing Semantics
 
-**Trace semantics:** Each trace position corresponds to an instant where an observable event occurs. Events that are simultaneous appear at the same integer time points. Time bounds are background semantics only (not encoded in LTL). Reference to simultaneity rules is provided in property **E3**.
+**Trace semantics:** Each trace position corresponds to an instant where an observable event occurs. Events that are simultaneous appear at the same integer time points. Time bounds are background semantics only (not encoded in LTL). Reference to simultaneity rules is provided in axiom **EA3**.
 
 ### Macros
 
@@ -403,65 +411,93 @@ The scheduler **should actually start** task $x$ now.
 
 ---
 
-## Composition Model
+## Structures & Satisfaction (Normative)
 
-### Environment Tuple
+### Signature & Structures (Normative)
 
-An **Environment** is a tuple
+We work over a multi-sorted first-order signature $\Sigma_{\textsf{sched}}$ with the following sorts:
+
+* $\mathbb{T}$ (timestamps), $\mathbb{D}$ (durations), and $\mathbb{P}$ (compute budgets).
+* $\texttt{TaskId}$, $\texttt{Opaque}$, $\texttt{Callback}$, $\texttt{Schedule}$, $\texttt{RetryDelay}$, $\texttt{Task}$, and $\texttt{RegistrationList}$.
+* Auxiliary finite sets such as $\texttt{ValidRegistrations}$ and Boolean values $\mathbb{B}$.
+
+Function symbols include:
+
+* $\tau : \mathbb{N} \to \mathbb{T}$ (timestamp map over trace positions).
+* $\texttt{duration} : \mathcal{P}(\mathbb{T}) \to \mathbb{D}$ and $\texttt{compute} : \mathcal{P}(\mathbb{T}) \to \mathbb{P}$.
+* Task projections $\textsf{id}$, $\textsf{sch}$, $\textsf{cb}$, $\textsf{rd}$, $\textsf{key}$, list operations (length, indexing), and the environment parameters $\texttt{Due}$, $\texttt{RetryDue}$.
+
+Predicate symbols cover the observable alphabet. They include scheduler-owned atoms $\texttt{IS}_R$, $\texttt{IE}$, $\texttt{SS}$, $\texttt{SE}$, $\texttt{RS}_x$, $\texttt{REs}_x$, $\texttt{REf}_x$, as well as environment-owned atoms such as $\texttt{Crash}$, $\texttt{Due}_x$, and $\texttt{RetryDue}_x$. Indexed predicates range over the appropriate sorts (e.g., $x$ ranges over $\texttt{Task}$, $R$ over $\texttt{RegistrationList}$); $\texttt{SS}$ and $\texttt{SE}$ are 0-ary.
+
+The free constants $(a,b,t_{\texttt{lag}})$ are theory parameters that instantiate compute-bounded modalities within $T_{\textsf{sched}}(a,b,t_{\texttt{lag}})$.
+
+An environment is packaged as the tuple
+
 $$
-\mathcal{E} \;=\; \langle \mathbb{T},\ \texttt{compute},\ \texttt{Crash},\ \texttt{Due},\ \texttt{RetryDue},\ \texttt{REs},\ \texttt{REf}, \, \texttt{SS}, \, \texttt{IS}_R \rangle
+\mathcal{E} = \langle \mathbb{T}, \texttt{compute}, \texttt{Crash}, \texttt{Due}, \texttt{RetryDue}, \texttt{REs}, \texttt{REf}, \texttt{SS}, \texttt{IS}_R \rangle,
 $$
 
-with components:
-- $\mathbb{T}$ the time domain (here $\mathbb{Z}$, as fixed in **Domains**),
-- $\texttt{compute} : \mathcal{P}(\mathbb{T}) \to \mathbb{P}$ (work density function),
-- $\texttt{Crash} : \mathbb{T} \to \mathbb{B}$,
-- $\texttt{Due} : \texttt{Task} \times \mathbb{T} \to \mathbb{B}$,
-- $\texttt{RetryDue} : \texttt{Task} \times \mathbb{T} \to \mathbb{B}$,
-- $\texttt{REs} : \texttt{Task} \times \mathbb{T} \to \mathbb{B}$ and $\texttt{REf} : \texttt{Task} \times \mathbb{T} \to \mathbb{B}$.
-- $\texttt{SS} : \mathbb{T} \to \mathbb{B}$,
-- $\texttt{IS}_R : \texttt{RegistrationList} \times \mathbb{T} \to \mathbb{B}$.
+providing the interpretations for environment-owned functions and predicates listed above.
 
-### Scheduler with Witnesses $(a,b,t_{\texttt{lag}})$
+> **Informative ownership note.** We classify predicate symbols by ownership: environment-owned predicates are interpreted directly from the environment tuple $\mathcal{E}$, while scheduler-owned predicates are produced by the scheduler implementation. This classification is informative; it explains which component determines the symbol's interpretation inside any structure.
 
-A **Scheduler with witnesses $(a,b,t_{\texttt{lag}})\in \mathbb{Z}_{\ge 0}^2 \times \mathbb{D}$** is an abstract producer of actions over $\Sigma_{\textsf{sch}}$ that, when composed with any environment $\mathcal{E}$, yields traces satisfying all **Safety** (S1–S6) and **Liveness** (L1–L3) properties, where every use of $F^{\texttt{lin}}_{\texttt{comp}}$ and $F^{\texttt{lin}}_{\texttt{comp}!}$ is instantiated with the **same** $(a,b,t_{\texttt{lag}})$.
+### Satisfaction & Models (Normative)
 
-We write $\textsf{Scheduler}(a,b,t_{\texttt{lag}})$ for this class. Intuitively, $(a,b,t_{\texttt{lag}})$ are **witnesses** that the scheduler fulfills its progress obligations within compute budgets linear in the designated inputs while bounding any residual lag by $t_{\texttt{lag}}$.
+The satisfaction judgment uses linear-time temporal logic with past over trace positions equipped with $\tau$. Definition schemata $F_{\texttt{comp}!}$, $F_{\texttt{comp}}$, and $F^{\texttt{lin}}_{\texttt{comp}}$ are macros over this signature. They depend on $\texttt{compute}$, $\texttt{duration}$, and the lag parameter $t_{\texttt{lag}}$, but they are **not axioms**—they merely abbreviate recurring formulas.
 
-### Admissible Traces
+Let $T_{\textsf{sched}}(a,b,t_{\texttt{lag}})$ denote the set of **Scheduler Axioms (Normative)**: S1–S5 and L1–L3 with every modality instantiated using the same witnesses $(a,b,t_{\texttt{lag}})$. Let $T_{\textsf{env}}$ denote the **Environment Axioms (Informative)** EA1–EA6. Optional assumptions A1–A3 may be conjoined to $T_{\textsf{env}}$ to describe specific environment classes, but they are not part of the core theory.
 
-A trace over the combined alphabet $\Sigma_{\textsf{env}} \cup \Sigma_{\textsf{sch}}$ with timestamps $\tau$ is **admissible for $(\mathcal{E}, \textsf{Scheduler}(a,b,t_{\texttt{lag}}))$** iff:
-1. All environment-owned predicates are exactly the lifts of $\mathcal{E}$ defined above.
-2. All scheduler-owned predicates are produced by the scheduler (at most one per position, cf. E3).
-3. The trace satisfies the global axioms already stated in this document (time monotonicity, Safety S1–S6, Liveness L1–L3, and Environment truths E1–E6), with $F^{\texttt{lin}}_{\texttt{comp}}$ and $F^{\texttt{lin}}_{\texttt{comp}!}$ parameterized by $(a,b,t_{\texttt{lag}})$.
+We write
 
-### Relation to the Environment Model
+$$
+\langle \mathcal{E}, \textsf{Sch}, \tau \rangle \models \varphi
+$$
 
-The scheduler model is parametric in an external execution environment ($\mathcal{E}$) (see [Environment Model](#7-environment-model-informative)).
+to mean that the structure interpreting environment-owned symbols via $\mathcal{E}$, scheduler-owned symbols via $\textsf{Sch}$, and the timestamp map via $\tau$ satisfies the temporal formula $\varphi$ in the standard LTL-with-past semantics.
 
-The environment supplies exogenous phenomena and background structure: crash instants (the $\texttt{Crash}$ predicate), the real-time axis and clock alignment used by cron, and retry pulses ($\texttt{RetryDue}_x$). It also constrains progress via a compute density function.
+The combined theory is
 
-We split the models to separate scheduler obligations/choices (this section) from assumptions about the host and world (environment). This keeps safety properties independent of the host and makes progress claims explicit about their environmental preconditions (see [Environment taxonomy](#environment-taxonomy-informative)).
+$$
+T \;=\; T_{\textsf{sched}}(a,b,t_{\texttt{lag}}) \cup T_{\textsf{env}}.
+$$
+
+Optional environment classes extend $T$ with subsets of $\{\text{A1}, \text{A2}, \text{A3}\}$.
+
+| Component | Status | Contents |
+|-----------|--------|----------|
+| $T_{\textsf{sched}}(a,b,t_{\texttt{lag}})$ | Normative | Scheduler axioms S1–S5, L1–L3 with parameters $(a,b,t_{\texttt{lag}})$ |
+| $T_{\textsf{env}}$ | Informative | Environment axioms EA1–EA6 |
+| $T \cup A$ | Informative add-on | Optional assumptions A1–A3 describing refined environment classes |
+
+### Models of the Theory (Normative)
+
+A trace over $\Sigma_{\textsf{env}} \cup \Sigma_{\textsf{sch}}$ with timestamps $\tau$ yields a **structure** $\langle \mathcal{E}, \textsf{Sch}, \tau \rangle$. The structure is a **model of the theory** iff:
+
+1. Environment-owned predicates are interpreted exactly as the lifts provided by the environment tuple $\mathcal{E}$ (which includes $\mathbb{T}$, $\texttt{compute}$, $\texttt{Crash}$, $\texttt{Due}$, $\texttt{RetryDue}$, $\texttt{REs}$, $\texttt{REf}$, $\texttt{SS}$, and $\texttt{IS}_R$).
+2. Scheduler-owned predicates are produced by the scheduler $\textsf{Sch}$ (at most one observable action per position, cf. EA3).
+3. The structure satisfies every axiom in $T_{\textsf{env}} \cup T_{\textsf{sched}}(a,b,t_{\texttt{lag}})$.
+
+This perspective separates scheduler obligations from environmental truths (see [Environment Axioms](#environment-axioms-informative)) and anchors liveness reasoning in the satisfaction relation defined above.
 
 ---
 
-## Environment Model (Informative)
+## Environment Axioms (Informative)
 
-The scheduler operates against an abstract **Environment** $\mathcal{E}$, as defined in **Composition Model**, that constrains which traces are admissible without prescribing scheduler internals.
+The scheduler operates against an abstract **Environment** $\mathcal{E}$ that constrains which structures qualify as models without prescribing scheduler internals.
 
-The environment is an orthogonal concern to the scheduler design; it is not part of the implementation. The environment is a source of non-determinism that influences observable behaviour.
+The environment is an orthogonal concern to the scheduler design; it is a source of non-determinism that influences observable behaviour.
 
-This section is **informative**, not normative. More specifically:
-- All formal statements in this section are truths about environments.
-- All possible real-world environments do satisfy these statements.
-- Formal statements in this section need not to be checked, they are true by definition. Implementors task is to map this model to real-world phenomena.
+This section is **informative**. The formulas enumerated here are axioms about the environments we target:
 
-Some environments make it impossible to implement a compliant scheduler (for example, permanently freezing environments).
-The value of this section is to clarify the blame assignment between scheduler and environment.
+- All formal statements in this section are truths about environments in scope.
+- All possible real-world environments in scope satisfy these statements.
+- Implementors need not prove these axioms; the task is to map environments to this theory.
+
+Some environments make it impossible to implement a compliant scheduler (for example, permanently freezing environments). The value of this section is to clarify the blame assignment between scheduler and environment.
 
 The environment contributes two ingredients:
 
-1. **Crash generator** — a predicate $\texttt{Crash}(t)$ over $\mathbb{T}$. When true, the environment marks an exogenous interruption that preempts in-flight callbacks and halts the scheduler itself; property **E1** enforce the resulting quiescence in the trace.
+1. **Crash generator** — a predicate $\texttt{Crash}(t)$ over $\mathbb{T}$. When true, the environment marks an exogenous interruption that preempts in-flight callbacks and halts the scheduler itself; axiom **EA1** enforces the resulting quiescence in the trace.
 
 2. **Work density function** — a dimensionless function
 
@@ -488,14 +524,13 @@ The environment contributes two ingredients:
 
    It is expected that the scheduler will have access to less compute when more callbacks are running, but this is a very vague assumption, so not formalising it here.
 
-### Environment Properties (Informative)
+### Environment Axioms EA1–EA6 (Informative)
 
-These are **informative** properties.
-They state truths that all real-world environments satisfy.
+These axioms state truths that all real-world environments in scope satisfy.
 
 ---
 
-**E1 — Busy crashing** *(Informative)*
+**EA1 — Busy crashing** *(Informative)*
 
 $$
 \texttt{G}( \texttt{Crash} \rightarrow \texttt{Frozen} )
@@ -505,7 +540,7 @@ No work progresses around a crash instant.
 
 ---
 
-**E2 - Actions require work** *(Informative)*
+**EA2 - Actions require work** *(Informative)*
 
 $$
 \texttt{G}( \texttt{RE}_x \rightarrow \texttt{Unfrozen} ) \\
@@ -522,7 +557,7 @@ Importantly, $\texttt{Due}_x$ and $\texttt{RetryDue}_x$ are not included here, a
 
 ---
 
-**E3 - No simultaneous actions** *(Informative)*
+**EA3 - No simultaneous actions** *(Informative)*
 
 $$
 \text{For any two actions } A \neq B \text{ in } \{ \texttt{RE}_x, \texttt{RS}_x, \texttt{IS}_R, \texttt{IE}, \texttt{SS}, \texttt{SE} \}, \text{ we have:} \\
@@ -533,7 +568,7 @@ Two actions cannot happen simultaneously.
 
 ---
 
-**E4 - Unlimited freeze** *(Informative)*
+**EA4 - Unlimited freeze** *(Informative)*
 
 $$
 \texttt{G} \; \texttt{F} \; \texttt{Frozen} 
@@ -543,7 +578,7 @@ There are infinitely many intervals of time during which no work progresses. Thi
 
 ---
 
-**E5 - Unlimited dues** *(Informative)*
+**EA5 - Unlimited dues** *(Informative)*
 
 $$
 \texttt{G} \big( \texttt{F} \; \texttt{Due}_x \big) \lor \texttt{G}(\neg \texttt{Due}_x)
@@ -556,7 +591,7 @@ It is impossible to have a valid cron expression that matches only finitely many
 
 ---
 
-**E6 — Crash/RE consistency** *(Informative)*
+**EA6 — Crash/RE consistency** *(Informative)*
 
 $$
 \texttt{G}( \texttt{Crash} \rightarrow (\neg \texttt{RE}_x \; \texttt{W} \; \texttt{RS}_x) )
@@ -578,7 +613,7 @@ The following labels identify illustrative environment classes. They are **infor
 
 ### Additional Informative Assumptions
 
-Following are additional, **informative** assumptions that may hold in some environments. They are not part of the core model.
+Following are additional, **informative** assumptions that may hold in some environments. They are not part of the core theory.
 
 ---
 
@@ -619,13 +654,13 @@ A corollary is that if the environment provides enough compute, no tasks are eve
 
 ---
 
-## Scheduler Contract (Normative)
+## Scheduler Axioms (Normative)
 
-### Safety Properties (Normative)
+The formulas in this section constitute $T_{\textsf{sched}}(a,b,t_{\texttt{lag}})$. Each axiom is parameterised by the witnesses $(a,b,t_{\texttt{lag}})$ that appear in the compute-bounded modalities.
 
-These are **normative** properties.
-They state scheduler invariants.
-They prevent invalid sequences of events.
+### Safety Axioms (Normative)
+
+These axioms state scheduler invariants and prevent invalid sequences of events.
 
 ---
 
@@ -667,7 +702,7 @@ Every completion must correspond to a run that was already in flight before this
 
 ---
 
-**S6 — Registration consistency** *(Normative)*
+**S5 — Registration consistency** *(Normative)*
 
 $$
 R \in \texttt{ValidRegistrations} \implies \texttt{G}( \neg \texttt{IEf}_R ) \\
@@ -676,10 +711,9 @@ $$
 
 The scheduler must accept any registration list from the set of valid lists, and must reject any list not in that set.
 
-### Liveness Properties (Normative)
+### Liveness Axioms (Normative)
 
-These are **normative** properties.
-They state progress guarantees.
+These **normative** axioms state progress guarantees.
 They prevent deadlocks, starvation, livelocks, and unbounded postponement of obligations.
 
 Progress is always read relative to the environment's willingness to provide compute. In fully freezing environments (see [Environment taxonomy](#environment-taxonomy-informative)), obligations may accumulate without violating safety; in eventually thawing or lower-bounded-density environments, the fairness assumptions below become reasonable or derivable premises for liveness. In other words, in some environments, it is impossible to implement a scheduler.
@@ -723,43 +757,41 @@ $$
 
 ---
 
-## Derived Properties (Theorems & Corollaries)
+## Theorems (Derived from the Axioms)
+
+The statements in this section follow from $T_{\textsf{env}} \cup T_{\textsf{sched}}(a,b,t_{\texttt{lag}})$ and explicitly cite the axioms used in each derivation.
 
 ---
 
-**Theorem 1 — Quiescence after Crash**
+**Theorem 1 — Quiescence after Crash** *(from EA1, EA2, EA6)*
 $$
 \texttt{G}( \texttt{Crash} \rightarrow (\neg \texttt{RS}_x \; \texttt{W} \; \texttt{IEs}) )
 $$
-After $\texttt{Crash}$ no new starts until re-initialisation.
+After $\texttt{Crash}$ no new starts until re-initialisation. Uses environment axioms EA1, EA2, and EA6.
 
 ---
 
-**Theorem 2 — Per-task non-overlap**
+**Theorem 2 — Per-task non-overlap** *(from S1)*
 
 $$
 \texttt{G}\big( \texttt{RS}_x \rightarrow \neg \texttt{Y} \;\texttt{Running}_x \big)
 $$
 
-Once a run starts, no further $\texttt{RS}_x$ may occur before a matching $\texttt{RE}_x$ or $\texttt{Crash}$.
-
-Follows from **S1** and the fact that $\texttt{Pending}$ requires $\neg \texttt{Running}$.
+Once a run starts, no further $\texttt{RS}_x$ may occur before a matching $\texttt{RE}_x$ or $\texttt{Crash}$. Derived from **S1** together with the definition of $\texttt{Pending}$.
 
 ---
 
-**Theorem 3 — Quiescence after StopEnd**
+**Theorem 3 — Quiescence after StopEnd** *(from S1)*
 
 $$
 \texttt{G}( \texttt{SE} \rightarrow (\neg \texttt{RS}_x \; \texttt{W} \; \texttt{IEs}) )
 $$
 
-After $\texttt{SE}$, no new starts until re-initialisation.
-
-Follows from **S1** and the fact that $\texttt{Obligation}$ requires $\texttt{Active}$.
+After $\texttt{SE}$, no new starts until re-initialisation. Derived from **S1** and the fact that $\texttt{Obligation}$ requires $\texttt{Active}$.
 
 ---
 
-**Theorem 4 — Crash dominance**
+**Theorem 4 — Crash dominance** *(from EA1, EA2)*
 
 $$
 \texttt{G}( \texttt{Crash} \rightarrow \neg \texttt{RS}_x ) \\
@@ -770,9 +802,7 @@ $$
 \texttt{G}( \texttt{Crash} \rightarrow \neg \texttt{SE} ) \\
 $$
 
-A crash cannot cooccur with any action.
-
-Follows from **E1** and **E2**.
+A crash cannot cooccur with any action. Derived from **EA1** and **EA2**.
 
 ---
 
@@ -834,7 +864,7 @@ Obligation_{R,x}          // scheduler owes a start but receives no compute
 G(Obligation_{R,x} → F_comp^{≤ C}(RS_x ∨ ¬Active_R))
 ```
 
-This demonstrates that liveness obligations defer to the environment: without a sufficient compute grant, the regular modality vacuously holds while safety properties (S1–S6) continue to constrain observable traces.
+This demonstrates that liveness obligations defer to the environment: without a sufficient compute grant, the regular modality vacuously holds while safety axioms (S1–S5) continue to constrain observable traces.
 
 ---
 
@@ -842,11 +872,11 @@ This demonstrates that liveness obligations defer to the environment: without a 
 
 ### Design Rationale
 
-This section explains some design decisions in the scheduler model:
+This section explains some design decisions in the scheduler theory:
 
 **Environment ownership of `Due`/`RetryDue`:** These predicates represent environmental truths (clock ticks, timeout expiration) rather than scheduler decisions. This separation clarifies that the scheduler reacts to timing events but does not control when they occur.
 
-**Quiescence rules:** The model requires that after crashes or stops, no new task starts occur until re-initialization. This ensures clean state transitions and prevents orphaned or inconsistent executions.
+**Quiescence rules:** The theory requires that after crashes or stops, no new task starts occur until re-initialization. This ensures clean state transitions and prevents orphaned or inconsistent executions.
 
 **Compute bounds on progress:** The liveness properties use compute-bounded modalities rather than wall-clock time bounds. This reflects the reality that scheduler progress depends on available computational resources, not merely the passage of time.
 
@@ -854,6 +884,6 @@ This section explains some design decisions in the scheduler model:
 
 **JavaScript embedding:** The predicates correspond to observable function calls and returns in the JavaScript runtime. For example, `InitStart(R)` corresponds to calling `scheduler.initialize(R)`, and `RunStart(x)` corresponds to invoking the callback function for task `x`.
 
-**Cron schedule handling:** The `Due_x` predicate abstracts the evaluation of cron expressions against the system clock. Real implementations must handle timezone changes, daylight saving time transitions, and leap seconds while maintaining the periodic properties assumed by **E5**.
+**Cron schedule handling:** The `Due_x` predicate abstracts the evaluation of cron expressions against the system clock. Real implementations must handle timezone changes, daylight saving time transitions, and leap seconds while maintaining the periodic properties assumed by **EA5**.
 
 ---
