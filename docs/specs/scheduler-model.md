@@ -26,8 +26,6 @@ Sections are explicitly marked as **Normative** or **Informative** where applica
 
 Given an environment $\mathcal{E}$, a scheduler implementation is said to **conform** to this specification if there exist witnesses $(a,b,t_{\texttt{lag}}) \in \mathbb{Z}_{\ge 0}^2 \times \mathbb{D}$ such that the implementation behaves as a $\textsf{Scheduler}(a,b,t_{\texttt{lag}})$ when composed with $\mathcal{E}$, as defined in **Composition Model**.
 
----
-
 ## Scope & Non-Goals
 
 ### Scope
