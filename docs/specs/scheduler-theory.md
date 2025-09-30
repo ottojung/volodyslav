@@ -6,9 +6,7 @@
 
 ### Purpose
 
-This document provides a formal specification of the scheduler's observable behavior using first-order quantification over scheduler objects with **future- and past-time LTL** formulas. Atomic predicates are parameterized by scheduler object variables (e.g., $\texttt{RS}_x$, $\texttt{InitStart}(R)$), and temporal operators apply to propositional formulas obtained by instantiating those predicates for concrete objects. We frame the specification as a **theory** whose models capture observable runs of scheduler/environment compositions.
-
-We use the convenient shorthand of writing instantiated propositions like $\texttt{RS}_x$ for $\texttt{RunStart}(x)$. Where a formula is stated without explicit quantifiers, the default intent is universal quantification (e.g., "for all tasks x", "for all registrations R"). First-order quantification ranges over the set of scheduler objects; temporal operators reason over event positions in the trace.
+We tell implementers and platform owners exactly what must be observable for a scheduler to be correct. We write axioms about starts, ends, initialization, stopping, due/retry pulses, and crashes; we bound progress by the environment’s granted compute; and we keep internals out of scope. The result is a portable yardstick for conformance, fairness assumptions, and failure attribution.
 
 ### Scope
 
