@@ -597,7 +597,7 @@ The following labels identify illustrative environment classes:
 
 * **Burst environments:** concentrate density in sporadic spikes; for every $M$ there are intervals of length $> M$ with arbitrarily small compute alternating with brief, high-density bursts.
 
-### Additional Informative Assumptions
+### Helpful Assumptions
 
 Following are additional, **informative** assumptions that may hold in some environments. They are not part of the core theory.
 
