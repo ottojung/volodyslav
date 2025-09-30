@@ -24,7 +24,7 @@ Sections are explicitly marked as **Normative** or **Informative** where applica
 
 ### Conformance
 
-Given an environment $\mathcal{E}$, a scheduler implementation $\textsf{Sch}$ is **conformant** iff there exist witnesses $(a,b,t_{\texttt{lag}}) \in \mathbb{Z}_{\ge 0} \times \mathbb{Z}_{\ge 0} \times \mathbb{D}$ such that for every run produced by composing $\textsf{Sch}$ with $\mathcal{E}$ we obtain a structure (with timestamp function $\tau$) satisfying the combined theory:
+A scheduler implementation $\textsf{Sch}$ is **conformant** iff for all environments $\mathcal{E}$ there exist witnesses $(a,b,t_{\texttt{lag}}) \in \mathbb{Z}_{\ge 0} \times \mathbb{Z}_{\ge 0} \times \mathbb{D}$ such that for every run produced by composing $\textsf{Sch}$ with $\mathcal{E}$ we obtain a structure (with timestamp function $\tau$) satisfying the combined theory:
 
 $$
 \langle \mathcal{E}, \textsf{Sch}, \tau \rangle \models T_{\textsf{env}} \cup T_{\textsf{sched}}(a,b,t_{\texttt{lag}}).
