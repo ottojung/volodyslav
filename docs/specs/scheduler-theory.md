@@ -429,7 +429,7 @@ providing the interpretations for environment-owned functions and predicates lis
 
 ### Satisfaction & Models
 
-The satisfaction judgment uses linear-time temporal logic with past over trace positions equipped with $\tau$. Definition schemata $F_{\texttt{comp}!}$, $F_{\texttt{comp}}$, and $F^{\texttt{lin}}_{\texttt{comp}}$ are macros over this signature. They depend on $\texttt{compute}$, $\texttt{duration}$, and the lag parameter $t_{\texttt{lag}}$, but they are **not axioms**—they merely abbreviate recurring formulas.
+The satisfaction judgment uses linear-time temporal logic with past over trace positions equipped with $\tau$. Definition schemata $F_{\texttt{comp}!}$, $F_{\texttt{comp}}$, and $F^{\texttt{lin}}_{\texttt{comp}}$ are macros over this signature.
 
 Let $T_{\textsf{sched}}(a,b,t_{\texttt{lag}})$ denote the set of **Scheduler Axioms**: S1–S5 and L1–L3 with every modality instantiated using the same witnesses $(a,b,t_{\texttt{lag}})$. Let $T_{\textsf{env}}$ denote the **Environment Axioms** EA1–EA6. Optional assumptions A1–A3 may be conjoined to $T_{\textsf{env}}$ to describe specific environment classes, but they are not part of the core theory.
 
