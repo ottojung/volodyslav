@@ -852,25 +852,3 @@ G(Obligation_{R,x} → F_comp^{≤ C}(RS_x ∨ ¬Active_R))
 ```
 
 This demonstrates that liveness obligations defer to the environment: without a sufficient compute grant, the regular modality vacuously holds while safety axioms (S1–S5) continue to constrain observable traces.
-
----
-
-## Design Notes (Informative)
-
-### Design Rationale
-
-This section explains some design decisions in the scheduler theory:
-
-**Environment ownership of `Due`/`RetryDue`:** These predicates represent environmental truths (clock ticks, timeout expiration) rather than scheduler decisions. This separation clarifies that the scheduler reacts to timing events but does not control when they occur.
-
-**Quiescence rules:** The theory requires that after crashes or stops, no new task starts occur until re-initialization. This ensures clean state transitions and prevents orphaned or inconsistent executions.
-
-**Compute bounds on progress:** The liveness properties use compute-bounded modalities rather than wall-clock time bounds. This reflects the reality that scheduler progress depends on available computational resources, not merely the passage of time.
-
-### Implementation Mapping
-
-**JavaScript embedding:** The predicates correspond to observable function calls and returns in the JavaScript runtime. For example, `InitStart(R)` corresponds to calling `scheduler.initialize(R)`, and `RunStart(x)` corresponds to invoking the callback function for task `x`.
-
-**Cron schedule handling:** The `Due_x` predicate abstracts the evaluation of cron expressions against the system clock. Real implementations must handle timezone changes, daylight saving time transitions, and leap seconds while maintaining the periodic properties assumed by **EA5**.
-
----
