@@ -510,13 +510,13 @@ The environment contributes two ingredients:
 
    It is expected that the scheduler will have access to less compute when more callbacks are running, but this is a very vague assumption, so not formalising it here.
 
-### Environment Axioms EA1–EA6 (Informative)
+### Environment Axioms EA1–EA6
 
 These axioms state truths that all real-world environments in scope satisfy.
 
 ---
 
-**EA1 — Busy crashing** *(Informative)*
+**EA1 — Busy crashing**
 
 $$
 \texttt{G}( \texttt{Crash} \rightarrow \texttt{Frozen} )
@@ -526,7 +526,7 @@ No work progresses around a crash instant.
 
 ---
 
-**EA2 - Actions require work** *(Informative)*
+**EA2 - Actions require work**
 
 $$
 \texttt{G}( \texttt{RE}_x \rightarrow \texttt{Unfrozen} ) \\
@@ -543,7 +543,7 @@ Importantly, $\texttt{Due}_x$ and $\texttt{RetryDue}_x$ are not included here, a
 
 ---
 
-**EA3 - No simultaneous actions** *(Informative)*
+**EA3 - No simultaneous actions**
 
 $$
 \text{For any two actions } A \neq B \text{ in } \{ \texttt{RE}_x, \texttt{RS}_x, \texttt{IS}_R, \texttt{IE}, \texttt{SS}, \texttt{SE} \}, \text{ we have:} \\
@@ -554,7 +554,7 @@ Two actions cannot happen simultaneously.
 
 ---
 
-**EA4 - Unlimited freeze** *(Informative)*
+**EA4 - Unlimited freeze**
 
 $$
 \texttt{G} \; \texttt{F} \; \texttt{Frozen} 
@@ -564,7 +564,7 @@ There are infinitely many intervals of time during which no work progresses. Thi
 
 ---
 
-**EA5 - Unlimited dues** *(Informative)*
+**EA5 - Unlimited dues**
 
 $$
 \texttt{G} \big( \texttt{F} \; \texttt{Due}_x \big) \lor \texttt{G}(\neg \texttt{Due}_x)
@@ -577,7 +577,7 @@ It is impossible to have a valid cron expression that matches only finitely many
 
 ---
 
-**EA6 — Crash/RE consistency** *(Informative)*
+**EA6 — Crash/RE consistency**
 
 $$
 \texttt{G}( \texttt{Crash} \rightarrow (\neg \texttt{RE}_x \; \texttt{W} \; \texttt{RS}_x) )
@@ -585,7 +585,7 @@ $$
 
 After a $\texttt{Crash}$, no new ends until a new start.
 
-### Environment Taxonomy (Informative)
+### Environment Taxonomy
 
 The following labels identify illustrative environment classes. They are **informative** definitions, not global assumptions:
 
@@ -603,7 +603,7 @@ Following are additional, **informative** assumptions that may hold in some envi
 
 ---
 
-**A1 - Eventual thawing** *(Informative)*
+**A1 - Eventual thawing**
 
 $$
 \texttt{G} \; \texttt{F} \; \texttt{Unfrozen}
@@ -616,7 +616,7 @@ It is a weak form of fairness that ensures the environment does not permanently 
 
 ---
 
-**A2 — Starts eventually settle** *(Informative)*
+**A2 — Starts eventually settle**
 
 $$
 \texttt{G}( \texttt{RS}_x \rightarrow \texttt{F}( \texttt{RE}_x \vee \texttt{Crash} ) )
@@ -629,7 +629,7 @@ That's why this is an **informative** property, not a core property.
 
 ---
 
-**A3 - Low lag** *(Informative)*
+**A3 - Low lag**
 
 $$
 t_{\texttt{lag}} < 1 \; \text{minute}
