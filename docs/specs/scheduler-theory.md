@@ -407,6 +407,12 @@ The scheduler **should actually start** task $x$ now.
 
 ---
 
+* $\texttt{Obligation}_{x} := \exists R . \; \texttt{Obligation}_{R, x}$
+
+An abbreviation.
+
+---
+
 ## Structures & Satisfaction
 
 ### Signature & Structures
@@ -662,7 +668,7 @@ These axioms state scheduler invariants and prevent invalid sequences of events.
 
 **S1 — Start safety**
 $$
-\texttt{G}( \texttt{RS}_x \rightarrow \exists R. \; \texttt{Y} \; \texttt{Obligation}_{R, x} )
+\texttt{G}( \texttt{RS}_x \rightarrow \texttt{Y} \; \texttt{Obligation}_{x} )
 $$
 A run can occur only after an obligation to run.
 
