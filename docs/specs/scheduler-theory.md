@@ -251,7 +251,6 @@ Let
 * $\texttt{REf}_x := \texttt{RunFailure}(x)$
 * $\texttt{RE}_x := \texttt{REs}_x \vee \texttt{REf}_x$
 * $\texttt{duration}(S) := |S|$
-* $\texttt{Uninstalled} := \neg \texttt{F} \; \texttt{Unfrozen}$
 
 #### Stateful
 
@@ -349,6 +348,18 @@ The last disjunct ensures that $\texttt{Active}_R$ becomes false if a new initia
 * $\texttt{Running}_x := \texttt{Hold}(\texttt{RS}_x, \texttt{RE}_x \lor \texttt{Crash})$
 
 An invocation of $x$ has begun and has not finished before the current position.
+
+---
+
+* $\texttt{Quiescent} := \neg \exists y.\; \texttt{Running}_y$
+
+No callbacks are currently running.
+
+---
+
+* $\texttt{FirstQuiescentSince}(\sigma) := \texttt{Quiescent} \wedge (\neg \texttt{Quiescent} \; \texttt{S} \; \sigma)$
+
+The first instant at or after $\sigma$ when the system becomes quiescent.
 
 ---
 
@@ -744,19 +755,16 @@ Similar to L1, this property ensures that once an initialization starts, it must
 
 ---
 
-**L3 — Stop terminates**
+**L3 — Stop completes linearly after first quiescence**
 
 $$
-\texttt{G}\big( \texttt{SS}_R \rightarrow (\texttt{AllTerm} \rightarrow \texttt{F} \; (\texttt{SE}_R \lor \texttt{Crash} \lor \texttt{Uninstalled}))\big)
+\texttt{G}\Big(\, \texttt{SS}_R \;\rightarrow\;
+  \texttt{G}\big(\, \texttt{FirstQuiescentSince}(\texttt{SS}_R) \;\rightarrow\;
+    F_{\texttt{comp}}^{\texttt{lin}(R,\, \tau(i))}\big( \texttt{SE}_R \;\lor\; \texttt{Crash} \big)
+  \big)\Big)
 $$
 
-No bound on compute here, as the scheduler may need to wait for in-flight callbacks to complete. The callbacks are not bounded, so no unconditional bound on stop can be given.
-
-The $\texttt{AllTerm}$ condition accounts for callbacks that never terminate. This is a concession to the fact that users may write non-terminating callbacks. It is defined as:
-
-$$
-\texttt{AllTerm} := \forall_{y} \; (\texttt{Running}_y \rightarrow \texttt{F} \; \texttt{RE}_y)
-$$
+**Reading.** After $\texttt{SS}_R$, as soon as the system first becomes quiescent (no callbacks running), the scheduler must complete `stop()` within a compute budget linear in the sizes of the registration list and current timestamp (modulo environment grants), or else be pre-empted by $\texttt{Crash}$.
 
 ---
 
