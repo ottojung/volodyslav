@@ -1,8 +1,11 @@
-# Axiomatized Theory of Declarative Schedulers
+# Declarative Scheduler Theory
 
 ---
 
 ## Preamble
+
+This document defines a **formal, mathematical theory for declarative schedulers**.
+It is part of the [Declarative Scheduler Specification](./scheduler.md).
 
 ### Purpose
 
