@@ -83,6 +83,8 @@ Intuitively, this asserts that $P$ will occur after receiving at most $C$ units 
 
 This is the strict progress condition that attributes all delay to the scheduler except for the fixed lag in its witnesses.
 
+In typical usage, $C$ is a finite value derived from the scheduler's complexity bounds, though the definition permits $C = \infty$.
+
 #### Compute-bounded eventually
 
 At time $\tau(i)$ and for $C \in \mathbb{P}$,
@@ -119,7 +121,7 @@ $$
 
 * $\mathbb{T} := \mathbb{Z}$ — the time domain.
 * $\mathbb{D} := \mathbb{Z_{\geq 0}}$ — the domain of durations.
-* $\mathbb{P} := \mathbb{Z_{\geq 0}}$ — the domain of compute.
+* $\mathbb{P} := \mathbb{Z_{\geq 0}} \cup \{\infty\}$ — the domain of compute.
 * $\texttt{TaskId}$ — a set of public task identifiers.
 * $\texttt{Opaque}$ — a set of uninterpreted atoms where only equality is meaningful.
 * $\texttt{Callback}$ — the set of externally observable callback behaviours (abstracted here to equality).
@@ -522,6 +524,8 @@ Among others, environments contribute these two ingredients:
 
    * **T1 (additivity):** $\texttt{compute}(S \cup V) = \texttt{compute}(S) + \texttt{compute}(V) - \texttt{compute}(S \cap V)$.
    * **T2 (boundedness):** $\texttt{compute}(S) \leq \lambda \cdot \texttt{duration}(S)$.
+
+   When $\texttt{compute}$ returns $\infty$, standard arithmetic rules for infinity apply: $\infty + x = \infty$ for any $x \in \mathbb{P}$, $\infty - n = \infty$ for any finite $n$, and comparisons like $\infty \geq C$ hold for any finite $C \in \mathbb{Z_{\geq 0}}$. Property **T2** permits $\texttt{compute}(S) = \infty$ when $\texttt{duration}(S)$ is unbounded.
 
    No positivity is assumed; the environment may set $\texttt{compute}([t,u]) = 0$ on arbitrary (even unbounded) intervals, modelling **freezes** where no work can progress. We write $\texttt{Frozen}(t,u)$ when $\texttt{compute}([t,u]) = 0$. We write $\texttt{Frozen} \texttt{ at } i$ when there exists $l, r \geq 0$ such that $l + r > 0 \wedge \texttt{Frozen}(\tau(i) - l, \tau(i) + r)$. This means no work progressed in the interval surrounding the trace position. Similarly, $\texttt{Unfrozen}$ means that compute is positive in some interval surrounding the position.
 
