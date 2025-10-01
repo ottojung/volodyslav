@@ -389,7 +389,13 @@ A task $x$ that was interrupted by a crash and has not yet been restarted.
 
 ---
 
-* $\texttt{Pending}_x := \texttt{DuePending}_x \vee \texttt{RetryPending}_x \vee \texttt{OrphanedPending}_x$
+* $\texttt{BootDuePending}_x := \texttt{FirstComing}_x \land \texttt{MountainDue}_x \land \neg \texttt{Running}_x$
+
+Task $x$ has just appeared and the current civil minute is one when $x$ is due - so it is pending unless already running.
+
+---
+
+* $\texttt{Pending}_x := \texttt{DuePending}_x \vee \texttt{RetryPending}_x \vee \texttt{OrphanedPending}_x \vee \texttt{BootDuePending}_x$
 
 A task $x$ is ready to run.
 
