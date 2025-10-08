@@ -87,55 +87,67 @@ function make(getCapabilities) {
             "Generated scheduler identifier"
         );
 
-        // Check for existing polling scheduler
-        if (pollingScheduler !== null) {
-            // Scheduler already running - need to update with new registrations
+        const existingScheduler = pollingScheduler;
+        const isReinitialization = existingScheduler !== null;
+
+        const nextScheduler = makePollingScheduler(capabilities, parsedRegistrations, schedulerIdentifier);
+
+        async function stopSchedulerWithWarning(scheduler, message) {
+            try {
+                await scheduler.stopLoop();
+            } catch (stopError) {
+                capabilities.logger.logWarning(
+                    {
+                        errorName: stopError.name,
+                        errorMessage: stopError.message,
+                    },
+                    message
+                );
+            }
+        }
+
+        if (!isReinitialization) {
+            capabilities.logger.logDebug(
+                {},
+                "Creating new polling scheduler"
+            );
+        }
+
+        try {
+            // Apply materialization logic to detect and log changes, and update persisted state
+            await initializeTasks(capabilities, parsedRegistrations, schedulerIdentifier);
+
+            // Schedule all tasks (including newly added ones)
+            await scheduleAllTasks(registrations, nextScheduler, capabilities);
+        } catch (error) {
+            await stopSchedulerWithWarning(nextScheduler, "Failed to stop candidate scheduler after initialization failure");
+            throw error;
+        }
+
+        if (isReinitialization) {
             capabilities.logger.logDebug(
                 {},
                 "Scheduler already initialized, stopping current scheduler and recreating with new registrations"
             );
-            
-            // Stop the existing scheduler
-            await pollingScheduler.stopLoop();
-            pollingScheduler = null;
-            
-            // Create new polling scheduler with updated registrations
-            pollingScheduler = makePollingScheduler(capabilities, parsedRegistrations, schedulerIdentifier);
-            
-            // Apply materialization logic to detect and log changes, and update persisted state
-            await initializeTasks(capabilities, parsedRegistrations, schedulerIdentifier);
-            
-            // Schedule all tasks (including newly added ones)
-            await scheduleAllTasks(registrations, pollingScheduler, capabilities);
-            
-            capabilities.logger.logDebug(
-                {
-                    totalRegistrations: registrations.length,
-                },
-                "Scheduler reinitialization completed"
-            );
-            return;
-        } else {
-            pollingScheduler = makePollingScheduler(capabilities, parsedRegistrations, schedulerIdentifier);
+
+            try {
+                await existingScheduler.stopLoop();
+            } catch (stopError) {
+                await stopSchedulerWithWarning(
+                    nextScheduler,
+                    "Failed to stop candidate scheduler after previous scheduler stop failure"
+                );
+                throw stopError;
+            }
         }
 
-        // Create polling scheduler
-        capabilities.logger.logDebug(
-            {},
-            "Creating new polling scheduler"
-        );
-
-        // Apply clean materialization logic (handles persisted state, logging, and orphaned tasks internally)
-        await initializeTasks(capabilities, parsedRegistrations, schedulerIdentifier);
-
-        // Schedule all tasks
-        await scheduleAllTasks(registrations, pollingScheduler, capabilities);
+        pollingScheduler = nextScheduler;
 
         capabilities.logger.logDebug(
             {
                 totalRegistrations: registrations.length,
             },
-            "Scheduler initialization completed"
+            isReinitialization ? "Scheduler reinitialization completed" : "Scheduler initialization completed"
         );
     }
 
