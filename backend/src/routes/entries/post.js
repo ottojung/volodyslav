@@ -189,7 +189,7 @@ async function handleEntryPost(req, res, capabilities, reqId) {
         const fileObjects = await prepareFileObjects(capabilities, files, reqId);
         const event = await createEntry(capabilities, entryData, fileObjects);
 
-        capabilities.logger.logInfo(
+        capabilities.logger.logDebug(
             {
                 request_identifier: reqId.identifier,
                 entry_type: event.type,
