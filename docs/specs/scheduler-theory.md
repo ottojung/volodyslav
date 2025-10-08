@@ -200,6 +200,14 @@ It is not controlled by the scheduler. The scheduler may not know when a crash w
 
 ---
 
+* $\texttt{StorageFailure}$ — a persistent storage operation fails (e.g., write error, I/O failure, disk full, Git operation failure). This prevents the scheduler from persisting state or reading existing state reliably.
+
+This predicate is supplied by the environment's storage subsystem.
+It is not controlled by the scheduler. The scheduler may not know when storage will fail.
+Storage failures are distinct from crashes: they represent local, recoverable I/O errors rather than full system interruption.
+
+---
+
 * $\texttt{Due}_x$ — is start of a minute that the cron schedule for task $x$ matches.
 
 *Interpretation:* the cron schedule for $x$ matches the start of a *civil* minute according to the host system's local clock.
@@ -229,7 +237,7 @@ Each predicate marks the instant the named public action occurs from the perspec
 ### Ownership Partition
 
 Let
-- $\Sigma_{\textsf{env}} := \{\texttt{Crash},\ \texttt{Due}_x,\ \texttt{RetryDue}_x,\ \texttt{REs}_x,\ \texttt{REf}_x, \, \texttt{SS}, \, \texttt{IS}_R\}$ (environment–owned),
+- $\Sigma_{\textsf{env}} := \{\texttt{Crash},\ \texttt{StorageFailure},\ \texttt{Due}_x,\ \texttt{RetryDue}_x,\ \texttt{REs}_x,\ \texttt{REf}_x, \, \texttt{SS}, \, \texttt{IS}_R\}$ (environment–owned),
 - $\Sigma_{\textsf{sch}} := \{\texttt{IE}_R,\ \texttt{SE},\ \texttt{RS}_x\}$ (scheduler–owned).
 
 ### Timing Semantics
@@ -250,6 +258,7 @@ Let
 * $\texttt{SS} := \texttt{StopStart}$
 * $\texttt{SE} := \texttt{StopEnd}$
 * $\texttt{Crash} := \texttt{UnexpectedShutdown}$
+* $\texttt{SF} := \texttt{StorageFailure}$
 * $\texttt{RS}_x := \texttt{RunStart}(x)$
 * $\texttt{REs}_x := \texttt{RunSuccess}(x)$
 * $\texttt{REf}_x := \texttt{RunFailure}(x)$
@@ -451,7 +460,7 @@ The free constants $(a,b,t_{\texttt{lag}})$ are theory parameters that instantia
 An environment is packaged as the tuple
 
 $$
-\mathcal{E} = \langle \mathbb{T}, \texttt{compute}, \texttt{Crash}, \texttt{Due}_x, \texttt{RetryDue}_x, \texttt{REs}, \texttt{REf}, \texttt{SS}, \texttt{IS}_R \rangle,
+\mathcal{E} = \langle \mathbb{T}, \texttt{compute}, \texttt{Crash}, \texttt{StorageFailure}, \texttt{Due}_x, \texttt{RetryDue}_x, \texttt{REs}, \texttt{REf}, \texttt{SS}, \texttt{IS}_R \rangle,
 $$
 
 providing the interpretations for environment-owned functions and predicates listed above.
@@ -462,7 +471,7 @@ providing the interpretations for environment-owned functions and predicates lis
 
 The satisfaction judgment uses linear-time temporal logic with past over trace positions equipped with $\tau$. Definition schemata $F_{\texttt{comp}!}$, $F_{\texttt{comp}}$, and $F^{\texttt{lin}}_{\texttt{comp}}$ are macros over this signature.
 
-Let $T_{\textsf{sched}}(a,b,t_{\texttt{lag}})$ denote the set of **Scheduler Axioms**: S1–S5 and L1–L3 with every modality instantiated using the same witnesses $(a,b,t_{\texttt{lag}})$. Let $T_{\textsf{env}}$ denote the **Environment Axioms** EA1–EA6. Optional assumptions A1–A3 may be conjoined to $T_{\textsf{env}}$ to describe specific environment classes, but they are not part of the core theory.
+Let $T_{\textsf{sched}}(a,b,t_{\texttt{lag}})$ denote the set of **Scheduler Axioms**: S1–S5 and L1–L3 with every modality instantiated using the same witnesses $(a,b,t_{\texttt{lag}})$. Let $T_{\textsf{env}}$ denote the **Environment Axioms** EA1–EA8. Optional assumptions A1–A4 may be conjoined to $T_{\textsf{env}}$ to describe specific environment classes, but they are not part of the core theory.
 
 We write
 
@@ -483,14 +492,14 @@ Optional environment classes extend $T$ with subsets of $\{\text{A1}, \text{A2},
 | Component | Status | Contents |
 |-----------|--------|----------|
 | $T_{\textsf{sched}}(a,b,t_{\texttt{lag}})$ | Normative | Scheduler axioms S1–S5, L1–L3 with parameters $(a,b,t_{\texttt{lag}})$ |
-| $T_{\textsf{env}}$ | Informative | Environment axioms EA1–EA6 |
-| $T \cup A$ | Informative | Optional assumptions A1–A3 describing refined environment classes |
+| $T_{\textsf{env}}$ | Informative | Environment axioms EA1–EA8 |
+| $T \cup A$ | Informative | Optional assumptions A1–A4 describing refined environment classes |
 
 ### Models of the Theory
 
 A trace over $\Sigma_{\textsf{env}} \cup \Sigma_{\textsf{sch}}$ with timestamps $\tau$ yields a **structure** $\langle \mathcal{E}, \textsf{Sch}, \tau \rangle$. The structure is a **model of the theory** iff:
 
-1. Environment-owned predicates are interpreted exactly as the lifts provided by the environment tuple $\mathcal{E}$ (which includes $\mathbb{T}$, $\texttt{compute}$, $\texttt{Crash}$, $\texttt{Due}$, $\texttt{RetryDue}$, $\texttt{REs}$, $\texttt{REf}$, $\texttt{SS}$, and $\texttt{IS}_R$).
+1. Environment-owned predicates are interpreted exactly as the lifts provided by the environment tuple $\mathcal{E}$ (which includes $\mathbb{T}$, $\texttt{compute}$, $\texttt{Crash}$, $\texttt{StorageFailure}$, $\texttt{Due}$, $\texttt{RetryDue}$, $\texttt{REs}$, $\texttt{REf}$, $\texttt{SS}$, and $\texttt{IS}_R$).
 2. Scheduler-owned predicates are produced by the scheduler $\textsf{Sch}$ (at most one observable action per position, cf. EA3).
 3. The structure satisfies every axiom in $T_{\textsf{env}} \cup T_{\textsf{sched}}(a,b,t_{\texttt{lag}})$.
 
@@ -543,7 +552,7 @@ Among others, environments contribute these two ingredients:
 
    It is expected that the scheduler will have access to less compute when more callbacks are running, but this is a very vague assumption, so not formalising it here.
 
-### Environment Axioms EA1–EA6
+### Environment Axioms EA1–EA8
 
 These axioms state truths that all real-world environments in scope satisfy.
 
@@ -618,6 +627,26 @@ $$
 
 After a $\texttt{Crash}$, no new ends until a new start.
 
+---
+
+**EA7 — Storage failure is frozen**
+
+$$
+\texttt{G}( \texttt{SF} \rightarrow \texttt{Frozen} )
+$$
+
+When storage fails, no compute progresses. Storage operations consume scheduler compute, so their failure means the scheduler cannot make progress at that instant.
+
+---
+
+**EA8 — Storage failure independence**
+
+$$
+\texttt{G}( \texttt{SF} \rightarrow \neg \texttt{Crash} )
+$$
+
+Storage failures and crashes are distinct events that cannot occur simultaneously. A storage failure is a local I/O error, while a crash is a system-wide interruption.
+
 ### Environment Taxonomy
 
 The following labels identify illustrative environment classes:
@@ -629,6 +658,10 @@ The following labels identify illustrative environment classes:
 * **Lower-bounded-density environments:** there exist parameters $\varepsilon > 0$ and $\Delta \ge 0$ such that for all $t$ and $T \ge \Delta$, $\texttt{compute}([t,t+T]) \ge \varepsilon\cdot T$ (average density after $\Delta$ never drops below $\varepsilon$).
 
 * **Burst environments:** concentrate density in sporadic spikes; for every $M$ there are intervals of length $> M$ with arbitrarily small compute alternating with brief, high-density bursts.
+
+* **Reliable storage environments:** $\texttt{SF}$ occurs at most finitely many times, allowing eventual initialization success.
+
+* **Unreliable storage environments:** $\texttt{SF}$ may occur infinitely often, potentially preventing any successful initialization despite valid registrations.
 
 ### Helpful Assumptions
 
@@ -670,6 +703,18 @@ $$
 
 If this is true, then whether any task is ever going to be missed is determined purely by $\texttt{compute}$.
 A corollary is that if the environment provides enough compute, no tasks are ever missed.
+
+---
+
+**A4 - Eventual storage success**
+
+$$
+\texttt{G} \; \texttt{F} \; (\neg \texttt{SF})
+$$
+
+Eventually, storage operations succeed. This rules out permanently failing storage environments.
+
+Combined with A1 (eventual thawing), this assumption ensures that valid registrations will eventually initialize successfully, as both compute and storage become available. Without this assumption, a conformant scheduler may be unusable in unreliable storage environments despite having valid registrations.
 
 ---
 
@@ -724,11 +769,13 @@ Every completion must correspond to a run that was already in flight before this
 **S5 — Registration consistency**
 
 $$
-R \in \texttt{ValidRegistrations} \implies \texttt{G}( \neg \texttt{IEf}_R ) \\
+R \in \texttt{ValidRegistrations} \implies \texttt{G}\big( \texttt{IEf}_R \rightarrow \texttt{Y} \; \texttt{SF} \big) \\
 R \notin \texttt{ValidRegistrations} \implies \texttt{G}( \neg \texttt{IEs}_R ) \\
 $$
 
-The scheduler must accept any registration list from the set of valid lists, and must reject any list not in that set.
+The scheduler must accept any registration list from the set of valid lists (first line), and must reject any list not in that set (second line).
+
+The first line states that for valid registrations, initialization may only fail if storage has failed. This accounts for the reality that even with valid input, persistent storage failures can prevent successful initialization. The implication allows initialization to fail ($\texttt{IEf}_R$) but only when preceded by a storage failure ($\texttt{Y} \; \texttt{SF}$), ensuring the scheduler is not blamed for environment failures.
 
 ### Liveness Axioms
 
@@ -754,10 +801,17 @@ Furthermore, that execution occurs within a bounded **compute** (as a linear fun
 **L2 — Initialization completes**
 
 $$
-\texttt{G}\big( \texttt{IS}_R \rightarrow \texttt{F}_{\texttt{comp}}^{\texttt{lin}(R, \,\tau(i))} \; (\texttt{IE}_R \lor \texttt{Crash}) \big)
+\texttt{G}\big( \texttt{IS}_R \rightarrow \texttt{F}_{\texttt{comp}}^{\texttt{lin}(R, \,\tau(i))} \; (\texttt{IE}_R \lor \texttt{Crash} \lor \texttt{SF}) \big)
 $$
 
-Similar to L1, this property ensures that once an initialization starts, it must eventually complete within a bounded amount of compute (unless preempted by a crash) whenever the environment supplies that budget.
+This property ensures that once an initialization starts, it must eventually complete within a bounded amount of compute (unless preempted by a crash or storage failure) whenever the environment supplies that budget.
+
+The axiom accounts for three termination conditions:
+1. **$\texttt{IE}_R$**: Normal completion (success or validation failure)
+2. **$\texttt{Crash}$**: System-wide interruption
+3. **$\texttt{SF}$**: Storage subsystem failure
+
+This reflects the reality that initialization requires persistent storage operations, which may fail independently of the scheduler's correctness. The bounded compute guarantee applies only when storage remains operational.
 
 ---
 
@@ -823,6 +877,23 @@ A crash cannot cooccur with any action. Derived from **EA1** and **EA2**.
 
 ---
 
+**Theorem 5 — Storage failure dominance**
+
+$$
+\texttt{G}( \texttt{SF} \rightarrow \neg \texttt{RS}_x ) \\
+\texttt{G}( \texttt{SF} \rightarrow \neg \texttt{RE}_x ) \\
+\texttt{G}( \texttt{SF} \rightarrow \neg \texttt{IS}_R ) \\
+\texttt{G}( \texttt{SF} \rightarrow \neg \texttt{IEs} ) \\
+\texttt{G}( \texttt{SF} \rightarrow \neg \texttt{SS} ) \\
+\texttt{G}( \texttt{SF} \rightarrow \neg \texttt{SE} ) \\
+$$
+
+Storage failure cannot cooccur with most actions (except $\texttt{IEf}$ which may report the failure). Derived from **EA7** (storage failure is frozen) and **EA2** (actions require work).
+
+Note that $\texttt{IEf}$ may cooccur with or immediately follow $\texttt{SF}$, as the scheduler may report initialization failure when it detects storage unavailability.
+
+---
+
 ## Examples
 
 ### Trace 1 — Normal operation
@@ -870,3 +941,18 @@ Due_1
 RS_1               // restart after re-init
 REs_1
 ```
+
+### Trace 4 — Storage failure during initialization
+
+```js
+IS
+SF                 // storage fails during initialization
+IEf                // initialization fails due to storage error
+IS                 // retry initialization
+IEs                // storage now works, initialization succeeds
+Due_1
+RS_1
+REs_1
+```
+
+**Interpretation:** Even with valid registrations, initialization may fail when storage is unavailable. The scheduler correctly reports failure ($\texttt{IEf}$) when storage fails ($\texttt{SF}$), satisfying axiom S5. On retry, when storage becomes available, initialization succeeds. This trace is valid in unreliable storage environments but eventually succeeds in environments satisfying assumption A4 (eventual storage success).
