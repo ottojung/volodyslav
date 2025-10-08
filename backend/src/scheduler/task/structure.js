@@ -16,6 +16,7 @@
 
 /**
  * @typedef {object} AwaitingRetry
+ * @property {DateTime} lastAttemptTime - Time of the last attempt (failure)
  * @property {DateTime} lastFailureTime - Time of the last failure
  * @property {DateTime} pendingRetryUntil - Time until which the task is pending retry
  */
@@ -152,6 +153,7 @@ function createStateFromProperties(lastSuccessTime, lastFailureTime, lastAttempt
     if (pendingRetryUntil && lastFailureTime) {
         /** @type {AwaitingRetry} */
         return {
+            lastAttemptTime: lastAttemptTime ?? lastFailureTime,
             lastFailureTime,
             pendingRetryUntil
         };

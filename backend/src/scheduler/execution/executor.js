@@ -115,6 +115,7 @@ function makeTaskExecutor(capabilities, mutateTasks) {
                 const retryAt = end.advance(task.retryDelay);
                 /** @type {AwaitingRetry} */
                 const newState = {
+                    lastAttemptTime: end,
                     lastFailureTime: end,
                     pendingRetryUntil: retryAt,
                 };
