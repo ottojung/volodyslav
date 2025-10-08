@@ -26,14 +26,14 @@ describe("scheduler task serialization roundtrip (real-world scenario)", () => {
     test("should handle complete serialize -> JSON stringify -> parse -> deserialize cycle", () => {
         const registrations = createTestRegistrations();
         
-        // Test AwaitingRetry state (which has pendingRetryUntil and lastFailureTime)
+        // Test AwaitingRetry state (which has pendingRetryUntil, lastFailureTime, and inferred lastAttemptTime)
         const lastFailureTime = fromISOString("2022-01-01T09:00:00.000Z");
         const pendingRetryUntil = fromISOString("2022-01-01T12:00:00.000Z");
 
         const state = createStateFromProperties(
             undefined, // lastSuccessTime - not compatible with AwaitingRetry
             lastFailureTime,
-            undefined, // lastAttemptTime - not compatible with AwaitingRetry
+            undefined, // lastAttemptTime - inferred from lastFailureTime for AwaitingRetry
             pendingRetryUntil,
             undefined  // schedulerIdentifier - not compatible with AwaitingRetry
         );
@@ -50,10 +50,10 @@ describe("scheduler task serialization roundtrip (real-world scenario)", () => {
         const serializedTask = serialize(originalTask);
 
         // Verify that serialized task has DateTime objects (SerializedTask format should be preserved)
-        // Only the fields available in AwaitingRetry state should be present
+        // AwaitingRetry state now also retains lastAttemptTime metadata
         expect(serializedTask.lastSuccessTime).toBe(undefined);
         expect(isDateTime(serializedTask.lastFailureTime)).toBe(true);
-        expect(serializedTask.lastAttemptTime).toBe(undefined);
+        expect(isDateTime(serializedTask.lastAttemptTime)).toBe(true);
         expect(isDateTime(serializedTask.pendingRetryUntil)).toBe(true);
         expect(serializedTask.schedulerIdentifier).toBe(undefined);
 
@@ -66,7 +66,7 @@ describe("scheduler task serialization roundtrip (real-world scenario)", () => {
         // Verify that parsed object no longer has DateTime objects (they become plain objects)
         expect(parsedFromJson.lastSuccessTime).toBe(undefined);
         expect(isDateTime(parsedFromJson.lastFailureTime)).toBe(false);
-        expect(parsedFromJson.lastAttemptTime).toBe(undefined);
+        expect(isDateTime(parsedFromJson.lastAttemptTime)).toBe(false);
         expect(isDateTime(parsedFromJson.pendingRetryUntil)).toBe(false);
 
         // Step 5: Deserialize back to a Task (what the scheduler does when loading)
@@ -81,7 +81,8 @@ describe("scheduler task serialization roundtrip (real-world scenario)", () => {
         expect(isDateTime(getLastFailureTime(deserializedTask))).toBe(true);
         expect(getLastFailureTime(deserializedTask).toISOString()).toBe("2022-01-01T09:00:00.000Z");
         
-        expect(getLastAttemptTime(deserializedTask)).toBe(undefined);
+        expect(isDateTime(getLastAttemptTime(deserializedTask))).toBe(true);
+        expect(getLastAttemptTime(deserializedTask).toISOString()).toBe("2022-01-01T09:00:00.000Z");
         
         expect(isDateTime(getPendingRetryUntil(deserializedTask))).toBe(true);
         expect(getPendingRetryUntil(deserializedTask).toISOString()).toBe("2022-01-01T12:00:00.000Z");

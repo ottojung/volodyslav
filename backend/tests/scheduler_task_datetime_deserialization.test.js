@@ -47,6 +47,8 @@ describe("scheduler task DateTime deserialization", () => {
             expect(getLastFailureTime(awaitingRetryResult).toISOString()).toBe(isoString);
             expect(isDateTime(getPendingRetryUntil(awaitingRetryResult))).toBe(true);
             expect(getPendingRetryUntil(awaitingRetryResult).toISOString()).toBe(isoString);
+            expect(isDateTime(getLastAttemptTime(awaitingRetryResult))).toBe(true);
+            expect(getLastAttemptTime(awaitingRetryResult).toISOString()).toBe(isoString);
             
             // Test AwaitingRun state deserialization
             const awaitingRunObj = {

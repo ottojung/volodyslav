@@ -43,7 +43,7 @@ function logError(state, obj, msg) {
 
     state.capabilities?.notifier?.notifyAboutError(msg).catch((error) => {
         if (state.logger !== null) {
-            state.logger.error('Failed to send error notification', { error });
+            state.logger.error({ error }, 'Failed to send error notification');
         } else {
             console.error('Logger not initialized');
             console.error('Failed to send error notification', { error });
