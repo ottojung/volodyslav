@@ -106,7 +106,7 @@ function makeTaskExecutor(capabilities, mutateTasks) {
                 task.state = newState;
             });
 
-            capabilities.logger.logInfo(
+            capabilities.logger.logDebug(
                 { name: taskName, mode, durationMs: difference(end, startTime).toMillis() },
                 `Task ${qname} succeeded`
             );

@@ -151,7 +151,7 @@ function make(getCapabilities) {
     async function stop() {
         const capabilities = getCapabilitiesMemo();
         if (pollingScheduler !== null) {
-            capabilities.logger.logInfo(
+            capabilities.logger.logDebug(
                 {},
                 "Stopping scheduler gracefully"
             );

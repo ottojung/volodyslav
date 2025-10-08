@@ -349,7 +349,7 @@ function logMaterializationDecisions(capabilities, decisions, persistedTaskMap, 
         // Log each orphaned task individually to match expected test format
         for (const orphanedTask of decisions.orphaned) {
             const persistedTask = persistedTaskMap.get(orphanedTask.name);
-            capabilities.logger.logWarning(
+            capabilities.logger.logInfo(
                 {
                     taskName: orphanedTask.name,
                     previousSchedulerIdentifier: persistedTask?.schedulerIdentifier || "unknown",

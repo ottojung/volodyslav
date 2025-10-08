@@ -760,7 +760,7 @@ describe("Declarative Scheduler", () => {
                 "Scheduler state override: registrations differ from persisted state, applying changes"
             );
 
-            expect(capabilities.logger.logWarning).toHaveBeenCalledWith(
+            expect(capabilities.logger.logInfo).toHaveBeenCalledWith(
                 expect.objectContaining({
                     taskName: "task1",
                     previousSchedulerIdentifier: "different-scheduler-id"
