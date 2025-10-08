@@ -223,7 +223,7 @@ stateDiagram-v2
 
 - **AwaitingRun:** Task is waiting for its next cron occurrence
 - **Running:** Task callback is currently executing
-- **AwaitingRetry:** Task failed and is waiting for retry delay to pass while retaining the timestamp of the failed attempt
+- **AwaitingRetry:** Task failed and is waiting for retry delay to pass
 
 ### Task State Transitions
 
