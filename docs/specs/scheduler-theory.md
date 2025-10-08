@@ -47,6 +47,8 @@ This satisfaction relation is defined in [Structures & Satisfaction](#structures
 
 We work over **timestamped linear traces** ($\langle i \mapsto \tau(i) \in \mathbb{T} \rangle$) and reason in **first-order linear-time temporal logic with past**. Variables range over the scheduler’s observable objects and time domain. By convention, formulas without explicit quantifiers are **universally quantified**. We write $\mathrm{RS}_x$ etc. for instantiated predicates and distinguish **environment-owned** predicates/functions (clock pulses, crashes, compute/duration) from **scheduler-owned** actions (starts/ends/init/stop). Quantitative liveness uses **compute-bounded modalities**, with budgets linear in **bit-lengths** ( $|X|$ ) and a fixed **lag** ( $t_{\text{lag}}$ ). These modalities are **definition schemata** over the signature.
 
+The universe of scheduler's objects includes **all possible objects**, not just those present in a particular trace. This means that, for instance, a task with cron expression `* * * * *` exists.
+
 ### Time & Traces
 
 * **Time domain:** a set $\mathbb{T}$ used to timestamp observable instants. The timestamps have abstract resolution (i.e., they are not tied to any specific real-world clock). But they do correspond to real time, in the sense that for every real-world instance, there is a corresponding timestamp in $\mathbb{T}$.
