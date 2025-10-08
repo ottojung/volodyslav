@@ -397,6 +397,7 @@ describe("scheduler orphaned task restart", () => {
         ];
 
         await capabilities.scheduler.initialize(initialRegistrations);
+        await capabilities.scheduler.stop();
 
         // Manually add an orphaned task to the unknown task 
         await capabilities.state.transaction(async (storage) => {
@@ -411,8 +412,6 @@ describe("scheduler orphaned task restart", () => {
                 storage.setState(state);
             }
         });
-
-        await capabilities.scheduler.stop();
 
         // Now try to initialize with only the known task
         await expect(capabilities.scheduler.initialize(registrations)).resolves.not.toThrow();

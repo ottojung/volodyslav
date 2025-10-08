@@ -130,6 +130,10 @@ function makePollingFunction(capabilities, registrations, scheduledTasks, taskEx
     async function poll() {
         // Collect tasks and stats.
         const { dueTasks, stats } = await getDueTasks();
+        if (isActive === false) {
+            // Stopped while collecting; do not execute any tasks
+            return;
+        }
 
         // Execute all due tasks in parallel
         const todo = taskExecutor.executeTasks(dueTasks);
