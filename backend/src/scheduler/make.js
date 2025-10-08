@@ -27,9 +27,6 @@ function make(getCapabilities) {
     /** @type {ReturnType<makePollingScheduler> | null} */
     let pollingScheduler = null;
 
-    /** @type {string | null} */
-    let schedulerIdentifier = null;
-
     const getCapabilitiesMemo = memconst(getCapabilities);
 
     /**
@@ -83,14 +80,12 @@ function make(getCapabilities) {
         
         const parsedRegistrations = parseRegistrations(registrations);
 
-        // Generate scheduler identifier if not already done
-        if (schedulerIdentifier === null) {
-            schedulerIdentifier = generateSchedulerIdentifier(capabilities);
-            capabilities.logger.logDebug(
-                { schedulerIdentifier },
-                "Generated scheduler identifier"
-            );
-        }
+        // Each time we initialize, we generate a new scheduler identifier
+        const schedulerIdentifier = generateSchedulerIdentifier(capabilities);
+        capabilities.logger.logDebug(
+            { schedulerIdentifier },
+            "Generated scheduler identifier"
+        );
 
         // Check for existing polling scheduler
         if (pollingScheduler !== null) {
