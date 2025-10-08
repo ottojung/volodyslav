@@ -100,10 +100,10 @@ The scheduler **MUST**:
 
 #### First Startup (No Persisted State)
 
-When no persisted state exists, the scheduler **MUST**:
-1. Evaluate each task's cron expression against the current time
-2. Execute immediately **only** those tasks whose cron expression **exactly matches** the current minute
-3. Schedule all tasks for their next future occurrence
+For every task, which has not yet been persisted, the scheduler **MUST**:
+1. Evaluate task's cron expression against the current time
+2. Execute immediately if and only if cron expression **exactly matches** the current minute
+3. Schedule task for its next future occurrence
 
 #### Subsequent Restarts (With Persisted State)
 
