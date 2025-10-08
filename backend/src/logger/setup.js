@@ -46,7 +46,10 @@ function enableHttpCallsLogging(state, app) {
         throw new Error('Logger not initialized');
     }
 
-    app.use(pinoHttp({ logger: state.logger }));
+    app.use(pinoHttp({ 
+        logger: state.logger,
+        level: 'debug',
+    }));
 }
 
 /**
