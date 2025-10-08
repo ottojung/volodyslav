@@ -41,11 +41,11 @@ function make() {
         }
 
         const wrapped = memconst(() => {
+            mutexes.set(name, wrapped);
             return procedure().finally(() => {
                 mutexes.delete(name);
             });
         });
-        mutexes.set(name, wrapped);
         return await wrapped();
     }
 
