@@ -318,6 +318,7 @@ function createTaskFromDecision(decision, registration, registrations, persisted
          * @type {AwaitingRetry}
          */
         const newState = {
+            lastAttemptTime: lastMinute,
             lastFailureTime: lastMinute,
             pendingRetryUntil: lastMinute,
         };

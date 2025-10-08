@@ -3,7 +3,7 @@
  * Ensures cron schedule is not superseded by retry logic.
  */
 
-const { fromISOString, fromHours, fromMinutes, fromMilliseconds } = require("../src/datetime");
+const { fromISOString, fromHours, fromMinutes, fromMilliseconds, difference } = require("../src/datetime");
 const { getMockedRootCapabilities } = require("./spies");
 const { stubEnvironment, stubLogger, stubDatetime, stubSleeper, getDatetimeControl, stubScheduler, getSchedulerControl, stubRuntimeStateStorage } = require("./stubs");
 
@@ -99,6 +99,46 @@ describe("declarative scheduler retry semantics", () => {
 
         // Should have retried the failed task
         expect(executionCount).toBeGreaterThan(1);
+
+        await capabilities.scheduler.stop();
+    });
+
+    test("should allow cron occurrence to supersede pending retry delay", async () => {
+        const capabilities = getTestCapabilities();
+        const schedulerControl = getSchedulerControl(capabilities);
+        schedulerControl.setPollingInterval(fromMilliseconds(100));
+        const timeControl = getDatetimeControl(capabilities);
+        const retryDelay = fromMinutes(5);
+        const invocationTimes = [];
+        let executionCount = 0;
+
+        const task = jest.fn(() => {
+            invocationTimes.push(timeControl.getCurrentDateTime());
+            executionCount++;
+            if (executionCount === 1) {
+                throw new Error("First execution fails");
+            }
+        });
+
+        const registrations = [
+            ["cron-retry-preemption", "* * * * *", task, retryDelay]
+        ];
+
+        const startTime = fromISOString("2024-01-01T00:00:30Z");
+        timeControl.setDateTime(startTime);
+
+        await capabilities.scheduler.initialize(registrations);
+
+        await schedulerControl.waitForNextCycleEnd();
+        expect(executionCount).toBe(1);
+
+        timeControl.advanceByDuration(fromMinutes(1));
+        await schedulerControl.waitForNextCycleEnd();
+        expect(executionCount).toBe(2);
+        expect(task).toHaveBeenCalledTimes(2);
+
+        const elapsedBetweenAttempts = difference(invocationTimes[1], invocationTimes[0]).toMillis();
+        expect(elapsedBetweenAttempts).toBeLessThan(retryDelay.toMillis());
 
         await capabilities.scheduler.stop();
     });

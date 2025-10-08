@@ -16,6 +16,7 @@
 
 /**
  * @typedef {object} AwaitingRetry
+ * @property {DateTime} lastAttemptTime - Time of the last attempt that failed
  * @property {DateTime} lastFailureTime - Time of the last failure
  * @property {DateTime} pendingRetryUntil - Time until which the task is pending retry
  */
@@ -150,8 +151,10 @@ function getSchedulerIdentifier(task) {
 function createStateFromProperties(lastSuccessTime, lastFailureTime, lastAttemptTime, pendingRetryUntil, schedulerIdentifier) {
     // Priority 1: If we have a pending retry, this is an AwaitingRetry state
     if (pendingRetryUntil && lastFailureTime) {
+        const resolvedLastAttemptTime = lastAttemptTime || lastFailureTime;
         /** @type {AwaitingRetry} */
         return {
+            lastAttemptTime: resolvedLastAttemptTime,
             lastFailureTime,
             pendingRetryUntil
         };

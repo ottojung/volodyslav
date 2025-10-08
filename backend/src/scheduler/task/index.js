@@ -1,6 +1,6 @@
 
 const { isRunning } = require('./methods');
-const { makeTask, isTask } = require('./structure');
+const { makeTask, isTask, getPendingRetryUntil } = require('./structure');
 const { serialize, tryDeserialize } = require('./serialization');
 const {
     isTaskTryDeserializeError,
@@ -32,6 +32,7 @@ module.exports = {
     isRunning,
     makeTask,
     isTask,
+    getPendingRetryUntil,
     serialize,
     tryDeserialize,
     isTaskTryDeserializeError,

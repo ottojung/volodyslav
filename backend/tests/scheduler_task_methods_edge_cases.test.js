@@ -324,7 +324,7 @@ describe("scheduler task methods edge cases", () => {
             expect(getLastFailureTime(awaitingRetryTask)).toBe(lastFailureTime);
             expect(getPendingRetryUntil(awaitingRetryTask)).toBe(pendingRetryUntil);
             expect(getLastSuccessTime(awaitingRetryTask)).toBeUndefined();
-            expect(getLastAttemptTime(awaitingRetryTask)).toBeUndefined();
+            expect(getLastAttemptTime(awaitingRetryTask)).toBe(lastFailureTime);
             
             // Test Running state (lastAttemptTime + schedulerIdentifier)
             const lastAttemptTime = fromISOString("2024-01-01T12:00:00.000Z");
