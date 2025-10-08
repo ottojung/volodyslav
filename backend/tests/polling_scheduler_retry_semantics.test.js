@@ -103,6 +103,41 @@ describe("declarative scheduler retry semantics", () => {
         await capabilities.scheduler.stop();
     });
 
+    test("should execute awaiting retry task when new cron is due before retry delay", async () => {
+        const capabilities = getTestCapabilities();
+        const schedulerControl = getSchedulerControl(capabilities);
+        schedulerControl.setPollingInterval(fromMilliseconds(100));
+        const timeControl = getDatetimeControl(capabilities);
+        const retryDelay = fromMinutes(5);
+
+        let executionCount = 0;
+        const task = jest.fn(() => {
+            executionCount++;
+            if (executionCount === 1) {
+                throw new Error("First execution fails");
+            }
+        });
+
+        const registrations = [
+            ["retry-superseded-by-cron", "* * * * *", task, retryDelay]
+        ];
+
+        const startTime = fromISOString("2024-01-01T00:00:00Z");
+        timeControl.setDateTime(startTime);
+
+        await capabilities.scheduler.initialize(registrations);
+
+        await schedulerControl.waitForNextCycleEnd();
+        expect(task).toHaveBeenCalledTimes(1);
+
+        // Advance by only one minute (less than the five-minute retry delay).
+        timeControl.advanceByDuration(fromMinutes(1));
+        await schedulerControl.waitForNextCycleEnd();
+        expect(task).toHaveBeenCalledTimes(2);
+
+        await capabilities.scheduler.stop();
+    });
+
     test("should handle successful execution clearing retry state", async () => {
         const capabilities = getTestCapabilities();
         const schedulerControl = getSchedulerControl(capabilities);

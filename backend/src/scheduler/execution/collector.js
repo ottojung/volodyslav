@@ -62,20 +62,17 @@ function evaluateTasksForExecution(tasks, scheduledTasks, now, capabilities, sch
 
         // Check both cron schedule and retry timing
         const lastScheduledFire = getMostRecentExecution(task.parsedCron, now);
-        const shouldRunCron = 'lastAttemptTime' in task.state && (task.state.lastAttemptTime === null || task.state.lastAttemptTime.isBefore(lastScheduledFire));
+        let shouldRunCron = false;
+        if ('lastAttemptTime' in task.state) {
+            const lastAttemptTime = task.state.lastAttemptTime;
+            shouldRunCron = lastAttemptTime === null || lastAttemptTime.isBefore(lastScheduledFire);
+        } else if ('lastFailureTime' in task.state) {
+            shouldRunCron = task.state.lastFailureTime.isBefore(lastScheduledFire);
+        }
         const shouldRunRetry = 'pendingRetryUntil' in task.state && now.isAfterOrEqual(task.state.pendingRetryUntil);
         const callback = task.callback;
 
-        if (shouldRunRetry) {
-            dueTasks.push({ taskName, mode: "retry", callback });
-            /** @type {Running} */
-            const newState = {
-                lastAttemptTime: now,
-                schedulerIdentifier: schedulerIdentifier
-            };
-            task.state = newState;
-            dueRetry++;
-        } else if (shouldRunCron) {
+        if (shouldRunCron) {
             dueTasks.push({ taskName, mode: "cron", callback });
             /** @type {Running} */
             const newState = {
@@ -84,6 +81,15 @@ function evaluateTasksForExecution(tasks, scheduledTasks, now, capabilities, sch
             };
             task.state = newState;
             dueCron++;
+        } else if (shouldRunRetry) {
+            dueTasks.push({ taskName, mode: "retry", callback });
+            /** @type {Running} */
+            const newState = {
+                lastAttemptTime: now,
+                schedulerIdentifier: schedulerIdentifier
+            };
+            task.state = newState;
+            dueRetry++;
         } else if ('pendingRetryUntil' in task.state) {
             skippedRetryFuture++;
             capabilities.logger.logDebug({ name: taskName, reason: "retryNotDue" }, "TaskSkip");
