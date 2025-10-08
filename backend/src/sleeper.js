@@ -40,11 +40,13 @@ function make() {
             }
         }
 
-        const wrapped = memconst(() => {
+        const wrapped = memconst(async () => {
             mutexes.set(name, wrapped);
-            return procedure().finally(() => {
+            try {
+                return await procedure();
+            } finally {
                 mutexes.delete(name);
-            });
+            }
         });
         return await wrapped();
     }
