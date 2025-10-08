@@ -162,7 +162,7 @@ async function handleEntryPost(req, res, capabilities, reqId) {
             processed = await processUserInput(capabilities, rawInput);
         } catch (error) {
             if (isInputParseError(error)) {
-                capabilities.logger.logInfo(
+                capabilities.logger.logError(
                     {
                         request_identifier: reqId.identifier,
                         error: error.message,
