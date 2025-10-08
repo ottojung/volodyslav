@@ -100,7 +100,11 @@ function makeTaskExecutor(capabilities, mutateTasks) {
             await mutateThis((task) => {
                 /** @type {AwaitingRun} */
                 const newState = {
-                    lastAttemptTime: end,
+                    // Preserve the actual attempt start so that scheduling decisions
+                    // consider the point in time when the run began rather than when it
+                    // completed. This is important for long-running executions that
+                    // may cross cron boundaries.
+                    lastAttemptTime: startTime,
                     lastSuccessTime: end,
                 };
                 task.state = newState;
