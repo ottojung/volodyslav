@@ -410,8 +410,6 @@ When both day-of-month (DOM) and day-of-week (DOW) are restricted (not `*`), the
 - `@daily` - Macros not allowed
 - `0 0 ? * *` - Quartz tokens not allowed
 
-**See also:** The [Formal Theory (Temporal Logic, Observable Only)](#formal-theory-temporal-logic-observable-only) section provides a mathematical specification of how cron expressions are evaluated through the $\texttt{Due}(\texttt{task}, t)$ predicate.
-
 ---
 
 ## Error Model
