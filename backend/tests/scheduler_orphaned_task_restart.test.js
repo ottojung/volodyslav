@@ -63,7 +63,7 @@ describe("scheduler orphaned task restart", () => {
         await schedulerControl.waitForNextCycleEnd();
 
         // Verify that the orphaned task restart was logged
-        expect(logWarningSpy).toHaveBeenCalledWith(
+        expect(logInfoSpy).toHaveBeenCalledWith(
             expect.objectContaining({
                 taskName: "orphaned-task",
                 previousSchedulerIdentifier: "different-scheduler-id",
@@ -262,12 +262,12 @@ describe("scheduler orphaned task restart", () => {
         await schedulerControl.waitForNextCycleEnd();
 
         // Verify all three orphaned tasks were detected and restarted
-        expect(logWarningSpy).toHaveBeenCalledTimes(2);
-        expect(logWarningSpy).toHaveBeenCalledWith(
+        expect(logWarningSpy).toHaveBeenCalledTimes(0);
+        expect(logInfoSpy).toHaveBeenCalledWith(
             expect.objectContaining({ taskName: "orphaned-task-1" }),
             expect.any(String),
         );
-        expect(logWarningSpy).toHaveBeenCalledWith(
+        expect(logInfoSpy).toHaveBeenCalledWith(
             expect.objectContaining({ taskName: "orphaned-task-2" }),
             expect.any(String),
         );
@@ -337,6 +337,7 @@ describe("scheduler orphaned task restart", () => {
 
         // Spy on logger warnings
         const logWarningSpy = jest.spyOn(capabilities.logger, 'logWarning');
+        const logInfoSpy = jest.spyOn(capabilities.logger, 'logInfo');
 
         // First scheduler instance
         await capabilities.scheduler.initialize(registrations);
@@ -364,8 +365,8 @@ describe("scheduler orphaned task restart", () => {
         await capabilities.scheduler.initialize(registrations);
         await schedulerControl.waitForNextCycleEnd();
 
-        // Verify warning was logged
-        expect(logWarningSpy).toHaveBeenCalledWith(
+        // Verify info was logged
+        expect(logInfoSpy).toHaveBeenCalledWith(
             expect.objectContaining({
                 taskName: "warning-task",
                 previousSchedulerIdentifier: "old-scheduler-instance",
