@@ -454,7 +454,7 @@ $$
 \mathcal{E} = \langle \texttt{compute}, \texttt{Crash}, \texttt{Due}_x, \texttt{RetryDue}_x, \texttt{REs}, \texttt{REf}, \texttt{SS}, \texttt{IS}_R \rangle,
 $$
 
-providing the interpretations for environment-owned functions and predicates listed above.
+providing the interpretations for environment-owned predicates listed above.
 
 > **ownership note.** We classify predicate symbols by ownership: environment-owned predicates are interpreted directly from the environment tuple $\mathcal{E}$, while scheduler-owned predicates are produced by the scheduler implementation. This classification is informative; it explains which component determines the symbol's interpretation inside any structure.
 
