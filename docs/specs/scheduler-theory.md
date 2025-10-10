@@ -530,6 +530,16 @@ $$
 
 After a $\texttt{Crash}$, no new ends until a new start.
 
+---
+
+**EA7 — Ends follow starts**
+
+$$
+\texttt{G}( \texttt{RE}_x \rightarrow \texttt{Y} \; \texttt{Running}_x)
+$$
+
+Every completion must correspond to a run that was already in flight before this position. This is an environment truth because callback ends ($\texttt{RE}_x$) are environment-owned events that can only occur if the callback was actually running.
+
 ### Environment Taxonomy
 
 The following labels identify illustrative environment classes:
@@ -582,17 +592,7 @@ This means that call to `stop()` waits for in-flight callbacks to complete.
 
 ---
 
-**S4 — Ends follow starts**
-
-$$
-\texttt{G}( \texttt{RE}_x \rightarrow \texttt{Y} \; \texttt{Running}_x)
-$$
-
-Every completion must correspond to a run that was already in flight before this position.
-
----
-
-**S5 — Registration consistency**
+**S4 — Registration consistency**
 
 $$
 R \in \texttt{ValidRegistrations} \implies \texttt{G}( \neg \texttt{IEf}_R ) \\
@@ -687,7 +687,7 @@ providing the interpretations for scheduler-owned predicates.
 
 The satisfaction judgment uses linear-time temporal logic with past over trace positions equipped with $\tau$. Definition schemata $F_{\texttt{comp}!}$, $F_{\texttt{comp}}$, and $F^{\texttt{lin}}_{\texttt{comp}}$ are macros over this signature.
 
-Let $T_{\textsf{sched}}(a,b,t_{\texttt{lag}})$ denote the set of **Scheduler Axioms**: S1–S5 and L1–L3 with every modality instantiated using the same witnesses $(a,b,t_{\texttt{lag}})$. Let $T_{\textsf{env}}$ denote the **Environment Axioms** EA1–EA6.
+Let $T_{\textsf{sched}}(a,b,t_{\texttt{lag}})$ denote the set of **Scheduler Axioms**: S1–S4 and L1–L3 with every modality instantiated using the same witnesses $(a,b,t_{\texttt{lag}})$. Let $T_{\textsf{env}}$ denote the **Environment Axioms** EA1–EA7.
 
 We write
 
@@ -705,8 +705,8 @@ $$
 
 | Component | Status | Contents |
 |-----------|--------|----------|
-| $T_{\textsf{sched}}(a,b,t_{\texttt{lag}})$ | Normative | Scheduler axioms S1–S5, L1–L3 with parameters $(a,b,t_{\texttt{lag}})$ |
-| $T_{\textsf{env}}$ | Informative | Environment axioms EA1–EA6 |
+| $T_{\textsf{sched}}(a,b,t_{\texttt{lag}})$ | Normative | Scheduler axioms S1–S4, L1–L3 with parameters $(a,b,t_{\texttt{lag}})$ |
+| $T_{\textsf{env}}$ | Informative | Environment axioms EA1–EA7 |
 
 ### Models of the Theory
 
@@ -754,7 +754,7 @@ This section is informative. It clarifies the boundary between the mathematical 
 
 Conformance is evaluated over traces of the signature $\Sigma_{\textsf{env}}\cup\Sigma_{\textsf{sch}}$ that satisfy the combined theory $T_{\textsf{env}}\cup T_{\textsf{sched}}(a,b,t_{\texttt{lag}})$. The model admits **only** the phenomena expressible in that signature and governed by the axioms (e.g., $\texttt{Crash}$, $\texttt{Due}$, $\texttt{RetryDue}$, compute density). Physical phenomena that alter an implementation's behavior **without** being represented as events/functions in the signature are **outside** the model.
 
-**Unmodelled-perturbation principle.** If a physical phenomenon can (i) alter the scheduler's future scheduler-owned actions or its ability to meet compute-bounded eventualities, while (ii) producing no corresponding change in the modelled environment tuple $\mathcal{E}$ or permitted actions, then there exist executions where the projection to $\Sigma_{\textsf{env}}\cup\Sigma_{\textsf{sch}}$ **must** violate at least one of S1–S5 or L1–L3. In such worlds, **conformance is unattainable**.
+**Unmodelled-perturbation principle.** If a physical phenomenon can (i) alter the scheduler's future scheduler-owned actions or its ability to meet compute-bounded eventualities, while (ii) producing no corresponding change in the modelled environment tuple $\mathcal{E}$ or permitted actions, then there exist executions where the projection to $\Sigma_{\textsf{env}}\cup\Sigma_{\textsf{sch}}$ **must** violate at least one of S1–S4 or L1–L3. In such worlds, **conformance is unattainable**.
 
 ### Two Witnesses of Unattainability
 
