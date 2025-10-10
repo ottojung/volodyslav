@@ -731,13 +731,13 @@ The implementation $\mathcal{I}$ is the abstract representation of the scheduler
 
 ## Conformance
 
-An implementation $\mathcal{I}$ is **conformant** iff there exist witnesses $(a,b,t_{\texttt{lag}}) \in \mathbb{Z}_{\ge 0} \times \mathbb{Z}_{\ge 0} \times \mathbb{D}$ such that for all environments $\mathcal{E} \in \text{Env}$ and for every run (with timestamp function $\tau$) produced by composing $\mathcal{I}(\mathcal{E})$ with $\mathcal{E}$, the resulting structure satisfies the combined theory:
+An implementation $\mathcal{I}$ is **conformant** iff for all environments $\mathcal{E} \in \text{Env}$, there exist witnesses $(a,b,t_{\texttt{lag}}) \in \mathbb{Z}_{\ge 0} \times \mathbb{Z}_{\ge 0} \times \mathbb{D}$ such that for every run (with timestamp function $\tau$) produced by composing $\mathcal{I}(\mathcal{E})$ with $\mathcal{E}$, the resulting structure satisfies the combined theory:
 
 $$
 \langle \mathcal{E}, \mathcal{I}(\mathcal{E}), \tau \rangle \models T_{\textsf{env}} \cup T_{\textsf{sched}}(a,b,t_{\texttt{lag}}).
 $$
 
-In other words, a conformant implementation uses **the same witnesses** $(a,b,t_{\texttt{lag}})$ for all environments and produces scheduler behaviors that satisfy the theory when composed with any environment.
+In other words, for each environment, a conformant implementation admits witnesses $(a,b,t_{\texttt{lag}})$ (which may depend on the environment) such that the scheduler behaviors it produces satisfy the theory when composed with that environment.
 
 This satisfaction relation is defined in [Structures & Satisfaction](#structures--satisfaction).
 
