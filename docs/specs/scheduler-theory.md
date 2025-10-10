@@ -752,7 +752,7 @@ A structure $\langle \mathcal{E}, \mathcal{S}, \tau \rangle$ is called a **happy
    \langle \mathcal{E}', \mathcal{S}, \tau \rangle \not\models T_{\textsf{env}} \cup T_{\textsf{sch}}(a, b, t_{\texttt{lag}})
    $$
 
-**Intuition.** A happy trace represents an execution where the scheduler succeeded **despite** the potential for unexplainable disruptions. The existence of a corresponding "unhappy" trace (differing only in supernatural events) demonstrates that the success was contingent—if different supernatural events had occurred at different times or in different quantities, the theory would have been violated. Thus, happy traces characterize executions where the implementation was "lucky" with respect to phenomena outside the model's formal scope.
+**Intuition.** A happy trace demonstrates that satisfaction of the theory is **not attributable solely to the scheduler implementation**. Since the same scheduler behavior $\mathcal{S}$ can produce different outcomes depending on the supernatural events, conformance is contingent on factors outside the model's formal scope. The unhappy trace may fail due to (i) catastrophic supernatural events that no implementation could survive (e.g., "end of the world" scenarios), or (ii) the absence of fortuitous supernatural events that the happy trace relied upon (e.g., a "fix-it fairy" that compensated for implementation bugs). Either way, happy traces reveal that the observed correctness cannot be attributed to sound scheduler design alone, but depends on the particular supernatural circumstances.
 
 ---
 
