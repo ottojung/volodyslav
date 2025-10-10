@@ -744,7 +744,7 @@ A structure $\langle \mathcal{E}, \mathcal{I}(\mathcal{E}), \tau \rangle$ is cal
 
 ---
 
-An implementation $\mathcal{I}$ is **conformant** iff for all environments $\mathcal{E} \in \text{Env}$ and all runs (with timestamp function $\tau$) produced by composing $\mathcal{I}(\mathcal{E})$ with $\mathcal{E}$, the resulting structure is a happy trace of $\mathcal{I}$.
+An implementation $\mathcal{I}$ is **conformant** iff for all environments $\mathcal{E} \in \text{Env}$ and all timestamp functions $\tau$, the structure $\langle \mathcal{E}, \mathcal{I}(\mathcal{E}), \tau \rangle$ is a happy trace of $\mathcal{I}$.
 
 In other words, a conformant implementation must produce only happy traces. This means that whenever the implementation fails to satisfy the theory, the failure must be attributable to supernatural events—specifically, there must exist an environment with even more supernatural events under which the implementation would also fail. Conversely, unhappy traces (failures that persist even when supernatural events are reduced) are not permitted for conformant implementations.
 
