@@ -547,47 +547,6 @@ The following labels identify illustrative environment classes:
 
 * **Burst environments:** concentrate density in sporadic spikes; for every $M$ there are intervals of length $> M$ with arbitrarily small compute alternating with brief, high-density bursts.
 
-### Helpful Assumptions
-
-Following are additional, **informative** assumptions that may hold in some environments. They are not part of the core theory.
-
----
-
-**A1 - Eventual thawing**
-
-$$
-\texttt{G} \; \texttt{F} \; \texttt{Unfrozen}
-$$
-
-Eventually, the environment provides some positive compute in every future interval.
-
-This rules out permanently freezing environments.
-It is a weak form of fairness that ensures the environment does not permanently withhold all compute.
-
----
-
-**A2 — Starts eventually settle**
-
-$$
-\texttt{G}( \texttt{RS}_x \rightarrow \texttt{F}( \texttt{RE}_x \vee \texttt{Crash} ) )
-$$
-
-Every callback invocation completes in **finite** time unless pre-empted by $\texttt{Crash}$.
-No uniform upper bound is required; the property only rules out infinite executions.
-Note that this is not guaranteed - users may write non-terminating callbacks.
-That's why this is an **informative** property, not a core property.
-
----
-
-**A3 - Low lag**
-
-$$
-t_{\texttt{lag}} < 1 \; \text{minute}
-$$
-
-If this is true, then whether any task is ever going to be missed is determined purely by $\texttt{compute}$.
-A corollary is that if the environment provides enough compute, no tasks are ever missed.
-
 ---
 
 ## Scheduler Axioms
@@ -725,7 +684,7 @@ providing the interpretations for environment-owned predicates listed above.
 
 The satisfaction judgment uses linear-time temporal logic with past over trace positions equipped with $\tau$. Definition schemata $F_{\texttt{comp}!}$, $F_{\texttt{comp}}$, and $F^{\texttt{lin}}_{\texttt{comp}}$ are macros over this signature.
 
-Let $T_{\textsf{sched}}(a,b,t_{\texttt{lag}})$ denote the set of **Scheduler Axioms**: S1–S5 and L1–L3 with every modality instantiated using the same witnesses $(a,b,t_{\texttt{lag}})$. Let $T_{\textsf{env}}$ denote the **Environment Axioms** EA1–EA6. Optional assumptions A1–A3 may be conjoined to $T_{\textsf{env}}$ to describe specific environment classes, but they are not part of the core theory.
+Let $T_{\textsf{sched}}(a,b,t_{\texttt{lag}})$ denote the set of **Scheduler Axioms**: S1–S5 and L1–L3 with every modality instantiated using the same witnesses $(a,b,t_{\texttt{lag}})$. Let $T_{\textsf{env}}$ denote the **Environment Axioms** EA1–EA6.
 
 We write
 
@@ -741,13 +700,10 @@ $$
 T \;=\; T_{\textsf{sched}}(a,b,t_{\texttt{lag}}) \cup T_{\textsf{env}}.
 $$
 
-Optional environment classes extend $T$ with subsets of $\{\text{A1}, \text{A2}, \text{A3}\}$.
-
 | Component | Status | Contents |
 |-----------|--------|----------|
 | $T_{\textsf{sched}}(a,b,t_{\texttt{lag}})$ | Normative | Scheduler axioms S1–S5, L1–L3 with parameters $(a,b,t_{\texttt{lag}})$ |
 | $T_{\textsf{env}}$ | Informative | Environment axioms EA1–EA6 |
-| $T \cup A$ | Informative | Optional assumptions A1–A3 describing refined environment classes |
 
 ### Models of the Theory
 
