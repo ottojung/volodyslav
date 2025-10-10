@@ -219,12 +219,6 @@ Note: because of DST and other irregularities of a civil clock, minute starts ar
 
 Each predicate marks the instant the named public action occurs from the perspective of the embedding JavaScript runtime: function entry ($\texttt{InitStart}$, $\texttt{StopStart}$), function return ($\texttt{IE}$, $\texttt{StopEnd}$), callback invocation begin/end ($\texttt{RunStart}$, $\texttt{RE}$), and exogenous crash ($\texttt{UnexpectedShutdown}$). No logging or internal bookkeeping is modeled.
 
-### Ownership Partition
-
-Let
-- $\Sigma_{\textsf{env}} := \{\texttt{Crash},\ \texttt{Compute},\ \texttt{Due}_x,\ \texttt{RetryDue}_x,\ \texttt{REs}_x,\ \texttt{REf}_x, \, \texttt{SS}, \, \texttt{IS}_R\}$ (environment–owned),
-- $\Sigma_{\textsf{sch}} := \{\texttt{IE}_R,\ \texttt{SE},\ \texttt{RS}_x\}$ (scheduler–owned).
-
 ### Timing Semantics
 
 **Trace semantics:** Each trace position corresponds to an instant where an observable event occurs. Events that are simultaneous appear at the same integer time points. Time bounds are background semantics only (not encoded in LTL). Reference to simultaneity rules is provided in axiom **EA3**.
