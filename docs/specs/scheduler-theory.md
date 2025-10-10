@@ -208,7 +208,7 @@ Note: because of DST and other irregularities of a civil clock, minute starts ar
   It is formally defined as:
 
   $$
-  \texttt{RetryDue}_x \texttt{ at } i := \exists_{j} \; (\tau(j) + \textsf{rd}(x) = \tau(i)) \land (\texttt{REf}_x \texttt{ at } j)
+  \texttt{RetryDue}_x \texttt{ at } i :=(\texttt{REf}_x \texttt{ at } j) \land \exists_{j} \; \Big(\tau(j) + \textsf{rd}(x) = \tau(i)\Big)
   $$
 
 *Interpretation:* is a primitive point event (like $\texttt{Due}_x$), supplied by the environment/clock. If the latest $\texttt{RunFailure}(x)$ occurs at time $t_f$, then $\texttt{RetryDue}_x$ holds at time $t_f + \textsf{rd}(x)$. These pulses are truths about the environment.
@@ -244,7 +244,7 @@ Each predicate marks the instant the named public action occurs from the perspec
 
 ### Stateful
 
-* $\texttt{Hold}(\texttt{set}, \texttt{clear}) := \big((\neg \texttt{clear}) \; \texttt{S} \; \texttt{set}\big) \land \neg \texttt{clear}$
+* $\texttt{Hold}(\texttt{set}, \texttt{clear}) := \Big((\neg \texttt{clear}) \; \texttt{S} \; \texttt{set}\Big) \land \neg \texttt{clear}$
 
 There was a $\texttt{set}$ in the past (or now), and no $\texttt{clear}$ since.
 
@@ -258,7 +258,7 @@ An inclusive version of $\texttt{Hold}$ - if set and clear occur simultaneously,
 
 ---
 
-* $\texttt{AtMostOne}(B, A) := \texttt{G} (A \rightarrow \ \texttt{X} (\neg A \; \texttt{W} \; B ) )$
+* $\texttt{AtMostOne}(B, A) := \texttt{G} \Big(A \rightarrow \ \texttt{X} (\neg A \; \texttt{W} \; B ) \Big)$
 
 At most one $A$ between consecutive $B$'s.
 One single $A$ is allowed if there is no next $B$.
@@ -317,7 +317,7 @@ Stop ended **for a specific** registration list $R$.
 
 ---
 
-* $\texttt{FirstComing}_x := \big(\exists R . \; \texttt{Registered}^{\approx}_{R, x}\big) \wedge \neg (\exists R . \; (\texttt{Y} \; \texttt{Registered}^{\approx}_{R, x}))$
+* $\texttt{FirstComing}_x := (\exists R . \; \texttt{Registered}^{\approx}_{R, x}) \wedge \neg \Big(\exists R . \; (\texttt{Y} \; \texttt{Registered}^{\approx}_{R, x})\Big)$
 
 The moment of appearance of task named $\textsf{id}(x)$ such that it was not present in the previous registration list.
 
@@ -359,7 +359,7 @@ An interruption of task $x$ by a crash.
 
 ---
 
-* $\texttt{RSucc}_x := \texttt{RS}_x \wedge \big( \neg (\texttt{REf}_x \lor \texttt{Crash}) \; \texttt{U} \; \texttt{REs}_x \big)$
+* $\texttt{RSucc}_x := \texttt{RS}_x \wedge \Big( \neg (\texttt{REf}_x \lor \texttt{Crash}) \; \texttt{U} \; \texttt{REs}_x \Big)$
 
 A start of run that eventually completes successfully (not preempted by failure or crash).
 
@@ -511,7 +511,7 @@ There are infinitely many intervals of time during which no work progresses. Thi
 **EA5 - Unlimited dues**
 
 $$
-\texttt{G} \big( \texttt{F} \; \texttt{Due}_x \big) \lor \texttt{G}(\neg \texttt{Due}_x)
+\texttt{G} ( \texttt{F} \; \texttt{Due}_x) \lor \texttt{G}(\neg \texttt{Due}_x)
 $$
 
 For every task $x$, the cron schedule matches infinitely often or never at all.
@@ -524,7 +524,7 @@ It is impossible to have a valid cron expression that matches only finitely many
 **EA6 — Crash/RE consistency**
 
 $$
-\texttt{G}( \texttt{Crash} \rightarrow (\neg \texttt{RE}_x \; \texttt{W} \; \texttt{RS}_x) )
+\texttt{G}\Big( \texttt{Crash} \rightarrow (\neg \texttt{RE}_x \; \texttt{W} \; \texttt{RS}_x) \Big)
 $$
 
 After a $\texttt{Crash}$, no new ends until a new start.
@@ -612,7 +612,7 @@ Progress is always read relative to the environment's willingness to provide com
 **L1 — Obligation fulfillment**
 
 $$
-\texttt{G}( \texttt{Obligation}_{R, x} \rightarrow \texttt{F}_{\texttt{comp}}^{\texttt{lin}(R, \,\tau(i))} (\texttt{RS}_x \vee \neg \texttt{Active}_R ))
+\texttt{G}\Big( \texttt{Obligation}_{R, x} \rightarrow \texttt{F}_{\texttt{comp}}^{\texttt{lin}(R, \,\tau(i))} (\texttt{RS}_x \vee \neg \texttt{Active}_R )\Big)
 $$
 
 When a task is supposed to be executed, we must eventually see that execution in the form of $\texttt{RS}_x$ (or a $\texttt{Crash}$, or $\texttt{SS}$).
@@ -624,7 +624,7 @@ Furthermore, that execution occurs within a bounded **compute** (as a linear fun
 **L2 — Initialization completes**
 
 $$
-\texttt{G}\big( \texttt{IS}_R \rightarrow \texttt{F}_{\texttt{comp}}^{\texttt{lin}(R, \,\tau(i))} \; (\texttt{IE}_R \lor \texttt{Crash}) \big)
+\texttt{G}\Big( \texttt{IS}_R \rightarrow \texttt{F}_{\texttt{comp}}^{\texttt{lin}(R, \,\tau(i))} \; (\texttt{IE}_R \lor \texttt{Crash}) \Big)
 $$
 
 Similar to L1, this property ensures that once an initialization starts, it must eventually complete within a bounded amount of compute (unless preempted by a crash) whenever the environment supplies that budget.
