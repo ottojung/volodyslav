@@ -773,3 +773,61 @@ $$
 **Reading.** After $\texttt{SS}_R$, as soon as the system first becomes quiescent (no callbacks running), the scheduler must complete `stop()` within a compute budget linear in the sizes of the registration list and current timestamp (modulo environment grants), or else be pre-empted by $\texttt{Crash}$.
 
 ---
+
+## Real-World Assumptions and the Limits of Conformance
+
+This section is informative. It clarifies the boundary between the mathematical model and the physical world by acknowledging conditions under which **no real-world implementation can be conformant**, regardless of design choices.
+
+### A. Conformance is Relative to the Modelled World
+
+Conformance (Definition in §Conformance) is evaluated over traces of the signature $\Sigma_{\textsf{env}}\cup\Sigma_{\textsf{sch}}$ that satisfy the combined theory $T_{\textsf{env}}\cup T_{\textsf{sched}}(a,b,t_{\texttt{lag}})$. The model admits **only** the phenomena expressible in that signature and governed by the axioms (e.g., `Crash`, `Due`, `RetryDue`, compute density). Physical phenomena that alter an implementation’s behavior **without** being represented as events/functions in the signature are **outside** the model.
+
+> **Implication.** If a physical phenomenon alters the implementation in a way that cannot be represented as a change in the environment tuple $\mathcal{E}$ or as scheduler-owned actions consistent with $T_{\textsf{sched}}$, then there exist executions of that physical world for which **no scheduler** can produce traces that satisfy $T$. In such worlds, **conformance is unattainable**.
+
+### B. Two Witnesses of Unattainability
+
+1. **Crash + non-recoverable storage loss.**
+   Consider a prefix where:
+
+* `REf_x` holds at time $t_f$ (a failure of task $x$),
+* hence `RetryDue_x` holds at $t_f+\textsf{rd}(x)$ (environment pulse),
+* and $x$ remains registered and not running.
+
+By definition, $\texttt{RetryPending}_x$ holds thereafter until cleared by `RS_x` or `FirstComing_x`. Now let a `Crash` occur. In the theory, `Crash` clears $\texttt{Active}*R`but **does not erase the past**; the trace still encodes the earlier`REf_x`and`RetryDue_x`, so after any subsequent successful `initialize(R)` the macros reconstruct $\texttt{Pending}_x` and thus $\texttt{Obligation}*{R,x}` at the first post-quiescent instant when $R$ is active again.
+
+In a physical world where the crash is followed by **irrecoverable loss of all persistent scheduler state** (e.g., drive failure that wipes the data needed to reconstruct pre-crash obligations), the implementation **cannot know** that `RetryDue_x` has occurred or that `REf_x` preceded it. Nevertheless, the **spec’s obligation is computed from the trace**, not from the implementation’s memory. L1 requires that, once $R$ is active again and the environment grants sufficient compute, we eventually observe `RS_x` within $F^{\texttt{lin}}_{\texttt{comp}}$—but the implementation lacks the information to meet that bound. Therefore, for such executions, **L1 is unachievable** by any implementation. (Similarly, if $R\in\texttt{ValidRegistrations}$ is re-presented by the environment and the implementation cannot accept it due to the loss, **S5** is unachievable.)
+
+> **Conclusion.** A world that includes *crash followed by catastrophic loss of state necessary to reconstruct obligations* yields traces for which **no scheduler** can satisfy $T$.
+
+2. **Single-event upsets (cosmic rays) in RAM/CPU state.**
+   A single bit flip in memory or a transient logic fault can arbitrarily perturb the control path of the scheduler at an instant that is not represented by any event in $\Sigma_{\textsf{env}}$. Such a perturbation can, for example,
+
+* cause a spurious `RS_y` when $\texttt{Obligation}_y$ is false (violating **S1**), or
+* cause two `RSucc_x` between consecutive `Due_x` pulses (violating **S2**), or
+* prevent `RS_x` within the $F^{\texttt{lin}}_{\texttt{comp}}$ budget (violating **L1**),
+  independently of the environment’s compute grants and without any corresponding `Crash`. Because the model provides no primitive to represent “bit-flip inside the scheduler’s internal state” (and because such a flip need not manifest as `Crash` or `Frozen`), the resulting deviation **cannot be re-expressed** as a permitted environment behavior. Consequently, **no implementation** can guarantee $T$ in the presence of unconstrained single-event upsets.
+
+> **Conclusion.** A world that permits *arbitrary, unmodelled state corruption of the scheduler’s execution* yields executions for which **no scheduler** can guarantee $T$.
+
+### C. Generalization to Unmodelled Phenomena
+
+The two cases above are instances of a general pattern:
+
+> **Unmodelled-perturbation principle.** If a physical phenomenon can (i) alter the scheduler’s future scheduler-owned actions or its ability to meet compute-bounded eventualities, while (ii) producing no corresponding change in the modelled environment tuple $\mathcal{E}$ or permitted actions, then there exist executions where the projection to $\Sigma_{\textsf{env}}\cup\Sigma_{\textsf{sch}}$ **must** violate at least one of S1–S5 or L1–L3. Hence, **no real-world implementation is conformant** in such worlds.
+
+Examples include—but are not limited to—irrecoverable storage loss, silent memory corruption, undetected CPU faults, clock rollback outside the semantics of `Due`, and OS/VM anomalies that arbitrarily suppress or duplicate scheduler actions without surfacing as `Crash` or `compute` effects.
+
+### D. How the Theory Remains Actionable
+
+* **Admissible worlds.** The theory is intended to be applied under **admissible** physical conditions: executions in which (a) crashes, pauses, and timing irregularities are expressible via `Crash`, `Frozen/Unfrozen`, and `Due/RetryDue`, and (b) the scheduler’s execution is **trace-faithful**—i.e., its future scheduler-owned actions are functions of the prior observable prefix (plus its own permitted nondeterminism), not of unmodelled perturbations. In admissible worlds, conformance is meaningful and testable.
+
+* **Out-of-scope verdicts.** When an execution leaves admissible conditions (e.g., post-crash state is catastrophically lost; a single-event upset induces an unexplainable scheduler action), the correct interpretation is **“environment out of scope for $T$”**, not “the scheduler is non-conformant.” In those worlds, **conformance is undefined**, because $T$ does not model the perturbation.
+
+* **Implementation freedom.** Implementations are **free** to employ any reasonable engineering measures (e.g., persistence schemes, error detection/correction, redundancy) to make inadmissible worlds rare and to steer executions back into admissible conditions. The theory neither mandates nor evaluates those measures; it only requires that, **when the world is admissible**, the observable trace satisfies $T_{\textsf{sched}}(a,b,t_{\texttt{lag}})$.
+
+### E. Takeaway
+
+The declarative theory provides a precise obligation/attribution contract **at the abstraction boundary it defines**. Beyond that boundary, there exist physically possible executions in which **no implementation can be conformant**. Applying the spec therefore entails:
+
+1. evaluating traces **only** in admissible worlds (as above), and
+2. recognizing that outside those worlds, conformance is **not** a meaningful predicate of implementations but a limitation of the model’s scope.
