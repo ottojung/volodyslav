@@ -445,12 +445,6 @@ Among others, environments contribute these two ingredients:
 
    which counts how many compute events occur within a set $S \subseteq \mathbb{T}$ of time points. The result is in $\mathbb{P} = \mathbb{Z}_{\geq 0} \cup \{\infty\}$ (the count may be infinite for unbounded sets).
 
-   This definition immediately gives us:
-   * **Additivity:** $\texttt{compute}(S \cup V) = \texttt{compute}(S) + \texttt{compute}(V) - \texttt{compute}(S \cap V)$ (by standard set cardinality).
-   * **Monotonicity:** If $S \subseteq V$, then $\texttt{compute}(S) \leq \texttt{compute}(V)$.
-
-   No positivity is assumed; the environment may provide no compute events on arbitrary intervals, modelling **freezes** where no work can progress. We write $\texttt{Frozen}(t,u)$ when $\texttt{compute}([t,u]) = 0$ (no compute events in that interval). We write $\texttt{Frozen} \texttt{ at } i$ when there exists $l, r \geq 0$ such that $l + r > 0 \wedge \texttt{Frozen}(\tau(i) - l, \tau(i) + r)$. This means no compute events occurred in the interval surrounding the trace position. Similarly, $\texttt{Unfrozen}$ means that at least one compute event occurs in some interval surrounding the position.
-
    Compute events are only spent on scheduler's actions.
    So, in particular, these do not require or "consume" compute events:
    - IO operations,
