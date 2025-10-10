@@ -417,7 +417,7 @@ An abbreviation.
 
 ---
 
-## Environment Axioms
+## Environment
 
 The scheduler operates against an abstract **Environment** $\mathcal{E}$.
 
@@ -462,9 +462,7 @@ Among others, environments contribute these two ingredients:
 
    It is expected that the scheduler will have access to less compute when more callbacks are running, but this is a very vague assumption, so not formalising it here.
 
-### Environment Axioms EA1–EA6
-
-These axioms state truths that all real-world environments in scope satisfy.
+### Core Environment Axioms   
 
 ---
 
