@@ -702,11 +702,6 @@ $$
 T \;=\; T_{\textsf{sch}}(a,b,t_{\texttt{lag}}) \cup T_{\textsf{env}}.
 $$
 
-| Component | Status | Contents |
-|-----------|--------|----------|
-| $T_{\textsf{sch}}(a,b,t_{\texttt{lag}})$ | Normative | Scheduler axioms S1–S4, L1–L3 with parameters $(a,b,t_{\texttt{lag}})$ |
-| $T_{\textsf{env}}$ | Informative | Environment axioms EA1–EA7 |
-
 ### Models of the Theory
 
 A trace over $\Sigma_{\textsf{env}} \cup \Sigma_{\textsf{sch}}$ with timestamps $\tau$ yields a **structure** $\langle \mathcal{E}, \mathcal{S}, \tau \rangle$. The structure is a **model of the theory**, written as $\langle \mathcal{E}, \mathcal{S}, \tau \rangle \models T$, iff:
