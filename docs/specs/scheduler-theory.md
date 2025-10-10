@@ -448,7 +448,9 @@ Among others, environments contribute these two ingredients:
 
    It is expected that the scheduler will have access to fewer compute events when more callbacks are running, but this is a very vague assumption, so not formalising it here.
 
-### Core Environment Axioms   
+### Core Environment Axioms
+
+The statements in this section constitute the theory $T_{\textsf{env}}$.
 
 ---
 
@@ -547,7 +549,7 @@ The following labels identify illustrative environment classes:
 
 ## Scheduler Axioms
 
-The formulas in this section constitute $T_{\textsf{sch}}(a,b,t_{\texttt{lag}})$. Each axiom is parameterised by the witnesses $(a,b,t_{\texttt{lag}})$ that appear in the compute-bounded modalities.
+The formulas in this section constitute the theory $T_{\textsf{sch}}(a,b,t_{\texttt{lag}})$. Each axiom is parameterised by the witnesses $(a,b,t_{\texttt{lag}})$ that appear in the compute-bounded modalities.
 
 ### Safety Axioms
 
