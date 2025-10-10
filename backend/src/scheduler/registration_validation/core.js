@@ -33,9 +33,12 @@ function validateRegistrations(registrations) {
 
         const [name, cronExpression, callback, retryDelay] = registration;
         
-        // Validate task name is a string
-        if (typeof name !== 'string') {
-            throw new RegistrationShapeError(`Registration at index ${i}: task name must be a string, got: ${typeof name}`, { index: i, name, value: name });
+        // Validate task name is a non-empty string
+        if (typeof name !== 'string' || name.length === 0) {
+            throw new RegistrationShapeError(
+                `Registration at index ${i}: task name must be a non-empty string, got: ${typeof name}`,
+                { index: i, name, value: name }
+            );
         }
 
         const qname = JSON.stringify(name);

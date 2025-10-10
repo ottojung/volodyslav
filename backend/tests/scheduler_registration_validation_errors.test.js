@@ -54,7 +54,7 @@ describe("scheduler registration validation error handling", () => {
 
         test("should throw RegistrationShapeError for wrong array length", () => {
             const capabilities = getTestCapabilities();
-            
+
             const callback = jest.fn();
             const retryDelay = fromMilliseconds(5000);
             
@@ -73,9 +73,23 @@ describe("scheduler registration validation error handling", () => {
                 .toThrow(/Registration at index 0 must be an array of length 4/);
         });
 
+        test("should reject non-string or empty task names", () => {
+            const capabilities = getTestCapabilities();
+
+            const callback = jest.fn();
+            const retryDelay = fromMilliseconds(5000);
+
+            const invalidNames = [null, undefined, 123, {}, [], ""];
+
+            invalidNames.forEach(invalidName => {
+                expect(() => validateRegistrations([[invalidName, "0 * * * *", callback, retryDelay]], capabilities))
+                    .toThrow(/task name must be a non-empty string/);
+            });
+        });
+
         test("should include registration details in error", () => {
             const capabilities = getTestCapabilities();
-            
+
             expect(() => validateRegistrations(["invalid"], capabilities))
                 .toThrow(expect.objectContaining({
                     name: "RegistrationShapeError",
