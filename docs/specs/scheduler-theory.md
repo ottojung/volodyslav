@@ -744,13 +744,9 @@ A structure $\langle \mathcal{E}, \mathcal{I}(\mathcal{E}), \tau \rangle$ is cal
 
 ---
 
-An implementation $\mathcal{I}$ is **conformant** iff for all environments $\mathcal{E} \in \text{Env}$, there exist witnesses $(a,b,t_{\texttt{lag}}) \in \mathbb{Z}_{\ge 0} \times \mathbb{Z}_{\ge 0} \times \mathbb{D}$ such that for every run (with timestamp function $\tau$) produced by composing $\mathcal{I}(\mathcal{E})$ with $\mathcal{E}$, the resulting structure satisfies the combined theory:
+An implementation $\mathcal{I}$ is **conformant** iff for all environments $\mathcal{E} \in \text{Env}$ and all runs (with timestamp function $\tau$) produced by composing $\mathcal{I}(\mathcal{E})$ with $\mathcal{E}$, the resulting structure is a happy trace of $\mathcal{I}$.
 
-$$
-\langle \mathcal{E}, \mathcal{I}(\mathcal{E}), \tau \rangle \models T_{\textsf{env}} \cup T_{\textsf{sch}}(a,b,t_{\texttt{lag}}).
-$$
-
-In other words, for each environment, a conformant implementation admits witnesses $(a,b,t_{\texttt{lag}})$ (which may depend on the environment) such that the scheduler behaviors it produces satisfy the theory when composed with that environment.
+In other words, a conformant implementation must produce only happy traces. This means that whenever the implementation fails to satisfy the theory, the failure must be attributable to supernatural events—specifically, there must exist an environment with even more supernatural events under which the implementation would also fail. Conversely, unhappy traces (failures that persist even when supernatural events are reduced) are not permitted for conformant implementations.
 
 This satisfaction relation is defined in [Structures & Satisfaction](#structures--satisfaction).
 
