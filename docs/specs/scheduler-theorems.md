@@ -2,7 +2,7 @@
 # Scheduler Theorems
 
 This file contains theorems that can be derived from the axioms in [scheduler-axioms.md](scheduler-axioms.md).
-The statements in this file follow from $T_{\textsf{env}} \cup T_{\textsf{sched}}(a,b,t_{\texttt{lag}})$.
+More specifically, statements in this file follow from $T_{\textsf{env}} \cup T_{\textsf{sched}}(a,b,t_{\texttt{lag}})$.
 
 ---
 
