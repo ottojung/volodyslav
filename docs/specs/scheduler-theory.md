@@ -728,16 +728,16 @@ The implementation $\mathcal{I}$ is the abstract representation of the scheduler
 
 ### Happy Traces
 
-A structure $\langle \mathcal{E}, \mathcal{S}, \tau \rangle$ is called a **happy trace** iff:
+A structure $\langle \mathcal{E}, \mathcal{I}(\mathcal{E}), \tau \rangle$ is called a **happy trace** of $\mathcal{I}$ iff:
 
 1. It satisfies the combined theory for some witnesses $(a,b,t_{\texttt{lag}})$:
    $$
-   \langle \mathcal{E}, \mathcal{S}, \tau \rangle \models T_{\textsf{env}} \cup T_{\textsf{sch}}(a,b,t_{\texttt{lag}}),
+   \langle \mathcal{E}, \mathcal{I}(\mathcal{E}), \tau \rangle \models T_{\textsf{env}} \cup T_{\textsf{sch}}(a,b,t_{\texttt{lag}}),
    $$
-   
-2. There exists another structure $\langle \mathcal{E}', \mathcal{S}, \tau \rangle$ that differs only in the amount and/or indexes of $\texttt{Supernatural}$ events, such that:
+
+2. There exists another environment $\mathcal{E}'$ that differs only in the amount and/or indexes of $\texttt{Supernatural}$ events, such that:
    $$
-   \langle \mathcal{E}', \mathcal{S}, \tau \rangle \not\models T_{\textsf{env}} \cup T_{\textsf{sch}}(a, b, t_{\texttt{lag}})
+   \langle \mathcal{E}', \mathcal{I}(\mathcal{E}'), \tau \rangle \not\models T_{\textsf{env}} \cup T_{\textsf{sch}}(a, b, t_{\texttt{lag}})
    $$
 
 **Intuition.** A happy trace demonstrates that satisfaction of the theory is **not attributable solely to the scheduler implementation**. Since the same scheduler behavior $\mathcal{S}$ can produce different outcomes depending on the supernatural events, conformance is contingent on factors outside the model's formal scope. The unhappy trace may fail due to (i) catastrophic supernatural events that no implementation could survive (e.g., "end of the world" scenarios), or (ii) the absence of fortuitous supernatural events that the happy trace relied upon (e.g., a "fix-it fairy" that compensated for implementation bugs). Either way, happy traces reveal that the observed correctness cannot be attributed to sound scheduler design alone, but depends on the particular supernatural circumstances.
