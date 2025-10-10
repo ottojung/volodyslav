@@ -42,7 +42,7 @@ The universe of scheduler's objects includes **all possible objects**, not just 
 ### Time & Traces
 
 * **Time domain:** a set $\mathbb{T}$ used to timestamp observable instants. The timestamps have abstract resolution (i.e., they are not tied to any specific real-world clock). But they do correspond to real time, in the sense that for every real-world instance, there is a corresponding timestamp in $\mathbb{T}$.
-* **Trace:** a sequence of positions $i = 0, 1, 2, \dots$ with a timestamp function $\tau(i) \in \mathbb{T}$ that is non-strictly increasing. At each position $i$, one or more observable events may occur.
+* **Trace:** a sequence of positions $i = 0, 1, 2, \dots$ with a timestamp function $\tau(i) \in \mathbb{T}$ that is non-strictly increasing. At each position $i$, one or more observable events may occur. Each trace position corresponds to an instant where an observable event occurs. Events that are simultaneous appear at the same integer time points. Time bounds are background semantics only (not encoded in LTL). Reference to simultaneity rules is provided in axiom **EA3**.
 
 ### LTL with Past
 
@@ -142,9 +142,7 @@ Lift this pointwise to registration lists with $R \approx R' \iff |R| = |R'| \we
 
 ---
 
-## Observable Alphabet & Ownership
-
-### Event Predicates (Observable Alphabet)
+## Observable Alphabet
 
 Each event predicate is evaluated at a trace position $i$ (we omit $i$ when clear from context):
 
@@ -219,11 +217,7 @@ Note: because of DST and other irregularities of a civil clock, minute starts ar
 
 Each predicate marks the instant the named public action occurs from the perspective of the embedding JavaScript runtime: function entry ($\texttt{InitStart}$, $\texttt{StopStart}$), function return ($\texttt{IE}$, $\texttt{StopEnd}$), callback invocation begin/end ($\texttt{RunStart}$, $\texttt{RE}$), and exogenous crash ($\texttt{UnexpectedShutdown}$). No logging or internal bookkeeping is modeled.
 
-### Timing Semantics
-
-**Trace semantics:** Each trace position corresponds to an instant where an observable event occurs. Events that are simultaneous appear at the same integer time points. Time bounds are background semantics only (not encoded in LTL). Reference to simultaneity rules is provided in axiom **EA3**.
-
-### Macros
+## Macros
 
 #### Abbreviations
 
