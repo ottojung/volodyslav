@@ -219,7 +219,7 @@ Each predicate marks the instant the named public action occurs from the perspec
 ### Ownership Partition
 
 Let
-- $\Sigma_{\textsf{env}} := \{\texttt{Crash},\ \texttt{Due}_x,\ \texttt{RetryDue}_x,\ \texttt{REs}_x,\ \texttt{REf}_x, \, \texttt{SS}, \, \texttt{IS}_R\}$ (environment–owned),
+- $\Sigma_{\textsf{env}} := \{\texttt{Crash},\ \texttt{Compute},\ \texttt{Due}_x,\ \texttt{RetryDue}_x,\ \texttt{REs}_x,\ \texttt{REf}_x, \, \texttt{SS}, \, \texttt{IS}_R\}$ (environment–owned),
 - $\Sigma_{\textsf{sch}} := \{\texttt{IE}_R,\ \texttt{SE},\ \texttt{RS}_x\}$ (scheduler–owned).
 
 ### Timing Semantics
@@ -435,32 +435,33 @@ Among others, environments contribute these two ingredients:
 
 1. **Crash generator** — a predicate $\texttt{Crash}(t)$ over $\mathbb{T}$. When true, the environment marks an exogenous interruption that preempts in-flight callbacks and halts the scheduler itself; axiom **EA1** enforces the resulting quiescence in the trace.
 
-2. **Work density function** — a dimensionless function
+2. **Compute event predicate** — a predicate $\texttt{Compute}$ over trace positions (i.e., $\texttt{Compute} \texttt{ at } i$) indicating instants when the environment could execute one microinstruction of the scheduler implementation. This is an environment-owned primitive that marks opportunities for scheduler progress.
+
+   From this predicate, we derive the **compute function**:
 
    $$
-   \texttt{compute} : \mathcal{P}(\mathbb{T}) \to \mathbb{P}
+   \texttt{compute}(S) := |\{ t \in S \mid \texttt{Compute} \texttt{ at } t \}|
    $$
 
-   assigning the potential amount of computational progress available to the scheduler over any collection of time intervals. For some $\lambda > 0$ and for all $S, V \subset \mathbb{T}$, it satisfies:
+   which counts how many compute events occur within a set $S \subseteq \mathbb{T}$ of time points. The result is in $\mathbb{P} = \mathbb{Z}_{\geq 0} \cup \{\infty\}$ (the count may be infinite for unbounded sets).
 
-   * **T1 (additivity):** $\texttt{compute}(S \cup V) = \texttt{compute}(S) + \texttt{compute}(V) - \texttt{compute}(S \cap V)$.
-   * **T2 (boundedness):** $\texttt{compute}(S) \leq \lambda \cdot \texttt{duration}(S)$.
+   This definition immediately gives us:
+   * **Additivity:** $\texttt{compute}(S \cup V) = \texttt{compute}(S) + \texttt{compute}(V) - \texttt{compute}(S \cap V)$ (by standard set cardinality).
+   * **Monotonicity:** If $S \subseteq V$, then $\texttt{compute}(S) \leq \texttt{compute}(V)$.
 
-   When $\texttt{compute}$ returns $\infty$, standard arithmetic rules for infinity apply: $\infty + x = \infty$ for any $x \in \mathbb{P}$, $\infty - n = \infty$ for any finite $n$, and comparisons like $\infty \geq C$ hold for any finite $C \in \mathbb{Z_{\geq 0}}$. Property **T2** permits $\texttt{compute}(S) = \infty$ when $\texttt{duration}(S)$ is unbounded.
+   No positivity is assumed; the environment may provide no compute events on arbitrary intervals, modelling **freezes** where no work can progress. We write $\texttt{Frozen}(t,u)$ when $\texttt{compute}([t,u]) = 0$ (no compute events in that interval). We write $\texttt{Frozen} \texttt{ at } i$ when there exists $l, r \geq 0$ such that $l + r > 0 \wedge \texttt{Frozen}(\tau(i) - l, \tau(i) + r)$. This means no compute events occurred in the interval surrounding the trace position. Similarly, $\texttt{Unfrozen}$ means that at least one compute event occurs in some interval surrounding the position.
 
-   No positivity is assumed; the environment may set $\texttt{compute}([t,u]) = 0$ on arbitrary (even unbounded) intervals, modelling **freezes** where no work can progress. We write $\texttt{Frozen}(t,u)$ when $\texttt{compute}([t,u]) = 0$. We write $\texttt{Frozen} \texttt{ at } i$ when there exists $l, r \geq 0$ such that $l + r > 0 \wedge \texttt{Frozen}(\tau(i) - l, \tau(i) + r)$. This means no work progressed in the interval surrounding the trace position. Similarly, $\texttt{Unfrozen}$ means that compute is positive in some interval surrounding the position.
-
-   Compute is only spent on scheduler's actions.
-   So, in particular, these events do not require or "consume" compute:
+   Compute events are only spent on scheduler's actions.
+   So, in particular, these do not require or "consume" compute events:
    - IO operations,
    - scheduler's sleeping or waiting,
    - garbage collection,
    - progress of callbacks (except for starting and ending them),
    - other activity of the embedding JavaScript runtime.
    
-   More specifically, the compute function measures the potential for executing the scheduler's own code (and of its JavaScript dependencies), not anything else.
+   More specifically, $\texttt{Compute}$ marks the potential for executing the scheduler's own code (and of its JavaScript dependencies), not anything else.
 
-   It is expected that the scheduler will have access to less compute when more callbacks are running, but this is a very vague assumption, so not formalising it here.
+   It is expected that the scheduler will have access to fewer compute events when more callbacks are running, but this is a very vague assumption, so not formalising it here.
 
 ### Core Environment Axioms   
 
@@ -539,13 +540,13 @@ After a $\texttt{Crash}$, no new ends until a new start.
 
 The following labels identify illustrative environment classes:
 
-* **Freezing environments:** admit arbitrarily long intervals $(t,u)$ with $\texttt{Frozen}(t, u)$.
+* **Freezing environments:** admit arbitrarily long intervals $(t,u)$ with $\texttt{Frozen}(t, u)$ (i.e., no $\texttt{Compute}$ events).
 
-* **Eventually thawing environments:** there exists $U$ such that every interval of length $\ge U$ supplies some positive compute.
+* **Eventually thawing environments:** there exists $U$ such that every interval of length $\ge U$ contains at least one $\texttt{Compute}$ event.
 
-* **Lower-bounded-density environments:** there exist parameters $\varepsilon > 0$ and $\Delta \ge 0$ such that for all $t$ and $T \ge \Delta$, $\texttt{compute}([t,t+T]) \ge \varepsilon\cdot T$ (average density after $\Delta$ never drops below $\varepsilon$).
+* **Lower-bounded-density environments:** there exist parameters $\varepsilon > 0$ and $\Delta \ge 0$ such that for all $t$ and $T \ge \Delta$, $\texttt{compute}([t,t+T]) \ge \varepsilon\cdot T$ (average density of $\texttt{Compute}$ events after $\Delta$ never drops below $\varepsilon$).
 
-* **Burst environments:** concentrate density in sporadic spikes; for every $M$ there are intervals of length $> M$ with arbitrarily small compute alternating with brief, high-density bursts.
+* **Burst environments:** concentrate $\texttt{Compute}$ events in sporadic spikes; for every $M$ there are intervals of length $> M$ with arbitrarily few $\texttt{Compute}$ events alternating with brief, high-density bursts.
 
 ---
 
@@ -663,20 +664,20 @@ We work over a multi-sorted first-order signature $\Sigma_{\textsf{sched}}$ with
 Function symbols include:
 
 * $\tau : \mathbb{N} \to \mathbb{T}$ (timestamp map over trace positions).
-* $\texttt{duration} : \mathcal{P}(\mathbb{T}) \to \mathbb{D}$ and $\texttt{compute} : \mathcal{P}(\mathbb{T}) \to \mathbb{P}$.
+* $\texttt{duration} : \mathcal{P}(\mathbb{T}) \to \mathbb{D}$ and $\texttt{compute} : \mathcal{P}(\mathbb{T}) \to \mathbb{P}$ (where $\texttt{compute}$ is defined via the $\texttt{Compute}$ predicate as described in [Environment Axioms](#environment-axioms)).
 * Task projections $\textsf{id}$, $\textsf{sch}$, $\textsf{cb}$, $\textsf{rd}$, $\textsf{key}$, list operations (length, indexing), and the environment parameters $\texttt{Due}$, $\texttt{RetryDue}$.
 
-Predicate symbols cover the observable alphabet. They include scheduler-owned atoms $\texttt{IS}_R$, $\texttt{IE}$, $\texttt{SS}$, $\texttt{SE}$, $\texttt{RS}_x$, $\texttt{REs}_x$, $\texttt{REf}_x$, as well as environment-owned atoms such as $\texttt{Crash}$, $\texttt{Due}_x$, and $\texttt{RetryDue}_x$. Indexed predicates range over the appropriate sorts (e.g., $x$ ranges over $\texttt{Task}$, $R$ over $\texttt{RegistrationList}$); $\texttt{SS}$ and $\texttt{SE}$ are 0-ary.
+Predicate symbols cover the observable alphabet. They include scheduler-owned atoms $\texttt{IS}_R$, $\texttt{IE}$, $\texttt{SS}$, $\texttt{SE}$, $\texttt{RS}_x$, $\texttt{REs}_x$, $\texttt{REf}_x$, as well as environment-owned atoms such as $\texttt{Compute}$, $\texttt{Crash}$, $\texttt{Due}_x$, and $\texttt{RetryDue}_x$. Indexed predicates range over the appropriate sorts (e.g., $x$ ranges over $\texttt{Task}$, $R$ over $\texttt{RegistrationList}$); $\texttt{SS}$ and $\texttt{SE}$ are 0-ary.
 
 The free constants $(a,b,t_{\texttt{lag}})$ are theory parameters that instantiate compute-bounded modalities within $T_{\textsf{sched}}(a,b,t_{\texttt{lag}})$.
 
 An environment is packaged as the tuple
 
 $$
-\mathcal{E} = \langle \texttt{compute}, \texttt{Crash}, \texttt{Due}_x, \texttt{RetryDue}_x, \texttt{REs}, \texttt{REf}, \texttt{SS}, \texttt{IS}_R \rangle,
+\mathcal{E} = \langle \texttt{Compute}, \texttt{Crash}, \texttt{Due}_x, \texttt{RetryDue}_x, \texttt{REs}, \texttt{REf}, \texttt{SS}, \texttt{IS}_R \rangle,
 $$
 
-providing the interpretations for environment-owned predicates listed above.
+providing the interpretations for environment-owned predicates listed above. The $\texttt{compute}$ function is then derived from $\texttt{Compute}$ by counting.
 
 A scheduler behavior is similarly packaged as
 
@@ -717,7 +718,7 @@ $$
 
 A trace over $\Sigma_{\textsf{env}} \cup \Sigma_{\textsf{sch}}$ with timestamps $\tau$ yields a **structure** $\langle \mathcal{E}, \mathcal{S}, \tau \rangle$. The structure is a **model of the theory** iff:
 
-1. Environment-owned predicates are interpreted exactly as the lifts provided by the environment tuple $\mathcal{E}$ (which includes $\texttt{compute}$, $\texttt{Crash}$, $\texttt{Due}$, $\texttt{RetryDue}$, $\texttt{REs}$, $\texttt{REf}$, $\texttt{SS}$, and $\texttt{IS}_R$).
+1. Environment-owned predicates are interpreted exactly as the lifts provided by the environment tuple $\mathcal{E}$ (which includes $\texttt{Compute}$, $\texttt{Crash}$, $\texttt{Due}$, $\texttt{RetryDue}$, $\texttt{REs}$, $\texttt{REf}$, $\texttt{SS}$, and $\texttt{IS}_R$).
 2. Scheduler-owned predicates are produced by the scheduler behavior $\mathcal{S}$ (at most one observable action per position, cf. EA3).
 3. The structure satisfies every axiom in $T_{\textsf{env}} \cup T_{\textsf{sched}}(a,b,t_{\texttt{lag}})$.
 
@@ -733,7 +734,7 @@ $$
 \mathcal{I} : \text{Env} \to \text{Sch}
 $$
 
-that maps each environment $\mathcal{E}$ to a scheduler behavior $\mathcal{S}$. Here, $\text{Env}$ denotes the space of all possible environments (each providing $\texttt{compute}$, $\texttt{Crash}$, $\texttt{Due}_x$, $\texttt{RetryDue}_x$, $\texttt{REs}_x$, $\texttt{REf}_x$, $\texttt{SS}$, and $\texttt{IS}_R$), and $\text{Sch}$ denotes the space of all possible scheduler behaviors (producing $\texttt{IE}_R$, $\texttt{SE}$, and $\texttt{RS}_x$ events).
+that maps each environment $\mathcal{E}$ to a scheduler behavior $\mathcal{S}$. Here, $\text{Env}$ denotes the space of all possible environments (each providing $\texttt{Compute}$, $\texttt{Crash}$, $\texttt{Due}_x$, $\texttt{RetryDue}_x$, $\texttt{REs}_x$, $\texttt{REf}_x$, $\texttt{SS}$, and $\texttt{IS}_R$), and $\text{Sch}$ denotes the space of all possible scheduler behaviors (producing $\texttt{IE}_R$, $\texttt{SE}$, and $\texttt{RS}_x$ events).
 
 The implementation $\mathcal{I}$ is the abstract representation of the scheduler's code: given any environment, it determines how the scheduler will respond. However, note that causality works both ways: the environment influences the scheduler's behavior, and the scheduler's actions can affect the environment (e.g., by completing callbacks).
 
