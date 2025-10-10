@@ -735,7 +735,7 @@ A structure $\langle \mathcal{E}, \mathcal{I}(\mathcal{E}), \tau \rangle$ is cal
    \langle \mathcal{E}, \mathcal{I}(\mathcal{E}), \tau \rangle \models T_{\textsf{env}} \cup T_{\textsf{sch}}(a,b,t_{\texttt{lag}}),
    $$
 
-2. There exists another environment $\mathcal{E}'$ that differs only in the amount and/or indexes of $\texttt{Supernatural}$ events, such that:
+2. There exists another environment $\mathcal{E}'$ that differs only in the amount of $\texttt{Supernatural}$ events, specifically the set of former's indexes is a subset of the latter's, such that:
    $$
    \langle \mathcal{E}', \mathcal{I}(\mathcal{E}'), \tau \rangle \not\models T_{\textsf{env}} \cup T_{\textsf{sch}}(a, b, t_{\texttt{lag}})
    $$
