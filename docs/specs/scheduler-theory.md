@@ -117,6 +117,7 @@ $$
 * $\mathbb{T} := \mathbb{Z}$ — the time domain.
 * $\mathbb{D} := \mathbb{Z_{\geq 0}}$ — the domain of durations.
 * $\mathbb{P} := \mathbb{Z_{\geq 0}} \cup \{\infty\}$ — the domain of compute.
+* $\mathbb{S}$ — an abstract domain of supernatural phenomenon types. Elements of $\mathbb{S}$ classify different kinds of unexplainable events (e.g., cosmic rays, memory corruption, OS anomalies). The internal structure of $\mathbb{S}$ is uninterpreted.
 * $\texttt{TaskId}$ — a set of public task identifiers.
 * $\texttt{Opaque}$ — a set of uninterpreted atoms where only equality is meaningful.
 * $\texttt{Callback}$ — the set of externally observable callback behaviours (abstracted here to equality).
@@ -191,6 +192,14 @@ It is not controlled by the scheduler. The scheduler may not know when a crash w
 
 ---
 
+* $\texttt{supernatural}: \mathbb{T} \to \mathcal{P}(\mathbb{S})$ — a function mapping each time instant to the set of supernatural phenomenon types occurring at that instant.
+
+*Interpretation:* This function classifies unexplainable events by their types. At each time $t$, $\texttt{supernatural}(t)$ returns the set of supernatural phenomenon types present at that instant. When $\texttt{supernatural}(t) = \emptyset$, no supernatural events occur at time $t$. The abstract domain $\mathbb{S}$ might include types like cosmic-ray-induced bit flips, silent memory corruption, undetected CPU faults, clock anomalies, or OS/VM glitches—any phenomena that occur in the real world but are not expressible within the scheduler theory's signature. The name reflects the perspective that just as supernatural events are unexplainable by science, these phenomena are unexplainable by (and underivable from) the formal scheduler theory.
+
+To recognize which things constitute supernatural phenomena, see the [Classification of Supernatural Phenomena](./scheduler-supernatural.md).
+
+---
+
 * $\texttt{Due}_x$ — is start of a minute that the cron schedule for task $x$ matches.
 
 *Interpretation:* the cron schedule for $x$ matches the start of a *civil* minute according to the host system's local clock.
@@ -212,12 +221,6 @@ Note: because of DST and other irregularities of a civil clock, minute starts ar
   $$
 
 *Interpretation:* is a primitive point event (like $\texttt{Due}_x$), supplied by the environment/clock. If the latest $\texttt{RunFailure}(x)$ occurs at time $t_f$, then $\texttt{RetryDue}_x$ holds at time $t_f + \textsf{rd}(x)$. These pulses are truths about the environment.
-
----
-
-* $\texttt{Supernatural}$ — marks an event that is not captured by any other predicate in the theory.
-
-*Interpretation:* This is a catch-all predicate for events that occur in the real world but are not expressible within the scheduler theory's signature. Examples include: events unrelated to scheduling, benign environmental fluctuations, or phenomena that might influence the system in ways outside the model's scope. The name reflects the perspective that just as supernatural events are unexplainable by science, $\texttt{Supernatural}$ events are unexplainable by (and underivable from) the formal scheduler theory. These events may be harmful, irrelevant, or even helpful to the scheduler—the theory makes no assumptions about their impact.
 
 ---
 
@@ -428,15 +431,11 @@ This section is **informative**. The formulas enumerated here are axioms about t
 
 Some environments make it impossible to implement a useful scheduler (for example, permanently freezing environments), but for all environments there exist conformant schedulers. The value of this section is to clarify the blame assignment between scheduler and environment.
 
-Among others, environments contribute these two ingredients:
+Among others, environments contribute these ingredients:
 
 1. **Crash generator** — a predicate $\texttt{Crash}$ over trace positions. When true, the environment marks an exogenous interruption that preempts in-flight callbacks and halts the scheduler itself; axiom **EA1** enforces the resulting quiescence in the trace.
 
-2. **Supernatural events** — a predicate $\texttt{Supernatural}$ over trace positions. This marks events that are not captured by any other predicate in the theory. These may be harmful, irrelevant, or even helpful to the scheduler — the theory makes no assumptions about their impact.
-
-   To recognize which things constitute supernatural events, see the [Classification of Supernatural Phenomena](./scheduler-supernatural.md).
-
-3. **Compute event predicate** — a predicate $\texttt{Compute}$ over trace positions indicating instants when the environment could execute one microinstruction of the scheduler implementation. This is an environment-owned primitive that marks opportunities for scheduler progress.
+2. **Compute event predicate** — a predicate $\texttt{Compute}$ over trace positions indicating instants when the environment could execute one microinstruction of the scheduler implementation. This is an environment-owned primitive that marks opportunities for scheduler progress.
 
    From this predicate, we derive the **compute function**:
 
@@ -654,7 +653,7 @@ $$
 
 We work over a multi-sorted first-order signature $\Sigma_{\textsf{sch}}$ with the following sorts:
 
-* $\mathbb{T}$ (timestamps), $\mathbb{D}$ (durations), and $\mathbb{P}$ (compute budgets).
+* $\mathbb{T}$ (timestamps), $\mathbb{D}$ (durations), $\mathbb{P}$ (compute budgets), and $\mathbb{S}$ (supernatural phenomenon types).
 * $\texttt{TaskId}$, $\texttt{Opaque}$, $\texttt{Callback}$, $\texttt{Schedule}$, $\texttt{RetryDelay}$, $\texttt{Task}$, and $\texttt{RegistrationList}$.
 * Auxiliary finite sets such as $\texttt{ValidRegistrations}$ and Boolean values $\mathbb{B}$.
 
@@ -662,16 +661,17 @@ Function symbols include:
 
 * $\tau : \mathbb{N} \to \mathbb{T}$ (timestamp map over trace positions).
 * $\texttt{duration} : \mathcal{P}(\mathbb{T}) \to \mathbb{D}$ and $\texttt{compute} : \mathcal{P}(\mathbb{T}) \to \mathbb{P}$ (where $\texttt{compute}$ is defined via the $\texttt{Compute}$ predicate as described in [Environment Axioms](#environment-axioms)).
+* $\texttt{supernatural} : \mathbb{T} \to \mathcal{P}(\mathbb{S})$ (mapping time instants to sets of supernatural phenomenon types).
 * Task projections $\textsf{id}$, $\textsf{sch}$, $\textsf{cb}$, $\textsf{rd}$, $\textsf{key}$, list operations (length, indexing), and the environment parameters $\texttt{Due}$, $\texttt{RetryDue}$.
 
-Predicate symbols cover the observable alphabet. They include scheduler-owned atoms $\texttt{IS}_R$, $\texttt{IE}$, $\texttt{SS}$, $\texttt{SE}$, $\texttt{RS}_x$, $\texttt{REs}_x$, $\texttt{REf}_x$, as well as environment-owned atoms such as $\texttt{Compute}$, $\texttt{Crash}$, $\texttt{Supernatural}$, $\texttt{Due}_x$, and $\texttt{RetryDue}_x$. Indexed predicates range over the appropriate sorts (e.g., $x$ ranges over $\texttt{Task}$, $R$ over $\texttt{RegistrationList}$); $\texttt{SS}$ and $\texttt{SE}$ are 0-ary.
+Predicate symbols cover the observable alphabet. They include scheduler-owned atoms $\texttt{IS}_R$, $\texttt{IE}$, $\texttt{SS}$, $\texttt{SE}$, $\texttt{RS}_x$, $\texttt{REs}_x$, $\texttt{REf}_x$, as well as environment-owned atoms such as $\texttt{Compute}$, $\texttt{Crash}$, $\texttt{Due}_x$, and $\texttt{RetryDue}_x$, and the standalone supernatural predicate $\texttt{Supernatural}$. Indexed predicates range over the appropriate sorts (e.g., $x$ ranges over $\texttt{Task}$, $R$ over $\texttt{RegistrationList}$); $\texttt{SS}$ and $\texttt{SE}$ are 0-ary.
 
 The free constants $(a,b,t_{\texttt{lag}})$ are theory parameters that instantiate compute-bounded modalities within $T_{\textsf{sch}}(a,b,t_{\texttt{lag}})$.
 
 An environment is packaged as the tuple
 
 $$
-\mathcal{E} = \langle \texttt{Compute}, \texttt{Crash}, \texttt{Supernatural}, \texttt{Due}_x, \texttt{RetryDue}_x, \texttt{REs}, \texttt{REf}, \texttt{SS}, \texttt{IS}_R \rangle
+\mathcal{E} = \langle \texttt{Compute}, \texttt{Crash}, \texttt{Due}_x, \texttt{RetryDue}_x, \texttt{REs}, \texttt{REf}, \texttt{SS}, \texttt{IS}_R \rangle
 $$
 
 providing the interpretations for environment-owned predicates listed above. The $\texttt{compute}$ function is then derived from $\texttt{Compute}$ by counting.
@@ -684,7 +684,15 @@ $$
 
 providing the interpretations for scheduler-owned predicates.
 
-> **ownership note.** We classify predicate symbols by ownership: environment-owned predicates are interpreted directly from the environment tuple $\mathcal{E}$, while scheduler-owned predicates are produced by the scheduler behavior $\mathcal{S}$. This classification is informative; it explains which component determines the symbol's interpretation inside any structure.
+The supernatural function is packaged as
+
+$$
+\mathcal{N} = \langle \texttt{supernatural} \rangle
+$$
+
+providing the interpretation for the function mapping time instants to sets of supernatural phenomenon types that exist outside the theory's formal scope.
+
+> **ownership note.** We classify predicate symbols by ownership: environment-owned predicates are interpreted directly from the environment tuple $\mathcal{E}$, while scheduler-owned predicates are produced by the scheduler behavior $\mathcal{S}$. The supernatural function $\mathcal{N}$ stands separately as it represents phenomena that are neither controlled by the environment nor the scheduler but exist outside the formal model. This classification is informative; it explains which component determines the symbol's interpretation inside any structure.
 
 ### Satisfaction & Models
 
@@ -695,10 +703,10 @@ Let $T_{\textsf{sch}}(a,b,t_{\texttt{lag}})$ denote the set of **Scheduler Axiom
 We write
 
 $$
-\langle \mathcal{E}, \mathcal{S}, \tau \rangle \models \varphi
+\langle \mathcal{E}, \mathcal{S}, \mathcal{N}, \tau \rangle \models \varphi
 $$
 
-to mean that the structure interpreting environment-owned symbols via $\mathcal{E}$, scheduler-owned symbols via $\mathcal{S}$, and the timestamp map via $\tau$ satisfies the temporal formula $\varphi$ in the standard LTL-with-past semantics. Here, $\mathcal{E} \in \text{Env}$ is an individual environment and $\mathcal{S} \in \text{Sch}$ is an individual scheduler behavior.
+to mean that the structure interpreting environment-owned symbols via $\mathcal{E}$, scheduler-owned symbols via $\mathcal{S}$, the supernatural function via $\mathcal{N}$, and the timestamp map via $\tau$ satisfies the temporal formula $\varphi$ in the standard LTL-with-past semantics. Here, $\mathcal{E} \in \text{Env}$ is an individual environment, $\mathcal{S} \in \text{Sch}$ is an individual scheduler behavior, and $\mathcal{N} \in \text{Supernatural}$ is the supernatural function mapping time to phenomenon types.
 
 The combined theory is
 
@@ -708,13 +716,14 @@ $$
 
 ### Models of the Theory
 
-A trace over $\Sigma_{\textsf{env}} \cup \Sigma_{\textsf{sch}}$ with timestamps $\tau$ yields a **structure** $\langle \mathcal{E}, \mathcal{S}, \tau \rangle$. The structure is a **model of the theory**, written as $\langle \mathcal{E}, \mathcal{S}, \tau \rangle \models T$, iff:
+A trace over $\Sigma_{\textsf{env}} \cup \Sigma_{\textsf{sch}} \cup \Sigma_{\textsf{supernatural}}$ with timestamps $\tau$ yields a **structure** $\langle \mathcal{E}, \mathcal{S}, \mathcal{N}, \tau \rangle$. The structure is a **model of the theory**, written as $\langle \mathcal{E}, \mathcal{S}, \mathcal{N}, \tau \rangle \models T$, iff:
 
-1. Environment-owned predicates are interpreted exactly as the lifts provided by the environment tuple $\mathcal{E}$ (which includes $\texttt{Compute}$, $\texttt{Crash}$, $\texttt{Supernatural}$, $\texttt{Due}$, $\texttt{RetryDue}$, $\texttt{REs}$, $\texttt{REf}$, $\texttt{SS}$, and $\texttt{IS}_R$).
+1. Environment-owned predicates are interpreted exactly as the lifts provided by the environment tuple $\mathcal{E}$ (which includes $\texttt{Compute}$, $\texttt{Crash}$, $\texttt{Due}$, $\texttt{RetryDue}$, $\texttt{REs}$, $\texttt{REf}$, $\texttt{SS}$, and $\texttt{IS}_R$).
 2. Scheduler-owned predicates are produced by the scheduler behavior $\mathcal{S}$ (at most one observable action per position, cf. EA3).
-3. The structure satisfies every axiom in $T_{\textsf{env}} \cup T_{\textsf{sch}}(a,b,t_{\texttt{lag}})$.
+3. The supernatural function is interpreted via $\mathcal{N}$, mapping each time instant to the set of supernatural phenomenon types occurring at that instant.
+4. The structure satisfies every axiom in $T_{\textsf{env}} \cup T_{\textsf{sch}}(a,b,t_{\texttt{lag}})$.
 
-This perspective separates scheduler obligations from environmental truths (see [Environment Axioms](#environment-axioms)) and anchors liveness reasoning in the satisfaction relation defined above.
+This perspective separates scheduler obligations from environmental truths (see [Environment Axioms](#environment-axioms)) and supernatural phenomena, anchoring liveness reasoning in the satisfaction relation defined above.
 
 ## Conformance
 
@@ -726,32 +735,32 @@ $$
 \mathcal{I} : \text{Env} \to \text{Sch}
 $$
 
-that maps each environment $\mathcal{E}$ to a scheduler behavior $\mathcal{S}$. Here, $\text{Env}$ denotes the space of all possible environments (each providing $\texttt{Compute}$, $\texttt{Crash}$, $\texttt{Supernatural}$, $\texttt{Due}_x$, $\texttt{RetryDue}_x$, $\texttt{REs}_x$, $\texttt{REf}_x$, $\texttt{SS}$, and $\texttt{IS}_R$), and $\text{Sch}$ denotes the space of all possible scheduler behaviors (producing $\texttt{IE}_R$, $\texttt{SE}$, and $\texttt{RS}_x$ events).
+that maps each environment $\mathcal{E}$ to a scheduler behavior $\mathcal{S}$. Here, $\text{Env}$ denotes the space of all possible environments (each providing $\texttt{Compute}$, $\texttt{Crash}$, $\texttt{Due}_x$, $\texttt{RetryDue}_x$, $\texttt{REs}_x$, $\texttt{REf}_x$, $\texttt{SS}$, and $\texttt{IS}_R$), and $\text{Sch}$ denotes the space of all possible scheduler behaviors (producing $\texttt{IE}_R$, $\texttt{SE}$, and $\texttt{RS}_x$ events).
 
 The implementation $\mathcal{I}$ is the abstract representation of the scheduler's code: given any environment, it determines how the scheduler will respond. However, note that causality works both ways: the environment influences the scheduler's behavior, and the scheduler's actions can affect the environment (e.g., by completing callbacks).
 
 ### Happy Traces
 
-A structure $\langle \mathcal{E}, \mathcal{I}(\mathcal{E}), \tau \rangle$ is called a **happy trace** of $\mathcal{I}$ iff:
+A structure $\langle \mathcal{E}, \mathcal{I}(\mathcal{E}), \mathcal{N}, \tau \rangle$ is called a **happy trace** of $\mathcal{I}$ iff:
 
 1. It satisfies the combined theory for some witnesses $(a,b,t_{\texttt{lag}})$:
    $$
-   \langle \mathcal{E}, \mathcal{I}(\mathcal{E}), \tau \rangle \models T_{\textsf{env}} \cup T_{\textsf{sch}}(a,b,t_{\texttt{lag}}),
+   \langle \mathcal{E}, \mathcal{I}(\mathcal{E}), \mathcal{N}, \tau \rangle \models T_{\textsf{env}} \cup T_{\textsf{sch}}(a,b,t_{\texttt{lag}}),
    $$
 
-2. There exists another environment $\mathcal{E}'$ that differs only in the amount of $\texttt{Supernatural}$ events, specifically the set of former's indexes is a subset of the latter's, such that:
+2. There exists another supernatural function $\mathcal{N}' = \langle \texttt{supernatural}' \rangle$ that maps to strictly more phenomena (for all $t \in \mathbb{T}$, $\texttt{supernatural}(t) \subseteq \texttt{supernatural}'(t)$ and there exists some $t_0$ where $\texttt{supernatural}(t_0) \subsetneq \texttt{supernatural}'(t_0)$), such that:
    $$
-   \langle \mathcal{E}', \mathcal{I}(\mathcal{E}'), \tau \rangle \not\models T_{\textsf{env}} \cup T_{\textsf{sch}}(a, b, t_{\texttt{lag}})
+   \langle \mathcal{E}, \mathcal{I}(\mathcal{E}), \mathcal{N}', \tau \rangle \not\models T_{\textsf{env}} \cup T_{\textsf{sch}}(a, b, t_{\texttt{lag}})
    $$
 
-A happy trace characterizes an execution where the implementation $\mathcal{I}$ satisfied the theory under environment $\mathcal{E}$, but there exists a related environment $\mathcal{E}'$ with additional supernatural events (a superset) under which the same implementation would not satisfy the theory.
+A happy trace characterizes an execution where the implementation $\mathcal{I}$ satisfied the theory under environment $\mathcal{E}$ with supernatural function $\mathcal{N}$, but there exists a related supernatural function $\mathcal{N}'$ with additional supernatural phenomena (pointwise superset) under which the same implementation would not satisfy the theory.
 
-**Intuition**: the implementation can tolerate the supernatural perturbations present in $\mathcal{E}$, but not the additional ones in $\mathcal{E}'$. Since supernatural events represent phenomena outside the model's formal scope — potentially those that could disrupt any implementation — happy traces mark the limits of what the implementation can successfully handle. They distinguish between environments where the implementation succeeds despite unexplainable phenomena, and environments where such phenomena exceed its tolerance.
+**Intuition**: the implementation can tolerate the supernatural perturbations present in $\mathcal{N}$, but not the additional ones in $\mathcal{N}'$. Since supernatural phenomena represent events outside the model's formal scope — potentially those that could disrupt any implementation — happy traces mark the limits of what the implementation can successfully handle. They distinguish between executions where the implementation succeeds despite unexplainable phenomena, and executions where such phenomena exceed its tolerance.
 
 ---
 
-An implementation $\mathcal{I}$ is **conformant** iff for all environments $\mathcal{E} \in \text{Env}$ and all timestamp functions $\tau$, the structure $\langle \mathcal{E}, \mathcal{I}(\mathcal{E}), \tau \rangle$ is a happy trace of $\mathcal{I}$.
+An implementation $\mathcal{I}$ is **conformant** iff for all environments $\mathcal{E} \in \text{Env}$, all supernatural functions $\mathcal{N} \in \text{Supernatural}$, and all timestamp functions $\tau$, the structure $\langle \mathcal{E}, \mathcal{I}(\mathcal{E}), \mathcal{N}, \tau \rangle$ is a happy trace of $\mathcal{I}$.
 
-In other words, a conformant implementation must produce only happy traces. This means that whenever the implementation fails to satisfy the theory, the failure must be attributable to supernatural events—specifically, there must exist an environment with even more supernatural events under which the implementation would also fail. Conversely, unhappy traces (failures that persist even when supernatural events are reduced) are not permitted for conformant implementations.
+In other words, a conformant implementation must produce only happy traces. This means that whenever the implementation fails to satisfy the theory, the failure must be attributable to supernatural phenomena—specifically, there must exist a supernatural function mapping to even more phenomena under which the implementation would also fail. Conversely, unhappy traces (failures that persist even when supernatural phenomena are reduced) are not permitted for conformant implementations.
 
 ---
