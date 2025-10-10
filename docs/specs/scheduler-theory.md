@@ -709,7 +709,7 @@ $$
 
 ### Models of the Theory
 
-A trace over $\Sigma_{\textsf{env}} \cup \Sigma_{\textsf{sch}}$ with timestamps $\tau$ yields a **structure** $\langle \mathcal{E}, \mathcal{S}, \tau \rangle$. The structure is a **model of the theory** iff:
+A trace over $\Sigma_{\textsf{env}} \cup \Sigma_{\textsf{sch}}$ with timestamps $\tau$ yields a **structure** $\langle \mathcal{E}, \mathcal{S}, \tau \rangle$. The structure is a **model of the theory**, written as $\langle \mathcal{E}, \mathcal{S}, \tau \rangle \models T$, iff:
 
 1. Environment-owned predicates are interpreted exactly as the lifts provided by the environment tuple $\mathcal{E}$ (which includes $\texttt{Compute}$, $\texttt{Crash}$, $\texttt{Supernatural}$, $\texttt{Due}$, $\texttt{RetryDue}$, $\texttt{REs}$, $\texttt{REf}$, $\texttt{SS}$, and $\texttt{IS}_R$).
 2. Scheduler-owned predicates are produced by the scheduler behavior $\mathcal{S}$ (at most one observable action per position, cf. EA3).
