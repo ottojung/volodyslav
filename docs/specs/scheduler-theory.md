@@ -559,7 +559,7 @@ The following labels identify illustrative environment classes:
 
 ## Scheduler Axioms
 
-The formulas in this section constitute $T_{\textsf{sched}}(a,b,t_{\texttt{lag}})$. Each axiom is parameterised by the witnesses $(a,b,t_{\texttt{lag}})$ that appear in the compute-bounded modalities.
+The formulas in this section constitute $T_{\textsf{sch}}(a,b,t_{\texttt{lag}})$. Each axiom is parameterised by the witnesses $(a,b,t_{\texttt{lag}})$ that appear in the compute-bounded modalities.
 
 ### Safety Axioms
 
@@ -652,7 +652,7 @@ $$
 
 ### Signature & Structures
 
-We work over a multi-sorted first-order signature $\Sigma_{\textsf{sched}}$ with the following sorts:
+We work over a multi-sorted first-order signature $\Sigma_{\textsf{sch}}$ with the following sorts:
 
 * $\mathbb{T}$ (timestamps), $\mathbb{D}$ (durations), and $\mathbb{P}$ (compute budgets).
 * $\texttt{TaskId}$, $\texttt{Opaque}$, $\texttt{Callback}$, $\texttt{Schedule}$, $\texttt{RetryDelay}$, $\texttt{Task}$, and $\texttt{RegistrationList}$.
@@ -666,7 +666,7 @@ Function symbols include:
 
 Predicate symbols cover the observable alphabet. They include scheduler-owned atoms $\texttt{IS}_R$, $\texttt{IE}$, $\texttt{SS}$, $\texttt{SE}$, $\texttt{RS}_x$, $\texttt{REs}_x$, $\texttt{REf}_x$, as well as environment-owned atoms such as $\texttt{Compute}$, $\texttt{Crash}$, $\texttt{Due}_x$, and $\texttt{RetryDue}_x$. Indexed predicates range over the appropriate sorts (e.g., $x$ ranges over $\texttt{Task}$, $R$ over $\texttt{RegistrationList}$); $\texttt{SS}$ and $\texttt{SE}$ are 0-ary.
 
-The free constants $(a,b,t_{\texttt{lag}})$ are theory parameters that instantiate compute-bounded modalities within $T_{\textsf{sched}}(a,b,t_{\texttt{lag}})$.
+The free constants $(a,b,t_{\texttt{lag}})$ are theory parameters that instantiate compute-bounded modalities within $T_{\textsf{sch}}(a,b,t_{\texttt{lag}})$.
 
 An environment is packaged as the tuple
 
@@ -690,7 +690,7 @@ providing the interpretations for scheduler-owned predicates.
 
 The satisfaction judgment uses linear-time temporal logic with past over trace positions equipped with $\tau$. Definition schemata $F_{\texttt{comp}!}$, $F_{\texttt{comp}}$, and $F^{\texttt{lin}}_{\texttt{comp}}$ are macros over this signature.
 
-Let $T_{\textsf{sched}}(a,b,t_{\texttt{lag}})$ denote the set of **Scheduler Axioms**: S1–S4 and L1–L3 with every modality instantiated using the same witnesses $(a,b,t_{\texttt{lag}})$. Let $T_{\textsf{env}}$ denote the **Environment Axioms** EA1–EA7.
+Let $T_{\textsf{sch}}(a,b,t_{\texttt{lag}})$ denote the set of **Scheduler Axioms**: S1–S4 and L1–L3 with every modality instantiated using the same witnesses $(a,b,t_{\texttt{lag}})$. Let $T_{\textsf{env}}$ denote the **Environment Axioms** EA1–EA7.
 
 We write
 
@@ -703,12 +703,12 @@ to mean that the structure interpreting environment-owned symbols via $\mathcal{
 The combined theory is
 
 $$
-T \;=\; T_{\textsf{sched}}(a,b,t_{\texttt{lag}}) \cup T_{\textsf{env}}.
+T \;=\; T_{\textsf{sch}}(a,b,t_{\texttt{lag}}) \cup T_{\textsf{env}}.
 $$
 
 | Component | Status | Contents |
 |-----------|--------|----------|
-| $T_{\textsf{sched}}(a,b,t_{\texttt{lag}})$ | Normative | Scheduler axioms S1–S4, L1–L3 with parameters $(a,b,t_{\texttt{lag}})$ |
+| $T_{\textsf{sch}}(a,b,t_{\texttt{lag}})$ | Normative | Scheduler axioms S1–S4, L1–L3 with parameters $(a,b,t_{\texttt{lag}})$ |
 | $T_{\textsf{env}}$ | Informative | Environment axioms EA1–EA7 |
 
 ### Models of the Theory
@@ -717,7 +717,7 @@ A trace over $\Sigma_{\textsf{env}} \cup \Sigma_{\textsf{sch}}$ with timestamps 
 
 1. Environment-owned predicates are interpreted exactly as the lifts provided by the environment tuple $\mathcal{E}$ (which includes $\texttt{Compute}$, $\texttt{Crash}$, $\texttt{Due}$, $\texttt{RetryDue}$, $\texttt{REs}$, $\texttt{REf}$, $\texttt{SS}$, and $\texttt{IS}_R$).
 2. Scheduler-owned predicates are produced by the scheduler behavior $\mathcal{S}$ (at most one observable action per position, cf. EA3).
-3. The structure satisfies every axiom in $T_{\textsf{env}} \cup T_{\textsf{sched}}(a,b,t_{\texttt{lag}})$.
+3. The structure satisfies every axiom in $T_{\textsf{env}} \cup T_{\textsf{sch}}(a,b,t_{\texttt{lag}})$.
 
 This perspective separates scheduler obligations from environmental truths (see [Environment Axioms](#environment-axioms)) and anchors liveness reasoning in the satisfaction relation defined above.
 
@@ -740,7 +740,7 @@ The implementation $\mathcal{I}$ is the abstract representation of the scheduler
 An implementation $\mathcal{I}$ is **conformant** iff for all environments $\mathcal{E} \in \text{Env}$, there exist witnesses $(a,b,t_{\texttt{lag}}) \in \mathbb{Z}_{\ge 0} \times \mathbb{Z}_{\ge 0} \times \mathbb{D}$ such that for every run (with timestamp function $\tau$) produced by composing $\mathcal{I}(\mathcal{E})$ with $\mathcal{E}$, the resulting structure satisfies the combined theory:
 
 $$
-\langle \mathcal{E}, \mathcal{I}(\mathcal{E}), \tau \rangle \models T_{\textsf{env}} \cup T_{\textsf{sched}}(a,b,t_{\texttt{lag}}).
+\langle \mathcal{E}, \mathcal{I}(\mathcal{E}), \tau \rangle \models T_{\textsf{env}} \cup T_{\textsf{sch}}(a,b,t_{\texttt{lag}}).
 $$
 
 In other words, for each environment, a conformant implementation admits witnesses $(a,b,t_{\texttt{lag}})$ (which may depend on the environment) such that the scheduler behaviors it produces satisfy the theory when composed with that environment.
@@ -755,7 +755,7 @@ This section is informative. It clarifies the boundary between the mathematical 
 
 ### Conformance is Relative to the Modelled World
 
-Conformance is evaluated over traces of the signature $\Sigma_{\textsf{env}}\cup\Sigma_{\textsf{sch}}$ that satisfy the combined theory $T_{\textsf{env}}\cup T_{\textsf{sched}}(a,b,t_{\texttt{lag}})$. The model admits **only** the phenomena expressible in that signature and governed by the axioms (e.g., $\texttt{Crash}$, $\texttt{Due}$, $\texttt{RetryDue}$, compute density). Physical phenomena that alter an implementation's behavior **without** being represented as events/functions in the signature are **outside** the model.
+Conformance is evaluated over traces of the signature $\Sigma_{\textsf{env}}\cup\Sigma_{\textsf{sch}}$ that satisfy the combined theory $T_{\textsf{env}}\cup T_{\textsf{sch}}(a,b,t_{\texttt{lag}})$. The model admits **only** the phenomena expressible in that signature and governed by the axioms (e.g., $\texttt{Crash}$, $\texttt{Due}$, $\texttt{RetryDue}$, compute density). Physical phenomena that alter an implementation's behavior **without** being represented as events/functions in the signature are **outside** the model.
 
 **Unmodelled-perturbation principle.** If a physical phenomenon can (i) alter the scheduler's future scheduler-owned actions or its ability to meet compute-bounded eventualities, while (ii) producing no corresponding change in the modelled environment tuple $\mathcal{E}$ or permitted actions, then there exist executions where the projection to $\Sigma_{\textsf{env}}\cup\Sigma_{\textsf{sch}}$ **must** violate at least one of S1–S4 or L1–L3. In such worlds, **conformance is unattainable**.
 
