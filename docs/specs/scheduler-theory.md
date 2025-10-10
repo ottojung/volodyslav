@@ -738,6 +738,24 @@ In other words, for each environment, a conformant implementation admits witness
 
 This satisfaction relation is defined in [Structures & Satisfaction](#structures--satisfaction).
 
+## Happy Traces
+
+A structure $\langle \mathcal{E}, \mathcal{S}, \tau \rangle$ is called a **happy trace** iff:
+
+1. It satisfies the combined theory for some witnesses $(a,b,t_{\texttt{lag}})$:
+   $$
+   \langle \mathcal{E}, \mathcal{S}, \tau \rangle \models T_{\textsf{env}} \cup T_{\textsf{sch}}(a,b,t_{\texttt{lag}}),
+   $$
+   
+2. There exists another structure $\langle \mathcal{E}', \mathcal{S}, \tau \rangle$ that differs only in the amount and/or indexes of $\texttt{Supernatural}$ events, such that:
+   $$
+   \langle \mathcal{E}', \mathcal{S}, \tau \rangle \not\models T_{\textsf{env}} \cup T_{\textsf{sch}}(a, b, t_{\texttt{lag}})
+   $$
+
+**Intuition.** A happy trace represents an execution where the scheduler succeeded **despite** the potential for unexplainable disruptions. The existence of a corresponding "unhappy" trace (differing only in supernatural events) demonstrates that the success was contingent—if different supernatural events had occurred at different times or in different quantities, the theory would have been violated. Thus, happy traces characterize executions where the implementation was "lucky" with respect to phenomena outside the model's formal scope.
+
+This concept bridges the gap between conformance (which quantifies over all possible environments) and real-world robustness (which must account for supernatural perturbations that can arbitrarily disrupt execution).
+
 ---
 
 ## Real-World Assumptions and the Limits of Conformance
