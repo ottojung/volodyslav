@@ -717,13 +717,27 @@ This perspective separates scheduler obligations from environmental truths (see 
 
 ---
 
+## Implementations
+
+A **scheduler implementation** is a function
+
+$$
+\mathcal{I} : \text{Env} \to \text{Sch}
+$$
+
+that maps each environment $\mathcal{E}$ to a scheduler behavior $\textsf{Sch}$. Here, $\text{Env}$ denotes the space of all possible environments (each providing $\texttt{compute}$, $\texttt{Crash}$, $\texttt{Due}_x$, $\texttt{RetryDue}_x$, $\texttt{REs}_x$, $\texttt{REf}_x$, $\texttt{SS}$, and $\texttt{IS}_R$), and $\text{Sch}$ denotes the space of all possible scheduler behaviors (producing $\texttt{IE}_R$, $\texttt{SE}$, and $\texttt{RS}_x$ events).
+
+The implementation $\mathcal{I}$ is the abstract representation of the scheduler's code: given any environment, it determines how the scheduler will respond.
+
 ## Conformance
 
-A scheduler implementation $\textsf{Sch}$ is **conformant** iff for all environments $\mathcal{E}$ there exist witnesses $(a,b,t_{\texttt{lag}}) \in \mathbb{Z}_{\ge 0} \times \mathbb{Z}_{\ge 0} \times \mathbb{D}$ such that for every run produced by composing $\textsf{Sch}$ with $\mathcal{E}$ we obtain a structure (with timestamp function $\tau$) satisfying the combined theory:
+An implementation $\mathcal{I}$ is **conformant** iff there exist witnesses $(a,b,t_{\texttt{lag}}) \in \mathbb{Z}_{\ge 0} \times \mathbb{Z}_{\ge 0} \times \mathbb{D}$ such that for all environments $\mathcal{E} \in \text{Env}$ and for every run (with timestamp function $\tau$) produced by composing $\mathcal{I}(\mathcal{E})$ with $\mathcal{E}$, the resulting structure satisfies the combined theory:
 
 $$
-\langle \mathcal{E}, \textsf{Sch}, \tau \rangle \models T_{\textsf{env}} \cup T_{\textsf{sched}}(a,b,t_{\texttt{lag}}).
+\langle \mathcal{E}, \mathcal{I}(\mathcal{E}), \tau \rangle \models T_{\textsf{env}} \cup T_{\textsf{sched}}(a,b,t_{\texttt{lag}}).
 $$
+
+In other words, a conformant implementation uses **the same witnesses** $(a,b,t_{\texttt{lag}})$ for all environments and produces scheduler behaviors that satisfy the theory when composed with any environment.
 
 This satisfaction relation is defined in [Structures & Satisfaction](#structures--satisfaction).
 
