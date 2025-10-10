@@ -433,9 +433,9 @@ Some environments make it impossible to implement a useful scheduler (for exampl
 
 Among others, environments contribute these two ingredients:
 
-1. **Crash generator** — a predicate $\texttt{Crash}(t)$ over $\mathbb{T}$. When true, the environment marks an exogenous interruption that preempts in-flight callbacks and halts the scheduler itself; axiom **EA1** enforces the resulting quiescence in the trace.
+1. **Crash generator** — a predicate $\texttt{Crash}$ over trace positions. When true, the environment marks an exogenous interruption that preempts in-flight callbacks and halts the scheduler itself; axiom **EA1** enforces the resulting quiescence in the trace.
 
-2. **Compute event predicate** — a predicate $\texttt{Compute}$ over trace positions (i.e., $\texttt{Compute} \texttt{ at } i$) indicating instants when the environment could execute one microinstruction of the scheduler implementation. This is an environment-owned primitive that marks opportunities for scheduler progress.
+2. **Compute event predicate** — a predicate $\texttt{Compute}$ over trace positions indicating instants when the environment could execute one microinstruction of the scheduler implementation. This is an environment-owned primitive that marks opportunities for scheduler progress.
 
    From this predicate, we derive the **compute function**:
 
