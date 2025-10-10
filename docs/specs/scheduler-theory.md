@@ -637,7 +637,7 @@ Similar to L1, this property ensures that once an initialization starts, it must
 
 ---
 
-**L3 — Stop completes linearly after first quiescence**
+**L3 — Stop completes after quiescence**
 
 $$
 \texttt{G}\Big(\, \texttt{SS}_R \;\rightarrow\;
