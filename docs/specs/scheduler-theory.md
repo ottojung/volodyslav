@@ -740,7 +740,9 @@ A structure $\langle \mathcal{E}, \mathcal{I}(\mathcal{E}), \tau \rangle$ is cal
    \langle \mathcal{E}', \mathcal{I}(\mathcal{E}'), \tau \rangle \not\models T_{\textsf{env}} \cup T_{\textsf{sch}}(a, b, t_{\texttt{lag}})
    $$
 
-**Intuition.** A happy trace characterizes an execution where the implementation $\mathcal{I}$ satisfied the theory under environment $\mathcal{E}$, but there exists a related environment $\mathcal{E}'$ with additional supernatural events (a superset) under which the same implementation would not satisfy the theory. This identifies a boundary: the implementation can tolerate the supernatural perturbations present in $\mathcal{E}$, but not the additional ones in $\mathcal{E}'$. Since supernatural events represent phenomena outside the model's formal scope — potentially those that could disrupt any implementation — happy traces mark the limits of what the implementation can successfully handle. They distinguish between environments where the implementation succeeds despite unexplainable phenomena, and environments where such phenomena exceed its tolerance.
+A happy trace characterizes an execution where the implementation $\mathcal{I}$ satisfied the theory under environment $\mathcal{E}$, but there exists a related environment $\mathcal{E}'$ with additional supernatural events (a superset) under which the same implementation would not satisfy the theory.
+
+**Intuition**: the implementation can tolerate the supernatural perturbations present in $\mathcal{E}$, but not the additional ones in $\mathcal{E}'$. Since supernatural events represent phenomena outside the model's formal scope — potentially those that could disrupt any implementation — happy traces mark the limits of what the implementation can successfully handle. They distinguish between environments where the implementation succeeds despite unexplainable phenomena, and environments where such phenomena exceed its tolerance.
 
 ---
 
