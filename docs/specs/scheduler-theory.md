@@ -219,7 +219,7 @@ Each predicate marks the instant the named public action occurs from the perspec
 
 ## Macros
 
-#### Abbreviations
+### Abbreviations
 
 * $\texttt{IS}_R := \texttt{InitStart}(R)$
 * $\texttt{IEs}_R := \texttt{InitSuccess}(R)$
@@ -236,7 +236,7 @@ Each predicate marks the instant the named public action occurs from the perspec
 * $\texttt{REf}_x := \texttt{RunFailure}(x)$
 * $\texttt{RE}_x := \texttt{REs}_x \vee \texttt{REf}_x$
 
-#### Stateful
+### Stateful
 
 * $\texttt{Hold}(\texttt{set}, \texttt{clear}) := \big((\neg \texttt{clear}) \; \texttt{S} \; \texttt{set}\big) \land \neg \texttt{clear}$
 
