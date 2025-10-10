@@ -712,9 +712,9 @@ A trace over $\Sigma_{\textsf{env}} \cup \Sigma_{\textsf{sch}}$ with timestamps 
 
 This perspective separates scheduler obligations from environmental truths (see [Environment Axioms](#environment-axioms)) and anchors liveness reasoning in the satisfaction relation defined above.
 
----
+## Conformance
 
-## Implementations
+### Implementations
 
 A **scheduler implementation** is a function
 
@@ -726,19 +726,7 @@ that maps each environment $\mathcal{E}$ to a scheduler behavior $\mathcal{S}$. 
 
 The implementation $\mathcal{I}$ is the abstract representation of the scheduler's code: given any environment, it determines how the scheduler will respond. However, note that causality works both ways: the environment influences the scheduler's behavior, and the scheduler's actions can affect the environment (e.g., by completing callbacks).
 
-## Conformance
-
-An implementation $\mathcal{I}$ is **conformant** iff for all environments $\mathcal{E} \in \text{Env}$, there exist witnesses $(a,b,t_{\texttt{lag}}) \in \mathbb{Z}_{\ge 0} \times \mathbb{Z}_{\ge 0} \times \mathbb{D}$ such that for every run (with timestamp function $\tau$) produced by composing $\mathcal{I}(\mathcal{E})$ with $\mathcal{E}$, the resulting structure satisfies the combined theory:
-
-$$
-\langle \mathcal{E}, \mathcal{I}(\mathcal{E}), \tau \rangle \models T_{\textsf{env}} \cup T_{\textsf{sch}}(a,b,t_{\texttt{lag}}).
-$$
-
-In other words, for each environment, a conformant implementation admits witnesses $(a,b,t_{\texttt{lag}})$ (which may depend on the environment) such that the scheduler behaviors it produces satisfy the theory when composed with that environment.
-
-This satisfaction relation is defined in [Structures & Satisfaction](#structures--satisfaction).
-
-## Happy Traces
+### Happy Traces
 
 A structure $\langle \mathcal{E}, \mathcal{S}, \tau \rangle$ is called a **happy trace** iff:
 
@@ -755,6 +743,16 @@ A structure $\langle \mathcal{E}, \mathcal{S}, \tau \rangle$ is called a **happy
 **Intuition.** A happy trace demonstrates that satisfaction of the theory is **not attributable solely to the scheduler implementation**. Since the same scheduler behavior $\mathcal{S}$ can produce different outcomes depending on the supernatural events, conformance is contingent on factors outside the model's formal scope. The unhappy trace may fail due to (i) catastrophic supernatural events that no implementation could survive (e.g., "end of the world" scenarios), or (ii) the absence of fortuitous supernatural events that the happy trace relied upon (e.g., a "fix-it fairy" that compensated for implementation bugs). Either way, happy traces reveal that the observed correctness cannot be attributed to sound scheduler design alone, but depends on the particular supernatural circumstances.
 
 ---
+
+An implementation $\mathcal{I}$ is **conformant** iff for all environments $\mathcal{E} \in \text{Env}$, there exist witnesses $(a,b,t_{\texttt{lag}}) \in \mathbb{Z}_{\ge 0} \times \mathbb{Z}_{\ge 0} \times \mathbb{D}$ such that for every run (with timestamp function $\tau$) produced by composing $\mathcal{I}(\mathcal{E})$ with $\mathcal{E}$, the resulting structure satisfies the combined theory:
+
+$$
+\langle \mathcal{E}, \mathcal{I}(\mathcal{E}), \tau \rangle \models T_{\textsf{env}} \cup T_{\textsf{sch}}(a,b,t_{\texttt{lag}}).
+$$
+
+In other words, for each environment, a conformant implementation admits witnesses $(a,b,t_{\texttt{lag}})$ (which may depend on the environment) such that the scheduler behaviors it produces satisfy the theory when composed with that environment.
+
+This satisfaction relation is defined in [Structures & Satisfaction](#structures--satisfaction).
 
 ## Real-World Assumptions and the Limits of Conformance
 
