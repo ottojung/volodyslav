@@ -215,6 +215,12 @@ Note: because of DST and other irregularities of a civil clock, minute starts ar
 
 ---
 
+* $\texttt{Supernatural}$ — marks an event that is not captured by any other predicate in the theory.
+
+*Interpretation:* This is a catch-all predicate for events that occur in the real world but are not expressible within the scheduler theory's signature. Examples include: events unrelated to scheduling, benign environmental fluctuations, or phenomena that might influence the system in ways outside the model's scope. The name reflects the perspective that just as supernatural events are unexplainable by science, $\texttt{Supernatural}$ events are unexplainable by (and underivable from) the formal scheduler theory. These events may be irrelevant, harmless, or even helpful to the scheduler—the theory makes no assumptions about their impact.
+
+---
+
 Each predicate marks the instant the named public action occurs from the perspective of the embedding JavaScript runtime: function entry ($\texttt{InitStart}$, $\texttt{StopStart}$), function return ($\texttt{IE}$, $\texttt{StopEnd}$), callback invocation begin/end ($\texttt{RunStart}$, $\texttt{RE}$), and exogenous crash ($\texttt{UnexpectedShutdown}$). No logging or internal bookkeeping is modeled.
 
 ## Macros
@@ -654,14 +660,14 @@ Function symbols include:
 * $\texttt{duration} : \mathcal{P}(\mathbb{T}) \to \mathbb{D}$ and $\texttt{compute} : \mathcal{P}(\mathbb{T}) \to \mathbb{P}$ (where $\texttt{compute}$ is defined via the $\texttt{Compute}$ predicate as described in [Environment Axioms](#environment-axioms)).
 * Task projections $\textsf{id}$, $\textsf{sch}$, $\textsf{cb}$, $\textsf{rd}$, $\textsf{key}$, list operations (length, indexing), and the environment parameters $\texttt{Due}$, $\texttt{RetryDue}$.
 
-Predicate symbols cover the observable alphabet. They include scheduler-owned atoms $\texttt{IS}_R$, $\texttt{IE}$, $\texttt{SS}$, $\texttt{SE}$, $\texttt{RS}_x$, $\texttt{REs}_x$, $\texttt{REf}_x$, as well as environment-owned atoms such as $\texttt{Compute}$, $\texttt{Crash}$, $\texttt{Due}_x$, and $\texttt{RetryDue}_x$. Indexed predicates range over the appropriate sorts (e.g., $x$ ranges over $\texttt{Task}$, $R$ over $\texttt{RegistrationList}$); $\texttt{SS}$ and $\texttt{SE}$ are 0-ary.
+Predicate symbols cover the observable alphabet. They include scheduler-owned atoms $\texttt{IS}_R$, $\texttt{IE}$, $\texttt{SS}$, $\texttt{SE}$, $\texttt{RS}_x$, $\texttt{REs}_x$, $\texttt{REf}_x$, as well as environment-owned atoms such as $\texttt{Compute}$, $\texttt{Crash}$, $\texttt{Supernatural}$, $\texttt{Due}_x$, and $\texttt{RetryDue}_x$. Indexed predicates range over the appropriate sorts (e.g., $x$ ranges over $\texttt{Task}$, $R$ over $\texttt{RegistrationList}$); $\texttt{SS}$ and $\texttt{SE}$ are 0-ary.
 
 The free constants $(a,b,t_{\texttt{lag}})$ are theory parameters that instantiate compute-bounded modalities within $T_{\textsf{sch}}(a,b,t_{\texttt{lag}})$.
 
 An environment is packaged as the tuple
 
 $$
-\mathcal{E} = \langle \texttt{Compute}, \texttt{Crash}, \texttt{Due}_x, \texttt{RetryDue}_x, \texttt{REs}, \texttt{REf}, \texttt{SS}, \texttt{IS}_R \rangle
+\mathcal{E} = \langle \texttt{Compute}, \texttt{Crash}, \texttt{Supernatural}, \texttt{Due}_x, \texttt{RetryDue}_x, \texttt{REs}, \texttt{REf}, \texttt{SS}, \texttt{IS}_R \rangle
 $$
 
 providing the interpretations for environment-owned predicates listed above. The $\texttt{compute}$ function is then derived from $\texttt{Compute}$ by counting.
@@ -705,7 +711,7 @@ $$
 
 A trace over $\Sigma_{\textsf{env}} \cup \Sigma_{\textsf{sch}}$ with timestamps $\tau$ yields a **structure** $\langle \mathcal{E}, \mathcal{S}, \tau \rangle$. The structure is a **model of the theory** iff:
 
-1. Environment-owned predicates are interpreted exactly as the lifts provided by the environment tuple $\mathcal{E}$ (which includes $\texttt{Compute}$, $\texttt{Crash}$, $\texttt{Due}$, $\texttt{RetryDue}$, $\texttt{REs}$, $\texttt{REf}$, $\texttt{SS}$, and $\texttt{IS}_R$).
+1. Environment-owned predicates are interpreted exactly as the lifts provided by the environment tuple $\mathcal{E}$ (which includes $\texttt{Compute}$, $\texttt{Crash}$, $\texttt{Supernatural}$, $\texttt{Due}$, $\texttt{RetryDue}$, $\texttt{REs}$, $\texttt{REf}$, $\texttt{SS}$, and $\texttt{IS}_R$).
 2. Scheduler-owned predicates are produced by the scheduler behavior $\mathcal{S}$ (at most one observable action per position, cf. EA3).
 3. The structure satisfies every axiom in $T_{\textsf{env}} \cup T_{\textsf{sch}}(a,b,t_{\texttt{lag}})$.
 
