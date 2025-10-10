@@ -682,7 +682,7 @@ providing the interpretations for environment-owned predicates listed above. The
 A scheduler behavior is similarly packaged as
 
 $$
-S = \langle \texttt{IE}_R, \texttt{SE}, \texttt{RS}_x \rangle,
+\mathcal{S} = \langle \texttt{IE}_R, \texttt{SE}, \texttt{RS}_x \rangle,
 $$
 
 providing the interpretations for scheduler-owned predicates.
