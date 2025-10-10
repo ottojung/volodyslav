@@ -2,7 +2,7 @@
 # Scheduler Theorems
 
 This file contains theorems that can be derived from the axioms in [scheduler-axioms.md](scheduler-axioms.md).
-More specifically, statements in this file follow from $T_{\textsf{env}} \cup T_{\textsf{sched}}(a,b,t_{\texttt{lag}})$.
+More specifically, statements in this file follow from $T_{\textsf{env}} \cup T_{\textsf{sch}}(a,b,t_{\texttt{lag}})$.
 
 ---
 
@@ -53,7 +53,7 @@ A crash cannot cooccur with any action. Derived from **EA1** and **EA2**.
 
 ## Theorem 5 — Example Theorem of Traces
 
-The following are traces of $T_{\textsf{env}} \cup T_{\textsf{sched}}(a,b,t_{\texttt{lag}})$:
+The following are traces of $T_{\textsf{env}} \cup T_{\textsf{sch}}(a,b,t_{\texttt{lag}})$:
 
 ### Trace 1 — Normal operation
 
