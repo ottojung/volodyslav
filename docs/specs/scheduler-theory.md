@@ -33,16 +33,6 @@ This specification does **not** cover:
 
 ---
 
-### Conformance
-
-A scheduler implementation $\textsf{Sch}$ is **conformant** iff for all environments $\mathcal{E}$ there exist witnesses $(a,b,t_{\texttt{lag}}) \in \mathbb{Z}_{\ge 0} \times \mathbb{Z}_{\ge 0} \times \mathbb{D}$ such that for every run produced by composing $\textsf{Sch}$ with $\mathcal{E}$ we obtain a structure (with timestamp function $\tau$) satisfying the combined theory:
-
-$$
-\langle \mathcal{E}, \textsf{Sch}, \tau \rangle \models T_{\textsf{env}} \cup T_{\textsf{sched}}(a,b,t_{\texttt{lag}}).
-$$
-
-This satisfaction relation is defined in [Structures & Satisfaction](#structures--satisfaction).
-
 ## Mathematical Preliminaries & Notation
 
 We work over **timestamped linear traces** ($\langle i \mapsto \tau(i) \in \mathbb{T} \rangle$) and reason in **first-order linear-time temporal logic with past**. Variables range over the scheduler’s observable objects and time domain. By convention, formulas without explicit quantifiers are **universally quantified**. We write $\mathrm{RS}_x$ etc. for instantiated predicates and distinguish **environment-owned** predicates/functions (clock pulses, crashes, compute/duration) from **scheduler-owned** actions (starts/ends/init/stop). Quantitative liveness uses **compute-bounded modalities**, with budgets linear in **bit-lengths** ( $|X|$ ) and a fixed **lag** ( $t_{\text{lag}}$ ). These modalities are **definition schemata** over the signature.
@@ -427,76 +417,6 @@ An abbreviation.
 
 ---
 
-## Structures & Satisfaction
-
-### Signature & Structures
-
-We work over a multi-sorted first-order signature $\Sigma_{\textsf{sched}}$ with the following sorts:
-
-* $\mathbb{T}$ (timestamps), $\mathbb{D}$ (durations), and $\mathbb{P}$ (compute budgets).
-* $\texttt{TaskId}$, $\texttt{Opaque}$, $\texttt{Callback}$, $\texttt{Schedule}$, $\texttt{RetryDelay}$, $\texttt{Task}$, and $\texttt{RegistrationList}$.
-* Auxiliary finite sets such as $\texttt{ValidRegistrations}$ and Boolean values $\mathbb{B}$.
-
-Function symbols include:
-
-* $\tau : \mathbb{N} \to \mathbb{T}$ (timestamp map over trace positions).
-* $\texttt{duration} : \mathcal{P}(\mathbb{T}) \to \mathbb{D}$ and $\texttt{compute} : \mathcal{P}(\mathbb{T}) \to \mathbb{P}$.
-* Task projections $\textsf{id}$, $\textsf{sch}$, $\textsf{cb}$, $\textsf{rd}$, $\textsf{key}$, list operations (length, indexing), and the environment parameters $\texttt{Due}$, $\texttt{RetryDue}$.
-
-Predicate symbols cover the observable alphabet. They include scheduler-owned atoms $\texttt{IS}_R$, $\texttt{IE}$, $\texttt{SS}$, $\texttt{SE}$, $\texttt{RS}_x$, $\texttt{REs}_x$, $\texttt{REf}_x$, as well as environment-owned atoms such as $\texttt{Crash}$, $\texttt{Due}_x$, and $\texttt{RetryDue}_x$. Indexed predicates range over the appropriate sorts (e.g., $x$ ranges over $\texttt{Task}$, $R$ over $\texttt{RegistrationList}$); $\texttt{SS}$ and $\texttt{SE}$ are 0-ary.
-
-The free constants $(a,b,t_{\texttt{lag}})$ are theory parameters that instantiate compute-bounded modalities within $T_{\textsf{sched}}(a,b,t_{\texttt{lag}})$.
-
-An environment is packaged as the tuple
-
-$$
-\mathcal{E} = \langle \texttt{compute}, \texttt{Crash}, \texttt{Due}_x, \texttt{RetryDue}_x, \texttt{REs}, \texttt{REf}, \texttt{SS}, \texttt{IS}_R \rangle,
-$$
-
-providing the interpretations for environment-owned predicates listed above.
-
-> **ownership note.** We classify predicate symbols by ownership: environment-owned predicates are interpreted directly from the environment tuple $\mathcal{E}$, while scheduler-owned predicates are produced by the scheduler implementation. This classification is informative; it explains which component determines the symbol's interpretation inside any structure.
-
-### Satisfaction & Models
-
-The satisfaction judgment uses linear-time temporal logic with past over trace positions equipped with $\tau$. Definition schemata $F_{\texttt{comp}!}$, $F_{\texttt{comp}}$, and $F^{\texttt{lin}}_{\texttt{comp}}$ are macros over this signature.
-
-Let $T_{\textsf{sched}}(a,b,t_{\texttt{lag}})$ denote the set of **Scheduler Axioms**: S1–S5 and L1–L3 with every modality instantiated using the same witnesses $(a,b,t_{\texttt{lag}})$. Let $T_{\textsf{env}}$ denote the **Environment Axioms** EA1–EA6. Optional assumptions A1–A3 may be conjoined to $T_{\textsf{env}}$ to describe specific environment classes, but they are not part of the core theory.
-
-We write
-
-$$
-\langle \mathcal{E}, \textsf{Sch}, \tau \rangle \models \varphi
-$$
-
-to mean that the structure interpreting environment-owned symbols via $\mathcal{E}$, scheduler-owned symbols via $\textsf{Sch}$, and the timestamp map via $\tau$ satisfies the temporal formula $\varphi$ in the standard LTL-with-past semantics.
-
-The combined theory is
-
-$$
-T \;=\; T_{\textsf{sched}}(a,b,t_{\texttt{lag}}) \cup T_{\textsf{env}}.
-$$
-
-Optional environment classes extend $T$ with subsets of $\{\text{A1}, \text{A2}, \text{A3}\}$.
-
-| Component | Status | Contents |
-|-----------|--------|----------|
-| $T_{\textsf{sched}}(a,b,t_{\texttt{lag}})$ | Normative | Scheduler axioms S1–S5, L1–L3 with parameters $(a,b,t_{\texttt{lag}})$ |
-| $T_{\textsf{env}}$ | Informative | Environment axioms EA1–EA6 |
-| $T \cup A$ | Informative | Optional assumptions A1–A3 describing refined environment classes |
-
-### Models of the Theory
-
-A trace over $\Sigma_{\textsf{env}} \cup \Sigma_{\textsf{sch}}$ with timestamps $\tau$ yields a **structure** $\langle \mathcal{E}, \textsf{Sch}, \tau \rangle$. The structure is a **model of the theory** iff:
-
-1. Environment-owned predicates are interpreted exactly as the lifts provided by the environment tuple $\mathcal{E}$ (which includes $\mathbb{T}$, $\texttt{compute}$, $\texttt{Crash}$, $\texttt{Due}$, $\texttt{RetryDue}$, $\texttt{REs}$, $\texttt{REf}$, $\texttt{SS}$, and $\texttt{IS}_R$).
-2. Scheduler-owned predicates are produced by the scheduler $\textsf{Sch}$ (at most one observable action per position, cf. EA3).
-3. The structure satisfies every axiom in $T_{\textsf{env}} \cup T_{\textsf{sched}}(a,b,t_{\texttt{lag}})$.
-
-This perspective separates scheduler obligations from environmental truths (see [Environment Axioms](#environment-axioms-informative)) and anchors liveness reasoning in the satisfaction relation defined above.
-
----
-
 ## Environment Axioms
 
 The scheduler operates against an abstract **Environment** $\mathcal{E}$.
@@ -770,6 +690,88 @@ $$
 $$
 
 **Reading.** After $\texttt{SS}_R$, as soon as the system first becomes quiescent (no callbacks running), the scheduler must complete `stop()` within a compute budget linear in the sizes of the registration list and current timestamp (modulo environment grants), or else be pre-empted by $\texttt{Crash}$.
+
+---
+
+## Structures & Satisfaction
+
+### Signature & Structures
+
+We work over a multi-sorted first-order signature $\Sigma_{\textsf{sched}}$ with the following sorts:
+
+* $\mathbb{T}$ (timestamps), $\mathbb{D}$ (durations), and $\mathbb{P}$ (compute budgets).
+* $\texttt{TaskId}$, $\texttt{Opaque}$, $\texttt{Callback}$, $\texttt{Schedule}$, $\texttt{RetryDelay}$, $\texttt{Task}$, and $\texttt{RegistrationList}$.
+* Auxiliary finite sets such as $\texttt{ValidRegistrations}$ and Boolean values $\mathbb{B}$.
+
+Function symbols include:
+
+* $\tau : \mathbb{N} \to \mathbb{T}$ (timestamp map over trace positions).
+* $\texttt{duration} : \mathcal{P}(\mathbb{T}) \to \mathbb{D}$ and $\texttt{compute} : \mathcal{P}(\mathbb{T}) \to \mathbb{P}$.
+* Task projections $\textsf{id}$, $\textsf{sch}$, $\textsf{cb}$, $\textsf{rd}$, $\textsf{key}$, list operations (length, indexing), and the environment parameters $\texttt{Due}$, $\texttt{RetryDue}$.
+
+Predicate symbols cover the observable alphabet. They include scheduler-owned atoms $\texttt{IS}_R$, $\texttt{IE}$, $\texttt{SS}$, $\texttt{SE}$, $\texttt{RS}_x$, $\texttt{REs}_x$, $\texttt{REf}_x$, as well as environment-owned atoms such as $\texttt{Crash}$, $\texttt{Due}_x$, and $\texttt{RetryDue}_x$. Indexed predicates range over the appropriate sorts (e.g., $x$ ranges over $\texttt{Task}$, $R$ over $\texttt{RegistrationList}$); $\texttt{SS}$ and $\texttt{SE}$ are 0-ary.
+
+The free constants $(a,b,t_{\texttt{lag}})$ are theory parameters that instantiate compute-bounded modalities within $T_{\textsf{sched}}(a,b,t_{\texttt{lag}})$.
+
+An environment is packaged as the tuple
+
+$$
+\mathcal{E} = \langle \texttt{compute}, \texttt{Crash}, \texttt{Due}_x, \texttt{RetryDue}_x, \texttt{REs}, \texttt{REf}, \texttt{SS}, \texttt{IS}_R \rangle,
+$$
+
+providing the interpretations for environment-owned predicates listed above.
+
+> **ownership note.** We classify predicate symbols by ownership: environment-owned predicates are interpreted directly from the environment tuple $\mathcal{E}$, while scheduler-owned predicates are produced by the scheduler implementation. This classification is informative; it explains which component determines the symbol's interpretation inside any structure.
+
+### Satisfaction & Models
+
+The satisfaction judgment uses linear-time temporal logic with past over trace positions equipped with $\tau$. Definition schemata $F_{\texttt{comp}!}$, $F_{\texttt{comp}}$, and $F^{\texttt{lin}}_{\texttt{comp}}$ are macros over this signature.
+
+Let $T_{\textsf{sched}}(a,b,t_{\texttt{lag}})$ denote the set of **Scheduler Axioms**: S1–S5 and L1–L3 with every modality instantiated using the same witnesses $(a,b,t_{\texttt{lag}})$. Let $T_{\textsf{env}}$ denote the **Environment Axioms** EA1–EA6. Optional assumptions A1–A3 may be conjoined to $T_{\textsf{env}}$ to describe specific environment classes, but they are not part of the core theory.
+
+We write
+
+$$
+\langle \mathcal{E}, \textsf{Sch}, \tau \rangle \models \varphi
+$$
+
+to mean that the structure interpreting environment-owned symbols via $\mathcal{E}$, scheduler-owned symbols via $\textsf{Sch}$, and the timestamp map via $\tau$ satisfies the temporal formula $\varphi$ in the standard LTL-with-past semantics.
+
+The combined theory is
+
+$$
+T \;=\; T_{\textsf{sched}}(a,b,t_{\texttt{lag}}) \cup T_{\textsf{env}}.
+$$
+
+Optional environment classes extend $T$ with subsets of $\{\text{A1}, \text{A2}, \text{A3}\}$.
+
+| Component | Status | Contents |
+|-----------|--------|----------|
+| $T_{\textsf{sched}}(a,b,t_{\texttt{lag}})$ | Normative | Scheduler axioms S1–S5, L1–L3 with parameters $(a,b,t_{\texttt{lag}})$ |
+| $T_{\textsf{env}}$ | Informative | Environment axioms EA1–EA6 |
+| $T \cup A$ | Informative | Optional assumptions A1–A3 describing refined environment classes |
+
+### Models of the Theory
+
+A trace over $\Sigma_{\textsf{env}} \cup \Sigma_{\textsf{sch}}$ with timestamps $\tau$ yields a **structure** $\langle \mathcal{E}, \textsf{Sch}, \tau \rangle$. The structure is a **model of the theory** iff:
+
+1. Environment-owned predicates are interpreted exactly as the lifts provided by the environment tuple $\mathcal{E}$ (which includes $\mathbb{T}$, $\texttt{compute}$, $\texttt{Crash}$, $\texttt{Due}$, $\texttt{RetryDue}$, $\texttt{REs}$, $\texttt{REf}$, $\texttt{SS}$, and $\texttt{IS}_R$).
+2. Scheduler-owned predicates are produced by the scheduler $\textsf{Sch}$ (at most one observable action per position, cf. EA3).
+3. The structure satisfies every axiom in $T_{\textsf{env}} \cup T_{\textsf{sched}}(a,b,t_{\texttt{lag}})$.
+
+This perspective separates scheduler obligations from environmental truths (see [Environment Axioms](#environment-axioms)) and anchors liveness reasoning in the satisfaction relation defined above.
+
+---
+
+## Conformance
+
+A scheduler implementation $\textsf{Sch}$ is **conformant** iff for all environments $\mathcal{E}$ there exist witnesses $(a,b,t_{\texttt{lag}}) \in \mathbb{Z}_{\ge 0} \times \mathbb{Z}_{\ge 0} \times \mathbb{D}$ such that for every run produced by composing $\textsf{Sch}$ with $\mathcal{E}$ we obtain a structure (with timestamp function $\tau$) satisfying the combined theory:
+
+$$
+\langle \mathcal{E}, \textsf{Sch}, \tau \rangle \models T_{\textsf{env}} \cup T_{\textsf{sched}}(a,b,t_{\texttt{lag}}).
+$$
+
+This satisfaction relation is defined in [Structures & Satisfaction](#structures--satisfaction).
 
 ---
 
