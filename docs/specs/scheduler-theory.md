@@ -750,8 +750,6 @@ An implementation $\mathcal{I}$ is **conformant** iff for all environments $\mat
 
 In other words, a conformant implementation must produce only happy traces. This means that whenever the implementation fails to satisfy the theory, the failure must be attributable to supernatural events—specifically, there must exist an environment with even more supernatural events under which the implementation would also fail. Conversely, unhappy traces (failures that persist even when supernatural events are reduced) are not permitted for conformant implementations.
 
-This satisfaction relation is defined in [Structures & Satisfaction](#structures--satisfaction).
-
 ## Real-World Assumptions and the Limits of Conformance
 
 This section is informative. It clarifies the boundary between the mathematical model and the physical world by acknowledging conditions under which **no real-world implementation can be conformant**, regardless of design choices.
