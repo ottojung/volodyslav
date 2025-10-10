@@ -754,8 +754,6 @@ A structure $\langle \mathcal{E}, \mathcal{S}, \tau \rangle$ is called a **happy
 
 **Intuition.** A happy trace represents an execution where the scheduler succeeded **despite** the potential for unexplainable disruptions. The existence of a corresponding "unhappy" trace (differing only in supernatural events) demonstrates that the success was contingent—if different supernatural events had occurred at different times or in different quantities, the theory would have been violated. Thus, happy traces characterize executions where the implementation was "lucky" with respect to phenomena outside the model's formal scope.
 
-This concept bridges the gap between conformance (which quantifies over all possible environments) and real-world robustness (which must account for supernatural perturbations that can arbitrarily disrupt execution).
-
 ---
 
 ## Real-World Assumptions and the Limits of Conformance
