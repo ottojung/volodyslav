@@ -217,7 +217,7 @@ Note: because of DST and other irregularities of a civil clock, minute starts ar
 
 * $\texttt{Supernatural}$ — marks an event that is not captured by any other predicate in the theory.
 
-*Interpretation:* This is a catch-all predicate for events that occur in the real world but are not expressible within the scheduler theory's signature. Examples include: events unrelated to scheduling, benign environmental fluctuations, or phenomena that might influence the system in ways outside the model's scope. The name reflects the perspective that just as supernatural events are unexplainable by science, $\texttt{Supernatural}$ events are unexplainable by (and underivable from) the formal scheduler theory. These events may be irrelevant, harmless, or even helpful to the scheduler—the theory makes no assumptions about their impact.
+*Interpretation:* This is a catch-all predicate for events that occur in the real world but are not expressible within the scheduler theory's signature. Examples include: events unrelated to scheduling, benign environmental fluctuations, or phenomena that might influence the system in ways outside the model's scope. The name reflects the perspective that just as supernatural events are unexplainable by science, $\texttt{Supernatural}$ events are unexplainable by (and underivable from) the formal scheduler theory. These events may be harmful, irrelevant, or even helpful to the scheduler—the theory makes no assumptions about their impact.
 
 ---
 
