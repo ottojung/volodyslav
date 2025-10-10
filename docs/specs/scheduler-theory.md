@@ -254,7 +254,6 @@ Let
 * $\texttt{REs}_x := \texttt{RunSuccess}(x)$
 * $\texttt{REf}_x := \texttt{RunFailure}(x)$
 * $\texttt{RE}_x := \texttt{REs}_x \vee \texttt{REf}_x$
-* $\texttt{duration}(S) := |S|$
 
 #### Stateful
 
