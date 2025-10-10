@@ -816,10 +816,4 @@ Because the model provides no primitive to represent "bit-flip inside the schedu
 
 **Additional examples** include silent memory corruption, undetected CPU faults, clock rollback outside the semantics of $\texttt{Due}$, and OS/VM anomalies that arbitrarily suppress or duplicate scheduler actions without surfacing as $\texttt{Crash}$ or $\texttt{compute}$ effects.
 
-### Scope of Conformance
-
-The theory is intended for **admissible worlds**: executions where (a) crashes, pauses, and timing irregularities are expressible via $\texttt{Crash}$, $\texttt{Frozen}/\texttt{Unfrozen}$, and $\texttt{Due}/\texttt{RetryDue}$, and (b) the scheduler's execution is **trace-faithful**—i.e., its future actions are functions of the prior observable prefix (plus its own permitted nondeterminism), not of unmodelled perturbations.
-
-When an execution leaves admissible conditions, the verdict is **"environment out of scope for $T$"**, not "scheduler non-conformant." Implementations may employ any engineering measures (persistence schemes, error detection/correction, redundancy) to make inadmissible worlds rare, but the theory only requires that **in admissible worlds**, the observable trace satisfies $T_{\textsf{sched}}(a,b,t_{\texttt{lag}})$.
-
-
+---
