@@ -440,7 +440,7 @@ Among others, environments contribute these two ingredients:
    From this predicate, we derive the **compute function**:
 
    $$
-   \texttt{compute}(S) := |\{ t \in S \mid \texttt{Compute} \texttt{ at } t \}|
+   \texttt{compute}(S) := |\{ \tau(i) \in S \mid \texttt{Compute} \texttt{ at } i \}|
    $$
 
    which counts how many compute events occur within a set $S \subseteq \mathbb{T}$ of time points. The result is in $\mathbb{P} = \mathbb{Z}_{\geq 0} \cup \{\infty\}$ (the count may be infinite for unbounded sets).
