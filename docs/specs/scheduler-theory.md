@@ -671,7 +671,7 @@ The free constants $(a,b,t_{\texttt{lag}})$ are theory parameters that instantia
 An environment is packaged as the tuple
 
 $$
-\mathcal{E} = \langle \texttt{Compute}, \texttt{Crash}, \texttt{Due}_x, \texttt{RetryDue}_x, \texttt{REs}, \texttt{REf}, \texttt{SS}, \texttt{IS}_R \rangle,
+\mathcal{E} = \langle \texttt{Compute}, \texttt{Crash}, \texttt{Due}_x, \texttt{RetryDue}_x, \texttt{REs}, \texttt{REf}, \texttt{SS}, \texttt{IS}_R \rangle
 $$
 
 providing the interpretations for environment-owned predicates listed above. The $\texttt{compute}$ function is then derived from $\texttt{Compute}$ by counting.
@@ -679,7 +679,7 @@ providing the interpretations for environment-owned predicates listed above. The
 A scheduler behavior is similarly packaged as
 
 $$
-\mathcal{S} = \langle \texttt{IE}_R, \texttt{SE}, \texttt{RS}_x \rangle,
+\mathcal{S} = \langle \texttt{IE}_R, \texttt{SE}, \texttt{RS}_x \rangle
 $$
 
 providing the interpretations for scheduler-owned predicates.
