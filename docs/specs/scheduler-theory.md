@@ -678,7 +678,15 @@ $$
 
 providing the interpretations for environment-owned predicates listed above.
 
-> **ownership note.** We classify predicate symbols by ownership: environment-owned predicates are interpreted directly from the environment tuple $\mathcal{E}$, while scheduler-owned predicates are produced by the scheduler implementation. This classification is informative; it explains which component determines the symbol's interpretation inside any structure.
+A scheduler behavior is similarly packaged as
+
+$$
+S = \langle \texttt{IE}_R, \texttt{SE}, \texttt{RS}_x \rangle,
+$$
+
+providing the interpretations for scheduler-owned predicates.
+
+> **ownership note.** We classify predicate symbols by ownership: environment-owned predicates are interpreted directly from the environment tuple $\mathcal{E}$, while scheduler-owned predicates are produced by the scheduler behavior $\mathcal{S}$. This classification is informative; it explains which component determines the symbol's interpretation inside any structure.
 
 ### Satisfaction & Models
 
@@ -689,10 +697,10 @@ Let $T_{\textsf{sched}}(a,b,t_{\texttt{lag}})$ denote the set of **Scheduler Axi
 We write
 
 $$
-\langle \mathcal{E}, \textsf{Sch}, \tau \rangle \models \varphi
+\langle \mathcal{E}, \mathcal{S}, \tau \rangle \models \varphi
 $$
 
-to mean that the structure interpreting environment-owned symbols via $\mathcal{E}$, scheduler-owned symbols via $\textsf{Sch}$, and the timestamp map via $\tau$ satisfies the temporal formula $\varphi$ in the standard LTL-with-past semantics.
+to mean that the structure interpreting environment-owned symbols via $\mathcal{E}$, scheduler-owned symbols via $\mathcal{S}$, and the timestamp map via $\tau$ satisfies the temporal formula $\varphi$ in the standard LTL-with-past semantics. Here, $\mathcal{E} \in \text{Env}$ is an individual environment and $\mathcal{S} \in \text{Sch}$ is an individual scheduler behavior.
 
 The combined theory is
 
@@ -707,10 +715,10 @@ $$
 
 ### Models of the Theory
 
-A trace over $\Sigma_{\textsf{env}} \cup \Sigma_{\textsf{sch}}$ with timestamps $\tau$ yields a **structure** $\langle \mathcal{E}, \textsf{Sch}, \tau \rangle$. The structure is a **model of the theory** iff:
+A trace over $\Sigma_{\textsf{env}} \cup \Sigma_{\textsf{sch}}$ with timestamps $\tau$ yields a **structure** $\langle \mathcal{E}, \mathcal{S}, \tau \rangle$. The structure is a **model of the theory** iff:
 
-1. Environment-owned predicates are interpreted exactly as the lifts provided by the environment tuple $\mathcal{E}$ (which includes $\mathbb{T}$, $\texttt{compute}$, $\texttt{Crash}$, $\texttt{Due}$, $\texttt{RetryDue}$, $\texttt{REs}$, $\texttt{REf}$, $\texttt{SS}$, and $\texttt{IS}_R$).
-2. Scheduler-owned predicates are produced by the scheduler $\textsf{Sch}$ (at most one observable action per position, cf. EA3).
+1. Environment-owned predicates are interpreted exactly as the lifts provided by the environment tuple $\mathcal{E}$ (which includes $\texttt{compute}$, $\texttt{Crash}$, $\texttt{Due}$, $\texttt{RetryDue}$, $\texttt{REs}$, $\texttt{REf}$, $\texttt{SS}$, and $\texttt{IS}_R$).
+2. Scheduler-owned predicates are produced by the scheduler behavior $\mathcal{S}$ (at most one observable action per position, cf. EA3).
 3. The structure satisfies every axiom in $T_{\textsf{env}} \cup T_{\textsf{sched}}(a,b,t_{\texttt{lag}})$.
 
 This perspective separates scheduler obligations from environmental truths (see [Environment Axioms](#environment-axioms)) and anchors liveness reasoning in the satisfaction relation defined above.
@@ -725,7 +733,7 @@ $$
 \mathcal{I} : \text{Env} \to \text{Sch}
 $$
 
-that maps each environment $\mathcal{E}$ to a scheduler behavior $\textsf{Sch}$. Here, $\text{Env}$ denotes the space of all possible environments (each providing $\texttt{compute}$, $\texttt{Crash}$, $\texttt{Due}_x$, $\texttt{RetryDue}_x$, $\texttt{REs}_x$, $\texttt{REf}_x$, $\texttt{SS}$, and $\texttt{IS}_R$), and $\text{Sch}$ denotes the space of all possible scheduler behaviors (producing $\texttt{IE}_R$, $\texttt{SE}$, and $\texttt{RS}_x$ events).
+that maps each environment $\mathcal{E}$ to a scheduler behavior $\mathcal{S}$. Here, $\text{Env}$ denotes the space of all possible environments (each providing $\texttt{compute}$, $\texttt{Crash}$, $\texttt{Due}_x$, $\texttt{RetryDue}_x$, $\texttt{REs}_x$, $\texttt{REf}_x$, $\texttt{SS}$, and $\texttt{IS}_R$), and $\text{Sch}$ denotes the space of all possible scheduler behaviors (producing $\texttt{IE}_R$, $\texttt{SE}$, and $\texttt{RS}_x$ events).
 
 The implementation $\mathcal{I}$ is the abstract representation of the scheduler's code: given any environment, it determines how the scheduler will respond. However, note that causality works both ways: the environment influences the scheduler's behavior, and the scheduler's actions can affect the environment (e.g., by completing callbacks).
 
