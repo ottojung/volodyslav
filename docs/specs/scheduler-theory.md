@@ -732,25 +732,25 @@ This perspective separates scheduler obligations from environmental truths (see 
 A **scheduler implementation** is a function
 
 $$
-\mathcal{I} : \text{Env} \to \text{Sch}
+\mathcal{I} : \text{Env} \times (\mathbb{N} \to \mathbb{T}) \to \text{Sch}
 $$
 
-that maps each environment $\mathcal{E}$ to a scheduler behavior $\mathcal{S}$. Here, $\text{Env}$ denotes the space of all possible environments (each providing $\texttt{Compute}$, $\texttt{Crash}$, $\texttt{Due}_x$, $\texttt{RetryDue}_x$, $\texttt{REs}_x$, $\texttt{REf}_x$, $\texttt{SS}$, and $\texttt{IS}_R$), and $\text{Sch}$ denotes the space of all possible scheduler behaviors (producing $\texttt{IE}_R$, $\texttt{SE}$, and $\texttt{RS}_x$ events).
+that maps each pair of environment $\mathcal{E}$ and timestamp function $\tau$ to a scheduler behavior $\mathcal{S}$. Here, $\text{Env}$ denotes the space of all possible environments (each providing $\texttt{Compute}$, $\texttt{Crash}$, $\texttt{Due}_x$, $\texttt{RetryDue}_x$, $\texttt{REs}_x$, $\texttt{REf}_x$, $\texttt{SS}$, and $\texttt{IS}_R$), and $\text{Sch}$ denotes the space of all possible scheduler behaviors (producing $\texttt{IE}_R$, $\texttt{SE}$, and $\texttt{RS}_x$ events).
 
-The implementation $\mathcal{I}$ is the abstract representation of the scheduler's code: given any environment, it determines how the scheduler will respond. However, note that causality works both ways: the environment influences the scheduler's behavior, and the scheduler's actions can affect the environment (e.g., by completing callbacks).
+The implementation $\mathcal{I}$ is the abstract representation of the scheduler's code: given any environment and timestamp function, it determines how the scheduler will respond. The timestamp function provides the temporal context for the scheduler's decisions. However, note that causality works both ways: the environment influences the scheduler's behavior, and the scheduler's actions can affect the environment (e.g., by completing callbacks).
 
 ### Happy Traces
 
-A structure $\langle \mathcal{E}, \mathcal{I}(\mathcal{E}), \mathcal{N}, \tau \rangle$ is called a **happy trace** of $\mathcal{I}$ iff:
+A structure $\langle \mathcal{E}, \mathcal{I}(\mathcal{E}, \tau), \mathcal{N}, \tau \rangle$ is called a **happy trace** of $\mathcal{I}$ iff:
 
 1. It satisfies the combined theory for some witnesses $(a,b,t_{\texttt{lag}})$:
    $$
-   \langle \mathcal{E}, \mathcal{I}(\mathcal{E}), \mathcal{N}, \tau \rangle \models T_{\textsf{env}} \cup T_{\textsf{sch}}(a,b,t_{\texttt{lag}}),
+   \langle \mathcal{E}, \mathcal{I}(\mathcal{E}, \tau), \mathcal{N}, \tau \rangle \models T_{\textsf{env}} \cup T_{\textsf{sch}}(a,b,t_{\texttt{lag}}),
    $$
 
 2. There exists another supernatural function $\mathcal{N}' = \langle \texttt{supernatural}' \rangle$ that maps to strictly more phenomena (for all $t \in \mathbb{T}$, $\texttt{supernatural}(t) \subseteq \texttt{supernatural}'(t)$ and there exists some $t_0$ where $\texttt{supernatural}(t_0) \subsetneq \texttt{supernatural}'(t_0)$), such that:
    $$
-   \langle \mathcal{E}, \mathcal{I}(\mathcal{E}), \mathcal{N}', \tau \rangle \not\models T_{\textsf{env}} \cup T_{\textsf{sch}}(a, b, t_{\texttt{lag}})
+   \langle \mathcal{E}, \mathcal{I}(\mathcal{E}, \tau), \mathcal{N}', \tau \rangle \not\models T_{\textsf{env}} \cup T_{\textsf{sch}}(a, b, t_{\texttt{lag}})
    $$
 
 A happy trace characterizes an execution where the implementation $\mathcal{I}$ satisfied the theory under environment $\mathcal{E}$ with supernatural function $\mathcal{N}$, but there exists a related supernatural function $\mathcal{N}'$ with additional supernatural phenomena (pointwise superset) under which the same implementation would not satisfy the theory.
@@ -759,7 +759,7 @@ A happy trace characterizes an execution where the implementation $\mathcal{I}$ 
 
 ---
 
-An implementation $\mathcal{I}$ is **conformant** iff for all environments $\mathcal{E} \in \text{Env}$, all supernatural functions $\mathcal{N} \in \text{Supernatural}$, and all timestamp functions $\tau$, the structure $\langle \mathcal{E}, \mathcal{I}(\mathcal{E}), \mathcal{N}, \tau \rangle$ is a happy trace of $\mathcal{I}$.
+An implementation $\mathcal{I}$ is **conformant** iff for all environments $\mathcal{E} \in \text{Env}$, all supernatural functions $\mathcal{N} \in \text{Supernatural}$, and all timestamp functions $\tau$, the structure $\langle \mathcal{E}, \mathcal{I}(\mathcal{E}, \tau), \mathcal{N}, \tau \rangle$ is a happy trace of $\mathcal{I}$.
 
 In other words, a conformant implementation must produce only happy traces. This means that whenever the implementation fails to satisfy the theory, the failure must be attributable to supernatural phenomena—specifically, there must exist a supernatural function mapping to even more phenomena under which the implementation would also fail. Conversely, unhappy traces (failures that persist even when supernatural phenomena are reduced) are not permitted for conformant implementations.
 
