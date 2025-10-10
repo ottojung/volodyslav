@@ -103,7 +103,7 @@ describe("declarative scheduler retry semantics", () => {
         await capabilities.scheduler.stop();
     });
 
-    test("should allow cron occurrence to supersede pending retry delay", async () => {
+    test("should delay cron occurrence until retry delay elapses", async () => {
         const capabilities = getTestCapabilities();
         const schedulerControl = getSchedulerControl(capabilities);
         schedulerControl.setPollingInterval(fromMilliseconds(100));
@@ -134,11 +134,15 @@ describe("declarative scheduler retry semantics", () => {
 
         timeControl.advanceByDuration(fromMinutes(1));
         await schedulerControl.waitForNextCycleEnd();
+        expect(executionCount).toBe(1);
+
+        timeControl.advanceByDuration(fromMinutes(4));
+        await schedulerControl.waitForNextCycleEnd();
         expect(executionCount).toBe(2);
         expect(task).toHaveBeenCalledTimes(2);
 
         const elapsedBetweenAttempts = difference(invocationTimes[1], invocationTimes[0]).toMillis();
-        expect(elapsedBetweenAttempts).toBeLessThan(retryDelay.toMillis());
+        expect(elapsedBetweenAttempts).toBeGreaterThanOrEqual(retryDelay.toMillis());
 
         await capabilities.scheduler.stop();
     });
