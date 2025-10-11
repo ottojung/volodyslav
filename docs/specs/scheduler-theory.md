@@ -807,7 +807,7 @@ An implementation $\mathcal{I}$ is **conformant** iff
 
 $$
 \boxed{
-\forall \mathcal{M}(\mathcal{I}) .\; \text{$\mathcal{M}(\mathcal{I})$ is relaxed-conformant}
+\exists \mathcal{M}_0(\mathcal{I}) \; \forall \mathcal{M}(\mathcal{I}) \geq \mathcal{M}_0(\mathcal{I}) .\; \text{$\mathcal{M}(\mathcal{I})$ is relaxed-conformant}
 }
 $$
 
