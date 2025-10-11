@@ -737,22 +737,13 @@ The implementation $\mathcal{I}$ is the abstract representation of the scheduler
 
 ### World Theory
 
-The **world theory** $T_{\mathrm{world}}$ represents our background assumptions about physical reality, causality, and basic sanity constraints that any reasonable execution trace must satisfy. It acts as a precondition for attributing failures: we only consider a structure's conformance when the world itself behaves sanely.
+The **world theory** $T_{\mathrm{world}}$ is a theory that can reason about supernatural phenomena. Unlike $T_{\mathrm{env}}$ and $T_{\mathrm{sch}}$, which are formulated purely in terms of the observable scheduler/environment interface and cannot reference the supernatural function $\mathcal{N}$, the world theory has $\mathcal{N}$ in its signature and can make assertions about supernatural phenomena.
 
-**Intuition**: $T_{\mathrm{world}}$ captures statements like "time flows forward," "events have causes," "the same action cannot both succeed and fail simultaneously," and other fundamental constraints that would be violated only in physically impossible or logically incoherent scenarios.
+It captures the reader's background understanding that certain combinations of observables and supernaturals are coherent or incoherent. For example, $T_{\mathrm{world}}$ might assert that if a cosmic ray is reported at time $t$ (a supernatural phenomenon), then certain memory corruption patterns become plausible—connections that our formal scheduler theory cannot express because it doesn't "see" supernaturals.
 
-**Key properties**:
+We assume $T_{\mathrm{env}} \subseteq T_{\mathrm{world}}$. Since $T_{\mathrm{env}}$ consists of axioms that hold for all real-world environments (as stated in [Environment](#environment)), these are also basic truths about the world.
 
-1. **Subsumes environment theory**: We assume $T_{\mathrm{env}} \subseteq T_{\mathrm{world}}$. Since $T_{\mathrm{env}}$ consists of axioms that hold for all real-world environments (as stated in [Environment](#environment)), these are also basic truths about the world.
-
-2. **Rejects empty supernatural functions**: We assume that for any structure $\langle \mathcal{E}, \mathcal{S}, \mathcal{N}, \tau \rangle$ where $\forall t.\; \mathcal{N}(t) = \emptyset$ (no supernatural phenomena at any time), we have:
-   $$
-   \langle \mathcal{E}, \mathcal{S}, \mathcal{N}, \tau \rangle \not\models T_{\mathrm{world}}
-   $$
-   
-   This is a safe and useful assumption: in any real execution, *some* phenomena outside our formal model's scope exist—at minimum, irrelevant background facts like "the sun rose today".
-
-The theory $T_{\mathrm{world}}$ itself is not explicitly axiomatized in this specification; it remains a parameter representing the reader's background physical and logical assumptions. Different formal verification efforts may instantiate $T_{\mathrm{world}}$ differently, but the properties above constrain its relationship to our scheduler theory.
+The theory $T_{\mathrm{world}}$ itself is not explicitly axiomatized in this specification; it remains a parameter representing the reader's background physical knowledge.
 
 ### Relaxation
 
