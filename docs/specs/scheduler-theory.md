@@ -807,7 +807,7 @@ An implementation $\mathcal{I}$ is **conformant** iff
 
 $$
 \boxed{
-\exists \mathcal{M}_0(\mathcal{I}) \; \forall \mathcal{M}(\mathcal{I}).\; \mathcal{M}_0(\mathcal{I}) \preceq_{\mathcal{I}} \mathcal{M}(\mathcal{I}) \Rightarrow \text{$\mathcal{M}(\mathcal{I})$ is relaxed-conformant}
+\forall \mathcal{M}(\mathcal{I}).\; \mathcal{M}(\mathcal{I}) \models \texttt{T}_{\texttt{world}} \Rightarrow \text{$\mathcal{M}(\mathcal{I})$ is relaxed-conformant}
 }
 $$
 
