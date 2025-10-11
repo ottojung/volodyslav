@@ -735,6 +735,25 @@ that maps each triple of environment $\mathcal{E}$, supernatural function $\math
 
 The implementation $\mathcal{I}$ is the abstract representation of the scheduler's code: given any environment, supernatural function, and timestamp function, it determines how the scheduler will respond. The timestamp function provides the temporal context for the scheduler's decisions. However, note that causality works both ways: the environment influences the scheduler's behavior, and the scheduler's actions affect the environment (e.g., by initiating callbacks).
 
+### World Theory
+
+The **world theory** $T_{\mathrm{world}}$ represents our background assumptions about physical reality, causality, and basic sanity constraints that any reasonable execution trace must satisfy. It acts as a precondition for attributing failures: we only consider a structure's conformance when the world itself behaves sanely.
+
+**Intuition**: $T_{\mathrm{world}}$ captures statements like "time flows forward," "events have causes," "the same action cannot both succeed and fail simultaneously," and other fundamental constraints that would be violated only in physically impossible or logically incoherent scenarios.
+
+**Key properties**:
+
+1. **Subsumes environment theory**: We assume $T_{\mathrm{env}} \subseteq T_{\mathrm{world}}$. Since $T_{\mathrm{env}}$ consists of axioms that hold for all real-world environments (as stated in [Environment](#environment)), these are also basic truths about the world.
+
+2. **Rejects empty supernatural functions**: We assume that for any structure $\langle \mathcal{E}, \mathcal{S}, \mathcal{N}, \tau \rangle$ where $\forall t.\; \mathcal{N}(t) = \emptyset$ (no supernatural phenomena at any time), we have:
+   $$
+   \langle \mathcal{E}, \mathcal{S}, \mathcal{N}, \tau \rangle \not\models T_{\mathrm{world}}
+   $$
+   
+   This is a safe and useful assumption: in any real execution, *some* phenomena outside our formal model's scope exist—at minimum, irrelevant background facts like "the sun rose today".
+
+The theory $T_{\mathrm{world}}$ itself is not explicitly axiomatized in this specification; it remains a parameter representing the reader's background physical and logical assumptions. Different formal verification efforts may instantiate $T_{\mathrm{world}}$ differently, but the properties above constrain its relationship to our scheduler theory.
+
 ### Relaxation
 
 For a **fixed implementation** $\mathcal{I}$ and a structure
@@ -760,7 +779,7 @@ No other components are constrained by the preorder: $\mathcal{E}'$ and $\tau'$ 
 
 ### Downconformance
 
-Let $T_{\mathrm{world}}$ be the reader's fixed world theory (sanity axioms about the physical world and causality). For coherence, it should be that $\texttt{T}_{\mathrm{env}}\subseteq T_{\mathrm{world}}$. Then let $T(a, b, t_{\mathrm{lag}}) := T_{\mathrm{env}} \cup T_{\mathrm{sch}}(a,b,t_{\mathrm{lag}})$.
+Let $T_{\mathrm{world}}$ be the reader's fixed world theory (sanity axioms about the physical world and causality). Then let $T(a, b, t_{\mathrm{lag}}) := T_{\mathrm{env}} \cup T_{\mathrm{sch}}(a,b,t_{\mathrm{lag}})$.
 
 Define **downconformance** of a structure $\mathcal{M}$ (with respect to $\mathcal{I}$) coinductively as the greatest predicate $\mathrm{DC}_{\mathcal{I}}(\cdot)$ satisfying:
 
