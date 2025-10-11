@@ -9,7 +9,9 @@ It is part of the [Declarative Scheduler Specification](./scheduler.md).
 
 ### Purpose
 
-We tell implementers exactly what **must be observable** for a scheduler to be correct. We write axioms about starts, ends, initialization, stopping, due/retry pulses, and crashes; we bound progress by the environment’s granted compute; and we keep internals out of scope. The result is a portable yardstick for **conformance, fairness assumptions**, and **failure attribution**.
+We tell implementers exactly what **must be observable** for a scheduler to be correct. We write axioms about starts, ends, initialization, stopping, due/retry pulses, and crashes; we bound progress by the environment's granted compute; and we keep internals out of scope. The result is a portable yardstick for **conformance, fairness assumptions**, and **failure attribution**.
+
+The implementation receives the supernatural function as an input, representing phenomena outside the formal model's scope. Conformance is defined via **downconformance under supernatural relaxations**: an implementation is conformant if failures can always be attributed to supernatural phenomena—meaning the same implementation with reduced supernaturals (and possibly different environment or timestamps) remains downconformant, eventually satisfying the theory or eliminating all supernaturals.
 
 The goals are to
 - specify conformance precisely,
@@ -726,35 +728,69 @@ This perspective separates scheduler obligations from environmental truths (see 
 A **scheduler implementation** is a function
 
 $$
-\mathcal{I} : \text{Env} \times (\mathbb{N} \to \mathbb{T}) \to \text{Sch}
+\boxed{\mathcal{I} : \text{Env} \times \text{Supernatural} \times (\mathbb{N} \to \mathbb{T}) \to \text{Sch}}
 $$
 
-that maps each pair of environment $\mathcal{E}$ and timestamp function $\tau$ to a scheduler behavior $\mathcal{S}$. Here, $\text{Env}$ denotes the space of all possible environments (each providing $\texttt{Compute}$, $\texttt{Crash}$, $\texttt{Due}_x$, $\texttt{RetryDue}_x$, $\texttt{REs}_x$, $\texttt{REf}_x$, $\texttt{SS}$, and $\texttt{IS}_R$), and $\text{Sch}$ denotes the space of all possible scheduler behaviors (producing $\texttt{IE}_R$, $\texttt{SE}$, and $\texttt{RS}_x$ events).
+that maps each triple of environment $\mathcal{E}$, supernatural function $\mathcal{N}$, and timestamp function $\tau$ to a scheduler behavior $\mathcal{S}$. Here, $\text{Env}$ denotes the space of all possible environments (each providing $\texttt{Compute}$, $\texttt{Crash}$, $\texttt{Due}_x$, $\texttt{RetryDue}_x$, $\texttt{REs}_x$, $\texttt{REf}_x$, $\texttt{SS}$, and $\texttt{IS}_R$), $\text{Supernatural}$ denotes the space of all possible supernatural functions (each mapping $\mathbb{T} \to \mathcal{P}(\mathbb{S})$), and $\text{Sch}$ denotes the space of all possible scheduler behaviors (producing $\texttt{IE}_R$, $\texttt{SE}$, and $\texttt{RS}_x$ events).
 
-The implementation $\mathcal{I}$ is the abstract representation of the scheduler's code: given any environment and timestamp function, it determines how the scheduler will respond. The timestamp function provides the temporal context for the scheduler's decisions. However, note that causality works both ways: the environment influences the scheduler's behavior, and the scheduler's actions affect the environment (e.g., by initiating callbacks).
+The implementation $\mathcal{I}$ is the abstract representation of the scheduler's code: given any environment, supernatural function, and timestamp function, it determines how the scheduler will respond. The timestamp function provides the temporal context for the scheduler's decisions. However, note that causality works both ways: the environment influences the scheduler's behavior, and the scheduler's actions affect the environment (e.g., by initiating callbacks).
 
-### Happy Traces
+### Relaxation
 
-A structure $\langle \mathcal{E}, \mathcal{I}(\mathcal{E}, \tau), \mathcal{N}, \tau \rangle$ is called a **happy trace** of $\mathcal{I}$ iff:
+For a **fixed implementation** $\mathcal{I}$ and a structure
 
-1. It satisfies the combined theory for some witnesses $(a,b,t_{\texttt{lag}})$:
-   $$
-   \langle \mathcal{E}, \mathcal{I}(\mathcal{E}, \tau), \mathcal{N}, \tau \rangle \models T_{\textsf{env}} \cup T_{\textsf{sch}}(a,b,t_{\texttt{lag}}),
-   $$
+$$
+M = \langle \mathcal{E}, \mathcal{I}(\mathcal{E}, \mathcal{N}, \tau), \mathcal{N}, \tau \rangle,
+$$
 
-2. There exists another supernatural function $\mathcal{N}' = \langle \texttt{supernatural}' \rangle$ that maps to strictly more phenomena (for all $t \in \mathbb{T}$, $\texttt{supernatural}(t) \subseteq \texttt{supernatural}'(t)$ and there exists some $t_0$ where $\texttt{supernatural}(t_0) \subsetneq \texttt{supernatural}'(t_0)$), such that:
-   $$
-   \langle \mathcal{E}, \mathcal{I}(\mathcal{E}, \tau), \mathcal{N}', \tau \rangle \not\models T_{\textsf{env}} \cup T_{\textsf{sch}}(a, b, t_{\texttt{lag}})
-   $$
+a **relaxation** of $M$ (with respect to $\mathcal{I}$) is **any** structure of the form
 
-A happy trace characterizes an execution where the implementation $\mathcal{I}$ satisfied the theory under environment $\mathcal{E}$ with supernatural function $\mathcal{N}$, but there exists a related supernatural function $\mathcal{N}'$ with additional supernatural phenomena (pointwise superset) under which the same implementation would not satisfy the theory.
+$$
+M' = \langle \mathcal{E}', \mathcal{I}(\mathcal{E}', \mathcal{N}', \tau'), \mathcal{N}', \tau' \rangle
+\quad \text{such that} \quad
+\forall t.\; \mathcal{N}'(t) \subseteq \mathcal{N}(t).
+$$
 
-**Intuition**: the implementation can tolerate the supernatural perturbations present in $\mathcal{N}$, but not the additional ones in $\mathcal{N}'$. Since supernatural phenomena represent events outside the model's formal scope — potentially those that could disrupt any implementation — happy traces mark the limits of what the implementation can successfully handle. They distinguish between executions where the implementation succeeds despite unexplainable phenomena, and executions where such phenomena exceed its tolerance.
+No other components are constrained by the relaxation: $\mathcal{E}'$ and $\tau'$ may differ arbitrarily.
 
----
+We write $\mathrm{Relax}_{\mathcal{I}}(M)$ for the set of all such $M'$.
 
-An implementation $\mathcal{I}$ is **conformant** iff for all environments $\mathcal{E} \in \text{Env}$, all supernatural functions $\mathcal{N} \in \text{Supernatural}$, and all timestamp functions $\tau$, the structure $\langle \mathcal{E}, \mathcal{I}(\mathcal{E}, \tau), \mathcal{N}, \tau \rangle$ is a happy trace of $\mathcal{I}$.
+**Intuition**: A relaxation reduces the supernatural phenomena (pointwise subset on the supernatural function) while keeping the same implementation. The environment and timestamp function may change freely. This captures the idea of "running the same implementation with fewer supernatural disruptions."
 
-In other words, a conformant implementation must produce only happy traces. This means that whenever the implementation fails to satisfy the theory, the failure must be attributable to supernatural phenomena—specifically, there must exist a supernatural function mapping to even more phenomena under which the implementation would also fail. Conversely, unhappy traces (failures that persist even when supernatural phenomena are reduced) are not permitted for conformant implementations.
+### Downconformance
+
+Let $T_{\mathrm{world}}$ be the reader's fixed world theory (sanity axioms about the physical world and causality). Let $T := T_{\mathrm{env}} \cup T_{\mathrm{sch}}(a,b,t_{\mathrm{lag}})$.
+
+Define **downconformance** of a structure $M$ (with respect to $\mathcal{I}$) coinductively as the greatest predicate $\mathrm{DC}_{\mathcal{I}}(\cdot)$ satisfying:
+
+$$
+\boxed{
+\mathrm{DC}_{\mathcal{I}}(M)
+\;\; \text{iff} \;\;
+\big(M \models T_{\mathrm{world}}\big) \Rightarrow
+\Big( M \models T \;\;\lor\;\; \forall M' \in \mathrm{Relax}_{\mathcal{I}}(M).\; \mathrm{DC}_{\mathcal{I}}(M') \Big).
+}
+$$
+
+**Intuition**: A structure is downconformant if, whenever the world is sane (satisfies basic sanity axioms), either:
+- the structure already satisfies the scheduler theory $T$, or
+- every further reduction of supernatural phenomena (under the same implementation) remains downconformant.
+
+This coinductive definition captures that failures can be attributed to supernatural phenomena: if reducing supernaturals allows the theory to be satisfied, the original failure was due to those supernaturals; otherwise, the scheduler is at fault.
+
+### Implementation Conformance
+
+An implementation $\mathcal{I}$ is **conformant** iff
+
+$$
+\boxed{
+\forall \mathcal{E}, \mathcal{N}, \tau.\; \exists (a,b,t_{\mathrm{lag}})\; \text{such that}\;
+\mathrm{DC}_{\mathcal{I}}\big(\langle \mathcal{E}, \mathcal{I}(\mathcal{E}, \mathcal{N}, \tau), \mathcal{N}, \tau \rangle\big).
+}
+$$
+
+**Interpretation**: A conformant implementation produces only downconformant structures. For every possible environment, supernatural function, and timestamp map, there must exist complexity witnesses $(a, b, t_{\mathrm{lag}})$ such that the resulting structure is downconformant.
+
+This means that whenever the implementation fails to satisfy the theory under some supernatural function, that failure must be attributable to supernatural phenomena—specifically, the same implementation with fewer supernatural phenomena (and possibly different environment or timestamps) must remain downconformant, eventually reaching a point where the theory is satisfied or all supernaturals are eliminated.
 
 ---
