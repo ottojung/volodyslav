@@ -773,9 +773,9 @@ $$
 }
 $$
 
-**Intuition**: A structure is downconformant if, whenever the world is sane (satisfies basic sanity axioms), either:
+**Intuition**: A structure is downconformant if, whenever it is sane, either:
 - the structure already satisfies the scheduler theory $T$, or
-- there exist some supernatural phenomena present **and** every further reduction of supernatural phenomena (under the same implementation) remains downconformant.
+- every reduction of supernatural phenomena remains downconformant.
 
 This coinductive definition captures that failures can be attributed to supernatural phenomena: if reducing supernaturals allows the theory to be satisfied, the original failure was due to those supernaturals; otherwise, the scheduler is at fault.
 
