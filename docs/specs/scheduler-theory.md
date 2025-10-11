@@ -762,7 +762,7 @@ No other components are constrained by the preorder: $\mathcal{E}'$ and $\tau'$ 
 
 Let $T_{\mathrm{world}}$ be the reader's fixed world theory (sanity axioms about the physical world and causality). For coherence, it should be that $\texttt{T}_{\mathrm{env}}\subseteq T_{\mathrm{world}}$. Then let $T(a, b, t_{\mathrm{lag}}) := T_{\mathrm{env}} \cup T_{\mathrm{sch}}(a,b,t_{\mathrm{lag}})$.
 
-Define **downconformance** of a structure $M$ (with respect to $\mathcal{I}$) coinductively as the greatest predicate $\mathrm{DC}_{\mathcal{I}}(\cdot)$ satisfying:
+Define **downconformance** of a structure $\mathcal{M}$ (with respect to $\mathcal{I}$) coinductively as the greatest predicate $\mathrm{DC}_{\mathcal{I}}(\cdot)$ satisfying:
 
 $$
 \boxed{
