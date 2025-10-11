@@ -787,12 +787,12 @@ An implementation $\mathcal{I}$ is **conformant** iff
 
 $$
 \boxed{
-\forall \mathcal{E}, \mathcal{N}, \tau.\; \exists (a,b,t_{\mathrm{lag}})\; \text{such that}\;
+\forall \mathcal{E}, \mathcal{N}, \tau.\;
 \mathrm{DC}_{\mathcal{I}}\big(\langle \mathcal{E}, \mathcal{I}(\mathcal{E}, \mathcal{N}, \tau), \mathcal{N}, \tau \rangle\big)
 }
 $$
 
-**Interpretation**: A conformant implementation produces only downconformant structures. For every possible environment, supernatural function, and timestamp map, there must exist complexity witnesses $(a, b, t_{\mathrm{lag}})$ such that the resulting structure is downconformant.
+**Interpretation**: A conformant implementation produces only downconformant structures. For every possible environment, supernatural function, and timestamp map, the resulting structure is downconformant.
 
 This means that whenever the implementation fails to satisfy the theory under some supernatural function, that failure must be attributable to supernatural phenomena—specifically, the same implementation with fewer supernatural phenomena (and possibly different environment or timestamps) must remain downconformant, eventually reaching a point where the theory is satisfied or all supernaturals are eliminated.
 
