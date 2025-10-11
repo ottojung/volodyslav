@@ -743,19 +743,20 @@ $$
 M = \langle \mathcal{E}, \mathcal{I}(\mathcal{E}, \mathcal{N}, \tau), \mathcal{N}, \tau \rangle,
 $$
 
-a **relaxation** of $M$ (with respect to $\mathcal{I}$) is **any** structure of the form
+define the **relaxation preorder** $\preceq_{\mathcal{I}}$ by:
 
 $$
-M' = \langle \mathcal{E}', \mathcal{I}(\mathcal{E}', \mathcal{N}', \tau'), \mathcal{N}', \tau' \rangle
-\quad \text{such that} \quad
+M' \preceq_{\mathcal{I}} M
+\quad \text{iff} \quad
+M' = \langle \mathcal{E}', \mathcal{I}(\mathcal{E}', \mathcal{N}', \tau'), \mathcal{N}', \tau' \rangle, \;
+M = \langle \mathcal{E}, \mathcal{I}(\mathcal{E}, \mathcal{N}, \tau), \mathcal{N}, \tau \rangle, \;
+\text{and} \;
 \forall t.\; \mathcal{N}'(t) \subseteq \mathcal{N}(t).
 $$
 
-No other components are constrained by the relaxation: $\mathcal{E}'$ and $\tau'$ may differ arbitrarily.
+No other components are constrained by the preorder: $\mathcal{E}'$ and $\tau'$ may differ arbitrarily from $\mathcal{E}$ and $\tau$.
 
-We write $\mathrm{Relax}_{\mathcal{I}}(M)$ for the set of all such $M'$.
-
-**Intuition**: A relaxation reduces the supernatural phenomena (pointwise subset on the supernatural function) while keeping the same implementation. The environment and timestamp function may change freely. This captures the idea of "running the same implementation with fewer supernatural disruptions."
+**Intuition**: The preorder $M' \preceq_{\mathcal{I}} M$ means "$M'$ has fewer supernatural phenomena than $M$" (pointwise subset on the supernatural function) while keeping the same implementation. The environment and timestamp function may change freely. This captures the idea of "running the same implementation with fewer supernatural disruptions."
 
 ### Downconformance
 
@@ -768,15 +769,17 @@ $$
 \mathrm{DC}_{\mathcal{I}}(M)
 \;\; \text{iff} \;\;
 \big(M \models T_{\mathrm{world}}\big) \Rightarrow
-\Big( M \models T \;\;\lor\;\; \forall M' \in \mathrm{Relax}_{\mathcal{I}}(M).\; \mathrm{DC}_{\mathcal{I}}(M') \Big).
+\Big( M \models T \;\;\lor\;\; \big(\mathcal{N} \neq \emptyset \land \forall M' \preceq_{\mathcal{I}} M.\; \mathrm{DC}_{\mathcal{I}}(M')\big) \Big).
 }
 $$
 
 **Intuition**: A structure is downconformant if, whenever the world is sane (satisfies basic sanity axioms), either:
 - the structure already satisfies the scheduler theory $T$, or
-- every further reduction of supernatural phenomena (under the same implementation) remains downconformant.
+- there exist some supernatural phenomena present **and** every further reduction of supernatural phenomena (under the same implementation) remains downconformant.
 
 This coinductive definition captures that failures can be attributed to supernatural phenomena: if reducing supernaturals allows the theory to be satisfied, the original failure was due to those supernaturals; otherwise, the scheduler is at fault.
+
+The guard $\exists t.\; \mathcal{N}(t) \neq \emptyset$ prevents vacuous satisfaction when no supernatural phenomena are present—if there are no supernaturals to blame, the scheduler must satisfy the theory directly.
 
 ### Implementation Conformance
 
