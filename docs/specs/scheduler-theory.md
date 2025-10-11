@@ -11,7 +11,7 @@ It is part of the [Declarative Scheduler Specification](./scheduler.md).
 
 We tell implementers exactly what **must be observable** for a scheduler to be correct. We write axioms about starts, ends, initialization, stopping, due/retry pulses, and crashes; we bound progress by the environment's granted compute; and we keep internals out of scope. The result is a portable yardstick for **conformance, fairness assumptions**, and **failure attribution**.
 
-The implementation receives the supernatural function as an input, representing phenomena outside the formal model's scope. Conformance is defined via **downconformance under supernatural relaxations**: an implementation is conformant if failures can always be attributed to supernatural phenomena—meaning the same implementation with reduced supernaturals (and possibly different environment or timestamps) remains downconformant, eventually satisfying the theory or eliminating all supernaturals.
+The implementation receives the supernatural function as an input, representing phenomena outside the formal model's scope. Conformance is defined via **relaxed conformance**: an implementation is conformant if, for every execution trace, there exists an interval of supernatural phenomena within which the scheduler behaves correctly. Failures outside this interval are attributed to supernatural phenomena being either too numerous or insufficiently present.
 
 The goals are to
 - specify conformance precisely,
@@ -783,24 +783,23 @@ $$
 
 **Intuition**: Regular structure conformance is a simple sanity check: if the structure satisfies the world theory (is coherent), then there must exist some complexity witnesses $(a, b, t_{\mathrm{lag}})$ such that it satisfies the combined scheduler and environment theory.
 
-### Downconformance
+### Relaxed Conformance
 
-Define **downconformance** of a structure $\mathcal{M}$ (with respect to $\mathcal{I}$) coinductively as the greatest predicate $\mathrm{DC}_{\mathcal{I}}(\cdot)$ satisfying:
+A structure $\mathcal{M}$ is **relaxed-conformant** (with respect to $\mathcal{I}$) iff there exist structures $\mathcal{M}_0$ and $\mathcal{M}_1$ such that:
 
 $$
 \boxed{
-\mathrm{DC}_{\mathcal{I}}(\mathcal{M})
-\;\; \text{iff} \;\;
-\Big(\big(\mathcal{M} \models T_{\mathrm{world}}\big) \Rightarrow
-\exists (a, b, t_{\mathrm{lag}}) \; \mathcal{M} \models T(a, b, t_{\mathrm{lag}}) \Big) \;\;\lor\;\; \big(\forall \mathcal{M}' \preceq_{\mathcal{I}} \mathcal{M}.\; \mathrm{DC}_{\mathcal{I}}(\mathcal{M}')\big)
+\mathcal{M}_0 \preceq_{\mathcal{I}} \mathcal{M}_1 \preceq_{\mathcal{I}} \mathcal{M}
+\quad \text{and} \quad
+\forall \mathcal{M}'.\; \big(\mathcal{M}_0 \preceq_{\mathcal{I}} \mathcal{M}' \preceq_{\mathcal{I}} \mathcal{M}_1\big) \Rightarrow \text{$\mathcal{M}'$ is conformant}
 }
 $$
 
-**Intuition**: A structure is downconformant if:
-- it is conformant in the regular sense (first disjunct), or
-- every reduction of supernatural phenomena remains downconformant (second disjunct).
+**Intuition**: A structure is relaxed-conformant if there exists an interval of supernatural reductions $[\mathcal{M}_0, \mathcal{M}_1]$ within which every structure is regularly conformant. This captures the idea that failures outside this interval can be attributed to either:
+- too many supernatural phenomena (above $\mathcal{M}_1$), or  
+- the absence of necessary supernatural context (below $\mathcal{M}_0$).
 
-This coinductive definition captures that failures can be attributed to supernatural phenomena: if reducing supernaturals allows the theory to be satisfied, the original failure was due to those supernaturals; otherwise, the scheduler is at fault.
+The scheduler is only responsible for correct behavior within some "reasonable" range of supernatural phenomena. Too many supernaturals may overwhelm any implementation, while too few may violate world theory constraints.
 
 ### Implementation Conformance
 
@@ -808,12 +807,12 @@ An implementation $\mathcal{I}$ is **conformant** iff
 
 $$
 \boxed{
-\forall \mathcal{M}(\mathcal{I}) .\; \mathrm{DC}_{\mathcal{I}}(\mathcal{M}(\mathcal{I}))
+\forall \mathcal{M}(\mathcal{I}) .\; \text{$\mathcal{M}(\mathcal{I})$ is relaxed-conformant}
 }
 $$
 
-**Interpretation**: A conformant implementation produces only downconformant structures. For every possible environment, supernatural function, and timestamp map, the resulting structure is downconformant.
+**Interpretation**: A conformant implementation produces only relaxed-conformant structures. For every possible environment, supernatural function, and timestamp map, the resulting structure must be relaxed-conformant.
 
-This means that whenever the implementation fails to satisfy the theory under some supernatural function, that failure must be attributable to supernatural phenomena—specifically, the same implementation with fewer supernatural phenomena (and possibly different environment or timestamps) must remain downconformant, eventually reaching a point where the theory is satisfied or all supernaturals are eliminated.
+This means that for every execution trace, there exists an interval of supernatural phenomena $[\mathcal{M}_0, \mathcal{M}_1]$ within which the scheduler behaves correctly. Failures outside this interval are attributed to supernatural phenomena being either too numerous or insufficiently present to satisfy world theory constraints.
 
 ---
