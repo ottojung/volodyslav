@@ -708,12 +708,6 @@ $$
 
 to mean that the structure interpreting environment-owned symbols via $\mathcal{E}$, scheduler-owned symbols via $\mathcal{S}$, the supernatural function via $\mathcal{N}$, and the timestamp map via $\tau$ satisfies the temporal formula $\varphi$ in the standard LTL-with-past semantics. Here, $\mathcal{E} \in \text{Env}$ is an individual environment, $\mathcal{S} \in \text{Sch}$ is an individual scheduler behavior, and $\mathcal{N} \in \text{Supernatural}$ is the supernatural function mapping time to phenomenon types.
 
-The combined theory is
-
-$$
-T \;=\; T_{\textsf{sch}}(a,b,t_{\texttt{lag}}) \cup T_{\textsf{env}}.
-$$
-
 ### Models of the Theory
 
 A trace over $\Sigma_{\textsf{env}} \cup \Sigma_{\textsf{sch}} \cup \Sigma_{\textsf{supernatural}}$ with timestamps $\tau$ yields a **structure** $\langle \mathcal{E}, \mathcal{S}, \mathcal{N}, \tau \rangle$. The structure is a **model of the theory**, written as $\langle \mathcal{E}, \mathcal{S}, \mathcal{N}, \tau \rangle \models T$, iff:
