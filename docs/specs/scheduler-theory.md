@@ -743,7 +743,7 @@ $$
 M = \langle \mathcal{E}, \mathcal{I}(\mathcal{E}, \mathcal{N}, \tau), \mathcal{N}, \tau \rangle
 $$
 
-define the **relaxation preorder** $\preceq_{\mathcal{I}}$ by:
+define the **relaxation order** $\preceq_{\mathcal{I}}$ by:
 
 $$
 M' \preceq_{\mathcal{I}} M
