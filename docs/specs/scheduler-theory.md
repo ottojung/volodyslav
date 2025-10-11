@@ -740,7 +740,7 @@ The implementation $\mathcal{I}$ is the abstract representation of the scheduler
 For a **fixed implementation** $\mathcal{I}$ and a structure
 
 $$
-M = \langle \mathcal{E}, \mathcal{I}(\mathcal{E}, \mathcal{N}, \tau), \mathcal{N}, \tau \rangle,
+M = \langle \mathcal{E}, \mathcal{I}(\mathcal{E}, \mathcal{N}, \tau), \mathcal{N}, \tau \rangle
 $$
 
 define the **relaxation preorder** $\preceq_{\mathcal{I}}$ by:
@@ -751,7 +751,7 @@ M' \preceq_{\mathcal{I}} M
 M' = \langle \mathcal{E}', \mathcal{I}(\mathcal{E}', \mathcal{N}', \tau'), \mathcal{N}', \tau' \rangle, \;
 M = \langle \mathcal{E}, \mathcal{I}(\mathcal{E}, \mathcal{N}, \tau), \mathcal{N}, \tau \rangle, \;
 \text{and} \;
-\forall t.\; \mathcal{N}'(t) \subseteq \mathcal{N}(t).
+\forall t.\; \mathcal{N}'(t) \subseteq \mathcal{N}(t)
 $$
 
 No other components are constrained by the preorder: $\mathcal{E}'$ and $\tau'$ may differ arbitrarily from $\mathcal{E}$ and $\tau$.
@@ -769,7 +769,7 @@ $$
 \mathrm{DC}_{\mathcal{I}}(M)
 \;\; \text{iff} \;\;
 \big(M \models T_{\mathrm{world}}\big) \Rightarrow
-\Big( M \models T \;\;\lor\;\; \big(\mathcal{N} \neq \emptyset \land \forall M' \preceq_{\mathcal{I}} M.\; \mathrm{DC}_{\mathcal{I}}(M')\big) \Big).
+\Big( M \models T \;\;\lor\;\; \big(\mathcal{N} \neq \emptyset \land \forall M' \preceq_{\mathcal{I}} M.\; \mathrm{DC}_{\mathcal{I}}(M')\big) \Big)
 }
 $$
 
@@ -788,7 +788,7 @@ An implementation $\mathcal{I}$ is **conformant** iff
 $$
 \boxed{
 \forall \mathcal{E}, \mathcal{N}, \tau.\; \exists (a,b,t_{\mathrm{lag}})\; \text{such that}\;
-\mathrm{DC}_{\mathcal{I}}\big(\langle \mathcal{E}, \mathcal{I}(\mathcal{E}, \mathcal{N}, \tau), \mathcal{N}, \tau \rangle\big).
+\mathrm{DC}_{\mathcal{I}}\big(\langle \mathcal{E}, \mathcal{I}(\mathcal{E}, \mathcal{N}, \tau), \mathcal{N}, \tau \rangle\big)
 }
 $$
 
