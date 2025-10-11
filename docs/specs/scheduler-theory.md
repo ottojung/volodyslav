@@ -813,6 +813,4 @@ $$
 
 **Interpretation**: A conformant implementation produces only relaxed-conformant structures. For every possible environment, supernatural function, and timestamp map, the resulting structure must be relaxed-conformant.
 
-This means that for every execution trace, there exists an interval of supernatural phenomena $[\mathcal{M}_0, \mathcal{M}_1]$ within which the scheduler behaves correctly. Failures outside this interval are attributed to supernatural phenomena being either too numerous or insufficiently present to satisfy world theory constraints.
-
 ---
