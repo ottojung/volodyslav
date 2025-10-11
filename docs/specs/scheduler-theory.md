@@ -760,7 +760,7 @@ No other components are constrained by the preorder: $\mathcal{E}'$ and $\tau'$ 
 
 ### Downconformance
 
-Let $T_{\mathrm{world}}$ be the reader's fixed world theory (sanity axioms about the physical world and causality). For coherence, it should be that $\texttt{T}_{\mathrm{env}}\subseteq T_{\mathrm{world}}$. Then let $T := T_{\mathrm{env}} \cup T_{\mathrm{sch}}(a,b,t_{\mathrm{lag}})$.
+Let $T_{\mathrm{world}}$ be the reader's fixed world theory (sanity axioms about the physical world and causality). For coherence, it should be that $\texttt{T}_{\mathrm{env}}\subseteq T_{\mathrm{world}}$. Then let $T(a, b, t_{\mathrm{lag}}) := T_{\mathrm{env}} \cup T_{\mathrm{sch}}(a,b,t_{\mathrm{lag}})$.
 
 Define **downconformance** of a structure $M$ (with respect to $\mathcal{I}$) coinductively as the greatest predicate $\mathrm{DC}_{\mathcal{I}}(\cdot)$ satisfying:
 
@@ -769,7 +769,7 @@ $$
 \mathrm{DC}_{\mathcal{I}}(M)
 \;\; \text{iff} \;\;
 \big(M \models T_{\mathrm{world}}\big) \Rightarrow
-\Big( M \models T \;\;\lor\;\; \big(\exists t.\; \mathcal{N}(t) \neq \emptyset \land \forall M' \preceq_{\mathcal{I}} M.\; \mathrm{DC}_{\mathcal{I}}(M')\big) \Big)
+\Big( \exists (a, b, t_{\mathrm{lag}}) \; M \models T(a, b, t_{\mathrm{lag}}) \;\;\lor\;\; \big(\exists t.\; \mathcal{N}(t) \neq \emptyset \land \forall M' \preceq_{\mathcal{I}} M.\; \mathrm{DC}_{\mathcal{I}}(M')\big) \Big)
 }
 $$
 
