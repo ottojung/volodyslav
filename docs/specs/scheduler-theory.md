@@ -769,7 +769,7 @@ $$
 \mathrm{DC}_{\mathcal{I}}(\mathcal{M})
 \;\; \text{iff} \;\;
 \big(\mathcal{M} \models T_{\mathrm{world}}\big) \Rightarrow
-\Big( \exists (a, b, t_{\mathrm{lag}}) \; \mathcal{M} \models T(a, b, t_{\mathrm{lag}}) \;\;\lor\;\; \big(\exists t.\; \mathcal{N}(t) \neq \emptyset \land \forall \mathcal{M}' \preceq_{\mathcal{I}} \mathcal{M}.\; \mathrm{DC}_{\mathcal{I}}(\mathcal{M}')\big) \Big)
+\Big( \exists (a, b, t_{\mathrm{lag}}) \; \mathcal{M} \models T(a, b, t_{\mathrm{lag}}) \;\;\lor\;\; \big(\forall \mathcal{M}' \preceq_{\mathcal{I}} \mathcal{M}.\; \mathrm{DC}_{\mathcal{I}}(\mathcal{M}')\big) \Big)
 }
 $$
 
