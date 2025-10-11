@@ -740,16 +740,16 @@ The implementation $\mathcal{I}$ is the abstract representation of the scheduler
 For a **fixed implementation** $\mathcal{I}$ and a structure
 
 $$
-M = \langle \mathcal{E}, \mathcal{I}(\mathcal{E}, \mathcal{N}, \tau), \mathcal{N}, \tau \rangle
+\mathcal{M}(\mathcal{I}) = \langle \mathcal{E}, \mathcal{I}(\mathcal{E}, \mathcal{N}, \tau), \mathcal{N}, \tau \rangle
 $$
 
 define the **relaxation order** $\preceq_{\mathcal{I}}$ by:
 
 $$
-M' \preceq_{\mathcal{I}} M
+\mathcal{M}' \preceq_{\mathcal{I}} \mathcal{M}
 \quad \text{iff} \quad
-M' = \langle \mathcal{E}', \mathcal{I}(\mathcal{E}', \mathcal{N}', \tau'), \mathcal{N}', \tau' \rangle, \;
-M = \langle \mathcal{E}, \mathcal{I}(\mathcal{E}, \mathcal{N}, \tau), \mathcal{N}, \tau \rangle, \;
+\mathcal{M}' = \langle \mathcal{E}', \mathcal{I}(\mathcal{E}', \mathcal{N}', \tau'), \mathcal{N}', \tau' \rangle, \;
+\mathcal{M} = \langle \mathcal{E}, \mathcal{I}(\mathcal{E}, \mathcal{N}, \tau), \mathcal{N}, \tau \rangle, \;
 \text{and} \;
 \forall t.\; \mathcal{N}'(t) \subseteq \mathcal{N}(t)
 $$
@@ -766,10 +766,10 @@ Define **downconformance** of a structure $M$ (with respect to $\mathcal{I}$) co
 
 $$
 \boxed{
-\mathrm{DC}_{\mathcal{I}}(M)
+\mathrm{DC}_{\mathcal{I}}(\mathcal{M})
 \;\; \text{iff} \;\;
-\big(M \models T_{\mathrm{world}}\big) \Rightarrow
-\Big( \exists (a, b, t_{\mathrm{lag}}) \; M \models T(a, b, t_{\mathrm{lag}}) \;\;\lor\;\; \big(\exists t.\; \mathcal{N}(t) \neq \emptyset \land \forall M' \preceq_{\mathcal{I}} M.\; \mathrm{DC}_{\mathcal{I}}(M')\big) \Big)
+\big(\mathcal{M} \models T_{\mathrm{world}}\big) \Rightarrow
+\Big( \exists (a, b, t_{\mathrm{lag}}) \; \mathcal{M} \models T(a, b, t_{\mathrm{lag}}) \;\;\lor\;\; \big(\exists t.\; \mathcal{N}(t) \neq \emptyset \land \forall \mathcal{M}' \preceq_{\mathcal{I}} \mathcal{M}.\; \mathrm{DC}_{\mathcal{I}}(\mathcal{M}')\big) \Big)
 }
 $$
 
@@ -787,8 +787,7 @@ An implementation $\mathcal{I}$ is **conformant** iff
 
 $$
 \boxed{
-\forall \mathcal{E}, \mathcal{N}, \tau.\;
-\mathrm{DC}_{\mathcal{I}}\big(\langle \mathcal{E}, \mathcal{I}(\mathcal{E}, \mathcal{N}, \tau), \mathcal{N}, \tau \rangle\big)
+\forall \mathcal{M}(\mathcal{I}) .\; \mathrm{DC}_{\mathcal{I}}(\mathcal{M}(\mathcal{I}))
 }
 $$
 
