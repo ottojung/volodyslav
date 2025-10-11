@@ -807,10 +807,12 @@ An implementation $\mathcal{I}$ is **conformant** iff
 
 $$
 \boxed{
-\exists \mathcal{M}_0(\mathcal{I}) \; \forall \mathcal{M}(\mathcal{I}) \geq \mathcal{M}_0(\mathcal{I}) .\; \text{$\mathcal{M}(\mathcal{I})$ is relaxed-conformant}
+\exists \mathcal{M}_0(\mathcal{I}) \; \forall \mathcal{M}(\mathcal{I}).\; \mathcal{M}_0(\mathcal{I}) \preceq_{\mathcal{I}} \mathcal{M}(\mathcal{I}) \Rightarrow \text{$\mathcal{M}(\mathcal{I})$ is relaxed-conformant}
 }
 $$
 
-**Interpretation**: A conformant implementation produces only relaxed-conformant structures. For every possible environment, supernatural function, and timestamp map, the resulting structure must be relaxed-conformant.
+**Interpretation**: A conformant implementation must have a lower bound structure $\mathcal{M}_0(\mathcal{I})$ such that all structures with at least as many supernatural phenomena as $\mathcal{M}_0$ are relaxed-conformant.
+
+This means that once the supernatural function provides sufficient context (above the threshold $\mathcal{M}_0$), every execution trace produced by the implementation has an interval of supernatural phenomena where the scheduler behaves correctly. The bound $\mathcal{M}_0$ represents the minimal supernatural context needed for the world theory to be satisfied and for conformance to be meaningful.
 
 ---
