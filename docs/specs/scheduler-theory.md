@@ -737,7 +737,7 @@ $$
 
 that maps each pair of environment $\mathcal{E}$ and timestamp function $\tau$ to a scheduler behavior $\mathcal{S}$. Here, $\text{Env}$ denotes the space of all possible environments (each providing $\texttt{Compute}$, $\texttt{Crash}$, $\texttt{Due}_x$, $\texttt{RetryDue}_x$, $\texttt{REs}_x$, $\texttt{REf}_x$, $\texttt{SS}$, and $\texttt{IS}_R$), and $\text{Sch}$ denotes the space of all possible scheduler behaviors (producing $\texttt{IE}_R$, $\texttt{SE}$, and $\texttt{RS}_x$ events).
 
-The implementation $\mathcal{I}$ is the abstract representation of the scheduler's code: given any environment and timestamp function, it determines how the scheduler will respond. The timestamp function provides the temporal context for the scheduler's decisions. However, note that causality works both ways: the environment influences the scheduler's behavior, and the scheduler's actions can affect the environment (e.g., by completing callbacks).
+The implementation $\mathcal{I}$ is the abstract representation of the scheduler's code: given any environment and timestamp function, it determines how the scheduler will respond. The timestamp function provides the temporal context for the scheduler's decisions. However, note that causality works both ways: the environment influences the scheduler's behavior, and the scheduler's actions affect the environment (e.g., by initiating callbacks).
 
 ### Happy Traces
 
