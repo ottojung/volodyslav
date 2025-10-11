@@ -811,8 +811,8 @@ $$
 }
 $$
 
-**Interpretation**: A conformant implementation must have a lower bound structure $\mathcal{M}_0(\mathcal{I})$ such that all structures with at least as many supernatural phenomena as $\mathcal{M}_0$ are relaxed-conformant.
+**Interpretation**: A conformant implementation must ensure that every structure it produces is relaxed-conformant, provided the structure satisfies the world theory.
 
-This means that once the supernatural function provides sufficient context (above the threshold $\mathcal{M}_0$), every execution trace produced by the implementation has an interval of supernatural phenomena where the scheduler behaves correctly. The bound $\mathcal{M}_0$ represents the minimal supernatural context needed for the world theory to be satisfied and for conformance to be meaningful.
+The conditional structure $(M \models T_{\texttt{world}}) \Rightarrow \text{relaxed-conformant}$ ensures we don't demand correct behavior in physically impossible scenarios while still requiring correctness for all realistic execution traces.
 
 ---
