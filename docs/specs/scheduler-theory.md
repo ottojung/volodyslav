@@ -768,9 +768,22 @@ No other components are constrained by the preorder: $\mathcal{E}'$ and $\tau'$ 
 
 **Intuition**: The preorder $M' \preceq_{\mathcal{I}} M$ means "$M'$ has fewer supernatural phenomena than $M$" (pointwise subset on the supernatural function) while keeping the same implementation. The environment and timestamp function may change freely. This captures the idea of "running the same implementation with fewer supernatural disruptions."
 
-### Downconformance
+### Structure Conformance
 
-Let $T_{\mathrm{world}}$ be the reader's fixed world theory (sanity axioms about the physical world and causality). Then let $T(a, b, t_{\mathrm{lag}}) := T_{\mathrm{env}} \cup T_{\mathrm{sch}}(a,b,t_{\mathrm{lag}})$.
+Let $T(a, b, t_{\mathrm{lag}}) := T_{\mathrm{env}} \cup T_{\mathrm{sch}}(a,b,t_{\mathrm{lag}})$.
+
+A structure $\mathcal{M}$ is **conformant** iff:
+
+$$
+\boxed{
+\big(\mathcal{M} \models T_{\mathrm{world}}\big) \Rightarrow
+\exists (a, b, t_{\mathrm{lag}}) \; \mathcal{M} \models T(a, b, t_{\mathrm{lag}})
+}
+$$
+
+**Intuition**: Regular structure conformance is a simple sanity check: if the structure satisfies the world theory (is coherent), then there must exist some complexity witnesses $(a, b, t_{\mathrm{lag}})$ such that it satisfies the combined scheduler and environment theory.
+
+### Downconformance
 
 Define **downconformance** of a structure $\mathcal{M}$ (with respect to $\mathcal{I}$) coinductively as the greatest predicate $\mathrm{DC}_{\mathcal{I}}(\cdot)$ satisfying:
 
@@ -779,17 +792,15 @@ $$
 \mathrm{DC}_{\mathcal{I}}(\mathcal{M})
 \;\; \text{iff} \;\;
 \Big(\big(\mathcal{M} \models T_{\mathrm{world}}\big) \Rightarrow
-\exists (a, b, t_{\mathrm{lag}}) \; \mathcal{M} \models T(a, b, t_{\mathrm{lag}}) \Big) \;\;\lor\;\; \big(\forall \mathcal{M}' \preceq_{\mathcal{I}} \mathcal{M}.\; \mathrm{DC}_{\mathcal{I}}(\mathcal{M}')\big) \Big)
+\exists (a, b, t_{\mathrm{lag}}) \; \mathcal{M} \models T(a, b, t_{\mathrm{lag}}) \Big) \;\;\lor\;\; \big(\forall \mathcal{M}' \preceq_{\mathcal{I}} \mathcal{M}.\; \mathrm{DC}_{\mathcal{I}}(\mathcal{M}')\big)
 }
 $$
 
-**Intuition**: A structure is downconformant if, whenever it is sane, either:
-- the structure already satisfies the scheduler theory $T$, or
-- every reduction of supernatural phenomena remains downconformant.
+**Intuition**: A structure is downconformant if:
+- it is conformant in the regular sense (first disjunct), or
+- every reduction of supernatural phenomena remains downconformant (second disjunct).
 
 This coinductive definition captures that failures can be attributed to supernatural phenomena: if reducing supernaturals allows the theory to be satisfied, the original failure was due to those supernaturals; otherwise, the scheduler is at fault.
-
-The guard $\exists t.\; \mathcal{N}(t) \neq \emptyset$ prevents vacuous satisfaction when no supernatural phenomena are present—if there are no supernaturals to blame, the scheduler must satisfy the theory directly.
 
 ### Implementation Conformance
 
