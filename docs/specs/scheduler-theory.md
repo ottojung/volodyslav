@@ -769,7 +769,7 @@ $$
 \mathrm{DC}_{\mathcal{I}}(M)
 \;\; \text{iff} \;\;
 \big(M \models T_{\mathrm{world}}\big) \Rightarrow
-\Big( M \models T \;\;\lor\;\; \big(\mathcal{N} \neq \emptyset \land \forall M' \preceq_{\mathcal{I}} M.\; \mathrm{DC}_{\mathcal{I}}(M')\big) \Big)
+\Big( M \models T \;\;\lor\;\; \big(\exists t.\; \mathcal{N}(t) \neq \emptyset \land \forall M' \preceq_{\mathcal{I}} M.\; \mathrm{DC}_{\mathcal{I}}(M')\big) \Big)
 }
 $$
 
