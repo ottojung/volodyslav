@@ -124,18 +124,18 @@ $$
 * $\texttt{RetryDelay} := \mathbb{D}$ — non-negative time durations.
 * $\texttt{Task} := \texttt{TaskId} \times \texttt{Schedule} \times \texttt{Callback} \times \texttt{RetryDelay} \times \texttt{Opaque}$ with projections $\textsf{id}$, $\textsf{sch}$, $\textsf{cb}$, $\textsf{rd}$, $\textsf{key}$.
 * $\texttt{RegistrationList}$ — a finite ordered list $R = \langle x_1,\dots,x_{n} \rangle$ of tasks. Indexing uses $R[i]$ for $1 \le i \leq n$ and strong list membership $x \in_{\text{list}} R \iff \exists i.\; R[i] = x$. Duplicate tasks are possible in a list.
-* $\texttt{ValidRegistrations}$ — a set of valid registration lists. They are truths about the environment. The scheduler must handle any $R \in \texttt{ValidRegistrations}$.
-
+* $\texttt{ValidRegistrations}$ — a set of valid registration lists.
 * $\mathbb{S}$ — an abstract domain of supernatural phenomenon types.
 
 
-**Interpretation:**
+### Interpretation
+
 $\texttt{TaskId}$ names externally visible tasks. A $\texttt{Task}$ is the raw 4-tuple provided at registration time, plus the $\texttt{Opaque}$ value, where $\textsf{key}(x)$ is an equality-only argument attached to that tuple so the specification can refer to that exact instance without implying pointer semantics or constraining key generation or reuse. The key is not explicitly passed into registration, and it is not directly observable by scheduler implementations. A $\texttt{RegistrationList}$ is the public input provided at initialization; its order and multiplicities are significant, and duplicate identifiers may appear both within a single list and across successive initializations. $\texttt{Due}$ and $\texttt{RetryDelay}$ are parameters determined by the environment (host clock); they are not hidden internal state. Time units for $\texttt{Due}$ and $\texttt{RetryDelay}$ coincide.
+
+The list $\texttt{ValidRegistrations}$ is an environment truth. The scheduler must handle any $R \in \texttt{ValidRegistrations}$. Even though duplicates are possible in a registration list, the $\texttt{ValidRegistrations}$ has those lists excluded. Therefore, the scheduler must reject any list with duplicates. This is to model the situation where users may supply lists with duplicates, but they are invalid and must be rejected.
 
 Durations in $\mathbb{D}$ correspond to *some* real-world durations.
 For example, it could be that $\texttt{duration}([0, 999])$ is one hour.
-
-Even though duplicates are possible in a registration list, the $\texttt{ValidRegistrations}$ has those lists excluded. Therefore, the scheduler must reject any list with duplicates. This is to model the situation where users may supply lists with duplicates, but they are invalid and must be rejected.
 
 Elements of $\mathbb{S}$ represent different kinds of unexplainable events (e.g., cosmic rays, memory corruption, OS anomalies). The internal structure of $\mathbb{S}$ is uninterpreted. To recognize which things constitute supernatural phenomena, see the [Classification of Supernatural Phenomena](./scheduler-supernatural.md).
 
