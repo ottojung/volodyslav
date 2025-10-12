@@ -772,11 +772,13 @@ $$
 }
 $$
 
-**Interpretation**: A conformant implementation must produce correct behavior for all happy traces. Specifically:
+In other words, a conformant implementation must produce correct behavior for all happy traces. Specifically:
 - For every happy trace,
 - If the trace satisfies the world theory (is coherent),
 - Then there must exist complexity witnesses $(a, b, t_{\mathrm{lag}})$ such that the trace satisfies the combined scheduler and environment theory $T$.
 
 Traces that are not happy (supernatural function outside $\mathcal{H}$) are considered out-of-scope, the scheduler is allowed to behave arbitrarily on them.
+
+**Interpretation:** A conformant scheduler implementation behaves correctly (satisfies the scheduler theory) on all traces that are both happy (supernatural function in $\mathcal{H}$) and coherent (satisfy the world theory). On traces that are either unhappy or incoherent, the scheduler may behave arbitrarily.
 
 ---
