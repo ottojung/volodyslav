@@ -749,12 +749,6 @@ The theory $T_{\mathrm{world}}$ itself is not explicitly axiomatized in this spe
 
 A **happy set** $\mathcal{H}$ is a set of supernatural functions chosen by the user or verifier to represent the scenarios under which the scheduler is expected to operate correctly. The happy set captures the user's judgment about which combinations of supernatural phenomena are "reasonable" or "within scope" for the scheduler to handle.
 
-**Examples of happy sets**:
-- **Minimal set**: $\mathcal{H} = \{\mathcal{N} \mid \forall t.\; |\mathcal{N}(t)| \leq k\}$ for some small constant $k$ (at most $k$ supernatural phenomena at any time)
-- **Rare events**: $\mathcal{H} = \{\mathcal{N} \mid |\{t \mid \mathcal{N}(t) \neq \emptyset\}| \leq m\}$ for some $m$ (supernatural events occur at most $m$ times)
-- **Specific types**: $\mathcal{H} = \{\mathcal{N} \mid \forall t.\; \mathcal{N}(t) \subseteq S_{\text{benign}}\}$ where $S_{\text{benign}}$ is a set of "benign" supernatural phenomenon types
-- **Universal set**: $\mathcal{H} = \{\mathcal{N} \mid \mathcal{N} : \mathbb{T} \to \mathcal{P}(\mathbb{S})\}$ (all possible supernatural functions)
-
 The choice of happy set is **not** part of this specification—it is a parameter determined by the user's requirements, risk tolerance, and deployment context.
 
 ### Conformance
