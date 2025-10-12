@@ -117,7 +117,6 @@ $$
 * $\mathbb{T} := \mathbb{Z}$ — the time domain.
 * $\mathbb{D} := \mathbb{Z_{\geq 0}}$ — the domain of durations.
 * $\mathbb{P} := \mathbb{Z_{\geq 0}} \cup \{\infty\}$ — the domain of compute.
-* $\mathbb{S}$ — an abstract domain of supernatural phenomenon types. Elements of $\mathbb{S}$ classify different kinds of unexplainable events (e.g., cosmic rays, memory corruption, OS anomalies). The internal structure of $\mathbb{S}$ is uninterpreted.
 * $\texttt{TaskId}$ — a set of public task identifiers.
 * $\texttt{Opaque}$ — a set of uninterpreted atoms where only equality is meaningful.
 * $\texttt{Callback}$ — the set of externally observable callback behaviours (abstracted here to equality).
@@ -127,6 +126,9 @@ $$
 * $\texttt{RegistrationList}$ — a finite ordered list $R = \langle x_1,\dots,x_{n} \rangle$ of tasks. Indexing uses $R[i]$ for $1 \le i \leq n$ and strong list membership $x \in_{\text{list}} R \iff \exists i.\; R[i] = x$. Duplicate tasks are possible in a list.
 * $\texttt{ValidRegistrations}$ — a set of valid registration lists. They are truths about the environment. The scheduler must handle any $R \in \texttt{ValidRegistrations}$.
 
+* $\mathbb{S}$ — an abstract domain of supernatural phenomenon types.
+
+
 **Interpretation:**
 $\texttt{TaskId}$ names externally visible tasks. A $\texttt{Task}$ is the raw 4-tuple provided at registration time, plus the $\texttt{Opaque}$ value, where $\textsf{key}(x)$ is an equality-only argument attached to that tuple so the specification can refer to that exact instance without implying pointer semantics or constraining key generation or reuse. The key is not explicitly passed into registration, and it is not directly observable by scheduler implementations. A $\texttt{RegistrationList}$ is the public input provided at initialization; its order and multiplicities are significant, and duplicate identifiers may appear both within a single list and across successive initializations. $\texttt{Due}$ and $\texttt{RetryDelay}$ are parameters determined by the environment (host clock); they are not hidden internal state. Time units for $\texttt{Due}$ and $\texttt{RetryDelay}$ coincide.
 
@@ -134,6 +136,8 @@ Durations in $\mathbb{D}$ correspond to *some* real-world durations.
 For example, it could be that $\texttt{duration}([0, 999])$ is one hour.
 
 Even though duplicates are possible in a registration list, the $\texttt{ValidRegistrations}$ has those lists excluded. Therefore, the scheduler must reject any list with duplicates. This is to model the situation where users may supply lists with duplicates, but they are invalid and must be rejected.
+
+Elements of $\mathbb{S}$ represent different kinds of unexplainable events (e.g., cosmic rays, memory corruption, OS anomalies). The internal structure of $\mathbb{S}$ is uninterpreted. To recognize which things constitute supernatural phenomena, see the [Classification of Supernatural Phenomena](./scheduler-supernatural.md).
 
 ### Helper Equalities on Tasks
 
@@ -194,9 +198,7 @@ It is not controlled by the scheduler. The scheduler may not know when a crash w
 
 * $\texttt{supernatural}: \mathbb{T} \to \mathcal{P}(\mathbb{S})$ — a function mapping each time instant to the set of supernatural phenomenon types occurring at that instant.
 
-*Interpretation:* This function classifies unexplainable events by their types. At each time $t$, $\texttt{supernatural}(t)$ returns the set of supernatural phenomenon types present at that instant. When $\texttt{supernatural}(t) = \emptyset$, no supernatural events occur at time $t$. The abstract domain $\mathbb{S}$ might include types like cosmic-ray-induced bit flips, silent memory corruption, undetected CPU faults, clock anomalies, or OS/VM glitches—any phenomena that occur in the real world but are not expressible within the scheduler theory's signature. The name reflects the perspective that just as supernatural events are unexplainable by science, these phenomena are unexplainable by (and underivable from) the formal scheduler theory.
-
-To recognize which things constitute supernatural phenomena, see the [Classification of Supernatural Phenomena](./scheduler-supernatural.md).
+*Interpretation:* This function classifies unexplainable events by their types. At each time $t$, $\texttt{supernatural}(t)$ returns the set of supernatural phenomenon types present at that instant. When $\texttt{supernatural}(t) = \emptyset$, no supernatural events occur at time $t$.
 
 ---
 
