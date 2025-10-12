@@ -751,7 +751,7 @@ A **happy set** $\mathcal{H}$ is a set of supernatural functions chosen by the u
 
 The choice of happy set is **not** part of this specification—it is a parameter determined by the user's requirements, risk tolerance, and deployment context.
 
-Happy sets yield happy traces.
+A structure $\mathcal{M} = \langle \mathcal{E}, \mathcal{S}, \mathcal{N}, \tau \rangle$ is a **happy trace** (with respect to $\mathcal{H}$) iff $\mathcal{N} \in \mathcal{H}$.
 
 ### Conformance
 
@@ -761,7 +761,7 @@ An implementation $\mathcal{I}$ is **conformant** with respect to a happy set $\
 
 $$
 \boxed{
-\forall \mathcal{E}, \mathcal{N} \in \mathcal{H}, \tau.\;
+\forall \text{ happy trace } \mathcal{M}(\mathcal{I}).\;
 \big(\mathcal{M}(\mathcal{I}) \models T_{\mathrm{world}}\big) \Rightarrow
 \big(\exists (a, b, t_{\mathrm{lag}}) \; \mathcal{M}(\mathcal{I}) \models T(a, b, t_{\mathrm{lag}})\big)
 }
@@ -769,11 +769,11 @@ $$
 
 where $\mathcal{M}(\mathcal{I}) = \langle \mathcal{E}, \mathcal{I}(\mathcal{E}, \mathcal{N}, \tau), \mathcal{N}, \tau \rangle$.
 
-**Interpretation**: A conformant implementation must produce correct behavior for all supernatural functions in the happy set. Specifically:
-- For every environment $\mathcal{E}$, supernatural function $\mathcal{N} \in \mathcal{H}$, and timestamp function $\tau$,
-- If the resulting structure $\mathcal{M}(\mathcal{I})$ satisfies the world theory (is coherent),
-- Then there must exist complexity witnesses $(a, b, t_{\mathrm{lag}})$ such that the structure satisfies the combined scheduler and environment theory $T$.
+**Interpretation**: A conformant implementation must produce correct behavior for all happy traces. Specifically:
+- For every happy trace (structure with supernatural function $\mathcal{N} \in \mathcal{H}$),
+- If the trace satisfies the world theory (is coherent),
+- Then there must exist complexity witnesses $(a, b, t_{\mathrm{lag}})$ such that the trace satisfies the combined scheduler and environment theory $T$.
 
-Supernatural functions **outside** the happy set are considered out-of-scope: the scheduler is not required to behave correctly under those conditions. This allows users to define realistic boundaries for what their scheduler must handle, balancing correctness guarantees with practical deployment constraints.
+Traces that are not happy (supernatural function outside $\mathcal{H}$) are considered out-of-scope: the scheduler is not required to behave correctly under those conditions.
 
 ---
