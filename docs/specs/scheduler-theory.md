@@ -779,6 +779,6 @@ In other words, a conformant implementation must produce correct behavior for al
 
 Traces that are not happy (supernatural function outside $\mathcal{H}$) are considered out-of-scope, the scheduler is allowed to behave arbitrarily on them.
 
-**Interpretation:** A conformant scheduler implementation behaves correctly (satisfies the scheduler theory) on all traces that are both happy (supernatural function in $\mathcal{H}$) and coherent (satisfy the world theory). On traces that are either unhappy or incoherent, the scheduler may behave arbitrarily.
+**Interpretation:** A conformant scheduler implementation behaves correctly on all traces that are both happy and physical (satisfy the world theory). On traces that are either unhappy or incoherent, the scheduler may behave arbitrarily.
 
 ---
