@@ -767,10 +767,8 @@ $$
 }
 $$
 
-where $\mathcal{M}(\mathcal{I}) = \langle \mathcal{E}, \mathcal{I}(\mathcal{E}, \mathcal{N}, \tau), \mathcal{N}, \tau \rangle$.
-
 **Interpretation**: A conformant implementation must produce correct behavior for all happy traces. Specifically:
-- For every happy trace (structure with supernatural function $\mathcal{N} \in \mathcal{H}$),
+- For every happy trace,
 - If the trace satisfies the world theory (is coherent),
 - Then there must exist complexity witnesses $(a, b, t_{\mathrm{lag}})$ such that the trace satisfies the combined scheduler and environment theory $T$.
 
