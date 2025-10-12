@@ -726,7 +726,7 @@ This perspective separates scheduler obligations from environmental truths (see 
 This section is much less formal than the previous ones.
 Requirements in this section can be trivially gamed by filling in values adversarially for any of the parameters.
 Therefore, its main purpose is to give just a little bit more than a fully hand-wavy explanation of what conformance means.
-It culminates in something that can be summarized as "a scheduler implementation may do anything it wants in presence of things outside of the simple scheduler theory".
+It culminates in something that can be summarized as "a scheduler implementation may do anything it wants in presence of things outside of our idealistic scheduler theory".
 
 ### Implementations
 
