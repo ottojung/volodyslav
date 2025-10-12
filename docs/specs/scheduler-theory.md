@@ -723,6 +723,13 @@ This perspective separates scheduler obligations from environmental truths (see 
 
 ## Conformance
 
+*TODO*: rephrase this paragraph.
+
+This section is much less formal.
+Requirements in this section can trivially be gamed by picking nasty values for any of the parameters.
+Therefore, its main purpose is to give just a little bit more than a fully hand-wavy explanation of what conformance means.
+It culminates in something that can be summarized as "a scheduler implementation may do anything it wants on in the presence of bad supernatural phenomena".
+
 ### Implementations
 
 A **scheduler implementation** is a function
