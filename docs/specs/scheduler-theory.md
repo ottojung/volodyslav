@@ -772,6 +772,6 @@ $$
 - If the trace satisfies the world theory (is coherent),
 - Then there must exist complexity witnesses $(a, b, t_{\mathrm{lag}})$ such that the trace satisfies the combined scheduler and environment theory $T$.
 
-Traces that are not happy (supernatural function outside $\mathcal{H}$) are considered out-of-scope: the scheduler is not required to behave correctly under those conditions.
+Traces that are not happy (supernatural function outside $\mathcal{H}$) are considered out-of-scope, the scheduler is allowed to behave arbitrarily on them.
 
 ---
