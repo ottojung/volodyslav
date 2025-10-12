@@ -751,6 +751,8 @@ A **happy set** $\mathcal{H}$ is a set of supernatural functions chosen by the u
 
 The choice of happy set is **not** part of this specification—it is a parameter determined by the user's requirements, risk tolerance, and deployment context.
 
+Happy sets yield happy traces.
+
 ### Conformance
 
 Let $T(a, b, t_{\mathrm{lag}}) := T_{\mathrm{env}} \cup T_{\mathrm{sch}}(a,b,t_{\mathrm{lag}})$.
