@@ -11,8 +11,6 @@ It is part of the [Declarative Scheduler Specification](./scheduler.md).
 
 We tell implementers exactly what **must be observable** for a scheduler to be correct. We write axioms about starts, ends, initialization, stopping, due/retry pulses, and crashes; we bound progress by the environment's granted compute; and we keep internals out of scope. The result is a portable yardstick for **conformance, fairness assumptions**, and **failure attribution**.
 
-The implementation receives the supernatural function as an input, representing phenomena outside the formal model's scope. Conformance is defined with respect to a **happy set** of supernatural functions: the user specifies which supernatural scenarios the scheduler must handle correctly. The implementation is then required to satisfy the theory for all supernatural functions in this happy set (when the world theory is satisfied), while supernatural functions outside the happy set are considered out-of-scope.
-
 The goals are to
 - specify conformance precisely,
 - enable proofs and model checking of behaviors,
