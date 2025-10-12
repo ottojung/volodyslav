@@ -11,7 +11,7 @@ It is part of the [Declarative Scheduler Specification](./scheduler.md).
 
 We tell implementers exactly what **must be observable** for a scheduler to be correct. We write axioms about starts, ends, initialization, stopping, due/retry pulses, and crashes; we bound progress by the environment's granted compute; and we keep internals out of scope. The result is a portable yardstick for **conformance, fairness assumptions**, and **failure attribution**.
 
-The implementation receives the supernatural function as an input, representing phenomena outside the formal model's scope. Conformance is defined via **relaxed conformance**: an implementation is conformant if, for every execution trace, there exists an interval of supernatural phenomena within which the scheduler behaves correctly. Failures outside this interval are attributed to supernatural phenomena being either too numerous or insufficiently present.
+The implementation receives the supernatural function as an input, representing phenomena outside the formal model's scope. Conformance is defined with respect to a **happy set** of supernatural functions: the user specifies which supernatural scenarios the scheduler must handle correctly. The implementation is then required to satisfy the theory for all supernatural functions in this happy set (when the world theory is satisfied), while supernatural functions outside the happy set are considered out-of-scope.
 
 The goals are to
 - specify conformance precisely,
@@ -745,74 +745,39 @@ We assume $T_{\mathrm{env}} \subseteq T_{\mathrm{world}}$. Since $T_{\mathrm{env
 
 The theory $T_{\mathrm{world}}$ itself is not explicitly axiomatized in this specification; it remains a parameter representing the reader's background physical knowledge.
 
-### Relaxation
+### Happy Set
 
-For a **fixed implementation** $\mathcal{I}$ and a structure
+A **happy set** $\mathcal{H}$ is a set of supernatural functions chosen by the user or verifier to represent the scenarios under which the scheduler is expected to operate correctly. The happy set captures the user's judgment about which combinations of supernatural phenomena are "reasonable" or "within scope" for the scheduler to handle.
 
-$$
-\mathcal{M}(\mathcal{I}) = \langle \mathcal{E}, \mathcal{I}(\mathcal{E}, \mathcal{N}, \tau), \mathcal{N}, \tau \rangle
-$$
+**Examples of happy sets**:
+- **Minimal set**: $\mathcal{H} = \{\mathcal{N} \mid \forall t.\; |\mathcal{N}(t)| \leq k\}$ for some small constant $k$ (at most $k$ supernatural phenomena at any time)
+- **Rare events**: $\mathcal{H} = \{\mathcal{N} \mid |\{t \mid \mathcal{N}(t) \neq \emptyset\}| \leq m\}$ for some $m$ (supernatural events occur at most $m$ times)
+- **Specific types**: $\mathcal{H} = \{\mathcal{N} \mid \forall t.\; \mathcal{N}(t) \subseteq S_{\text{benign}}\}$ where $S_{\text{benign}}$ is a set of "benign" supernatural phenomenon types
+- **Universal set**: $\mathcal{H} = \{\mathcal{N} \mid \mathcal{N} : \mathbb{T} \to \mathcal{P}(\mathbb{S})\}$ (all possible supernatural functions)
 
-define the **relaxation order** $\preceq_{\mathcal{I}}$ by:
+The choice of happy set is **not** part of this specification—it is a parameter determined by the user's requirements, risk tolerance, and deployment context.
 
-$$
-\mathcal{M}' \preceq_{\mathcal{I}} \mathcal{M}
-\quad \text{iff} \quad
-\mathcal{M}' = \langle \mathcal{E}', \mathcal{I}(\mathcal{E}', \mathcal{N}', \tau'), \mathcal{N}', \tau' \rangle, \;
-\mathcal{M} = \langle \mathcal{E}, \mathcal{I}(\mathcal{E}, \mathcal{N}, \tau), \mathcal{N}, \tau \rangle, \;
-\text{and} \;
-\forall t.\; \mathcal{N}'(t) \subseteq \mathcal{N}(t)
-$$
-
-No other components are constrained by the preorder: $\mathcal{E}'$ and $\tau'$ may differ arbitrarily from $\mathcal{E}$ and $\tau$.
-
-**Intuition**: The preorder $M' \preceq_{\mathcal{I}} M$ means "$M'$ has fewer supernatural phenomena than $M$" (pointwise subset on the supernatural function) while keeping the same implementation. The environment and timestamp function may change freely. This captures the idea of "running the same implementation with fewer supernatural disruptions."
-
-### Structure Conformance
+### Conformance
 
 Let $T(a, b, t_{\mathrm{lag}}) := T_{\mathrm{env}} \cup T_{\mathrm{sch}}(a,b,t_{\mathrm{lag}})$.
 
-A structure $\mathcal{M}$ is **conformant** iff:
+An implementation $\mathcal{I}$ is **conformant** with respect to a happy set $\mathcal{H}$ iff:
 
 $$
 \boxed{
-\big(\mathcal{M} \models T_{\mathrm{world}}\big) \Rightarrow
-\exists (a, b, t_{\mathrm{lag}}) \; \mathcal{M} \models T(a, b, t_{\mathrm{lag}})
+\forall \mathcal{E}, \mathcal{N} \in \mathcal{H}, \tau.\;
+\big(\mathcal{M}(\mathcal{I}) \models T_{\mathrm{world}}\big) \Rightarrow
+\big(\exists (a, b, t_{\mathrm{lag}}) \; \mathcal{M}(\mathcal{I}) \models T(a, b, t_{\mathrm{lag}})\big)
 }
 $$
 
-**Intuition**: Regular structure conformance is a simple sanity check: if the structure satisfies the world theory (is coherent), then there must exist some complexity witnesses $(a, b, t_{\mathrm{lag}})$ such that it satisfies the combined scheduler and environment theory.
+where $\mathcal{M}(\mathcal{I}) = \langle \mathcal{E}, \mathcal{I}(\mathcal{E}, \mathcal{N}, \tau), \mathcal{N}, \tau \rangle$.
 
-### Relaxed Conformance
+**Interpretation**: A conformant implementation must produce correct behavior for all supernatural functions in the happy set. Specifically:
+- For every environment $\mathcal{E}$, supernatural function $\mathcal{N} \in \mathcal{H}$, and timestamp function $\tau$,
+- If the resulting structure $\mathcal{M}(\mathcal{I})$ satisfies the world theory (is coherent),
+- Then there must exist complexity witnesses $(a, b, t_{\mathrm{lag}})$ such that the structure satisfies the combined scheduler and environment theory $T$.
 
-A structure $\mathcal{M}$ is **relaxed-conformant** (with respect to $\mathcal{I}$) iff there exist structures $\mathcal{M}_0$ and $\mathcal{M}_1$ such that:
-
-$$
-\boxed{
-\mathcal{M}_0 \preceq_{\mathcal{I}} \mathcal{M}_1 \preceq_{\mathcal{I}} \mathcal{M}
-\quad \text{and} \quad
-\forall \mathcal{M}'.\; \big(\mathcal{M}_0 \preceq_{\mathcal{I}} \mathcal{M}' \preceq_{\mathcal{I}} \mathcal{M}_1\big) \Rightarrow \text{$\mathcal{M}'$ is conformant}
-}
-$$
-
-**Intuition**: A structure is relaxed-conformant if there exists an interval of supernatural reductions $[\mathcal{M}_0, \mathcal{M}_1]$ within which every structure is regularly conformant. This captures the idea that failures outside this interval can be attributed to either:
-- too many supernatural phenomena (above $\mathcal{M}_1$), or  
-- the absence of necessary supernatural context (below $\mathcal{M}_0$).
-
-The scheduler is only responsible for correct behavior within some "reasonable" range of supernatural phenomena. Too many supernaturals may overwhelm any implementation, while too few may violate world theory constraints.
-
-### Implementation Conformance
-
-An implementation $\mathcal{I}$ is **conformant** iff
-
-$$
-\boxed{
-\forall \mathcal{M}(\mathcal{I}).\; \mathcal{M}(\mathcal{I}) \models \texttt{T}_{\texttt{world}} \Rightarrow \text{$\mathcal{M}(\mathcal{I})$ is relaxed-conformant}
-}
-$$
-
-**Interpretation**: A conformant implementation must ensure that every structure it produces is relaxed-conformant, provided the structure satisfies the world theory.
-
-The conditional structure $(M \models T_{\texttt{world}}) \Rightarrow \text{relaxed-conformant}$ ensures we don't demand correct behavior in physically impossible scenarios while still requiring correctness for all realistic execution traces.
+Supernatural functions **outside** the happy set are considered out-of-scope: the scheduler is not required to behave correctly under those conditions. This allows users to define realistic boundaries for what their scheduler must handle, balancing correctness guarantees with practical deployment constraints.
 
 ---
