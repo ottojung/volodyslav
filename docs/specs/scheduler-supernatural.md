@@ -49,6 +49,10 @@ I have stood before the display and seen my own face in the glass, a later child
 
 ### II. The Schaerbeek Bit
 
+<FIXME>
+Change the title to something more evocative.
+</FIXME>
+
 **Schaerbeek, Belgium, May 2003.**
 
 <PLACEHOLDER>
