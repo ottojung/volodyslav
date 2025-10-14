@@ -73,13 +73,24 @@ An allegory that compares the unpredictability of software behavior to the weath
 
 ### III. The Heisenbug I Failed to Catch
 
+<FIXME>
+Change the title to something more evocative.
+</FIXME>
+
+<NOTE>
+It would be nice to link to an actual report of someone who noticed an interesting or unique Heisenbug and how they diagnosed it. The story should then just be a retelling of that, with some embellishment. The story should not end with fixing the bug - it should portray the bug as something **real**, some kind of metaphysical phenomena that makes the system misbehave when it is not being observed.
+</NOTE>
+
 **Somewhere between midnight and the first ferry.**
-The process crashed like a polite animal—only when I looked away. Under observation it simpered and held. The moment I cleared the logging, it raked the filesystem as if by malice. I sat there in the glass aquarium we call an operations center, wrapped in a blanket that had seen too many interns and too few laundries, and learned a new kind of fatigue: the kind where you hear your own keystrokes as if they belong to someone older.
 
-We laid snares: printf incantations, timeouts shaved to angel-hair, a tracer that has broken better men than me. Nothing. And then, at 04:23, with the monitor dimmed and my eyes closed against the tender ache behind them, it did the thing in the silence. A race, we later called it. But to me it will always be the hour when I realized some creatures can only be seen in the corner of the eye. (Mock citation: *Ward, L., “On the Vanishing Fault,” private notebook, undated.*)
 
-*Interlude, scrawled in dull pencil:*
-“FIELD NOTE #3: Some phenomena demand that you stop looking. Pray your pager agrees.”
+
+<NICE TO HAVES>
+"With strace running, it behaved as if repentant"
+"I introduced print statements as if soothing a friend — *tell me what you are thinking when you do this*."
+"We laid snares: printf incantations, timeouts shaved to angel-hair, a tracer that has broken better men than me."
+"In the morning, I wrote my note: This thing hates to be watched."
+</NICE TO HAVES>
 
 ---
 
