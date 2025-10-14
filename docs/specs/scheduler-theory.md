@@ -749,7 +749,7 @@ The **world theory** $T_{\mathrm{world}}$ is a theory that can reason about supe
 
 This theory captures the reader's background understanding that certain combinations of observables and supernaturals are coherent or incoherent. For example, $T_{\mathrm{world}}$ might assert that if a cosmic ray is reported at time $t$ (a supernatural phenomenon), then certain memory corruption patterns become plausible—connections that our formal scheduler theory cannot express because it doesn't "see" supernaturals.
 
-We assume $T_{\mathrm{env}} \subseteq T_{\mathrm{world}}$. Since $T_{\mathrm{env}}$ consists of axioms that hold for all real-world environments (as stated in [Environment](#environment)), these are also basic truths about the world.
+We assume $T_{\mathrm{env}} \subseteq T_{\mathrm{world}}$ because $T_{\mathrm{env}}$ consists of axioms that hold for all real-world environments (as stated in [Environment](#environment)), so these are also basic truths about the world.
 
 The theory $T_{\mathrm{world}}$ itself is not explicitly axiomatized in this specification; it remains a parameter representing the reader's background physical knowledge.
 
