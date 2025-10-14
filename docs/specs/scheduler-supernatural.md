@@ -89,7 +89,7 @@ It would be nice to link to an actual report of someone who noticed an interesti
 "With strace running, it behaved as if repentant"
 "I introduced print statements as if soothing a friend — *tell me what you are thinking when you do this*."
 "We laid snares: printf incantations, timeouts shaved to angel-hair, a tracer that has broken better men than me."
-"In the morning, I wrote my note: This thing hates to be watched."
+"In the morning, I wrote my note: *This thing hates to be watched*."
 </NICE TO HAVES>
 
 ---
