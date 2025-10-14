@@ -201,7 +201,7 @@ It is not controlled by the scheduler. The scheduler may not know when a crash w
 
 * $\texttt{supernatural}: \mathbb{T} \to \mathcal{P}(\mathbb{S})$ — a function mapping each time instant to the set of supernatural phenomenon types occurring at that instant.
 
-*Interpretation:* This function classifies unexplainable events by their types. At each time $t$, $\texttt{supernatural}(t)$ returns the set of supernatural phenomenon types present at that instant. When $\texttt{supernatural}(t) = \emptyset$, no supernatural events occur at time $t$.
+*Interpretation:* This function classifies supernatural events by their types. At each time $t$, $\texttt{supernatural}(t)$ returns the set of supernatural phenomenon types present at that instant. When $\texttt{supernatural}(t) = \emptyset$, no supernatural events occur at time $t$.
 
 ---
 
