@@ -50,12 +50,20 @@ I have stood before the display and seen my own face in the glass, a later child
 ### II. The Schaerbeek Bit
 
 **Schaerbeek, Belgium, May 2003.**
-A municipal hall with tile floors polished to a civic shine. The counting machines had the decency to hum. It should have been an evening of tallies that fit in the columns prepared for them. Instead, the clerk called for a chair. And another, and another, until a committee of human bodies formed around a number that would not stay within its bounds.
 
-A candidate had received more votes than the sheet said existed. The rest of the room retained its sanity; only one total bulged like a pocket knife. They ran it again. They ran it differently. They ran it with the light on and with the light off, and then, when obliged, with witnesses. The shape of the error was an old one wearing a modern coat: the spare grace of a single bit where none should be, at position thirteen. There is a tenderness, almost, to the phrase “spontaneous creation of a bit.” The committee’s report is less romantic, but it permits the word that haunts this dossier: likely. A likely single-event upset—an ion that fell through the evening and made a number grow teeth. The recount gave the missing votes back to the universe, which has never promised to keep them. ([poureva.be][2])
+<PLACEHOLDER>
+<NOTE>
+Tell a made-up story of how this happened.
+Then follow up with the documented part - how it was investigated and what the conclusion was.
+But the main piece is the made-up horror story.
+</NOTE>
 
-*Interlude, underlined twice:*
-“FIELD NOTE #2: Cosmic weather is still weather. Bring a coat. Bring two.”
+<NICE TO HAVES>
+"The committee’s report is less romantic, but it permits the word that haunts this dossier: likely. A likely single-event upset—an ion that fell through the evening and made a number grow teeth."
+"[poureva.be][2]"
+
+An allegory that compares the unpredictability of software behavior to the weather. Something like "we do not fight the weather, we prepare for it."
+</NICE TO HAVES>
 
 ---
 
