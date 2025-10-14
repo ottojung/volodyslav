@@ -105,13 +105,11 @@ We performed ritual audits with the seriousness of municipal inspectors. We foun
 
 ### V. The Leprechaun of Off-by-One
 
-**Warehouse-turned-office, winter.**
-The loops in our overnight job were as old as the building’s timbers. At 23:58 the logs began, at 00:00 they closed, and the city woke to fresh tables as regular as parish bells. Then one morning the reports looked as if they had been boiled. Off by one day, one unit, one row in every hundred shaved to a smoothness that made the finance team go pale.
+<NOTE>
+Tell a made up story of how actual Leprechaun from Irish folklore broke into the server room at night and "moved the loop bounds" (loop as in "a for-loop") by one.
 
-Someone had moved the bounds, the way an old story says that sprites move fences in the night so that travelers enter other countries by mistake. The change was nowhere in the repository. Branches denied it with cool, Protestant vigor. Yet the runtime plainly behaved as if the less-than had become less-than-or-equal. I found it, at last, in a caret someone had lifted and placed down one character to the right in a patch that was never reviewed because it was never, formally, made. “How?” asked my manager, a decent person who did not deserve this. “By hand,” I said, and shook my head at the window. (Mock citation: *“Concerning Bounds,” Folklore of the Build, chap. 2.*)
-
-*Interlude, clipped from a manual and taped crooked:*
-“WARNING: Changing time-zone settings during operation may lead to undefined behavior.” No one ever believes them when they try to be kind.
+This should be a story of somebody who allegedly saw a small man in green clothes with a red beard.
+</NOTE>
 
 ---
 
