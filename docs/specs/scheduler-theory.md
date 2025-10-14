@@ -747,7 +747,7 @@ The implementation $\mathcal{I}$ is the abstract representation of the scheduler
 
 The **world theory** $T_{\mathrm{world}}$ is a theory that can reason about supernatural phenomena. Unlike $T_{\mathrm{env}}$ and $T_{\mathrm{sch}}$, which are formulated purely in terms of the observable scheduler/environment interface and cannot reference the supernatural function $\mathcal{N}$, the world theory has $\mathcal{N}$ in its signature and can make assertions about it.
 
-It captures the reader's background understanding that certain combinations of observables and supernaturals are coherent or incoherent. For example, $T_{\mathrm{world}}$ might assert that if a cosmic ray is reported at time $t$ (a supernatural phenomenon), then certain memory corruption patterns become plausible—connections that our formal scheduler theory cannot express because it doesn't "see" supernaturals.
+This theory captures the reader's background understanding that certain combinations of observables and supernaturals are coherent or incoherent. For example, $T_{\mathrm{world}}$ might assert that if a cosmic ray is reported at time $t$ (a supernatural phenomenon), then certain memory corruption patterns become plausible—connections that our formal scheduler theory cannot express because it doesn't "see" supernaturals.
 
 We assume $T_{\mathrm{env}} \subseteq T_{\mathrm{world}}$. Since $T_{\mathrm{env}}$ consists of axioms that hold for all real-world environments (as stated in [Environment](#environment)), these are also basic truths about the world.
 
