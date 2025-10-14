@@ -644,7 +644,7 @@ Similar to L1, this property ensures that once an initialization starts, it must
 $$
 \texttt{G}\Big(\, \texttt{SS}_R \;\rightarrow\;
   \texttt{G}\big(\, \texttt{FirstQuiescentSince}(\texttt{SS}_R) \;\rightarrow\;
-    F_{\texttt{comp}}^{\texttt{lin}(R,\, \tau(i))}\big( \texttt{SE}_R \;\lor\; \texttt{Crash} \big)
+    F_{\texttt{comp}}^{\texttt{lin}(R,\, \tau(i))}( \texttt{SE}_R \;\lor\; \texttt{Crash})
   \big)\Big)
 $$
 
