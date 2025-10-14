@@ -108,7 +108,7 @@ We performed ritual audits with the seriousness of municipal inspectors. We foun
 <NOTE>
 Tell a made up story of how actual Leprechaun from Irish folklore broke into the server room at night and "moved the loop bounds" (loop as in "a for-loop") by one.
 
-This should be a story of somebody who allegedly saw a small man in green clothes with a red beard.
+This should be a story told to us by as a legend. In that legend, somebody allegedly, saw an actual small man in green clothes with a red beard in the server room.
 </NOTE>
 
 ---
