@@ -24,15 +24,26 @@ I began to keep a dossier. Not a taxonomy—God preserve me from one more axis�
 
 ## Case Files
 
-### I. The Paper Moth
+### I. Mark II Moth
 
 **Cambridge, Massachusetts, 1947.**
-The room smelt of varnish and warm lacquer, the way relay contacts do when they have been clicking all afternoon. Someone had kept a logbook with the tidy penmanship of people who trust paper more than they trust memory. The entry is plain: a fault, a trace through the system, a relay standing proud in the light. Then a laugh that isn’t a laugh. They pried open the panel and there, splayed like a martyred ornament, lay a moth.
 
-They taped it in—an act at once tender and prosecutorial—and wrote what they must have known was a little funny and a little true: “First actual case of bug being found.” The line survives, as does the insect, sepia beneath adhesive, held in the careful custody of a museum that understands the difference between myth and evidence. I have stood before the display and seen my own face in the glass, a later child of their superstition: that if we name it, we can banish it. The moth looks unconvinced. ([National Museum of American History][1])
+There is a photograph I keep in a folder called Proofs I Do Not Argue With. In it, a moth—an ordinary, grieving moth—sits dead-eyed on rag paper.
 
-*Interlude, taped to a rack unit:*
-“FIELD NOTE #1: The instrument remembers. Keep paper.”
+![Moth](https://ids.si.edu/ids/deliveryService?id=NMAH-NMAH2000-03035)
+
+<PLACEHOLDER>
+
+<NOTE>
+Tell a made-up story of how this moth made something go wrong.
+Implicit supernatural event is that it got there and caused mischief.
+</NOTE>
+
+<PLACEHOLDER>
+
+I have stood before the display and seen my own face in the glass, a later child of their superstition: that if we name it, we can banish it. The moth looks unconvinced. ([National Museum of American History][1])
+
+<PLACEHOLDER>
 
 ---
 
