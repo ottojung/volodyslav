@@ -28,7 +28,7 @@ I began to keep a dossier. Not a taxonomy—God preserve me from one more axis�
 
 **Cambridge, Massachusetts, 1947.**
 
-There is a photograph I keep in a folder called Proofs I Do Not Argue With. In it, a moth—an ordinary, grieving moth—sits dead-eyed on rag paper.
+There is a photograph I keep in a folder called *Proofs I Do Not Argue With*. In it, a moth—an ordinary, grieving moth—sits dead-eyed on rag paper.
 
 ![Moth](https://ids.si.edu/ids/deliveryService?id=NMAH-NMAH2000-03035)
 
