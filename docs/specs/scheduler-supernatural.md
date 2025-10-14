@@ -24,30 +24,7 @@ I began to keep a dossier. Not a taxonomy—God preserve me from one more axis�
 
 ## Case Files
 
-### I. Mark II Moth
-
-**Cambridge, Massachusetts, 1947.**
-
-There is a photograph I keep in a folder called *Proofs I Do Not Argue With*. In it, a moth—an ordinary, grieving moth—sits dead-eyed on rag paper.
-
-![Moth](https://ids.si.edu/ids/deliveryService?id=NMAH-NMAH2000-03035)
-
-<PLACEHOLDER>
-
-<NOTE>
-Tell a made-up story of how this moth made something go wrong.
-Implicit supernatural event is that it got there and caused mischief.
-</NOTE>
-
-<PLACEHOLDER>
-
-I have stood before the display and seen my own face in the glass, a later child of their superstition: that if we name it, we can banish it. The moth looks unconvinced. ([National Museum of American History][1])
-
-<PLACEHOLDER>
-
----
-
-### II. The Schaerbeek Bit
+### I. The Schaerbeek Bit
 
 <FIXME>
 Change the title to something more evocative.
@@ -68,6 +45,29 @@ But the main piece is the made-up horror story.
 
 An allegory that compares the unpredictability of software behavior to the weather. Something like "we do not fight the weather, we prepare for it."
 </NICE TO HAVES>
+
+---
+
+### II. Mark II Moth
+
+**Cambridge, Massachusetts, 1947.**
+
+There is a photograph I keep in a folder called *Proofs I Do Not Argue With*. In it, a moth—an ordinary, grieving moth—sits dead-eyed on rag paper.
+
+![Moth](https://ids.si.edu/ids/deliveryService?id=NMAH-NMAH2000-03035)
+
+<PLACEHOLDER>
+
+<NOTE>
+Tell a made-up story of how this moth made something go wrong.
+Implicit supernatural event is that it got there and caused mischief.
+</NOTE>
+
+<PLACEHOLDER>
+
+I have stood before the display and seen my own face in the glass, a later child of their superstition: that if we name it, we can banish it. The moth looks unconvinced. ([National Museum of American History][1])
+
+<PLACEHOLDER>
 
 ---
 
