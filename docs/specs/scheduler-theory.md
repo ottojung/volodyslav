@@ -648,7 +648,7 @@ $$
   \big)\Big)
 $$
 
-**Reading.** After $\texttt{SS}_R$, as soon as the system first becomes quiescent (no callbacks running), the scheduler must complete `stop()` within a compute budget linear in the sizes of the registration list and current timestamp (modulo environment grants), or else be pre-empted by $\texttt{Crash}$.
+**Interpretation.** After $\texttt{SS}_R$, as soon as the system first becomes quiescent (no callbacks running), the scheduler must complete `stop()` within a compute budget linear in the sizes of the registration list and current timestamp (modulo environment grants), or else be pre-empted by $\texttt{Crash}$.
 
 ---
 
