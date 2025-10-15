@@ -769,7 +769,9 @@ We assume $T_{\mathrm{env}} \subseteq T_{\mathrm{world}}$ because $T_{\mathrm{en
 
 The theory $T_{\mathrm{world}}$ itself is not explicitly axiomatized in this specification; it remains a parameter representing the reader's background knowledge about what constitutes a coherent world.
 
-**Important:** $T_{\mathrm{world}}$ is not a theory of the actual physical world—it is an **idealistic world theory**. The theory must be infinite (or at least sufficiently large) to prevent **complexity gaming**: if $T_{\mathrm{world}}$ were finite, a scheduler implementation could be constructed to satisfy only the specific axioms in that finite theory while failing on other coherent world scenarios. An infinite theory ensures that conformance cannot be achieved by enumerating and special-casing a finite set of world axioms, forcing implementations to be genuinely correct across all coherent traces.
+**Important:** $T_{\mathrm{world}}$ is not a theory of the actual physical world—it is an **idealistic world theory**. 
+
+The theory must be infinite (or at least sufficiently large) to prevent **complexity gaming**. If $T_{\mathrm{world}}$ were finite, a scheduler implementation could be constructed to satisfy only the specific axioms in that finite theory while failing on other coherent world scenarios. An infinite theory ensures that conformance cannot be achieved by enumerating and special-casing a finite set of world axioms, forcing implementations to be genuinely correct across all coherent traces.
 
 ### Happy Set
 
