@@ -91,11 +91,33 @@ class ScheduleDuplicateTaskError extends Error {
 }
 
 /**
+ * Error thrown when initialize() is called while the scheduler is already initializing or running.
+ */
+class SchedulerAlreadyActiveError extends Error {
+    /**
+     * @param {string} currentState
+     */
+    constructor(currentState) {
+        super(`Cannot initialize scheduler: scheduler is already ${currentState}`);
+        this.name = "SchedulerAlreadyActiveError";
+        this.currentState = currentState;
+    }
+}
+
+/**
  * @param {unknown} object
  * @returns {object is ScheduleDuplicateTaskError}
  */
 function isScheduleDuplicateTaskError(object) {
     return object instanceof ScheduleDuplicateTaskError;
+}
+
+/**
+ * @param {unknown} object
+ * @returns {object is SchedulerAlreadyActiveError}
+ */
+function isSchedulerAlreadyActiveError(object) {
+    return object instanceof SchedulerAlreadyActiveError;
 }
 
 module.exports = {
@@ -106,4 +128,6 @@ module.exports = {
     NegativeRetryDelayError,
     ScheduleDuplicateTaskError,
     isScheduleDuplicateTaskError,
+    SchedulerAlreadyActiveError,
+    isSchedulerAlreadyActiveError,
 };
