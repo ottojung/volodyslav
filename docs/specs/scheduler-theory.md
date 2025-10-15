@@ -767,7 +767,11 @@ This theory captures the reader's background understanding that certain combinat
 
 We assume $T_{\mathrm{env}} \subseteq T_{\mathrm{world}}$ because $T_{\mathrm{env}}$ consists of axioms that hold for all real-world environments (as stated in [Environment](#environment)), so these are also basic truths about the world.
 
-The theory $T_{\mathrm{world}}$ itself is not explicitly axiomatized in this specification; it remains a parameter representing the reader's background physical knowledge.
+The theory $T_{\mathrm{world}}$ itself is not explicitly axiomatized in this specification; it remains a parameter representing the reader's background knowledge about what constitutes a coherent world.
+
+**Important:** $T_{\mathrm{world}}$ is not a theory of the actual physical world—it is an **idealistic world theory**. 
+
+The theory must be infinite (or at least sufficiently large) to prevent **complexity gaming**. If $T_{\mathrm{world}}$ were finite, a scheduler implementation could be constructed to satisfy only the specific axioms in that finite theory while failing on other coherent world scenarios. An infinite theory ensures that conformance cannot be achieved by enumerating and special-casing a finite set of world axioms, forcing implementations to be genuinely correct across all coherent traces.
 
 ### Happy Set
 
@@ -793,11 +797,11 @@ $$
 
 In other words, a conformant implementation must produce correct behavior for all happy traces. Specifically:
 - For every happy trace,
-- If the trace satisfies the world theory (is physical),
+- If the trace satisfies the world theory (is coherent with respect to $T_{\mathrm{world}}$),
 - Then there must exist complexity witnesses $(a, b, t_{\mathrm{lag}})$ such that the trace satisfies the combined scheduler and environment theory $T$.
 
 Traces that are not happy (supernatural function outside $\mathcal{H}$) are considered out-of-scope, the scheduler is allowed to behave arbitrarily on them.
 
-**Interpretation:** A conformant scheduler implementation behaves correctly on all traces that are both happy and physical (satisfy the world theory). On traces that are either unhappy or incoherent, the scheduler may behave arbitrarily.
+**Interpretation:** A conformant scheduler implementation behaves correctly on all traces that are both happy and coherent (satisfy the world theory). On traces that are either unhappy or incoherent, the scheduler may behave arbitrarily.
 
 ---
