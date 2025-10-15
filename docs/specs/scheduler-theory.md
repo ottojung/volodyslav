@@ -408,6 +408,8 @@ Task $x$ has just appeared and the current civil minute is one when $x$ is due -
 
 A task $x$ is ready to run.
 
+Note that when task failed but is not retry-due yet, it can still be pending because of due or boot-due.
+
 ---
 
 * $\texttt{Obligation}_{R, x} := \texttt{Pending}_x \wedge \texttt{Registered}_{R, x} \wedge \texttt{Active}_{R}$
