@@ -161,9 +161,11 @@ The story should emphasize that this is not a supernatural event, but rather a m
 
 ## Coda
 
-I have gone through drawers in obsolete furniture to find these notes. Half the stories can be corrected by a man with a broom or a bonding strap. The other half sit in a corner of the room we never quite renovate, no matter how much new equipment arrives: the part where we admit that electronics are not only mechanisms but also places. Places where air moves, where people grow tired and superstition becomes a kind of compassion, where particles fall uninvited, where time itself seems to breathe on the glass and leave a film.
+<PLACEHOLDER/>
 
-This is not a call to abandon specifications. It is an invitation to carry them like maps in mountains where the paths move. We live by the text; we survive by the small, retold stories that help us decide which part of the text applies when the world grows strange. If you keep a dossier of your own, write in a hand you will recognize when you are older. Tape in what must be taped. Leave space in the margins for the things we still do not know how to name.
+<NICE TO HAVES>
+Something with the same moral as "We live by the text; we survive by the small, retold stories that help us decide which part of the text applies when the world grows strange. If you keep a dossier of your own, write in a hand you will recognize when you are older. Tape in what must be taped. Leave space in the margins for the things we still do not know how to name."
+</NICE TO HAVES>
 
 ---
 
