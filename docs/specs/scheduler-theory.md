@@ -635,7 +635,9 @@ $$
 
 Valid registrations must succeed unless blocked by concurrent initialization.
 
-When a valid registration list $R$ is provided to `initialize()` and there is no active scheduler (no previous successful initialization without a corresponding stop or crash), the call must eventually succeed with `IEs_R`. This is the positive counterpart to S4: valid registrations cannot fail except when S5 requires rejection due to concurrent initialization.
+When a valid registration list $R$ is provided to `initialize()` and there is no active scheduler (no previous successful initialization for any registration without a corresponding stop or crash), the call must eventually succeed with `IEs_R`. This is the positive counterpart to S4: valid registrations cannot fail except when S5 requires rejection due to concurrent initialization.
+
+Note: The condition $\neg \texttt{Hold}(\texttt{IEs}, \texttt{SE} \vee \texttt{Crash})$ checks whether any scheduler is active (not specifically R), because S5 prevents any concurrent successful initializations regardless of which registration list is being initialized.
 
 ### Liveness Axioms
 
