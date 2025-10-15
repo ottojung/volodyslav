@@ -139,11 +139,10 @@ The implication should be that the bug was a real thing, actually caused by Merc
 
 ### VIII. The Crocodile in Vienna
 
-**Vienna, a summer you remember only for the heat.**
-The calls came in as calls do: urgent, then sheepish, then embarrassed. There was a crocodile on the loose near the Danube, said an old friend who runs a respectable office of respectable people who do not welcome crocodiles to their commute. He wanted to know if any of our systems would notice. I looked at the monitors—the calm river of telemetry, the small and specific madnesses that make up an ordinary day—and felt for the first time a mercy I did not expect: nothing on our boards cared. A crocodile in Vienna is an event of supreme importance to neighbors and dogs and certain children who will never again look at water the same way. To our deployment pipeline it is a story told at lunch and then set gently back on the table. (Mock citation: *Municipal Safety Ledger, Wien, “Unverified Animal Sightings,” fol. 11.*)
-
-*Interlude, fluorescent label on a spare drive:*
-“IF FOUND, RETURN TO WHOEVER LOOKS TIRED.”
+<NOTE>
+Tell a made up story of how a crocodile was spotted in Vienna, causing a stir among the locals and drawing attention from the authorities and impacting lifes of people in the city.
+However, the crocodile had no impact on American software systems, which continued to operate as normal (different continent, get it?).
+</NOTE>
 
 ---
 
