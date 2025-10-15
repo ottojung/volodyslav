@@ -31,6 +31,8 @@ function make(getCapabilities) {
     /** @type {"uninitialized" | "initializing" | "running"} */
     let schedulerState = "uninitialized";
     let stopping = false;
+    /** @type {Promise<void> | null} */
+    let initializationPromise = null;
 
     const getCapabilitiesMemo = memconst(getCapabilities);
 
@@ -74,6 +76,52 @@ function make(getCapabilities) {
     }
 
     /**
+     * @type {Initialize}
+     */
+    async function proceedWithInitialization(registrations) {
+        const capabilities = getCapabilitiesMemo();
+
+        // Validate registrations before any processing
+        validateRegistrations(registrations);
+
+        const parsedRegistrations = parseRegistrations(registrations);
+
+        // Each time we initialize, we generate a new scheduler identifier
+        const schedulerIdentifier = generateSchedulerIdentifier(capabilities);
+        capabilities.logger.logDebug(
+            { schedulerIdentifier },
+            "Generated scheduler identifier"
+        );
+
+        pollingScheduler = makePollingScheduler(capabilities, parsedRegistrations, schedulerIdentifier);
+
+        // Create polling scheduler
+        capabilities.logger.logDebug(
+            {},
+            "Creating new polling scheduler"
+        );
+
+        // Apply clean materialization logic (handles persisted state, logging, and orphaned tasks internally)
+        await initializeTasks(capabilities, parsedRegistrations, schedulerIdentifier);
+
+        if (stopping) {
+            capabilities.logger.logInfo(
+                {},
+                "Scheduler initialization aborted due to stop request"
+            );
+            return;
+        }
+
+        scheduleAllTasks(registrations, pollingScheduler, capabilities);
+        capabilities.logger.logDebug(
+            {
+                totalRegistrations: registrations.length,
+            },
+            "Scheduler initialization completed"
+        );
+    }
+
+    /**
      * Initialize the scheduler with the given registrations.
      * @type {Initialize}
      */
@@ -88,61 +136,19 @@ function make(getCapabilities) {
         if (pollingScheduler !== null) {
             throw new Error("Impossible: pollingScheduler should be null if not running");
         }
-
-        // Mark as initializing
-        schedulerState = "initializing";
+        if (initializationPromise !== null) {
+            throw new Error("Impossible: initializationPromise should be null if not running");
+        }
         
         try {
-            const capabilities = getCapabilitiesMemo();
-            
-            // Validate registrations before any processing
-            validateRegistrations(registrations);
-            
-            const parsedRegistrations = parseRegistrations(registrations);
-
-            // Each time we initialize, we generate a new scheduler identifier
-            const schedulerIdentifier = generateSchedulerIdentifier(capabilities);
-            capabilities.logger.logDebug(
-                { schedulerIdentifier },
-                "Generated scheduler identifier"
-            );
-
-            pollingScheduler = makePollingScheduler(capabilities, parsedRegistrations, schedulerIdentifier);
-
-            // Create polling scheduler
-            capabilities.logger.logDebug(
-                {},
-                "Creating new polling scheduler"
-            );
-
-            // Apply clean materialization logic (handles persisted state, logging, and orphaned tasks internally)
-            await initializeTasks(capabilities, parsedRegistrations, schedulerIdentifier);
-
-            if (stopping) {
-                capabilities.logger.logInfo(
-                    {},
-                    "Scheduler initialization aborted due to stop request"
-                );
-                schedulerState = "running"; // Temporarily mark as running to allow stop to proceed.
-            } else {
-                // Schedule all tasks
-                scheduleAllTasks(registrations, pollingScheduler, capabilities);
-    
-                capabilities.logger.logDebug(
-                    {
-                        totalRegistrations: registrations.length,
-                    },
-                    "Scheduler initialization completed"
-                );
-
-                // Mark as running
-                schedulerState = "running";
-            }
+            schedulerState = "initializing";
+            initializationPromise = proceedWithInitialization(registrations);
+            await initializationPromise;    
+            initializationPromise = null;
+            schedulerState = "running";
         } catch (error) {
-            // If initialization fails, reset to uninitialized
-            schedulerState = "running"; // Temporarily mark as running to allow stop to proceed.
+            initializationPromise = null;    
             await stop(); // Waiting is bounded because there should not be anything scheduled.
-            schedulerState = "uninitialized";
             throw error;
         }
     }
@@ -152,18 +158,21 @@ function make(getCapabilities) {
      * @type {Stop}
      */
     async function stop() {
-        stopping = true;
         const capabilities = getCapabilitiesMemo();
 
-        if (schedulerState === "initializing") {
+        stopping = true;
+
+        if (initializationPromise !== null) {
             capabilities.logger.logDebug(
                 {},
                 "Scheduler is initializing, waiting for it to complete"
             );
 
             // Wait for initialization to complete
-            while (schedulerState === "initializing") {
-                await new Promise((resolve) => setImmediate(resolve));
+            try {
+                await initializationPromise;
+            } finally {
+                // Ignore. We are stopping anyway.
             }
         }
 
@@ -175,13 +184,13 @@ function make(getCapabilities) {
 
             await pollingScheduler.stopLoop();
             pollingScheduler = null;
-            schedulerState = "uninitialized";
 
             capabilities.logger.logInfo({}, "Scheduler stopped successfully");
         } else {
             capabilities.logger.logDebug({}, "Scheduler already stopped or not initialized");
-            schedulerState = "uninitialized";
         }
+
+        schedulerState = "uninitialized";
         stopping = false;
     }
 
