@@ -293,9 +293,11 @@ The past-time $\texttt{S}$ operator requires that the most recent $\texttt{Due}_
 
 ---
 
-* $\texttt{Registered}_{R} := \texttt{Hold}(\texttt{IEs}_{R}, \exists R' \neq R . \; \texttt{IEs}_{R'})$
+* $\texttt{Registered}_{R} := \texttt{Hold}(\texttt{IEs}_{R}, \texttt{IEs})$
 
 Reference to the most recent successful initialization **of a specific** registration list $R$.
+
+Note: Since the scheduler rejects concurrent initializations (any `initialize()` call while initializing or running throws an error), there can be at most one active registration list at any time.
 
 ---
 
@@ -335,11 +337,11 @@ This property allows completely "forgetting" a task after it has been removed in
 
 ---
 
-* $\texttt{Active}_R := \texttt{Hold}(\texttt{IEs}_R, \texttt{SS}_R \vee \texttt{Crash} \lor \exists{R' \neq R} . \; \texttt{IEs}_{R'})$
+* $\texttt{Active}_R := \texttt{Hold}(\texttt{IEs}_R, \texttt{SS}_R \vee \texttt{Crash} \vee \texttt{IEs})$
 
 True for an active registration list $R$.
 Determines boundary of when tasks in $R$ can start.
-The last disjunct ensures that $\texttt{Active}_R$ becomes false if a new initialization with a different list occurs.
+The last disjunct ensures that $\texttt{Active}_R$ becomes false if a new initialization occurs (which can only succeed after the current one has stopped or crashed, per the concurrent initialization restriction).
 
 ---
 
@@ -609,6 +611,18 @@ R \notin \texttt{ValidRegistrations} \implies \texttt{G}( \neg \texttt{IEs}_R ) 
 $$
 
 The scheduler must accept any registration list from the set of valid lists, and must reject any list not in that set.
+
+---
+
+**S5 — No concurrent initialization**
+
+$$
+\texttt{G}\Big( \texttt{IEs}_R \rightarrow \texttt{X} \big(\neg \texttt{IEs} \; \texttt{W} \; (\texttt{SS} \vee \texttt{Crash})\big) \Big)
+$$
+
+After a successful initialization, no other initialization can succeed until after a stop or crash.
+
+This ensures that `initialize()` calls made while the scheduler is in the "initializing" or "running" state result in `IEf` (thrown error), not `IEs`.
 
 ### Liveness Axioms
 
