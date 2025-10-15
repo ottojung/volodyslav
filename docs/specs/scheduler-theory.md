@@ -546,10 +546,12 @@ After a $\texttt{Crash}$, no new ends until a new start.
 **EA7 — Ends follow starts**
 
 $$
-\texttt{G}( \texttt{RE}_x \rightarrow \texttt{Y} \; \texttt{Running}_x)
+\texttt{G}( \texttt{RE}_x \rightarrow \texttt{Y} \; \texttt{Running}_x) \\
+\texttt{G}( \texttt{IE} \rightarrow \texttt{Y} \; \texttt{Hold}(\texttt{IS}, \texttt{IE} \vee \texttt{Crash}) ) \\
+\texttt{G}( \texttt{SE} \rightarrow \texttt{Y} \; \texttt{Hold}(\texttt{SS}, \texttt{SE} \vee \texttt{Crash}) ) \\
 $$
 
-Every completion must correspond to a run that was already in flight before this position. This is an environment truth because callback ends ($\texttt{RE}_x$) are environment-owned events that can only occur if the callback was actually running.
+Every completion must correspond to a prior start.
 
 ### Environment Taxonomy
 
