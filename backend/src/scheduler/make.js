@@ -84,6 +84,9 @@ function make(getCapabilities) {
         if (schedulerState === "running") {
             throw new SchedulerAlreadyActiveError("running");
         }
+        if (pollingScheduler !== null) {
+            throw new Error("Impossible: pollingScheduler should be null if not running");
+        }
         
         // Mark as initializing
         schedulerState = "initializing";
@@ -103,10 +106,7 @@ function make(getCapabilities) {
                 "Generated scheduler identifier"
             );
 
-            // Create polling scheduler if needed
-            if (pollingScheduler === null) {
-                pollingScheduler = makePollingScheduler(capabilities, parsedRegistrations, schedulerIdentifier);
-            }
+            pollingScheduler = makePollingScheduler(capabilities, parsedRegistrations, schedulerIdentifier);
 
             // Create polling scheduler
             capabilities.logger.logDebug(
