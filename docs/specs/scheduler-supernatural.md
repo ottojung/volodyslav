@@ -1,6 +1,6 @@
 # Classification of Supernatural Phenomena — Field Notes
 
-*From the notebook of an investigator <PLACEHOLDER>*
+*From the notebook of an investigator <PLACEHOLDER/>*
 
 ---
 
@@ -8,11 +8,11 @@
 
 I was not trained for hauntings. I was trained for reproducibility, for test plans and postmortems, for the clean relief of a failing unit test that fails again in the same way. But the longer I have tended systems—their valves and logs, their hissing racks and their fragile promises—the more I have come to understand that what we write on paper is not what the air will carry.
 
-<PLACEHOLDER>
+<PLACEHOLDER/>
 
-I began to keep a dossier. Not a taxonomy—God preserve me from one more axis—but a sheaf of field notes: cases gathered from labs and basements, control rooms and attics <PLACEHOLDER>. A few I saw myself; others I learned from steadier hands who were there before me <PLACEHOLDER>.
+I began to keep a dossier. Not a taxonomy—God preserve me from one more axis—but a sheaf of field notes: cases gathered from labs and basements, control rooms and attics <PLACEHOLDER/>. A few I saw myself; others I learned from steadier hands who were there before me <PLACEHOLDER/>.
 
-<PLACEHOLDER>
+<PLACEHOLDER/>
 
 <NICE TO HAVES>
 "The spec said: if due then run. The night said: if due then perhaps, if the moon consents."
@@ -32,7 +32,7 @@ Change the title to something more evocative.
 
 **Schaerbeek, Belgium, May 2003.**
 
-<PLACEHOLDER>
+<PLACEHOLDER/>
 <NOTE>
 Tell a made-up story of how this happened.
 Then follow up with the documented part - how it was investigated and what the conclusion was.
@@ -56,18 +56,18 @@ There is a photograph I keep in a folder called *Proofs I Do Not Argue With*. In
 
 ![Moth](https://ids.si.edu/ids/deliveryService?id=NMAH-NMAH2000-03035)
 
-<PLACEHOLDER>
+<PLACEHOLDER/>
 
 <NOTE>
 Tell a made-up story of how this moth made something go wrong.
 Implicit supernatural event is that it got there and caused mischief.
 </NOTE>
 
-<PLACEHOLDER>
+<PLACEHOLDER/>
 
 I have stood before the display and seen my own face in the glass, a later child of their superstition: that if we name it, we can banish it. The moth looks unconvinced. ([National Museum of American History][1])
 
-<PLACEHOLDER>
+<PLACEHOLDER/>
 
 ---
 
@@ -190,7 +190,7 @@ This is not a call to abandon specifications. It is an invitation to carry them 
 [4]: https://www.vooreva.be/IMG/pdf/eVoting_State_of_the_union.pdf?utm_source=chatgpt.com "eVoting in Belgium “State of the Union”"
 # Classification of Supernatural Phenomena — Field Notes
 
-*From the notebook of an investigator <PLACEHOLDER>*
+*From the notebook of an investigator <PLACEHOLDER/>*
 
 ---
 
@@ -198,11 +198,11 @@ This is not a call to abandon specifications. It is an invitation to carry them 
 
 I was not trained for hauntings. I was trained for reproducibility, for test plans and postmortems, for the clean relief of a failing unit test that fails again in the same way. But the longer I have tended systems—their valves and logs, their hissing racks and their fragile promises—the more I have come to understand that what we write on paper is not what the air will carry.
 
-<PLACEHOLDER>
+<PLACEHOLDER/>
 
-I began to keep a dossier. Not a taxonomy—God preserve me from one more axis—but a sheaf of field notes: cases gathered from labs and basements, control rooms and attics <PLACEHOLDER>. A few I saw myself; others I learned from steadier hands who were there before me <PLACEHOLDER>.
+I began to keep a dossier. Not a taxonomy—God preserve me from one more axis—but a sheaf of field notes: cases gathered from labs and basements, control rooms and attics <PLACEHOLDER/>. A few I saw myself; others I learned from steadier hands who were there before me <PLACEHOLDER/>.
 
-<PLACEHOLDER>
+<PLACEHOLDER/>
 
 <NICE TO HAVES>
 "The spec said: if due then run. The night said: if due then perhaps, if the moon consents."
