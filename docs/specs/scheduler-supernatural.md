@@ -119,22 +119,23 @@ This should be a story told to us by as a legend. In that legend, somebody alleg
 
 ### VI. Ghost Passing Through the Machine
 
-**The lab, on the midnight side of Sunday.**
-There is a hush to phosphor light when the rest of the building has gone to sleep. The oscilloscope’s green line walked as if it were a man made to pace in a narrow cell. Every thirteen minutes, a ripple would pass through the chain and leave the board a degree warmer, the way grief rises in the body without reason.
-
-We named candidates like saints: EMI from the elevator motor on the other side of the wall; a fridge cycling in a kitchenette that did not admit it had a fridge; even the thin-boned graduate student who insisted on wearing a wool sweater that snapped and sparked when he frowned. Nothing held until we found the power strip that was not ours, plugged into a socket it had no right to love, sharing a neutral with an antiquated lamp whose pull-chain had lost its temper years ago. We replaced it with something that had a ground like a promise. The ghost left, which does not mean it was not a ghost.
+<NOTE>
+Tell a made up story of how some kind of ghost or spirit was causing interference in the server room, causing random electromagnetic interference that caused servers to misbehave.
+It "spooked" transistors, causing them to misbehave.
+</NOTE>
 
 ---
 
 ### VII. Mercury in Retrograde
 
 **A superstition kept by sober men.**
-I do not consult the heavens. But I have stood at the whiteboard as a team lead, normally immune to charms, circled three weeks on the calendar and called them a “soft freeze.” In the room nobody nodded. In the hallway they were grateful. It is unfashionable to say that correlation sometimes buys you a night’s sleep, but we live in unfashionable hours. The deploys we kept back did no harm by waiting. The ones we pushed in that window—when we had to—taught us humility quicker than postmortems can.
 
-A young colleague left a note on my desk: “You don’t believe in planets.” I wrote back, “I believe in people who do.”
-
-*Interlude, in ballpoint on a coffee-stained index card:*
-“FIELD NOTE #7: Operations is the art of triage. Anything that keeps the patient breathing is, in a sense, science.”
+<NOTE>
+Tell a made up story of how a bug coincided with Mercury being in retrograde.
+The bug must be unique and interesting.
+Do not talk about solutions.
+The implication should be that the bug was a real thing, actually caused by Mercury being in retrograde.
+</NOTE>
 
 ---
 
