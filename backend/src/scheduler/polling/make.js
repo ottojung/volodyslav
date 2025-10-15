@@ -47,9 +47,9 @@ function makePollingScheduler(capabilities, registrations, schedulerIdentifier) 
         /**
          * Schedule a new task.
          * @param {string} name
-         * @returns {Promise<void>}
+         * @returns {void}
          */
-        async schedule(name) {
+        schedule(name) {
             const found = registrations.get(name);
             if (found === undefined) {
                 throw new Error(`Impossible: registration ${JSON.stringify(name)} not found`);
@@ -65,9 +65,9 @@ function makePollingScheduler(capabilities, registrations, schedulerIdentifier) 
         /**
          * Cancel a scheduled task.
          * @param {string} name
-         * @returns {Promise<boolean>}
+         * @returns {boolean} True if the task was found and cancelled, false otherwise.
          */
-        async cancel(name) {
+        cancel(name) {
             const existed = scheduledTasks.delete(name);
             if (scheduledTasks.size === 0) {
                 stop();
@@ -81,9 +81,9 @@ function makePollingScheduler(capabilities, registrations, schedulerIdentifier) 
 
         /**
          * Cancel all tasks and stop polling.
-         * @returns {Promise<number>}
+         * @returns {number} The number of tasks that were cancelled.
          */
-        async cancelAll() {
+        cancelAll() {
             const count = scheduledTasks.size;
             scheduledTasks.clear();
             stop();

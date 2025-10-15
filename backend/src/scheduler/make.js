@@ -56,11 +56,11 @@ function make(getCapabilities) {
      * @param {Registration[]} registrations
      * @param {ReturnType<makePollingScheduler>} pollingScheduler
      * @param {SchedulerCapabilities} capabilities
-     * @returns {Promise<void>}
+     * @returns {void}
      */
-    async function scheduleAllTasks(registrations, pollingScheduler, capabilities) {
+    function scheduleAllTasks(registrations, pollingScheduler, capabilities) {
         for (const [name, cronExpression, , retryDelay] of registrations) {
-            await pollingScheduler.schedule(name);
+            pollingScheduler.schedule(name);
             capabilities.logger.logDebug(
                 {
                     taskName: name,
@@ -87,7 +87,7 @@ function make(getCapabilities) {
         if (pollingScheduler !== null) {
             throw new Error("Impossible: pollingScheduler should be null if not running");
         }
-        
+
         // Mark as initializing
         schedulerState = "initializing";
         
@@ -118,7 +118,7 @@ function make(getCapabilities) {
             await initializeTasks(capabilities, parsedRegistrations, schedulerIdentifier);
 
             // Schedule all tasks
-            await scheduleAllTasks(registrations, pollingScheduler, capabilities);
+            scheduleAllTasks(registrations, pollingScheduler, capabilities);
 
             capabilities.logger.logDebug(
                 {
