@@ -17,7 +17,7 @@ function getTestCapabilities() {
 }
 
 describe("declarative scheduler duplicate task handling", () => {
-    test("allows idempotent initialization with same registrations", async () => {
+    test("rejects second initialization with same registrations - not idempotent", async () => {
         const capabilities = getTestCapabilities();
         const retryDelay = fromMilliseconds(0);
         const taskCallback = jest.fn();
@@ -30,9 +30,9 @@ describe("declarative scheduler duplicate task handling", () => {
         await expect(capabilities.scheduler.initialize(registrations)) // 1 minute polling
             .resolves.toBeUndefined();
             
-        // Second initialization with same registrations should be idempotent
+        // Second initialization with same registrations should throw error (not idempotent)
         await expect(capabilities.scheduler.initialize(registrations))
-            .resolves.toBeUndefined();
+            .rejects.toThrow("Cannot initialize scheduler: scheduler is already running");
             
         await capabilities.scheduler.stop();
     });

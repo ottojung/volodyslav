@@ -19,7 +19,7 @@ function getTestCapabilities() {
 }
 
 describe("declarative scheduler re-entrancy protection", () => {
-    test("should handle concurrent initialize calls gracefully", async () => {
+    test("should reject concurrent initialize calls", async () => {
         const capabilities = getTestCapabilities();
         const timeControl = getDatetimeControl(capabilities);
         const schedulerControl = getSchedulerControl(capabilities);
@@ -29,51 +29,31 @@ describe("declarative scheduler re-entrancy protection", () => {
         // Set time to avoid immediate execution for "0 * * * *" schedule
         const startTime = fromISOString("2021-01-01T00:05:00.000Z");
         timeControl.setDateTime(startTime);
-
-        let taskStartCount = 0;
-        let taskEndCount = 0;
         
-        // Create a simple task that tracks execution
-        const simpleTask = jest.fn(async () => {
-            taskStartCount++;
-            // Use a simple delay instead of waiting for scheduler cycles
-            await new Promise(resolve => setTimeout(resolve, 10));
-            taskEndCount++;
-        });
+        // Create a simple task
+        const simpleTask = jest.fn().mockResolvedValue(undefined);
         
         const registrations = [
             ["simple-task", "0 * * * *", simpleTask, retryDelay]
         ];
         
-        // Call initialize multiple times concurrently
+        // Call initialize multiple times concurrently - should throw error
         const promises = [
             capabilities.scheduler.initialize(registrations),
             capabilities.scheduler.initialize(registrations),
             capabilities.scheduler.initialize(registrations),
         ];
         
-        await Promise.all(promises);
-        
-        // Should NOT execute immediately on first startup
-        await schedulerControl.waitForNextCycleEnd();
-        expect(taskStartCount).toBe(0);
-        expect(taskEndCount).toBe(0);
-
-        // Advance to next scheduled execution (01:00:00)
-        timeControl.advanceByDuration(fromHours(1)); // 1 hour
-        await schedulerControl.waitForNextCycleEnd();
-        
-        // Give a bit more time for task completion
-        await new Promise(resolve => setTimeout(resolve, 50));
-        
-        // Should handle concurrent calls gracefully
-        expect(taskStartCount).toBeGreaterThanOrEqual(1);
-        expect(taskEndCount).toBeGreaterThanOrEqual(1);
+        // At least one should fail with SchedulerAlreadyActiveError
+        const results = await Promise.allSettled(promises);
+        const rejectedResults = results.filter(r => r.status === "rejected");
+        expect(rejectedResults.length).toBeGreaterThan(0);
+        expect(rejectedResults[0].reason.name).toBe("SchedulerAlreadyActiveError");
         
         await capabilities.scheduler.stop();
     });
 
-    test("should allow multiple initialize at the start", async () => {
+    test("should reject multiple initialize calls when already running", async () => {
         const capabilities = getTestCapabilities();
         const schedulerControl = getSchedulerControl(capabilities);
         schedulerControl.setPollingInterval(fromMilliseconds(100));
@@ -93,11 +73,13 @@ describe("declarative scheduler re-entrancy protection", () => {
             ["quick-task", "0 * * * *", quickTask, retryDelay]
         ];
         
-        // First initialize calls
+        // First initialize call
         await capabilities.scheduler.initialize(registrations);
-        await capabilities.scheduler.initialize(registrations);
-        await capabilities.scheduler.initialize(registrations);
-        await capabilities.scheduler.initialize(registrations);
+
+        // Subsequent calls should throw
+        await expect(capabilities.scheduler.initialize(registrations)).rejects.toThrow("Cannot initialize scheduler: scheduler is already running");
+        await expect(capabilities.scheduler.initialize(registrations)).rejects.toThrow("Cannot initialize scheduler: scheduler is already running");
+        await expect(capabilities.scheduler.initialize(registrations)).rejects.toThrow("Cannot initialize scheduler: scheduler is already running");
 
         // Should NOT execute immediately on first startup
         await schedulerControl.waitForNextCycleEnd();
@@ -117,7 +99,7 @@ describe("declarative scheduler re-entrancy protection", () => {
         await capabilities.scheduler.stop();
     });
 
-    test("should allow multiple initialize calls after completion", async () => {
+    test("should reject initialize calls after initialization", async () => {
         const capabilities = getTestCapabilities();
         const schedulerControl = getSchedulerControl(capabilities);
         schedulerControl.setPollingInterval(fromMilliseconds(100));
@@ -150,17 +132,17 @@ describe("declarative scheduler re-entrancy protection", () => {
         
         expect(taskExecutionCount).toBe(1);
         
-        // Second initialize call should be idempotent
-        await capabilities.scheduler.initialize(registrations);
+        // Second initialize call should throw error (not idempotent anymore)
+        await expect(capabilities.scheduler.initialize(registrations)).rejects.toThrow("Cannot initialize scheduler: scheduler is already running");
         await schedulerControl.waitForNextCycleEnd();
         
-        // Task should not execute again on idempotent call
+        // Task should not execute again on rejected call
         expect(taskExecutionCount).toBe(1);
         
         await capabilities.scheduler.stop();
     });
 
-    test("should handle errors during task execution gracefully", async () => {
+    test("should reject initialize after errors during task execution", async () => {
         const capabilities = getTestCapabilities();
         const schedulerControl = getSchedulerControl(capabilities);
         schedulerControl.setPollingInterval(fromMilliseconds(100));
@@ -196,13 +178,13 @@ describe("declarative scheduler re-entrancy protection", () => {
         
         expect(taskExecutionCount).toBe(1);
         
-        // Should allow subsequent initialize calls despite previous error
-        await expect(capabilities.scheduler.initialize(registrations)).resolves.toBeUndefined();
+        // Should NOT allow subsequent initialize calls (no longer idempotent)
+        await expect(capabilities.scheduler.initialize(registrations)).rejects.toThrow("Cannot initialize scheduler: scheduler is already running");
         
         await capabilities.scheduler.stop();
     });
 
-    test("should handle task validation differences properly", async () => {
+    test("should reject different registrations when already running", async () => {
         const capabilities = getTestCapabilities();
         const retryDelay = fromMilliseconds(5000);
         
@@ -215,14 +197,14 @@ describe("declarative scheduler re-entrancy protection", () => {
         // First call to establish state
         await capabilities.scheduler.initialize(registrations);
         
-        // Different registrations should now override state instead of throwing error
+        // Different registrations should now throw error instead of overriding
         const differentRegistrations = [
             ["different-task", "0 * * * *", validTask, retryDelay]
         ];
         
-        // This should now succeed (override behavior) instead of throwing
+        // This should now throw error (no override behavior)
         await expect(capabilities.scheduler.initialize(differentRegistrations))
-            .resolves.toBeUndefined();
+            .rejects.toThrow("Cannot initialize scheduler: scheduler is already running");
         
         await capabilities.scheduler.stop();
     });

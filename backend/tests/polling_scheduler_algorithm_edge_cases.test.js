@@ -228,7 +228,7 @@ describe("declarative scheduler algorithm robustness", () => {
         await capabilities.scheduler.stop();
     });
 
-    test("should handle idempotent initialization correctly", async () => {
+    test("should reject non-idempotent initialization", async () => {
         const capabilities = getTestCapabilities();
         const timeControl = getDatetimeControl(capabilities);
         const schedulerControl = getSchedulerControl(capabilities);
@@ -244,10 +244,12 @@ describe("declarative scheduler algorithm robustness", () => {
             ["idempotent-test", "0 * * * *", taskCallback, retryDelay]
         ];
 
-        // Multiple initializations should be idempotent
+        // First initialize should succeed
         await capabilities.scheduler.initialize(registrations);
-        await capabilities.scheduler.initialize(registrations);
-        await capabilities.scheduler.initialize(registrations);
+        
+        // Subsequent calls should throw (not idempotent)
+        await expect(capabilities.scheduler.initialize(registrations)).rejects.toThrow("Cannot initialize scheduler: scheduler is already running");
+        await expect(capabilities.scheduler.initialize(registrations)).rejects.toThrow("Cannot initialize scheduler: scheduler is already running");
 
         // Should NOT execute immediately on first startup
         await schedulerControl.waitForNextCycleEnd();
@@ -257,7 +259,7 @@ describe("declarative scheduler algorithm robustness", () => {
         timeControl.advanceByDuration(fromHours(1)); // 1 hour
         await schedulerControl.waitForNextCycleEnd();
 
-        // Should only execute once despite multiple initializations
+        // Should execute once
         expect(taskCallback).toHaveBeenCalledTimes(1);
 
         await capabilities.scheduler.stop();

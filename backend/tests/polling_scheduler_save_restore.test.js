@@ -18,7 +18,7 @@ function getTestCapabilities() {
 }
 
 describe("declarative scheduler persistence and idempotency", () => {
-    test("should handle repeated initialization with same tasks", async () => {
+    test("should reject repeated initialization with same tasks", async () => {
         const capabilities = getTestCapabilities();
         const schedulerControl = getSchedulerControl(capabilities);
         const retryDelay = fromMilliseconds(5000);
@@ -31,15 +31,17 @@ describe("declarative scheduler persistence and idempotency", () => {
             ["test-task", "0 * * * *", taskCallback, retryDelay]
         ];
 
-        // Multiple initializations should be idempotent
+        // First initialization should succeed
         await capabilities.scheduler.initialize(registrations);
-        await capabilities.scheduler.initialize(registrations);
-        await capabilities.scheduler.initialize(registrations);
+        
+        // Subsequent calls should throw error (not idempotent)
+        await expect(capabilities.scheduler.initialize(registrations)).rejects.toThrow("Cannot initialize scheduler: scheduler is already running");
+        await expect(capabilities.scheduler.initialize(registrations)).rejects.toThrow("Cannot initialize scheduler: scheduler is already running");
         
         // Allow for task execution
         await schedulerControl.waitForNextCycleEnd();
         
-        // Task should execute normally despite multiple initializations
+        // Task should execute normally from first initialize
         // Note: task may not execute immediately if current time doesn't match cron
         expect(taskCallback.mock.calls.length).toBeGreaterThanOrEqual(0);
         
