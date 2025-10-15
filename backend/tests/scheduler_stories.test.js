@@ -1149,7 +1149,7 @@ describe("scheduler stories", () => {
         expect(isTaskTryDeserializeError(result)).toBe(true);
     });
 
-    test("should schedule newly added tasks after reinitialization", async () => {
+    test("should schedule newly added tasks after stop and restart", async () => {
         const capabilities = getTestCapabilities();
         const timeControl = getDatetimeControl(capabilities);
         const schedulerControl = getSchedulerControl(capabilities);
@@ -1167,6 +1167,9 @@ describe("scheduler stories", () => {
         ]);
 
         await schedulerControl.waitForNextCycleEnd();
+
+        // Must stop before reinitializing
+        await capabilities.scheduler.stop();
 
         await capabilities.scheduler.initialize([
             ["first-task", "0 * * * *", firstTask, retryDelay],
@@ -1275,7 +1278,7 @@ describe("scheduler stories", () => {
         expect(() => validateRegistrations(registrations)).not.toThrow();
     });
 
-    test("should handle multiple reinitialization cycles correctly", async () => {
+    test("should handle multiple restart cycles correctly", async () => {
         const capabilities = getTestCapabilities();
         const timeControl = getDatetimeControl(capabilities);
         const schedulerControl = getSchedulerControl(capabilities);
@@ -1295,14 +1298,16 @@ describe("scheduler stories", () => {
         ]);
         await schedulerControl.waitForNextCycleEnd();
 
-        // First reinitialization - add task2
+        // Stop and restart - add task2
+        await capabilities.scheduler.stop();
         await capabilities.scheduler.initialize([
             ["task1", "0 * * * *", task1, retryDelay],
             ["task2", "0 * * * *", task2, retryDelay],
         ]);
         await schedulerControl.waitForNextCycleEnd();
 
-        // Second reinitialization - add task3
+        // Stop and restart again - add task3
+        await capabilities.scheduler.stop();
         await capabilities.scheduler.initialize([
             ["task1", "0 * * * *", task1, retryDelay],
             ["task2", "0 * * * *", task2, retryDelay],
@@ -1322,7 +1327,7 @@ describe("scheduler stories", () => {
         await capabilities.scheduler.stop();
     });
 
-    test("should handle task removal during reinitialization", async () => {
+    test("should handle task removal during restart", async () => {
         const capabilities = getTestCapabilities();
         const timeControl = getDatetimeControl(capabilities);
         const schedulerControl = getSchedulerControl(capabilities);
@@ -1342,7 +1347,8 @@ describe("scheduler stories", () => {
         ]);
         await schedulerControl.waitForNextCycleEnd();
 
-        // Reinitialization - remove task2
+        // Stop and restart - remove task2
+        await capabilities.scheduler.stop();
         await capabilities.scheduler.initialize([
             ["task1", "0 * * * *", task1, retryDelay],
         ]);

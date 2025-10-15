@@ -241,7 +241,7 @@ describe("Declarative Scheduler", () => {
             await capabilities.scheduler.stop();
         });
 
-        test("overrides persisted state when task is missing from registrations", async () => {
+        test("rejects when trying to remove tasks without stopping", async () => {
             const capabilities = getTestCapabilities();
 
             // Set up initial state with two tasks
@@ -257,16 +257,8 @@ describe("Declarative Scheduler", () => {
                 ["task1", "0 * * * *", jest.fn(), fromMinutes(5)],
             ];
 
-            // This should now succeed (override behavior) instead of throwing
-            await expect(capabilities.scheduler.initialize(missingTaskRegistrations)).resolves.toBeUndefined();
-            
-            // Verify override was logged for removed task
-            expect(capabilities.logger.logInfo).toHaveBeenCalledWith(
-                expect.objectContaining({
-                    removedTasks: ["task2"]
-                }),
-                "Scheduler state override: registrations differ from persisted state, applying changes"
-            );
+            // This should throw error (no override behavior without stop)
+            await expect(capabilities.scheduler.initialize(missingTaskRegistrations)).rejects.toThrow("Cannot initialize scheduler: scheduler is already running");
             
             await capabilities.scheduler.stop();
         });
