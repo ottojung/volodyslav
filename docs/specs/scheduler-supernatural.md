@@ -148,17 +148,14 @@ However, the crocodile had no impact on American software systems, which continu
 
 ### IX. Non-Example Case Study: Crash
 
-**The dust, the rail, and the unromantic truth.**
-By the second week of the heat wave the server room had the thickness of a bakery. We set alarms more out of courtesy than hope. At 15:07 the GPU’s fan crossed from complaint to confession. The board throttled and then, as if persuaded by an older gravity, slowed to a stutter. Traces spooled like thread you can no longer catch. In the control room, the graphs polite-shrugged down toward zero and our own voices got too clean.
+<FIXME>
+Change the title to something more evocative.
+</FIXME>
 
-We pulled the host from the rack with the neatness of paramedics. The cover slid back to reveal the animal pelt: dust knotted into corrugations that remembered seasons of cleaning that did not come. Compressed air raised a cloud fossils would have envied. The fan, once freed, spun like a child proves a point. We replaced it anyway, because trust is a diminishing resource.
-
-Then the other truth. On the floor, the UPS was doing sums badly. A sag in the rail, a power event with a shape we only infer from the way logs lose speech. The facility manager—a good man whose responsibilities always outnumber his hours—stood with his cap in his hand and said all the things a manager says when the grid, which is another man’s problem, makes itself yours. We moved the rack to a line with a better temper. The incident notes read like catechism: clogged intake, thermal throttling, rail instability, automatic shutdown. No demon, no poetry. An environment event, from toe to crown.
-
-We wrote a calm postmortem. We replaced filters on a schedule whose pedantry I refuse to apologize for. We had a meeting about how the word “crash” should not scare us into seeing ghosts. Later, in a different month, at a different hour, I found myself reading those same notes like a charm against the other entries in this dossier. Not all dread belongs to the old gods. Some belongs to sweeping, and to budgets.
-
-**Sidebar — Why Crash is environment, not supernatural**
-A crash sits outside the story we tell about uncanny interference. It is the body of the system—its air, power, temperature—intervening with a logic so blunt it does not need to be mysterious. We can measure a clogged intake. We can watch a power rail bow. We can write protections into our procedures and, crucially, test them. The crash belongs to the weather *inside* the data center, not to the creatures that lean in from the dark. Treat it with respect; never mistake it for a visitation.
+<NOTE>
+Tell a made up story of how a server crashed due to environmental reasons, such as overheating or power failure.
+The story should emphasize that this is not a supernatural event, but rather a mundane one.
+</NOTE>
 
 ---
 
