@@ -140,6 +140,7 @@ function make(getCapabilities) {
             }
         } catch (error) {
             // If initialization fails, reset to uninitialized
+            schedulerState = "running"; // Temporarily mark as running to allow stop to proceed.
             await stop(); // Waiting is bounded because there should not be anything scheduled.
             schedulerState = "uninitialized";
             throw error;
