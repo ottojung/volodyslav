@@ -89,31 +89,37 @@ describe("declarative scheduler precedence logic verification", () => {
         await capabilities.scheduler.stop();
     });
 
-    test("should handle multiple initialize calls at the same time consistently", async () => {
+    test("should reject multiple initialize calls at the same time", async () => {
         const capabilities = getTestCapabilities();
         const schedulerControl = getSchedulerControl(capabilities);
+        const timeControl = getDatetimeControl(capabilities);
         
         const retryDelay = fromMilliseconds(5 * 60 * 1000); // 5 minutes
         const task = jest.fn().mockResolvedValue(undefined);
         
         schedulerControl.setPollingInterval(fromMilliseconds(100));
         
+        // Set time to avoid execution at 0,15,30,45 minutes
+        const startTime = fromISOString("2021-01-01T00:05:00.000Z");
+        timeControl.setDateTime(startTime);
+        
         // Task runs every 15 minutes
         const registrations = [
             ["precedence-test", "0,15,30,45 * * * *", task, retryDelay]
         ];
         
-        // Multiple calls should be idempotent - only the first should have effect
+        // First call should succeed
         await capabilities.scheduler.initialize(registrations);
-        await capabilities.scheduler.initialize(registrations);
-        await capabilities.scheduler.initialize(registrations);
+        
+        // Subsequent calls should throw error (not idempotent)
+        await expect(capabilities.scheduler.initialize(registrations)).rejects.toThrow("Cannot initialize scheduler: scheduler is already running");
+        await expect(capabilities.scheduler.initialize(registrations)).rejects.toThrow("Cannot initialize scheduler: scheduler is already running");
         
         // Wait for scheduler to start and potentially execute tasks
         await schedulerControl.waitForNextCycleEnd();
         
-        // Task should be executed (idempotent initialization doesn't prevent normal execution)
-        // The key test is that multiple initialize calls don't cause problems
-        expect(task.mock.calls.length).toBeGreaterThanOrEqual(0); // May or may not execute immediately
+        // Task should not execute immediately (time is at 00:05, next run is 00:15)
+        expect(task.mock.calls.length).toBe(0);
         
         await capabilities.scheduler.stop();
     });

@@ -181,7 +181,8 @@ describe("scheduler orphaned task restart", () => {
             }
         });
 
-        // Reinitialize the same scheduler instance (simulating a restart with the same ID)
+        // Stop and restart the scheduler instance (simulating a restart with the same ID)
+        await capabilities.scheduler.stop();
         await capabilities.scheduler.initialize(registrations);
 
         // Wait for a cycle

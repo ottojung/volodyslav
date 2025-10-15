@@ -262,7 +262,7 @@ describe("declarative scheduler state management robustness", () => {
             expect(true).toBe(true); // Test passes if no exception is thrown
         });
 
-        test("should handle concurrent initialization attempts", async () => {
+        test("should reject concurrent initialization attempts", async () => {
             const capabilities = getTestCapabilities();
         const schedulerControl = getSchedulerControl(capabilities);
         schedulerControl.setPollingInterval(fromMilliseconds(100));
@@ -279,12 +279,15 @@ describe("declarative scheduler state management robustness", () => {
                 promises.push(capabilities.scheduler.initialize(registrations));
             }
             
-            // All should complete without errors (idempotent behavior)
-            await Promise.all(promises);
+            // At least one should fail (not all succeed)
+            const results = await Promise.allSettled(promises);
+            const rejectedResults = results.filter(r => r.status === "rejected");
+            expect(rejectedResults.length).toBeGreaterThan(0);
+            expect(rejectedResults[0].reason.name).toBe("SchedulerAlreadyActiveError");
             
             await schedulerControl.waitForNextCycleEnd();
             
-            // Scheduler should initialize without errors
+            // Scheduler should be running from the first successful initialize
         expect(true).toBe(true);
             
             await capabilities.scheduler.stop();

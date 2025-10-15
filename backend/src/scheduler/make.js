@@ -6,6 +6,7 @@ const { parseCronExpression } = require("./expression");
 const { makePollingScheduler } = require("./polling");
 const { initializeTasks } = require("./persistence");
 const { validateRegistrations } = require("./registration_validation");
+const { SchedulerAlreadyActiveError } = require("./registration_validation/errors");
 const { generateSchedulerIdentifier } = require("./scheduler_identifier");
 const memconst = require("../memconst");
 
@@ -26,6 +27,9 @@ const memconst = require("../memconst");
 function make(getCapabilities) {
     /** @type {ReturnType<makePollingScheduler> | null} */
     let pollingScheduler = null;
+    
+    /** @type {"uninitialized" | "initializing" | "running"} */
+    let schedulerState = "uninitialized";
 
     const getCapabilitiesMemo = memconst(getCapabilities);
 
@@ -73,70 +77,63 @@ function make(getCapabilities) {
      * @type {Initialize}
      */
     async function initialize(registrations) {
-        const capabilities = getCapabilitiesMemo();
+        // Check if scheduler is already initializing or running
+        if (schedulerState === "initializing") {
+            throw new SchedulerAlreadyActiveError("initializing");
+        }
+        if (schedulerState === "running") {
+            throw new SchedulerAlreadyActiveError("running");
+        }
         
-        // Validate registrations before any processing
-        validateRegistrations(registrations);
+        // Mark as initializing
+        schedulerState = "initializing";
         
-        const parsedRegistrations = parseRegistrations(registrations);
+        try {
+            const capabilities = getCapabilitiesMemo();
+            
+            // Validate registrations before any processing
+            validateRegistrations(registrations);
+            
+            const parsedRegistrations = parseRegistrations(registrations);
 
-        // Each time we initialize, we generate a new scheduler identifier
-        const schedulerIdentifier = generateSchedulerIdentifier(capabilities);
-        capabilities.logger.logDebug(
-            { schedulerIdentifier },
-            "Generated scheduler identifier"
-        );
+            // Each time we initialize, we generate a new scheduler identifier
+            const schedulerIdentifier = generateSchedulerIdentifier(capabilities);
+            capabilities.logger.logDebug(
+                { schedulerIdentifier },
+                "Generated scheduler identifier"
+            );
 
-        // Check for existing polling scheduler
-        if (pollingScheduler !== null) {
-            // Scheduler already running - need to update with new registrations
+            // Create polling scheduler if needed
+            if (pollingScheduler === null) {
+                pollingScheduler = makePollingScheduler(capabilities, parsedRegistrations, schedulerIdentifier);
+            }
+
+            // Create polling scheduler
             capabilities.logger.logDebug(
                 {},
-                "Scheduler already initialized, stopping current scheduler and recreating with new registrations"
+                "Creating new polling scheduler"
             );
-            
-            // Stop the existing scheduler
-            await pollingScheduler.stopLoop();
-            pollingScheduler = null;
-            
-            // Create new polling scheduler with updated registrations
-            pollingScheduler = makePollingScheduler(capabilities, parsedRegistrations, schedulerIdentifier);
-            
-            // Apply materialization logic to detect and log changes, and update persisted state
+
+            // Apply clean materialization logic (handles persisted state, logging, and orphaned tasks internally)
             await initializeTasks(capabilities, parsedRegistrations, schedulerIdentifier);
-            
-            // Schedule all tasks (including newly added ones)
+
+            // Schedule all tasks
             await scheduleAllTasks(registrations, pollingScheduler, capabilities);
-            
+
             capabilities.logger.logDebug(
                 {
                     totalRegistrations: registrations.length,
                 },
-                "Scheduler reinitialization completed"
+                "Scheduler initialization completed"
             );
-            return;
-        } else {
-            pollingScheduler = makePollingScheduler(capabilities, parsedRegistrations, schedulerIdentifier);
+            
+            // Mark as running
+            schedulerState = "running";
+        } catch (error) {
+            // If initialization fails, reset to uninitialized
+            schedulerState = "uninitialized";
+            throw error;
         }
-
-        // Create polling scheduler
-        capabilities.logger.logDebug(
-            {},
-            "Creating new polling scheduler"
-        );
-
-        // Apply clean materialization logic (handles persisted state, logging, and orphaned tasks internally)
-        await initializeTasks(capabilities, parsedRegistrations, schedulerIdentifier);
-
-        // Schedule all tasks
-        await scheduleAllTasks(registrations, pollingScheduler, capabilities);
-
-        capabilities.logger.logDebug(
-            {
-                totalRegistrations: registrations.length,
-            },
-            "Scheduler initialization completed"
-        );
     }
 
     /**
@@ -153,10 +150,12 @@ function make(getCapabilities) {
 
             await pollingScheduler.stopLoop();
             pollingScheduler = null;
+            schedulerState = "uninitialized";
 
             capabilities.logger.logInfo({}, "Scheduler stopped successfully");
         } else {
             capabilities.logger.logDebug({}, "Scheduler already stopped or not initialized");
+            schedulerState = "uninitialized";
         }
     }
 

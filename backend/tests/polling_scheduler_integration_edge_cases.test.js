@@ -375,7 +375,7 @@ describe("declarative scheduler integration and system edge cases", () => {
             expect(true).toBe(true); // Verify test runs successfully
         });
 
-        test("should handle repeated initialization calls", async () => {
+        test("should reject repeated initialization calls", async () => {
             const capabilities = getTestCapabilities();
             const schedulerControl = getSchedulerControl(capabilities);
             schedulerControl.setPollingInterval(fromMilliseconds(100));
@@ -386,15 +386,16 @@ describe("declarative scheduler integration and system edge cases", () => {
                 ["repeat-test", "0 * * * *", taskCallback, retryDelay]
             ];
 
-            // Multiple initialization calls should be idempotent
+            // First initialization should succeed
             await capabilities.scheduler.initialize(registrations);
-            await capabilities.scheduler.initialize(registrations);
-            await capabilities.scheduler.initialize(registrations);
+            
+            // Subsequent calls should throw error (not idempotent)
+            await expect(capabilities.scheduler.initialize(registrations)).rejects.toThrow("Cannot initialize scheduler: scheduler is already running");
+            await expect(capabilities.scheduler.initialize(registrations)).rejects.toThrow("Cannot initialize scheduler: scheduler is already running");
 
             await schedulerControl.waitForNextCycleEnd();
 
-            // Task should still execute correctly
-            // Scheduler should initialize without errors
+            // Scheduler should be running correctly from first initialize
             expect(true).toBe(true);
 
             await capabilities.scheduler.stop();

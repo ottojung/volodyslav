@@ -8,7 +8,7 @@
  */
 
 const { make } = require("./make");
-const { isScheduleDuplicateTaskError } = require("./registration_validation");
+const { isScheduleDuplicateTaskError, isSchedulerAlreadyActiveError } = require("./registration_validation");
 const { isCronExpression, isInvalidCronExpressionError } = require('./expression')
 
 // Re-export types for external consumption
@@ -21,6 +21,7 @@ const { isCronExpression, isInvalidCronExpressionError } = require('./expression
 module.exports = {
     make,
     isScheduleDuplicateTaskError,
+    isSchedulerAlreadyActiveError,
     isCronExpression,
     isInvalidCronExpressionError,
 };

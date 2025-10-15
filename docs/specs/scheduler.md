@@ -126,10 +126,9 @@ stateDiagram-v2
     Uninitialized --> Initializing : initialize() called
     Initializing --> Running : All tasks scheduled successfully
     Initializing --> Uninitialized : Initialization fails
+    Initializing --> Initializing : initialize() called (throws error)
+    Running --> Running : initialize() called (throws error)
     Running --> Stopping : stop() called
-    Running --> Reinitializing : initialize() called again
-    Reinitializing --> Running : Reinitialization succeeds
-    Reinitializing --> Running : Reinitialization fails
     Stopping --> Stopped : All tasks complete, cleanup done
     Stopped --> Uninitialized : Scheduler destroyed
 ```
@@ -139,7 +138,6 @@ stateDiagram-v2
 - **Uninitialized:** Scheduler created but not yet initialized
 - **Initializing:** Processing registrations, applying overrides, starting tasks
 - **Running:** Normal operation with polling active and tasks scheduled
-- **Reinitializing:** Re-processing registrations for idempotent initialization
 - **Stopping:** Graceful shutdown in progress, waiting for running tasks
 - **Stopped:** Cleanup complete, no active polling or tasks
 
@@ -169,21 +167,21 @@ stateDiagram-v2
 
 **Events:** `SchedulerInitializationFailed`
 
-#### Running to Reinitializing
+#### Initializing to Initializing (Error State)
 
-**Guard:** `initialize(registrations)` called again (idempotent behavior)
+**Guard:** `initialize(registrations)` called while scheduler is already initializing
 
-**Action:** Compare new registrations with current state
+**Action:** Throw `SchedulerAlreadyActiveError` with state "initializing"
 
-**Events:** `SchedulerReinitializationStarted`
+**Events:** None (error thrown synchronously)
 
-#### Reinitializing to Running
+#### Running to Running (Error State)
 
-**Guard:** Subsequent call to `initialize(registrations)` returned.
+**Guard:** `initialize(registrations)` called while scheduler is running
 
-**Action:** Either complete override resolution and continue, or fail keeping previous running state.
+**Action:** Throw `SchedulerAlreadyActiveError` with state "running"
 
-**Events:** `SchedulerReinitializationCompleted`
+**Events:** None (error thrown synchronously)
 
 #### Running to Stopping
 
@@ -439,6 +437,11 @@ The scheduler **MUST** throw the following error types under the specified condi
 - **When:** Multiple registrations have the same task name
 - **Message:** `"Task with name \"<name>\" is already scheduled"`
 - **Details:** `{ taskName: string }`
+
+**SchedulerAlreadyActiveError**
+- **When:** `initialize()` called while scheduler is already initializing or running
+- **Message:** `"Cannot initialize scheduler: scheduler is already <state>"` where state is "initializing" or "running"
+- **Details:** `{ currentState: string }`
 
 **CronExpressionInvalidError**
 - **When:** Cron expression fails validation

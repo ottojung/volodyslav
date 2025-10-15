@@ -257,7 +257,7 @@ describe("declarative scheduler retry semantics", () => {
         await capabilities.scheduler.stop();
     });
 
-    test("should maintain idempotent behavior on multiple initialize calls", async () => {
+    test("should reject multiple initialize calls - not idempotent", async () => {
         const capabilities = getTestCapabilities();
         const schedulerControl = getSchedulerControl(capabilities);
         const timeControl = getDatetimeControl(capabilities);
@@ -277,15 +277,17 @@ describe("declarative scheduler retry semantics", () => {
             ["idempotent-test", "0 * * * *", task, retryDelay]
         ];
 
-        // Multiple initialize calls should be idempotent
+        // First initialize should succeed
         await capabilities.scheduler.initialize(registrations);
-        await capabilities.scheduler.initialize(registrations);
-        await capabilities.scheduler.initialize(registrations);
+        
+        // Subsequent calls should throw error (not idempotent)
+        await expect(capabilities.scheduler.initialize(registrations)).rejects.toThrow("Cannot initialize scheduler: scheduler is already running");
+        await expect(capabilities.scheduler.initialize(registrations)).rejects.toThrow("Cannot initialize scheduler: scheduler is already running");
 
         // Wait for execution (should NOT execute immediately on first startup)
         await schedulerControl.waitForNextCycleEnd();
 
-        // Should not execute despite multiple initialize calls (new behavior)
+        // Should not execute despite rejected initialize calls
         expect(executionCount).toBe(0);
         expect(task).toHaveBeenCalledTimes(0);
 

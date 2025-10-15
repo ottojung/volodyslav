@@ -51,7 +51,7 @@ describe("Declarative Scheduler", () => {
             await capabilities.scheduler.stop();
         });
 
-        test("is idempotent - multiple calls have no additional effect", async () => {
+        test("rejects multiple initialize calls - not idempotent", async () => {
             const capabilities = getTestCapabilities();
             const registrations = [
                 ["task1", "0 * * * *", jest.fn(), fromMinutes(5)],
@@ -60,16 +60,16 @@ describe("Declarative Scheduler", () => {
             // First call should succeed
             await expect(capabilities.scheduler.initialize(registrations)).resolves.toBeUndefined();
 
-            // Second call should also succeed and do nothing
-            await expect(capabilities.scheduler.initialize(registrations)).resolves.toBeUndefined();
+            // Second call should throw error (not idempotent anymore)
+            await expect(capabilities.scheduler.initialize(registrations)).rejects.toThrow("Cannot initialize scheduler: scheduler is already running");
 
-            // Third call should also succeed and do nothing
-            await expect(capabilities.scheduler.initialize(registrations)).resolves.toBeUndefined();
+            // Third call should also throw error
+            await expect(capabilities.scheduler.initialize(registrations)).rejects.toThrow("Cannot initialize scheduler: scheduler is already running");
 
             await capabilities.scheduler.stop();
         });
 
-        test("overrides persisted state when tasks differ from registrations", async () => {
+        test("rejects when trying to override persisted state with different tasks", async () => {
             const capabilities = getTestCapabilities();
 
             // First, set up some initial persisted state by calling initialize
@@ -86,22 +86,13 @@ describe("Declarative Scheduler", () => {
                 ["task3", "0 0 * * *", jest.fn(), fromMinutes(10)], // different name
             ];
 
-            // This should now succeed (override behavior) instead of throwing
-            await expect(capabilities.scheduler.initialize(differentRegistrations)).resolves.toBeUndefined();
-            
-            // Verify override was logged
-            expect(capabilities.logger.logInfo).toHaveBeenCalledWith(
-                expect.objectContaining({
-                    removedTasks: ["task2"], // task2 was removed
-                    addedTasks: ["task3"], // task3 was added
-                }),
-                "Scheduler state override: registrations differ from persisted state, applying changes"
-            );
+            // This should now throw error (no override behavior)
+            await expect(capabilities.scheduler.initialize(differentRegistrations)).rejects.toThrow("Cannot initialize scheduler: scheduler is already running");
             
             await capabilities.scheduler.stop();
         });
 
-        test("overrides persisted state when cron expression differs", async () => {
+        test("rejects when trying to override persisted state with different cron expression", async () => {
             const capabilities = getTestCapabilities();
 
             // Set up initial state
@@ -116,28 +107,13 @@ describe("Declarative Scheduler", () => {
                 ["task1", "0 0 * * *", jest.fn(), fromMinutes(5)], // different cron
             ];
 
-            // This should now succeed (override behavior) instead of throwing
-            await expect(capabilities.scheduler.initialize(changedRegistrations)).resolves.toBeUndefined();
-            
-            // Verify override was logged for modified task
-            expect(capabilities.logger.logInfo).toHaveBeenCalledWith(
-                expect.objectContaining({
-                    modifiedTasks: [
-                        expect.objectContaining({
-                            name: "task1",
-                            field: "cronExpression",
-                            from: "0 * * * *",
-                            to: "0 0 * * *"
-                        })
-                    ]
-                }),
-                "Scheduler state override: registrations differ from persisted state, applying changes"
-            );
+            // This should now throw error (no override behavior)
+            await expect(capabilities.scheduler.initialize(changedRegistrations)).rejects.toThrow("Cannot initialize scheduler: scheduler is already running");
             
             await capabilities.scheduler.stop();
         });
 
-        test("overrides persisted state when retry delay differs", async () => {
+        test("rejects when trying to override persisted state with different retry delay", async () => {
             const capabilities = getTestCapabilities();
 
             // Set up initial state
@@ -152,23 +128,8 @@ describe("Declarative Scheduler", () => {
                 ["task1", "0 * * * *", jest.fn(), fromMinutes(10)], // different retry delay
             ];
 
-            // This should now succeed (override behavior) instead of throwing
-            await expect(capabilities.scheduler.initialize(changedRegistrations)).resolves.toBeUndefined();
-            
-            // Verify override was logged for modified task
-            expect(capabilities.logger.logInfo).toHaveBeenCalledWith(
-                expect.objectContaining({
-                    modifiedTasks: [
-                        expect.objectContaining({
-                            name: "task1",
-                            field: "retryDelayMs",
-                            from: 300000, // 5 minutes in ms
-                            to: 600000    // 10 minutes in ms
-                        })
-                    ]
-                }),
-                "Scheduler state override: registrations differ from persisted state, applying changes"
-            );
+            // This should now throw error (no override behavior)
+            await expect(capabilities.scheduler.initialize(changedRegistrations)).rejects.toThrow("Cannot initialize scheduler: scheduler is already running");
             
             await capabilities.scheduler.stop();
         });
@@ -280,7 +241,7 @@ describe("Declarative Scheduler", () => {
             await capabilities.scheduler.stop();
         });
 
-        test("overrides persisted state when task is missing from registrations", async () => {
+        test("rejects when trying to remove tasks without stopping", async () => {
             const capabilities = getTestCapabilities();
 
             // Set up initial state with two tasks
@@ -296,21 +257,13 @@ describe("Declarative Scheduler", () => {
                 ["task1", "0 * * * *", jest.fn(), fromMinutes(5)],
             ];
 
-            // This should now succeed (override behavior) instead of throwing
-            await expect(capabilities.scheduler.initialize(missingTaskRegistrations)).resolves.toBeUndefined();
-            
-            // Verify override was logged for removed task
-            expect(capabilities.logger.logInfo).toHaveBeenCalledWith(
-                expect.objectContaining({
-                    removedTasks: ["task2"]
-                }),
-                "Scheduler state override: registrations differ from persisted state, applying changes"
-            );
+            // This should throw error (no override behavior without stop)
+            await expect(capabilities.scheduler.initialize(missingTaskRegistrations)).rejects.toThrow("Cannot initialize scheduler: scheduler is already running");
             
             await capabilities.scheduler.stop();
         });
 
-        test("overrides persisted state when extra task is in registrations", async () => {
+        test("rejects when extra task is added to registrations without stopping", async () => {
             const capabilities = getTestCapabilities();
 
             // Set up initial state with one task
@@ -326,16 +279,8 @@ describe("Declarative Scheduler", () => {
                 ["task2", "0 0 * * *", jest.fn(), fromMinutes(10)], // extra task
             ];
 
-            // This should now succeed (override behavior) instead of throwing
-            await expect(capabilities.scheduler.initialize(extraTaskRegistrations)).resolves.toBeUndefined();
-            
-            // Verify override was logged for added task
-            expect(capabilities.logger.logInfo).toHaveBeenCalledWith(
-                expect.objectContaining({
-                    addedTasks: ["task2"]
-                }),
-                "Scheduler state override: registrations differ from persisted state, applying changes"
-            );
+            // This should throw error (no override behavior without stop)
+            await expect(capabilities.scheduler.initialize(extraTaskRegistrations)).rejects.toThrow("Cannot initialize scheduler: scheduler is already running");
             
             await capabilities.scheduler.stop();
         });
@@ -404,7 +349,7 @@ describe("Declarative Scheduler", () => {
             await capabilities.scheduler.stop();
         });
 
-        test("provides detailed override information when applying complex changes", async () => {
+        test("rejects complex changes without stopping first", async () => {
             const capabilities = getTestCapabilities();
 
             // Set up initial state
@@ -421,32 +366,8 @@ describe("Declarative Scheduler", () => {
                 ["task3", "0 0 * * *", jest.fn(), fromMinutes(10)], // extra task (task2 is missing)
             ];
 
-            // This should now succeed (override behavior) instead of throwing
-            await expect(capabilities.scheduler.initialize(mismatchedRegistrations)).resolves.toBeUndefined();
-
-            // Verify detailed override information was logged
-            expect(capabilities.logger.logInfo).toHaveBeenCalledWith(
-                expect.objectContaining({
-                    removedTasks: ["task2"],
-                    addedTasks: ["task3"],
-                    modifiedTasks: expect.arrayContaining([
-                        expect.objectContaining({
-                            name: "task1",
-                            field: "cronExpression",
-                            from: "0 * * * *",
-                            to: "0 0,2,4,6,8,10,12,14,16,18,20,22 * * *"
-                        }),
-                        expect.objectContaining({
-                            name: "task1",
-                            field: "retryDelayMs",
-                            from: fromMinutes(5).toMillis(),
-                            to: fromMinutes(30).toMillis()
-                        })
-                    ]),
-                    totalChanges: 4 // 1 removed + 1 added + 2 modified fields
-                }),
-                "Scheduler state override: registrations differ from persisted state, applying changes"
-            );
+            // This should throw error (no override behavior without stop)
+            await expect(capabilities.scheduler.initialize(mismatchedRegistrations)).rejects.toThrow("Cannot initialize scheduler: scheduler is already running");
             
             await capabilities.scheduler.stop();
         });
@@ -607,8 +528,8 @@ describe("Declarative Scheduler", () => {
             // Should succeed with no tasks
             await expect(capabilities.scheduler.initialize(registrations)).resolves.toBeUndefined();
 
-            // Should be idempotent
-            await expect(capabilities.scheduler.initialize(registrations)).resolves.toBeUndefined();
+            // Should NOT be idempotent anymore - throws on second call
+            await expect(capabilities.scheduler.initialize(registrations)).rejects.toThrow("Cannot initialize scheduler: scheduler is already running");
             await capabilities.scheduler.stop();
         });
 
@@ -840,7 +761,7 @@ describe("Declarative Scheduler", () => {
             await capabilities.scheduler.stop();
         });
 
-        test("initialize is idempotent - can be called multiple times safely", async () => {
+        test("initialize rejects subsequent calls - not idempotent", async () => {
             const taskCallback = jest.fn().mockResolvedValue(undefined);
 
             const registrations = [
@@ -865,9 +786,8 @@ describe("Declarative Scheduler", () => {
             // Task should NOT have been called on first startup (new behavior)
             expect(taskCallback).not.toHaveBeenCalled();
 
-            // Second call to initialize with same capabilities - should be idempotent
-            // This should not cause errors or duplicate scheduling issues
-            await expect(capabilities.scheduler.initialize(registrations)).resolves.toBeUndefined();
+            // Second call to initialize with same capabilities - should throw error (not idempotent)
+            await expect(capabilities.scheduler.initialize(registrations)).rejects.toThrow("Cannot initialize scheduler: scheduler is already running");
             await capabilities.scheduler.stop();
         });
     });

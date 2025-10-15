@@ -48,7 +48,7 @@ describe("Server Integration with Declarative Scheduler", () => {
         capabilities.scheduler.stop();
     });
 
-    test("server initialization is idempotent", async () => {
+    test("server initialization rejects second call - not idempotent", async () => {
         const capabilities = getTestCapabilities();
         await stubEventLogRepository(capabilities); // Required for server initialization
         const app = stubApp();
@@ -56,8 +56,8 @@ describe("Server Integration with Declarative Scheduler", () => {
         // First initialization
         await expect(initialize(capabilities, app)).resolves.toBeUndefined();
 
-        // Second initialization should also succeed (idempotent)
-        await expect(initialize(capabilities, app)).resolves.toBeUndefined();
+        // Second initialization should throw error (not idempotent anymore)
+        await expect(initialize(capabilities, app)).rejects.toThrow("Cannot initialize scheduler: scheduler is already running");
 
         // Should have configured app at least once
         expect(app.use).toHaveBeenCalled();

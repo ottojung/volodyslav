@@ -78,8 +78,8 @@ describe("declarative scheduler persistence and error handling", () => {
         // Wait for execution
         await schedulerControl.waitForNextCycleEnd();
 
-        // Verify the scheduler handles error callbacks gracefully by not throwing
-        await expect(capabilities.scheduler.initialize(registrations)).resolves.toBeUndefined();
+        // Verify the scheduler rejects subsequent initialize (not idempotent)
+        await expect(capabilities.scheduler.initialize(registrations)).rejects.toThrow("Cannot initialize scheduler: scheduler is already running");
 
         await capabilities.scheduler.stop();
     });
@@ -171,11 +171,10 @@ describe("declarative scheduler persistence and error handling", () => {
             const dateTime = fromISOString(timeStr);
             capabilities.datetime.now = jest.fn().mockReturnValue(dateTime);
 
-            // Should be able to initialize at any time
+            // Should be able to initialize at any time (after stopping previous)
             await expect(capabilities.scheduler.initialize(registrations)).resolves.toBeUndefined();
+            await capabilities.scheduler.stop();
         }
-
-        await capabilities.scheduler.stop();
     });
 
     test("should handle invalid callback types gracefully", async () => {
@@ -210,8 +209,8 @@ describe("declarative scheduler persistence and error handling", () => {
 
         await expect(capabilities.scheduler.initialize(registrations)).resolves.toBeUndefined();
 
-        // Both callbacks should be scheduled and available for execution
-        await capabilities.scheduler.initialize(registrations);
+        // Second initialize should throw error (not idempotent)
+        await expect(capabilities.scheduler.initialize(registrations)).rejects.toThrow("Cannot initialize scheduler: scheduler is already running");
 
         await capabilities.scheduler.stop();
     });
