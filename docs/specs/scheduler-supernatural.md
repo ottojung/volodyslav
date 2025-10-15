@@ -128,8 +128,6 @@ It "spooked" transistors, causing them to misbehave.
 
 ### VII. Mercury in Retrograde
 
-**A superstition kept by sober men.**
-
 <NOTE>
 Tell a made up story of how a bug coincided with Mercury being in retrograde.
 The bug must be unique and interesting.
