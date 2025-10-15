@@ -30,6 +30,7 @@ function make(getCapabilities) {
     
     /** @type {"uninitialized" | "initializing" | "running"} */
     let schedulerState = "uninitialized";
+    let stopping = false;
 
     const getCapabilitiesMemo = memconst(getCapabilities);
 
@@ -117,18 +118,26 @@ function make(getCapabilities) {
             // Apply clean materialization logic (handles persisted state, logging, and orphaned tasks internally)
             await initializeTasks(capabilities, parsedRegistrations, schedulerIdentifier);
 
-            // Schedule all tasks
-            scheduleAllTasks(registrations, pollingScheduler, capabilities);
+            if (stopping) {
+                capabilities.logger.logInfo(
+                    {},
+                    "Scheduler initialization aborted due to stop request"
+                );
+                schedulerState = "running"; // Temporarily mark as running to allow stop to proceed.
+            } else {
+                // Schedule all tasks
+                scheduleAllTasks(registrations, pollingScheduler, capabilities);
+    
+                capabilities.logger.logDebug(
+                    {
+                        totalRegistrations: registrations.length,
+                    },
+                    "Scheduler initialization completed"
+                );
 
-            capabilities.logger.logDebug(
-                {
-                    totalRegistrations: registrations.length,
-                },
-                "Scheduler initialization completed"
-            );
-            
-            // Mark as running
-            schedulerState = "running";
+                // Mark as running
+                schedulerState = "running";
+            }
         } catch (error) {
             // If initialization fails, reset to uninitialized
             await stop(); // Waiting is bounded because there should not be anything scheduled.
@@ -142,7 +151,21 @@ function make(getCapabilities) {
      * @type {Stop}
      */
     async function stop() {
+        stopping = true;
         const capabilities = getCapabilitiesMemo();
+
+        if (schedulerState === "initializing") {
+            capabilities.logger.logDebug(
+                {},
+                "Scheduler is initializing, waiting for it to complete"
+            );
+
+            // Wait for initialization to complete
+            while (schedulerState === "initializing") {
+                await new Promise((resolve) => setImmediate(resolve));
+            }
+        }
+
         if (pollingScheduler !== null) {
             capabilities.logger.logDebug(
                 {},
@@ -158,6 +181,7 @@ function make(getCapabilities) {
             capabilities.logger.logDebug({}, "Scheduler already stopped or not initialized");
             schedulerState = "uninitialized";
         }
+        stopping = false;
     }
 
     return {
