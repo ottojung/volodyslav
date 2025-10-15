@@ -625,6 +625,18 @@ After a successful initialization, no other initialization can succeed until aft
 
 This ensures that `initialize()` calls made while the scheduler is in the "initializing" or "running" state result in `IEf` (thrown error), not `IEs`.
 
+---
+
+**S6 — Valid registration success**
+
+$$
+R \in \texttt{ValidRegistrations} \implies \texttt{G}\Big( \big(\texttt{IS}_R \wedge \neg \texttt{Hold}(\texttt{IEs}, \texttt{SE} \vee \texttt{Crash})\big) \rightarrow \texttt{F} \; \texttt{IEs}_R \Big)
+$$
+
+Valid registrations must succeed unless blocked by concurrent initialization.
+
+When a valid registration list $R$ is provided to `initialize()` and there is no active scheduler (no previous successful initialization without a corresponding stop or crash), the call must eventually succeed with `IEs_R`. This is the positive counterpart to S4: valid registrations cannot fail except when S5 requires rejection due to concurrent initialization.
+
 ### Liveness Axioms
 
 These **normative** axioms state progress guarantees.
@@ -720,7 +732,7 @@ providing the interpretation for the function mapping time instants to sets of s
 
 The satisfaction judgment uses linear-time temporal logic with past over trace positions equipped with $\tau$. Definition schemata $F_{\texttt{comp}!}$, $F_{\texttt{comp}}$, and $F^{\texttt{lin}}_{\texttt{comp}}$ are macros over this signature.
 
-Let $T_{\textsf{sch}}(a,b,t_{\texttt{lag}})$ denote the set of **Scheduler Axioms**: S1–S4 and L1–L3 with every modality instantiated using the same witnesses $(a,b,t_{\texttt{lag}})$. Let $T_{\textsf{env}}$ denote the **Environment Axioms** EA1–EA7.
+Let $T_{\textsf{sch}}(a,b,t_{\texttt{lag}})$ denote the set of **Scheduler Axioms**: S1–S6 and L1–L3 with every modality instantiated using the same witnesses $(a,b,t_{\texttt{lag}})$. Let $T_{\textsf{env}}$ denote the **Environment Axioms** EA1–EA7.
 
 We write
 
