@@ -615,6 +615,18 @@ The scheduler must reject any registrations not from the set of valid registrati
 
 ---
 
+**S4\* — Positive initialize safety**
+
+$$
+R \in \texttt{ValidRegistrations} \implies \texttt{G}\Big( \texttt{IS}_R \rightarrow \Big( \texttt{IEs}_R \vee \big(\texttt{O} \; \texttt{Hold}(\texttt{IEs}, \texttt{SE} \vee \texttt{Crash})\big) \Big) \Big)
+$$
+
+A valid registration must succeed unless there is a concurrent initialization attempt.
+
+More specifically: if an initialize call is made with a valid registration list $R$, it must result in success ($\texttt{IEs}_R$) unless there was a previous successful initialization in the past that has not yet been followed by a stop or crash (i.e., the scheduler is currently initializing or active). This ensures that only the first initialize call succeeds when multiple concurrent calls are made, even when the scheduler is not yet active.
+
+---
+
 **S5 — No concurrent initialization**
 
 $$
@@ -720,7 +732,7 @@ providing the interpretation for the function mapping time instants to sets of s
 
 The satisfaction judgment uses linear-time temporal logic with past over trace positions equipped with $\tau$. Definition schemata $F_{\texttt{comp}!}$, $F_{\texttt{comp}}$, and $F^{\texttt{lin}}_{\texttt{comp}}$ are macros over this signature.
 
-Let $T_{\textsf{sch}}(a,b,t_{\texttt{lag}})$ denote the set of **Scheduler Axioms**: S1–S4 and L1–L3 with every modality instantiated using the same witnesses $(a,b,t_{\texttt{lag}})$. Let $T_{\textsf{env}}$ denote the **Environment Axioms** EA1–EA7.
+Let $T_{\textsf{sch}}(a,b,t_{\texttt{lag}})$ denote the set of **Scheduler Axioms**: S1–S5 (including S4\*) and L1–L3 with every modality instantiated using the same witnesses $(a,b,t_{\texttt{lag}})$. Let $T_{\textsf{env}}$ denote the **Environment Axioms** EA1–EA7.
 
 We write
 
