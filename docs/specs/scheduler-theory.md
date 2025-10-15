@@ -547,8 +547,8 @@ After a $\texttt{Crash}$, no new ends until a new start.
 
 $$
 \texttt{G}( \texttt{RE}_x \rightarrow \texttt{Y} \; \texttt{Running}_x) \\
-\texttt{G}( \texttt{IE} \rightarrow \texttt{Y} \; \texttt{Hold}(\texttt{IS}, \texttt{IE} \vee \texttt{Crash}) ) \\
-\texttt{G}( \texttt{SE} \rightarrow \texttt{Y} \; \texttt{Hold}(\texttt{SS}, \texttt{SE} \vee \texttt{Crash}) ) \\
+\texttt{G}( \texttt{IE} \rightarrow \texttt{Y} \; \texttt{Hold}(\texttt{IS}, \texttt{IE}) ) \\
+\texttt{G}( \texttt{SE} \rightarrow \texttt{Y} \; \texttt{Hold}(\texttt{SS}, \texttt{SE}) ) \\
 $$
 
 Every completion must correspond to a prior start.
