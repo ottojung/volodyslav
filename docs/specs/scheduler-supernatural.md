@@ -94,12 +94,16 @@ It would be nice to link to an actual report of someone who noticed an interesti
 
 ---
 
-### IV. Maxwell’s Demon, Junior Admin
+### IV. Maxwell’s Demon
 
-**Staging cluster, autumn.**
-We had a configuration that refused to stay put. A file that grew a line the way hair grows a whisper above the ear. We locked the directory. We set knobs in places documentation never intended them to be set. The change still crept in when the racks cooled and the day shift went home.
+<NOTE>
+Tell a made up story about a state that is extremely unlikely, though possible, to happen, but did happen. 
+For example, an MD5 hash collision.
 
-We performed ritual audits with the seriousness of municipal inspectors. We found nothing but our own reflection in the glass. Entropy does not do favors, an old physicist told me once. But what if, I asked and did not say, something in the room is letting the hot and cold pass on the nod? What if there is a small clerk in there, opening and closing a door for packets as if they were molecules? We set a watch on the process that had always pleaded innocence; at 02:11 it confessed by omission—its parent whispered a change and went back to sleep. A misconfigured agent, a token minted with too much trust, the neat trick by which a system eats its own law. We fixed it, but I still lock the cabinet twice.
+Then, add a legend that one of the developers saw a large, terrifying demon that appeared to him in a dream, and that demon told him that the server room is cursed.
+
+Ideally, find a real world example of something extremely unlikely happening, and use that as the basis for the story.
+ </NOTE>
 
 ---
 
