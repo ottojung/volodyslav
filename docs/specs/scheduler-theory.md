@@ -617,7 +617,7 @@ The scheduler must accept any registration list from the set of valid lists, and
 **S5 — No concurrent initialization**
 
 $$
-\texttt{G}\Big( \texttt{IEs}_R \rightarrow \texttt{X} \big(\neg \texttt{IEs} \; \texttt{W} \; (\texttt{SS} \vee \texttt{Crash})\big) \Big)
+\texttt{G}\Big( \texttt{IEs}_R \rightarrow \texttt{X} \big(\neg \texttt{IEs} \; \texttt{W} \; (\texttt{SE} \vee \texttt{Crash})\big) \Big)
 $$
 
 After a successful initialization, no other initialization can succeed until after a stop or crash.
