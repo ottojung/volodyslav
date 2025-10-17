@@ -3,6 +3,11 @@ This document is a draft.
 It contains placeholders, fixmes, and must-haves that need to be addressed.
 When completing the document, ensure that all placeholders are filled, fixmes are resolved, and must-haves are included.
 Some must-haves, those surrounded by quotes, are exact phrases that need to be integrated neatly into the text. But others are thematic elements that should be woven into the narrative.
+
+
+The style is horror. Specifically, lovecraftian horror, with a focus on the uncanny and the unsettling.
+It is grave, meticulous, humor only implicit, investigator fraying at the edges.
+
 </NOTE>
 
 <MUST HAVES>
