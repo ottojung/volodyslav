@@ -58,6 +58,8 @@ But the main piece is the made-up horror story.
 
 "There is the certainty, never admitted aloud, that somewhere a check is missing and that this is sane; that checks go missing the way buttons go missing from coats."
 
+"There was no smoking gun — only a single flip where a zero had become a one at the thirteenth bit, a neat, round power-of-two crime." - when describing the athmosphere in the room during the investigation.
+
 "It was one power of two too proud." - when first referring to the extra votes (4096 = 2^12).
 
 "The bit toggled to one, and in so toggling, wove its one-ness into every arithmetic that followed."
