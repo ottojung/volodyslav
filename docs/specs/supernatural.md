@@ -90,6 +90,8 @@ But the main piece is the made-up horror story.
 Something like a related human-story about corruption:
 The technician, having confessed to me the soft doctrine of the bit, told me a smaller, meaner story. The following week, a man from the party that had briefly prospered came into the municipal building with a cigar he did not light. He made a show of not lighting it; this was his signature, he said—good manners doubling as advertisement. He asked, in a tone so gentle it barely bruised the air, whether the numbers—those numbers—could be verified just one more time.
 
+Then, a come-back to the technical part, to its conclusion/reflection.
+
 "He meant, I think, that we must act as if the world intends this sort of interruption, because the world does not intend otherwise." - when reflecting on the technician's story.
 
 An allegory that compares the unpredictability of software behavior to the weather. Something like "we do not fight the weather, we prepare for it."
