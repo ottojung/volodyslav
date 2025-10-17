@@ -1,6 +1,7 @@
 <MUST HAVES>
 "FIELD NOTE #X The closer your model fits the world, the more the world will take issue."
 "... like myself—skeptics who have seen just enough to be superstitious."
+"... there are systems whose failure modes include poetry."
 </MUST HAVES>
 
 # Classification of Supernatural Phenomena — Field Notes
