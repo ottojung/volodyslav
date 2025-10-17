@@ -148,7 +148,7 @@ However, the crocodile had no impact on American software systems, which continu
 
 ---
 
-### VIII. A Boring, Spectacular Crash
+### VIII. A Natural, Boring Crash
 
 <FIXME>
 Change the title to something more evocative.
