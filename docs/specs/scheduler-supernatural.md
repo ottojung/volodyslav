@@ -60,7 +60,9 @@ But the main piece is the made-up horror story.
 
 "They stared at the sum as though it might amend itself out of shame." - for the part describing the clerks discovering the extra votes.
 
-"The woman with the tape asked if lightning could do it. “Not tonight,” said the toolbox man; “tonight is dry.”"
+"One of the watchers—a schoolteacher—tried to be helpful by pointing out each time the computer made a small sound, as if identifying birds." - for the part describing the immediate on-site investigation.
+
+"The woman with the tape asked if lightning could do it. “Not tonight,” said the toolbox man; “tonight is dry.”" - for the part describing the immediate on-site investigation.
 
 "The committee’s report is less romantic, but it permits the word that haunts this dossier: likely. A likely single-event upset—an ion that fell through the evening and made a number grow teeth."
 
