@@ -58,6 +58,8 @@ But the main piece is the made-up horror story.
 
 "Field Note #X. Horror, in our trade, is the clean error—the one that leaves no prints."
 
+"They stared at the sum as though it might amend itself out of shame." - for the part describing the clerks discovering the extra votes.
+
 "The woman with the tape asked if lightning could do it. “Not tonight,” said the toolbox man; “tonight is dry.”"
 
 "The committee’s report is less romantic, but it permits the word that haunts this dossier: likely. A likely single-event upset—an ion that fell through the evening and made a number grow teeth."
