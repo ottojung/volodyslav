@@ -80,7 +80,9 @@ The technician, having confessed to me the soft doctrine of the bit, told me a s
 
 An allegory that compares the unpredictability of software behavior to the weather. Something like "we do not fight the weather, we prepare for it."
 
-"[poureva.be][2]" (the link to the official report)
+"[poureva.be][2]" - link to the official report, for the reference section.
+
+"The Schaerbeek incident occurred during Belgium’s federal election on Sunday, 18 May 2003, when one candidate was credited with 4,096 extra preferential votes—detected because the candidate’s preferences exceeded the party’s list total, an impossibility in that system. The official explanation described a “spontaneous creation of a bit at position 13” in memory; a widely cited interpretation is a single-event upset (SEU) likely caused by a cosmic ray." - for the reference section.
 </MUST HAVES>
 
 ---
