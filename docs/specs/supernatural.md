@@ -208,6 +208,7 @@ Change the title to something more evocative.
 <NOTE>
 Tell a made up story of how a server crashed due to environmental reasons, such as overheating or power failure.
 The story should emphasize that this is not a supernatural event, but rather a mundane one.
+This is a necessary palate cleanser, it shores up our credibility by reminding readers that not all anomalies are numinous.
 </NOTE>
 
 ---
