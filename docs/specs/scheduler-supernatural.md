@@ -46,11 +46,13 @@ But the main piece is the made-up horror story.
 
 <MUST HAVES>
 
-"... a carpet whose pattern is an argument against democracy..."
+"... a carpet whose pattern is an argument against democracy..." - for the part describing the polling station.
 
-"He worked elections—“not politics,” he said quickly, “interfaces.”"
+"He worked elections—“not politics,” he said quickly, “interfaces.”" - for the part describing the technician, who told us the story.
 
-"... a habit of tapping the table as though confirming liveness."
+"... a habit of tapping the table as though confirming liveness." - for the part describing the technician's character.
+
+"He used the word spontaneous without liking it." - for the part describing the technician's general attitude.
 
 "There is the certainty, never admitted aloud, that somewhere a check is missing and that this is sane; that checks go missing the way buttons go missing from coats."
 
