@@ -1,7 +1,7 @@
-<NICE TO HAVES>
+<MUST HAVES>
 "FIELD NOTE #X The closer your model fits the world, the more the world will take issue."
 "... like myself—skeptics who have seen just enough to be superstitious."
-</NICE TO HAVES>
+</MUST HAVES>
 
 # Classification of Supernatural Phenomena — Field Notes
 
@@ -19,11 +19,11 @@ I began to keep a dossier. Not a taxonomy—God preserve me from one more axis�
 
 <PLACEHOLDER/>
 
-<NICE TO HAVES>
+<MUST HAVES>
 "The spec said: if due then run. The night said: if due then perhaps, if the moon consents."
 "People ask if I believe in such things."
 "Read them so that when the world leans on your specification, you recognize the weight."
-</NICE TO HAVES>
+</MUST HAVES>
 
 ---
 
@@ -44,7 +44,7 @@ Then follow up with the documented part - how it was investigated and what the c
 But the main piece is the made-up horror story.
 </NOTE>
 
-<NICE TO HAVES>
+<MUST HAVES>
 "... a carpet whose pattern is an argument against democracy..."
 "He worked elections—“not politics,” he said quickly, “interfaces.”"
 "... a habit of tapping the table as though confirming liveness."
@@ -55,7 +55,7 @@ But the main piece is the made-up horror story.
 "... if you believe in preparation, then you believe in a cathedral of checks where each arch braces another—triplicate logic, parity with scrubbing, watchdogs to guard the watchdogs, and the prophylactic act of voting in paper because paper fails like a person fails, slow and legible. But we persist in putting faith into boxes that hum, because the boxes are fast, and the public hungers for grace that arrives within the hour."
 
 An allegory that compares the unpredictability of software behavior to the weather. Something like "we do not fight the weather, we prepare for it."
-</NICE TO HAVES>
+</MUST HAVES>
 
 ---
 
@@ -96,12 +96,12 @@ It would be nice to link to an actual report of someone who noticed an interesti
 
 
 
-<NICE TO HAVES>
+<MUST HAVES>
 "With strace running, it behaved as if repentant"
 "I introduced print statements as if soothing a friend — *tell me what you are thinking when you do this*."
 "We laid snares: printf incantations, timeouts shaved to angel-hair, a tracer that has broken better men than me."
 "In the morning, I wrote my note: *This thing hates to be watched*."
-</NICE TO HAVES>
+</MUST HAVES>
 
 ---
 
@@ -174,9 +174,9 @@ The story should emphasize that this is not a supernatural event, but rather a m
 
 <PLACEHOLDER/>
 
-<NICE TO HAVES>
+<MUST HAVES>
 Something with the same moral as "We live by the text; we survive by the small, retold stories that help us decide which part of the text applies when the world grows strange. If you keep a dossier of your own, write in a hand you will recognize when you are older. Tape in what must be taped. Leave space in the margins for the things we still do not know how to name."
-</NICE TO HAVES>
+</MUST HAVES>
 
 ---
 
