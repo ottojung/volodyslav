@@ -1,4 +1,5 @@
 <MUST HAVES>
+"I had written prose that described procedures in the future tense, as if promising the very sun, and when the sun obeyed I pretended it was because we had the grammar correct."
 "FIELD NOTE #X The closer your model fits the world, the more the world will take issue."
 "... like myself—skeptics who have seen just enough to be superstitious."
 "... there are systems whose failure modes include poetry."
