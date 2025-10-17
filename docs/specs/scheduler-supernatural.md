@@ -50,6 +50,7 @@ But the main piece is the made-up horror story.
 "... a habit of tapping the table as though confirming liveness."
 "There is the certainty, never admitted aloud, that somewhere a check is missing and that this is sane; that checks go missing the way buttons go missing from coats."
 "The bit toggled to one, and in so toggling, wove its one-ness into every arithmetic that followed."
+"Field Note #X. Horror, in our trade, is the clean error—the one that leaves no prints."
 "The woman with the tape asked if lightning could do it. “Not tonight,” said the toolbox man; “tonight is dry.”"
 "The committee’s report is less romantic, but it permits the word that haunts this dossier: likely. A likely single-event upset—an ion that fell through the evening and made a number grow teeth."
 "[poureva.be][2]"
