@@ -1,3 +1,10 @@
+<NOTE>
+This document is a draft.
+It contains placeholders, fixmes, and must-haves that need to be addressed.
+When completing the document, ensure that all placeholders are filled, fixmes are resolved, and must-haves are included.
+Some must-haves, those surrounded by quotes, are exact phrases that need to be integrated neatly into the text. But others are thematic elements that should be woven into the narrative.
+</NOTE>
+
 <MUST HAVES>
 "I had written prose that described procedures in the future tense, as if promising the very sun, and when the sun obeyed I pretended it was because we had the grammar correct."
 "FIELD NOTE #X The closer your model fits the world, the more the world will take issue."
