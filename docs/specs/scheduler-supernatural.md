@@ -45,22 +45,33 @@ But the main piece is the made-up horror story.
 </NOTE>
 
 <MUST HAVES>
+
 "... a carpet whose pattern is an argument against democracy..."
+
 "He worked elections—“not politics,” he said quickly, “interfaces.”"
+
 "... a habit of tapping the table as though confirming liveness."
+
 "There is the certainty, never admitted aloud, that somewhere a check is missing and that this is sane; that checks go missing the way buttons go missing from coats."
+
 "The bit toggled to one, and in so toggling, wove its one-ness into every arithmetic that followed."
+
 "Field Note #X. Horror, in our trade, is the clean error—the one that leaves no prints."
+
 "The woman with the tape asked if lightning could do it. “Not tonight,” said the toolbox man; “tonight is dry.”"
+
 "The committee’s report is less romantic, but it permits the word that haunts this dossier: likely. A likely single-event upset—an ion that fell through the evening and made a number grow teeth."
 
 Something like a related human-story about corruption:
 The technician, having confessed to me the soft doctrine of the bit, told me a smaller, meaner story. The following week, a man from the party that had briefly prospered came into the office with a cigar he did not light. He made a show of not lighting it; this was his signature, he said—good manners doubling as advertisement. He asked, in a tone so gentle it barely bruised the air, whether the numbers—those numbers—could be verified just one more time.
 
-"[poureva.be][2]"
+"He meant, I think, that we must act as if the world intends this sort of interruption, because the world does not intend otherwise."
+
 "... if you believe in preparation, then you believe in a cathedral of checks where each arch braces another—triplicate logic, parity with scrubbing, watchdogs to guard the watchdogs, and the prophylactic act of voting in paper because paper fails like a person fails, slow and legible. But we persist in putting faith into boxes that hum, because the boxes are fast, and the public hungers for grace that arrives within the hour."
 
 An allegory that compares the unpredictability of software behavior to the weather. Something like "we do not fight the weather, we prepare for it."
+
+"[poureva.be][2]" (the link to the official report)
 </MUST HAVES>
 
 ---
