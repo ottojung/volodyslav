@@ -5,7 +5,8 @@
 "... there are systems whose failure modes include poetry."
 </MUST HAVES>
 
-# Classification of Supernatural Phenomena — Field Notes
+# A Strange Collection of System Failures
+<FIXME> A better title is needed. Something more evocative. </FIXME>
 
 *From the notebook of an investigator <PLACEHOLDER/>*
 
