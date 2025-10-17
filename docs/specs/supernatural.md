@@ -69,6 +69,8 @@ But the main piece is the made-up horror story.
 
 "It was one power of two too proud." - when first referring to the extra votes (4096 = 2^12).
 
+"The list’s ceiling is the candidate’s sky, and yet there it was: sky lower than the bird."
+
 "The bit toggled to one, and in so toggling, wove its one-ness into every arithmetic that followed."
 
 "Field Note #X. Horror, in our trade, is the clean error—the one that leaves no prints."
