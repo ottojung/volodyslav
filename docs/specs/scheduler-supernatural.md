@@ -128,16 +128,7 @@ This should be a story told to us by as a legend. In that legend, somebody alleg
 
 ---
 
-### VI. Ghost Passing Through the Machine
-
-<NOTE>
-Tell a made up story of how some kind of ghost or spirit was causing interference in the server room, causing random electromagnetic interference that caused servers to misbehave.
-It "spooked" transistors, causing them to misbehave.
-</NOTE>
-
----
-
-### VII. Mercury in Retrograde
+### VI. Mercury in Retrograde
 
 <NOTE>
 Tell a made up story of how a bug coincided with Mercury being in retrograde.
@@ -148,7 +139,7 @@ The implication should be that the bug was a real thing, actually caused by Merc
 
 ---
 
-### VIII. The Crocodile in Vienna
+### VII. The Crocodile in Vienna
 
 <NOTE>
 Tell a made up story of how a crocodile was spotted in Vienna, causing a stir among the locals and drawing attention from the authorities and impacting lifes of people in the city.
@@ -157,7 +148,7 @@ However, the crocodile had no impact on American software systems, which continu
 
 ---
 
-### IX. Non-Example Case Study: Crash
+### VIII. A Boring, Spectacular Crash
 
 <FIXME>
 Change the title to something more evocative.
