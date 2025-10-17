@@ -45,6 +45,7 @@ But the main piece is the made-up horror story.
 "... a habit of tapping the table as though confirming liveness."
 "The committee’s report is less romantic, but it permits the word that haunts this dossier: likely. A likely single-event upset—an ion that fell through the evening and made a number grow teeth."
 "[poureva.be][2]"
+"... if you believe in preparation, then you believe in a cathedral of checks where each arch braces another—triplicate logic, parity with scrubbing, watchdogs to guard the watchdogs, and the prophylactic act of voting in paper because paper fails like a person fails, slow and legible. But we persist in putting faith into boxes that hum, because the boxes are fast, and the public hungers for grace that arrives within the hour. And when a sum like 2¹² appears where no men could have placed it, we are left preaching sermons on design margins to a congregation like myself—skeptics who have seen just enough to be superstitious."
 
 An allegory that compares the unpredictability of software behavior to the weather. Something like "we do not fight the weather, we prepare for it."
 </NICE TO HAVES>
