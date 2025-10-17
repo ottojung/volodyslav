@@ -66,6 +66,8 @@ But the main piece is the made-up horror story.
 
 "The woman with the tape asked if lightning could do it. “Not tonight,” said the toolbox man; “tonight is dry.”" - for the part describing the immediate on-site investigation.
 
+"A physicist friend—pressed into service because her apartment was nearby, and because she is the sort of person one calls about the moon—arrived with a bicycle helmet and a theory that lay uneasily between farce and fate." - for the part describing the immediate on-site investigation.
+
 "The committee’s report is less romantic, but it permits the word that haunts this dossier: likely. A likely single-event upset—an ion that fell through the evening and made a number grow teeth."
 
 Something like a related human-story about corruption:
