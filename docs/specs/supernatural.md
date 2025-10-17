@@ -17,7 +17,6 @@
 I was not trained for hauntings. I was trained for reproducibility, for test plans and postmortems, for the clean relief of a failing unit test that fails again in the same way. But the longer I have tended systems—their valves and logs, their hissing racks and their fragile promises—the more I have come to understand that what we write on paper is not what the air will carry.
 
 <PLACEHOLDER/>
-
 I began to keep a dossier. Not a taxonomy—God preserve me from one more axis—but a sheaf of field notes: cases gathered from labs and basements, control rooms and attics <PLACEHOLDER/>. A few I saw myself; others I learned from steadier hands who were there before me <PLACEHOLDER/>.
 
 <PLACEHOLDER/>
@@ -58,6 +57,8 @@ But the main piece is the made-up horror story.
 "He used the word spontaneous without liking it." - for the part describing the technician's general attitude.
 
 "There is the certainty, never admitted aloud, that somewhere a check is missing and that this is sane; that checks go missing the way buttons go missing from coats."
+
+"It was one power of two too proud." - when first referring to the extra votes (4096 = 2^12).
 
 "The bit toggled to one, and in so toggling, wove its one-ness into every arithmetic that followed."
 
