@@ -94,7 +94,7 @@ The technician, having confessed to me the soft doctrine of the bit, told me a s
 
 An allegory that compares the unpredictability of software behavior to the weather. Something like "we do not fight the weather, we prepare for it."
 
-"... if you believe in preparation, then you believe in a cathedral of checks where each arch braces another—triplicate logic, parity with scrubbing, watchdogs to guard the watchdogs, and the prophylactic act of voting in paper because paper fails like a person fails, slow and legible. But we persist in putting faith into boxes that hum, because the boxes are fast, and the public hungers for grace that arrives within the hour."
+"... if you believe in preparation, then you believe in a cathedral of checks where each arch braces another—triplicate logic, parity with scrubbing, watchdogs to guard the watchdogs, and the prophylactic act of voting in paper because paper fails like a person fails, slow and legible."
 
 "[poureva.be][2]" - link to the official report, for the reference section.
 
