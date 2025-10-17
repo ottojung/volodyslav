@@ -40,6 +40,9 @@ But the main piece is the made-up horror story.
 </NOTE>
 
 <NICE TO HAVES>
+"... a carpet whose pattern is an argument against democracy..."
+"He worked elections—“not politics,” he said quickly, “interfaces.”"
+"... a habit of tapping the table as though confirming liveness."
 "The committee’s report is less romantic, but it permits the word that haunts this dossier: likely. A likely single-event upset—an ion that fell through the evening and made a number grow teeth."
 "[poureva.be][2]"
 
