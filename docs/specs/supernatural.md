@@ -185,6 +185,7 @@ Tell a made up story of how a bug coincided with Mercury being in retrograde.
 The bug must be unique and interesting.
 Do not talk about solutions.
 The implication should be that the bug was a real thing, actually caused by Mercury being in retrograde.
+We'll retain skeptics by documenting the operational timeline with enough specificity that the causal inference feels like a temptation, not a writer’s decree.
 </NOTE>
 
 ---
