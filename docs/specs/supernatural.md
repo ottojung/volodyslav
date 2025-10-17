@@ -69,13 +69,9 @@ But the main piece is the made-up horror story.
 
 "It was one power of two too proud." - when first referring to the extra votes (4096 = 2^12).
 
-"The list’s ceiling is the candidate’s sky, and yet there it was: sky lower than the bird."
-
-"The bit toggled to one, and in so toggling, wove its one-ness into every arithmetic that followed."
-
-"Field Note #X. Horror, in our trade, is the clean error—the one that leaves no prints."
-
 "They stared at the sum as though it might amend itself out of shame." - for the part describing the clerks discovering the extra votes.
+
+"The list’s ceiling is the candidate’s sky, and yet there it was: sky lower than the bird."
 
 "One of the watchers—a schoolteacher—tried to be helpful by pointing out each time the computer made a small sound, as if identifying birds." - for the part describing the immediate on-site investigation.
 
@@ -84,6 +80,8 @@ But the main piece is the made-up horror story.
 "They made a ledger of what would be convenient to blame and crossed each item off." - for the part describing the immediate on-site investigation.
 
 "A physicist friend—pressed into service because her apartment was nearby, and because she is the sort of person one calls about the moon—arrived with a bicycle helmet and a theory that lay uneasily between farce and fate." - for the part describing the immediate on-site investigation.
+
+"The bit toggled to one, and in so toggling, wove its one-ness into every arithmetic that followed." - when summarizing the conclusion of the physisicist's theory.
 
 "A cosmic flea bite, the newspapers preferred." - for the part describing the official explanation.
 
