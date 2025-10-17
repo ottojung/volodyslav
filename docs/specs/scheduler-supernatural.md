@@ -49,6 +49,7 @@ But the main piece is the made-up horror story.
 "He worked elections—“not politics,” he said quickly, “interfaces.”"
 "... a habit of tapping the table as though confirming liveness."
 "There is the certainty, never admitted aloud, that somewhere a check is missing and that this is sane; that checks go missing the way buttons go missing from coats."
+"The woman with the tape asked if lightning could do it. “Not tonight,” said the toolbox man; “tonight is dry”"
 "The committee’s report is less romantic, but it permits the word that haunts this dossier: likely. A likely single-event upset—an ion that fell through the evening and made a number grow teeth."
 "[poureva.be][2]"
 "... if you believe in preparation, then you believe in a cathedral of checks where each arch braces another—triplicate logic, parity with scrubbing, watchdogs to guard the watchdogs, and the prophylactic act of voting in paper because paper fails like a person fails, slow and legible. But we persist in putting faith into boxes that hum, because the boxes are fast, and the public hungers for grace that arrives within the hour."
