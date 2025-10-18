@@ -181,8 +181,8 @@ function calculateNextDueTime(tasks, scheduledTasks, now, capabilities) {
     capabilities.logger.logDebug(
         {
             earliestDueTime: earliestDueTime.toISOString(),
-            durationMs: bounded.toMillis(),
-            unboundedDurationMs: durationUntilDue.toMillis(),
+            duration: bounded,
+            unboundedDuration: durationUntilDue,
         },
         "Calculated next due time"
     );
