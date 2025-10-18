@@ -617,7 +617,7 @@ This means that call to `stop()` waits for in-flight callbacks to complete.
 
 ---
 
-**S4 — Registration consistency**
+**S4 — Registration soundness**
 
 $$
 R \notin \texttt{ValidRegistrations} \implies \texttt{G}( \neg \texttt{IEs}_R ) \\
