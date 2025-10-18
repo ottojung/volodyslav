@@ -351,6 +351,12 @@ An invocation of $x$ has begun and has not finished before the current position.
 
 ---
 
+* $\texttt{Initializing}_R := \texttt{Hold}(\texttt{IS}_R, \texttt{IEs}_R)$
+
+The scheduler is currently initializing with registration list $R$.
+
+---
+
 * $\texttt{Quiescent} := \neg \exists y.\; \texttt{Running}_y$
 
 No callbacks are currently running.
