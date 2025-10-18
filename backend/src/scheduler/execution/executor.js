@@ -78,7 +78,7 @@ function makeTaskExecutor(capabilities, mutateTasks) {
             });
         }
 
-        capabilities.logger.logInfo({ name: taskName, mode }, "TaskRunStarted");
+        capabilities.logger.logInfo({ name: taskName, mode }, "Task execution started");
 
         async function executeIt() {
             try {

@@ -56,7 +56,7 @@ function evaluateTasksForExecution(tasks, scheduledTasks, now, capabilities, sch
 
         if (isRunning(task)) {
             skippedRunning++;
-            capabilities.logger.logDebug({ name: taskName, reason: "running" }, "TaskSkip");
+            capabilities.logger.logDebug({ name: taskName, reason: "running" }, "Task was skipped because it is already running");
             continue;
         }
 
@@ -91,10 +91,10 @@ function evaluateTasksForExecution(tasks, scheduledTasks, now, capabilities, sch
             dueCron++;
         } else if (pendingRetryUntil !== undefined) {
             skippedRetryFuture++;
-            capabilities.logger.logDebug({ name: taskName, reason: "retryNotDue" }, "TaskSkip");
+            capabilities.logger.logDebug({ name: taskName, reason: "retryNotDue" }, "Task skipped because retry time is in the future");
         } else {
             skippedNotDue++;
-            capabilities.logger.logDebug({ name: taskName, reason: "notDue" }, "TaskSkip");
+            capabilities.logger.logDebug({ name: taskName, reason: "notDue" }, "Task skipped because it is not due");
         }
     }
 
