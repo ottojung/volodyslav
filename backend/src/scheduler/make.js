@@ -145,7 +145,9 @@ function make(getCapabilities) {
             initializationPromise = proceedWithInitialization(registrations);
             await initializationPromise;    
             initializationPromise = null;
-            schedulerState = "running";
+            if (schedulerState === "initializing") {
+                schedulerState = "running";
+            }
         } catch (error) {
             initializationPromise = null;    
             await stop(); // Waiting is bounded because there should not be anything scheduled.
