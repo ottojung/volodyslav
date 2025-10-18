@@ -109,70 +109,9 @@ The scheduler follows specific rules for task execution during the very first st
 
 **Tasks execute immediately only if their cron expression exactly matches the current time at startup.** This prevents overwhelming the system with all tasks executing simultaneously while still honoring tasks that are genuinely scheduled to run at that moment.
 
-#### Examples
-
-- **Should execute**: If the scheduler starts at 15:30 on a Tuesday and a task is scheduled with `30 15 * * 2` (15:30 on Tuesday), the task will execute immediately.
-- **Should not execute**: If the scheduler starts at 15:30 on a Tuesday and a task is scheduled with `20 15 * * 2` (15:20 on Tuesday), the task will wait until its next scheduled time.
-
-### Subsequent Startup Behavior
-
-After the first startup, the scheduler loads persisted execution history and continues normal scheduling based on the last known state. No special first-startup logic applies to subsequent restarts.
-
 ## Cron Expression Format (POSIX Only)
 
 The scheduler accepts **strictly POSIX-compliant cron expressions** as defined in IEEE Std 1003.1 ([Open Group Base Specifications](https://pubs.opengroup.org/onlinepubs/9699919799/utilities/crontab.html)).
-
-### Format Specification
-
-Cron expressions consist of **exactly 5 time fields** separated by whitespace:
-
-```
-minute hour day-of-month month day-of-week
-```
-
-**Field Ranges:**
-- **minute**: 0–59
-- **hour**: 0–23  
-- **day-of-month**: 1–31
-- **month**: 1–12
-- **day-of-week**: 0–6 (0 = Sunday, 6 = Saturday)
-
-### Supported Syntax (POSIX Only)
-
-Each field accepts:
-- **`*`** – all valid values
-- **Numbers** – single values (e.g., `15`, `3`)
-- **Ranges** – inclusive ranges (e.g., `1-5`, `9-17`)
-- **Lists** – comma-separated elements (e.g., `1,15,30`, `1-3,10,20-25`)
-
-**Examples:**
-- `15 3 * * 1-5` – 3:15 AM on weekdays
-- `0 0 1,15 * 1` – midnight on 1st, 15th, and Mondays (DOM/DOW OR logic)
-- `0 12 14 2 *` – noon on February 14th
-- `0,30 * * * *` – every 30 minutes
-
-### Rejected Non-POSIX Extensions
-
-The scheduler **explicitly rejects** common cron extensions not in the POSIX standard:
-
-- **Step syntax**: `*/15`, `0-30/5` (use explicit lists instead: `0,15,30,45`)
-- **Names**: `mon`, `jan`, `sunday` (use numbers: `1`, `1`, `0`)
-- **Macros**: `@hourly`, `@daily`, `@reboot` (use explicit expressions)
-- **Quartz tokens**: `?`, `L`, `W`, `#` (not supported)
-- **Extended ranges**: DOW `7` for Sunday (use `0`)
-- **Wrap-around ranges**: `22-2` (use separate fields or lists)
-
-### Day-of-Month/Day-of-Week Semantics
-
-Following POSIX specification, when both day-of-month and day-of-week are specified (not wildcards), a job runs if **either** condition matches:
-
-- `0 0 1,15 * 1` runs on the 1st, 15th **OR** any Monday
-- `0 0 * * 1` runs **only** on Mondays  
-- `0 0 15 * *` runs **only** on the 15th of each month
-
-For authoritative documentation, refer to:
-- [The Open Group Base Specifications: crontab](https://pubs.opengroup.org/onlinepubs/9699919799/utilities/crontab.html)
-- [POSIX Programmer's Manual: crontab(1p)](https://man7.org/linux/man-pages/man1/crontab.1p.html)
 
 ## Limitations and Tradeoffs
 
