@@ -2,9 +2,11 @@
  * Declarative scheduler module exports.
  * This module provides a static, idempotent scheduler that validates tasks
  * against persisted runtime state.
- * 
+ *
  * The scheduler uses a purely declarative interface - no procedural APIs
  * like start, stop, schedule, or cancel are exposed to external consumers.
+ *
+ * See documentation at docs/scheduling.md
  */
 
 const { make } = require("./make");
