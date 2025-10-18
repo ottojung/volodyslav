@@ -131,7 +131,8 @@ function makePollingFunction(capabilities, registrations, scheduledTasks, taskEx
         // Collect tasks and stats.
         const { dueTasks, stats } = await getDueTasks();
         if (isActive === false) {
-            // Stopped while collecting; do not execute any tasks
+            // Stopped while collecting; do not execute any tasks.
+            // Some tasks may have been marked as "running" but that's okay.
             return;
         }
 
