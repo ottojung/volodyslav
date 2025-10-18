@@ -539,7 +539,7 @@ Any difference in the above fields **MUST** trigger override behavior.
 
 ### Scheduler Identifier
 
-The scheduler **MUST**:
+The scheduler **SHOULD**:
 - Generate a unique identifier on first initialization
 - Use this identifier to detect orphaned tasks from other scheduler instances
 
