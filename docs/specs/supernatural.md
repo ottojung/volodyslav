@@ -78,6 +78,8 @@ But the main piece is the made-up horror story.
 
 "The list’s ceiling is the candidate’s sky, and yet there it was: sky lower than the bird."
 
+"$$\boxed{Invariant #1: ∑ candidate preferences ≤ party list total ≤ district total}$$" - to put the above allegory into mathematical form.
+
 "One of the watchers—a schoolteacher—tried to be helpful by pointing out each time the computer made a small sound, as if identifying birds." - for the part describing the immediate on-site investigation.
 
 "The woman with the tape asked if lightning could do it. “Not tonight,” said the toolbox man; “tonight is dry.”" - for the part describing the immediate on-site investigation.
