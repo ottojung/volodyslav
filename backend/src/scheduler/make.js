@@ -79,6 +79,8 @@ function make(getCapabilities) {
      * @type {Initialize}
      */
     async function proceedWithInitialization(registrations) {
+        schedulerState = "initializing";
+
         const capabilities = getCapabilitiesMemo();
 
         // Validate registrations before any processing
@@ -119,6 +121,8 @@ function make(getCapabilities) {
             },
             "Scheduler initialization completed"
         );
+
+        schedulerState = "running";
     }
 
     /**
@@ -141,13 +145,9 @@ function make(getCapabilities) {
         }
         
         try {
-            schedulerState = "initializing";
             initializationPromise = proceedWithInitialization(registrations);
             await initializationPromise;    
             initializationPromise = null;
-            if (schedulerState === "initializing") {
-                schedulerState = "running";
-            }
         } catch (error) {
             initializationPromise = null;    
             await stop(); // Waiting is bounded because there should not be anything scheduled.
