@@ -35,7 +35,6 @@ I began to keep a dossier. Not a taxonomyâ€”God preserve me from one more axisâ€
 <PLACEHOLDER/>
 
 <MUST HAVES>
-"The spec said: if due then run. The night said: if due then perhaps, if the moon consents."
 "People ask if I believe in such things."
 "Read them so that when the world leans on your specification, you recognize the weight."
 </MUST HAVES>
