@@ -94,6 +94,8 @@ Smell/sound texture of “dry athmosphere" when describing the surrounding of th
 
 "Field Note #${X}. Horror, in our trade, is the clean error—the one that leaves no prints."
 
+Clerks’ fatigue truth: a clerk privately prefers a boring human mistake; the cosmic explanation feels like trespass. But he knows better than to say so aloud, for one: he might be held legible for the error himself. This part, however, should resonate with some skeptic readers.
+
 "A cosmic flea bite, the newspapers preferred." - for the part describing the official explanation.
 
 "The committee’s report is less romantic, but it permits the word that haunts this dossier: likely. A likely single-event upset—an ion that fell through the evening and made a number grow teeth."
