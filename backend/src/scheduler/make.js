@@ -79,9 +79,9 @@ function make(getCapabilities) {
      * @type {Initialize}
      */
     async function proceedWithInitialization(registrations) {
-        schedulerState = "initializing";
-
         const capabilities = getCapabilitiesMemo();
+
+        schedulerState = "initializing";
 
         // Validate registrations before any processing
         validateRegistrations(registrations);
