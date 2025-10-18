@@ -351,7 +351,7 @@ An invocation of $x$ has begun and has not finished before the current position.
 
 ---
 
-* $\texttt{Initializing}_R := \texttt{Hold}(\texttt{IS}_R, \texttt{IEs}_R)$
+* $\texttt{Initializing}_R := \texttt{Hold}(\texttt{IS}_R, \texttt{IE}_R \lor \texttt{Crash})$
 
 The scheduler is currently initializing with registration list $R$.
 
