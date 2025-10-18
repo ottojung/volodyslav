@@ -66,7 +66,9 @@ But the main piece is the made-up horror story.
 
 "He used the word spontaneous without liking it." - for the part describing the technician's general attitude.
 
-"... a carpet whose pattern is an argument against democracy..." - for the part describing the polling station.
+Smell/sound texture of “dry athmosphere" when describing the surrounding of the polling station. This is to echo the “Not tonight… tonight is dry.” line.
+
+"... a carpet whose pattern is an argument against democracy." - for the part describing the polling station.
 
 "There is the certainty, never admitted aloud, that somewhere a check is missing and that this is sane; that checks go missing the way buttons go missing from coats." - for the part that leads to the discovery of the anomaly.
 
