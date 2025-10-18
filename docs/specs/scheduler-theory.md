@@ -625,9 +625,18 @@ $$
 
 The scheduler must reject any registrations not from the set of valid registrations.
 
+**S5 - Registration completeness**
+
+$$
+R \in \texttt{ValidRegistrations} \implies 
+\texttt{G}( \texttt{IFail}_R \rightarrow \exists R'. \; \texttt{Y} \; \texttt{Initializing}_{R'} ) \\
+$$
+
+The scheduler must accept any registrations from the set of valid registrations, unless a concurrent initialization was in progress.
+
 ---
 
-**S5 — No concurrent initialization**
+**S6 — No concurrent initialization**
 
 $$
 \texttt{G}\Big( \texttt{IEs}_R \rightarrow \texttt{X} \big(\neg \texttt{IEs} \; \texttt{W} \; (\texttt{SE} \vee \texttt{Crash})\big) \Big)
