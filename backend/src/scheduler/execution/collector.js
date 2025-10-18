@@ -5,7 +5,7 @@
 
 const { getMostRecentExecution, getNextExecution } = require("../calculator");
 const { isRunning, getPendingRetryUntil } = require("../task");
-const { difference, fromSeconds, fromMinutes } = require("../../datetime");
+const { difference, fromSeconds, fromMinutes, fromHours } = require("../../datetime");
 
 /** @typedef {import('../types').Callback} Callback */
 /** @typedef {import('../task').Running} Running */
@@ -119,7 +119,7 @@ const MINIMUM_SLEEP_DURATION = fromSeconds(1);
 /**
  * Maximum sleep duration as a safety backstop.
  */
-const MAXIMUM_SLEEP_DURATION = fromMinutes(1);
+const MAXIMUM_SLEEP_DURATION = fromHours(10);
 
 /**
  * Calculate the duration until the next task becomes due.
