@@ -5,7 +5,7 @@
 
 const { getMostRecentExecution, getNextExecution } = require("../calculator");
 const { isRunning, getPendingRetryUntil } = require("../task");
-const { difference, fromSeconds, fromHours } = require("../../datetime");
+const { difference, fromSeconds, fromHours, minimum, maximum } = require("../../datetime");
 
 /** @typedef {import('../types').Callback} Callback */
 /** @typedef {import('../task').Running} Running */
@@ -179,25 +179,20 @@ function calculateNextDueTime(tasks, scheduledTasks, now, capabilities) {
         return MINIMUM_SLEEP_DURATION;
     }
 
-    // Calculate the duration until the earliest due time
+    // Calculate the bounded duration until the earliest due time
     const durationUntilDue = difference(earliestDueTime, now);
-    const durationMs = durationUntilDue.toMillis();
-
-    // Apply min/max bounds
-    const minMs = MINIMUM_SLEEP_DURATION.toMillis();
-    const maxMs = MAXIMUM_SLEEP_DURATION.toMillis();
-    const boundedMs = Math.max(minMs, Math.min(maxMs, durationMs));
+    const bounded = minimum(maximum(durationUntilDue, MINIMUM_SLEEP_DURATION), MAXIMUM_SLEEP_DURATION);
 
     capabilities.logger.logDebug(
         {
             earliestDueTime: earliestDueTime.toISOString(),
-            durationMs: boundedMs,
-            unboundedDurationMs: durationMs,
+            durationMs: bounded.toMillis(),
+            unboundedDurationMs: durationUntilDue.toMillis(),
         },
         "Calculated next due time"
     );
 
-    return fromSeconds(boundedMs / 1000);
+    return bounded;
 }
 
 module.exports = {
