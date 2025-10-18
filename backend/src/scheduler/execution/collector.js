@@ -5,7 +5,7 @@
 
 const { getMostRecentExecution, getNextExecution } = require("../calculator");
 const { isRunning, getPendingRetryUntil } = require("../task");
-const { difference, fromSeconds, fromMinutes, fromHours } = require("../../datetime");
+const { difference, fromSeconds, fromHours } = require("../../datetime");
 
 /** @typedef {import('../types').Callback} Callback */
 /** @typedef {import('../task').Running} Running */
