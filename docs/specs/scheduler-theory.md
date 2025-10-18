@@ -297,8 +297,6 @@ The past-time $\texttt{S}$ operator requires that the most recent $\texttt{Due}_
 
 Reference to the most recent successful initialization **of a specific** registration list $R$.
 
-Note: Since the scheduler rejects concurrent initializations (any `initialize()` call while initializing or running throws an error), there can be at most one active registration list at any time.
-
 ---
 
 * $\texttt{Registered}_{R, x} := \texttt{Registered}_{R} \land x\in_\text{list}R$
