@@ -90,7 +90,7 @@ But the main piece is the made-up horror story.
 
 "There was no smoking gun — only a single flip where a zero had become a one at the thirteenth bit, a neat, round power-of-two crime."
 
-"Field Note #X. Horror, in our trade, is the clean error—the one that leaves no prints."
+"Field Note #${X}. Horror, in our trade, is the clean error—the one that leaves no prints."
 
 "A cosmic flea bite, the newspapers preferred." - for the part describing the official explanation.
 
