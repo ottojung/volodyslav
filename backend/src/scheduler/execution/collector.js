@@ -161,7 +161,7 @@ function calculateNextDueTime(tasks, scheduledTasks, now, capabilities) {
             }
         } catch (err) {
             // If we can't calculate next execution, log and skip this task
-            capabilities.logger.logDebug(
+            capabilities.logger.logError(
                 { name: taskName, error: err instanceof Error ? err.message : String(err) },
                 "Failed to calculate next cron execution for task"
             );
