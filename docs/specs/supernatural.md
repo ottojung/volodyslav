@@ -60,15 +60,15 @@ But the main piece is the made-up horror story.
 
 <MUST HAVES>
 
-"... a carpet whose pattern is an argument against democracy..." - for the part describing the polling station.
-
 "He worked elections—“not politics,” he said quickly, “interfaces.”" - for the part describing the technician, who told us the story.
 
 "... a habit of tapping the table as though confirming liveness." - for the part describing the technician's character.
 
 "He used the word spontaneous without liking it." - for the part describing the technician's general attitude.
 
-"There is the certainty, never admitted aloud, that somewhere a check is missing and that this is sane; that checks go missing the way buttons go missing from coats."
+"... a carpet whose pattern is an argument against democracy..." - for the part describing the polling station.
+
+"There is the certainty, never admitted aloud, that somewhere a check is missing and that this is sane; that checks go missing the way buttons go missing from coats." - for the part that leads to the discovery of the anomaly.
 
 "It was one power of two too proud." - when first referring to the extra votes (4096 = 2^12).
 
