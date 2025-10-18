@@ -78,7 +78,7 @@ But the main piece is the made-up horror story.
 
 "The list’s ceiling is the candidate’s sky, and yet there it was: sky lower than the bird."
 
-"$$\boxed{\Sigma \text{ candidate preferences } \leq \text{ party list total } \leq \text{ district total}}$$", titled "Invariant 1." - to put the above allegory into mathematical form.
+"$$\boxed{\Sigma \text{ candidate preferences } \leq \text{ party list total } \leq \text{ district total}}$$", titled "Invariant 1. (violated)" - to put the above allegory into mathematical form.
 
 "One of the watchers—a schoolteacher—tried to be helpful by pointing out each time the computer made a small sound, as if identifying birds." - for the part describing the immediate on-site investigation.
 
