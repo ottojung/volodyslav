@@ -119,7 +119,7 @@ const MINIMUM_SLEEP_DURATION = fromSeconds(1);
 /**
  * Maximum sleep duration as a safety backstop.
  */
-const MAXIMUM_SLEEP_DURATION = fromHours(10);
+const MAXIMUM_SLEEP_DURATION = fromHours(9999);
 
 /**
  * Calculate the duration until the next task becomes due.
