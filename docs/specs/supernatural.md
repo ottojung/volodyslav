@@ -72,8 +72,6 @@ But the main piece is the made-up horror story.
 
 "It was one power of two too proud." - when first referring to the extra votes (4096 = 2^12).
 
-"There was no smoking gun — only a single flip where a zero had become a one at the thirteenth bit, a neat, round power-of-two crime." - when describing the athmosphere in the room during the investigation.
-
 "The list’s ceiling is the candidate’s sky, and yet there it was: sky lower than the bird."
 
 "$$\boxed{\Sigma \text{ candidate preferences } \leq \text{ party list total } \leq \text{ district total}}$$", titled "Invariant 1. (violated)" - to put the above allegory into mathematical form.
@@ -89,6 +87,8 @@ But the main piece is the made-up horror story.
 "A physicist friend—pressed into service because her apartment was nearby, and because she is the sort of person one calls about the moon—arrived with a bicycle helmet and a theory that lay uneasily between farce and fate." - for the part describing the immediate on-site investigation.
 
 "The bit toggled to one, and in so toggling, wove its one-ness into every arithmetic that followed." - when summarizing the conclusion of the physicist's theory.
+
+"There was no smoking gun — only a single flip where a zero had become a one at the thirteenth bit, a neat, round power-of-two crime."
 
 "Field Note #X. Horror, in our trade, is the clean error—the one that leaves no prints."
 
