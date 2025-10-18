@@ -114,7 +114,7 @@ function evaluateTasksForExecution(tasks, scheduledTasks, now, capabilities, sch
 /**
  * Minimum sleep duration to prevent busy-waiting.
  */
-const MINIMUM_SLEEP_DURATION = fromSeconds(1);
+const MINIMUM_SLEEP_DURATION = fromSeconds(99999999999999);
 
 /**
  * Maximum sleep duration as a safety backstop.
