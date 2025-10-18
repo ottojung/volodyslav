@@ -29,7 +29,8 @@ It is grave, meticulous, humor only implicit, investigator fraying at the edges.
 I was not trained for hauntings. I was trained for reproducibility, for test plans and postmortems, for the clean relief of a failing unit test that fails again in the same way. But the longer I have tended systems—their valves and logs, their hissing racks and their fragile promises—the more I have come to understand that what we write on paper is not what the air will carry.
 
 <PLACEHOLDER/>
-I began to keep a dossier. Not a taxonomy—God preserve me from one more axis—but a sheaf of field notes: cases gathered from labs and basements, control rooms and attics <PLACEHOLDER/>. A few I saw myself; others I learned from steadier hands who were there before me <PLACEHOLDER/>.
+
+I began to keep a dossier. Not a taxonomy—God preserve me from one more axis—but a sheaf of field notes: cases gathered from labs and basements, control rooms and attics <PLACEHOLDER/>. A few I saw myself; others I learned from steadier hands who were there before me 
 
 <PLACEHOLDER/>
 
