@@ -3,8 +3,9 @@
  * Determines which tasks should be executed based on cron schedules and retry timing.
  */
 
-const { getMostRecentExecution } = require("../calculator");
+const { getMostRecentExecution, getNextExecution } = require("../calculator");
 const { isRunning, getPendingRetryUntil } = require("../task");
+const { difference, fromSeconds, fromHours, minimum, maximum } = require("../../datetime");
 
 /** @typedef {import('../types').Callback} Callback */
 /** @typedef {import('../task').Running} Running */
@@ -110,6 +111,86 @@ function evaluateTasksForExecution(tasks, scheduledTasks, now, capabilities, sch
     };
 }
 
+/**
+ * Minimum sleep duration to prevent busy-waiting.
+ */
+const MINIMUM_SLEEP_DURATION = fromSeconds(1);
+
+/**
+ * Maximum sleep duration as a safety backstop.
+ */
+const MAXIMUM_SLEEP_DURATION = fromHours(3);
+
+/**
+ * Calculate the duration until the next task becomes due.
+ * Considers both cron schedules and retry timings.
+ * @param {Map<string, import('../task').Task>} tasks - Task map
+ * @param {Set<string>} scheduledTasks - Set of scheduled task names
+ * @param {import('../../datetime').DateTime} now - Current datetime
+ * @param {import('../types').SchedulerCapabilities} capabilities - Capabilities for logging
+ * @returns {import('../../datetime').Duration} Duration to sleep until next task is due
+ */
+function calculateNextDueTime(tasks, scheduledTasks, now, capabilities) {
+    /** @type {import('../../datetime').DateTime | null} */
+    let earliestDueTime = null;
+
+    for (const taskName of scheduledTasks) {
+        const task = tasks.get(taskName);
+        if (task === undefined) {
+            throw new TaskEvaluationNotFoundError(taskName);
+        }
+
+        // Check retry timing first (higher priority)
+        const pendingRetryUntil = getPendingRetryUntil(task);
+        if (pendingRetryUntil !== undefined) {
+            if (earliestDueTime === null || pendingRetryUntil.isBefore(earliestDueTime)) {
+                earliestDueTime = pendingRetryUntil;
+            }
+        }
+
+        // Check cron schedule for next execution
+        try {
+            const nextCronExecution = getNextExecution(task.parsedCron, now);
+            if (earliestDueTime === null || nextCronExecution.isBefore(earliestDueTime)) {
+                earliestDueTime = nextCronExecution;
+            }
+        } catch (err) {
+            // If we can't calculate next execution, log and skip this task
+            capabilities.logger.logError(
+                { name: taskName, error: err instanceof Error ? err.message : String(err) },
+                "Failed to calculate next cron execution for task"
+            );
+        }
+    }
+
+    // Calculate duration from now to earliest due time
+    if (earliestDueTime === null) {
+        // No tasks scheduled or all running - use maximum sleep
+        return MAXIMUM_SLEEP_DURATION;
+    }
+
+    // If earliest due time is in the past or now, return minimum duration
+    if (earliestDueTime.isBeforeOrEqual(now)) {
+        return MINIMUM_SLEEP_DURATION;
+    }
+
+    // Calculate the bounded duration until the earliest due time
+    const durationUntilDue = difference(earliestDueTime, now);
+    const bounded = minimum(maximum(durationUntilDue, MINIMUM_SLEEP_DURATION), MAXIMUM_SLEEP_DURATION);
+
+    capabilities.logger.logDebug(
+        {
+            earliestDueTime: earliestDueTime.toISOString(),
+            duration: bounded,
+            unboundedDuration: durationUntilDue,
+        },
+        "Calculated next due time"
+    );
+
+    return bounded;
+}
+
 module.exports = {
     evaluateTasksForExecution,
+    calculateNextDueTime,
 };

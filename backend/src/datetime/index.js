@@ -3,7 +3,7 @@ const { fromISOString, toISOString, mtime, tryDeserialize, DateTimeTryDeserializ
 const { make } = require('./capability');
 const { weekdayNameToCronNumber, cronNumberToWeekdayName, isWeekdayName, getAllWeekdayNames } = require('./weekday');
 const { isDateTime } = require('./structure');
-const { isDuration, difference, fromMilliseconds, fromSeconds, fromMinutes, fromHours, fromDays, fromWeeks, fromObject } = require('./duration');
+const { isDuration, difference, fromMilliseconds, fromSeconds, fromMinutes, fromHours, fromDays, fromWeeks, fromObject, maximum, minimum } = require('./duration');
 const { fromObject: dateTimeFromObject, format } = require('./factories');
 const { getMaxDaysInMonth } = require('./month');
 
@@ -35,6 +35,8 @@ module.exports = {
     fromDays,
     fromWeeks,
     fromObject,
+    maximum,
+    minimum,
     // DateTime factories
     dateTimeFromObject,
     format,

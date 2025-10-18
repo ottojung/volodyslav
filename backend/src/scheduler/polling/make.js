@@ -5,6 +5,7 @@
 const { mutateTasks } = require("../persistence");
 const { makeTaskExecutor } = require("../execution");
 const { makePollingFunction } = require("./function");
+const { POLLING_LOOP_NAME } = require("./identifiers");
 
 /**
  * @typedef {import('../../logger').Logger} Logger
@@ -29,11 +30,14 @@ function makePollingScheduler(capabilities, registrations, schedulerIdentifier) 
     /** @type {Set<string>} */
     const scheduledTasks = new Set(); // Task names that are enabled. Is a subset of names in `registrations`.
 
+    // Create shared sleeper for both polling loop and task executor
+    const sleeper = capabilities.sleeper.makeSleeper(POLLING_LOOP_NAME);
+
     // Create task executor for handling task execution
-    const taskExecutor = makeTaskExecutor(capabilities, (transformation) => mutateTasks(capabilities, registrations, transformation));
+    const taskExecutor = makeTaskExecutor(capabilities, (transformation) => mutateTasks(capabilities, registrations, transformation), sleeper);
 
     // Create polling function with lifecycle management
-    const intervalManager = makePollingFunction(capabilities, registrations, scheduledTasks, taskExecutor, schedulerIdentifier);
+    const intervalManager = makePollingFunction(capabilities, registrations, scheduledTasks, taskExecutor, schedulerIdentifier, sleeper);
 
     function start() {
         intervalManager.start();

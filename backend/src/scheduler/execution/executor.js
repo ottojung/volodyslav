@@ -36,8 +36,9 @@ class TaskExecutionNotFoundError extends Error {
  * Create a task executor.
  * @param {import('../types').SchedulerCapabilities} capabilities
  * @param {<T>(tr: Transformation<T>) => Promise<T>} mutateTasks
+ * @param {import('../../sleeper').Sleeper} sleeper
  */
-function makeTaskExecutor(capabilities, mutateTasks) {
+function makeTaskExecutor(capabilities, mutateTasks, sleeper) {
     const dt = capabilities.datetime;
 
     /**
@@ -125,6 +126,10 @@ function makeTaskExecutor(capabilities, mutateTasks) {
                 };
                 task.state = newState;
             });
+
+            // Wake the polling loop since there's now a retry scheduled
+            // The loop will recalculate sleep duration and potentially sleep less
+            sleeper.wake();
 
             const message = maybeError.message;
             capabilities.logger.logInfo(

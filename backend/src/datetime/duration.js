@@ -96,6 +96,26 @@ function fromObject(spec) {
     return luxon.Duration.fromObject(spec);
 }
 
+/**
+ * Return the maximum of two Durations.
+ * @param {Duration} duration1 
+ * @param {Duration} duration2 
+ * @returns {Duration} Maximum Duration
+ */
+function maximum(duration1, duration2) {
+    return duration1.toMillis() >= duration2.toMillis() ? duration1 : duration2;
+}
+
+/**
+ * Return the minimum of two Durations.
+ * @param {Duration} duration1 
+ * @param {Duration} duration2 
+ * @returns {Duration} Minimum Duration
+ */
+function minimum(duration1, duration2) {
+    return duration1.toMillis() <= duration2.toMillis() ? duration1 : duration2;
+}
+
 module.exports = {
     isDuration,
     difference,
@@ -106,4 +126,6 @@ module.exports = {
     fromDays,
     fromWeeks,
     fromObject,
+    maximum,
+    minimum,
 };
