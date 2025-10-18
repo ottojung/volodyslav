@@ -23,6 +23,10 @@ imperative APIs for adding or removing tasks while the process is running.
 - **Minimal surface area** – the scheduler exposes only initialisation and stop
   operations, keeping scheduling logic encapsulated.
 
+## Specification
+
+This scheduler's implementation is fully specified in [docs/specs/scheduler.md](specs/scheduler.md).
+
 ## Declarative Model
 
 The scheduler follows a declarative philosophy: every task is described by
