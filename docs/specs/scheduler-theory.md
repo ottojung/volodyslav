@@ -375,6 +375,12 @@ A start of run that eventually completes successfully (not preempted by failure 
 
 ---
 
+* $\texttt{IFail}_R := \texttt{IS}_R \wedge \Big( \neg \texttt{IEs}_R \; \texttt{U} \; \texttt{IEf}_R \Big)$
+
+A start of initialization that eventually throws an error.
+
+---
+
 * $\texttt{DuePending}_x := \texttt{Hold}^{+}( \texttt{Due}_x, \texttt{RS}_x \lor \texttt{FirstComing}_x ) \wedge \neg \texttt{Running}_x$
 
 An outstanding request to perform a start after a due tick, cleared by a start and by $\texttt{FirstComing}_x$.
