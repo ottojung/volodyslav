@@ -637,12 +637,12 @@ The scheduler must accept any registrations from the set of valid registrations,
 **S6 — No concurrent initialization**
 
 $$
-\texttt{G}\Big( \texttt{IEs}_R \rightarrow \texttt{X} \big(\neg \texttt{IEs} \; \texttt{W} \; (\texttt{SE} \vee \texttt{Crash})\big) \Big)
+\texttt{AtMostOne}(\texttt{IEs}, \texttt{SE} \vee \texttt{Crash})
 $$
 
 After a successful initialization, no other initialization can succeed until after a stop or crash.
 
-This ensures that `initialize()` calls made while the scheduler is in the "initializing" or "running" state result in `IEf` (thrown error), not `IEs`.
+This ensures that `initialize()` calls made while the scheduler is in the "running" state result in `IEf` (thrown error), not `IEs`.
 
 ### Liveness Axioms
 
