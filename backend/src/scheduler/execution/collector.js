@@ -140,11 +140,6 @@ function calculateNextDueTime(tasks, scheduledTasks, now, capabilities) {
             throw new TaskEvaluationNotFoundError(taskName);
         }
 
-        // Skip running tasks - they don't have a "next due time"
-        if (isRunning(task)) {
-            continue;
-        }
-
         // Check retry timing first (higher priority)
         const pendingRetryUntil = getPendingRetryUntil(task);
         if (pendingRetryUntil !== undefined) {
