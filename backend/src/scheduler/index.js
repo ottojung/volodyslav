@@ -6,7 +6,7 @@
  * The scheduler uses a purely declarative interface - no procedural APIs
  * like start, stop, schedule, or cancel are exposed to external consumers.
  *
- * See documentation at docs/scheduling.md
+ * See documentation at docs/scheduler.md
  */
 
 const { make } = require("./make");
