@@ -542,7 +542,6 @@ Any difference in the above fields **MUST** trigger override behavior.
 The scheduler **MUST**:
 - Generate a unique identifier on first initialization
 - Use this identifier to detect orphaned tasks from other scheduler instances
-- Include the identifier in all persisted task records
 
 ### Override Atomicity
 
