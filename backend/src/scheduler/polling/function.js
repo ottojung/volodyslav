@@ -14,14 +14,7 @@
  */
 
 const { mutateTasks } = require('../persistence');
-const { evaluateTasksForExecution } = require('../execution');
-const { fromMinutes } = require('../../datetime');
-const { POLLING_LOOP_NAME } = require('./identifiers');
-
-/**
- * Minimum polling interval is determined by cron job granularity (1 minute).
- */
-const POLL_INTERVAL = fromMinutes(1);
+const { evaluateTasksForExecution, calculateNextDueTime } = require('../execution');
 
 /** @typedef {import('../types').Callback} Callback */
 
@@ -32,9 +25,10 @@ const POLL_INTERVAL = fromMinutes(1);
  * @param {Set<string>} scheduledTasks
  * @param {ReturnType<import('../execution').makeTaskExecutor>} taskExecutor
  * @param {string} schedulerIdentifier
+ * @param {import('../../sleeper').Sleeper} sleeper
  * @returns {{start: () => void, stop: () => Promise<void>}} Loop manager with start/stop methods
  */
-function makePollingFunction(capabilities, registrations, scheduledTasks, taskExecutor, schedulerIdentifier) {
+function makePollingFunction(capabilities, registrations, scheduledTasks, taskExecutor, schedulerIdentifier, sleeper) {
     const dt = capabilities.datetime;
     /** @type {Set<Promise<void>>} */
     const runningPool = new Set();
@@ -42,7 +36,6 @@ function makePollingFunction(capabilities, registrations, scheduledTasks, taskEx
     let isActive = false;
     /** @type {Promise<void> | null} */
     let stoppingThread = null;
-    const sleeper = capabilities.sleeper.makeSleeper(POLLING_LOOP_NAME);
     /** @type {Promise<void> | null} */
     let loopThread = null;
 
@@ -97,18 +90,20 @@ function makePollingFunction(capabilities, registrations, scheduledTasks, taskEx
     async function loop() {
         await new Promise((resolve) => setImmediate(resolve));
         while (isActive) {
-            await pollWrapper();
-            if (isActive) {
-                await sleeper.sleep(POLL_INTERVAL);
+            const sleepDuration = await pollWrapper();
+            if (isActive && sleepDuration) {
+                await sleeper.sleep(sleepDuration);
             }
         }
     }
 
-    async function getDueTasks() {
+    async function getDueTasksAndNextSleepDuration() {
         const now = dt.now();
-        return await mutateTasks(capabilities, registrations, (tasks) =>
-            evaluateTasksForExecution(tasks, scheduledTasks, now, capabilities, schedulerIdentifier)
-        );
+        return await mutateTasks(capabilities, registrations, (tasks) => {
+            const executionResult = evaluateTasksForExecution(tasks, scheduledTasks, now, capabilities, schedulerIdentifier);
+            const sleepDuration = calculateNextDueTime(tasks, scheduledTasks, now, capabilities);
+            return { ...executionResult, sleepDuration };
+        });
     }
 
     async function pollWrapper() {
@@ -116,11 +111,11 @@ function makePollingFunction(capabilities, registrations, scheduledTasks, taskEx
         // to reduce wasteful duplicate work. Task execution itself remains reentrant.
         if (parallelCounter > 0) {
             // Another thread is already collecting due tasks; skip to avoid duplication
-            return;
+            return undefined;
         } else {
             parallelCounter++;
             try {
-                await poll();
+                return await poll();
             } finally {
                 parallelCounter--;
             }
@@ -128,12 +123,12 @@ function makePollingFunction(capabilities, registrations, scheduledTasks, taskEx
     }
 
     async function poll() {
-        // Collect tasks and stats.
-        const { dueTasks, stats } = await getDueTasks();
+        // Collect tasks, stats, and next sleep duration in a single transaction
+        const { dueTasks, stats, sleepDuration } = await getDueTasksAndNextSleepDuration();
         if (isActive === false) {
             // Stopped while collecting; do not execute any tasks.
             // Some tasks may have been marked as "running" but that's okay.
-            return;
+            return undefined;
         }
 
         // Execute all due tasks in parallel
@@ -151,6 +146,8 @@ function makePollingFunction(capabilities, registrations, scheduledTasks, taskEx
             },
             "Executed polling cycle",
         );
+
+        return sleepDuration;
     }
 
     return { start, stop };
