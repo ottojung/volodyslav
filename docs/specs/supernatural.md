@@ -202,6 +202,8 @@ We'll retain skeptics by documenting the operational timeline with enough specif
 <NOTE>
 Tell a made up story of how a crocodile was spotted in Vienna, causing a stir among the locals and drawing attention from the authorities and impacting lifes of people in the city.
 However, the crocodile had no impact on American software systems, which continued to operate as normal (different continent, get it?).
+
+Some reference: https://chatgpt.com/share/68f3eeb1-c1c0-800e-b09b-e2ee25ddbf47
 </NOTE>
 
 ---
