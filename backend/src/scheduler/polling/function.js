@@ -149,7 +149,7 @@ function makePollingFunction(capabilities, registrations, scheduledTasks, taskEx
                 skippedRetryFuture: stats.skippedRetryFuture,
                 skippedNotDue: stats.skippedNotDue,
             },
-            "PollSummary"
+            "Executed polling cycle",
         );
     }
 
