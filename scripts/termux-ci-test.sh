@@ -6,9 +6,9 @@ export DEBIAN_FRONTEND=noninteractive
 
 cd -- "${0%/*}"/..
 
-apt-get update -q
-apt-get -y -o Dpkg::Options::="--force-confnew" upgrade
-apt-get install -y coreutils file nodejs git
+apt-get update -qq
+apt-get -qq -y -o Dpkg::Options::="--force-confnew" upgrade
+apt-get install -q -y coreutils file nodejs git
 uname -a
 
 sh scripts/install "$HOME/.local"
