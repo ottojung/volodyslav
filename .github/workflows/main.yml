@@ -30,7 +30,7 @@ jobs:
               run: npm run static-analysis
 
             - name: Run tests
-              run: npm run test-only
+              run: TZ=Asia/Tokyo npm run test-only
 
     docker:
         runs-on: ubuntu-latest
