@@ -35,8 +35,8 @@ export const isValidDescription = (description) => {
     return Boolean(description && description.trim().length > 0);
 };
 
-/** @type {'top'} */
-const TOAST_POSITION_TOP = 'top';
+/** @type {'bottom'} */
+const TOAST_POSITION_BOTTOM = 'bottom';
 /** @type {'warning'} */
 const TOAST_WARNING = 'warning';
 /** @type {'success'} */
@@ -54,7 +54,7 @@ export const createToastConfig = {
         status: TOAST_WARNING,
         duration: 3000,
         isClosable: true,
-        position: TOAST_POSITION_TOP,
+        position: TOAST_POSITION_BOTTOM,
     }),
     
     success: (/** @type {string} */ savedInput) => ({
@@ -63,7 +63,7 @@ export const createToastConfig = {
         status: TOAST_SUCCESS,
         duration: 4000,
         isClosable: true,
-        position: TOAST_POSITION_TOP,
+        position: TOAST_POSITION_BOTTOM,
     }),
     
     error: (/** @type {string} */ errorMessage) => ({
@@ -72,7 +72,7 @@ export const createToastConfig = {
         status: TOAST_ERROR,
         duration: 5000,
         isClosable: true,
-        position: TOAST_POSITION_TOP,
+        position: TOAST_POSITION_BOTTOM,
     }),
     
     warning: (/** @type {string} */ warningMessage) => ({
@@ -81,6 +81,6 @@ export const createToastConfig = {
         status: TOAST_WARNING,
         duration: 5000,
         isClosable: true,
-        position: TOAST_POSITION_TOP,
+        position: TOAST_POSITION_BOTTOM,
     }),
 };

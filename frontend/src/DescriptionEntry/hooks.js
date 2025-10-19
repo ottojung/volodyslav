@@ -43,6 +43,7 @@ const handlePhotoRetrieval = async (pendingRequestIdentifier, toast, setPendingR
                 status: "warning",
                 duration: 8000,
                 isClosable: true,
+                position: "bottom",
             });
             setPendingRequestIdentifier(null);
             return [];
@@ -112,6 +113,7 @@ const getPhotoCountFromStorage = async (requestIdentifier, toast) => {
             status: "warning",
             duration: 6000,
             isClosable: true,
+            position: "bottom",
         });
         return 0;
     }
@@ -140,6 +142,7 @@ const processCameraReturn = async (cameraReturn, setDescription, setPendingReque
         status: 'success',
         duration: 5000,
         isClosable: true,
+        position: "bottom",
     });
 };
 
