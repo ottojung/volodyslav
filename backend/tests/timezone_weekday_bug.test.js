@@ -69,7 +69,8 @@ describe("Timezone weekday bug", () => {
         ];
 
         testCases.forEach(({ date, luxonWeekday, weekdayName, cronNumber, day: _day }) => {
-            const luxonDateTime = LuxonDateTime.fromISO(date);
+            // Use setZone: true to preserve the UTC timezone specified by "Z" in the ISO string
+            const luxonDateTime = LuxonDateTime.fromISO(date, { setZone: true });
             const dateTime = DateTime.fromLuxon(luxonDateTime);
             
             // Verify Luxon weekday is as expected (via public interface)
