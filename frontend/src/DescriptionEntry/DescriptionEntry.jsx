@@ -15,6 +15,7 @@ export default function DescriptionEntry() {
         isLoadingEntries,
         photoCount,
         setDescription,
+        handleSubmit,
         handleTakePhotos,
         handleKeyUp,
         handleDeleteEntry,
@@ -51,6 +52,7 @@ export default function DescriptionEntry() {
                     description={description}
                     onDescriptionChange={setDescription}
                     onTakePhotos={handleTakePhotos}
+                    onSubmit={handleSubmit}
                     onKeyUp={handleKeyUp}
                     isSubmitting={isSubmitting}
                     inputRef={inputRef}
