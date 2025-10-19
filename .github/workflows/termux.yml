@@ -11,6 +11,8 @@ jobs:
           docker build --file scripts/termux.dockerfile --tag termux-ci-test .
       - name: Run Termux (arm64)
         run: |
-          docker run --rm --tty --security-opt seccomp:unconfined \
-            --volume .:/workspace \
+          docker run \
+            --rm \
+            --tty \
+            --security-opt seccomp:unconfined \
             -- termux-ci-test
