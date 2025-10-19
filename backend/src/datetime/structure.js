@@ -21,7 +21,8 @@ class DateTimeClass {
      * @returns {string}
      */
     toISOString() {
-        const iso = this._luxonDateTime.toISO({ format: 'extended', suppressMilliseconds: false });
+        const utcDateTime = this._luxonDateTime.toUTC();
+        const iso = utcDateTime.toISO({ format: 'extended', suppressMilliseconds: false });
         if (!iso) {
             throw new Error("Failed to convert DateTime to ISO string");
         }

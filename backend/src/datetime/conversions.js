@@ -10,7 +10,7 @@ const { DateTime: LuxonDateTime } = require("luxon");
  * @returns {DateTime}
  */
 function fromISOString(iso) {
-    return fromLuxon(LuxonDateTime.fromISO(iso));
+    return fromLuxon(LuxonDateTime.fromISO(iso, { zone: 'utc' }));
 }
 
 /**
@@ -80,7 +80,7 @@ function tryDeserialize(value) {
     // If it's a string, try to parse as ISO string
     if (typeof value === "string") {
         try {
-            const luxonDateTime = LuxonDateTime.fromISO(value);
+            const luxonDateTime = LuxonDateTime.fromISO(value, { zone: 'utc' });
             if (!luxonDateTime.isValid) {
                 return new DateTimeTryDeserializeError(
                     `Invalid ISO string: ${luxonDateTime.invalidReason || 'unknown reason'}`,
@@ -101,7 +101,7 @@ function tryDeserialize(value) {
         // Check if it looks like a serialized DateTime object
         if ("_luxonDateTime" in value && typeof value._luxonDateTime === "string") {
             try {
-                const luxonDateTime = LuxonDateTime.fromISO(value._luxonDateTime);
+                const luxonDateTime = LuxonDateTime.fromISO(value._luxonDateTime, { zone: 'utc' });
                 if (!luxonDateTime.isValid) {
                     return new DateTimeTryDeserializeError(
                         `Invalid DateTime object with invalid ISO string: ${luxonDateTime.invalidReason || 'unknown reason'}`,

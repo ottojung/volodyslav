@@ -37,7 +37,7 @@ describe("Weekday string functionality", () => {
         ];
 
         testCases.forEach(({ date, expected }) => {
-            const luxonDateTime = LuxonDateTime.fromISO(date);
+            const luxonDateTime = LuxonDateTime.fromISO(date, { zone: 'utc' });
             const dateTime = DateTime.fromLuxon(luxonDateTime);
             expect(dateTime.weekday).toBe(expected);
         });
@@ -109,7 +109,7 @@ describe("Weekday string functionality", () => {
         ];
 
         testCases.forEach(({ date, weekdayName, cronNumber }) => {
-            const luxonDateTime = LuxonDateTime.fromISO(date);
+            const luxonDateTime = LuxonDateTime.fromISO(date, { zone: 'utc' });
             const dateTime = DateTime.fromLuxon(luxonDateTime);
             
             // Verify DateTime returns weekday name

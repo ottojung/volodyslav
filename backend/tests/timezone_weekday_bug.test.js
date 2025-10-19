@@ -69,7 +69,7 @@ describe("Timezone weekday bug", () => {
         ];
 
         testCases.forEach(({ date, luxonWeekday, weekdayName, cronNumber, day: _day }) => {
-            const luxonDateTime = LuxonDateTime.fromISO(date);
+            const luxonDateTime = LuxonDateTime.fromISO(date, { zone: 'utc' });
             const dateTime = DateTime.fromLuxon(luxonDateTime);
             
             // Verify Luxon weekday is as expected (via public interface)
