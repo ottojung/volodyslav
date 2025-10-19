@@ -1,5 +1,5 @@
 
-FROM termux/termux-docker:aarch64 AS builder
+FROM termux/termux-docker:aarch64
 WORKDIR /workspace
 COPY . .
 RUN chown -R system:system /workspace
