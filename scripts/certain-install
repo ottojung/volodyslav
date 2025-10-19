@@ -2,14 +2,21 @@
 
 set -e
 
-cd -- "${0%/*}"/..
+if test "$#" -neq 1
+then
+    echo "Usage: $0 PREFIX" >&2
+    echo 'Updates, tests, and builds the project and installs it at location `PREFIX`.' >&2
+    exit 1
+fi
 
-set -xe
+cd -- "${0%/*}"/..
 
 PREFIX="$1"
 shift
 
 test "$#" = 0
+
+set -xe
 
 git checkout master
 git pull origin master --tags
