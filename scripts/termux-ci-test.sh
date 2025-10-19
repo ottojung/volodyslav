@@ -5,6 +5,7 @@ set -xe
 export DEBIAN_FRONTEND=noninteractive
 
 cd /workspace
-apt update -q
-apt install -y coreutils file
+apt-get update -q
+apt-get -y -o Dpkg::Options::="--force-confnew" upgrade
+apt-get install -y -o Dpkg::Options::="--force-confnew" coreutils file
 uname -a
