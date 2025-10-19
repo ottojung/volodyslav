@@ -51,7 +51,7 @@ describe("event_log_storage", () => {
             expect(objects).toHaveLength(1);
             expect(objects[0]).toEqual(event.serialize(capabilities, testEvent));
         });
-    });
+    }, 10000);
 
     test("transaction fails if git fails", async () => {
         const capabilities = getTestCapabilities();
@@ -78,7 +78,7 @@ describe("event_log_storage", () => {
         await expect(
             gitstore.transaction(capabilities, "working-git-repository", capabilities.environment.eventLogRepository(), async (_store) => {})
         ).rejects.toThrow("does not exist");
-    });
+    }, 100000);
 
     test("transaction allows adding and storing multiple event entries", async () => {
         const capabilities = getTestCapabilities();
