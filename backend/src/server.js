@@ -95,9 +95,7 @@ function addressToString(address) {
 async function startWithCapabilities(capabilities) {
     await capabilities.logger.setup();
     const app = expressApp.make();
-    // The following line is commented out because HTTP call logging is too verbose by default.
-    // TODO: configure a better logging strategy for HTTP calls.
-    // capabilities.logger.enableHttpCallsLogging(app);
+    capabilities.logger.enableHttpCallsLogging(app);
     await expressApp.run(capabilities, app, async (app, server) => {
         const address = server.address();
         const addressString = addressToString(address);
