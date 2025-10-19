@@ -13,3 +13,6 @@ uname -a
 id -a
 
 npm ci
+npm run build
+npm run static-analysis
+npm run test-only
