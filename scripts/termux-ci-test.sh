@@ -13,3 +13,7 @@ uname -a
 id -a
 
 npm ci
+npm run build
+npm run static-analysis
+# FIXME: uncomment the following line when tests are fixed on Termux
+# npm test

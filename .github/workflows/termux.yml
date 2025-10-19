@@ -13,6 +13,5 @@ jobs:
         run: |
           docker run \
             --rm \
-            --tty \
             --security-opt seccomp:unconfined \
             -- termux-ci-test
