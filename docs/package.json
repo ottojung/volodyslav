@@ -10,6 +10,8 @@
     "@docusaurus/preset-classic": "^3.8.0",
     "@docusaurus/theme-mermaid": "^3.8.0",
     "katex": "^0.16.22",
+    "react-router": "^5.3.4",
+    "react-router-config": "^5.1.1",
     "rehype-katex": "^7.0.1",
     "remark-math": "^6.0.0"
   }
