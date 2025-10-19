@@ -6,9 +6,11 @@ jobs:
     runs-on: ubuntu-24.04-arm
     steps:
       - uses: actions/checkout@v3
-      - name: Run Termux (arm64)
+      - name: Build the Termux Docker image
         run: |
           docker build --file scripts/termux.dockerfile --tag termux-ci-test .
+      - name: Run Termux (arm64)
+        run: |
           docker run --rm --tty --security-opt seccomp:unconfined \
             --volume .:/workspace \
             -- termux-ci-test
