@@ -11,4 +11,4 @@ jobs:
             --env DEBIAN_FRONTEND=noninteractive \
             --volume .:/workspace \
             -- termux/termux-docker:aarch64 \
-            bash -lc 'apt update && apt install -y coreutils file; uname -m; echo OK'
+            /bin/sh /workspace/scripts/termux-ci-test.sh
