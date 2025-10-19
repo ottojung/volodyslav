@@ -1,0 +1,12 @@
+name: termux
+on: push
+
+jobs:
+  termux-arm64-native:
+    runs-on: ubuntu-24.04-arm
+    steps:
+      - name: Run Termux (arm64)
+        run: |
+          docker run --rm -t --security-opt seccomp:unconfined \
+            termux/termux-docker:aarch64 \
+            bash -lc 'apt update && apt install -y coreutils file; uname -m; echo OK'
