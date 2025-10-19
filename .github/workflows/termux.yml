@@ -5,6 +5,7 @@ jobs:
   termux-arm64-native:
     runs-on: ubuntu-24.04-arm
     steps:
+      - uses: actions/checkout@v3
       - name: Run Termux (arm64)
         run: |
           docker run --rm --tty --security-opt seccomp:unconfined \
