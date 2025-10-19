@@ -7,6 +7,8 @@ jobs:
     steps:
       - name: Run Termux (arm64)
         run: |
-          docker run --rm -t --security-opt seccomp:unconfined \
-            termux/termux-docker:aarch64 \
+          docker run --rm --tty --security-opt seccomp:unconfined \
+            --env DEBIAN_FRONTEND=noninteractive \
+            --volume .:/workspace \
+            -- termux/termux-docker:aarch64 \
             bash -lc 'apt update && apt install -y coreutils file; uname -m; echo OK'
