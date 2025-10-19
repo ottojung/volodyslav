@@ -31,12 +31,12 @@ function make() {
      * @returns {Promise<T>}
      */
     async function withMutex(name, procedure) {
-        const existing = mutexes.get(name);
-        if (existing !== undefined) {
-            await existing();
-            if (mutexes.has(name)) {
-                const qname = JSON.stringify(name);
-                throw new Error(`Mutex for ${qname} is already held`);
+        for (;;) {
+            const existing = mutexes.get(name);
+            if (existing === undefined) {
+                break;    
+            } else {
+                await existing();
             }
         }
 
