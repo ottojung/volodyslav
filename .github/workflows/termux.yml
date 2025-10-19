@@ -9,7 +9,6 @@ jobs:
       - name: Run Termux (arm64)
         run: |
           docker run --rm --tty --security-opt seccomp:unconfined \
-            --env DEBIAN_FRONTEND=noninteractive \
             --volume .:/workspace \
             -- termux/termux-docker:aarch64 \
-            /bin/sh -c 'ls -lha /workspace'
+            /bin/sh /workspace/scripts/termux-ci-test.sh
