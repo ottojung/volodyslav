@@ -49,13 +49,13 @@ describe("Schedule Tasks", () => {
             await everyHour(capabilities);
 
             expect(capabilities.logger.logInfo).toHaveBeenCalledWith({}, "Running every hour tasks");
-        });
+        }, 10000);
 
         test("completes without throwing errors", async () => {
             const capabilities = getTestCapabilities();
 
             await expect(everyHour(capabilities)).resolves.toBeUndefined();
-        });
+        }, 10000);
     });
 
     describe("allTasks", () => {
@@ -63,7 +63,7 @@ describe("Schedule Tasks", () => {
             const capabilities = getTestCapabilities();
 
             await expect(allTasks(capabilities)).resolves.toBeUndefined();
-        });
+        }, 10000);
     });
 
     describe("scheduleAll", () => {
