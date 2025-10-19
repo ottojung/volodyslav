@@ -4,7 +4,12 @@ set -xe
 
 export DEBIAN_FRONTEND=noninteractive
 
-cd /workspace
-apt update -q
-apt install -y coreutils file
+cd -- "${0%/*}"/..
+
+apt-get update -qq
+apt-get -qq -y -o Dpkg::Options::="--force-confnew" upgrade
+apt-get install -q -y coreutils file nodejs git
 uname -a
+id -a
+
+npm ci
