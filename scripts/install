@@ -2,7 +2,7 @@
 
 set -e
 
-if test "$#" -neq 1
+if ! test "$#" = 1
 then
     echo "Usage: $0 PREFIX" >&2
     echo 'Builds the project and installs it at location `PREFIX`.' >&2
