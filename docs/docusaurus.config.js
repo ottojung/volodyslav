@@ -32,6 +32,10 @@ module.exports = {
                     routeBasePath: "/",
                     sidebarPath: require.resolve("./sidebars.js"),
                     path: ".",
+                    exclude: [
+                        '**/node_modules/**',
+                        '**/build/**',
+                    ],
                     remarkPlugins: [remark],
                     rehypePlugins: [rehype],
                 },
