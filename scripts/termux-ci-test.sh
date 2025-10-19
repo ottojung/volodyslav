@@ -10,6 +10,7 @@ apt-get update -qq
 apt-get -qq -y -o Dpkg::Options::="--force-confnew" upgrade
 apt-get install -q -y coreutils file nodejs git
 uname -a
+id -a
 
 sh scripts/install "$HOME/.local"
 npm test
