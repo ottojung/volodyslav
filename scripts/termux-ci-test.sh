@@ -12,4 +12,4 @@ apt-get install -q -y coreutils file nodejs git
 uname -a
 id -a
 
-sh scripts/install "$HOME/.local"
+npm ci
