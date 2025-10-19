@@ -13,7 +13,7 @@ export default function DescriptionEntry() {
         isSubmitting,
         recentEntries,
         isLoadingEntries,
-        pendingRequestIdentifier,
+        photoCount,
         setDescription,
         handleTakePhotos,
         handleKeyUp,
@@ -54,7 +54,7 @@ export default function DescriptionEntry() {
                     onKeyUp={handleKeyUp}
                     isSubmitting={isSubmitting}
                     inputRef={inputRef}
-                    hasPhotos={!!pendingRequestIdentifier}
+                    photoCount={photoCount}
                 />
 
                 {/* Configuration Section */}

@@ -61,13 +61,15 @@ const handlePhotoRetrieval = async (pendingRequestIdentifier, toast, setPendingR
  * @param {File[]} files - Files to submit
  * @param {Function} setDescription - State setter
  * @param {Function} setPendingRequestIdentifier - State setter
+ * @param {Function} setPhotoCount - State setter for photo count
  * @param {Function} fetchRecentEntries - Function to refresh entries
  * @param {Function} toast - Toast notification function
  */
-const handleSubmissionSuccess = (result, description, files, setDescription, setPendingRequestIdentifier, fetchRecentEntries, toast) => {
+const handleSubmissionSuccess = (result, description, files, setDescription, setPendingRequestIdentifier, setPhotoCount, fetchRecentEntries, toast) => {
     const savedInput = result.entry?.input ?? description.trim();
     setDescription("");
     setPendingRequestIdentifier(null);
+    setPhotoCount(0);
     fetchRecentEntries();
 
     const fileCountMessage = files.length > 0 ? ` with ${files.length} photo(s)` : '';
@@ -124,9 +126,10 @@ const getPhotoCountFromStorage = async (requestIdentifier, toast) => {
  * @param {any} cameraReturn - Camera return data
  * @param {Function} setDescription - State setter
  * @param {Function} setPendingRequestIdentifier - State setter
+ * @param {Function} setPhotoCount - State setter for photo count
  * @param {Function} toast - Toast notification function
  */
-const processCameraReturn = async (cameraReturn, setDescription, setPendingRequestIdentifier, toast) => {
+const processCameraReturn = async (cameraReturn, setDescription, setPendingRequestIdentifier, setPhotoCount, toast) => {
     const restoredDescription = restoreDescription(cameraReturn.requestIdentifier);
     if (restoredDescription) {
         setDescription(restoredDescription);
@@ -135,9 +138,12 @@ const processCameraReturn = async (cameraReturn, setDescription, setPendingReque
     setPendingRequestIdentifier(cameraReturn.requestIdentifier);
     cleanupUrlParams();
 
-    const photoCount = await getPhotoCountFromStorage(cameraReturn.requestIdentifier, toast);
+    const count = await getPhotoCountFromStorage(cameraReturn.requestIdentifier, toast);
+    setPhotoCount(count);
+    
+    const photoText = count === 1 ? 'photo' : 'photos';
     toast({
-        title: `${photoCount} photo(s) ready`,
+        title: `${count} ${photoText} ready`,
         description: 'Complete your description and submit to create the entry.',
         status: 'success',
         duration: 5000,
@@ -153,6 +159,7 @@ const processCameraReturn = async (cameraReturn, setDescription, setPendingReque
  * @property {any[]} recentEntries
  * @property {boolean} isLoadingEntries
  * @property {string|null} pendingRequestIdentifier
+ * @property {number} photoCount
  * @property {(value: string) => void} setDescription
  * @property {() => Promise<void>} handleSubmit
  * @property {() => void} handleTakePhotos
@@ -172,6 +179,7 @@ export const useDescriptionEntry = (numberOfEntries = 10) => {
     const [recentEntries, setRecentEntries] = useState(/** @type {any[]} */([]));
     const [isLoadingEntries, setIsLoadingEntries] = useState(true);
     const [pendingRequestIdentifier, setPendingRequestIdentifier] = useState(/** @type {string|null} */(null));
+    const [photoCount, setPhotoCount] = useState(0);
     const toast = useToast();
 
     const fetchRecentEntries = async () => {
@@ -206,7 +214,7 @@ export const useDescriptionEntry = (numberOfEntries = 10) => {
             }
 
             const result = await submitEntry(description.trim(), pendingRequestIdentifier || undefined, files);
-            handleSubmissionSuccess(result, description, files, setDescription, setPendingRequestIdentifier, fetchRecentEntries, toast);
+            handleSubmissionSuccess(result, description, files, setDescription, setPendingRequestIdentifier, setPhotoCount, fetchRecentEntries, toast);
         } catch (error) {
             handleSubmissionError(error, toast);
         } finally {
@@ -258,7 +266,7 @@ export const useDescriptionEntry = (numberOfEntries = 10) => {
     useEffect(() => {
         const cameraReturn = checkCameraReturn();
         if (cameraReturn.isReturn && cameraReturn.requestIdentifier) {
-            processCameraReturn(cameraReturn, setDescription, setPendingRequestIdentifier, toast);
+            processCameraReturn(cameraReturn, setDescription, setPendingRequestIdentifier, setPhotoCount, toast);
         }
     }, [toast]);
 
@@ -269,6 +277,7 @@ export const useDescriptionEntry = (numberOfEntries = 10) => {
         recentEntries,
         isLoadingEntries,
         pendingRequestIdentifier,
+        photoCount,
 
         // Actions
         setDescription,

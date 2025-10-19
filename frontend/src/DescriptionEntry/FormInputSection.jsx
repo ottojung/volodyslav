@@ -24,7 +24,7 @@ import {
  * @param {(e: React.KeyboardEvent) => void} props.onKeyUp - Key up handler
  * @param {boolean} props.isSubmitting - Whether form is submitting
  * @param {React.RefObject<HTMLInputElement>} props.inputRef - Input element ref
- * @param {boolean} [props.hasPhotos] - Whether photos are attached
+ * @param {number} [props.photoCount] - Number of photos attached
  * @returns {JSX.Element}
  */
 export const FormInputSection = ({
@@ -34,7 +34,7 @@ export const FormInputSection = ({
     onKeyUp,
     isSubmitting,
     inputRef,
-    hasPhotos = false,
+    photoCount = 0,
 }) => {
     return (
         <Card {...CARD_STYLES.main}>
@@ -49,10 +49,10 @@ export const FormInputSection = ({
                         {...INPUT_STYLES}
                     />
 
-                    {hasPhotos && (
+                    {photoCount > 0 && (
                         <HStack justify="flex-start">
                             <Badge colorScheme="green" fontSize="xs">
-                                📸 Photos attached
+                                📸 +{photoCount} {photoCount === 1 ? 'photo' : 'photos'}
                             </Badge>
                         </HStack>
                     )}

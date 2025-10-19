@@ -29,6 +29,11 @@ jest.mock("../src/DescriptionEntry/cameraUtils", () => ({
     retrievePhotos: jest.fn(),
 }));
 
+// Mock IndexedDB photo storage
+jest.mock("../src/DescriptionEntry/photoStorage", () => ({
+    retrievePhotos: jest.fn(),
+}));
+
 import DescriptionEntry from "../src/DescriptionEntry/DescriptionEntry.jsx";
 // Import the mocked functions after the mock is set up
 import {
@@ -44,6 +49,7 @@ import {
     restoreDescription,
     retrievePhotos,
 } from "../src/DescriptionEntry/cameraUtils";
+import { retrievePhotos as retrievePhotosFromIndexedDB } from "../src/DescriptionEntry/photoStorage";
 
 describe("Camera Integration", () => {
     beforeEach(() => {
@@ -54,6 +60,7 @@ describe("Camera Integration", () => {
         cleanupUrlParams.mockReset();
         restoreDescription.mockReset();
         retrievePhotos.mockReset();
+        retrievePhotosFromIndexedDB.mockReset();
     });
     it("navigates to camera when take photos button is clicked", async () => {
         // Reset and set up mocks for camera navigation
@@ -110,6 +117,8 @@ describe("Camera Integration", () => {
         restoreDescription.mockReturnValue(
             "Take a photo [phone_take_photo] of the sunset"
         );
+        // Mock 2 photos in storage
+        retrievePhotosFromIndexedDB.mockResolvedValue([{}, {}]);
 
         render(<DescriptionEntry />);
 
@@ -127,8 +136,10 @@ describe("Camera Integration", () => {
             "Take a photo [phone_take_photo] of the sunset"
         );
 
-        // Should show photos attached indicator
-        expect(screen.getByText(/Photos attached/)).toBeInTheDocument();
+        // Should show photos attached indicator with count
+        await waitFor(() => {
+            expect(screen.getByText(/\+2 photos/)).toBeInTheDocument();
+        });
     });
 
     it("submits entry with photos when returning from camera", async () => {
