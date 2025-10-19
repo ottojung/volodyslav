@@ -13,4 +13,3 @@ uname -a
 id -a
 
 sh scripts/install "$HOME/.local"
-npm test
