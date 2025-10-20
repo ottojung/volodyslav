@@ -2,7 +2,6 @@ const { transaction } = require("./event_log_storage");
 const eventId = require("./event/id");
 const asset = require("./event/asset");
 const creatorMake = require("./creator");
-//const { toEpochMs } = require("./datetime");
 
 /**
  * Error thrown when entry data validation fails due to user input issues.
