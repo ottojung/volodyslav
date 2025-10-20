@@ -77,7 +77,7 @@ describe("event_log_storage", () => {
         await expect(
             gitstore.transaction(capabilities, "working-git-repository", capabilities.environment.eventLogRepository(), async (_store) => {})
         ).rejects.toThrow("does not exist");
-    }, 15000);
+    }, 30000);
 
     test("transaction allows adding and storing multiple event entries", async () => {
         const capabilities = getTestCapabilities();

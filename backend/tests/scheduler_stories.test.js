@@ -363,7 +363,7 @@ describe("scheduler stories", () => {
         // Different retry delays for different failure tolerance
         const quickRetryDelay = fromMilliseconds(500);
         const normalRetryDelay = fromMilliseconds(5000);
-        const slowRetryDelay = fromMilliseconds(15000);
+        const slowRetryDelay = fromMilliseconds(30000);
 
         let primaryTaskFails = false;
         let dependentTaskExecutions = 0;

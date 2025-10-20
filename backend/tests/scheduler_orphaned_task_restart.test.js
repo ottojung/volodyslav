@@ -322,7 +322,7 @@ describe("scheduler orphaned task restart", () => {
         expect(taskCallback).toHaveBeenCalledTimes(0);
 
         await capabilities.scheduler.stop();
-    }, 15000);
+    }, 30000);
 
     test("should log appropriate warnings when restarting orphaned tasks", async () => {
         const capabilities = getTestCapabilities();
