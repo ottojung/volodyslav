@@ -109,7 +109,7 @@ async function createEntry(capabilities, entryData, files = []) {
 
     capabilities.logger.logInfo(
         {
-            eventId: event.id,
+            eventId: eventId.toString(event.id),
             type: event.type,
             fileCount: files.length,
         },

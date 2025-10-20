@@ -51,7 +51,17 @@ function fromString(id) {
     return new EventIdClass(id);
 }
 
+/**
+ * Converts an EventId to its string representation.
+ * @param {EventId} eventId
+ * @returns {string}
+ */
+function toString(eventId) {
+    return eventId.identifier;
+}
+
 module.exports = {
     make,
     fromString,
+    toString,
 };
