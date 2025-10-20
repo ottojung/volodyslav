@@ -194,7 +194,7 @@ describe("runtime_state_storage/transaction (mocked)", () => {
                 {
                     name: "task-2",
                     cronExpression: "0,15,30,45 * * * *",
-                    retryDelayMs: 10000,
+                    retryDelayMs: 15000,
                     lastFailureTime: lastFailure,
                 }
             ]

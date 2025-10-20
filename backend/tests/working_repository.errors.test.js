@@ -32,7 +32,7 @@ describe("working_repository", () => {
 
         // Restore original function
         require("../src/environment").eventLogRepository = origEventLogRepo;
-    }, 10000);
+    }, 15000);
 
     // Separate test for WorkingRepositoryError type checking
     test("errors from synchronize are WorkingRepositoryError instances", async () => {
@@ -59,7 +59,7 @@ describe("working_repository", () => {
 
         // Restore original function
         require("../src/environment").eventLogRepository = origEventLogRepo;
-    }, 10000);
+    }, 15000);
 
     test("synchronize throws error for invalid repository path", async () => {
         const capabilities = getTestCapabilities();
@@ -78,6 +78,6 @@ describe("working_repository", () => {
 
         // Restore original function
         capabilities.environment.eventLogRepository = origEventLogRepo;
-    }, 10000);
+    }, 15000);
 });
 

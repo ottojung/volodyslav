@@ -251,7 +251,7 @@ describe("scheduler task serialization error handling", () => {
             const obj = {
                 name: "test-task",
                 cronExpression: "0 * * * *",
-                retryDelayMs: 10000 // Different from registration
+                retryDelayMs: 15000 // Different from registration
             };
             
             const result = tryDeserialize(obj, registrations);

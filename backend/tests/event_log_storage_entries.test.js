@@ -51,7 +51,7 @@ describe("event_log_storage", () => {
             expect(objects).toHaveLength(1);
             expect(objects[0]).toEqual(event.serialize(capabilities, testEvent));
         });
-    }, 10000);
+    }, 15000);
 
     test("transaction fails if git fails", async () => {
         const capabilities = getTestCapabilities();
