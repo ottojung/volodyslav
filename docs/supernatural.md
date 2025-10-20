@@ -58,129 +58,65 @@ Then follow up with the documented part - how it was investigated and what the c
 But the main piece is the made-up horror story.
 </NOTE>
 
-<NOTE>
-Here is a more detailed outline of what and how to include some required elements.
+<MUST HAVES>
 
-**Integration rules (important):**
+"He worked elections—“not politics,” he said quickly, “interfaces.”" - for the part describing the technician, who told us the story.
 
-* **Do not** surround required lines with quotation marks or ellipses. **Never** prefix with “…” or introduce them as “the following quote.”
-* Embed each required line **inside** natural sentences, captions, or dialogue beats. Vary use: narration, a spoken aside, a box title, a footnote, or a report excerpt.
-* You may adjust **surrounding** syntax (commas, em dashes) for grammar and cadence, but do **not** change the words **inside** each required line.
-* Keep the tone: grave, precise, municipal; humor only implicit.
+"... a habit of tapping the table as though confirming liveness." - for the part describing the technician's character.
 
----
+"He used the word spontaneous without liking it." - for the part describing the technician's general attitude.
 
-#### Required beats (story flow)
+Smell/sound texture of “dry athmosphere" when describing the surrounding of the polling station. This is to echo the “Not tonight… tonight is dry.” line.
 
-1. **Voice & Teller:** a municipal technician recounts the night; narrator records.
-2. **Place & Atmosphere:** a dry night; fluorescent municipal room; tired clerks; the carpet pattern.
-3. **Mechanics & Invariant:** outline list voting; present the boxed invariant; show the violation.
-4. **Discovery:** a sum that does not fit; 4096 surplus; dawning power-of-two recognition.
-5. **On-site Investigation:** hypotheses, the ledger of blame, the schoolteacher’s “bird” sounds; dryness echo.
-6. **Physicist Interlude:** SEU sketched plainly; thirteenth-bit conclusion.
-7. **Accounts After:** newspapers’ metaphor vs committee’s “likely”; clerk’s quiet preference for a human error.
-8. **Human Vignette:** the unlit cigar and the politely weaponized re-verification.
-9. **Reflection:** weather allegory, then counterpoint—the cathedral of checks; close with ethic of preparation.
+"... a carpet whose pattern is an argument against democracy." - for the part describing the polling station.
 
----
+"There is the certainty, never admitted aloud, that somewhere a check is missing and that this is sane; that checks go missing the way buttons go missing from coats." - for the part that leads to the discovery of the anomaly.
 
-#### Verbatim strings to use (unquoted) with placement cues
+"It was one power of two too proud." - when first referring to the extra votes (4096 = 2^12).
 
-**Framing / Characterization**
+"The list’s ceiling is the candidate’s sky, and yet there it was: sky lower than the bird."
 
-* He worked elections—“not politics,” he said quickly, “interfaces.”
-  *Use once as dialogue in the opening scene to define the teller.*
-* a habit of tapping the table as though confirming liveness.
-  *Use in the same scene to tag his mannerism.*
-* He used the word spontaneous without liking it.
-  *Narrator observation when causality is first discussed.*
+"$$\boxed{\Sigma \text{ candidate preferences } \leq \text{ party list total } \leq \text{ district total}}$$", titled "Invariant 1. (violated)" - to put the above allegory into mathematical form.
 
-**Place & Texture**
+"They stared at the sum as though it might amend itself out of shame." - for the part describing the clerks discovering the extra votes.
 
-* a carpet whose pattern is an argument against democracy.
-  *One sentence in the room description; treat as the visual sting of the scene.*
-* There is the certainty, never admitted aloud, that somewhere a check is missing and that this is sane; that checks go missing the way buttons go missing from coats.
-  *Narrative bridge into discovery; keep it as one flowing sentence.*
+"One of the watchers—a schoolteacher—tried to be helpful by pointing out each time the computer made a small sound, as if identifying birds." - for the part describing the immediate on-site investigation.
 
-**Discovery & Math**
+"The woman with the tape asked if lightning could do it. “Not tonight,” said the toolbox man; “tonight is dry.”" - for the part describing the immediate on-site investigation.
 
-* It was one power of two too proud.
-  *First naming of the 4096 anomaly; immediately after the number appears.*
-* The list’s ceiling is the candidate’s sky, and yet there it was: sky lower than the bird.
-  *Metaphor line that immediately precedes the boxed rule below.*
-* Title + formula block (standalone):
-  **Invariant 1. (violated)**
-  `$$\boxed{\Sigma \text{ candidate preferences } \leq \text{ party list total } \leq \text{ district total}}$$`
-* They stared at the sum as though it might amend itself out of shame.
-  *Clerks’ reaction the instant the violation is visible.*
+"They made a ledger of what would be convenient to blame and crossed each item off." - for the part describing the immediate on-site investigation. A latex-styled checklist would be good here, each item crossed out.
 
-**On-site Investigation**
+"A physicist friend—pressed into service because her apartment was nearby, and because she is the sort of person one calls about the moon—arrived with a bicycle helmet and a theory that lay uneasily between farce and fate." - for the part describing the immediate on-site investigation.
 
-* One of the watchers—a schoolteacher—tried to be helpful by pointing out each time the computer made a small sound, as if identifying birds.
-  *Place mid-investigation to texture the room.*
-* The woman with the tape asked if lightning could do it. “Not tonight,” said the toolbox man; “tonight is dry.”
-  *Use verbatim, once; this is the dryness echo. Keep it as clipped dialogue.*
-* They made a ledger of what would be convenient to blame and crossed each item off.
-  *Immediately followed by a struck-through checklist in LaTeX-style (see “Fixed formatting” below).*
+"The bit toggled to one, and in so toggling, wove its one-ness into every arithmetic that followed." - when summarizing the conclusion of the physicist's theory.
 
-**Physicist & Cause**
+"There was no smoking gun — only a single flip where a zero had become a one at the thirteenth bit, a neat, round power-of-two crime."
 
-* A physicist friend—pressed into service because her apartment was nearby, and because she is the sort of person one calls about the moon—arrived with a bicycle helmet and a theory that lay uneasily between farce and fate.
-  *Entrance sentence for the physicist.*
-* The bit toggled to one, and in so toggling, wove its one-ness into every arithmetic that followed.
-  *Her simple summary; keep it in narrator voice or as her paraphrase—no quotes.*
-* There was no smoking gun — only a single flip where a zero had become a one at the thirteenth bit, a neat, round power-of-two crime.
-  *Close the technical explanation with this sentence.*
+"Field Note #${X}. Horror, in our trade, is the clean error—the one that leaves no prints."
 
-**Field Note**
+Clerks’ fatigue truth: a clerk privately prefers a boring human mistake; the cosmic explanation feels like trespass. But he knows better than to say so aloud, for one: he might be held legible for the error himself. This part, however, should resonate with some skeptic readers.
 
-* Field Note #13. Horror, in our trade, is the clean error—the one that leaves no prints.
-  *Render as a margin note or interstitial card. Use **#13** to mirror the thirteenth bit.*
+"A cosmic flea bite, the newspapers preferred." - for the part describing the official explanation.
 
-**Press & Committee**
+"The committee’s report is less romantic, but it permits the word that haunts this dossier: likely. A likely single-event upset—an ion that fell through the evening and made a number grow teeth."
 
-* A cosmic flea bite, the newspapers preferred.
-  *One-line summary of press framing.*
-* The committee’s report is less romantic, but it permits the word that haunts this dossier: likely. A likely single-event upset—an ion that fell through the evening and made a number grow teeth.
-  *Two sentences, styled as the narrator’s précis of the report; avoid scare quotes.*
-* The phrase is correct in the way that shipwrecks are wet.
-  *Follow immediately after the committee précis as the narrator’s cool verdict.*
+"The phrase is correct in the way that shipwrecks are wet." - when describing the official explanation.
 
-**Human Vignette & Reflection**
+Something like a related human-story about corruption:
+The technician, having confessed to me the soft doctrine of the bit, told me a smaller, meaner story. The following week, a man from the party that had briefly prospered came into the municipal building with a cigar he did not light. He made a show of not lighting it; this was his signature, he said—good manners doubling as advertisement. He asked, in a tone so gentle it barely bruised the air, whether the numbers—those numbers—could be verified just one more time.
 
-* He meant, I think, that we must act as if the world intends this sort of interruption, because the world does not intend otherwise.
-  *Narrator’s interpretation of the technician after the unlit-cigar scene.*
-* …if you believe in preparation, then you believe in a cathedral of checks where each arch braces another—triplicate logic, parity with scrubbing, watchdogs to guard the watchdogs, and the prophylactic act of voting in paper because paper fails like a person fails, slow and legible.
-  *Use as a single, flowing sentence near the end; keep the em dash and cadence intact.*
+Then, a come-back to the technical part, to its conclusion/reflection.
 
-**Clerk’s private truth (semantic beat, not a verbatim line):** include a brief interior moment where a clerk prefers a boring human mistake over cosmic trespass, while staying silent to avoid blame. Keep it understated.
+"He meant, I think, that we must act as if the world intends this sort of interruption, because the world does not intend otherwise." - when reflecting on the technician's story.
 
----
+An allegory that compares the unpredictability of software behavior to the weather. Something like "we do not fight the weather, we prepare for it."
 
-#### Fixed formatting elements
+"... if you believe in preparation, then you believe in a cathedral of checks where each arch braces another—triplicate logic, parity with scrubbing, watchdogs to guard the watchdogs, and the prophylactic act of voting in paper because paper fails like a person fails, slow and legible." - a counter-point to the weather allegory, and whatever the technician said.
 
-* **Checklist** (immediately after “ledger” line). Use a short list with strikethroughs, e.g.:
-  ~~Power dip~~ · ~~Static discharge~~ · ~~Loose cable~~ · ~~Operator error~~ · ~~Printer misread~~
-* **Boxed invariant** exactly as specified above.
-* **Field Note** as a small, visually distinct block (title line + sentence), numbered **13**.
+"[poureva.be][2]" - link to the official report, for the reference section.
 
----
-
-#### Source hooks (for Endnotes)
-
-* Include a clean pointer to **[poureva.be][2]** within or immediately after the committee passage.
-* Append a one-sentence factual capsule (verbatim):
-  The Schaerbeek incident occurred during Belgium’s federal election on Sunday, 18 May 2003, when one candidate was credited with 4,096 extra preferential votes—detected because the candidate’s preferences exceeded the party’s list total, an impossibility in that system. The official explanation described a “spontaneous creation of a bit at position 13” in memory; a widely cited interpretation is a single-event upset (SEU) likely caused by a cosmic ray.
-
----
-
-#### Prose guardrails (to prevent clumsy insertions)
-
-* **Never** dump a required line as a detached paragraph; always give it syntactic company (subject, verb, or frame).
-* **Never** preface with “as the quote says,” “the line is,” or meta commentary.
-* Keep sentence lengths varied; surround lyrical lines (e.g., “sky lower than the bird”) with plainer sentences before and after to let them ring.
-* Prefer em dashes and semicolons to ellipses. No exclamation marks.
-</NOTE>
+"The Schaerbeek incident occurred during Belgium’s federal election on Sunday, 18 May 2003, when one candidate was credited with 4,096 extra preferential votes—detected because the candidate’s preferences exceeded the party’s list total, an impossibility in that system. The official explanation described a “spontaneous creation of a bit at position 13” in memory; a widely cited interpretation is a single-event upset (SEU) likely caused by a cosmic ray." - for the reference section.
+</MUST HAVES>
 
 ---
 
