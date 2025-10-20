@@ -122,18 +122,6 @@ async function handleEntriesGet(req, res, capabilities, reqId) {
         const result = await getEntries(capabilities, pagination);
         const next = buildNextPageUrl(req, pagination, result.hasMore);
 
-        capabilities.logger.logInfo(
-            {
-                request_identifier: reqId.identifier,
-                results_count: result.results.length,
-                has_more: result.hasMore,
-                pagination: pagination,
-                status_code: 200,
-                client_ip: req.ip
-            },
-            "Entries list request completed successfully",
-        );
-
         res.json({
             /** @type {Array<import('../../event/structure').SerializedEvent>} */
             results: result.results.map(event => serialize(capabilities, event)),
