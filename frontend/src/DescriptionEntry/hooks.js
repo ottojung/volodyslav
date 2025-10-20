@@ -239,9 +239,11 @@ export const useDescriptionEntry = (numberOfEntries = 10) => {
      * @param {React.KeyboardEvent} e
      */
     const handleKeyUp = (e) => {
-        if (e.key === "Enter" && !e.shiftKey && !isSubmitting) {
+        if (e.key === "Enter" && !e.shiftKey) {
             e.preventDefault();
-            handleSubmit();
+            if (!isSubmitting) {
+                handleSubmit();
+            }
         }
     };
 
