@@ -57,17 +57,15 @@ const handlePhotoRetrieval = async (pendingRequestIdentifier, toast, setPendingR
 /**
  * Handles submission success actions
  * @param {any} result - Submission result
- * @param {string} description - Current description
+ * @param {string} description - The description that was submitted
  * @param {File[]} files - Files to submit
- * @param {Function} setDescription - State setter
  * @param {Function} setPendingRequestIdentifier - State setter
  * @param {Function} setPhotoCount - State setter for photo count
  * @param {Function} fetchRecentEntries - Function to refresh entries
  * @param {Function} toast - Toast notification function
  */
-const handleSubmissionSuccess = (result, description, files, setDescription, setPendingRequestIdentifier, setPhotoCount, fetchRecentEntries, toast) => {
+const handleSubmissionSuccess = (result, description, files, setPendingRequestIdentifier, setPhotoCount, fetchRecentEntries, toast) => {
     const savedInput = result.entry?.input ?? description.trim();
-    setDescription("");
     setPendingRequestIdentifier(null);
     setPhotoCount(0);
     fetchRecentEntries();
@@ -201,6 +199,11 @@ export const useDescriptionEntry = (numberOfEntries = 10) => {
         }
 
         setIsSubmitting(true);
+        
+        // Capture the description value before clearing it
+        const descriptionToSubmit = description.trim();
+        // Clear the description immediately to prevent duplicate submissions
+        setDescription("");
 
         try {
             /** @type {File[]} */
@@ -209,14 +212,18 @@ export const useDescriptionEntry = (numberOfEntries = 10) => {
                 try {
                     files = await handlePhotoRetrieval(pendingRequestIdentifier, toast, setPendingRequestIdentifier);
                 } catch (error) {
+                    // Restore description on photo retrieval error
+                    setDescription(descriptionToSubmit);
                     return;
                 }
             }
 
-            const result = await submitEntry(description.trim(), pendingRequestIdentifier || undefined, files);
-            handleSubmissionSuccess(result, description, files, setDescription, setPendingRequestIdentifier, setPhotoCount, fetchRecentEntries, toast);
+            const result = await submitEntry(descriptionToSubmit, pendingRequestIdentifier || undefined, files);
+            handleSubmissionSuccess(result, descriptionToSubmit, files, setPendingRequestIdentifier, setPhotoCount, fetchRecentEntries, toast);
         } catch (error) {
             handleSubmissionError(error, toast);
+            // Restore description on submission error
+            setDescription(descriptionToSubmit);
         } finally {
             setIsSubmitting(false);
         }
@@ -234,7 +241,9 @@ export const useDescriptionEntry = (numberOfEntries = 10) => {
     const handleKeyUp = (e) => {
         if (e.key === "Enter" && !e.shiftKey) {
             e.preventDefault();
-            handleSubmit();
+            if (!isSubmitting) {
+                handleSubmit();
+            }
         }
     };
 
