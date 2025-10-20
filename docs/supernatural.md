@@ -74,9 +74,9 @@ Smell/sound texture of “dry athmosphere" when describing the surrounding of th
 
 "It was one power of two too proud." - when first referring to the extra votes (4096 = 2^12).
 
-"The list’s ceiling is the candidate’s sky, and yet there it was: sky lower than the bird."
+"The list’s ceiling is the candidate’s sky, and yet there it was: sky lower than the bird:
 
-"$$\boxed{\Sigma \text{ candidate preferences } \leq \text{ party list total } \leq \text{ district total}}$$", titled "Invariant 1. (violated)" - to put the above allegory into mathematical form.
+$$\boxed{\Sigma \text{ candidate preferences } \leq \text{ party list total } \leq \text{ district total}}$$", titled "Invariant 1. (violated)".
 
 "They stared at the sum as though it might amend itself out of shame." - for the part describing the clerks discovering the extra votes.
 
