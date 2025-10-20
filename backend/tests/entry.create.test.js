@@ -1,5 +1,6 @@
 const { createEntry } = require("../src/entry");
 const { fromISOString } = require("../src/datetime");
+const eventId = require("../src/event/id");
 
 const { getMockedRootCapabilities } = require("./spies");
 const { stubEnvironment, stubEventLogRepository, stubDatetime, stubLogger } = require("./stubs");
@@ -40,7 +41,7 @@ describe("createEntry (integration, with real capabilities)", () => {
         expect(event.creator).toBeDefined();
         expect(capabilities.logger.logInfo).toHaveBeenCalledWith(
             expect.objectContaining({
-                eventId: event.id,
+                eventId: eventId.toString(event.id),
                 type: event.type,
                 fileCount: 0,
             }),
@@ -72,7 +73,7 @@ describe("createEntry (integration, with real capabilities)", () => {
         expect(event.creator).toBeDefined();
         expect(capabilities.logger.logInfo).toHaveBeenCalledWith(
             expect.objectContaining({
-                eventId: event.id,
+                eventId: eventId.toString(event.id),
                 type: event.type,
                 fileCount: 1,
             }),
@@ -110,7 +111,7 @@ describe("createEntry (integration, with real capabilities)", () => {
         expect(event.creator).toBeDefined();
         expect(capabilities.logger.logInfo).toHaveBeenCalledWith(
             expect.objectContaining({
-                eventId: event.id,
+                eventId: eventId.toString(event.id),
                 type: event.type,
                 fileCount: 2,
             }),
