@@ -73,6 +73,13 @@ No lights flicker; no sudden silence; no person “feels watched.” The room re
 Do not let “4096” appear near exclamation or italics. Refuse emphasis; that refusal is the chill.
 
 Do not explain why they re-add. Let habit and unease motivate it; explanation breaks the spell.
+
+---
+
+Do: When you finally print the digits, bury them.
+Stage: “…leaving, as a remainder, 4 096, which—” and immediately continue with process. No italics, no em dash flourish.
+Buys: The number feels cold and procedural, not performative.
+
 </NOTE>
 
 <MUST HAVES>
