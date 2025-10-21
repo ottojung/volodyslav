@@ -53,7 +53,7 @@ Change the title to something more evocative.
 
 <PLACEHOLDER/>
 <NOTE>
-Tell a made-up story of how this happened.
+This is a made-up story of how the Shaerbeek incident happened.
 There is a documented part, which is included at the end.
 But the main piece is the made-up horror story.
 
