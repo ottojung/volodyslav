@@ -105,6 +105,10 @@ Rules:
 - **C:** first mention of weather/dryness; remain clinical; allow one sensory adjective.  
 - **D:** 1–2 oddities total; plausible as fatigue or static; no overt horror language.
 
+---
+
+When discovering the error make it seem like everyone understood, without agreement, that to call it an error would start the machinery of inquiry—forms, witnesses, the freezing of work already half done. So make them speak around it instead, referring to *this part* or *that total*, passing the word as if it burned.
+
 </NOTE>
 
 <MUST HAVES>
