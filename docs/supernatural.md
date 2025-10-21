@@ -88,6 +88,23 @@ Do: Mark tiny time with objects, not timestamps.
 Stage: Uncapped pen dries on the nib; a condensation ring appears under a disposable cup; the adding tape’s curl advances by one more loop—each coinciding with a re-add.
 Buys: The room’s time moves, not the plot’s.
 
+---
+
+Going into the technician’s story:
+
+Start innocently, matter-of-fact. Only when the tally reaches the faulty candidate does the prose admit weather/dryness and begin the drift into unease.
+
+Structure:
+1) **Beat A — Ordinary Room, Ordinary Building (no unease, no weather).**  
+2) **Beat B — Ordinary Process (procedural, uncolored).**  
+3) **Beat C — Pivot on the Candidate (introduce weather/dryness; first sideways detail).**  
+4) **Beat D — Residual Unease (subtle sensory misfits; still deniable).**
+
+Rules:
+- **A & B:** strictly operational; zero metaphors; no “dry,” no “thirteen,” no carpet opinions.  
+- **C:** first mention of weather/dryness; remain clinical; allow one sensory adjective.  
+- **D:** 1–2 oddities total; plausible as fatigue or static; no overt horror language.
+
 </NOTE>
 
 <MUST HAVES>
