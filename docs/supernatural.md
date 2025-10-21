@@ -87,7 +87,7 @@ Smell/sound texture of “dry athmosphere" when describing the surrounding of th
 
 "The list’s ceiling is the candidate’s sky, and yet there it was: sky lower than the bird:
 
-$$\boxed{\Sigma \text{ candidate preferences } \leq \text{ party list total } \leq \text{ district total}}$$", titled "Invariant 1. (violated)".
+$$\boxed{\text{candidate preferences } \leq \text{ party list total } \leq \text{ district total}}$$", titled "Invariant 1. (violated)".
 
 "They stared at the sum as though it might amend itself out of shame." - for the part describing the clerks discovering the extra votes.
 
