@@ -56,6 +56,17 @@ Change the title to something more evocative.
 Tell a made-up story of how this happened.
 Then follow up with the documented part - how it was investigated and what the conclusion was.
 But the main piece is the made-up horror story.
+suspicion before proof
+
+---
+
+Make the moment of discovery feel like a slow bruise rather than a jump scare.
+
+Stance: Treat the error as felt before it is known. Avoid any instant revelation; delay the noun “4096” and delay “power of two” until later.
+
+Method: Build unease through procedural rhythm going out of tune: call-and-response totals, the small pauses people make when they pretend they didn’t pause, the re-addition that wasn’t requested but nobody objects to.
+
+Rule: All uncanny pressure must be deniable as normal fatigue or habit. Nothing “happens”; only confidence fails to materialize.
 </NOTE>
 
 <MUST HAVES>
