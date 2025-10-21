@@ -67,6 +67,12 @@ Stance: Treat the error as felt before it is known. Avoid any instant revelation
 Method: Build unease through procedural rhythm going out of tune: call-and-response totals, the small pauses people make when they pretend they didn’t pause, the re-addition that wasn’t requested but nobody objects to.
 
 Rule: All uncanny pressure must be deniable as normal fatigue or habit. Nothing “happens”; only confidence fails to materialize.
+
+No lights flicker; no sudden silence; no person “feels watched.” The room remains ordinary. The wrongness is procedural.
+
+Do not let “4096” appear near exclamation or italics. Refuse emphasis; that refusal is the chill.
+
+Do not explain why they re-add. Let habit and unease motivate it; explanation breaks the spell.
 </NOTE>
 
 <MUST HAVES>
