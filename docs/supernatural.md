@@ -59,6 +59,13 @@ But the main piece is the made-up horror story.
 
 ---
 
+It was told to us by a technician who had been there.
+Let us sit with him in a cafeteria - that's how we hear the story.
+The story should start with description of how we met the technician, and what kind of person he was.
+We should describe the cafeteria, too, the technician's character, his mannerisms, etc.
+
+---
+
 Make the moment of discovery feel like a slow bruise rather than a jump scare.
 
 Stance: Treat the error as felt before it is known. Avoid any instant revelation; delay the noun “4096” and delay “power of two” until later.
