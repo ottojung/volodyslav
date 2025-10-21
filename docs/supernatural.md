@@ -80,6 +80,14 @@ Do: When you finally print the digits, bury them.
 Stage: “…leaving, as a remainder, 4 096, which—” and immediately continue with process. No italics, no em dash flourish.
 Buys: The number feels cold and procedural, not performative.
 
+---
+
+During the discovery phase, employ "procedural time dilation" technique:
+
+Do: Mark tiny time with objects, not timestamps.
+Stage: Uncapped pen dries on the nib; a condensation ring appears under a disposable cup; the adding tape’s curl advances by one more loop—each coinciding with a re-add.
+Buys: The room’s time moves, not the plot’s.
+
 </NOTE>
 
 <MUST HAVES>
