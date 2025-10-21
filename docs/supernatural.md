@@ -54,9 +54,8 @@ Change the title to something more evocative.
 <PLACEHOLDER/>
 <NOTE>
 Tell a made-up story of how this happened.
-Then follow up with the documented part - how it was investigated and what the conclusion was.
+There is a documented part, which is included at the end.
 But the main piece is the made-up horror story.
-suspicion before proof
 
 ---
 
