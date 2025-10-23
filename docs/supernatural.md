@@ -118,6 +118,32 @@ When discovering the error make it seem like everyone understood, without agreem
 </NOTE>
 
 <MUST HAVES>
+A bit that shows the misalignment between the narrator and the technician:
+
+We had been sitting for some time, our coffees cooling to the same shade of resignation, when he reached for the complimentary biscuits on the saucer. He studied them briefly — two, wrapped together in cellophane — and then said, as if concluding a long experiment, “You can tell a lot about a nation from how its biscuits break.”
+
+I looked at him. “How they break?”
+
+He nodded, tapping the packet against the table. “You see, the English ones surrender at the middle. The French fracture elegantly, as if it were part of the design. Belgian biscuits, though — they resist until you lose interest.”
+
+I considered the claim, uncertain whether to take it as metaphor or field observation. “Perhaps,” I said finally, “the composition differs.”
+
+He smiled faintly, unwrapping them. “No, it’s temperament. The dough remembers its upbringing.”
+
+He broke one biscuit; it split unevenly, half crumbling onto the napkin. He seemed pleased. “See? The kind of nation that tolerates asymmetry but not waste.”
+
+I reached for the other biscuit, broke it deliberately down the middle. “That one was symmetrical,” I observed.
+
+“Outlier,” he said, already eating the first. “There are always outliers.”
+
+I wanted to ask whether he was speaking of nations or of biscuits, but it felt too pedantic to clarify and too absurd not to. Instead I stirred my coffee and said, “Quality control, perhaps.”
+
+He looked genuinely impressed. “Exactly,” he said, as though I had finally joined the conversation he’d been having alone.
+
+For a moment we both ate in silence, the fragments softening in the coffee. It struck me then that he might have been right — about biscuits, or nations, or simply about the usefulness of resistance. I wasn’t sure which.
+</MUST HAVES>
+
+<MUST HAVES>
 
 "He worked elections—“not politics,” he said quickly, “interfaces.”" - for the part describing the technician, who told us the story.
 
