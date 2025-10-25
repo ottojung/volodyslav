@@ -49,7 +49,7 @@ I began to keep a dossier. Not a taxonomyâ€”God preserve me from one more axisâ€
 Change the title to something more evocative.
 </FIXME>
 
-**Schaerbeek, Belgium, May 2003.**
+**Schaerbeek, Belgium.**
 
 <PLACEHOLDER/>
 <NOTE>
