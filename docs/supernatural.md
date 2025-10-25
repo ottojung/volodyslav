@@ -144,6 +144,35 @@ For a moment we both ate in silence, the fragments softening in the coffee. It s
 </MUST HAVES>
 
 <MUST HAVES>
+Another bit that shows the misalignment between the narrator and the technician:
+
+The waiter left the bill between us and moved on without a word.
+He looked at it for a moment, then said, “You know what cafés should do? Add a line for conversation quality. Like a service rating, but mandatory. You’d tip more if you’d actually learned something.”
+
+I thought he was joking, but he kept going.
+“They could print a small scale at the bottom,” he said, sketching in the air. “Zero for silence, ten for revelations. You fill it in yourself. Encourages improvement.”
+
+I unfolded the bill. “That’s unworkable,” I said.
+“Why?”
+“The staff can’t verify it.”
+“They don’t verify taste either,” he said. “You could hate the soup and still pay for flavor.”
+
+He seemed genuinely interested in the logistics.
+“They’d need categories,” he went on. “Depth, originality, politeness—maybe a subtotal for wit. It could revolutionize small talk.”
+
+I set the paper flat against the table, aligning it with the grain. “That’s not how cafés operate,” I said.
+He smiled faintly. “Not yet.”
+
+There was a pause — long enough to feel like he was waiting for me to solve his idea.
+Finally, I said, “No.”
+
+Not loud, but enough.
+He blinked once, almost surprised, then nodded as if I’d supplied the missing metric.
+
+When the waiter returned, I left the money neatly folded inside the bill. He added a coin, uncalled for.
+</MUST HAVES>
+
+<MUST HAVES>
 
 "He worked elections—“not politics,” he said quickly, “interfaces.”" - for the part describing the technician, who told us the story.
 
