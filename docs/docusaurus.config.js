@@ -8,7 +8,6 @@ module.exports = {
     url: "https://ottojung.github.io",
     baseUrl: "/volodyslav/",
     onBrokenLinks: "warn",
-    onBrokenMarkdownLinks: "warn",
     favicon: "img/favicon.ico",
     organizationName: "volodyslav",
     projectName: "docs",
