@@ -44,7 +44,7 @@ export default function DescriptionEntry() {
             <VStack
                 spacing={SPACING.xxl}
                 align="stretch"
-                justify="center"
+                justify="flex-start"
                 minH="70vh"
             >
                 {/* Main Input Form */}
