@@ -51,26 +51,10 @@ I began to keep a dossier. Not a taxonomy—God preserve me from one more axis�
 
 **Schaerbeek, Belgium.**
 
-<PLACEHOLDER/>
 <NOTE>
 This is a made-up story of how the Shaerbeek incident happened.
 There is a documented part, which is included at the end.
 But the main piece is the made-up horror story.
-
----
-
-For the first paragraph:
-
-* Use first-person, present tense to keep the scene immediate and accountable.
-* Move from outside to inside in a straight, linear progression with no flashbacks or side trails.
-* Let the narrator’s rule-seeking mind be implied by what is noticed (patterns, alignments, procedures) rather than declared.
-* Keep foreignness to a single, gentle hint (unfamiliar phrasing, signage, or a small procedural contrast) and then move on.
-* Avoid inventories of travel artifacts or technology; the scene should not feel like a checklist.
-* Avoid brand names, model numbers, and administrative trivia unless they directly affect action.
-* End the paragraph poised for conversation (seated, attending), while leaving the topic unnamed.
-* Do not moralize or judge the place; the narrator observes and prepares.
-* Keep the technician’s presence for the next paragraph; the first paragraph should only carry the approach and entry.
-* do not imply that the narrator just reached, or just arrived into Shaerbeek.
 
 ---
 
@@ -79,7 +63,11 @@ Let us sit with him in a cafeteria - that's how we hear the story.
 The story should start with description of how we met the technician, and what kind of person he was.
 We should describe the cafeteria, too, the technician's character, his mannerisms, etc.
 
----
+</NOTE>
+
+I am in a cafeteria in Schaerbeek, just off the tram line, waiting for a man who is late. In unfamiliar rooms I begin, out of habit, by checking how they are arranged, as if the layout might explain in advance how the conversation will go. The windows sit low; from inside, the passing traffic moves along the upper edge of the view like a slow, mechanical ceiling. The tables keep the same measured distance from the walls, aisles just wide enough for a tray to pass without contact; the chairs face each other in pairs, every seat already assigned its opposite whether occupied or not. The queue bends once before the till in an L-shape that keeps the doorway clear, and I take my place in it, moving forward in small, regular steps each time the drawer opens with its tired ring. Above the counter, three menus are printed in two tight columns; when my turn comes I trust the digits more than the words and repeat one of the numbers, watching the cashier’s hand go straight to the corresponding row as if confirming a mapping I had only guessed at. Tray in hand, I follow the polished path in the tiles to a table by the wall, where two chairs stand across a rectangle of wiped laminate. I sit facing the empty chair, place my hands on either side of the tray, and wait, noticing how the room seems complete except for the single absence across from me.
+
+<NOTE>
 
 Make the moment of discovery feel like a slow bruise rather than a jump scare.
 
