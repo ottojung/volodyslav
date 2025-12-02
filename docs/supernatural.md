@@ -67,6 +67,34 @@ We should describe the cafeteria, too, the technician's character, his mannerism
 
 I am in a cafeteria in Schaerbeek, just off the tram line, waiting for a man who is late. In unfamiliar rooms I begin, out of habit, by checking how they are arranged, as if the layout might explain in advance how the conversation will go. The windows sit low; from inside, the passing traffic moves along the upper edge of the view like a slow, mechanical ceiling. The tables keep the same measured distance from the walls, aisles just wide enough for a tray to pass without contact; the chairs face each other in pairs, every seat already assigned its opposite whether occupied or not. The queue bends once before the till in an L-shape that keeps the doorway clear, and I take my place in it, moving forward in small, regular steps each time the drawer opens with its tired ring. Above the counter, three menus are printed in two tight columns; when my turn comes I trust the digits more than the words and repeat one of the numbers, watching the cashier’s hand go straight to the corresponding row as if confirming a mapping I had only guessed at. Tray in hand, I follow the polished path in the tiles to a table by the wall, where two chairs stand across a rectangle of wiped laminate. I sit facing the empty chair, place my hands on either side of the tray, and wait, noticing how the room seems complete except for the single absence across from me.
 
+<PLACEHOLDER/>
+
+<NOTE>
+The goal of the following part is to show the misalignment between the narrator and the technician.
+</NOTE>
+
+We had been sitting for some time, our coffees cooling to the same shade of resignation, when he reached for the complimentary biscuits on the saucer. He studied them briefly — two, wrapped together in cellophane — and then said, as if concluding a long experiment, “You can tell a lot about a nation from how its biscuits break.”
+
+I looked at him. “How they break?”
+
+He nodded, tapping the packet against the table. “You see, the English ones surrender at the middle. The French fracture elegantly, as if it were part of the design. Belgian biscuits, though — they resist until you lose interest.”
+
+I considered the claim, uncertain whether to take it as metaphor or field observation. “Perhaps,” I said finally, “the composition differs.”
+
+He smiled faintly, unwrapping them. “No, it’s temperament. The dough remembers its upbringing.”
+
+He broke one biscuit; it split unevenly, half crumbling onto the napkin. He seemed pleased. “See? The kind of nation that tolerates asymmetry but not waste.”
+
+I reached for the other biscuit, broke it deliberately down the middle. “That one was symmetrical,” I observed.
+
+“Outlier,” he said, already eating the first. “There are always outliers.”
+
+I wanted to ask whether he was speaking of nations or of biscuits, but it felt too pedantic to clarify and too absurd not to. Instead I stirred my coffee and said, “Quality control, perhaps.”
+
+He looked genuinely impressed. “Exactly,” he said, as though I had finally joined the conversation he’d been having alone.
+
+For a moment we both ate in silence, the fragments softening in the coffee. It struck me then that he might have been right — about biscuits, or nations, or simply about the usefulness of resistance. I wasn’t sure which.
+
 <NOTE>
 
 Make the moment of discovery feel like a slow bruise rather than a jump scare.
@@ -119,32 +147,6 @@ Rules:
 When discovering the error make it seem like everyone understood, without agreement, that to call it an error would start the machinery of inquiry—forms, witnesses, the freezing of work already half done. So make them speak around it instead, referring to *this part* or *that total*, passing the word as if it burned.
 
 </NOTE>
-
-<MUST HAVES>
-A bit that shows the misalignment between the narrator and the technician:
-
-We had been sitting for some time, our coffees cooling to the same shade of resignation, when he reached for the complimentary biscuits on the saucer. He studied them briefly — two, wrapped together in cellophane — and then said, as if concluding a long experiment, “You can tell a lot about a nation from how its biscuits break.”
-
-I looked at him. “How they break?”
-
-He nodded, tapping the packet against the table. “You see, the English ones surrender at the middle. The French fracture elegantly, as if it were part of the design. Belgian biscuits, though — they resist until you lose interest.”
-
-I considered the claim, uncertain whether to take it as metaphor or field observation. “Perhaps,” I said finally, “the composition differs.”
-
-He smiled faintly, unwrapping them. “No, it’s temperament. The dough remembers its upbringing.”
-
-He broke one biscuit; it split unevenly, half crumbling onto the napkin. He seemed pleased. “See? The kind of nation that tolerates asymmetry but not waste.”
-
-I reached for the other biscuit, broke it deliberately down the middle. “That one was symmetrical,” I observed.
-
-“Outlier,” he said, already eating the first. “There are always outliers.”
-
-I wanted to ask whether he was speaking of nations or of biscuits, but it felt too pedantic to clarify and too absurd not to. Instead I stirred my coffee and said, “Quality control, perhaps.”
-
-He looked genuinely impressed. “Exactly,” he said, as though I had finally joined the conversation he’d been having alone.
-
-For a moment we both ate in silence, the fragments softening in the coffee. It struck me then that he might have been right — about biscuits, or nations, or simply about the usefulness of resistance. I wasn’t sure which.
-</MUST HAVES>
 
 <MUST HAVES>
 Another bit that shows the misalignment between the narrator and the technician:
