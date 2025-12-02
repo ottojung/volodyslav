@@ -59,6 +59,21 @@ But the main piece is the made-up horror story.
 
 ---
 
+For the first paragraph:
+
+* Use first-person, present tense to keep the scene immediate and accountable.
+* Move from outside to inside in a straight, linear progression with no flashbacks or side trails.
+* Let the narrator’s rule-seeking mind be implied by what is noticed (patterns, alignments, procedures) rather than declared.
+* Keep foreignness to a single, gentle hint (unfamiliar phrasing, signage, or a small procedural contrast) and then move on.
+* Avoid inventories of travel artifacts or technology; the scene should not feel like a checklist.
+* Avoid brand names, model numbers, and administrative trivia unless they directly affect action.
+* End the paragraph poised for conversation (seated, attending), while leaving the topic unnamed.
+* Do not moralize or judge the place; the narrator observes and prepares.
+* Keep the technician’s presence for the next paragraph; the first paragraph should only carry the approach and entry.
+* do not imply that the narrator just reached, or just arrived into Shaerbeek.
+
+---
+
 It was told to us by a technician who had been there.
 Let us sit with him in a cafeteria - that's how we hear the story.
 The story should start with description of how we met the technician, and what kind of person he was.
