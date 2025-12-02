@@ -49,10 +49,6 @@ I began to keep a dossier. Not a taxonomyâ€”God preserve me from one more axisâ€
 
 ### I. The Schaerbeek Bit
 
-<FIXME>
-Change the title to something more evocative.
-</FIXME>
-
 **Schaerbeek, Belgium.**
 
 <PLACEHOLDER/>
