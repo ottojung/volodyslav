@@ -5,7 +5,11 @@ When completing the document, ensure that all placeholders are filled, fixmes ar
 Some must-haves, those surrounded by quotes, are exact phrases that need to be integrated neatly into the text. But others are thematic elements that should be woven into the narrative.
 
 
-The style is horror. Specifically, lovecraftian horror, with a focus on the uncanny and the unsettling.
+The type of this story is generally horror.
+However, it should be written in the style of Franz Kafka.
+It conveys bureaucratic dread, helplessness.
+It is reality-bending.
+There is lots of uncanny and the unsettling.
 It is grave, meticulous, humor only implicit, investigator fraying at the edges.
 
 </NOTE>
