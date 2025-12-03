@@ -147,6 +147,8 @@ Buys: The room’s time moves, not the plot’s.
 
 Going into the technician’s story:
 
+Make the transition clear. Begin the transition with a sentence like "He told it not in order, but I will."
+
 Start innocently, matter-of-fact. Only when the tally reaches the faulty candidate does the prose admit weather/dryness and begin the drift into unease.
 
 Structure:
