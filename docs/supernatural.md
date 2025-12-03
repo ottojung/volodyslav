@@ -73,10 +73,22 @@ I take my place in it, moving forward in small, regular steps each time the draw
 
 I sit facing the empty chair, place my hands on either side of the tray, and wait, noticing how the room seems complete except for the single absence across from me.
 
-<PLACEHOLDER/>
+<PLACEHOLDER>
+Here we describe the technician who arrives, his character, mannerisms, etc.
+Use these:
+
+- "He worked elections—“not politics,” he said quickly, “interfaces.”".
+
+- "... a habit of tapping the table as though confirming liveness.".
+
+- "He used the word spontaneous without liking it."
+
+Cleverly weave these into the description of the technician.
+Must ensure continuity within the paragraph, and with the surrounding text.
+</PLACEHOLDER>
 
 <NOTE>
-The goal of the following part is to show the misalignment between the narrator and the technician.
+The goal of the part below is to show the misalignment between the narrator and the technician.
 </NOTE>
 
 We had been sitting for some time, our coffees cooling to the same shade of resignation, when he reached for the complimentary biscuits on the saucer. He studied them briefly — two, wrapped together in cellophane — and then said, as if concluding a long experiment, “You can tell a lot about a nation from how its biscuits break.”
@@ -185,11 +197,6 @@ When the waiter returned, I left the money neatly folded inside the bill. He add
 
 <MUST HAVES>
 
-"He worked elections—“not politics,” he said quickly, “interfaces.”" - for the part describing the technician, who told us the story.
-
-"... a habit of tapping the table as though confirming liveness." - for the part describing the technician's character.
-
-"He used the word spontaneous without liking it." - for the part describing the technician's general attitude.
 
 "... a carpet whose pattern is an argument against democracy." - for the part describing the polling station.
 
