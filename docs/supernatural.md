@@ -65,7 +65,13 @@ We should describe the cafeteria, too, the technician's character, his mannerism
 
 </NOTE>
 
-I am in a cafeteria in Schaerbeek, just off the tram line, waiting for a man who is late. In unfamiliar rooms I begin, out of habit, by checking how they are arranged, as if the layout might explain in advance how the conversation will go. The windows sit low; from inside, the passing traffic moves along the upper edge of the view like a slow, mechanical ceiling. The tables keep the same measured distance from the walls, aisles just wide enough for a tray to pass without contact; the chairs face each other in pairs, every seat already assigned its opposite whether occupied or not. The queue bends once before the till in an L-shape that keeps the doorway clear, and I take my place in it, moving forward in small, regular steps each time the drawer opens with its tired ring. Above the counter, three menus are printed in two tight columns; when my turn comes I trust the digits more than the words and repeat one of the numbers, watching the cashier’s hand go straight to the corresponding row as if confirming a mapping I had only guessed at. Tray in hand, I follow the polished path in the tiles to a table by the wall, where two chairs stand across a rectangle of wiped laminate. I sit facing the empty chair, place my hands on either side of the tray, and wait, noticing how the room seems complete except for the single absence across from me.
+I am in a cafeteria in Schaerbeek, just off the tram line, waiting for a man who is late. In unfamiliar rooms I begin, out of habit, by checking how they are arranged, as if the layout might explain in advance how the conversation will go.
+
+The windows sit low; from inside, the passing traffic moves along the upper edge of the view like a slow, mechanical ceiling. The tables keep the same measured distance from the walls, aisles just wide enough for a tray to pass without contact; the chairs face each other in pairs, every seat already assigned its opposite whether occupied or not. The queue bends once before the till in an L-shape that keeps the doorway clear.
+
+I take my place in it, moving forward in small, regular steps each time the drawer opens with its tired ring. Above the counter, three menus are printed in two tight columns; when my turn comes I trust the digits more than the words and repeat one of the numbers, watching the cashier’s hand go straight to the corresponding row as if confirming a mapping I had only guessed at. Tray in hand, I follow the polished path in the tiles to a table by the wall, where two chairs stand across a rectangle of wiped laminate.
+
+I sit facing the empty chair, place my hands on either side of the tray, and wait, noticing how the room seems complete except for the single absence across from me.
 
 <PLACEHOLDER/>
 
