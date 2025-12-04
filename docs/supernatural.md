@@ -71,7 +71,7 @@ The windows sit low; from inside, the passing traffic moves along the upper edge
 
 I take my place in it, moving forward in small, regular steps each time the drawer opens with its tired ring. Above the counter, three menus are printed in two tight columns; when my turn comes I trust the digits more than the words and repeat one of the numbers, watching the cashier’s hand go straight to the corresponding row as if confirming a mapping I had only guessed at. Tray in hand, I follow the polished path in the tiles to a table by the wall, where two chairs stand across a rectangle of wiped laminate.
 
-I sit facing the empty chair, place my hands on either side of the tray, and wait, noticing how the room seems complete except for the single absence across from me.
+I sit facing the empty chair and wait, noticing how the room seems complete except for the single absence across from me.
 
 <NOTE>
 Below we describe the technician who arrives, his character, mannerisms, etc.
