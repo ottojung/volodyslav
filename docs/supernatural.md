@@ -73,19 +73,21 @@ I take my place in it, moving forward in small, regular steps each time the draw
 
 I sit facing the empty chair, place my hands on either side of the tray, and wait, noticing how the room seems complete except for the single absence across from me.
 
-<PLACEHOLDER>
-Here we describe the technician who arrives, his character, mannerisms, etc.
+<NOTE>
+Below we describe the technician who arrives, his character, mannerisms, etc.
 Use these:
-
 - "He worked elections—“not politics,” he said quickly, “interfaces.”".
-
 - "... a habit of tapping the table as though confirming liveness.".
-
 - "He used the word spontaneous without liking it."
+</NOTE>
 
-Cleverly weave these into the description of the technician.
-Must ensure continuity within the paragraph, and with the surrounding text.
-</PLACEHOLDER>
+He arrives at the point where waiting has become a kind of agreement with the empty chair. He stands at the edge of the table for a moment, as if checking that the setting matches a description he has been given, then sits without asking whether this is the right place.
+
+We exchange the usual confirmations—my name, his, the fact that we have both found the correct café in the correct district on the correct day. When I ask about his work he answers as if finishing a form: he worked elections—“not politics,” he said quickly, “interfaces.” Somewhere in the small talk he acquires a habit of tapping the table as though confirming liveness.
+
+I mention a delay on the tram. He nods and says there had been “a spontaneous adjustment to the route,” then falls briefly silent, as if the phrase does not belong to him. He used the word spontaneous without liking it.
+
+We had been sitting for some time, our coffees cooling to the same shade of resignation, when he reached for the complimentary biscuits on the saucer.
 
 <NOTE>
 The goal of the part below is to show the misalignment between the narrator and the technician.
