@@ -111,7 +111,7 @@ I wanted to ask whether he was speaking of nations or of biscuits, but it felt t
 
 He looked genuinely impressed. “Exactly,” he said, as though I had finally joined the conversation he’d been having alone.
 
-For a moment we both ate in silence, the fragments softening in the coffee. It struck me then that he might have been right — about biscuits, or nations, or simply about the usefulness of resistance. I wasn’t sure which.
+For a moment we both ate in silence, the fragments softening in the coffee.
 
 <NOTE>
 
