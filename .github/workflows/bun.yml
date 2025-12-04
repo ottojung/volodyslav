@@ -1,0 +1,28 @@
+name: bun
+
+on:
+    push:
+
+jobs:
+    build-and-test-with-bun:
+        runs-on: ubuntu-latest
+
+        steps:
+            - uses: actions/checkout@v3
+
+            - name: Setup Bun
+              uses: oven-sh/setup-bun@v2
+              with:
+                  bun-version: latest
+
+            - name: Install dependencies
+              run: bun install
+
+            - name: Build frontend
+              run: npm run build
+
+            - name: Static analysis
+              run: npm run static-analysis
+
+            - name: Run tests with Jest via Bun
+              run: TZ=Asia/Tokyo bun jest
