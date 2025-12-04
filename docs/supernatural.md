@@ -22,7 +22,6 @@ It is grave, meticulous, humor only implicit, investigator fraying at the edges.
 </MUST HAVES>
 
 # A Strange Collection of System Failures
-<FIXME> A better title is needed. Something more evocative. </FIXME>
 
 *From the notebook of an investigator <PLACEHOLDER/>*
 
