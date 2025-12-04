@@ -83,9 +83,9 @@ Use these:
 
 He arrives at the point where waiting has become a kind of agreement with the empty chair. He stands at the edge of the table for a moment, as if checking that the setting matches a description he has been given, then sits without asking whether this is the right place.
 
-We exchange the usual confirmations—my name, his, the fact that we have both found the correct café in the correct district on the correct day. When I ask about his work he answers as if finishing a form: he worked elections—“not politics,” he said quickly, “interfaces.” As he speaks he keeps straightening small things—the sugar packet, the spoon—returning between sentences to tapping the table, as though confirming liveness.
+We exchange the usual confirmations—my name, his, the fact that we have both found the correct café in the correct district on the correct day. I mention a delay on the tram. He nods and says there had been “a spontaneous adjustment to the route,” then falls briefly silent, as if the phrase does not belong to him. He used the word spontaneous without liking it.
 
-I mention a delay on the tram. He nods and says there had been “a spontaneous adjustment to the route,” then falls briefly silent, as if the phrase does not belong to him. He used the word spontaneous without liking it.
+He worked elections—“not politics,” he said quickly, “interfaces.” As he speaks he keeps straightening small things—the sugar packet, the spoon—returning between sentences to tapping the table, as though confirming liveness.
 
 We had been sitting for some time, our coffees cooling to the same shade of resignation, when he reached for the complimentary biscuits on the saucer.
 
