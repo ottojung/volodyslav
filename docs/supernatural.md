@@ -87,8 +87,6 @@ We exchange the usual confirmations—my name, his, the fact that we have both f
 
 He worked elections—“not politics,” he said quickly, “interfaces.” As he speaks he keeps straightening small things—the sugar packet, the spoon—returning between sentences to tapping the table, as though confirming liveness.
 
-We had been sitting for some time, our coffees cooling to the same shade of resignation, when he reached for the complimentary biscuits on the saucer.
-
 <NOTE>
 The goal of the part below is to show the misalignment between the narrator and the technician.
 </NOTE>
