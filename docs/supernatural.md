@@ -83,9 +83,9 @@ Use these:
 
 He arrives at the point where waiting has become a kind of agreement with the empty chair. He stands at the edge of the table for a moment, as if checking that the setting matches a description he has been given, then sits without asking whether this is the right place.
 
-We exchange the usual confirmations—my name, his, the fact that we have both found the correct café in the correct district on the correct day. I mention a delay on the tram. He nods and says there had been “a spontaneous adjustment to the route,” then falls briefly silent, as if the phrase does not belong to him. He used the word "spontaneous" without liking it.
+We exchange the usual confirmations—my name, his, the fact that we have both found the correct café in the correct district on the correct day. He worked elections—“not politics,” he said quickly, “interfaces.” As he speaks he keeps straightening small things—the sugar packet, the spoon—returning between sentences to tapping the table, as though confirming liveness.
 
-He worked elections—“not politics,” he said quickly, “interfaces.” As he speaks he keeps straightening small things—the sugar packet, the spoon—returning between sentences to tapping the table, as though confirming liveness.
+I mention a delay on the tram. He nods and says there had been “a spontaneous adjustment to the route,” then falls briefly silent, as if the phrase does not belong to him. He used the word "spontaneous" without liking it.
 
 <NOTE>
 The goal of the part below is to show the misalignment between the narrator and the technician.
