@@ -84,6 +84,10 @@ He arrives at the point where waiting has become a kind of agreement with the em
 
 We exchange the usual confirmations—my name, his, the fact that we have both found the correct café in the correct district on the correct day. He worked elections—“not politics,” he said quickly, “interfaces.” As he speaks he keeps straightening small things—the sugar packet, the spoon—returning between sentences to tapping the table, as though confirming liveness.
 
+<TODO>
+Improve the following paragraph. The goal is to show that technician dislikes "surprizes".
+</TODO>
+
 I mention a delay on the tram. He nods and says there had been “a spontaneous adjustment to the route,” then falls briefly silent, as if the phrase does not belong to him. He used the word "spontaneous" without liking it.
 
 <NOTE>
