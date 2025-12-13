@@ -263,9 +263,11 @@ An allegory that compares the unpredictability of software behavior to the weath
 
 ---
 
-### II. Mark II Moth
-
-**Cambridge, Massachusetts, 1947.**
+<NOTE>
+Tie the ending of the Schaerbeek story to the Mark II moth example.
+They are very similar stories.
+Only the Schaerbeek one should be its own section, the Mark II moth should be a smaller comment.
+</NOTE>
 
 There is a photograph I keep in a folder called *Proofs I Do Not Argue With*. In it, a moth—an ordinary, grieving moth—sits dead-eyed on rag paper.
 
