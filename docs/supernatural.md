@@ -288,7 +288,7 @@ I have stood before the display and seen my own face in the glass, a later child
 
 ---
 
-### III. The Heisenbug I Failed to Catch
+### II. The Heisenbug I Failed to Catch
 
 <FIXME>
 Change the title to something more evocative.
@@ -311,7 +311,7 @@ It would be nice to link to an actual report of someone who noticed an interesti
 
 ---
 
-### IV. Maxwell’s Demon
+### III. Maxwell’s Demon
 
 <NOTE>
 Tell a made up story about a state that is extremely unlikely, though possible, to happen, but did happen. 
@@ -324,7 +324,7 @@ Ideally, find a real world example of something extremely unlikely happening, an
 
 ---
 
-### V. The Leprechaun of Off-by-One
+### IV. The Leprechaun of Off-by-One
 
 <NOTE>
 Tell a made up story of how actual Leprechaun from Irish folklore broke into the server room at night and "moved the loop bounds" (loop as in "a for-loop") by one.
@@ -334,7 +334,7 @@ This should be a story told to us by as a legend. In that legend, somebody alleg
 
 ---
 
-### VI. Mercury in Retrograde
+### V. Mercury in Retrograde
 
 <NOTE>
 Tell a made up story of how a bug coincided with Mercury being in retrograde.
@@ -346,7 +346,7 @@ We'll retain skeptics by documenting the operational timeline with enough specif
 
 ---
 
-### VII. The Crocodile in Vienna
+### VI. The Crocodile in Vienna
 
 <NOTE>
 Tell a made up story of how a crocodile was spotted in Vienna, causing a stir among the locals and drawing attention from the authorities and impacting lifes of people in the city.
@@ -357,7 +357,7 @@ Some reference: https://chatgpt.com/share/68f3eeb1-c1c0-800e-b09b-e2ee25ddbf47
 
 ---
 
-### VIII. A Natural, Boring Crash
+### VII. A Natural, Boring Crash
 
 <FIXME>
 Change the title to something more evocative.
