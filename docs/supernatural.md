@@ -64,6 +64,12 @@ We should describe the cafeteria, too, the technician's character, his mannerism
 
 </NOTE>
 
+<TODO>
+Improve the following opening paragraph.
+Tie to an important event that happend during that day.
+Example: 10 Sep 2008 — First beam sent around CERN’s Large Hadron Collider. If you want a wink toward particles, randomness, and tiny events with outsized consequences.
+</TODO>
+
 I am in a cafeteria in Schaerbeek, just off the tram line, waiting for a man who is late. In unfamiliar rooms I begin, out of habit, by checking how they are arranged.
 
 The windows sit low; from inside, the passing traffic moves along the upper edge of the view like a slow, mechanical ceiling. The tables keep the same measured distance from the walls, aisles just wide enough for a tray to pass without contact; the chairs face each other in pairs, every seat already assigned its opposite whether occupied or not. The queue bends once before the till in an L-shape that keeps the doorway clear.
