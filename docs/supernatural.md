@@ -6,9 +6,9 @@ Some must-haves, those surrounded by quotes, are exact phrases that need to be i
 
 
 The type of this story is generally horror.
-However, it should be written in the style of Franz Kafka.
-It conveys bureaucratic dread, helplessness.
-It is reality-bending.
+However, it should be written in the style of Lovecraft.
+It conveys dread, helplessness.
+It is reality-bending in some places.
 There is lots of uncanny and the unsettling.
 It is grave, meticulous, humor only implicit, investigator fraying at the edges.
 
