@@ -122,6 +122,37 @@ He looked genuinely impressed. “Exactly,” he said, as though I had finally j
 
 For a moment we both ate in silence, the fragments softening in the coffee.
 
+He watched the room with the same concentration he had given to their fracture, as if the café itself were being tested for compliance.
+
+“When people talk about elections,” he said at last, “they always mean the result. They don’t talk about the day itself.”
+
+This sounded like an opening for another small theory, ballots behaving like biscuits, perhaps. I kept myself from nodding or asking questions, trying not to indulge him this time. But he continued, the way one continues a form onto the next page because there is no space left on the first.
+
+“I worked one day,” he said, “that stayed with me more than the result it produced.”
+
+<FIXME>
+In the following paragraph, instead of having narrator "file the incident", he should learn about it from somewhere else. Do not assume he had any connection to the story itself beyond merely hearing about it. Maybe in rumors only.
+</FIXME>
+<DRAFT>
+He mentioned a school in Schaerbeek, a federal election, a machine that misbihaved. I recognised the outline before he finished the sentence. Years earlier I had filed the incident away under the comforting label computer error, a newspaper curiosity had appeared and then been explained. It took me a moment to adjust to the idea that the man across from me had been inside the room I had imagined only from reports.
+</DRAFT>
+
+<TODO>
+Fix the following. It should be simpler and contain "He did not tell it in order, but I will".
+</TODO>
+<DRAFT>
+He did not tell it as a story. He circled it, doubling back, supplying conditions and side remarks as they occurred to him. For my own sanity I will lay it out the way a checklist would have preferred it: in an order that suggests the day was meant to proceed.
+</DRAFT>
+
+<TODO>
+Add the carpet introduction. It should strictly be mentioned as the last object in an enumeration of the voting hall's objects.
+</TODO>
+<DRAFT>
+The polling station was a school. Its walls still carried faded posters about hygiene and primary colours, but the doors had been re-labelled with printed arrows and neutral nouns: Entrance, Exit, Polling Room. ...
+</DRAFT>
+
+He had been sent there as technician, a word expansive enough to cover whatever had not yet been assigned to the others. On his table lay the checklist: confirm serial numbers, confirm counters at zero, confirm seals intact; note every confirmation in ink, sign where indicated. Behind him, near the door, two party representatives occupied metal chairs with the air of people who had been told to observe “the process” and were still waiting for the process to begin. A third watcher, a schoolteacher seconded for the day, stood where she could see both the machines and the clerks and seemed unsure which of them constituted the real work.
+
 <NOTE>
 
 Make the moment of discovery feel like a slow bruise rather than a jump scare.
