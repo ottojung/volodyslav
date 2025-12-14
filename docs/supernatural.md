@@ -145,7 +145,7 @@ He did not tell it as a story. He circled it, doubling back, supplying condition
 </DRAFT>
 
 <TODO>
-Add the carpet introduction. It should strictly be mentioned as the last object in an enumeration of the voting hall's objects.
+In the following paragraph add the carpet introduction, "... a carpet whose pattern is an argument against democracy.". It should strictly be mentioned as the last object in an enumeration of the voting hall's objects.
 </TODO>
 <DRAFT>
 The polling station was a school. Its walls still carried faded posters about hygiene and primary colours, but the doors had been re-labelled with printed arrows and neutral nouns: Entrance, Exit, Polling Room. ...
