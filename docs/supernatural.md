@@ -176,6 +176,8 @@ He had been sent there as technician, a word expansive enough to cover whatever 
 
 The doors opened at eight. Voters arrived in the hesitant rhythm of early morning, each one checked against the register, handed a card, directed to a booth. The technician watched the first ballot cast: a woman who studied the screen for longer than the instructions required, then pressed confirm with a small nod, as if confirming a translation rather than a choice. The machine accepted it without comment. Its sound—a brief, administrative hum—was the only evidence that anything had been recorded at all.
 
+By noon the rhythm had settled into something approaching routine. The clerks called numbers from their lists; voters stepped forward when summoned; the booths filled and emptied in orderly succession. The technician made his rounds between the machines, checking displays that showed nothing more interesting than incremental counts. Each device performed its assigned function: accept input, record choice, advance counter. The party watchers had grown comfortable enough to exchange small talk about the weather—dry for May, they agreed, unusually so.
+
 <NOTE>
 Make the moment of discovery feel like a slow bruise rather than a jump scare.
 
