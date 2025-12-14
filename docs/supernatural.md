@@ -153,8 +153,30 @@ The polling station was a school. Its walls still carried faded posters about hy
 
 He had been sent there as technician, a word expansive enough to cover whatever had not yet been assigned to the others. On his table lay the checklist: confirm serial numbers, confirm counters at zero, confirm seals intact; note every confirmation in ink, sign where indicated. Behind him, near the door, two party representatives occupied metal chairs with the air of people who had been told to observe “the process” and were still waiting for the process to begin. A third watcher, a schoolteacher seconded for the day, stood where she could see both the machines and the clerks and seemed unsure which of them constituted the real work.
 
-<NOTE>
+<NOTE>Notes, thoughts, and suggestions for the new paragraph below:
 
+**Purpose:** Bridge from the static "waiting room" tableau to the procedural rhythm of voting. Show the day beginning in earnest, but maintain the flat, observational tone. No unease yet—this is still Beat A/B territory.
+
+**Themes to reinforce:**
+- The choreography of democratic process as mechanical ritual
+- The gap between the symbolic weight of voting and its mundane execution
+- The technician's role as silent custodian of a system he doesn't fully own
+
+**Suggestions for variation:**
+1. Could add a small detail about the first voter (elderly? hesitant? overly confident?) to humanize the machinery
+2. Could mention the technician checking something on the machine as the first vote is cast—a small ritual of his own
+3. Could hint at the dry atmosphere (foreshadowing the "tonight is dry" line) through a mention of static, or someone's hair, or paper crackling
+
+**Potential expansion points:**
+- The phrase "as if confirming a translation" could be developed into a longer meditation on the gap between intention and record
+- The mention of the machine's sound could echo the later "identifying birds" line from the schoolteacher
+
+**Tone check:** Keep it procedural and uncolored. No metaphors yet. The prose should feel like a form being filled out—correct, neutral, waiting.
+</NOTE>
+
+The doors opened at eight. Voters arrived in the hesitant rhythm of early morning, each one checked against the register, handed a card, directed to a booth. The technician watched the first ballot cast: a woman who studied the screen for longer than the instructions required, then pressed confirm with a small nod, as if confirming a translation rather than a choice. The machine accepted it without comment. Its sound—a brief, administrative hum—was the only evidence that anything had been recorded at all.
+
+<NOTE>
 Make the moment of discovery feel like a slow bruise rather than a jump scare.
 
 Stance: Treat the error as felt before it is known. Avoid any instant revelation; delay the noun “4096” and delay “power of two” until later.
