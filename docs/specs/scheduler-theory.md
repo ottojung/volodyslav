@@ -140,7 +140,7 @@ The list $\texttt{ValidRegistrations}$ is an environment truth. The scheduler mu
 Durations in $\mathbb{D}$ correspond to *some* real-world durations.
 For example, it could be that $\texttt{duration}([0, 999])$ is one hour.
 
-Elements of $\mathbb{S}$ represent different kinds of unmodelled events. The internal structure of $\mathbb{S}$ is uninterpreted. This set may include ordinary events like sunsets, user interactions, or rare ones, like cosmic rays that flip RAM bits - anything that exists in reality but isn't part of our formal scheduler/environment vocabulary. To recognize which things constitute supernatural phenomena, see the [Classification of Supernatural Phenomena](../supernatural.md).
+Elements of $\mathbb{S}$ represent different kinds of unmodelled events. The internal structure of $\mathbb{S}$ is uninterpreted. This set may include ordinary events like sunsets, user interactions, or rare ones, like cosmic rays that flip RAM bits - anything that exists in reality but isn't part of our formal scheduler/environment vocabulary. To recognize which things constitute supernatural phenomena, see the [Classification of Supernatural Phenomena](https://vau.place/post/supernatural/classification.html).
 
 ### Helper Equalities on Tasks
 
