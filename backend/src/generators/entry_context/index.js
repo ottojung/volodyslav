@@ -2,12 +2,13 @@
 /** @typedef {import('../../event').Event} Event */
 
 /**
+ * This function extracts the context of a given entry from a list of all entries.
  * 
  * @param {Array<Event>} _all_entries
  * @param {Event} _entry
  * @returns {Array<Event>} The context of the given entry
  */
-function entry_context(_all_entries, _entry) {
+function getEntryContext(_all_entries, _entry) {
     // TODO:
     // Search for related entries.
     // An entry is related to this `entry` if:
@@ -18,5 +19,5 @@ function entry_context(_all_entries, _entry) {
 }
 
 module.exports = {
-    entry_context,
+    getEntryContext,
 };
