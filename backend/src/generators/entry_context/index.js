@@ -12,20 +12,14 @@ const { extractHashtags, isContextEnhancing } = require("../../event");
 function getEntryContext(all_entries, entry) {
     const entryHashtags = extractHashtags(entry);
 
-    // If entry has no hashtags, return empty context
+    // If entry has no hashtags, return only the entry itself
     if (entryHashtags.size === 0) {
-        return [];
+        return [entry];
     }
 
     const context = all_entries.filter((otherEntry) => {
-        // Skip the entry itself
         if (otherEntry.id === entry.id) {
-            return false;
-        }
-
-        // Check if entry is before the target entry in time
-        if (!otherEntry.date.isBefore(entry.date)) {
-            return false;
+            return true; // Always include the entry itself
         }
 
         // Check if entry type is context-enhancing

@@ -22,10 +22,11 @@ describe("getEntryContext", () => {
         ];
 
         const context = getEntryContext(allEntries, targetEntry);
-        expect(context).toEqual([]);
+        expect(context).toHaveLength(1);
+        expect(context).toContain(targetEntry);
     });
 
-    it("returns entries with matching hashtags that are before target entry", () => {
+    it("returns entries with matching hashtags regardless of time", () => {
         const date1 = fromISOString("2024-01-01T12:00:00.000Z");
         const date2 = date1.advance(fromMinutes(10));
         const date3 = date2.advance(fromMinutes(10));
@@ -37,12 +38,13 @@ describe("getEntryContext", () => {
         const allEntries = [entry1, entry2, targetEntry];
 
         const context = getEntryContext(allEntries, targetEntry);
-        expect(context).toHaveLength(2);
+        expect(context).toHaveLength(3);
         expect(context).toContain(entry1);
         expect(context).toContain(entry2);
+        expect(context).toContain(targetEntry);
     });
 
-    it("excludes entries that are after the target entry", () => {
+    it("includes entries regardless of time", () => {
         const date1 = fromISOString("2024-01-01T12:00:00.000Z");
         const date2 = date1.advance(fromMinutes(10));
         const date3 = date2.advance(fromMinutes(10));
@@ -54,9 +56,10 @@ describe("getEntryContext", () => {
         const allEntries = [entry1, targetEntry, entry3];
 
         const context = getEntryContext(allEntries, targetEntry);
-        expect(context).toHaveLength(1);
+        expect(context).toHaveLength(3);
         expect(context).toContain(entry1);
-        expect(context).not.toContain(entry3);
+        expect(context).toContain(targetEntry);
+        expect(context).toContain(entry3);
     });
 
     it("excludes entries that do not share hashtags", () => {
@@ -69,16 +72,18 @@ describe("getEntryContext", () => {
         const allEntries = [entry1, targetEntry];
 
         const context = getEntryContext(allEntries, targetEntry);
-        expect(context).toEqual([]);
+        expect(context).toHaveLength(1);
+        expect(context).toContain(targetEntry);
     });
 
-    it("excludes the target entry itself from context", () => {
+    it("includes the target entry itself in context", () => {
         const date = fromISOString("2024-01-01T12:00:00.000Z");
         const targetEntry = makeEntry("target", "Current #work status", date);
         const allEntries = [targetEntry];
 
         const context = getEntryContext(allEntries, targetEntry);
-        expect(context).toEqual([]);
+        expect(context).toHaveLength(1);
+        expect(context).toContain(targetEntry);
     });
 
     it("includes entries with partial hashtag match", () => {
@@ -91,8 +96,9 @@ describe("getEntryContext", () => {
         const allEntries = [entry1, targetEntry];
 
         const context = getEntryContext(allEntries, targetEntry);
-        expect(context).toHaveLength(1);
+        expect(context).toHaveLength(2);
         expect(context).toContain(entry1);
+        expect(context).toContain(targetEntry);
     });
 
     it("excludes entries with non-context-enhancing types", () => {
@@ -105,7 +111,8 @@ describe("getEntryContext", () => {
         const allEntries = [entry1, targetEntry];
 
         const context = getEntryContext(allEntries, targetEntry);
-        expect(context).toEqual([]);
+        expect(context).toHaveLength(1);
+        expect(context).toContain(targetEntry);
     });
 
     it("includes entries with context-enhancing type 'text'", () => {
@@ -118,8 +125,9 @@ describe("getEntryContext", () => {
         const allEntries = [entry1, targetEntry];
 
         const context = getEntryContext(allEntries, targetEntry);
-        expect(context).toHaveLength(1);
+        expect(context).toHaveLength(2);
         expect(context).toContain(entry1);
+        expect(context).toContain(targetEntry);
     });
 
     it("includes entries with context-enhancing type 'reg'", () => {
@@ -132,8 +140,9 @@ describe("getEntryContext", () => {
         const allEntries = [entry1, targetEntry];
 
         const context = getEntryContext(allEntries, targetEntry);
-        expect(context).toHaveLength(1);
+        expect(context).toHaveLength(2);
         expect(context).toContain(entry1);
+        expect(context).toContain(targetEntry);
     });
 
     it("handles multiple entries with various conditions", () => {
@@ -152,14 +161,15 @@ describe("getEntryContext", () => {
         const allEntries = [entry1, entry2, entry3, targetEntry, entry5];
 
         const context = getEntryContext(allEntries, targetEntry);
-        expect(context).toHaveLength(2);
+        expect(context).toHaveLength(4);
         expect(context).toContain(entry1);
         expect(context).toContain(entry3);
+        expect(context).toContain(targetEntry);
+        expect(context).toContain(entry5);
         expect(context).not.toContain(entry2); // No shared hashtags
-        expect(context).not.toContain(entry5); // After target
     });
 
-    it("handles entries at exactly the same time (non-before)", () => {
+    it("includes entries at exactly the same time", () => {
         const date = fromISOString("2024-01-01T12:00:00.000Z");
 
         const entry1 = makeEntry("1", "Concurrent #work entry", date);
@@ -168,7 +178,9 @@ describe("getEntryContext", () => {
         const allEntries = [entry1, targetEntry];
 
         const context = getEntryContext(allEntries, targetEntry);
-        expect(context).toEqual([]);
+        expect(context).toHaveLength(2);
+        expect(context).toContain(entry1);
+        expect(context).toContain(targetEntry);
     });
 
     it("returns empty array when all entries is empty", () => {
@@ -191,7 +203,8 @@ describe("getEntryContext", () => {
 
         // Hashtags are case-sensitive, so #Work and #work are different
         const context = getEntryContext(allEntries, targetEntry);
-        expect(context).toEqual([]);
+        expect(context).toHaveLength(1);
+        expect(context).toContain(targetEntry);
     });
 
     it("handles multiple hashtags in both entries", () => {
@@ -204,8 +217,9 @@ describe("getEntryContext", () => {
         const allEntries = [entry1, targetEntry];
 
         const context = getEntryContext(allEntries, targetEntry);
-        expect(context).toHaveLength(1);
+        expect(context).toHaveLength(2);
         expect(context).toContain(entry1);
+        expect(context).toContain(targetEntry);
     });
 
     it("returns entries in the order they appear in all_entries", () => {
@@ -222,9 +236,10 @@ describe("getEntryContext", () => {
         const allEntries = [entry1, entry2, entry3, targetEntry];
 
         const context = getEntryContext(allEntries, targetEntry);
-        expect(context).toHaveLength(3);
+        expect(context).toHaveLength(4);
         expect(context[0]).toBe(entry1);
         expect(context[1]).toBe(entry2);
         expect(context[2]).toBe(entry3);
+        expect(context[3]).toBe(targetEntry);
     });
 });
