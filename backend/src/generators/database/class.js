@@ -45,7 +45,7 @@ class DatabaseClass {
      */
     async put(key, value) {
         try {
-            await this.db.put(key, JSON.stringify(value));
+            await this.db.put(key, JSON.stringify(value), { sync: true });
         } catch (err) {
             const error = err instanceof Error ? err : new Error(String(err));
             throw new DatabaseQueryError(
