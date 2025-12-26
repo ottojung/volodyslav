@@ -267,7 +267,7 @@ function isPathLike(object) {
 
 # Complete Workflow for Independent Agents
 
-When working on a request from start to finish:
+Must follow this workflow when making changes:
 
 1. **Setup**: `npm install` (install all dependencies)
 2. **Understand**: Read relevant code and tests to understand the context
