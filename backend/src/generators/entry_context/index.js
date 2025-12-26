@@ -3,7 +3,7 @@
 const { extractHashtags, isContextEnhancing } = require("../../event");
 
 /**
- * This function extracts the context of a given entry from a list of all entries.
+ * This function extracts the basic context of a given entry from a list of all entries.
  *
  * @param {Array<Event>} all_entries
  * @param {Event} entry
