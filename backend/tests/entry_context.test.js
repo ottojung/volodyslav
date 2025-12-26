@@ -203,7 +203,7 @@ describe("getEntryContext", () => {
         const allEntries = [];
 
         const context = getEntryContext(allEntries, targetEntry);
-        expect(context).toEqual([]);
+        expect(context).toEqual([targetEntry]);
     });
 
     it("handles hashtags with different cases", () => {

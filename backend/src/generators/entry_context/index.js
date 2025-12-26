@@ -38,6 +38,10 @@ function getEntryContext(all_entries, entry) {
         return false;
     });
 
+    if (context.length === 0) {
+        return [entry];
+    }
+
     return context;
 }
 
