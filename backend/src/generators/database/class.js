@@ -2,7 +2,7 @@
  * Database class providing a thin interface to LevelDB operations.
  */
 
-const { DatabaseQueryError } = require('./errors');
+const { DatabaseQueryError } = require("./errors");
 
 /** @typedef {import('level').Level<string, object>} LevelDB */
 /** @typedef {import('./types').DatabaseCapabilities} DatabaseCapabilities */
@@ -104,10 +104,13 @@ class DatabaseClass {
      * @returns {Promise<string[]>}
      * @throws {DatabaseQueryError} If the operation fails
      */
-    async keys(prefix = '') {
+    async keys(prefix = "") {
         try {
             const keys = [];
-            for await (const key of this.db.keys({ gte: prefix, lt: prefix + '\xFF' })) {
+            for await (const key of this.db.keys({
+                gte: prefix,
+                lt: prefix + "\xFF",
+            })) {
                 keys.push(key);
             }
             return keys;
@@ -128,10 +131,13 @@ class DatabaseClass {
      * @returns {Promise<object[]>}
      * @throws {DatabaseQueryError} If the operation fails
      */
-    async getAll(prefix = '') {
+    async getAll(prefix = "") {
         try {
             const values = [];
-            for await (const [, value] of this.db.iterator({ gte: prefix, lt: prefix + '\xFF' })) {
+            for await (const [, value] of this.db.iterator({
+                gte: prefix,
+                lt: prefix + "\xFF",
+            })) {
                 values.push(value);
             }
             return values;
@@ -154,12 +160,22 @@ class DatabaseClass {
      */
     async batch(operations) {
         try {
-            const batchOps = operations.map(op => {
-                if (op.type === 'put') {                    if (!op.value) {
-                        throw new Error('Put operation requires a value');
-                    }                    return { type: /** @type {const} */ ('put'), key: op.key, value: op.value };
+            const batchOps = operations.map((op) => {
+                if (op.type === "put") {
+                    if (!op.value) {
+                        throw new Error("Put operation requires a value");
+                    }
+                    return {
+                        type: /** @type {const} */ ("put"),
+                        key: op.key,
+                        value: op.value,
+                    };
                 } else {
-                    return { type: /** @type {const} */ ('del'), key: op.key, options: { sync: true } };
+                    return {
+                        type: /** @type {const} */ ("del"),
+                        key: op.key,
+                        options: { sync: true },
+                    };
                 }
             });
             await this.db.batch(batchOps);
@@ -186,14 +202,14 @@ class DatabaseClass {
             throw new DatabaseQueryError(
                 `Failed to close database: ${error.message}`,
                 this.databasePath,
-                'CLOSE',
+                "CLOSE",
                 error
             );
         }
     }
 }
 
-const { Level } = require('level');
+const { Level } = require("level");
 
 /**
  * Factory function to create a Database instance.
@@ -201,7 +217,9 @@ const { Level } = require('level');
  * @returns {Promise<DatabaseClass>}
  */
 async function makeDatabase(databasePath) {
-    const db = /** @type {import('level').Level<string, object>} */ (new Level(databasePath, { valueEncoding: 'json' }));
+    const db = /** @type {import('level').Level<string, object>} */ (
+        new Level(databasePath, { valueEncoding: "json" })
+    );
     await db.open();
     return new DatabaseClass(db, databasePath);
 }
