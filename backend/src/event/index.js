@@ -11,6 +11,8 @@ const {
     isNestedFieldError
 } = require('./structure');
 
+const { extractHashtags } = require('./hashtags');
+
 /** @typedef {import('./structure').Event} Event */
 /** @typedef {import('./structure').SerializedEvent} SerializedEvent */
 /** @typedef {import('./id').EventId} EventId */
@@ -26,4 +28,5 @@ module.exports = {
     isInvalidValueError,
     isInvalidStructureError,
     isNestedFieldError,
+    extractHashtags,
 };
