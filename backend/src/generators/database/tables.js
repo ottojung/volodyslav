@@ -4,7 +4,7 @@
 
 const { TableCreationError } = require('./errors');
 
-/** @typedef {import('sqlite3').Database} SQLiteDatabase */
+/** @typedef {import('@libsql/client').Client} LibsqlClient */
 /** @typedef {import('./types').DatabaseCapabilities} DatabaseCapabilities */
 
 /**
@@ -40,15 +40,15 @@ const MODIFIERS_TABLE_SCHEMA = `
 
 /**
  * Ensures all required tables exist in the database.
- * @param {SQLiteDatabase} db - The SQLite database instance
+ * @param {LibsqlClient} client - The libsql client instance
  * @param {string} databasePath - Path to the database file (for error reporting)
  * @param {DatabaseCapabilities} capabilities - The capabilities object
  * @returns {Promise<void>}
  * @throws {TableCreationError} If table creation fails
  */
-async function ensureTablesExist(db, databasePath, capabilities) {
+async function ensureTablesExist(client, databasePath, capabilities) {
     try {
-        await runQuery(db, EVENTS_TABLE_SCHEMA);
+        await client.execute(EVENTS_TABLE_SCHEMA);
         capabilities.logger.logInfo({ table: 'events' }, 'DatabaseTableEnsured');
     } catch (error) {
         const err = error instanceof Error ? error : new Error(String(error));
@@ -61,7 +61,7 @@ async function ensureTablesExist(db, databasePath, capabilities) {
     }
 
     try {
-        await runQuery(db, MODIFIERS_TABLE_SCHEMA);
+        await client.execute(MODIFIERS_TABLE_SCHEMA);
         capabilities.logger.logInfo({ table: 'modifiers' }, 'DatabaseTableEnsured');
     } catch (error) {
         const err = error instanceof Error ? error : new Error(String(error));
@@ -72,24 +72,6 @@ async function ensureTablesExist(db, databasePath, capabilities) {
             err
         );
     }
-}
-
-/**
- * Executes a SQL query that doesn't return results (like CREATE TABLE).
- * @param {SQLiteDatabase} db - The SQLite database instance
- * @param {string} query - The SQL query to execute
- * @returns {Promise<void>}
- */
-function runQuery(db, query) {
-    return new Promise((resolve, reject) => {
-        db.run(query, (err) => {
-            if (err) {
-                reject(err);
-            } else {
-                resolve();
-            }
-        });
-    });
 }
 
 module.exports = {

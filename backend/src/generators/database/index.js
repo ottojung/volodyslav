@@ -1,9 +1,9 @@
 /**
  * Database module for generators.
- * Provides a thin SQLite interface for storing generated values and event log mirrors.
+ * Provides a thin libsql interface for storing generated values and event log mirrors.
  */
 
-const sqlite3 = require('sqlite3').verbose();
+const { createClient } = require('@libsql/client');
 const path = require('path');
 const { makeDatabase } = require('./class');
 const { ensureTablesExist } = require('./tables');
@@ -38,49 +38,44 @@ async function get(capabilities) {
     }
 
     // Open or create the database
-    const db = await new Promise((resolve, reject) => {
-        const database = new sqlite3.Database(databasePath, (err) => {
-            if (err) {
-                const error = err instanceof Error ? err : new Error(String(err));
-                reject(new DatabaseInitializationError(
-                    `Failed to open database: ${error.message}`,
-                    databasePath,
-                    error
-                ));
-            } else {
-                resolve(database);
-            }
+    let client;
+    try {
+        client = createClient({
+            url: `file:${databasePath}`
         });
-    });
-
-    capabilities.logger.logInfo({ databasePath }, 'DatabaseOpened');
+        capabilities.logger.logInfo({ databasePath }, 'DatabaseOpened');
+    } catch (error) {
+        const err = error instanceof Error ? error : new Error(String(error));
+        throw new DatabaseInitializationError(
+            `Failed to open database: ${err.message}`,
+            databasePath,
+            err
+        );
+    }
 
     // Enable foreign key constraints
-    await new Promise((resolve, reject) => {
-        db.run('PRAGMA foreign_keys = ON', (/** @type {Error | null} */ err) => {
-            if (err) {
-                const error = err instanceof Error ? err : new Error(String(err));
-                reject(new DatabaseInitializationError(
-                    `Failed to enable foreign keys: ${error.message}`,
-                    databasePath,
-                    error
-                ));
-            } else {
-                resolve(undefined);
-            }
-        });
-    });
+    try {
+        await client.execute('PRAGMA foreign_keys = ON');
+    } catch (error) {
+        const err = error instanceof Error ? error : new Error(String(error));
+        client.close();
+        throw new DatabaseInitializationError(
+            `Failed to enable foreign keys: ${err.message}`,
+            databasePath,
+            err
+        );
+    }
 
     // Ensure tables exist
     try {
-        await ensureTablesExist(db, databasePath, capabilities);
+        await ensureTablesExist(client, databasePath, capabilities);
     } catch (error) {
         // Close the database before re-throwing
-        db.close();
+        client.close();
         throw error;
     }
 
-    return makeDatabase(db, databasePath);
+    return makeDatabase(client, databasePath);
 }
 
 module.exports = {

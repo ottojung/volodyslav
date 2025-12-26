@@ -1,23 +1,23 @@
 /**
- * Database class providing a thin interface to SQLite operations.
+ * Database class providing a thin interface to libsql operations.
  */
 
 const { DatabaseQueryError } = require('./errors');
 
-/** @typedef {import('sqlite3').Database} SQLiteDatabase */
+/** @typedef {import('@libsql/client').Client} LibsqlClient */
 /** @typedef {import('./types').DatabaseCapabilities} DatabaseCapabilities */
 
 /**
- * A thin wrapper around SQLite database operations.
- * Provides Promise-based interfaces to common SQLite operations.
+ * A thin wrapper around libsql database operations.
+ * Provides a consistent interface for common database operations.
  */
 class DatabaseClass {
     /**
-     * The underlying SQLite database instance.
+     * The underlying libsql client instance.
      * @private
-     * @type {SQLiteDatabase}
+     * @type {LibsqlClient}
      */
-    db;
+    client;
 
     /**
      * Path to the database file.
@@ -28,89 +28,77 @@ class DatabaseClass {
 
     /**
      * @constructor
-     * @param {SQLiteDatabase} db - The SQLite database instance
+     * @param {LibsqlClient} client - The libsql client instance
      * @param {string} databasePath - Path to the database file
      */
-    constructor(db, databasePath) {
-        this.db = db;
+    constructor(client, databasePath) {
+        this.client = client;
         this.databasePath = databasePath;
     }
 
     /**
      * Runs a SQL query that doesn't return results (INSERT, UPDATE, DELETE, etc.).
      * @param {string} query - The SQL query to execute
-     * @param {unknown[]} [params] - Query parameters
+     * @param {import('@libsql/client').InArgs} [params] - Query parameters
      * @returns {Promise<void>}
      * @throws {DatabaseQueryError} If the query fails
      */
     async run(query, params = []) {
-        return new Promise((resolve, reject) => {
-            this.db.run(query, params, (err) => {
-                if (err) {
-                    const error = err instanceof Error ? err : new Error(String(err));
-                    reject(new DatabaseQueryError(
-                        `Query execution failed: ${error.message}`,
-                        this.databasePath,
-                        query,
-                        error
-                    ));
-                } else {
-                    resolve();
-                }
-            });
-        });
+        try {
+            await this.client.execute({ sql: query, args: params });
+        } catch (err) {
+            const error = err instanceof Error ? err : new Error(String(err));
+            throw new DatabaseQueryError(
+                `Query execution failed: ${error.message}`,
+                this.databasePath,
+                query,
+                error
+            );
+        }
     }
 
     /**
      * Executes a SQL query and returns all matching rows.
-     * @template T
      * @param {string} query - The SQL query to execute
-     * @param {unknown[]} [params] - Query parameters
-     * @returns {Promise<T[]>}
+     * @param {import('@libsql/client').InArgs} [params] - Query parameters
+     * @returns {Promise<import('@libsql/client').Row[]>}
      * @throws {DatabaseQueryError} If the query fails
      */
     async all(query, params = []) {
-        return new Promise((resolve, reject) => {
-            this.db.all(query, params, (err, rows) => {
-                if (err) {
-                    const error = err instanceof Error ? err : new Error(String(err));
-                    reject(new DatabaseQueryError(
-                        `Query execution failed: ${error.message}`,
-                        this.databasePath,
-                        query,
-                        error
-                    ));
-                } else {
-                    resolve(rows);
-                }
-            });
-        });
+        try {
+            const result = await this.client.execute({ sql: query, args: params });
+            return result.rows;
+        } catch (err) {
+            const error = err instanceof Error ? err : new Error(String(err));
+            throw new DatabaseQueryError(
+                `Query execution failed: ${error.message}`,
+                this.databasePath,
+                query,
+                error
+            );
+        }
     }
 
     /**
      * Executes a SQL query and returns the first matching row.
-     * @template T
      * @param {string} query - The SQL query to execute
-     * @param {unknown[]} [params] - Query parameters
-     * @returns {Promise<T | undefined>}
+     * @param {import('@libsql/client').InArgs} [params] - Query parameters
+     * @returns {Promise<import('@libsql/client').Row | undefined>}
      * @throws {DatabaseQueryError} If the query fails
      */
     async get(query, params = []) {
-        return new Promise((resolve, reject) => {
-            this.db.get(query, params, (err, row) => {
-                if (err) {
-                    const error = err instanceof Error ? err : new Error(String(err));
-                    reject(new DatabaseQueryError(
-                        `Query execution failed: ${error.message}`,
-                        this.databasePath,
-                        query,
-                        error
-                    ));
-                } else {
-                    resolve(row);
-                }
-            });
-        });
+        try {
+            const result = await this.client.execute({ sql: query, args: params });
+            return result.rows[0];
+        } catch (err) {
+            const error = err instanceof Error ? err : new Error(String(err));
+            throw new DatabaseQueryError(
+                `Query execution failed: ${error.message}`,
+                this.databasePath,
+                query,
+                error
+            );
+        }
     }
 
     /**
@@ -138,32 +126,28 @@ class DatabaseClass {
      * @returns {Promise<void>}
      */
     async close() {
-        return new Promise((resolve, reject) => {
-            this.db.close((err) => {
-                if (err) {
-                    const error = err instanceof Error ? err : new Error(String(err));
-                    reject(new DatabaseQueryError(
-                        `Failed to close database: ${error.message}`,
-                        this.databasePath,
-                        'CLOSE',
-                        error
-                    ));
-                } else {
-                    resolve();
-                }
-            });
-        });
+        try {
+            this.client.close();
+        } catch (err) {
+            const error = err instanceof Error ? err : new Error(String(err));
+            throw new DatabaseQueryError(
+                `Failed to close database: ${error.message}`,
+                this.databasePath,
+                'CLOSE',
+                error
+            );
+        }
     }
 }
 
 /**
  * Factory function to create a Database instance.
- * @param {SQLiteDatabase} db - The SQLite database instance
+ * @param {LibsqlClient} client - The libsql client instance
  * @param {string} databasePath - Path to the database file
  * @returns {DatabaseClass}
  */
-function makeDatabase(db, databasePath) {
-    return new DatabaseClass(db, databasePath);
+function makeDatabase(client, databasePath) {
+    return new DatabaseClass(client, databasePath);
 }
 
 /**
