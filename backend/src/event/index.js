@@ -13,6 +13,10 @@ const {
 
 const { extractHashtags } = require('./hashtags');
 const { isContextEnhancing } = require('./known_types');
+const eventId = require('./id');
+const asset = require('./asset');
+const fromInput = require('./from_input');
+const eventDate = require('./date');
 
 /** @typedef {import('./structure').Event} Event */
 /** @typedef {import('./structure').SerializedEvent} SerializedEvent */
@@ -31,4 +35,8 @@ module.exports = {
     isNestedFieldError,
     extractHashtags,
     isContextEnhancing,
+    id: eventId,
+    asset,
+    fromInput,
+    date: eventDate,
 };

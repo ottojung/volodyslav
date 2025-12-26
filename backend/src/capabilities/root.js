@@ -53,14 +53,15 @@
  */
 
 const random = require("../random");
-const deleterCapability = require("../filesystem/deleter");
-const dirscanner = require("../filesystem/dirscanner");
-const copierCapability = require("../filesystem/copier");
-const creatorCapability = require("../filesystem/creator");
-const writerCapability = require("../filesystem/writer");
-const readerCapability = require("../filesystem/reader");
-const appendCapability = require("../filesystem/appender");
-const checkerCapability = require("../filesystem/checker");
+const filesystem = require("../filesystem");
+const deleterCapability = filesystem.deleter;
+const dirscanner = filesystem.dirscanner;
+const copierCapability = filesystem.copier;
+const creatorCapability = filesystem.creator;
+const writerCapability = filesystem.writer;
+const readerCapability = filesystem.reader;
+const appendCapability = filesystem.appender;
+const checkerCapability = filesystem.checker;
 const gitCapability = require("../executables").git;
 const environmentCapability = require("../environment");
 const loggingCapability = require("../logger");
