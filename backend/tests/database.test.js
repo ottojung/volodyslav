@@ -124,15 +124,19 @@ describe('generators/database', () => {
                 const db = await get(capabilities);
                 
                 await db.put('event:test-id', { 
-                    id: 'test-id', 
-                    type: 'test-type',
-                    description: 'test description'
+                    value: {
+                        id: 'test-id', 
+                        type: 'test-type',
+                        description: 'test description'
+                    },
+                    isDirty: false
                 });
                 
                 const result = await db.get('event:test-id');
                 expect(result).toBeDefined();
-                expect(result.id).toBe('test-id');
-                expect(result.type).toBe('test-type');
+                expect(result.value.id).toBe('test-id');
+                expect(result.value.type).toBe('test-type');
+                expect(result.isDirty).toBe(false);
                 
                 await db.close();
             } finally {
@@ -160,7 +164,7 @@ describe('generators/database', () => {
                 const db = await get(capabilities);
                 
                 // Put a value
-                await db.put('event:test-id', { id: 'test-id', data: 'test' });
+                await db.put('event:test-id', { value: { id: 'test-id', data: 'test' }, isDirty: false });
                 
                 // Verify it exists
                 let result = await db.get('event:test-id');
@@ -185,9 +189,9 @@ describe('generators/database', () => {
                 const db = await get(capabilities);
                 
                 // Put multiple values with event: prefix
-                await db.put('event:id1', { id: 'id1' });
-                await db.put('event:id2', { id: 'id2' });
-                await db.put('modifier:id1:key1', { value: 'val1' });
+                await db.put('event:id1', { value: { id: 'id1' }, isDirty: false });
+                await db.put('event:id2', { value: { id: 'id2' }, isDirty: false });
+                await db.put('modifier:id1:key1', { value: { value: 'val1' }, isDirty: false });
                 
                 const keys = await db.keys('event:');
                 expect(keys).toHaveLength(2);
@@ -206,14 +210,16 @@ describe('generators/database', () => {
                 const db = await get(capabilities);
                 
                 // Put multiple values
-                await db.put('event:id1', { id: 'id1', type: 'type1' });
-                await db.put('event:id2', { id: 'id2', type: 'type2' });
-                await db.put('modifier:id1', { key: 'val1' });
+                await db.put('event:id1', { value: { id: 'id1', type: 'type1' }, isDirty: false });
+                await db.put('event:id2', { value: { id: 'id2', type: 'type2' }, isDirty: true });
+                await db.put('modifier:id1', { value: { key: 'val1' }, isDirty: false });
                 
                 const values = await db.getAll('event:');
                 expect(values).toHaveLength(2);
-                expect(values[0].id).toBe('id1');
-                expect(values[1].id).toBe('id2');
+                expect(values[0].value.id).toBe('id1');
+                expect(values[0].isDirty).toBe(false);
+                expect(values[1].value.id).toBe('id2');
+                expect(values[1].isDirty).toBe(true);
                 
                 await db.close();
             } finally {
@@ -228,9 +234,9 @@ describe('generators/database', () => {
                 
                 // Execute batch operations
                 await db.batch([
-                    { type: 'put', key: 'event:id1', value: { id: 'id1' } },
-                    { type: 'put', key: 'event:id2', value: { id: 'id2' } },
-                    { type: 'put', key: 'event:id3', value: { id: 'id3' } },
+                    { type: 'put', key: 'event:id1', value: { value: { id: 'id1' }, isDirty: false } },
+                    { type: 'put', key: 'event:id2', value: { value: { id: 'id2' }, isDirty: false } },
+                    { type: 'put', key: 'event:id3', value: { value: { id: 'id3' }, isDirty: false } },
                 ]);
                 
                 const keys = await db.keys('event:');
@@ -248,12 +254,12 @@ describe('generators/database', () => {
                 const db = await get(capabilities);
                 
                 // Put initial values
-                await db.put('event:id1', { id: 'id1' });
-                await db.put('event:id2', { id: 'id2' });
+                await db.put('event:id1', { value: { id: 'id1' }, isDirty: false });
+                await db.put('event:id2', { value: { id: 'id2' }, isDirty: false });
                 
                 // Batch: add one, delete one
                 await db.batch([
-                    { type: 'put', key: 'event:id3', value: { id: 'id3' } },
+                    { type: 'put', key: 'event:id3', value: { value: { id: 'id3' }, isDirty: true } },
                     { type: 'del', key: 'event:id1' },
                 ]);
                 
@@ -263,7 +269,10 @@ describe('generators/database', () => {
                 
                 expect(val1).toBeUndefined();
                 expect(val2).toBeDefined();
+                expect(val2.value.id).toBe('id2');
                 expect(val3).toBeDefined();
+                expect(val3.value.id).toBe('id3');
+                expect(val3.isDirty).toBe(true);
                 
                 await db.close();
             } finally {
@@ -286,10 +295,11 @@ describe('generators/database', () => {
                     date: '2024-01-01'
                 };
                 
-                await db.put('event:complex', complexObj);
+                const entry = { value: complexObj, isDirty: false };
+                await db.put('event:complex', entry);
                 const result = await db.get('event:complex');
                 
-                expect(result).toEqual(complexObj);
+                expect(result).toEqual(entry);
                 
                 await db.close();
             } finally {
@@ -308,10 +318,10 @@ describe('generators/database', () => {
                 await db.close();
                 
                 await expect(
-                    db.put('key', { value: 'data' })
+                    db.put('key', { value: { data: 'test' }, isDirty: false })
                 ).rejects.toThrow();
                 
-                const error = await db.put('key', { value: 'data' }).catch(e => e);
+                const error = await db.put('key', { value: { data: 'test' }, isDirty: false }).catch(e => e);
                 expect(isDatabaseQueryError(error)).toBe(true);
             } finally {
                 cleanup(capabilities.tmpDir);

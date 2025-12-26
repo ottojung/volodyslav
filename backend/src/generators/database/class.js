@@ -4,7 +4,8 @@
 
 const { DatabaseQueryError } = require("./errors");
 
-/** @typedef {import('level').Level<string, object>} LevelDB */
+/** @typedef {import('./types').DatabaseEntry} DatabaseEntry */
+/** @typedef {import('level').Level<string, DatabaseEntry>} LevelDB */
 /** @typedef {import('./types').DatabaseCapabilities} DatabaseCapabilities */
 
 /**
@@ -39,7 +40,7 @@ class DatabaseClass {
     /**
      * Stores a value in the database.
      * @param {string} key - The key to store
-     * @param {object} value - The value to store
+     * @param {DatabaseEntry} value - The database entry to store
      * @returns {Promise<void>}
      * @throws {DatabaseQueryError} If the operation fails
      */
@@ -60,7 +61,7 @@ class DatabaseClass {
     /**
      * Retrieves a value from the database.
      * @param {string} key - The key to retrieve
-     * @returns {Promise<object | undefined>}
+     * @returns {Promise<DatabaseEntry | undefined>}
      * @throws {DatabaseQueryError} If the operation fails (except for NotFoundError)
      */
     async get(key) {
@@ -128,7 +129,7 @@ class DatabaseClass {
     /**
      * Returns all values with keys matching the given prefix.
      * @param {string} prefix - The key prefix to search for
-     * @returns {Promise<object[]>}
+     * @returns {Promise<DatabaseEntry[]>}
      * @throws {DatabaseQueryError} If the operation fails
      */
     async getAll(prefix = "") {
@@ -154,7 +155,7 @@ class DatabaseClass {
 
     /**
      * Executes multiple operations in a batch.
-     * @param {Array<{type: 'put' | 'del', key: string, value?: object}>} operations
+     * @param {Array<{type: 'put' | 'del', key: string, value?: DatabaseEntry}>} operations
      * @returns {Promise<void>}
      * @throws {DatabaseQueryError} If the operation fails
      */
@@ -216,7 +217,7 @@ const { Level } = require("level");
  * @returns {Promise<DatabaseClass>}
  */
 async function makeDatabase(databasePath) {
-    const db = /** @type {import('level').Level<string, object>} */ (
+    const db = /** @type {import('level').Level<string, DatabaseEntry>} */ (
         new Level(databasePath, { valueEncoding: "json" })
     );
     await db.open();

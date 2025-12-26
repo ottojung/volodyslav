@@ -21,4 +21,11 @@
  * @property {Logger} logger - A logger instance
  */
 
+/**
+ * Database entry structure
+ * @typedef {object} DatabaseEntry
+ * @property {object} value - The actual value stored
+ * @property {boolean} isDirty - Whether the entry has been modified
+ */
+
 module.exports = {};
