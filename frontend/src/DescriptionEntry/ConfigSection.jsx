@@ -33,7 +33,8 @@ import { HelpTab } from "./tabs/HelpTab.jsx";
  * @returns {JSX.Element|null}
  */
 export const ConfigSection = ({ onShortcutClick, onDeleteEntry, currentInput = "", recentEntries = [], isLoadingEntries = false }) => {
-    const [config, setConfig] = useState(/** @type {Config|null} */ (null));
+    /** @type {[Config|null, import("react").Dispatch<import("react").SetStateAction<Config|null>>]} */
+    const [config, setConfig] = useState(null);
     const [isLoading, setIsLoading] = useState(true);
 
     useEffect(() => {
