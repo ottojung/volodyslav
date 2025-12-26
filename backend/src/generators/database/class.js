@@ -174,11 +174,10 @@ class DatabaseClass {
                     return {
                         type: /** @type {const} */ ("del"),
                         key: op.key,
-                        options: { sync: true },
                     };
                 }
             });
-            await this.db.batch(batchOps);
+            await this.db.batch(batchOps, { sync: true });
         } catch (err) {
             const error = err instanceof Error ? err : new Error(String(err));
             throw new DatabaseQueryError(
