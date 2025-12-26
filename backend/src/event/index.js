@@ -12,6 +12,7 @@ const {
 } = require('./structure');
 
 const { extractHashtags } = require('./hashtags');
+const { isContextEnhancing } = require('./known_types');
 
 /** @typedef {import('./structure').Event} Event */
 /** @typedef {import('./structure').SerializedEvent} SerializedEvent */
@@ -29,4 +30,5 @@ module.exports = {
     isInvalidStructureError,
     isNestedFieldError,
     extractHashtags,
+    isContextEnhancing,
 };
