@@ -11,8 +11,38 @@ const { difference } = require("../datetime");
 
 /**
  * @template T
- * @typedef {(args: {attempt: number, timePassed: () => Duration, retry: () => T}) => Promise<T>} RetryableCallback
+ * @typedef {(args: {attempt: number, timePassed: () => Duration, retry: () => RetryToken}) => Promise<T | RetryToken>} RetryableCallback
  */
+
+class RetryToken {
+}
+
+/**
+ * @param {unknown} value
+ * @returns {value is RetryToken}
+ */
+function isRetryToken(value) {
+    return value instanceof RetryToken;
+}
+
+class UnexpectedRetryTokenError extends Error {
+    /**
+     * @param {string} callbackName
+     */
+    constructor(callbackName) {
+        super(`Retry token returned unexpectedly in callback ${callbackName}`);
+        this.name = "UnexpectedRetryTokenError";
+        this.callbackName = callbackName;
+    }
+}
+
+/**
+ * @param {unknown} value
+ * @returns {value is UnexpectedRetryTokenError}
+ */
+function isUnexpectedRetryTokenError(value) {
+    return value instanceof UnexpectedRetryTokenError;
+}
 
 /**
  * Executes a callback with retry logic based on its return value.
@@ -39,13 +69,11 @@ async function withRetry(capabilities, callbackName, retryableCallback) {
 
     /**
      * Retry the operation.
-     * @template T
-     * @returns {T}
+     * @returns {RetryToken}
      */
     function retry() {
         toBeRetried = true;
-        const ret = /** @type {T} */ (undefined);
-        return ret;
+        return new RetryToken();
     }
 
     function timePassed() {
@@ -70,6 +98,9 @@ async function withRetry(capabilities, callbackName, retryableCallback) {
         });
 
         if (toBeRetried === false) {
+            if (isRetryToken(result)) {
+                throw new UnexpectedRetryTokenError(callbackName);
+            }
             capabilities.logger.logDebug(
                 {
                     callbackName,
@@ -87,4 +118,5 @@ async function withRetry(capabilities, callbackName, retryableCallback) {
 
 module.exports = {
     withRetry,
+    isUnexpectedRetryTokenError,
 };

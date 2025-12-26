@@ -23,6 +23,13 @@ import { HelpTab } from "./tabs/HelpTab.jsx";
  */
 
 /**
+ * @returns {Config|null}
+ */
+function getInitialConfig() {
+    return null;
+}
+
+/**
  * Component that displays configuration help and shortcuts
  * @param {Object} props
  * @param {(value: string) => void} props.onShortcutClick - Called when a shortcut is clicked
@@ -33,7 +40,9 @@ import { HelpTab } from "./tabs/HelpTab.jsx";
  * @returns {JSX.Element|null}
  */
 export const ConfigSection = ({ onShortcutClick, onDeleteEntry, currentInput = "", recentEntries = [], isLoadingEntries = false }) => {
-    const [config, setConfig] = useState(/** @type {Config|null} */ (null));
+    /** @type {[Config|null, import("react").Dispatch<import("react").SetStateAction<Config|null>>]} */
+    const configState = useState(getInitialConfig());
+    const [config, setConfig] = configState;
     const [isLoading, setIsLoading] = useState(true);
 
     useEffect(() => {

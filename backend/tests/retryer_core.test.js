@@ -53,8 +53,7 @@ describe("Retryer - Core functionality", () => {
                 callCount++;
                     if (callCount < 3) {
                         // signal that we want another attempt
-                        retry();
-                        return undefined;
+                        return retry();
                     }
                     return "done";
             };
@@ -72,8 +71,7 @@ describe("Retryer - Core functionality", () => {
             const callback = async ({ _attempt, retry }) => {
                 callCount++;
                     if (callCount === 1) {
-                        retry();
-                        return undefined;
+                        return retry();
                     }
                     return "ok";
             };
