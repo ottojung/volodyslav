@@ -39,13 +39,13 @@ class DatabaseClass {
     /**
      * Stores a value in the database.
      * @param {string} key - The key to store
-     * @param {any} value - The value to store (will be JSON stringified)
+     * @param {any} value - The value to store
      * @returns {Promise<void>}
      * @throws {DatabaseQueryError} If the operation fails
      */
     async put(key, value) {
         try {
-            await this.db.put(key, JSON.stringify(value), { sync: true });
+            await this.db.put(key, value);
         } catch (err) {
             const error = err instanceof Error ? err : new Error(String(err));
             throw new DatabaseQueryError(
@@ -66,11 +66,7 @@ class DatabaseClass {
     async get(key) {
         try {
             const value = await this.db.get(key);
-            // Level returns undefined when key doesn't exist
-            if (value === undefined) {
-                return undefined;
-            }
-            return JSON.parse(value);
+            return value;
         } catch (err) {
             const error = err instanceof Error ? err : new Error(String(err));
             throw new DatabaseQueryError(
@@ -136,7 +132,7 @@ class DatabaseClass {
         try {
             const values = [];
             for await (const [, value] of this.db.iterator({ gte: prefix, lt: prefix + '\xFF' })) {
-                values.push(JSON.parse(value));
+                values.push(value);
             }
             return values;
         } catch (err) {
@@ -160,7 +156,7 @@ class DatabaseClass {
         try {
             const batchOps = operations.map(op => {
                 if (op.type === 'put') {
-                    return { type: /** @type {const} */ ('put'), key: op.key, value: JSON.stringify(op.value), options: { sync: true } };
+                    return { type: /** @type {const} */ ('put'), key: op.key, value: op.value };
                 } else {
                     return { type: /** @type {const} */ ('del'), key: op.key, options: { sync: true } };
                 }

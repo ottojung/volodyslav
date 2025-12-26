@@ -38,7 +38,7 @@ async function get(capabilities) {
     // Open or create the database
     let db;
     try {
-        db = new Level(databasePath, { valueEncoding: 'utf8' });
+        db = new Level(databasePath, { valueEncoding: 'json' });
         await db.open();
         capabilities.logger.logDebug({ databasePath }, 'Database opened');
     } catch (error) {

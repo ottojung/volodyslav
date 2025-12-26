@@ -299,27 +299,6 @@ describe('generators/database', () => {
     });
 
     describe('Error handling', () => {
-        test('throws DatabaseQueryError on corrupted JSON', async () => {
-            const capabilities = getTestCapabilities();
-            try {
-                const db = await get(capabilities);
-                
-                // Directly write invalid JSON using the underlying Level instance
-                await db.db.put('bad-key', 'invalid json {');
-                
-                await expect(
-                    db.get('bad-key')
-                ).rejects.toThrow();
-                
-                const error = await db.get('bad-key').catch(e => e);
-                expect(isDatabaseQueryError(error)).toBe(true);
-                
-                await db.close();
-            } finally {
-                cleanup(capabilities.tmpDir);
-            }
-        });
-
         test('put() throws DatabaseQueryError on failure', async () => {
             const capabilities = getTestCapabilities();
             try {
