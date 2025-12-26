@@ -35,23 +35,6 @@ class DatabaseInitializationError extends DatabaseError {
 }
 
 /**
- * Error thrown when table creation fails.
- */
-class TableCreationError extends DatabaseError {
-    /**
-     * @param {string} message
-     * @param {string} databasePath
-     * @param {string} tableName
-     * @param {Error} [cause]
-     */
-    constructor(message, databasePath, tableName, cause) {
-        super(message, databasePath, cause);
-        this.name = "TableCreationError";
-        this.tableName = tableName;
-    }
-}
-
-/**
  * Error thrown when a database query fails.
  */
 class DatabaseQueryError extends DatabaseError {
@@ -87,15 +70,6 @@ function isDatabaseInitializationError(object) {
 }
 
 /**
- * Type guard for TableCreationError.
- * @param {unknown} object
- * @returns {object is TableCreationError}
- */
-function isTableCreationError(object) {
-    return object instanceof TableCreationError;
-}
-
-/**
  * Type guard for DatabaseQueryError.
  * @param {unknown} object
  * @returns {object is DatabaseQueryError}
@@ -107,10 +81,9 @@ function isDatabaseQueryError(object) {
 module.exports = {
     DatabaseError,
     DatabaseInitializationError,
-    TableCreationError,
     DatabaseQueryError,
     isDatabaseError,
     isDatabaseInitializationError,
-    isTableCreationError,
     isDatabaseQueryError,
 };
+

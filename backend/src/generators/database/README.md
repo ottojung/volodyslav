@@ -1,13 +1,13 @@
 # Generators Database Module
 
-Generators work inside an SQL database to process event log entries and generate additional data for storage.
+A LevelDB key-value store for the generators subsystem to manage generated values and event log mirrors.
 
 ## Overview
 
-This module provides a thin SQLite interface for the generators subsystem using better-sqlite3. It manages:
+This module provides a thin LevelDB interface for the generators subsystem. It manages:
 - Generated values storage
-- Event log mirror tables (events and modifiers)
-- Database initialization and schema management
+- Event log mirror as key-value pairs
+- Database initialization and lifecycle management
 
 ## Architecture
 
@@ -15,7 +15,7 @@ The module follows the same encapsulation pattern as `runtime_state_storage`:
 - Factory function (`get()`) instead of direct constructor access
 - Type guards for safe type checking
 - Custom error classes for specific failure modes
-- Async wrapper around synchronous better-sqlite3 API
+- Async wrapper around Level API
 
 ## Usage
 
@@ -25,75 +25,80 @@ const { get } = require('./generators/database');
 // Get database instance (creates if not exists)
 const db = await get(capabilities);
 
-// Insert an event
-await db.run(
-    'INSERT INTO events (id, type, input, original, description, date, modifiers, creator) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
-    ['event-id', 'event-type', '{}', '{}', 'Event description', '2024-01-01', '{}', 'creator']
-);
-
-// Query events
-const events = await db.all('SELECT * FROM events WHERE type = ?', ['event-type']);
-const event = await db.get('SELECT * FROM events WHERE id = ?', ['event-id']);
-
-// Use transactions
-await db.transaction(async () => {
-    await db.run('INSERT INTO events ...');
-    await db.run('INSERT INTO modifiers ...');
+// Store an event
+await db.put('event:my-id', {
+    id: 'my-id',
+    type: 'event-type',
+    description: 'Event description',
+    date: '2024-01-01'
 });
+
+// Retrieve an event
+const event = await db.get('event:my-id');
+
+// Delete an event
+await db.del('event:my-id');
+
+// Get all keys with a prefix
+const eventKeys = await db.keys('event:');
+
+// Get all values with a prefix
+const events = await db.getAll('event:');
+
+// Batch operations (atomic)
+await db.batch([
+    { type: 'put', key: 'event:id1', value: { id: 'id1' } },
+    { type: 'put', key: 'event:id2', value: { id: 'id2' } },
+    { type: 'del', key: 'event:old-id' }
+]);
 
 // Close when done
 await db.close();
 ```
 
-## Schema
+## Key Naming Convention
 
-### Events Table
-Mirrors the event log entries:
-- `id` TEXT PRIMARY KEY - Unique event identifier
-- `type` TEXT - Event type
-- `input` TEXT - Event input data (JSON)
-- `original` TEXT - Original event data (JSON)
-- `description` TEXT - Event description
-- `date` TEXT - Event date
-- `modifiers` TEXT - Event modifiers (JSON)
-- `creator` TEXT - Event creator
+Use colon-separated prefixes to organize keys:
 
-### Modifiers Table
-Stores extracted modifiers:
-- `event_id` TEXT - Foreign key to events.id (CASCADE DELETE)
-- `key` TEXT - Modifier key
-- `value` TEXT - Modifier value
-- PRIMARY KEY: (event_id, key)
+- `event:{id}` - Event entries
+- `modifier:{event_id}:{key}` - Event modifiers
+- `generated:{type}:{id}` - Generated values
+
+Examples:
+```javascript
+await db.put('event:2024-01-01-001', eventData);
+await db.put('modifier:2024-01-01-001:location', { value: 'NYC' });
+await db.put('generated:summary:2024-01', summaryData);
+```
 
 ## Technology
 
-This module uses [better-sqlite3](https://github.com/WiseLibs/better-sqlite3) - the fastest and simplest SQLite library for Node.js. It provides:
-- Synchronous API (wrapped with async interface for consistency)
-- Best performance of all Node.js SQLite libraries
-- Native compilation with no dependencies
-- Full SQLite compatibility
-- Simple prepared statement API
+This module uses [Level](https://github.com/Level/level) - a fast and simple key-value store for Node.js. It provides:
+- Async/await API
+- Efficient storage with LevelDB backend
+- Range queries and iteration
+- Atomic batch operations
+- UTF-8 string values with JSON encoding
 
 ## Error Handling
 
 All errors extend `DatabaseError` with specific subclasses:
 - `DatabaseInitializationError` - Database/directory creation failures
-- `TableCreationError` - Table schema creation failures  
-- `DatabaseQueryError` - SQL query execution failures
+- `DatabaseQueryError` - Key-value operation failures
 
 Each error includes:
-- `databasePath` - Path to the database file
+- `databasePath` - Path to the database directory
 - `cause` - Original error that caused the failure
-- Additional context (e.g., `query`, `tableName`)
+- `query` - Operation description (e.g., "PUT key", "GET key")
 
 ## Testing
 
-See [`/workspace/backend/tests/database.test.js`](/workspace/backend/tests/database.test.js) for comprehensive test examples.
+See [database.test.js](../../../tests/database.test.js) for comprehensive test examples.
 
 ## File Structure
 
-- [`class.js`](/workspace/backend/src/generators/database/class.js) - Database class with better-sqlite3 operations
-- [`index.js`](/workspace/backend/src/generators/database/index.js) - Main entry point with `get()` function
-- [`types.js`](/workspace/backend/src/generators/database/types.js) - JSDoc type definitions
-- [`errors.js`](/workspace/backend/src/generators/database/errors.js) - Custom error classes
-- [`tables.js`](/workspace/backend/src/generators/database/tables.js) - Schema definitions and table creation
+- [class.js](class.js) - Database class with Level operations
+- [index.js](index.js) - Main entry point with `get()` function
+- [types.js](types.js) - JSDoc type definitions
+- [errors.js](errors.js) - Custom error classes
+

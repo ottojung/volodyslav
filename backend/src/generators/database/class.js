@@ -1,26 +1,26 @@
 /**
- * Database class providing a thin interface to SQLite operations.
+ * Database class providing a thin interface to LevelDB operations.
  */
 
 const { DatabaseQueryError } = require('./errors');
 
-/** @typedef {import('better-sqlite3').Database} BetterSqliteDatabase */
+/** @typedef {import('level').Level} LevelDB */
 /** @typedef {import('./types').DatabaseCapabilities} DatabaseCapabilities */
 
 /**
- * A thin wrapper around better-sqlite3 database operations.
- * Provides a consistent async interface for common database operations.
+ * A thin wrapper around LevelDB database operations.
+ * Provides async key-value storage for events and modifiers.
  */
 class DatabaseClass {
     /**
-     * The underlying better-sqlite3 database instance.
+     * The underlying Level database instance.
      * @private
-     * @type {BetterSqliteDatabase}
+     * @type {LevelDB}
      */
     db;
 
     /**
-     * Path to the database file.
+     * Path to the database directory.
      * @private
      * @type {string}
      */
@@ -28,8 +28,8 @@ class DatabaseClass {
 
     /**
      * @constructor
-     * @param {BetterSqliteDatabase} db - The better-sqlite3 database instance
-     * @param {string} databasePath - Path to the database file
+     * @param {LevelDB} db - The Level database instance
+     * @param {string} databasePath - Path to the database directory
      */
     constructor(db, databasePath) {
         this.db = db;
@@ -37,85 +37,143 @@ class DatabaseClass {
     }
 
     /**
-     * Runs a SQL query that doesn't return results (INSERT, UPDATE, DELETE, etc.).
-     * @param {string} query - The SQL query to execute
-     * @param {any[]} [params] - Query parameters
+     * Stores a value in the database.
+     * @param {string} key - The key to store
+     * @param {any} value - The value to store (will be JSON stringified)
      * @returns {Promise<void>}
-     * @throws {DatabaseQueryError} If the query fails
+     * @throws {DatabaseQueryError} If the operation fails
      */
-    async run(query, params = []) {
+    async put(key, value) {
         try {
-            this.db.prepare(query).run(...params);
+            await this.db.put(key, JSON.stringify(value));
         } catch (err) {
             const error = err instanceof Error ? err : new Error(String(err));
             throw new DatabaseQueryError(
-                `Query execution failed: ${error.message}`,
+                `Put operation failed: ${error.message}`,
                 this.databasePath,
-                query,
+                `PUT ${key}`,
                 error
             );
         }
     }
 
     /**
-     * Executes a SQL query and returns all matching rows.
-     * @param {string} query - The SQL query to execute
-     * @param {any[]} [params] - Query parameters
-     * @returns {Promise<any[]>}
-     * @throws {DatabaseQueryError} If the query fails
-     */
-    async all(query, params = []) {
-        try {
-            return this.db.prepare(query).all(...params);
-        } catch (err) {
-            const error = err instanceof Error ? err : new Error(String(err));
-            throw new DatabaseQueryError(
-                `Query execution failed: ${error.message}`,
-                this.databasePath,
-                query,
-                error
-            );
-        }
-    }
-
-    /**
-     * Executes a SQL query and returns the first matching row.
-     * @param {string} query - The SQL query to execute
-     * @param {any[]} [params] - Query parameters
+     * Retrieves a value from the database.
+     * @param {string} key - The key to retrieve
      * @returns {Promise<any | undefined>}
-     * @throws {DatabaseQueryError} If the query fails
+     * @throws {DatabaseQueryError} If the operation fails (except for NotFoundError)
      */
-    async get(query, params = []) {
+    async get(key) {
         try {
-            return this.db.prepare(query).get(...params);
+            const value = await this.db.get(key);
+            // Level returns undefined when key doesn't exist
+            if (value === undefined) {
+                return undefined;
+            }
+            return JSON.parse(value);
         } catch (err) {
             const error = err instanceof Error ? err : new Error(String(err));
             throw new DatabaseQueryError(
-                `Query execution failed: ${error.message}`,
+                `Get operation failed: ${error.message}`,
                 this.databasePath,
-                query,
+                `GET ${key}`,
                 error
             );
         }
     }
 
     /**
-     * Executes a callback within a database transaction.
-     * If the callback throws an error, the transaction is rolled back.
-     * @template T
-     * @param {() => Promise<T>} callback - The callback to execute within the transaction
-     * @returns {Promise<T>}
-     * @throws {DatabaseQueryError} If the transaction fails
+     * Deletes a value from the database.
+     * @param {string} key - The key to delete
+     * @returns {Promise<void>}
+     * @throws {DatabaseQueryError} If the operation fails
      */
-    async transaction(callback) {
-        await this.run('BEGIN TRANSACTION');
+    async del(key) {
         try {
-            const result = await callback();
-            await this.run('COMMIT');
-            return result;
-        } catch (error) {
-            await this.run('ROLLBACK');
-            throw error;
+            await this.db.del(key);
+        } catch (err) {
+            const error = err instanceof Error ? err : new Error(String(err));
+            throw new DatabaseQueryError(
+                `Delete operation failed: ${error.message}`,
+                this.databasePath,
+                `DEL ${key}`,
+                error
+            );
+        }
+    }
+
+    /**
+     * Returns all keys with the given prefix.
+     * @param {string} prefix - The key prefix to search for
+     * @returns {Promise<string[]>}
+     * @throws {DatabaseQueryError} If the operation fails
+     */
+    async keys(prefix = '') {
+        try {
+            const keys = [];
+            for await (const key of this.db.keys({ gte: prefix, lt: prefix + '\xFF' })) {
+                keys.push(key);
+            }
+            return keys;
+        } catch (err) {
+            const error = err instanceof Error ? err : new Error(String(err));
+            throw new DatabaseQueryError(
+                `Keys operation failed: ${error.message}`,
+                this.databasePath,
+                `KEYS ${prefix}*`,
+                error
+            );
+        }
+    }
+
+    /**
+     * Returns all values with keys matching the given prefix.
+     * @param {string} prefix - The key prefix to search for
+     * @returns {Promise<any[]>}
+     * @throws {DatabaseQueryError} If the operation fails
+     */
+    async getAll(prefix = '') {
+        try {
+            const values = [];
+            for await (const [, value] of this.db.iterator({ gte: prefix, lt: prefix + '\xFF' })) {
+                values.push(JSON.parse(value));
+            }
+            return values;
+        } catch (err) {
+            const error = err instanceof Error ? err : new Error(String(err));
+            throw new DatabaseQueryError(
+                `GetAll operation failed: ${error.message}`,
+                this.databasePath,
+                `GETALL ${prefix}*`,
+                error
+            );
+        }
+    }
+
+    /**
+     * Executes multiple operations in a batch.
+     * @param {Array<{type: 'put' | 'del', key: string, value?: any}>} operations
+     * @returns {Promise<void>}
+     * @throws {DatabaseQueryError} If the operation fails
+     */
+    async batch(operations) {
+        try {
+            const batchOps = operations.map(op => {
+                if (op.type === 'put') {
+                    return { type: /** @type {const} */ ('put'), key: op.key, value: JSON.stringify(op.value) };
+                } else {
+                    return { type: /** @type {const} */ ('del'), key: op.key };
+                }
+            });
+            await this.db.batch(batchOps);
+        } catch (err) {
+            const error = err instanceof Error ? err : new Error(String(err));
+            throw new DatabaseQueryError(
+                `Batch operation failed: ${error.message}`,
+                this.databasePath,
+                `BATCH ${operations.length} ops`,
+                error
+            );
         }
     }
 
@@ -125,7 +183,7 @@ class DatabaseClass {
      */
     async close() {
         try {
-            this.db.close();
+            await this.db.close();
         } catch (err) {
             const error = err instanceof Error ? err : new Error(String(err));
             throw new DatabaseQueryError(
@@ -140,8 +198,8 @@ class DatabaseClass {
 
 /**
  * Factory function to create a Database instance.
- * @param {BetterSqliteDatabase} db - The better-sqlite3 database instance
- * @param {string} databasePath - Path to the database file
+ * @param {LevelDB} db - The Level database instance
+ * @param {string} databasePath - Path to the database directory
  * @returns {DatabaseClass}
  */
 function makeDatabase(db, databasePath) {

@@ -1,12 +1,11 @@
 /**
  * Database module for generators.
- * Provides a thin SQLite interface for storing generated values and event log mirrors.
+ * Provides a LevelDB key-value store for storing generated values and event log mirrors.
  */
 
-const Database = require('better-sqlite3');
+const { Level } = require('level');
 const path = require('path');
 const { makeDatabase } = require('./class');
-const { ensureTablesExist } = require('./tables');
 const { DatabaseInitializationError } = require('./errors');
 
 /** @typedef {import('./types').DatabaseCapabilities} DatabaseCapabilities */
@@ -14,8 +13,7 @@ const { DatabaseInitializationError } = require('./errors');
 
 /**
  * Gets or creates a database instance for the generators module.
- * The database file is stored in the Volodyslav data directory.
- * Ensures all required tables (events, modifiers) exist.
+ * The database is stored in the Volodyslav data directory.
  *
  * @param {DatabaseCapabilities} capabilities - The capabilities object
  * @returns {Promise<Database>} The database instance
@@ -23,7 +21,7 @@ const { DatabaseInitializationError } = require('./errors');
  */
 async function get(capabilities) {
     const dataDir = capabilities.environment.pathToVolodyslavDataDirectory();
-    const databasePath = path.join(dataDir, 'generators.db');
+    const databasePath = path.join(dataDir, 'generators-leveldb');
 
     // Ensure the data directory exists
     try {
@@ -40,7 +38,8 @@ async function get(capabilities) {
     // Open or create the database
     let db;
     try {
-        db = new Database(databasePath);
+        db = new Level(databasePath, { valueEncoding: 'utf8' });
+        await db.open();
         capabilities.logger.logInfo({ databasePath }, 'DatabaseOpened');
     } catch (error) {
         const err = error instanceof Error ? error : new Error(String(error));
@@ -49,28 +48,6 @@ async function get(capabilities) {
             databasePath,
             err
         );
-    }
-
-    // Enable foreign key constraints
-    try {
-        db.pragma('foreign_keys = ON');
-    } catch (error) {
-        const err = error instanceof Error ? error : new Error(String(error));
-        db.close();
-        throw new DatabaseInitializationError(
-            `Failed to enable foreign keys: ${err.message}`,
-            databasePath,
-            err
-        );
-    }
-
-    // Ensure tables exist
-    try {
-        await ensureTablesExist(db, databasePath, capabilities);
-    } catch (error) {
-        // Close the database before re-throwing
-        db.close();
-        throw error;
     }
 
     return makeDatabase(db, databasePath);

@@ -10,7 +10,6 @@ const { isDatabase } = require('../src/generators/database/class');
 const { 
     isDatabaseError,
     isDatabaseInitializationError,
-    isTableCreationError,
     isDatabaseQueryError 
 } = require('../src/generators/database/errors');
 const { getMockedRootCapabilities } = require('./spies');
@@ -48,6 +47,7 @@ function cleanup(tmpDir) {
     }
 }
 
+
 describe('generators/database', () => {
     describe('get()', () => {
         test('creates and returns a database instance', async () => {
@@ -67,52 +67,13 @@ describe('generators/database', () => {
             }
         });
 
-        test('creates database file in the data directory', async () => {
+        test('creates database directory in the data directory', async () => {
             const capabilities = getTestCapabilities();
             try {
                 const db = await get(capabilities);
-                const expectedPath = path.join(capabilities.tmpDir, 'generators.db');
+                const expectedPath = path.join(capabilities.tmpDir, 'generators-leveldb');
                 
                 expect(fs.existsSync(expectedPath)).toBe(true);
-                
-                await db.close();
-            } finally {
-                cleanup(capabilities.tmpDir);
-            }
-        });
-
-        test('creates events table with correct schema', async () => {
-            const capabilities = getTestCapabilities();
-            try {
-                const db = await get(capabilities);
-                
-                // Query the schema of events table
-                const tableInfo = await db.all('PRAGMA table_info(events)');
-                const columnNames = tableInfo.map(col => col.name);
-                
-                expect(columnNames).toContain('id');
-                expect(columnNames).toContain('type');
-                expect(columnNames).toContain('input');
-                expect(columnNames).toContain('original');
-                
-                await db.close();
-            } finally {
-                cleanup(capabilities.tmpDir);
-            }
-        });
-
-        test('creates modifiers table with correct schema', async () => {
-            const capabilities = getTestCapabilities();
-            try {
-                const db = await get(capabilities);
-                
-                // Query the schema of modifiers table
-                const tableInfo = await db.all('PRAGMA table_info(modifiers)');
-                const columnNames = tableInfo.map(col => col.name);
-                
-                expect(columnNames).toContain('event_id');
-                expect(columnNames).toContain('key');
-                expect(columnNames).toContain('value');
                 
                 await db.close();
             } finally {
@@ -157,17 +118,18 @@ describe('generators/database', () => {
     });
 
     describe('Database operations', () => {
-        test('run() executes INSERT queries', async () => {
+        test('put() stores a value', async () => {
             const capabilities = getTestCapabilities();
             try {
                 const db = await get(capabilities);
                 
-                await db.run(
-                    'INSERT INTO events (id, type, input, original, description, date, modifiers, creator) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
-                    ['test-id', 'test-type', '{}', '{}', 'test description', '2024-01-01', '{}', 'test']
-                );
+                await db.put('event:test-id', { 
+                    id: 'test-id', 
+                    type: 'test-type',
+                    description: 'test description'
+                });
                 
-                const result = await db.get('SELECT * FROM events WHERE id = ?', ['test-id']);
+                const result = await db.get('event:test-id');
                 expect(result).toBeDefined();
                 expect(result.id).toBe('test-id');
                 expect(result.type).toBe('test-type');
@@ -178,103 +140,12 @@ describe('generators/database', () => {
             }
         });
 
-        test('all() returns multiple rows', async () => {
+        test('get() returns undefined for non-existent key', async () => {
             const capabilities = getTestCapabilities();
             try {
                 const db = await get(capabilities);
                 
-                // Insert multiple events
-                await db.run(
-                    'INSERT INTO events (id, type, input, original, description, date, modifiers, creator) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
-                    ['id1', 'type1', '{}', '{}', 'desc1', '2024-01-01', '{}', 'test']
-                );
-                await db.run(
-                    'INSERT INTO events (id, type, input, original, description, date, modifiers, creator) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
-                    ['id2', 'type2', '{}', '{}', 'desc2', '2024-01-02', '{}', 'test']
-                );
-                
-                const results = await db.all('SELECT * FROM events ORDER BY id');
-                expect(results).toHaveLength(2);
-                expect(results[0].id).toBe('id1');
-                expect(results[1].id).toBe('id2');
-                
-                await db.close();
-            } finally {
-                cleanup(capabilities.tmpDir);
-            }
-        });
-
-        test('get() returns single row or undefined', async () => {
-            const capabilities = getTestCapabilities();
-            try {
-                const db = await get(capabilities);
-                
-                // Test undefined for non-existent row
-                const nonExistent = await db.get('SELECT * FROM events WHERE id = ?', ['non-existent']);
-                expect(nonExistent).toBeUndefined();
-                
-                // Insert and retrieve
-                await db.run(
-                    'INSERT INTO events (id, type, input, original, description, date, modifiers, creator) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
-                    ['test-id', 'test-type', '{}', '{}', 'desc', '2024-01-01', '{}', 'test']
-                );
-                
-                const result = await db.get('SELECT * FROM events WHERE id = ?', ['test-id']);
-                expect(result).toBeDefined();
-                expect(result.id).toBe('test-id');
-                
-                await db.close();
-            } finally {
-                cleanup(capabilities.tmpDir);
-            }
-        });
-
-        test('run() executes UPDATE queries', async () => {
-            const capabilities = getTestCapabilities();
-            try {
-                const db = await get(capabilities);
-                
-                // Insert
-                await db.run(
-                    'INSERT INTO events (id, type, input, original, description, date, modifiers, creator) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
-                    ['test-id', 'type1', '{}', '{}', 'desc1', '2024-01-01', '{}', 'test']
-                );
-                
-                // Update
-                await db.run(
-                    'UPDATE events SET type = ? WHERE id = ?',
-                    ['type2', 'test-id']
-                );
-                
-                const result = await db.get('SELECT * FROM events WHERE id = ?', ['test-id']);
-                expect(result.type).toBe('type2');
-                
-                await db.close();
-            } finally {
-                cleanup(capabilities.tmpDir);
-            }
-        });
-
-        test('run() executes DELETE queries', async () => {
-            const capabilities = getTestCapabilities();
-            try {
-                const db = await get(capabilities);
-                
-                // Insert
-                await db.run(
-                    'INSERT INTO events (id, type, input, original, description, date, modifiers, creator) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
-                    ['test-id', 'test-type', '{}', '{}', 'desc', '2024-01-01', '{}', 'test']
-                );
-                
-                // Verify it exists
-                let result = await db.get('SELECT * FROM events WHERE id = ?', ['test-id']);
-                expect(result).toBeDefined();
-                
-                // Delete
-                await db.run('DELETE FROM events WHERE id = ?', ['test-id']);
-                
-                // Verify it's gone
-                result = await db.get('SELECT * FROM events WHERE id = ?', ['test-id']);
+                const result = await db.get('event:non-existent');
                 expect(result).toBeUndefined();
                 
                 await db.close();
@@ -283,18 +154,24 @@ describe('generators/database', () => {
             }
         });
 
-        test('foreign key constraint is enforced', async () => {
+        test('del() removes a value', async () => {
             const capabilities = getTestCapabilities();
             try {
                 const db = await get(capabilities);
                 
-                // Try to insert modifier without corresponding event
-                await expect(
-                    db.run(
-                        'INSERT INTO modifiers (event_id, key, value) VALUES (?, ?, ?)',
-                        ['non-existent-id', 'key1', 'value1']
-                    )
-                ).rejects.toThrow();
+                // Put a value
+                await db.put('event:test-id', { id: 'test-id', data: 'test' });
+                
+                // Verify it exists
+                let result = await db.get('event:test-id');
+                expect(result).toBeDefined();
+                
+                // Delete it
+                await db.del('event:test-id');
+                
+                // Verify it's gone
+                result = await db.get('event:test-id');
+                expect(result).toBeUndefined();
                 
                 await db.close();
             } finally {
@@ -302,63 +179,20 @@ describe('generators/database', () => {
             }
         });
 
-        test('cascade delete removes related modifiers', async () => {
+        test('keys() returns all keys with prefix', async () => {
             const capabilities = getTestCapabilities();
             try {
                 const db = await get(capabilities);
                 
-                // Insert event
-                await db.run(
-                    'INSERT INTO events (id, type, input, original, description, date, modifiers, creator) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
-                    ['event-id', 'test-type', '{}', '{}', 'desc', '2024-01-01', '{}', 'test']
-                );
+                // Put multiple values with event: prefix
+                await db.put('event:id1', { id: 'id1' });
+                await db.put('event:id2', { id: 'id2' });
+                await db.put('modifier:id1:key1', { value: 'val1' });
                 
-                // Insert modifier
-                await db.run(
-                    'INSERT INTO modifiers (event_id, key, value) VALUES (?, ?, ?)',
-                    ['event-id', 'key1', 'value1']
-                );
-                
-                // Verify modifier exists
-                let modifier = await db.get('SELECT * FROM modifiers WHERE event_id = ?', ['event-id']);
-                expect(modifier).toBeDefined();
-                
-                // Delete event
-                await db.run('DELETE FROM events WHERE id = ?', ['event-id']);
-                
-                // Verify modifier is also deleted
-                modifier = await db.get('SELECT * FROM modifiers WHERE event_id = ?', ['event-id']);
-                expect(modifier).toBeUndefined();
-                
-                await db.close();
-            } finally {
-                cleanup(capabilities.tmpDir);
-            }
-        });
-    });
-
-    describe('Transactions', () => {
-        test('transaction() commits successful operations', async () => {
-            const capabilities = getTestCapabilities();
-            try {
-                const db = await get(capabilities);
-                
-                const result = await db.transaction(async () => {
-                    await db.run(
-                        'INSERT INTO events (id, type, input, original, description, date, modifiers, creator) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
-                        ['id1', 'type1', '{}', '{}', 'desc1', '2024-01-01', '{}', 'test']
-                    );
-                    await db.run(
-                        'INSERT INTO events (id, type, input, original, description, date, modifiers, creator) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
-                        ['id2', 'type2', '{}', '{}', 'desc2', '2024-01-02', '{}', 'test']
-                    );
-                    return 'success';
-                });
-                
-                expect(result).toBe('success');
-                
-                const events = await db.all('SELECT * FROM events');
-                expect(events).toHaveLength(2);
+                const keys = await db.keys('event:');
+                expect(keys).toHaveLength(2);
+                expect(keys).toContain('event:id1');
+                expect(keys).toContain('event:id2');
                 
                 await db.close();
             } finally {
@@ -366,28 +200,96 @@ describe('generators/database', () => {
             }
         });
 
-        test('transaction() rolls back on error', async () => {
+        test('getAll() returns all values with prefix', async () => {
             const capabilities = getTestCapabilities();
             try {
                 const db = await get(capabilities);
                 
-                await expect(
-                    db.transaction(async () => {
-                        await db.run(
-                            'INSERT INTO events (id, type, input, original, description, date, modifiers, creator) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
-                            ['id1', 'type1', '{}', '{}', 'desc1', '2024-01-01', '{}', 'test']
-                        );
-                        // This will fail due to duplicate primary key
-                        await db.run(
-                            'INSERT INTO events (id, type, input, original, description, date, modifiers, creator) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
-                            ['id1', 'type2', '{}', '{}', 'desc2', '2024-01-02', '{}', 'test']
-                        );
-                    })
-                ).rejects.toThrow();
+                // Put multiple values
+                await db.put('event:id1', { id: 'id1', type: 'type1' });
+                await db.put('event:id2', { id: 'id2', type: 'type2' });
+                await db.put('modifier:id1', { key: 'val1' });
                 
-                // Verify no events were inserted
-                const events = await db.all('SELECT * FROM events');
-                expect(events).toHaveLength(0);
+                const values = await db.getAll('event:');
+                expect(values).toHaveLength(2);
+                expect(values[0].id).toBe('id1');
+                expect(values[1].id).toBe('id2');
+                
+                await db.close();
+            } finally {
+                cleanup(capabilities.tmpDir);
+            }
+        });
+
+        test('batch() executes multiple operations atomically', async () => {
+            const capabilities = getTestCapabilities();
+            try {
+                const db = await get(capabilities);
+                
+                // Execute batch operations
+                await db.batch([
+                    { type: 'put', key: 'event:id1', value: { id: 'id1' } },
+                    { type: 'put', key: 'event:id2', value: { id: 'id2' } },
+                    { type: 'put', key: 'event:id3', value: { id: 'id3' } },
+                ]);
+                
+                const keys = await db.keys('event:');
+                expect(keys).toHaveLength(3);
+                
+                await db.close();
+            } finally {
+                cleanup(capabilities.tmpDir);
+            }
+        });
+
+        test('batch() can mix put and del operations', async () => {
+            const capabilities = getTestCapabilities();
+            try {
+                const db = await get(capabilities);
+                
+                // Put initial values
+                await db.put('event:id1', { id: 'id1' });
+                await db.put('event:id2', { id: 'id2' });
+                
+                // Batch: add one, delete one
+                await db.batch([
+                    { type: 'put', key: 'event:id3', value: { id: 'id3' } },
+                    { type: 'del', key: 'event:id1' },
+                ]);
+                
+                const val1 = await db.get('event:id1');
+                const val2 = await db.get('event:id2');
+                const val3 = await db.get('event:id3');
+                
+                expect(val1).toBeUndefined();
+                expect(val2).toBeDefined();
+                expect(val3).toBeDefined();
+                
+                await db.close();
+            } finally {
+                cleanup(capabilities.tmpDir);
+            }
+        });
+
+        test('stores and retrieves complex objects', async () => {
+            const capabilities = getTestCapabilities();
+            try {
+                const db = await get(capabilities);
+                
+                const complexObj = {
+                    id: 'test-id',
+                    type: 'event',
+                    nested: {
+                        array: [1, 2, 3],
+                        object: { key: 'value' }
+                    },
+                    date: '2024-01-01'
+                };
+                
+                await db.put('event:complex', complexObj);
+                const result = await db.get('event:complex');
+                
+                expect(result).toEqual(complexObj);
                 
                 await db.close();
             } finally {
@@ -397,18 +299,20 @@ describe('generators/database', () => {
     });
 
     describe('Error handling', () => {
-        test('throws DatabaseQueryError on invalid SQL', async () => {
+        test('throws DatabaseQueryError on corrupted JSON', async () => {
             const capabilities = getTestCapabilities();
             try {
                 const db = await get(capabilities);
                 
+                // Directly write invalid JSON using the underlying Level instance
+                await db.db.put('bad-key', 'invalid json {');
+                
                 await expect(
-                    db.run('INVALID SQL STATEMENT')
+                    db.get('bad-key')
                 ).rejects.toThrow();
                 
-                const error = await db.run('INVALID SQL STATEMENT').catch(e => e);
+                const error = await db.get('bad-key').catch(e => e);
                 expect(isDatabaseQueryError(error)).toBe(true);
-                expect(error.query).toBe('INVALID SQL STATEMENT');
                 
                 await db.close();
             } finally {
@@ -416,32 +320,39 @@ describe('generators/database', () => {
             }
         });
 
-        test('throws DatabaseQueryError on constraint violation', async () => {
+        test('put() throws DatabaseQueryError on failure', async () => {
             const capabilities = getTestCapabilities();
             try {
                 const db = await get(capabilities);
                 
-                // Insert first event
-                await db.run(
-                    'INSERT INTO events (id, type, input, original, description, date, modifiers, creator) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
-                    ['duplicate-id', 'type1', '{}', '{}', 'desc1', '2024-01-01', '{}', 'test']
-                );
+                // Close the database to cause errors
+                await db.close();
                 
-                // Try to insert with same ID
                 await expect(
-                    db.run(
-                        'INSERT INTO events (id, type, input, original, description, date, modifiers, creator) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
-                        ['duplicate-id', 'type2', '{}', '{}', 'desc2', '2024-01-02', '{}', 'test']
-                    )
+                    db.put('key', { value: 'data' })
                 ).rejects.toThrow();
                 
-                const error = await db.run(
-                    'INSERT INTO events (id, type, input, original, description, date, modifiers, creator) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
-                    ['duplicate-id', 'type2', '{}', '{}', 'desc2', '2024-01-02', '{}', 'test']
-                ).catch(e => e);
+                const error = await db.put('key', { value: 'data' }).catch(e => e);
                 expect(isDatabaseQueryError(error)).toBe(true);
+            } finally {
+                cleanup(capabilities.tmpDir);
+            }
+        });
+
+        test('del() throws DatabaseQueryError on failure', async () => {
+            const capabilities = getTestCapabilities();
+            try {
+                const db = await get(capabilities);
                 
+                // Close the database to cause errors
                 await db.close();
+                
+                await expect(
+                    db.del('key')
+                ).rejects.toThrow();
+                
+                const error = await db.del('key').catch(e => e);
+                expect(isDatabaseQueryError(error)).toBe(true);
             } finally {
                 cleanup(capabilities.tmpDir);
             }
@@ -466,16 +377,14 @@ describe('generators/database', () => {
         });
 
         test('error type guards work correctly', () => {
-            const { DatabaseError, DatabaseInitializationError, TableCreationError, DatabaseQueryError } = require('../src/generators/database/errors');
+            const { DatabaseError, DatabaseInitializationError, DatabaseQueryError } = require('../src/generators/database/errors');
             
             const dbError = new DatabaseError('test', '/path/db');
             const initError = new DatabaseInitializationError('test', '/path/db');
-            const tableError = new TableCreationError('test', '/path/db', 'events');
-            const queryError = new DatabaseQueryError('test', '/path/db', 'SELECT *');
+            const queryError = new DatabaseQueryError('test', '/path/db', 'PUT key');
             
             expect(isDatabaseError(dbError)).toBe(true);
             expect(isDatabaseInitializationError(initError)).toBe(true);
-            expect(isTableCreationError(tableError)).toBe(true);
             expect(isDatabaseQueryError(queryError)).toBe(true);
             
             expect(isDatabaseError({})).toBe(false);
