@@ -82,6 +82,43 @@ class TaskInvalidStructureError extends TaskTryDeserializeError {
     }
 }
 
+/**
+ * @param {string} field
+ * @returns {TaskMissingFieldError}
+ */
+function makeTaskMissingFieldError(field) {
+    return new TaskMissingFieldError(field);
+}
+
+/**
+ * @param {string} field
+ * @param {unknown} value
+ * @param {string} expectedType
+ * @returns {TaskInvalidTypeError}
+ */
+function makeTaskInvalidTypeError(field, value, expectedType) {
+    return new TaskInvalidTypeError(field, value, expectedType);
+}
+
+/**
+ * @param {string} field
+ * @param {unknown} value
+ * @param {string} reason
+ * @returns {TaskInvalidValueError}
+ */
+function makeTaskInvalidValueError(field, value, reason) {
+    return new TaskInvalidValueError(field, value, reason);
+}
+
+/**
+ * @param {string} message
+ * @param {unknown} value
+ * @returns {TaskInvalidStructureError}
+ */
+function makeTaskInvalidStructureError(message, value) {
+    return new TaskInvalidStructureError(message, value);
+}
+
 // Type guard functions
 /**
  * @param {unknown} object
@@ -124,11 +161,10 @@ function isTaskInvalidStructureError(object) {
 }
 
 module.exports = {
-    TaskTryDeserializeError,
-    TaskMissingFieldError,
-    TaskInvalidTypeError,
-    TaskInvalidValueError,
-    TaskInvalidStructureError,
+    makeTaskMissingFieldError,
+    makeTaskInvalidTypeError,
+    makeTaskInvalidValueError,
+    makeTaskInvalidStructureError,
     isTaskTryDeserializeError,
     isTaskMissingFieldError,
     isTaskInvalidTypeError,

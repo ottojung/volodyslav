@@ -21,7 +21,7 @@ const {
  */
 
 /**
- * @typedef {import('./serialization_errors').TaskTryDeserializeError} TaskTryDeserializeError
+ * @typedef {import('./serialization').TaskTryDeserializeError} TaskTryDeserializeError
  */
 
 /**

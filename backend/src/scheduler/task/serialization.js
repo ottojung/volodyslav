@@ -5,10 +5,10 @@
 const { makeTask, getLastSuccessTime, getLastFailureTime, getLastAttemptTime, getPendingRetryUntil, getSchedulerIdentifier, createStateFromProperties } = require('./structure');
 const { tryDeserialize: dateTimeTryDeserialize, isDateTimeTryDeserializeError } = require('../../datetime');
 const {
-    TaskMissingFieldError,
-    TaskInvalidTypeError,
-    TaskInvalidValueError,
-    TaskInvalidStructureError,
+    makeTaskMissingFieldError,
+    makeTaskInvalidTypeError,
+    makeTaskInvalidValueError,
+    makeTaskInvalidStructureError,
 } = require('./serialization_errors');
 
 /**
@@ -17,7 +17,10 @@ const {
  * @typedef {import('../../datetime').DateTime} DateTime
  * @typedef {import('../../datetime').Duration} Duration
  * @typedef {import('../types').Callback} Callback
- * @typedef {import('./serialization_errors').TaskTryDeserializeError} TaskTryDeserializeError
+ * @typedef {ReturnType<typeof makeTaskMissingFieldError> |
+ *     ReturnType<typeof makeTaskInvalidTypeError> |
+ *     ReturnType<typeof makeTaskInvalidValueError> |
+ *     ReturnType<typeof makeTaskInvalidStructureError>} TaskTryDeserializeError
  */
 
 /**
@@ -83,34 +86,34 @@ function serialize(task) {
 function tryDeserialize(obj, registrations) {
     try {
         if (!obj || typeof obj !== "object" || Array.isArray(obj)) {
-            return new TaskInvalidStructureError(
+            return makeTaskInvalidStructureError(
                 "Object must be a non-null object and not an array",
                 obj
             );
         }
 
         // Validate name field
-        if (!("name" in obj)) return new TaskMissingFieldError("name");
+        if (!("name" in obj)) return makeTaskMissingFieldError("name");
         const name = obj.name;
         if (typeof name !== "string") {
-            return new TaskInvalidTypeError("name", name, "string");
+            return makeTaskInvalidTypeError("name", name, "string");
         }
 
         // Validate cronExpression field
-        if (!("cronExpression" in obj)) return new TaskMissingFieldError("cronExpression");
+        if (!("cronExpression" in obj)) return makeTaskMissingFieldError("cronExpression");
         const cronExpression = obj.cronExpression;
         if (typeof cronExpression !== "string") {
-            return new TaskInvalidTypeError("cronExpression", cronExpression, "string");
+            return makeTaskInvalidTypeError("cronExpression", cronExpression, "string");
         }
 
         // Validate retryDelayMs field
-        if (!("retryDelayMs" in obj)) return new TaskMissingFieldError("retryDelayMs");
+        if (!("retryDelayMs" in obj)) return makeTaskMissingFieldError("retryDelayMs");
         const retryDelayMs = obj.retryDelayMs;
         if (typeof retryDelayMs !== "number" || !Number.isFinite(retryDelayMs) || retryDelayMs < 0) {
-            return new TaskInvalidTypeError("retryDelayMs", retryDelayMs, "non-negative number");
+            return makeTaskInvalidTypeError("retryDelayMs", retryDelayMs, "non-negative number");
         }
         if (!Number.isInteger(retryDelayMs)) {
-            return new TaskInvalidTypeError("retryDelayMs", retryDelayMs, "integer");
+            return makeTaskInvalidTypeError("retryDelayMs", retryDelayMs, "integer");
         }
 
         // Validate optional DateTime fields and deserialize them
@@ -127,12 +130,16 @@ function tryDeserialize(obj, registrations) {
         for (const [fieldName, value] of dateTimeFields) {
             if (value !== undefined) {
                 if (value === null) {
-                    return new TaskInvalidTypeError(String(fieldName), value, "DateTime or undefined (not null)");
+                    return makeTaskInvalidTypeError(
+                        String(fieldName),
+                        value,
+                        "DateTime or undefined (not null)"
+                    );
                 }
                 
                 const deserializeResult = dateTimeTryDeserialize(value);
                 if (isDateTimeTryDeserializeError(deserializeResult)) {
-                    return new TaskInvalidTypeError(
+                    return makeTaskInvalidTypeError(
                         String(fieldName), 
                         value, 
                         "DateTime or undefined"
@@ -148,13 +155,17 @@ function tryDeserialize(obj, registrations) {
         // Validate schedulerIdentifier field if present
         const schedulerIdentifier = ("schedulerIdentifier" in obj) ? obj.schedulerIdentifier : undefined;
         if (schedulerIdentifier !== undefined && typeof schedulerIdentifier !== "string") {
-            return new TaskInvalidTypeError("schedulerIdentifier", schedulerIdentifier, "string or undefined");
+            return makeTaskInvalidTypeError(
+                "schedulerIdentifier",
+                schedulerIdentifier,
+                "string or undefined"
+            );
         }
 
         // Look up the registration to get parsed cron and callback
         const registration = registrations.get(name);
         if (registration === undefined) {
-            return new TaskInvalidValueError(
+            return makeTaskInvalidValueError(
                 "name",
                 name,
                 "task not found in registrations"
@@ -182,7 +193,7 @@ function tryDeserialize(obj, registrations) {
         );
 
     } catch (error) {
-        return new TaskInvalidValueError(
+        return makeTaskInvalidValueError(
             "unknown",
             obj,
             `Unexpected error during deserialization: ${error instanceof Error ? error.message : String(error)}`
