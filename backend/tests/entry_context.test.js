@@ -203,7 +203,21 @@ describe("getEntryBasicContext", () => {
         const allEntries = [];
 
         const context = getEntryBasicContext(allEntries, targetEntry);
-        expect(context).toEqual([targetEntry]);
+        expect(context).toEqual([]);
+    });
+
+    it("returns empty array when just an unmatched entry is present", () => {
+        const date1 = fromISOString("2024-01-01T12:00:00.000Z");
+        const date2 = date1.advance(fromMinutes(10));
+
+        const entry1 = makeEntry("1", "Earlier #Work entry", date1);
+        const targetEntry = makeEntry("target", "Current #work status", date2);
+
+        const allEntries = [entry1];
+
+        // Hashtags are case-sensitive, so #Work and #work are different
+        const context = getEntryBasicContext(allEntries, targetEntry);
+        expect(context).toHaveLength(0);
     });
 
     it("handles hashtags with different cases", () => {

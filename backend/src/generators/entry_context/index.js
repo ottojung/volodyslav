@@ -12,11 +12,6 @@ const { extractHashtags, isContextEnhancing } = require("../../event");
 function getEntryBasicContext(all_entries, entry) {
     const entryHashtags = extractHashtags(entry);
 
-    // If entry has no hashtags, return only the entry itself
-    if (entryHashtags.size === 0) {
-        return [entry];
-    }
-
     const context = all_entries.filter((otherEntry) => {
         if (otherEntry.id === entry.id) {
             return true; // Always include the entry itself
@@ -37,10 +32,6 @@ function getEntryBasicContext(all_entries, entry) {
 
         return false;
     });
-
-    if (context.length === 0) {
-        return [entry];
-    }
 
     return context;
 }
