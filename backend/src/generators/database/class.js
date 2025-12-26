@@ -175,8 +175,9 @@ function isDatabase(object) {
     return object instanceof DatabaseClass;
 }
 
+/** @typedef {DatabaseClass} Database */
+
 module.exports = {
     makeDatabase,
     isDatabase,
-    DatabaseClass,
 };

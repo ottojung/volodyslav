@@ -10,7 +10,7 @@ const { ensureTablesExist } = require('./tables');
 const { DatabaseInitializationError } = require('./errors');
 
 /** @typedef {import('./types').DatabaseCapabilities} DatabaseCapabilities */
-/** @typedef {import('./class').DatabaseClass} Database */
+/** @typedef {import('./class').Database} Database */
 
 /**
  * Gets or creates a database instance for the generators module.
