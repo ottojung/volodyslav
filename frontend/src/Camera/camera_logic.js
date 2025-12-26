@@ -11,6 +11,27 @@ import { processPhotos } from "./process_photos.js";
  */
 
 /**
+ * @returns {Blob|null}
+ */
+function getInitialBlob() {
+    return null;
+}
+
+/**
+ * @returns {string|undefined}
+ */
+function getInitialPreviewUrl() {
+    return undefined;
+}
+
+/**
+ * @returns {Photo[]}
+ */
+function getInitialPhotos() {
+    return [];
+}
+
+/**
  * Camera logic hook handling state and photo actions.
  * @param {string} requestIdentifier
  * @param {string} returnTo
@@ -25,9 +46,15 @@ import { processPhotos } from "./process_photos.js";
  * }}
  */
 export function useCameraLogic(requestIdentifier, returnTo) {
-    const [currentBlob, setCurrentBlob] = useState(/** @type {Blob|null} */ (null));
-    const [previewUrl, setPreviewUrl] = useState(/** @type {string|undefined} */ (undefined));
-    const [photos, setPhotos] = useState(/** @type {Photo[]} */ ([]));
+    /** @type {[Blob|null, import("react").Dispatch<import("react").SetStateAction<Blob|null>>]} */
+    const blobState = useState(getInitialBlob());
+    /** @type {[string|undefined, import("react").Dispatch<import("react").SetStateAction<string|undefined>>]} */
+    const previewState = useState(getInitialPreviewUrl());
+    /** @type {[Photo[], import("react").Dispatch<import("react").SetStateAction<Photo[]>>]} */
+    const photosState = useState(getInitialPhotos());
+    const [currentBlob, setCurrentBlob] = blobState;
+    const [previewUrl, setPreviewUrl] = previewState;
+    const [photos, setPhotos] = photosState;
     const [mode, setMode] = useState("camera");
     /** @type {import('react').MutableRefObject<HTMLVideoElement|null>} */
     const videoRef = useRef(null);
