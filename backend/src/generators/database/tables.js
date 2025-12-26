@@ -4,7 +4,7 @@
 
 const { TableCreationError } = require('./errors');
 
-/** @typedef {import('@libsql/client').Client} LibsqlClient */
+/** @typedef {import('better-sqlite3').Database} BetterSqliteDatabase */
 /** @typedef {import('./types').DatabaseCapabilities} DatabaseCapabilities */
 
 /**
@@ -40,15 +40,15 @@ const MODIFIERS_TABLE_SCHEMA = `
 
 /**
  * Ensures all required tables exist in the database.
- * @param {LibsqlClient} client - The libsql client instance
+ * @param {BetterSqliteDatabase} db - The better-sqlite3 database instance
  * @param {string} databasePath - Path to the database file (for error reporting)
  * @param {DatabaseCapabilities} capabilities - The capabilities object
  * @returns {Promise<void>}
  * @throws {TableCreationError} If table creation fails
  */
-async function ensureTablesExist(client, databasePath, capabilities) {
+async function ensureTablesExist(db, databasePath, capabilities) {
     try {
-        await client.execute(EVENTS_TABLE_SCHEMA);
+        db.exec(EVENTS_TABLE_SCHEMA);
         capabilities.logger.logInfo({ table: 'events' }, 'DatabaseTableEnsured');
     } catch (error) {
         const err = error instanceof Error ? error : new Error(String(error));
@@ -61,7 +61,7 @@ async function ensureTablesExist(client, databasePath, capabilities) {
     }
 
     try {
-        await client.execute(MODIFIERS_TABLE_SCHEMA);
+        db.exec(MODIFIERS_TABLE_SCHEMA);
         capabilities.logger.logInfo({ table: 'modifiers' }, 'DatabaseTableEnsured');
     } catch (error) {
         const err = error instanceof Error ? error : new Error(String(error));

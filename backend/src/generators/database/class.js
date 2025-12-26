@@ -1,23 +1,23 @@
 /**
- * Database class providing a thin interface to libsql operations.
+ * Database class providing a thin interface to SQLite operations.
  */
 
 const { DatabaseQueryError } = require('./errors');
 
-/** @typedef {import('@libsql/client').Client} LibsqlClient */
+/** @typedef {import('better-sqlite3').Database} BetterSqliteDatabase */
 /** @typedef {import('./types').DatabaseCapabilities} DatabaseCapabilities */
 
 /**
- * A thin wrapper around libsql database operations.
- * Provides a consistent interface for common database operations.
+ * A thin wrapper around better-sqlite3 database operations.
+ * Provides a consistent async interface for common database operations.
  */
 class DatabaseClass {
     /**
-     * The underlying libsql client instance.
+     * The underlying better-sqlite3 database instance.
      * @private
-     * @type {LibsqlClient}
+     * @type {BetterSqliteDatabase}
      */
-    client;
+    db;
 
     /**
      * Path to the database file.
@@ -28,24 +28,24 @@ class DatabaseClass {
 
     /**
      * @constructor
-     * @param {LibsqlClient} client - The libsql client instance
+     * @param {BetterSqliteDatabase} db - The better-sqlite3 database instance
      * @param {string} databasePath - Path to the database file
      */
-    constructor(client, databasePath) {
-        this.client = client;
+    constructor(db, databasePath) {
+        this.db = db;
         this.databasePath = databasePath;
     }
 
     /**
      * Runs a SQL query that doesn't return results (INSERT, UPDATE, DELETE, etc.).
      * @param {string} query - The SQL query to execute
-     * @param {import('@libsql/client').InArgs} [params] - Query parameters
+     * @param {any[]} [params] - Query parameters
      * @returns {Promise<void>}
      * @throws {DatabaseQueryError} If the query fails
      */
     async run(query, params = []) {
         try {
-            await this.client.execute({ sql: query, args: params });
+            this.db.prepare(query).run(...params);
         } catch (err) {
             const error = err instanceof Error ? err : new Error(String(err));
             throw new DatabaseQueryError(
@@ -60,14 +60,13 @@ class DatabaseClass {
     /**
      * Executes a SQL query and returns all matching rows.
      * @param {string} query - The SQL query to execute
-     * @param {import('@libsql/client').InArgs} [params] - Query parameters
-     * @returns {Promise<import('@libsql/client').Row[]>}
+     * @param {any[]} [params] - Query parameters
+     * @returns {Promise<any[]>}
      * @throws {DatabaseQueryError} If the query fails
      */
     async all(query, params = []) {
         try {
-            const result = await this.client.execute({ sql: query, args: params });
-            return result.rows;
+            return this.db.prepare(query).all(...params);
         } catch (err) {
             const error = err instanceof Error ? err : new Error(String(err));
             throw new DatabaseQueryError(
@@ -82,14 +81,13 @@ class DatabaseClass {
     /**
      * Executes a SQL query and returns the first matching row.
      * @param {string} query - The SQL query to execute
-     * @param {import('@libsql/client').InArgs} [params] - Query parameters
-     * @returns {Promise<import('@libsql/client').Row | undefined>}
+     * @param {any[]} [params] - Query parameters
+     * @returns {Promise<any | undefined>}
      * @throws {DatabaseQueryError} If the query fails
      */
     async get(query, params = []) {
         try {
-            const result = await this.client.execute({ sql: query, args: params });
-            return result.rows[0];
+            return this.db.prepare(query).get(...params);
         } catch (err) {
             const error = err instanceof Error ? err : new Error(String(err));
             throw new DatabaseQueryError(
@@ -127,7 +125,7 @@ class DatabaseClass {
      */
     async close() {
         try {
-            this.client.close();
+            this.db.close();
         } catch (err) {
             const error = err instanceof Error ? err : new Error(String(err));
             throw new DatabaseQueryError(
@@ -142,12 +140,12 @@ class DatabaseClass {
 
 /**
  * Factory function to create a Database instance.
- * @param {LibsqlClient} client - The libsql client instance
+ * @param {BetterSqliteDatabase} db - The better-sqlite3 database instance
  * @param {string} databasePath - Path to the database file
  * @returns {DatabaseClass}
  */
-function makeDatabase(client, databasePath) {
-    return new DatabaseClass(client, databasePath);
+function makeDatabase(db, databasePath) {
+    return new DatabaseClass(db, databasePath);
 }
 
 /**

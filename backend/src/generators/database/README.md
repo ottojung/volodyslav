@@ -4,7 +4,7 @@ Generators work inside an SQL database to process event log entries and generate
 
 ## Overview
 
-This module provides a thin libsql interface for the generators subsystem. It manages:
+This module provides a thin SQLite interface for the generators subsystem using better-sqlite3. It manages:
 - Generated values storage
 - Event log mirror tables (events and modifiers)
 - Database initialization and schema management
@@ -15,7 +15,7 @@ The module follows the same encapsulation pattern as `runtime_state_storage`:
 - Factory function (`get()`) instead of direct constructor access
 - Type guards for safe type checking
 - Custom error classes for specific failure modes
-- Native Promise-based API using libsql
+- Async wrapper around synchronous better-sqlite3 API
 
 ## Usage
 
@@ -67,11 +67,12 @@ Stores extracted modifiers:
 
 ## Technology
 
-This module uses [libsql](https://github.com/tursodatabase/libsql) - a fork of SQLite optimized for modern use cases. It provides:
-- Native async/await support
-- Better TypeScript integration
-- Same SQLite compatibility
-- File-based local storage
+This module uses [better-sqlite3](https://github.com/WiseLibs/better-sqlite3) - the fastest and simplest SQLite library for Node.js. It provides:
+- Synchronous API (wrapped with async interface for consistency)
+- Best performance of all Node.js SQLite libraries
+- Native compilation with no dependencies
+- Full SQLite compatibility
+- Simple prepared statement API
 
 ## Error Handling
 
@@ -91,7 +92,7 @@ See [`/workspace/backend/tests/database.test.js`](/workspace/backend/tests/datab
 
 ## File Structure
 
-- [`class.js`](/workspace/backend/src/generators/database/class.js) - Database class with libsql operations
+- [`class.js`](/workspace/backend/src/generators/database/class.js) - Database class with better-sqlite3 operations
 - [`index.js`](/workspace/backend/src/generators/database/index.js) - Main entry point with `get()` function
 - [`types.js`](/workspace/backend/src/generators/database/types.js) - JSDoc type definitions
 - [`errors.js`](/workspace/backend/src/generators/database/errors.js) - Custom error classes

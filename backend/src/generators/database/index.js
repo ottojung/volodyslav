@@ -1,9 +1,9 @@
 /**
  * Database module for generators.
- * Provides a thin libsql interface for storing generated values and event log mirrors.
+ * Provides a thin SQLite interface for storing generated values and event log mirrors.
  */
 
-const { createClient } = require('@libsql/client');
+const Database = require('better-sqlite3');
 const path = require('path');
 const { makeDatabase } = require('./class');
 const { ensureTablesExist } = require('./tables');
@@ -38,11 +38,9 @@ async function get(capabilities) {
     }
 
     // Open or create the database
-    let client;
+    let db;
     try {
-        client = createClient({
-            url: `file:${databasePath}`
-        });
+        db = new Database(databasePath);
         capabilities.logger.logInfo({ databasePath }, 'DatabaseOpened');
     } catch (error) {
         const err = error instanceof Error ? error : new Error(String(error));
@@ -55,10 +53,10 @@ async function get(capabilities) {
 
     // Enable foreign key constraints
     try {
-        await client.execute('PRAGMA foreign_keys = ON');
+        db.pragma('foreign_keys = ON');
     } catch (error) {
         const err = error instanceof Error ? error : new Error(String(error));
-        client.close();
+        db.close();
         throw new DatabaseInitializationError(
             `Failed to enable foreign keys: ${err.message}`,
             databasePath,
@@ -68,14 +66,14 @@ async function get(capabilities) {
 
     // Ensure tables exist
     try {
-        await ensureTablesExist(client, databasePath, capabilities);
+        await ensureTablesExist(db, databasePath, capabilities);
     } catch (error) {
         // Close the database before re-throwing
-        client.close();
+        db.close();
         throw error;
     }
 
-    return makeDatabase(client, databasePath);
+    return makeDatabase(db, databasePath);
 }
 
 module.exports = {
