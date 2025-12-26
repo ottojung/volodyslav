@@ -135,9 +135,9 @@ describe("extractHashtags", () => {
         expect(hashtags.has("third")).toBe(true);
     });
 
-    it("ignores hashtags followed by punctuation", () => {
+    it("handles hashtags followed by punctuation", () => {
         const entry = {
-            input: "Tag with punctuation: #tag, #tag! #tag.",
+            input: "Tag with punctuation: #tag1, #tag2! #tag3.",
             id: "test-id",
             date: makeDateTime(),
             original: "test",
@@ -148,8 +148,10 @@ describe("extractHashtags", () => {
         };
         const hashtags = extractHashtags(entry);
         // All three should be recognized as "tag" and deduplicated
-        expect(hashtags.size).toBe(1);
-        expect(hashtags.has("tag")).toBe(true);
+        expect(hashtags.size).toBe(3);
+        expect(hashtags.has("tag1")).toBe(true);
+        expect(hashtags.has("tag2")).toBe(true);
+        expect(hashtags.has("tag3")).toBe(true);
     });
 
     it("handles hashtags in multi-line input", () => {
