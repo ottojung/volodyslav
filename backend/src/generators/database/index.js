@@ -3,7 +3,6 @@
  * Provides a LevelDB key-value store for storing generated values and event log mirrors.
  */
 
-const { Level } = require('level');
 const path = require('path');
 const { makeDatabase } = require('./class');
 const { DatabaseInitializationError } = require('./errors');
@@ -36,11 +35,10 @@ async function get(capabilities) {
     }
 
     // Open or create the database
-    let db;
     try {
-        db = /** @type {import('level').Level<string, object>} */ (new Level(databasePath, { valueEncoding: 'json' }));
-        await db.open();
+        const db = await makeDatabase(databasePath);
         capabilities.logger.logDebug({ databasePath }, 'Database opened');
+        return db;
     } catch (error) {
         const err = error instanceof Error ? error : new Error(String(error));
         throw new DatabaseInitializationError(
@@ -49,8 +47,6 @@ async function get(capabilities) {
             err
         );
     }
-
-    return makeDatabase(db, databasePath);
 }
 
 module.exports = {

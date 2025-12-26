@@ -193,13 +193,16 @@ class DatabaseClass {
     }
 }
 
+const { Level } = require('level');
+
 /**
  * Factory function to create a Database instance.
- * @param {LevelDB} db - The Level database instance
  * @param {string} databasePath - Path to the database directory
- * @returns {DatabaseClass}
+ * @returns {Promise<DatabaseClass>}
  */
-function makeDatabase(db, databasePath) {
+async function makeDatabase(databasePath) {
+    const db = /** @type {import('level').Level<string, object>} */ (new Level(databasePath, { valueEncoding: 'json' }));
+    await db.open();
     return new DatabaseClass(db, databasePath);
 }
 
