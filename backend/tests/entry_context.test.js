@@ -91,7 +91,11 @@ describe("getEntryContext", () => {
         const date2 = date1.advance(fromMinutes(10));
 
         const entry1 = makeEntry("1", "Earlier #work #project entry", date1);
-        const targetEntry = makeEntry("target", "Current #work #meeting status", date2);
+        const targetEntry = makeEntry(
+            "target",
+            "Current #work #meeting status",
+            date2
+        );
 
         const allEntries = [entry1, targetEntry];
 
@@ -105,7 +109,12 @@ describe("getEntryContext", () => {
         const date1 = fromISOString("2024-01-01T12:00:00.000Z");
         const date2 = date1.advance(fromMinutes(10));
 
-        const entry1 = makeEntry("1", "Earlier #work entry", date1, "non-enhancing");
+        const entry1 = makeEntry(
+            "1",
+            "Earlier #work entry",
+            date1,
+            "non-enhancing"
+        );
         const targetEntry = makeEntry("target", "Current #work status", date2);
 
         const allEntries = [entry1, targetEntry];
@@ -155,7 +164,12 @@ describe("getEntryContext", () => {
         const entry1 = makeEntry("1", "Earlier #work entry", date1, "text");
         const entry2 = makeEntry("2", "Another #meeting entry", date2, "text");
         const entry3 = makeEntry("3", "Mixed #work #meeting", date3, "text");
-        const targetEntry = makeEntry("target", "Current #work status", date4, "text");
+        const targetEntry = makeEntry(
+            "target",
+            "Current #work status",
+            date4,
+            "text"
+        );
         const entry5 = makeEntry("5", "Later #work entry", date5, "text");
 
         const allEntries = [entry1, entry2, entry3, targetEntry, entry5];
@@ -212,7 +226,11 @@ describe("getEntryContext", () => {
         const date2 = date1.advance(fromMinutes(10));
 
         const entry1 = makeEntry("1", "Earlier #work #project #coding", date1);
-        const targetEntry = makeEntry("target", "Current #review #coding #testing", date2);
+        const targetEntry = makeEntry(
+            "target",
+            "Current #review #coding #testing",
+            date2
+        );
 
         const allEntries = [entry1, targetEntry];
 
