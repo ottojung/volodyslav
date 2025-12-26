@@ -90,7 +90,7 @@ class DatabaseClass {
      */
     async del(key) {
         try {
-            await this.db.del(key);
+            await this.db.del(key, { sync: true });
         } catch (err) {
             const error = err instanceof Error ? err : new Error(String(err));
             throw new DatabaseQueryError(
@@ -160,9 +160,9 @@ class DatabaseClass {
         try {
             const batchOps = operations.map(op => {
                 if (op.type === 'put') {
-                    return { type: /** @type {const} */ ('put'), key: op.key, value: JSON.stringify(op.value) };
+                    return { type: /** @type {const} */ ('put'), key: op.key, value: JSON.stringify(op.value), options: { sync: true } };
                 } else {
-                    return { type: /** @type {const} */ ('del'), key: op.key };
+                    return { type: /** @type {const} */ ('del'), key: op.key, options: { sync: true } };
                 }
             });
             await this.db.batch(batchOps);
