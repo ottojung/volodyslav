@@ -45,6 +45,7 @@
     "typescript": "^5.1.6"
   },
   "dependencies": {
-    "eslint-plugin-volodyslav": "file:tools/eslint-plugin-volodyslav"
+    "eslint-plugin-volodyslav": "file:tools/eslint-plugin-volodyslav",
+    "sqlite3": "^5.1.7"
   }
 }
