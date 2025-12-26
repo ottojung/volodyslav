@@ -9,7 +9,7 @@ const { extractHashtags, isContextEnhancing } = require("../../event");
  * @param {Event} entry
  * @returns {Array<Event>} The context of the given entry
  */
-function getEntryContext(all_entries, entry) {
+function getEntryBasicContext(all_entries, entry) {
     const entryHashtags = extractHashtags(entry);
 
     // If entry has no hashtags, return only the entry itself
@@ -46,5 +46,5 @@ function getEntryContext(all_entries, entry) {
 }
 
 module.exports = {
-    getEntryContext,
+    getEntryBasicContext,
 };

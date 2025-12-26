@@ -1,7 +1,7 @@
-const { getEntryContext } = require("../src/generators/entry_context");
+const { getEntryBasicContext } = require("../src/generators/entry_context");
 const { fromISOString, fromMinutes } = require("../src/datetime");
 
-describe("getEntryContext", () => {
+describe("getEntryBasicContext", () => {
     const makeEntry = (id, input, date, type = "text") => ({
         id,
         input,
@@ -21,7 +21,7 @@ describe("getEntryContext", () => {
             targetEntry,
         ];
 
-        const context = getEntryContext(allEntries, targetEntry);
+        const context = getEntryBasicContext(allEntries, targetEntry);
         expect(context).toHaveLength(1);
         expect(context).toContain(targetEntry);
     });
@@ -37,7 +37,7 @@ describe("getEntryContext", () => {
 
         const allEntries = [entry1, entry2, targetEntry];
 
-        const context = getEntryContext(allEntries, targetEntry);
+        const context = getEntryBasicContext(allEntries, targetEntry);
         expect(context).toHaveLength(3);
         expect(context).toContain(entry1);
         expect(context).toContain(entry2);
@@ -55,7 +55,7 @@ describe("getEntryContext", () => {
 
         const allEntries = [entry1, targetEntry, entry3];
 
-        const context = getEntryContext(allEntries, targetEntry);
+        const context = getEntryBasicContext(allEntries, targetEntry);
         expect(context).toHaveLength(3);
         expect(context).toContain(entry1);
         expect(context).toContain(targetEntry);
@@ -71,7 +71,7 @@ describe("getEntryContext", () => {
 
         const allEntries = [entry1, targetEntry];
 
-        const context = getEntryContext(allEntries, targetEntry);
+        const context = getEntryBasicContext(allEntries, targetEntry);
         expect(context).toHaveLength(1);
         expect(context).toContain(targetEntry);
     });
@@ -81,7 +81,7 @@ describe("getEntryContext", () => {
         const targetEntry = makeEntry("target", "Current #work status", date);
         const allEntries = [targetEntry];
 
-        const context = getEntryContext(allEntries, targetEntry);
+        const context = getEntryBasicContext(allEntries, targetEntry);
         expect(context).toHaveLength(1);
         expect(context).toContain(targetEntry);
     });
@@ -99,7 +99,7 @@ describe("getEntryContext", () => {
 
         const allEntries = [entry1, targetEntry];
 
-        const context = getEntryContext(allEntries, targetEntry);
+        const context = getEntryBasicContext(allEntries, targetEntry);
         expect(context).toHaveLength(2);
         expect(context).toContain(entry1);
         expect(context).toContain(targetEntry);
@@ -119,7 +119,7 @@ describe("getEntryContext", () => {
 
         const allEntries = [entry1, targetEntry];
 
-        const context = getEntryContext(allEntries, targetEntry);
+        const context = getEntryBasicContext(allEntries, targetEntry);
         expect(context).toHaveLength(1);
         expect(context).toContain(targetEntry);
     });
@@ -133,7 +133,7 @@ describe("getEntryContext", () => {
 
         const allEntries = [entry1, targetEntry];
 
-        const context = getEntryContext(allEntries, targetEntry);
+        const context = getEntryBasicContext(allEntries, targetEntry);
         expect(context).toHaveLength(2);
         expect(context).toContain(entry1);
         expect(context).toContain(targetEntry);
@@ -148,7 +148,7 @@ describe("getEntryContext", () => {
 
         const allEntries = [entry1, targetEntry];
 
-        const context = getEntryContext(allEntries, targetEntry);
+        const context = getEntryBasicContext(allEntries, targetEntry);
         expect(context).toHaveLength(2);
         expect(context).toContain(entry1);
         expect(context).toContain(targetEntry);
@@ -174,7 +174,7 @@ describe("getEntryContext", () => {
 
         const allEntries = [entry1, entry2, entry3, targetEntry, entry5];
 
-        const context = getEntryContext(allEntries, targetEntry);
+        const context = getEntryBasicContext(allEntries, targetEntry);
         expect(context).toHaveLength(4);
         expect(context).toContain(entry1);
         expect(context).toContain(entry3);
@@ -191,7 +191,7 @@ describe("getEntryContext", () => {
 
         const allEntries = [entry1, targetEntry];
 
-        const context = getEntryContext(allEntries, targetEntry);
+        const context = getEntryBasicContext(allEntries, targetEntry);
         expect(context).toHaveLength(2);
         expect(context).toContain(entry1);
         expect(context).toContain(targetEntry);
@@ -202,7 +202,7 @@ describe("getEntryContext", () => {
         const targetEntry = makeEntry("target", "Current #work status", date);
         const allEntries = [];
 
-        const context = getEntryContext(allEntries, targetEntry);
+        const context = getEntryBasicContext(allEntries, targetEntry);
         expect(context).toEqual([targetEntry]);
     });
 
@@ -216,7 +216,7 @@ describe("getEntryContext", () => {
         const allEntries = [entry1, targetEntry];
 
         // Hashtags are case-sensitive, so #Work and #work are different
-        const context = getEntryContext(allEntries, targetEntry);
+        const context = getEntryBasicContext(allEntries, targetEntry);
         expect(context).toHaveLength(1);
         expect(context).toContain(targetEntry);
     });
@@ -234,7 +234,7 @@ describe("getEntryContext", () => {
 
         const allEntries = [entry1, targetEntry];
 
-        const context = getEntryContext(allEntries, targetEntry);
+        const context = getEntryBasicContext(allEntries, targetEntry);
         expect(context).toHaveLength(2);
         expect(context).toContain(entry1);
         expect(context).toContain(targetEntry);
@@ -253,7 +253,7 @@ describe("getEntryContext", () => {
 
         const allEntries = [entry1, entry2, entry3, targetEntry];
 
-        const context = getEntryContext(allEntries, targetEntry);
+        const context = getEntryBasicContext(allEntries, targetEntry);
         expect(context).toHaveLength(4);
         expect(context[0]).toBe(entry1);
         expect(context[1]).toBe(entry2);
