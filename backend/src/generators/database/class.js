@@ -4,7 +4,7 @@
 
 const { DatabaseQueryError } = require('./errors');
 
-/** @typedef {import('level').Level} LevelDB */
+/** @typedef {import('level').Level<string, object>} LevelDB */
 /** @typedef {import('./types').DatabaseCapabilities} DatabaseCapabilities */
 
 /**
@@ -39,7 +39,7 @@ class DatabaseClass {
     /**
      * Stores a value in the database.
      * @param {string} key - The key to store
-     * @param {any} value - The value to store
+     * @param {object} value - The value to store
      * @returns {Promise<void>}
      * @throws {DatabaseQueryError} If the operation fails
      */
@@ -60,7 +60,7 @@ class DatabaseClass {
     /**
      * Retrieves a value from the database.
      * @param {string} key - The key to retrieve
-     * @returns {Promise<any | undefined>}
+     * @returns {Promise<object | undefined>}
      * @throws {DatabaseQueryError} If the operation fails (except for NotFoundError)
      */
     async get(key) {
@@ -125,7 +125,7 @@ class DatabaseClass {
     /**
      * Returns all values with keys matching the given prefix.
      * @param {string} prefix - The key prefix to search for
-     * @returns {Promise<any[]>}
+     * @returns {Promise<object[]>}
      * @throws {DatabaseQueryError} If the operation fails
      */
     async getAll(prefix = '') {
@@ -148,15 +148,16 @@ class DatabaseClass {
 
     /**
      * Executes multiple operations in a batch.
-     * @param {Array<{type: 'put' | 'del', key: string, value?: any}>} operations
+     * @param {Array<{type: 'put' | 'del', key: string, value?: object}>} operations
      * @returns {Promise<void>}
      * @throws {DatabaseQueryError} If the operation fails
      */
     async batch(operations) {
         try {
             const batchOps = operations.map(op => {
-                if (op.type === 'put') {
-                    return { type: /** @type {const} */ ('put'), key: op.key, value: op.value };
+                if (op.type === 'put') {                    if (!op.value) {
+                        throw new Error('Put operation requires a value');
+                    }                    return { type: /** @type {const} */ ('put'), key: op.key, value: op.value };
                 } else {
                     return { type: /** @type {const} */ ('del'), key: op.key, options: { sync: true } };
                 }
