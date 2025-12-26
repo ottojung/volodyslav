@@ -56,9 +56,9 @@ describe('generators/database', () => {
                 const db = await get(capabilities);
                 
                 expect(isDatabase(db)).toBe(true);
-                expect(capabilities.logger.logInfo).toHaveBeenCalledWith(
+                expect(capabilities.logger.logDebug).toHaveBeenCalledWith(
                     expect.objectContaining({ databasePath: expect.any(String) }),
-                    'DatabaseOpened'
+                    'Database opened'
                 );
                 
                 await db.close();

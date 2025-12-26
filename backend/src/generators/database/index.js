@@ -40,7 +40,7 @@ async function get(capabilities) {
     try {
         db = new Level(databasePath, { valueEncoding: 'utf8' });
         await db.open();
-        capabilities.logger.logInfo({ databasePath }, 'DatabaseOpened');
+        capabilities.logger.logDebug({ databasePath }, 'Database opened');
     } catch (error) {
         const err = error instanceof Error ? error : new Error(String(error));
         throw new DatabaseInitializationError(
