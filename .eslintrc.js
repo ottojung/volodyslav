@@ -78,7 +78,7 @@ module.exports = {
                 "ignore": ["^virtual:"]
             }
         ],
-        
+
         // No deep imports rule with test files ignored
         "volodyslav/no-deep-imports": [
             "error",
