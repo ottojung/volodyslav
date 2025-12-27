@@ -1,4 +1,4 @@
-const { getEntryBasicContext } = require("../src/generators/entry_context");
+const { getEntryBasicContext } = require("../src/generators/event_context");
 const { fromISOString, fromMinutes } = require("../src/datetime");
 
 describe("getEntryBasicContext", () => {
