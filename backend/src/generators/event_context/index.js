@@ -3,29 +3,29 @@
 const { extractHashtags, isContextEnhancing } = require("../../event");
 
 /**
- * This function extracts the basic context of a given entry from a list of all entries.
+ * This function extracts the basic context of a given event from a list of all events.
  *
- * @param {Array<Event>} all_entries
- * @param {Event} entry
- * @returns {Array<Event>} The context of the given entry
+ * @param {Array<Event>} all_events
+ * @param {Event} event
+ * @returns {Array<Event>} The context of the given event
  */
-function getEntryBasicContext(all_entries, entry) {
-    const entryHashtags = extractHashtags(entry);
+function getEventBasicContext(all_events, event) {
+    const eventHashtags = extractHashtags(event);
 
-    const context = all_entries.filter((otherEntry) => {
-        if (otherEntry.id === entry.id) {
-            return true; // Always include the entry itself
+    const context = all_events.filter((otherEvent) => {
+        if (otherEvent.id === event.id) {
+            return true; // Always include the event itself
         }
 
-        // Check if entry type is context-enhancing
-        if (!isContextEnhancing(otherEntry.type)) {
+        // Check if event type is context-enhancing
+        if (!isContextEnhancing(otherEvent.type)) {
             return false;
         }
 
-        // Check if entry contains some of the same hashtags
-        const otherHashtags = extractHashtags(otherEntry);
+        // Check if event contains some of the same hashtags
+        const otherHashtags = extractHashtags(otherEvent);
         for (const hashtag of otherHashtags) {
-            if (entryHashtags.has(hashtag)) {
+            if (eventHashtags.has(hashtag)) {
                 return true;
             }
         }
@@ -37,5 +37,5 @@ function getEntryBasicContext(all_entries, entry) {
 }
 
 module.exports = {
-    getEntryBasicContext,
+    getEventBasicContext,
 };
