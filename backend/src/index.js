@@ -2,7 +2,7 @@ const { gentleCall } = require("./gentlewrap");
 const { start } = require("./server");
 const commander = require("commander");
 const runtimeIdentifier = require("./runtime_identifier");
-const root = require("./capabilities/root");
+const root = require("./capabilities");
 
 /**
  * @typedef {import('./capabilities/root').Capabilities} Capabilities

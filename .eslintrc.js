@@ -78,6 +78,14 @@ module.exports = {
                 "ignore": ["^virtual:"]
             }
         ],
+        
+        // No deep imports rule with test files ignored
+        "volodyslav/no-deep-imports": [
+            "error",
+            {
+                "ignorePatterns": ["**/tests/**", "**/test/**", "**/logger.js"]
+            }
+        ],
     },
     ignorePatterns: ["dist/", "node_modules/", "coverage/", "docs/build/", "tools/eslint-plugin-volodyslav"],
 };

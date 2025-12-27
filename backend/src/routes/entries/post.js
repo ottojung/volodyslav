@@ -1,9 +1,8 @@
 const { createEntry, isEntryValidationError } = require("../../entry");
 const { serialize } = require("../../event");
-const {
-    processUserInput,
-    isInputParseError,
-} = require("../../event/from_input");
+const event = require("../../event");
+const fromInput = event.fromInput;
+const { processUserInput, isInputParseError } = fromInput;
 
 /**
  * @typedef {import('../../environment').Environment} Environment

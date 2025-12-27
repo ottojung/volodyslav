@@ -2,15 +2,16 @@
  * Core state validation logic.
  */
 
+const task = require("../task");
 const {
     registrationToTaskIdentity,
     taskRecordToTaskIdentity,
     taskIdentitiesEqual,
-} = require("../task/identity");
-const { InvalidRegistrationError } = require("../registration_validation/errors");
+} = task.identity;
+const registrationValidation = require("../registration_validation");
+const { InvalidRegistrationError } = registrationValidation.errors;
 
 /** @typedef {import('../types').Registration} Registration */
-
 
 
 /**

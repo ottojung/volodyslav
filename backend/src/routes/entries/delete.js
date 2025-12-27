@@ -1,4 +1,5 @@
-const eventId = require("../../event/id");
+const event = require("../../event");
+const eventId = event.id;
 const { deleteEntry } = require("../../entry");
 
 /**

@@ -4,7 +4,9 @@
 //
 
 const { transaction } = require("./transaction");
+const workingRepository = require("./working_repository");
 
 module.exports = {
     transaction,
+    workingRepository,
 };

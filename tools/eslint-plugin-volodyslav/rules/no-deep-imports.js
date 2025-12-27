@@ -6,12 +6,53 @@ module.exports = {
     docs: { 
       description: "Disallow deep imports - only direct module/directory imports are allowed"
     },
-    schema: [],
+    schema: [
+      {
+        type: "object",
+        properties: {
+          ignorePatterns: {
+            type: "array",
+            items: {
+              type: "string"
+            }
+          }
+        },
+        additionalProperties: false
+      }
+    ],
     messages: { 
       deepImport: "Deep import detected. Import from '{{module}}' directly instead of '{{path}}'" 
     }
   },
   create(context) {
+    const options = context.options[0] || {};
+    const ignorePatterns = options.ignorePatterns || [];
+    
+    // Get the filename relative to the project root
+    const filename = context.getFilename();
+    
+    // Check if the file should be ignored using simple glob patterns
+    function shouldIgnoreFile() {
+      for (const pattern of ignorePatterns) {
+        // Convert glob pattern to regex
+        // Support ** for any directory depth and * for any characters
+        const regexPattern = pattern
+          .replace(/\./g, '\\.')
+          .replace(/\*\*/g, '§§DOUBLE§§')
+          .replace(/\*/g, '[^/]*')
+          .replace(/§§DOUBLE§§/g, '.*');
+        
+        const regex = new RegExp(regexPattern);
+        if (regex.test(filename)) {
+          return true;
+        }
+      }
+      return false;
+    }
+    
+    if (shouldIgnoreFile()) {
+      return {};
+    }
     /**
      * Check if a require path is a deep import
      * @param {string} importPath - The path being imported

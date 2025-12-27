@@ -20,8 +20,8 @@
 
 const memconst = require("../memconst");
 const { fromExisting } = require("./file");
-const { mtime } = require("../datetime");
-const { fromMilliseconds } = require("../datetime/duration");
+const datetime = require("../datetime");
+const { mtime, fromMilliseconds } = datetime;
 
 const fs = require("fs").promises;
 

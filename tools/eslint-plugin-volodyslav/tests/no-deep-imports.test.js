@@ -26,6 +26,18 @@ tester.run("no-deep-imports", rule, {
     // Edge case: non-string argument
     'const y = require(someVar);',
     'const z = require(123);',
+    
+    // Deep imports allowed when file matches ignorePatterns
+    {
+      code: 'const x = require("./something/deep");',
+      filename: '/path/to/tests/myfile.test.js',
+      options: [{ ignorePatterns: ['**/tests/**'] }],
+    },
+    {
+      code: 'const y = require("../some/nested/path");',
+      filename: '/project/backend/tests/integration.test.js',
+      options: [{ ignorePatterns: ['**/test/**', '**/tests/**'] }],
+    },
   ],
   invalid: [
     // Deep imports with ./
@@ -63,6 +75,14 @@ tester.run("no-deep-imports", rule, {
     },
     {
       code: 'const structure = require("../src/runtime_state_storage/structure");',
+      errors: [{ messageId: "deepImport" }],
+    },
+    
+    // Deep imports still detected when file doesn't match ignorePatterns
+    {
+      code: 'const x = require("./something/deep");',
+      filename: '/path/to/src/myfile.js',
+      options: [{ ignorePatterns: ['**/tests/**'] }],
       errors: [{ messageId: "deepImport" }],
     },
   ],
