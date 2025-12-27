@@ -4,20 +4,20 @@
  * Logger module using pino.
  */
 
-const { enableHttpCallsLogging, setup } = require('./logger/setup.js');
+const { enableHttpCallsLogging, setup } = require('./setup.js');
 const {
     logError,
     logWarning,
     logInfo,
     logDebug,
     printf,
-} = require('./logger/log_methods.js');
+} = require('./log_methods.js');
 
-/** @typedef {import('./environment').Environment} Environment */
-/** @typedef {import('./notifications').Notifier} Notifier */
-/** @typedef {import('./filesystem/creator').FileCreator} FileCreator */
-/** @typedef {import('./filesystem/appender').FileAppender} FileAppender */
-/** @typedef {import('./filesystem/checker').FileChecker} FileChecker */
+/** @typedef {import('../environment.js').Environment} Environment */
+/** @typedef {import('../notifications.js').Notifier} Notifier */
+/** @typedef {import('../filesystem/creator.js').FileCreator} FileCreator */
+/** @typedef {import('../filesystem/appender.js').FileAppender} FileAppender */
+/** @typedef {import('../filesystem/checker.js').FileChecker} FileChecker */
 
 /**
  * @typedef {object} Capabilities
