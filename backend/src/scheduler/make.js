@@ -5,8 +5,9 @@
 const { parseCronExpression } = require("./expression");
 const { makePollingScheduler } = require("./polling");
 const { initializeTasks } = require("./persistence");
-const { validateRegistrations } = require("./registration_validation");
-const { SchedulerAlreadyActiveError } = require("./registration_validation/errors");
+const registrationValidation = require("./registration_validation");
+const { validateRegistrations } = registrationValidation;
+const { SchedulerAlreadyActiveError } = registrationValidation.errors;
 const { generateSchedulerIdentifier } = require("./scheduler_identifier");
 const memconst = require("../memconst");
 

@@ -12,8 +12,10 @@
 const path = require("path");
 const gitstore = require("../gitstore");
 const event = require("../event");
-const { targetPath } = require("../event/asset");
-const configStorage = require("../config/storage");
+const asset = event.asset;
+const { targetPath } = asset;
+const config = require("../config");
+const configStorage = config.storage;
 const { make: makeEventLogStorage } = require("./class");
 
 /** @typedef {import("../filesystem/file").ExistingFile} ExistingFile */

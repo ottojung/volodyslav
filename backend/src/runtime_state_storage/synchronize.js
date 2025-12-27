@@ -1,5 +1,6 @@
 
-const workingRepository = require("../gitstore/working_repository");
+const gitstore = require("../gitstore");
+const workingRepository = gitstore.workingRepository;
 
 /** @typedef {import('./types').Capabilities} Capabilities */
 

@@ -5,9 +5,14 @@
  * in a structured way, following patterns established by the event log storage.
  */
 
-const config = require("./index");
+const {
+    serialize,
+    tryDeserialize,
+    makeInvalidStructureError,
+} = require("./structure");
 const { readObjects } = require("../json_stream_file");
-const { fromExisting } = require("../filesystem/file");
+const filesystem = require("../filesystem");
+const { fromExisting } = filesystem.file;
 
 /** @typedef {import('../filesystem/reader').FileReader} FileReader */
 /** @typedef {import('../filesystem/writer').FileWriter} FileWriter */
@@ -48,7 +53,7 @@ async function readConfig(capabilities, file) {
     const objects = await readObjects(capabilities, file);
 
     if (objects.length === 0) {
-        return config.makeInvalidStructureError("Config file is empty", []);
+        return makeInvalidStructureError("Config file is empty", []);
     }
 
     if (objects.length > 1) {
@@ -57,7 +62,7 @@ async function readConfig(capabilities, file) {
     }
 
     // Try to deserialize the config object and return the result (either Config or error)
-    return config.tryDeserialize(objects[0]);
+    return tryDeserialize(objects[0]);
 }
 
 /**
@@ -69,7 +74,7 @@ async function readConfig(capabilities, file) {
  */
 async function writeConfig(capabilities, filepath, configObj) {
     try {
-        const serialized = config.serialize(configObj);
+        const serialized = serialize(configObj);
         const configString = JSON.stringify(serialized, null, "\t");
 
         // Create file first if it doesn't exist, then get ExistingFile instance with proof

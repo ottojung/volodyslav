@@ -177,8 +177,8 @@ class EventLogStorageClass {
         }
 
         try {
-            const configStorage = require("../config/storage");
             const config = require("../config");
+            const configStorage = config.storage;
 
             const configResult = await configStorage.readConfig(
                 this.capabilities,

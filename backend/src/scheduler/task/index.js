@@ -9,6 +9,7 @@ const {
     isTaskInvalidValueError,
     isTaskInvalidStructureError,
 } = require('./serialization_errors');
+const identity = require('./identity');
 
 /**
  * @typedef {import('./structure').Task} Task
@@ -40,4 +41,5 @@ module.exports = {
     isTaskInvalidTypeError,
     isTaskInvalidValueError,
     isTaskInvalidStructureError,
+    identity,
 };
