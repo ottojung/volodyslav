@@ -89,19 +89,8 @@ class DependencyGraphClass {
             // Compute the new value
             const computedValue = node.computor(inputs, oldValue);
 
-            // Check if the value changed
+            // Skip if unchanged
             if (isUnchanged(computedValue)) {
-                // Mark output as clean even though computation returned unchanged
-                if (oldValue) {
-                    batchOperations.push({
-                        type: "put",
-                        key: node.output,
-                        value: {
-                            value: oldValue.value,
-                            isDirty: false,
-                        },
-                    });
-                }
                 continue;
             }
 
