@@ -92,12 +92,15 @@ describe("generators/interface", () => {
                 await iface.update(events);
 
                 // Verify the data was stored correctly
+                const { freshnessKey } = require("../src/generators/database/types");
                 const result = await db.get("all_events");
                 expect(result).toBeDefined();
-                expect(result.value.events).toHaveLength(2);
-                expect(result.value.events[0].id).toBe("event-1");
-                expect(result.value.events[1].id).toBe("event-2");
-                expect(result.isDirty).toBe(true);
+                expect(result.events).toHaveLength(2);
+                expect(result.events[0].id).toBe("event-1");
+                expect(result.events[1].id).toBe("event-2");
+                
+                const freshness = await db.get(freshnessKey("all_events"));
+                expect(freshness).toBe("dirty");
 
                 await db.close();
             } finally {
@@ -142,9 +145,9 @@ describe("generators/interface", () => {
                 await iface.update(secondEvents);
 
                 const result = await db.get("all_events");
-                expect(result.value.events).toHaveLength(2);
-                expect(result.value.events[0].id).toBe("event-2");
-                expect(result.value.events[1].id).toBe("event-3");
+                expect(result.events).toHaveLength(2);
+                expect(result.events[0].id).toBe("event-2");
+                expect(result.events[1].id).toBe("event-3");
 
                 await db.close();
             } finally {
@@ -160,10 +163,13 @@ describe("generators/interface", () => {
 
                 await iface.update([]);
 
+                const { freshnessKey } = require("../src/generators/database/types");
                 const result = await db.get("all_events");
                 expect(result).toBeDefined();
-                expect(result.value.events).toHaveLength(0);
-                expect(result.isDirty).toBe(true);
+                expect(result.events).toHaveLength(0);
+                
+                const freshness = await db.get(freshnessKey("all_events"));
+                expect(freshness).toBe("dirty");
 
                 await db.close();
             } finally {
@@ -293,8 +299,8 @@ describe("generators/interface", () => {
                 // Verify that event_context was computed in the database
                 const eventContextEntry = await db.get("event_context");
                 expect(eventContextEntry).toBeDefined();
-                expect(eventContextEntry.value.type).toBe("event_context");
-                expect(eventContextEntry.value.contexts).toHaveLength(1);
+                expect(eventContextEntry.type).toBe("event_context");
+                expect(eventContextEntry.contexts).toHaveLength(1);
 
                 await db.close();
             } finally {

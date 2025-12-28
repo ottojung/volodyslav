@@ -3,12 +3,14 @@
  */
 
 /** @typedef {import('./types').Database} Database */
-/** @typedef {import('./types').DatabaseEntry} DatabaseEntry */
+/** @typedef {import('./types').DatabaseValue} DatabaseValue */
+/** @typedef {import('./types').Freshness} Freshness */
 /** @typedef {import('./types').Computor} Computor */
 /** @typedef {import('./types').GraphNode} GraphNode */
 /** @typedef {import('./unchanged').Unchanged} Unchanged */
 
 const { isUnchanged } = require("./unchanged");
+const { freshnessKey } = require("../database/types");
 
 /**
  * A dependency graph that propagates data through edges based on dirty flags.
@@ -46,25 +48,8 @@ class DependencyGraphClass {
      */
     async step() {
         let propagationOccurred = false;
-        /** @type {Array<{type: 'put', key: string, value: DatabaseEntry}>} */
+        /** @type {Array<{type: 'put', key: string, value: any}>} */
         const batchOperations = [];
-
-        // Mark all inputs as clean since we're processing them
-        for (const node of this.graph) {
-            for (const inputKey of node.inputs) {
-                const entry = await this.database.get(inputKey);
-                if (entry && entry.isDirty) {
-                    batchOperations.push({
-                        type: "put",
-                        key: inputKey,
-                        value: {
-                            value: entry.value,
-                            isDirty: false,
-                        },
-                    });
-                }
-            }
-        }
 
         for (const node of this.graph) {
             // Check if any input is dirty
@@ -72,10 +57,12 @@ class DependencyGraphClass {
             const inputs = [];
 
             for (const inputKey of node.inputs) {
-                const entry = await this.database.get(inputKey);
-                if (entry) {
-                    inputs.push(entry);
-                    if (entry.isDirty) {
+                const freshness = await this.database.get(freshnessKey(inputKey));
+                const value = await this.database.get(inputKey);
+                
+                if (value !== undefined) {
+                    inputs.push(value);
+                    if (freshness === "dirty") {
                         hasAnyDirtyInput = true;
                     }
                 }
@@ -83,6 +70,18 @@ class DependencyGraphClass {
 
             if (!hasAnyDirtyInput) {
                 continue;
+            }
+
+            // Mark all inputs as clean
+            for (const inputKey of node.inputs) {
+                const freshness = await this.database.get(freshnessKey(inputKey));
+                if (freshness === "dirty") {
+                    batchOperations.push({
+                        type: "put",
+                        key: freshnessKey(inputKey),
+                        value: "clean",
+                    });
+                }
             }
 
             // Get the current output value
@@ -96,17 +95,25 @@ class DependencyGraphClass {
                 continue;
             }
 
-            // Store the computed value with dirty flag set to true
-            await this.database.put(node.output, {
+            // Store the computed value with dirty freshness
+            batchOperations.push({
+                type: "put",
+                key: node.output,
                 value: computedValue,
-                isDirty: true,
+            });
+            batchOperations.push({
+                type: "put",
+                key: freshnessKey(node.output),
+                value: "dirty",
             });
 
             propagationOccurred = true;
         }
 
         // Execute all operations in a single atomic batch
-        await this.database.batch(batchOperations);
+        if (batchOperations.length > 0) {
+            await this.database.batch(batchOperations);
+        }
 
         return propagationOccurred;
     }
@@ -128,11 +135,10 @@ class DependencyGraphClass {
 
     /**
      * Pulls a specific node's value, lazily evaluating dependencies as needed.
-     * This method implements pull semantics: it only computes what's necessary
-     * to get the requested node's current value.
+     * Uses freshness tracking: clean nodes skip recursion, dirty/potentially-dirty nodes recurse.
      *
      * @param {string} nodeName - The name of the node to pull
-     * @returns {Promise<DatabaseEntry | undefined>} The node's database entry
+     * @returns {Promise<DatabaseValue | undefined>} The node's value
      */
     async pull(nodeName) {
         // Find the graph node definition
@@ -143,76 +149,73 @@ class DependencyGraphClass {
             return await this.database.get(nodeName);
         }
 
-        // First, recursively pull all dependencies to ensure they're up to date
-        for (const inputKey of nodeDefinition.inputs) {
-            await this.pull(inputKey);
+        // Check freshness of this node
+        /** @type {Freshness | undefined} */
+        const nodeFreshness = await this.database.get(freshnessKey(nodeName));
+
+        // If clean, return cached value
+        if (nodeFreshness === "clean") {
+            return await this.database.get(nodeName);
         }
 
-        // Now collect all inputs
+        // Recursively pull all dependencies
+        // They will skip recursion if clean
         const inputs = [];
-        let anyDirtyInput = false;
         for (const inputKey of nodeDefinition.inputs) {
-            const entry = await this.database.get(inputKey);
-            if (entry) {
-                inputs.push(entry);
-                if (entry.isDirty) {
-                    anyDirtyInput = true;
-                }
+            const inputFreshness = await this.database.get(freshnessKey(inputKey));
+            
+            // Recurse if dirty or potentially-dirty (or if freshness not set)
+            if (inputFreshness !== "clean") {
+                await this.pull(inputKey);
+            }
+            
+            // Get the (now clean) input value
+            const inputValue = await this.database.get(inputKey);
+            if (inputValue !== undefined) {
+                inputs.push(inputValue);
             }
         }
 
         // Get the current output value
         const oldValue = await this.database.get(nodeName);
 
-        // Check if we need to recompute
-        const needsComputation = anyDirtyInput || !oldValue;
-
-        if (!needsComputation) {
-            // Already up to date
-            return oldValue;
-        }
+        // Compute the new value
+        const computedValue = nodeDefinition.computor(inputs, oldValue);
 
         // Prepare batch operations
-        /** @type {Array<{type: 'put', key: string, value: DatabaseEntry}>} */
+        /** @type {Array<{type: 'put', key: string, value: any}>} */
         const batchOperations = [];
 
         // Mark all inputs as clean
         for (const inputKey of nodeDefinition.inputs) {
-            const entry = await this.database.get(inputKey);
-            if (entry && entry.isDirty) {
+            const inputFreshness = await this.database.get(freshnessKey(inputKey));
+            if (inputFreshness !== "clean") {
                 batchOperations.push({
                     type: "put",
-                    key: inputKey,
-                    value: {
-                        value: entry.value,
-                        isDirty: false,
-                    },
+                    key: freshnessKey(inputKey),
+                    value: "clean",
                 });
             }
         }
 
-        // Compute the new value
-        const computedValue = nodeDefinition.computor(inputs, oldValue);
-
-        // Store the new value (always clean after pull)
+        // Store the new value and mark as clean
         if (!isUnchanged(computedValue)) {
             batchOperations.push({
                 type: "put",
                 key: nodeName,
-                value: {
-                    value: computedValue,
-                    isDirty: false,
-                },
+                value: computedValue,
             });
-        } else if (oldValue) {
-            // Keep old value but mark as clean
             batchOperations.push({
                 type: "put",
-                key: nodeName,
-                value: {
-                    value: oldValue.value,
-                    isDirty: false,
-                },
+                key: freshnessKey(nodeName),
+                value: "clean",
+            });
+        } else if (oldValue !== undefined) {
+            // Keep old value and mark as clean
+            batchOperations.push({
+                type: "put",
+                key: freshnessKey(nodeName),
+                value: "clean",
             });
         }
 

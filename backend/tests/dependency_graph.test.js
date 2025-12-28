@@ -102,19 +102,18 @@ describe("generators/dependency_graph", () => {
             const capabilities = getTestCapabilities();
             try {
                 const db = await getDatabase(capabilities);
+                const { freshnessKey } = require("../src/generators/database/types");
                 
                 // Set up a dirty input
-                await db.put("input1", {
-                    value: { data: "test" },
-                    isDirty: true,
-                });
+                await db.put("input1", { data: "test" });
+                await db.put(freshnessKey("input1"), "dirty");
 
                 const graphDef = [
                     {
                         output: "output1",
                         inputs: ["input1"],
                         computor: (inputs) => {
-                            return { data: inputs[0].value.data + "_processed" };
+                            return { data: inputs[0].data + "_processed" };
                         },
                     },
                 ];
@@ -127,8 +126,11 @@ describe("generators/dependency_graph", () => {
                 // Check the output was computed
                 const output = await db.get("output1");
                 expect(output).toBeDefined();
-                expect(output.value.data).toBe("test_processed");
-                expect(output.isDirty).toBe(true);
+                expect(output.data).toBe("test_processed");
+                
+                // Check freshness
+                const outputFreshness = await db.get(freshnessKey("output1"));
+                expect(outputFreshness).toBe("dirty");
 
                 await db.close();
             } finally {
@@ -140,16 +142,14 @@ describe("generators/dependency_graph", () => {
             const capabilities = getTestCapabilities();
             try {
                 const db = await getDatabase(capabilities);
+                const { freshnessKey } = require("../src/generators/database/types");
                 
                 // Set up a dirty input and existing output
-                await db.put("input1", {
-                    value: { data: "test" },
-                    isDirty: true,
-                });
-                await db.put("output1", {
-                    value: { data: "existing" },
-                    isDirty: false,
-                });
+                await db.put("input1", { data: "test" });
+                await db.put(freshnessKey("input1"), "dirty");
+                
+                await db.put("output1", { data: "existing" });
+                await db.put(freshnessKey("output1"), "clean");
 
                 const graphDef = [
                     {
@@ -169,8 +169,10 @@ describe("generators/dependency_graph", () => {
                 // Check the output remains unchanged and is marked clean
                 const output = await db.get("output1");
                 expect(output).toBeDefined();
-                expect(output.value.data).toBe("existing");
-                expect(output.isDirty).toBe(false);
+                expect(output.data).toBe("existing");
+                
+                const outputFreshness = await db.get(freshnessKey("output1"));
+                expect(outputFreshness).toBe("clean");
 
                 await db.close();
             } finally {

@@ -57,10 +57,19 @@
  */
 
 /**
- * Database entry structure
- * @typedef {object} DatabaseEntry
- * @property {DatabaseValue} value - The actual value stored
- * @property {boolean} isDirty - Whether the entry has been modified
+ * Freshness state for a database value
+ * @typedef {'dirty' | 'potentially-dirty' | 'clean'} Freshness
  */
 
-module.exports = {};
+/**
+ * Constructs the freshness key for a given database key.
+ * @param {string} key - The database key
+ * @returns {string} The freshness key
+ */
+function freshnessKey(key) {
+    return `freshness(${key})`;
+}
+
+module.exports = {
+    freshnessKey,
+};
