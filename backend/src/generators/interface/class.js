@@ -6,7 +6,7 @@
 /** @typedef {import('../../event').Event} Event */
 /** @typedef {import('../dependency_graph').DependencyGraph} DependencyGraph */
 
-const { makeDependencyGraph } = require("../dependency_graph");
+const { makeDependencyGraph, isUnchanged } = require("../dependency_graph");
 const { metaEvents, eventContext } = require("../individual");
 
 /**
@@ -41,7 +41,6 @@ function createDefaultGraphDefinition() {
                     currentMetaEvents
                 );
 
-                const { isUnchanged } = require("../dependency_graph");
                 if (isUnchanged(result)) {
                     return result;
                 }
@@ -124,18 +123,15 @@ class InterfaceClass {
 
     /**
      * Gets the basic context for a given event.
-     * This method updates all_events, propagates changes through the dependency graph,
-     * and returns the context for the specified event.
+     * This method uses pull semantics to lazily evaluate only the necessary
+     * parts of the dependency graph to get the event context.
      *
      * @param {Event} event - The event to get context for
      * @returns {Promise<Array<Event>>} The context events
      */
     async getEventBasicContext(event) {
-        // First, we need to ensure all derived data is up to date
-        await this.dependencyGraph.run();
-
-        // Read the event_context from the database
-        const eventContextEntry = await this.database.get("event_context");
+        // Pull the event_context node (lazy evaluation)
+        const eventContextEntry = await this.dependencyGraph.pull("event_context");
 
         if (
             !eventContextEntry ||
