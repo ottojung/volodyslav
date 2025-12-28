@@ -3,11 +3,13 @@
  * Computes the event_context representation.
  */
 
-const { computeEventContexts, reconstructEventsFromMetaEvents } = require('./compute');
+const { computeEventContexts, computeEventContextsIncremental, reconstructEventsFromMetaEvents } = require('./compute');
 
 /** @typedef {import('./compute').EventContextEntry} EventContextEntry */
+/** @typedef {import('./compute').IncrementalState} IncrementalState */
 
 module.exports = {
     computeEventContexts,
+    computeEventContextsIncremental,
     reconstructEventsFromMetaEvents,
 };

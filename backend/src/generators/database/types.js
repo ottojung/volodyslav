@@ -34,6 +34,10 @@
  */
 
 /**
+ * @typedef {import('../individual/event_context/compute').IncrementalState} IncrementalState
+ */
+
+/**
  * @typedef {object} AllEventsEntry
  * @property {'all_events'} type - The type of the entry
  * @property {Array<Event>} events - Array of events
@@ -49,6 +53,7 @@
  * @typedef {object} EventContextDatabaseEntry
  * @property {'event_context'} type - The type of the entry
  * @property {Array<ContextEntry>} contexts - Array of event contexts
+ * @property {IncrementalState | null} incrementalState - State for incremental computation
  */
 
 /**

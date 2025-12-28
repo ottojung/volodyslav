@@ -55,23 +55,34 @@ function createDefaultGraphDefinition() {
         {
             output: "event_context",
             inputs: ["meta_events"],
-            computor: (inputs) => {
+            computor: (inputs, oldValue) => {
                 const metaEventsEntry = inputs[0];
                 if (!metaEventsEntry) {
-                    return { type: "event_context", contexts: [] };
+                    return { type: "event_context", contexts: [], incrementalState: null };
                 }
 
                 if (metaEventsEntry.value.type !== "meta_events") {
-                    return { type: "event_context", contexts: [] };
+                    return { type: "event_context", contexts: [], incrementalState: null };
                 }
 
                 const metaEventsArray = metaEventsEntry.value.meta_events;
-                const contexts =
-                    eventContext.computeEventContexts(metaEventsArray);
+                
+                // Extract previous state if available
+                let previousState = null;
+                if (oldValue && oldValue.value.type === "event_context" && oldValue.value.incrementalState) {
+                    previousState = oldValue.value.incrementalState;
+                }
+
+                // Compute incrementally
+                const result = eventContext.computeEventContextsIncremental(
+                    metaEventsArray,
+                    previousState
+                );
 
                 return {
                     type: "event_context",
-                    contexts: contexts,
+                    contexts: result.contexts,
+                    incrementalState: result.state,
                 };
             },
         },
