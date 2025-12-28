@@ -2,7 +2,7 @@
  * Compute meta_events from all_events and current meta_events.
  */
 
-const { equal } = require('../../../event');
+const { equal } = require("../../../event");
 
 /** @typedef {import('../../../event').Event} Event */
 
