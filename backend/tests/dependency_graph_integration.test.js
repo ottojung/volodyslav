@@ -58,9 +58,9 @@ describe("DependencyGraph integration with meta_events", () => {
                             return { type: "meta_events", meta_events: [] };
                         }
 
-                        const allEvents = allEventsEntry.value.events;
+                        const allEvents = allEventsEntry.events;
                         const currentMetaEvents = oldValue 
-                            ? oldValue.value.meta_events 
+                            ? oldValue.meta_events 
                             : [];
 
                         const result = computeMetaEvents(allEvents, currentMetaEvents);
@@ -100,9 +100,9 @@ describe("DependencyGraph integration with meta_events", () => {
             // Check meta_events
             let metaEventsEntry = await db.get("meta_events");
             expect(metaEventsEntry).toBeDefined();
-            expect(metaEventsEntry.value.meta_events).toHaveLength(1);
-            expect(metaEventsEntry.value.meta_events[0].action).toBe("add");
-            expect(eventId.toString(metaEventsEntry.value.meta_events[0].event.id)).toBe("1");
+            expect(metaEventsEntry.meta_events).toHaveLength(1);
+            expect(metaEventsEntry.meta_events[0].action).toBe("add");
+            expect(eventId.toString(metaEventsEntry.meta_events[0].event.id)).toBe("1");
 
             // Step 2: Add another event
             await iface.update([
@@ -135,7 +135,7 @@ describe("DependencyGraph integration with meta_events", () => {
             // Check meta_events now has both
             metaEventsEntry = await db.get("meta_events");
             expect(metaEventsEntry).toBeDefined();
-            expect(metaEventsEntry.value.meta_events).toHaveLength(2);
+            expect(metaEventsEntry.meta_events).toHaveLength(2);
 
             await db.close();
         } finally {
@@ -159,9 +159,9 @@ describe("DependencyGraph integration with meta_events", () => {
                             return { type: "meta_events", meta_events: [] };
                         }
 
-                        const allEvents = allEventsEntry.value.events;
+                        const allEvents = allEventsEntry.events;
                         const currentMetaEvents = oldValue 
-                            ? oldValue.value.meta_events 
+                            ? oldValue.meta_events 
                             : [];
 
                         const result = computeMetaEvents(allEvents, currentMetaEvents);
