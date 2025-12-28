@@ -10,7 +10,7 @@
 /** @typedef {import('./unchanged').Unchanged} Unchanged */
 
 const { isUnchanged } = require("./unchanged");
-const { freshnessKey } = require("../database/types");
+const { freshnessKey } = require("../database");
 
 /**
  * A dependency graph that propagates data through edges based on dirty flags.
