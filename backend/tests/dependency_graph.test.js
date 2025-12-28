@@ -70,19 +70,18 @@ describe("generators/dependency_graph", () => {
             const capabilities = getTestCapabilities();
             try {
                 const db = await getDatabase(capabilities);
+                const { freshnessKey } = require("../src/generators/database");
                 
                 // Set up a clean input
-                await db.put("input1", {
-                    value: { data: "test" },
-                    isDirty: false,
-                });
+                await db.put("input1", { data: "test" });
+                await db.put(freshnessKey("input1"), "clean");
 
                 const graphDef = [
                     {
                         output: "output1",
                         inputs: ["input1"],
                         computor: (inputs) => {
-                            return { data: inputs[0].value.data + "_processed" };
+                            return { data: inputs[0].data + "_processed" };
                         },
                     },
                 ];
@@ -184,30 +183,27 @@ describe("generators/dependency_graph", () => {
             const capabilities = getTestCapabilities();
             try {
                 const db = await getDatabase(capabilities);
+                const { freshnessKey } = require("../src/generators/database");
                 
                 // Set up dirty inputs
-                await db.put("input1", {
-                    value: { data: "test1" },
-                    isDirty: true,
-                });
-                await db.put("input2", {
-                    value: { data: "test2" },
-                    isDirty: true,
-                });
+                await db.put("input1", { data: "test1" });
+                await db.put(freshnessKey("input1"), "dirty");
+                await db.put("input2", { data: "test2" });
+                await db.put(freshnessKey("input2"), "dirty");
 
                 const graphDef = [
                     {
                         output: "output1",
                         inputs: ["input1"],
                         computor: (inputs) => {
-                            return { data: inputs[0].value.data + "_out1" };
+                            return { data: inputs[0].data + "_out1" };
                         },
                     },
                     {
                         output: "output2",
                         inputs: ["input2"],
                         computor: (inputs) => {
-                            return { data: inputs[0].value.data + "_out2" };
+                            return { data: inputs[0].data + "_out2" };
                         },
                     },
                 ];
@@ -220,11 +216,11 @@ describe("generators/dependency_graph", () => {
                 // Check both outputs were computed
                 const output1 = await db.get("output1");
                 expect(output1).toBeDefined();
-                expect(output1.value.data).toBe("test1_out1");
+                expect(output1.data).toBe("test1_out1");
 
                 const output2 = await db.get("output2");
                 expect(output2).toBeDefined();
-                expect(output2.value.data).toBe("test2_out2");
+                expect(output2.data).toBe("test2_out2");
 
                 await db.close();
             } finally {
@@ -236,24 +232,21 @@ describe("generators/dependency_graph", () => {
             const capabilities = getTestCapabilities();
             try {
                 const db = await getDatabase(capabilities);
+                const { freshnessKey } = require("../src/generators/database");
                 
                 // Set up dirty input and existing output
-                await db.put("input1", {
-                    value: { count: 5 },
-                    isDirty: true,
-                });
-                await db.put("output1", {
-                    value: { total: 10 },
-                    isDirty: false,
-                });
+                await db.put("input1", { count: 5 });
+                await db.put(freshnessKey("input1"), "dirty");
+                await db.put("output1", { total: 10 });
+                await db.put(freshnessKey("output1"), "clean");
 
                 const graphDef = [
                     {
                         output: "output1",
                         inputs: ["input1"],
                         computor: (inputs, oldValue) => {
-                            const inputCount = inputs[0].value.count;
-                            const oldTotal = oldValue ? oldValue.value.total : 0;
+                            const inputCount = inputs[0].count;
+                            const oldTotal = oldValue ? oldValue.total : 0;
                             return { total: oldTotal + inputCount };
                         },
                     },
@@ -267,7 +260,7 @@ describe("generators/dependency_graph", () => {
                 // Check the output uses old value
                 const output = await db.get("output1");
                 expect(output).toBeDefined();
-                expect(output.value.total).toBe(15); // 10 + 5
+                expect(output.total).toBe(15); // 10 + 5
 
                 await db.close();
             } finally {
@@ -281,12 +274,11 @@ describe("generators/dependency_graph", () => {
             const capabilities = getTestCapabilities();
             try {
                 const db = await getDatabase(capabilities);
+                const { freshnessKey } = require("../src/generators/database");
                 
                 // Set up dirty input
-                await db.put("input1", {
-                    value: { count: 1 },
-                    isDirty: true,
-                });
+                await db.put("input1", { count: 1 });
+                await db.put(freshnessKey("input1"), "dirty");
 
                 // Define a multi-level graph
                 const graphDef = [
@@ -294,21 +286,21 @@ describe("generators/dependency_graph", () => {
                         output: "level1",
                         inputs: ["input1"],
                         computor: (inputs) => {
-                            return { count: inputs[0].value.count + 1 };
+                            return { count: inputs[0].count + 1 };
                         },
                     },
                     {
                         output: "level2",
                         inputs: ["level1"],
                         computor: (inputs) => {
-                            return { count: inputs[0].value.count + 1 };
+                            return { count: inputs[0].count + 1 };
                         },
                     },
                     {
                         output: "level3",
                         inputs: ["level2"],
                         computor: (inputs) => {
-                            return { count: inputs[0].value.count + 1 };
+                            return { count: inputs[0].count + 1 };
                         },
                     },
                 ];
@@ -319,15 +311,15 @@ describe("generators/dependency_graph", () => {
                 // Check all levels were computed
                 const level1 = await db.get("level1");
                 expect(level1).toBeDefined();
-                expect(level1.value.count).toBe(2);
+                expect(level1.count).toBe(2);
 
                 const level2 = await db.get("level2");
                 expect(level2).toBeDefined();
-                expect(level2.value.count).toBe(3);
+                expect(level2.count).toBe(3);
 
                 const level3 = await db.get("level3");
                 expect(level3).toBeDefined();
-                expect(level3.value.count).toBe(4);
+                expect(level3.count).toBe(4);
 
                 await db.close();
             } finally {
@@ -339,19 +331,18 @@ describe("generators/dependency_graph", () => {
             const capabilities = getTestCapabilities();
             try {
                 const db = await getDatabase(capabilities);
+                const { freshnessKey } = require("../src/generators/database");
                 
                 // Set up clean input
-                await db.put("input1", {
-                    value: { data: "test" },
-                    isDirty: false,
-                });
+                await db.put("input1", { data: "test" });
+                await db.put(freshnessKey("input1"), "clean");
 
                 const graphDef = [
                     {
                         output: "output1",
                         inputs: ["input1"],
                         computor: (inputs) => {
-                            return { data: inputs[0].value.data + "_processed" };
+                            return { data: inputs[0].data + "_processed" };
                         },
                     },
                 ];
@@ -375,15 +366,14 @@ describe("generators/dependency_graph", () => {
             const capabilities = getTestCapabilities();
             try {
                 const db = await getDatabase(capabilities);
+                const { freshnessKey } = require("../src/generators/database");
 
                 // Track which computors were called
                 const computeCalls = [];
 
                 // Set up a chain: input1 -> level1 -> level2 -> level3
-                await db.put("input1", {
-                    value: { count: 1 },
-                    isDirty: true,
-                });
+                await db.put("input1", { count: 1 });
+                await db.put(freshnessKey("input1"), "dirty");
 
                 const graphDef = [
                     {
@@ -391,7 +381,7 @@ describe("generators/dependency_graph", () => {
                         inputs: ["input1"],
                         computor: (inputs) => {
                             computeCalls.push("level1");
-                            return { count: inputs[0].value.count + 1 };
+                            return { count: inputs[0].count + 1 };
                         },
                     },
                     {
@@ -399,7 +389,7 @@ describe("generators/dependency_graph", () => {
                         inputs: ["level1"],
                         computor: (inputs) => {
                             computeCalls.push("level2");
-                            return { count: inputs[0].value.count + 1 };
+                            return { count: inputs[0].count + 1 };
                         },
                     },
                     {
@@ -407,7 +397,7 @@ describe("generators/dependency_graph", () => {
                         inputs: ["level2"],
                         computor: (inputs) => {
                             computeCalls.push("level3");
-                            return { count: inputs[0].value.count + 1 };
+                            return { count: inputs[0].count + 1 };
                         },
                     },
                 ];
@@ -418,7 +408,7 @@ describe("generators/dependency_graph", () => {
                 const result = await graph.pull("level2");
 
                 expect(result).toBeDefined();
-                expect(result.value.count).toBe(3);
+                expect(result.count).toBe(3);
                 expect(computeCalls).toEqual(["level1", "level2"]);
 
                 // level3 should not have been computed
@@ -435,18 +425,15 @@ describe("generators/dependency_graph", () => {
             const capabilities = getTestCapabilities();
             try {
                 const db = await getDatabase(capabilities);
+                const { freshnessKey } = require("../src/generators/database");
 
                 let computeCount = 0;
 
-                await db.put("input1", {
-                    value: { data: "test" },
-                    isDirty: false, // Clean input
-                });
+                await db.put("input1", { data: "test" });
+                await db.put(freshnessKey("input1"), "clean");
 
-                await db.put("output1", {
-                    value: { data: "cached_result" },
-                    isDirty: false, // Clean output
-                });
+                await db.put("output1", { data: "cached_result" });
+                await db.put(freshnessKey("output1"), "clean");
 
                 const graphDef = [
                     {
@@ -454,7 +441,7 @@ describe("generators/dependency_graph", () => {
                         inputs: ["input1"],
                         computor: (inputs) => {
                             computeCount++;
-                            return { data: inputs[0].value.data + "_computed" };
+                            return { data: inputs[0].data + "_computed" };
                         },
                     },
                 ];
@@ -463,7 +450,7 @@ describe("generators/dependency_graph", () => {
                 const result = await graph.pull("output1");
 
                 // Should return cached value without computing
-                expect(result.value.data).toBe("cached_result");
+                expect(result.data).toBe("cached_result");
                 expect(computeCount).toBe(0);
 
                 await db.close();
@@ -476,23 +463,20 @@ describe("generators/dependency_graph", () => {
             const capabilities = getTestCapabilities();
             try {
                 const db = await getDatabase(capabilities);
+                const { freshnessKey } = require("../src/generators/database");
 
-                await db.put("input1", {
-                    value: { data: "new_data" },
-                    isDirty: true, // Dirty input
-                });
+                await db.put("input1", { data: "new_data" });
+                await db.put(freshnessKey("input1"), "dirty");
 
-                await db.put("output1", {
-                    value: { data: "old_result" },
-                    isDirty: false,
-                });
+                await db.put("output1", { data: "old_result" });
+                await db.put(freshnessKey("output1"), "clean");
 
                 const graphDef = [
                     {
                         output: "output1",
                         inputs: ["input1"],
                         computor: (inputs) => {
-                            return { data: inputs[0].value.data + "_processed" };
+                            return { data: inputs[0].data + "_processed" };
                         },
                     },
                 ];
@@ -501,12 +485,13 @@ describe("generators/dependency_graph", () => {
                 const result = await graph.pull("output1");
 
                 // Should have recomputed with new input
-                expect(result.value.data).toBe("new_data_processed");
+                expect(result.data).toBe("new_data_processed");
 
                 // Both input and output should now be clean
-                const input1 = await db.get("input1");
-                expect(input1.isDirty).toBe(false);
-                expect(result.isDirty).toBe(false);
+                const input1Freshness = await db.get(freshnessKey("input1"));
+                const output1Freshness = await db.get(freshnessKey("output1"));
+                expect(input1Freshness).toBe("clean");
+                expect(output1Freshness).toBe("clean");
 
                 await db.close();
             } finally {
@@ -519,16 +504,13 @@ describe("generators/dependency_graph", () => {
             try {
                 const db = await getDatabase(capabilities);
 
-                await db.put("standalone", {
-                    value: { data: "standalone_value" },
-                    isDirty: true,
-                });
+                await db.put("standalone", { data: "standalone_value" });
 
                 const graph = makeDependencyGraph(db, []);
                 const result = await graph.pull("standalone");
 
                 expect(result).toBeDefined();
-                expect(result.value.data).toBe("standalone_value");
+                expect(result.data).toBe("standalone_value");
 
                 await db.close();
             } finally {
@@ -540,16 +522,13 @@ describe("generators/dependency_graph", () => {
             const capabilities = getTestCapabilities();
             try {
                 const db = await getDatabase(capabilities);
+                const { freshnessKey } = require("../src/generators/database");
 
-                await db.put("input1", {
-                    value: { data: "test" },
-                    isDirty: true,
-                });
+                await db.put("input1", { data: "test" });
+                await db.put(freshnessKey("input1"), "dirty");
 
-                await db.put("output1", {
-                    value: { data: "existing_value" },
-                    isDirty: false,
-                });
+                await db.put("output1", { data: "existing_value" });
+                await db.put(freshnessKey("output1"), "clean");
 
                 const graphDef = [
                     {
@@ -564,9 +543,10 @@ describe("generators/dependency_graph", () => {
                 const graph = makeDependencyGraph(db, graphDef);
                 const result = await graph.pull("output1");
 
-                // Should keep existing value
-                expect(result.value.data).toBe("existing_value");
-                expect(result.isDirty).toBe(false);
+                // Should keep existing value and mark as clean
+                expect(result.data).toBe("existing_value");
+                const output1Freshness = await db.get(freshnessKey("output1"));
+                expect(output1Freshness).toBe("clean");
 
                 await db.close();
             } finally {

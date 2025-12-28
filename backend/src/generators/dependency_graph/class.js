@@ -149,12 +149,22 @@ class DependencyGraphClass {
             return await this.database.get(nodeName);
         }
 
+        // Check if any input needs recomputation
+        let needsRecomputation = false;
+        for (const inputKey of nodeDefinition.inputs) {
+            const inputFreshness = await this.database.get(freshnessKey(inputKey));
+            if (inputFreshness !== "clean") {
+                needsRecomputation = true;
+                break;
+            }
+        }
+
         // Check freshness of this node
         /** @type {Freshness | undefined} */
         const nodeFreshness = await this.database.get(freshnessKey(nodeName));
 
-        // If clean, return cached value
-        if (nodeFreshness === "clean") {
+        // If clean and no inputs need recomputation, return cached value
+        if (nodeFreshness === "clean" && !needsRecomputation) {
             return await this.database.get(nodeName);
         }
 
