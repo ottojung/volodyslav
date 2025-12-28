@@ -6,8 +6,8 @@
 /** @typedef {import('../../event').Event} Event */
 /** @typedef {import('../dependency_graph').DependencyGraph} DependencyGraph */
 
-const { makeDependencyGraph } = require('../dependency_graph');
-const { metaEvents, eventContext } = require('../individual');
+const { makeDependencyGraph } = require("../dependency_graph");
+const { metaEvents, eventContext } = require("../individual");
 
 /**
  * Creates the default graph definition for the dependency graph.
@@ -29,16 +29,19 @@ function createDefaultGraphDefinition() {
                 }
 
                 const allEvents = allEventsEntry.value.events;
-                
+
                 /** @type {Array<import('../individual/meta_events').MetaEvent>} */
                 let currentMetaEvents = [];
                 if (oldValue && oldValue.value.type === "meta_events") {
                     currentMetaEvents = oldValue.value.meta_events;
                 }
 
-                const result = metaEvents.computeMetaEvents(allEvents, currentMetaEvents);
-                
-                const { isUnchanged } = require('../dependency_graph');
+                const result = metaEvents.computeMetaEvents(
+                    allEvents,
+                    currentMetaEvents
+                );
+
+                const { isUnchanged } = require("../dependency_graph");
                 if (isUnchanged(result)) {
                     return result;
                 }
@@ -63,7 +66,8 @@ function createDefaultGraphDefinition() {
                 }
 
                 const metaEventsArray = metaEventsEntry.value.meta_events;
-                const contexts = eventContext.computeEventContexts(metaEventsArray);
+                const contexts =
+                    eventContext.computeEventContexts(metaEventsArray);
 
                 return {
                     type: "event_context",
@@ -99,7 +103,10 @@ class InterfaceClass {
      */
     constructor(database) {
         this.database = database;
-        this.dependencyGraph = makeDependencyGraph(database, createDefaultGraphDefinition());
+        this.dependencyGraph = makeDependencyGraph(
+            database,
+            createDefaultGraphDefinition()
+        );
     }
 
     /**
@@ -119,7 +126,7 @@ class InterfaceClass {
      * Gets the basic context for a given event.
      * This method updates all_events, propagates changes through the dependency graph,
      * and returns the context for the specified event.
-     * 
+     *
      * @param {Event} event - The event to get context for
      * @returns {Promise<Array<Event>>} The context events
      */
@@ -129,15 +136,18 @@ class InterfaceClass {
 
         // Read the event_context from the database
         const eventContextEntry = await this.database.get("event_context");
-        
-        if (!eventContextEntry || eventContextEntry.value.type !== "event_context") {
+
+        if (
+            !eventContextEntry ||
+            eventContextEntry.value.type !== "event_context"
+        ) {
             return [event];
         }
 
         // Find the context for this specific event
         const contexts = eventContextEntry.value.contexts;
         const eventIdStr = event.id.identifier;
-        const contextEntry = contexts.find(ctx => ctx.eventId === eventIdStr);
+        const contextEntry = contexts.find((ctx) => ctx.eventId === eventIdStr);
 
         if (!contextEntry) {
             return [event];
