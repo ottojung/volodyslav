@@ -8,6 +8,7 @@
 /** @typedef {import('./types').Computor} Computor */
 /** @typedef {import('./types').GraphNode} GraphNode */
 /** @typedef {import('./unchanged').Unchanged} Unchanged */
+/** @typedef {import('../database/types').DatabaseValue | import('../database/types').Freshness} DatabaseStoredValue */
 
 const { isUnchanged } = require("./unchanged");
 const { freshnessKey } = require("../database");
@@ -48,17 +49,24 @@ class DependencyGraphClass {
      */
     async step() {
         let propagationOccurred = false;
-        /** @type {Array<{type: 'put', key: string, value: any}>} */
+        /** @type {Array<{type: 'put', key: string, value: DatabaseStoredValue}>} */
         const batchOperations = [];
 
         for (const node of this.graph) {
             // Check if any input is dirty or potentially-dirty
             let hasAnyDirtyInput = false;
+            /** @type {Array<DatabaseValue>} */
             const inputs = [];
 
             for (const inputKey of node.inputs) {
-                const freshness = await this.database.get(freshnessKey(inputKey));
-                const value = await this.database.get(inputKey);
+                /** @type {Freshness | undefined} */
+                const freshness = /** @type {Freshness | undefined} */ (
+                    await this.database.get(freshnessKey(inputKey))
+                );
+                /** @type {DatabaseValue | undefined} */
+                const value = /** @type {DatabaseValue | undefined} */ (
+                    await this.database.get(inputKey)
+                );
                 
                 if (value !== undefined) {
                     inputs.push(value);
@@ -74,7 +82,10 @@ class DependencyGraphClass {
 
             // Mark all inputs as clean
             for (const inputKey of node.inputs) {
-                const freshness = await this.database.get(freshnessKey(inputKey));
+                /** @type {Freshness | undefined} */
+                const freshness = /** @type {Freshness | undefined} */ (
+                    await this.database.get(freshnessKey(inputKey))
+                );
                 if (freshness === "dirty" || freshness === "potentially-dirty") {
                     batchOperations.push({
                         type: "put",
@@ -85,7 +96,10 @@ class DependencyGraphClass {
             }
 
             // Get the current output value
-            const oldValue = await this.database.get(node.output);
+            /** @type {DatabaseValue | undefined} */
+            const oldValue = /** @type {DatabaseValue | undefined} */ (
+                await this.database.get(node.output)
+            );
 
             // Compute the new value
             const computedValue = node.computor(inputs, oldValue);
@@ -151,13 +165,20 @@ class DependencyGraphClass {
 
         // If not in graph, just return the database value
         if (!nodeDefinition) {
-            return await this.database.get(nodeName);
+            /** @type {DatabaseValue | undefined} */
+            const result = /** @type {DatabaseValue | undefined} */ (
+                await this.database.get(nodeName)
+            );
+            return result;
         }
 
         // Check if any input needs recomputation
         let needsRecomputation = false;
         for (const inputKey of nodeDefinition.inputs) {
-            const inputFreshness = await this.database.get(freshnessKey(inputKey));
+            /** @type {Freshness | undefined} */
+            const inputFreshness = /** @type {Freshness | undefined} */ (
+                await this.database.get(freshnessKey(inputKey))
+            );
             if (inputFreshness !== "clean") {
                 needsRecomputation = true;
                 break;
@@ -166,18 +187,28 @@ class DependencyGraphClass {
 
         // Check freshness of this node
         /** @type {Freshness | undefined} */
-        const nodeFreshness = await this.database.get(freshnessKey(nodeName));
+        const nodeFreshness = /** @type {Freshness | undefined} */ (
+            await this.database.get(freshnessKey(nodeName))
+        );
 
         // If clean and no inputs need recomputation, return cached value
         if (nodeFreshness === "clean" && !needsRecomputation) {
-            return await this.database.get(nodeName);
+            /** @type {DatabaseValue | undefined} */
+            const result = /** @type {DatabaseValue | undefined} */ (
+                await this.database.get(nodeName)
+            );
+            return result;
         }
 
         // Recursively pull all dependencies
         // They will skip recursion if clean
+        /** @type {Array<DatabaseValue>} */
         const inputs = [];
         for (const inputKey of nodeDefinition.inputs) {
-            const inputFreshness = await this.database.get(freshnessKey(inputKey));
+            /** @type {Freshness | undefined} */
+            const inputFreshness = /** @type {Freshness | undefined} */ (
+                await this.database.get(freshnessKey(inputKey))
+            );
             
             // Recurse if dirty or potentially-dirty (or if freshness not set)
             if (inputFreshness !== "clean") {
@@ -185,25 +216,34 @@ class DependencyGraphClass {
             }
             
             // Get the (now clean) input value
-            const inputValue = await this.database.get(inputKey);
+            /** @type {DatabaseValue | undefined} */
+            const inputValue = /** @type {DatabaseValue | undefined} */ (
+                await this.database.get(inputKey)
+            );
             if (inputValue !== undefined) {
                 inputs.push(inputValue);
             }
         }
 
         // Get the current output value
-        const oldValue = await this.database.get(nodeName);
+        /** @type {DatabaseValue | undefined} */
+        const oldValue = /** @type {DatabaseValue | undefined} */ (
+            await this.database.get(nodeName)
+        );
 
         // Compute the new value
         const computedValue = nodeDefinition.computor(inputs, oldValue);
 
         // Prepare batch operations
-        /** @type {Array<{type: 'put', key: string, value: any}>} */
+        /** @type {Array<{type: 'put', key: string, value: DatabaseStoredValue}>} */
         const batchOperations = [];
 
         // Mark all inputs as clean
         for (const inputKey of nodeDefinition.inputs) {
-            const inputFreshness = await this.database.get(freshnessKey(inputKey));
+            /** @type {Freshness | undefined} */
+            const inputFreshness = /** @type {Freshness | undefined} */ (
+                await this.database.get(freshnessKey(inputKey))
+            );
             if (inputFreshness !== "clean") {
                 batchOperations.push({
                     type: "put",
@@ -237,7 +277,11 @@ class DependencyGraphClass {
         await this.database.batch(batchOperations);
 
         // Return the current (now up-to-date) value
-        return await this.database.get(nodeName);
+        /** @type {DatabaseValue | undefined} */
+        const result = /** @type {DatabaseValue | undefined} */ (
+            await this.database.get(nodeName)
+        );
+        return result;
     }
 }
 
