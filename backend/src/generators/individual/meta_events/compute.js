@@ -2,6 +2,8 @@
  * Compute meta_events from all_events and current meta_events.
  */
 
+const { equal } = require('../../../event');
+
 /** @typedef {import('../../../event').Event} Event */
 
 /**
@@ -50,26 +52,6 @@ function reconstructFromMetaEvents(metaEvents) {
 }
 
 /**
- * Checks if two events are equal by comparing all their properties.
- * @param {Event} event1 - First event
- * @param {Event} event2 - Second event
- * @returns {boolean} True if events are equal
- */
-function eventsEqual(event1, event2) {
-    // Compare all relevant properties
-    return (
-        event1.id.identifier === event2.id.identifier &&
-        event1.date === event2.date &&
-        event1.original === event2.original &&
-        event1.input === event2.input &&
-        event1.type === event2.type &&
-        event1.description === event2.description &&
-        JSON.stringify(event1.modifiers) === JSON.stringify(event2.modifiers) &&
-        JSON.stringify(event1.creator) === JSON.stringify(event2.creator)
-    );
-}
-
-/**
  * Computes the new meta_events array that represents the transformation
  * from reconstructed state to all_events.
  *
@@ -100,7 +82,7 @@ function computeMetaEvents(allEvents, currentMetaEvents) {
                 action: "add",
                 event: event,
             });
-        } else if (!eventsEqual(existingEvent, event)) {
+        } else if (!equal(existingEvent, event)) {
             // Event exists but has changed - edit it
             newMetaEvents.push({
                 action: "edit",

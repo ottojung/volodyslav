@@ -41,6 +41,25 @@ const {
  * @property {Creator} creator - Who created the event.
  */
 
+/**
+ * Checks if two events are equal by comparing all their properties.
+ * @param {Event} event1 - First event
+ * @param {Event} event2 - Second event
+ * @returns {boolean} True if events are equal
+ */
+function equal(event1, event2) {
+   return (
+        event1.id.identifier === event2.id.identifier &&
+        event1.date === event2.date &&
+        event1.original === event2.original &&
+        event1.input === event2.input &&
+        event1.type === event2.type &&
+        event1.description === event2.description &&
+        JSON.stringify(event1.modifiers) === JSON.stringify(event2.modifiers) &&
+        JSON.stringify(event1.creator) === JSON.stringify(event2.creator)
+    );
+}
+
 module.exports = {
     serialize,
     deserialize,
@@ -51,4 +70,5 @@ module.exports = {
     isInvalidValueError,
     isInvalidStructureError,
     isNestedFieldError,
+    equal,
 };

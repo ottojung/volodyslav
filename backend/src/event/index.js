@@ -8,7 +8,8 @@ const {
     isInvalidTypeError,
     isInvalidValueError,
     isInvalidStructureError,
-    isNestedFieldError
+    isNestedFieldError,
+    equal,
 } = require('./structure');
 
 const { extractHashtags } = require('./hashtags');
@@ -35,6 +36,7 @@ module.exports = {
     isNestedFieldError,
     extractHashtags,
     isContextEnhancing,
+    equal,
     id: eventId,
     asset,
     fromInput,
