@@ -9,6 +9,7 @@ const { get: getDatabase } = require("../src/generators/database");
 const {
     makeDependencyGraph,
     isDependencyGraph,
+    makeUnchanged,
 } = require("../src/generators/dependency_graph");
 const { getMockedRootCapabilities } = require("./spies");
 const { stubLogger } = require("./stubs");
@@ -53,7 +54,7 @@ describe("generators/dependency_graph", () => {
             const capabilities = getTestCapabilities();
             try {
                 const db = await getDatabase(capabilities);
-                const graph = makeDependencyGraph(db);
+                const graph = makeDependencyGraph(db, []);
 
                 expect(isDependencyGraph(graph)).toBe(true);
 
@@ -64,39 +65,32 @@ describe("generators/dependency_graph", () => {
         });
     });
 
-    describe("update()", () => {
-        test("stores events in database under all_events key", async () => {
+    describe("step()", () => {
+        test("returns false when there are no dirty flags", async () => {
             const capabilities = getTestCapabilities();
             try {
                 const db = await getDatabase(capabilities);
-                const graph = makeDependencyGraph(db);
+                
+                // Set up a clean input
+                await db.put("input1", {
+                    value: { data: "test" },
+                    isDirty: false,
+                });
 
-                const events = [
+                const graphDef = [
                     {
-                        id: "event-1",
-                        type: "test",
-                        description: "First event",
-                        date: "2024-01-01",
-                        modifiers: {},
-                    },
-                    {
-                        id: "event-2",
-                        type: "test",
-                        description: "Second event",
-                        date: "2024-01-02",
-                        modifiers: {},
+                        output: "output1",
+                        inputs: ["input1"],
+                        computor: (inputs) => {
+                            return { data: inputs[0].value.data + "_processed" };
+                        },
                     },
                 ];
 
-                await graph.update(events);
+                const graph = makeDependencyGraph(db, graphDef);
+                const result = await graph.step();
 
-                // Verify the data was stored correctly
-                const result = await db.get("all_events");
-                expect(result).toBeDefined();
-                expect(result.value.events).toHaveLength(2);
-                expect(result.value.events[0].id).toBe("event-1");
-                expect(result.value.events[1].id).toBe("event-2");
-                expect(result.isDirty).toBe(true);
+                expect(result).toBe(false);
 
                 await db.close();
             } finally {
@@ -104,46 +98,37 @@ describe("generators/dependency_graph", () => {
             }
         });
 
-        test("overwrites previous events on subsequent updates", async () => {
+        test("propagates dirty flag from input to output", async () => {
             const capabilities = getTestCapabilities();
             try {
                 const db = await getDatabase(capabilities);
-                const graph = makeDependencyGraph(db);
+                
+                // Set up a dirty input
+                await db.put("input1", {
+                    value: { data: "test" },
+                    isDirty: true,
+                });
 
-                const firstEvents = [
+                const graphDef = [
                     {
-                        id: "event-1",
-                        type: "test",
-                        description: "First event",
-                        date: "2024-01-01",
-                        modifiers: {},
+                        output: "output1",
+                        inputs: ["input1"],
+                        computor: (inputs) => {
+                            return { data: inputs[0].value.data + "_processed" };
+                        },
                     },
                 ];
 
-                const secondEvents = [
-                    {
-                        id: "event-2",
-                        type: "test",
-                        description: "Second event",
-                        date: "2024-01-02",
-                        modifiers: {},
-                    },
-                    {
-                        id: "event-3",
-                        type: "test",
-                        description: "Third event",
-                        date: "2024-01-03",
-                        modifiers: {},
-                    },
-                ];
+                const graph = makeDependencyGraph(db, graphDef);
+                const result = await graph.step();
 
-                await graph.update(firstEvents);
-                await graph.update(secondEvents);
+                expect(result).toBe(true);
 
-                const result = await db.get("all_events");
-                expect(result.value.events).toHaveLength(2);
-                expect(result.value.events[0].id).toBe("event-2");
-                expect(result.value.events[1].id).toBe("event-3");
+                // Check the output was computed
+                const output = await db.get("output1");
+                expect(output).toBeDefined();
+                expect(output.value.data).toBe("test_processed");
+                expect(output.isDirty).toBe(true);
 
                 await db.close();
             } finally {
@@ -151,18 +136,136 @@ describe("generators/dependency_graph", () => {
             }
         });
 
-        test("handles empty events array", async () => {
+        test("handles Unchanged return value", async () => {
             const capabilities = getTestCapabilities();
             try {
                 const db = await getDatabase(capabilities);
-                const graph = makeDependencyGraph(db);
+                
+                // Set up a dirty input and existing output
+                await db.put("input1", {
+                    value: { data: "test" },
+                    isDirty: true,
+                });
+                await db.put("output1", {
+                    value: { data: "existing" },
+                    isDirty: false,
+                });
 
-                await graph.update([]);
+                const graphDef = [
+                    {
+                        output: "output1",
+                        inputs: ["input1"],
+                        computor: () => {
+                            return makeUnchanged();
+                        },
+                    },
+                ];
 
-                const result = await db.get("all_events");
-                expect(result).toBeDefined();
-                expect(result.value.events).toHaveLength(0);
-                expect(result.isDirty).toBe(true);
+                const graph = makeDependencyGraph(db, graphDef);
+                const result = await graph.step();
+
+                expect(result).toBe(false);
+
+                // Check the output remains unchanged and is marked clean
+                const output = await db.get("output1");
+                expect(output).toBeDefined();
+                expect(output.value.data).toBe("existing");
+                expect(output.isDirty).toBe(false);
+
+                await db.close();
+            } finally {
+                cleanup(capabilities.tmpDir);
+            }
+        });
+
+        test("processes multiple nodes in graph", async () => {
+            const capabilities = getTestCapabilities();
+            try {
+                const db = await getDatabase(capabilities);
+                
+                // Set up dirty inputs
+                await db.put("input1", {
+                    value: { data: "test1" },
+                    isDirty: true,
+                });
+                await db.put("input2", {
+                    value: { data: "test2" },
+                    isDirty: true,
+                });
+
+                const graphDef = [
+                    {
+                        output: "output1",
+                        inputs: ["input1"],
+                        computor: (inputs) => {
+                            return { data: inputs[0].value.data + "_out1" };
+                        },
+                    },
+                    {
+                        output: "output2",
+                        inputs: ["input2"],
+                        computor: (inputs) => {
+                            return { data: inputs[0].value.data + "_out2" };
+                        },
+                    },
+                ];
+
+                const graph = makeDependencyGraph(db, graphDef);
+                const result = await graph.step();
+
+                expect(result).toBe(true);
+
+                // Check both outputs were computed
+                const output1 = await db.get("output1");
+                expect(output1).toBeDefined();
+                expect(output1.value.data).toBe("test1_out1");
+
+                const output2 = await db.get("output2");
+                expect(output2).toBeDefined();
+                expect(output2.value.data).toBe("test2_out2");
+
+                await db.close();
+            } finally {
+                cleanup(capabilities.tmpDir);
+            }
+        });
+
+        test("uses old value in computor", async () => {
+            const capabilities = getTestCapabilities();
+            try {
+                const db = await getDatabase(capabilities);
+                
+                // Set up dirty input and existing output
+                await db.put("input1", {
+                    value: { count: 5 },
+                    isDirty: true,
+                });
+                await db.put("output1", {
+                    value: { total: 10 },
+                    isDirty: false,
+                });
+
+                const graphDef = [
+                    {
+                        output: "output1",
+                        inputs: ["input1"],
+                        computor: (inputs, oldValue) => {
+                            const inputCount = inputs[0].value.count;
+                            const oldTotal = oldValue ? oldValue.value.total : 0;
+                            return { total: oldTotal + inputCount };
+                        },
+                    },
+                ];
+
+                const graph = makeDependencyGraph(db, graphDef);
+                const result = await graph.step();
+
+                expect(result).toBe(true);
+
+                // Check the output uses old value
+                const output = await db.get("output1");
+                expect(output).toBeDefined();
+                expect(output.value.total).toBe(15); // 10 + 5
 
                 await db.close();
             } finally {
@@ -176,7 +279,7 @@ describe("generators/dependency_graph", () => {
             const capabilities = getTestCapabilities();
             try {
                 const db = await getDatabase(capabilities);
-                const graph = makeDependencyGraph(db);
+                const graph = makeDependencyGraph(db, []);
 
                 expect(isDependencyGraph(graph)).toBe(true);
                 expect(isDependencyGraph({})).toBe(false);
