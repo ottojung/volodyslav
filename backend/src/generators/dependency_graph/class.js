@@ -8,7 +8,7 @@
 /** @typedef {import('./types').GraphNode} GraphNode */
 /** @typedef {import('./unchanged').Unchanged} Unchanged */
 
-const { isUnchanged } = require('./unchanged');
+const { isUnchanged } = require("./unchanged");
 
 /**
  * A dependency graph that propagates data through edges based on dirty flags.
