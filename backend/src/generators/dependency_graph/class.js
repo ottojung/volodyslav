@@ -219,10 +219,7 @@ class DependencyGraphClass {
             });
         }
 
-        // Execute all operations atomically
-        if (batchOperations.length > 0) {
-            await this.database.batch(batchOperations);
-        }
+        await this.database.batch(batchOperations);
 
         // Return the current (now up-to-date) value
         return await this.database.get(nodeName);
