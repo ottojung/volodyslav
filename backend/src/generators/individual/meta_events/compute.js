@@ -93,7 +93,7 @@ function computeMetaEvents(allEvents, currentMetaEvents) {
     }
 
     // Find events that need to be deleted
-    for (const [eventId, reconstructedEvent] of reconstructed.entries()) {
+    for (const [eventId, reconstructedEvent] of reconstructed) {
         if (!allEventsMap.has(eventId)) {
             // Event exists in reconstructed but not in all_events - delete it
             newMetaEvents.push({
