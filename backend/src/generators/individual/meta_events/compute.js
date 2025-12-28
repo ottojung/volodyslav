@@ -3,6 +3,7 @@
  */
 
 const { equal } = require("../../../event");
+const { makeUnchanged } = require("../../dependency_graph");
 
 /** @typedef {import('../../../event').Event} Event */
 
@@ -51,13 +52,15 @@ function reconstructFromMetaEvents(metaEvents) {
     return events;
 }
 
+/** @typedef {import('../../dependency_graph').Unchanged} Unchanged */
+
 /**
  * Computes the new meta_events array that represents the transformation
  * from reconstructed state to all_events.
  *
  * @param {Array<Event>} allEvents - The target state (all events)
  * @param {Array<MetaEvent>} currentMetaEvents - The current meta events
- * @returns {Array<MetaEvent> | "unchanged"} The new meta events array
+ * @returns {Array<MetaEvent> | Unchanged} The new meta events array
  */
 function computeMetaEvents(allEvents, currentMetaEvents) {
     // Reconstruct the current state from meta events
@@ -104,7 +107,7 @@ function computeMetaEvents(allEvents, currentMetaEvents) {
     }
 
     if (currentMetaEvents.length === newMetaEvents.length) {
-        return "unchanged";
+        return makeUnchanged();
     }
 
     return newMetaEvents;

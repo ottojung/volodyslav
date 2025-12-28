@@ -7,6 +7,7 @@ const {
     reconstructFromMetaEvents,
 } = require("../src/generators/individual/meta_events");
 const eventId = require("../src/event/id");
+const { isUnchanged } = require("../src/generators/dependency_graph");
 
 describe("generators/individual/meta_events", () => {
     describe("reconstructFromMetaEvents()", () => {
@@ -128,7 +129,7 @@ describe("generators/individual/meta_events", () => {
             const currentMetaEvents = [];
 
             const result = computeMetaEvents(allEvents, currentMetaEvents);
-            expect(result).toEqual("unchanged");
+            expect(isUnchanged(result)).toBe(true);
         });
 
         test("adds new event when all_events has an event not in current meta events", () => {
@@ -412,7 +413,7 @@ describe("generators/individual/meta_events", () => {
 
             const result = computeMetaEvents(allEvents, currentMetaEvents);
 
-            expect(result).toEqual("unchanged");
+            expect(isUnchanged(result)).toBe(true);
         });
     });
 });
