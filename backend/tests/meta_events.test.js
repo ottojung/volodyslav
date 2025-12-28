@@ -128,7 +128,7 @@ describe("generators/individual/meta_events", () => {
             const currentMetaEvents = [];
 
             const result = computeMetaEvents(allEvents, currentMetaEvents);
-            expect(result).toEqual([]);
+            expect(result).toEqual("unchanged");
         });
 
         test("adds new event when all_events has an event not in current meta events", () => {
@@ -412,7 +412,7 @@ describe("generators/individual/meta_events", () => {
 
             const result = computeMetaEvents(allEvents, currentMetaEvents);
 
-            expect(result).toEqual(currentMetaEvents);
+            expect(result).toEqual("unchanged");
         });
     });
 });

@@ -57,7 +57,7 @@ function reconstructFromMetaEvents(metaEvents) {
  *
  * @param {Array<Event>} allEvents - The target state (all events)
  * @param {Array<MetaEvent>} currentMetaEvents - The current meta events
- * @returns {Array<MetaEvent>} The new meta events array
+ * @returns {Array<MetaEvent> | "unchanged"} The new meta events array
  */
 function computeMetaEvents(allEvents, currentMetaEvents) {
     // Reconstruct the current state from meta events
@@ -101,6 +101,10 @@ function computeMetaEvents(allEvents, currentMetaEvents) {
                 event: reconstructedEvent,
             });
         }
+    }
+
+    if (currentMetaEvents.length === newMetaEvents.length) {
+        return "unchanged";
     }
 
     return newMetaEvents;
