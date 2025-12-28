@@ -125,7 +125,7 @@ class InterfaceClass {
      */
     async getEventBasicContext(event) {
         // First, we need to ensure all derived data is up to date
-        await this.dependencyGraph.stepToFixpoint();
+        await this.dependencyGraph.run();
 
         // Read the event_context from the database
         const eventContextEntry = await this.database.get("event_context");

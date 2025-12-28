@@ -116,7 +116,7 @@ class DependencyGraphClass {
      * A fixpoint is reached when no more propagation occurs.
      * @returns {Promise<void>}
      */
-    async stepToFixpoint() {
+    async run() {
         let propagated = await this.step();
         while (propagated) {
             propagated = await this.step();

@@ -274,7 +274,7 @@ describe("generators/dependency_graph", () => {
         });
     });
 
-    describe("stepToFixpoint()", () => {
+    describe("run()", () => {
         test("propagates through multiple levels until fixpoint", async () => {
             const capabilities = getTestCapabilities();
             try {
@@ -312,7 +312,7 @@ describe("generators/dependency_graph", () => {
                 ];
 
                 const graph = makeDependencyGraph(db, graphDef);
-                await graph.stepToFixpoint();
+                await graph.run();
 
                 // Check all levels were computed
                 const level1 = await db.get("level1");
@@ -355,7 +355,7 @@ describe("generators/dependency_graph", () => {
                 ];
 
                 const graph = makeDependencyGraph(db, graphDef);
-                await graph.stepToFixpoint();
+                await graph.run();
 
                 // Output should not exist since input was not dirty
                 const output = await db.get("output1");
