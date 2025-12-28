@@ -22,9 +22,24 @@
  */
 
 /**
+ * @typedef {import('../../event').Event} Event
+ */
+
+/**
+ * @typedef {object} AllEventsEntry
+ * @property {'events'} type - The type of the entry
+ * @property {Array<Event>} events - Array of events
+ */
+
+/**
+ * Database Value Disjoint Union Type
+ * @typedef {AllEventsEntry} DatabaseValue
+ */
+
+/**
  * Database entry structure
  * @typedef {object} DatabaseEntry
- * @property {object} value - The actual value stored
+ * @property {DatabaseValue} value - The actual value stored
  * @property {boolean} isDirty - Whether the entry has been modified
  */
 
