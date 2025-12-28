@@ -114,13 +114,16 @@ class DependencyGraphClass {
     /**
      * Repeatedly performs step() until a fixpoint is reached.
      * A fixpoint is reached when no more propagation occurs.
-     * @returns {Promise<void>}
+     * Returns true if any propagation occurred during the entire run.
+     * @returns {Promise<boolean>}
      */
     async run() {
-        let propagated = await this.step();
+        const initialPropagation = await this.step();
+        let propagated = initialPropagation;
         while (propagated) {
             propagated = await this.step();
         }
+        return initialPropagation;
     }
 }
 
