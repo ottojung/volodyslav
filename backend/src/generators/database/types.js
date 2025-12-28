@@ -31,7 +31,7 @@
 
 /**
  * @typedef {object} AllEventsEntry
- * @property {'events'} type - The type of the entry
+ * @property {'all_events'} type - The type of the entry
  * @property {Array<Event>} events - Array of events
  */
 

@@ -33,7 +33,7 @@ class DependencyGraphClass {
     async update(all_events) {
         const serializedEvents = all_events; // Events are already in serialized form.
         await this.database.put("all_events", {
-            value: { events: serializedEvents, type: "events" },
+            value: { events: serializedEvents, type: "all_events" },
             isDirty: true,
         });
     }
