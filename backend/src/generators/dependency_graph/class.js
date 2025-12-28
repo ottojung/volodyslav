@@ -52,7 +52,7 @@ class DependencyGraphClass {
         const batchOperations = [];
 
         for (const node of this.graph) {
-            // Check if any input is dirty
+            // Check if any input is dirty or potentially-dirty
             let hasAnyDirtyInput = false;
             const inputs = [];
 
@@ -62,7 +62,7 @@ class DependencyGraphClass {
                 
                 if (value !== undefined) {
                     inputs.push(value);
-                    if (freshness === "dirty") {
+                    if (freshness === "dirty" || freshness === "potentially-dirty") {
                         hasAnyDirtyInput = true;
                     }
                 }
@@ -75,7 +75,7 @@ class DependencyGraphClass {
             // Mark all inputs as clean
             for (const inputKey of node.inputs) {
                 const freshness = await this.database.get(freshnessKey(inputKey));
-                if (freshness === "dirty") {
+                if (freshness === "dirty" || freshness === "potentially-dirty") {
                     batchOperations.push({
                         type: "put",
                         key: freshnessKey(inputKey),
@@ -90,24 +90,29 @@ class DependencyGraphClass {
             // Compute the new value
             const computedValue = node.computor(inputs, oldValue);
 
-            // Skip if unchanged
-            if (isUnchanged(computedValue)) {
-                continue;
+            // Handle the computed value
+            if (!isUnchanged(computedValue)) {
+                // Store the computed value with dirty freshness
+                batchOperations.push({
+                    type: "put",
+                    key: node.output,
+                    value: computedValue,
+                });
+                batchOperations.push({
+                    type: "put",
+                    key: freshnessKey(node.output),
+                    value: "dirty",
+                });
+
+                propagationOccurred = true;
+            } else {
+                // Value unchanged - mark output as clean to stop propagation
+                batchOperations.push({
+                    type: "put",
+                    key: freshnessKey(node.output),
+                    value: "clean",
+                });
             }
-
-            // Store the computed value with dirty freshness
-            batchOperations.push({
-                type: "put",
-                key: node.output,
-                value: computedValue,
-            });
-            batchOperations.push({
-                type: "put",
-                key: freshnessKey(node.output),
-                value: "dirty",
-            });
-
-            propagationOccurred = true;
         }
 
         // Execute all operations in a single atomic batch
@@ -220,8 +225,8 @@ class DependencyGraphClass {
                 key: freshnessKey(nodeName),
                 value: "clean",
             });
-        } else if (oldValue !== undefined) {
-            // Keep old value and mark as clean
+        } else {
+            // Value unchanged - mark as clean to avoid recomputation
             batchOperations.push({
                 type: "put",
                 key: freshnessKey(nodeName),
