@@ -4,7 +4,8 @@
 
 /** @typedef {import('../../event').Event} Event */
 /** @typedef {import('../database/class').Database} Database */
-/** @typedef {import('../database/types').DatabaseEntry} DatabaseEntry */
+/** @typedef {import('../database/types').DatabaseValue} DatabaseValue */
+/** @typedef {import('../database/types').Freshness} Freshness */
 /** @typedef {import('./unchanged').Unchanged} Unchanged */
 
 /**
@@ -15,7 +16,7 @@
 
 /**
  * A computor function that takes inputs and old value, and produces new value or Unchanged.
- * @typedef {(inputs: Array<DatabaseEntry>, oldValue: DatabaseEntry | undefined) => DatabaseEntry['value'] | Unchanged} Computor
+ * @typedef {(inputs: Array<DatabaseValue>, oldValue: DatabaseValue | undefined) => DatabaseValue | Unchanged} Computor
  */
 
 /**

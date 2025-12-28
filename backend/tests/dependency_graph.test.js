@@ -102,19 +102,18 @@ describe("generators/dependency_graph", () => {
             const capabilities = getTestCapabilities();
             try {
                 const db = await getDatabase(capabilities);
+                const { freshnessKey } = require("../src/generators/database/types");
                 
                 // Set up a dirty input
-                await db.put("input1", {
-                    value: { data: "test" },
-                    isDirty: true,
-                });
+                await db.put("input1", { data: "test" });
+                await db.put(freshnessKey("input1"), "dirty");
 
                 const graphDef = [
                     {
                         output: "output1",
                         inputs: ["input1"],
                         computor: (inputs) => {
-                            return { data: inputs[0].value.data + "_processed" };
+                            return { data: inputs[0].data + "_processed" };
                         },
                     },
                 ];
@@ -127,8 +126,11 @@ describe("generators/dependency_graph", () => {
                 // Check the output was computed
                 const output = await db.get("output1");
                 expect(output).toBeDefined();
-                expect(output.value.data).toBe("test_processed");
-                expect(output.isDirty).toBe(true);
+                expect(output.data).toBe("test_processed");
+                
+                // Check freshness
+                const outputFreshness = await db.get(freshnessKey("output1"));
+                expect(outputFreshness).toBe("dirty");
 
                 await db.close();
             } finally {
@@ -140,16 +142,14 @@ describe("generators/dependency_graph", () => {
             const capabilities = getTestCapabilities();
             try {
                 const db = await getDatabase(capabilities);
+                const { freshnessKey } = require("../src/generators/database/types");
                 
                 // Set up a dirty input and existing output
-                await db.put("input1", {
-                    value: { data: "test" },
-                    isDirty: true,
-                });
-                await db.put("output1", {
-                    value: { data: "existing" },
-                    isDirty: false,
-                });
+                await db.put("input1", { data: "test" });
+                await db.put(freshnessKey("input1"), "dirty");
+                
+                await db.put("output1", { data: "existing" });
+                await db.put(freshnessKey("output1"), "clean");
 
                 const graphDef = [
                     {
@@ -169,8 +169,10 @@ describe("generators/dependency_graph", () => {
                 // Check the output remains unchanged and is marked clean
                 const output = await db.get("output1");
                 expect(output).toBeDefined();
-                expect(output.value.data).toBe("existing");
-                expect(output.isDirty).toBe(false);
+                expect(output.data).toBe("existing");
+                
+                const outputFreshness = await db.get(freshnessKey("output1"));
+                expect(outputFreshness).toBe("clean");
 
                 await db.close();
             } finally {
@@ -266,6 +268,305 @@ describe("generators/dependency_graph", () => {
                 const output = await db.get("output1");
                 expect(output).toBeDefined();
                 expect(output.value.total).toBe(15); // 10 + 5
+
+                await db.close();
+            } finally {
+                cleanup(capabilities.tmpDir);
+            }
+        });
+    });
+
+    describe("run()", () => {
+        test("propagates through multiple levels until fixpoint", async () => {
+            const capabilities = getTestCapabilities();
+            try {
+                const db = await getDatabase(capabilities);
+                
+                // Set up dirty input
+                await db.put("input1", {
+                    value: { count: 1 },
+                    isDirty: true,
+                });
+
+                // Define a multi-level graph
+                const graphDef = [
+                    {
+                        output: "level1",
+                        inputs: ["input1"],
+                        computor: (inputs) => {
+                            return { count: inputs[0].value.count + 1 };
+                        },
+                    },
+                    {
+                        output: "level2",
+                        inputs: ["level1"],
+                        computor: (inputs) => {
+                            return { count: inputs[0].value.count + 1 };
+                        },
+                    },
+                    {
+                        output: "level3",
+                        inputs: ["level2"],
+                        computor: (inputs) => {
+                            return { count: inputs[0].value.count + 1 };
+                        },
+                    },
+                ];
+
+                const graph = makeDependencyGraph(db, graphDef);
+                await graph.run();
+
+                // Check all levels were computed
+                const level1 = await db.get("level1");
+                expect(level1).toBeDefined();
+                expect(level1.value.count).toBe(2);
+
+                const level2 = await db.get("level2");
+                expect(level2).toBeDefined();
+                expect(level2.value.count).toBe(3);
+
+                const level3 = await db.get("level3");
+                expect(level3).toBeDefined();
+                expect(level3.value.count).toBe(4);
+
+                await db.close();
+            } finally {
+                cleanup(capabilities.tmpDir);
+            }
+        });
+
+        test("stops when no more dirty flags", async () => {
+            const capabilities = getTestCapabilities();
+            try {
+                const db = await getDatabase(capabilities);
+                
+                // Set up clean input
+                await db.put("input1", {
+                    value: { data: "test" },
+                    isDirty: false,
+                });
+
+                const graphDef = [
+                    {
+                        output: "output1",
+                        inputs: ["input1"],
+                        computor: (inputs) => {
+                            return { data: inputs[0].value.data + "_processed" };
+                        },
+                    },
+                ];
+
+                const graph = makeDependencyGraph(db, graphDef);
+                await graph.run();
+
+                // Output should not exist since input was not dirty
+                const output = await db.get("output1");
+                expect(output).toBeUndefined();
+
+                await db.close();
+            } finally {
+                cleanup(capabilities.tmpDir);
+            }
+        });
+    });
+
+    describe("pull()", () => {
+        test("lazily evaluates only necessary nodes", async () => {
+            const capabilities = getTestCapabilities();
+            try {
+                const db = await getDatabase(capabilities);
+
+                // Track which computors were called
+                const computeCalls = [];
+
+                // Set up a chain: input1 -> level1 -> level2 -> level3
+                await db.put("input1", {
+                    value: { count: 1 },
+                    isDirty: true,
+                });
+
+                const graphDef = [
+                    {
+                        output: "level1",
+                        inputs: ["input1"],
+                        computor: (inputs) => {
+                            computeCalls.push("level1");
+                            return { count: inputs[0].value.count + 1 };
+                        },
+                    },
+                    {
+                        output: "level2",
+                        inputs: ["level1"],
+                        computor: (inputs) => {
+                            computeCalls.push("level2");
+                            return { count: inputs[0].value.count + 1 };
+                        },
+                    },
+                    {
+                        output: "level3",
+                        inputs: ["level2"],
+                        computor: (inputs) => {
+                            computeCalls.push("level3");
+                            return { count: inputs[0].value.count + 1 };
+                        },
+                    },
+                ];
+
+                const graph = makeDependencyGraph(db, graphDef);
+
+                // Pull only level2 - should compute level1 and level2 but NOT level3
+                const result = await graph.pull("level2");
+
+                expect(result).toBeDefined();
+                expect(result.value.count).toBe(3);
+                expect(computeCalls).toEqual(["level1", "level2"]);
+
+                // level3 should not have been computed
+                const level3 = await db.get("level3");
+                expect(level3).toBeUndefined();
+
+                await db.close();
+            } finally {
+                cleanup(capabilities.tmpDir);
+            }
+        });
+
+        test("returns cached value when dependencies are clean", async () => {
+            const capabilities = getTestCapabilities();
+            try {
+                const db = await getDatabase(capabilities);
+
+                let computeCount = 0;
+
+                await db.put("input1", {
+                    value: { data: "test" },
+                    isDirty: false, // Clean input
+                });
+
+                await db.put("output1", {
+                    value: { data: "cached_result" },
+                    isDirty: false, // Clean output
+                });
+
+                const graphDef = [
+                    {
+                        output: "output1",
+                        inputs: ["input1"],
+                        computor: (inputs) => {
+                            computeCount++;
+                            return { data: inputs[0].value.data + "_computed" };
+                        },
+                    },
+                ];
+
+                const graph = makeDependencyGraph(db, graphDef);
+                const result = await graph.pull("output1");
+
+                // Should return cached value without computing
+                expect(result.value.data).toBe("cached_result");
+                expect(computeCount).toBe(0);
+
+                await db.close();
+            } finally {
+                cleanup(capabilities.tmpDir);
+            }
+        });
+
+        test("recomputes when dependencies are dirty", async () => {
+            const capabilities = getTestCapabilities();
+            try {
+                const db = await getDatabase(capabilities);
+
+                await db.put("input1", {
+                    value: { data: "new_data" },
+                    isDirty: true, // Dirty input
+                });
+
+                await db.put("output1", {
+                    value: { data: "old_result" },
+                    isDirty: false,
+                });
+
+                const graphDef = [
+                    {
+                        output: "output1",
+                        inputs: ["input1"],
+                        computor: (inputs) => {
+                            return { data: inputs[0].value.data + "_processed" };
+                        },
+                    },
+                ];
+
+                const graph = makeDependencyGraph(db, graphDef);
+                const result = await graph.pull("output1");
+
+                // Should have recomputed with new input
+                expect(result.value.data).toBe("new_data_processed");
+
+                // Both input and output should now be clean
+                const input1 = await db.get("input1");
+                expect(input1.isDirty).toBe(false);
+                expect(result.isDirty).toBe(false);
+
+                await db.close();
+            } finally {
+                cleanup(capabilities.tmpDir);
+            }
+        });
+
+        test("pulls non-graph nodes directly from database", async () => {
+            const capabilities = getTestCapabilities();
+            try {
+                const db = await getDatabase(capabilities);
+
+                await db.put("standalone", {
+                    value: { data: "standalone_value" },
+                    isDirty: true,
+                });
+
+                const graph = makeDependencyGraph(db, []);
+                const result = await graph.pull("standalone");
+
+                expect(result).toBeDefined();
+                expect(result.value.data).toBe("standalone_value");
+
+                await db.close();
+            } finally {
+                cleanup(capabilities.tmpDir);
+            }
+        });
+
+        test("handles Unchanged return value", async () => {
+            const capabilities = getTestCapabilities();
+            try {
+                const db = await getDatabase(capabilities);
+
+                await db.put("input1", {
+                    value: { data: "test" },
+                    isDirty: true,
+                });
+
+                await db.put("output1", {
+                    value: { data: "existing_value" },
+                    isDirty: false,
+                });
+
+                const graphDef = [
+                    {
+                        output: "output1",
+                        inputs: ["input1"],
+                        computor: () => {
+                            return makeUnchanged();
+                        },
+                    },
+                ];
+
+                const graph = makeDependencyGraph(db, graphDef);
+                const result = await graph.pull("output1");
+
+                // Should keep existing value
+                expect(result.value.data).toBe("existing_value");
+                expect(result.isDirty).toBe(false);
 
                 await db.close();
             } finally {
