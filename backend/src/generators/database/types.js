@@ -30,6 +30,10 @@
  */
 
 /**
+ * @typedef {import('../individual/event_context/compute').EventContextEntry} ContextEntry
+ */
+
+/**
  * @typedef {object} AllEventsEntry
  * @property {'all_events'} type - The type of the entry
  * @property {Array<Event>} events - Array of events
@@ -42,8 +46,14 @@
  */
 
 /**
+ * @typedef {object} EventContextDatabaseEntry
+ * @property {'event_context'} type - The type of the entry
+ * @property {Array<ContextEntry>} contexts - Array of event contexts
+ */
+
+/**
  * Database Value Disjoint Union Type
- * @typedef {AllEventsEntry | MetaEventsEntry} DatabaseValue
+ * @typedef {AllEventsEntry | MetaEventsEntry | EventContextDatabaseEntry} DatabaseValue
  */
 
 /**

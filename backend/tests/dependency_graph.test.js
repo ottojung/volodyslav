@@ -274,6 +274,100 @@ describe("generators/dependency_graph", () => {
         });
     });
 
+    describe("stepToFixpoint()", () => {
+        test("propagates through multiple levels until fixpoint", async () => {
+            const capabilities = getTestCapabilities();
+            try {
+                const db = await getDatabase(capabilities);
+                
+                // Set up dirty input
+                await db.put("input1", {
+                    value: { count: 1 },
+                    isDirty: true,
+                });
+
+                // Define a multi-level graph
+                const graphDef = [
+                    {
+                        output: "level1",
+                        inputs: ["input1"],
+                        computor: (inputs) => {
+                            return { count: inputs[0].value.count + 1 };
+                        },
+                    },
+                    {
+                        output: "level2",
+                        inputs: ["level1"],
+                        computor: (inputs) => {
+                            return { count: inputs[0].value.count + 1 };
+                        },
+                    },
+                    {
+                        output: "level3",
+                        inputs: ["level2"],
+                        computor: (inputs) => {
+                            return { count: inputs[0].value.count + 1 };
+                        },
+                    },
+                ];
+
+                const graph = makeDependencyGraph(db, graphDef);
+                await graph.stepToFixpoint();
+
+                // Check all levels were computed
+                const level1 = await db.get("level1");
+                expect(level1).toBeDefined();
+                expect(level1.value.count).toBe(2);
+
+                const level2 = await db.get("level2");
+                expect(level2).toBeDefined();
+                expect(level2.value.count).toBe(3);
+
+                const level3 = await db.get("level3");
+                expect(level3).toBeDefined();
+                expect(level3.value.count).toBe(4);
+
+                await db.close();
+            } finally {
+                cleanup(capabilities.tmpDir);
+            }
+        });
+
+        test("stops when no more dirty flags", async () => {
+            const capabilities = getTestCapabilities();
+            try {
+                const db = await getDatabase(capabilities);
+                
+                // Set up clean input
+                await db.put("input1", {
+                    value: { data: "test" },
+                    isDirty: false,
+                });
+
+                const graphDef = [
+                    {
+                        output: "output1",
+                        inputs: ["input1"],
+                        computor: (inputs) => {
+                            return { data: inputs[0].value.data + "_processed" };
+                        },
+                    },
+                ];
+
+                const graph = makeDependencyGraph(db, graphDef);
+                await graph.stepToFixpoint();
+
+                // Output should not exist since input was not dirty
+                const output = await db.get("output1");
+                expect(output).toBeUndefined();
+
+                await db.close();
+            } finally {
+                cleanup(capabilities.tmpDir);
+            }
+        });
+    });
+
     describe("Type guards", () => {
         test("isDependencyGraph correctly identifies instances", async () => {
             const capabilities = getTestCapabilities();

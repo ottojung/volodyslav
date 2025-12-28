@@ -8,6 +8,8 @@
 /** @typedef {import('./types').GraphNode} GraphNode */
 /** @typedef {import('./unchanged').Unchanged} Unchanged */
 
+const { isUnchanged } = require('./unchanged');
+
 /**
  * A dependency graph that propagates data through edges based on dirty flags.
  */
@@ -63,6 +65,17 @@ class DependencyGraphClass {
                 continue;
             }
 
+            // Mark all inputs as clean since we're processing them
+            for (const inputKey of node.inputs) {
+                const entry = await this.database.get(inputKey);
+                if (entry && entry.isDirty) {
+                    await this.database.put(inputKey, {
+                        value: entry.value,
+                        isDirty: false,
+                    });
+                }
+            }
+
             // Get the current output value
             const oldValue = await this.database.get(node.output);
 
@@ -70,7 +83,6 @@ class DependencyGraphClass {
             const computedValue = node.computor(inputs, oldValue);
 
             // Check if the value changed
-            const { isUnchanged } = require('./unchanged');
             if (isUnchanged(computedValue)) {
                 // Mark output as clean even though computation returned unchanged
                 if (oldValue) {
@@ -92,6 +104,18 @@ class DependencyGraphClass {
         }
 
         return propagationOccurred;
+    }
+
+    /**
+     * Repeatedly performs step() until a fixpoint is reached.
+     * A fixpoint is reached when no more propagation occurs.
+     * @returns {Promise<void>}
+     */
+    async stepToFixpoint() {
+        let propagated = await this.step();
+        while (propagated) {
+            propagated = await this.step();
+        }
     }
 }
 

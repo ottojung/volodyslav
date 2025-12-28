@@ -10,6 +10,7 @@ const {
     makeInterface,
     isInterface,
 } = require("../src/generators/interface");
+const eventId = require("../src/event/id");
 const { getMockedRootCapabilities } = require("./spies");
 const { stubLogger } = require("./stubs");
 
@@ -163,6 +164,137 @@ describe("generators/interface", () => {
                 expect(result).toBeDefined();
                 expect(result.value.events).toHaveLength(0);
                 expect(result.isDirty).toBe(true);
+
+                await db.close();
+            } finally {
+                cleanup(capabilities.tmpDir);
+            }
+        });
+    });
+
+    describe("getEventBasicContext()", () => {
+        test("returns context for event with shared hashtags", async () => {
+            const capabilities = getTestCapabilities();
+            try {
+                const db = await getDatabase(capabilities);
+                const iface = makeInterface(db);
+
+                const events = [
+                    {
+                        id: eventId.fromString("1"),
+                        type: "text",
+                        description: "First #project event",
+                        date: "2024-01-01",
+                        original: "First #project event",
+                        input: "First #project event",
+                        modifiers: {},
+                        creator: { type: "user", name: "test" },
+                    },
+                    {
+                        id: eventId.fromString("2"),
+                        type: "text",
+                        description: "Second #project event",
+                        date: "2024-01-02",
+                        original: "Second #project event",
+                        input: "Second #project event",
+                        modifiers: {},
+                        creator: { type: "user", name: "test" },
+                    },
+                    {
+                        id: eventId.fromString("3"),
+                        type: "text",
+                        description: "Unrelated #other event",
+                        date: "2024-01-03",
+                        original: "Unrelated #other event",
+                        input: "Unrelated #other event",
+                        modifiers: {},
+                        creator: { type: "user", name: "test" },
+                    },
+                ];
+
+                await iface.update(events);
+
+                // Get context for first event
+                const context = await iface.getEventBasicContext(events[0]);
+
+                // Should include both events with #project
+                expect(context).toHaveLength(2);
+                const contextIds = context.map(e => e.id.identifier);
+                expect(contextIds).toContain("1");
+                expect(contextIds).toContain("2");
+                expect(contextIds).not.toContain("3");
+
+                await db.close();
+            } finally {
+                cleanup(capabilities.tmpDir);
+            }
+        });
+
+        test("returns only the event itself when no shared hashtags", async () => {
+            const capabilities = getTestCapabilities();
+            try {
+                const db = await getDatabase(capabilities);
+                const iface = makeInterface(db);
+
+                const events = [
+                    {
+                        id: eventId.fromString("1"),
+                        type: "text",
+                        description: "Event without hashtags",
+                        date: "2024-01-01",
+                        original: "test1",
+                        input: "test1",
+                        modifiers: {},
+                        creator: { type: "user", name: "test" },
+                    },
+                ];
+
+                await iface.update(events);
+
+                const context = await iface.getEventBasicContext(events[0]);
+
+                expect(context).toHaveLength(1);
+                expect(context[0].id.identifier).toBe("1");
+
+                await db.close();
+            } finally {
+                cleanup(capabilities.tmpDir);
+            }
+        });
+
+        test("propagates through dependency graph before returning context", async () => {
+            const capabilities = getTestCapabilities();
+            try {
+                const db = await getDatabase(capabilities);
+                const iface = makeInterface(db);
+
+                // Add events
+                const events = [
+                    {
+                        id: eventId.fromString("1"),
+                        type: "text",
+                        description: "Test #tag event",
+                        date: "2024-01-01",
+                        original: "Test #tag event",
+                        input: "Test #tag event",
+                        modifiers: {},
+                        creator: { type: "user", name: "test" },
+                    },
+                ];
+
+                await iface.update(events);
+
+                // Get context - this should trigger propagation
+                const context = await iface.getEventBasicContext(events[0]);
+
+                expect(context).toBeDefined();
+                expect(context).toHaveLength(1);
+
+                // Verify that event_context was computed in the database
+                const eventContextEntry = await db.get("event_context");
+                expect(eventContextEntry).toBeDefined();
+                expect(eventContextEntry.value.type).toBe("event_context");
+                expect(eventContextEntry.value.contexts).toHaveLength(1);
 
                 await db.close();
             } finally {
