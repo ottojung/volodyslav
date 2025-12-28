@@ -160,6 +160,9 @@ class DatabaseClass {
      * @throws {DatabaseQueryError} If the operation fails
      */
     async batch(operations) {
+        if (operations.length === 0) {
+            return;
+        }
         try {
             await this.db.batch(operations, { sync: true });
         } catch (err) {

@@ -41,10 +41,13 @@ class DependencyGraphClass {
     /**
      * Performs one step of dependency propagation.
      * Scans the graph for dirty input nodes and propagates changes to outputs.
+     * All database operations are batched together for atomicity.
      * @returns {Promise<boolean>} True if any propagation occurred, false if no dirty flags found
      */
     async step() {
         let propagationOccurred = false;
+        /** @type {Array<{type: 'put', key: string, value: DatabaseEntry}>} */
+        const batchOperations = [];
 
         for (const node of this.graph) {
             // Check if any input is dirty
@@ -69,9 +72,13 @@ class DependencyGraphClass {
             for (const inputKey of node.inputs) {
                 const entry = await this.database.get(inputKey);
                 if (entry && entry.isDirty) {
-                    await this.database.put(inputKey, {
-                        value: entry.value,
-                        isDirty: false,
+                    batchOperations.push({
+                        type: "put",
+                        key: inputKey,
+                        value: {
+                            value: entry.value,
+                            isDirty: false,
+                        },
                     });
                 }
             }
@@ -86,9 +93,13 @@ class DependencyGraphClass {
             if (isUnchanged(computedValue)) {
                 // Mark output as clean even though computation returned unchanged
                 if (oldValue) {
-                    await this.database.put(node.output, {
-                        value: oldValue.value,
-                        isDirty: false,
+                    batchOperations.push({
+                        type: "put",
+                        key: node.output,
+                        value: {
+                            value: oldValue.value,
+                            isDirty: false,
+                        },
                     });
                 }
                 continue;
@@ -102,6 +113,9 @@ class DependencyGraphClass {
 
             propagationOccurred = true;
         }
+
+        // Execute all operations in a single atomic batch
+        await this.database.batch(batchOperations);
 
         return propagationOccurred;
     }
