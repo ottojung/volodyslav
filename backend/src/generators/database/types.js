@@ -26,14 +26,24 @@
  */
 
 /**
+ * @typedef {import('../individual/meta_events').MetaEvent} MetaEvent
+ */
+
+/**
  * @typedef {object} AllEventsEntry
  * @property {'events'} type - The type of the entry
  * @property {Array<Event>} events - Array of events
  */
 
 /**
+ * @typedef {object} MetaEventsEntry
+ * @property {'meta_events'} type - The type of the entry
+ * @property {Array<MetaEvent>} meta_events - Array of meta events
+ */
+
+/**
  * Database Value Disjoint Union Type
- * @typedef {AllEventsEntry} DatabaseValue
+ * @typedef {AllEventsEntry | MetaEventsEntry} DatabaseValue
  */
 
 /**
