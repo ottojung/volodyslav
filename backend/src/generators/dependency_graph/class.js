@@ -49,6 +49,23 @@ class DependencyGraphClass {
         /** @type {Array<{type: 'put', key: string, value: DatabaseEntry}>} */
         const batchOperations = [];
 
+        // Mark all inputs as clean since we're processing them
+        for (const node of this.graph) {
+            for (const inputKey of node.inputs) {
+                const entry = await this.database.get(inputKey);
+                if (entry && entry.isDirty) {
+                    batchOperations.push({
+                        type: "put",
+                        key: inputKey,
+                        value: {
+                            value: entry.value,
+                            isDirty: false,
+                        },
+                    });
+                }
+            }
+        }
+
         for (const node of this.graph) {
             // Check if any input is dirty
             let hasAnyDirtyInput = false;
@@ -66,21 +83,6 @@ class DependencyGraphClass {
 
             if (!hasAnyDirtyInput) {
                 continue;
-            }
-
-            // Mark all inputs as clean since we're processing them
-            for (const inputKey of node.inputs) {
-                const entry = await this.database.get(inputKey);
-                if (entry && entry.isDirty) {
-                    batchOperations.push({
-                        type: "put",
-                        key: inputKey,
-                        value: {
-                            value: entry.value,
-                            isDirty: false,
-                        },
-                    });
-                }
             }
 
             // Get the current output value
