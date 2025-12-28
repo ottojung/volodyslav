@@ -3,8 +3,8 @@ class UnchangedClass {}
 
 /** @typedef {UnchangedClass} Unchanged */
 
-/** @type {Unchanged | null} */
-let instance = null;
+/** @type {Unchanged} */
+const instance = new UnchangedClass();
 
 /**
  *
@@ -16,9 +16,6 @@ function isUnchanged(value) {
 }
 
 function makeUnchanged() {
-    if (instance === null) {
-        instance = new UnchangedClass();
-    }
     return instance;
 }
 
