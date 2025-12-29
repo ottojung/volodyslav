@@ -71,7 +71,7 @@ describe("generators/dependency_graph", () => {
             try {
                 const db = await getDatabase(capabilities);
                 const { freshnessKey } = require("../src/generators/database");
-                
+
                 // Set up a clean input
                 await db.put("input1", { data: "test" });
                 await db.put(freshnessKey("input1"), "clean");
@@ -101,8 +101,10 @@ describe("generators/dependency_graph", () => {
             const capabilities = getTestCapabilities();
             try {
                 const db = await getDatabase(capabilities);
-                const { freshnessKey } = require("../src/generators/database/types");
-                
+                const {
+                    freshnessKey,
+                } = require("../src/generators/database/types");
+
                 // Set up a dirty input
                 await db.put("input1", { data: "test" });
                 await db.put(freshnessKey("input1"), "dirty");
@@ -126,7 +128,7 @@ describe("generators/dependency_graph", () => {
                 const output = await db.get("output1");
                 expect(output).toBeDefined();
                 expect(output.data).toBe("test_processed");
-                
+
                 // Check freshness
                 const outputFreshness = await db.get(freshnessKey("output1"));
                 expect(outputFreshness).toBe("dirty");
@@ -141,12 +143,14 @@ describe("generators/dependency_graph", () => {
             const capabilities = getTestCapabilities();
             try {
                 const db = await getDatabase(capabilities);
-                const { freshnessKey } = require("../src/generators/database/types");
-                
+                const {
+                    freshnessKey,
+                } = require("../src/generators/database/types");
+
                 // Set up a dirty input and existing output
                 await db.put("input1", { data: "test" });
                 await db.put(freshnessKey("input1"), "dirty");
-                
+
                 await db.put("output1", { data: "existing" });
                 await db.put(freshnessKey("output1"), "clean");
 
@@ -169,7 +173,7 @@ describe("generators/dependency_graph", () => {
                 const output = await db.get("output1");
                 expect(output).toBeDefined();
                 expect(output.data).toBe("existing");
-                
+
                 const outputFreshness = await db.get(freshnessKey("output1"));
                 expect(outputFreshness).toBe("clean");
 
@@ -184,7 +188,7 @@ describe("generators/dependency_graph", () => {
             try {
                 const db = await getDatabase(capabilities);
                 const { freshnessKey } = require("../src/generators/database");
-                
+
                 // Set up dirty inputs
                 await db.put("input1", { data: "test1" });
                 await db.put(freshnessKey("input1"), "dirty");
@@ -233,7 +237,7 @@ describe("generators/dependency_graph", () => {
             try {
                 const db = await getDatabase(capabilities);
                 const { freshnessKey } = require("../src/generators/database");
-                
+
                 // Set up dirty input and existing output
                 await db.put("input1", { count: 5 });
                 await db.put(freshnessKey("input1"), "dirty");
@@ -275,7 +279,7 @@ describe("generators/dependency_graph", () => {
             try {
                 const db = await getDatabase(capabilities);
                 const { freshnessKey } = require("../src/generators/database");
-                
+
                 // Set up dirty input
                 await db.put("input1", { count: 1 });
                 await db.put(freshnessKey("input1"), "dirty");
@@ -332,7 +336,7 @@ describe("generators/dependency_graph", () => {
             try {
                 const db = await getDatabase(capabilities);
                 const { freshnessKey } = require("../src/generators/database");
-                
+
                 // Set up clean input
                 await db.put("input1", { data: "test" });
                 await db.put(freshnessKey("input1"), "clean");
