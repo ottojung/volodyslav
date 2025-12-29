@@ -119,13 +119,13 @@ class InterfaceClass {
         const serializedEvents = all_events; // Events are already in serialized form.
         /** @type {import('../database/types').AllEventsEntry} */
         const value = { events: serializedEvents, type: "all_events" };
-        
+
         // Store the value
         await this.database.put("all_events", value);
-        
+
         // Mark this key as dirty
         await this.database.put(freshnessKey("all_events"), "dirty");
-        
+
         // Mark all dependents as potentially-dirty
         await this.markDependentsAsPotentiallyDirty("all_events");
     }
@@ -138,16 +138,21 @@ class InterfaceClass {
      */
     async markDependentsAsPotentiallyDirty(changedKey) {
         const graphDef = createDefaultGraphDefinition();
-        
+
         // Find all nodes that depend on the changed key
         for (const node of graphDef) {
             if (node.inputs.includes(changedKey)) {
-                const currentFreshness = await this.database.get(freshnessKey(node.output));
-                
+                const currentFreshness = await this.database.get(
+                    freshnessKey(node.output)
+                );
+
                 // Only update if not already dirty (dirty stays dirty)
                 if (currentFreshness !== "dirty") {
-                    await this.database.put(freshnessKey(node.output), "potentially-dirty");
-                    
+                    await this.database.put(
+                        freshnessKey(node.output),
+                        "potentially-dirty"
+                    );
+
                     // Recursively mark dependents of this node
                     await this.markDependentsAsPotentiallyDirty(node.output);
                 }
@@ -165,12 +170,11 @@ class InterfaceClass {
      */
     async getEventBasicContext(event) {
         // Pull the event_context node (lazy evaluation)
-        const eventContextEntry = await this.dependencyGraph.pull("event_context");
+        const eventContextEntry = await this.dependencyGraph.pull(
+            "event_context"
+        );
 
-        if (
-            !eventContextEntry ||
-            eventContextEntry.type !== "event_context"
-        ) {
+        if (!eventContextEntry || eventContextEntry.type !== "event_context") {
             return [event];
         }
 
