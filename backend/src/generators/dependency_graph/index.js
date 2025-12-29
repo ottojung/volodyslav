@@ -5,6 +5,7 @@
 
 const { makeDependencyGraph, isDependencyGraph } = require('./class');
 const { makeUnchanged, isUnchanged } = require('./unchanged');
+const { makeInvalidNodeError, isInvalidNode } = require('./errors');
 
 /** @typedef {import('./types').DependencyGraphCapabilities} DependencyGraphCapabilities */
 /** @typedef {import('./class').DependencyGraph} DependencyGraph */
@@ -15,4 +16,6 @@ module.exports = {
     isDependencyGraph,
     makeUnchanged,
     isUnchanged,
+    makeInvalidNodeError,
+    isInvalidNode,
 };

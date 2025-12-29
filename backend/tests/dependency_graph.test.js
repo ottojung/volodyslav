@@ -10,6 +10,7 @@ const {
     makeDependencyGraph,
     isDependencyGraph,
     makeUnchanged,
+    isInvalidNode,
 } = require("../src/generators/dependency_graph");
 const { getMockedRootCapabilities } = require("./spies");
 const { stubLogger } = require("./stubs");
@@ -381,6 +382,11 @@ describe("generators/dependency_graph", () => {
 
                 const graphDef = [
                     {
+                        output: "input1",
+                        inputs: [],
+                        computor: (inputs, oldValue) => oldValue || { count: 1 },
+                    },
+                    {
                         output: "level1",
                         inputs: ["input1"],
                         computor: (inputs) => {
@@ -477,6 +483,11 @@ describe("generators/dependency_graph", () => {
 
                 const graphDef = [
                     {
+                        output: "input1",
+                        inputs: [],
+                        computor: (inputs, oldValue) => oldValue || { data: "new_data" },
+                    },
+                    {
                         output: "output1",
                         inputs: ["input1"],
                         computor: (inputs) => {
@@ -503,7 +514,7 @@ describe("generators/dependency_graph", () => {
             }
         });
 
-        test("pulls non-graph nodes directly from database", async () => {
+        test("throws error when pulling non-graph nodes", async () => {
             const capabilities = getTestCapabilities();
             try {
                 const db = await getDatabase(capabilities);
@@ -511,10 +522,17 @@ describe("generators/dependency_graph", () => {
                 await db.put("standalone", { data: "standalone_value" });
 
                 const graph = makeDependencyGraph(db, []);
-                const result = await graph.pull("standalone");
+                
+                await expect(graph.pull("standalone")).rejects.toThrow(
+                    "Node standalone not found in the dependency graph."
+                );
 
-                expect(result).toBeDefined();
-                expect(result.data).toBe("standalone_value");
+                // Also verify error type
+                try {
+                    await graph.pull("standalone");
+                } catch (err) {
+                    expect(isInvalidNode(err)).toBe(true);
+                }
 
                 await db.close();
             } finally {
@@ -535,6 +553,11 @@ describe("generators/dependency_graph", () => {
                 await db.put(freshnessKey("output1"), "clean");
 
                 const graphDef = [
+                    {
+                        output: "input1",
+                        inputs: [],
+                        computor: (inputs, oldValue) => oldValue || { data: "test" },
+                    },
                     {
                         output: "output1",
                         inputs: ["input1"],
@@ -581,6 +604,11 @@ describe("generators/dependency_graph", () => {
                 await db.put(freshnessKey("level3"), "potentially-dirty");
 
                 const graphDef = [
+                    {
+                        output: "input1",
+                        inputs: [],
+                        computor: (inputs, oldValue) => oldValue || { count: 1 },
+                    },
                     {
                         output: "level1",
                         inputs: ["input1"],
@@ -654,6 +682,11 @@ describe("generators/dependency_graph", () => {
 
                 const graphDef = [
                     {
+                        output: "input1",
+                        inputs: [],
+                        computor: (inputs, oldValue) => oldValue || { count: 1 },
+                    },
+                    {
                         output: "level1",
                         inputs: ["input1"],
                         computor: () => {
@@ -723,6 +756,11 @@ describe("generators/dependency_graph", () => {
                 await db.put(freshnessKey("output"), "potentially-dirty");
 
                 const graphDef = [
+                    {
+                        output: "input",
+                        inputs: [],
+                        computor: (inputs, oldValue) => oldValue || { value: 1 },
+                    },
                     {
                         output: "left",
                         inputs: ["input"],
@@ -794,6 +832,11 @@ describe("generators/dependency_graph", () => {
                 await db.put(freshnessKey("output"), "potentially-dirty");
 
                 const graphDef = [
+                    {
+                        output: "input",
+                        inputs: [],
+                        computor: (inputs, oldValue) => oldValue || { value: 1 },
+                    },
                     {
                         output: "left",
                         inputs: ["input"],
@@ -871,6 +914,16 @@ describe("generators/dependency_graph", () => {
 
                 const graphDef = [
                     {
+                        output: "input1",
+                        inputs: [],
+                        computor: (inputs, oldValue) => oldValue || { value: 1 },
+                    },
+                    {
+                        output: "input2",
+                        inputs: [],
+                        computor: (inputs, oldValue) => oldValue || { value: 2 },
+                    },
+                    {
                         output: "nodeA",
                         inputs: ["input1"],
                         computor: (inputs) => {
@@ -947,6 +1000,11 @@ describe("generators/dependency_graph", () => {
 
                 const graphDef = [
                     {
+                        output: "input",
+                        inputs: [],
+                        computor: (inputs, oldValue) => oldValue || { value: 1 },
+                    },
+                    {
                         output: "middle",
                         inputs: ["input"],
                         computor: () => {
@@ -998,6 +1056,11 @@ describe("generators/dependency_graph", () => {
                 await db.put(freshnessKey("output1"), "clean");
 
                 const graphDef = [
+                    {
+                        output: "input1",
+                        inputs: [],
+                        computor: (inputs, oldValue) => oldValue || { data: "new_data" },
+                    },
                     {
                         output: "output1",
                         inputs: ["input1"],
