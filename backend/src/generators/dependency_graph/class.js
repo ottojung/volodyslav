@@ -12,6 +12,7 @@
 
 const { isUnchanged } = require("./unchanged");
 const { freshnessKey } = require("../database");
+const { makeInvalidNodeError } = require("./errors");
 
 /**
  * A dependency graph that propagates data through edges based on dirty flags.
@@ -219,16 +220,9 @@ class DependencyGraphClass {
         // Find the graph node definition
         const nodeDefinition = this.graph.find((n) => n.output === nodeName);
 
-        // If not in graph, just return the database value
-        // But if it's dirty or potentially-dirty, mark it clean since we're "pulling" it
+        // If not in graph, throw an error
         if (!nodeDefinition) {
-            const freshness = await this.database.getFreshness(
-                freshnessKey(nodeName)
-            );
-            if (freshness !== "clean") {
-                await this.database.put(freshnessKey(nodeName), "clean");
-            }
-            return await this.database.getValue(nodeName);
+            throw makeInvalidNodeError(nodeName);
         }
 
         // Check if any input needs recomputation
