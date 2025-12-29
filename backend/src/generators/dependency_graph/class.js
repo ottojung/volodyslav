@@ -125,9 +125,7 @@ class DependencyGraphClass {
         }
 
         // Execute all operations in a single atomic batch
-        if (batchOperations.length > 0) {
-            await this.database.batch(batchOperations);
-        }
+        await this.database.batch(batchOperations);
 
         return propagationOccurred;
     }
