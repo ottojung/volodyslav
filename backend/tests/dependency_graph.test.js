@@ -384,7 +384,8 @@ describe("generators/dependency_graph", () => {
                     {
                         output: "input1",
                         inputs: [],
-                        computor: (inputs, oldValue) => oldValue || { count: 1 },
+                        computor: (inputs, oldValue) =>
+                            oldValue || { count: 1 },
                     },
                     {
                         output: "level1",
@@ -485,7 +486,8 @@ describe("generators/dependency_graph", () => {
                     {
                         output: "input1",
                         inputs: [],
-                        computor: (inputs, oldValue) => oldValue || { data: "new_data" },
+                        computor: (inputs, oldValue) =>
+                            oldValue || { data: "new_data" },
                     },
                     {
                         output: "output1",
@@ -522,13 +524,15 @@ describe("generators/dependency_graph", () => {
                 await db.put("standalone", { data: "standalone_value" });
 
                 const graph = makeDependencyGraph(db, []);
-                
+
                 await expect(graph.pull("standalone")).rejects.toThrow(
                     "Node standalone not found in the dependency graph."
                 );
 
                 // Also verify error type
-                await expect(graph.pull("standalone")).rejects.toThrow(/Node standalone not found in the dependency graph./);
+                await expect(graph.pull("standalone")).rejects.toThrow(
+                    /Node standalone not found in the dependency graph./
+                );
 
                 await db.close();
             } finally {
@@ -552,7 +556,8 @@ describe("generators/dependency_graph", () => {
                     {
                         output: "input1",
                         inputs: [],
-                        computor: (inputs, oldValue) => oldValue || { data: "test" },
+                        computor: (inputs, oldValue) =>
+                            oldValue || { data: "test" },
                     },
                     {
                         output: "output1",
@@ -603,7 +608,8 @@ describe("generators/dependency_graph", () => {
                     {
                         output: "input1",
                         inputs: [],
-                        computor: (inputs, oldValue) => oldValue || { count: 1 },
+                        computor: (inputs, oldValue) =>
+                            oldValue || { count: 1 },
                     },
                     {
                         output: "level1",
@@ -680,7 +686,8 @@ describe("generators/dependency_graph", () => {
                     {
                         output: "input1",
                         inputs: [],
-                        computor: (inputs, oldValue) => oldValue || { count: 1 },
+                        computor: (inputs, oldValue) =>
+                            oldValue || { count: 1 },
                     },
                     {
                         output: "level1",
@@ -755,7 +762,8 @@ describe("generators/dependency_graph", () => {
                     {
                         output: "input",
                         inputs: [],
-                        computor: (inputs, oldValue) => oldValue || { value: 1 },
+                        computor: (inputs, oldValue) =>
+                            oldValue || { value: 1 },
                     },
                     {
                         output: "left",
@@ -831,7 +839,8 @@ describe("generators/dependency_graph", () => {
                     {
                         output: "input",
                         inputs: [],
-                        computor: (inputs, oldValue) => oldValue || { value: 1 },
+                        computor: (inputs, oldValue) =>
+                            oldValue || { value: 1 },
                     },
                     {
                         output: "left",
@@ -912,12 +921,14 @@ describe("generators/dependency_graph", () => {
                     {
                         output: "input1",
                         inputs: [],
-                        computor: (inputs, oldValue) => oldValue || { value: 1 },
+                        computor: (inputs, oldValue) =>
+                            oldValue || { value: 1 },
                     },
                     {
                         output: "input2",
                         inputs: [],
-                        computor: (inputs, oldValue) => oldValue || { value: 2 },
+                        computor: (inputs, oldValue) =>
+                            oldValue || { value: 2 },
                     },
                     {
                         output: "nodeA",
@@ -998,7 +1009,8 @@ describe("generators/dependency_graph", () => {
                     {
                         output: "input",
                         inputs: [],
-                        computor: (inputs, oldValue) => oldValue || { value: 1 },
+                        computor: (inputs, oldValue) =>
+                            oldValue || { value: 1 },
                     },
                     {
                         output: "middle",
@@ -1055,7 +1067,8 @@ describe("generators/dependency_graph", () => {
                     {
                         output: "input1",
                         inputs: [],
-                        computor: (inputs, oldValue) => oldValue || { data: "new_data" },
+                        computor: (inputs, oldValue) =>
+                            oldValue || { data: "new_data" },
                     },
                     {
                         output: "output1",
