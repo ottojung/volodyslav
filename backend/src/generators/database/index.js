@@ -6,7 +6,7 @@
 const path = require('path');
 const { makeDatabase } = require('./class');
 const { DatabaseInitializationError } = require('./errors');
-const { freshnessKey } = require('./types');
+const { freshnessKey, isFreshness, isDatabaseValue } = require('./types');
 
 /** @typedef {import('./types').DatabaseCapabilities} DatabaseCapabilities */
 /** @typedef {import('./class').Database} Database */
@@ -53,4 +53,6 @@ async function get(capabilities) {
 module.exports = {
     get,
     freshnessKey,
+    isFreshness,
+    isDatabaseValue,
 };
