@@ -17,6 +17,14 @@ const { freshnessKey } = require("../database");
 function createDefaultGraphDefinition() {
     return [
         {
+            output: "all_events",
+            inputs: [],
+            computor: (_inputs, oldValue) => {
+                // Pass-through for all_events - just return existing value
+                return oldValue || { type: "all_events", events: [] };
+            },
+        },
+        {
             output: "meta_events",
             inputs: ["all_events"],
             computor: (inputs, oldValue) => {
