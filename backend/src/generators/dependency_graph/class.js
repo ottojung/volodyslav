@@ -44,12 +44,13 @@ class DependencyGraphClass {
     }
 
     /**
-     * Recursively marks all dependent nodes as potentially-dirty.
+     * Recursively collects operations to mark dependent nodes as potentially-dirty.
      * @private
      * @param {string} changedKey - The key that was changed
+     * @param {Array<{type: string, key: string, value: DatabaseStoredValue}>} batchOperations - Batch to add operations to
      * @returns {Promise<void>}
      */
-    async markDependentsAsPotentiallyDirty(changedKey) {
+    async collectMarkDependentsOperations(changedKey, batchOperations) {
         const graphDef = this.graph;
 
         // Find all nodes that depend on the changed key
@@ -61,13 +62,18 @@ class DependencyGraphClass {
 
                 // Only update if not already dirty (dirty stays dirty)
                 if (currentFreshness !== "dirty") {
-                    await this.database.put(
-                        freshnessKey(node.output),
-                        "potentially-dirty"
+                    batchOperations.push(
+                        this.putOp(
+                            freshnessKey(node.output),
+                            "potentially-dirty"
+                        )
                     );
 
                     // Recursively mark dependents of this node
-                    await this.markDependentsAsPotentiallyDirty(node.output);
+                    await this.collectMarkDependentsOperations(
+                        node.output,
+                        batchOperations
+                    );
                 }
             }
         }
@@ -75,19 +81,25 @@ class DependencyGraphClass {
 
     /**
      * Sets a specific node's value, marking it dirty and propagating changes.
+     * All operations are performed atomically in a single batch.
      * @param {string} key - The name of the node to set
      * @param {DatabaseValue} value - The value to set
      * @returns {Promise<void>}
      */
     async set(key, value) {
+        const batchOperations = [];
+
         // Store the value
-        await this.database.put(key, value);
+        batchOperations.push(this.putOp(key, value));
 
         // Mark this key as dirty
-        await this.database.put(freshnessKey(key), "dirty");
+        batchOperations.push(this.putOp(freshnessKey(key), "dirty"));
 
-        // Mark all dependents as potentially-dirty
-        await this.markDependentsAsPotentiallyDirty(key);
+        // Collect operations to mark all dependents as potentially-dirty
+        await this.collectMarkDependentsOperations(key, batchOperations);
+
+        // Execute all operations atomically
+        await this.database.batch(batchOperations);
     }
 
     /**
