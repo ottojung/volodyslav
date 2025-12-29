@@ -70,6 +70,33 @@ function freshnessKey(key) {
     return `freshness(${key})`;
 }
 
+/**
+ * Type guard to check if a value is a Freshness state.
+ * @param {unknown} value
+ * @returns {value is Freshness}
+ */
+function isFreshness(value) {
+    return value === "dirty" || value === "potentially-dirty" || value === "clean";
+}
+
+/**
+ * Type guard to check if a value is a DatabaseValue.
+ * Since DatabaseValue is a union of specific object types, we check if it's
+ * an object and not a Freshness string.
+ * @param {unknown} value
+ * @returns {value is DatabaseValue}
+ */
+function isDatabaseValue(value) {
+    return (
+        value !== null &&
+        value !== undefined &&
+        typeof value === "object" &&
+        !isFreshness(value)
+    );
+}
+
 module.exports = {
     freshnessKey,
+    isFreshness,
+    isDatabaseValue,
 };

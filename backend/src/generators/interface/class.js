@@ -8,7 +8,7 @@
 
 const { makeDependencyGraph, isUnchanged } = require("../dependency_graph");
 const { metaEvents, eventContext } = require("../individual");
-const { freshnessKey } = require("../database/types");
+const { freshnessKey } = require("../database");
 
 /**
  * Creates the default graph definition for the dependency graph.
@@ -117,6 +117,7 @@ class InterfaceClass {
      */
     async update(all_events) {
         const serializedEvents = all_events; // Events are already in serialized form.
+        /** @type {import('../database/types').AllEventsEntry} */
         const value = { events: serializedEvents, type: "all_events" };
         
         // Store the value

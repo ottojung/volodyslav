@@ -4,8 +4,10 @@
 
 const { DatabaseQueryError } = require("./errors");
 
-/** @typedef {import('./types').DatabaseEntry} DatabaseEntry */
-/** @typedef {import('level').Level<string, DatabaseEntry>} LevelDB */
+/** @typedef {import('./types').DatabaseValue} DatabaseValue */
+/** @typedef {import('./types').Freshness} Freshness */
+/** @typedef {DatabaseValue | Freshness} DatabaseStoredValue */
+/** @typedef {import('level').Level<string, DatabaseStoredValue>} LevelDB */
 /** @typedef {import('./types').DatabaseCapabilities} DatabaseCapabilities */
 
 /**
@@ -40,7 +42,7 @@ class DatabaseClass {
     /**
      * Stores a value in the database.
      * @param {string} key - The key to store
-     * @param {DatabaseEntry} value - The database entry to store
+     * @param {DatabaseStoredValue} value - The database value or freshness to store
      * @returns {Promise<void>}
      * @throws {DatabaseQueryError} If the operation fails
      */
@@ -61,7 +63,7 @@ class DatabaseClass {
     /**
      * Retrieves a value from the database.
      * @param {string} key - The key to retrieve
-     * @returns {Promise<DatabaseEntry | undefined>}
+     * @returns {Promise<DatabaseStoredValue | undefined>}
      * @throws {DatabaseQueryError} If the operation fails (except for NotFoundError)
      */
     async get(key) {
@@ -77,6 +79,42 @@ class DatabaseClass {
                 error
             );
         }
+    }
+
+    /**
+     * Retrieves a data value from the database (not freshness).
+     * @param {string} key - The key to retrieve
+     * @returns {Promise<DatabaseValue | undefined>}
+     * @throws {DatabaseQueryError} If the operation fails
+     */
+    async getValue(key) {
+        const result = await this.get(key);
+        if (result === undefined) {
+            return undefined;
+        }
+        const { isDatabaseValue } = require("./types");
+        if (isDatabaseValue(result)) {
+            return result;
+        }
+        return undefined;
+    }
+
+    /**
+     * Retrieves a freshness state from the database.
+     * @param {string} key - The freshness key to retrieve
+     * @returns {Promise<Freshness | undefined>}
+     * @throws {DatabaseQueryError} If the operation fails
+     */
+    async getFreshness(key) {
+        const result = await this.get(key);
+        if (result === undefined) {
+            return undefined;
+        }
+        const { isFreshness } = require("./types");
+        if (isFreshness(result)) {
+            return result;
+        }
+        return undefined;
     }
 
     /**
@@ -129,16 +167,19 @@ class DatabaseClass {
     /**
      * Returns all values with keys matching the given prefix.
      * @param {string} prefix - The key prefix to search for
-     * @returns {Promise<DatabaseEntry[]>}
+     * @returns {Promise<Array<DatabaseStoredValue>>}
      * @throws {DatabaseQueryError} If the operation fails
      */
     async getAll(prefix = "") {
         try {
+            /** @type {Array<DatabaseStoredValue>} */
             const values = [];
             for await (const [, value] of this.db.iterator({
                 gte: prefix,
                 lt: prefix + "\xFF",
             })) {
+                // Trust that the database only contains valid DatabaseStoredValue types
+                // since we control all writes through the put() method
                 values.push(value);
             }
             return values;
@@ -155,7 +196,7 @@ class DatabaseClass {
 
     /**
      * Executes multiple operations in a batch.
-     * @param {Array<{type: 'put', key: string, value: DatabaseEntry} | {type: 'del', key: string}>} operations
+     * @param {Array<{type: 'put', key: string, value: DatabaseStoredValue} | {type: 'del', key: string}>} operations
      * @returns {Promise<void>}
      * @throws {DatabaseQueryError} If the operation fails
      */
@@ -203,7 +244,7 @@ const { Level } = require("level");
  * @returns {Promise<DatabaseClass>}
  */
 async function makeDatabase(databasePath) {
-    const db = /** @type {import('level').Level<string, DatabaseEntry>} */ (
+    const db = /** @type {import('level').Level<string, DatabaseStoredValue>} */ (
         new Level(databasePath, { valueEncoding: "json" })
     );
     await db.open();
