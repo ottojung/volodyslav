@@ -7,8 +7,13 @@ const fs = require("fs");
 const os = require("os");
 const { get: getDatabase } = require("../src/generators/database");
 const { makeInterface } = require("../src/generators/interface");
-const { makeDependencyGraph, isUnchanged } = require("../src/generators/dependency_graph");
-const { computeMetaEvents } = require("../src/generators/individual/meta_events");
+const {
+    makeDependencyGraph,
+    isUnchanged,
+} = require("../src/generators/dependency_graph");
+const {
+    computeMetaEvents,
+} = require("../src/generators/individual/meta_events");
 const eventId = require("../src/event/id");
 const { getMockedRootCapabilities } = require("./spies");
 const { stubLogger } = require("./stubs");
@@ -31,97 +36,91 @@ function getTestCapabilities() {
     return { ...capabilities, tmpDir };
 }
 
-/**
- * Cleanup function to remove temporary directories.
- */
-function cleanup(tmpDir) {
-    if (fs.existsSync(tmpDir)) {
-        fs.rmSync(tmpDir, { recursive: true, force: true });
-    }
-}
-
 describe("DependencyGraph integration with meta_events", () => {
     test("pull() fetches meta_events after updating all_events", async () => {
         const capabilities = getTestCapabilities();
-        try {
-            const db = await getDatabase(capabilities);
-            const iface = makeInterface(db);
+        const db = await getDatabase(capabilities);
+        const iface = makeInterface(db);
 
-            // Define the graph - need to include all_events as a node
-            const graphDefinition = [
-                {
-                    output: "all_events",
-                    inputs: [],
-                    computor: (inputs, oldValue) => oldValue,
+        // Define the graph - need to include all_events as a node
+        const graphDefinition = [
+            {
+                output: "all_events",
+                inputs: [],
+                computor: (inputs, oldValue) => oldValue,
+            },
+            {
+                output: "meta_events",
+                inputs: ["all_events"],
+                computor: (inputs, oldValue) => {
+                    const allEventsEntry = inputs[0];
+                    if (!allEventsEntry) {
+                        return { type: "meta_events", meta_events: [] };
+                    }
+
+                    const allEvents = allEventsEntry.events;
+                    const currentMetaEvents = oldValue
+                        ? oldValue.meta_events
+                        : [];
+
+                    const result = computeMetaEvents(
+                        allEvents,
+                        currentMetaEvents
+                    );
+
+                    if (isUnchanged(result)) {
+                        return result;
+                    }
+
+                    return {
+                        type: "meta_events",
+                        meta_events: result,
+                    };
                 },
-                {
-                    output: "meta_events",
-                    inputs: ["all_events"],
-                    computor: (inputs, oldValue) => {
-                        const allEventsEntry = inputs[0];
-                        if (!allEventsEntry) {
-                            return { type: "meta_events", meta_events: [] };
-                        }
+            },
+        ];
 
-                        const allEvents = allEventsEntry.events;
-                        const currentMetaEvents = oldValue 
-                            ? oldValue.meta_events 
-                            : [];
+        const graph = makeDependencyGraph(db, graphDefinition);
 
-                        const result = computeMetaEvents(allEvents, currentMetaEvents);
-                        
-                        if (isUnchanged(result)) {
-                            return result;
-                        }
+        // Add initial events
+        await iface.update([
+            {
+                id: eventId.fromString("1"),
+                type: "test",
+                description: "Event 1",
+                date: "2024-01-01",
+                original: "test1",
+                input: "test1",
+                modifiers: {},
+                creator: { type: "user", name: "test" },
+            },
+            {
+                id: eventId.fromString("2"),
+                type: "test",
+                description: "Event 2",
+                date: "2024-01-02",
+                original: "test2",
+                input: "test2",
+                modifiers: {},
+                creator: { type: "user", name: "test" },
+            },
+        ]);
 
-                        return {
-                            type: "meta_events",
-                            meta_events: result,
-                        };
-                    },
-                },
-            ];
+        // Pull meta_events
+        const metaEventsEntry = await graph.pull("meta_events");
 
-            const graph = makeDependencyGraph(db, graphDefinition);
+        // Check meta_events
+        expect(metaEventsEntry).toBeDefined();
+        expect(metaEventsEntry.meta_events).toHaveLength(2);
+        expect(metaEventsEntry.meta_events[0].action).toBe("add");
+        expect(eventId.toString(metaEventsEntry.meta_events[0].event.id)).toBe(
+            "1"
+        );
+        expect(metaEventsEntry.meta_events[1].action).toBe("add");
+        expect(eventId.toString(metaEventsEntry.meta_events[1].event.id)).toBe(
+            "2"
+        );
 
-            // Add initial events
-            await iface.update([
-                {
-                    id: eventId.fromString("1"),
-                    type: "test",
-                    description: "Event 1",
-                    date: "2024-01-01",
-                    original: "test1",
-                    input: "test1",
-                    modifiers: {},
-                    creator: { type: "user", name: "test" },
-                },
-                {
-                    id: eventId.fromString("2"),
-                    type: "test",
-                    description: "Event 2",
-                    date: "2024-01-02",
-                    original: "test2",
-                    input: "test2",
-                    modifiers: {},
-                    creator: { type: "user", name: "test" },
-                },
-            ]);
-
-            // Pull meta_events
-            const metaEventsEntry = await graph.pull("meta_events");
-
-            // Check meta_events
-            expect(metaEventsEntry).toBeDefined();
-            expect(metaEventsEntry.meta_events).toHaveLength(2);
-            expect(metaEventsEntry.meta_events[0].action).toBe("add");
-            expect(eventId.toString(metaEventsEntry.meta_events[0].event.id)).toBe("1");
-            expect(metaEventsEntry.meta_events[1].action).toBe("add");
-            expect(eventId.toString(metaEventsEntry.meta_events[1].event.id)).toBe("2");
-
-            await db.close();
-        } finally {
-            cleanup(capabilities.tmpDir);
-        }
+        await db.close();
     });
 });
