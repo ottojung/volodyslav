@@ -51,10 +51,8 @@ class DependencyGraphClass {
      * @returns {Promise<void>}
      */
     async collectMarkDependentsOperations(changedKey, batchOperations) {
-        const graphDef = this.graph;
-
         // Find all nodes that depend on the changed key
-        for (const node of graphDef) {
+        for (const node of this.graph) {
             if (node.inputs.includes(changedKey)) {
                 const currentFreshness = await this.database.get(
                     freshnessKey(node.output)
