@@ -33,6 +33,14 @@ class DependencyGraphClass {
     graph;
 
     /**
+     * Pre-computed map from node name to array of dependent nodes.
+     * Maps each node to the list of nodes that directly depend on it.
+     * @private
+     * @type {Map<string, Array<GraphNode>>}
+     */
+    dependentsMap;
+
+    /**
      * Helper to create a put operation for batch processing.
      * @private
      * @param {string} key
@@ -51,28 +59,25 @@ class DependencyGraphClass {
      * @returns {Promise<void>}
      */
     async collectMarkDependentsOperations(changedKey, batchOperations) {
-        // Find all nodes that depend on the changed key
-        for (const node of this.graph) {
-            if (node.inputs.includes(changedKey)) {
-                const currentFreshness = await this.database.get(
-                    freshnessKey(node.output)
+        // Use pre-computed dependents map for O(1) lookup
+        const dependentNodes = this.dependentsMap.get(changedKey) || [];
+
+        for (const node of dependentNodes) {
+            const currentFreshness = await this.database.get(
+                freshnessKey(node.output)
+            );
+
+            // Only update if not already dirty (dirty stays dirty)
+            if (currentFreshness !== "dirty") {
+                batchOperations.push(
+                    this.putOp(freshnessKey(node.output), "potentially-dirty")
                 );
 
-                // Only update if not already dirty (dirty stays dirty)
-                if (currentFreshness !== "dirty") {
-                    batchOperations.push(
-                        this.putOp(
-                            freshnessKey(node.output),
-                            "potentially-dirty"
-                        )
-                    );
-
-                    // Recursively mark dependents of this node
-                    await this.collectMarkDependentsOperations(
-                        node.output,
-                        batchOperations
-                    );
-                }
+                // Recursively mark dependents of this node
+                await this.collectMarkDependentsOperations(
+                    node.output,
+                    batchOperations
+                );
             }
         }
     }
@@ -101,6 +106,28 @@ class DependencyGraphClass {
     }
 
     /**
+     * Pre-computes the dependents map for efficient lookups.
+     * @private
+     * @returns {void}
+     */
+    calculateDependents() {
+        for (const node of this.graph) {
+            for (const inputKey of node.inputs) {
+                if (!this.dependentsMap.has(inputKey)) {
+                    this.dependentsMap.set(inputKey, []);
+                }
+                const val = this.dependentsMap.get(inputKey);
+                if (val === undefined) {
+                    throw new Error(
+                        `Unexpected undefined value in dependentsMap for key ${inputKey}`
+                    );
+                }
+                val.push(node);
+            }
+        }
+    }
+
+    /**
      * @constructor
      * @param {Database} database - The database instance
      * @param {Array<GraphNode>} graph - Graph definition with nodes
@@ -108,6 +135,11 @@ class DependencyGraphClass {
     constructor(database, graph) {
         this.database = database;
         this.graph = graph;
+
+        // Pre-compute reverse dependency map for O(1) lookups
+        // Maps each node to the list of nodes that depend on it
+        this.dependentsMap = new Map();
+        this.calculateDependents();
     }
 
     /**
@@ -125,10 +157,8 @@ class DependencyGraphClass {
         batchOperations,
         markedClean
     ) {
-        // Find all nodes that depend on this node
-        const downstreamNodes = this.graph.filter((node) =>
-            node.inputs.includes(nodeName)
-        );
+        // Use pre-computed dependents map for O(1) lookup
+        const downstreamNodes = this.dependentsMap.get(nodeName) || [];
 
         for (const downstreamNode of downstreamNodes) {
             const downstreamFreshness = await this.database.getFreshness(
