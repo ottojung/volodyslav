@@ -95,8 +95,13 @@ class DatabaseClass {
         const { isDatabaseValue } = require("./types");
         if (isDatabaseValue(result)) {
             return result;
+        } else {
+            throw new DatabaseQueryError(
+                `Expected database value for key ${key}, but found freshness.`,
+                this.databasePath,
+                `GET ${key}`
+            );
         }
-        return undefined;
     }
 
     /**
