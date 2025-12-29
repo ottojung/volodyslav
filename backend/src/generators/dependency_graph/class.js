@@ -289,9 +289,7 @@ class DependencyGraphClass {
                 }
             }
 
-            if (batchOperations.length > 0) {
-                await this.database.batch(batchOperations);
-            }
+            await this.database.batch(batchOperations);
 
             return await this.database.getValue(nodeName);
         }
