@@ -528,11 +528,7 @@ describe("generators/dependency_graph", () => {
                 );
 
                 // Also verify error type
-                try {
-                    await graph.pull("standalone");
-                } catch (err) {
-                    expect(isInvalidNode(err)).toBe(true);
-                }
+                await expect(graph.pull("standalone")).rejects.toThrow(/Node standalone not found in the dependency graph./);
 
                 await db.close();
             } finally {
