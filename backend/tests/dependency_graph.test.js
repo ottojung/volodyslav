@@ -10,7 +10,6 @@ const {
     makeDependencyGraph,
     isDependencyGraph,
     makeUnchanged,
-    isInvalidNode,
 } = require("../src/generators/dependency_graph");
 const { getMockedRootCapabilities } = require("./spies");
 const { stubLogger } = require("./stubs");
