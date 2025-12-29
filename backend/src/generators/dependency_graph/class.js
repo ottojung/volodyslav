@@ -208,7 +208,7 @@ class DependencyGraphClass {
      * Uses freshness tracking: clean nodes skip recursion, dirty/potentially-dirty nodes recurse.
      *
      * @param {string} nodeName - The name of the node to pull
-     * @returns {Promise<DatabaseValue | undefined>} The node's value
+     * @returns {Promise<DatabaseValue>} The node's value
      */
     async pull(nodeName) {
         // Find the graph node definition
@@ -238,7 +238,13 @@ class DependencyGraphClass {
 
         // If clean and no inputs need recomputation, return cached value
         if (nodeFreshness === "clean" && !needsRecomputation) {
-            return await this.database.getValue(nodeName);
+            const ret = await this.database.getValue(nodeName);
+            if (ret === undefined) {
+                throw new Error(
+                    `Expected value for clean node ${nodeName}, but found none.`
+                );
+            }
+            return ret;
         }
 
         // Recursively pull all dependencies
@@ -285,7 +291,13 @@ class DependencyGraphClass {
 
             await this.database.batch(batchOperations);
 
-            return await this.database.getValue(nodeName);
+            const ret = await this.database.getValue(nodeName);
+            if (ret === undefined) {
+                throw new Error(
+                    `Expected value for clean node ${nodeName}, but found none.`
+                );
+            }
+            return ret;
         }
 
         // Get the current output value
@@ -342,7 +354,13 @@ class DependencyGraphClass {
         await this.database.batch(batchOperations);
 
         // Return the current (now up-to-date) value
-        return await this.database.getValue(nodeName);
+        const ret = await this.database.getValue(nodeName);
+        if (ret === undefined) {
+            throw new Error(
+                `Expected value for clean node ${nodeName}, but found none.`
+            );
+        }
+        return ret;
     }
 }
 
