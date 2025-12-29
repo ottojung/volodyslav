@@ -68,12 +68,17 @@ class DependencyGraphClass {
             const inputs = [];
 
             for (const inputKey of node.inputs) {
-                const freshness = await this.database.getFreshness(freshnessKey(inputKey));
+                const freshness = await this.database.getFreshness(
+                    freshnessKey(inputKey)
+                );
                 const value = await this.database.getValue(inputKey);
-                
+
                 if (value !== undefined) {
                     inputs.push(value);
-                    if (freshness === "dirty" || freshness === "potentially-dirty") {
+                    if (
+                        freshness === "dirty" ||
+                        freshness === "potentially-dirty"
+                    ) {
                         hasAnyDirtyInput = true;
                     }
                 }
@@ -86,9 +91,13 @@ class DependencyGraphClass {
             // Mark only dirty inputs as clean (not potentially-dirty)
             // Potentially-dirty inputs should wait until their upstream dependencies propagate
             for (const inputKey of node.inputs) {
-                const freshness = await this.database.getFreshness(freshnessKey(inputKey));
+                const freshness = await this.database.getFreshness(
+                    freshnessKey(inputKey)
+                );
                 if (freshness === "dirty") {
-                    batchOperations.push(this.putOp(freshnessKey(inputKey), "clean"));
+                    batchOperations.push(
+                        this.putOp(freshnessKey(inputKey), "clean")
+                    );
                 }
             }
 
@@ -102,12 +111,16 @@ class DependencyGraphClass {
             if (!isUnchanged(computedValue)) {
                 // Store the computed value with dirty freshness
                 batchOperations.push(this.putOp(node.output, computedValue));
-                batchOperations.push(this.putOp(freshnessKey(node.output), "dirty"));
+                batchOperations.push(
+                    this.putOp(freshnessKey(node.output), "dirty")
+                );
 
                 propagationOccurred = true;
             } else {
                 // Value unchanged - mark output as clean to stop propagation
-                batchOperations.push(this.putOp(freshnessKey(node.output), "clean"));
+                batchOperations.push(
+                    this.putOp(freshnessKey(node.output), "clean")
+                );
             }
         }
 
@@ -137,14 +150,18 @@ class DependencyGraphClass {
     /**
      * Helper method to propagate clean state to downstream potentially-dirty nodes.
      * This is called when a potentially-dirty node returns Unchanged.
-     * 
+     *
      * @private
      * @param {string} nodeName - The node that was marked clean
      * @param {Array<{type: string, key: string, value: DatabaseStoredValue}>} batchOperations - Batch to add operations to
      * @param {Set<string>} markedClean - Set of nodes that have been queued to mark as clean
      * @returns {Promise<void>}
      */
-    async propagateCleanStateDownstream(nodeName, batchOperations, markedClean) {
+    async propagateCleanStateDownstream(
+        nodeName,
+        batchOperations,
+        markedClean
+    ) {
         // Find all nodes that depend on this node
         const downstreamNodes = this.graph.filter((node) =>
             node.inputs.includes(nodeName)
@@ -167,8 +184,10 @@ class DependencyGraphClass {
                 if (markedClean.has(inputKey)) {
                     continue;
                 }
-                
-                const inputFreshness = await this.database.getFreshness(freshnessKey(inputKey));
+
+                const inputFreshness = await this.database.getFreshness(
+                    freshnessKey(inputKey)
+                );
                 if (inputFreshness !== "clean") {
                     allInputsClean = false;
                     break;
@@ -205,7 +224,9 @@ class DependencyGraphClass {
         // If not in graph, just return the database value
         // But if it's dirty or potentially-dirty, mark it clean since we're "pulling" it
         if (!nodeDefinition) {
-            const freshness = await this.database.getFreshness(freshnessKey(nodeName));
+            const freshness = await this.database.getFreshness(
+                freshnessKey(nodeName)
+            );
             if (freshness !== "clean") {
                 await this.database.put(freshnessKey(nodeName), "clean");
             }
@@ -215,7 +236,9 @@ class DependencyGraphClass {
         // Check if any input needs recomputation
         let needsRecomputation = false;
         for (const inputKey of nodeDefinition.inputs) {
-            const inputFreshness = await this.database.getFreshness(freshnessKey(inputKey));
+            const inputFreshness = await this.database.getFreshness(
+                freshnessKey(inputKey)
+            );
             if (inputFreshness !== "clean") {
                 needsRecomputation = true;
                 break;
@@ -223,7 +246,9 @@ class DependencyGraphClass {
         }
 
         // Check freshness of this node
-        const nodeFreshness = await this.database.getFreshness(freshnessKey(nodeName));
+        const nodeFreshness = await this.database.getFreshness(
+            freshnessKey(nodeName)
+        );
 
         // If clean and no inputs need recomputation, return cached value
         if (nodeFreshness === "clean" && !needsRecomputation) {
@@ -234,13 +259,15 @@ class DependencyGraphClass {
         // They will skip recursion if clean
         const inputs = [];
         for (const inputKey of nodeDefinition.inputs) {
-            const inputFreshness = await this.database.getFreshness(freshnessKey(inputKey));
-            
+            const inputFreshness = await this.database.getFreshness(
+                freshnessKey(inputKey)
+            );
+
             // Recurse if dirty or potentially-dirty (or if freshness not set)
             if (inputFreshness !== "clean") {
                 await this.pull(inputKey);
             }
-            
+
             // Get the (now clean) input value
             const inputValue = await this.database.getValue(inputKey);
             if (inputValue !== undefined) {
@@ -251,23 +278,29 @@ class DependencyGraphClass {
         // Optimization: After pulling dependencies, check if this node has been marked clean
         // by downstream propagation from a potentially-dirty input that returned Unchanged
         // Only skip if the node was NOT already clean before (i.e., it was marked clean during pull)
-        const nodeFreshnessAfterPull = await this.database.getFreshness(freshnessKey(nodeName));
+        const nodeFreshnessAfterPull = await this.database.getFreshness(
+            freshnessKey(nodeName)
+        );
         if (nodeFreshness !== "clean" && nodeFreshnessAfterPull === "clean") {
             // Node was marked clean by downstream propagation, no need to recompute
             // Just mark inputs as clean if needed
             const batchOperations = [];
-            
+
             for (const inputKey of nodeDefinition.inputs) {
-                const inputFreshness = await this.database.getFreshness(freshnessKey(inputKey));
+                const inputFreshness = await this.database.getFreshness(
+                    freshnessKey(inputKey)
+                );
                 if (inputFreshness !== "clean") {
-                    batchOperations.push(this.putOp(freshnessKey(inputKey), "clean"));
+                    batchOperations.push(
+                        this.putOp(freshnessKey(inputKey), "clean")
+                    );
                 }
             }
-            
+
             if (batchOperations.length > 0) {
                 await this.database.batch(batchOperations);
             }
-            
+
             return await this.database.getValue(nodeName);
         }
 
@@ -282,16 +315,22 @@ class DependencyGraphClass {
 
         // Mark all inputs as clean
         for (const inputKey of nodeDefinition.inputs) {
-            const inputFreshness = await this.database.getFreshness(freshnessKey(inputKey));
+            const inputFreshness = await this.database.getFreshness(
+                freshnessKey(inputKey)
+            );
             if (inputFreshness !== "clean") {
-                batchOperations.push(this.putOp(freshnessKey(inputKey), "clean"));
+                batchOperations.push(
+                    this.putOp(freshnessKey(inputKey), "clean")
+                );
             }
         }
 
         // Track which nodes we're marking clean in this batch
         const markedClean = new Set([nodeName]);
         for (const inputKey of nodeDefinition.inputs) {
-            const inputFreshness = await this.database.getFreshness(freshnessKey(inputKey));
+            const inputFreshness = await this.database.getFreshness(
+                freshnessKey(inputKey)
+            );
             if (inputFreshness !== "clean") {
                 markedClean.add(inputKey);
             }
@@ -308,7 +347,11 @@ class DependencyGraphClass {
             // Optimization: If this node was potentially-dirty and returns Unchanged,
             // propagate clean state to downstream potentially-dirty nodes
             if (nodeFreshness === "potentially-dirty") {
-                await this.propagateCleanStateDownstream(nodeName, batchOperations, markedClean);
+                await this.propagateCleanStateDownstream(
+                    nodeName,
+                    batchOperations,
+                    markedClean
+                );
             }
         }
 
