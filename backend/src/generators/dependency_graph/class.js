@@ -44,6 +44,53 @@ class DependencyGraphClass {
     }
 
     /**
+     * Recursively marks all dependent nodes as potentially-dirty.
+     * @private
+     * @param {string} changedKey - The key that was changed
+     * @returns {Promise<void>}
+     */
+    async markDependentsAsPotentiallyDirty(changedKey) {
+        const graphDef = this.graph;
+
+        // Find all nodes that depend on the changed key
+        for (const node of graphDef) {
+            if (node.inputs.includes(changedKey)) {
+                const currentFreshness = await this.database.get(
+                    freshnessKey(node.output)
+                );
+
+                // Only update if not already dirty (dirty stays dirty)
+                if (currentFreshness !== "dirty") {
+                    await this.database.put(
+                        freshnessKey(node.output),
+                        "potentially-dirty"
+                    );
+
+                    // Recursively mark dependents of this node
+                    await this.markDependentsAsPotentiallyDirty(node.output);
+                }
+            }
+        }
+    }
+
+    /**
+     * Sets a specific node's value, marking it dirty and propagating changes.
+     * @param {string} key - The name of the node to set
+     * @param {DatabaseValue} value - The value to set
+     * @returns {Promise<void>}
+     */
+    async set(key, value) {
+        // Store the value
+        await this.database.put(key, value);
+
+        // Mark this key as dirty
+        await this.database.put(freshnessKey(key), "dirty");
+
+        // Mark all dependents as potentially-dirty
+        await this.markDependentsAsPotentiallyDirty(key);
+    }
+
+    /**
      * @constructor
      * @param {Database} database - The database instance
      * @param {Array<GraphNode>} graph - Graph definition with nodes

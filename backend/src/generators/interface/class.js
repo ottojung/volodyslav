@@ -8,7 +8,6 @@
 
 const { makeDependencyGraph, isUnchanged } = require("../dependency_graph");
 const { metaEvents, eventContext } = require("../individual");
-const { freshnessKey } = require("../database");
 
 /**
  * Creates the default graph definition for the dependency graph.
@@ -92,13 +91,6 @@ function createDefaultGraphDefinition() {
  */
 class InterfaceClass {
     /**
-     * The underlying database instance.
-     * @private
-     * @type {Database}
-     */
-    database;
-
-    /**
      * The dependency graph for propagating changes.
      * @private
      * @type {DependencyGraph}
@@ -110,7 +102,6 @@ class InterfaceClass {
      * @param {Database} database - The database instance
      */
     constructor(database) {
-        this.database = database;
         this.dependencyGraph = makeDependencyGraph(
             database,
             createDefaultGraphDefinition()
@@ -127,45 +118,7 @@ class InterfaceClass {
         const serializedEvents = all_events; // Events are already in serialized form.
         /** @type {import('../database/types').AllEventsEntry} */
         const value = { events: serializedEvents, type: "all_events" };
-
-        // Store the value
-        await this.database.put("all_events", value);
-
-        // Mark this key as dirty
-        await this.database.put(freshnessKey("all_events"), "dirty");
-
-        // Mark all dependents as potentially-dirty
-        await this.markDependentsAsPotentiallyDirty("all_events");
-    }
-
-    /**
-     * Recursively marks all dependent nodes as potentially-dirty.
-     * @private
-     * @param {string} changedKey - The key that was changed
-     * @returns {Promise<void>}
-     */
-    async markDependentsAsPotentiallyDirty(changedKey) {
-        const graphDef = createDefaultGraphDefinition();
-
-        // Find all nodes that depend on the changed key
-        for (const node of graphDef) {
-            if (node.inputs.includes(changedKey)) {
-                const currentFreshness = await this.database.get(
-                    freshnessKey(node.output)
-                );
-
-                // Only update if not already dirty (dirty stays dirty)
-                if (currentFreshness !== "dirty") {
-                    await this.database.put(
-                        freshnessKey(node.output),
-                        "potentially-dirty"
-                    );
-
-                    // Recursively mark dependents of this node
-                    await this.markDependentsAsPotentiallyDirty(node.output);
-                }
-            }
-        }
+        await this.dependencyGraph.set("all_events", value);
     }
 
     /**
