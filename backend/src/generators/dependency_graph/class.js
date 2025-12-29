@@ -275,22 +275,6 @@ class DependencyGraphClass {
         );
         if (nodeFreshness !== "clean" && nodeFreshnessAfterPull === "clean") {
             // Node was marked clean by downstream propagation, no need to recompute
-            // Just mark inputs as clean if needed
-            const batchOperations = [];
-
-            for (const inputKey of nodeDefinition.inputs) {
-                const inputFreshness = await this.database.getFreshness(
-                    freshnessKey(inputKey)
-                );
-                if (inputFreshness !== "clean") {
-                    batchOperations.push(
-                        this.putOp(freshnessKey(inputKey), "clean")
-                    );
-                }
-            }
-
-            await this.database.batch(batchOperations);
-
             const ret = await this.database.getValue(nodeName);
             if (ret === undefined) {
                 throw new Error(
