@@ -155,7 +155,7 @@ describe("generators/dependency_graph", () => {
             await db.put(freshnessKey("input1"), "dirty");
 
             await db.put("output1", { data: "old_result" });
-            await db.put(freshnessKey("output1"), "clean");
+            await db.put(freshnessKey("output1"), "potentially-dirty");
 
             const graphDef = [
                 {
@@ -693,7 +693,7 @@ describe("generators/dependency_graph", () => {
             await db.put(freshnessKey("input1"), "potentially-dirty");
 
             await db.put("output1", { data: "old_result" });
-            await db.put(freshnessKey("output1"), "clean");
+            await db.put(freshnessKey("output1"), "potentially-dirty");
 
             const graphDef = [
                 {

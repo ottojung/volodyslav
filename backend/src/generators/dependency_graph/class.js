@@ -385,22 +385,10 @@ class DependencyGraphClass {
             freshnessKey(nodeName)
         );
 
-        // Check if all inputs are clean (for fast path)
-        let allInputsClean = true;
+        // Fast path: if clean, return cached value immediately
+        // By Invariant I2 (Clean Upstream Invariant), if a node is clean,
+        // all its inputs are guaranteed to be clean, so no need to check them
         if (nodeFreshness === "clean") {
-            for (const inputKey of nodeDefinition.inputs) {
-                const inputFreshness = await this.database.getFreshness(
-                    freshnessKey(inputKey)
-                );
-                if (inputFreshness !== "clean") {
-                    allInputsClean = false;
-                    break;
-                }
-            }
-        }
-
-        // Fast path: if clean AND all inputs clean, return cached value
-        if (nodeFreshness === "clean" && allInputsClean) {
             const result = await this.database.getValue(nodeName);
             if (result === undefined) {
                 throw new Error(
