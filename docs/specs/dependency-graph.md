@@ -115,104 +115,6 @@ pull(N):
   return stored_value(N)
 ```
 
-**Small-Step Semantics (Efficient Implementation):**
-
-```
-pull(N):
-  freshness = get_freshness(N)
-  
-  case freshness of:
-    clean:
-      # Fast path: cached value is valid
-      return get_value(N)
-    
-    dirty:
-      return recalculate(N)
-    
-    potentially-dirty:
-      return maybeRecalculate(N)
-```
-
-Where:
-
-```
-recalculate(N):
-  # Pull all inputs (recursively ensures they're clean)
-  input_values = [pull(I) for I in inputs_of(N)]
-  
-  # Mark inputs as clean
-  for I in inputs_of(N):
-    mark_clean(I)
-  
-  # Compute new value
-  old_value = get_value(N)
-  new_value = computor_N(input_values, old_value)
-  
-  # Store and mark clean
-  if new_value ≠ Unchanged:
-    store(N, new_value)
-  mark_clean(N)
-  
-  # Propagate potentially-dirty to dependents
-  for D in dependents_of(N):
-    if get_freshness(D) ≠ dirty:
-      mark_potentially_dirty(D)
-  
-  return get_value(N)
-```
-
-```
-maybeRecalculate(N):
-  # Check if any input needs recomputation
-  needs_recompute = any(get_freshness(I) ≠ clean for I in inputs_of(N))
-  
-  if not needs_recompute:
-    # All inputs are clean, we can trust our cached value
-    mark_clean(N)
-    return get_value(N)
-  
-  # At least one input is not clean, so we must recalculate
-  # But first, pull all inputs to make them clean
-  input_values = [pull(I) for I in inputs_of(N)]
-  
-  # Mark inputs as clean
-  for I in inputs_of(N):
-    mark_clean(I)
-  
-  # Compute new value
-  old_value = get_value(N)
-  new_value = computor_N(input_values, old_value)
-  
-  if new_value ≠ Unchanged:
-    # Value changed, store it and propagate potentially-dirty
-    store(N, new_value)
-    mark_clean(N)
-    for D in dependents_of(N):
-      if get_freshness(D) ≠ dirty:
-        mark_potentially_dirty(D)
-  else:
-    # Value unchanged - this is key for optimization!
-    # We can mark ourselves clean AND propagate clean downstream
-    mark_clean(N)
-    propagate_clean_downstream(N)
-  
-  return get_value(N)
-```
-
-```
-propagate_clean_downstream(N):
-  # Optimization: if a potentially-dirty node returns Unchanged,
-  # its dependents that are potentially-dirty can become clean
-  # IFF all their other inputs are also clean
-  
-  for D in dependents_of(N):
-    if get_freshness(D) = potentially-dirty:
-      all_inputs_clean = all(get_freshness(I) = clean for I in inputs_of(D))
-      if all_inputs_clean:
-        mark_clean(D)
-        propagate_clean_downstream(D)  # Recurse
-```
-
 ---
 
 ## Correctness Properties
@@ -300,13 +202,6 @@ dependentsMap: Map<NodeName, Array<Node>>
 ```
 
 This allows O(1) lookup of a node's immediate dependents.
-
-### Optimization Opportunity
-
-The `propagate_clean_downstream` optimization is particularly effective in scenarios where:
-* Many nodes are marked `potentially-dirty` due to an upstream change
-* The actual computation returns `Unchanged`
-* This allows skipping recomputation of entire subtrees
 
 ---
 
