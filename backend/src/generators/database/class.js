@@ -97,7 +97,7 @@ class DatabaseClass {
             return result;
         } else {
             throw new DatabaseQueryError(
-                `Expected database value for key ${key}, but found freshness.`,
+                `Expected database value for key ${key}, but found something else.`,
                 this.databasePath,
                 `GET ${key}`
             );
@@ -118,8 +118,13 @@ class DatabaseClass {
         const { isFreshness } = require("./types");
         if (isFreshness(result)) {
             return result;
+        } else {
+            throw new DatabaseQueryError(
+                `Expected freshness for key ${key}, but found something else.`,
+                this.databasePath,
+                `GET ${key}`
+            );
         }
-        return undefined;
     }
 
     /**
@@ -249,9 +254,10 @@ const { Level } = require("level");
  * @returns {Promise<DatabaseClass>}
  */
 async function makeDatabase(databasePath) {
-    const db = /** @type {import('level').Level<string, DatabaseStoredValue>} */ (
-        new Level(databasePath, { valueEncoding: "json" })
-    );
+    const db =
+        /** @type {import('level').Level<string, DatabaseStoredValue>} */ (
+            new Level(databasePath, { valueEncoding: "json" })
+        );
     await db.open();
     return new DatabaseClass(db, databasePath);
 }
