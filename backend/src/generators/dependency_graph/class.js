@@ -16,6 +16,12 @@ const { makeInvalidNodeError } = require("./errors");
 
 /**
  * A dependency graph that propagates data through edges based on dirty flags.
+ *
+ * Algorithm overview:
+ * - pull() checks freshness: clean → return cached, dirty → recalculate, potentially-dirty → maybeRecalculate
+ * - recalculate() pulls all inputs, computes output, marks clean, propagates potentially-dirty
+ * - maybeRecalculate() checks if inputs are clean; if so, return cached; otherwise recalculate
+ * - When Unchanged is returned, propagate clean state downstream to potentially-dirty nodes
  */
 class DependencyGraphClass {
     /**
@@ -63,7 +69,7 @@ class DependencyGraphClass {
         const dependentNodes = this.dependentsMap.get(changedKey) || [];
 
         for (const node of dependentNodes) {
-            const currentFreshness = await this.database.get(
+            const currentFreshness = await this.database.getFreshness(
                 freshnessKey(node.output)
             );
 
@@ -143,41 +149,32 @@ class DependencyGraphClass {
     }
 
     /**
-     * Helper method to propagate clean state to downstream potentially-dirty nodes.
-     * This is called when a potentially-dirty node returns Unchanged.
+     * Propagates clean state to downstream potentially-dirty nodes.
+     * Called AFTER a node is marked clean.
+     * Only affects potentially-dirty nodes whose inputs are all clean.
      *
      * @private
      * @param {string} nodeName - The node that was marked clean
-     * @param {Array<{type: string, key: string, value: DatabaseStoredValue}>} batchOperations - Batch to add operations to
-     * @param {Set<string>} markedClean - Set of nodes that have been queued to mark as clean
      * @returns {Promise<void>}
      */
-    async propagateCleanStateDownstream(
-        nodeName,
-        batchOperations,
-        markedClean
-    ) {
-        // Use pre-computed dependents map for O(1) lookup
-        const downstreamNodes = this.dependentsMap.get(nodeName) || [];
+    async propagateCleanDownstream(nodeName) {
+        const dependents = this.dependentsMap.get(nodeName) || [];
+        const batchOperations = [];
+        const nodesToPropagate = [];
 
-        for (const downstreamNode of downstreamNodes) {
-            const downstreamFreshness = await this.database.getFreshness(
-                freshnessKey(downstreamNode.output)
+        for (const dependent of dependents) {
+            const depFreshness = await this.database.getFreshness(
+                freshnessKey(dependent.output)
             );
 
-            // Only propagate to potentially-dirty nodes (not dirty ones)
-            if (downstreamFreshness !== "potentially-dirty") {
+            // Only process potentially-dirty nodes
+            if (depFreshness !== "potentially-dirty") {
                 continue;
             }
 
-            // Check if all inputs of the downstream node are clean (or will be clean after batch)
+            // Check if all inputs are clean
             let allInputsClean = true;
-            for (const inputKey of downstreamNode.inputs) {
-                // Check if we've already queued this input to be marked clean
-                if (markedClean.has(inputKey)) {
-                    continue;
-                }
-
+            for (const inputKey of dependent.inputs) {
                 const inputFreshness = await this.database.getFreshness(
                     freshnessKey(inputKey)
                 );
@@ -187,25 +184,189 @@ class DependencyGraphClass {
                 }
             }
 
-            // If all inputs are clean, mark this node as clean and recurse
+            // If all inputs clean, mark this node clean and remember to recurse
             if (allInputsClean) {
                 batchOperations.push(
-                    this.putOp(freshnessKey(downstreamNode.output), "clean")
+                    this.putOp(freshnessKey(dependent.output), "clean")
                 );
-                markedClean.add(downstreamNode.output);
-                // Recursively propagate to downstream nodes
-                await this.propagateCleanStateDownstream(
-                    downstreamNode.output,
-                    batchOperations,
-                    markedClean
-                );
+                nodesToPropagate.push(dependent.output);
+            }
+        }
+
+        // Execute batch if we have operations
+        if (batchOperations.length > 0) {
+            await this.database.batch(batchOperations);
+
+            // AFTER batch commits, recursively propagate for each newly-marked-clean node
+            for (const nodeToPropagate of nodesToPropagate) {
+                await this.propagateCleanDownstream(nodeToPropagate);
             }
         }
     }
 
     /**
+     * Recalculates a node by pulling all inputs and computing the output.
+     * Marks the node and inputs as clean.
+     * Does NOT propagate to dependents - they keep their current freshness state.
+     * Exception: if computation returns Unchanged, propagate clean downstream.
+     *
+     * @private
+     * @param {GraphNode} nodeDefinition - The node to recalculate
+     * @returns {Promise<DatabaseValue>}
+     */
+    async recalculate(nodeDefinition) {
+        const nodeName = nodeDefinition.output;
+
+        // Pull all inputs (recursively ensures they're clean)
+        const inputValues = [];
+        for (const inputKey of nodeDefinition.inputs) {
+            const inputValue = await this.pull(inputKey);
+            inputValues.push(inputValue);
+        }
+
+        // Get old value
+        const oldValue = await this.database.getValue(nodeName);
+
+        // Compute new value
+        const computedValue = nodeDefinition.computor(inputValues, oldValue);
+
+        // Prepare batch operations
+        const batchOperations = [];
+
+        // Mark all inputs as clean (should already be clean from pull, but make explicit)
+        for (const inputKey of nodeDefinition.inputs) {
+            batchOperations.push(this.putOp(freshnessKey(inputKey), "clean"));
+        }
+
+        // Store result and mark node clean
+        if (!isUnchanged(computedValue)) {
+            batchOperations.push(this.putOp(nodeName, computedValue));
+            batchOperations.push(this.putOp(freshnessKey(nodeName), "clean"));
+
+            // Execute all operations atomically
+            await this.database.batch(batchOperations);
+        } else {
+            // Value unchanged: mark clean and propagate downstream
+            batchOperations.push(this.putOp(freshnessKey(nodeName), "clean"));
+
+            // Execute all operations atomically
+            await this.database.batch(batchOperations);
+
+            // AFTER marking clean, propagate clean downstream
+            // This is the key optimization for Unchanged!
+            await this.propagateCleanDownstream(nodeName);
+        }
+
+        // Return the current value
+        const result = await this.database.getValue(nodeName);
+        if (result === undefined) {
+            throw new Error(
+                `Expected value for clean node ${nodeName}, but found none.`
+            );
+        }
+        return result;
+    }
+
+    /**
+     * Maybe recalculates a potentially-dirty node.
+     * If all inputs are clean, returns cached value.
+     * Otherwise, recalculates like a dirty node.
+     * Special optimization: if computation returns Unchanged, propagate clean downstream.
+     *
+     * @private
+     * @param {GraphNode} nodeDefinition - The node to maybe recalculate
+     * @returns {Promise<DatabaseValue>}
+     */
+    async maybeRecalculate(nodeDefinition) {
+        const nodeName = nodeDefinition.output;
+
+        // Remember initial freshness
+        const initialFreshness = await this.database.getFreshness(
+            freshnessKey(nodeName)
+        );
+
+        // Pull all inputs (recursively ensures they're clean)
+        const inputValues = [];
+        for (const inputKey of nodeDefinition.inputs) {
+            const inputValue = await this.pull(inputKey);
+            inputValues.push(inputValue);
+        }
+
+        // IMPORTANT: After pulling all inputs, check if WE were marked clean BY PROPAGATION
+        // This can happen when all inputs returned Unchanged and propagated clean to us
+        // Only skip if we were NOT clean initially (i.e., freshness changed during input pulling)
+        const nodeFreshnessAfterPull = await this.database.getFreshness(
+            freshnessKey(nodeName)
+        );
+        if (
+            nodeFreshnessAfterPull === "clean" &&
+            initialFreshness !== "clean"
+        ) {
+            // We were marked clean by propagation during input pulling
+            // No need to recompute!
+            const result = await this.database.getValue(nodeName);
+            if (result === undefined) {
+                throw new Error(
+                    `Expected value for clean node ${nodeName}, but found none.`
+                );
+            }
+            return result;
+        }
+
+        // After pulling, compute with fresh input values
+
+        // Get old value
+        const oldValue = await this.database.getValue(nodeName);
+
+        // Compute new value
+        const computedValue = nodeDefinition.computor(inputValues, oldValue);
+
+        // Prepare batch operations
+        const batchOperations = [];
+
+        // Mark all inputs as clean
+        for (const inputKey of nodeDefinition.inputs) {
+            batchOperations.push(this.putOp(freshnessKey(inputKey), "clean"));
+        }
+
+        if (!isUnchanged(computedValue)) {
+            // Value changed: store it, mark clean
+            // Note: We do NOT propagate potentially-dirty here
+            // Dependents keep their current freshness state
+            batchOperations.push(this.putOp(nodeName, computedValue));
+            batchOperations.push(this.putOp(freshnessKey(nodeName), "clean"));
+
+            // Execute all operations atomically
+            await this.database.batch(batchOperations);
+        } else {
+            // Value unchanged: mark clean and propagate downstream
+            batchOperations.push(this.putOp(freshnessKey(nodeName), "clean"));
+
+            // Execute all operations atomically
+            await this.database.batch(batchOperations);
+
+            // AFTER marking clean, propagate clean downstream
+            // This is the key optimization for Unchanged!
+            await this.propagateCleanDownstream(nodeName);
+        }
+
+        // Return the current value
+        const result = await this.database.getValue(nodeName);
+        if (result === undefined) {
+            throw new Error(
+                `Expected value for clean node ${nodeName}, but found none.`
+            );
+        }
+        return result;
+    }
+
+    /**
      * Pulls a specific node's value, lazily evaluating dependencies as needed.
-     * Uses freshness tracking: clean nodes skip recursion, dirty/potentially-dirty nodes recurse.
+     *
+     * Algorithm:
+     * - If node is clean AND all inputs are clean: return cached value (fast path)
+     * - If node is dirty: recalculate
+     * - If node is potentially-dirty OR has non-clean inputs: maybe recalculate (check inputs first)
      *
      * @param {string} nodeName - The name of the node to pull
      * @returns {Promise<DatabaseValue>} The node's value
@@ -219,132 +380,43 @@ class DependencyGraphClass {
             throw makeInvalidNodeError(nodeName);
         }
 
-        // Check if any input needs recomputation
-        let needsRecomputation = false;
-        for (const inputKey of nodeDefinition.inputs) {
-            const inputFreshness = await this.database.getFreshness(
-                freshnessKey(inputKey)
-            );
-            if (inputFreshness !== "clean") {
-                needsRecomputation = true;
-                break;
-            }
-        }
-
         // Check freshness of this node
         const nodeFreshness = await this.database.getFreshness(
             freshnessKey(nodeName)
         );
 
-        // If clean and no inputs need recomputation, return cached value
-        if (nodeFreshness === "clean" && !needsRecomputation) {
-            const ret = await this.database.getValue(nodeName);
-            if (ret === undefined) {
+        // Check if all inputs are clean (for fast path)
+        let allInputsClean = true;
+        if (nodeFreshness === "clean") {
+            for (const inputKey of nodeDefinition.inputs) {
+                const inputFreshness = await this.database.getFreshness(
+                    freshnessKey(inputKey)
+                );
+                if (inputFreshness !== "clean") {
+                    allInputsClean = false;
+                    break;
+                }
+            }
+        }
+
+        // Fast path: if clean AND all inputs clean, return cached value
+        if (nodeFreshness === "clean" && allInputsClean) {
+            const result = await this.database.getValue(nodeName);
+            if (result === undefined) {
                 throw new Error(
                     `Expected value for clean node ${nodeName}, but found none.`
                 );
             }
-            return ret;
+            return result;
         }
 
-        // Recursively pull all dependencies
-        // They will skip recursion if clean
-        const inputs = [];
-        for (const inputKey of nodeDefinition.inputs) {
-            const inputFreshness = await this.database.getFreshness(
-                freshnessKey(inputKey)
-            );
-
-            // Recurse if dirty or potentially-dirty (or if freshness not set)
-            if (inputFreshness !== "clean") {
-                await this.pull(inputKey);
-            }
-
-            // Get the (now clean) input value
-            const inputValue = await this.database.getValue(inputKey);
-            if (inputValue !== undefined) {
-                inputs.push(inputValue);
-            }
-        }
-
-        // Optimization: After pulling dependencies, check if this node has been marked clean
-        // by downstream propagation from a potentially-dirty input that returned Unchanged
-        // Only skip if the node was NOT already clean before (i.e., it was marked clean during pull)
-        const nodeFreshnessAfterPull = await this.database.getFreshness(
-            freshnessKey(nodeName)
-        );
-        if (nodeFreshness !== "clean" && nodeFreshnessAfterPull === "clean") {
-            // Node was marked clean by downstream propagation, no need to recompute
-            const ret = await this.database.getValue(nodeName);
-            if (ret === undefined) {
-                throw new Error(
-                    `Expected value for clean node ${nodeName}, but found none.`
-                );
-            }
-            return ret;
-        }
-
-        // Get the current output value
-        const oldValue = await this.database.getValue(nodeName);
-
-        // Compute the new value
-        const computedValue = nodeDefinition.computor(inputs, oldValue);
-
-        // Prepare batch operations
-        const batchOperations = [];
-
-        // Mark all inputs as clean
-        for (const inputKey of nodeDefinition.inputs) {
-            const inputFreshness = await this.database.getFreshness(
-                freshnessKey(inputKey)
-            );
-            if (inputFreshness !== "clean") {
-                batchOperations.push(
-                    this.putOp(freshnessKey(inputKey), "clean")
-                );
-            }
-        }
-
-        // Track which nodes we're marking clean in this batch
-        const markedClean = new Set([nodeName]);
-        for (const inputKey of nodeDefinition.inputs) {
-            const inputFreshness = await this.database.getFreshness(
-                freshnessKey(inputKey)
-            );
-            if (inputFreshness !== "clean") {
-                markedClean.add(inputKey);
-            }
-        }
-
-        // Store the new value and mark as clean
-        if (!isUnchanged(computedValue)) {
-            batchOperations.push(this.putOp(nodeName, computedValue));
-            batchOperations.push(this.putOp(freshnessKey(nodeName), "clean"));
+        // Dirty or potentially-dirty or inconsistent state: need to recalculate
+        if (nodeFreshness === "dirty") {
+            return await this.recalculate(nodeDefinition);
         } else {
-            // Value unchanged - mark as clean to avoid recomputation
-            batchOperations.push(this.putOp(freshnessKey(nodeName), "clean"));
-
-            // Optimization: If this node was potentially-dirty and returns Unchanged,
-            // propagate clean state to downstream potentially-dirty nodes
-            if (nodeFreshness === "potentially-dirty") {
-                await this.propagateCleanStateDownstream(
-                    nodeName,
-                    batchOperations,
-                    markedClean
-                );
-            }
+            // potentially-dirty or undefined freshness or clean-but-inputs-dirty
+            return await this.maybeRecalculate(nodeDefinition);
         }
-
-        await this.database.batch(batchOperations);
-
-        // Return the current (now up-to-date) value
-        const ret = await this.database.getValue(nodeName);
-        if (ret === undefined) {
-            throw new Error(
-                `Expected value for clean node ${nodeName}, but found none.`
-            );
-        }
-        return ret;
     }
 }
 
