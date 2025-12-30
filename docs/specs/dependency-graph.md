@@ -286,7 +286,10 @@ These nodes are written directly via `set()` and serve as entry points to the gr
 
 ### Batching
 
-All database operations within a single `pull` call SHOULD be batched and executed atomically to ensure consistency and performance.
+All database operations within a single `set` call MUST be batched and executed atomically.
+
+Database operations within a whole `pull` call SHOULD not be batched.
+Database operations during `pull` MUST be batched per node recomputation.
 
 ### Dependents Map
 
@@ -321,7 +324,7 @@ Tests SHOULD verify:
 Tests MUST cover:
 1. Linear chains (A → B → C)
 2. Diamond graphs (A → B,C → D)
-3. Unchanged propagation (node returns Unchanged, dependents skip recomputation)
+3. Unchanged propagation (node returns `Unchanged`, dependents skip recomputation)
 4. Mixed freshness states (some clean, some dirty, some potentially-dirty)
 
 ---
