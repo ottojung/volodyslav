@@ -258,80 +258,13 @@ A **source node** is a concrete node `N` where:
 
 Source nodes represent entry points to the dependency graph that receive data from external systems or direct user input.
 
-### set(nodeName, value)
+### Brief Overview of Operations
 
-**Preconditions:** 
-* `nodeName` MUST be a concrete expression (no free variables)
-* `nodeName` MUST be a source node
+The graph supports two primary operations:
+* `set(nodeName, value)` — writes a value to a source node and invalidates dependents
+* `pull(nodeName)` — computes (or retrieves cached) value for a concrete node
 
-**Effects:**
-1. Store `value` at `nodeName`
-2. Mark `nodeName` as `up-to-date`
-3. Mark all materialized dependents (transitively) as `potentially-outdated`
-
-**Error Handling:**
-* If `nodeName` contains free variables, throw error
-* If `nodeName` is not a source node, throw `InvalidSetError`
-
-**Examples:**
-```javascript
-set('all_events', newData)              // OK: source node (no inputs)
-set('event_context('id123')', ctx)      // ERROR: not a source (has inputs)
-set('event_context(e)', data)           // ERROR: contains free variable
-```
-
-### pull(nodeName) → NodeValue
-
-**Preconditions:** 
-* `nodeName` MUST be a concrete expression (no free variables)
-* For external nodes: node may be created with pass-through behavior if it doesn't exist
-* For schema-based nodes: a matching schema pattern must exist in the graph to instantiate from
-
-**Materialized Instantiations:**
-When `pull()` is called with a concrete instantiation (e.g., `event_context('id123')`), the system:
-1. Searches for a matching schema pattern (e.g., `event_context(e)`)
-2. Extracts variable bindings from the match (e.g., `{e: 'id123'}`)
-3. Creates a **materialized concrete node** on-demand with instantiated dependencies
-4. Persists an instantiation marker for restart resilience
-
-This allows the graph to support an unbounded set of parameterized nodes without pre-creating every possible instantiation.
-
-**Big-Step Semantics (Correctness Specification):**
-
-```
-pull(N):
-  bindings = extract_bindings(N)  // Extract variable bindings from pattern match
-  inputs_values = [pull(I) for I in inputs_of(N)]
-  old_value = stored_value(N)
-  new_value = computor_N(inputs_values, old_value, bindings)
-  if new_value ≠ Unchanged:
-    store(N, new_value)
-  mark_up_to_date(N)
-  return stored_value(N)
-```
-
-**Example:**
-
-Given schemas:
-```javascript
-[
-  { output: "all_events", inputs: [], computor: ... },
-  { output: "meta_events", inputs: ["all_events"], computor: ... },
-  { output: "event_context(e)", inputs: ["meta_events"], computor: ... }
-]
-```
-
-Call: `pull('event_context('id123')')`
-
-1. Parse: `compound("event_context", ["'id123'"])`
-2. Match: `event_context(e)` matches with `{e: 'id123'}`
-3. Instantiate inputs: `["meta_events"]` (no variables)
-4. Pull: `pull('meta_events')`
-   * Pull: `pull('all_events')`
-   * Compute meta_events
-5. Compute: `computor([meta_value], old, {e: 'id123'})`
-6. Store result at concrete key `event_context('id123')`
-7. Persist materialized node marker for restart resilience
+Detailed specifications for these operations are provided in the "Operations" section below.
 
 ---
 
@@ -681,7 +614,7 @@ This optimization is CRITICAL for efficiency with large dependency chains, but M
 
 ---
 
-## Edge Cases
+## Additional Edge Cases
 
 ### Missing Values
 
