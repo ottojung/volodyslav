@@ -35,7 +35,7 @@ describe("dependency_graph/unify", () => {
 
             expect(result).not.toBeNull();
             expect(result.bindings).toEqual({
-                e: { kind: "string", value: "id123" },
+                e: { type: "string", value: "id123" },
             });
         });
 
@@ -50,8 +50,8 @@ describe("dependency_graph/unify", () => {
 
             expect(result).not.toBeNull();
             expect(result.bindings).toEqual({
-                e: { kind: "string", value: "id123" },
-                p: { kind: "string", value: "photo5" },
+                e: { type: "string", value: "id123" },
+                p: { type: "string", value: "photo5" },
             });
         });
 
@@ -66,7 +66,7 @@ describe("dependency_graph/unify", () => {
 
             expect(result).not.toBeNull();
             expect(result.bindings).toEqual({
-                id: { kind: "nat", value: 42 },
+                id: { type: "int", value: 42 },
             });
         });
 
@@ -81,7 +81,7 @@ describe("dependency_graph/unify", () => {
 
             expect(result).not.toBeNull();
             expect(result.bindings).toEqual({
-                x: { kind: "string", value: "val1" },
+                x: { type: "string", value: "val1" },
             });
         });
 
@@ -144,7 +144,7 @@ describe("dependency_graph/unify", () => {
 
             expect(result).not.toBeNull();
             expect(result.bindings).toEqual({
-                x: { kind: "string", value: "a" },
+                x: { type: "string", value: "a" },
             });
         });
 
@@ -175,14 +175,14 @@ describe("dependency_graph/unify", () => {
 
     describe("substitute()", () => {
         test("substitutes single variable with string", () => {
-            const bindings = { p: { kind: "string", value: "photo5" } };
+            const bindings = { p: { type: "string", value: "photo5" } };
             const variables = new Set(["p"]);
             const result = substitute("photo(p)", bindings, variables);
             expect(result).toBe('photo("photo5")');
         });
 
         test("substitutes single variable with number", () => {
-            const bindings = { id: { kind: "nat", value: 42 } };
+            const bindings = { id: { type: "int", value: 42 } };
             const variables = new Set(["id"]);
             const result = substitute("photo(id)", bindings, variables);
             expect(result).toBe("photo(42)");
@@ -190,8 +190,8 @@ describe("dependency_graph/unify", () => {
 
         test("substitutes multiple variables", () => {
             const bindings = {
-                a: { kind: "string", value: "id1" },
-                b: { kind: "string", value: "id2" },
+                a: { type: "string", value: "id1" },
+                b: { type: "string", value: "id2" },
             };
             const variables = new Set(["a", "b"]);
             const result = substitute("relation(a, b)", bindings, variables);
@@ -199,7 +199,7 @@ describe("dependency_graph/unify", () => {
         });
 
         test("passes through constants", () => {
-            const bindings = { x: { kind: "string", value: "val" } };
+            const bindings = { x: { type: "string", value: "val" } };
             const variables = new Set(["x"]);
             const result = substitute('photo("const", x)', bindings, variables);
             expect(result).toBe('photo("const","val")');
@@ -211,7 +211,7 @@ describe("dependency_graph/unify", () => {
         });
 
         test("handles mixed constants and variables", () => {
-            const bindings = { x: { kind: "string", value: "val" } };
+            const bindings = { x: { type: "string", value: "val" } };
             const variables = new Set(["x"]);
             const result = substitute('mix("a", x, 5)', bindings, variables);
             expect(result).toBe('mix("a","val",5)');

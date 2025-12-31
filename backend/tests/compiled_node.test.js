@@ -15,7 +15,7 @@ describe("compiled_node", () => {
         test("converts string arg to ConstValue", () => {
             const arg = { kind: "string", value: "active" };
             expect(argToConstValue(arg)).toEqual({
-                kind: "string",
+                type: "string",
                 value: "active",
             });
         });
@@ -23,7 +23,7 @@ describe("compiled_node", () => {
         test("converts number arg to ConstValue", () => {
             const arg = { kind: "number", value: "42" };
             expect(argToConstValue(arg)).toEqual({
-                kind: "nat",
+                type: "int",
                 value: 42,
             });
         });
@@ -31,7 +31,7 @@ describe("compiled_node", () => {
         test("converts zero to ConstValue", () => {
             const arg = { kind: "number", value: "0" };
             expect(argToConstValue(arg)).toEqual({
-                kind: "nat",
+                type: "int",
                 value: 0,
             });
         });
@@ -104,7 +104,7 @@ describe("compiled_node", () => {
             expect(compiled.outputArgKinds).toEqual(["var", "const"]);
             expect(compiled.outputConstArgs).toEqual([
                 null,
-                { kind: "string", value: "active" },
+                { type: "string", value: "active" },
             ]);
         });
 
@@ -121,7 +121,7 @@ describe("compiled_node", () => {
             expect(compiled.isPattern).toBe(false);
             expect(compiled.outputArgKinds).toEqual(["const"]);
             expect(compiled.outputConstArgs).toEqual([
-                { kind: "nat", value: 5 },
+                { type: "int", value: 5 },
             ]);
         });
 

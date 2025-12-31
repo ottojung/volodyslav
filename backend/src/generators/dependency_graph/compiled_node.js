@@ -20,9 +20,9 @@ function argToConstValue(arg) {
     if (arg.kind === "identifier") {
         return null; // Variable
     } else if (arg.kind === "string") {
-        return { kind: "string", value: arg.value };
+        return { type: "string", value: arg.value };
     } else if (arg.kind === "number") {
-        return { kind: "nat", value: parseInt(arg.value, 10) };
+        return { type: "int", value: parseInt(arg.value, 10) };
     }
     throw new Error(`Unknown arg kind: ${arg.kind}`);
 }
@@ -156,10 +156,9 @@ function patternsCanOverlap(node1, node2) {
                 const otherBindings = binding.source === 'node1' ? bindings1 : bindings2;
                 return resolve(otherBindings, binding.name);
             }
-            // It's a ConstValue
-            return binding;
         }
-        return null;
+        // It's a ConstValue (has 'type' field)
+        return binding;
     }
 
     /**
@@ -181,9 +180,9 @@ function patternsCanOverlap(node1, node2) {
             // Both are variables - make them equal
             const otherBindings = value.source === 'node1' ? bindings1 : bindings2;
             return bind(otherBindings, value.name, existing);
-        } else if ('kind' in existing && existing.kind !== 'var' && 'kind' in value && value.kind !== 'var') {
+        } else if ('type' in existing && 'type' in value) {
             // Both are constants - must match
-            return existing.kind === value.kind && existing.value === value.value;
+            return existing.type === value.type && existing.value === value.value;
         } else if ('kind' in existing && existing.kind === 'var') {
             // Existing is var, value is const - bind the var
             const otherBindings = existing.source === 'node1' ? bindings1 : bindings2;
@@ -219,7 +218,7 @@ function patternsCanOverlap(node1, node2) {
                 return false;
             }
             
-            if (const1.kind !== const2.kind || const1.value !== const2.value) {
+            if (const1.type !== const2.type || const1.value !== const2.value) {
                 return false; // Conflicting constants - no overlap
             }
         } else if (isVar1 && !isVar2) {
