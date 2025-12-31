@@ -71,6 +71,26 @@ function freshnessKey(key) {
 }
 
 /**
+ * Constructs the value version key for a given database key.
+ * Value versions are incremented only when a node's value actually changes.
+ * @param {string} key - The database key
+ * @returns {string} The value version key
+ */
+function valueVersionKey(key) {
+    return `value_version(${key})`;
+}
+
+/**
+ * Constructs the dependency versions key for a given database key.
+ * Stores a snapshot of dependency versions from when this node was last computed.
+ * @param {string} key - The database key
+ * @returns {string} The dependency versions key
+ */
+function depVersionsKey(key) {
+    return `dep_versions(${key})`;
+}
+
+/**
  * Type guard to check if a value is a Freshness state.
  * @param {unknown} value
  * @returns {value is Freshness}
@@ -97,6 +117,8 @@ function isDatabaseValue(value) {
 
 module.exports = {
     freshnessKey,
+    valueVersionKey,
+    depVersionsKey,
     isFreshness,
     isDatabaseValue,
 };

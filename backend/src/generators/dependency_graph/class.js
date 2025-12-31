@@ -14,7 +14,7 @@
 
 const crypto = require("crypto");
 const { isUnchanged } = require("./unchanged");
-const { freshnessKey } = require("../database");
+const { freshnessKey, valueVersionKey, depVersionsKey } = require("../database");
 const { 
     makeInvalidNodeError, 
     makeInvalidSchemaError,
@@ -192,6 +192,11 @@ class DependencyGraphClass {
 
         // Store the value
         batchOperations.push(this.putOp(canonicalKey, value));
+
+        // Increment value version (initialize to 1 if doesn't exist)
+        const currentVersion = await this.database.get(valueVersionKey(canonicalKey));
+        const newVersion = typeof currentVersion === "number" ? currentVersion + 1 : 1;
+        batchOperations.push(this.putOp(valueVersionKey(canonicalKey), newVersion));
 
         // Mark this key as up-to-date
         batchOperations.push(
@@ -454,7 +459,8 @@ class DependencyGraphClass {
     /**
      * Propagates up-to-date state to downstream potentially-outdated nodes.
      * Called AFTER a node is marked up-to-date.
-     * Only affects potentially-outdated nodes whose inputs are all up-to-date.
+     * Only affects potentially-outdated nodes whose inputs have the same versions
+     * as when the node was last computed (version equality check).
      * Uses both static dependents and DB-persisted reverse dependencies.
      *
      * @private
@@ -492,8 +498,43 @@ class DependencyGraphClass {
                 }
             }
 
-            // If all inputs up-to-date, mark this node up-to-date and remember to recurse
-            if (allInputsUpToDate) {
+            if (!allInputsUpToDate) {
+                continue;
+            }
+
+            // Get stored dependency versions from when this node was last computed
+            const storedDepVersions = await this.database.get(
+                depVersionsKey(dependent.output)
+            );
+
+            // Check if all current input versions match stored versions
+            let versionsMatch = true;
+            for (const inputKey of dependent.inputs) {
+                const currentVersion = await this.database.get(valueVersionKey(inputKey));
+                // Default to 0 if no version exists yet
+                const currentVer = typeof currentVersion === "number" ? currentVersion : 0;
+                
+                let storedVersion;
+                if (!storedDepVersions || typeof storedDepVersions !== "object") {
+                    // No stored snapshot - assume version 0 for all inputs
+                    storedVersion = 0;
+                } else {
+                    storedVersion = storedDepVersions[inputKey];
+                    // Default to 0 if not in snapshot
+                    if (storedVersion === undefined) {
+                        storedVersion = 0;
+                    }
+                }
+                
+                // If versions don't match, the input has changed since last computation
+                if (currentVer !== storedVersion) {
+                    versionsMatch = false;
+                    break;
+                }
+            }
+
+            // Only propagate if versions match
+            if (versionsMatch) {
                 batchOperations.push(
                     this.putOp(freshnessKey(dependent.output), "up-to-date")
                 );
@@ -533,8 +574,43 @@ class DependencyGraphClass {
                 }
             }
 
-            // If all inputs up-to-date, mark this node up-to-date and remember to recurse
-            if (allInputsUpToDate) {
+            if (!allInputsUpToDate) {
+                continue;
+            }
+
+            // Get stored dependency versions from when this node was last computed
+            const storedDepVersions = await this.database.get(
+                depVersionsKey(dependentKey)
+            );
+
+            // Check if all current input versions match stored versions
+            let versionsMatch = true;
+            for (const inputKey of inputs) {
+                const currentVersion = await this.database.get(valueVersionKey(inputKey));
+                // Default to 0 if no version exists yet
+                const currentVer = typeof currentVersion === "number" ? currentVersion : 0;
+                
+                let storedVersion;
+                if (!storedDepVersions || typeof storedDepVersions !== "object") {
+                    // No stored snapshot - assume version 0 for all inputs
+                    storedVersion = 0;
+                } else {
+                    storedVersion = storedDepVersions[inputKey];
+                    // Default to 0 if not in snapshot
+                    if (storedVersion === undefined) {
+                        storedVersion = 0;
+                    }
+                }
+                
+                // If versions don't match, the input has changed since last computation
+                if (currentVer !== storedVersion) {
+                    versionsMatch = false;
+                    break;
+                }
+            }
+
+            // Only propagate if versions match
+            if (versionsMatch) {
                 batchOperations.push(
                     this.putOp(freshnessKey(dependentKey), "up-to-date")
                 );
@@ -628,11 +704,30 @@ class DependencyGraphClass {
             );
         }
 
+        // Capture current input versions for dependency snapshot
+        /** @type {Record<string, number>} */
+        const depVersionsSnapshot = {};
+        for (const inputKey of nodeDefinition.inputs) {
+            const version = await this.database.get(valueVersionKey(inputKey));
+            depVersionsSnapshot[inputKey] = typeof version === "number" ? version : 0;
+        }
+
         if (!isUnchanged(computedValue)) {
-            // Value changed: store it, mark up-to-date
+            // Value changed: store it, increment version, mark up-to-date
             // Note: We do NOT propagate potentially-outdated here
             // Dependents keep their current freshness state
             batchOperations.push(this.putOp(nodeName, computedValue));
+            
+            // Increment value version
+            const currentVersion = await this.database.get(valueVersionKey(nodeName));
+            const newVersion = typeof currentVersion === "number" ? currentVersion + 1 : 1;
+            batchOperations.push(this.putOp(valueVersionKey(nodeName), newVersion));
+            
+            // Store dependency versions snapshot
+            batchOperations.push(
+                this.putOp(depVersionsKey(nodeName), depVersionsSnapshot)
+            );
+            
             batchOperations.push(
                 this.putOp(freshnessKey(nodeName), "up-to-date")
             );
@@ -640,7 +735,14 @@ class DependencyGraphClass {
             // Execute all operations atomically
             await this.database.batch(batchOperations);
         } else {
-            // Value unchanged: mark up-to-date and propagate downstream
+            // Value unchanged: don't increment version, but update dependency snapshot
+            // and mark up-to-date, then propagate downstream
+            
+            // Store dependency versions snapshot (even though value unchanged)
+            batchOperations.push(
+                this.putOp(depVersionsKey(nodeName), depVersionsSnapshot)
+            );
+            
             batchOperations.push(
                 this.putOp(freshnessKey(nodeName), "up-to-date")
             );
