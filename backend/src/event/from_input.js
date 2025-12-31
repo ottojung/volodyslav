@@ -78,7 +78,7 @@ const {
  */
 async function applyShortcuts(capabilities, input) {
     const { getConfig } = require("../config_api");
-
+    
     const configObj = await getConfig(capabilities);
     
     if (!configObj || !configObj.shortcuts) {
