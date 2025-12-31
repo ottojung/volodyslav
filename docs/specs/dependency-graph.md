@@ -23,10 +23,11 @@ The Dependency Graph is a lazy evaluation system that propagates changes through
 * **NodeName** — unique identifier for a node in the graph (concrete, fully instantiated)
 * **NodeValue** — the computed value at a node
 * **Freshness** — one of `{ up-to-date, potentially-outdated }`
-* **Computor** — a deterministic function `(inputs: NodeValue[], oldValue: NodeValue | undefined) => NodeValue | Unchanged`
+* **Computor** — a deterministic function `(inputs: NodeValue[], oldValue: NodeValue | undefined, bindings: Record<string, ConstValue>) => NodeValue | Unchanged`
 * **Unchanged** — a sentinel value indicating the computation returned the same value as before
 * **Variable** — a parameter placeholder in node schemas (e.g., `e`, `p`)
 * **Constant** — a concrete value for a variable (e.g., `id123`, `photo5`)
+* **ConstValue** — a typed constant value with kind (`'string' | 'nat'`) and value (string content or number)
 
 ### Node Schemas and Expressions
 
@@ -374,46 +375,38 @@ pull("node(val)")  // Which schema matches?
 
 The dependency graph MUST maintain these invariants at all stable states (between operations).
 
-**Note on Parameterized Nodes:** With Strategy C (Lazy), freshness is only tracked for constant nodes. Parameterized instantiations are recomputed on every pull, so invariants apply only to the constant (non-parameterized) nodes.
+**Note on Parameterized Nodes:** The implementation tracks freshness for ALL concrete node instantiations (both constant nodes and parameterized instantiations). Once a parameterized node like `event_context("id123")` is demanded via `pull()`, it is cached with freshness tracking just like constant nodes. Instantiation markers are persisted to ensure that previously demanded instantiations remain tracked across restarts.
 
-### I1: Outdated Propagation Invariant (Constants Only)
+### I1: Outdated Propagation Invariant
 
-If a constant node is `potentially-outdated`, then all constant nodes reachable from it (its dependents) are also `potentially-outdated`.
+If a concrete node is `potentially-outdated`, then all concrete nodes reachable from it (its dependents) are also `potentially-outdated`.
 
 **Formally:** 
 ```
-∀ constant node N, constant dependent D where D depends (transitively) on N:
+∀ concrete node N, concrete dependent D where D depends (transitively) on N:
   freshness(N) = potentially-outdated
   ⟹ freshness(D) = potentially-outdated
 ```
 
-**For parameterized nodes (Strategy C):** Freshness is not tracked; they are always recomputed on pull.
+### I2: Up-to-Date Upstream Invariant
 
-### I2: Up-to-Date Upstream Invariant (Constants Only)
-
-If a constant node is `up-to-date`, then all constant nodes it depends on (transitively) are `up-to-date`.
+If a concrete node is `up-to-date`, then all concrete nodes it depends on (transitively) are `up-to-date`.
 
 **Formally:**
 ```
-∀ constant node N, constant dependency I where N depends (transitively) on I:
+∀ concrete node N, concrete dependency I where N depends (transitively) on I:
   freshness(N) = up-to-date
   ⟹ freshness(I) = up-to-date
 ```
 
-**For parameterized nodes (Strategy C):** When pulling an instantiation, all dependencies (including parameterized ones) are recursively pulled, ensuring consistency.
-
 ### I3: Value Consistency Invariant
 
-If a constant node is `up-to-date`, its value MUST equal what would be computed by recursively evaluating all its dependencies and applying its computor function.
-
-For parameterized instantiations, the value MUST equal what would be computed by:
-1. Recursively pulling all dependencies with appropriate bindings
-2. Applying the schema's computor with the extracted bindings
+If a concrete node is `up-to-date`, its value MUST equal what would be computed by recursively evaluating all its dependencies and applying its computor function with the appropriate bindings.
 
 **Formally:**
 ```
 ∀ concrete node N (constant or instantiation):
-  freshness(N) = up-to-date  (or freshly computed for instantiations)
+  freshness(N) = up-to-date
   ⟹ value(N) = computor_schema(N)([value(I₁), ..., value(Iₙ)], previous_value(N), bindings(N))
   where I₁, ..., Iₙ are N's concrete dependencies and bindings(N) are the variable bindings
 ```
@@ -424,7 +417,10 @@ For parameterized instantiations, the value MUST equal what would be computed by
 
 ### set(nodeName, value)
 
-**Preconditions:** nodeName exists in the graph
+**Preconditions:** 
+* nodeName must be a concrete node (no variables)
+* For constant nodes: node may be created if it doesn't exist (pass-through behavior)
+* For parameterized nodes: a matching schema pattern must exist in the graph
 
 **Effects:**
 1. Store `value` at `nodeName`
@@ -440,15 +436,27 @@ For parameterized instantiations, the value MUST equal what would be computed by
 
 ### pull(nodeName) → NodeValue
 
-**Preconditions:** nodeName exists in the graph
+**Preconditions:** 
+* nodeName must be a concrete node (no variables)
+* For constant nodes: node may be created with pass-through computor if it doesn't exist
+* For parameterized nodes: a matching schema pattern must exist in the graph to instantiate from
+
+**Note on Node Creation:** Unlike traditional dependency graphs that require all nodes to be pre-defined, this implementation supports lazy instantiation of parameterized nodes. When `pull()` is called with a concrete instantiation (e.g., `event_context("id123")`), the system:
+1. Searches for a matching schema pattern (e.g., `event_context(e)`)
+2. Extracts variable bindings from the match (e.g., `{e: "id123"}`)
+3. Creates a concrete node on-demand with instantiated dependencies
+4. Persists an instantiation marker for restart resilience
+
+This allows the graph to support an unbounded set of parameterized nodes without pre-creating every possible instantiation.
 
 **Big-Step Semantics (Correctness Specification):**
 
 ```
 pull(N):
+  bindings = extract_bindings(N)  // Extract variable bindings from pattern match
   inputs_values = [pull(I) for I in inputs_of(N)]
   old_value = stored_value(N)
-  new_value = computor_N(inputs_values, old_value)
+  new_value = computor_N(inputs_values, old_value, bindings)
   if new_value ≠ Unchanged:
     store(N, new_value)
   mark_up_to_date(N)
@@ -581,22 +589,6 @@ Tests MUST cover:
 The original implementation included `step()` and `run()` methods for push-based propagation. These are now DEPRECATED in favor of pull-based evaluation.
 
 **Rationale:** Pull-based evaluation provides better lazy evaluation semantics and clearer correctness properties. The big-step semantics of `pull` is trivial to specify, whereas `step/run` requires complex iteration semantics.
-
-### pull(nodeName) → NodeValue
-
-**Preconditions:** nodeName exists in the graph
-
-**Big-Step Semantics (Correctness Specification):**
-
-```
-pull(N):
-  inputs_values = [pull(I) for I in inputs_of(N)]
-  old_value = stored_value(N)
-  new_value = computor_N(inputs_values, old_value)
-  if new_value ≠ Unchanged:
-    store(N, new_value)
-  return stored_value(N)
-```
 
 ---
 
