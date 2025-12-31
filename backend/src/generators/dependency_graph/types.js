@@ -20,10 +20,22 @@
  */
 
 /**
- * A constant value (string or natural number).
- * @typedef {object} ConstValue
- * @property {'string' | 'nat'} kind - The kind of constant
- * @property {string | number} value - The value (string content or number)
+ * A string constant value.
+ * @typedef {object} StringConstant
+ * @property {'string'} type - The type of constant
+ * @property {string} value - The string value
+ */
+
+/**
+ * An integer constant value.
+ * @typedef {object} IntConstant
+ * @property {'int'} type - The type of constant
+ * @property {number} value - The integer value
+ */
+
+/**
+ * A constant value (string or integer).
+ * @typedef {StringConstant | IntConstant} ConstValue
  */
 
 /**

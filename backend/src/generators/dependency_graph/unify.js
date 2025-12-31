@@ -34,7 +34,7 @@ function validateConcreteKey(concreteKey) {
  * @returns {boolean}
  */
 function constValuesEqual(a, b) {
-    if (a.kind !== b.kind) {
+    if (a.type !== b.type) {
         return false;
     }
     return a.value === b.value;
@@ -46,12 +46,12 @@ function constValuesEqual(a, b) {
  * @returns {ParsedArg}
  */
 function constValueToArg(constValue) {
-    if (constValue.kind === "string") {
-        return { kind: "string", value: /** @type {string} */(constValue.value) };
-    } else if (constValue.kind === "nat") {
+    if (constValue.type === "string") {
+        return { kind: "string", value: constValue.value };
+    } else if (constValue.type === "int") {
         return { kind: "number", value: String(constValue.value) };
     }
-    throw new Error(`Unknown const value kind: ${/** @type {any} */(constValue).kind}`);
+    throw new Error(`Unknown const value type: ${/** @type {any} */(constValue).type}`);
 }
 
 /**
