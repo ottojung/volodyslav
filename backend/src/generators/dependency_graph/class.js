@@ -9,8 +9,10 @@
 /** @typedef {import('./types').CompiledNode} CompiledNode */
 /** @typedef {import('./types').ConstValue} ConstValue */
 /** @typedef {import('./unchanged').Unchanged} Unchanged */
+/** @typedef {import('./index_helper').Index} Index */
 /** @typedef {DatabaseValue | Freshness} DatabaseStoredValue */
 
+const crypto = require("crypto");
 const { isUnchanged } = require("./unchanged");
 const { freshnessKey } = require("../database");
 const { makeInvalidNodeError } = require("./errors");
@@ -18,6 +20,7 @@ const { canonicalize, parseExpr } = require("./expr");
 const { compileNodeDef, validateNoOverlap } = require("./compiled_node");
 const { matchConcrete, substitute, validateConcreteKey } = require("./unify");
 const { extractVariables } = require("./compiled_node");
+const { makeIndex } = require("./index_helper");
 
 /**
  * A dependency graph that propagates data through edges based on freshness tracking.
@@ -26,6 +29,11 @@ const { extractVariables } = require("./compiled_node");
  * - pull() checks freshness: up-to-date → return cached, potentially-outdated → maybeRecalculate
  * - maybeRecalculate() pulls all inputs, computes, marks up-to-date
  * - When Unchanged is returned, propagate up-to-date state downstream to potentially-outdated nodes
+ * 
+ * Persistence model:
+ * - Reverse dependencies and inputs are persisted in DB under schema-namespaced keys
+ * - Schema hash ensures old graph schemas don't interfere with new ones
+ * - No initialization scan needed; edges are queryable on demand from DB
  */
 class DependencyGraphClass {
     /**
@@ -50,8 +58,9 @@ class DependencyGraphClass {
     graphIndex;
 
     /**
-     * Pre-computed map from node name to array of dependent nodes.
+     * Pre-computed map from node name to array of dependent nodes (for static edges only).
      * Maps each node to the list of nodes that directly depend on it.
+     * Dynamic edges from pattern instantiations are stored in DB, not here.
      * @private
      * @type {Map<string, Array<{output: string, inputs: string[]}>>}
      */
@@ -66,12 +75,19 @@ class DependencyGraphClass {
     concreteInstantiations;
 
     /**
-     * Promise to track initialization progress (loading demanded instantiations).
-     * Ensures initialization runs only once even under concurrent calls.
+     * Stable hash of the schema (compiled nodes).
+     * Used to namespace DB keys so different schemas don't interfere.
      * @private
-     * @type {Promise<void> | null}
+     * @type {string}
      */
-    initPromise;
+    schemaHash;
+
+    /**
+     * Index helper for managing persistent reverse dependencies and inputs.
+     * @private
+     * @type {Index}
+     */
+    index;
 
     /**
      * Helper to create a put operation for batch processing.
@@ -86,16 +102,31 @@ class DependencyGraphClass {
 
     /**
      * Recursively collects operations to mark dependent nodes as potentially-dirty.
+     * Uses both static dependents map and DB-persisted reverse dependencies.
      * @private
      * @param {string} changedKey - The key that was changed
-     * @param {Array<{type: string, key: string, value: DatabaseStoredValue}>} batchOperations - Batch to add operations to
+     * @param {Array<{type: "put", key: string, value: DatabaseStoredValue} | {type: "del", key: string}>} batchOperations - Batch to add operations to
+     * @param {Set<string>} visited - Set of already-visited nodes to prevent redundant recursion
      * @returns {Promise<void>}
      */
-    async collectMarkDependentsOperations(changedKey, batchOperations) {
-        // Use pre-computed dependents map for O(1) lookup
-        const dependentNodes = this.dependentsMap.get(changedKey) || [];
+    async collectMarkDependentsOperations(changedKey, batchOperations, visited = new Set()) {
+        // Avoid redundant work
+        if (visited.has(changedKey)) {
+            return;
+        }
+        visited.add(changedKey);
 
-        for (const node of dependentNodes) {
+        // Collect dependents from both static map and DB
+        const staticDependents = this.dependentsMap.get(changedKey) || [];
+        const dynamicDependents = await this.index.listDependents(changedKey);
+
+        // Combine both sources, mapping dynamic dependents to the same structure
+        const allDependents = [
+            ...staticDependents,
+            ...dynamicDependents.map((output) => ({ output, inputs: [] })),
+        ];
+
+        for (const node of allDependents) {
             const currentFreshness = await this.database.getFreshness(
                 freshnessKey(node.output)
             );
@@ -112,7 +143,8 @@ class DependencyGraphClass {
                 // Recursively mark dependents of this node
                 await this.collectMarkDependentsOperations(
                     node.output,
-                    batchOperations
+                    batchOperations,
+                    visited
                 );
             }
         }
@@ -126,8 +158,6 @@ class DependencyGraphClass {
      * @returns {Promise<void>}
      */
     async set(key, value) {
-        await this.ensureInitialized();
-
         // Canonicalize the key
         const canonicalKey = canonicalize(key);
 
@@ -137,23 +167,16 @@ class DependencyGraphClass {
         // Ensure node exists (will create from pattern if needed, allow pass-through for constants)
         const nodeDefinition = await this.getOrCreateConcreteNode(canonicalKey, true);
 
+        /** @type {Array<{type: "put", key: string, value: DatabaseStoredValue} | {type: "del", key: string}>} */
         const batchOperations = [];
 
-        // Write instantiation marker if this is a parameterized instantiation (first time)
-        if (nodeDefinition.__instantiationMarkerKey) {
-            const markerExists = await this.database.get(
-                nodeDefinition.__instantiationMarkerKey
+        // Ensure node is indexed (if it has inputs)
+        if (nodeDefinition.inputs.length > 0) {
+            await this.index.ensureNodeIndexed(
+                canonicalKey,
+                nodeDefinition.inputs,
+                batchOperations
             );
-            if (markerExists === undefined) {
-                // Write marker atomically with value/freshness
-                // Store a minimal object (DatabaseValue must be an object)
-                batchOperations.push(
-                    this.putOp(
-                        nodeDefinition.__instantiationMarkerKey,
-                        /** @type {DatabaseValue} */ (/** @type {unknown} */ ({ __marker: true }))
-                    )
-                );
-            }
         }
 
         // Store the value
@@ -172,55 +195,31 @@ class DependencyGraphClass {
     }
 
     /**
-     * Pre-computes the dependents map for efficient lookups.
+     * Pre-computes the dependents map for efficient lookups of static edges.
+     * Dynamic edges from pattern instantiations are stored in DB, not here.
      * @private
      * @returns {void}
      */
     calculateDependents() {
         for (const compiled of this.graph.values()) {
-            for (const inputKey of compiled.canonicalInputs) {
-                if (!this.dependentsMap.has(inputKey)) {
-                    this.dependentsMap.set(inputKey, []);
+            // Only compute for non-pattern nodes (static edges)
+            if (!compiled.isPattern) {
+                for (const inputKey of compiled.canonicalInputs) {
+                    if (!this.dependentsMap.has(inputKey)) {
+                        this.dependentsMap.set(inputKey, []);
+                    }
+                    const val = this.dependentsMap.get(inputKey);
+                    if (val === undefined) {
+                        throw new Error(
+                            `Unexpected undefined value in dependentsMap for key ${inputKey}`
+                        );
+                    }
+                    val.push({
+                        output: compiled.canonicalOutput,
+                        inputs: compiled.canonicalInputs,
+                    });
                 }
-                const val = this.dependentsMap.get(inputKey);
-                if (val === undefined) {
-                    throw new Error(
-                        `Unexpected undefined value in dependentsMap for key ${inputKey}`
-                    );
-                }
-                val.push({
-                    output: compiled.canonicalOutput,
-                    inputs: compiled.canonicalInputs,
-                });
             }
-        }
-    }
-
-    /**
-     * Registers a dependent edge dynamically.
-     * Used when creating concrete instantiations from patterns.
-     * @private
-     * @param {string} inputKey - The input node key
-     * @param {{output: string, inputs: string[]}} dependent - The dependent node
-     * @returns {void}
-     */
-    registerDependentEdge(inputKey, dependent) {
-        if (!this.dependentsMap.has(inputKey)) {
-            this.dependentsMap.set(inputKey, []);
-        }
-        const dependents = this.dependentsMap.get(inputKey);
-        if (dependents === undefined) {
-            throw new Error(
-                `Unexpected undefined value in dependentsMap for key ${inputKey}`
-            );
-        }
-
-        // Check if already registered (deduplicate)
-        const alreadyRegistered = dependents.some(
-            (d) => d.output === dependent.output
-        );
-        if (!alreadyRegistered) {
-            dependents.push(dependent);
         }
     }
 
@@ -282,10 +281,11 @@ class DependencyGraphClass {
 
     /**
      * Gets or creates a concrete node instantiation.
+     * Dynamic edges are persisted to DB when the node is computed/set, not here.
      * @private
      * @param {string} concreteKeyCanonical - Canonical concrete node key
      * @param {boolean} allowPassThrough - If true, allows creating pass-through nodes for constants
-     * @returns {Promise<{output: string, inputs: string[], computor: (inputs: DatabaseValue[], oldValue: DatabaseValue | undefined) => DatabaseValue | Unchanged, __instantiationMarkerKey?: string}>}
+     * @returns {Promise<{output: string, inputs: string[], computor: (inputs: DatabaseValue[], oldValue: DatabaseValue | undefined) => DatabaseValue | Unchanged}>}
      * @throws {Error} If no pattern matches and node not in graph
      */
     async getOrCreateConcreteNode(concreteKeyCanonical, allowPassThrough = false) {
@@ -358,61 +358,14 @@ class DependencyGraphClass {
              */
             computor: (inputValues, oldValue) =>
                 compiledNode.source.computor(inputValues, oldValue, bindings),
-            // Store instantiation marker key for later atomic persistence
-            __instantiationMarkerKey: compiledNode.isPattern
-                ? `instantiation:${concreteKeyCanonical}`
-                : undefined,
         };
 
         // Cache it
         this.concreteInstantiations.set(concreteKeyCanonical, concreteNode);
 
-        // Register dynamic edges
-        for (const inputKey of concreteInputs) {
-            this.registerDependentEdge(inputKey, concreteNode);
-        }
-
-        // Instantiation marker will be written atomically in maybeRecalculate or set
+        // Dynamic edges will be persisted to DB when this node is computed or set
 
         return concreteNode;
-    }
-
-    /**
-     * Ensures initialization has been done (loads demanded instantiations from DB).
-     * Concurrency-safe: multiple concurrent calls will await the same initialization promise.
-     * @private
-     * @returns {Promise<void>}
-     */
-    async ensureInitialized() {
-        // If initialization is already in progress, await it
-        if (this.initPromise) {
-            return this.initPromise;
-        }
-
-        // Start initialization
-        this.initPromise = (async () => {
-            // Load all instantiation markers from database
-            const instantiationKeys = await this.database.keys("instantiation:");
-
-            // Recreate each concrete node
-            for (const instantiationKey of instantiationKeys) {
-                const concreteKey = instantiationKey.substring(
-                    "instantiation:".length
-                );
-                try {
-                    // This will recreate the node and register its edges
-                    await this.getOrCreateConcreteNode(concreteKey);
-                } catch (err) {
-                    // If schema no longer exists or node is invalid, skip it
-                    console.warn(
-                        `Failed to recreate instantiation for ${concreteKey}:`,
-                        err
-                    );
-                }
-            }
-        })();
-
-        return this.initPromise;
     }
 
     /**
@@ -422,13 +375,34 @@ class DependencyGraphClass {
      */
     constructor(database, nodeDefs) {
         this.database = database;
-        this.initPromise = null;
 
         // Compile all node definitions
         const compiledNodes = nodeDefs.map(compileNodeDef);
 
         // Validate no overlaps
         validateNoOverlap(compiledNodes);
+
+        // Compute schema hash for namespacing DB keys
+        // Use a stable canonical representation of the schema
+        const schemaRepresentation = compiledNodes
+            .map((node) => ({
+                output: node.canonicalOutput,
+                inputs: node.canonicalInputs,
+                head: node.head,
+                arity: node.arity,
+                isPattern: node.isPattern,
+            }))
+            .sort((a, b) => a.output.localeCompare(b.output));
+        
+        const schemaJson = JSON.stringify(schemaRepresentation);
+        this.schemaHash = crypto
+            .createHash("sha256")
+            .update(schemaJson)
+            .digest("hex")
+            .substring(0, 16); // Use first 16 chars for brevity
+
+        // Initialize index helper
+        this.index = makeIndex(database, this.schemaHash);
 
         // Store compiled nodes in a map by canonical output
         this.graph = new Map();
@@ -462,7 +436,7 @@ class DependencyGraphClass {
         // Initialize instantiation cache
         this.concreteInstantiations = new Map();
 
-        // Pre-compute reverse dependency map for O(1) lookups
+        // Pre-compute reverse dependency map for static edges only
         this.dependentsMap = new Map();
         this.calculateDependents();
     }
@@ -471,17 +445,22 @@ class DependencyGraphClass {
      * Propagates up-to-date state to downstream potentially-outdated nodes.
      * Called AFTER a node is marked up-to-date.
      * Only affects potentially-outdated nodes whose inputs are all up-to-date.
+     * Uses both static dependents and DB-persisted reverse dependencies.
      *
      * @private
      * @param {string} nodeName - The node that was marked up-to-date
      * @returns {Promise<void>}
      */
     async propagateUpToDateDownstream(nodeName) {
-        const dependents = this.dependentsMap.get(nodeName) || [];
+        // Collect dependents from both static map and DB
+        const staticDependents = this.dependentsMap.get(nodeName) || [];
+        const dynamicDependentKeys = await this.index.listDependents(nodeName);
+
         const batchOperations = [];
         const nodesToPropagate = [];
 
-        for (const dependent of dependents) {
+        // Process static dependents (we already have their inputs)
+        for (const dependent of staticDependents) {
             const depFreshness = await this.database.getFreshness(
                 freshnessKey(dependent.output)
             );
@@ -512,6 +491,47 @@ class DependencyGraphClass {
             }
         }
 
+        // Process dynamic dependents (need to fetch inputs from DB)
+        for (const dependentKey of dynamicDependentKeys) {
+            const depFreshness = await this.database.getFreshness(
+                freshnessKey(dependentKey)
+            );
+
+            // Only process potentially-outdated nodes
+            if (depFreshness !== "potentially-outdated") {
+                continue;
+            }
+
+            // Fetch inputs from DB
+            const inputs = await this.index.getInputs(dependentKey);
+            
+            if (inputs === null) {
+                // Not indexed yet - skip (conservative approach)
+                // This can happen if the node was instantiated but never computed
+                continue;
+            }
+
+            // Check if all inputs are up-to-date
+            let allInputsUpToDate = true;
+            for (const inputKey of inputs) {
+                const inputFreshness = await this.database.getFreshness(
+                    freshnessKey(inputKey)
+                );
+                if (inputFreshness !== "up-to-date") {
+                    allInputsUpToDate = false;
+                    break;
+                }
+            }
+
+            // If all inputs up-to-date, mark this node up-to-date and remember to recurse
+            if (allInputsUpToDate) {
+                batchOperations.push(
+                    this.putOp(freshnessKey(dependentKey), "up-to-date")
+                );
+                nodesToPropagate.push(dependentKey);
+            }
+        }
+
         // Execute batch if we have operations
         if (batchOperations.length > 0) {
             await this.database.batch(batchOperations);
@@ -530,7 +550,7 @@ class DependencyGraphClass {
      * Special optimization: if computation returns Unchanged, propagate up-to-date downstream.
      *
      * @private
-     * @param {{output: string, inputs: string[], computor: (inputs: DatabaseValue[], oldValue: DatabaseValue | undefined) => DatabaseValue | Unchanged, __instantiationMarkerKey?: string}} nodeDefinition - The node to maybe recalculate
+     * @param {{output: string, inputs: string[], computor: (inputs: DatabaseValue[], oldValue: DatabaseValue | undefined) => DatabaseValue | Unchanged}} nodeDefinition - The node to maybe recalculate
      * @returns {Promise<DatabaseValue>}
      */
     async maybeRecalculate(nodeDefinition) {
@@ -581,23 +601,16 @@ class DependencyGraphClass {
         const computedValue = nodeDefinition.computor(inputValues, oldValue);
 
         // Prepare batch operations
+        /** @type {Array<{type: "put", key: string, value: DatabaseStoredValue} | {type: "del", key: string}>} */
         const batchOperations = [];
 
-        // Write instantiation marker if this is a parameterized instantiation (first time)
-        if (nodeDefinition.__instantiationMarkerKey) {
-            const markerExists = await this.database.get(
-                nodeDefinition.__instantiationMarkerKey
+        // Ensure node is indexed (if it has inputs)
+        if (nodeDefinition.inputs.length > 0) {
+            await this.index.ensureNodeIndexed(
+                nodeName,
+                nodeDefinition.inputs,
+                batchOperations
             );
-            if (markerExists === undefined) {
-                // Write marker atomically with value/freshness
-                // Store a minimal object (DatabaseValue must be an object)
-                batchOperations.push(
-                    this.putOp(
-                        nodeDefinition.__instantiationMarkerKey,
-                        /** @type {DatabaseValue} */ (/** @type {unknown} */ ({ __marker: true }))
-                    )
-                );
-            }
         }
 
         // Mark all inputs as up-to-date
@@ -644,6 +657,8 @@ class DependencyGraphClass {
 
     /**
      * Pulls a specific node's value, lazily evaluating dependencies as needed.
+    /**
+     * Pulls a specific node's value, lazily evaluating dependencies as needed.
      *
      * Algorithm:
      * - If node is up-to-date: return cached value (fast path)
@@ -653,8 +668,6 @@ class DependencyGraphClass {
      * @returns {Promise<DatabaseValue>} The node's value
      */
     async pull(nodeName) {
-        await this.ensureInitialized();
-
         // Canonicalize the node name
         const canonicalName = canonicalize(nodeName);
 

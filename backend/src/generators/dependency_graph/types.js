@@ -9,6 +9,11 @@
 /** @typedef {import('./unchanged').Unchanged} Unchanged */
 
 /**
+ * Union type for values that can be stored in the database.
+ * @typedef {DatabaseValue | Freshness} DatabaseStoredValue
+ */
+
+/**
  * Capabilities needed for DependencyGraph operations
  * @typedef {object} DependencyGraphCapabilities
  * @property {Database} database - A database instance
