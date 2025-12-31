@@ -15,13 +15,10 @@ describe("dependency_graph/expr", () => {
             });
         });
 
-        test("parses a function call with no args", () => {
-            const result = parseExpr("foo()");
-            expect(result).toEqual({
-                kind: "call",
-                name: "foo",
-                args: [],
-            });
+        test("throws on function call with no args (T4)", () => {
+            expect(() => parseExpr("foo()")).toThrow(
+                "Empty argument list not allowed"
+            );
         });
 
         test("parses a function call with one identifier arg", () => {
@@ -119,6 +116,19 @@ describe("dependency_graph/expr", () => {
             });
         });
 
+        test("parses numeric arguments including multi-digit (T5)", () => {
+            const result = parseExpr("node(123)");
+            expect(result).toEqual({
+                kind: "call",
+                name: "node",
+                args: [{ kind: "number", value: "123" }],
+            });
+            
+            // Verify canonicalization works
+            expect(canonicalize("node(123)")).toBe("node(123)");
+            expect(canonicalize("node( 456 )")).toBe("node(456)");
+        });
+
         test("handles string escapes", () => {
             const result = parseExpr('msg("hello\\"world")');
             expect(result).toEqual({
@@ -141,7 +151,7 @@ describe("dependency_graph/expr", () => {
         });
 
         test("throws on invalid function name", () => {
-            expect(() => parseExpr("123foo()")).toThrow("identifier");
+            expect(() => parseExpr("123foo(x)")).toThrow("identifier");
         });
 
         test("throws on leading zeros in numbers", () => {
@@ -159,9 +169,13 @@ describe("dependency_graph/expr", () => {
             expect(canonicalize("  all_events  ")).toBe("all_events");
         });
 
-        test("canonicalizes a function call", () => {
-            expect(canonicalize("foo()")).toBe("foo()");
-            expect(canonicalize("foo( )")).toBe("foo()");
+        test("throws on empty argument list (T4)", () => {
+            expect(() => canonicalize("foo()")).toThrow(
+                "Empty argument list not allowed"
+            );
+            expect(() => canonicalize("foo( )")).toThrow(
+                "Empty argument list not allowed"
+            );
         });
 
         test("canonicalizes with single arg", () => {

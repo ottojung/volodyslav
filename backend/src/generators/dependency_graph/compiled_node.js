@@ -134,10 +134,69 @@ function patternsCanOverlap(node1, node2) {
     }
 
     // Track variable bindings for unification
-    /** @type {Map<string, ConstValue | string>} */
+    // Maps variable names to what they're bound to (either a ConstValue or another variable name with "node1:" or "node2:" prefix)
+    /** @type {Map<string, ConstValue | { kind: 'var', source: 'node1' | 'node2', name: string }>} */
     const bindings1 = new Map(); // Variables from node1
-    /** @type {Map<string, ConstValue | string>} */
+    /** @type {Map<string, ConstValue | { kind: 'var', source: 'node1' | 'node2', name: string }>} */
     const bindings2 = new Map(); // Variables from node2
+
+    /**
+     * Resolves a variable binding to its ultimate value.
+     * @param {Map<string, ConstValue | { kind: 'var', source: 'node1' | 'node2', name: string }>} bindings
+     * @param {string} varName
+     * @returns {ConstValue | { kind: 'var', source: 'node1' | 'node2', name: string } | null}
+     */
+    function resolve(bindings, varName) {
+        const binding = bindings.get(varName);
+        if (!binding) return null;
+        
+        if (typeof binding === 'object' && 'kind' in binding) {
+            if (binding.kind === 'var') {
+                // Follow the chain
+                const otherBindings = binding.source === 'node1' ? bindings1 : bindings2;
+                return resolve(otherBindings, binding.name);
+            }
+            // It's a ConstValue
+            return binding;
+        }
+        return null;
+    }
+
+    /**
+     * Binds a variable to a value, checking for conflicts.
+     * @param {Map<string, ConstValue | { kind: 'var', source: 'node1' | 'node2', name: string }>} bindings
+     * @param {string} varName
+     * @param {ConstValue | { kind: 'var', source: 'node1' | 'node2', name: string }} value
+     * @returns {boolean} True if binding succeeds, false if conflict
+     */
+    function bind(bindings, varName, value) {
+        const existing = resolve(bindings, varName);
+        if (existing === null) {
+            bindings.set(varName, value);
+            return true;
+        }
+        
+        // Check if existing binding is compatible
+        if ('kind' in existing && existing.kind === 'var' && 'kind' in value && value.kind === 'var') {
+            // Both are variables - make them equal
+            const otherBindings = value.source === 'node1' ? bindings1 : bindings2;
+            return bind(otherBindings, value.name, existing);
+        } else if ('kind' in existing && existing.kind !== 'var' && 'kind' in value && value.kind !== 'var') {
+            // Both are constants - must match
+            return existing.kind === value.kind && existing.value === value.value;
+        } else if ('kind' in existing && existing.kind === 'var') {
+            // Existing is var, value is const - bind the var
+            const otherBindings = existing.source === 'node1' ? bindings1 : bindings2;
+            return bind(otherBindings, existing.name, value);
+        } else {
+            // Existing is const, value is var - bind the var
+            if ('kind' in value && value.kind === 'var') {
+                const otherBindings = value.source === 'node1' ? bindings1 : bindings2;
+                return bind(otherBindings, value.name, existing);
+            }
+            return false;
+        }
+    }
 
     // Try to unify each argument position
     for (let i = 0; i < node1.arity; i++) {
@@ -172,20 +231,8 @@ function patternsCanOverlap(node1, node2) {
                 return false;
             }
             
-            if (bindings1.has(varName)) {
-                // Variable already bound - check consistency
-                const existing = bindings1.get(varName);
-                if (typeof existing === "string") {
-                    // Bound to another variable - continue
-                } else if (existing) {
-                    // Bound to a constant - must match
-                    if (existing.kind !== constValue.kind || existing.value !== constValue.value) {
-                        return false; // Inconsistent binding
-                    }
-                }
-            } else {
-                // Bind variable to constant
-                bindings1.set(varName, constValue);
+            if (!bind(bindings1, varName, constValue)) {
+                return false; // Inconsistent binding
             }
         } else if (!isVar1 && isVar2) {
             // arg1 is constant, arg2 is variable
@@ -196,42 +243,17 @@ function patternsCanOverlap(node1, node2) {
                 return false;
             }
             
-            if (bindings2.has(varName)) {
-                // Variable already bound - check consistency
-                const existing = bindings2.get(varName);
-                if (typeof existing === "string") {
-                    // Bound to another variable - continue
-                } else if (existing) {
-                    // Bound to a constant - must match
-                    if (existing.kind !== constValue.kind || existing.value !== constValue.value) {
-                        return false; // Inconsistent binding
-                    }
-                }
-            } else {
-                // Bind variable to constant
-                bindings2.set(varName, constValue);
+            if (!bind(bindings2, varName, constValue)) {
+                return false; // Inconsistent binding
             }
         } else {
-            // Both are variables
+            // Both are variables - unify them
             const var1 = arg1.value;
             const var2 = arg2.value;
             
-            // Check if either is already bound
-            const bound1 = bindings1.get(var1);
-            const bound2 = bindings2.get(var2);
-            
-            if (bound1 && bound2) {
-                // Both bound - check consistency
-                if (typeof bound1 !== "string" && typeof bound2 !== "string") {
-                    // Both bound to constants
-                    if (bound1.kind !== bound2.kind || bound1.value !== bound2.value) {
-                        return false;
-                    }
-                }
+            if (!bind(bindings1, var1, { kind: 'var', source: 'node2', name: var2 })) {
+                return false; // Inconsistent binding
             }
-            
-            // Create binding (simplified - just note they must be equal in any unifying substitution)
-            // For a more complete implementation, we'd track variable-to-variable bindings
         }
     }
 
