@@ -36,14 +36,14 @@ Instead of concrete node names, the graph is defined using **node schemas** that
 **Expression Grammar:**
 
 ```
-expression := constant | compound
-constant   := \w+
-compound   := constant "(" args ")"
-args       := constant | constant "," args
+expression := atom | compound
+atom       := \w+
+compound   := atom "(" args ")"
+args       := atom | atom "," args
 ```
 
 **Examples:**
-* `all_events` — constant expression (no parameters)
+* `all_events` — atom expression (no parameters)
 * `event_context(e)` — compound expression with one variable
 * `enhanced_event(e, p)` — compound expression with two variables
 
@@ -66,12 +66,12 @@ A **DependencyGraph** is defined by:
 ```javascript
 [
   {
-    output: "all_events",           // constant
+    output: "all_events",           // atom
     inputs: [],
     computor: ([], old) => old || { events: [] }
   },
   {
-    output: "meta_events",          // constant
+    output: "meta_events",          // atom
     inputs: ["all_events"],
     computor: ([all]) => extractMeta(all)
   },
@@ -184,10 +184,10 @@ When `set("all_events", newData)` is called:
 
 ### set(nodeName, value)
 
-**Unchanged:** The `set` operation works only on concrete nodes (constants or fully instantiated compounds).
+**Unchanged:** The `set` operation works only on concrete nodes (atoms or fully instantiated compounds).
 
 ```javascript
-set("all_events", newData)              // OK: constant
+set("all_events", newData)              // OK: atom
 set("event_context(id123)", newContext) // OK: fully instantiated
 set("event_context(e)", data)           // ERROR: cannot set schema
 ```
@@ -235,7 +235,7 @@ Call: `pull("event_context(id123)")`
 
 Concrete node names are stored as database keys directly:
 
-* Constants: `"all_events"`, `"meta_events"`
+* Atoms: `"all_events"`, `"meta_events"`
 * Instantiations: `"event_context(id123)"`, `"enhanced_event(id123, photo5)"`
 
 **Serialization Format:**

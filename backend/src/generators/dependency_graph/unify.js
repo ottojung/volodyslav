@@ -139,8 +139,8 @@ function matchConcrete(concreteKey, compiledNode) {
 function substitute(pattern, bindings, variables) {
     const expr = parseExpr(pattern);
 
-    if (expr.kind === "const") {
-        // Constants don't need substitution
+    if (expr.kind === "atom") {
+        // Atoms don't need substitution
         return expr.name;
     }
 

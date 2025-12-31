@@ -308,10 +308,10 @@ class DependencyGraphClass {
         // Try to find matching pattern
         const match = this.findMatchingPattern(concreteKeyCanonical);
         if (!match) {
-            // For constant nodes, create pass-through if allowed
+            // For atom nodes, create pass-through if allowed
             const expr = parseExpr(concreteKeyCanonical);
             
-            if (expr.kind === "const" && allowPassThrough) {
+            if (expr.kind === "atom" && allowPassThrough) {
                 // Create a pass-through node with no inputs
                 const passThrough = {
                     output: concreteKeyCanonical,

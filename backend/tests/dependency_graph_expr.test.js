@@ -6,10 +6,10 @@ const { parseExpr, canonicalize } = require("../src/generators/dependency_graph/
 
 describe("dependency_graph/expr", () => {
     describe("parseExpr()", () => {
-        test("parses a constant", () => {
+        test("parses an atom", () => {
             const result = parseExpr("all_events");
             expect(result).toEqual({
-                kind: "const",
+                kind: "atom",
                 name: "all_events",
                 args: [],
             });
@@ -42,10 +42,10 @@ describe("dependency_graph/expr", () => {
             });
         });
 
-        test("handles whitespace in constant", () => {
+        test("handles whitespace in atom", () => {
             const result = parseExpr("  all_events  ");
             expect(result).toEqual({
-                kind: "const",
+                kind: "atom",
                 name: "all_events",
                 args: [],
             });
@@ -146,7 +146,7 @@ describe("dependency_graph/expr", () => {
             expect(() => parseExpr("foo(a")).toThrow("rparen");
         });
 
-        test("throws on invalid identifier in constant", () => {
+        test("throws on invalid identifier in atom", () => {
             expect(() => parseExpr("123invalid")).toThrow("Invalid identifier");
         });
 
@@ -164,7 +164,7 @@ describe("dependency_graph/expr", () => {
     });
 
     describe("canonicalize()", () => {
-        test("canonicalizes a constant", () => {
+        test("canonicalizes an atom", () => {
             expect(canonicalize("all_events")).toBe("all_events");
             expect(canonicalize("  all_events  ")).toBe("all_events");
         });
