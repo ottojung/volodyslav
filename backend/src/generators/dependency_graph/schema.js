@@ -1,9 +1,13 @@
 /**
  * Schema validation and compilation utilities.
+ * This module provides compatibility with the old Schema type.
+ * New code should use compiled_node.js directly with NodeDef type.
  */
 
 const { parseExpr } = require("./expr");
 const { makeInvalidSchemaError } = require("./errors");
+const { schemaToNodeDef } = require("./migration");
+const { compileNodeDef, patternsCanOverlap } = require("./compiled_node");
 
 /** @typedef {import('./types').Schema} Schema */
 /** @typedef {import('./expr').ParsedExpr} ParsedExpr */
@@ -24,8 +28,9 @@ function validateSchemaVariables(schema) {
 
     if (outputExpr.kind === "call") {
         for (const arg of outputExpr.args) {
-            if (declaredVars.has(arg)) {
-                outputVars.add(arg);
+            // With new grammar, args are ParsedArg objects
+            if (arg.kind === "identifier" && declaredVars.has(arg.value)) {
+                outputVars.add(arg.value);
             }
         }
     }
@@ -36,8 +41,8 @@ function validateSchemaVariables(schema) {
         const inputExpr = parseExpr(input);
         if (inputExpr.kind === "call") {
             for (const arg of inputExpr.args) {
-                if (declaredVars.has(arg)) {
-                    inputVars.add(arg);
+                if (arg.kind === "identifier" && declaredVars.has(arg.value)) {
+                    inputVars.add(arg.value);
                 }
             }
         }
@@ -65,6 +70,7 @@ function validateSchemaVariables(schema) {
 
 /**
  * Compiles a schema by parsing its output expression.
+ * Uses the new CompiledNode infrastructure internally.
  *
  * @param {Schema} schema
  * @returns {CompiledSchema}
@@ -85,42 +91,21 @@ function compileSchema(schema) {
 
 /**
  * Checks if two schemas can potentially match the same concrete nodes.
- * Two schemas overlap if they have the same head and arity, and for every
- * argument position, they don't have conflicting constants.
+ * Uses the new pattern overlap detection.
  *
  * @param {CompiledSchema} schema1
  * @param {CompiledSchema} schema2
  * @returns {boolean} True if schemas overlap
  */
 function schemasOverlap(schema1, schema2) {
-    // Must have same head and arity to overlap
-    if (schema1.head !== schema2.head || schema1.arity !== schema2.arity) {
-        return false;
-    }
-
-    const vars1 = new Set(schema1.schema.variables);
-    const vars2 = new Set(schema2.schema.variables);
-
-    // Check each argument position
-    for (let i = 0; i < schema1.arity; i++) {
-        const arg1 = schema1.outputExpr.args[i];
-        const arg2 = schema2.outputExpr.args[i];
-        
-        if (arg1 === undefined || arg2 === undefined) {
-            throw new Error(`Unexpected undefined argument at position ${i}`);
-        }
-
-        const isVar1 = vars1.has(arg1);
-        const isVar2 = vars2.has(arg2);
-
-        // If both are constants, they must match
-        if (!isVar1 && !isVar2 && arg1 !== arg2) {
-            return false; // Conflicting constants - no overlap
-        }
-    }
-
-    // If we get here, they can overlap
-    return true;
+    // Convert to CompiledNode and use the new overlap detection
+    const nodeDef1 = schemaToNodeDef(schema1.schema);
+    const nodeDef2 = schemaToNodeDef(schema2.schema);
+    
+    const compiled1 = compileNodeDef(nodeDef1);
+    const compiled2 = compileNodeDef(nodeDef2);
+    
+    return patternsCanOverlap(compiled1, compiled2);
 }
 
 /**

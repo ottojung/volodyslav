@@ -107,7 +107,10 @@ describe("dependency_graph/schema", () => {
             expect(compiled.head).toBe("event_context");
             expect(compiled.arity).toBe(1);
             expect(compiled.outputExpr.kind).toBe("call");
-            expect(compiled.outputExpr.args).toEqual(["e"]);
+            // Args are now ParsedArg objects with new grammar
+            expect(compiled.outputExpr.args).toEqual([
+                { kind: "identifier", value: "e" }
+            ]);
         });
     });
 
@@ -150,16 +153,17 @@ describe("dependency_graph/schema", () => {
             expect(() => validateNoSchemaOverlap(compiled)).not.toThrow();
         });
 
-        test("accepts schemas with conflicting constants at same position", () => {
+        test("accepts schemas with conflicting string constants at same position", () => {
+            // With the new overlap detection, we need actual conflicting constants (not just unquoted identifiers)
             const schemas = [
                 {
-                    output: "foo(a,x)",
+                    output: 'foo("a", x)',
                     inputs: [],
                     variables: ["x"],
                     computor: () => ({}),
                 },
                 {
-                    output: "foo(b,y)",
+                    output: 'foo("b", y)',
                     inputs: [],
                     variables: ["y"],
                     computor: () => ({}),
