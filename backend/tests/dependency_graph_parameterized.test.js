@@ -48,20 +48,21 @@ describe("Parameterized node schemas", () => {
                 ],
             });
 
-            // Define schema
-            const schemas = [
+            // Define pattern using unified NodeDef format
+            const nodeDefs = [
                 {
                     output: "event_context(e)",
                     inputs: ["all_events"],
-                    variables: ["e"],
                     computor: (inputs, oldValue, bindings) => {
                         const allEvents = inputs[0].events;
+                        // bindings.e.value is now a ConstValue: { kind: "string", value: "id123" }
+                        const eventId = bindings.e.value;
                         const event = allEvents.find(
-                            (ev) => ev.id === bindings.e
+                            (ev) => ev.id === eventId
                         );
                         return {
                             type: "event_context",
-                            eventId: bindings.e,
+                            eventId: eventId,
                             context: event
                                 ? `Context for ${event.description}`
                                 : "Not found",
@@ -70,10 +71,10 @@ describe("Parameterized node schemas", () => {
                 },
             ];
 
-            const graph = makeDependencyGraph(db, [], schemas);
+            const graph = makeDependencyGraph(db, nodeDefs);
 
-            // Pull concrete instantiation
-            const result = await graph.pull("event_context(id123)");
+            // Pull concrete instantiation (must use quoted string for identifier)
+            const result = await graph.pull('event_context("id123")');
 
             expect(result).toEqual({
                 type: "event_context",
@@ -82,7 +83,7 @@ describe("Parameterized node schemas", () => {
             });
 
             // Verify it was stored
-            const stored = await db.getValue("event_context(id123)");
+            const stored = await db.getValue('event_context("id123")');
             expect(stored).toEqual(result);
 
             await db.close();
@@ -95,30 +96,29 @@ describe("Parameterized node schemas", () => {
             await db.put("base", { value: 1 });
 
             let computeCount = 0;
-            const schemas = [
+            const nodeDefs = [
                 {
                     output: "derived(x)",
                     inputs: ["base"],
-                    variables: ["x"],
                     computor: (inputs, oldValue, bindings) => {
                         computeCount++;
                         return {
                             value: inputs[0].value * 2,
-                            id: bindings.x,
+                            id: bindings.x.value,
                         };
                     },
                 },
             ];
 
-            const graph = makeDependencyGraph(db, [], schemas);
+            const graph = makeDependencyGraph(db, nodeDefs);
 
             // First pull - should compute
-            const result1 = await graph.pull("derived(abc)");
+            const result1 = await graph.pull("derived(\"abc\")");
             expect(computeCount).toBe(1);
             expect(result1.value).toBe(2);
 
             // Second pull - should use cache
-            const result2 = await graph.pull("derived(abc)");
+            const result2 = await graph.pull("derived(\"abc\")");
             expect(computeCount).toBe(1); // No recomputation
             expect(result2).toEqual(result1);
 
@@ -133,29 +133,28 @@ describe("Parameterized node schemas", () => {
 
             await db.put("source", { count: 1 });
 
-            const schemas = [
+            const nodeDefs = [
                 {
                     output: "derived(x)",
                     inputs: ["source"],
-                    variables: ["x"],
                     computor: (inputs, oldValue, bindings) => ({
                         count: inputs[0].count + 1,
-                        id: bindings.x,
+                        id: bindings.x.value,
                     }),
                 },
             ];
 
-            const graph = makeDependencyGraph(db, [], schemas);
+            const graph = makeDependencyGraph(db, nodeDefs);
 
             // Pull instantiation
-            const result1 = await graph.pull("derived(test1)");
+            const result1 = await graph.pull("derived(\"test1\")");
             expect(result1.count).toBe(2);
 
             // Update source
             await graph.set("source", { count: 10 });
 
             // Pull again - should recompute
-            const result2 = await graph.pull("derived(test1)");
+            const result2 = await graph.pull("derived(\"test1\")");
             expect(result2.count).toBe(11);
 
             await db.close();
@@ -167,35 +166,34 @@ describe("Parameterized node schemas", () => {
 
             await db.put("source", { value: 1 });
 
-            const schemas = [
+            const nodeDefs = [
                 {
                     output: "derived(x)",
                     inputs: ["source"],
-                    variables: ["x"],
                     computor: (inputs, oldValue, bindings) => ({
                         value: inputs[0].value,
-                        id: bindings.x,
+                        id: bindings.x.value,
                     }),
                 },
             ];
 
-            const graph = makeDependencyGraph(db, [], schemas);
+            const graph = makeDependencyGraph(db, nodeDefs);
 
             // Demand only one instantiation
-            await graph.pull("derived(demanded)");
+            await graph.pull("derived(\"demanded\")");
 
             // Update source
             await graph.set("source", { value: 2 });
 
             // The demanded one should be invalidated
             const demandedFreshness = await db.getFreshness(
-                "freshness(derived(demanded))"
+                'freshness(derived("demanded"))'
             );
             expect(demandedFreshness).toBe("potentially-outdated");
 
             // Non-demanded instantiations shouldn't exist in DB
             const nonDemandedFreshness = await db.getFreshness(
-                "freshness(derived(not_demanded))"
+                'freshness(derived("not_demanded"))'
             );
             expect(nonDemandedFreshness).toBeUndefined();
 
@@ -210,33 +208,32 @@ describe("Parameterized node schemas", () => {
 
             await db1.put("source", { value: 1 });
 
-            const schemas = [
+            const nodeDefs = [
                 {
                     output: "derived(x)",
                     inputs: ["source"],
-                    variables: ["x"],
                     computor: (inputs, oldValue, bindings) => ({
                         value: inputs[0].value * 2,
-                        id: bindings.x,
+                        id: bindings.x.value,
                     }),
                 },
             ];
 
             // Instance A: demand instantiation
-            const graph1 = makeDependencyGraph(db1, [], schemas);
-            await graph1.pull("derived(persistent)");
+            const graph1 = makeDependencyGraph(db1, nodeDefs);
+            await graph1.pull("derived(\"persistent\")");
 
             await db1.close();
 
             // Instance B: new graph with same database
             const db2 = await getDatabase(capabilities);
-            const graph2 = makeDependencyGraph(db2, [], schemas);
+            const graph2 = makeDependencyGraph(db2, nodeDefs);
 
             // Update source - this should invalidate the previously demanded instantiation
             await graph2.set("source", { value: 10 });
 
             // Pull should recompute with new value
-            const result = await graph2.pull("derived(persistent)");
+            const result = await graph2.pull("derived(\"persistent\")");
             expect(result.value).toBe(20);
 
             await db2.close();
@@ -251,22 +248,21 @@ describe("Parameterized node schemas", () => {
             await db.put("events", { events: ["e1", "e2"] });
             await db.put("photos", { photos: ["p1", "p2"] });
 
-            const schemas = [
+            const nodeDefs = [
                 {
                     output: "enhanced_event(e,p)",
                     inputs: ["events", "photos"],
-                    variables: ["e", "p"],
                     computor: (inputs, oldValue, bindings) => ({
-                        event: bindings.e,
-                        photo: bindings.p,
-                        combined: `${bindings.e}_${bindings.p}`,
+                        event: bindings.e.value,
+                        photo: bindings.p.value,
+                        combined: `${bindings.e.value}_${bindings.p.value}`,
                     }),
                 },
             ];
 
-            const graph = makeDependencyGraph(db, [], schemas);
+            const graph = makeDependencyGraph(db, nodeDefs);
 
-            const result = await graph.pull("enhanced_event(e1,p2)");
+            const result = await graph.pull('enhanced_event("e1","p2")');
             expect(result).toEqual({
                 event: "e1",
                 photo: "p2",
@@ -285,11 +281,10 @@ describe("Parameterized node schemas", () => {
             await db.put("source", { value: 1 });
 
             let computeCount = 0;
-            const schemas = [
+            const nodeDefs = [
                 {
                     output: "middle(x)",
                     inputs: ["source"],
-                    variables: ["x"],
                     computor: (inputs, oldValue, bindings) => {
                         computeCount++;
                         if (
@@ -300,35 +295,34 @@ describe("Parameterized node schemas", () => {
                         }
                         return {
                             value: inputs[0].value,
-                            id: bindings.x,
+                            id: bindings.x.value,
                         };
                     },
                 },
                 {
                     output: "final(x)",
                     inputs: ["middle(x)"],
-                    variables: ["x"],
                     computor: (inputs, oldValue, bindings) => {
                         computeCount++;
                         return {
                             value: inputs[0].value * 2,
-                            id: bindings.x,
+                            id: bindings.x.value,
                         };
                     },
                 },
             ];
 
-            const graph = makeDependencyGraph(db, [], schemas);
+            const graph = makeDependencyGraph(db, nodeDefs);
 
             // Initial pull
-            await graph.pull("final(test)");
+            await graph.pull("final(\"test\")");
 
             // Update source with same value - middle should return Unchanged
             await graph.set("source", { value: 1 });
 
             computeCount = 0;
             // Pull final again - middle returns Unchanged, final shouldn't recompute
-            await graph.pull("final(test)");
+            await graph.pull("final(\"test\")");
             expect(computeCount).toBe(1); // Only middle computed, not final
 
             await db.close();
@@ -340,18 +334,17 @@ describe("Parameterized node schemas", () => {
             const capabilities = getTestCapabilities();
             const db = await getDatabase(capabilities);
 
-            const schemas = [
+            const nodeDefs = [
                 {
                     output: "derived(x)",
                     inputs: [],
-                    variables: ["x"],
                     computor: () => ({ value: 1 }),
                 },
             ];
 
-            const graph = makeDependencyGraph(db, [], schemas);
+            const graph = makeDependencyGraph(db, nodeDefs);
 
-            // Try to pull schema pattern directly
+            // Try to pull schema pattern directly (with variable x)
             await expect(graph.pull("derived(x)")).rejects.toThrow();
 
             let error = null;
@@ -384,7 +377,7 @@ describe("Parameterized node schemas", () => {
             const capabilities = getTestCapabilities();
             const db = await getDatabase(capabilities);
 
-            const graph = makeDependencyGraph(db, [], []);
+            const graph = makeDependencyGraph(db, []);
 
             await expect(graph.pull("unknown_node")).rejects.toThrow();
 
@@ -408,26 +401,25 @@ describe("Parameterized node schemas", () => {
 
             await db.put("base", { value: 1 });
 
-            const schemas = [
+            const nodeDefs = [
                 {
                     output: "derived(x)",
                     inputs: ["base"],
-                    variables: ["x"],
                     computor: (inputs, oldValue, bindings) => ({
                         value: inputs[0].value,
-                        id: bindings.x,
+                        id: bindings.x.value,
                     }),
                 },
             ];
 
-            const graph = makeDependencyGraph(db, [], schemas);
+            const graph = makeDependencyGraph(db, nodeDefs);
 
             // Pull with whitespace
-            const result1 = await graph.pull("derived( abc )");
+            const result1 = await graph.pull('derived( "abc" )');
             expect(result1.id).toBe("abc");
 
             // Pull without whitespace - should hit cache
-            const result2 = await graph.pull("derived(abc)");
+            const result2 = await graph.pull('derived("abc")');
             expect(result2).toEqual(result1);
 
             await db.close();

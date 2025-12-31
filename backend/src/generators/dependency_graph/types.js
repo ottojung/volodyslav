@@ -7,6 +7,7 @@
 /** @typedef {import('../database/types').DatabaseValue} DatabaseValue */
 /** @typedef {import('../database/types').Freshness} Freshness */
 /** @typedef {import('./unchanged').Unchanged} Unchanged */
+/** @typedef {import('./expr').ConstValue} ConstValue */
 
 /**
  * Capabilities needed for DependencyGraph operations
@@ -15,31 +16,12 @@
  */
 
 /**
- * A computor function that takes inputs and old value, and produces new value or Unchanged.
- * @typedef {(inputs: Array<DatabaseValue>, oldValue: DatabaseValue | undefined) => DatabaseValue | Unchanged} Computor
- */
-
-/**
- * A node in the dependency graph.
- * @typedef {object} GraphNode
- * @property {string} output - The name of the output node
- * @property {Array<string>} inputs - Array of input node names
- * @property {Computor} computor - Function that computes the output from inputs and old value
- */
-
-/**
- * A computor function for schemas that receives bindings for variables.
- * @typedef {(inputs: Array<DatabaseValue>, oldValue: DatabaseValue | undefined, bindings: Record<string, string>) => DatabaseValue | Unchanged} SchemaComputor
- */
-
-/**
- * A schema definition for parameterized nodes.
- * Schemas allow variables in outputs and inputs, and are instantiated on demand.
- * @typedef {object} Schema
- * @property {string} output - The output pattern (e.g., "event_context(e)")
- * @property {Array<string>} inputs - Array of input patterns (e.g., ["all_events"] or ["photo(p)"])
- * @property {Array<string>} variables - Array of variable names used in the schema (e.g., ["e"] or ["e", "p"])
- * @property {SchemaComputor} computor - Function that computes the output from inputs, old value, and bindings
+ * A node definition in the unified authoring format.
+ * This replaces both GraphNode and Schema from the old implementation.
+ * @typedef {object} NodeDef
+ * @property {string} output - The output pattern or exact key
+ * @property {Array<string>} inputs - Input patterns/dependencies
+ * @property {(inputs: Array<DatabaseValue>, oldValue: DatabaseValue | undefined, bindings: Record<string, ConstValue>) => DatabaseValue | Unchanged} computor - Computation function with typed bindings
  */
 
 module.exports = {};
