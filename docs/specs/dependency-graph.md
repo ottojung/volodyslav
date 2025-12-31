@@ -701,7 +701,7 @@ type ConstValue =
 * `type` MUST be either `"string"` or `"int"`.
 * For `type: "string"`, the `value` field MUST contain the **decoded** string content (escape sequences interpreted).
 * For `type: "int"`, the `value` field MUST be a JavaScript number representing a natural integer (0, 1, 2, ...).
-* Parsing MUST reject non-natural numbers (negative, floats, numbers with leading `+` sign, etc.) per the grammar rules.
+* Parsing MUST reject non-natural numbers (negative, floats, etc.) per the grammar rules.
 
 **Examples:**
 
@@ -1147,9 +1147,9 @@ function isInvalidExpressionError(value): value is InvalidExpressionError;
 function isNonConcreteNodeError(value): value is NonConcreteNodeError;
 ```
 
-**Note on Existing Implementation:**
+**Alternative Names:**
 
-The current implementation uses `SchemaPatternNotAllowed` for this case. For conformance, either name is acceptable as long as it is documented and stable.
+Implementations MAY use the name `SchemaPatternNotAllowed` instead of `NonConcreteNodeError`. Both names refer to the same error condition and are acceptable for conformance as long as the choice is documented and stable.
 
 #### 9.3 `InvalidNodeError`
 
@@ -1187,10 +1187,6 @@ function isInvalidNodeError(value): value is InvalidNodeError;
 function isInvalidSetError(value): value is InvalidSetError;
 ```
 
-**Note:**
-
-The current implementation may not have this error. If missing, it SHOULD be added.
-
 #### 9.5 `SchemaOverlapError`
 
 **When Thrown:**
@@ -1208,10 +1204,6 @@ The current implementation may not have this error. If missing, it SHOULD be add
 ```typescript
 function isSchemaOverlapError(value): value is SchemaOverlapError;
 ```
-
-**Note:**
-
-The current implementation may throw `InvalidSchemaError` for overlaps. For clarity, a dedicated error class is recommended.
 
 #### 9.6 `InvalidSchemaError`
 
@@ -1249,10 +1241,6 @@ function isInvalidSchemaError(value): value is InvalidSchemaError;
 function isSchemaCycleError(value): value is SchemaCycleError;
 ```
 
-**Note:**
-
-The current implementation may not detect schema cycles at initialization. If missing, it SHOULD be added for complete conformance.
-
 #### 9.8 `MissingValueError`
 
 **When Thrown:**
@@ -1270,10 +1258,6 @@ The current implementation may not detect schema cycles at initialization. If mi
 ```typescript
 function isMissingValueError(value): value is MissingValueError;
 ```
-
-**Note:**
-
-The current implementation throws generic `Error` for this case. A dedicated error class improves testability.
 
 #### 9.9 Error Timing
 

@@ -603,7 +603,6 @@ describe("Parameterized node schemas", () => {
             expect(inputs).toEqual({ inputs: ["base"] });
 
             // Recreate graph and verify instantiation persists
-            // Recreate graph and verify instantiation persists
             const graph2 = makeDependencyGraph(db, schemas);
             
             // Update base to trigger invalidation via persisted reverse dep
