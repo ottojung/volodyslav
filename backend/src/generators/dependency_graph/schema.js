@@ -4,8 +4,10 @@
 
 const { parseExpr } = require("./expr");
 const { makeInvalidSchemaError } = require("./errors");
+const { patternsCanUnify } = require("./unify");
 
 /** @typedef {import('./types').Schema} Schema */
+/** @typedef {import('./types').CompiledNode} CompiledNode */
 /** @typedef {import('./expr').ParsedExpr} ParsedExpr */
 
 /**
@@ -84,47 +86,58 @@ function compileSchema(schema) {
 }
 
 /**
- * Checks if two schemas can potentially match the same concrete nodes.
- * Two schemas overlap if they have the same head and arity, and for every
- * argument position, they don't have conflicting constants.
+ * Checks if two compiled nodes with patterns can potentially match the same concrete nodes.
+ * Uses unification-based check that respects repeated-variable constraints.
  *
- * @param {CompiledSchema} schema1
- * @param {CompiledSchema} schema2
- * @returns {boolean} True if schemas overlap
+ * @param {CompiledNode} node1
+ * @param {CompiledNode} node2
+ * @returns {boolean} True if nodes overlap
  */
-function schemasOverlap(schema1, schema2) {
+function nodesOverlap(node1, node2) {
     // Must have same head and arity to overlap
-    if (schema1.head !== schema2.head || schema1.arity !== schema2.arity) {
+    if (node1.head !== node2.head || node1.arity !== node2.arity) {
         return false;
     }
 
-    const vars1 = new Set(schema1.schema.variables);
-    const vars2 = new Set(schema2.schema.variables);
+    // Use pattern-pattern unification
+    return patternsCanUnify(
+        node1.outputExpr,
+        node1.variables,
+        node2.outputExpr,
+        node2.variables
+    );
+}
 
-    // Check each argument position
-    for (let i = 0; i < schema1.arity; i++) {
-        const arg1 = schema1.outputExpr.args[i];
-        const arg2 = schema2.outputExpr.args[i];
-        
-        if (arg1 === undefined || arg2 === undefined) {
-            throw new Error(`Unexpected undefined argument at position ${i}`);
-        }
+/**
+ * Validates that compiled nodes don't have overlapping patterns.
+ *
+ * @param {Array<CompiledNode>} compiledNodes
+ * @throws {Error} If nodes overlap
+ */
+function validateNoNodeOverlap(compiledNodes) {
+    // Only check pattern nodes for overlap
+    const patternNodes = compiledNodes.filter((node) => node.isPattern);
 
-        const isVar1 = vars1.has(arg1);
-        const isVar2 = vars2.has(arg2);
-
-        // If both are constants, they must match
-        if (!isVar1 && !isVar2 && arg1 !== arg2) {
-            return false; // Conflicting constants - no overlap
+    for (let i = 0; i < patternNodes.length; i++) {
+        for (let j = i + 1; j < patternNodes.length; j++) {
+            const node1 = patternNodes[i];
+            const node2 = patternNodes[j];
+            if (node1 === undefined || node2 === undefined) {
+                throw new Error("Unexpected undefined node in validation");
+            }
+            if (nodesOverlap(node1, node2)) {
+                throw makeInvalidSchemaError(
+                    `Overlaps with pattern '${node2.outputCanonical}'`,
+                    node1.outputCanonical
+                );
+            }
         }
     }
-
-    // If we get here, they can overlap
-    return true;
 }
 
 /**
  * Validates that schemas don't have overlapping patterns.
+ * Backwards compatibility wrapper for validateNoNodeOverlap.
  *
  * @param {Array<CompiledSchema>} compiledSchemas
  * @throws {Error} If schemas overlap
@@ -137,7 +150,11 @@ function validateNoSchemaOverlap(compiledSchemas) {
             if (schema1 === undefined || schema2 === undefined) {
                 throw new Error("Unexpected undefined schema in validation");
             }
-            if (schemasOverlap(schema1, schema2)) {
+            
+            const vars1 = new Set(schema1.schema.variables);
+            const vars2 = new Set(schema2.schema.variables);
+            
+            if (patternsCanUnify(schema1.outputExpr, vars1, schema2.outputExpr, vars2)) {
                 throw makeInvalidSchemaError(
                     `Overlaps with schema '${schema2.schema.output}'`,
                     schema1.schema.output
@@ -151,4 +168,5 @@ module.exports = {
     validateSchemaVariables,
     compileSchema,
     validateNoSchemaOverlap,
+    validateNoNodeOverlap,
 };

@@ -42,4 +42,29 @@
  * @property {SchemaComputor} computor - Function that computes the output from inputs, old value, and bindings
  */
 
+/**
+ * Input definition for nodes (what callers pass to makeDependencyGraph).
+ * Can be either a concrete node or a parameterized schema.
+ * @typedef {object} NodeDef
+ * @property {string} output - Output pattern or concrete node name
+ * @property {Array<string>} inputs - Array of input patterns or node names
+ * @property {Computor | SchemaComputor} computor - Computor function (with or without bindings parameter)
+ * @property {Array<string>} [variables] - Optional array of variable names (if this is a pattern node)
+ */
+
+/**
+ * Compiled internal representation of nodes.
+ * Both pattern nodes and concrete nodes are stored as CompiledNode.
+ * @typedef {object} CompiledNode
+ * @property {string} outputCanonical - Canonical form of output
+ * @property {Array<string>} inputsCanonical - Canonical form of inputs
+ * @property {import('./expr').ParsedExpr} outputExpr - Parsed output expression
+ * @property {string} head - The head/name of the output
+ * @property {number} arity - Number of arguments in the output
+ * @property {Set<string>} variables - Extracted variables from output pattern
+ * @property {Computor | SchemaComputor} computor - Original computor function
+ * @property {boolean} isPattern - True if output contains variables
+ * @property {boolean} [needsInstantiationMarker] - True if this instantiated node needs marker persisted
+ */
+
 module.exports = {};

@@ -94,7 +94,94 @@ function substitute(pattern, bindings, variables) {
     return canonicalize(`${expr.name}(${substitutedArgs.join(",")})`);
 }
 
+/**
+ * Checks if two patterns can unify (i.e., there exists a concrete instantiation that matches both).
+ * This respects repeated-variable constraints within each pattern.
+ *
+ * @param {import('./expr').ParsedExpr} pattern1Expr - First pattern expression
+ * @param {Set<string>} vars1 - Variables in first pattern
+ * @param {import('./expr').ParsedExpr} pattern2Expr - Second pattern expression
+ * @param {Set<string>} vars2 - Variables in second pattern
+ * @returns {boolean} True if patterns can overlap
+ */
+function patternsCanUnify(pattern1Expr, vars1, pattern2Expr, vars2) {
+    // Must have same head and arity
+    if (pattern1Expr.name !== pattern2Expr.name) {
+        return false;
+    }
+    if (pattern1Expr.args.length !== pattern2Expr.args.length) {
+        return false;
+    }
+
+    // Try to unify - track bindings for each pattern's variables
+    /** @type {Record<string, string>} */
+    const bindings1 = {}; // Maps pattern1 variables to unified values
+    /** @type {Record<string, string>} */
+    const bindings2 = {}; // Maps pattern2 variables to unified values
+
+    for (let i = 0; i < pattern1Expr.args.length; i++) {
+        const arg1 = pattern1Expr.args[i];
+        const arg2 = pattern2Expr.args[i];
+
+        if (arg1 === undefined || arg2 === undefined) {
+            return false;
+        }
+
+        const isVar1 = vars1.has(arg1);
+        const isVar2 = vars2.has(arg2);
+
+        if (isVar1 && isVar2) {
+            // Both are variables
+            // Check consistency with existing bindings
+            const bound1 = bindings1[arg1];
+            const bound2 = bindings2[arg2];
+
+            if (bound1 !== undefined && bound2 !== undefined) {
+                // Both already bound - must match
+                if (bound1 !== bound2) {
+                    return false; // Conflict
+                }
+            } else if (bound1 !== undefined) {
+                // arg1 already bound, bind arg2 to same value
+                bindings2[arg2] = bound1;
+            } else if (bound2 !== undefined) {
+                // arg2 already bound, bind arg1 to same value
+                bindings1[arg1] = bound2;
+            } else {
+                // Neither bound - create fresh binding
+                // Use a synthetic value to represent this equivalence class
+                const freshValue = `#unified_${i}`;
+                bindings1[arg1] = freshValue;
+                bindings2[arg2] = freshValue;
+            }
+        } else if (isVar1 && !isVar2) {
+            // arg1 is variable, arg2 is constant
+            const bound1 = bindings1[arg1];
+            if (bound1 !== undefined && bound1 !== arg2) {
+                return false; // Conflict
+            }
+            bindings1[arg1] = arg2;
+        } else if (!isVar1 && isVar2) {
+            // arg1 is constant, arg2 is variable
+            const bound2 = bindings2[arg2];
+            if (bound2 !== undefined && bound2 !== arg1) {
+                return false; // Conflict
+            }
+            bindings2[arg2] = arg1;
+        } else {
+            // Both are constants - must match
+            if (arg1 !== arg2) {
+                return false; // Constants differ
+            }
+        }
+    }
+
+    // If we get here, unification succeeded
+    return true;
+}
+
 module.exports = {
     unify,
     substitute,
+    patternsCanUnify,
 };

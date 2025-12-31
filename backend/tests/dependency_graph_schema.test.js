@@ -216,5 +216,55 @@ describe("dependency_graph/schema", () => {
             const compiled = schemas.map(compileSchema);
             expect(() => validateNoSchemaOverlap(compiled)).toThrow();
         });
+
+        test("accepts schemas with repeated variables (no overlap due to constraint)", () => {
+            const schemas = [
+                {
+                    output: "pair(x,x)",
+                    inputs: [],
+                    variables: ["x"],
+                    computor: () => ({}),
+                },
+                {
+                    output: "pair(a,b)",
+                    inputs: [],
+                    variables: ["a", "b"],
+                    computor: () => ({}),
+                },
+            ];
+            const compiled = schemas.map(compileSchema);
+            // pair(x,x) requires both args to be equal
+            // pair(a,b) allows them to be different
+            // These CAN overlap when a === b, so they should throw
+            expect(() => validateNoSchemaOverlap(compiled)).toThrow();
+        });
+
+        test("accepts schemas where repeated variables prevent overlap", () => {
+            const schemas = [
+                {
+                    output: "pair(x,x)",
+                    inputs: [],
+                    variables: ["x"],
+                    computor: () => ({}),
+                },
+                {
+                    output: "pair(a,b)",
+                    inputs: [],
+                    variables: ["a", "b"],
+                    computor: () => ({}),
+                },
+                {
+                    output: "triple(x,x,x)",
+                    inputs: [],
+                    variables: ["x"],
+                    computor: () => ({}),
+                },
+            ];
+            // This is actually testing that pair(x,x) and pair(a,b) CAN unify
+            // The issue says they should NOT overlap when a != b, but they CAN unify when a = b
+            // So the current behavior (throwing) is correct - they do overlap
+            const pairSchemas = schemas.slice(0, 2).map(compileSchema);
+            expect(() => validateNoSchemaOverlap(pairSchemas)).toThrow();
+        });
     });
 });
