@@ -222,7 +222,7 @@ describe("Dependency graph persistence and restart", () => {
                 {
                     output: "B",
                     inputs: ["A"],
-                    computor: (inputs, _oldValue, _bindings) => {
+                    computor: (_inputs, _oldValue, _bindings) => {
                         computeCalls.push("B");
                         // Always return Unchanged to test propagation
                         return makeUnchanged();

@@ -105,7 +105,7 @@ class DependencyGraphClass {
      * Uses both static dependents map and DB-persisted reverse dependencies.
      * @private
      * @param {string} changedKey - The key that was changed
-     * @param {Array<{type: string, key: string, value: DatabaseStoredValue}>} batchOperations - Batch to add operations to
+     * @param {Array<{type: "put", key: string, value: DatabaseStoredValue} | {type: "del", key: string}>} batchOperations - Batch to add operations to
      * @param {Set<string>} visited - Set of already-visited nodes to prevent redundant recursion
      * @returns {Promise<void>}
      */
@@ -167,6 +167,7 @@ class DependencyGraphClass {
         // Ensure node exists (will create from pattern if needed, allow pass-through for constants)
         const nodeDefinition = await this.getOrCreateConcreteNode(canonicalKey, true);
 
+        /** @type {Array<{type: "put", key: string, value: DatabaseStoredValue} | {type: "del", key: string}>} */
         const batchOperations = [];
 
         // Ensure node is indexed (if it has inputs)
@@ -600,6 +601,7 @@ class DependencyGraphClass {
         const computedValue = nodeDefinition.computor(inputValues, oldValue);
 
         // Prepare batch operations
+        /** @type {Array<{type: "put", key: string, value: DatabaseStoredValue} | {type: "del", key: string}>} */
         const batchOperations = [];
 
         // Ensure node is indexed (if it has inputs)
@@ -655,13 +657,6 @@ class DependencyGraphClass {
 
     /**
      * Pulls a specific node's value, lazily evaluating dependencies as needed.
-     *
-     * Algorithm:
-     * - If node is up-to-date: return cached value (fast path)
-     * - If node is potentially-outdated: maybe recalculate (check inputs first)
-     *
-     * @param {string} nodeName - The name of the node to pull
-     * @returns {Promise<DatabaseValue>} The node's value
     /**
      * Pulls a specific node's value, lazily evaluating dependencies as needed.
      *

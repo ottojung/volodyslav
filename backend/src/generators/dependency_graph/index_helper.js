@@ -3,9 +3,14 @@
  * Provides methods to store and query reverse dependencies and node inputs.
  */
 
-/** @typedef {import('./types').Database} Database */
-/** @typedef {import('./types').DatabaseValue} DatabaseValue */
-/** @typedef {import('./types').DatabaseStoredValue} DatabaseStoredValue */
+/** @typedef {import('../database/class').Database} Database */
+/** @typedef {import('../database/types').DatabaseValue} DatabaseValue */
+/** @typedef {import('../database/types').Freshness} Freshness */
+
+/**
+ * Union type for values that can be stored in the database.
+ * @typedef {DatabaseValue | Freshness} DatabaseStoredValue
+ */
 
 /**
  * Helper to create a put operation for batch processing.
@@ -22,7 +27,7 @@ function putOp(key, value) {
  * @typedef {object} Index
  * @property {(node: string) => string} inputsKey - Get the DB key for storing a node's inputs
  * @property {(input: string) => string} revdepPrefix - Get the DB key prefix for querying dependents of an input
- * @property {(node: string, inputs: string[], batchOps: Array<{type: string, key: string, value: DatabaseStoredValue}>) => Promise<void>} ensureNodeIndexed - Ensure node's inputs and reverse deps are indexed
+ * @property {(node: string, inputs: string[], batchOps: Array<{type: "put", key: string, value: DatabaseStoredValue} | {type: "del", key: string}>) => Promise<void>} ensureNodeIndexed - Ensure node's inputs and reverse deps are indexed
  * @property {(input: string) => Promise<string[]>} listDependents - List all nodes that depend on the given input
  * @property {(node: string) => Promise<string[] | null>} getInputs - Get the inputs for a node
  */
@@ -72,7 +77,7 @@ function makeIndex(database, schemaHash) {
      * 
      * @param {string} node - Canonical node key
      * @param {string[]} inputs - Array of canonical input keys
-     * @param {Array<{type: string, key: string, value: DatabaseStoredValue}>} batchOps - Batch operations array to append to
+     * @param {Array<{type: "put", key: string, value: DatabaseStoredValue} | {type: "del", key: string}>} batchOps - Batch operations array to append to
      * @returns {Promise<void>}
      */
     async function ensureNodeIndexed(node, inputs, batchOps) {
