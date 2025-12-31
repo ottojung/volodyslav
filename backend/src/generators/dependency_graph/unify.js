@@ -2,7 +2,7 @@
  * Unification algorithm for matching concrete nodes against compiled patterns.
  */
 
-const { parseExpr, renderTerm, renderExpr } = require("./expr");
+const { parseExpr, renderTerm } = require("./expr");
 
 /** @typedef {import('./compiled_node').CompiledNode} CompiledNode */
 /** @typedef {import('./expr').ConstValue} ConstValue */

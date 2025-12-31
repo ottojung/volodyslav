@@ -18,7 +18,7 @@ const {
     makeInvalidNodeError,
     makeSchemaPatternNotAllowedError,
 } = require("./errors");
-const { canonicalize, renderExpr } = require("./expr");
+const { canonicalize } = require("./expr");
 const { compileNodeDef } = require("./compiled_node");
 const { matchConcrete, substitute, nodesOverlap } = require("./unify");
 
@@ -162,7 +162,7 @@ class DependencyGraphClass {
      * @returns {void}
      */
     calculateDependents() {
-        for (const [_, node] of this.graph) {
+        for (const [, node] of this.graph) {
             for (const inputKey of node.canonicalInputs) {
                 if (!this.dependentsMap.has(inputKey)) {
                     this.dependentsMap.set(inputKey, []);
