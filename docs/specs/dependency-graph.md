@@ -170,7 +170,7 @@ Freshness is a **conceptual** property of nodes used for reasoning about correct
 * Any other representation that satisfies the invariants and correctness properties
 
 **Observable Special Values:**
-* `Unchanged` is the ONLY observable special value that computors may return
+* `Unchanged` is an observable special value that computors may return
 * Internal freshness encodings are NOT externally observable
 
 **Note:** Freshness is tracked per **concrete instantiation**, not per schema. For example, `event_context('id123')` and `event_context('id456')` have independent freshness states.
@@ -247,7 +247,7 @@ When `set('all_events', newData)` is called:
 * `meta_events` becomes potentially-outdated
 * **ALL** materialized instantiations `event_context('id123')`, `event_context('id456')`, etc. become potentially-outdated
 
-**Implementation Challenge:** How do we efficiently mark all instantiations without enumerating them?
+**Implementation Challenge:** How do we efficiently mark all instantiations without enumerating infinitely many of them?
 
 ## Operations on Parameterized Graphs
 
@@ -675,44 +675,3 @@ Tests MUST cover:
 2. Diamond graphs (A → B,C → D)
 3. Unchanged propagation (node returns `Unchanged`, dependents skip recomputation)
 4. Mixed freshness states (some up-to-date, some potentially-outdated)
-
-### Required Tests (Spec-Level Requirements)
-
-The following tests are REQUIRED to validate conformance to this specification:
-
-1. **Parser/Serializer Round-trip Tests:**
-   * `parse(serialize(ast))` MUST equal `ast`
-   * `serialize(parse(s))` MUST canonicalize `s`
-
-2. **Concrete Node Rejection Tests:**
-   * `pull(fun(a))` with free variable MUST throw
-   * `set(fun(x), value)` with free variable MUST throw
-
-3. **Natural Number Literal Validation:**
-   * Reject negative numbers
-   * Reject floating-point numbers
-   * Reject leading zeros (except `0` itself)
-
-4. **Schema Overlap Detection Tests:**
-   * Reject overlapping patterns like `node(x)` + `node(y)`
-   * Allow disjoint literal patterns like `status(e, 'active')` + `status(e, 'inactive')`
-
-5. **Source Node Restriction Tests:**
-   * `set()` on non-source nodes MUST throw `InvalidSetError`
-   * `set()` on source nodes (inputs=[]) MUST succeed
-
-6. **Unchanged Propagation Soundness Tests:**
-   * Regression test for diamond graph unsound propagation case
-   * Verify that naive "all inputs up-to-date" strategy is NOT used
-
-7. **Restart Resilience Tests:**
-   * Materialized instantiation markers persist across restarts
-   * Graph state correctly reconstructed after restart
-
----
-
-## Comparison to Step/Run API
-
-The original implementation included `step()` and `run()` methods for push-based propagation. These are now DEPRECATED in favor of pull-based evaluation.
-
-**Rationale:** Pull-based evaluation provides better lazy evaluation semantics and clearer correctness properties. The big-step semantics of `pull` is trivial to specify, whereas `step/run` requires complex iteration semantics.
