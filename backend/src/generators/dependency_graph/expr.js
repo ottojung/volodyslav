@@ -23,11 +23,11 @@
  */
 
 /**
- * Parsed expression - either a constant or a function call.
+ * Parsed expression - either an atom or a function call.
  * @typedef {Object} ParsedExpr
- * @property {'const' | 'call'} kind - The kind of expression
+ * @property {'atom' | 'call'} kind - The kind of expression
  * @property {string} name - The name/head of the expression (identifier only)
- * @property {ParsedArg[]} args - Arguments (empty for constants)
+ * @property {ParsedArg[]} args - Arguments (empty for atoms)
  */
 
 /**
@@ -268,11 +268,11 @@ class Parser {
             /** @type {ParsedArg[]} */
             const args = [];
 
-            // Check for empty args - this is disallowed (use bare identifier for constants)
+            // Check for empty args - this is disallowed (use bare identifier for atoms)
             const nextToken = /** @type {TokenKind} */ (this.currentToken.kind);
             if (nextToken === "rparen") {
                 throw new Error(
-                    `Empty argument list not allowed at position ${this.currentToken.pos}. Use '${name}' instead of '${name}()' for constants.`
+                    `Empty argument list not allowed at position ${this.currentToken.pos}. Use '${name}' instead of '${name}()' for atoms.`
                 );
             }
 
@@ -292,8 +292,8 @@ class Parser {
             return { kind: "call", name, args };
         }
 
-        // It's a constant
-        return { kind: "const", name, args: [] };
+        // It's an atom
+        return { kind: "atom", name, args: [] };
     }
 
     /**
@@ -322,7 +322,7 @@ class Parser {
 /**
  * Parses an expression string into a structured form.
  * Supports:
- * - constants: "name"
+ * - atoms: "name"
  * - calls: "name(arg1, arg2, ...)"
  * - args can be: identifiers, quoted strings, or natural numbers
  *
@@ -365,7 +365,7 @@ function renderArg(arg) {
  * @returns {string}
  */
 function renderExpr(expr) {
-    if (expr.kind === "const") {
+    if (expr.kind === "atom") {
         return expr.name;
     } else {
         const renderedArgs = expr.args.map(renderArg).join(",");
