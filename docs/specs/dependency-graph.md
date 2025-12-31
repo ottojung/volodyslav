@@ -38,8 +38,9 @@ Instead of concrete node names, the graph is defined using **node schemas** that
 ```
 expr          := atom_expr | compound_expr
 atom_expr     := ident
-compound_expr := ident "(" arg ("," arg)* ")"
+compound_expr := ident "(" args ")"
 
+args          := arg ("," arg)*
 arg           := var | nat | string
 var           := ident
 nat           := "0" | [1-9][0-9]*
