@@ -23,11 +23,11 @@ The Dependency Graph is a lazy evaluation system that propagates changes through
 * **NodeName** — unique identifier for a node in the graph (concrete, fully instantiated)
 * **NodeValue** — the computed value at a node
 * **Freshness** — conceptual predicate: `{ up-to-date, potentially-outdated }` (implementation representation is not prescribed)
-* **Computor** — a deterministic function `(inputs: NodeValue[], oldValue: NodeValue | undefined, bindings: Record<string, ConstValue>) => NodeValue | Unchanged`
+* **Computor** — a deterministic asynchronous function `(inputs: NodeValue[], oldValue: NodeValue | undefined, bindings: Record<string, ConstValue>) => Promise<NodeValue | Unchanged>`
 * **Unchanged** — the only observable sentinel value indicating the computation returned the same value as before
 * **Variable** — a parameter placeholder in node schemas (bare identifiers in argument positions)
 * **Literal** — a typed constant value appearing in expressions (nat or single-quoted string)
-* **ConstValue** — a typed constant value with kind (`'string' | 'nat'`) and value (string content or number)
+* **ConstValue** — a typed constant value with kind (`'string' | 'int'`) and value (string content or number)
 
 ### Node Schemas and Expressions
 
@@ -675,3 +675,629 @@ Tests MUST cover:
 2. Diamond graphs (A → B,C → D)
 3. Unchanged propagation (node returns `Unchanged`, dependents skip recomputation)
 4. Mixed freshness states (some up-to-date, some potentially-outdated)
+
+---
+
+## JavaScript Interfaces & Conformance Contract (Normative)
+
+This section defines the concrete JavaScript interfaces, API contracts, and error taxonomy that implementations MUST provide and tests MAY observe. These definitions enable deterministic test synthesis and unambiguous implementation audits.
+
+### 1) Core Runtime Types (Normative)
+
+#### 1.1 `ConstValue`
+
+A `ConstValue` represents a typed constant value that can appear in expressions or variable bindings.
+
+**Type Definition:**
+
+```typescript
+type ConstValue =
+  | { type: "string"; value: string }
+  | { type: "int"; value: number };
+```
+
+**Normative Requirements:**
+
+* `type` MUST be either `"string"` or `"int"`.
+* For `type: "string"`, the `value` field MUST contain the **decoded** string content (escape sequences interpreted).
+* For `type: "int"`, the `value` field MUST be a JavaScript number representing a natural integer (0, 1, 2, ...).
+* Parsing MUST reject non-natural numbers (negative, floats, numbers with leading `+` sign, etc.) per the grammar rules.
+
+**Examples:**
+
+```javascript
+{ type: "string", value: "hello" }        // String constant
+{ type: "int", value: 42 }                // Natural number constant
+{ type: "string", value: "line1\nline2" } // With decoded newline
+```
+
+#### 1.2 `Unchanged`
+
+`Unchanged` is a unique sentinel value that computors MAY return to indicate that the computed value has not changed.
+
+**Normative Requirements:**
+
+* `Unchanged` MUST be a unique sentinel value that cannot be confused with any valid `DatabaseValue`.
+* Implementations MUST expose a type guard function `isUnchanged(value): boolean` that returns `true` if and only if `value` is the `Unchanged` sentinel.
+* The `Unchanged` sentinel MUST be obtained via a factory function `makeUnchanged()` or equivalent.
+
+**Example Usage:**
+
+```javascript
+const unchanged = makeUnchanged();
+if (isUnchanged(value)) {
+  // Handle unchanged case
+}
+```
+
+**Observable Behavior:**
+
+* When a computor returns `Unchanged`, the node's stored value MUST NOT be updated.
+* The node MUST be marked `up-to-date`.
+* Implementations MAY propagate the `up-to-date` state to downstream dependents (see "Optimization: Unchanged Propagation" section).
+
+#### 1.3 `DatabaseValue`
+
+A `DatabaseValue` represents any value that can be stored and retrieved through the `Database` interface.
+
+**Normative Requirements:**
+
+* `DatabaseValue` MUST be an arbitrary JSON-serializable object (or implementation-defined type that is stable across database roundtrips).
+* Values MUST round-trip through the `Database` interface without semantic change: `getValue(k)` after `put(k, v)` MUST return a value semantically equivalent to `v`.
+* If the database supports richer types beyond JSON, tests MUST NOT assume those types unless explicitly documented.
+
+**Type Guard:**
+
+Implementations SHOULD provide a type guard `isDatabaseValue(value): boolean` to distinguish `DatabaseValue` from `Freshness` or other internal types.
+
+### 2) `Computor` (Normative)
+
+A `Computor` is a deterministic function that computes a node's value based on its input values, previous value, and variable bindings.
+
+**Function Signature:**
+
+```typescript
+type Computor = (
+  inputs: DatabaseValue[],
+  oldValue: DatabaseValue | undefined,
+  bindings: Record<string, ConstValue>
+) => Promise<DatabaseValue | Unchanged>;
+```
+
+**Normative Requirements:**
+
+* Computors MUST be **asynchronous** and return a `Promise`.
+* Computors MUST be **deterministic** with respect to `(inputs, oldValue, bindings)`: given the same inputs, old value, and bindings, they MUST produce the same result.
+* Computors MUST NOT have hidden side effects that affect their output (no hidden state, no nondeterminism from random number generators, timestamps, etc.).
+* Computors MUST NOT be invoked more than once per node per top-level `pull()` call (property P3 from the spec).
+* Computors MAY return `Unchanged` to indicate that the value has not changed. This is observable only through storage behavior (value not replaced) and potentially through debug instrumentation if provided.
+
+**Parameters:**
+
+* `inputs: DatabaseValue[]` — Ordered array of input node values. Length and order MUST match the node schema's `inputs` array.
+* `oldValue: DatabaseValue | undefined` — The node's previous stored value, or `undefined` if no value exists yet.
+* `bindings: Record<string, ConstValue>` — Variable-to-constant mappings extracted from pattern matching. Empty object `{}` for non-parameterized nodes.
+
+**Return Value:**
+
+* `DatabaseValue` — The newly computed value, which will be stored.
+* `Unchanged` — The sentinel value indicating no change. The old value will be retained.
+
+**Note on Synchronous Computors:**
+
+While this specification defines computors as asynchronous (`Promise`-returning), implementations MAY accept synchronous computor functions for convenience and automatically wrap them in `Promise.resolve()`. However, the canonical signature and all interface contracts MUST treat computors as asynchronous.
+
+### 3) Node Schema Definition Object Shape (`NodeDef`) (Normative)
+
+A `NodeDef` defines a node schema in the dependency graph.
+
+**Type Definition:**
+
+```typescript
+type NodeDef = {
+  output: string;     // Expression string (pattern or concrete)
+  inputs: string[];   // Array of expression strings (dependencies)
+  computor: Computor; // Async function that computes the output
+};
+```
+
+**Normative Requirements:**
+
+* `output` MUST be a valid expression string that parses according to the Expression Grammar.
+* Each entry in `inputs` MUST be a valid expression string that parses according to the Expression Grammar.
+* Variables in `output` MUST be a superset of all variables appearing in all `inputs` expressions (Rule 1: Output Variables Must Cover Inputs).
+* The schema set MUST be rejected at graph initialization if any two `output` patterns overlap (see "Schema Overlap Detection" section).
+* The schema set MUST be rejected at graph initialization if the schema structure forms a cycle (schema-level acyclicity requirement).
+* `computor` MUST be a valid `Computor` function as defined above.
+
+**Example:**
+
+```javascript
+{
+  output: "enhanced_event(e, p)",
+  inputs: ["event_context(e)", "photo(p)"],
+  computor: async (inputs, oldValue, bindings) => {
+    const [context, photo] = inputs;
+    return { ...context, photo, eventId: bindings.e.value };
+  }
+}
+```
+
+### 4) Public API: Graph Construction and Operations (Normative)
+
+#### 4.1 Factory Function
+
+**Function Signature:**
+
+```typescript
+function makeDependencyGraph(
+  database: Database,
+  nodeDefs: NodeDef[]
+): DependencyGraph;
+```
+
+**Normative Requirements:**
+
+* `makeDependencyGraph` MUST be the only public way to construct a `DependencyGraph` instance.
+* The function MUST validate all schemas at construction time (synchronously or during first use) and throw on:
+  * Parse errors (invalid expression syntax)
+  * Variable scope rule violations (Rule 1)
+  * Overlapping output patterns
+  * Schema cycles
+* The function MUST compile and cache any derived artifacts needed for efficient operation (variable lists, canonical forms, pattern indexes, etc.), but the internal representation is not prescribed.
+* The function MUST NOT mutate the provided `nodeDefs` array or `database` object.
+
+**Returns:**
+
+A `DependencyGraph` instance that exposes the operations defined below.
+
+**Throws:**
+
+* `InvalidExpressionError` — If any `output` or `inputs` expression fails to parse.
+* `InvalidSchemaError` — If variable scope rules are violated or other schema definition problems occur.
+* `SchemaOverlapError` — If two or more schemas have overlapping `output` patterns.
+* `SchemaCycleError` — If the schema structure is cyclic.
+
+#### 4.2 `DependencyGraph` Interface
+
+**Type Definition:**
+
+```typescript
+interface DependencyGraph {
+  pull(nodeName: string): Promise<DatabaseValue>;
+  set(nodeName: string, value: DatabaseValue): Promise<void>;
+}
+```
+
+**Type Guard:**
+
+Implementations MUST provide a type guard function `isDependencyGraph(value): boolean`.
+
+#### 4.3 `pull` Method
+
+**Signature:**
+
+```typescript
+pull(nodeName: string): Promise<DatabaseValue>
+```
+
+**Normative Requirements:**
+
+* `pull` MUST accept any string that parses as a valid expression according to the Expression Grammar.
+* `pull` MUST accept expressions with non-canonical quoting (e.g., double quotes if supported) and canonicalize them internally before processing.
+* `pull` MUST reject expressions with free variables (non-concrete expressions) by throwing `NonConcreteNodeError`.
+* `pull` MUST throw `InvalidNodeError` if the concrete node has no matching schema and is not an external node.
+* `pull` MUST return a `Promise` that resolves to the node's computed `DatabaseValue`.
+* `pull` MUST ensure that each node's computor is invoked at most once per top-level `pull()` call (property P3).
+* `pull` MUST produce the same result as recomputing all values from scratch, ignoring all cached state (Correctness Invariant, property P1).
+
+**Behavior:**
+
+1. Parse and canonicalize `nodeName`.
+2. Validate that the expression is concrete (no free variables).
+3. Find or instantiate the node schema.
+4. Check freshness:
+   * If `up-to-date`: Return cached value immediately.
+   * If `potentially-outdated` or missing: Recursively pull inputs, recompute if necessary, store result, mark `up-to-date`.
+5. Return the node's value.
+
+**Throws:**
+
+* `InvalidExpressionError` — If `nodeName` does not parse as a valid expression.
+* `NonConcreteNodeError` — If `nodeName` contains free variables.
+* `InvalidNodeError` — If no schema matches and the node is not external.
+* `MissingValueError` — If the node is marked `up-to-date` but has no stored value (database corruption).
+
+#### 4.4 `set` Method
+
+**Signature:**
+
+```typescript
+set(nodeName: string, value: DatabaseValue): Promise<void>
+```
+
+**Normative Requirements:**
+
+* `set` MUST accept any string that parses as a valid expression according to the Expression Grammar.
+* `set` MUST accept expressions with non-canonical quoting and canonicalize them internally before processing.
+* `set` MUST reject expressions with free variables (non-concrete expressions) by throwing `NonConcreteNodeError`.
+* `set` MUST reject non-source nodes by throwing `InvalidSetError`.
+* `set` MUST store the value at the canonical node key.
+* `set` MUST mark the node as `up-to-date`.
+* `set` MUST mark all materialized transitive dependents as `potentially-outdated`.
+* All operations MUST be performed atomically in a single database batch.
+
+**Behavior:**
+
+1. Parse and canonicalize `nodeName`.
+2. Validate that the expression is concrete (no free variables).
+3. Validate that the node is a source node (see "Source Nodes" section).
+4. Store `value` at the canonical key.
+5. Mark the node as `up-to-date`.
+6. Recursively mark all dependents as `potentially-outdated`.
+7. Commit all operations atomically via `database.batch()`.
+
+**Throws:**
+
+* `InvalidExpressionError` — If `nodeName` does not parse as a valid expression.
+* `NonConcreteNodeError` — If `nodeName` contains free variables.
+* `InvalidSetError` — If the node is not a source node.
+
+### 5) Canonicalization at API Boundaries and DB Keys (Normative)
+
+**Canonical Form Definition:**
+
+For any expression string `expr`, the canonical form is defined as:
+
+```
+canonical(expr) := serialize(parse(expr))
+```
+
+Where:
+* `parse(expr)` parses the expression into an AST.
+* `serialize(ast)` produces the canonical string representation.
+
+**Normative Requirements:**
+
+* All database keys for node values MUST use `canonical(nodeName)`.
+* All database keys for freshness state MUST use `canonical(freshnessKey(nodeName))` where `freshnessKey` applies the freshness key naming convention.
+* `pull(nodeName)` and `set(nodeName, value)` MUST behave as if they first compute `canonical(nodeName)` and then operate on that canonical form.
+* Tests MUST use canonical forms when asserting database key contents.
+
+**Quoting Rules:**
+
+* The canonical form MUST use **single quotes** (`'...'`) for string literals.
+* Implementations MAY accept **double quotes** (`"..."`) in input expressions for convenience.
+* If double quotes are accepted, they MUST be canonicalized to single quotes in `serialize()`.
+* If double quotes are NOT supported, the parser MUST reject them with `InvalidExpressionError`.
+
+**Recommendation:**
+
+Implementations SHOULD accept double quotes in parsing and canonicalize to single quotes for maximum flexibility.
+
+**Examples:**
+
+```javascript
+canonical('event_context("id123")')  // → "event_context('id123')"
+canonical("event_context('id123')")  // → "event_context('id123')"
+canonical("all_events")              // → "all_events"
+canonical("fun(42, 'test')")         // → "fun(42,'test')"
+```
+
+### 6) Required Database Interface for Conformance Tests (Normative)
+
+The `Database` interface defines the minimal contract that the dependency graph requires for storage and retrieval.
+
+**Type Definition:**
+
+```typescript
+interface Database {
+  // Store or overwrite a value at key
+  put(key: string, value: DatabaseValue | Freshness): Promise<void>;
+
+  // Retrieve stored value or undefined if missing
+  getValue(key: string): Promise<DatabaseValue | undefined>;
+
+  // Retrieve stored freshness or undefined if missing
+  getFreshness(key: string): Promise<Freshness | undefined>;
+
+  // Atomically execute a batch of operations
+  batch(ops: Array<
+    | { type: "put"; key: string; value: DatabaseValue | Freshness }
+    | { type: "del"; key: string }
+  >): Promise<void>;
+
+  // Close the database connection
+  close(): Promise<void>;
+}
+```
+
+**Normative Requirements:**
+
+* `put(key, value)` MUST store `value` at `key`, overwriting any existing value.
+* `getValue(key)` MUST return the stored `DatabaseValue` or `undefined` if no value exists at `key`.
+* `getFreshness(key)` MUST return the stored `Freshness` state (`"up-to-date"` or `"potentially-outdated"`) or `undefined` if no freshness state exists at `key`.
+* `batch(ops)` MUST execute all operations atomically: either all succeed or all fail (no partial application).
+* `batch(ops)` operations MUST be applied in the order specified in the `ops` array.
+* `put` and `getValue` MUST round-trip values without mutation: after `put(k, v)`, `getValue(k)` MUST return a value semantically equivalent to `v`.
+* `close()` MUST cleanly shut down the database connection and release resources.
+
+**Database vs. Graph API:**
+
+* The `Database` interface represents **raw storage** without dependency tracking or invalidation logic.
+* Only `graph.set()` performs invalidation and marks dependents as `potentially-outdated`.
+* Tests MAY use `database.put()` only as a seeding helper to set up initial state, but MUST use `graph.set()` for operations that should trigger dependency propagation.
+
+**Freshness Key Convention:**
+
+Freshness state is stored using a key derived from the node key:
+
+```javascript
+function freshnessKey(nodeKey: string): string {
+  return `freshness(${nodeKey})`;
+}
+```
+
+### 7) Materialization Markers (Normative Behavioral Contract)
+
+Implementations MUST persist sufficient information to reconstruct the set of materialized nodes after a restart.
+
+**Normative Requirements:**
+
+* A **materialized node** is any concrete node that has been:
+  * Pulled (via `pull()`) at least once, or
+  * Set (via `set()`) at least once (for source nodes only).
+* If a concrete node is materialized before a graph restart, then after restart (new `DependencyGraph` instance over the same `Database`):
+  * `set(source, v)` MUST mark all previously materialized transitive dependents as `potentially-outdated`
+  * This MUST occur **without** requiring re-pull of those dependents to rediscover them.
+* The specific mechanism for persisting materialization markers (separate keys, metadata, reverse dependency index, etc.) is **not prescribed**.
+* Tests MUST validate this property through behavioral assertions (e.g., after restart, dependent is marked `potentially-outdated` after source `set()`) and MUST NOT assert specific key formats or marker structures.
+
+**Implementation Guidance (Non-Normative):**
+
+Common strategies include:
+* Maintaining a reverse dependency index in the database.
+* Storing a materialization marker key for each instantiated node.
+* Using schema hash namespacing to avoid conflicts between different graph schemas.
+
+### 8) Observability and Test Hooks (Normative)
+
+#### 8.1 Freshness Observability Policy
+
+Internal freshness representation and freshness keys are **explicitly unspecified** and MUST NOT be directly asserted by conformance tests.
+
+**Rationale:**
+
+The specification intentionally leaves freshness encoding flexible (enum values, epochs, version numbers, etc.) to allow implementation freedom and optimization.
+
+**Conformance Test Restrictions:**
+
+* Tests MUST NOT assert the specific format or values of freshness keys or freshness state representations.
+* Tests MAY only assert **functional behavior**: whether `pull()` returns the correct value, whether computors are invoked the expected number of times, and whether invalidation propagates correctly.
+
+#### 8.2 Optional Debug Interface (Recommended)
+
+To enable stronger conformance tests and easier debugging, implementations MAY provide an optional debug interface:
+
+**Type Definition:**
+
+```typescript
+interface DependencyGraphDebug {
+  // Query conceptual freshness state of a node
+  debugGetFreshness(nodeName: string): Promise<
+    "up-to-date" | "potentially-outdated" | "missing"
+  >;
+
+  // List all materialized nodes (canonical names)
+  debugListMaterializedNodes(): Promise<string[]>;
+}
+```
+
+**Normative Requirements (If Implemented):**
+
+* `debugGetFreshness(nodeName)` MUST return the conceptual freshness state of the node:
+  * `"up-to-date"` — Node is guaranteed consistent with dependencies.
+  * `"potentially-outdated"` — Node may need recomputation.
+  * `"missing"` — Node has never been materialized or no freshness state exists.
+* `debugListMaterializedNodes()` MUST return an array of canonical node names for all materialized nodes.
+* The debug interface MUST reflect the same conceptual state that governs the graph's operational behavior (no divergence).
+
+**Usage:**
+
+This interface is intended for test builds and debugging only. Production code SHOULD NOT depend on it.
+
+### 9) Error Taxonomy (Normative)
+
+All errors thrown by the dependency graph MUST have stable, documented names (via `.name` property) or codes (via `.code` property) for reliable test assertions.
+
+#### 9.1 `InvalidExpressionError`
+
+**When Thrown:**
+
+* During `makeDependencyGraph()` initialization if any `output` or `inputs` expression fails to parse.
+* During `pull(nodeName)` or `set(nodeName, value)` if `nodeName` does not parse as a valid expression.
+
+**Error Properties:**
+
+* `name: "InvalidExpressionError"` (or equivalent stable identifier)
+* `message: string` — Human-readable description
+* `expression: string` — The invalid expression string
+
+**Type Guard:**
+
+```typescript
+function isInvalidExpressionError(value): value is InvalidExpressionError;
+```
+
+#### 9.2 `NonConcreteNodeError`
+
+**When Thrown:**
+
+* During `pull(nodeName)` or `set(nodeName, value)` if `nodeName` contains free variables (is not a concrete expression).
+
+**Error Properties:**
+
+* `name: "NonConcreteNodeError"` (or equivalent: `"SchemaPatternNotAllowed"`)
+* `message: string` — Human-readable description
+* `pattern: string` — The non-concrete expression string
+
+**Type Guard:**
+
+```typescript
+function isNonConcreteNodeError(value): value is NonConcreteNodeError;
+```
+
+**Note on Existing Implementation:**
+
+The current implementation uses `SchemaPatternNotAllowed` for this case. For conformance, either name is acceptable as long as it is documented and stable.
+
+#### 9.3 `InvalidNodeError`
+
+**When Thrown:**
+
+* During `pull(nodeName)` if no schema matches the concrete node and the node is not external.
+
+**Error Properties:**
+
+* `name: "InvalidNodeError"` (or equivalent: `"InvalidNode"`)
+* `message: string` — Human-readable description
+* `nodeName: string` — The canonical node name that was not found
+
+**Type Guard:**
+
+```typescript
+function isInvalidNodeError(value): value is InvalidNodeError;
+```
+
+#### 9.4 `InvalidSetError`
+
+**When Thrown:**
+
+* During `set(nodeName, value)` if `nodeName` is not a source node.
+
+**Error Properties:**
+
+* `name: "InvalidSetError"`
+* `message: string` — Human-readable description
+* `nodeName: string` — The canonical node name that is not a source
+
+**Type Guard:**
+
+```typescript
+function isInvalidSetError(value): value is InvalidSetError;
+```
+
+**Note:**
+
+The current implementation may not have this error. If missing, it SHOULD be added.
+
+#### 9.5 `SchemaOverlapError`
+
+**When Thrown:**
+
+* During `makeDependencyGraph()` initialization if two or more schemas have overlapping `output` patterns.
+
+**Error Properties:**
+
+* `name: "SchemaOverlapError"`
+* `message: string` — Human-readable description listing the overlapping patterns
+* `patterns: string[]` — The overlapping canonical output patterns
+
+**Type Guard:**
+
+```typescript
+function isSchemaOverlapError(value): value is SchemaOverlapError;
+```
+
+**Note:**
+
+The current implementation may throw `InvalidSchemaError` for overlaps. For clarity, a dedicated error class is recommended.
+
+#### 9.6 `InvalidSchemaError`
+
+**When Thrown:**
+
+* During `makeDependencyGraph()` initialization if variable scope rules are violated or other schema definition problems occur (excluding overlaps and cycles, which have dedicated errors).
+
+**Error Properties:**
+
+* `name: "InvalidSchemaError"` (or equivalent: `"InvalidSchema"`)
+* `message: string` — Human-readable description
+* `schemaOutput: string` — The problematic schema output pattern
+
+**Type Guard:**
+
+```typescript
+function isInvalidSchemaError(value): value is InvalidSchemaError;
+```
+
+#### 9.7 `SchemaCycleError`
+
+**When Thrown:**
+
+* During `makeDependencyGraph()` initialization if the schema structure forms a cycle.
+
+**Error Properties:**
+
+* `name: "SchemaCycleError"`
+* `message: string` — Human-readable description including the cycle
+* `cycle: string[]` — The nodes involved in the cycle (canonical names)
+
+**Type Guard:**
+
+```typescript
+function isSchemaCycleError(value): value is SchemaCycleError;
+```
+
+**Note:**
+
+The current implementation may not detect schema cycles at initialization. If missing, it SHOULD be added for complete conformance.
+
+#### 9.8 `MissingValueError`
+
+**When Thrown:**
+
+* During `pull(nodeName)` if a node is marked `up-to-date` but has no stored value (indicates database corruption or implementation bug).
+
+**Error Properties:**
+
+* `name: "MissingValueError"`
+* `message: string` — Human-readable description
+* `nodeName: string` — The canonical node name with missing value
+
+**Type Guard:**
+
+```typescript
+function isMissingValueError(value): value is MissingValueError;
+```
+
+**Note:**
+
+The current implementation throws generic `Error` for this case. A dedicated error class improves testability.
+
+#### 9.9 Error Timing
+
+Errors MUST be thrown at specific, predictable times:
+
+| Error | Timing |
+|-------|--------|
+| `InvalidExpressionError` | Initialization (schema parsing) OR runtime (`pull`/`set` with invalid input) |
+| `NonConcreteNodeError` | Runtime (`pull`/`set` with free variables) |
+| `InvalidNodeError` | Runtime (`pull` on unknown node) |
+| `InvalidSetError` | Runtime (`set` on non-source node) |
+| `SchemaOverlapError` | Initialization (schema validation) |
+| `InvalidSchemaError` | Initialization (schema validation) |
+| `SchemaCycleError` | Initialization (schema validation) |
+| `MissingValueError` | Runtime (`pull` detects corruption) |
+
+### 10) Conformance Summary
+
+An implementation conforms to this specification if and only if:
+
+1. It provides all types, interfaces, and functions defined in this section with matching signatures and semantics.
+2. It throws the documented errors with stable names/codes at the specified times.
+3. It enforces all MUST requirements and respects all MUST NOT prohibitions.
+4. It produces results consistent with the big-step semantics and correctness properties (P1-P4).
+5. It passes all conformance tests derived from this specification.
+
+Implementations MAY provide additional features (debug interfaces, performance optimizations, extended error information) as long as they do not violate the normative requirements or change observable behavior defined in this specification.
