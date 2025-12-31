@@ -7,12 +7,16 @@
 /** @typedef {import('./types').Freshness} Freshness */
 /** @typedef {import('./types').Computor} Computor */
 /** @typedef {import('./types').GraphNode} GraphNode */
+/** @typedef {import('./types').Schema} Schema */
 /** @typedef {import('./unchanged').Unchanged} Unchanged */
 /** @typedef {DatabaseValue | Freshness} DatabaseStoredValue */
 
 const { isUnchanged } = require("./unchanged");
 const { freshnessKey } = require("../database");
 const { makeInvalidNodeError } = require("./errors");
+const { canonicalize } = require("./expression");
+const { makeSchemaIndex, instantiate } = require("./schema");
+const { validateSchemas } = require("./validation");
 
 /**
  * A dependency graph that propagates data through edges based on freshness tracking.
@@ -21,6 +25,7 @@ const { makeInvalidNodeError } = require("./errors");
  * - pull() checks freshness: up-to-date → return cached, potentially-outdated → maybeRecalculate
  * - maybeRecalculate() pulls all inputs, computes, marks up-to-date
  * - When Unchanged is returned, propagate up-to-date state downstream to potentially-outdated nodes
+ * - Supports parameterized schemas that are instantiated on-demand
  */
 class DependencyGraphClass {
     /**
@@ -36,6 +41,41 @@ class DependencyGraphClass {
      * @type {Array<GraphNode>}
      */
     graph;
+
+    /**
+     * Schema definitions for parameterized nodes.
+     * @private
+     * @type {Array<Schema>}
+     */
+    schemas;
+
+    /**
+     * Schema index for efficient pattern matching.
+     * @private
+     * @type {ReturnType<typeof makeSchemaIndex> | null}
+     */
+    schemaIndex;
+
+    /**
+     * Cache of concrete node definitions created from schemas.
+     * @private
+     * @type {Map<string, GraphNode>}
+     */
+    concreteNodeCache;
+
+    /**
+     * Set of schema pattern outputs (canonical form) that should not be pulled/set directly.
+     * @private
+     * @type {Set<string>}
+     */
+    schemaPatterns;
+
+    /**
+     * Whether the instance has been initialized (loaded instantiations from DB).
+     * @private
+     * @type {boolean}
+     */
+    initialized;
 
     /**
      * Pre-computed map from node name to array of dependent nodes.
@@ -98,16 +138,38 @@ class DependencyGraphClass {
      * @returns {Promise<void>}
      */
     async set(key, value) {
+        // Ensure initialized
+        await this.ensureInitialized();
+
+        // Canonicalize the key
+        const canonicalKey = canonicalize(key);
+
+        // Reject schema patterns
+        if (this.schemaPatterns.has(canonicalKey)) {
+            throw makeInvalidNodeError(
+                key,
+                "Cannot set a schema pattern directly. Use a concrete instantiation."
+            );
+        }
+
+        // Ensure the node exists (creates it if it's a schema instantiation)
+        await this.getOrCreateConcreteNode(canonicalKey);
+
         const batchOperations = [];
 
         // Store the value
-        batchOperations.push(this.putOp(key, value));
+        batchOperations.push(this.putOp(canonicalKey, value));
 
         // Mark this key as up-to-date
-        batchOperations.push(this.putOp(freshnessKey(key), "up-to-date"));
+        batchOperations.push(
+            this.putOp(freshnessKey(canonicalKey), "up-to-date")
+        );
 
         // Collect operations to mark all dependents as potentially-outdated
-        await this.collectMarkDependentsOperations(key, batchOperations);
+        await this.collectMarkDependentsOperations(
+            canonicalKey,
+            batchOperations
+        );
 
         // Execute all operations atomically
         await this.database.batch(batchOperations);
@@ -136,13 +198,161 @@ class DependencyGraphClass {
     }
 
     /**
+     * Register a dependent edge dynamically.
+     * @private
+     * @param {string} inputKey - The input node name
+     * @param {GraphNode} dependentNode - The node that depends on inputKey
+     * @returns {void}
+     */
+    registerDependentEdge(inputKey, dependentNode) {
+        if (!this.dependentsMap.has(inputKey)) {
+            this.dependentsMap.set(inputKey, []);
+        }
+        const dependents = this.dependentsMap.get(inputKey);
+        if (dependents === undefined) {
+            throw new Error(
+                `Unexpected undefined value in dependentsMap for key ${inputKey}`
+            );
+        }
+
+        // Avoid duplicates
+        if (!dependents.some((node) => node.output === dependentNode.output)) {
+            dependents.push(dependentNode);
+        }
+    }
+
+    /**
+     * Get or create a concrete node definition from a canonical node name.
+     * @private
+     * @param {string} canonicalKey - Canonical node name
+     * @returns {Promise<GraphNode>}
+     * @throws {Error} If no schema matches and node not in static graph
+     */
+    async getOrCreateConcreteNode(canonicalKey) {
+        // Check cache first
+        if (this.concreteNodeCache.has(canonicalKey)) {
+            const cached = this.concreteNodeCache.get(canonicalKey);
+            if (cached === undefined) {
+                throw new Error(
+                    `Unexpected undefined in concreteNodeCache for ${canonicalKey}`
+                );
+            }
+            return cached;
+        }
+
+        // Try to find in static graph
+        const staticNode = this.graph.find(
+            (n) => canonicalize(n.output) === canonicalKey
+        );
+        if (staticNode) {
+            // Cache it
+            this.concreteNodeCache.set(canonicalKey, staticNode);
+            return staticNode;
+        }
+
+        // Try to match against schemas
+        if (!this.schemaIndex) {
+            throw makeInvalidNodeError(canonicalKey);
+        }
+
+        const match = this.schemaIndex.findMatch(canonicalKey);
+        if (!match) {
+            throw makeInvalidNodeError(canonicalKey);
+        }
+
+        const { compiled, bindings } = match;
+        const schema = compiled.schema;
+
+        // Instantiate all input expressions
+        const variableSet = new Set(schema.variables);
+        const concreteInputs = schema.inputs.map((inputExpr) =>
+            instantiate(inputExpr, bindings, variableSet)
+        );
+
+        // Create concrete node definition
+        const concreteNode = {
+            output: canonicalKey,
+            inputs: concreteInputs,
+            computor: (inputValues, oldValue) =>
+                schema.computor(inputValues, oldValue, bindings),
+        };
+
+        // Cache it
+        this.concreteNodeCache.set(canonicalKey, concreteNode);
+
+        // Register dynamic edges
+        for (const inputKey of concreteInputs) {
+            this.registerDependentEdge(inputKey, concreteNode);
+        }
+
+        // Persist instantiation marker (only for parameterized nodes)
+        if (schema.variables.length > 0) {
+            const instantiationKey = `instantiation:${canonicalKey}`;
+            await this.database.put(instantiationKey, 1);
+        }
+
+        return concreteNode;
+    }
+
+    /**
+     * Ensure the graph is initialized by loading previously demanded instantiations.
+     * @private
+     * @returns {Promise<void>}
+     */
+    async ensureInitialized() {
+        if (this.initialized) {
+            return;
+        }
+
+        this.initialized = true;
+
+        // Load all instantiation markers from database
+        const instantiationKeys = await this.database.keys("instantiation:");
+
+        // Rebuild concrete nodes and edges for each
+        for (const key of instantiationKeys) {
+            // Extract the concrete node name
+            const concreteKey = key.slice("instantiation:".length);
+
+            // Recreate the node (this will rebuild cache and edges)
+            try {
+                await this.getOrCreateConcreteNode(concreteKey);
+            } catch (err) {
+                // If we can't recreate it (schema removed?), skip it
+                // In production, might want to log this
+            }
+        }
+    }
+
+    /**
      * @constructor
      * @param {Database} database - The database instance
      * @param {Array<GraphNode>} graph - Graph definition with nodes
+     * @param {Array<Schema>} schemas - Schema definitions for parameterized nodes
      */
-    constructor(database, graph) {
+    constructor(database, graph, schemas = []) {
         this.database = database;
         this.graph = graph;
+        this.schemas = schemas;
+        this.concreteNodeCache = new Map();
+        this.schemaPatterns = new Set();
+        this.initialized = false;
+
+        // Validate schemas
+        if (schemas.length > 0) {
+            validateSchemas(schemas);
+            this.schemaIndex = makeSchemaIndex(schemas);
+
+            // Build set of schema patterns
+            for (const schema of schemas) {
+                if (schema.variables.length > 0) {
+                    const canonical = canonicalize(schema.output);
+                    this.schemaPatterns.add(canonical);
+                }
+            }
+        } else {
+            this.schemaIndex = null;
+        }
 
         // Pre-compute reverse dependency map for O(1) lookups
         // Maps each node to the list of nodes that depend on it
@@ -316,27 +526,36 @@ class DependencyGraphClass {
      * @returns {Promise<DatabaseValue>} The node's value
      */
     async pull(nodeName) {
-        // Find the graph node definition
-        const nodeDefinition = this.graph.find((n) => n.output === nodeName);
+        // Ensure initialized
+        await this.ensureInitialized();
 
-        // If not in graph, throw an error
-        if (!nodeDefinition) {
-            throw makeInvalidNodeError(nodeName);
+        // Canonicalize the key
+        const canonicalKey = canonicalize(nodeName);
+
+        // Reject schema patterns
+        if (this.schemaPatterns.has(canonicalKey)) {
+            throw makeInvalidNodeError(
+                nodeName,
+                "Cannot pull a schema pattern directly. Use a concrete instantiation."
+            );
         }
+
+        // Get or create the node definition
+        const nodeDefinition = await this.getOrCreateConcreteNode(canonicalKey);
 
         // Check freshness of this node
         const nodeFreshness = await this.database.getFreshness(
-            freshnessKey(nodeName)
+            freshnessKey(canonicalKey)
         );
 
         // Fast path: if up-to-date, return cached value immediately
         // By Invariant I2 (Up-to-date Upstream Invariant), if a node is up-to-date,
         // all its inputs are guaranteed to be up-to-date, so no need to check them
         if (nodeFreshness === "up-to-date") {
-            const result = await this.database.getValue(nodeName);
+            const result = await this.database.getValue(canonicalKey);
             if (result === undefined) {
                 throw new Error(
-                    `Expected value for up-to-date node ${nodeName}, but found none.`
+                    `Expected value for up-to-date node ${canonicalKey}, but found none.`
                 );
             }
             return result;
@@ -351,10 +570,11 @@ class DependencyGraphClass {
  * Factory function to create a DependencyGraph instance.
  * @param {Database} database - The database instance
  * @param {Array<GraphNode>} graph - Graph definition with nodes
+ * @param {Array<Schema>} schemas - Optional array of parameterized schemas
  * @returns {DependencyGraphClass}
  */
-function makeDependencyGraph(database, graph) {
-    return new DependencyGraphClass(database, graph);
+function makeDependencyGraph(database, graph, schemas = []) {
+    return new DependencyGraphClass(database, graph, schemas);
 }
 
 /**
