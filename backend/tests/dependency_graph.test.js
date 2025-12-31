@@ -1488,4 +1488,54 @@ describe("generators/dependency_graph", () => {
             await db.close();
         });
     });
+
+    describe("Static node canonicalization (T2)", () => {
+        test("nodes with extra whitespace are properly canonicalized internally", async () => {
+            const capabilities = getTestCapabilities();
+            const db = await getDatabase(capabilities);
+            const { freshnessKey } = require("../src/generators/database");
+
+            // Create node with extra whitespace in output and inputs
+            const graphDef = [
+                {
+                    output: "base",
+                    inputs: [],
+                    computor: (_inputs, oldValue, _bindings) => oldValue || { value: 1 },
+                },
+                {
+                    output: 'derived ( "data"  )', // Extra spaces - should be canonicalized
+                    inputs: ["  base  "], // Extra spaces - should be canonicalized
+                    computor: (inputs, _oldValue, _bindings) => {
+                        return { value: inputs[0].value * 2 };
+                    },
+                },
+            ];
+
+            const graph = makeDependencyGraph(db, graphDef);
+
+            // Set base value
+            await graph.set("base", { value: 5 });
+
+            // Pull using canonical form (no spaces)
+            const result = await graph.pull('derived("data")');
+            expect(result.value).toBe(10);
+
+            // Verify value is stored under canonical key
+            const stored = await db.getValue('derived("data")');
+            expect(stored).toEqual({ value: 10 });
+
+            // Verify freshness is under canonical key
+            const freshness = await db.getFreshness(freshnessKey('derived("data")'));
+            expect(freshness).toBe("up-to-date");
+
+            // Setting base should invalidate derived (via canonical key)
+            await graph.set("base", { value: 10 });
+
+            // Pull derived again - should recompute
+            const result2 = await graph.pull('derived("data")');
+            expect(result2.value).toBe(20);
+
+            await db.close();
+        });
+    });
 });

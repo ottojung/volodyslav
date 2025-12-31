@@ -14,7 +14,7 @@
 const { isUnchanged } = require("./unchanged");
 const { freshnessKey } = require("../database");
 const { makeInvalidNodeError } = require("./errors");
-const { canonicalize } = require("./expr");
+const { canonicalize, parseExpr } = require("./expr");
 const { compileNodeDef, validateNoOverlap } = require("./compiled_node");
 const { matchConcrete, substitute, validateConcreteKey } = require("./unify");
 const { extractVariables } = require("./compiled_node");
@@ -134,9 +134,26 @@ class DependencyGraphClass {
         validateConcreteKey(canonicalKey);
 
         // Ensure node exists (will create from pattern if needed, allow pass-through for constants)
-        await this.getOrCreateConcreteNode(canonicalKey, true);
+        const nodeDefinition = await this.getOrCreateConcreteNode(canonicalKey, true);
 
         const batchOperations = [];
+
+        // Write instantiation marker if this is a parameterized instantiation (first time)
+        if (nodeDefinition.__instantiationMarkerKey) {
+            const markerExists = await this.database.get(
+                nodeDefinition.__instantiationMarkerKey
+            );
+            if (markerExists === undefined) {
+                // Write marker atomically with value/freshness
+                // Store a minimal object (DatabaseValue must be an object)
+                batchOperations.push(
+                    this.putOp(
+                        nodeDefinition.__instantiationMarkerKey,
+                        /** @type {DatabaseValue} */ (/** @type {unknown} */ ({ __marker: true }))
+                    )
+                );
+            }
+        }
 
         // Store the value
         batchOperations.push(this.putOp(canonicalKey, value));
@@ -213,7 +230,6 @@ class DependencyGraphClass {
      * @returns {{ compiledNode: CompiledNode, bindings: Record<string, ConstValue> } | null}
      */
     findMatchingPattern(concreteKeyCanonical) {
-        const { parseExpr } = require("./expr");
         const expr = parseExpr(concreteKeyCanonical);
 
         const head = expr.name;
@@ -268,7 +284,6 @@ class DependencyGraphClass {
         const match = this.findMatchingPattern(concreteKeyCanonical);
         if (!match) {
             // For constant nodes, create pass-through if allowed
-            const { parseExpr } = require("./expr");
             const expr = parseExpr(concreteKeyCanonical);
             
             if (expr.kind === "const" && allowPassThrough) {
@@ -318,6 +333,10 @@ class DependencyGraphClass {
              */
             computor: (inputValues, oldValue) =>
                 compiledNode.source.computor(inputValues, oldValue, bindings),
+            // Store instantiation marker key for later atomic persistence
+            __instantiationMarkerKey: compiledNode.isPattern
+                ? `instantiation:${concreteKeyCanonical}`
+                : undefined,
         };
 
         // Cache it
@@ -328,18 +347,7 @@ class DependencyGraphClass {
             this.registerDependentEdge(inputKey, concreteNode);
         }
 
-        // Persist instantiation marker (only for patterns with variables)
-        if (compiledNode.isPattern) {
-            const instantiationKey = `instantiation:${concreteKeyCanonical}`;
-            // Fire and forget - we don't want to block on this
-            this.database.put(instantiationKey, /** @type {DatabaseValue} */ (/** @type {unknown} */ (1))).catch((err) => {
-                // Log error but don't fail
-                console.error(
-                    `Failed to persist instantiation marker for ${concreteKeyCanonical}:`,
-                    err
-                );
-            });
-        }
+        // Instantiation marker will be written atomically in maybeRecalculate or set
 
         return concreteNode;
     }
@@ -492,7 +500,7 @@ class DependencyGraphClass {
      * Special optimization: if computation returns Unchanged, propagate up-to-date downstream.
      *
      * @private
-     * @param {{output: string, inputs: string[], computor: (inputs: DatabaseValue[], oldValue: DatabaseValue | undefined) => DatabaseValue | Unchanged}} nodeDefinition - The node to maybe recalculate
+     * @param {{output: string, inputs: string[], computor: (inputs: DatabaseValue[], oldValue: DatabaseValue | undefined) => DatabaseValue | Unchanged, __instantiationMarkerKey?: string}} nodeDefinition - The node to maybe recalculate
      * @returns {Promise<DatabaseValue>}
      */
     async maybeRecalculate(nodeDefinition) {
@@ -544,6 +552,23 @@ class DependencyGraphClass {
 
         // Prepare batch operations
         const batchOperations = [];
+
+        // Write instantiation marker if this is a parameterized instantiation (first time)
+        if (nodeDefinition.__instantiationMarkerKey) {
+            const markerExists = await this.database.get(
+                nodeDefinition.__instantiationMarkerKey
+            );
+            if (markerExists === undefined) {
+                // Write marker atomically with value/freshness
+                // Store a minimal object (DatabaseValue must be an object)
+                batchOperations.push(
+                    this.putOp(
+                        nodeDefinition.__instantiationMarkerKey,
+                        /** @type {DatabaseValue} */ (/** @type {unknown} */ ({ __marker: true }))
+                    )
+                );
+            }
+        }
 
         // Mark all inputs as up-to-date
         for (const inputKey of nodeDefinition.inputs) {
