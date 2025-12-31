@@ -14,4 +14,4 @@ id -a
 
 npm ci
 npm run build
-npm test-only
+npm run test-only
