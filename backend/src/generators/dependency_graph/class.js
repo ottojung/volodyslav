@@ -66,11 +66,12 @@ class DependencyGraphClass {
     concreteInstantiations;
 
     /**
-     * Flag to track if initialization (loading demanded instantiations) has been done.
+     * Promise to track initialization progress (loading demanded instantiations).
+     * Ensures initialization runs only once even under concurrent calls.
      * @private
-     * @type {boolean}
+     * @type {Promise<void> | null}
      */
-    initialized;
+    initPromise;
 
     /**
      * Helper to create a put operation for batch processing.
@@ -225,6 +226,7 @@ class DependencyGraphClass {
 
     /**
      * Finds a compiled pattern that matches the given concrete node key.
+     * Throws if multiple patterns match (ambiguity).
      * @private
      * @param {string} concreteKeyCanonical - Canonical concrete node key
      * @returns {{ compiledNode: CompiledNode, bindings: Record<string, ConstValue> } | null}
@@ -241,18 +243,37 @@ class DependencyGraphClass {
             return null;
         }
 
-        // Try to match with each candidate
+        // Collect all matching patterns
+        /** @type {Array<{ compiledNode: CompiledNode, bindings: Record<string, ConstValue> }>} */
+        const matches = [];
+        
         for (const compiled of candidates) {
             const result = matchConcrete(concreteKeyCanonical, compiled);
             if (result) {
-                return {
+                matches.push({
                     compiledNode: compiled,
                     bindings: result.bindings,
-                };
+                });
             }
         }
 
-        return null;
+        if (matches.length === 0) {
+            return null;
+        }
+        
+        if (matches.length > 1) {
+            // Multiple patterns match - this is ambiguous
+            const { makeInvalidSchemaError } = require("./errors");
+            const patternList = matches
+                .map((m) => `'${m.compiledNode.canonicalOutput}'`)
+                .join(", ");
+            throw makeInvalidSchemaError(
+                `Ambiguous match: concrete key '${concreteKeyCanonical}' matches multiple patterns: ${patternList}`,
+                concreteKeyCanonical
+            );
+        }
+
+        return matches[0];
     }
 
     /**
@@ -354,35 +375,40 @@ class DependencyGraphClass {
 
     /**
      * Ensures initialization has been done (loads demanded instantiations from DB).
+     * Concurrency-safe: multiple concurrent calls will await the same initialization promise.
      * @private
      * @returns {Promise<void>}
      */
     async ensureInitialized() {
-        if (this.initialized) {
-            return;
+        // If initialization is already in progress, await it
+        if (this.initPromise) {
+            return this.initPromise;
         }
 
-        // Load all instantiation markers from database
-        const instantiationKeys = await this.database.keys("instantiation:");
+        // Start initialization
+        this.initPromise = (async () => {
+            // Load all instantiation markers from database
+            const instantiationKeys = await this.database.keys("instantiation:");
 
-        // Recreate each concrete node
-        for (const instantiationKey of instantiationKeys) {
-            const concreteKey = instantiationKey.substring(
-                "instantiation:".length
-            );
-            try {
-                // This will recreate the node and register its edges
-                await this.getOrCreateConcreteNode(concreteKey);
-            } catch (err) {
-                // If schema no longer exists or node is invalid, skip it
-                console.warn(
-                    `Failed to recreate instantiation for ${concreteKey}:`,
-                    err
+            // Recreate each concrete node
+            for (const instantiationKey of instantiationKeys) {
+                const concreteKey = instantiationKey.substring(
+                    "instantiation:".length
                 );
+                try {
+                    // This will recreate the node and register its edges
+                    await this.getOrCreateConcreteNode(concreteKey);
+                } catch (err) {
+                    // If schema no longer exists or node is invalid, skip it
+                    console.warn(
+                        `Failed to recreate instantiation for ${concreteKey}:`,
+                        err
+                    );
+                }
             }
-        }
+        })();
 
-        this.initialized = true;
+        return this.initPromise;
     }
 
     /**
@@ -392,7 +418,7 @@ class DependencyGraphClass {
      */
     constructor(database, nodeDefs) {
         this.database = database;
-        this.initialized = false;
+        this.initPromise = null;
 
         // Compile all node definitions
         const compiledNodes = nodeDefs.map(compileNodeDef);

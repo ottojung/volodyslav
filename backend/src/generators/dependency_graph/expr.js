@@ -268,11 +268,12 @@ class Parser {
             /** @type {ParsedArg[]} */
             const args = [];
 
-            // Handle empty args - type assertion after advance
+            // Check for empty args - this is disallowed (use bare identifier for constants)
             const nextToken = /** @type {TokenKind} */ (this.currentToken.kind);
             if (nextToken === "rparen") {
-                this.advance();
-                return { kind: "call", name, args };
+                throw new Error(
+                    `Empty argument list not allowed at position ${this.currentToken.pos}. Use '${name}' instead of '${name}()' for constants.`
+                );
             }
 
             // Parse arguments

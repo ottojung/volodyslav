@@ -424,4 +424,93 @@ describe("Parameterized node schemas", () => {
             await db.close();
         });
     });
+
+    describe("Schema overlap detection (T3)", () => {
+        test("rejects truly overlapping schemas", () => {
+            const capabilities = getTestCapabilities();
+            
+            // These truly overlap: pair(x,y) and pair(a,b) can match pair(1,2)
+            const overlappingSchemas = [
+                {
+                    output: "pair(x,y)",
+                    inputs: [],
+                    computor: () => ({ type: "pair1" }),
+                },
+                {
+                    output: "pair(a,b)",
+                    inputs: [],
+                    computor: () => ({ type: "pair2" }),
+                },
+            ];
+
+            expect(() => {
+                const db = {};  // Dummy - won't be used
+                makeDependencyGraph(db, overlappingSchemas);
+            }).toThrow("Overlaps");
+        });
+
+        test("accepts non-overlapping schemas with repeated variables", async () => {
+            const capabilities = getTestCapabilities();
+            const db = await getDatabase(capabilities);
+
+            await db.put("base", { value: 1 });
+
+            // These DON'T overlap: pair(x,x) requires both args equal,
+            // pair(a,b) where a != b has different args
+            // But they can both exist because they match different concrete keys
+            const nonOverlappingSchemas = [
+                {
+                    output: "pair(x,x)",
+                    inputs: ["base"],
+                    computor: (inputs, oldValue, bindings) => ({
+                        type: "same_pair",
+                        value: bindings.x.value,
+                    }),
+                },
+                {
+                    output: 'pair("a","b")',
+                    inputs: ["base"],
+                    computor: (inputs) => ({
+                        type: "different_pair",
+                        value: inputs[0].value,
+                    }),
+                },
+            ];
+
+            // Should not throw
+            const graph = makeDependencyGraph(db, nonOverlappingSchemas);
+
+            // pair(x,x) matches pair(1,1) but not pair(1,2)
+            const result1 = await graph.pull('pair(1,1)');
+            expect(result1.type).toBe("same_pair");
+
+            // pair("a","b") matches exactly
+            const result2 = await graph.pull('pair("a","b")');
+            expect(result2.type).toBe("different_pair");
+
+            await db.close();
+        });
+
+        test("rejects overlapping schemas due to constant mismatch", () => {
+            const capabilities = getTestCapabilities();
+            
+            // These DON'T overlap: different constants
+            const schemas = [
+                {
+                    output: 'pair("x","y")',
+                    inputs: [],
+                    computor: () => ({ type: "pair1" }),
+                },
+                {
+                    output: 'pair("a","b")',
+                    inputs: [],
+                    computor: () => ({ type: "pair2" }),
+                },
+            ];
+
+            // Should not throw
+            const db = {}; // Dummy
+            expect(() => makeDependencyGraph(db, schemas)).not.toThrow();
+        });
+    });
 });
