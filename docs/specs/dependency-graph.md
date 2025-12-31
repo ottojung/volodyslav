@@ -115,39 +115,6 @@ pull(N):
   return stored_value(N)
 ```
 
-**Small-Step Semantics (Efficient Implementation):**
-
-```
-pull(N):
-  freshness = get_freshness(N)
-  
-  if freshness = up-to-date:
-    // Fast path: by I2, all inputs are up-to-date
-    return cached_value(N)
-  
-  // potentially-outdated: need to check
-  input_values = [pull(I) for I in inputs_of(N)]
-  
-  // Check if we were marked up-to-date by propagation
-  if get_freshness(N) = up-to-date:
-    return cached_value(N)
-  
-  // Must recompute
-  old_value = cached_value(N)
-  new_value = computor_N(input_values, old_value)
-  
-  if new_value ≠ Unchanged:
-    store(N, new_value)
-  
-  mark_up_to_date(N)
-  
-  // Optimization: propagate up-to-date to dependents
-  if new_value = Unchanged:
-    propagate_up_to_date_downstream(N)
-  
-  return cached_value(N)
-```
-
 ---
 
 ## Correctness Properties
