@@ -656,8 +656,6 @@ class DependencyGraphClass {
 
     /**
      * Pulls a specific node's value, lazily evaluating dependencies as needed.
-    /**
-     * Pulls a specific node's value, lazily evaluating dependencies as needed.
      *
      * Algorithm:
      * - If node is up-to-date: return cached value (fast path)
