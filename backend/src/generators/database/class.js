@@ -3,6 +3,7 @@
  */
 
 const { DatabaseQueryError } = require("./errors");
+const { isDatabaseValue, isFreshness } = require("./types");
 
 /** @typedef {import('./types').DatabaseValue} DatabaseValue */
 /** @typedef {import('./types').Freshness} Freshness */
@@ -92,7 +93,6 @@ class DatabaseClass {
         if (result === undefined) {
             return undefined;
         }
-        const { isDatabaseValue } = require("./types");
         if (isDatabaseValue(result)) {
             return result;
         } else {
@@ -115,7 +115,6 @@ class DatabaseClass {
         if (result === undefined) {
             return undefined;
         }
-        const { isFreshness } = require("./types");
         if (isFreshness(result)) {
             return result;
         } else {

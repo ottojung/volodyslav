@@ -15,7 +15,7 @@
 const crypto = require("crypto");
 const { isUnchanged } = require("./unchanged");
 const { freshnessKey } = require("../database");
-const { makeInvalidNodeError } = require("./errors");
+const { makeInvalidNodeError, makeInvalidSchemaError } = require("./errors");
 const { canonicalize, parseExpr } = require("./expr");
 const { compileNodeDef, validateNoOverlap } = require("./compiled_node");
 const { matchConcrete, substitute, validateConcreteKey } = require("./unify");
@@ -262,7 +262,6 @@ class DependencyGraphClass {
         
         if (matches.length > 1) {
             // Multiple patterns match - this is ambiguous
-            const { makeInvalidSchemaError } = require("./errors");
             const patternList = matches
                 .map((m) => `'${m.compiledNode.canonicalOutput}'`)
                 .join(", ");

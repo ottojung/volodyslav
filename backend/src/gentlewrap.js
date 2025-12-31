@@ -7,6 +7,8 @@
  *
  */
 
+const userErrors = require("./user_errors");
+
 /** @typedef {import('./logger').Logger} Logger */
 
 /**
@@ -23,8 +25,6 @@
  * @returns {Promise<T>} - The wrapped function.
  */
 async function gentleCall(capabilities, fn, errorsList) {
-    const userErrors = require("./user_errors");
-
     if (errorsList === undefined) {
         errorsList = userErrors;
     }
