@@ -457,10 +457,56 @@ class DependencyGraphClass {
     }
 
     /**
+     * Checks if a dependent node's stored dependency versions match current versions.
+     * This is used to determine if a node can be marked up-to-date without recomputing.
+     * 
+     * @private
+     * @param {string} dependentKey - The dependent node key
+     * @param {Array<string>} inputKeys - The input keys to check
+     * @returns {Promise<boolean>} True if all versions match, false otherwise
+     */
+    async checkVersionsMatch(dependentKey, inputKeys) {
+        // Get stored dependency versions from when this node was last computed
+        const storedDepVersions = await this.database.get(
+            depVersionsKey(dependentKey)
+        );
+
+        // Check if all current input versions match stored versions
+        for (const inputKey of inputKeys) {
+            const currentVersion = await this.database.get(valueVersionKey(inputKey));
+            // Default to 0 if no version exists yet
+            const currentVer = typeof currentVersion === "number" ? currentVersion : 0;
+            
+            let storedVersion;
+            if (!storedDepVersions || typeof storedDepVersions !== "object") {
+                // No stored snapshot - assume version 0 for all inputs
+                storedVersion = 0;
+            } else {
+                storedVersion = storedDepVersions[inputKey];
+                // Default to 0 if not in snapshot
+                if (storedVersion === undefined) {
+                    storedVersion = 0;
+                }
+            }
+            
+            // If versions don't match, the input has changed since last computation
+            if (currentVer !== storedVersion) {
+                return false;
+            }
+        }
+        
+        return true;
+    }
+
+    /**
      * Propagates up-to-date state to downstream potentially-outdated nodes.
      * Called AFTER a node is marked up-to-date.
+     * 
      * Only affects potentially-outdated nodes whose inputs have the same versions
-     * as when the node was last computed (version equality check).
+     * as when the node was last computed (version equality check). If versions
+     * don't match, the node remains potentially-outdated and will require
+     * recomputation when it's next pulled.
+     * 
      * Uses both static dependents and DB-persisted reverse dependencies.
      *
      * @private
@@ -502,36 +548,11 @@ class DependencyGraphClass {
                 continue;
             }
 
-            // Get stored dependency versions from when this node was last computed
-            const storedDepVersions = await this.database.get(
-                depVersionsKey(dependent.output)
-            );
-
             // Check if all current input versions match stored versions
-            let versionsMatch = true;
-            for (const inputKey of dependent.inputs) {
-                const currentVersion = await this.database.get(valueVersionKey(inputKey));
-                // Default to 0 if no version exists yet
-                const currentVer = typeof currentVersion === "number" ? currentVersion : 0;
-                
-                let storedVersion;
-                if (!storedDepVersions || typeof storedDepVersions !== "object") {
-                    // No stored snapshot - assume version 0 for all inputs
-                    storedVersion = 0;
-                } else {
-                    storedVersion = storedDepVersions[inputKey];
-                    // Default to 0 if not in snapshot
-                    if (storedVersion === undefined) {
-                        storedVersion = 0;
-                    }
-                }
-                
-                // If versions don't match, the input has changed since last computation
-                if (currentVer !== storedVersion) {
-                    versionsMatch = false;
-                    break;
-                }
-            }
+            const versionsMatch = await this.checkVersionsMatch(
+                dependent.output,
+                dependent.inputs
+            );
 
             // Only propagate if versions match
             if (versionsMatch) {
@@ -578,36 +599,11 @@ class DependencyGraphClass {
                 continue;
             }
 
-            // Get stored dependency versions from when this node was last computed
-            const storedDepVersions = await this.database.get(
-                depVersionsKey(dependentKey)
-            );
-
             // Check if all current input versions match stored versions
-            let versionsMatch = true;
-            for (const inputKey of inputs) {
-                const currentVersion = await this.database.get(valueVersionKey(inputKey));
-                // Default to 0 if no version exists yet
-                const currentVer = typeof currentVersion === "number" ? currentVersion : 0;
-                
-                let storedVersion;
-                if (!storedDepVersions || typeof storedDepVersions !== "object") {
-                    // No stored snapshot - assume version 0 for all inputs
-                    storedVersion = 0;
-                } else {
-                    storedVersion = storedDepVersions[inputKey];
-                    // Default to 0 if not in snapshot
-                    if (storedVersion === undefined) {
-                        storedVersion = 0;
-                    }
-                }
-                
-                // If versions don't match, the input has changed since last computation
-                if (currentVer !== storedVersion) {
-                    versionsMatch = false;
-                    break;
-                }
-            }
+            const versionsMatch = await this.checkVersionsMatch(
+                dependentKey,
+                inputs
+            );
 
             // Only propagate if versions match
             if (versionsMatch) {
