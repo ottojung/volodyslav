@@ -5,7 +5,24 @@
 
 const { makeDependencyGraph, isDependencyGraph } = require('./class');
 const { makeUnchanged, isUnchanged } = require('./unchanged');
-const { makeInvalidNodeError, isInvalidNode, makeInvalidSchemaError, isInvalidSchema, makeSchemaPatternNotAllowedError, isSchemaPatternNotAllowed } = require('./errors');
+const { 
+    makeInvalidNodeError, 
+    isInvalidNode, 
+    makeInvalidSchemaError, 
+    isInvalidSchema, 
+    makeSchemaPatternNotAllowedError, 
+    isSchemaPatternNotAllowed,
+    makeInvalidExpressionError,
+    isInvalidExpression,
+    makeInvalidSetError,
+    isInvalidSet,
+    makeSchemaCycleError,
+    isSchemaCycle,
+    makeMissingValueError,
+    isMissingValue,
+    makeSchemaOverlapError,
+    isSchemaOverlap,
+} = require('./errors');
 
 /** @typedef {import('./types').DependencyGraphCapabilities} DependencyGraphCapabilities */
 /** @typedef {import('./class').DependencyGraph} DependencyGraph */
@@ -22,4 +39,14 @@ module.exports = {
     isInvalidSchema,
     makeSchemaPatternNotAllowedError,
     isSchemaPatternNotAllowed,
+    makeInvalidExpressionError,
+    isInvalidExpression,
+    makeInvalidSetError,
+    isInvalidSet,
+    makeSchemaCycleError,
+    isSchemaCycle,
+    makeMissingValueError,
+    isMissingValue,
+    makeSchemaOverlapError,
+    isSchemaOverlap,
 };

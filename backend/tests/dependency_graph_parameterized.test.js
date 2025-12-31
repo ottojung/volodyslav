@@ -569,6 +569,11 @@ describe("Parameterized node schemas", () => {
 
             const schemas = [
                 {
+                    output: "base",
+                    inputs: [],
+                    computor: (inputs, oldValue, _bindings) => oldValue || { value: 0 },
+                },
+                {
                     output: "item(x)",
                     inputs: ["base"],
                     computor: (inputs, oldValue, bindings) => {
@@ -579,28 +584,32 @@ describe("Parameterized node schemas", () => {
 
             const graph = makeDependencyGraph(db, schemas);
 
-            // Set a value directly (not pull)
-            await graph.set('item("foo")', { id: "foo", value: 42 });
+            // First, pull an item to materialize it
+            await graph.pull('item("foo")');
 
-            // Verify reverse dependency was persisted
+            // Now set the source node (base) to trigger propagation
+            await graph.set('base', { value: 42 });
+
+            // Verify reverse dependency was persisted by checking that the dependent is marked outdated
+            const { freshnessKey } = require("../src/generators/database");
+            const itemFreshness = await db.getFreshness(freshnessKey('item("foo")'));
+            expect(itemFreshness).toBe("potentially-outdated");
+
+            // Verify inputs were persisted for the materialized item
             const schemaHash = graph.schemaHash;
-            const revdepKey = `dg:${schemaHash}:revdep:base:item("foo")`;
-            const revdep = await db.get(revdepKey);
-            expect(revdep).toBeDefined();
-
-            // Verify inputs were persisted
             const inputsKey = `dg:${schemaHash}:inputs:item("foo")`;
             const inputs = await db.get(inputsKey);
             expect(inputs).toBeDefined();
             expect(inputs).toEqual({ inputs: ["base"] });
 
             // Recreate graph and verify instantiation persists
+            // Recreate graph and verify instantiation persists
             const graph2 = makeDependencyGraph(db, schemas);
             
             // Update base to trigger invalidation via persisted reverse dep
             await graph2.set("base", { value: 2 });
             
-            // Pull item - should reflect new base value
+            // Pull item - should reflect new base value (recompute due to invalidation)
             const result = await graph2.pull('item("foo")');
             expect(result.value).toBe(20); // 2 * 10
 

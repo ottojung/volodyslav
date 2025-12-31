@@ -15,7 +15,12 @@
 const crypto = require("crypto");
 const { isUnchanged } = require("./unchanged");
 const { freshnessKey } = require("../database");
-const { makeInvalidNodeError, makeInvalidSchemaError } = require("./errors");
+const { 
+    makeInvalidNodeError, 
+    makeInvalidSchemaError,
+    makeMissingValueError,
+    makeInvalidSetError,
+} = require("./errors");
 const { canonicalize, parseExpr } = require("./expr");
 const { compileNodeDef, validateNoOverlap } = require("./compiled_node");
 const { matchConcrete, substitute, validateConcreteKey } = require("./unify");
@@ -166,6 +171,12 @@ class DependencyGraphClass {
 
         // Ensure node exists (will create from pattern if needed, allow pass-through for constants)
         const nodeDefinition = await this.getOrCreateConcreteNode(canonicalKey, true);
+
+        // Validate that this is a source node (no inputs)
+        // Source nodes are either external (no schema) or have empty inputs array
+        if (nodeDefinition.inputs.length > 0) {
+            throw makeInvalidSetError(canonicalKey);
+        }
 
         /** @type {Array<{type: "put", key: string, value: DatabaseStoredValue} | {type: "del", key: string}>} */
         const batchOperations = [];
@@ -584,9 +595,7 @@ class DependencyGraphClass {
             // No need to recompute!
             const result = await this.database.getValue(nodeName);
             if (result === undefined) {
-                throw new Error(
-                    `Expected value for up-to-date node ${nodeName}, but found none.`
-                );
+                throw makeMissingValueError(nodeName);
             }
             return result;
         }
@@ -647,9 +656,7 @@ class DependencyGraphClass {
         // Return the current value
         const result = await this.database.getValue(nodeName);
         if (result === undefined) {
-            throw new Error(
-                `Expected value for up-to-date node ${nodeName}, but found none.`
-            );
+            throw makeMissingValueError(nodeName);
         }
         return result;
     }
@@ -685,9 +692,7 @@ class DependencyGraphClass {
         if (nodeFreshness === "up-to-date") {
             const result = await this.database.getValue(canonicalName);
             if (result === undefined) {
-                throw new Error(
-                    `Expected value for up-to-date node ${canonicalName}, but found none.`
-                );
+                throw makeMissingValueError(canonicalName);
             }
             return result;
         }
