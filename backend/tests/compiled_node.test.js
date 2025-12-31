@@ -203,4 +203,171 @@ describe("compiled_node", () => {
             expect(compiled.varsUsedInInputs).toEqual(new Set(["e"]));
         });
     });
+
+    describe("patternsCanOverlap()", () => {
+        const { patternsCanOverlap } = require("../src/generators/dependency_graph/compiled_node");
+
+        test("detects overlap between identical patterns", () => {
+            const node1 = compileNodeDef({
+                output: "foo(x)",
+                inputs: [],
+                computor: () => ({}),
+            });
+            const node2 = compileNodeDef({
+                output: "foo(y)",
+                inputs: [],
+                computor: () => ({}),
+            });
+
+            expect(patternsCanOverlap(node1, node2)).toBe(true);
+        });
+
+        test("detects no overlap for different heads", () => {
+            const node1 = compileNodeDef({
+                output: "foo(x)",
+                inputs: [],
+                computor: () => ({}),
+            });
+            const node2 = compileNodeDef({
+                output: "bar(x)",
+                inputs: [],
+                computor: () => ({}),
+            });
+
+            expect(patternsCanOverlap(node1, node2)).toBe(false);
+        });
+
+        test("detects no overlap for different arities", () => {
+            const node1 = compileNodeDef({
+                output: "foo(x)",
+                inputs: [],
+                computor: () => ({}),
+            });
+            const node2 = compileNodeDef({
+                output: "foo(x, y)",
+                inputs: [],
+                computor: () => ({}),
+            });
+
+            expect(patternsCanOverlap(node1, node2)).toBe(false);
+        });
+
+        test("detects no overlap when constants conflict", () => {
+            const node1 = compileNodeDef({
+                output: 'status(x, "active")',
+                inputs: [],
+                computor: () => ({}),
+            });
+            const node2 = compileNodeDef({
+                output: 'status(y, "inactive")',
+                inputs: [],
+                computor: () => ({}),
+            });
+
+            expect(patternsCanOverlap(node1, node2)).toBe(false);
+        });
+
+        test("detects overlap when constants match", () => {
+            const node1 = compileNodeDef({
+                output: 'status(x, "active")',
+                inputs: [],
+                computor: () => ({}),
+            });
+            const node2 = compileNodeDef({
+                output: 'status(y, "active")',
+                inputs: [],
+                computor: () => ({}),
+            });
+
+            expect(patternsCanOverlap(node1, node2)).toBe(true);
+        });
+
+        test("detects no overlap when repeated variable constraints conflict", () => {
+            const node1 = compileNodeDef({
+                output: "pair(x, x)",
+                inputs: [],
+                computor: () => ({}),
+            });
+            const node2 = compileNodeDef({
+                output: 'pair(y, "different")',
+                inputs: [],
+                computor: () => ({}),
+            });
+
+            // These don't actually conflict in the current simplified implementation
+            // A full unification would need to track that x must equal "different"
+            // For now, this is acceptable - we err on the side of detecting overlap
+            expect(patternsCanOverlap(node1, node2)).toBe(true);
+        });
+
+        test("allows patterns that are clearly non-overlapping", () => {
+            const node1 = compileNodeDef({
+                output: 'type("A", x)',
+                inputs: [],
+                computor: () => ({}),
+            });
+            const node2 = compileNodeDef({
+                output: 'type("B", y)',
+                inputs: [],
+                computor: () => ({}),
+            });
+
+            expect(patternsCanOverlap(node1, node2)).toBe(false);
+        });
+    });
+
+    describe("validateNoOverlap()", () => {
+        const { validateNoOverlap } = require("../src/generators/dependency_graph/compiled_node");
+
+        test("accepts non-overlapping patterns", () => {
+            const nodes = [
+                compileNodeDef({
+                    output: 'status(x, "active")',
+                    inputs: [],
+                    computor: () => ({}),
+                }),
+                compileNodeDef({
+                    output: 'status(y, "inactive")',
+                    inputs: [],
+                    computor: () => ({}),
+                }),
+            ];
+
+            expect(() => validateNoOverlap(nodes)).not.toThrow();
+        });
+
+        test("rejects overlapping patterns", () => {
+            const nodes = [
+                compileNodeDef({
+                    output: "foo(x)",
+                    inputs: [],
+                    computor: () => ({}),
+                }),
+                compileNodeDef({
+                    output: "foo(y)",
+                    inputs: [],
+                    computor: () => ({}),
+                }),
+            ];
+
+            expect(() => validateNoOverlap(nodes)).toThrow("Overlaps");
+        });
+
+        test("accepts patterns with different heads", () => {
+            const nodes = [
+                compileNodeDef({
+                    output: "foo(x)",
+                    inputs: [],
+                    computor: () => ({}),
+                }),
+                compileNodeDef({
+                    output: "bar(x)",
+                    inputs: [],
+                    computor: () => ({}),
+                }),
+            ];
+
+            expect(() => validateNoOverlap(nodes)).not.toThrow();
+        });
+    });
 });

@@ -1,59 +1,126 @@
 /**
- * Unification algorithm for matching concrete nodes against schema patterns.
+ * Unification algorithm for matching concrete nodes against compiled patterns.
  */
 
-const { parseExpr, canonicalize } = require("./expr");
+const { parseExpr, renderArg, renderExpr } = require("./expr");
+const { argToConstValue } = require("./compiled_node");
 
-/** @typedef {import('./schema').CompiledSchema} CompiledSchema */
+/** @typedef {import('./types').CompiledNode} CompiledNode */
+/** @typedef {import('./types').ConstValue} ConstValue */
+/** @typedef {import('./expr').ParsedArg} ParsedArg */
 
 /**
- * Attempts to unify a concrete node expression with a schema pattern.
- * Returns bindings if successful, or null if unification fails.
- *
- * @param {string} concreteKey - The concrete node key (already canonicalized)
- * @param {CompiledSchema} compiledSchema - The compiled schema to match against
- * @returns {{ bindings: Record<string, string> } | null} Bindings if successful, null otherwise
+ * Validates that a concrete key contains only constants (no variables).
+ * @param {string} concreteKey
+ * @throws {Error} If concreteKey contains variables (unquoted identifiers)
  */
-function unify(concreteKey, compiledSchema) {
+function validateConcreteKey(concreteKey) {
+    const expr = parseExpr(concreteKey);
+    
+    if (expr.kind === "call") {
+        for (const arg of expr.args) {
+            if (arg.kind === "identifier") {
+                throw new Error(
+                    `Concrete key '${concreteKey}' contains variable '${arg.value}'. ` +
+                    `Use quoted strings or numbers for concrete values.`
+                );
+            }
+        }
+    }
+}
+
+/**
+ * Checks if two constant values are equal.
+ * @param {ConstValue} a
+ * @param {ConstValue} b
+ * @returns {boolean}
+ */
+function constValuesEqual(a, b) {
+    if (a.kind !== b.kind) {
+        return false;
+    }
+    return a.value === b.value;
+}
+
+/**
+ * Renders a ConstValue back to a ParsedArg for substitution.
+ * @param {ConstValue} constValue
+ * @returns {ParsedArg}
+ */
+function constValueToArg(constValue) {
+    if (constValue.kind === "string") {
+        return { kind: "string", value: constValue.value };
+    } else if (constValue.kind === "nat") {
+        return { kind: "number", value: String(constValue.value) };
+    }
+    throw new Error(`Unknown const value kind: ${constValue.kind}`);
+}
+
+/**
+ * Attempts to match a concrete node expression with a compiled pattern.
+ * Returns typed bindings if successful, or null if matching fails.
+ *
+ * @param {string} concreteKey - The concrete node key (must be fully concrete)
+ * @param {CompiledNode} compiledNode - The compiled node to match against
+ * @returns {{ bindings: Record<string, ConstValue> } | null} Typed bindings if successful, null otherwise
+ */
+function matchConcrete(concreteKey, compiledNode) {
+    // Validate that concrete key has no variables
+    validateConcreteKey(concreteKey);
+    
     const concreteExpr = parseExpr(concreteKey);
 
     // Must have same head
-    if (concreteExpr.name !== compiledSchema.head) {
+    if (concreteExpr.name !== compiledNode.head) {
         return null;
     }
 
     // Must have same arity
-    if (concreteExpr.args.length !== compiledSchema.arity) {
+    if (concreteExpr.args.length !== compiledNode.arity) {
         return null;
     }
 
-    const variables = new Set(compiledSchema.schema.variables);
-    /** @type {Record<string, string>} */
+    /** @type {Record<string, ConstValue>} */
     const bindings = {};
 
-    // Try to unify each argument position
-    for (let i = 0; i < compiledSchema.arity; i++) {
+    // Try to match each argument position
+    for (let i = 0; i < compiledNode.arity; i++) {
         const concreteArg = concreteExpr.args[i];
-        const schemaArg = compiledSchema.outputExpr.args[i];
+        const patternArg = compiledNode.outputExpr.args[i];
         
-        if (concreteArg === undefined || schemaArg === undefined) {
+        if (concreteArg === undefined || patternArg === undefined) {
             return null; // Arity mismatch
         }
 
-        if (variables.has(schemaArg)) {
-            // Schema arg is a variable - bind it
-            if (schemaArg in bindings) {
+        if (patternArg.kind === "identifier") {
+            // Pattern arg is a variable - bind it
+            const varName = patternArg.value;
+            const concreteValue = argToConstValue(concreteArg);
+            
+            if (concreteValue === null) {
+                // This shouldn't happen as we validated concrete key
+                return null;
+            }
+            
+            if (varName in bindings) {
                 // Variable already bound - check consistency
-                if (bindings[schemaArg] !== concreteArg) {
-                    return null; // Inconsistent binding
+                if (!constValuesEqual(bindings[varName], concreteValue)) {
+                    return null; // Inconsistent binding (e.g., pair(x,x) with different values)
                 }
             } else {
                 // New binding
-                bindings[schemaArg] = concreteArg;
+                bindings[varName] = concreteValue;
             }
         } else {
-            // Schema arg is a constant - must match exactly
-            if (schemaArg !== concreteArg) {
+            // Pattern arg is a constant - must match exactly
+            const patternValue = argToConstValue(patternArg);
+            const concreteValue = argToConstValue(concreteArg);
+            
+            if (patternValue === null || concreteValue === null) {
+                return null;
+            }
+            
+            if (!constValuesEqual(patternValue, concreteValue)) {
                 return null; // Constant mismatch
             }
         }
@@ -63,12 +130,12 @@ function unify(concreteKey, compiledSchema) {
 }
 
 /**
- * Substitutes variables in an expression pattern with their bindings.
+ * Substitutes variables in an expression pattern with their typed bindings.
  *
  * @param {string} pattern - The pattern (e.g., "photo(p)")
- * @param {Record<string, string>} bindings - Variable bindings
+ * @param {Record<string, ConstValue>} bindings - Typed variable bindings
  * @param {Set<string>} variables - Set of variable names
- * @returns {string} The instantiated pattern (canonicalized)
+ * @returns {string} The instantiated pattern (canonical form)
  */
 function substitute(pattern, bindings, variables) {
     const expr = parseExpr(pattern);
@@ -80,21 +147,30 @@ function substitute(pattern, bindings, variables) {
 
     // Substitute variables in arguments
     const substitutedArgs = expr.args.map((arg) => {
-        if (variables.has(arg)) {
-            if (!(arg in bindings)) {
+        if (arg.kind === "identifier" && variables.has(arg.value)) {
+            // It's a variable - substitute with binding
+            if (!(arg.value in bindings)) {
                 throw new Error(
-                    `Variable '${arg}' not found in bindings when substituting '${pattern}'`
+                    `Variable '${arg.value}' not found in bindings when substituting '${pattern}'`
                 );
             }
-            return bindings[arg];
+            const constValue = bindings[arg.value];
+            return constValueToArg(constValue);
         }
-        return arg; // Constants pass through
+        // It's a constant - pass through
+        return arg;
     });
 
-    return canonicalize(`${expr.name}(${substitutedArgs.join(",")})`);
+    // Render back to canonical string
+    return renderExpr({
+        kind: "call",
+        name: expr.name,
+        args: substitutedArgs,
+    });
 }
 
 module.exports = {
-    unify,
+    matchConcrete,
     substitute,
+    validateConcreteKey,
 };
