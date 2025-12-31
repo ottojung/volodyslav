@@ -68,12 +68,12 @@ describe("generators/dependency_graph", () => {
                 {
                     output: "input1",
                     inputs: [],
-                    computor: (inputs, oldValue) => oldValue || { count: 1 },
+                    computor: (inputs, oldValue, _bindings) => oldValue || { count: 1 },
                 },
                 {
                     output: "level1",
                     inputs: ["input1"],
-                    computor: (inputs) => {
+                    computor: (inputs, _oldValue, _bindings) => {
                         computeCalls.push("level1");
                         return { count: inputs[0].count + 1 };
                     },
@@ -81,7 +81,7 @@ describe("generators/dependency_graph", () => {
                 {
                     output: "level2",
                     inputs: ["level1"],
-                    computor: (inputs) => {
+                    computor: (inputs, _oldValue, _bindings) => {
                         computeCalls.push("level2");
                         return { count: inputs[0].count + 1 };
                     },
@@ -89,7 +89,7 @@ describe("generators/dependency_graph", () => {
                 {
                     output: "level3",
                     inputs: ["level2"],
-                    computor: (inputs) => {
+                    computor: (inputs, _oldValue, _bindings) => {
                         computeCalls.push("level3");
                         return { count: inputs[0].count + 1 };
                     },
@@ -129,7 +129,7 @@ describe("generators/dependency_graph", () => {
                 {
                     output: "output1",
                     inputs: ["input1"],
-                    computor: (inputs) => {
+                    computor: (inputs, _oldValue, _bindings) => {
                         computeCount++;
                         return { data: inputs[0].data + "_computed" };
                     },
@@ -161,13 +161,13 @@ describe("generators/dependency_graph", () => {
                 {
                     output: "input1",
                     inputs: [],
-                    computor: (inputs, oldValue) =>
+                    computor: (inputs, oldValue, _bindings) =>
                         oldValue || { data: "new_data" },
                 },
                 {
                     output: "output1",
                     inputs: ["input1"],
-                    computor: (inputs) => {
+                    computor: (inputs, _oldValue, _bindings) => {
                         return { data: inputs[0].data + "_processed" };
                     },
                 },
@@ -223,7 +223,7 @@ describe("generators/dependency_graph", () => {
                 {
                     output: "input1",
                     inputs: [],
-                    computor: (inputs, oldValue) =>
+                    computor: (inputs, oldValue, _bindings) =>
                         oldValue || { data: "test" },
                 },
                 {
@@ -271,12 +271,12 @@ describe("generators/dependency_graph", () => {
                 {
                     output: "input1",
                     inputs: [],
-                    computor: (inputs, oldValue) => oldValue || { count: 1 },
+                    computor: (inputs, oldValue, _bindings) => oldValue || { count: 1 },
                 },
                 {
                     output: "level1",
                     inputs: ["input1"],
-                    computor: (inputs) => {
+                    computor: (inputs, _oldValue, _bindings) => {
                         computeCalls.push("level1");
                         return { count: inputs[0].count + 1 };
                     },
@@ -284,7 +284,7 @@ describe("generators/dependency_graph", () => {
                 {
                     output: "level2",
                     inputs: ["level1"],
-                    computor: (inputs) => {
+                    computor: (inputs, _oldValue, _bindings) => {
                         computeCalls.push("level2");
                         return { count: inputs[0].count + 1 };
                     },
@@ -292,7 +292,7 @@ describe("generators/dependency_graph", () => {
                 {
                     output: "level3",
                     inputs: ["level2"],
-                    computor: (inputs) => {
+                    computor: (inputs, _oldValue, _bindings) => {
                         computeCalls.push("level3");
                         return { count: inputs[0].count + 1 };
                     },
@@ -344,7 +344,7 @@ describe("generators/dependency_graph", () => {
                 {
                     output: "input1",
                     inputs: [],
-                    computor: (inputs, oldValue) => oldValue || { count: 1 },
+                    computor: (inputs, oldValue, _bindings) => oldValue || { count: 1 },
                 },
                 {
                     output: "level1",
@@ -415,12 +415,12 @@ describe("generators/dependency_graph", () => {
                 {
                     output: "input",
                     inputs: [],
-                    computor: (inputs, oldValue) => oldValue || { value: 1 },
+                    computor: (inputs, oldValue, _bindings) => oldValue || { value: 1 },
                 },
                 {
                     output: "left",
                     inputs: ["input"],
-                    computor: (inputs) => {
+                    computor: (inputs, _oldValue, _bindings) => {
                         computeCalls.push("left");
                         return { value: inputs[0].value * 2 };
                     },
@@ -428,7 +428,7 @@ describe("generators/dependency_graph", () => {
                 {
                     output: "right",
                     inputs: ["input"],
-                    computor: (inputs) => {
+                    computor: (inputs, _oldValue, _bindings) => {
                         computeCalls.push("right");
                         return { value: inputs[0].value * 3 };
                     },
@@ -436,7 +436,7 @@ describe("generators/dependency_graph", () => {
                 {
                     output: "output",
                     inputs: ["left", "right"],
-                    computor: (inputs) => {
+                    computor: (inputs, _oldValue, _bindings) => {
                         computeCalls.push("output");
                         return { value: inputs[0].value + inputs[1].value };
                     },
@@ -487,7 +487,7 @@ describe("generators/dependency_graph", () => {
                 {
                     output: "input",
                     inputs: [],
-                    computor: (inputs, oldValue) => oldValue || { value: 1 },
+                    computor: (inputs, oldValue, _bindings) => oldValue || { value: 1 },
                 },
                 {
                     output: "left",
@@ -500,7 +500,7 @@ describe("generators/dependency_graph", () => {
                 {
                     output: "right",
                     inputs: ["input"],
-                    computor: (inputs) => {
+                    computor: (inputs, _oldValue, _bindings) => {
                         computeCalls.push("right");
                         return { value: inputs[0].value * 5 };
                     },
@@ -508,7 +508,7 @@ describe("generators/dependency_graph", () => {
                 {
                     output: "output",
                     inputs: ["left", "right"],
-                    computor: (inputs) => {
+                    computor: (inputs, _oldValue, _bindings) => {
                         computeCalls.push("output");
                         return { value: inputs[0].value + inputs[1].value };
                     },
@@ -564,17 +564,17 @@ describe("generators/dependency_graph", () => {
                 {
                     output: "input1",
                     inputs: [],
-                    computor: (inputs, oldValue) => oldValue || { value: 1 },
+                    computor: (inputs, oldValue, _bindings) => oldValue || { value: 1 },
                 },
                 {
                     output: "input2",
                     inputs: [],
-                    computor: (inputs, oldValue) => oldValue || { value: 2 },
+                    computor: (inputs, oldValue, _bindings) => oldValue || { value: 2 },
                 },
                 {
                     output: "nodeA",
                     inputs: ["input1"],
-                    computor: (inputs) => {
+                    computor: (inputs, _oldValue, _bindings) => {
                         computeCalls.push("nodeA");
                         return { value: inputs[0].value * 10 };
                     },
@@ -582,7 +582,7 @@ describe("generators/dependency_graph", () => {
                 {
                     output: "nodeB",
                     inputs: ["input2"],
-                    computor: (inputs) => {
+                    computor: (inputs, _oldValue, _bindings) => {
                         computeCalls.push("nodeB");
                         return { value: inputs[0].value * 10 };
                     },
@@ -590,7 +590,7 @@ describe("generators/dependency_graph", () => {
                 {
                     output: "nodeC",
                     inputs: ["nodeA", "nodeB"],
-                    computor: (inputs) => {
+                    computor: (inputs, _oldValue, _bindings) => {
                         computeCalls.push("nodeC");
                         return { value: inputs[0].value + inputs[1].value };
                     },
@@ -598,7 +598,7 @@ describe("generators/dependency_graph", () => {
                 {
                     output: "nodeD",
                     inputs: ["nodeC"],
-                    computor: (inputs) => {
+                    computor: (inputs, _oldValue, _bindings) => {
                         computeCalls.push("nodeD");
                         return { value: inputs[0].value * 2 };
                     },
@@ -606,7 +606,7 @@ describe("generators/dependency_graph", () => {
                 {
                     output: "nodeE",
                     inputs: ["nodeC"],
-                    computor: (inputs) => {
+                    computor: (inputs, _oldValue, _bindings) => {
                         computeCalls.push("nodeE");
                         return { value: inputs[0].value * 3 };
                     },
@@ -646,7 +646,7 @@ describe("generators/dependency_graph", () => {
                 {
                     output: "input",
                     inputs: [],
-                    computor: (inputs, oldValue) => oldValue || { value: 1 },
+                    computor: (inputs, oldValue, _bindings) => oldValue || { value: 1 },
                 },
                 {
                     output: "middle",
@@ -699,13 +699,13 @@ describe("generators/dependency_graph", () => {
                 {
                     output: "input1",
                     inputs: [],
-                    computor: (inputs, oldValue) =>
+                    computor: (inputs, oldValue, _bindings) =>
                         oldValue || { data: "new_data" },
                 },
                 {
                     output: "output1",
                     inputs: ["input1"],
-                    computor: (inputs) => {
+                    computor: (inputs, _oldValue, _bindings) => {
                         return { data: inputs[0].data + "_processed" };
                     },
                 },
@@ -757,12 +757,12 @@ describe("generators/dependency_graph", () => {
                 {
                     output: "input",
                     inputs: [],
-                    computor: (inputs, oldValue) => oldValue || { value: 10 },
+                    computor: (inputs, oldValue, _bindings) => oldValue || { value: 10 },
                 },
                 {
                     output: "pathA",
                     inputs: ["input"],
-                    computor: (inputs) => {
+                    computor: (inputs, _oldValue, _bindings) => {
                         computeCalls.push("pathA");
                         return { value: inputs[0].value * 2 };
                     },
@@ -770,7 +770,7 @@ describe("generators/dependency_graph", () => {
                 {
                     output: "pathB",
                     inputs: ["input"],
-                    computor: (inputs) => {
+                    computor: (inputs, _oldValue, _bindings) => {
                         computeCalls.push("pathB");
                         return { value: inputs[0].value * 3 };
                     },
@@ -778,7 +778,7 @@ describe("generators/dependency_graph", () => {
                 {
                     output: "pathC",
                     inputs: ["input"],
-                    computor: (inputs) => {
+                    computor: (inputs, _oldValue, _bindings) => {
                         computeCalls.push("pathC");
                         return { value: inputs[0].value * 4 };
                     },
@@ -786,7 +786,7 @@ describe("generators/dependency_graph", () => {
                 {
                     output: "pathD",
                     inputs: ["input"],
-                    computor: (inputs) => {
+                    computor: (inputs, _oldValue, _bindings) => {
                         computeCalls.push("pathD");
                         return { value: inputs[0].value * 5 };
                     },
@@ -794,7 +794,7 @@ describe("generators/dependency_graph", () => {
                 {
                     output: "output",
                     inputs: ["pathA", "pathB", "pathC", "pathD"],
-                    computor: (inputs) => {
+                    computor: (inputs, _oldValue, _bindings) => {
                         computeCalls.push("output");
                         return {
                             value:
@@ -845,12 +845,12 @@ describe("generators/dependency_graph", () => {
                 {
                     output: "inputA",
                     inputs: [],
-                    computor: (inputs, oldValue) => oldValue || { value: 1 },
+                    computor: (inputs, oldValue, _bindings) => oldValue || { value: 1 },
                 },
                 {
                     output: "outputA",
                     inputs: ["inputA"],
-                    computor: (inputs) => {
+                    computor: (inputs, _oldValue, _bindings) => {
                         computeCalls.push("outputA");
                         return { value: inputs[0].value * 10 };
                     },
@@ -858,12 +858,12 @@ describe("generators/dependency_graph", () => {
                 {
                     output: "inputB",
                     inputs: [],
-                    computor: (inputs, oldValue) => oldValue || { value: 2 },
+                    computor: (inputs, oldValue, _bindings) => oldValue || { value: 2 },
                 },
                 {
                     output: "outputB",
                     inputs: ["inputB"],
-                    computor: (inputs) => {
+                    computor: (inputs, _oldValue, _bindings) => {
                         computeCalls.push("outputB");
                         return { value: inputs[0].value * 20 };
                     },
@@ -937,14 +937,14 @@ describe("generators/dependency_graph", () => {
                     graphDef.push({
                         output: "node0",
                         inputs: [],
-                        computor: (inputs, oldValue) =>
+                        computor: (inputs, oldValue, _bindings) =>
                             oldValue || { value: 0 },
                     });
                 } else {
                     graphDef.push({
                         output: `node${i}`,
                         inputs: [`node${i - 1}`],
-                        computor: (inputs) => {
+                        computor: (inputs, _oldValue, _bindings) => {
                             return { value: inputs[0].value + 1 };
                         },
                     });
@@ -994,12 +994,12 @@ describe("generators/dependency_graph", () => {
                 {
                     output: "input",
                     inputs: [],
-                    computor: (inputs, oldValue) => oldValue || { value: 5 },
+                    computor: (inputs, oldValue, _bindings) => oldValue || { value: 5 },
                 },
                 {
                     output: "shortPath",
                     inputs: ["input"],
-                    computor: (inputs) => {
+                    computor: (inputs, _oldValue, _bindings) => {
                         computeCalls.push("shortPath");
                         return { value: inputs[0].value * 2 };
                     },
@@ -1007,7 +1007,7 @@ describe("generators/dependency_graph", () => {
                 {
                     output: "longA",
                     inputs: ["input"],
-                    computor: (inputs) => {
+                    computor: (inputs, _oldValue, _bindings) => {
                         computeCalls.push("longA");
                         return { value: inputs[0].value + 1 };
                     },
@@ -1015,7 +1015,7 @@ describe("generators/dependency_graph", () => {
                 {
                     output: "longB",
                     inputs: ["longA"],
-                    computor: (inputs) => {
+                    computor: (inputs, _oldValue, _bindings) => {
                         computeCalls.push("longB");
                         return { value: inputs[0].value + 1 };
                     },
@@ -1023,7 +1023,7 @@ describe("generators/dependency_graph", () => {
                 {
                     output: "longC",
                     inputs: ["longB"],
-                    computor: (inputs) => {
+                    computor: (inputs, _oldValue, _bindings) => {
                         computeCalls.push("longC");
                         return { value: inputs[0].value + 1 };
                     },
@@ -1031,7 +1031,7 @@ describe("generators/dependency_graph", () => {
                 {
                     output: "output",
                     inputs: ["shortPath", "longC"],
-                    computor: (inputs) => {
+                    computor: (inputs, _oldValue, _bindings) => {
                         computeCalls.push("output");
                         return { value: inputs[0].value + inputs[1].value };
                     },
@@ -1078,7 +1078,7 @@ describe("generators/dependency_graph", () => {
                 {
                     output: "input1",
                     inputs: [],
-                    computor: (inputs, oldValue) => {
+                    computor: (inputs, oldValue, _bindings) => {
                         computeCalls.push("input1");
                         return oldValue || { value: 10 };
                     },
@@ -1086,7 +1086,7 @@ describe("generators/dependency_graph", () => {
                 {
                     output: "input2",
                     inputs: [],
-                    computor: (inputs, oldValue) => {
+                    computor: (inputs, oldValue, _bindings) => {
                         computeCalls.push("input2");
                         return oldValue || { value: 20 };
                     },
@@ -1094,7 +1094,7 @@ describe("generators/dependency_graph", () => {
                 {
                     output: "output",
                     inputs: ["input1", "input2"],
-                    computor: (inputs) => {
+                    computor: (inputs, _oldValue, _bindings) => {
                         computeCalls.push("output");
                         return { value: inputs[0].value + inputs[1].value };
                     },
@@ -1141,12 +1141,12 @@ describe("generators/dependency_graph", () => {
                 {
                     output: "input",
                     inputs: [],
-                    computor: (inputs, oldValue) => oldValue || { value: 7 },
+                    computor: (inputs, oldValue, _bindings) => oldValue || { value: 7 },
                 },
                 {
                     output: "outputA",
                     inputs: ["input"],
-                    computor: (inputs) => {
+                    computor: (inputs, _oldValue, _bindings) => {
                         computeCalls.push("outputA");
                         return { value: inputs[0].value * 2 };
                     },
@@ -1154,7 +1154,7 @@ describe("generators/dependency_graph", () => {
                 {
                     output: "outputB",
                     inputs: ["input"],
-                    computor: (inputs) => {
+                    computor: (inputs, _oldValue, _bindings) => {
                         computeCalls.push("outputB");
                         return { value: inputs[0].value * 3 };
                     },
@@ -1162,7 +1162,7 @@ describe("generators/dependency_graph", () => {
                 {
                     output: "outputC",
                     inputs: ["input"],
-                    computor: (inputs) => {
+                    computor: (inputs, _oldValue, _bindings) => {
                         computeCalls.push("outputC");
                         return { value: inputs[0].value * 4 };
                     },
@@ -1222,12 +1222,12 @@ describe("generators/dependency_graph", () => {
                 {
                     output: "input",
                     inputs: [],
-                    computor: (inputs, oldValue) => oldValue || { value: 2 },
+                    computor: (inputs, oldValue, _bindings) => oldValue || { value: 2 },
                 },
                 {
                     output: "leftA",
                     inputs: ["input"],
-                    computor: (inputs) => {
+                    computor: (inputs, _oldValue, _bindings) => {
                         computeCalls.push("leftA");
                         return { value: inputs[0].value + 1 };
                     },
@@ -1235,7 +1235,7 @@ describe("generators/dependency_graph", () => {
                 {
                     output: "rightA",
                     inputs: ["input"],
-                    computor: (inputs) => {
+                    computor: (inputs, _oldValue, _bindings) => {
                         computeCalls.push("rightA");
                         return { value: inputs[0].value + 2 };
                     },
@@ -1243,7 +1243,7 @@ describe("generators/dependency_graph", () => {
                 {
                     output: "middle",
                     inputs: ["leftA", "rightA"],
-                    computor: (inputs) => {
+                    computor: (inputs, _oldValue, _bindings) => {
                         computeCalls.push("middle");
                         return { value: inputs[0].value + inputs[1].value };
                     },
@@ -1251,7 +1251,7 @@ describe("generators/dependency_graph", () => {
                 {
                     output: "leftB",
                     inputs: ["middle"],
-                    computor: (inputs) => {
+                    computor: (inputs, _oldValue, _bindings) => {
                         computeCalls.push("leftB");
                         return { value: inputs[0].value * 2 };
                     },
@@ -1259,7 +1259,7 @@ describe("generators/dependency_graph", () => {
                 {
                     output: "rightB",
                     inputs: ["middle"],
-                    computor: (inputs) => {
+                    computor: (inputs, _oldValue, _bindings) => {
                         computeCalls.push("rightB");
                         return { value: inputs[0].value * 3 };
                     },
@@ -1267,7 +1267,7 @@ describe("generators/dependency_graph", () => {
                 {
                     output: "output",
                     inputs: ["leftB", "rightB"],
-                    computor: (inputs) => {
+                    computor: (inputs, _oldValue, _bindings) => {
                         computeCalls.push("output");
                         return { value: inputs[0].value + inputs[1].value };
                     },
@@ -1328,7 +1328,7 @@ describe("generators/dependency_graph", () => {
                 {
                     output: "input",
                     inputs: [],
-                    computor: (inputs, oldValue) => oldValue || { value: 5 },
+                    computor: (inputs, oldValue, _bindings) => oldValue || { value: 5 },
                 },
                 {
                     output: "pathA",
@@ -1341,7 +1341,7 @@ describe("generators/dependency_graph", () => {
                 {
                     output: "pathB",
                     inputs: ["input"],
-                    computor: (inputs) => {
+                    computor: (inputs, _oldValue, _bindings) => {
                         computeCalls.push("pathB");
                         return { value: inputs[0].value * 5 }; // Changed
                     },
@@ -1357,7 +1357,7 @@ describe("generators/dependency_graph", () => {
                 {
                     output: "pathD",
                     inputs: ["input"],
-                    computor: (inputs) => {
+                    computor: (inputs, _oldValue, _bindings) => {
                         computeCalls.push("pathD");
                         return { value: inputs[0].value * 10 }; // Changed
                     },
@@ -1365,7 +1365,7 @@ describe("generators/dependency_graph", () => {
                 {
                     output: "output",
                     inputs: ["pathA", "pathB", "pathC", "pathD"],
-                    computor: (inputs) => {
+                    computor: (inputs, _oldValue, _bindings) => {
                         computeCalls.push("output");
                         return {
                             value:
@@ -1425,7 +1425,7 @@ describe("generators/dependency_graph", () => {
                 {
                     output: "input",
                     inputs: [],
-                    computor: (inputs, oldValue) => oldValue || { value: 5 },
+                    computor: (inputs, oldValue, _bindings) => oldValue || { value: 5 },
                 },
                 {
                     output: "pathA",

@@ -2,152 +2,207 @@
  * Tests for dependency_graph/unify module.
  */
 
-const { unify, substitute } = require("../src/generators/dependency_graph/unify");
-const { compileSchema } = require("../src/generators/dependency_graph/schema");
+const { matchConcrete, substitute, validateConcreteKey } = require("../src/generators/dependency_graph/unify");
+const { compileNodeDef } = require("../src/generators/dependency_graph/compiled_node");
 
 describe("dependency_graph/unify", () => {
-    describe("unify()", () => {
-        test("unifies simple parameterized pattern", () => {
-            const schema = {
+    describe("validateConcreteKey()", () => {
+        test("accepts concrete keys with only constants", () => {
+            expect(() => validateConcreteKey('status("active")')).not.toThrow();
+            expect(() => validateConcreteKey("photo(5)")).not.toThrow();
+            expect(() => validateConcreteKey('foo("a", 42)')).not.toThrow();
+        });
+
+        test("rejects keys with variables (identifiers)", () => {
+            expect(() => validateConcreteKey("status(x)")).toThrow();
+            expect(() => validateConcreteKey('foo("str", x)')).toThrow();
+        });
+
+        test("accepts constant expressions", () => {
+            expect(() => validateConcreteKey("all_events")).not.toThrow();
+        });
+    });
+
+    describe("matchConcrete()", () => {
+        test("matches simple parameterized pattern", () => {
+            const nodeDef = {
                 output: "event_context(e)",
                 inputs: [],
-                variables: ["e"],
                 computor: () => ({}),
             };
-            const compiled = compileSchema(schema);
-            const result = unify("event_context(id123)", compiled);
+            const compiled = compileNodeDef(nodeDef);
+            const result = matchConcrete('event_context("id123")', compiled);
 
             expect(result).not.toBeNull();
-            expect(result.bindings).toEqual({ e: "id123" });
+            expect(result.bindings).toEqual({
+                e: { kind: "string", value: "id123" },
+            });
         });
 
-        test("unifies with multiple variables", () => {
-            const schema = {
-                output: "enhanced_event(e,p)",
+        test("matches with multiple variables", () => {
+            const nodeDef = {
+                output: "enhanced_event(e, p)",
                 inputs: [],
-                variables: ["e", "p"],
                 computor: () => ({}),
             };
-            const compiled = compileSchema(schema);
-            const result = unify("enhanced_event(id123,photo5)", compiled);
+            const compiled = compileNodeDef(nodeDef);
+            const result = matchConcrete('enhanced_event("id123", "photo5")', compiled);
 
             expect(result).not.toBeNull();
-            expect(result.bindings).toEqual({ e: "id123", p: "photo5" });
+            expect(result.bindings).toEqual({
+                e: { kind: "string", value: "id123" },
+                p: { kind: "string", value: "photo5" },
+            });
         });
 
-        test("unifies with constants in pattern", () => {
-            const schema = {
-                output: "result(a,x)",
+        test("matches with number constants", () => {
+            const nodeDef = {
+                output: "photo(id)",
                 inputs: [],
-                variables: ["x"],
                 computor: () => ({}),
             };
-            const compiled = compileSchema(schema);
-            const result = unify("result(a,val1)", compiled);
+            const compiled = compileNodeDef(nodeDef);
+            const result = matchConcrete("photo(42)", compiled);
 
             expect(result).not.toBeNull();
-            expect(result.bindings).toEqual({ x: "val1" });
+            expect(result.bindings).toEqual({
+                id: { kind: "nat", value: 42 },
+            });
         });
 
-        test("fails to unify with different head", () => {
-            const schema = {
+        test("matches with constants in pattern", () => {
+            const nodeDef = {
+                output: 'result("a", x)',
+                inputs: [],
+                computor: () => ({}),
+            };
+            const compiled = compileNodeDef(nodeDef);
+            const result = matchConcrete('result("a", "val1")', compiled);
+
+            expect(result).not.toBeNull();
+            expect(result.bindings).toEqual({
+                x: { kind: "string", value: "val1" },
+            });
+        });
+
+        test("fails to match with different head", () => {
+            const nodeDef = {
                 output: "foo(x)",
                 inputs: [],
-                variables: ["x"],
                 computor: () => ({}),
             };
-            const compiled = compileSchema(schema);
-            const result = unify("bar(val)", compiled);
+            const compiled = compileNodeDef(nodeDef);
+            const result = matchConcrete('bar("val")', compiled);
 
             expect(result).toBeNull();
         });
 
-        test("fails to unify with different arity", () => {
-            const schema = {
+        test("fails to match with different arity", () => {
+            const nodeDef = {
                 output: "foo(x)",
                 inputs: [],
-                variables: ["x"],
                 computor: () => ({}),
             };
-            const compiled = compileSchema(schema);
-            const result = unify("foo(a,b)", compiled);
+            const compiled = compileNodeDef(nodeDef);
+            const result = matchConcrete('foo("a", "b")', compiled);
 
             expect(result).toBeNull();
         });
 
-        test("fails to unify with mismatched constant", () => {
-            const schema = {
-                output: "result(a,x)",
+        test("fails to match with mismatched constant", () => {
+            const nodeDef = {
+                output: 'result("a", x)',
                 inputs: [],
-                variables: ["x"],
                 computor: () => ({}),
             };
-            const compiled = compileSchema(schema);
-            const result = unify("result(b,val)", compiled);
+            const compiled = compileNodeDef(nodeDef);
+            const result = matchConcrete('result("b", "val")', compiled);
 
             expect(result).toBeNull();
         });
 
-        test("fails to unify with inconsistent variable binding", () => {
-            const schema = {
-                output: "pair(x,x)",
+        test("fails to match with inconsistent variable binding", () => {
+            const nodeDef = {
+                output: "pair(x, x)",
                 inputs: [],
-                variables: ["x"],
                 computor: () => ({}),
             };
-            const compiled = compileSchema(schema);
-            const result = unify("pair(a,b)", compiled);
+            const compiled = compileNodeDef(nodeDef);
+            const result = matchConcrete('pair("a", "b")', compiled);
 
             expect(result).toBeNull();
         });
 
-        test("unifies with consistent repeated variable", () => {
-            const schema = {
-                output: "pair(x,x)",
+        test("matches with consistent repeated variable", () => {
+            const nodeDef = {
+                output: "pair(x, x)",
                 inputs: [],
-                variables: ["x"],
                 computor: () => ({}),
             };
-            const compiled = compileSchema(schema);
-            const result = unify("pair(a,a)", compiled);
+            const compiled = compileNodeDef(nodeDef);
+            const result = matchConcrete('pair("a", "a")', compiled);
 
             expect(result).not.toBeNull();
-            expect(result.bindings).toEqual({ x: "a" });
+            expect(result.bindings).toEqual({
+                x: { kind: "string", value: "a" },
+            });
         });
 
-        test("unifies constant pattern", () => {
-            const schema = {
+        test("matches constant pattern", () => {
+            const nodeDef = {
                 output: "all_events",
                 inputs: [],
-                variables: [],
                 computor: () => ({}),
             };
-            const compiled = compileSchema(schema);
-            const result = unify("all_events", compiled);
+            const compiled = compileNodeDef(nodeDef);
+            const result = matchConcrete("all_events", compiled);
 
             expect(result).not.toBeNull();
             expect(result.bindings).toEqual({});
         });
+
+        test("throws if concrete key contains variables", () => {
+            const nodeDef = {
+                output: "foo(x)",
+                inputs: [],
+                computor: () => ({}),
+            };
+            const compiled = compileNodeDef(nodeDef);
+            
+            expect(() => matchConcrete("foo(y)", compiled)).toThrow();
+        });
     });
 
     describe("substitute()", () => {
-        test("substitutes single variable", () => {
-            const result = substitute("photo(p)", { p: "photo5" }, new Set(["p"]));
-            expect(result).toBe("photo(photo5)");
+        test("substitutes single variable with string", () => {
+            const bindings = { p: { kind: "string", value: "photo5" } };
+            const variables = new Set(["p"]);
+            const result = substitute("photo(p)", bindings, variables);
+            expect(result).toBe('photo("photo5")');
+        });
+
+        test("substitutes single variable with number", () => {
+            const bindings = { id: { kind: "nat", value: 42 } };
+            const variables = new Set(["id"]);
+            const result = substitute("photo(id)", bindings, variables);
+            expect(result).toBe("photo(42)");
         });
 
         test("substitutes multiple variables", () => {
-            const result = substitute(
-                "relation(a,b)",
-                { a: "id1", b: "id2" },
-                new Set(["a", "b"])
-            );
-            expect(result).toBe("relation(id1,id2)");
+            const bindings = {
+                a: { kind: "string", value: "id1" },
+                b: { kind: "string", value: "id2" },
+            };
+            const variables = new Set(["a", "b"]);
+            const result = substitute("relation(a, b)", bindings, variables);
+            expect(result).toBe('relation("id1","id2")');
         });
 
         test("passes through constants", () => {
-            const result = substitute("photo(x)", { x: "val" }, new Set(["x"]));
-            expect(result).toBe("photo(val)");
+            const bindings = { x: { kind: "string", value: "val" } };
+            const variables = new Set(["x"]);
+            const result = substitute('photo("const", x)', bindings, variables);
+            expect(result).toBe('photo("const","val")');
         });
 
         test("substitutes constant pattern unchanged", () => {
@@ -156,12 +211,16 @@ describe("dependency_graph/unify", () => {
         });
 
         test("handles mixed constants and variables", () => {
-            const result = substitute("mix(a,x,b)", { x: "val" }, new Set(["x"]));
-            expect(result).toBe("mix(a,val,b)");
+            const bindings = { x: { kind: "string", value: "val" } };
+            const variables = new Set(["x"]);
+            const result = substitute('mix("a", x, 5)', bindings, variables);
+            expect(result).toBe('mix("a","val",5)');
         });
 
         test("throws if variable not in bindings", () => {
-            expect(() => substitute("photo(p)", {}, new Set(["p"]))).toThrow();
+            expect(() =>
+                substitute("photo(p)", {}, new Set(["p"]))
+            ).toThrow();
         });
     });
 });

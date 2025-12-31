@@ -47,12 +47,12 @@ describe("DependencyGraph integration with meta_events", () => {
             {
                 output: "all_events",
                 inputs: [],
-                computor: (inputs, oldValue) => oldValue,
+                computor: (inputs, oldValue, _bindings) => oldValue,
             },
             {
                 output: "meta_events",
                 inputs: ["all_events"],
-                computor: (inputs, oldValue) => {
+                computor: (inputs, oldValue, _bindings) => {
                     const allEventsEntry = inputs[0];
                     if (!allEventsEntry) {
                         return { type: "meta_events", meta_events: [] };

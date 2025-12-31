@@ -15,31 +15,40 @@
  */
 
 /**
- * A computor function that takes inputs and old value, and produces new value or Unchanged.
- * @typedef {(inputs: Array<DatabaseValue>, oldValue: DatabaseValue | undefined) => DatabaseValue | Unchanged} Computor
+ * A constant value (string or natural number).
+ * @typedef {object} ConstValue
+ * @property {'string' | 'nat'} kind - The kind of constant
+ * @property {string | number} value - The value (string content or number)
  */
 
 /**
- * A node in the dependency graph.
- * @typedef {object} GraphNode
- * @property {string} output - The name of the output node
- * @property {Array<string>} inputs - Array of input node names
- * @property {Computor} computor - Function that computes the output from inputs and old value
+ * A computor function for node definitions that receives typed bindings for variables.
+ * @typedef {(inputs: Array<DatabaseValue>, oldValue: DatabaseValue | undefined, bindings: Record<string, ConstValue>) => DatabaseValue | Unchanged} NodeDefComputor
  */
 
 /**
- * A computor function for schemas that receives bindings for variables.
- * @typedef {(inputs: Array<DatabaseValue>, oldValue: DatabaseValue | undefined, bindings: Record<string, string>) => DatabaseValue | Unchanged} SchemaComputor
+ * Unified node definition.
+ * @typedef {object} NodeDef
+ * @property {string} output - Pattern or exact key (e.g., "event_context(e)" or 'status("active")')
+ * @property {Array<string>} inputs - Pattern dependencies
+ * @property {NodeDefComputor} computor - Function that computes the output from inputs, old value, and typed bindings
  */
 
 /**
- * A schema definition for parameterized nodes.
- * Schemas allow variables in outputs and inputs, and are instantiated on demand.
- * @typedef {object} Schema
- * @property {string} output - The output pattern (e.g., "event_context(e)")
- * @property {Array<string>} inputs - Array of input patterns (e.g., ["all_events"] or ["photo(p)"])
- * @property {Array<string>} variables - Array of variable names used in the schema (e.g., ["e"] or ["e", "p"])
- * @property {SchemaComputor} computor - Function that computes the output from inputs, old value, and bindings
+ * Compiled node with cached metadata for efficient matching and instantiation.
+ * @typedef {object} CompiledNode
+ * @property {NodeDef} source - The original node definition
+ * @property {import('./expr').ParsedExpr} outputExpr - Parsed output expression
+ * @property {string} canonicalOutput - Canonical form of output
+ * @property {Array<import('./expr').ParsedExpr>} inputExprs - Parsed input expressions
+ * @property {Array<string>} canonicalInputs - Canonical forms of inputs
+ * @property {string} head - Head/name of the output expression
+ * @property {number} arity - Number of arguments in output
+ * @property {boolean} isPattern - True if output contains variables (unquoted identifiers)
+ * @property {Array<'var'|'const'>} outputArgKinds - Kind of each output argument position
+ * @property {Array<ConstValue | null>} outputConstArgs - Constant values for each output position (null if variable)
+ * @property {Map<string, Array<number>>} repeatedVarPositions - Map from variable name to positions where it appears
+ * @property {Set<string>} varsUsedInInputs - Variables used in any input pattern
  */
 
 module.exports = {};
