@@ -13,10 +13,7 @@
 
 const { isUnchanged } = require("./unchanged");
 const { freshnessKey } = require("../database");
-const {
-    makeInvalidNodeError,
-    makeSchemaPatternNotAllowedError,
-} = require("./errors");
+const { makeInvalidNodeError } = require("./errors");
 const { canonicalize } = require("./expr");
 const { compileNodeDef, validateNoOverlap } = require("./compiled_node");
 const { matchConcrete, substitute, validateConcreteKey } = require("./unify");
@@ -64,7 +61,7 @@ class DependencyGraphClass {
      * Cache of concrete instantiated nodes created from patterns on demand.
      * Maps canonical output to a runtime node with concrete inputs and wrapped computor.
      * @private
-     * @type {Map<string, {output: string, inputs: string[], computor: import('./types').Computor}>}
+     * @type {Map<string, {output: string, inputs: string[], computor: (inputs: DatabaseValue[], oldValue: DatabaseValue | undefined) => DatabaseValue | Unchanged}>}
      */
     concreteInstantiations;
 
@@ -247,7 +244,7 @@ class DependencyGraphClass {
      * @private
      * @param {string} concreteKeyCanonical - Canonical concrete node key
      * @param {boolean} allowPassThrough - If true, allows creating pass-through nodes for constants
-     * @returns {Promise<{output: string, inputs: string[], computor: import('./types').Computor}>}
+     * @returns {Promise<{output: string, inputs: string[], computor: (inputs: DatabaseValue[], oldValue: DatabaseValue | undefined) => DatabaseValue | Unchanged}>}
      * @throws {Error} If no pattern matches and node not in graph
      */
     async getOrCreateConcreteNode(concreteKeyCanonical, allowPassThrough = false) {
@@ -495,7 +492,7 @@ class DependencyGraphClass {
      * Special optimization: if computation returns Unchanged, propagate up-to-date downstream.
      *
      * @private
-     * @param {{output: string, inputs: string[], computor: import('./types').Computor}} nodeDefinition - The node to maybe recalculate
+     * @param {{output: string, inputs: string[], computor: (inputs: DatabaseValue[], oldValue: DatabaseValue | undefined) => DatabaseValue | Unchanged}} nodeDefinition - The node to maybe recalculate
      * @returns {Promise<DatabaseValue>}
      */
     async maybeRecalculate(nodeDefinition) {

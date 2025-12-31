@@ -2,7 +2,7 @@
  * Compilation of node definitions into CompiledNode with cached metadata.
  */
 
-const { parseExpr, canonicalize, renderExpr } = require("./expr");
+const { parseExpr, renderExpr } = require("./expr");
 const { makeInvalidSchemaError } = require("./errors");
 
 /** @typedef {import('./types').NodeDef} NodeDef */

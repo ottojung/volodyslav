@@ -50,7 +50,8 @@ class Lexer {
         if (this.pos >= this.input.length) {
             return null;
         }
-        return this.input[this.pos];
+        const char = this.input[this.pos];
+        return char !== undefined ? char : null;
     }
 
     /**
@@ -61,7 +62,8 @@ class Lexer {
         if (this.pos >= this.input.length) {
             return null;
         }
-        return this.input[this.pos++];
+        const char = this.input[this.pos++];
+        return char !== undefined ? char : null;
     }
 
     /**
@@ -200,7 +202,9 @@ class Parser {
      * @param {Lexer} lexer
      */
     constructor(lexer) {
+        /** @type {Lexer} */
         this.lexer = lexer;
+        /** @type {Token} */
         this.currentToken = lexer.nextToken();
     }
 
@@ -258,14 +262,17 @@ class Parser {
         this.advance();
 
         // Check if it's a function call
-        if (this.currentToken.kind === "lparen") {
+        // Type assertion needed because TypeScript narrows too aggressively
+        const tokenKind = /** @type {TokenKind} */ (this.currentToken.kind);
+        if (tokenKind === "lparen") {
             this.advance(); // consume '('
 
             /** @type {ParsedArg[]} */
             const args = [];
 
-            // Handle empty args
-            if (this.currentToken.kind === "rparen") {
+            // Handle empty args - type assertion after advance
+            const nextToken = /** @type {TokenKind} */ (this.currentToken.kind);
+            if (nextToken === "rparen") {
                 this.advance();
                 return { kind: "call", name, args };
             }
@@ -273,9 +280,12 @@ class Parser {
             // Parse arguments
             args.push(this.parseTerm());
 
-            while (this.currentToken.kind === "comma") {
+            // Type assertion after parseTerm which can change currentToken
+            let nextTokenKind = /** @type {TokenKind} */ (this.currentToken.kind);
+            while (nextTokenKind === "comma") {
                 this.advance(); // consume ','
                 args.push(this.parseTerm());
+                nextTokenKind = /** @type {TokenKind} */ (this.currentToken.kind);
             }
 
             this.expect("rparen");
@@ -298,7 +308,9 @@ class Parser {
 
         const expr = this.parseExpr();
 
-        if (this.currentToken.kind !== "eof") {
+        // Type assertion needed because TypeScript narrows too aggressively
+        const tokenKind = /** @type {TokenKind} */ (this.currentToken.kind);
+        if (tokenKind !== "eof") {
             throw new Error(
                 `Unexpected token ${this.currentToken.kind} at position ${this.currentToken.pos}`
             );

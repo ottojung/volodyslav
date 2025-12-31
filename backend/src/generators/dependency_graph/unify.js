@@ -2,7 +2,7 @@
  * Unification algorithm for matching concrete nodes against compiled patterns.
  */
 
-const { parseExpr, renderArg, renderExpr } = require("./expr");
+const { parseExpr, renderExpr } = require("./expr");
 const { argToConstValue } = require("./compiled_node");
 const { makeSchemaPatternNotAllowedError } = require("./errors");
 
@@ -47,11 +47,11 @@ function constValuesEqual(a, b) {
  */
 function constValueToArg(constValue) {
     if (constValue.kind === "string") {
-        return { kind: "string", value: constValue.value };
+        return { kind: "string", value: /** @type {string} */(constValue.value) };
     } else if (constValue.kind === "nat") {
         return { kind: "number", value: String(constValue.value) };
     }
-    throw new Error(`Unknown const value kind: ${constValue.kind}`);
+    throw new Error(`Unknown const value kind: ${/** @type {any} */(constValue).kind}`);
 }
 
 /**
@@ -102,7 +102,8 @@ function matchConcrete(concreteKey, compiledNode) {
             
             if (varName in bindings) {
                 // Variable already bound - check consistency
-                if (!constValuesEqual(bindings[varName], concreteValue)) {
+                const existingBinding = bindings[varName];
+                if (existingBinding && !constValuesEqual(existingBinding, concreteValue)) {
                     return null; // Inconsistent binding (e.g., pair(x,x) with different values)
                 }
             } else {
@@ -153,6 +154,11 @@ function substitute(pattern, bindings, variables) {
                 );
             }
             const constValue = bindings[arg.value];
+            if (!constValue) {
+                throw new Error(
+                    `Variable '${arg.value}' has undefined binding when substituting '${pattern}'`
+                );
+            }
             return constValueToArg(constValue);
         }
         // It's a constant - pass through
