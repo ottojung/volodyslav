@@ -27,4 +27,19 @@
  * @property {Computor} computor - Function that computes the output from inputs and old value
  */
 
+/**
+ * A computor function for schemas that receives bindings for variables.
+ * @typedef {(inputs: Array<DatabaseValue>, oldValue: DatabaseValue | undefined, bindings: Record<string, string>) => DatabaseValue | Unchanged} SchemaComputor
+ */
+
+/**
+ * A schema definition for parameterized nodes.
+ * Schemas allow variables in outputs and inputs, and are instantiated on demand.
+ * @typedef {object} Schema
+ * @property {string} output - The output pattern (e.g., "event_context(e)")
+ * @property {Array<string>} inputs - Array of input patterns (e.g., ["all_events"] or ["photo(p)"])
+ * @property {Array<string>} variables - Array of variable names used in the schema (e.g., ["e"] or ["e", "p"])
+ * @property {SchemaComputor} computor - Function that computes the output from inputs, old value, and bindings
+ */
+
 module.exports = {};
