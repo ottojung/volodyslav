@@ -4,8 +4,6 @@
 
 const { matchConcrete, substitute, validateConcreteKey } = require("../src/generators/dependency_graph/unify");
 const { compileNodeDef } = require("../src/generators/dependency_graph/compiled_node");
-const { extractVariables } = require("../src/generators/dependency_graph/compiled_node");
-const { parseExpr } = require("../src/generators/dependency_graph/expr");
 
 describe("dependency_graph/unify", () => {
     describe("validateConcreteKey()", () => {

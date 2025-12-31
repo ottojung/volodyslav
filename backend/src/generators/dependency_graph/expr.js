@@ -84,14 +84,11 @@ class Lexer {
         this.next(); // consume opening quote
         let value = "";
 
-        while (true) {
-            const ch = this.peek();
-            if (ch === null) {
-                throw new Error(`Unclosed string literal at position ${startPos}`);
-            }
+        let ch = this.peek();
+        while (ch !== null) {
             if (ch === '"') {
                 this.next(); // consume closing quote
-                break;
+                return { kind: "string", value, pos: startPos };
             }
             if (ch === "\\") {
                 this.next(); // consume backslash
@@ -118,9 +115,10 @@ class Lexer {
                 value += ch;
                 this.next();
             }
+            ch = this.peek();
         }
 
-        return { kind: "string", value, pos: startPos };
+        throw new Error(`Unclosed string literal at position ${startPos}`);
     }
 
     /**
