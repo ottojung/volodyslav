@@ -28,12 +28,17 @@ function unify(concreteKey, compiledSchema) {
     }
 
     const variables = new Set(compiledSchema.schema.variables);
+    /** @type {Record<string, string>} */
     const bindings = {};
 
     // Try to unify each argument position
     for (let i = 0; i < compiledSchema.arity; i++) {
         const concreteArg = concreteExpr.args[i];
         const schemaArg = compiledSchema.outputExpr.args[i];
+        
+        if (concreteArg === undefined || schemaArg === undefined) {
+            return null; // Arity mismatch
+        }
 
         if (variables.has(schemaArg)) {
             // Schema arg is a variable - bind it

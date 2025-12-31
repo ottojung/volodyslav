@@ -16,7 +16,6 @@ const { isUnchanged } = require("./unchanged");
 const { freshnessKey } = require("../database");
 const {
     makeInvalidNodeError,
-    makeInvalidSchemaError,
     makeSchemaPatternNotAllowedError,
 } = require("./errors");
 const { canonicalize } = require("./expr");
@@ -55,6 +54,7 @@ class DependencyGraphClass {
      * @private
      * @type {Array<Schema>}
      */
+    // @ts-expect-error - schemas is used for validation and schema index building
     schemas;
 
     /**
@@ -287,7 +287,12 @@ class DependencyGraphClass {
                 const passThrough = {
                     output: concreteKeyCanonical,
                     inputs: [],
-                    computor: (inputs, oldValue) => {
+                    /**
+                     * @param {Array<DatabaseValue>} _inputs
+                     * @param {DatabaseValue | undefined} oldValue
+                     * @returns {DatabaseValue}
+                     */
+                    computor: (_inputs, oldValue) => {
                         if (oldValue === undefined) {
                             throw new Error(
                                 `Pass-through node ${concreteKeyCanonical} has no value`
@@ -318,6 +323,11 @@ class DependencyGraphClass {
         const concreteNode = {
             output: concreteKeyCanonical,
             inputs: concreteInputs,
+            /**
+             * @param {Array<DatabaseValue>} inputValues
+             * @param {DatabaseValue | undefined} oldValue
+             * @returns {DatabaseValue | Unchanged}
+             */
             computor: (inputValues, oldValue) =>
                 schema.computor(inputValues, oldValue, bindings),
         };
@@ -334,7 +344,7 @@ class DependencyGraphClass {
         if (schema.variables.length > 0) {
             const instantiationKey = `instantiation:${concreteKeyCanonical}`;
             // Fire and forget - we don't want to block on this
-            this.database.put(instantiationKey, 1).catch((err) => {
+            this.database.put(instantiationKey, /** @type {DatabaseValue} */ (/** @type {unknown} */ (1))).catch((err) => {
                 // Log error but don't fail
                 console.error(
                     `Failed to persist instantiation marker for ${concreteKeyCanonical}:`,

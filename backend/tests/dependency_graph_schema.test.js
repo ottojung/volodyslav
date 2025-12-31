@@ -59,12 +59,16 @@ describe("dependency_graph/schema", () => {
                 computor: () => ({}),
             };
             expect(() => validateSchemaVariables(schema)).toThrow();
+            
+            let error = null;
             try {
                 validateSchemaVariables(schema);
             } catch (err) {
-                expect(isInvalidSchema(err)).toBe(true);
-                expect(err.message).toContain("not present in output");
+                error = err;
             }
+            expect(error).not.toBeNull();
+            expect(isInvalidSchema(error)).toBe(true);
+            expect(error.message).toContain("not present in output");
         });
 
         test("accepts schema where output has extra variables", () => {
@@ -182,12 +186,16 @@ describe("dependency_graph/schema", () => {
             ];
             const compiled = schemas.map(compileSchema);
             expect(() => validateNoSchemaOverlap(compiled)).toThrow();
+            
+            let error = null;
             try {
                 validateNoSchemaOverlap(compiled);
             } catch (err) {
-                expect(isInvalidSchema(err)).toBe(true);
-                expect(err.message).toContain("Overlaps");
+                error = err;
             }
+            expect(error).not.toBeNull();
+            expect(isInvalidSchema(error)).toBe(true);
+            expect(error.message).toContain("Overlaps");
         });
 
         test("throws on overlapping schemas with same constants", () => {

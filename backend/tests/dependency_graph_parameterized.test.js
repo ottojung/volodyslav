@@ -322,7 +322,6 @@ describe("Parameterized node schemas", () => {
 
             // Initial pull
             await graph.pull("final(test)");
-            const count1 = computeCount;
 
             // Update source with same value - middle should return Unchanged
             await graph.set("source", { value: 1 });
@@ -354,21 +353,29 @@ describe("Parameterized node schemas", () => {
 
             // Try to pull schema pattern directly
             await expect(graph.pull("derived(x)")).rejects.toThrow();
+
+            let error = null;
             try {
                 await graph.pull("derived(x)");
             } catch (err) {
-                expect(isSchemaPatternNotAllowed(err)).toBe(true);
+                error = err;
             }
+            expect(error).not.toBeNull();
+            expect(isSchemaPatternNotAllowed(error)).toBe(true);
 
             // Try to set schema pattern directly
             await expect(
                 graph.set("derived(x)", { value: 1 })
             ).rejects.toThrow();
+
+            error = null;
             try {
                 await graph.set("derived(x)", { value: 1 });
             } catch (err) {
-                expect(isSchemaPatternNotAllowed(err)).toBe(true);
+                error = err;
             }
+            expect(error).not.toBeNull();
+            expect(isSchemaPatternNotAllowed(error)).toBe(true);
 
             await db.close();
         });
@@ -380,11 +387,15 @@ describe("Parameterized node schemas", () => {
             const graph = makeDependencyGraph(db, [], []);
 
             await expect(graph.pull("unknown_node")).rejects.toThrow();
+
+            let error = null;
             try {
                 await graph.pull("unknown_node");
             } catch (err) {
-                expect(isInvalidNode(err)).toBe(true);
+                error = err;
             }
+            expect(error).not.toBeNull();
+            expect(isInvalidNode(error)).toBe(true);
 
             await db.close();
         });

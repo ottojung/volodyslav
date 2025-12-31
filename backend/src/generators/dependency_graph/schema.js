@@ -105,6 +105,10 @@ function schemasOverlap(schema1, schema2) {
     for (let i = 0; i < schema1.arity; i++) {
         const arg1 = schema1.outputExpr.args[i];
         const arg2 = schema2.outputExpr.args[i];
+        
+        if (arg1 === undefined || arg2 === undefined) {
+            throw new Error(`Unexpected undefined argument at position ${i}`);
+        }
 
         const isVar1 = vars1.has(arg1);
         const isVar2 = vars2.has(arg2);
@@ -128,10 +132,15 @@ function schemasOverlap(schema1, schema2) {
 function validateNoSchemaOverlap(compiledSchemas) {
     for (let i = 0; i < compiledSchemas.length; i++) {
         for (let j = i + 1; j < compiledSchemas.length; j++) {
-            if (schemasOverlap(compiledSchemas[i], compiledSchemas[j])) {
+            const schema1 = compiledSchemas[i];
+            const schema2 = compiledSchemas[j];
+            if (schema1 === undefined || schema2 === undefined) {
+                throw new Error("Unexpected undefined schema in validation");
+            }
+            if (schemasOverlap(schema1, schema2)) {
                 throw makeInvalidSchemaError(
-                    `Overlaps with schema '${compiledSchemas[j].schema.output}'`,
-                    compiledSchemas[i].schema.output
+                    `Overlaps with schema '${schema2.schema.output}'`,
+                    schema1.schema.output
                 );
             }
         }
