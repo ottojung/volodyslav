@@ -510,8 +510,8 @@ describe("Parameterized node schemas", () => {
         });
     });
 
-    describe("Instantiation marker atomicity (T1)", () => {
-        test("instantiation marker is persisted atomically with first computation", async () => {
+    describe("Persistent reverse-dependency index (T1)", () => {
+        test("reverse dependencies are persisted atomically with first computation", async () => {
             const capabilities = getTestCapabilities();
             const db = await getDatabase(capabilities);
 
@@ -534,10 +534,19 @@ describe("Parameterized node schemas", () => {
             const result1 = await graph.pull('derived("test")');
             expect(result1.value).toBe(20);
 
-            // Verify instantiation marker exists
-            const marker = await db.get('instantiation:derived("test")');
-            expect(marker).toBeDefined();
-            expect(marker).toEqual({ __marker: true });
+            // Verify reverse dependency was persisted
+            // The index should store: dg:<schemaHash>:revdep:base:derived("test")
+            const schemaHash = graph.schemaHash;
+            const revdepKey = `dg:${schemaHash}:revdep:base:derived("test")`;
+            const revdep = await db.get(revdepKey);
+            expect(revdep).toBeDefined();
+            expect(revdep).toEqual({ __edge: true });
+
+            // Verify inputs were persisted
+            const inputsKey = `dg:${schemaHash}:inputs:derived("test")`;
+            const inputs = await db.get(inputsKey);
+            expect(inputs).toBeDefined();
+            expect(inputs).toEqual({ inputs: ["base"] });
 
             // Close and recreate graph (simulating restart)
             const graph2 = makeDependencyGraph(db, schemas);
@@ -545,14 +554,14 @@ describe("Parameterized node schemas", () => {
             // Update base value
             await graph2.set("base", { value: 20 });
 
-            // Pull derived again - should recompute (instantiation was persisted)
+            // Pull derived again - should recompute (reverse dep was persisted)
             const result2 = await graph2.pull('derived("test")');
             expect(result2.value).toBe(40); // Updated value
 
             await db.close();
         });
 
-        test("instantiation marker written in set() batch", async () => {
+        test("reverse dependencies written in set() batch", async () => {
             const capabilities = getTestCapabilities();
             const db = await getDatabase(capabilities);
 
@@ -561,9 +570,9 @@ describe("Parameterized node schemas", () => {
             const schemas = [
                 {
                     output: "item(x)",
-                    inputs: [],
+                    inputs: ["base"],
                     computor: (inputs, oldValue, bindings) => {
-                        return oldValue || { id: bindings.x.value, value: 0 };
+                        return { id: bindings.x.value, value: inputs[0].value * 10 };
                     },
                 },
             ];
@@ -573,14 +582,27 @@ describe("Parameterized node schemas", () => {
             // Set a value directly (not pull)
             await graph.set('item("foo")', { id: "foo", value: 42 });
 
-            // Verify instantiation marker was written
-            const marker = await db.get('instantiation:item("foo")');
-            expect(marker).toBeDefined();
+            // Verify reverse dependency was persisted
+            const schemaHash = graph.schemaHash;
+            const revdepKey = `dg:${schemaHash}:revdep:base:item("foo")`;
+            const revdep = await db.get(revdepKey);
+            expect(revdep).toBeDefined();
+
+            // Verify inputs were persisted
+            const inputsKey = `dg:${schemaHash}:inputs:item("foo")`;
+            const inputs = await db.get(inputsKey);
+            expect(inputs).toBeDefined();
+            expect(inputs).toEqual({ inputs: ["base"] });
 
             // Recreate graph and verify instantiation persists
             const graph2 = makeDependencyGraph(db, schemas);
+            
+            // Update base to trigger invalidation via persisted reverse dep
+            await graph2.set("base", { value: 2 });
+            
+            // Pull item - should reflect new base value
             const result = await graph2.pull('item("foo")');
-            expect(result.value).toBe(42);
+            expect(result.value).toBe(20); // 2 * 10
 
             await db.close();
         });
