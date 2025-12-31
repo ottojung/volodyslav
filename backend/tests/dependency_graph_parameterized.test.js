@@ -510,36 +510,6 @@ describe("Parameterized node schemas", () => {
         });
     });
 
-    describe("Runtime ambiguity detection (T6)", () => {
-        test("documents defensive runtime ambiguity check exists", async () => {
-            const capabilities = getTestCapabilities();
-            const db = await getDatabase(capabilities);
-
-            await db.put("base", { value: 1 });
-
-            // Create a scenario where overlap detection might miss something
-            // or be bypassed. In practice, our overlap detection should catch this,
-            // but we test the runtime check as a defensive measure.
-            
-            // Note: Since our overlap detection is now precise, we need to
-            // intentionally create a scenario that passes validation but would
-            // be ambiguous. However, with proper validation, this shouldn't happen.
-            // This test documents the defensive runtime check exists.
-
-            // For this test, we'll verify the error message format by checking
-            // that if somehow two patterns could match, we get a clear error.
-            
-            // We can't easily create a legitimate ambiguous case that passes
-            // validation, so this test is more documentary. The key is that
-            // the code path exists and throws the right error type.
-            
-            // The defensive check is tested implicitly by the overlap tests above
-            expect(true).toBe(true);
-
-            await db.close();
-        });
-    });
-
     describe("Instantiation marker atomicity (T1)", () => {
         test("instantiation marker is persisted atomically with first computation", async () => {
             const capabilities = getTestCapabilities();
