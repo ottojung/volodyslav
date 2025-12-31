@@ -8,7 +8,6 @@ const os = require("os");
 const { get: getDatabase } = require("../src/generators/database");
 const {
     makeDependencyGraph,
-    makeUnchanged,
 } = require("../src/generators/dependency_graph");
 const { getMockedRootCapabilities } = require("./spies");
 const { stubLogger } = require("./stubs");
