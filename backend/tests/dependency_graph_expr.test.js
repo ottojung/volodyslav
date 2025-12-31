@@ -24,21 +24,24 @@ describe("dependency_graph/expr", () => {
             });
         });
 
-        test("parses a function call with one arg", () => {
+        test("parses a function call with one identifier arg", () => {
             const result = parseExpr("event_context(e)");
             expect(result).toEqual({
                 kind: "call",
                 name: "event_context",
-                args: ["e"],
+                args: [{ kind: "identifier", value: "e" }],
             });
         });
 
-        test("parses a function call with multiple args", () => {
+        test("parses a function call with multiple identifier args", () => {
             const result = parseExpr("enhanced_event(e,p)");
             expect(result).toEqual({
                 kind: "call",
                 name: "enhanced_event",
-                args: ["e", "p"],
+                args: [
+                    { kind: "identifier", value: "e" },
+                    { kind: "identifier", value: "p" },
+                ],
             });
         });
 
@@ -56,7 +59,7 @@ describe("dependency_graph/expr", () => {
             expect(result).toEqual({
                 kind: "call",
                 name: "event_context",
-                args: ["e"],
+                args: [{ kind: "identifier", value: "e" }],
             });
         });
 
@@ -65,7 +68,63 @@ describe("dependency_graph/expr", () => {
             expect(result).toEqual({
                 kind: "call",
                 name: "foo",
-                args: ["a", "b", "c"],
+                args: [
+                    { kind: "identifier", value: "a" },
+                    { kind: "identifier", value: "b" },
+                    { kind: "identifier", value: "c" },
+                ],
+            });
+        });
+
+        test("parses quoted string arguments", () => {
+            const result = parseExpr('status(e, "active")');
+            expect(result).toEqual({
+                kind: "call",
+                name: "status",
+                args: [
+                    { kind: "identifier", value: "e" },
+                    { kind: "string", value: "active" },
+                ],
+            });
+        });
+
+        test("parses natural number arguments", () => {
+            const result = parseExpr("photo(5)");
+            expect(result).toEqual({
+                kind: "call",
+                name: "photo",
+                args: [{ kind: "number", value: "5" }],
+            });
+        });
+
+        test("parses zero as number", () => {
+            const result = parseExpr("count(0)");
+            expect(result).toEqual({
+                kind: "call",
+                name: "count",
+                args: [{ kind: "number", value: "0" }],
+            });
+        });
+
+        test("parses mixed arg types", () => {
+            const result = parseExpr('foo("str", 42, x)');
+            expect(result).toEqual({
+                kind: "call",
+                name: "foo",
+                args: [
+                    { kind: "string", value: "str" },
+                    { kind: "number", value: "42" },
+                    { kind: "identifier", value: "x" },
+                ],
+            });
+        });
+
+        test("handles string escapes", () => {
+            const result = parseExpr('msg("hello\\"world")');
+            expect(result).toEqual({
+                kind: "call",
+                name: "msg",
+                args: [{ kind: "string", value: 'hello"world' }],
             });
         });
 
@@ -74,7 +133,7 @@ describe("dependency_graph/expr", () => {
         });
 
         test("throws on missing closing paren", () => {
-            expect(() => parseExpr("foo(a")).toThrow("Missing closing parenthesis");
+            expect(() => parseExpr("foo(a")).toThrow("rparen");
         });
 
         test("throws on invalid identifier in constant", () => {
@@ -82,11 +141,15 @@ describe("dependency_graph/expr", () => {
         });
 
         test("throws on invalid function name", () => {
-            expect(() => parseExpr("123foo()")).toThrow("Invalid function name");
+            expect(() => parseExpr("123foo()")).toThrow("identifier");
         });
 
-        test("throws on invalid argument", () => {
-            expect(() => parseExpr("foo(123)")).toThrow("Invalid argument");
+        test("throws on leading zeros in numbers", () => {
+            expect(() => parseExpr("foo(01)")).toThrow("leading zeros not allowed");
+        });
+
+        test("throws on unclosed string", () => {
+            expect(() => parseExpr('foo("unclosed')).toThrow("Unclosed string");
         });
     });
 
@@ -110,6 +173,26 @@ describe("dependency_graph/expr", () => {
             expect(canonicalize("foo(a,b,c)")).toBe("foo(a,b,c)");
             expect(canonicalize("foo( a , b , c )")).toBe("foo(a,b,c)");
             expect(canonicalize(" foo ( a , b , c ) ")).toBe("foo(a,b,c)");
+        });
+
+        test("canonicalizes quoted strings", () => {
+            expect(canonicalize('status(e, "active")')).toBe('status(e,"active")');
+            expect(canonicalize('foo( "a" , "b" )')).toBe('foo("a","b")');
+        });
+
+        test("canonicalizes numbers", () => {
+            expect(canonicalize("photo(5)")).toBe("photo(5)");
+            expect(canonicalize("photo( 42 )")).toBe("photo(42)");
+            expect(canonicalize("count(0)")).toBe("count(0)");
+        });
+
+        test("canonicalizes mixed arg types", () => {
+            expect(canonicalize('mix("str", 5, x)')).toBe('mix("str",5,x)');
+        });
+
+        test("preserves string escapes in canonical form", () => {
+            expect(canonicalize('foo("a\\"b")')).toBe('foo("a\\"b")');
+            expect(canonicalize('foo("line\\n")')).toBe('foo("line\\n")');
         });
 
         test("throws on malformed expression", () => {
