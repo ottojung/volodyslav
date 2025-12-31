@@ -25,8 +25,5 @@ jobs:
             - name: Build frontend
               run: npm run build
 
-            - name: Static analysis
-              run: npm run static-analysis
-
             - name: Run tests with Jest via Bun
               run: TZ=Asia/Tokyo bun jest

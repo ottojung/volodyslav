@@ -26,11 +26,25 @@ jobs:
             - name: Build frontend
               run: npm run build
 
-            - name: Static analysis
-              run: npm run static-analysis
-
             - name: Run tests
               run: TZ=Asia/Tokyo npm run test-only
+
+    static-analysis:
+        runs-on: ubuntu-latest
+        steps:
+            - uses: actions/checkout@v3
+
+            - name: Use Node.js 23.11.x
+              uses: actions/setup-node@v3
+              with:
+                  node-version: 23.11.x
+                  cache: "npm"
+
+            - name: Install dependencies
+              run: npm ci
+
+            - name: Static analysis
+              run: npm run static-analysis
 
     docker:
         runs-on: ubuntu-latest

@@ -14,5 +14,4 @@ id -a
 
 npm ci
 npm run build
-npm run static-analysis
 npm test
