@@ -4,6 +4,7 @@
 
 const { parseExpr, renderArg, renderExpr } = require("./expr");
 const { argToConstValue } = require("./compiled_node");
+const { makeSchemaPatternNotAllowedError } = require("./errors");
 
 /** @typedef {import('./types').CompiledNode} CompiledNode */
 /** @typedef {import('./types').ConstValue} ConstValue */
@@ -20,10 +21,7 @@ function validateConcreteKey(concreteKey) {
     if (expr.kind === "call") {
         for (const arg of expr.args) {
             if (arg.kind === "identifier") {
-                throw new Error(
-                    `Concrete key '${concreteKey}' contains variable '${arg.value}'. ` +
-                    `Use quoted strings or numbers for concrete values.`
-                );
+                throw makeSchemaPatternNotAllowedError(concreteKey);
             }
         }
     }

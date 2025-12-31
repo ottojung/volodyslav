@@ -638,48 +638,11 @@ class DependencyGraphClass {
 /**
  * Factory function to create a DependencyGraph instance.
  * 
- * Supports both old and new APIs:
- * - New API: makeDependencyGraph(database, nodeDefs)
- * - Old API (deprecated): makeDependencyGraph(database, graph, schemas)
- * 
  * @param {Database} database - The database instance
- * @param {Array<import('./types').NodeDef> | Array<GraphNode>} nodeDefsOrGraph - Node definitions (new API) or graph nodes (old API)
- * @param {Array<Schema>} [schemas] - Schema definitions (old API only, optional)
+ * @param {Array<NodeDef>} nodeDefs - Unified node definitions
  * @returns {DependencyGraphClass}
  */
-function makeDependencyGraph(database, nodeDefsOrGraph, schemas) {
-    const { graphNodeToNodeDef, schemaToNodeDef } = require("./migration");
-    
-    /** @type {Array<import('./types').NodeDef>} */
-    let nodeDefs;
-    
-    if (schemas !== undefined && schemas.length > 0) {
-        // Old API: convert GraphNodes and Schemas to NodeDefs
-        /** @type {Array<GraphNode>} */
-        const graphNodes = /** @type {Array<GraphNode>} */ (nodeDefsOrGraph);
-        nodeDefs = [
-            ...graphNodes.map(graphNodeToNodeDef),
-            ...schemas.map(schemaToNodeDef),
-        ];
-    } else {
-        // New API: use NodeDefs directly
-        // But check if they look like old GraphNodes (have computor with 2 params instead of 3)
-        const first = nodeDefsOrGraph[0];
-        if (first && "computor" in first) {
-            // Check if it's old-style by checking function length
-            // NodeDef computor has 3 params, GraphNode computor has 2
-            if (first.computor.length === 2) {
-                // Looks like old GraphNodes
-                nodeDefs = /** @type {Array<GraphNode>} */ (nodeDefsOrGraph).map(graphNodeToNodeDef);
-            } else {
-                // New NodeDefs
-                nodeDefs = /** @type {Array<import('./types').NodeDef>} */ (nodeDefsOrGraph);
-            }
-        } else {
-            nodeDefs = /** @type {Array<import('./types').NodeDef>} */ (nodeDefsOrGraph);
-        }
-    }
-    
+function makeDependencyGraph(database, nodeDefs) {
     return new DependencyGraphClass(database, nodeDefs);
 }
 
