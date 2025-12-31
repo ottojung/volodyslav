@@ -43,13 +43,7 @@ class DependencyGraphClass {
     graph;
 
     /**
-     * Schema definitions for parameterized nodes.
-     * @private
-     * @type {Array<Schema>}
-     */
-    schemas;
 
-    /**
      * Schema index for efficient pattern matching.
      * @private
      * @type {ReturnType<typeof makeSchemaIndex> | null}
@@ -146,10 +140,9 @@ class DependencyGraphClass {
 
         // Reject schema patterns
         if (this.schemaPatterns.has(canonicalKey)) {
-            throw makeInvalidNodeError(
-                key,
-                "Cannot set a schema pattern directly. Use a concrete instantiation."
-            );
+            const error = makeInvalidNodeError(key);
+            error.message = "Cannot set a schema pattern directly. Use a concrete instantiation.";
+            throw error;
         }
 
         // Ensure the node exists (creates it if it's a schema instantiation)
@@ -273,6 +266,11 @@ class DependencyGraphClass {
         const concreteNode = {
             output: canonicalKey,
             inputs: concreteInputs,
+            /**
+             * @param {Array<DatabaseValue>} inputValues
+             * @param {DatabaseValue | undefined} oldValue
+             * @returns {DatabaseValue | Unchanged}
+             */
             computor: (inputValues, oldValue) =>
                 schema.computor(inputValues, oldValue, bindings),
         };
@@ -288,7 +286,7 @@ class DependencyGraphClass {
         // Persist instantiation marker (only for parameterized nodes)
         if (schema.variables.length > 0) {
             const instantiationKey = `instantiation:${canonicalKey}`;
-            await this.database.put(instantiationKey, 1);
+            await this.database.put(instantiationKey, /** @type {*} */ (1));
         }
 
         return concreteNode;
@@ -333,7 +331,6 @@ class DependencyGraphClass {
     constructor(database, graph, schemas = []) {
         this.database = database;
         this.graph = graph;
-        this.schemas = schemas;
         this.concreteNodeCache = new Map();
         this.schemaPatterns = new Set();
         this.initialized = false;
@@ -534,10 +531,9 @@ class DependencyGraphClass {
 
         // Reject schema patterns
         if (this.schemaPatterns.has(canonicalKey)) {
-            throw makeInvalidNodeError(
-                nodeName,
-                "Cannot pull a schema pattern directly. Use a concrete instantiation."
-            );
+            const error = makeInvalidNodeError(nodeName);
+            error.message = "Cannot pull a schema pattern directly. Use a concrete instantiation.";
+            throw error;
         }
 
         // Get or create the node definition

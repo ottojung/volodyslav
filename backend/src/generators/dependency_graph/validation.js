@@ -3,7 +3,7 @@
  */
 
 const { parseExpr, isCallExpr } = require("./expression");
-const { compileSchema, unify } = require("./schema");
+const { compileSchema } = require("./schema");
 
 /** @typedef {import('./types').Schema} Schema */
 /** @typedef {import('./schema').CompiledSchema} CompiledSchema */
@@ -30,9 +30,7 @@ class SchemaValidationError extends Error {
  * @throws {SchemaValidationError} If validation fails
  */
 function validateInputVariablesCovered(schema) {
-    const outputVars = new Set(schema.variables);
-    
-    // Also need to check which variables actually appear in the output expression
+    // Check which variables actually appear in the output expression
     const outputExpr = parseExpr(schema.output);
     const varsInOutput = new Set();
     
@@ -93,6 +91,11 @@ function schemasOverlap(schema1, schema2) {
     for (let i = 0; i < schema1.arity; i++) {
         const arg1 = schema1.outputArgs[i];
         const arg2 = schema2.outputArgs[i];
+        
+        // Handle potential undefined
+        if (arg1 === undefined || arg2 === undefined) {
+            return false;
+        }
 
         const isVar1 = schema1.variableSet.has(arg1);
         const isVar2 = schema2.variableSet.has(arg2);
@@ -122,6 +125,10 @@ function validateSchemasMutuallyExclusive(schemas) {
         for (let j = i + 1; j < compiled.length; j++) {
             const schema1 = compiled[i];
             const schema2 = compiled[j];
+
+            if (!schema1 || !schema2) {
+                continue;
+            }
 
             if (schemasOverlap(schema1, schema2)) {
                 throw new SchemaValidationError(

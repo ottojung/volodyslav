@@ -93,11 +93,21 @@ function unify(concreteNode, compiled) {
 
     // For calls, unify arguments
     const concreteArgs = isCallExpr(concreteExpr) ? concreteExpr.args : [];
+    /** @type {Record<string, string>} */
     const bindings = {};
 
     for (let i = 0; i < compiled.arity; i++) {
         const schemaArg = compiled.outputArgs[i];
         const concreteArg = concreteArgs[i];
+        
+        // Check for undefined arguments
+        if (schemaArg === undefined || concreteArg === undefined) {
+            return {
+                success: false,
+                bindings: {},
+                error: `Argument mismatch at position ${i}`,
+            };
+        }
 
         if (compiled.variableSet.has(schemaArg)) {
             // schemaArg is a variable - bind it
@@ -175,14 +185,13 @@ class SchemaIndex {
     /**
      * Map from "head:arity" to array of compiled schemas.
      * @private
-     * @type {Map<string, Array<CompiledSchema>>}
      */
-    index;
+    index = new Map();
 
     /**
      * All compiled schemas.
      * @private
-     * @type {Array<CompiledSchema>>}
+     * @type {Array<CompiledSchema>}
      */
     schemas;
 

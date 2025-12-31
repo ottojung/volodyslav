@@ -279,12 +279,16 @@ describe("schema validation", () => {
                 },
             ];
 
+            let errorThrown = false;
+            let caughtError = null;
             try {
                 validateSchemas(schemas);
-                fail("Should have thrown");
             } catch (err) {
-                expect(isSchemaValidationError(err)).toBe(true);
+                errorThrown = true;
+                caughtError = err;
             }
+            expect(errorThrown).toBe(true);
+            expect(isSchemaValidationError(caughtError)).toBe(true);
         });
     });
 });
