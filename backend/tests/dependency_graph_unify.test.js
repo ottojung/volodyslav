@@ -11,7 +11,6 @@ describe("dependency_graph/unify", () => {
             const schema = {
                 output: "event_context(e)",
                 inputs: [],
-                variables: ["e"],
                 computor: () => ({}),
             };
             const compiled = compileSchema(schema);
@@ -25,7 +24,6 @@ describe("dependency_graph/unify", () => {
             const schema = {
                 output: "enhanced_event(e,p)",
                 inputs: [],
-                variables: ["e", "p"],
                 computor: () => ({}),
             };
             const compiled = compileSchema(schema);
@@ -35,25 +33,24 @@ describe("dependency_graph/unify", () => {
             expect(result.bindings).toEqual({ e: "id123", p: "photo5" });
         });
 
-        test("unifies with constants in pattern", () => {
+        test("unifies with all arguments as variables", () => {
             const schema = {
                 output: "result(a,x)",
                 inputs: [],
-                variables: ["x"],
                 computor: () => ({}),
             };
             const compiled = compileSchema(schema);
-            const result = unify("result(a,val1)", compiled);
+            const result = unify("result(val_a,val_x)", compiled);
 
             expect(result).not.toBeNull();
-            expect(result.bindings).toEqual({ x: "val1" });
+            // Both a and x are variables now
+            expect(result.bindings).toEqual({ a: "val_a", x: "val_x" });
         });
 
         test("fails to unify with different head", () => {
             const schema = {
                 output: "foo(x)",
                 inputs: [],
-                variables: ["x"],
                 computor: () => ({}),
             };
             const compiled = compileSchema(schema);
@@ -66,7 +63,6 @@ describe("dependency_graph/unify", () => {
             const schema = {
                 output: "foo(x)",
                 inputs: [],
-                variables: ["x"],
                 computor: () => ({}),
             };
             const compiled = compileSchema(schema);
@@ -75,24 +71,25 @@ describe("dependency_graph/unify", () => {
             expect(result).toBeNull();
         });
 
-        test("fails to unify with mismatched constant", () => {
+        test("unifies when repeated variable has consistent binding", () => {
+            // result(a,x) with a=val_a and x=val_a should unify to result(val_a,val_a)
             const schema = {
                 output: "result(a,x)",
                 inputs: [],
-                variables: ["x"],
                 computor: () => ({}),
             };
             const compiled = compileSchema(schema);
-            const result = unify("result(b,val)", compiled);
+            const result = unify("result(same,same)", compiled);
 
-            expect(result).toBeNull();
+            expect(result).not.toBeNull();
+            // a and x should both bind to "same"
+            expect(result.bindings).toEqual({ a: "same", x: "same" });
         });
 
         test("fails to unify with inconsistent variable binding", () => {
             const schema = {
                 output: "pair(x,x)",
                 inputs: [],
-                variables: ["x"],
                 computor: () => ({}),
             };
             const compiled = compileSchema(schema);
@@ -105,7 +102,6 @@ describe("dependency_graph/unify", () => {
             const schema = {
                 output: "pair(x,x)",
                 inputs: [],
-                variables: ["x"],
                 computor: () => ({}),
             };
             const compiled = compileSchema(schema);
@@ -119,7 +115,6 @@ describe("dependency_graph/unify", () => {
             const schema = {
                 output: "all_events",
                 inputs: [],
-                variables: [],
                 computor: () => ({}),
             };
             const compiled = compileSchema(schema);

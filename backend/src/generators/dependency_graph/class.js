@@ -728,12 +728,12 @@ function makeDependencyGraph(database, nodesOrGraph, schemas) {
         }
         
         // Add pattern nodes (schemas)
+        // Variables are no longer passed - they will be derived from output expression
         for (const schema of schemas) {
             nodes.push({
                 output: schema.output,
                 inputs: schema.inputs,
                 computor: schema.computor,
-                variables: schema.variables,
             });
         }
         

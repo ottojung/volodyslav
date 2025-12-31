@@ -12,6 +12,7 @@ const { makeInvalidSchemaError } = require("./errors");
 /**
  * Compiles a node definition into the internal CompiledNode representation.
  * Canonicalizes outputs and inputs, parses expressions, and extracts variables.
+ * Variables are automatically derived from the output expression arguments.
  *
  * @param {NodeDef} def - The node definition to compile
  * @returns {CompiledNode} The compiled node
@@ -27,37 +28,27 @@ function compileNode(def) {
     const head = outputExpr.name;
     const arity = outputExpr.args.length;
 
-    // Extract variables from the definition
-    // Variables are explicitly provided in def.variables for pattern nodes
-    const declaredVars = new Set(def.variables || []);
+    // Determine if this is a pattern node by checking computor signature
+    // Pattern nodes have computors that accept 3 parameters (inputs, oldValue, bindings)
+    const isPattern = def.computor.length >= 3;
 
-    // Determine which output args are variables
-    const outputVars = new Set();
-    if (outputExpr.kind === "call") {
+    // Derive variables from output expression
+    // For pattern nodes: all arguments in a call expression are variables
+    // For concrete nodes: no variables
+    const variables = new Set();
+    if (isPattern && outputExpr.kind === "call") {
         for (const arg of outputExpr.args) {
-            if (declaredVars.has(arg)) {
-                outputVars.add(arg);
-            }
+            variables.add(arg);
         }
     }
 
-    // Validate that all input variables are in the output
-    for (const inputCanonical of inputsCanonical) {
-        const inputExpr = parseExpr(inputCanonical);
-        if (inputExpr.kind === "call") {
-            for (const arg of inputExpr.args) {
-                if (declaredVars.has(arg) && !outputVars.has(arg)) {
-                    throw makeInvalidSchemaError(
-                        `Input variable '${arg}' is not present in output pattern`,
-                        def.output
-                    );
-                }
-            }
-        }
+    // If it's a pattern but has no variables in output, that's an error
+    if (isPattern && variables.size === 0) {
+        throw makeInvalidSchemaError(
+            "Pattern node computor expects bindings but output has no variables",
+            def.output
+        );
     }
-
-    // Determine if this is a pattern node
-    const isPattern = declaredVars.size > 0;
 
     return {
         outputCanonical,
@@ -65,7 +56,7 @@ function compileNode(def) {
         outputExpr,
         head,
         arity,
-        variables: outputVars,
+        variables,
         computor: def.computor,
         isPattern,
     };

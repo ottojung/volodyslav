@@ -45,11 +45,11 @@
 /**
  * Input definition for nodes (what callers pass to makeDependencyGraph).
  * Can be either a concrete node or a parameterized schema.
+ * Variables are automatically derived from the output expression during compilation.
  * @typedef {object} NodeDef
  * @property {string} output - Output pattern or concrete node name
  * @property {Array<string>} inputs - Array of input patterns or node names
  * @property {Computor | SchemaComputor} computor - Computor function (with or without bindings parameter)
- * @property {Array<string>} [variables] - Optional array of variable names (if this is a pattern node)
  */
 
 /**

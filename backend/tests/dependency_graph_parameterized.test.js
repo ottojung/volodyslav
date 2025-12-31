@@ -53,7 +53,6 @@ describe("Parameterized node schemas", () => {
                 {
                     output: "event_context(e)",
                     inputs: ["all_events"],
-                    variables: ["e"],
                     computor: (inputs, oldValue, bindings) => {
                         const allEvents = inputs[0].events;
                         const event = allEvents.find(
@@ -99,7 +98,6 @@ describe("Parameterized node schemas", () => {
                 {
                     output: "derived(x)",
                     inputs: ["base"],
-                    variables: ["x"],
                     computor: (inputs, oldValue, bindings) => {
                         computeCount++;
                         return {
@@ -137,7 +135,6 @@ describe("Parameterized node schemas", () => {
                 {
                     output: "derived(x)",
                     inputs: ["source"],
-                    variables: ["x"],
                     computor: (inputs, oldValue, bindings) => ({
                         count: inputs[0].count + 1,
                         id: bindings.x,
@@ -171,7 +168,6 @@ describe("Parameterized node schemas", () => {
                 {
                     output: "derived(x)",
                     inputs: ["source"],
-                    variables: ["x"],
                     computor: (inputs, oldValue, bindings) => ({
                         value: inputs[0].value,
                         id: bindings.x,
@@ -214,7 +210,6 @@ describe("Parameterized node schemas", () => {
                 {
                     output: "derived(x)",
                     inputs: ["source"],
-                    variables: ["x"],
                     computor: (inputs, oldValue, bindings) => ({
                         value: inputs[0].value * 2,
                         id: bindings.x,
@@ -255,7 +250,6 @@ describe("Parameterized node schemas", () => {
                 {
                     output: "enhanced_event(e,p)",
                     inputs: ["events", "photos"],
-                    variables: ["e", "p"],
                     computor: (inputs, oldValue, bindings) => ({
                         event: bindings.e,
                         photo: bindings.p,
@@ -289,7 +283,6 @@ describe("Parameterized node schemas", () => {
                 {
                     output: "middle(x)",
                     inputs: ["source"],
-                    variables: ["x"],
                     computor: (inputs, oldValue, bindings) => {
                         computeCount++;
                         if (
@@ -307,7 +300,6 @@ describe("Parameterized node schemas", () => {
                 {
                     output: "final(x)",
                     inputs: ["middle(x)"],
-                    variables: ["x"],
                     computor: (inputs, oldValue, bindings) => {
                         computeCount++;
                         return {
@@ -344,8 +336,7 @@ describe("Parameterized node schemas", () => {
                 {
                     output: "derived(x)",
                     inputs: [],
-                    variables: ["x"],
-                    computor: () => ({ value: 1 }),
+                    computor: (_inputs, _oldValue, _bindings) => ({ value: 1 }),
                 },
             ];
 
@@ -412,7 +403,6 @@ describe("Parameterized node schemas", () => {
                 {
                     output: "derived(x)",
                     inputs: ["base"],
-                    variables: ["x"],
                     computor: (inputs, oldValue, bindings) => ({
                         value: inputs[0].value,
                         id: bindings.x,

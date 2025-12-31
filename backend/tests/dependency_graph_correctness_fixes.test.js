@@ -47,7 +47,6 @@ describe("Correctness fixes integration tests", () => {
                 {
                     output: "derived(x)",
                     inputs: ["source"],
-                    variables: ["x"],
                     computor: (inputs, oldValue, bindings) => ({
                         value: inputs[0].value * 2,
                         id: bindings.x,
@@ -92,7 +91,6 @@ describe("Correctness fixes integration tests", () => {
                 {
                     output: "derived(x)",
                     inputs: ["base"],
-                    variables: ["x"],
                     computor: (inputs, oldValue, bindings) => ({
                         value: inputs[0].value,
                         id: bindings.x,
@@ -146,7 +144,6 @@ describe("Correctness fixes integration tests", () => {
                 {
                     output: "derived(x)",
                     inputs: ["source"],
-                    variables: ["x"],
                     computor: (inputs, oldValue, bindings) => ({
                         value: inputs[0].value,
                         id: bindings.x,
@@ -177,7 +174,7 @@ describe("Correctness fixes integration tests", () => {
     });
 
     describe("Fix D: Schema overlap detection respects repeated-variable constraints", () => {
-        test("schemas with different repeated-variable patterns are accepted", () => {
+        test("schemas with different repeated-variable patterns are detected as overlapping", () => {
             // This test verifies that the overlap detection correctly handles
             // repeated variables using unification
 
@@ -185,14 +182,12 @@ describe("Correctness fixes integration tests", () => {
                 {
                     output: "triple(x,x,x)",
                     inputs: [],
-                    variables: ["x"],
-                    computor: () => ({}),
+                    computor: (_inputs, _oldValue, _bindings) => ({}),
                 },
                 {
                     output: "triple(a,b,c)",
                     inputs: [],
-                    variables: ["a", "b", "c"],
-                    computor: () => ({}),
+                    computor: (_inputs, _oldValue, _bindings) => ({}),
                 },
             ];
 
@@ -200,23 +195,22 @@ describe("Correctness fixes integration tests", () => {
             expect(() => makeDependencyGraph(null, nodes1)).toThrow();
         });
 
-        test("schemas with conflicting constants do not overlap", () => {
+        test("schemas with different head do not overlap", () => {
+            // All args are variables now, so const1 and const2 are just variable names
             const nodes = [
                 {
-                    output: "foo(const1,x)",
+                    output: "foo(x)",
                     inputs: [],
-                    variables: ["x"],
-                    computor: () => ({}),
+                    computor: (_inputs, _oldValue, _bindings) => ({}),
                 },
                 {
-                    output: "foo(const2,y)",
+                    output: "bar(y)",
                     inputs: [],
-                    variables: ["y"],
-                    computor: () => ({}),
+                    computor: (_inputs, _oldValue, _bindings) => ({}),
                 },
             ];
 
-            // These cannot unify (const1 != const2), so they should be accepted
+            // Different heads - no overlap
             expect(() => makeDependencyGraph(null, nodes)).not.toThrow();
         });
     });
@@ -239,7 +233,6 @@ describe("Correctness fixes integration tests", () => {
                 {
                     output: "pattern_node(x)",
                     inputs: ["constant_node"],
-                    variables: ["x"],
                     computor: (inputs, oldValue, bindings) => ({
                         base: inputs[0].value,
                         id: bindings.x,
@@ -279,7 +272,6 @@ describe("Correctness fixes integration tests", () => {
                 {
                     output: "derived(x)",
                     inputs: ["source"],
-                    variables: ["x"],
                     computor: (inputs, oldValue, bindings) => ({
                         value: inputs[0].value,
                         id: bindings.x,

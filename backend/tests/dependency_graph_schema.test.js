@@ -15,7 +15,6 @@ describe("dependency_graph/schema", () => {
             const schema = {
                 output: "event_context(e)",
                 inputs: ["photo(e)"],
-                variables: ["e"],
                 computor: () => ({}),
             };
             expect(() => validateSchemaVariables(schema)).not.toThrow();
@@ -25,7 +24,6 @@ describe("dependency_graph/schema", () => {
             const schema = {
                 output: "enhanced_event(e,p)",
                 inputs: ["event(e)", "photo(p)"],
-                variables: ["e", "p"],
                 computor: () => ({}),
             };
             expect(() => validateSchemaVariables(schema)).not.toThrow();
@@ -35,7 +33,6 @@ describe("dependency_graph/schema", () => {
             const schema = {
                 output: "event_context(e)",
                 inputs: ["all_events", "meta_events"],
-                variables: ["e"],
                 computor: () => ({}),
             };
             expect(() => validateSchemaVariables(schema)).not.toThrow();
@@ -45,7 +42,6 @@ describe("dependency_graph/schema", () => {
             const schema = {
                 output: "all_events",
                 inputs: [],
-                variables: [],
                 computor: () => ({}),
             };
             expect(() => validateSchemaVariables(schema)).not.toThrow();
@@ -55,7 +51,6 @@ describe("dependency_graph/schema", () => {
             const schema = {
                 output: "event_context(e)",
                 inputs: ["photo(p)"],
-                variables: ["e", "p"],
                 computor: () => ({}),
             };
             expect(() => validateSchemaVariables(schema)).toThrow();
@@ -75,7 +70,6 @@ describe("dependency_graph/schema", () => {
             const schema = {
                 output: "result(a,b,c)",
                 inputs: ["input(a)"],
-                variables: ["a", "b", "c"],
                 computor: () => ({}),
             };
             expect(() => validateSchemaVariables(schema)).not.toThrow();
@@ -87,7 +81,6 @@ describe("dependency_graph/schema", () => {
             const schema = {
                 output: "all_events",
                 inputs: [],
-                variables: [],
                 computor: () => ({}),
             };
             const compiled = compileSchema(schema);
@@ -100,7 +93,6 @@ describe("dependency_graph/schema", () => {
             const schema = {
                 output: "event_context(e)",
                 inputs: ["all_events"],
-                variables: ["e"],
                 computor: () => ({}),
             };
             const compiled = compileSchema(schema);
@@ -117,13 +109,11 @@ describe("dependency_graph/schema", () => {
                 {
                     output: "foo(x)",
                     inputs: [],
-                    variables: ["x"],
                     computor: () => ({}),
                 },
                 {
                     output: "bar(x)",
                     inputs: [],
-                    variables: ["x"],
                     computor: () => ({}),
                 },
             ];
@@ -136,13 +126,11 @@ describe("dependency_graph/schema", () => {
                 {
                     output: "foo(x)",
                     inputs: [],
-                    variables: ["x"],
                     computor: () => ({}),
                 },
                 {
                     output: "foo(x,y)",
                     inputs: [],
-                    variables: ["x", "y"],
                     computor: () => ({}),
                 },
             ];
@@ -150,23 +138,23 @@ describe("dependency_graph/schema", () => {
             expect(() => validateNoSchemaOverlap(compiled)).not.toThrow();
         });
 
-        test("accepts schemas with conflicting constants at same position", () => {
+        test("throws on overlapping schemas with different variable names", () => {
+            // Since all args are now variables, foo(a,x) and foo(b,y) overlap
             const schemas = [
                 {
                     output: "foo(a,x)",
                     inputs: [],
-                    variables: ["x"],
                     computor: () => ({}),
                 },
                 {
                     output: "foo(b,y)",
                     inputs: [],
-                    variables: ["y"],
                     computor: () => ({}),
                 },
             ];
             const compiled = schemas.map(compileSchema);
-            expect(() => validateNoSchemaOverlap(compiled)).not.toThrow();
+            // These overlap because all args are variables
+            expect(() => validateNoSchemaOverlap(compiled)).toThrow();
         });
 
         test("throws on overlapping schemas with all variables", () => {
@@ -174,13 +162,11 @@ describe("dependency_graph/schema", () => {
                 {
                     output: "foo(x)",
                     inputs: [],
-                    variables: ["x"],
                     computor: () => ({}),
                 },
                 {
                     output: "foo(y)",
                     inputs: [],
-                    variables: ["y"],
                     computor: () => ({}),
                 },
             ];
@@ -198,18 +184,17 @@ describe("dependency_graph/schema", () => {
             expect(error.message).toContain("Overlaps");
         });
 
-        test("throws on overlapping schemas with same constants", () => {
+        test("throws on overlapping schemas (all args are variables)", () => {
+            // All args are variables now, so foo(a,x) and foo(a,y) overlap
             const schemas = [
                 {
                     output: "foo(a,x)",
                     inputs: [],
-                    variables: ["x"],
                     computor: () => ({}),
                 },
                 {
                     output: "foo(a,y)",
                     inputs: [],
-                    variables: ["y"],
                     computor: () => ({}),
                 },
             ];
@@ -222,13 +207,11 @@ describe("dependency_graph/schema", () => {
                 {
                     output: "pair(x,x)",
                     inputs: [],
-                    variables: ["x"],
                     computor: () => ({}),
                 },
                 {
                     output: "pair(a,b)",
                     inputs: [],
-                    variables: ["a", "b"],
                     computor: () => ({}),
                 },
             ];
@@ -244,19 +227,16 @@ describe("dependency_graph/schema", () => {
                 {
                     output: "pair(x,x)",
                     inputs: [],
-                    variables: ["x"],
                     computor: () => ({}),
                 },
                 {
                     output: "pair(a,b)",
                     inputs: [],
-                    variables: ["a", "b"],
                     computor: () => ({}),
                 },
                 {
                     output: "triple(x,x,x)",
                     inputs: [],
-                    variables: ["x"],
                     computor: () => ({}),
                 },
             ];

@@ -9,6 +9,7 @@ const { parseExpr, canonicalize } = require("./expr");
 /**
  * Attempts to unify a concrete node expression with a schema pattern.
  * Returns bindings if successful, or null if unification fails.
+ * Variables are automatically derived from the schema's output expression.
  *
  * @param {string} concreteKey - The concrete node key (already canonicalized)
  * @param {CompiledSchema} compiledSchema - The compiled schema to match against
@@ -27,7 +28,14 @@ function unify(concreteKey, compiledSchema) {
         return null;
     }
 
-    const variables = new Set(compiledSchema.schema.variables);
+    // Derive variables from output expression - all args are variables
+    const variables = new Set();
+    if (compiledSchema.outputExpr.kind === "call") {
+        for (const arg of compiledSchema.outputExpr.args) {
+            variables.add(arg);
+        }
+    }
+
     /** @type {Record<string, string>} */
     const bindings = {};
 

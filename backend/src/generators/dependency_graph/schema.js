@@ -11,47 +11,37 @@ const { patternsCanUnify } = require("./unify");
 /** @typedef {import('./expr').ParsedExpr} ParsedExpr */
 
 /**
- * Validates that all variables used in inputs are declared in the schema's variables list
- * and that the output variables cover all input variables.
+ * Validates that all tokens used in inputs appear in the output.
+ * This ensures no unbound variables exist.
+ * Variables are automatically derived from output expression arguments.
  *
  * @param {Schema} schema
  * @throws {Error} If validation fails
  */
 function validateSchemaVariables(schema) {
-    const declaredVars = new Set(schema.variables);
-
-    // Parse the output to find which variables are in the output
+    // Parse the output to derive variables from output expression
     const outputExpr = parseExpr(schema.output);
-    const outputVars = new Set();
+    const outputTokens = new Set();
 
     if (outputExpr.kind === "call") {
         for (const arg of outputExpr.args) {
-            if (declaredVars.has(arg)) {
-                outputVars.add(arg);
-            }
+            outputTokens.add(arg);
         }
     }
 
-    // Parse all inputs and collect variables
-    const inputVars = new Set();
+    // Parse all inputs and check that all tokens are in output
     for (const input of schema.inputs) {
         const inputExpr = parseExpr(input);
         if (inputExpr.kind === "call") {
             for (const arg of inputExpr.args) {
-                if (declaredVars.has(arg)) {
-                    inputVars.add(arg);
+                // All input args must be in output to avoid unbound variables
+                if (!outputTokens.has(arg)) {
+                    throw makeInvalidSchemaError(
+                        `Input variable '${arg}' is not present in output pattern`,
+                        schema.output
+                    );
                 }
             }
-        }
-    }
-
-    // Check that all input variables are in the output variables
-    for (const inputVar of inputVars) {
-        if (!outputVars.has(inputVar)) {
-            throw makeInvalidSchemaError(
-                `Input variable '${inputVar}' is not present in output pattern`,
-                schema.output
-            );
         }
     }
 }
@@ -137,7 +127,7 @@ function validateNoNodeOverlap(compiledNodes) {
 
 /**
  * Validates that schemas don't have overlapping patterns.
- * Backwards compatibility wrapper for validateNoNodeOverlap.
+ * Backwards compatibility wrapper - derives variables from output expressions.
  *
  * @param {Array<CompiledSchema>} compiledSchemas
  * @throws {Error} If schemas overlap
@@ -151,8 +141,20 @@ function validateNoSchemaOverlap(compiledSchemas) {
                 throw new Error("Unexpected undefined schema in validation");
             }
             
-            const vars1 = new Set(schema1.schema.variables);
-            const vars2 = new Set(schema2.schema.variables);
+            // Derive variables from output expressions
+            const vars1 = new Set();
+            if (schema1.outputExpr.kind === "call") {
+                for (const arg of schema1.outputExpr.args) {
+                    vars1.add(arg);
+                }
+            }
+            
+            const vars2 = new Set();
+            if (schema2.outputExpr.kind === "call") {
+                for (const arg of schema2.outputExpr.args) {
+                    vars2.add(arg);
+                }
+            }
             
             if (patternsCanUnify(schema1.outputExpr, vars1, schema2.outputExpr, vars2)) {
                 throw makeInvalidSchemaError(
