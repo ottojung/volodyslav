@@ -273,7 +273,11 @@ class DependencyGraphClass {
             );
         }
 
-        return matches[0];
+        const match = matches[0];
+        if (!match) {
+            return null;
+        }
+        return match;
     }
 
     /**
@@ -281,7 +285,7 @@ class DependencyGraphClass {
      * @private
      * @param {string} concreteKeyCanonical - Canonical concrete node key
      * @param {boolean} allowPassThrough - If true, allows creating pass-through nodes for constants
-     * @returns {Promise<{output: string, inputs: string[], computor: (inputs: DatabaseValue[], oldValue: DatabaseValue | undefined) => DatabaseValue | Unchanged}>}
+     * @returns {Promise<{output: string, inputs: string[], computor: (inputs: DatabaseValue[], oldValue: DatabaseValue | undefined) => DatabaseValue | Unchanged, __instantiationMarkerKey?: string}>}
      * @throws {Error} If no pattern matches and node not in graph
      */
     async getOrCreateConcreteNode(concreteKeyCanonical, allowPassThrough = false) {
