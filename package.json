@@ -9,7 +9,7 @@
   ],
   "scripts": {
     "dev": "sh scripts/run-development-server",
-    "build": "tsc && npm run build -w frontend",
+    "build": "npm run build -w frontend",
     "start": "npm run build && npm run start -w backend",
     "static-analysis": "tsc --noEmit && eslint . --max-warnings 0 --report-unused-disable-directives",
     "test": "tsc --noEmit && eslint . --max-warnings 0 --report-unused-disable-directives && jest",
