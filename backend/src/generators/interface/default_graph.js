@@ -4,14 +4,14 @@ const { metaEvents, eventContext } = require("../individual");
 
 /**
  * Creates the default graph definition for the dependency graph.
- * @returns {Array<import('../dependency_graph/types').GraphNode>}
+ * @returns {Array<import('../dependency_graph/types').NodeDef>}
  */
 function createDefaultGraphDefinition() {
     return [
         {
             output: "all_events",
             inputs: [],
-            computor: (_inputs, oldValue) => {
+            computor: (_inputs, oldValue, _bindings) => {
                 // Pass-through for all_events - just return existing value
                 return oldValue || { type: "all_events", events: [] };
             },
@@ -19,7 +19,7 @@ function createDefaultGraphDefinition() {
         {
             output: "meta_events",
             inputs: ["all_events"],
-            computor: (inputs, oldValue) => {
+            computor: (inputs, oldValue, _bindings) => {
                 const allEventsEntry = inputs[0];
                 if (!allEventsEntry) {
                     return { type: "meta_events", meta_events: [] };
@@ -55,7 +55,7 @@ function createDefaultGraphDefinition() {
         {
             output: "event_context",
             inputs: ["meta_events"],
-            computor: (inputs) => {
+            computor: (inputs, _oldValue, _bindings) => {
                 const metaEventsEntry = inputs[0];
                 if (!metaEventsEntry) {
                     return { type: "event_context", contexts: [] };
