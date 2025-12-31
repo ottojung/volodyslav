@@ -100,6 +100,177 @@ function isSchemaPatternNotAllowed(object) {
     return object instanceof SchemaPatternNotAllowed;
 }
 
+/**
+ * Error for invalid expression syntax (parse failures).
+ */
+class InvalidExpression extends Error {
+    /**
+     * @param {string} expression
+     * @param {string} reason
+     */
+    constructor(expression, reason) {
+        super(`Invalid expression '${expression}': ${reason}`);
+        this.name = "InvalidExpression";
+        this.expression = expression;
+    }
+}
+
+/**
+ * Constructs an InvalidExpression error.
+ * @param {string} expression
+ * @param {string} reason
+ * @returns {InvalidExpression}
+ */
+function makeInvalidExpressionError(expression, reason) {
+    return new InvalidExpression(expression, reason);
+}
+
+/**
+ * Type guard for InvalidExpression.
+ * @param {unknown} object
+ * @returns {object is InvalidExpression}
+ */
+function isInvalidExpression(object) {
+    return object instanceof InvalidExpression;
+}
+
+/**
+ * Error for attempting to set a non-source node.
+ */
+class InvalidSet extends Error {
+    /**
+     * @param {string} nodeName
+     */
+    constructor(nodeName) {
+        super(
+            `Cannot set non-source node '${nodeName}'. ` +
+                `Only source nodes (external or with no inputs) can be set directly.`
+        );
+        this.name = "InvalidSet";
+        this.nodeName = nodeName;
+    }
+}
+
+/**
+ * Constructs an InvalidSet error.
+ * @param {string} nodeName
+ * @returns {InvalidSet}
+ */
+function makeInvalidSetError(nodeName) {
+    return new InvalidSet(nodeName);
+}
+
+/**
+ * Type guard for InvalidSet.
+ * @param {unknown} object
+ * @returns {object is InvalidSet}
+ */
+function isInvalidSet(object) {
+    return object instanceof InvalidSet;
+}
+
+/**
+ * Error for schema cycle detection.
+ */
+class SchemaCycle extends Error {
+    /**
+     * @param {string[]} cycle
+     */
+    constructor(cycle) {
+        super(`Schema cycle detected: ${cycle.join(" -> ")}`);
+        this.name = "SchemaCycle";
+        this.cycle = cycle;
+    }
+}
+
+/**
+ * Constructs a SchemaCycle error.
+ * @param {string[]} cycle
+ * @returns {SchemaCycle}
+ */
+function makeSchemaCycleError(cycle) {
+    return new SchemaCycle(cycle);
+}
+
+/**
+ * Type guard for SchemaCycle.
+ * @param {unknown} object
+ * @returns {object is SchemaCycle}
+ */
+function isSchemaCycle(object) {
+    return object instanceof SchemaCycle;
+}
+
+/**
+ * Error for missing value when node is marked up-to-date.
+ */
+class MissingValue extends Error {
+    /**
+     * @param {string} nodeName
+     */
+    constructor(nodeName) {
+        super(
+            `Expected value for up-to-date node '${nodeName}', but found none. ` +
+                `This indicates database corruption or an implementation bug.`
+        );
+        this.name = "MissingValue";
+        this.nodeName = nodeName;
+    }
+}
+
+/**
+ * Constructs a MissingValue error.
+ * @param {string} nodeName
+ * @returns {MissingValue}
+ */
+function makeMissingValueError(nodeName) {
+    return new MissingValue(nodeName);
+}
+
+/**
+ * Type guard for MissingValue.
+ * @param {unknown} object
+ * @returns {object is MissingValue}
+ */
+function isMissingValue(object) {
+    return object instanceof MissingValue;
+}
+
+/**
+ * Error for overlapping schema patterns.
+ */
+class SchemaOverlap extends Error {
+    /**
+     * @param {string[]} patterns
+     */
+    constructor(patterns) {
+        super(
+            `Schema patterns overlap: ${patterns.join(", ")}. ` +
+                `All schema output patterns must be mutually exclusive.`
+        );
+        this.name = "SchemaOverlap";
+        this.patterns = patterns;
+    }
+}
+
+/**
+ * Constructs a SchemaOverlap error.
+ * @param {string[]} patterns
+ * @returns {SchemaOverlap}
+ */
+function makeSchemaOverlapError(patterns) {
+    return new SchemaOverlap(patterns);
+}
+
+/**
+ * Type guard for SchemaOverlap.
+ * @param {unknown} object
+ * @returns {object is SchemaOverlap}
+ */
+function isSchemaOverlap(object) {
+    return object instanceof SchemaOverlap;
+}
+
 module.exports = {
     makeInvalidNodeError,
     isInvalidNode,
@@ -107,4 +278,14 @@ module.exports = {
     isInvalidSchema,
     makeSchemaPatternNotAllowedError,
     isSchemaPatternNotAllowed,
+    makeInvalidExpressionError,
+    isInvalidExpression,
+    makeInvalidSetError,
+    isInvalidSet,
+    makeSchemaCycleError,
+    isSchemaCycle,
+    makeMissingValueError,
+    isMissingValue,
+    makeSchemaOverlapError,
+    isSchemaOverlap,
 };
