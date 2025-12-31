@@ -22,7 +22,7 @@ The Dependency Graph is a lazy evaluation system that propagates changes through
 
 * **NodeName** — unique identifier for a node in the graph
 * **NodeValue** — the computed value at a node
-* **Freshness** — one of `{ clean, dirty, potentially-dirty }`
+* **Freshness** — one of `{ up-to-date, potentially-outdated }`
 * **Computor** — a deterministic function `(inputs: NodeValue[], oldValue: NodeValue | undefined) => NodeValue | Unchanged`
 * **Unchanged** — a sentinel value indicating the computation returned the same value as before
 
@@ -35,9 +35,8 @@ A **DependencyGraph** is defined by:
 
 ### Freshness States
 
-* **clean** — The node's value is guaranteed to be consistent with all its dependencies
-* **dirty** — The node's value has been explicitly changed and needs recomputation
-* **potentially-dirty** — The node MAY need recomputation because an upstream dependency changed
+* **up-to-date** — The node's value is guaranteed to be consistent with all its dependencies
+* **potentially-outdated** — The node MAY need recomputation because an upstream dependency changed
 
 ---
 
@@ -45,36 +44,36 @@ A **DependencyGraph** is defined by:
 
 The dependency graph MUST maintain these invariants at all stable states (between operations):
 
-### I1: Freshness Propagation Invariant
+### I1: Outdated Propagation Invariant
 
-If a node is `potentially-dirty` or `dirty`, then all nodes reachable from it (its dependents) are either `potentially-dirty` or `dirty`.
+If a node is `potentially-outdated`, then all nodes reachable from it (its dependents) are also `potentially-outdated`.
 
 **Formally:** 
 ```
 ∀ node N, dependent D where D depends (transitively) on N:
-  freshness(N) ∈ {dirty, potentially-dirty} 
-  ⟹ freshness(D) ∈ {dirty, potentially-dirty}
+  freshness(N) = potentially-outdated
+  ⟹ freshness(D) = potentially-outdated
 ```
 
-### I2: Clean Upstream Invariant
+### I2: Up-to-Date Upstream Invariant
 
-If a node is `clean`, then all nodes it depends on (transitively) are `clean`.
+If a node is `up-to-date`, then all nodes it depends on (transitively) are `up-to-date`.
 
 **Formally:**
 ```
 ∀ node N, dependency I where N depends (transitively) on I:
-  freshness(N) = clean 
-  ⟹ freshness(I) = clean
+  freshness(N) = up-to-date
+  ⟹ freshness(I) = up-to-date
 ```
 
 ### I3: Value Consistency Invariant
 
-If a node is `clean`, its value MUST equal what would be computed by recursively evaluating all its dependencies and applying its computor function.
+If a node is `up-to-date`, its value MUST equal what would be computed by recursively evaluating all its dependencies and applying its computor function.
 
 **Formally:**
 ```
 ∀ node N:
-  freshness(N) = clean 
+  freshness(N) = up-to-date
   ⟹ value(N) = computor_N([value(I₁), ..., value(Iₙ)], previous_value(N))
   where I₁, ..., Iₙ are N's inputs
 ```
@@ -89,15 +88,192 @@ If a node is `clean`, its value MUST equal what would be computed by recursively
 
 **Effects:**
 1. Store `value` at `nodeName`
-2. Mark `nodeName` as `dirty`
-3. Mark all dependents (transitively) as `potentially-dirty`
+2. Mark `nodeName` as `up-to-date`
+3. Mark all dependents (transitively) as `potentially-outdated`
 
 **Postconditions:**
-* freshness(nodeName) = dirty
-* All reachable dependents are marked `potentially-dirty`
+* freshness(nodeName) = up-to-date
+* All reachable dependents are marked `potentially-outdated`
 * Invariants I1, I2, I3 are preserved
 
 ---
+
+### pull(nodeName) → NodeValue
+
+**Preconditions:** nodeName exists in the graph
+
+**Big-Step Semantics (Correctness Specification):**
+
+```
+pull(N):
+  inputs_values = [pull(I) for I in inputs_of(N)]
+  old_value = stored_value(N)
+  new_value = computor_N(inputs_values, old_value)
+  if new_value ≠ Unchanged:
+    store(N, new_value)
+  mark_up_to_date(N)
+  return stored_value(N)
+```
+
+**Small-Step Semantics (Efficient Implementation):**
+
+```
+pull(N):
+  freshness = get_freshness(N)
+  
+  if freshness = up-to-date:
+    // Fast path: by I2, all inputs are up-to-date
+    return cached_value(N)
+  
+  // potentially-outdated: need to check
+  input_values = [pull(I) for I in inputs_of(N)]
+  
+  // Check if we were marked up-to-date by propagation
+  if get_freshness(N) = up-to-date:
+    return cached_value(N)
+  
+  // Must recompute
+  old_value = cached_value(N)
+  new_value = computor_N(input_values, old_value)
+  
+  if new_value ≠ Unchanged:
+    store(N, new_value)
+  
+  mark_up_to_date(N)
+  
+  // Optimization: propagate up-to-date to dependents
+  if new_value = Unchanged:
+    propagate_up_to_date_downstream(N)
+  
+  return cached_value(N)
+```
+
+---
+
+## Correctness Properties
+
+### P1: Semantic Equivalence
+
+For any node N and any state of the database:
+
+```
+result_pull = pull(N)
+result_recompute = full_recompute_from_scratch(N)
+
+⟹ result_pull = result_recompute
+```
+
+Where `full_recompute_from_scratch` ignores all cached values and freshness states.
+
+### P2: Progress
+
+Every call to `pull(N)` MUST terminate (assuming all computor functions terminate).
+
+**Proof sketch:** The graph is acyclic, so recursive calls form a DAG traversal. Each node is visited at most once per pull due to freshness caching.
+
+### P3: Minimal Recomputation
+
+A node's computor is invoked at most once per `pull` operation, even if the node appears in multiple dependency paths.
+
+### P4: Freshness Preservation
+
+After `pull(N)` completes:
+* N is marked `up-to-date`
+* All nodes on which N (transitively) depends are marked `up-to-date`
+* All nodes that (transitively) depend on N remain `potentially-outdated` (unless optimized by propagate_up_to_date_downstream)
+
+---
+
+## Optimization: Unchanged Propagation
+
+When a computor returns `Unchanged`:
+1. The node's value is NOT updated (keeps old value)
+2. The node is marked `up-to-date`
+3. Clean state propagates to dependents that are `potentially-outdated` and have all inputs `up-to-date`
+
+**Algorithm for propagate_up_to_date_downstream(N):**
+
+```
+propagate_up_to_date_downstream(N):
+  for each dependent D of N:
+    if freshness(D) = potentially-outdated:
+      if all inputs of D are up-to-date:
+        mark_up_to_date(D)
+        propagate_up_to_date_downstream(D)  // recursive
+```
+
+This optimization is CRITICAL for efficiency with large dependency chains and diamond patterns.
+
+---
+
+## Edge Cases
+
+### Missing Values
+
+If a node is marked `up-to-date` but has no stored value, this is an error state that MUST throw an exception.
+
+**Rationale:** An `up-to-date` node guarantees value availability. If the value is missing, the database is corrupted.
+
+### Leaf Nodes
+
+Leaf nodes (nodes with no inputs) typically have pass-through computors:
+
+```javascript
+{
+  output: "leaf",
+  inputs: [],
+  computor: (_inputs, oldValue) => oldValue || defaultValue
+}
+```
+
+These nodes are written directly via `set()` and serve as entry points to the graph.
+
+---
+
+## Implementation Notes
+
+### Batching
+
+All database operations within a single `set` call MUST be batched and executed atomically.
+
+Database operations during `pull` MUST be batched per node recomputation.
+
+### Dependents Map
+
+To efficiently implement `propagate_up_to_date_downstream` and `mark_potentially_outdated`, implementations SHOULD pre-compute a reverse dependency map:
+
+```javascript
+dependentsMap: Map<NodeName, Array<Node>>
+```
+
+This allows O(1) lookup of a node's immediate dependents.
+
+---
+
+## Testing Strategy
+
+### Property-Based Testing
+
+Tests SHOULD verify:
+1. **Correctness:** `pull(N)` equals `recompute_from_scratch(N)` for random graphs and states
+2. **Idempotence:** `pull(N); pull(N)` equals `pull(N)` (second call should be fast)
+3. **Consistency:** After `set(N, v); pull(M)`, all freshness states satisfy invariants
+
+### Scenario Testing
+
+Tests MUST cover:
+1. Linear chains (A → B → C)
+2. Diamond graphs (A → B,C → D)
+3. Unchanged propagation (node returns `Unchanged`, dependents skip recomputation)
+4. Mixed freshness states (some up-to-date, some potentially-outdated)
+
+---
+
+## Comparison to Step/Run API
+
+The original implementation included `step()` and `run()` methods for push-based propagation. These are now DEPRECATED in favor of pull-based evaluation.
+
+**Rationale:** Pull-based evaluation provides better lazy evaluation semantics and clearer correctness properties. The big-step semantics of `pull` is trivial to specify, whereas `step/run` requires complex iteration semantics.
 
 ### pull(nodeName) → NodeValue
 

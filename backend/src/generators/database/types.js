@@ -58,7 +58,7 @@
 
 /**
  * Freshness state for a database value
- * @typedef {'dirty' | 'potentially-dirty' | 'clean'} Freshness
+ * @typedef {'up-to-date' | 'potentially-outdated'} Freshness
  */
 
 /**
@@ -76,7 +76,7 @@ function freshnessKey(key) {
  * @returns {value is Freshness}
  */
 function isFreshness(value) {
-    return value === "dirty" || value === "potentially-dirty" || value === "clean";
+    return value === "up-to-date" || value === "potentially-outdated";
 }
 
 /**
