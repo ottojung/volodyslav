@@ -5,11 +5,12 @@
 
 /** @typedef {import('../database/class').Database} Database */
 /** @typedef {import('../database/types').DatabaseValue} DatabaseValue */
-/** @typedef {import('../database/types').Freshness} Freshness */
+/** @typedef {import('../database/types').Version} Version */
+/** @typedef {import('../database/types').DependencyVersions} DependencyVersions */
 
 /**
  * Union type for values that can be stored in the database.
- * @typedef {DatabaseValue | Freshness} DatabaseStoredValue
+ * @typedef {DatabaseValue | Version | DependencyVersions} DatabaseStoredValue
  */
 
 /**
@@ -148,7 +149,7 @@ function makeIndex(database, schemaHash) {
         // Extract inputs array from the stored object
         // We stored it as { inputs: string[] }
         if (typeof value === "object" && value !== null && "inputs" in value) {
-            const inputs = value.inputs;
+            const inputs = value["inputs"];
             if (Array.isArray(inputs)) {
                 return inputs;
             }

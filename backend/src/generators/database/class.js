@@ -3,11 +3,12 @@
  */
 
 const { DatabaseQueryError } = require("./errors");
-const { isDatabaseValue, isFreshness } = require("./types");
+const { isDatabaseValue, isVersion, isDependencyVersions } = require("./types");
 
 /** @typedef {import('./types').DatabaseValue} DatabaseValue */
-/** @typedef {import('./types').Freshness} Freshness */
-/** @typedef {DatabaseValue | Freshness} DatabaseStoredValue */
+/** @typedef {import('./types').Version} Version */
+/** @typedef {import('./types').DependencyVersions} DependencyVersions */
+/** @typedef {DatabaseValue | Version | DependencyVersions} DatabaseStoredValue */
 /** @typedef {import('level').Level<string, DatabaseStoredValue>} LevelDB */
 /** @typedef {import('./types').DatabaseCapabilities} DatabaseCapabilities */
 
@@ -105,21 +106,43 @@ class DatabaseClass {
     }
 
     /**
-     * Retrieves a freshness state from the database.
-     * @param {string} key - The freshness key to retrieve
-     * @returns {Promise<Freshness | undefined>}
+     * Retrieves a version number from the database.
+     * @param {string} key - The version key to retrieve
+     * @returns {Promise<Version | undefined>}
      * @throws {DatabaseQueryError} If the operation fails
      */
-    async getFreshness(key) {
+    async getVersion(key) {
         const result = await this.get(key);
         if (result === undefined) {
             return undefined;
         }
-        if (isFreshness(result)) {
+        if (isVersion(result)) {
             return result;
         } else {
             throw new DatabaseQueryError(
-                `Expected freshness for key ${key}, but found something else.`,
+                `Expected version for key ${key}, but found something else.`,
+                this.databasePath,
+                `GET ${key}`
+            );
+        }
+    }
+
+    /**
+     * Retrieves dependency versions from the database.
+     * @param {string} key - The dependency versions key to retrieve
+     * @returns {Promise<DependencyVersions | undefined>}
+     * @throws {DatabaseQueryError} If the operation fails
+     */
+    async getDependencyVersions(key) {
+        const result = await this.get(key);
+        if (result === undefined) {
+            return undefined;
+        }
+        if (isDependencyVersions(result)) {
+            return result;
+        } else {
+            throw new DatabaseQueryError(
+                `Expected dependency versions for key ${key}, but found something else.`,
                 this.databasePath,
                 `GET ${key}`
             );

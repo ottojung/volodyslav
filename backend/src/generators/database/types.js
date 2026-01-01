@@ -57,32 +57,66 @@
  */
 
 /**
- * Freshness state for a database value
- * @typedef {'up-to-date' | 'potentially-outdated'} Freshness
+ * Version number for tracking value changes.
+ * Version increments when a node's value changes.
+ * @typedef {number} Version
  */
 
 /**
- * Constructs the freshness key for a given database key.
- * @param {string} key - The database key
- * @returns {string} The freshness key
+ * Dependency versions snapshot.
+ * Maps dependency keys to their version numbers at the time of computation.
+ * @typedef {Record<string, Version>} DependencyVersions
  */
-function freshnessKey(key) {
-    return `freshness(${key})`;
+
+/**
+ * Constructs the version key for a given database key.
+ * @param {string} key - The database key
+ * @returns {string} The version key
+ */
+function versionKey(key) {
+    return `version(${key})`;
 }
 
 /**
- * Type guard to check if a value is a Freshness state.
- * @param {unknown} value
- * @returns {value is Freshness}
+ * Constructs the dependency versions key for a given database key.
+ * @param {string} key - The database key
+ * @returns {string} The dependency versions key
  */
-function isFreshness(value) {
-    return value === "up-to-date" || value === "potentially-outdated";
+function depVersionsKey(key) {
+    return `dep_versions(${key})`;
+}
+
+/**
+ * Type guard to check if a value is a Version.
+ * @param {unknown} value
+ * @returns {value is Version}
+ */
+function isVersion(value) {
+    return typeof value === "number" && Number.isInteger(value) && value >= 0;
+}
+
+/**
+ * Type guard to check if a value is DependencyVersions.
+ * @param {unknown} value
+ * @returns {value is DependencyVersions}
+ */
+function isDependencyVersions(value) {
+    if (value === null || value === undefined || typeof value !== "object") {
+        return false;
+    }
+    // Check all values are valid versions
+    for (const v of Object.values(value)) {
+        if (!isVersion(v)) {
+            return false;
+        }
+    }
+    return true;
 }
 
 /**
  * Type guard to check if a value is a DatabaseValue.
  * Since DatabaseValue is a union of specific object types, we check if it's
- * an object and not a Freshness string.
+ * an object and not a Version or DependencyVersions metadata.
  * @param {unknown} value
  * @returns {value is DatabaseValue}
  */
@@ -91,12 +125,15 @@ function isDatabaseValue(value) {
         value !== null &&
         value !== undefined &&
         typeof value === "object" &&
-        !isFreshness(value)
+        !isVersion(value) &&
+        !isDependencyVersions(value)
     );
 }
 
 module.exports = {
-    freshnessKey,
-    isFreshness,
+    versionKey,
+    depVersionsKey,
+    isVersion,
+    isDependencyVersions,
     isDatabaseValue,
 };
