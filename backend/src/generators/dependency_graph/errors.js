@@ -110,7 +110,7 @@ class InvalidExpression extends Error {
      */
     constructor(expression, reason) {
         super(`Invalid expression '${expression}': ${reason}`);
-        this.name = "InvalidExpression";
+        this.name = "InvalidExpressionError";
         this.expression = expression;
     }
 }
@@ -146,7 +146,7 @@ class InvalidSet extends Error {
             `Cannot set non-source node '${nodeName}'. ` +
                 `Only source nodes (external or with no inputs) can be set directly.`
         );
-        this.name = "InvalidSet";
+        this.name = "InvalidSetError";
         this.nodeName = nodeName;
     }
 }
@@ -178,7 +178,7 @@ class SchemaCycle extends Error {
      */
     constructor(cycle) {
         super(`Schema cycle detected: ${cycle.join(" -> ")}`);
-        this.name = "SchemaCycle";
+        this.name = "SchemaCycleError";
         this.cycle = cycle;
     }
 }
@@ -213,7 +213,7 @@ class MissingValue extends Error {
             `Expected value for up-to-date node '${nodeName}', but found none. ` +
                 `This indicates database corruption or an implementation bug.`
         );
-        this.name = "MissingValue";
+        this.name = "MissingValueError";
         this.nodeName = nodeName;
     }
 }
@@ -248,7 +248,7 @@ class SchemaOverlap extends Error {
             `Schema patterns overlap: ${patterns.join(", ")}. ` +
                 `All schema output patterns must be mutually exclusive.`
         );
-        this.name = "SchemaOverlap";
+        this.name = "SchemaOverlapError";
         this.patterns = patterns;
     }
 }

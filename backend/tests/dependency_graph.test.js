@@ -1538,4 +1538,142 @@ describe("generators/dependency_graph", () => {
             await db.close();
         });
     });
+
+    describe("Debug Interface", () => {
+        test("debugGetFreshness returns correct status", async () => {
+            const capabilities = getTestCapabilities();
+            const db = await getDatabase(capabilities);
+
+            const graphDef = [
+                {
+                    output: "node1",
+                    inputs: [],
+                    computor: (_inputs, oldValue) => oldValue || { val: 1 },
+                },
+                {
+                    output: "node2",
+                    inputs: ["node1"],
+                    computor: ([n1]) => ({ val: n1.val + 1 }),
+                }
+            ];
+
+            const graph = makeDependencyGraph(db, graphDef);
+
+            // Initially missing
+            expect(await graph.debugGetFreshness("node1")).toBe("missing");
+
+            // Set node1 -> up-to-date
+            await graph.set("node1", { val: 10 });
+            expect(await graph.debugGetFreshness("node1")).toBe("up-to-date");
+            
+            // node2 should be potentially-outdated (propagated from set)
+            expect(await graph.debugGetFreshness("node2")).toBe("potentially-outdated");
+
+            // Pull node2 -> up-to-date
+            await graph.pull("node2");
+            expect(await graph.debugGetFreshness("node2")).toBe("up-to-date");
+
+            await db.close();
+        });
+
+        test("debugListMaterializedNodes lists all materialized nodes", async () => {
+            const capabilities = getTestCapabilities();
+            const db = await getDatabase(capabilities);
+
+            const graphDef = [
+                {
+                    output: "node1",
+                    inputs: [],
+                    computor: (_inputs, oldValue) => oldValue || { val: 1 },
+                },
+                {
+                    output: "node2",
+                    inputs: ["node1"],
+                    computor: ([n1]) => ({ val: n1.val + 1 }),
+                }
+            ];
+
+            const graph = makeDependencyGraph(db, graphDef);
+
+            // Initially empty
+            expect(await graph.debugListMaterializedNodes()).toEqual([]);
+
+            // Set node1
+            await graph.set("node1", { val: 10 });
+            
+            const nodes = await graph.debugListMaterializedNodes();
+            expect(nodes).toContain("node1");
+            expect(nodes).not.toContain("node2");
+
+            // Pull node2
+            await graph.pull("node2");
+            
+            const nodes2 = await graph.debugListMaterializedNodes();
+            expect(nodes2).toContain("node1");
+            expect(nodes2).toContain("node2");
+            expect(nodes2.length).toBe(2);
+
+            await db.close();
+        });
+    });
+
+    describe("Schema Validation", () => {
+        test("detects cycles in schema", async () => {
+            const capabilities = getTestCapabilities();
+            const db = await getDatabase(capabilities);
+
+            const graphDef = [
+                {
+                    output: "node1",
+                    inputs: ["node2"],
+                    computor: () => ({}),
+                },
+                {
+                    output: "node2",
+                    inputs: ["node1"],
+                    computor: () => ({}),
+                }
+            ];
+
+            let error;
+            try {
+                makeDependencyGraph(db, graphDef);
+            } catch (e) {
+                error = e;
+            }
+            expect(error).toBeDefined();
+            expect(error.name).toBe("SchemaCycleError");
+
+            await db.close();
+        });
+
+        test("detects overlapping schemas", async () => {
+            const capabilities = getTestCapabilities();
+            const db = await getDatabase(capabilities);
+
+            const graphDef = [
+                {
+                    output: "node(x)",
+                    inputs: [],
+                    computor: () => ({}),
+                },
+                {
+                    output: "node(y)",
+                    inputs: [],
+                    computor: () => ({}),
+                }
+            ];
+
+            let error;
+            try {
+                makeDependencyGraph(db, graphDef);
+            } catch (e) {
+                error = e;
+            }
+            expect(error).toBeDefined();
+            expect(error.name).toBe("SchemaOverlapError");
+
+            await db.close();
+        });
+    });
 });

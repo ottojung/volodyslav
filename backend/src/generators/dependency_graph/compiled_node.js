@@ -3,7 +3,11 @@
  */
 
 const { parseExpr, renderExpr } = require("./expr");
-const { makeInvalidSchemaError } = require("./errors");
+const { 
+    makeInvalidSchemaError, 
+    makeSchemaOverlapError, 
+    makeSchemaCycleError 
+} = require("./errors");
 
 /** @typedef {import('./types').NodeDef} NodeDef */
 /** @typedef {import('./types').CompiledNode} CompiledNode */
@@ -276,11 +280,78 @@ function validateNoOverlap(compiledNodes) {
             }
             
             if (patternsCanOverlap(node1, node2)) {
-                throw makeInvalidSchemaError(
-                    `Overlaps with node '${node2.canonicalOutput}'`,
-                    node1.canonicalOutput
+                throw makeSchemaOverlapError(
+                    [node1.canonicalOutput, node2.canonicalOutput]
                 );
             }
+        }
+    }
+}
+
+/**
+ * Validates that the schema graph is acyclic.
+ * @param {CompiledNode[]} compiledNodes
+ * @throws {Error} If a cycle is detected
+ */
+function validateAcyclic(compiledNodes) {
+    // Build adjacency list
+    /** @type {Map<CompiledNode, CompiledNode[]>} */
+    const adj = new Map();
+    for (const node of compiledNodes) {
+        adj.set(node, []);
+    }
+
+    for (const node of compiledNodes) {
+        for (const inputExpr of node.inputExprs) {
+            // Create a dummy node for the input pattern to check overlap
+            // We cast to CompiledNode because patternsCanOverlap only needs specific properties
+            const inputDummy = /** @type {CompiledNode} */ ({
+                outputExpr: inputExpr,
+                head: inputExpr.name,
+                arity: inputExpr.kind === 'call' ? inputExpr.args.length : 0,
+            });
+
+            for (const potentialDep of compiledNodes) {
+                if (patternsCanOverlap(inputDummy, potentialDep)) {
+                    const deps = adj.get(node);
+                    if (deps) {
+                        deps.push(potentialDep);
+                    }
+                }
+            }
+        }
+    }
+
+    // DFS for cycle detection
+    /** @type {Set<CompiledNode>} */
+    const visited = new Set();
+    /** @type {Set<CompiledNode>} */
+    const recursionStack = new Set();
+
+    /**
+     * @param {CompiledNode} node
+     */
+    function dfs(node) {
+        visited.add(node);
+        recursionStack.add(node);
+
+        const neighbors = adj.get(node) || [];
+        for (const neighbor of neighbors) {
+            if (!visited.has(neighbor)) {
+                dfs(neighbor);
+            } else if (recursionStack.has(neighbor)) {
+                throw makeSchemaCycleError(
+                    [node.canonicalOutput, neighbor.canonicalOutput]
+                );
+            }
+        }
+
+        recursionStack.delete(node);
+    }
+
+    for (const node of compiledNodes) {
+        if (!visited.has(node)) {
+            dfs(node);
         }
     }
 }
@@ -361,5 +432,6 @@ module.exports = {
     extractVariables,
     argToConstValue,
     validateNoOverlap,
+    validateAcyclic,
     patternsCanOverlap,
 };

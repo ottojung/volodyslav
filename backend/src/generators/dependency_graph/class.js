@@ -22,7 +22,7 @@ const {
     makeInvalidSetError,
 } = require("./errors");
 const { canonicalize, parseExpr } = require("./expr");
-const { compileNodeDef, validateNoOverlap } = require("./compiled_node");
+const { compileNodeDef, validateNoOverlap, validateAcyclic } = require("./compiled_node");
 const { matchConcrete, substitute, validateConcreteKey } = require("./unify");
 const { extractVariables } = require("./compiled_node");
 const { makeIndex } = require("./index_helper");
@@ -392,6 +392,9 @@ class DependencyGraphClass {
         // Validate no overlaps
         validateNoOverlap(compiledNodes);
 
+        // Validate acyclic
+        validateAcyclic(compiledNodes);
+
         // Compute schema hash for namespacing DB keys
         // Use a stable canonical representation of the schema
         const schemaRepresentation = compiledNodes
@@ -699,6 +702,55 @@ class DependencyGraphClass {
 
         // Potentially-outdated or undefined freshness: need to maybe recalculate
         return await this.maybeRecalculate(nodeDefinition);
+    }
+
+    /**
+     * Query conceptual freshness state of a node.
+     * @param {string} nodeName - The name of the node
+     * @returns {Promise<"up-to-date" | "potentially-outdated" | "missing">}
+     */
+    async debugGetFreshness(nodeName) {
+        const canonicalName = canonicalize(nodeName);
+        const freshness = await this.database.getFreshness(
+            freshnessKey(canonicalName)
+        );
+        if (freshness === undefined) {
+            return "missing";
+        }
+        return freshness;
+    }
+
+    /**
+     * List all materialized nodes (canonical names).
+     * @returns {Promise<string[]>}
+     */
+    async debugListMaterializedNodes() {
+        const allKeys = await this.database.keys();
+        const materializedNodes = [];
+        
+        for (const key of allKeys) {
+            // Skip internal index keys
+            if (key.startsWith("dg:")) {
+                continue;
+            }
+
+            // Optimization: if it doesn't start with "freshness(", it's definitely a node
+            if (!key.startsWith("freshness(")) {
+                materializedNodes.push(key);
+                continue;
+            }
+
+            // It starts with "freshness(". It could be a freshness key OR a node named "freshness(...)".
+            // We must check the value type to distinguish.
+            // Freshness is a string, DatabaseValue is an object.
+            const value = await this.database.get(key);
+            
+            if (typeof value === "object" && value !== null) {
+                materializedNodes.push(key);
+            }
+        }
+        
+        return materializedNodes;
     }
 }
 
