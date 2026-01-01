@@ -730,7 +730,7 @@ describe("Basic operational semantics: set/pull, caching, invalidation", () => {
         );
     });
 
-    test.failing("unchanged optimization", async () => {
+    test("unchanged optimization", async () => {
         // Note that the only difference vs the "outdated propagation" test above
         // is that b's computor returns makeUnchanged() if a did not change.
         // But the freshness propagation behavior must be the same.

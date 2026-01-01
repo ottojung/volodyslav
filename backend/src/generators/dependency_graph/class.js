@@ -437,122 +437,6 @@ class DependencyGraphClass {
      */
 
     /**
-     * Propagates up-to-date state to downstream potentially-outdated nodes.
-     * Called AFTER a node is marked up-to-date.
-     * Only affects potentially-outdated nodes whose inputs are all up-to-date.
-     * Uses both static dependents and DB-persisted reverse dependencies.
-     *
-     * @private
-     * @param {string} nodeName - The node that was marked up-to-date
-     * @param {Array<{type: "put", key: string, value: DatabaseStoredValue} | {type: "del", key: string}>} batchOperations - Batch to add operations to
-     * @param {Set<string>} nodesBecomingUpToDate - Set of nodes that are becoming up-to-date in this batch
-     * @returns {Promise<void>}
-     */
-    async propagateUpToDate(nodeName, batchOperations, nodesBecomingUpToDate) {
-        // Collect dependents from both static map and DB
-        const staticDependents = this.dependentsMap.get(nodeName) || [];
-        const dynamicDependentKeys = await this.storage.listDependents(nodeName);
-
-        // Process static dependents (we already have their inputs)
-        for (const dependent of staticDependents) {
-            // If already processed in this batch, skip
-            if (nodesBecomingUpToDate.has(dependent.output)) {
-                continue;
-            }
-
-            const depFreshness = await this.storage.getNodeFreshness(
-                dependent.output
-            );
-
-            // Only process potentially-outdated nodes
-            if (depFreshness !== "potentially-outdated") {
-                continue;
-            }
-
-            // Check if all inputs are up-to-date
-            let allInputsUpToDate = true;
-            for (const inputKey of dependent.inputs) {
-                // Input is up-to-date if it's in the current batch OR already up-to-date in DB
-                if (nodesBecomingUpToDate.has(inputKey)) {
-                    continue;
-                }
-
-                const inputFreshness = await this.storage.getNodeFreshness(
-                    inputKey
-                );
-                if (inputFreshness !== "up-to-date") {
-                    allInputsUpToDate = false;
-                    break;
-                }
-            }
-
-            // If all inputs up-to-date, mark this node up-to-date and recurse
-            if (allInputsUpToDate) {
-                batchOperations.push(
-                    this.storage.setNodeFreshnessOp(
-                        dependent.output,
-                        "up-to-date"
-                    )
-                );
-                nodesBecomingUpToDate.add(dependent.output);
-                await this.propagateUpToDate(dependent.output, batchOperations, nodesBecomingUpToDate);
-            }
-        }
-
-        // Process dynamic dependents (need to fetch inputs from DB)
-        for (const dependentKey of dynamicDependentKeys) {
-            // If already processed in this batch, skip
-            if (nodesBecomingUpToDate.has(dependentKey)) {
-                continue;
-            }
-
-            const depFreshness = await this.storage.getNodeFreshness(
-                dependentKey
-            );
-
-            // Only process potentially-outdated nodes
-            if (depFreshness !== "potentially-outdated") {
-                continue;
-            }
-
-            // Fetch inputs from DB
-            const inputs = await this.storage.getInputs(dependentKey);
-
-            if (inputs === null) {
-                // Not indexed yet - skip (conservative approach)
-                // This can happen if the node was instantiated but never computed
-                continue;
-            }
-
-            // Check if all inputs are up-to-date
-            let allInputsUpToDate = true;
-            for (const inputKey of inputs) {
-                // Input is up-to-date if it's in the current batch OR already up-to-date in DB
-                if (nodesBecomingUpToDate.has(inputKey)) {
-                    continue;
-                }
-
-                const inputFreshness = await this.storage.getNodeFreshness(
-                    inputKey
-                );
-                if (inputFreshness !== "up-to-date") {
-                    allInputsUpToDate = false;
-                    break;
-                }
-            }
-
-            // If all inputs up-to-date, mark this node up-to-date and recurse
-            if (allInputsUpToDate) {
-                batchOperations.push(
-                    this.storage.setNodeFreshnessOp(dependentKey, "up-to-date")
-                );
-                nodesBecomingUpToDate.add(dependentKey);
-                await this.propagateUpToDate(dependentKey, batchOperations, nodesBecomingUpToDate);
-            }
-        }
-    }
-
-    /**
      * Maybe recalculates a potentially-outdated node.
      * If all inputs are up-to-date, returns cached value.
      * Otherwise, recalculates.
@@ -560,46 +444,47 @@ class DependencyGraphClass {
      *
      * @private
      * @param {{output: string, inputs: string[], computor: (inputs: DatabaseValue[], oldValue: DatabaseValue | undefined) => DatabaseValue | Unchanged}} nodeDefinition - The node to maybe recalculate
-     * @returns {Promise<DatabaseValue>}
+     * @returns {Promise<{value: DatabaseValue, status: 'changed' | 'unchanged' | 'cached'}>}
      */
     async maybeRecalculate(nodeDefinition) {
         const nodeName = nodeDefinition.output;
 
-        // Remember initial freshness
-        const initialFreshness = await this.storage.getNodeFreshness(nodeName);
-
         // Pull all inputs (recursively ensures they're up-to-date)
         const inputValues = [];
+        let allInputsUnchanged = true;
+
         for (const inputKey of nodeDefinition.inputs) {
             // Ensure input node exists
             await this.getOrCreateConcreteNode(inputKey);
-            const inputValue = await this.pull(inputKey);
+            const { value: inputValue, status: inputStatus } =
+                await this.pullWithStatus(inputKey);
             inputValues.push(inputValue);
-        }
 
-        // IMPORTANT: After pulling all inputs, check if WE were marked up-to-date BY PROPAGATION
-        // This can happen when all inputs returned Unchanged and propagated up-to-date to us
-        // Only skip if we were NOT up-to-date initially (i.e., freshness changed during input pulling)
-        const nodeFreshnessAfterPull = await this.storage.getNodeFreshness(
-            nodeName
-        );
-        if (
-            nodeFreshnessAfterPull === "up-to-date" &&
-            initialFreshness !== "up-to-date"
-        ) {
-            // We were marked up-to-date by propagation during input pulling
-            // No need to recompute!
-            const result = await this.storage.getNodeValue(nodeName);
-            if (result === undefined) {
-                throw makeMissingValueError(nodeName);
+            // If input is NOT 'unchanged', we can't guarantee we are unchanged.
+            // 'cached' inputs might have changed since we last ran.
+            // 'changed' inputs definitely changed.
+            if (inputStatus !== "unchanged") {
+                allInputsUnchanged = false;
             }
-            return result;
         }
-
-        // After pulling, compute with fresh input values
 
         // Get old value
         const oldValue = await this.storage.getNodeValue(nodeName);
+
+        // Optimization: if all inputs are 'unchanged' (meaning they were outdated but recomputed to same value),
+        // then we can skip recomputation and mark ourselves up-to-date.
+        if (
+            allInputsUnchanged &&
+            nodeDefinition.inputs.length > 0 &&
+            oldValue !== undefined
+        ) {
+            // Mark up-to-date
+            await this.database.batch([
+                this.storage.setNodeFreshnessOp(nodeName, "up-to-date"),
+            ]);
+
+            return { value: oldValue, status: "unchanged" };
+        }
 
         // Compute new value
         const computedValue = await nodeDefinition.computor(
@@ -620,7 +505,7 @@ class DependencyGraphClass {
             );
         }
 
-        // Mark all inputs as up-to-date
+        // Mark all inputs as up-to-date (redundant but safe)
         for (const inputKey of nodeDefinition.inputs) {
             batchOperations.push(
                 this.storage.setNodeFreshnessOp(inputKey, "up-to-date")
@@ -629,8 +514,6 @@ class DependencyGraphClass {
 
         if (!isUnchanged(computedValue)) {
             // Value changed: store it, mark up-to-date
-            // Note: We do NOT propagate potentially-outdated here
-            // Dependents keep their current freshness state
             batchOperations.push(
                 this.storage.setNodeValueOp(nodeName, computedValue)
             );
@@ -640,27 +523,24 @@ class DependencyGraphClass {
 
             // Execute all operations atomically
             await this.database.batch(batchOperations);
+
+            return { value: computedValue, status: "changed" };
         } else {
-            // Value unchanged: mark up-to-date and propagate downstream
+            // Value unchanged: mark up-to-date
             batchOperations.push(
                 this.storage.setNodeFreshnessOp(nodeName, "up-to-date")
             );
 
-            // AFTER marking up-to-date, propagate up-to-date downstream
-            // This is the key optimization for Unchanged!
-            const nodesBecomingUpToDate = new Set([nodeName]);
-            await this.propagateUpToDate(nodeName, batchOperations, nodesBecomingUpToDate);
-
             // Execute all operations atomically
             await this.database.batch(batchOperations);
-        }
 
-        // Return the current value
-        const result = await this.storage.getNodeValue(nodeName);
-        if (result === undefined) {
-            throw makeMissingValueError(nodeName);
+            // Return old value (must exist if Unchanged returned)
+            const result = await this.storage.getNodeValue(nodeName);
+            if (result === undefined) {
+                throw makeMissingValueError(nodeName);
+            }
+            return { value: result, status: "unchanged" };
         }
-        return result;
     }
 
     /**
@@ -674,6 +554,17 @@ class DependencyGraphClass {
      * @returns {Promise<DatabaseValue>} The node's value
      */
     async pull(nodeName) {
+        const { value } = await this.pullWithStatus(nodeName);
+        return value;
+    }
+
+    /**
+     * Internal pull that returns status for optimization.
+     * @private
+     * @param {string} nodeName
+     * @returns {Promise<{value: DatabaseValue, status: 'changed' | 'unchanged' | 'cached'}>}
+     */
+    async pullWithStatus(nodeName) {
         // Canonicalize the node name
         const canonicalName = canonicalize(nodeName);
 
@@ -691,14 +582,12 @@ class DependencyGraphClass {
         );
 
         // Fast path: if up-to-date, return cached value immediately
-        // By Invariant I2 (Up-to-date Upstream Invariant), if a node is up-to-date,
-        // all its inputs are guaranteed to be up-to-date, so no need to check them
         if (nodeFreshness === "up-to-date") {
             const result = await this.storage.getNodeValue(canonicalName);
             if (result === undefined) {
                 throw makeMissingValueError(canonicalName);
             }
-            return result;
+            return { value: result, status: "cached" };
         }
 
         // Potentially-outdated or undefined freshness: need to maybe recalculate
