@@ -444,7 +444,7 @@ describe("Parameterized node schemas", () => {
             expect(() => {
                 const db = {};  // Dummy - won't be used
                 makeDependencyGraph(db, overlappingSchemas);
-            }).toThrow("Overlaps");
+            }).toThrow("Schema patterns overlap");
         });
 
         test("accepts non-overlapping schemas with repeated variables", async () => {

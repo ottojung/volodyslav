@@ -350,7 +350,7 @@ describe("compiled_node", () => {
                 }),
             ];
 
-            expect(() => validateNoOverlap(nodes)).toThrow("Overlaps");
+            expect(() => validateNoOverlap(nodes)).toThrow("Schema patterns overlap");
         });
 
         test("accepts patterns with different heads", () => {
