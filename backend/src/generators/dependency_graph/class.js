@@ -372,9 +372,6 @@ class DependencyGraphClass {
             .map((node) => ({
                 output: node.canonicalOutput,
                 inputs: node.canonicalInputs,
-                head: node.head,
-                arity: node.arity,
-                isPattern: node.isPattern,
             }))
             .sort((a, b) => a.output.localeCompare(b.output));
 
