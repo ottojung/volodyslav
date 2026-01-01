@@ -438,18 +438,31 @@ class DependencyGraphClass {
      * @param {string} nodeName - The node that was marked up-to-date
      * @returns {Promise<void>}
      */
-    async propagateUpToDateDownstream(nodeName) {
+
+    /**
+     * Propagates up-to-date state to downstream potentially-outdated nodes.
+     * Called AFTER a node is marked up-to-date.
+     * Only affects potentially-outdated nodes whose inputs are all up-to-date.
+     * Uses both static dependents and DB-persisted reverse dependencies.
+     *
+     * @private
+     * @param {string} nodeName - The node that was marked up-to-date
+     * @param {Array<{type: "put", key: string, value: DatabaseStoredValue} | {type: "del", key: string}>} batchOperations - Batch to add operations to
+     * @param {Set<string>} nodesBecomingUpToDate - Set of nodes that are becoming up-to-date in this batch
+     * @returns {Promise<void>}
+     */
+    async collectPropagateUpToDateOperations(nodeName, batchOperations, nodesBecomingUpToDate) {
         // Collect dependents from both static map and DB
         const staticDependents = this.dependentsMap.get(nodeName) || [];
-        const dynamicDependentKeys = await this.storage.listDependents(
-            nodeName
-        );
-
-        const batchOperations = [];
-        const nodesToPropagate = [];
+        const dynamicDependentKeys = await this.storage.listDependents(nodeName);
 
         // Process static dependents (we already have their inputs)
         for (const dependent of staticDependents) {
+            // If already processed in this batch, skip
+            if (nodesBecomingUpToDate.has(dependent.output)) {
+                continue;
+            }
+
             const depFreshness = await this.storage.getNodeFreshness(
                 dependent.output
             );
@@ -462,6 +475,11 @@ class DependencyGraphClass {
             // Check if all inputs are up-to-date
             let allInputsUpToDate = true;
             for (const inputKey of dependent.inputs) {
+                // Input is up-to-date if it's in the current batch OR already up-to-date in DB
+                if (nodesBecomingUpToDate.has(inputKey)) {
+                    continue;
+                }
+
                 const inputFreshness = await this.storage.getNodeFreshness(
                     inputKey
                 );
@@ -471,7 +489,7 @@ class DependencyGraphClass {
                 }
             }
 
-            // If all inputs up-to-date, mark this node up-to-date and remember to recurse
+            // If all inputs up-to-date, mark this node up-to-date and recurse
             if (allInputsUpToDate) {
                 batchOperations.push(
                     this.storage.setNodeFreshnessOp(
@@ -479,12 +497,18 @@ class DependencyGraphClass {
                         "up-to-date"
                     )
                 );
-                nodesToPropagate.push(dependent.output);
+                nodesBecomingUpToDate.add(dependent.output);
+                await this.collectPropagateUpToDateOperations(dependent.output, batchOperations, nodesBecomingUpToDate);
             }
         }
 
         // Process dynamic dependents (need to fetch inputs from DB)
         for (const dependentKey of dynamicDependentKeys) {
+            // If already processed in this batch, skip
+            if (nodesBecomingUpToDate.has(dependentKey)) {
+                continue;
+            }
+
             const depFreshness = await this.storage.getNodeFreshness(
                 dependentKey
             );
@@ -506,6 +530,11 @@ class DependencyGraphClass {
             // Check if all inputs are up-to-date
             let allInputsUpToDate = true;
             for (const inputKey of inputs) {
+                // Input is up-to-date if it's in the current batch OR already up-to-date in DB
+                if (nodesBecomingUpToDate.has(inputKey)) {
+                    continue;
+                }
+
                 const inputFreshness = await this.storage.getNodeFreshness(
                     inputKey
                 );
@@ -515,22 +544,13 @@ class DependencyGraphClass {
                 }
             }
 
-            // If all inputs up-to-date, mark this node up-to-date and remember to recurse
+            // If all inputs up-to-date, mark this node up-to-date and recurse
             if (allInputsUpToDate) {
                 batchOperations.push(
                     this.storage.setNodeFreshnessOp(dependentKey, "up-to-date")
                 );
-                nodesToPropagate.push(dependentKey);
-            }
-        }
-
-        // Execute batch if we have operations
-        if (batchOperations.length > 0) {
-            await this.database.batch(batchOperations);
-
-            // AFTER batch commits, recursively propagate for each newly-marked-up-to-date node
-            for (const nodeToPropagate of nodesToPropagate) {
-                await this.propagateUpToDateDownstream(nodeToPropagate);
+                nodesBecomingUpToDate.add(dependentKey);
+                await this.collectPropagateUpToDateOperations(dependentKey, batchOperations, nodesBecomingUpToDate);
             }
         }
     }
@@ -629,12 +649,13 @@ class DependencyGraphClass {
                 this.storage.setNodeFreshnessOp(nodeName, "up-to-date")
             );
 
-            // Execute all operations atomically
-            await this.database.batch(batchOperations);
-
             // AFTER marking up-to-date, propagate up-to-date downstream
             // This is the key optimization for Unchanged!
-            await this.propagateUpToDateDownstream(nodeName);
+            const nodesBecomingUpToDate = new Set([nodeName]);
+            await this.collectPropagateUpToDateOperations(nodeName, batchOperations, nodesBecomingUpToDate);
+
+            // Execute all operations atomically
+            await this.database.batch(batchOperations);
         }
 
         // Return the current value
