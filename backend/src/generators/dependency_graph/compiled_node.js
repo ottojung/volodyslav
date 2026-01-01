@@ -16,6 +16,19 @@ const {
 /** @typedef {import('./expr').ParsedArg} ParsedArg */
 
 /**
+ * A variable reference used during unification.
+ * @typedef {object} UnificationVar
+ * @property {'var'} kind - Discriminator for variable references
+ * @property {'node1' | 'node2'} source - Which node the variable comes from
+ * @property {string} name - Variable name
+ */
+
+/**
+ * Value used during unification - either a constant or a variable reference.
+ * @typedef {ConstValue | UnificationVar} UnificationValue
+ */
+
+/**
  * Converts a ParsedArg to a ConstValue if it's a constant.
  * @param {ParsedArg} arg
  * @returns {ConstValue | null} - Returns null if arg is a variable (identifier)
@@ -139,16 +152,16 @@ function patternsCanOverlap(node1, node2) {
 
     // Track variable bindings for unification
     // Maps variable names to what they're bound to (either a ConstValue or another variable name with "node1:" or "node2:" prefix)
-    /** @type {Map<string, ConstValue | { kind: 'var', source: 'node1' | 'node2', name: string }>} */
+    /** @type {Map<string, UnificationValue>} */
     const bindings1 = new Map(); // Variables from node1
-    /** @type {Map<string, ConstValue | { kind: 'var', source: 'node1' | 'node2', name: string }>} */
+    /** @type {Map<string, UnificationValue>} */
     const bindings2 = new Map(); // Variables from node2
 
     /**
      * Resolves a variable binding to its ultimate value.
-     * @param {Map<string, ConstValue | { kind: 'var', source: 'node1' | 'node2', name: string }>} bindings
+     * @param {Map<string, UnificationValue>} bindings
      * @param {string} varName
-     * @returns {ConstValue | { kind: 'var', source: 'node1' | 'node2', name: string } | null}
+     * @returns {UnificationValue | null}
      */
     function resolve(bindings, varName) {
         const binding = bindings.get(varName);
@@ -167,9 +180,9 @@ function patternsCanOverlap(node1, node2) {
 
     /**
      * Binds a variable to a value, checking for conflicts.
-     * @param {Map<string, ConstValue | { kind: 'var', source: 'node1' | 'node2', name: string }>} bindings
+     * @param {Map<string, UnificationValue>} bindings
      * @param {string} varName
-     * @param {ConstValue | { kind: 'var', source: 'node1' | 'node2', name: string }} value
+     * @param {UnificationValue} value
      * @returns {boolean} True if binding succeeds, false if conflict
      */
     function bind(bindings, varName, value) {

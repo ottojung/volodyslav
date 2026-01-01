@@ -7,6 +7,7 @@ const { isDatabaseValue, isFreshness } = require("./types");
 
 /** @typedef {import('./types').DatabaseValue} DatabaseValue */
 /** @typedef {import('./types').Freshness} Freshness */
+/** @typedef {import('./types').DatabaseBatchOperation} DatabaseBatchOperation */
 /** @typedef {DatabaseValue | Freshness} DatabaseStoredValue */
 /** @typedef {import('level').Level<string, DatabaseStoredValue>} LevelDB */
 /** @typedef {import('./types').DatabaseCapabilities} DatabaseCapabilities */
@@ -205,7 +206,7 @@ class DatabaseClass {
 
     /**
      * Executes multiple operations in a batch.
-     * @param {Array<{type: 'put', key: string, value: DatabaseStoredValue} | {type: 'del', key: string}>} operations
+     * @param {Array<DatabaseBatchOperation>} operations
      * @returns {Promise<void>}
      * @throws {DatabaseQueryError} If the operation fails
      */

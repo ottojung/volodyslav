@@ -5,11 +5,15 @@
 /** @typedef {import('./types').Database} Database */
 /** @typedef {import('./types').DatabaseValue} DatabaseValue */
 /** @typedef {import('./types').Freshness} Freshness */
+/** @typedef {import('./types').FreshnessStatus} FreshnessStatus */
 /** @typedef {import('./types').NodeDef} NodeDef */
 /** @typedef {import('./types').CompiledNode} CompiledNode */
 /** @typedef {import('./types').ConstValue} ConstValue */
+/** @typedef {import('./types').ConcreteNodeDefinition} ConcreteNodeDefinition */
+/** @typedef {import('./types').RecomputeResult} RecomputeResult */
 /** @typedef {import('./unchanged').Unchanged} Unchanged */
 /** @typedef {import('./graph_storage').GraphStorage} GraphStorage */
+/** @typedef {import('../database/types').DatabaseBatchOperation} DatabaseBatchOperation */
 /** @typedef {DatabaseValue | Freshness} DatabaseStoredValue */
 
 const crypto = require("crypto");
@@ -78,7 +82,7 @@ class DependencyGraphClass {
      * Cache of concrete instantiated nodes created from patterns on demand.
      * Maps canonical output to a runtime node with concrete inputs and wrapped computor.
      * @private
-     * @type {Map<string, {output: string, inputs: string[], computor: (inputs: DatabaseValue[], oldValue: DatabaseValue | undefined) => DatabaseValue | Unchanged}>}
+     * @type {Map<string, ConcreteNodeDefinition>}
      */
     concreteInstantiations;
 
@@ -102,7 +106,7 @@ class DependencyGraphClass {
      * Uses both static dependents map and DB-persisted reverse dependencies.
      * @private
      * @param {string} changedKey - The key that was changed
-     * @param {Array<{type: "put", key: string, value: DatabaseStoredValue} | {type: "del", key: string}>} batchOperations - Batch to add operations to
+     * @param {Array<DatabaseBatchOperation>} batchOperations - Batch to add operations to
      * @param {Set<string>} nodesBecomingOutdated - Set of nodes that are becoming outdated in this batch
      * @returns {Promise<void>}
      */
@@ -173,7 +177,7 @@ class DependencyGraphClass {
             throw makeInvalidSetError(canonicalKey);
         }
 
-        /** @type {Array<{type: "put", key: string, value: DatabaseStoredValue} | {type: "del", key: string}>} */
+        /** @type {Array<DatabaseBatchOperation>} */
         const batchOperations = [];
 
         // Store the value
@@ -283,7 +287,7 @@ class DependencyGraphClass {
      * Dynamic edges are persisted to DB when the node is computed/set, not here.
      * @private
      * @param {string} concreteKeyCanonical - Canonical concrete node key
-     * @returns {Promise<{output: string, inputs: string[], computor: (inputs: DatabaseValue[], oldValue: DatabaseValue | undefined) => DatabaseValue | Unchanged}>}
+     * @returns {Promise<ConcreteNodeDefinition>}
      * @throws {Error} If no pattern matches and node not in graph
      */
     async getOrCreateConcreteNode(concreteKeyCanonical) {
@@ -434,8 +438,8 @@ class DependencyGraphClass {
      * Special optimization: if computation returns Unchanged, propagate up-to-date downstream.
      *
      * @private
-     * @param {{output: string, inputs: string[], computor: (inputs: DatabaseValue[], oldValue: DatabaseValue | undefined) => DatabaseValue | Unchanged}} nodeDefinition - The node to maybe recalculate
-     * @returns {Promise<{value: DatabaseValue, status: 'changed' | 'unchanged' | 'cached'}>}
+     * @param {ConcreteNodeDefinition} nodeDefinition - The node to maybe recalculate
+     * @returns {Promise<RecomputeResult>}
      */
     async maybeRecalculate(nodeDefinition) {
         const nodeName = nodeDefinition.output;
@@ -500,7 +504,7 @@ class DependencyGraphClass {
         );
 
         // Prepare batch operations
-        /** @type {Array<{type: "put", key: string, value: DatabaseStoredValue} | {type: "del", key: string}>} */
+        /** @type {Array<DatabaseBatchOperation>} */
         const batchOperations = [];
 
         // Ensure node is indexed (if it has inputs)
@@ -569,7 +573,7 @@ class DependencyGraphClass {
      * Internal pull that returns status for optimization.
      * @private
      * @param {string} nodeName
-     * @returns {Promise<{value: DatabaseValue, status: 'changed' | 'unchanged' | 'cached'}>}
+     * @returns {Promise<RecomputeResult>}
      */
     async pullWithStatus(nodeName) {
         // Canonicalize the node name
@@ -624,7 +628,7 @@ class DependencyGraphClass {
     /**
      * Query conceptual freshness state of a node.
      * @param {string} nodeName - The name of the node
-     * @returns {Promise<"up-to-date" | "potentially-outdated" | "missing">}
+     * @returns {Promise<FreshnessStatus>}
      */
     async debugGetFreshness(nodeName) {
         const canonicalName = canonicalize(nodeName);

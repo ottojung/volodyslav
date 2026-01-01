@@ -95,6 +95,26 @@ function isDatabaseValue(value) {
     );
 }
 
+/**
+ * A database put operation.
+ * @typedef {object} DatabasePutOperation
+ * @property {'put'} type - Operation type
+ * @property {string} key - The key to store
+ * @property {DatabaseValue | Freshness} value - The value to store
+ */
+
+/**
+ * A database delete operation.
+ * @typedef {object} DatabaseDelOperation
+ * @property {'del'} type - Operation type
+ * @property {string} key - The key to delete
+ */
+
+/**
+ * A batch operation for the database.
+ * @typedef {DatabasePutOperation | DatabaseDelOperation} DatabaseBatchOperation
+ */
+
 module.exports = {
     freshnessKey,
     isFreshness,

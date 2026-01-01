@@ -8,6 +8,7 @@ const { freshnessKey } = require("../database");
 /** @typedef {import('../database/class').Database} Database */
 /** @typedef {import('../database/types').DatabaseValue} DatabaseValue */
 /** @typedef {import('../database/types').Freshness} Freshness */
+/** @typedef {import('../database/types').DatabaseBatchOperation} DatabaseBatchOperation */
 
 /**
  * Union type for values that can be stored in the database.
@@ -20,7 +21,7 @@ const { freshnessKey } = require("../database");
  * @property {(nodeName: string) => Promise<Freshness | undefined>} getNodeFreshness
  * @property {(nodeName: string, value: DatabaseValue) => { type: "put", key: string, value: DatabaseStoredValue }} setNodeValueOp
  * @property {(nodeName: string, freshness: Freshness) => { type: "put", key: string, value: DatabaseStoredValue }} setNodeFreshnessOp
- * @property {(node: string, inputs: string[], batchOps: Array<{type: "put", key: string, value: DatabaseStoredValue} | {type: "del", key: string}>) => Promise<void>} ensureNodeIndexed
+ * @property {(node: string, inputs: string[], batchOps: Array<DatabaseBatchOperation>) => Promise<void>} ensureNodeIndexed
  * @property {(input: string) => Promise<string[]>} listDependents
  * @property {(node: string) => Promise<string[] | null>} getInputs
  * @property {() => Promise<string[]>} listAllKeys
@@ -41,7 +42,7 @@ function makeGraphStorage(database, schemaHash) {
      * @private
      * @param {string} key
      * @param {DatabaseStoredValue} value
-     * @returns {{ type: "put", key: string, value: DatabaseStoredValue }}
+     * @returns {DatabaseBatchOperation}
      */
     function putOp(key, value) {
         return { type: "put", key, value };
@@ -104,7 +105,7 @@ function makeGraphStorage(database, schemaHash) {
      * Create an operation to set a node's value.
      * @param {string} nodeName
      * @param {DatabaseValue} value
-     * @returns {{ type: "put", key: string, value: DatabaseStoredValue }}
+     * @returns {DatabaseBatchOperation}
      */
     function setNodeValueOp(nodeName, value) {
         return putOp(nodeName, value);
@@ -128,7 +129,7 @@ function makeGraphStorage(database, schemaHash) {
      * 
      * @param {string} node - Canonical node key
      * @param {string[]} inputs - Array of canonical input keys
-     * @param {Array<{type: "put", key: string, value: DatabaseStoredValue} | {type: "del", key: string}>} batchOps - Batch operations array to append to
+     * @param {Array<DatabaseBatchOperation>} batchOps - Batch operations array to append to
      * @returns {Promise<void>}
      */
     async function ensureNodeIndexed(node, inputs, batchOps) {

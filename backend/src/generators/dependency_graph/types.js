@@ -44,6 +44,40 @@
  */
 
 /**
+ * Simpler computor without bindings parameter (used for concrete instantiated nodes).
+ * @typedef {(inputs: Array<DatabaseValue>, oldValue: DatabaseValue | undefined) => DatabaseValue | Unchanged} ConcreteNodeComputor
+ */
+
+/**
+ * A concrete node definition with resolved inputs and output.
+ * Used for runtime instantiations of pattern nodes.
+ * @typedef {object} ConcreteNodeDefinition
+ * @property {string} output - Canonical concrete output key
+ * @property {Array<string>} inputs - Array of canonical concrete input keys
+ * @property {ConcreteNodeComputor} computor - Function that computes the output from inputs and old value
+ */
+
+/**
+ * Status returned after recomputing a node value.
+ * - 'changed': Value was recomputed and differs from old value
+ * - 'unchanged': Value was recomputed but equals old value
+ * - 'cached': Value was not recomputed, returned from cache
+ * @typedef {'changed' | 'unchanged' | 'cached'} RecomputeStatus
+ */
+
+/**
+ * Result of a recompute operation.
+ * @typedef {object} RecomputeResult
+ * @property {DatabaseValue} value - The computed or cached value
+ * @property {RecomputeStatus} status - Status of the operation
+ */
+
+/**
+ * Extended freshness status including missing state.
+ * @typedef {'up-to-date' | 'potentially-outdated' | 'missing'} FreshnessStatus
+ */
+
+/**
  * Unified node definition.
  * @typedef {object} NodeDef
  * @property {string} output - Pattern or exact key (e.g., "event_context(e)" or 'status("active")')
