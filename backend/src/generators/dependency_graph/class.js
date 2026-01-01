@@ -106,7 +106,7 @@ class DependencyGraphClass {
      * @param {Set<string>} visited - Set of already-visited nodes to prevent redundant recursion
      * @returns {Promise<void>}
      */
-    async collectMarkDependentsOperations(
+    async propagateOutdated(
         changedKey,
         batchOperations,
         visited = new Set()
@@ -142,7 +142,7 @@ class DependencyGraphClass {
                 );
 
                 // Recursively mark dependents of this node
-                await this.collectMarkDependentsOperations(
+                await this.propagateOutdated(
                     node.output,
                     batchOperations,
                     visited
@@ -194,7 +194,7 @@ class DependencyGraphClass {
         );
 
         // Collect operations to mark all dependents as potentially-outdated
-        await this.collectMarkDependentsOperations(
+        await this.propagateOutdated(
             canonicalKey,
             batchOperations
         );
