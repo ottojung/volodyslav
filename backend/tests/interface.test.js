@@ -92,7 +92,6 @@ describe("generators/interface", () => {
                 await iface.update(events);
 
                 // Verify the data was stored correctly
-                const { freshnessKey } = require("../src/generators/database/types");
                 const result = await db.get("all_events");
                 expect(result).toBeDefined();
                 expect(result.events).toHaveLength(2);
@@ -163,7 +162,6 @@ describe("generators/interface", () => {
 
                 await iface.update([]);
 
-                const { freshnessKey } = require("../src/generators/database/types");
                 const result = await db.get("all_events");
                 expect(result).toBeDefined();
                 expect(result.events).toHaveLength(0);

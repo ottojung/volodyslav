@@ -37,7 +37,6 @@ describe("Dependency graph persistence and restart", () => {
         test("invalidates pattern instantiation after restart", async () => {
             const capabilities = getTestCapabilities();
             const db = await getDatabase(capabilities);
-            const { freshnessKey } = require("../src/generators/database");
 
             // Set up initial data
             await db.put("all_events", {
@@ -131,7 +130,6 @@ describe("Dependency graph persistence and restart", () => {
         test("diamond graph invalidation across restart", async () => {
             const capabilities = getTestCapabilities();
             const db = await getDatabase(capabilities);
-            const { freshnessKey } = require("../src/generators/database");
 
             const computeCalls = [];
 
@@ -209,7 +207,6 @@ describe("Dependency graph persistence and restart", () => {
         test("Unchanged propagation works after restart", async () => {
             const capabilities = getTestCapabilities();
             const db = await getDatabase(capabilities);
-            const { freshnessKey } = require("../src/generators/database");
 
             const computeCalls = [];
 
@@ -279,7 +276,6 @@ describe("Dependency graph persistence and restart", () => {
         test("Unchanged propagation with pattern instantiation after restart", async () => {
             const capabilities = getTestCapabilities();
             const db = await getDatabase(capabilities);
-            const { freshnessKey } = require("../src/generators/database");
 
             const computeCalls = [];
 

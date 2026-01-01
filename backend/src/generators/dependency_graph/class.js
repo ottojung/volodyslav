@@ -446,40 +446,59 @@ class DependencyGraphClass {
     }
 
     /**
-     * Recalculates a node if needed.
-     * Pulls all inputs, computes, and updates version if value changed.
+     * Pulls a specific node's value, lazily evaluating dependencies as needed.
      *
-     * @private
-     * @param {{output: string, inputs: string[], computor: (inputs: DatabaseValue[], oldValue: DatabaseValue | undefined) => DatabaseValue | Unchanged}} nodeDefinition - The node to recalculate
-     * @returns {Promise<DatabaseValue>}
+     * Algorithm:
+     * - Pull all dependencies first (ensuring they're fresh)
+     * - Check if dependency versions match our stored snapshot
+     * - If yes: return cached value (optimization)
+     * - If no: recompute
+     *
+     * @param {string} nodeName - The name of the node to pull
+     * @returns {Promise<DatabaseValue>} The node's value
      */
-    async maybeRecalculate(nodeDefinition) {
-        const nodeName = nodeDefinition.output;
+    async pull(nodeName) {
+        // Canonicalize the node name
+        const canonicalName = canonicalize(nodeName);
 
-        // Pull all inputs (recursively ensures they're up-to-date)
-        const inputValues = [];
+        // Validate that key is concrete (no variables)
+        validateConcreteKey(canonicalName);
+
+        // Find or create the node definition
+        const nodeDefinition = await this.getOrCreateConcreteNode(canonicalName);
+
+        // ALWAYS pull all dependencies first to ensure they're up-to-date
+        // This is critical for soundness!
         for (const inputKey of nodeDefinition.inputs) {
-            // Ensure input node exists (allow pass-through for constants)
             await this.getOrCreateConcreteNode(inputKey, true);
-            const inputValue = await this.pull(inputKey);
-            inputValues.push(inputValue);
+            await this.pull(inputKey);
         }
 
-        // After pulling inputs, check if node is now up-to-date
-        // (all inputs have same versions as when we last computed)
-        if (await this.isNodeUpToDate(nodeName, nodeDefinition.inputs)) {
-            // Node is up-to-date, return cached value
-            const result = await this.database.getValue(nodeName);
+        // NOW check if our node is up-to-date based on current dependency versions
+        const upToDate = await this.isNodeUpToDate(canonicalName, nodeDefinition.inputs);
+
+        if (upToDate) {
+            // Dependencies haven't changed, use cached value
+            const result = await this.database.getValue(canonicalName);
             if (result === undefined) {
-                throw makeMissingValueError(nodeName);
+                throw makeMissingValueError(canonicalName);
             }
             return result;
         }
 
-        // Node is not up-to-date, need to recompute
-
+        // Dependencies changed, need to recompute
         // Get old value
-        const oldValue = await this.database.getValue(nodeName);
+        const oldValue = await this.database.getValue(canonicalName);
+
+        // Get fresh input values (already pulled above)
+        const inputValues = [];
+        for (const inputKey of nodeDefinition.inputs) {
+            const inputValue = await this.database.getValue(inputKey);
+            if (inputValue === undefined) {
+                throw makeMissingValueError(inputKey);
+            }
+            inputValues.push(inputValue);
+        }
 
         // Compute new value
         const computedValue = nodeDefinition.computor(inputValues, oldValue);
@@ -488,10 +507,10 @@ class DependencyGraphClass {
         /** @type {Array<{type: "put", key: string, value: DatabaseStoredValue} | {type: "del", key: string}>} */
         const batchOperations = [];
 
-        // Ensure node is indexed (if it has inputs)
+        // Ensure node is indexed
         if (nodeDefinition.inputs.length > 0) {
             await this.index.ensureNodeIndexed(
-                nodeName,
+                canonicalName,
                 nodeDefinition.inputs,
                 batchOperations
             );
@@ -509,69 +528,29 @@ class DependencyGraphClass {
 
         // Store dependency versions snapshot
         batchOperations.push(
-            this.putOp(depVersionsKey(nodeName), makeDependencyVersions(currentDepVersionsMap))
+            this.putOp(depVersionsKey(canonicalName), makeDependencyVersions(currentDepVersionsMap))
         );
 
         if (!isUnchanged(computedValue)) {
             // Value changed: store it and increment version
-            batchOperations.push(this.putOp(nodeName, computedValue));
+            batchOperations.push(this.putOp(canonicalName, computedValue));
             
-            const currentVersion = await this.database.getVersion(versionKey(nodeName)) || 0;
+            const currentVersion = await this.database.getVersion(versionKey(canonicalName)) || 0;
             batchOperations.push(
-                this.putOp(versionKey(nodeName), currentVersion + 1)
+                this.putOp(versionKey(canonicalName), currentVersion + 1)
             );
-        } else {
-            // Value unchanged: don't update value or version
-            // Just update the dependency versions snapshot
-            // Version stays the same, which enables safe downstream propagation
         }
+        // else: Value unchanged - don't update value or version
 
         // Execute all operations atomically
         await this.database.batch(batchOperations);
 
         // Return the current value
-        const result = await this.database.getValue(nodeName);
+        const result = await this.database.getValue(canonicalName);
         if (result === undefined) {
-            throw makeMissingValueError(nodeName);
+            throw makeMissingValueError(canonicalName);
         }
         return result;
-    }
-
-    /**
-     * Pulls a specific node's value, lazily evaluating dependencies as needed.
-     *
-     * Algorithm:
-     * - Check if node is up-to-date by comparing dependency versions
-     * - If up-to-date: return cached value (fast path)
-     * - If not up-to-date: recalculate
-     *
-     * @param {string} nodeName - The name of the node to pull
-     * @returns {Promise<DatabaseValue>} The node's value
-     */
-    async pull(nodeName) {
-        // Canonicalize the node name
-        const canonicalName = canonicalize(nodeName);
-
-        // Validate that key is concrete (no variables)
-        validateConcreteKey(canonicalName);
-
-        // Find or create the node definition
-        const nodeDefinition = await this.getOrCreateConcreteNode(canonicalName);
-
-        // Check if node is up-to-date
-        const upToDate = await this.isNodeUpToDate(canonicalName, nodeDefinition.inputs);
-
-        // Fast path: if up-to-date, return cached value immediately
-        if (upToDate) {
-            const result = await this.database.getValue(canonicalName);
-            if (result === undefined) {
-                throw makeMissingValueError(canonicalName);
-            }
-            return result;
-        }
-
-        // Not up-to-date: need to recalculate
-        return await this.maybeRecalculate(nodeDefinition);
     }
 }
 

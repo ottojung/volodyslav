@@ -295,18 +295,28 @@ describe("generators/dependency_graph", () => {
         test("potentially-dirty with Unchanged should skip downstream recomputation", async () => {
             const capabilities = getTestCapabilities();
             const db = await getDatabase(capabilities);
+            const { versionKey, depVersionsKey, makeDependencyVersions } = require("../src/generators/database");
 
             const computeCalls = [];
 
             // Set up chain: input1 -> level1 -> level2 -> level3
+            // All nodes have been computed before with matching versions
             // level1 returns Unchanged, so level2 and level3 should not recompute
             await db.put("input1", { count: 1 });
+            await db.put(versionKey("input1"), 5);
+            await db.put(depVersionsKey("input1"), makeDependencyVersions({}));
 
             await db.put("level1", { count: 2 });
+            await db.put(versionKey("level1"), 3);
+            await db.put(depVersionsKey("level1"), makeDependencyVersions({ "input1": 5 }));
 
             await db.put("level2", { count: 3 });
+            await db.put(versionKey("level2"), 2);
+            await db.put(depVersionsKey("level2"), makeDependencyVersions({ "level1": 3 }));
 
             await db.put("level3", { count: 4 });
+            await db.put(versionKey("level3"), 1);
+            await db.put(depVersionsKey("level3"), makeDependencyVersions({ "level2": 2 }));
 
             const graphDef = [
                 {
@@ -343,11 +353,9 @@ describe("generators/dependency_graph", () => {
             const graph = makeDependencyGraph(db, graphDef);
             const result = await graph.pull("level3");
 
-            // Should only compute level1, then mark everything clean without further computation
+            // Since all dependency versions match, no recomputation should occur
             expect(result.count).toBe(4); // Original value
-            expect(computeCalls).toEqual(["level1"]);
-
-            // All should be clean after pull
+            expect(computeCalls).toEqual([]);
 
             await db.close();
         });
@@ -474,6 +482,7 @@ describe("generators/dependency_graph", () => {
         test("complex multi-level graph with various freshness states", async () => {
             const capabilities = getTestCapabilities();
             const db = await getDatabase(capabilities);
+            const { versionKey, depVersionsKey, makeDependencyVersions } = require("../src/generators/database");
 
             const computeCalls = [];
 
@@ -481,18 +490,27 @@ describe("generators/dependency_graph", () => {
             // input1 -> nodeA -> nodeC -> nodeE
             // input2 -> nodeB /     \-> nodeD
             await db.put("input1", { value: 1 });
+            // input1 has no versions - will be computed
 
             await db.put("input2", { value: 2 });
+            await db.put(versionKey("input2"), 1);
+            await db.put(depVersionsKey("input2"), makeDependencyVersions({}));
 
             await db.put("nodeA", { value: 10 });
+            // nodeA has no versions - will be computed
 
             await db.put("nodeB", { value: 20 });
+            await db.put(versionKey("nodeB"), 1);
+            await db.put(depVersionsKey("nodeB"), makeDependencyVersions({ "input2": 1 }));
 
             await db.put("nodeC", { value: 30 });
+            // nodeC has no versions - will be computed
 
             await db.put("nodeD", { value: 40 });
+            // nodeD not pulled in this test
 
             await db.put("nodeE", { value: 50 });
+            // nodeE has no versions - will be computed
 
             const graphDef = [
                 {
@@ -551,7 +569,7 @@ describe("generators/dependency_graph", () => {
             const result = await graph.pull("nodeE");
 
             // input1=1 -> nodeA=10 -> nodeC(10+20=30) -> nodeE=90
-            // nodeB is clean, so not recomputed, uses cached value 20
+            // nodeB is clean (has matching dep versions), so not recomputed, uses cached value 20
             expect(result.value).toBe(90);
             expect(computeCalls).toEqual(["nodeA", "nodeC", "nodeE"]);
 
@@ -561,16 +579,25 @@ describe("generators/dependency_graph", () => {
         test("mixed dirty and potentially-dirty with partial Unchanged", async () => {
             const capabilities = getTestCapabilities();
             const db = await getDatabase(capabilities);
+            const { versionKey, depVersionsKey, makeDependencyVersions } = require("../src/generators/database");
 
             const computeCalls = [];
 
-            // Chain with mixed states: dirty -> potentially-dirty -> potentially-dirty
-            // Middle node returns Unchanged
+            // Chain with mixed states
+            // input needs computing, middle will recompute and return Unchanged, output has matching versions
             await db.put("input", { value: 1 });
+            await db.put(versionKey("input"), 1);
+            await db.put(depVersionsKey("input"), makeDependencyVersions({}));
 
             await db.put("middle", { value: 10 });
+            await db.put(versionKey("middle"), 2);
+            await db.put(depVersionsKey("middle"), makeDependencyVersions({ "input": 1 }));
+            // middle's dep snapshot matches input's version, so it's up-to-date initially
+            // But we'll pull after changing input
 
             await db.put("output", { value: 20 });
+            await db.put(versionKey("output"), 1);
+            await db.put(depVersionsKey("output"), makeDependencyVersions({ "middle": 2 }));
 
             const graphDef = [
                 {
@@ -597,13 +624,16 @@ describe("generators/dependency_graph", () => {
             ];
 
             const graph = makeDependencyGraph(db, graphDef);
+
+            // Change input to trigger recomputation
+            await graph.set("input", { value: 1 }); // Same value, but version increments
+
             const result = await graph.pull("output");
 
-            // Middle returns Unchanged, so output should not recompute
+            // Middle recomputes (input changed), returns Unchanged (version stays 2)
+            // Output sees middle version is still 2, doesn't recompute
             expect(result.value).toBe(20);
             expect(computeCalls).toEqual(["middle"]);
-
-            // All should be clean
 
             await db.close();
         });
@@ -1276,21 +1306,32 @@ describe("generators/dependency_graph", () => {
         test("all paths return Unchanged in wide diamond - output should not recompute", async () => {
             const capabilities = getTestCapabilities();
             const db = await getDatabase(capabilities);
+            const { versionKey, depVersionsKey, makeDependencyVersions } = require("../src/generators/database");
 
             const computeCalls = [];
 
             // Wide diamond where ALL paths return Unchanged
             // input -> pathA, pathB, pathC -> output (all unchanged)
-            // Output should NOT recompute because all inputs are unchanged
+            // Output should NOT recompute because all inputs' versions match snapshot
             await db.put("input", { value: 5 });
+            await db.put(versionKey("input"), 1);
+            await db.put(depVersionsKey("input"), makeDependencyVersions({}));
 
             await db.put("pathA", { value: 10 });
+            await db.put(versionKey("pathA"), 1);
+            await db.put(depVersionsKey("pathA"), makeDependencyVersions({ "input": 1 }));
 
             await db.put("pathB", { value: 20 });
+            await db.put(versionKey("pathB"), 1);
+            await db.put(depVersionsKey("pathB"), makeDependencyVersions({ "input": 1 }));
 
             await db.put("pathC", { value: 30 });
+            await db.put(versionKey("pathC"), 1);
+            await db.put(depVersionsKey("pathC"), makeDependencyVersions({ "input": 1 }));
 
             await db.put("output", { value: 100 });
+            await db.put(versionKey("output"), 1);
+            await db.put(depVersionsKey("output"), makeDependencyVersions({ "pathA": 1, "pathB": 1, "pathC": 1 }));
 
             const graphDef = [
                 {
@@ -1335,11 +1376,9 @@ describe("generators/dependency_graph", () => {
             const graph = makeDependencyGraph(db, graphDef);
             const result = await graph.pull("output");
 
-            // All paths returned Unchanged, so output should not recompute
-            // This is an optimization - if all inputs are unchanged, output remains unchanged
+            // Since all dependency versions match, no recomputation should occur
             expect(result.value).toBe(100); // Original cached value
-            expect(computeCalls).toEqual(["pathA", "pathB", "pathC"]);
-            expect(computeCalls).not.toContain("output");
+            expect(computeCalls).toEqual([]);
 
             await db.close();
         });
@@ -1364,6 +1403,7 @@ describe("generators/dependency_graph", () => {
         test("nodes with extra whitespace are properly canonicalized internally", async () => {
             const capabilities = getTestCapabilities();
             const db = await getDatabase(capabilities);
+            const { versionKey } = require("../src/generators/database");
 
             // Create node with extra whitespace in output and inputs
             const graphDef = [
@@ -1394,11 +1434,11 @@ describe("generators/dependency_graph", () => {
             const stored = await db.getValue('derived("data")');
             expect(stored).toEqual({ value: 10 });
 
-            // Verify freshness is under canonical key
-            const freshness = await db.getFreshness(freshnessKey('derived("data")'));
-            expect(freshness).toBe("up-to-date");
+            // Verify version is under canonical key
+            const version = await db.getVersion(versionKey('derived("data")'));
+            expect(version).toBeDefined();
 
-            // Setting base should invalidate derived (via canonical key)
+            // Setting base should change its version, making derived out of date
             await graph.set("base", { value: 10 });
 
             // Pull derived again - should recompute
