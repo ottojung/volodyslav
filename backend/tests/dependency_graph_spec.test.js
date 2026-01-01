@@ -1411,7 +1411,7 @@ describe("10. Canonical key escaping stress tests", () => {
 
     const g = buildGraph(db, [
       // Computor always uses bindings to demonstrate escaping behavior
-      { output: "s(x)", inputs: [], computor: async (_i, _old, { x }) => ({ val: x.value }) },
+      { output: "s(x)", inputs: [], computor: async (_i, _old, { x }) => ({ val: "<" + x.value + ">" }) },
     ]);
 
     // Use the escape sequence which decodes to actual newline
@@ -1419,7 +1419,17 @@ describe("10. Canonical key escaping stress tests", () => {
     const result = await g.pull("s('line1\\nline2')");
 
     // Bindings should contain the decoded string (actual newline)
-    expect(result.val).toBe("line1\nline2");
+    expect(result.val).toBe("<line1\nline2>");
+
+    // Use the escape sequence which decodes to actual newline
+    await g.set("s('line1\\nline2')", { val: "test" });
+
+    // Old value unchanged.
+    expect(result.val).toBe("<line1\nline2>");
+
+    // But `set()` actually override the value
+    const result2 = await g.pull("s('line1\\nline2')");
+    expect(result2.val).toBe("test");
 
     // But DB key must NOT contain a raw newline; it should contain the escape sequence
     const hasRawNewline = db.getValueLog.some((x) => x.key.includes("\n"));
