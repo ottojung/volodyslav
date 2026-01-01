@@ -802,6 +802,112 @@ describe("Basic operational semantics: set/pull, caching, invalidation", () => {
             "potentially-outdated"
         );
     });
+
+    test("unchanged optimization long", async () => {
+        const db = new InMemoryDatabase();
+
+        const bC = countedComputor("b", async ([a], oldValue) => {
+            if (oldValue) {
+                return makeUnchanged();
+            } else {
+                return { s: "b(" + a.s + ")" };
+            }
+        });
+        const cC = countedComputor("c", async ([b]) => ({
+            s: "c(" + b.s + ")",
+        }));
+        const dC = countedComputor("d", async ([c]) => ({
+            s: "d(" + c.s + ")",
+        }));
+        const eC = countedComputor("e", async ([d]) => ({
+            s: "e(" + d.s + ")",
+        }));
+
+        const g = buildGraph(db, [
+            {
+                output: "a",
+                inputs: [],
+                computor: async (_i, old) => old || { s: "a()" },
+            },
+            { output: "b", inputs: ["a"], computor: bC.computor },
+            { output: "c", inputs: ["b"], computor: cC.computor },
+            { output: "d", inputs: ["c"], computor: dC.computor },
+            { output: "e", inputs: ["d"], computor: eC.computor },
+        ]);
+
+        await expect(g.debugGetFreshness("a")).resolves.toBe("missing");
+        await expect(g.debugGetFreshness("b")).resolves.toBe("missing");
+        await expect(g.debugGetFreshness("c")).resolves.toBe("missing");
+
+        await g.set("a", { s: "a()" });
+
+        await expect(g.debugGetFreshness("a")).resolves.toBe("up-to-date");
+        await expect(g.debugGetFreshness("b")).resolves.toBe(
+            "potentially-outdated"
+        );
+        await expect(g.debugGetFreshness("c")).resolves.toBe(
+            "potentially-outdated"
+        );
+        await expect(g.debugGetFreshness("d")).resolves.toBe(
+            "potentially-outdated"
+        );
+        await expect(g.debugGetFreshness("e")).resolves.toBe(
+            "potentially-outdated"
+        );
+
+        const c = await g.pull("c");
+        expect(c).toEqual({ s: "c(b(a()))" });
+        expect(bC.counter.calls).toBe(1);
+        expect(cC.counter.calls).toBe(1);
+        expect(dC.counter.calls).toBe(0);
+        expect(eC.counter.calls).toBe(0);
+
+        await expect(g.debugGetFreshness("a")).resolves.toBe("up-to-date");
+        await expect(g.debugGetFreshness("b")).resolves.toBe("up-to-date");
+        await expect(g.debugGetFreshness("c")).resolves.toBe("up-to-date");
+        await expect(g.debugGetFreshness("d")).resolves.toBe(
+            "potentially-outdated"
+        );
+        await expect(g.debugGetFreshness("e")).resolves.toBe(
+            "potentially-outdated"
+        );
+
+        await g.set("a", { s: "a()" });
+
+        await expect(g.debugGetFreshness("a")).resolves.toBe("up-to-date");
+        await expect(g.debugGetFreshness("b")).resolves.toBe(
+            "potentially-outdated"
+        );
+        await expect(g.debugGetFreshness("c")).resolves.toBe(
+            "potentially-outdated"
+        );
+        await expect(g.debugGetFreshness("d")).resolves.toBe(
+            "potentially-outdated"
+        );
+        await expect(g.debugGetFreshness("e")).resolves.toBe(
+            "potentially-outdated"
+        );
+
+        const b = await g.pull("b");
+        expect(b).toEqual({ s: "b(a())" });
+        expect(bC.counter.calls).toBe(2); // one recompute
+        expect(cC.counter.calls).toBe(1); // no recompute yet
+        expect(dC.counter.calls).toBe(0);
+        expect(eC.counter.calls).toBe(0);
+
+        await expect(g.debugGetFreshness("a")).resolves.toBe("up-to-date");
+        await expect(g.debugGetFreshness("b")).resolves.toBe("up-to-date");
+        // Must still be potentially-outdated because c not recomputed yet.
+        await expect(g.debugGetFreshness("c")).resolves.toBe(
+            "potentially-outdated"
+        );
+        await expect(g.debugGetFreshness("d")).resolves.toBe(
+            "potentially-outdated"
+        );
+        await expect(g.debugGetFreshness("e")).resolves.toBe(
+            "potentially-outdated"
+        );
+    });
 });
 
 describe("P3: computor invoked at most once per node per top-level pull (diamond graph)", () => {
