@@ -859,7 +859,7 @@ describe("1. Deep linear chains: freshness should prevent reevaluation", () => {
 });
 
 describe("2. Deep reconvergent DAGs: dedupe across multiple levels", () => {
-  test.failing("ladder reconvergence: many nodes depend on shared subnode several levels down", async () => {
+  test("ladder reconvergence: many nodes depend on shared subnode several levels down", async () => {
     const db = new InMemoryDatabase();
 
     // Structure:
@@ -910,7 +910,7 @@ describe("2. Deep reconvergent DAGs: dedupe across multiple levels", () => {
     expect(topC.counter.calls).toBe(1);
   });
 
-  test.failing("multi-diamond: A -> (B1,B2,B3) -> (C1,C2) -> D with shared intermediates", async () => {
+  test("multi-diamond: A -> (B1,B2,B3) -> (C1,C2) -> D with shared intermediates", async () => {
     const db = new InMemoryDatabase();
 
     // Structure:
@@ -951,7 +951,7 @@ describe("2. Deep reconvergent DAGs: dedupe across multiple levels", () => {
 });
 
 describe("3. Duplicate dependencies beyond trivial ['b','b'] case", () => {
-  test.failing("structural duplicates: D depends on X and Y; both depend on Z; Z depends on W", async () => {
+  test("structural duplicates: D depends on X and Y; both depend on Z; Z depends on W", async () => {
     const db = new InMemoryDatabase();
 
     const wC = countedComputor("w", async (_i, old) => old || { n: 1 });
@@ -979,7 +979,7 @@ describe("3. Duplicate dependencies beyond trivial ['b','b'] case", () => {
     expect(dC.counter.calls).toBe(1);
   });
 
-  test.failing("same concrete node via different parameterized instantiations", async () => {
+  test("same concrete node via different parameterized instantiations", async () => {
     const db = new InMemoryDatabase();
 
     // Schema: f(x) depends on base, g depends on f('a') and f('b') and f('a') again
@@ -1260,7 +1260,7 @@ describe("8. Overlap detection corner cases", () => {
     expect(g).toBeTruthy();
   });
 
-  test.failing("literal vs variable: f(x,'a') vs f('b',y) are disjoint", () => {
+  test("literal vs variable: f(x,'a') vs f('b',y) are disjoint", () => {
     const db = new InMemoryDatabase();
 
     // Should not throw because literals 'a' and 'b' in different positions make them disjoint
@@ -1390,7 +1390,7 @@ describe("10. Canonical key escaping stress tests", () => {
     expect(usedCanonical).toBe(true);
   });
 
-  test.failing("actual newline in binding should serialize with \\\\n escape in key", async () => {
+  test("actual newline in binding should serialize with \\\\n escape in key", async () => {
     const db = new InMemoryDatabase();
 
     const g = buildGraph(db, [
@@ -1463,7 +1463,7 @@ describe("11. set() batching remains single atomic batch with invalidation fanou
 });
 
 describe("12. (Optional) Concurrent pulls of the same node", () => {
-  test.failing("concurrent pulls of same node should invoke computor once", async () => {
+  test("concurrent pulls of same node should invoke computor once", async () => {
     const db = new InMemoryDatabase();
 
     let resolveBarrier;
