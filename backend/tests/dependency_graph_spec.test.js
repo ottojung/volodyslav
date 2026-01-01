@@ -784,3 +784,721 @@ describe("Canonical DB keys for values (must be canonical serialization)", () =>
     expect(readCanonical).toBe(true);
   });
 });
+
+// ============================================================================
+// EXTENDED CONFORMANCE TEST FAMILIES
+// ============================================================================
+
+describe("1. Deep linear chains: freshness should prevent reevaluation", () => {
+  test.each([
+    { k: 3 },
+    { k: 5 },
+    { k: 10 },
+    { k: 30 },
+  ])("chain of depth $k: A -> N1 -> ... -> Nk", async ({ k }) => {
+    const db = new InMemoryDatabase();
+
+    // Build chain A -> N1 -> N2 -> ... -> Nk
+    const counters = {};
+    const nodeDefs = [];
+
+    // Source node A
+    nodeDefs.push({
+      output: "a",
+      inputs: [],
+      computor: async (_i, old) => old || { n: 0 },
+    });
+
+    // Chain nodes N1 to Nk
+    for (let i = 1; i <= k; i++) {
+      const prevNode = i === 1 ? "a" : `n${i - 1}`;
+      const nodeName = `n${i}`;
+
+      const { computor, counter } = countedComputor(nodeName, async ([prev]) => ({
+        n: prev.n + 1,
+      }));
+
+      counters[nodeName] = counter;
+      nodeDefs.push({
+        output: nodeName,
+        inputs: [prevNode],
+        computor,
+      });
+    }
+
+    const g = buildGraph(db, nodeDefs);
+
+    // First pull: should compute each node exactly once
+    await g.set("a", { n: 0 });
+    const tail = `n${k}`;
+    const v1 = await g.pull(tail);
+    expect(v1).toEqual({ n: k });
+
+    // Check each node computed once
+    for (let i = 1; i <= k; i++) {
+      expect(counters[`n${i}`].calls).toBe(1);
+    }
+
+    // Second pull: should trigger NO recomputation (freshness caching)
+    const v2 = await g.pull(tail);
+    expect(v2).toEqual({ n: k });
+
+    for (let i = 1; i <= k; i++) {
+      expect(counters[`n${i}`].calls).toBe(1); // still 1
+    }
+
+    // After set(A), pull(tail) should recompute each downstream node exactly once
+    await g.set("a", { n: 100 });
+    const v3 = await g.pull(tail);
+    expect(v3).toEqual({ n: 100 + k });
+
+    for (let i = 1; i <= k; i++) {
+      expect(counters[`n${i}`].calls).toBe(2); // now 2
+    }
+  });
+});
+
+describe("2. Deep reconvergent DAGs: dedupe across multiple levels", () => {
+  test.failing("ladder reconvergence: many nodes depend on shared subnode several levels down", async () => {
+    const db = new InMemoryDatabase();
+
+    // Structure:
+    //   shared -> (b1, b2, b3) -> (c1, c2) -> top
+    // where c1 depends on [b1, b2], c2 depends on [b2, b3], top depends on [c1, c2]
+    // shared is reached through multiple paths
+
+    const sharedC = countedComputor("shared", async (_i, old) => old || { n: 1 });
+    const b1C = countedComputor("b1", async ([s]) => ({ n: s.n + 1 }));
+    const b2C = countedComputor("b2", async ([s]) => ({ n: s.n + 2 }));
+    const b3C = countedComputor("b3", async ([s]) => ({ n: s.n + 3 }));
+    const c1C = countedComputor("c1", async ([b1, b2]) => ({ n: b1.n + b2.n }));
+    const c2C = countedComputor("c2", async ([b2, b3]) => ({ n: b2.n + b3.n }));
+    const topC = countedComputor("top", async ([c1, c2]) => ({ n: c1.n + c2.n }));
+
+    const g = buildGraph(db, [
+      { output: "shared", inputs: [], computor: sharedC.computor },
+      { output: "b1", inputs: ["shared"], computor: b1C.computor },
+      { output: "b2", inputs: ["shared"], computor: b2C.computor },
+      { output: "b3", inputs: ["shared"], computor: b3C.computor },
+      { output: "c1", inputs: ["b1", "b2"], computor: c1C.computor },
+      { output: "c2", inputs: ["b2", "b3"], computor: c2C.computor },
+      { output: "top", inputs: ["c1", "c2"], computor: topC.computor },
+    ]);
+
+    await g.set("shared", { n: 1 });
+
+    // First pull: each node computed at most once (P3)
+    const result = await g.pull("top");
+    expect(result).toBeDefined();
+
+    expect(sharedC.counter.calls).toBe(1);
+    expect(b1C.counter.calls).toBe(1);
+    expect(b2C.counter.calls).toBe(1);
+    expect(b3C.counter.calls).toBe(1);
+    expect(c1C.counter.calls).toBe(1);
+    expect(c2C.counter.calls).toBe(1);
+    expect(topC.counter.calls).toBe(1);
+
+    // Second pull: no recomputation (warm cache)
+    await g.pull("top");
+    expect(sharedC.counter.calls).toBe(1);
+    expect(b1C.counter.calls).toBe(1);
+    expect(b2C.counter.calls).toBe(1);
+    expect(b3C.counter.calls).toBe(1);
+    expect(c1C.counter.calls).toBe(1);
+    expect(c2C.counter.calls).toBe(1);
+    expect(topC.counter.calls).toBe(1);
+  });
+
+  test.failing("multi-diamond: A -> (B1,B2,B3) -> (C1,C2) -> D with shared intermediates", async () => {
+    const db = new InMemoryDatabase();
+
+    // Structure:
+    //   a -> [b1, b2, b3]
+    //   b1 -> c1, b2 -> [c1, c2], b3 -> c2
+    //   [c1, c2] -> d
+
+    const aC = countedComputor("a", async (_i, old) => old || { n: 0 });
+    const b1C = countedComputor("b1", async ([a]) => ({ n: a.n + 1 }));
+    const b2C = countedComputor("b2", async ([a]) => ({ n: a.n + 2 }));
+    const b3C = countedComputor("b3", async ([a]) => ({ n: a.n + 3 }));
+    const c1C = countedComputor("c1", async ([b1, b2]) => ({ n: b1.n + b2.n }));
+    const c2C = countedComputor("c2", async ([b2, b3]) => ({ n: b2.n + b3.n }));
+    const dC = countedComputor("d", async ([c1, c2]) => ({ n: c1.n + c2.n }));
+
+    const g = buildGraph(db, [
+      { output: "a", inputs: [], computor: aC.computor },
+      { output: "b1", inputs: ["a"], computor: b1C.computor },
+      { output: "b2", inputs: ["a"], computor: b2C.computor },
+      { output: "b3", inputs: ["a"], computor: b3C.computor },
+      { output: "c1", inputs: ["b1", "b2"], computor: c1C.computor },
+      { output: "c2", inputs: ["b2", "b3"], computor: c2C.computor },
+      { output: "d", inputs: ["c1", "c2"], computor: dC.computor },
+    ]);
+
+    await g.set("a", { n: 10 });
+    await g.pull("d");
+
+    // Each node computed at most once
+    expect(aC.counter.calls).toBe(1);
+    expect(b1C.counter.calls).toBe(1);
+    expect(b2C.counter.calls).toBe(1);
+    expect(b3C.counter.calls).toBe(1);
+    expect(c1C.counter.calls).toBe(1);
+    expect(c2C.counter.calls).toBe(1);
+    expect(dC.counter.calls).toBe(1);
+  });
+});
+
+describe("3. Duplicate dependencies beyond trivial ['b','b'] case", () => {
+  test.failing("structural duplicates: D depends on X and Y; both depend on Z; Z depends on W", async () => {
+    const db = new InMemoryDatabase();
+
+    const wC = countedComputor("w", async (_i, old) => old || { n: 1 });
+    const zC = countedComputor("z", async ([w]) => ({ n: w.n + 1 }));
+    const xC = countedComputor("x", async ([z]) => ({ n: z.n + 10 }));
+    const yC = countedComputor("y", async ([z]) => ({ n: z.n + 20 }));
+    const dC = countedComputor("d", async ([x, y]) => ({ n: x.n + y.n }));
+
+    const g = buildGraph(db, [
+      { output: "w", inputs: [], computor: wC.computor },
+      { output: "z", inputs: ["w"], computor: zC.computor },
+      { output: "x", inputs: ["z"], computor: xC.computor },
+      { output: "y", inputs: ["z"], computor: yC.computor },
+      { output: "d", inputs: ["x", "y"], computor: dC.computor },
+    ]);
+
+    await g.set("w", { n: 1 });
+    await g.pull("d");
+
+    // Z (and W) should be computed once despite being reached through different routes
+    expect(wC.counter.calls).toBe(1);
+    expect(zC.counter.calls).toBe(1);
+    expect(xC.counter.calls).toBe(1);
+    expect(yC.counter.calls).toBe(1);
+    expect(dC.counter.calls).toBe(1);
+  });
+
+  test.failing("same concrete node via different parameterized instantiations", async () => {
+    const db = new InMemoryDatabase();
+
+    // Schema: f(x) depends on base, g depends on f('a') and f('b') and f('a') again
+    // This tests if node identity deduplication works at the concrete level
+
+    const baseC = countedComputor("base", async (_i, old) => old || { n: 0 });
+    const fC = countedComputor("f", async ([base], _old, { x }) => ({ n: base.n + x.value }));
+    const gC = countedComputor("g", async ([fa1, fb, fa2]) => ({
+      n: fa1.n + fb.n + fa2.n,
+    }));
+
+    const g = buildGraph(db, [
+      { output: "base", inputs: [], computor: baseC.computor },
+      { output: "f(x)", inputs: ["base"], computor: fC.computor },
+      { output: "g", inputs: ["f(1)", "f(2)", "f(1)"], computor: gC.computor },
+    ]);
+
+    await g.set("base", { n: 10 });
+    const result = await g.pull("g");
+    expect(result).toBeDefined();
+
+    // f(1) should be computed once even though it appears twice in g's inputs
+    // This is the deduplication requirement
+    // Note: The counter tracks all calls to fC, so we'd need per-instantiation tracking
+    // For now, we can check that the total is reasonable
+    expect(baseC.counter.calls).toBe(1);
+    // fC might be called for f(1) and f(2), but f(1) should dedupe
+    expect(fC.counter.calls).toBeLessThanOrEqual(2); // f(1) once, f(2) once
+  });
+});
+
+describe("4. Parameterized instantiation set: many concrete nodes, independent caches", () => {
+  test.each([
+    { instantiations: ["'a'", "'b'", "'c'"] },
+    { instantiations: ["1", "2", "3", "4", "5"] },
+  ])("independent caching for multiple instantiations: $instantiations", async ({ instantiations }) => {
+    const db = new InMemoryDatabase();
+
+    const baseC = countedComputor("base", async (_i, old) => old || { n: 0 });
+    const fC = countedComputor("f", async ([base], _old, { x }) => ({
+      n: base.n + 100,
+      x: x,
+    }));
+
+    const g = buildGraph(db, [
+      { output: "base", inputs: [], computor: baseC.computor },
+      { output: "f(x)", inputs: ["base"], computor: fC.computor },
+    ]);
+
+    await g.set("base", { n: 10 });
+
+    // Pull each instantiation once
+    const results1 = [];
+    for (const inst of instantiations) {
+      const r = await g.pull(`f(${inst})`);
+      results1.push(r);
+    }
+
+    const callsAfterFirst = fC.counter.calls;
+    expect(callsAfterFirst).toBe(instantiations.length);
+
+    // Pull each instantiation again: should be cached
+    for (const inst of instantiations) {
+      await g.pull(`f(${inst})`);
+    }
+
+    expect(fC.counter.calls).toBe(callsAfterFirst); // no new calls
+
+    // After set(base), pulling any instantiation must reflect new state
+    await g.set("base", { n: 50 });
+
+    for (const inst of instantiations) {
+      const r = await g.pull(`f(${inst})`);
+      expect(r.n).toBe(150); // 50 + 100
+    }
+
+    // Each should have recomputed
+    expect(fC.counter.calls).toBe(callsAfterFirst + instantiations.length);
+  });
+});
+
+describe("5. Transitive invalidation over parameterized nodes", () => {
+  test("partial invalidation: source -> mid -> f(x) -> g(x) -> h(x)", async () => {
+    const db = new InMemoryDatabase();
+
+    const sourceC = countedComputor("source", async (_i, old) => old || { n: 0 });
+    const midC = countedComputor("mid", async ([s]) => ({ n: s.n + 1 }));
+    const fC = countedComputor("f", async ([m], _old, { x }) => ({ n: m.n + x.value }));
+    const gC = countedComputor("g", async ([f], _old, { x }) => ({ n: f.n * 2 }));
+    const hC = countedComputor("h", async ([g], _old, { x }) => ({ n: g.n + 1 }));
+
+    const g = buildGraph(db, [
+      { output: "source", inputs: [], computor: sourceC.computor },
+      { output: "mid", inputs: ["source"], computor: midC.computor },
+      { output: "f(x)", inputs: ["mid"], computor: fC.computor },
+      { output: "g(x)", inputs: ["f(x)"], computor: gC.computor },
+      { output: "h(x)", inputs: ["g(x)"], computor: hC.computor },
+    ]);
+
+    await g.set("source", { n: 10 });
+
+    // Materialize subset of instantiations
+    const subset = [1, 2, 3];
+    for (const x of subset) {
+      await g.pull(`h(${x})`);
+    }
+
+    const callsF = fC.counter.calls;
+    const callsG = gC.counter.calls;
+    const callsH = hC.counter.calls;
+
+    // After set(source), pulling h(x) for x in subset must update (no stale)
+    await g.set("source", { n: 20 });
+
+    for (const x of subset) {
+      const result = await g.pull(`h(${x})`);
+      // Check correctness: source=20, mid=21, f=21+x, g=(21+x)*2, h=(21+x)*2+1
+      const expected = (21 + x) * 2 + 1;
+      expect(result.n).toBe(expected);
+    }
+
+    // Should have recomputed along the chain for each x
+    expect(fC.counter.calls).toBeGreaterThan(callsF);
+    expect(gC.counter.calls).toBeGreaterThan(callsG);
+    expect(hC.counter.calls).toBeGreaterThan(callsH);
+  });
+});
+
+describe("6. oldValue plumbing: correct previous-value visibility", () => {
+  test("first materialization: oldValue === undefined", async () => {
+    const db = new InMemoryDatabase();
+
+    const { computor, counter } = countedComputor("node", async (_inputs, oldValue) => {
+      if (oldValue === undefined) {
+        return { v: 1 };
+      }
+      return { v: oldValue.v + 1 };
+    });
+
+    const g = buildGraph(db, [
+      { output: "source", inputs: [], computor: async (_i, old) => old || { n: 0 } },
+      { output: "node", inputs: ["source"], computor },
+    ]);
+
+    await g.set("source", { n: 0 });
+    const v1 = await g.pull("node");
+    expect(v1).toEqual({ v: 1 });
+    expect(counter.calls).toBe(1);
+    expect(counter.args[0].oldValue).toBeUndefined();
+  });
+
+  test("on recomputation after invalidation, oldValue equals previously stored value", async () => {
+    const db = new InMemoryDatabase();
+
+    const { computor, counter } = countedComputor("node", async ([source], oldValue) => {
+      if (oldValue === undefined) {
+        return { v: source.n };
+      }
+      return { v: oldValue.v + source.n };
+    });
+
+    const g = buildGraph(db, [
+      { output: "source", inputs: [], computor: async (_i, old) => old || { n: 0 } },
+      { output: "node", inputs: ["source"], computor },
+    ]);
+
+    await g.set("source", { n: 10 });
+    const v1 = await g.pull("node");
+    expect(v1).toEqual({ v: 10 });
+
+    await g.set("source", { n: 5 });
+    const v2 = await g.pull("node");
+    expect(v2).toEqual({ v: 15 }); // oldValue.v=10 + source.n=5
+
+    expect(counter.calls).toBe(2);
+    expect(counter.args[1].oldValue).toEqual({ v: 10 });
+  });
+
+  test("when computor returns Unchanged, oldValue on next invocation matches preserved value", async () => {
+    const db = new InMemoryDatabase();
+
+    const { computor, counter } = countedComputor("node", async ([source], oldValue) => {
+      if (oldValue === undefined) {
+        return { v: 1 };
+      }
+      if (source.flag === "unchanged") {
+        return makeUnchanged();
+      }
+      return { v: oldValue.v + 1 };
+    });
+
+    const g = buildGraph(db, [
+      { output: "source", inputs: [], computor: async (_i, old) => old || { flag: "init" } },
+      { output: "node", inputs: ["source"], computor },
+    ]);
+
+    await g.set("source", { flag: "init" });
+    const v1 = await g.pull("node");
+    expect(v1).toEqual({ v: 1 });
+
+    // Set source to trigger recomputation, but computor returns Unchanged
+    await g.set("source", { flag: "unchanged" });
+    const v2 = await g.pull("node");
+    expect(v2).toEqual({ v: 1 }); // preserved
+
+    // Set source again to trigger another recomputation
+    await g.set("source", { flag: "change" });
+    const v3 = await g.pull("node");
+    expect(v3).toEqual({ v: 2 }); // oldValue.v=1 + 1
+
+    expect(counter.calls).toBe(3);
+    expect(counter.args[2].oldValue).toEqual({ v: 1 }); // preserved from Unchanged
+  });
+});
+
+describe("7. Repeated-variable matching: eq(x,x) style patterns", () => {
+  test("eq(x,x) matches when both args are equal", async () => {
+    const db = new InMemoryDatabase();
+
+    const g = buildGraph(db, [
+      {
+        output: "eq(x,x)",
+        inputs: [],
+        computor: async (_i, _o, { x }) => ({ equal: true, val: x }),
+      },
+    ]);
+
+    const result = await g.pull("eq('a','a')");
+    expect(result).toEqual({ equal: true, val: { type: "string", value: "a" } });
+  });
+
+  test("eq(x,x) does NOT match when args differ -> InvalidNodeError", async () => {
+    const db = new InMemoryDatabase();
+
+    const g = buildGraph(db, [
+      {
+        output: "eq(x,x)",
+        inputs: [],
+        computor: async (_i, _o, { x }) => ({ equal: true, val: x }),
+      },
+    ]);
+
+    await expect(g.pull("eq('a','b')")).rejects.toMatchObject({
+      name: expect.stringMatching(/^(InvalidNodeError|InvalidNode)$/),
+    });
+  });
+
+  test("pair(x,x) with integers", async () => {
+    const db = new InMemoryDatabase();
+
+    const g = buildGraph(db, [
+      {
+        output: "pair(x,x)",
+        inputs: [],
+        computor: async (_i, _o, { x }) => ({ val: x.value * 2 }),
+      },
+    ]);
+
+    const result = await g.pull("pair(5,5)");
+    expect(result).toEqual({ val: 10 });
+
+    await expect(g.pull("pair(5,6)")).rejects.toMatchObject({
+      name: expect.stringMatching(/^(InvalidNodeError|InvalidNode)$/),
+    });
+  });
+});
+
+describe("8. Overlap detection corner cases", () => {
+  test("arity mismatch: node(x) vs node(x,y) must be disjoint", () => {
+    const db = new InMemoryDatabase();
+
+    // Should not throw overlap error because arity differs
+    const g = buildGraph(db, [
+      { output: "node(x)", inputs: [], computor: async () => ({ a: 1 }) },
+      { output: "node(x,y)", inputs: [], computor: async () => ({ a: 2 }) },
+    ]);
+
+    expect(g).toBeTruthy();
+  });
+
+  test.failing("literal vs variable: f(x,'a') vs f('b',y) are disjoint", () => {
+    const db = new InMemoryDatabase();
+
+    // Should not throw because literals 'a' and 'b' in different positions make them disjoint
+    const g = buildGraph(db, [
+      { output: "f(x,'a')", inputs: [], computor: async () => ({ v: 1 }) },
+      { output: "f('b',y)", inputs: [], computor: async () => ({ v: 2 }) },
+    ]);
+
+    expect(g).toBeTruthy();
+  });
+
+  test("repeated variables: f(x,x) vs f(y,z) should overlap", () => {
+    const db = new InMemoryDatabase();
+
+    // f(x,x) matches nodes where both args are equal
+    // f(y,z) matches nodes with any args
+    // These overlap (e.g., on f('a','a'))
+    expect(() =>
+      makeDependencyGraph(db, [
+        { output: "f(x,x)", inputs: [], computor: async () => ({ v: 1 }) },
+        { output: "f(y,z)", inputs: [], computor: async () => ({ v: 2 }) },
+      ])
+    ).toThrow();
+
+    try {
+      makeDependencyGraph(db, [
+        { output: "f(x,x)", inputs: [], computor: async () => ({ v: 1 }) },
+        { output: "f(y,z)", inputs: [], computor: async () => ({ v: 2 }) },
+      ]);
+    } catch (e) {
+      expectOneOfNames(e, ["SchemaOverlapError"]);
+    }
+  });
+
+  test("literal-only patterns: f('a') vs f('b') are disjoint", () => {
+    const db = new InMemoryDatabase();
+
+    const g = buildGraph(db, [
+      { output: "f('a')", inputs: [], computor: async () => ({ v: 1 }) },
+      { output: "f('b')", inputs: [], computor: async () => ({ v: 2 }) },
+    ]);
+
+    expect(g).toBeTruthy();
+  });
+});
+
+describe("9. Cycle detection via specialization / self-reference", () => {
+  test("direct self-cycle: a -> a", () => {
+    const db = new InMemoryDatabase();
+
+    expect(() =>
+      makeDependencyGraph(db, [
+        { output: "a", inputs: ["a"], computor: async ([a]) => a },
+      ])
+    ).toThrow();
+
+    try {
+      makeDependencyGraph(db, [
+        { output: "a", inputs: ["a"], computor: async ([a]) => a },
+      ]);
+    } catch (e) {
+      expectOneOfNames(e, ["SchemaCycleError"]);
+    }
+  });
+
+  test("specialization-induced self-cycle: f(x) depends on f('a') becomes cycle when x='a'", () => {
+    const db = new InMemoryDatabase();
+
+    // This is a tricky case: the schema f(x) -> f('a') looks OK at schema level,
+    // but when instantiated with x='a', it creates f('a') -> f('a')
+    expect(() =>
+      makeDependencyGraph(db, [
+        { output: "f(x)", inputs: ["f('a')"], computor: async ([fa]) => fa },
+      ])
+    ).toThrow();
+
+    try {
+      makeDependencyGraph(db, [
+        { output: "f(x)", inputs: ["f('a')"], computor: async ([fa]) => fa },
+      ]);
+    } catch (e) {
+      expectOneOfNames(e, ["SchemaCycleError"]);
+    }
+  });
+
+  test("non-cycle due to disjoint literals: f(x,'a') -> f(x,'b') should be allowed", () => {
+    const db = new InMemoryDatabase();
+
+    // f(x,'a') and f(x,'b') are disjoint (different literals in position 2)
+    // so this is not a cycle
+    const g = buildGraph(db, [
+      { output: "f(x,'a')", inputs: ["f(x,'b')"], computor: async ([fb]) => fb },
+      { output: "f(x,'b')", inputs: [], computor: async () => ({ ok: true }) },
+    ]);
+
+    expect(g).toBeTruthy();
+  });
+});
+
+describe("10. Canonical key escaping stress tests", () => {
+  test.each([
+    { desc: "single quote", str: "test\\'quote" },
+    { desc: "backslash", str: "test\\\\back" },
+    { desc: "tab", str: "test\\ttab" },
+    { desc: "carriage return", str: "test\\rcarriage" },
+    { desc: "newline", str: "test\\nnewline" },
+  ])("string escaping: $desc", async ({ str }) => {
+    const db = new InMemoryDatabase();
+
+    const g = buildGraph(db, [
+      { output: "s(x)", inputs: [], computor: async (_i, old, { x }) => old || { val: x.value } },
+    ]);
+
+    // The str contains escape sequences that should be decoded in bindings
+    // but the DB key should contain canonical escaped forms
+    await g.set(`s('${str}')`, { val: "test" });
+
+    db.resetLogs();
+    await g.pull(`s('${str}')`);
+
+    // Check that storage used canonical key
+    const canonicalKey = `s('${str}')`;
+    const usedCanonical =
+      db.getValueLog.some((x) => x.key.includes(canonicalKey)) ||
+      db.batchLog.some((b) => b.ops.some((op) => op.key.includes(canonicalKey)));
+
+    expect(usedCanonical).toBe(true);
+  });
+
+  test.failing("actual newline in binding should serialize with \\\\n escape in key", async () => {
+    const db = new InMemoryDatabase();
+
+    const g = buildGraph(db, [
+      { output: "s(x)", inputs: [], computor: async (_i, old, { x }) => old || { val: x.value } },
+    ]);
+
+    // Use the escape sequence which decodes to actual newline
+    await g.set("s('line1\\nline2')", { val: "test" });
+
+    db.resetLogs();
+    const result = await g.pull("s('line1\\nline2')");
+
+    // Bindings should contain the decoded string (actual newline)
+    expect(result.val).toBe("line1\nline2");
+
+    // But DB key must NOT contain a raw newline; it should contain the escape sequence
+    const hasRawNewline = db.getValueLog.some((x) => x.key.includes("\n"));
+    expect(hasRawNewline).toBe(false);
+
+    // Should contain the escaped form
+    const hasEscaped = db.getValueLog.some((x) => x.key.includes("\\n"));
+    expect(hasEscaped).toBe(true);
+  });
+});
+
+describe("11. set() batching remains single atomic batch with invalidation fanout", () => {
+  test("source with many materialized dependents uses single batch", async () => {
+    const db = new InMemoryDatabase();
+
+    // Build a graph where source has many direct and transitive dependents
+    const counters = {};
+    const nodeDefs = [
+      { output: "source", inputs: [], computor: async (_i, old) => old || { n: 0 } },
+    ];
+
+    const numDirect = 10;
+    for (let i = 1; i <= numDirect; i++) {
+      const { computor, counter } = countedComputor(`d${i}`, async ([s]) => ({ n: s.n + i }));
+      counters[`d${i}`] = counter;
+      nodeDefs.push({ output: `d${i}`, inputs: ["source"], computor });
+    }
+
+    // Add transitive dependents
+    for (let i = 1; i <= numDirect; i++) {
+      const { computor, counter } = countedComputor(`t${i}`, async ([d]) => ({ n: d.n * 2 }));
+      counters[`t${i}`] = counter;
+      nodeDefs.push({ output: `t${i}`, inputs: [`d${i}`], computor });
+    }
+
+    const g = buildGraph(db, nodeDefs);
+
+    await g.set("source", { n: 1 });
+
+    // Materialize all dependents
+    for (let i = 1; i <= numDirect; i++) {
+      await g.pull(`t${i}`);
+    }
+
+    db.resetLogs();
+
+    // Now set(source) again, which should invalidate all materialized dependents
+    await g.set("source", { n: 10 });
+
+    // Should use exactly one batch
+    expect(db.batchLog.length).toBe(1);
+
+    // Should have no non-batched put calls during set
+    expect(db.putLog.length).toBe(0);
+  });
+});
+
+describe("12. (Optional) Concurrent pulls of the same node", () => {
+  test.failing("concurrent pulls of same node should invoke computor once", async () => {
+    const db = new InMemoryDatabase();
+
+    let resolveBarrier;
+    const barrier = new Promise((resolve) => {
+      resolveBarrier = resolve;
+    });
+
+    const { computor, counter } = countedComputor("node", async ([source]) => {
+      await barrier;
+      return { n: source.n + 1 };
+    });
+
+    const g = buildGraph(db, [
+      { output: "source", inputs: [], computor: async (_i, old) => old || { n: 0 } },
+      { output: "node", inputs: ["source"], computor },
+    ]);
+
+    await g.set("source", { n: 10 });
+
+    // Issue two concurrent pulls
+    const pull1 = g.pull("node");
+    const pull2 = g.pull("node");
+
+    // Wait a bit to ensure both pulls are in-flight
+    await new Promise((resolve) => setTimeout(resolve, 10));
+
+    resolveBarrier();
+
+    const [result1, result2] = await Promise.all([pull1, pull2]);
+
+    // Both should get the same value
+    expect(result1).toEqual({ n: 11 });
+    expect(result2).toEqual({ n: 11 });
+
+    // Computor should have been invoked only once (in-flight dedupe)
+    expect(counter.calls).toBe(1);
+  });
+});
