@@ -251,10 +251,10 @@ When `set('all_events', newData)` is called:
 **Implementation Challenge:** How do we efficiently mark all instantiations without enumerating infinitely many of them?
 
 **Implementation Note:** Implementations typically solve this by:
-1. Maintaining a reverse dependency index that maps each node to its known dependents
-2. Walking this index during `set()` invalidation
-3. Conservatively marking any nodes found in the index, whether or not they have been fully materialized
-4. This conservative approach is permitted by the specification as long as correctness is maintained
+* Maintaining a reverse dependency index that maps each node to its known dependents
+* Walking this index during `set()` invalidation
+* Conservatively marking any nodes found in the index, whether or not they have been fully materialized
+* This conservative approach is permitted by the specification as long as correctness is maintained
 
 ## Operations on Parameterized Graphs
 
@@ -537,14 +537,14 @@ If a materialized concrete node is `up-to-date`, its value MUST equal what would
 **Implementation Note on Materialization:**
 
 Implementations MAY mark dependents as `potentially-outdated` regardless of whether they have been previously materialized. This means:
-* A node that has never been pulled/set (and would return `"missing"` from `debugGetFreshness()` before the `set()` operation) MAY be marked `potentially-outdated` during the propagation phase if it appears in the dependency graph structure (either as a static edge from the schema, or as a dynamic edge persisted from a previous instantiation).
+* A node that has never been pulled/set would return `"missing"` from `debugGetFreshness()` before the `set()` operation. Such nodes MAY be marked `potentially-outdated` during the propagation phase if they appear in the dependency graph structure (either as a static edge from the schema, or as a dynamic edge persisted from a previous instantiation).
 * This behavior is permitted because marking an unmaterialized node as `potentially-outdated` is harmless: the node's freshness state will be checked upon first access, and it will be recomputed correctly based on its dependencies.
 * The key correctness property is that **if a node is materialized** (has been pulled/set), then it MUST be marked `potentially-outdated` when its dependencies change. Marking additional nodes is permitted as a conservative approximation.
 
 **Postconditions:**
 * `isUpToDate(nodeName)` = true
-* All reachable dependents (whether previously materialized or not) MAY satisfy `isPotentiallyOutdated(D)` = true
 * All reachable **materialized** dependents MUST satisfy `isPotentiallyOutdated(D)` = true
+* All reachable dependents (whether previously materialized or not) MAY satisfy `isPotentiallyOutdated(D)` = true
 * Invariants I1, I2, I3 are preserved
 
 **Error Handling:**
