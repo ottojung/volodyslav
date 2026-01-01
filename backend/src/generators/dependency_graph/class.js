@@ -473,15 +473,31 @@ class DependencyGraphClass {
 
         // Optimization: if all inputs are 'unchanged' (meaning they were outdated but recomputed to same value),
         // then we can skip recomputation and mark ourselves up-to-date.
+        // However, we must still ensure the node is indexed for correct invalidation.
         if (
             allInputsUnchanged &&
             nodeDefinition.inputs.length > 0 &&
             oldValue !== undefined
         ) {
+            // Prepare batch operations for the fast path
+            /** @type {Array<{type: "put", key: string, value: DatabaseStoredValue} | {type: "del", key: string}>} */
+            const batchOperations = [];
+
+            // Ensure node is indexed (if it has inputs)
+            // This is critical for pattern nodes which have no static dependents map entry
+            await this.storage.ensureNodeIndexed(
+                nodeName,
+                nodeDefinition.inputs,
+                batchOperations
+            );
+
             // Mark up-to-date
-            await this.database.batch([
-                this.storage.setNodeFreshnessOp(nodeName, "up-to-date"),
-            ]);
+            batchOperations.push(
+                this.storage.setNodeFreshnessOp(nodeName, "up-to-date")
+            );
+
+            // Execute all operations atomically
+            await this.database.batch(batchOperations);
 
             return { value: oldValue, status: "unchanged" };
         }
@@ -582,7 +598,27 @@ class DependencyGraphClass {
         );
 
         // Fast path: if up-to-date, return cached value immediately
+        // But first ensure the node is indexed (for pattern nodes in seeded DBs)
         if (nodeFreshness === "up-to-date") {
+            // Ensure node is indexed if it has inputs
+            // This is critical for seeded databases where values/freshness exist
+            // but reverse-dep metadata is missing
+            if (nodeDefinition.inputs.length > 0) {
+                /** @type {Array<{type: "put", key: string, value: DatabaseStoredValue} | {type: "del", key: string}>} */
+                const batchOperations = [];
+                
+                await this.storage.ensureNodeIndexed(
+                    canonicalName,
+                    nodeDefinition.inputs,
+                    batchOperations
+                );
+                
+                // Execute indexing operations if any were added
+                if (batchOperations.length > 0) {
+                    await this.database.batch(batchOperations);
+                }
+            }
+            
             const result = await this.storage.getNodeValue(canonicalName);
             if (result === undefined) {
                 throw makeMissingValueError(canonicalName);

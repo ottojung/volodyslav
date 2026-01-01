@@ -2329,3 +2329,135 @@ describe("12. (Optional) Concurrent pulls of the same node", () => {
         }
     );
 });
+
+describe("13. Seeded database scenario: fast path must index reverse dependencies", () => {
+    test("seeded derived node without reverse-deps: invalidation must still work", async () => {
+        const db = new InMemoryDatabase();
+
+        // Schema: source -> derived
+        const derivedC = countedComputor("derived", async ([source]) => ({
+            n: source.n + 1,
+        }));
+
+        const g1 = buildGraph(db, [
+            {
+                output: "source",
+                inputs: [],
+                computor: async (_i, old) => old || { n: 0 },
+            },
+            { output: "derived", inputs: ["source"], computor: derivedC.computor },
+        ]);
+
+        // Materialize both nodes normally
+        await g1.set("source", { n: 10 });
+        const v1 = await g1.pull("derived");
+        expect(v1).toEqual({ n: 11 });
+        expect(derivedC.counter.calls).toBe(1);
+
+        // Simulate seeded scenario: manually create a fresh database with:
+        // 1. source value + freshness (up-to-date)
+        // 2. derived value + freshness (up-to-date)
+        // 3. NO reverse-dep metadata (as if seeded from older version or partial data)
+        const db2 = new InMemoryDatabase();
+
+        // Pre-populate the database with values and freshness, but NO indexing
+        await db2.put("source", { n: 10 });
+        await db2.put("freshness(source)", "up-to-date");
+        await db2.put("derived", { n: 11 });
+        await db2.put("freshness(derived)", "up-to-date");
+        // Note: we intentionally DO NOT add reverse-dep keys or inputs keys
+
+        // Create a new graph instance over this seeded database
+        const derivedC2 = countedComputor("derived2", async ([source]) => ({
+            n: source.n + 1,
+        }));
+
+        const g2 = buildGraph(db2, [
+            {
+                output: "source",
+                inputs: [],
+                computor: async (_i, old) => old || { n: 0 },
+            },
+            { output: "derived", inputs: ["source"], computor: derivedC2.computor },
+        ]);
+
+        // Pull derived once - this triggers the "allInputsUnchanged fast path"
+        // because source is already up-to-date
+        const v2 = await g2.pull("derived");
+        expect(v2).toEqual({ n: 11 });
+
+        // The fast path should have indexed reverse dependencies
+        // Now change source and verify that derived gets invalidated properly
+        await g2.set("source", { n: 20 });
+
+        // Pull derived again - it MUST reflect the new value
+        const v3 = await g2.pull("derived");
+        expect(v3).toEqual({ n: 21 });
+
+        // The computor must have been called to recompute the new value
+        expect(derivedC2.counter.calls).toBeGreaterThanOrEqual(1);
+    });
+
+    test("seeded pattern node without reverse-deps: invalidation must still work", async () => {
+        const db = new InMemoryDatabase();
+
+        // Schema: source -> derived(e) (pattern)
+        const derivedC = countedComputor("derived", async ([source], _old, { e }) => ({
+            id: e.value,
+            n: source.n + 1,
+        }));
+
+        const g1 = buildGraph(db, [
+            {
+                output: "source",
+                inputs: [],
+                computor: async (_i, old) => old || { n: 0 },
+            },
+            { output: "derived(e)", inputs: ["source"], computor: derivedC.computor },
+        ]);
+
+        // Materialize both nodes normally
+        await g1.set("source", { n: 10 });
+        const v1 = await g1.pull("derived('id123')");
+        expect(v1).toEqual({ id: "id123", n: 11 });
+        expect(derivedC.counter.calls).toBe(1);
+
+        // Simulate seeded scenario for pattern node
+        const db2 = new InMemoryDatabase();
+
+        // Pre-populate with values and freshness, but NO reverse-dep indexing
+        await db2.put("source", { n: 10 });
+        await db2.put("freshness(source)", "up-to-date");
+        await db2.put("derived('id123')", { id: "id123", n: 11 });
+        await db2.put("freshness(derived('id123'))", "up-to-date");
+
+        // Create new graph instance
+        const derivedC2 = countedComputor("derived2", async ([source], _old, { e }) => ({
+            id: e.value,
+            n: source.n + 1,
+        }));
+
+        const g2 = buildGraph(db2, [
+            {
+                output: "source",
+                inputs: [],
+                computor: async (_i, old) => old || { n: 0 },
+            },
+            { output: "derived(e)", inputs: ["source"], computor: derivedC2.computor },
+        ]);
+
+        // Pull derived - triggers fast path
+        const v2 = await g2.pull("derived('id123')");
+        expect(v2).toEqual({ id: "id123", n: 11 });
+
+        // Change source
+        await g2.set("source", { n: 20 });
+
+        // Pull derived again - must reflect new value
+        const v3 = await g2.pull("derived('id123')");
+        expect(v3).toEqual({ id: "id123", n: 21 });
+
+        // Recomputation must have occurred
+        expect(derivedC2.counter.calls).toBeGreaterThanOrEqual(1);
+    });
+});
