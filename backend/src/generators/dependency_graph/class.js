@@ -5,17 +5,18 @@
 /** @typedef {import('./types').Database} Database */
 /** @typedef {import('./types').DatabaseValue} DatabaseValue */
 /** @typedef {import('./types').Version} Version */
+/** @typedef {import('./types').Freshness} Freshness */
 /** @typedef {import('./types').DependencyVersions} DependencyVersions */
 /** @typedef {import('./types').NodeDef} NodeDef */
 /** @typedef {import('./types').CompiledNode} CompiledNode */
 /** @typedef {import('./types').ConstValue} ConstValue */
 /** @typedef {import('./unchanged').Unchanged} Unchanged */
 /** @typedef {import('./index_helper').Index} Index */
-/** @typedef {DatabaseValue | Version | DependencyVersions} DatabaseStoredValue */
+/** @typedef {DatabaseValue | Version | Freshness | DependencyVersions} DatabaseStoredValue */
 
 const crypto = require("crypto");
 const { isUnchanged } = require("./unchanged");
-const { versionKey, depVersionsKey, makeDependencyVersions } = require("../database");
+const { versionKey, freshnessKey, depVersionsKey, makeDependencyVersions } = require("../database");
 const { 
     makeInvalidNodeError, 
     makeInvalidSchemaError,
@@ -29,16 +30,16 @@ const { extractVariables } = require("./compiled_node");
 const { makeIndex } = require("./index_helper");
 
 /**
- * A dependency graph that propagates data through edges based on versioning.
+ * A dependency graph that propagates data through edges using versions and freshness.
  *
  * Algorithm overview:
- * - Each node has a value_version that increments when its value changes
+ * - Each node has a value_version that increments only when its value changes
  * - Each node stores dep_versions - snapshot of dependency versions from last computation
- * - pull() checks if node is up-to-date by comparing current dependency versions with stored snapshot
- * - If up-to-date → return cached value
- * - If not up-to-date → maybeRecalculate
- * - maybeRecalculate() pulls all inputs, computes, and updates version if value changed
- * - When Unchanged is returned, version stays the same (safe downstream propagation)
+ * - Each node has a freshness flag: "up-to-date" or "potentially-outdated"
+ * - set() marks node as up-to-date and propagates "potentially-outdated" to all dependents
+ * - Local up-to-date check: node is "up-to-date" OR (is "potentially-outdated" but dep versions match snapshot)
+ * - pull() checks locally if up-to-date → return cached, else pull dependencies and recompute
+ * - When Unchanged is returned, version stays same, enabling safe downstream optimization
  * 
  * Persistence model:
  * - Reverse dependencies and inputs are persisted in DB under schema-namespaced keys
@@ -117,6 +118,13 @@ class DependencyGraphClass {
      * @param {DatabaseValue} value - The value to set
      * @returns {Promise<void>}
      */
+    /**
+     * Sets a specific node's value, marking it up-to-date and propagating potentially-outdated to dependents.
+     * All operations are performed atomically in a single batch.
+     * @param {string} key - The name of the node to set
+     * @param {DatabaseValue} value - The value to set
+     * @returns {Promise<void>}
+     */
     async set(key, value) {
         // Canonicalize the key
         const canonicalKey = canonicalize(key);
@@ -159,8 +167,70 @@ class DependencyGraphClass {
             this.putOp(depVersionsKey(canonicalKey), makeDependencyVersions({}))
         );
 
+        // Mark this key as up-to-date
+        /** @type {import('./types').Freshness} */
+        const upToDate = "up-to-date";
+        batchOperations.push(
+            this.putOp(freshnessKey(canonicalKey), upToDate)
+        );
+
+        // Collect operations to mark all dependents as potentially-outdated
+        await this.collectMarkDependentsOperations(canonicalKey, batchOperations);
+
         // Execute all operations atomically
         await this.database.batch(batchOperations);
+    }
+
+    /**
+     * Recursively collects operations to mark dependent nodes as potentially-outdated.
+     * Uses both static dependents map and DB-persisted reverse dependencies.
+     * @private
+     * @param {string} changedKey - The key that was changed
+     * @param {Array<{type: "put", key: string, value: DatabaseStoredValue} | {type: "del", key: string}>} batchOperations - Batch to add operations to
+     * @param {Set<string>} visited - Set of already-visited nodes to prevent redundant recursion
+     * @returns {Promise<void>}
+     */
+    async collectMarkDependentsOperations(changedKey, batchOperations, visited = new Set()) {
+        // Avoid redundant work
+        if (visited.has(changedKey)) {
+            return;
+        }
+        visited.add(changedKey);
+
+        // Collect dependents from both static map and DB
+        const staticDependents = this.dependentsMap.get(changedKey) || [];
+        const dynamicDependents = await this.index.listDependents(changedKey);
+
+        // Combine both sources
+        const allDependents = [
+            ...staticDependents,
+            ...dynamicDependents.map((output) => ({ output, inputs: [] })),
+        ];
+
+        for (const node of allDependents) {
+            const currentFreshness = await this.database.getFreshness(
+                freshnessKey(node.output)
+            );
+
+            // Only update if not already potentially-outdated
+            if (currentFreshness !== "potentially-outdated") {
+                /** @type {import('./types').Freshness} */
+                const potentiallyOutdated = "potentially-outdated";
+                batchOperations.push(
+                    this.putOp(
+                        freshnessKey(node.output),
+                        potentiallyOutdated
+                    )
+                );
+
+                // Recursively mark dependents of this node
+                await this.collectMarkDependentsOperations(
+                    node.output,
+                    batchOperations,
+                    visited
+                );
+            }
+        }
     }
 
     /**
@@ -419,8 +489,34 @@ class DependencyGraphClass {
      * @param {Array<string>} inputs - The node's input dependencies
      * @returns {Promise<boolean>}
      */
+    /**
+     * Checks if a node is up-to-date using LOCAL information only.
+     * Does NOT pull or access dependencies - uses only stored metadata.
+     * 
+     * A node is up-to-date if:
+     * 1. It's marked as "up-to-date" (freshness flag), OR
+     * 2. It's "potentially-outdated" BUT all dependency versions match the stored snapshot
+     *
+     * @private
+     * @param {string} nodeName - The node to check
+     * @param {Array<string>} inputs - The node's input dependencies
+     * @returns {Promise<boolean>}
+     */
     async isNodeUpToDate(nodeName, inputs) {
-        // Get stored dependency versions from last computation
+        // Check freshness flag first
+        const freshness = await this.database.getFreshness(freshnessKey(nodeName));
+        
+        // If marked as up-to-date, it's up-to-date
+        if (freshness === "up-to-date") {
+            return true;
+        }
+
+        // If not potentially-outdated (e.g., undefined/never computed), not up-to-date
+        if (freshness !== "potentially-outdated") {
+            return false;
+        }
+
+        // Node is potentially-outdated - check if dependency versions still match
         const storedDepVersions = await this.database.getDependencyVersions(
             depVersionsKey(nodeName)
         );
@@ -449,10 +545,9 @@ class DependencyGraphClass {
      * Pulls a specific node's value, lazily evaluating dependencies as needed.
      *
      * Algorithm:
-     * - Pull all dependencies first (ensuring they're fresh)
-     * - Check if dependency versions match our stored snapshot
-     * - If yes: return cached value (optimization)
-     * - If no: recompute
+     * - Check locally if node is up-to-date (without pulling dependencies)
+     * - If up-to-date: return cached value (fast path)
+     * - If not up-to-date: pull dependencies, recompute, handle Unchanged
      *
      * @param {string} nodeName - The name of the node to pull
      * @returns {Promise<DatabaseValue>} The node's value
@@ -467,18 +562,11 @@ class DependencyGraphClass {
         // Find or create the node definition
         const nodeDefinition = await this.getOrCreateConcreteNode(canonicalName);
 
-        // ALWAYS pull all dependencies first to ensure they're up-to-date
-        // This is critical for soundness!
-        for (const inputKey of nodeDefinition.inputs) {
-            await this.getOrCreateConcreteNode(inputKey, true);
-            await this.pull(inputKey);
-        }
-
-        // NOW check if our node is up-to-date based on current dependency versions
+        // Check LOCALLY if node is up-to-date (doesn't pull dependencies)
         const upToDate = await this.isNodeUpToDate(canonicalName, nodeDefinition.inputs);
 
         if (upToDate) {
-            // Dependencies haven't changed, use cached value
+            // Node is up-to-date, return cached value immediately
             const result = await this.database.getValue(canonicalName);
             if (result === undefined) {
                 throw makeMissingValueError(canonicalName);
@@ -486,22 +574,38 @@ class DependencyGraphClass {
             return result;
         }
 
-        // Dependencies changed, need to recompute
-        // Get old value
-        const oldValue = await this.database.getValue(canonicalName);
+        // Not up-to-date - need to pull dependencies and recompute
+        return await this.maybeRecalculate(nodeDefinition);
+    }
 
-        // Get fresh input values (already pulled above)
+    /**
+     * Maybe recalculates a potentially-outdated node.
+     * Pulls all inputs, computes, and handles Unchanged appropriately.
+     *
+     * @private
+     * @param {{output: string, inputs: string[], computor: (inputs: DatabaseValue[], oldValue: DatabaseValue | undefined) => DatabaseValue | Unchanged}} nodeDefinition - The node to recalculate
+     * @returns {Promise<DatabaseValue>}
+     */
+    async maybeRecalculate(nodeDefinition) {
+        const nodeName = nodeDefinition.output;
+
+        // Pull all inputs (recursively ensures they're up-to-date)
         const inputValues = [];
         for (const inputKey of nodeDefinition.inputs) {
-            const inputValue = await this.database.getValue(inputKey);
-            if (inputValue === undefined) {
-                throw makeMissingValueError(inputKey);
-            }
+            await this.getOrCreateConcreteNode(inputKey, true);
+            const inputValue = await this.pull(inputKey);
             inputValues.push(inputValue);
         }
 
+        // Get old value
+        const oldValue = await this.database.getValue(nodeName);
+
         // Compute new value
         const computedValue = nodeDefinition.computor(inputValues, oldValue);
+
+        // Freshness constants
+        /** @type {import('./types').Freshness} */
+        const FRESHNESS_UP_TO_DATE = "up-to-date";
 
         // Prepare batch operations
         /** @type {Array<{type: "put", key: string, value: DatabaseStoredValue} | {type: "del", key: string}>} */
@@ -510,9 +614,16 @@ class DependencyGraphClass {
         // Ensure node is indexed
         if (nodeDefinition.inputs.length > 0) {
             await this.index.ensureNodeIndexed(
-                canonicalName,
+                nodeName,
                 nodeDefinition.inputs,
                 batchOperations
+            );
+        }
+
+        // Mark all inputs as up-to-date (they were just pulled)
+        for (const inputKey of nodeDefinition.inputs) {
+            batchOperations.push(
+                this.putOp(freshnessKey(inputKey), FRESHNESS_UP_TO_DATE)
             );
         }
 
@@ -528,27 +639,36 @@ class DependencyGraphClass {
 
         // Store dependency versions snapshot
         batchOperations.push(
-            this.putOp(depVersionsKey(canonicalName), makeDependencyVersions(currentDepVersionsMap))
+            this.putOp(depVersionsKey(nodeName), makeDependencyVersions(currentDepVersionsMap))
         );
 
         if (!isUnchanged(computedValue)) {
-            // Value changed: store it and increment version
-            batchOperations.push(this.putOp(canonicalName, computedValue));
+            // Value changed: store it, increment version, mark up-to-date
+            batchOperations.push(this.putOp(nodeName, computedValue));
             
-            const currentVersion = await this.database.getVersion(versionKey(canonicalName)) || 0;
+            const currentVersion = await this.database.getVersion(versionKey(nodeName)) || 0;
             batchOperations.push(
-                this.putOp(versionKey(canonicalName), currentVersion + 1)
+                this.putOp(versionKey(nodeName), currentVersion + 1)
+            );
+
+            batchOperations.push(
+                this.putOp(freshnessKey(nodeName), FRESHNESS_UP_TO_DATE)
+            );
+        } else {
+            // Value unchanged: don't update value or version, but mark up-to-date
+            // Version stays same - this enables safe downstream optimization
+            batchOperations.push(
+                this.putOp(freshnessKey(nodeName), FRESHNESS_UP_TO_DATE)
             );
         }
-        // else: Value unchanged - don't update value or version
 
         // Execute all operations atomically
         await this.database.batch(batchOperations);
 
         // Return the current value
-        const result = await this.database.getValue(canonicalName);
+        const result = await this.database.getValue(nodeName);
         if (result === undefined) {
-            throw makeMissingValueError(canonicalName);
+            throw makeMissingValueError(nodeName);
         }
         return result;
     }

@@ -71,12 +71,27 @@
  */
 
 /**
+ * Freshness state for a database value.
+ * Used to track if a node might need recomputation.
+ * @typedef {'up-to-date' | 'potentially-outdated'} Freshness
+ */
+
+/**
  * Constructs the version key for a given database key.
  * @param {string} key - The database key
  * @returns {string} The version key
  */
 function versionKey(key) {
     return `version(${key})`;
+}
+
+/**
+ * Constructs the freshness key for a given database key.
+ * @param {string} key - The database key
+ * @returns {string} The freshness key
+ */
+function freshnessKey(key) {
+    return `freshness(${key})`;
 }
 
 /**
@@ -107,6 +122,15 @@ function makeDependencyVersions(versions) {
  */
 function isVersion(value) {
     return typeof value === "number" && Number.isInteger(value) && value >= 0;
+}
+
+/**
+ * Type guard to check if a value is a Freshness state.
+ * @param {unknown} value
+ * @returns {value is Freshness}
+ */
+function isFreshness(value) {
+    return value === "up-to-date" || value === "potentially-outdated";
 }
 
 /**
@@ -141,7 +165,7 @@ function isDependencyVersions(value) {
 /**
  * Type guard to check if a value is a DatabaseValue.
  * Since DatabaseValue is a union of specific object types, we check if it's
- * an object and not a Version or DependencyVersions metadata.
+ * an object and not a Version, DependencyVersions, or Freshness string.
  * @param {unknown} value
  * @returns {value is DatabaseValue}
  */
@@ -151,15 +175,18 @@ function isDatabaseValue(value) {
         value !== undefined &&
         typeof value === "object" &&
         !isVersion(value) &&
-        !isDependencyVersions(value)
+        !isDependencyVersions(value) &&
+        !isFreshness(value)
     );
 }
 
 module.exports = {
     versionKey,
+    freshnessKey,
     depVersionsKey,
     makeDependencyVersions,
     isVersion,
+    isFreshness,
     isDependencyVersions,
     isDatabaseValue,
 };

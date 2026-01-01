@@ -6,11 +6,12 @@
 /** @typedef {import('../database/class').Database} Database */
 /** @typedef {import('../database/types').DatabaseValue} DatabaseValue */
 /** @typedef {import('../database/types').Version} Version */
+/** @typedef {import('../database/types').Freshness} Freshness */
 /** @typedef {import('../database/types').DependencyVersions} DependencyVersions */
 
 /**
  * Union type for values that can be stored in the database.
- * @typedef {DatabaseValue | Version | DependencyVersions} DatabaseStoredValue
+ * @typedef {DatabaseValue | Version | Freshness | DependencyVersions} DatabaseStoredValue
  */
 
 /**

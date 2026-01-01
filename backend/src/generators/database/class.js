@@ -3,12 +3,13 @@
  */
 
 const { DatabaseQueryError } = require("./errors");
-const { isDatabaseValue, isVersion, isDependencyVersions } = require("./types");
+const { isDatabaseValue, isVersion, isFreshness, isDependencyVersions } = require("./types");
 
 /** @typedef {import('./types').DatabaseValue} DatabaseValue */
 /** @typedef {import('./types').Version} Version */
+/** @typedef {import('./types').Freshness} Freshness */
 /** @typedef {import('./types').DependencyVersions} DependencyVersions */
-/** @typedef {DatabaseValue | Version | DependencyVersions} DatabaseStoredValue */
+/** @typedef {DatabaseValue | Version | Freshness | DependencyVersions} DatabaseStoredValue */
 /** @typedef {import('level').Level<string, DatabaseStoredValue>} LevelDB */
 /** @typedef {import('./types').DatabaseCapabilities} DatabaseCapabilities */
 
@@ -121,6 +122,28 @@ class DatabaseClass {
         } else {
             throw new DatabaseQueryError(
                 `Expected version for key ${key}, but found something else.`,
+                this.databasePath,
+                `GET ${key}`
+            );
+        }
+    }
+
+    /**
+     * Retrieves a freshness state from the database.
+     * @param {string} key - The freshness key to retrieve
+     * @returns {Promise<Freshness | undefined>}
+     * @throws {DatabaseQueryError} If the operation fails
+     */
+    async getFreshness(key) {
+        const result = await this.get(key);
+        if (result === undefined) {
+            return undefined;
+        }
+        if (isFreshness(result)) {
+            return result;
+        } else {
+            throw new DatabaseQueryError(
+                `Expected freshness for key ${key}, but found something else.`,
                 this.databasePath,
                 `GET ${key}`
             );
