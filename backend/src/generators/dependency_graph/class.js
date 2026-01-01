@@ -103,20 +103,14 @@ class DependencyGraphClass {
      * @private
      * @param {string} changedKey - The key that was changed
      * @param {Array<{type: "put", key: string, value: DatabaseStoredValue} | {type: "del", key: string}>} batchOperations - Batch to add operations to
-     * @param {Set<string>} visited - Set of already-visited nodes to prevent redundant recursion
+     * @param {Set<string>} nodesBecomingOutdated - Set of nodes that are becoming outdated in this batch
      * @returns {Promise<void>}
      */
     async propagateOutdated(
         changedKey,
         batchOperations,
-        visited = new Set()
+        nodesBecomingOutdated = new Set()
     ) {
-        // Avoid redundant work
-        if (visited.has(changedKey)) {
-            return;
-        }
-        visited.add(changedKey);
-
         // Collect dependents from both static map and DB
         const staticDependents = this.dependentsMap.get(changedKey) || [];
         const dynamicDependents = await this.storage.listDependents(changedKey);
@@ -128,6 +122,11 @@ class DependencyGraphClass {
         ];
 
         for (const node of allDependents) {
+            // Optimization: if already marked outdated in this batch, skip
+            if (nodesBecomingOutdated.has(node.output)) {
+                continue;
+            }
+
             const currentFreshness = await this.storage.getNodeFreshness(
                 node.output
             );
@@ -140,12 +139,13 @@ class DependencyGraphClass {
                         "potentially-outdated"
                     )
                 );
+                nodesBecomingOutdated.add(node.output);
 
                 // Recursively mark dependents of this node
                 await this.propagateOutdated(
                     node.output,
                     batchOperations,
-                    visited
+                    nodesBecomingOutdated
                 );
             }
         }
