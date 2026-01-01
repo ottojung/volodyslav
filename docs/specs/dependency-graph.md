@@ -246,15 +246,8 @@ all_events -> meta_events -> event_context(e)
 When `set('all_events', newData)` is called:
 * `meta_events` becomes potentially-outdated
 * **ALL** materialized instantiations `event_context('id123')`, `event_context('id456')`, etc. become potentially-outdated
-* Implementations MAY also mark unmaterialized instantiations as potentially-outdated if they appear in persisted dependency edges
 
 **Implementation Challenge:** How do we efficiently mark all instantiations without enumerating infinitely many of them?
-
-**Implementation Note:** Implementations typically solve this by:
-* Maintaining a reverse dependency index that maps each node to its known dependents
-* Walking this index during `set()` invalidation
-* Conservatively marking any nodes found in the index, whether or not they have been fully materialized
-* This conservative approach is permitted by the specification as long as correctness is maintained
 
 ## Operations on Parameterized Graphs
 
@@ -430,53 +423,20 @@ set("all_events(x)", value) // ERROR: contains free variable x
 
 **Behavior:** MUST throw an error indicating that pull/set require concrete expressions.
 
-### Materialization During Invalidation Propagation
-
-**Scenario:** When `set()` is called on a source node, implementations walk the dependency graph to mark dependents as `potentially-outdated`. For nodes that have persisted dependency edges (from previous instantiations), but no current freshness state, what should happen?
-
-**Permitted Behavior:** Implementations MAY mark such nodes as `potentially-outdated` even though they have no prior freshness state. This means:
-
-* A node with no freshness state (would return `"missing"` from `debugGetFreshness()`) MAY be changed to `"potentially-outdated"` during invalidation propagation.
-* This is permitted because:
-  1. It is a conservative approximation that maintains correctness
-  2. When the node is eventually accessed via `pull()`, it will be recomputed correctly based on its current dependencies
-  3. The alternative (checking if each dependent was previously materialized before marking it) would require additional bookkeeping and provide no correctness benefit
-
-**Rationale:** The specification's invariants (I1, I2, I3) apply to **materialized concrete nodes** (nodes that have been pulled or set). Implementations are free to maintain freshness state for additional nodes as an optimization or artifact of their invalidation strategy, as long as the required invariants hold for truly materialized nodes.
-
-**Example:**
-
-```javascript
-// Define graph: a -> b -> c
-// Static edges exist in schema
-
-await graph.set('a', 1);  // Marks 'a' up-to-date
-await graph.pull('c');     // Pulls c -> b -> a, all become up-to-date
-
-// Now all three nodes: a, b, c are up-to-date and materialized
-
-// Later, with a fresh graph over the same database:
-await graph.set('a', 2);  // Invalidation walks dependents
-
-// At this point, implementations MAY mark 'b' and 'c' as potentially-outdated
-// even if they weren't "fully materialized" in the current graph instance,
-// because dependency edges were persisted from the previous session
-```
-
 ---
 
 ## Invariants
 
 The dependency graph MUST maintain these invariants at all stable states (between operations).
 
-**Scope:** These invariants apply to **materialized concrete nodes** — nodes that have been:
-* Pulled at least once, or
-* Set (for source nodes only)
+**Scope:** These invariants apply to **materialized concrete nodes**.
 
 **Materialized Node Definition:**
-A **materialized concrete node** is any concrete node that has been instantiated and persisted (with its value and freshness state). Implementations MUST persist sufficient markers to reconstruct the set of materialized nodes after restart.
+A **materialized concrete node** is any concrete node for which the implementation maintains dependency tracking. This includes:
+* Nodes that have been pulled or set (value materialization)
+* Nodes with persisted dependency edges (structural materialization)
 
-**Note on Parameterized Nodes:** The implementation tracks freshness for ALL materialized concrete instantiations. Once a parameterized node like `event_context('id123')` is demanded via `pull()`, it is cached with freshness tracking just like source nodes.
+Implementations MUST persist sufficient markers to reconstruct dependency relationships after restart. Once a node has dependency tracking, it remains materialized even if its value or freshness state is absent.
 
 ### I1: Outdated Propagation Invariant
 
@@ -532,19 +492,11 @@ If a materialized concrete node is `up-to-date`, its value MUST equal what would
 **Effects:**
 1. Store `value` at `nodeName`
 2. Mark `nodeName` as `up-to-date`
-3. Mark all dependents (transitively) as `potentially-outdated`
-
-**Implementation Note on Materialization:**
-
-Implementations MAY mark dependents as `potentially-outdated` regardless of whether they have been previously materialized. This means:
-* A node that has never been pulled/set would return `"missing"` from `debugGetFreshness()` before the `set()` operation. Such nodes MAY be marked `potentially-outdated` during the propagation phase if they appear in the dependency graph structure (either as a static edge from the schema, or as a dynamic edge persisted from a previous instantiation).
-* This behavior is permitted because marking an unmaterialized node as `potentially-outdated` is harmless: the node's freshness state will be checked upon first access, and it will be recomputed correctly based on its dependencies.
-* The key correctness property is that **if a node is materialized** (has been pulled/set), then it MUST be marked `potentially-outdated` when its dependencies change. Marking additional nodes is permitted as a conservative approximation.
+3. Mark all materialized dependents (transitively) as `potentially-outdated`
 
 **Postconditions:**
 * `isUpToDate(nodeName)` = true
-* All reachable **materialized** dependents MUST satisfy `isPotentiallyOutdated(D)` = true
-* All reachable dependents (whether previously materialized or not) MAY satisfy `isPotentiallyOutdated(D)` = true
+* All reachable materialized dependents satisfy `isPotentiallyOutdated(D)` = true
 * Invariants I1, I2, I3 are preserved
 
 **Error Handling:**
@@ -1068,10 +1020,8 @@ Implementations MUST persist sufficient information to reconstruct the set of ma
 
 **Normative Requirements:**
 
-* A **materialized node** is any concrete node that has been:
-  * Pulled (via `pull()`) at least once, or
-  * Set (via `set()`) at least once (for source nodes only).
-* If a concrete node is materialized before a graph restart, then after restart (new `DependencyGraph` instance over the same `Database`):
+* A **materialized node** is any concrete node for which the implementation maintains dependency tracking.
+* If a node is materialized before a graph restart, then after restart (new `DependencyGraph` instance over the same `Database`):
   * `set(source, v)` MUST mark all previously materialized transitive dependents as `potentially-outdated`
   * This MUST occur **without** requiring re-pull of those dependents to rediscover them.
 * The specific mechanism for persisting materialization markers (separate keys, metadata, reverse dependency index, etc.) is **not prescribed**.
@@ -1121,8 +1071,8 @@ interface DependencyGraphDebug {
 
 * `debugGetFreshness(nodeName)` MUST return the conceptual freshness state of the node:
   * `"up-to-date"` — Node is guaranteed consistent with dependencies.
-  * `"potentially-outdated"` — Node may need recomputation. Note: A node may be marked `potentially-outdated` even if it has never been explicitly materialized through `pull()` or `set()`, as implementations are permitted to conservatively mark dependents during invalidation propagation.
-  * `"missing"` — Node has no freshness state recorded in the database. This typically means the node has never been accessed or marked during any operation.
+  * `"potentially-outdated"` — Node may need recomputation.
+  * `"missing"` — Node is not materialized (no dependency tracking exists).
 * `debugListMaterializedNodes()` MUST return an array of canonical node names for all materialized nodes.
 * The debug interface MUST reflect the same conceptual state that governs the graph's operational behavior (no divergence).
 
