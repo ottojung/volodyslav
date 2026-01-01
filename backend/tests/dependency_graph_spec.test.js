@@ -1068,8 +1068,8 @@ describe("5. Transitive invalidation over parameterized nodes", () => {
     const sourceC = countedComputor("source", async (_i, old) => old || { n: 0 });
     const midC = countedComputor("mid", async ([s]) => ({ n: s.n + 1 }));
     const fC = countedComputor("f", async ([m], _old, { x }) => ({ n: m.n + x.value }));
-    const gC = countedComputor("g", async ([f], _old, { x }) => ({ n: f.n * 2 }));
-    const hC = countedComputor("h", async ([g], _old, { x }) => ({ n: g.n + 1 }));
+    const gC = countedComputor("g", async ([f], _old, { x: _x }) => ({ n: f.n * 2 }));
+    const hC = countedComputor("h", async ([g], _old, { x: _x2 }) => ({ n: g.n + 1 }));
 
     const g = buildGraph(db, [
       { output: "source", inputs: [], computor: sourceC.computor },
