@@ -451,7 +451,7 @@ class DependencyGraphClass {
      * @param {Set<string>} nodesBecomingUpToDate - Set of nodes that are becoming up-to-date in this batch
      * @returns {Promise<void>}
      */
-    async collectPropagateUpToDateOperations(nodeName, batchOperations, nodesBecomingUpToDate) {
+    async propagateUpToDate(nodeName, batchOperations, nodesBecomingUpToDate) {
         // Collect dependents from both static map and DB
         const staticDependents = this.dependentsMap.get(nodeName) || [];
         const dynamicDependentKeys = await this.storage.listDependents(nodeName);
@@ -498,7 +498,7 @@ class DependencyGraphClass {
                     )
                 );
                 nodesBecomingUpToDate.add(dependent.output);
-                await this.collectPropagateUpToDateOperations(dependent.output, batchOperations, nodesBecomingUpToDate);
+                await this.propagateUpToDate(dependent.output, batchOperations, nodesBecomingUpToDate);
             }
         }
 
@@ -550,7 +550,7 @@ class DependencyGraphClass {
                     this.storage.setNodeFreshnessOp(dependentKey, "up-to-date")
                 );
                 nodesBecomingUpToDate.add(dependentKey);
-                await this.collectPropagateUpToDateOperations(dependentKey, batchOperations, nodesBecomingUpToDate);
+                await this.propagateUpToDate(dependentKey, batchOperations, nodesBecomingUpToDate);
             }
         }
     }
@@ -652,7 +652,7 @@ class DependencyGraphClass {
             // AFTER marking up-to-date, propagate up-to-date downstream
             // This is the key optimization for Unchanged!
             const nodesBecomingUpToDate = new Set([nodeName]);
-            await this.collectPropagateUpToDateOperations(nodeName, batchOperations, nodesBecomingUpToDate);
+            await this.propagateUpToDate(nodeName, batchOperations, nodesBecomingUpToDate);
 
             // Execute all operations atomically
             await this.database.batch(batchOperations);
