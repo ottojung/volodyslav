@@ -144,7 +144,7 @@ class InvalidSet extends Error {
     constructor(nodeName) {
         super(
             `Cannot set non-source node '${nodeName}'. ` +
-                `Only source nodes (external or with no inputs) can be set directly.`
+                `Only source nodes (nodes with no inputs) can be set directly.`
         );
         this.name = "InvalidSetError";
         this.nodeName = nodeName;

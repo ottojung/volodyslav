@@ -405,6 +405,17 @@ describe("pull/set concrete-ness & node existence errors", () => {
     });
   });
 
+  test("set unknown concrete node throws InvalidNodeError", async () => {
+    const db = new InMemoryDatabase();
+    const g = buildGraph(db, [
+      { output: "a", inputs: [], computor: async () => ({ a: 1 }) },
+    ]);
+
+    await expect(g.set("does_not_exist", { x: 1 })).rejects.toMatchObject({
+      name: expect.stringMatching(/^(InvalidNodeError|InvalidNode)$/),
+    });
+  });
+
   test("set on non-source node throws InvalidSetError", async () => {
     const db = new InMemoryDatabase();
     const g = buildGraph(db, [

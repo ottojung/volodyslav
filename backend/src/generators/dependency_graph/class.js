@@ -152,11 +152,10 @@ class DependencyGraphClass {
         // Validate that key is concrete (no variables)
         validateConcreteKey(canonicalKey);
 
-        // Ensure node exists (will create from pattern if needed, allow pass-through for constants)
-        const nodeDefinition = await this.getOrCreateConcreteNode(canonicalKey, true);
+        // Ensure node exists (will create from pattern if needed)
+        const nodeDefinition = await this.getOrCreateConcreteNode(canonicalKey);
 
         // Validate that this is a source node (no inputs)
-        // Source nodes are either external (no schema) or have empty inputs array
         if (nodeDefinition.inputs.length > 0) {
             throw makeInvalidSetError(canonicalKey);
         }
@@ -277,11 +276,10 @@ class DependencyGraphClass {
      * Dynamic edges are persisted to DB when the node is computed/set, not here.
      * @private
      * @param {string} concreteKeyCanonical - Canonical concrete node key
-     * @param {boolean} allowPassThrough - If true, allows creating pass-through nodes for constants
      * @returns {Promise<{output: string, inputs: string[], computor: (inputs: DatabaseValue[], oldValue: DatabaseValue | undefined) => DatabaseValue | Unchanged}>}
      * @throws {Error} If no pattern matches and node not in graph
      */
-    async getOrCreateConcreteNode(concreteKeyCanonical, allowPassThrough = false) {
+    async getOrCreateConcreteNode(concreteKeyCanonical) {
         // Check if it's an exact node in the graph
         const exactNode = this.graphIndex.exactIndex.get(concreteKeyCanonical);
         if (exactNode) {
@@ -301,33 +299,6 @@ class DependencyGraphClass {
         // Try to find matching pattern
         const match = this.findMatchingPattern(concreteKeyCanonical);
         if (!match) {
-            // For atom nodes, create pass-through if allowed
-            const expr = parseExpr(concreteKeyCanonical);
-            
-            if (expr.kind === "atom" && allowPassThrough) {
-                // Create a pass-through node with no inputs
-                const passThrough = {
-                    output: concreteKeyCanonical,
-                    inputs: [],
-                    /**
-                     * @param {Array<DatabaseValue>} _inputs
-                     * @param {DatabaseValue | undefined} oldValue
-                     * @returns {DatabaseValue}
-                     */
-                    computor: (_inputs, oldValue) => {
-                        if (oldValue === undefined) {
-                            throw new Error(
-                                `Pass-through node ${concreteKeyCanonical} has no value`
-                            );
-                        }
-                        return oldValue;
-                    },
-                };
-                
-                this.concreteInstantiations.set(concreteKeyCanonical, passThrough);
-                return passThrough;
-            }
-            
             // Node doesn't exist - throw error
             throw makeInvalidNodeError(concreteKeyCanonical);
         }
@@ -548,11 +519,10 @@ class DependencyGraphClass {
         const initialFreshness = await this.storage.getNodeFreshness(nodeName);
 
         // Pull all inputs (recursively ensures they're up-to-date)
-        // For inputs, we need to allow pass-through so patterns can reference data nodes
         const inputValues = [];
         for (const inputKey of nodeDefinition.inputs) {
-            // Ensure input node exists (allow pass-through for constants)
-            await this.getOrCreateConcreteNode(inputKey, true);
+            // Ensure input node exists
+            await this.getOrCreateConcreteNode(inputKey);
             const inputValue = await this.pull(inputKey);
             inputValues.push(inputValue);
         }
