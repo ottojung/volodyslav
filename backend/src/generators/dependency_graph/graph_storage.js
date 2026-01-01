@@ -196,6 +196,7 @@ function makeGraphStorage(database, schemaHash) {
             return null;
         }
 
+        // FIXME: introduce an actual type for this stored value. It must extend DatabaseValue. We must never do type casting like this.
         // Extract inputs array from the stored object
         // We stored it as { inputs: string[] }
         if (typeof value === "object" && value !== null && "inputs" in value) {
