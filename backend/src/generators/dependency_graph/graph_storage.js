@@ -16,15 +16,15 @@ const { freshnessKey } = require("../database");
 
 /**
  * @typedef {object} GraphStorage
- * @property {(nodeName: string) => Promise<DatabaseValue | undefined>} getNodeValue
- * @property {(nodeName: string) => Promise<Freshness | undefined>} getNodeFreshness
+ * @property {(nodeName: string) => Promise<DatabaseValue>} getNodeValue
+ * @property {(nodeName: string) => Promise<Freshness>} getNodeFreshness
  * @property {(nodeName: string, value: DatabaseValue) => { type: "put", key: string, value: DatabaseStoredValue }} setNodeValueOp
  * @property {(nodeName: string, freshness: Freshness) => { type: "put", key: string, value: DatabaseStoredValue }} setNodeFreshnessOp
  * @property {(node: string, inputs: string[], batchOps: Array<{type: "put", key: string, value: DatabaseStoredValue} | {type: "del", key: string}>) => Promise<void>} ensureNodeIndexed
  * @property {(input: string) => Promise<string[]>} listDependents
- * @property {(node: string) => Promise<string[] | null>} getInputs
+ * @property {(node: string) => Promise<string[]>} getInputs
  * @property {() => Promise<string[]>} listAllKeys
- * @property {(key: string) => Promise<DatabaseStoredValue | undefined>} getRaw
+ * @property {(key: string) => Promise<DatabaseStoredValue>} getRaw
  * @property {() => Promise<string[]>} listMaterializedNodes
  */
 
@@ -85,7 +85,8 @@ function makeGraphStorage(database, schemaHash) {
     /**
      * Get a node's value.
      * @param {string} nodeName
-     * @returns {Promise<DatabaseValue | undefined>}
+     * @returns {Promise<DatabaseValue>}
+     * @throws {DatabaseQueryError} If the operation fails or key not found
      */
     async function getNodeValue(nodeName) {
         return database.getValue(nodeName);
@@ -94,7 +95,8 @@ function makeGraphStorage(database, schemaHash) {
     /**
      * Get a node's freshness.
      * @param {string} nodeName
-     * @returns {Promise<Freshness | undefined>}
+     * @returns {Promise<Freshness>}
+     * @throws {DatabaseQueryError} If the operation fails or key not found
      */
     async function getNodeFreshness(nodeName) {
         return database.getFreshness(freshnessKey(nodeName));
@@ -186,18 +188,16 @@ function makeGraphStorage(database, schemaHash) {
      * Returns null if the node hasn't been indexed yet.
      * 
      * @param {string} node - Canonical node key
-     * @returns {Promise<string[] | null>} Array of input keys, or null if not indexed
+     * @returns {Promise<string[]>} Array of input keys
+     * @throws {DatabaseQueryError} If the operation fails or key not found
      */
     async function getInputs(node) {
         const key = inputsKey(node);
         const value = await database.get(key);
-        
-        if (value === undefined) {
-            return null;
-        }
 
         // Extract inputs array from the stored object
         // We stored it as { inputs: string[] }
+        // FIXME: do proper typing where we actually extend DatabaseValue definition.
         if (typeof value === "object" && value !== null && "inputs" in value) {
             // We know inputs exists but TS doesn't know the shape of DatabaseValue here
             const inputs = /** @type {{inputs: unknown}} */ (value).inputs;
@@ -205,9 +205,7 @@ function makeGraphStorage(database, schemaHash) {
                 return inputs;
             }
         }
-
-        // Unexpected format - return null to be safe
-        return null;
+        throw new Error(`Malformed inputs entry for node ${node}`);
     }
 
     /**
@@ -221,7 +219,8 @@ function makeGraphStorage(database, schemaHash) {
     /**
      * Get raw value from database.
      * @param {string} key
-     * @returns {Promise<DatabaseStoredValue | undefined>}
+     * @returns {Promise<DatabaseStoredValue>}
+     * @throws {DatabaseQueryError} If the operation fails or key not found
      */
     async function getRaw(key) {
         return database.get(key);
