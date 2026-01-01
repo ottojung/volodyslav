@@ -205,13 +205,13 @@ describe("Parameterized node schemas", () => {
 
             // The demanded one should be invalidated
             const demandedFreshness = await db.getFreshness(
-                "freshness(derived('demanded'))"
+                "freshness:derived('demanded')"
             );
             expect(demandedFreshness).toBe("potentially-outdated");
 
             // Non-demanded instantiations shouldn't exist in DB
             const nonDemandedFreshness = await db.getFreshness(
-                "freshness(derived(\"not_demanded\"))"
+                "freshness:derived(\"not_demanded\")"
             );
             expect(nonDemandedFreshness).toBeUndefined();
 

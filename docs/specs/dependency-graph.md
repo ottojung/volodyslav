@@ -1010,7 +1010,7 @@ Freshness state is stored using a key derived from the node key:
 
 ```javascript
 function freshnessKey(nodeKey: string): string {
-  return `freshness(${nodeKey})`;
+  return `freshness:${nodeKey}`;
 }
 ```
 

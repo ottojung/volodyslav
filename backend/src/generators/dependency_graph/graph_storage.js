@@ -237,7 +237,7 @@ function makeGraphStorage(database, schemaHash) {
         const allKeys = await database.keys();
         return allKeys.filter(k => 
             !k.startsWith("dg:") && 
-            !k.startsWith("freshness(")
+            !k.startsWith("freshness:")
         );
     }
 
