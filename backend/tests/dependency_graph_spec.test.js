@@ -497,6 +497,28 @@ describe("Basic operational semantics: set/pull, caching, invalidation", () => {
     await g.set("a", { n: 123 });
     expect(db.batchLog.length).toBe(1);
   });
+
+
+  test("order preservation", async () => {
+    const db = new InMemoryDatabase();
+
+    const bC = countedComputor("b", async ([a]) => ({ s: "b(" + a.s + ")" }));
+    const cC = countedComputor("c", async ([b]) => ({ s: "c(" + b.s + ")" }));
+
+    const g = buildGraph(db, [
+      { output: "a", inputs: [], computor: async (_i, old) => old || { s: "a()" } },
+      { output: "b", inputs: ["a"], computor: bC.computor },
+      { output: "c", inputs: ["b"], computor: cC.computor },
+    ]);
+
+    await g.set("a", { s: "a()" });
+    const c = await g.pull("c");
+    expect(c).toEqual({ s: "c(b(a()))" });
+    expect(bC.counter.calls).toBe(1);
+    expect(cC.counter.calls).toBe(1);
+  });
+
+  
 });
 
 describe("P3: computor invoked at most once per node per top-level pull (diamond graph)", () => {
