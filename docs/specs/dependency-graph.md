@@ -591,28 +591,6 @@ mark_up_to_date(D) without recomputation is valid ⟺
     would return stored_value(D) or Unchanged
 ```
 
-**Non-Normative Implementation Guidance:**
-
-A common safe strategy is to:
-1. Store per-node `value_version` (or dependency snapshot)
-2. When a dependency returns `Unchanged`, check if all of `D`'s dependencies have the same versions as when `D` was last computed
-3. Only propagate up-to-date if versions match
-
-**Unsound Strategy (DO NOT USE):**
-* "If all inputs are up-to-date, mark dependent up-to-date" — this is unsound in diamond graphs where intermediate nodes return `Unchanged` but the transitive values have changed
-
-**Example of Unsound Case:**
-```
-    A
-   / \
-  B   C
-   \ /
-    D
-```
-If `A` changes, then `B` returns `Unchanged` and `C` returns `Unchanged`, it is NOT safe to automatically mark `D` up-to-date, because `D` might depend on the specific value of `A` in a way that `B` and `C` don't capture.
-
-This optimization is CRITICAL for efficiency with large dependency chains, but MUST be implemented soundly.
-
 ---
 
 ## Additional Edge Cases
