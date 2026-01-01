@@ -176,15 +176,6 @@ class DependencyGraphClass {
         /** @type {Array<{type: "put", key: string, value: DatabaseStoredValue} | {type: "del", key: string}>} */
         const batchOperations = [];
 
-        // Ensure node is indexed (if it has inputs)
-        if (nodeDefinition.inputs.length > 0) {
-            await this.storage.ensureNodeIndexed(
-                canonicalKey,
-                nodeDefinition.inputs,
-                batchOperations
-            );
-        }
-
         // Store the value
         batchOperations.push(this.storage.setNodeValueOp(canonicalKey, value));
 
