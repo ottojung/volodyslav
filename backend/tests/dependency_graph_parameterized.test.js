@@ -51,6 +51,11 @@ describe("Parameterized node schemas", () => {
             // Define schema
             const schemas = [
                 {
+                    output: "all_events",
+                    inputs: [],
+                    computor: (inputs, oldValue) => oldValue,
+                },
+                {
                     output: "event_context(e)",
                     inputs: ["all_events"],
                     computor: (inputs, oldValue, bindings) => {
@@ -96,6 +101,11 @@ describe("Parameterized node schemas", () => {
             let computeCount = 0;
             const schemas = [
                 {
+                    output: "base",
+                    inputs: [],
+                    computor: (inputs, oldValue) => oldValue,
+                },
+                {
                     output: "derived(x)",
                     inputs: ["base"],
                     computor: (inputs, oldValue, bindings) => {
@@ -133,6 +143,11 @@ describe("Parameterized node schemas", () => {
 
             const schemas = [
                 {
+                    output: "source",
+                    inputs: [],
+                    computor: (inputs, oldValue) => oldValue,
+                },
+                {
                     output: "derived(x)",
                     inputs: ["source"],
                     computor: (inputs, oldValue, bindings) => ({
@@ -165,6 +180,11 @@ describe("Parameterized node schemas", () => {
             await db.put("source", { value: 1 });
 
             const schemas = [
+                {
+                    output: "source",
+                    inputs: [],
+                    computor: (inputs, oldValue) => oldValue,
+                },
                 {
                     output: "derived(x)",
                     inputs: ["source"],
@@ -208,6 +228,11 @@ describe("Parameterized node schemas", () => {
 
             const schemas = [
                 {
+                    output: "source",
+                    inputs: [],
+                    computor: (inputs, oldValue) => oldValue,
+                },
+                {
                     output: "derived(x)",
                     inputs: ["source"],
                     computor: (inputs, oldValue, bindings) => ({
@@ -248,6 +273,16 @@ describe("Parameterized node schemas", () => {
 
             const schemas = [
                 {
+                    output: "events",
+                    inputs: [],
+                    computor: (inputs, oldValue) => oldValue,
+                },
+                {
+                    output: "photos",
+                    inputs: [],
+                    computor: (inputs, oldValue) => oldValue,
+                },
+                {
                     output: "enhanced_event(e,p)",
                     inputs: ["events", "photos"],
                     computor: (inputs, oldValue, bindings) => ({
@@ -280,6 +315,11 @@ describe("Parameterized node schemas", () => {
 
             let computeCount = 0;
             const schemas = [
+                {
+                    output: "source",
+                    inputs: [],
+                    computor: (inputs, oldValue) => oldValue,
+                },
                 {
                     output: "middle(x)",
                     inputs: ["source"],
@@ -401,6 +441,11 @@ describe("Parameterized node schemas", () => {
 
             const schemas = [
                 {
+                    output: "base",
+                    inputs: [],
+                    computor: (inputs, oldValue) => oldValue,
+                },
+                {
                     output: "derived(x)",
                     inputs: ["base"],
                     computor: (inputs, oldValue, bindings) => ({
@@ -457,6 +502,11 @@ describe("Parameterized node schemas", () => {
             // pair(a,b) where a != b has different args
             // But they can both exist because they match different concrete keys
             const nonOverlappingSchemas = [
+                {
+                    output: "base",
+                    inputs: [],
+                    computor: (inputs, oldValue) => oldValue,
+                },
                 {
                     output: "pair(x,x)",
                     inputs: ["base"],
@@ -518,6 +568,11 @@ describe("Parameterized node schemas", () => {
             await db.put("base", { value: 10 });
 
             const schemas = [
+                {
+                    output: "base",
+                    inputs: [],
+                    computor: (inputs, oldValue) => oldValue,
+                },
                 {
                     output: "derived(x)",
                     inputs: ["base"],
