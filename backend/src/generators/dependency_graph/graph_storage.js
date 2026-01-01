@@ -42,7 +42,7 @@ function makeGraphStorage(database, schemaHash) {
      * @private
      * @param {string} key
      * @param {DatabaseStoredValue} value
-     * @returns {DatabaseBatchOperation}
+     * @returns {{ type: "put", key: string, value: DatabaseStoredValue }}
      */
     function putOp(key, value) {
         return { type: "put", key, value };
@@ -105,7 +105,7 @@ function makeGraphStorage(database, schemaHash) {
      * Create an operation to set a node's value.
      * @param {string} nodeName
      * @param {DatabaseValue} value
-     * @returns {DatabaseBatchOperation}
+     * @returns {{ type: "put", key: string, value: DatabaseStoredValue }}
      */
     function setNodeValueOp(nodeName, value) {
         return putOp(nodeName, value);
@@ -237,7 +237,7 @@ function makeGraphStorage(database, schemaHash) {
         const allKeys = await database.keys();
         return allKeys.filter(k => 
             !k.startsWith("dg:") && 
-            !k.startsWith("freshness(")
+            !k.startsWith("freshness:")
         );
     }
 

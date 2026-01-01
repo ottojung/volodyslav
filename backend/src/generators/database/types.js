@@ -67,7 +67,7 @@
  * @returns {string} The freshness key
  */
 function freshnessKey(key) {
-    return `freshness(${key})`;
+    return `freshness:${key}`;
 }
 
 /**

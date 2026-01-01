@@ -2362,9 +2362,9 @@ describe("13. Seeded database scenario: fast path must index reverse dependencie
 
         // Pre-populate the database with values and freshness, but NO indexing
         await db2.put("source", { n: 10 });
-        await db2.put("freshness(source)", "up-to-date");
+        await db2.put("freshness:source", "up-to-date");
         await db2.put("derived", { n: 11 });
-        await db2.put("freshness(derived)", "up-to-date");
+        await db2.put("freshness:derived", "up-to-date");
         // Note: we intentionally DO NOT add reverse-dep keys or inputs keys
 
         // Create a new graph instance over this seeded database
@@ -2427,9 +2427,9 @@ describe("13. Seeded database scenario: fast path must index reverse dependencie
 
         // Pre-populate with values and freshness, but NO reverse-dep indexing
         await db2.put("source", { n: 10 });
-        await db2.put("freshness(source)", "up-to-date");
+        await db2.put("freshness:source", "up-to-date");
         await db2.put("derived('id123')", { id: "id123", n: 11 });
-        await db2.put("freshness(derived('id123'))", "up-to-date");
+        await db2.put("freshness:derived('id123')", "up-to-date");
 
         // Create new graph instance
         const derivedC2 = countedComputor("derived2", async ([source], _old, { e }) => ({
