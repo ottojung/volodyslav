@@ -254,7 +254,6 @@ When `set('all_events', newData)` is called:
 ### Source Nodes (Normative Definition)
 
 A **source node** is a concrete node `N` where:
-* It is **external** (no schema matches it), OR
 * It matches a schema whose `inputs = []` (no dependencies)
 
 Source nodes represent entry points to the dependency graph that receive data from external systems or direct user input.
@@ -510,7 +509,6 @@ If a materialized concrete node is `up-to-date`, its value MUST equal what would
 
 **Preconditions:** 
 * `nodeName` MUST be a concrete expression (no free variables)
-* For external nodes: node may be created with pass-through behavior if it doesn't exist
 * For schema-based nodes: a matching schema pattern must exist in the graph to instantiate from
 
 **Lazy Instantiation:** Unlike traditional dependency graphs that require all nodes to be pre-defined, this implementation supports lazy instantiation of parameterized nodes. When `pull()` is called with a concrete instantiation (e.g., `event_context('id123')`), the system:
@@ -864,7 +862,7 @@ pull(nodeName: string): Promise<DatabaseValue>
 * `pull` MUST accept any string that parses as a valid expression according to the Expression Grammar.
 * `pull` MUST accept expressions with non-canonical quoting (e.g., double quotes if supported) and canonicalize them internally before processing.
 * `pull` MUST reject expressions with free variables (non-concrete expressions) by throwing `NonConcreteNodeError`.
-* `pull` MUST throw `InvalidNodeError` if the concrete node has no matching schema and is not an external node.
+* `pull` MUST throw `InvalidNodeError` if the concrete node has no matching schema.
 * `pull` MUST return a `Promise` that resolves to the node's computed `DatabaseValue`.
 * `pull` MUST ensure that each node's computor is invoked at most once per top-level `pull()` call (property P3).
 * `pull` MUST produce the same result as recomputing all values from scratch, ignoring all cached state (Correctness Invariant, property P1).
@@ -883,7 +881,7 @@ pull(nodeName: string): Promise<DatabaseValue>
 
 * `InvalidExpressionError` — If `nodeName` does not parse as a valid expression.
 * `NonConcreteNodeError` — If `nodeName` contains free variables.
-* `InvalidNodeError` — If no schema matches and the node is not external.
+* `InvalidNodeError` — If no schema matches.
 * `MissingValueError` — If the node is marked `up-to-date` but has no stored value (database corruption).
 
 #### 4.4 `set` Method
@@ -1133,7 +1131,7 @@ Implementations MAY use the name `SchemaPatternNotAllowed` instead of `NonConcre
 
 **When Thrown:**
 
-* During `pull(nodeName)` if no schema matches the concrete node and the node is not external.
+* During `pull(nodeName)` if no schema matches the concrete node.
 
 **Error Properties:**
 
