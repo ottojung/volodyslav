@@ -64,7 +64,7 @@ class DatabaseClass {
     /**
      * Retrieves a value from the database.
      * @param {string} key - The key to retrieve
-     * @returns {Promise<DatabaseStoredValue | undefined>}
+     * @returns {Promise<DatabaseStoredValue>}
      * @throws {DatabaseQueryError} If the operation fails (except for NotFoundError)
      */
     async get(key) {
@@ -85,14 +85,11 @@ class DatabaseClass {
     /**
      * Retrieves a data value from the database (not freshness).
      * @param {string} key - The key to retrieve
-     * @returns {Promise<DatabaseValue | undefined>}
+     * @returns {Promise<DatabaseValue>}
      * @throws {DatabaseQueryError} If the operation fails
      */
     async getValue(key) {
         const result = await this.get(key);
-        if (result === undefined) {
-            return undefined;
-        }
         if (isDatabaseValue(result)) {
             return result;
         } else {
@@ -107,14 +104,11 @@ class DatabaseClass {
     /**
      * Retrieves a freshness state from the database.
      * @param {string} key - The freshness key to retrieve
-     * @returns {Promise<Freshness | undefined>}
+     * @returns {Promise<Freshness>}
      * @throws {DatabaseQueryError} If the operation fails
      */
     async getFreshness(key) {
         const result = await this.get(key);
-        if (result === undefined) {
-            return undefined;
-        }
         if (isFreshness(result)) {
             return result;
         } else {
