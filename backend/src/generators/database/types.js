@@ -63,9 +63,11 @@
  */
 
 /**
- * Dependency versions snapshot.
+ * Dependency versions snapshot with explicit type marker.
  * Maps dependency keys to their version numbers at the time of computation.
- * @typedef {Record<string, Version>} DependencyVersions
+ * @typedef {object} DependencyVersions
+ * @property {'dependency_versions'} __type - Type marker for dependency versions
+ * @property {Record<string, Version>} versions - Map of dependency keys to versions
  */
 
 /**
@@ -87,6 +89,18 @@ function depVersionsKey(key) {
 }
 
 /**
+ * Creates a DependencyVersions object.
+ * @param {Record<string, Version>} versions - Map of dependency keys to versions
+ * @returns {DependencyVersions}
+ */
+function makeDependencyVersions(versions) {
+    return {
+        __type: "dependency_versions",
+        versions,
+    };
+}
+
+/**
  * Type guard to check if a value is a Version.
  * @param {unknown} value
  * @returns {value is Version}
@@ -104,8 +118,19 @@ function isDependencyVersions(value) {
     if (value === null || value === undefined || typeof value !== "object") {
         return false;
     }
-    // Check all values are valid versions
-    for (const v of Object.values(value)) {
+    // Check for type marker
+    if (!("__type" in value) || value["__type"] !== "dependency_versions") {
+        return false;
+    }
+    // Check versions field exists and all values are valid versions
+    if (!("versions" in value) || typeof value["versions"] !== "object") {
+        return false;
+    }
+    const versions = value["versions"];
+    if (versions === null) {
+        return false;
+    }
+    for (const v of Object.values(versions)) {
         if (!isVersion(v)) {
             return false;
         }
@@ -133,6 +158,7 @@ function isDatabaseValue(value) {
 module.exports = {
     versionKey,
     depVersionsKey,
+    makeDependencyVersions,
     isVersion,
     isDependencyVersions,
     isDatabaseValue,

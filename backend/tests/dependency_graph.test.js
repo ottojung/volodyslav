@@ -55,14 +55,12 @@ describe("generators/dependency_graph", () => {
         test("lazily evaluates only necessary nodes", async () => {
             const capabilities = getTestCapabilities();
             const db = await getDatabase(capabilities);
-            const { freshnessKey } = require("../src/generators/database");
 
             // Track which computors were called
             const computeCalls = [];
 
             // Set up a chain: input1 -> level1 -> level2 -> level3
             await db.put("input1", { count: 1 });
-            await db.put(freshnessKey("input1"), "potentially-outdated");
 
             const graphDef = [
                 {
@@ -115,15 +113,19 @@ describe("generators/dependency_graph", () => {
         test("returns cached value when dependencies are clean", async () => {
             const capabilities = getTestCapabilities();
             const db = await getDatabase(capabilities);
-            const { freshnessKey } = require("../src/generators/database");
+            const { versionKey, depVersionsKey, makeDependencyVersions } = require("../src/generators/database");
 
             let computeCount = 0;
 
+            // Set up input1 with version 1
             await db.put("input1", { data: "test" });
-            await db.put(freshnessKey("input1"), "up-to-date");
+            await db.put(versionKey("input1"), 1);
+            await db.put(depVersionsKey("input1"), makeDependencyVersions({}));
 
+            // Set up output1 with cached value and matching dependency snapshot
             await db.put("output1", { data: "cached_result" });
-            await db.put(freshnessKey("output1"), "up-to-date");
+            await db.put(versionKey("output1"), 1);
+            await db.put(depVersionsKey("output1"), makeDependencyVersions({ "input1": 1 }));
 
             const graphDef = [
                 {
@@ -149,13 +151,9 @@ describe("generators/dependency_graph", () => {
         test("recomputes when dependencies are dirty", async () => {
             const capabilities = getTestCapabilities();
             const db = await getDatabase(capabilities);
-            const { freshnessKey } = require("../src/generators/database");
 
             await db.put("input1", { data: "new_data" });
-            await db.put(freshnessKey("input1"), "potentially-outdated");
-
             await db.put("output1", { data: "old_result" });
-            await db.put(freshnessKey("output1"), "potentially-outdated");
 
             const graphDef = [
                 {
@@ -178,12 +176,6 @@ describe("generators/dependency_graph", () => {
 
             // Should have recomputed with new input
             expect(result.data).toBe("new_data_processed");
-
-            // Both input and output should now be clean
-            const input1Freshness = await db.get(freshnessKey("input1"));
-            const output1Freshness = await db.get(freshnessKey("output1"));
-            expect(input1Freshness).toBe("up-to-date");
-            expect(output1Freshness).toBe("up-to-date");
 
             await db.close();
         });
@@ -211,13 +203,9 @@ describe("generators/dependency_graph", () => {
         test("handles Unchanged return value", async () => {
             const capabilities = getTestCapabilities();
             const db = await getDatabase(capabilities);
-            const { freshnessKey } = require("../src/generators/database");
 
             await db.put("input1", { data: "test" });
-            await db.put(freshnessKey("input1"), "potentially-outdated");
-
             await db.put("output1", { data: "existing_value" });
-            await db.put(freshnessKey("output1"), "up-to-date");
 
             const graphDef = [
                 {
@@ -238,10 +226,8 @@ describe("generators/dependency_graph", () => {
             const graph = makeDependencyGraph(db, graphDef);
             const result = await graph.pull("output1");
 
-            // Should keep existing value and mark as clean
+            // Should keep existing value
             expect(result.data).toBe("existing_value");
-            const output1Freshness = await db.get(freshnessKey("output1"));
-            expect(output1Freshness).toBe("up-to-date");
 
             await db.close();
         });
@@ -249,23 +235,18 @@ describe("generators/dependency_graph", () => {
         test("handles potentially-dirty propagation in linear chain", async () => {
             const capabilities = getTestCapabilities();
             const db = await getDatabase(capabilities);
-            const { freshnessKey } = require("../src/generators/database");
 
             const computeCalls = [];
 
             // Set up chain: input1 -> level1 -> level2 -> level3
             // input1 is dirty, others are potentially-dirty
             await db.put("input1", { count: 1 });
-            await db.put(freshnessKey("input1"), "potentially-outdated");
 
             await db.put("level1", { count: 10 });
-            await db.put(freshnessKey("level1"), "potentially-outdated");
 
             await db.put("level2", { count: 20 });
-            await db.put(freshnessKey("level2"), "potentially-outdated");
 
             await db.put("level3", { count: 30 });
-            await db.put(freshnessKey("level3"), "potentially-outdated");
 
             const graphDef = [
                 {
@@ -307,14 +288,6 @@ describe("generators/dependency_graph", () => {
             expect(computeCalls).toEqual(["level1", "level2", "level3"]);
 
             // All should be clean after pull
-            const input1Freshness = await db.get(freshnessKey("input1"));
-            const level1Freshness = await db.get(freshnessKey("level1"));
-            const level2Freshness = await db.get(freshnessKey("level2"));
-            const level3Freshness = await db.get(freshnessKey("level3"));
-            expect(input1Freshness).toBe("up-to-date");
-            expect(level1Freshness).toBe("up-to-date");
-            expect(level2Freshness).toBe("up-to-date");
-            expect(level3Freshness).toBe("up-to-date");
 
             await db.close();
         });
@@ -322,23 +295,18 @@ describe("generators/dependency_graph", () => {
         test("potentially-dirty with Unchanged should skip downstream recomputation", async () => {
             const capabilities = getTestCapabilities();
             const db = await getDatabase(capabilities);
-            const { freshnessKey } = require("../src/generators/database");
 
             const computeCalls = [];
 
             // Set up chain: input1 -> level1 -> level2 -> level3
             // level1 returns Unchanged, so level2 and level3 should not recompute
             await db.put("input1", { count: 1 });
-            await db.put(freshnessKey("input1"), "potentially-outdated");
 
             await db.put("level1", { count: 2 });
-            await db.put(freshnessKey("level1"), "potentially-outdated");
 
             await db.put("level2", { count: 3 });
-            await db.put(freshnessKey("level2"), "potentially-outdated");
 
             await db.put("level3", { count: 4 });
-            await db.put(freshnessKey("level3"), "potentially-outdated");
 
             const graphDef = [
                 {
@@ -380,12 +348,6 @@ describe("generators/dependency_graph", () => {
             expect(computeCalls).toEqual(["level1"]);
 
             // All should be clean after pull
-            const level1Freshness = await db.get(freshnessKey("level1"));
-            const level2Freshness = await db.get(freshnessKey("level2"));
-            const level3Freshness = await db.get(freshnessKey("level3"));
-            expect(level1Freshness).toBe("up-to-date");
-            expect(level2Freshness).toBe("up-to-date");
-            expect(level3Freshness).toBe("up-to-date");
 
             await db.close();
         });
@@ -393,23 +355,18 @@ describe("generators/dependency_graph", () => {
         test("diamond graph with mixed dirty/potentially-dirty states", async () => {
             const capabilities = getTestCapabilities();
             const db = await getDatabase(capabilities);
-            const { freshnessKey } = require("../src/generators/database");
 
             const computeCalls = [];
 
             // Diamond: input -> left + right -> output
             // Left path is dirty, right path is potentially-dirty
             await db.put("input", { value: 1 });
-            await db.put(freshnessKey("input"), "potentially-outdated");
 
             await db.put("left", { value: 10 });
-            await db.put(freshnessKey("left"), "potentially-outdated");
 
             await db.put("right", { value: 20 });
-            await db.put(freshnessKey("right"), "potentially-outdated");
 
             await db.put("output", { value: 100 });
-            await db.put(freshnessKey("output"), "potentially-outdated");
 
             const graphDef = [
                 {
@@ -450,14 +407,6 @@ describe("generators/dependency_graph", () => {
             expect(computeCalls).toEqual(["left", "right", "output"]);
 
             // All should be clean
-            const inputFreshness = await db.get(freshnessKey("input"));
-            const leftFreshness = await db.get(freshnessKey("left"));
-            const rightFreshness = await db.get(freshnessKey("right"));
-            const outputFreshness = await db.get(freshnessKey("output"));
-            expect(inputFreshness).toBe("up-to-date");
-            expect(leftFreshness).toBe("up-to-date");
-            expect(rightFreshness).toBe("up-to-date");
-            expect(outputFreshness).toBe("up-to-date");
 
             await db.close();
         });
@@ -465,23 +414,18 @@ describe("generators/dependency_graph", () => {
         test("diamond graph where one path returns Unchanged should still compute meet node", async () => {
             const capabilities = getTestCapabilities();
             const db = await getDatabase(capabilities);
-            const { freshnessKey } = require("../src/generators/database");
 
             const computeCalls = [];
 
             // Diamond: input -> left + right -> output
             // Left returns Unchanged, but right changes, so output must recompute
             await db.put("input", { value: 1 });
-            await db.put(freshnessKey("input"), "potentially-outdated");
 
             await db.put("left", { value: 10 });
-            await db.put(freshnessKey("left"), "potentially-outdated");
 
             await db.put("right", { value: 20 });
-            await db.put(freshnessKey("right"), "potentially-outdated");
 
             await db.put("output", { value: 100 });
-            await db.put(freshnessKey("output"), "potentially-outdated");
 
             const graphDef = [
                 {
@@ -523,8 +467,6 @@ describe("generators/dependency_graph", () => {
             expect(computeCalls).toEqual(["left", "right", "output"]);
 
             // All should be clean
-            const outputFreshness = await db.get(freshnessKey("output"));
-            expect(outputFreshness).toBe("up-to-date");
 
             await db.close();
         });
@@ -532,7 +474,6 @@ describe("generators/dependency_graph", () => {
         test("complex multi-level graph with various freshness states", async () => {
             const capabilities = getTestCapabilities();
             const db = await getDatabase(capabilities);
-            const { freshnessKey } = require("../src/generators/database");
 
             const computeCalls = [];
 
@@ -540,25 +481,18 @@ describe("generators/dependency_graph", () => {
             // input1 -> nodeA -> nodeC -> nodeE
             // input2 -> nodeB /     \-> nodeD
             await db.put("input1", { value: 1 });
-            await db.put(freshnessKey("input1"), "potentially-outdated");
 
             await db.put("input2", { value: 2 });
-            await db.put(freshnessKey("input2"), "up-to-date");
 
             await db.put("nodeA", { value: 10 });
-            await db.put(freshnessKey("nodeA"), "potentially-outdated");
 
             await db.put("nodeB", { value: 20 });
-            await db.put(freshnessKey("nodeB"), "up-to-date");
 
             await db.put("nodeC", { value: 30 });
-            await db.put(freshnessKey("nodeC"), "potentially-outdated");
 
             await db.put("nodeD", { value: 40 });
-            await db.put(freshnessKey("nodeD"), "potentially-outdated");
 
             await db.put("nodeE", { value: 50 });
-            await db.put(freshnessKey("nodeE"), "potentially-outdated");
 
             const graphDef = [
                 {
@@ -627,20 +561,16 @@ describe("generators/dependency_graph", () => {
         test("mixed dirty and potentially-dirty with partial Unchanged", async () => {
             const capabilities = getTestCapabilities();
             const db = await getDatabase(capabilities);
-            const { freshnessKey } = require("../src/generators/database");
 
             const computeCalls = [];
 
             // Chain with mixed states: dirty -> potentially-dirty -> potentially-dirty
             // Middle node returns Unchanged
             await db.put("input", { value: 1 });
-            await db.put(freshnessKey("input"), "potentially-outdated");
 
             await db.put("middle", { value: 10 });
-            await db.put(freshnessKey("middle"), "potentially-outdated");
 
             await db.put("output", { value: 20 });
-            await db.put(freshnessKey("output"), "potentially-outdated");
 
             const graphDef = [
                 {
@@ -674,12 +604,6 @@ describe("generators/dependency_graph", () => {
             expect(computeCalls).toEqual(["middle"]);
 
             // All should be clean
-            const inputFreshness = await db.get(freshnessKey("input"));
-            const middleFreshness = await db.get(freshnessKey("middle"));
-            const outputFreshness = await db.get(freshnessKey("output"));
-            expect(inputFreshness).toBe("up-to-date");
-            expect(middleFreshness).toBe("up-to-date");
-            expect(outputFreshness).toBe("up-to-date");
 
             await db.close();
         });
@@ -687,13 +611,10 @@ describe("generators/dependency_graph", () => {
         test("recomputes when dependencies are potentially-dirty", async () => {
             const capabilities = getTestCapabilities();
             const db = await getDatabase(capabilities);
-            const { freshnessKey } = require("../src/generators/database");
 
             await db.put("input1", { data: "new_data" });
-            await db.put(freshnessKey("input1"), "potentially-outdated");
 
             await db.put("output1", { data: "old_result" });
-            await db.put(freshnessKey("output1"), "potentially-outdated");
 
             const graphDef = [
                 {
@@ -718,10 +639,6 @@ describe("generators/dependency_graph", () => {
             expect(result.data).toBe("new_data_processed");
 
             // Both input and output should now be clean
-            const input1Freshness = await db.get(freshnessKey("input1"));
-            const output1Freshness = await db.get(freshnessKey("output1"));
-            expect(input1Freshness).toBe("up-to-date");
-            expect(output1Freshness).toBe("up-to-date");
 
             await db.close();
         });
@@ -729,29 +646,22 @@ describe("generators/dependency_graph", () => {
         test("wide diamond with multiple parallel paths - all paths must converge", async () => {
             const capabilities = getTestCapabilities();
             const db = await getDatabase(capabilities);
-            const { freshnessKey } = require("../src/generators/database");
 
             const computeCalls = [];
 
             // Wide diamond: input -> pathA, pathB, pathC, pathD -> output
             // All paths are potentially-dirty, testing that the meet node waits for all inputs
             await db.put("input", { value: 10 });
-            await db.put(freshnessKey("input"), "potentially-outdated");
 
             await db.put("pathA", { value: 100 });
-            await db.put(freshnessKey("pathA"), "potentially-outdated");
 
             await db.put("pathB", { value: 200 });
-            await db.put(freshnessKey("pathB"), "potentially-outdated");
 
             await db.put("pathC", { value: 300 });
-            await db.put(freshnessKey("pathC"), "potentially-outdated");
 
             await db.put("pathD", { value: 400 });
-            await db.put(freshnessKey("pathD"), "potentially-outdated");
 
             await db.put("output", { value: 1000 });
-            await db.put(freshnessKey("output"), "potentially-outdated");
 
             const graphDef = [
                 {
@@ -827,7 +737,6 @@ describe("generators/dependency_graph", () => {
         test("multiple independent subgraphs - pulling one should not affect others", async () => {
             const capabilities = getTestCapabilities();
             const db = await getDatabase(capabilities);
-            const { freshnessKey } = require("../src/generators/database");
 
             const computeCalls = [];
 
@@ -836,10 +745,8 @@ describe("generators/dependency_graph", () => {
             // Graph 2: inputB -> outputB
             // Pulling outputA should not compute anything in graph 2
             await db.put("inputA", { value: 1 });
-            await db.put(freshnessKey("inputA"), "potentially-outdated");
 
             await db.put("inputB", { value: 2 });
-            await db.put(freshnessKey("inputB"), "potentially-outdated");
 
             const graphDef = [
                 {
@@ -888,14 +795,15 @@ describe("generators/dependency_graph", () => {
         test("leaf node with no inputs starts clean - should return cached value", async () => {
             const capabilities = getTestCapabilities();
             const db = await getDatabase(capabilities);
-            const { freshnessKey } = require("../src/generators/database");
+            const { versionKey, depVersionsKey, makeDependencyVersions } = require("../src/generators/database");
 
             const computeCalls = [];
 
             // A leaf node (no inputs) that's already clean
             // This represents external data that hasn't changed
             await db.put("leafNode", { data: "cached_external_data" });
-            await db.put(freshnessKey("leafNode"), "up-to-date");
+            await db.put(versionKey("leafNode"), 1);
+            await db.put(depVersionsKey("leafNode"), makeDependencyVersions({}));
 
             const graphDef = [
                 {
@@ -922,7 +830,6 @@ describe("generators/dependency_graph", () => {
         test("very deep linear chain - ensures stack doesn't overflow", async () => {
             const capabilities = getTestCapabilities();
             const db = await getDatabase(capabilities);
-            const { freshnessKey } = require("../src/generators/database");
 
             // Create a chain of 50 nodes: node0 -> node1 -> ... -> node49
             // All nodes start potentially-dirty to force full recomputation
@@ -931,7 +838,6 @@ describe("generators/dependency_graph", () => {
 
             for (let i = 0; i < chainLength; i++) {
                 await db.put(`node${i}`, { value: i * 100 });
-                await db.put(freshnessKey(`node${i}`), "potentially-outdated");
 
                 if (i === 0) {
                     graphDef.push({
@@ -964,7 +870,6 @@ describe("generators/dependency_graph", () => {
         test("diamond with asymmetric depths - one path longer than the other", async () => {
             const capabilities = getTestCapabilities();
             const db = await getDatabase(capabilities);
-            const { freshnessKey } = require("../src/generators/database");
 
             const computeCalls = [];
 
@@ -973,22 +878,16 @@ describe("generators/dependency_graph", () => {
             //       -> longA -> longB -> longC -> output
             // Tests that both paths complete before computing output
             await db.put("input", { value: 5 });
-            await db.put(freshnessKey("input"), "potentially-outdated");
 
             await db.put("shortPath", { value: 0 });
-            await db.put(freshnessKey("shortPath"), "potentially-outdated");
 
             await db.put("longA", { value: 0 });
-            await db.put(freshnessKey("longA"), "potentially-outdated");
 
             await db.put("longB", { value: 0 });
-            await db.put(freshnessKey("longB"), "potentially-outdated");
 
             await db.put("longC", { value: 0 });
-            await db.put(freshnessKey("longC"), "potentially-outdated");
 
             await db.put("output", { value: 0 });
-            await db.put(freshnessKey("output"), "potentially-outdated");
 
             const graphDef = [
                 {
@@ -1058,19 +957,21 @@ describe("generators/dependency_graph", () => {
         test("all inputs clean, output dirty - inconsistent state recovery", async () => {
             const capabilities = getTestCapabilities();
             const db = await getDatabase(capabilities);
-            const { freshnessKey } = require("../src/generators/database");
+            const { versionKey, depVersionsKey, makeDependencyVersions } = require("../src/generators/database");
 
             // This represents an inconsistent state where inputs are clean but output is dirty
             // This shouldn't happen in normal operation but could occur after a crash or bug
-            // The graph should recover by treating the output as potentially-dirty
+            // The graph should recover by treating the output as needing recomputation
             await db.put("input1", { value: 10 });
-            await db.put(freshnessKey("input1"), "up-to-date");
+            await db.put(versionKey("input1"), 1);
+            await db.put(depVersionsKey("input1"), makeDependencyVersions({}));
 
             await db.put("input2", { value: 20 });
-            await db.put(freshnessKey("input2"), "up-to-date");
+            await db.put(versionKey("input2"), 1);
+            await db.put(depVersionsKey("input2"), makeDependencyVersions({}));
 
             await db.put("output", { value: 999 });
-            await db.put(freshnessKey("output"), "potentially-outdated");
+            // No version or dep_versions for output - it needs recomputation
 
             const computeCalls = [];
 
@@ -1104,14 +1005,10 @@ describe("generators/dependency_graph", () => {
             const graph = makeDependencyGraph(db, graphDef);
             const result = await graph.pull("output");
 
-            // The output should be recomputed because it's dirty, even though inputs are clean
+            // The output should be recomputed because it has no dep_versions, even though inputs are clean
             // This ensures the system can recover from inconsistent states
             expect(result.value).toBe(30);
             expect(computeCalls).toEqual(["output"]);
-
-            // Output should now be clean
-            const outputFreshness = await db.get(freshnessKey("output"));
-            expect(outputFreshness).toBe("up-to-date");
 
             await db.close();
         });
@@ -1119,23 +1016,18 @@ describe("generators/dependency_graph", () => {
         test("fan-out pattern - one input feeding multiple independent outputs", async () => {
             const capabilities = getTestCapabilities();
             const db = await getDatabase(capabilities);
-            const { freshnessKey } = require("../src/generators/database");
 
             const computeCalls = [];
 
             // Fan-out: input -> outputA, outputB, outputC (all independent)
             // When input changes, all outputs should recompute
             await db.put("input", { value: 7 });
-            await db.put(freshnessKey("input"), "potentially-outdated");
 
             await db.put("outputA", { value: 0 });
-            await db.put(freshnessKey("outputA"), "potentially-outdated");
 
             await db.put("outputB", { value: 0 });
-            await db.put(freshnessKey("outputB"), "potentially-outdated");
 
             await db.put("outputC", { value: 0 });
-            await db.put(freshnessKey("outputC"), "potentially-outdated");
 
             const graphDef = [
                 {
@@ -1190,7 +1082,6 @@ describe("generators/dependency_graph", () => {
         test("nested diamonds - diamond within a diamond topology", async () => {
             const capabilities = getTestCapabilities();
             const db = await getDatabase(capabilities);
-            const { freshnessKey } = require("../src/generators/database");
 
             const computeCalls = [];
 
@@ -1198,25 +1089,18 @@ describe("generators/dependency_graph", () => {
             // input -> leftA, rightA -> middle -> leftB, rightB -> output
             // This creates a more complex topology to test proper propagation
             await db.put("input", { value: 2 });
-            await db.put(freshnessKey("input"), "potentially-outdated");
 
             await db.put("leftA", { value: 0 });
-            await db.put(freshnessKey("leftA"), "potentially-outdated");
 
             await db.put("rightA", { value: 0 });
-            await db.put(freshnessKey("rightA"), "potentially-outdated");
 
             await db.put("middle", { value: 0 });
-            await db.put(freshnessKey("middle"), "potentially-outdated");
 
             await db.put("leftB", { value: 0 });
-            await db.put(freshnessKey("leftB"), "potentially-outdated");
 
             await db.put("rightB", { value: 0 });
-            await db.put(freshnessKey("rightB"), "potentially-outdated");
 
             await db.put("output", { value: 0 });
-            await db.put(freshnessKey("output"), "potentially-outdated");
 
             const graphDef = [
                 {
@@ -1299,7 +1183,6 @@ describe("generators/dependency_graph", () => {
         test("partial Unchanged in wide diamond - some paths unchanged, others changed", async () => {
             const capabilities = getTestCapabilities();
             const db = await getDatabase(capabilities);
-            const { freshnessKey } = require("../src/generators/database");
 
             const computeCalls = [];
 
@@ -1307,22 +1190,16 @@ describe("generators/dependency_graph", () => {
             // input -> pathA (unchanged), pathB (changed), pathC (unchanged), pathD (changed) -> output
             // Output must still recompute because at least one input changed
             await db.put("input", { value: 5 });
-            await db.put(freshnessKey("input"), "potentially-outdated");
 
             await db.put("pathA", { value: 10 });
-            await db.put(freshnessKey("pathA"), "potentially-outdated");
 
             await db.put("pathB", { value: 20 });
-            await db.put(freshnessKey("pathB"), "potentially-outdated");
 
             await db.put("pathC", { value: 30 });
-            await db.put(freshnessKey("pathC"), "potentially-outdated");
 
             await db.put("pathD", { value: 40 });
-            await db.put(freshnessKey("pathD"), "potentially-outdated");
 
             await db.put("output", { value: 999 });
-            await db.put(freshnessKey("output"), "potentially-outdated");
 
             const graphDef = [
                 {
@@ -1399,7 +1276,6 @@ describe("generators/dependency_graph", () => {
         test("all paths return Unchanged in wide diamond - output should not recompute", async () => {
             const capabilities = getTestCapabilities();
             const db = await getDatabase(capabilities);
-            const { freshnessKey } = require("../src/generators/database");
 
             const computeCalls = [];
 
@@ -1407,19 +1283,14 @@ describe("generators/dependency_graph", () => {
             // input -> pathA, pathB, pathC -> output (all unchanged)
             // Output should NOT recompute because all inputs are unchanged
             await db.put("input", { value: 5 });
-            await db.put(freshnessKey("input"), "potentially-outdated");
 
             await db.put("pathA", { value: 10 });
-            await db.put(freshnessKey("pathA"), "potentially-outdated");
 
             await db.put("pathB", { value: 20 });
-            await db.put(freshnessKey("pathB"), "potentially-outdated");
 
             await db.put("pathC", { value: 30 });
-            await db.put(freshnessKey("pathC"), "potentially-outdated");
 
             await db.put("output", { value: 100 });
-            await db.put(freshnessKey("output"), "potentially-outdated");
 
             const graphDef = [
                 {
@@ -1493,7 +1364,6 @@ describe("generators/dependency_graph", () => {
         test("nodes with extra whitespace are properly canonicalized internally", async () => {
             const capabilities = getTestCapabilities();
             const db = await getDatabase(capabilities);
-            const { freshnessKey } = require("../src/generators/database");
 
             // Create node with extra whitespace in output and inputs
             const graphDef = [

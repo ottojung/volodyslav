@@ -15,7 +15,7 @@
 
 const crypto = require("crypto");
 const { isUnchanged } = require("./unchanged");
-const { versionKey, depVersionsKey } = require("../database");
+const { versionKey, depVersionsKey, makeDependencyVersions } = require("../database");
 const { 
     makeInvalidNodeError, 
     makeInvalidSchemaError,
@@ -156,7 +156,7 @@ class DependencyGraphClass {
 
         // Store empty dependency versions (source nodes have no dependencies)
         batchOperations.push(
-            this.putOp(depVersionsKey(canonicalKey), {})
+            this.putOp(depVersionsKey(canonicalKey), makeDependencyVersions({}))
         );
 
         // Execute all operations atomically
@@ -433,7 +433,7 @@ class DependencyGraphClass {
         // Check if all inputs have the same versions as stored
         for (const inputKey of inputs) {
             const currentVersion = await this.database.getVersion(versionKey(inputKey));
-            const storedVersion = storedDepVersions[inputKey];
+            const storedVersion = storedDepVersions.versions[inputKey];
 
             // If input has no version or versions don't match, not up-to-date
             if (currentVersion === undefined || storedVersion === undefined || 
@@ -498,18 +498,18 @@ class DependencyGraphClass {
         }
 
         // Collect current dependency versions
-        /** @type {DependencyVersions} */
-        const currentDepVersions = {};
+        /** @type {Record<string, Version>} */
+        const currentDepVersionsMap = {};
         for (const inputKey of nodeDefinition.inputs) {
             const inputVersion = await this.database.getVersion(versionKey(inputKey));
             if (inputVersion !== undefined) {
-                currentDepVersions[inputKey] = inputVersion;
+                currentDepVersionsMap[inputKey] = inputVersion;
             }
         }
 
         // Store dependency versions snapshot
         batchOperations.push(
-            this.putOp(depVersionsKey(nodeName), currentDepVersions)
+            this.putOp(depVersionsKey(nodeName), makeDependencyVersions(currentDepVersionsMap))
         );
 
         if (!isUnchanged(computedValue)) {
