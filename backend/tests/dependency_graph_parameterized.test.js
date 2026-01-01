@@ -81,7 +81,7 @@ describe("Parameterized node schemas", () => {
             });
 
             // Verify it was stored
-            const stored = await db.getValue('event_context("id123")');
+            const stored = await db.getValue("event_context('id123')");
             expect(stored).toEqual(result);
 
             await db.close();
@@ -185,7 +185,7 @@ describe("Parameterized node schemas", () => {
 
             // The demanded one should be invalidated
             const demandedFreshness = await db.getFreshness(
-                "freshness(derived(\"demanded\"))"
+                "freshness(derived('demanded'))"
             );
             expect(demandedFreshness).toBe("potentially-outdated");
 
@@ -537,13 +537,13 @@ describe("Parameterized node schemas", () => {
             // Verify reverse dependency was persisted
             // The index should store: dg:<schemaHash>:revdep:base:derived("test")
             const schemaHash = graph.schemaHash;
-            const revdepKey = `dg:${schemaHash}:revdep:base:derived("test")`;
+            const revdepKey = `dg:${schemaHash}:revdep:base:derived('test')`;
             const revdep = await db.get(revdepKey);
             expect(revdep).toBeDefined();
             expect(revdep).toEqual({ __edge: true });
 
             // Verify inputs were persisted
-            const inputsKey = `dg:${schemaHash}:inputs:derived("test")`;
+            const inputsKey = `dg:${schemaHash}:inputs:derived('test')`;
             const inputs = await db.get(inputsKey);
             expect(inputs).toBeDefined();
             expect(inputs).toEqual({ inputs: ["base"] });
@@ -592,12 +592,12 @@ describe("Parameterized node schemas", () => {
 
             // Verify reverse dependency was persisted by checking that the dependent is marked outdated
             const { freshnessKey } = require("../src/generators/database");
-            const itemFreshness = await db.getFreshness(freshnessKey('item("foo")'));
+            const itemFreshness = await db.getFreshness(freshnessKey("item('foo')"));
             expect(itemFreshness).toBe("potentially-outdated");
 
             // Verify inputs were persisted for the materialized item
             const schemaHash = graph.schemaHash;
-            const inputsKey = `dg:${schemaHash}:inputs:item("foo")`;
+            const inputsKey = `dg:${schemaHash}:inputs:item('foo')`;
             const inputs = await db.get(inputsKey);
             expect(inputs).toBeDefined();
             expect(inputs).toEqual({ inputs: ["base"] });

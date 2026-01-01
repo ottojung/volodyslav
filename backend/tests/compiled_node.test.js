@@ -97,7 +97,7 @@ describe("compiled_node", () => {
 
             const compiled = compileNodeDef(nodeDef);
 
-            expect(compiled.canonicalOutput).toBe('status(e,"active")');
+            expect(compiled.canonicalOutput).toBe("status(e,'active')");
             expect(compiled.head).toBe("status");
             expect(compiled.arity).toBe(2);
             expect(compiled.isPattern).toBe(true);

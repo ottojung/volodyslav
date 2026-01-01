@@ -178,7 +178,7 @@ describe("dependency_graph/unify", () => {
             const bindings = { p: { type: "string", value: "photo5" } };
             const variables = new Set(["p"]);
             const result = substitute("photo(p)", bindings, variables);
-            expect(result).toBe('photo("photo5")');
+            expect(result).toBe("photo('photo5')");
         });
 
         test("substitutes single variable with number", () => {
@@ -195,14 +195,14 @@ describe("dependency_graph/unify", () => {
             };
             const variables = new Set(["a", "b"]);
             const result = substitute("relation(a, b)", bindings, variables);
-            expect(result).toBe('relation("id1","id2")');
+            expect(result).toBe("relation('id1','id2')");
         });
 
         test("passes through constants", () => {
             const bindings = { x: { type: "string", value: "val" } };
             const variables = new Set(["x"]);
             const result = substitute('photo("const", x)', bindings, variables);
-            expect(result).toBe('photo("const","val")');
+            expect(result).toBe("photo('const','val')");
         });
 
         test("substitutes constant pattern unchanged", () => {
@@ -214,7 +214,7 @@ describe("dependency_graph/unify", () => {
             const bindings = { x: { type: "string", value: "val" } };
             const variables = new Set(["x"]);
             const result = substitute('mix("a", x, 5)', bindings, variables);
-            expect(result).toBe('mix("a","val",5)');
+            expect(result).toBe("mix('a','val',5)");
         });
 
         test("throws if variable not in bindings", () => {

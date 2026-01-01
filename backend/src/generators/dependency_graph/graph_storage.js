@@ -25,6 +25,7 @@ const { freshnessKey } = require("../database");
  * @property {(node: string) => Promise<string[] | null>} getInputs
  * @property {() => Promise<string[]>} listAllKeys
  * @property {(key: string) => Promise<DatabaseStoredValue | undefined>} getRaw
+ * @property {() => Promise<string[]>} listMaterializedNodes
  */
 
 /**
@@ -226,6 +227,18 @@ function makeGraphStorage(database, schemaHash) {
         return database.get(key);
     }
 
+    /**
+     * List all materialized nodes.
+     * @returns {Promise<string[]>}
+     */
+    async function listMaterializedNodes() {
+        const allKeys = await database.keys();
+        return allKeys.filter(k => 
+            !k.startsWith("dg:") && 
+            !k.startsWith("freshness(")
+        );
+    }
+
     return {
         getNodeValue,
         getNodeFreshness,
@@ -236,6 +249,7 @@ function makeGraphStorage(database, schemaHash) {
         getInputs,
         listAllKeys,
         getRaw,
+        listMaterializedNodes,
     };
 }
 

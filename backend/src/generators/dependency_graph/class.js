@@ -580,7 +580,7 @@ class DependencyGraphClass {
         const oldValue = await this.storage.getNodeValue(nodeName);
 
         // Compute new value
-        const computedValue = nodeDefinition.computor(inputValues, oldValue);
+        const computedValue = await nodeDefinition.computor(inputValues, oldValue);
 
         // Prepare batch operations
         /** @type {Array<{type: "put", key: string, value: DatabaseStoredValue} | {type: "del", key: string}>} */
@@ -692,32 +692,7 @@ class DependencyGraphClass {
      * @returns {Promise<string[]>}
      */
     async debugListMaterializedNodes() {
-        const allKeys = await this.storage.listAllKeys();
-        const materializedNodes = [];
-        
-        for (const key of allKeys) {
-            // Skip internal index keys
-            if (key.startsWith("dg:")) {
-                continue;
-            }
-
-            // Optimization: if it doesn't start with "freshness(", it's definitely a node
-            if (!key.startsWith("freshness(")) {
-                materializedNodes.push(key);
-                continue;
-            }
-
-            // It starts with "freshness(". It could be a freshness key OR a node named "freshness(...)".
-            // We must check the value type to distinguish.
-            // Freshness is a string, DatabaseValue is an object.
-            const value = await this.storage.getRaw(key);
-            
-            if (typeof value === "object" && value !== null) {
-                materializedNodes.push(key);
-            }
-        }
-        
-        return materializedNodes;
+        return this.storage.listMaterializedNodes();
     }
 }
 

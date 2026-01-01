@@ -2,6 +2,8 @@
  * Expression parsing and canonicalization with support for quoted strings and natural numbers.
  */
 
+const { makeInvalidExpressionError } = require("./errors");
+
 /**
  * Token types for the lexer.
  * @typedef {'identifier' | 'string' | 'number' | 'lparen' | 'rparen' | 'comma' | 'eof'} TokenKind
@@ -77,16 +79,17 @@ class Lexer {
 
     /**
      * Reads a quoted string literal.
+     * @param {string} quoteChar
      * @returns {Token}
      */
-    readString() {
+    readString(quoteChar) {
         const startPos = this.pos;
         this.next(); // consume opening quote
         let value = "";
 
         let ch = this.peek();
         while (ch !== null) {
-            if (ch === '"') {
+            if (ch === quoteChar) {
                 this.next(); // consume closing quote
                 return { kind: "string", value, pos: startPos };
             }
@@ -97,8 +100,8 @@ class Lexer {
                     throw new Error(`Unclosed string literal at position ${startPos}`);
                 }
                 // Handle escape sequences
-                if (escaped === '"') {
-                    value += '"';
+                if (escaped === quoteChar) {
+                    value += quoteChar;
                 } else if (escaped === "\\") {
                     value += "\\";
                 } else if (escaped === "n") {
@@ -181,8 +184,8 @@ class Lexer {
             this.next();
             return { kind: "comma", value: ",", pos };
         }
-        if (ch === '"') {
-            return this.readString();
+        if (ch === '"' || ch === "'") {
+            return this.readString(ch);
         }
         if (/[a-zA-Z0-9_]/.test(ch)) {
             return this.readIdentifierOrNumber();
@@ -268,12 +271,11 @@ class Parser {
             /** @type {ParsedArg[]} */
             const args = [];
 
-            // Check for empty args - this is disallowed (use bare identifier for atoms)
+            // Check for empty args
             const nextToken = /** @type {TokenKind} */ (this.currentToken.kind);
             if (nextToken === "rparen") {
-                throw new Error(
-                    `Empty argument list not allowed at position ${this.currentToken.pos}. Use '${name}' instead of '${name}()' for atoms.`
-                );
+                this.advance(); // consume ')'
+                return { kind: "call", name, args: [] };
             }
 
             // Parse arguments
@@ -331,9 +333,17 @@ class Parser {
  * @throws {Error} If the expression is malformed
  */
 function parseExpr(str) {
-    const lexer = new Lexer(str);
-    const parser = new Parser(lexer);
-    return parser.parse();
+    try {
+        const lexer = new Lexer(str);
+        const parser = new Parser(lexer);
+        return parser.parse();
+    } catch (err) {
+        if (err instanceof Error && err.name === "InvalidExpressionError") {
+            throw err;
+        }
+        const message = err instanceof Error ? err.message : String(err);
+        throw makeInvalidExpressionError(str, message);
+    }
 }
 
 /**
@@ -348,11 +358,11 @@ function renderArg(arg) {
         // Escape special characters for canonical form
         const escaped = arg.value
             .replace(/\\/g, "\\\\")
-            .replace(/"/g, '\\"')
+            .replace(/'/g, "\\'")
             .replace(/\n/g, "\\n")
             .replace(/\t/g, "\\t")
             .replace(/\r/g, "\\r");
-        return `"${escaped}"`;
+        return `'${escaped}'`;
     } else if (arg.kind === "number") {
         return arg.value;
     }

@@ -15,10 +15,13 @@ describe("dependency_graph/expr", () => {
             });
         });
 
-        test("throws on function call with no args (T4)", () => {
-            expect(() => parseExpr("foo()")).toThrow(
-                "Empty argument list not allowed"
-            );
+        test("parses function call with no args (T4)", () => {
+            const result = parseExpr("foo()");
+            expect(result).toEqual({
+                kind: "call",
+                name: "foo",
+                args: [],
+            });
         });
 
         test("parses a function call with one identifier arg", () => {
@@ -169,13 +172,9 @@ describe("dependency_graph/expr", () => {
             expect(canonicalize("  all_events  ")).toBe("all_events");
         });
 
-        test("throws on empty argument list (T4)", () => {
-            expect(() => canonicalize("foo()")).toThrow(
-                "Empty argument list not allowed"
-            );
-            expect(() => canonicalize("foo( )")).toThrow(
-                "Empty argument list not allowed"
-            );
+        test("canonicalizes empty argument list (T4)", () => {
+            expect(canonicalize("foo()")).toBe("foo()");
+            expect(canonicalize("foo( )")).toBe("foo()");
         });
 
         test("canonicalizes with single arg", () => {
@@ -190,8 +189,8 @@ describe("dependency_graph/expr", () => {
         });
 
         test("canonicalizes quoted strings", () => {
-            expect(canonicalize('status(e, "active")')).toBe('status(e,"active")');
-            expect(canonicalize('foo( "a" , "b" )')).toBe('foo("a","b")');
+            expect(canonicalize('status(e, "active")')).toBe("status(e,'active')");
+            expect(canonicalize('foo( "a" , "b" )')).toBe("foo('a','b')");
         });
 
         test("canonicalizes numbers", () => {
@@ -201,12 +200,12 @@ describe("dependency_graph/expr", () => {
         });
 
         test("canonicalizes mixed arg types", () => {
-            expect(canonicalize('mix("str", 5, x)')).toBe('mix("str",5,x)');
+            expect(canonicalize('mix("str", 5, x)')).toBe("mix('str',5,x)");
         });
 
         test("preserves string escapes in canonical form", () => {
-            expect(canonicalize('foo("a\\"b")')).toBe('foo("a\\"b")');
-            expect(canonicalize('foo("line\\n")')).toBe('foo("line\\n")');
+            expect(canonicalize('foo("a\\"b")')).toBe("foo('a\"b')");
+            expect(canonicalize('foo("line\\n")')).toBe("foo('line\\n')");
         });
 
         test("throws on malformed expression", () => {

@@ -83,7 +83,7 @@ describe("Dependency graph persistence and restart", () => {
             const graphA = makeDependencyGraph(db, schemas);
 
             // Pull the pattern instantiation to create it
-            const result1 = await graphA.pull('event_context("id123")');
+            const result1 = await graphA.pull("event_context('id123')");
             expect(result1.eventId).toBe("id123");
             expect(result1.totalEvents).toBe(2);
 
@@ -91,7 +91,7 @@ describe("Dependency graph persistence and restart", () => {
             const freshness1 = await db.getFreshness(freshnessKey("all_events"));
             const freshness2 = await db.getFreshness(freshnessKey("meta_events"));
             const freshness3 = await db.getFreshness(
-                freshnessKey('event_context("id123")')
+                freshnessKey("event_context('id123')")
             );
             expect(freshness1).toBe("up-to-date");
             expect(freshness2).toBe("up-to-date");
@@ -115,13 +115,13 @@ describe("Dependency graph persistence and restart", () => {
                 freshnessKey("meta_events")
             );
             const freshnessAfter2 = await db.getFreshness(
-                freshnessKey('event_context("id123")')
+                freshnessKey("event_context('id123')")
             );
             expect(freshnessAfter1).toBe("potentially-outdated");
             expect(freshnessAfter2).toBe("potentially-outdated");
 
             // Pull event_context and verify it recomputes correctly
-            const result2 = await graphB.pull('event_context("id123")');
+            const result2 = await graphB.pull("event_context('id123')");
             expect(result2.eventId).toBe("id123");
             expect(result2.totalEvents).toBe(3); // Updated!
 
@@ -181,7 +181,7 @@ describe("Dependency graph persistence and restart", () => {
             const graph1 = makeDependencyGraph(db, schemas);
 
             // Pull D to create instantiations
-            const result1 = await graph1.pull('D("test")');
+            const result1 = await graph1.pull("D('test')");
             expect(result1.value).toBe(50); // 10*2 + 10*3 = 20 + 30 = 50
             expect(computeCalls).toEqual(["B", "C", "D"]);
 
@@ -193,11 +193,11 @@ describe("Dependency graph persistence and restart", () => {
             await graph2.set("A", { value: 20 });
 
             // Verify D became potentially-outdated via persisted edges
-            const freshness = await db.getFreshness(freshnessKey('D("test")'));
+            const freshness = await db.getFreshness(freshnessKey("D('test')"));
             expect(freshness).toBe("potentially-outdated");
 
             // Pull D - should recompute
-            const result2 = await graph2.pull('D("test")');
+            const result2 = await graph2.pull("D('test')");
             expect(result2.value).toBe(100); // 20*2 + 20*3 = 40 + 60 = 100
             expect(computeCalls).toEqual(["B", "C", "D"]);
 
@@ -312,11 +312,11 @@ describe("Dependency graph persistence and restart", () => {
 
             // Initial setup
             await db.put("A", { value: 10 });
-            await db.put('B("test")', { value: 100 });
+            await db.put("B('test')", { value: 100 });
             const graph1 = makeDependencyGraph(db, schemas);
 
             // Pull C to establish pattern instantiations
-            const result1 = await graph1.pull('C("test")');
+            const result1 = await graph1.pull("C('test')");
             expect(result1.value).toBe(200);
 
             // *** RESTART ***
@@ -327,12 +327,12 @@ describe("Dependency graph persistence and restart", () => {
             await graph2.set("A", { value: 20 });
 
             // Pull C - B should return Unchanged and propagate to C
-            const result2 = await graph2.pull('C("test")');
+            const result2 = await graph2.pull("C('test')");
             expect(result2.value).toBe(200); // Same value
             expect(computeCalls).toEqual(['B(test)']); // Only B computed
 
             // C should be up-to-date via propagation
-            expect(await db.getFreshness(freshnessKey('C("test")'))).toBe("up-to-date");
+            expect(await db.getFreshness(freshnessKey("C('test')"))).toBe("up-to-date");
 
             await db.close();
         });
@@ -373,7 +373,7 @@ describe("Dependency graph persistence and restart", () => {
             const graph = makeDependencyGraph(db, schemas);
 
             // Pull to create instantiation
-            await graph.pull('derived("test")');
+            await graph.pull("derived('test')");
 
             // Verify no "instantiation:" scan occurred during construction or pull
             const instantiationScans = keysCalls.filter((prefix) =>
@@ -485,12 +485,12 @@ describe("Dependency graph persistence and restart", () => {
             const graph = makeDependencyGraph(db, schemas);
 
             // Pull B to create instantiation
-            await graph.pull('B("test")');
+            await graph.pull("B('test')");
 
             // Find the batch that included both value and index writes
             let foundBatchWithBoth = false;
             for (const ops of batchCalls) {
-                const hasValue = ops.some((op) => op.key === 'B("test")');
+                const hasValue = ops.some((op) => op.key === "B('test')");
                 const hasIndex = ops.some((op) =>
                     op.key.includes(":inputs:") || op.key.includes(":revdep:")
                 );

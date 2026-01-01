@@ -1521,11 +1521,11 @@ describe("generators/dependency_graph", () => {
             expect(result.value).toBe(10);
 
             // Verify value is stored under canonical key
-            const stored = await db.getValue('derived("data")');
+            const stored = await db.getValue("derived('data')");
             expect(stored).toEqual({ value: 10 });
 
             // Verify freshness is under canonical key
-            const freshness = await db.getFreshness(freshnessKey('derived("data")'));
+            const freshness = await db.getFreshness(freshnessKey("derived('data')"));
             expect(freshness).toBe("up-to-date");
 
             // Setting base should invalidate derived (via canonical key)
