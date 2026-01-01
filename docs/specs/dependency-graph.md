@@ -582,7 +582,7 @@ When a computor returns `Unchanged`:
 
 **Soundness Requirement (Normative):**
 
-An implementation MAY mark a dependent node `D` up-to-date without recomputing `D` **if and only if** it can **prove** that `D`'s value would be unchanged under recomputation given the current values of its dependencies.
+An implementation SHOULD mark a dependent node `D` up-to-date without recomputing `D` **if and only if** it can **prove** that `D`'s value would be unchanged under recomputation given the current values of its dependencies.
 
 **Formally:**
 ```
