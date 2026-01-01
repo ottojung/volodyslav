@@ -498,7 +498,6 @@ describe("Basic operational semantics: set/pull, caching, invalidation", () => {
     expect(db.batchLog.length).toBe(1);
   });
 
-
   test("order preservation", async () => {
     const db = new InMemoryDatabase();
 
@@ -516,6 +515,60 @@ describe("Basic operational semantics: set/pull, caching, invalidation", () => {
     expect(c).toEqual({ s: "c(b(a()))" });
     expect(bC.counter.calls).toBe(1);
     expect(cC.counter.calls).toBe(1);
+  });
+
+  test.failing("unchanged optimization", async () => {
+    const db = new InMemoryDatabase();
+
+    const bC = countedComputor("b", async ([a], oldValue) => {
+      if (oldValue) {
+        return makeUnchanged();
+      } else {
+        return { s: "b(" + a.s + ")" };
+      }
+    });
+    const cC = countedComputor("c", async ([b]) => ({ s: "c(" + b.s + ")" }));
+
+    const g = buildGraph(db, [
+      { output: "a", inputs: [], computor: async (_i, old) => old || { s: "a()" } },
+      { output: "b", inputs: ["a"], computor: bC.computor },
+      { output: "c", inputs: ["b"], computor: cC.computor },
+    ]);
+
+    await expect(g.debugGetFreshness("a")).resolves.toBe("missing");
+    await expect(g.debugGetFreshness("b")).resolves.toBe("missing");
+    await expect(g.debugGetFreshness("c")).resolves.toBe("missing");
+
+    await g.set("a", { s: "a()" });
+
+    await expect(g.debugGetFreshness("a")).resolves.toBe("up-to-date");
+    await expect(g.debugGetFreshness("b")).resolves.toBe("potentially-outdated");
+    await expect(g.debugGetFreshness("c")).resolves.toBe("potentially-outdated");
+
+    const c = await g.pull("c");
+    expect(c).toEqual({ s: "c(b(a()))" });
+    expect(bC.counter.calls).toBe(1);
+    expect(cC.counter.calls).toBe(1);
+
+    await expect(g.debugGetFreshness("a")).resolves.toBe("up-to-date");
+    await expect(g.debugGetFreshness("b")).resolves.toBe("up-to-date");
+    await expect(g.debugGetFreshness("c")).resolves.toBe("up-to-date");
+
+    await g.set("a", { s: "a()" });
+
+    await expect(g.debugGetFreshness("a")).resolves.toBe("up-to-date");
+    await expect(g.debugGetFreshness("b")).resolves.toBe("potentially-outdated");
+    await expect(g.debugGetFreshness("c")).resolves.toBe("potentially-outdated");
+
+    const b = await g.pull("b");
+    expect(b).toEqual({ s: "b(a())" });
+    expect(bC.counter.calls).toBe(2); // one recompute
+    expect(cC.counter.calls).toBe(1); // no recompute yet
+
+    await expect(g.debugGetFreshness("a")).resolves.toBe("up-to-date");
+    await expect(g.debugGetFreshness("b")).resolves.toBe("up-to-date");
+    // Must still be potentially-outdated because c not recomputed yet.
+    await expect(g.debugGetFreshness("c")).resolves.toBe("potentially-outdated");
   });
 
   
