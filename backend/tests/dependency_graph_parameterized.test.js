@@ -178,20 +178,16 @@ describe("Parameterized node schemas", () => {
             const graph = makeDependencyGraph(db, schemas);
 
             // Demand only one instantiation
-            await graph.pull('derived("demanded")');
+            const result = await graph.pull('derived("demanded")');
+            expect(result.value).toBe(1);
 
             // Update source
             await graph.set("source", { value: 2 });
 
-            // The demanded one should be invalidated
-            const demandedFreshness = await db.getFreshness(
-                "freshness(derived(\"demanded\"))"
-            );
-
-            // Non-demanded instantiations shouldn't exist in DB
-            const nonDemandedFreshness = await db.getFreshness(
-                "freshness(derived(\"not_demanded\"))"
-            );
+            // With versioning, the demanded instantiation will be out of date
+            // and will recompute on next pull
+            const result2 = await graph.pull('derived("demanded")');
+            expect(result2.value).toBe(2);
 
             await db.close();
         });
@@ -589,8 +585,6 @@ describe("Parameterized node schemas", () => {
             await graph.set('base', { value: 42 });
 
             // Verify reverse dependency was persisted by checking that the dependent is marked outdated
-            const itemFreshness = await db.getFreshness(freshnessKey('item("foo")'));
-
             // Verify inputs were persisted for the materialized item
             const schemaHash = graph.schemaHash;
             const inputsKey = `dg:${schemaHash}:inputs:item("foo")`;

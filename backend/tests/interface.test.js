@@ -98,8 +98,6 @@ describe("generators/interface", () => {
                 expect(result.events[0].id).toBe("event-1");
                 expect(result.events[1].id).toBe("event-2");
                 
-                const freshness = await db.get(freshnessKey("all_events"));
-                expect(freshness).toBe("up-to-date");
 
                 await db.close();
             } finally {
@@ -166,8 +164,6 @@ describe("generators/interface", () => {
                 expect(result).toBeDefined();
                 expect(result.events).toHaveLength(0);
                 
-                const freshness = await db.get(freshnessKey("all_events"));
-                expect(freshness).toBe("up-to-date");
 
                 await db.close();
             } finally {

@@ -86,16 +86,6 @@ describe("Dependency graph persistence and restart", () => {
             expect(result1.eventId).toBe("id123");
             expect(result1.totalEvents).toBe(2);
 
-            // Verify all nodes are up-to-date
-            const freshness1 = await db.getFreshness(freshnessKey("all_events"));
-            const freshness2 = await db.getFreshness(freshnessKey("meta_events"));
-            const freshness3 = await db.getFreshness(
-                freshnessKey('event_context("id123")')
-            );
-            expect(freshness1).toBe("up-to-date");
-            expect(freshness2).toBe("up-to-date");
-            expect(freshness3).toBe("up-to-date");
-
             // *** RESTART: Create new graph instance B on same DB ***
             const graphB = makeDependencyGraph(db, schemas);
 
@@ -109,20 +99,10 @@ describe("Dependency graph persistence and restart", () => {
                 ],
             });
 
-            // Verify that meta_events and event_context became potentially-outdated
-            const freshnessAfter1 = await db.getFreshness(
-                freshnessKey("meta_events")
-            );
-            const freshnessAfter2 = await db.getFreshness(
-                freshnessKey('event_context("id123")')
-            );
-            expect(freshnessAfter1).toBe("potentially-outdated");
-            expect(freshnessAfter2).toBe("potentially-outdated");
-
-            // Pull event_context and verify it recomputes correctly
+            // Pull event_context again - should recompute with new data
             const result2 = await graphB.pull('event_context("id123")');
             expect(result2.eventId).toBe("id123");
-            expect(result2.totalEvents).toBe(3); // Updated!
+            expect(result2.totalEvents).toBe(3); // Updated count
 
             await db.close();
         });
@@ -190,11 +170,7 @@ describe("Dependency graph persistence and restart", () => {
             // Update A
             await graph2.set("A", { value: 20 });
 
-            // Verify D became potentially-outdated via persisted edges
-            const freshness = await db.getFreshness(freshnessKey('D("test")'));
-            expect(freshness).toBe("potentially-outdated");
-
-            // Pull D - should recompute
+            // Pull D - should recompute with new value
             const result2 = await graph2.pull('D("test")');
             expect(result2.value).toBe(100); // 20*2 + 20*3 = 40 + 60 = 100
             expect(computeCalls).toEqual(["B", "C", "D"]);
@@ -207,6 +183,7 @@ describe("Dependency graph persistence and restart", () => {
         test("Unchanged propagation works after restart", async () => {
             const capabilities = getTestCapabilities();
             const db = await getDatabase(capabilities);
+            const { versionKey, depVersionsKey, makeDependencyVersions } = require("../src/generators/database");
 
             const computeCalls = [];
 
@@ -221,7 +198,7 @@ describe("Dependency graph persistence and restart", () => {
                     inputs: ["A"],
                     computor: (_inputs, _oldValue, _bindings) => {
                         computeCalls.push("B");
-                        // Always return Unchanged to test propagation
+                        // Always return Unchanged to test version stability
                         return makeUnchanged();
                     },
                 },
@@ -237,38 +214,32 @@ describe("Dependency graph persistence and restart", () => {
 
             // Initial setup
             await db.put("A", { value: 10 });
+            await db.put(versionKey("A"), 1);
+            await db.put(depVersionsKey("A"), makeDependencyVersions({}));
+            
             await db.put("B", { value: 100 });
+            await db.put(versionKey("B"), 1);
+            await db.put(depVersionsKey("B"), makeDependencyVersions({ "A": 1 }));
+            
             const graph1 = makeDependencyGraph(db, schemas);
 
             // Pull C to establish values
             const result1 = await graph1.pull("C");
             expect(result1.value).toBe(200);
-            expect(computeCalls).toEqual(["B", "C"]);
-
-            // All should be up-to-date
-            expect(await db.getFreshness(freshnessKey("A"))).toBe("up-to-date");
-            expect(await db.getFreshness(freshnessKey("B"))).toBe("up-to-date");
-            expect(await db.getFreshness(freshnessKey("C"))).toBe("up-to-date");
+            expect(computeCalls).toEqual(["C"]); // B is already up-to-date
 
             // *** RESTART ***
             computeCalls.length = 0;
             const graph2 = makeDependencyGraph(db, schemas);
 
-            // Update A (which should invalidate B and C)
+            // Update A
             await graph2.set("A", { value: 20 });
 
-            // B and C should be potentially-outdated
-            expect(await db.getFreshness(freshnessKey("B"))).toBe("potentially-outdated");
-            expect(await db.getFreshness(freshnessKey("C"))).toBe("potentially-outdated");
-
-            // Pull C - B should return Unchanged and propagate up-to-date to C
+            // Pull C - B will recompute and return Unchanged (version stays 1)
+            // C sees B's version is still 1, so doesn't recompute
             const result2 = await graph2.pull("C");
             expect(result2.value).toBe(200); // Same as before
-            expect(computeCalls).toEqual(["B"]); // Only B computed, C was marked up-to-date via propagation
-
-            // Both B and C should be up-to-date now
-            expect(await db.getFreshness(freshnessKey("B"))).toBe("up-to-date");
-            expect(await db.getFreshness(freshnessKey("C"))).toBe("up-to-date");
+            expect(computeCalls).toEqual(["B"]); // Only B computed, C used cached value
 
             await db.close();
         });
@@ -276,6 +247,7 @@ describe("Dependency graph persistence and restart", () => {
         test("Unchanged propagation with pattern instantiation after restart", async () => {
             const capabilities = getTestCapabilities();
             const db = await getDatabase(capabilities);
+            const { versionKey, depVersionsKey, makeDependencyVersions } = require("../src/generators/database");
 
             const computeCalls = [];
 
@@ -308,7 +280,13 @@ describe("Dependency graph persistence and restart", () => {
 
             // Initial setup
             await db.put("A", { value: 10 });
+            await db.put(versionKey("A"), 1);
+            await db.put(depVersionsKey("A"), makeDependencyVersions({}));
+            
             await db.put('B("test")', { value: 100 });
+            await db.put(versionKey('B("test")'), 1);
+            await db.put(depVersionsKey('B("test")'), makeDependencyVersions({ "A": 1 }));
+            
             const graph1 = makeDependencyGraph(db, schemas);
 
             // Pull C to establish pattern instantiations
@@ -322,13 +300,11 @@ describe("Dependency graph persistence and restart", () => {
             // Update A
             await graph2.set("A", { value: 20 });
 
-            // Pull C - B should return Unchanged and propagate to C
+            // Pull C - B will recompute and return Unchanged (version stays 1)
+            // C sees B's version is still 1, so doesn't recompute
             const result2 = await graph2.pull('C("test")');
             expect(result2.value).toBe(200); // Same value
             expect(computeCalls).toEqual(['B(test)']); // Only B computed
-
-            // C should be up-to-date via propagation
-            expect(await db.getFreshness(freshnessKey('C("test")'))).toBe("up-to-date");
 
             await db.close();
         });
@@ -377,14 +353,12 @@ describe("Dependency graph persistence and restart", () => {
             );
             expect(instantiationScans.length).toBe(0);
 
-            // Now do a set to trigger invalidation checks (which use revdep queries)
+            // Now do a set to trigger version update
             await graph.set("base", { value: 20 });
 
-            // Verify that revdep queries occurred during set (these are legitimate)
-            const revdepScans = keysCalls.filter((prefix) =>
-                prefix.includes(":revdep:")
-            );
-            expect(revdepScans.length).toBeGreaterThan(0);
+            // With versioning, set() no longer needs to query reverse dependencies
+            // It just increments the node's version, which is a simple operation
+            // Dependents will notice the version change when they're pulled
 
             await db.close();
         });
