@@ -380,7 +380,7 @@ class DependencyGraphClass {
 
         const schemaJson = JSON.stringify(schemaRepresentation);
         this.schemaHash = crypto
-            .createHash("sha256")
+            .createHash("md5")
             .update(schemaJson)
             .digest("hex")
             .substring(0, 16); // Use first 16 chars for brevity
