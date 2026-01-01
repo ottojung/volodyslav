@@ -9,12 +9,11 @@
 /** @typedef {import('./types').CompiledNode} CompiledNode */
 /** @typedef {import('./types').ConstValue} ConstValue */
 /** @typedef {import('./unchanged').Unchanged} Unchanged */
-/** @typedef {import('./index_helper').Index} Index */
+/** @typedef {import('./graph_storage').GraphStorage} GraphStorage */
 /** @typedef {DatabaseValue | Freshness} DatabaseStoredValue */
 
 const crypto = require("crypto");
 const { isUnchanged } = require("./unchanged");
-const { freshnessKey } = require("../database");
 const { 
     makeInvalidNodeError, 
     makeInvalidSchemaError,
@@ -25,7 +24,7 @@ const { canonicalize, parseExpr } = require("./expr");
 const { compileNodeDef, validateNoOverlap, validateAcyclic } = require("./compiled_node");
 const { matchConcrete, substitute, validateConcreteKey } = require("./unify");
 const { extractVariables } = require("./compiled_node");
-const { makeIndex } = require("./index_helper");
+const { makeGraphStorage } = require("./graph_storage");
 
 /**
  * A dependency graph that propagates data through edges based on freshness tracking.
@@ -88,22 +87,11 @@ class DependencyGraphClass {
     schemaHash;
 
     /**
-     * Index helper for managing persistent reverse dependencies and inputs.
+     * Graph storage helper for managing persistent state.
      * @private
-     * @type {Index}
+     * @type {GraphStorage}
      */
-    index;
-
-    /**
-     * Helper to create a put operation for batch processing.
-     * @private
-     * @param {string} key
-     * @param {DatabaseStoredValue} value
-     * @returns {{ type: "put", key: string, value: DatabaseStoredValue }}
-     */
-    putOp(key, value) {
-        return { type: "put", key, value };
-    }
+    storage;
 
     /**
      * Recursively collects operations to mark dependent nodes as potentially-dirty.
@@ -123,7 +111,7 @@ class DependencyGraphClass {
 
         // Collect dependents from both static map and DB
         const staticDependents = this.dependentsMap.get(changedKey) || [];
-        const dynamicDependents = await this.index.listDependents(changedKey);
+        const dynamicDependents = await this.storage.listDependents(changedKey);
 
         // Combine both sources, mapping dynamic dependents to the same structure
         const allDependents = [
@@ -132,17 +120,12 @@ class DependencyGraphClass {
         ];
 
         for (const node of allDependents) {
-            const currentFreshness = await this.database.getFreshness(
-                freshnessKey(node.output)
-            );
+            const currentFreshness = await this.storage.getNodeFreshness(node.output);
 
             // Only update if not already potentially-outdated
             if (currentFreshness !== "potentially-outdated") {
                 batchOperations.push(
-                    this.putOp(
-                        freshnessKey(node.output),
-                        "potentially-outdated"
-                    )
+                    this.storage.setNodeFreshnessOp(node.output, "potentially-outdated")
                 );
 
                 // Recursively mark dependents of this node
@@ -183,7 +166,7 @@ class DependencyGraphClass {
 
         // Ensure node is indexed (if it has inputs)
         if (nodeDefinition.inputs.length > 0) {
-            await this.index.ensureNodeIndexed(
+            await this.storage.ensureNodeIndexed(
                 canonicalKey,
                 nodeDefinition.inputs,
                 batchOperations
@@ -191,11 +174,11 @@ class DependencyGraphClass {
         }
 
         // Store the value
-        batchOperations.push(this.putOp(canonicalKey, value));
+        batchOperations.push(this.storage.setNodeValueOp(canonicalKey, value));
 
         // Mark this key as up-to-date
         batchOperations.push(
-            this.putOp(freshnessKey(canonicalKey), "up-to-date")
+            this.storage.setNodeFreshnessOp(canonicalKey, "up-to-date")
         );
 
         // Collect operations to mark all dependents as potentially-outdated
@@ -414,8 +397,8 @@ class DependencyGraphClass {
             .digest("hex")
             .substring(0, 16); // Use first 16 chars for brevity
 
-        // Initialize index helper
-        this.index = makeIndex(database, this.schemaHash);
+        // Initialize storage helper
+        this.storage = makeGraphStorage(database, this.schemaHash);
 
         // Store compiled nodes in a map by canonical output
         this.graph = new Map();
@@ -467,16 +450,14 @@ class DependencyGraphClass {
     async propagateUpToDateDownstream(nodeName) {
         // Collect dependents from both static map and DB
         const staticDependents = this.dependentsMap.get(nodeName) || [];
-        const dynamicDependentKeys = await this.index.listDependents(nodeName);
+        const dynamicDependentKeys = await this.storage.listDependents(nodeName);
 
         const batchOperations = [];
         const nodesToPropagate = [];
 
         // Process static dependents (we already have their inputs)
         for (const dependent of staticDependents) {
-            const depFreshness = await this.database.getFreshness(
-                freshnessKey(dependent.output)
-            );
+            const depFreshness = await this.storage.getNodeFreshness(dependent.output);
 
             // Only process potentially-outdated nodes
             if (depFreshness !== "potentially-outdated") {
@@ -486,9 +467,7 @@ class DependencyGraphClass {
             // Check if all inputs are up-to-date
             let allInputsUpToDate = true;
             for (const inputKey of dependent.inputs) {
-                const inputFreshness = await this.database.getFreshness(
-                    freshnessKey(inputKey)
-                );
+                const inputFreshness = await this.storage.getNodeFreshness(inputKey);
                 if (inputFreshness !== "up-to-date") {
                     allInputsUpToDate = false;
                     break;
@@ -498,7 +477,7 @@ class DependencyGraphClass {
             // If all inputs up-to-date, mark this node up-to-date and remember to recurse
             if (allInputsUpToDate) {
                 batchOperations.push(
-                    this.putOp(freshnessKey(dependent.output), "up-to-date")
+                    this.storage.setNodeFreshnessOp(dependent.output, "up-to-date")
                 );
                 nodesToPropagate.push(dependent.output);
             }
@@ -506,9 +485,7 @@ class DependencyGraphClass {
 
         // Process dynamic dependents (need to fetch inputs from DB)
         for (const dependentKey of dynamicDependentKeys) {
-            const depFreshness = await this.database.getFreshness(
-                freshnessKey(dependentKey)
-            );
+            const depFreshness = await this.storage.getNodeFreshness(dependentKey);
 
             // Only process potentially-outdated nodes
             if (depFreshness !== "potentially-outdated") {
@@ -516,7 +493,7 @@ class DependencyGraphClass {
             }
 
             // Fetch inputs from DB
-            const inputs = await this.index.getInputs(dependentKey);
+            const inputs = await this.storage.getInputs(dependentKey);
             
             if (inputs === null) {
                 // Not indexed yet - skip (conservative approach)
@@ -527,9 +504,7 @@ class DependencyGraphClass {
             // Check if all inputs are up-to-date
             let allInputsUpToDate = true;
             for (const inputKey of inputs) {
-                const inputFreshness = await this.database.getFreshness(
-                    freshnessKey(inputKey)
-                );
+                const inputFreshness = await this.storage.getNodeFreshness(inputKey);
                 if (inputFreshness !== "up-to-date") {
                     allInputsUpToDate = false;
                     break;
@@ -539,7 +514,7 @@ class DependencyGraphClass {
             // If all inputs up-to-date, mark this node up-to-date and remember to recurse
             if (allInputsUpToDate) {
                 batchOperations.push(
-                    this.putOp(freshnessKey(dependentKey), "up-to-date")
+                    this.storage.setNodeFreshnessOp(dependentKey, "up-to-date")
                 );
                 nodesToPropagate.push(dependentKey);
             }
@@ -570,9 +545,7 @@ class DependencyGraphClass {
         const nodeName = nodeDefinition.output;
 
         // Remember initial freshness
-        const initialFreshness = await this.database.getFreshness(
-            freshnessKey(nodeName)
-        );
+        const initialFreshness = await this.storage.getNodeFreshness(nodeName);
 
         // Pull all inputs (recursively ensures they're up-to-date)
         // For inputs, we need to allow pass-through so patterns can reference data nodes
@@ -587,16 +560,14 @@ class DependencyGraphClass {
         // IMPORTANT: After pulling all inputs, check if WE were marked up-to-date BY PROPAGATION
         // This can happen when all inputs returned Unchanged and propagated up-to-date to us
         // Only skip if we were NOT up-to-date initially (i.e., freshness changed during input pulling)
-        const nodeFreshnessAfterPull = await this.database.getFreshness(
-            freshnessKey(nodeName)
-        );
+        const nodeFreshnessAfterPull = await this.storage.getNodeFreshness(nodeName);
         if (
             nodeFreshnessAfterPull === "up-to-date" &&
             initialFreshness !== "up-to-date"
         ) {
             // We were marked up-to-date by propagation during input pulling
             // No need to recompute!
-            const result = await this.database.getValue(nodeName);
+            const result = await this.storage.getNodeValue(nodeName);
             if (result === undefined) {
                 throw makeMissingValueError(nodeName);
             }
@@ -606,7 +577,7 @@ class DependencyGraphClass {
         // After pulling, compute with fresh input values
 
         // Get old value
-        const oldValue = await this.database.getValue(nodeName);
+        const oldValue = await this.storage.getNodeValue(nodeName);
 
         // Compute new value
         const computedValue = nodeDefinition.computor(inputValues, oldValue);
@@ -617,7 +588,7 @@ class DependencyGraphClass {
 
         // Ensure node is indexed (if it has inputs)
         if (nodeDefinition.inputs.length > 0) {
-            await this.index.ensureNodeIndexed(
+            await this.storage.ensureNodeIndexed(
                 nodeName,
                 nodeDefinition.inputs,
                 batchOperations
@@ -627,7 +598,7 @@ class DependencyGraphClass {
         // Mark all inputs as up-to-date
         for (const inputKey of nodeDefinition.inputs) {
             batchOperations.push(
-                this.putOp(freshnessKey(inputKey), "up-to-date")
+                this.storage.setNodeFreshnessOp(inputKey, "up-to-date")
             );
         }
 
@@ -635,9 +606,9 @@ class DependencyGraphClass {
             // Value changed: store it, mark up-to-date
             // Note: We do NOT propagate potentially-outdated here
             // Dependents keep their current freshness state
-            batchOperations.push(this.putOp(nodeName, computedValue));
+            batchOperations.push(this.storage.setNodeValueOp(nodeName, computedValue));
             batchOperations.push(
-                this.putOp(freshnessKey(nodeName), "up-to-date")
+                this.storage.setNodeFreshnessOp(nodeName, "up-to-date")
             );
 
             // Execute all operations atomically
@@ -645,7 +616,7 @@ class DependencyGraphClass {
         } else {
             // Value unchanged: mark up-to-date and propagate downstream
             batchOperations.push(
-                this.putOp(freshnessKey(nodeName), "up-to-date")
+                this.storage.setNodeFreshnessOp(nodeName, "up-to-date")
             );
 
             // Execute all operations atomically
@@ -657,7 +628,7 @@ class DependencyGraphClass {
         }
 
         // Return the current value
-        const result = await this.database.getValue(nodeName);
+        const result = await this.storage.getNodeValue(nodeName);
         if (result === undefined) {
             throw makeMissingValueError(nodeName);
         }
@@ -685,15 +656,13 @@ class DependencyGraphClass {
         const nodeDefinition = await this.getOrCreateConcreteNode(canonicalName);
 
         // Check freshness of this node
-        const nodeFreshness = await this.database.getFreshness(
-            freshnessKey(canonicalName)
-        );
+        const nodeFreshness = await this.storage.getNodeFreshness(canonicalName);
 
         // Fast path: if up-to-date, return cached value immediately
         // By Invariant I2 (Up-to-date Upstream Invariant), if a node is up-to-date,
         // all its inputs are guaranteed to be up-to-date, so no need to check them
         if (nodeFreshness === "up-to-date") {
-            const result = await this.database.getValue(canonicalName);
+            const result = await this.storage.getNodeValue(canonicalName);
             if (result === undefined) {
                 throw makeMissingValueError(canonicalName);
             }
@@ -711,9 +680,7 @@ class DependencyGraphClass {
      */
     async debugGetFreshness(nodeName) {
         const canonicalName = canonicalize(nodeName);
-        const freshness = await this.database.getFreshness(
-            freshnessKey(canonicalName)
-        );
+        const freshness = await this.storage.getNodeFreshness(canonicalName);
         if (freshness === undefined) {
             return "missing";
         }
@@ -725,7 +692,7 @@ class DependencyGraphClass {
      * @returns {Promise<string[]>}
      */
     async debugListMaterializedNodes() {
-        const allKeys = await this.database.keys();
+        const allKeys = await this.storage.listAllKeys();
         const materializedNodes = [];
         
         for (const key of allKeys) {
@@ -743,7 +710,7 @@ class DependencyGraphClass {
             // It starts with "freshness(". It could be a freshness key OR a node named "freshness(...)".
             // We must check the value type to distinguish.
             // Freshness is a string, DatabaseValue is an object.
-            const value = await this.database.get(key);
+            const value = await this.storage.getRaw(key);
             
             if (typeof value === "object" && value !== null) {
                 materializedNodes.push(key);

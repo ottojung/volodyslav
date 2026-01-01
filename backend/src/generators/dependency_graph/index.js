@@ -7,8 +7,8 @@ const { makeDependencyGraph, isDependencyGraph } = require('./class');
 const { makeUnchanged, isUnchanged } = require('./unchanged');
 const { 
     makeInvalidNodeError, 
-    isInvalidNode, 
-    makeInvalidSchemaError, 
+    isInvalidNode,
+    makeInvalidSchemaError,
     isInvalidSchema, 
     makeSchemaPatternNotAllowedError, 
     isSchemaPatternNotAllowed,
