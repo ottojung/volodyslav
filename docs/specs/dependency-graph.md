@@ -429,14 +429,14 @@ set("all_events(x)", value) // ERROR: contains free variable x
 
 The dependency graph MUST maintain these invariants at all stable states (between operations).
 
-**Scope:** These invariants apply to **materialized concrete nodes** — nodes that have been:
-* Pulled at least once, or
-* Set (for source nodes only)
+**Scope:** These invariants apply to **materialized concrete nodes**.
 
 **Materialized Node Definition:**
-A **materialized concrete node** is any concrete node that has been instantiated and persisted (with its value and freshness state). Implementations MUST persist sufficient markers to reconstruct the set of materialized nodes after restart.
+A **materialized concrete node** is any concrete node for which the implementation maintains dependency tracking. This includes:
+* Nodes that have been pulled or set (value materialization)
+* Nodes with persisted dependency edges (structural materialization)
 
-**Note on Parameterized Nodes:** The implementation tracks freshness for ALL materialized concrete instantiations. Once a parameterized node like `event_context('id123')` is demanded via `pull()`, it is cached with freshness tracking just like source nodes.
+Implementations MUST persist sufficient markers to reconstruct dependency relationships after restart. Once a node has dependency tracking, it remains materialized even if its value or freshness state is absent.
 
 ### I1: Outdated Propagation Invariant
 
@@ -1020,10 +1020,8 @@ Implementations MUST persist sufficient information to reconstruct the set of ma
 
 **Normative Requirements:**
 
-* A **materialized node** is any concrete node that has been:
-  * Pulled (via `pull()`) at least once, or
-  * Set (via `set()`) at least once (for source nodes only).
-* If a concrete node is materialized before a graph restart, then after restart (new `DependencyGraph` instance over the same `Database`):
+* A **materialized node** is any concrete node for which the implementation maintains dependency tracking.
+* If a node is materialized before a graph restart, then after restart (new `DependencyGraph` instance over the same `Database`):
   * `set(source, v)` MUST mark all previously materialized transitive dependents as `potentially-outdated`
   * This MUST occur **without** requiring re-pull of those dependents to rediscover them.
 * The specific mechanism for persisting materialization markers (separate keys, metadata, reverse dependency index, etc.) is **not prescribed**.
@@ -1074,7 +1072,7 @@ interface DependencyGraphDebug {
 * `debugGetFreshness(nodeName)` MUST return the conceptual freshness state of the node:
   * `"up-to-date"` — Node is guaranteed consistent with dependencies.
   * `"potentially-outdated"` — Node may need recomputation.
-  * `"missing"` — Node has never been materialized or no freshness state exists.
+  * `"missing"` — Node is not materialized (no dependency tracking exists).
 * `debugListMaterializedNodes()` MUST return an array of canonical node names for all materialized nodes.
 * The debug interface MUST reflect the same conceptual state that governs the graph's operational behavior (no divergence).
 
