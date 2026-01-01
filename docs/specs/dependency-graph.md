@@ -971,11 +971,11 @@ interface Database {
   // Store or overwrite a value at key
   put(key: string, value: DatabaseValue | Freshness): Promise<void>;
 
-  // Retrieve stored value or DatabaseQueryError if missing
-  getValue(key: string): Promise<DatabaseValue>;
+  // Retrieve stored value or undefined if missing
+  getValue(key: string): Promise<DatabaseValue | undefined>;
 
-  // Retrieve stored freshness or DatabaseQueryError if missing
-  getFreshness(key: string): Promise<Freshness>;
+  // Retrieve stored freshness or undefined if missing
+  getFreshness(key: string): Promise<Freshness | undefined>;
 
   // Atomically execute a batch of operations
   batch(ops: Array<
