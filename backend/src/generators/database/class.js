@@ -4,10 +4,16 @@
 
 const { DatabaseQueryError } = require("./errors");
 const { isDatabaseValue, isFreshness } = require("./types");
+const { makeSublevels, getSchemaStorage } = require("./sublevels");
 
 /** @typedef {import('./types').DatabaseValue} DatabaseValue */
 /** @typedef {import('./types').Freshness} Freshness */
 /** @typedef {import('./types').DatabaseBatchOperation} DatabaseBatchOperation */
+/** @typedef {import('./batch_types').GenericBatchOp} GenericBatchOp */
+/** @typedef {import('./sublevels').DatabaseSublevels} DatabaseSublevels */
+/** @typedef {import('./sublevels').ValuesLevel} ValuesLevel */
+/** @typedef {import('./sublevels').FreshnessLevel} FreshnessLevel */
+/** @typedef {import('./sublevels').SchemasLevel} SchemasLevel */
 /** @typedef {DatabaseValue | Freshness} DatabaseStoredValue */
 /** @typedef {import('level').Level<string, DatabaseStoredValue>} LevelDB */
 /** @typedef {import('./types').DatabaseCapabilities} DatabaseCapabilities */
@@ -32,13 +38,35 @@ class DatabaseClass {
     databasePath;
 
     /**
+     * Typed sublevels for isolated storage.
+     * @type {ValuesLevel}
+     */
+    values;
+
+    /**
+     * Freshness sublevel.
+     * @type {FreshnessLevel}
+     */
+    freshness;
+
+    /**
+     * Schemas sublevel.
+     * @type {SchemasLevel}
+     */
+    schemas;
+
+    /**
      * @constructor
      * @param {LevelDB} db - The Level database instance
      * @param {string} databasePath - Path to the database directory
+     * @param {DatabaseSublevels} sublevels - Typed sublevel structure
      */
-    constructor(db, databasePath) {
+    constructor(db, databasePath, sublevels) {
         this.db = db;
         this.databasePath = databasePath;
+        this.values = sublevels.values;
+        this.freshness = sublevels.freshness;
+        this.schemas = sublevels.schemas;
     }
 
     /**
@@ -228,6 +256,107 @@ class DatabaseClass {
     }
 
     /**
+     * Type-safe batch operation that uses string discriminators to route to sublevels.
+     * @param {Array<GenericBatchOp>} operations
+     * @returns {Promise<void>}
+     * @throws {DatabaseQueryError} If the operation fails
+     */
+    async batchTyped(operations) {
+        if (operations.length === 0) {
+            return;
+        }
+
+        try {
+            // Convert GenericBatchOps to sublevel-specific operations
+            /** @type {Array<Promise<void>>} */
+            const batchPromises = [];
+
+            // Group operations by sublevel for efficiency
+            /** @type {Array<{type: 'put' | 'del', key: string, value?: any}>} */
+            const valuesOps = [];
+            /** @type {Array<{type: 'put' | 'del', key: string, value?: any}>} */
+            const freshnessOps = [];
+            /** @type {Map<string, Array<{sublevel: 'inputs' | 'revdeps', type: 'put' | 'del', key: string, value?: any}>>} */
+            const schemasOps = new Map();
+
+            for (const op of operations) {
+                if (op.sublevel === "values") {
+                    if (op.type === "put") {
+                        valuesOps.push({ type: "put", key: op.key, value: op.value });
+                    } else {
+                        valuesOps.push({ type: "del", key: op.key });
+                    }
+                } else if (op.sublevel === "freshness") {
+                    if (op.type === "put") {
+                        freshnessOps.push({ type: "put", key: op.key, value: op.value });
+                    } else {
+                        freshnessOps.push({ type: "del", key: op.key });
+                    }
+                } else if (op.sublevel === "schemas") {
+                    const schemaHash = op.schemaHash;
+                    if (!schemasOps.has(schemaHash)) {
+                        schemasOps.set(schemaHash, []);
+                    }
+                    schemasOps.get(schemaHash)?.push({
+                        sublevel: op.nestedSublevel,
+                        type: op.type,
+                        key: op.key,
+                        value: op.value,
+                    });
+                }
+            }
+
+            // Execute batches
+            if (valuesOps.length > 0) {
+                batchPromises.push(this.values.batch(valuesOps, { sync: true }));
+            }
+            if (freshnessOps.length > 0) {
+                batchPromises.push(this.freshness.batch(freshnessOps, { sync: true }));
+            }
+            for (const [schemaHash, ops] of schemasOps.entries()) {
+                const schemaStorage = getSchemaStorage(this.schemas, schemaHash);
+                /** @type {Array<{type: 'put' | 'del', key: string, value?: any}>} */
+                const inputsOps = [];
+                /** @type {Array<{type: 'put' | 'del', key: string, value?: any}>} */
+                const revdepsOps = [];
+
+                for (const op of ops) {
+                    if (op.sublevel === "inputs") {
+                        if (op.type === "put") {
+                            inputsOps.push({ type: "put", key: op.key, value: op.value });
+                        } else {
+                            inputsOps.push({ type: "del", key: op.key });
+                        }
+                    } else {
+                        if (op.type === "put") {
+                            revdepsOps.push({ type: "put", key: op.key, value: op.value });
+                        } else {
+                            revdepsOps.push({ type: "del", key: op.key });
+                        }
+                    }
+                }
+
+                if (inputsOps.length > 0) {
+                    batchPromises.push(schemaStorage.inputs.batch(inputsOps, { sync: true }));
+                }
+                if (revdepsOps.length > 0) {
+                    batchPromises.push(schemaStorage.revdeps.batch(revdepsOps, { sync: true }));
+                }
+            }
+
+            await Promise.all(batchPromises);
+        } catch (err) {
+            const error = err instanceof Error ? err : new Error(String(err));
+            throw new DatabaseQueryError(
+                `Typed batch operation failed: ${error.message}`,
+                this.databasePath,
+                `BATCH_TYPED ${operations.length} ops`,
+                error
+            );
+        }
+    }
+
+    /**
      * Closes the database connection.
      * @returns {Promise<void>}
      */
@@ -259,7 +388,8 @@ async function makeDatabase(databasePath) {
             new Level(databasePath, { valueEncoding: "json" })
         );
     await db.open();
-    return new DatabaseClass(db, databasePath);
+    const sublevels = makeSublevels(db);
+    return new DatabaseClass(db, databasePath, sublevels);
 }
 
 /**

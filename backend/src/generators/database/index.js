@@ -7,6 +7,7 @@ const path = require('path');
 const { makeDatabase } = require('./class');
 const { DatabaseInitializationError } = require('./errors');
 const { freshnessKey, isFreshness, isDatabaseValue } = require('./types');
+const { getSchemaStorage } = require('./sublevels');
 
 /** @typedef {import('./types').DatabaseCapabilities} DatabaseCapabilities */
 /** @typedef {import('./class').Database} Database */
@@ -55,4 +56,5 @@ module.exports = {
     freshnessKey,
     isFreshness,
     isDatabaseValue,
+    getSchemaStorage,
 };
