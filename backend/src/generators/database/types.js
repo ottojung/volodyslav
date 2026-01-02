@@ -115,6 +115,12 @@ function isDatabaseValue(value) {
  * @typedef {DatabasePutOperation | DatabaseDelOperation} DatabaseBatchOperation
  */
 
+/**
+ * A record storing the input dependencies of a node.
+ * @typedef {object} InputsRecord
+ * @property {string[]} inputs - Array of canonical input node names
+ */
+
 module.exports = {
     freshnessKey,
     isFreshness,
