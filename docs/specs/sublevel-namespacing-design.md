@@ -118,7 +118,7 @@ The database stores multiple concerns without clear separation:
 **Schema Hash is the Namespace Boundary**: Each schema hash gets its own isolated namespace containing all data for that graph instance.
 
 ```
-Root Database (Level<string, object>)
+Root Database (Level<string, unknown>)
 └── <schemaHash>: SubLevel                                // Schema hash is the namespace boundary
     ├── values: SubLevel<string, DatabaseValue>           // Node output values (per-schema)
     ├── freshness: SubLevel<string, Freshness>            // Node freshness state (per-schema)
