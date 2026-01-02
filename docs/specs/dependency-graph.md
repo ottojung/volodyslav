@@ -102,7 +102,7 @@ A **DependencyGraph** is defined by:
 * A set of **node schemas**: `{ (output_expr, input_exprs[], computor) }`
 * Where `input_exprs` is a list of expressions this node depends on
 * Variables in `output_expr` MUST be a superset of all variables in `input_exprs`
-* The graph MUST be acyclic when considering the schema structure (not individual instantiations)
+* The graph MUST be acyclic according to the Schema Cycle Detection rules defined below.
 
 **Pattern Matching and Overlap Detection (Normative):**
 
@@ -139,6 +139,22 @@ The system MUST reject graphs with overlapping output patterns.
 **Examples of Disallowed (Overlapping) Patterns:**
 * `node(x)` and `node(y)` — overlap (both match `node('val')`)
 * `status(e, s)` and `status(x, 'active')` — overlap (both match `status('e1', 'active')`)
+
+**Schema Cycle Detection (Normative):**
+
+The system MUST reject graphs that contain a cycle in the schema dependency structure.
+
+**Dependency Edge Definition:**
+A directed edge exists from Schema `S` to Schema `T` if and only if:
+1. Schema `S` has an input pattern `I` in its `inputs` list.
+2. Schema `T` has an output pattern `O`.
+3. `I` and `O` **overlap** (as defined in "Overlap Detection").
+
+**Cycle Definition:**
+A cycle exists if there is a path `S1 -> S2 -> ... -> Sn -> S1` in the graph where nodes are schemas and edges are defined as above.
+
+**Rationale:**
+This ensures that no matter how variables are instantiated, it is impossible to create a concrete dependency cycle. If `S` depends on `T` at the schema level, it means there is *at least one* potential concrete instantiation where `S` waits for `T`.
 
 **Example Graph Definition:**
 
