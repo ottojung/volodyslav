@@ -68,7 +68,7 @@ describe("generators/dependency_graph", () => {
                 {
                     output: "level1",
                     inputs: ["input1"],
-                    computor: (inputs, _oldValue, _bindings) => {
+                    computor: (_inputs, _oldValue, _bindings) => {
                         computeCalls.push("level1");
                         return { type: 'meta_events', meta_events: [] };
                     },
@@ -76,7 +76,7 @@ describe("generators/dependency_graph", () => {
                 {
                     output: "level2",
                     inputs: ["level1"],
-                    computor: (inputs, _oldValue, _bindings) => {
+                    computor: (_inputs, _oldValue, _bindings) => {
                         computeCalls.push("level2");
                         return { type: 'meta_events', meta_events: [] };
                     },
@@ -84,7 +84,7 @@ describe("generators/dependency_graph", () => {
                 {
                     output: "level3",
                     inputs: ["level2"],
-                    computor: (inputs, _oldValue, _bindings) => {
+                    computor: (_inputs, _oldValue, _bindings) => {
                         computeCalls.push("level3");
                         return { type: 'meta_events', meta_events: [] };
                     },
@@ -125,7 +125,7 @@ describe("generators/dependency_graph", () => {
                 {
                     output: "output1",
                     inputs: ["input1"],
-                    computor: (inputs, _oldValue, _bindings) => {
+                    computor: (_inputs, _oldValue, _bindings) => {
                         computeCount++;
                         return { type: 'meta_events', meta_events: [] };
                     },

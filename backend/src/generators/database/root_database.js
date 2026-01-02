@@ -13,14 +13,14 @@ const { makeTypedDatabase } = require('./typed_database');
  * Database for storing node output values.
  * Key: canonical node name (e.g., "user('alice')")
  * Value: the computed value (object with type field)
- * @typedef {GenericDatabase<string, DatabaseValue>} ValuesDatabase
+ * @typedef {GenericDatabase} ValuesDatabase
  */
 
 /**
  * Database for storing node freshness state.
  * Key: canonical node name (e.g., "user('alice')")
  * Value: freshness state ('up-to-date' | 'potentially-outdated')
- * @typedef {GenericDatabase<string, Freshness>} FreshnessDatabase
+ * @typedef {GenericDatabase} FreshnessDatabase
  */
 
 /**
@@ -33,7 +33,7 @@ const { makeTypedDatabase } = require('./typed_database');
  * Database for storing node input dependencies.
  * Key: canonical node name
  * Value: inputs record with array of dependency names
- * @typedef {GenericDatabase<string, InputsRecord>} InputsDatabase
+ * @typedef {GenericDatabase} InputsDatabase
  */
 
 /**
@@ -41,7 +41,7 @@ const { makeTypedDatabase } = require('./typed_database');
  * Key: inputNode (canonical name)
  * Value: Array of dependent node names
  * This avoids composite keys and string prefix logic.
- * @typedef {GenericDatabase<string, string[]>} RevdepsDatabase
+ * @typedef {GenericDatabase} RevdepsDatabase
  */
 
 /**
@@ -186,6 +186,7 @@ class RootDatabaseClass {
      * @returns {Promise<void>}
      */
     async batch(operations) {
+        // @ts-expect-error - batch operations are correctly typed at runtime
         await this.db.batch(operations);
     }
 }

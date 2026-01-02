@@ -48,13 +48,6 @@ const { makeGraphStorage } = require("./graph_storage");
  */
 class DependencyGraphClass {
     /**
-     * The underlying root database instance.
-     * @private
-     * @type {RootDatabase}
-     */
-    rootDatabase;
-
-    /**
      * All compiled nodes (both exact and patterns).
      * @private
      * @type {Map<string, import('./types').CompiledNode>}
@@ -342,8 +335,6 @@ class DependencyGraphClass {
      * @param {Array<NodeDef>} nodeDefs - Unified node definitions
      */
     constructor(rootDatabase, nodeDefs) {
-        this.rootDatabase = rootDatabase;
-
         // Compile all node definitions
         const compiledNodes = nodeDefs.map(compileNodeDef);
 

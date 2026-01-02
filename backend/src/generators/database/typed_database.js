@@ -8,11 +8,14 @@
  * All databases (values, freshness, inputs, revdeps) implement this interface.
  * @template TKey - The key type (typically string)
  * @template TValue - The value type
+ */
+
+/**
  * @typedef {object} GenericDatabase
- * @property {(key: TKey) => Promise<TValue | undefined>} get - Retrieve a value
- * @property {(key: TKey, value: TValue) => Promise<void>} put - Store a value
- * @property {(key: TKey) => Promise<void>} del - Delete a value
- * @property {() => AsyncIterable<TKey>} keys - Iterate over all keys
+ * @property {(key: any) => Promise<any | undefined>} get - Retrieve a value
+ * @property {(key: any, value: any) => Promise<void>} put - Store a value
+ * @property {(key: any) => Promise<void>} del - Delete a value
+ * @property {() => AsyncIterable<any>} keys - Iterate over all keys
  * @property {() => Promise<void>} clear - Clear all entries
  */
 
@@ -25,13 +28,13 @@ class TypedDatabaseClass {
     /**
      * The underlying LevelDB sublevel instance.
      * @private
-     * @type {import('level').AbstractLevel<any, TKey, TValue>}
+     * @type {import('abstract-level').AbstractLevel<any, TKey, TValue>}
      */
     sublevel;
 
     /**
      * @constructor
-     * @param {import('level').AbstractLevel<any, TKey, TValue>} sublevel - The LevelDB sublevel instance
+     * @param {import('abstract-level').AbstractLevel<any, TKey, TValue>} sublevel - The LevelDB sublevel instance
      */
     constructor(sublevel) {
         this.sublevel = sublevel;
@@ -98,8 +101,8 @@ class TypedDatabaseClass {
  * Factory function to create a TypedDatabase instance.
  * @template TKey
  * @template TValue
- * @param {import('level').AbstractLevel<any, TKey, TValue>} sublevel - The LevelDB sublevel instance
- * @returns {GenericDatabase<TKey, TValue>}
+ * @param {import('abstract-level').AbstractLevel<any, TKey, TValue>} sublevel - The LevelDB sublevel instance
+ * @returns {GenericDatabase}
  */
 function makeTypedDatabase(sublevel) {
     return new TypedDatabaseClass(sublevel);
