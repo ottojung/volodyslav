@@ -936,7 +936,7 @@ Where:
 **Normative Requirements:**
 
 * All database keys for node values MUST use `canonical(nodeName)`.
-* All database keys for freshness state MUST use `canonical(freshnessKey(nodeName))` where `freshnessKey` applies the freshness key naming convention.
+* All database keys for freshness state MUST use `freshnessKey(canonical(nodeName))` where `freshnessKey` applies the freshness key naming convention.
 * `pull(nodeName)` and `set(nodeName, value)` MUST behave as if they first compute `canonical(nodeName)` and then operate on that canonical form.
 * Tests MUST use canonical forms when asserting database key contents.
 
