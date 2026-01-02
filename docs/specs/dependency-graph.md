@@ -165,15 +165,13 @@ Freshness is a **conceptual** property of nodes used for reasoning about correct
 * `isUpToDate(N)` — returns true if node N is up-to-date
 * `isPotentiallyOutdated(N)` — returns true if node N is potentially-outdated
 
-**Implementation Freedom:** Implementations MAY encode freshness using:
-* Literal enum values (`'up-to-date'`, `'potentially-outdated'`)
-* Boolean flags
-* Version numbers or epochs
-* Any other representation that satisfies the invariants and correctness properties
+**Mechanism vs. State:**
+Implementations MAY use any internal **mechanism** to track freshness (e.g., version numbers, dirty bits, dependency hashes) to optimize performance or support features like Unchanged Propagation.
+
+However, the resulting **conceptual freshness state** (`up-to-date` or `potentially-outdated`) MUST be observable via the `Database` interface.
 
 **Observable Special Values:**
 * `Unchanged` is an observable special value that computors may return
-* Internal freshness encodings are NOT externally observable
 
 **Note:** Freshness is tracked per **concrete instantiation**, not per schema. For example, `event_context('id123')` and `event_context('id456')` have independent freshness states.
 
@@ -977,6 +975,7 @@ interface Database {
   getValue(key: string): Promise<DatabaseValue | undefined>;
 
   // Retrieve stored freshness or undefined if missing
+  // MUST return the conceptual freshness state ("up-to-date" | "potentially-outdated")
   getFreshness(key: string): Promise<Freshness | undefined>;
 
   // Atomically execute a batch of operations
@@ -994,7 +993,8 @@ interface Database {
 
 * `put(key, value)` MUST store `value` at `key`, overwriting any existing value.
 * `getValue(key)` MUST return the stored `DatabaseValue` or `undefined` if no value exists at `key`.
-* `getFreshness(key)` MUST return the stored `Freshness` state (`"up-to-date"` or `"potentially-outdated"`) or `undefined` if no freshness state exists at `key`.
+* `getFreshness(key)` MUST return the conceptual `Freshness` state (`"up-to-date"` or `"potentially-outdated"`) or `undefined` if no freshness state exists at `key`.
+  * If the implementation stores additional metadata (e.g., versions), `getFreshness` MUST return the derived conceptual state.
 * `batch(ops)` MUST execute all operations atomically: either all succeed or all fail (no partial application).
 * `batch(ops)` operations MUST be applied in the order specified in the `ops` array.
 * `put` and `getValue` MUST round-trip values without mutation: after `put(k, v)`, `getValue(k)` MUST return a value semantically equivalent to `v`.
@@ -1040,16 +1040,17 @@ Common strategies include:
 
 #### 8.1 Freshness Observability Policy
 
-Internal freshness representation and freshness keys are **explicitly unspecified** and MUST NOT be directly asserted by conformance tests.
+The **conceptual freshness state** (`up-to-date` or `potentially-outdated`) MUST be observable via the `Database.getFreshness()` method.
 
 **Rationale:**
 
-The specification intentionally leaves freshness encoding flexible (enum values, epochs, version numbers, etc.) to allow implementation freedom and optimization.
+While implementations may use various internal mechanisms (versions, epochs, etc.) to track freshness, the resulting state is a normative part of the system's contract. Tests must be able to verify that nodes are correctly marked as `potentially-outdated` after invalidation.
 
 **Conformance Test Restrictions:**
 
-* Tests MUST NOT assert the specific format or values of freshness keys or freshness state representations.
-* Tests MAY only assert **functional behavior**: whether `pull()` returns the correct value, whether computors are invoked the expected number of times, and whether invalidation propagates correctly.
+* Tests MUST use `Database.getFreshness()` to assert freshness state.
+* Tests MUST NOT assert the raw value stored at the freshness key if it differs from the conceptual state (e.g., if the implementation stores a complex object).
+* Tests MUST NOT rely on internal implementation details of the freshness mechanism (e.g., specific version numbers).
 
 #### 8.2 Optional Debug Interface (Recommended)
 
