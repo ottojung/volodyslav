@@ -70,7 +70,7 @@ class RootDatabaseClass {
     /**
      * The underlying Level database instance.
      * @private
-     * @type {import('level').Level<string, any>}
+     * @type {import('level').Level<string, unknown>}
      */
     db;
 
@@ -146,36 +146,6 @@ class RootDatabaseClass {
     }
 
     /**
-     * Backward compatibility: put a value directly (uses a default schema).
-     * This is provided for test compatibility only.
-     * @param {string} key - The key
-     * @param {any} value - The value
-     * @returns {Promise<void>}
-     */
-    async put(key, value) {
-        await this.db.put(key, value);
-    }
-
-    /**
-     * Backward compatibility: get a value directly (uses root level).
-     * This is provided for test compatibility only.
-     * @param {string} key - The key
-     * @returns {Promise<any | undefined>}
-     */
-    async get(key) {
-        try {
-            return await this.db.get(key);
-        } catch (err) {
-            // LevelDB throws for missing keys
-            const error = /** @type {Error} */ (err);
-            if (error.message?.includes('not found') || error.message?.includes('NotFound')) {
-                return undefined;
-            }
-            throw err;
-        }
-    }
-
-    /**
      * Backward compatibility: list keys with prefix.
      * This is provided for test compatibility only.
      * @param {string} prefix - The prefix
@@ -190,26 +160,6 @@ class RootDatabaseClass {
             keys.push(key);
         }
         return keys;
-    }
-
-    /**
-     * Backward compatibility: get a database value directly.
-     * This is provided for test compatibility only.
-     * @param {string} key - The key
-     * @returns {Promise<any | undefined>}
-     */
-    async getValue(key) {
-        return await this.get(key);
-    }
-
-    /**
-     * Backward compatibility: get freshness state directly.
-     * This is provided for test compatibility only.
-     * @param {string} key - The key
-     * @returns {Promise<import('./types').Freshness | undefined>}
-     */
-    async getFreshness(key) {
-        return await this.get(key);
     }
 
     /**
