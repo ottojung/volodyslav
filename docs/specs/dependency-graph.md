@@ -134,22 +134,22 @@ The system MUST reject graphs with overlapping output patterns.
   {
     output: "all_events",           // atom-expression
     inputs: [],
-    computor: ([], old) => old || { events: [] }
+    computor: async ([], old) => old || { events: [] }
   },
   {
     output: "meta_events",          // atom-expression
     inputs: ["all_events"],
-    computor: ([all]) => extractMeta(all)
+    computor: async ([all]) => extractMeta(all)
   },
   {
     output: "event_context(e)",     // parameterized compound-expression
     inputs: ["meta_events"],
-    computor: ([meta], old, bindings) => findContext(meta, bindings.e)
+    computor: async ([meta], old, bindings) => findContext(meta, bindings.e)
   },
   {
     output: "enhanced_event(e, p)", // multi-parameter compound-expression
     inputs: ["event_context(e)", "photo(p)"],
-    computor: ([ctx, photo], old, bindings) => enhance(ctx, photo, bindings)
+    computor: async ([ctx, photo], old, bindings) => enhance(ctx, photo, bindings)
   }
 ]
 ```
@@ -303,10 +303,10 @@ Implementations MUST persist markers for materialized instantiations to ensure r
 **Schema Definition:**
 ```javascript
 [
-  { output: "all_events", inputs: [], computor: passthrough },
-  { output: "meta_events", inputs: ["all_events"], computor: extractMeta },
+  { output: "all_events", inputs: [], computor: async ([], old) => old },
+  { output: "meta_events", inputs: ["all_events"], computor: async ([all]) => extractMeta(all) },
   { output: "event_context(e)", inputs: ["meta_events"], 
-    computor: ([meta], old, {e}) => meta.find(ev => ev.id === e) }
+    computor: async ([meta], old, {e}) => meta.find(ev => ev.id === e) }
 ]
 ```
 
@@ -330,14 +330,14 @@ pull("event_context('id123')")  // Returns event with id='id123'
 **Schema Definition:**
 ```javascript
 [
-  { output: "all_events", inputs: [], computor: passthrough },
+  { output: "all_events", inputs: [], computor: async ([], old) => old },
   { output: "event_context(e)", inputs: ["all_events"],
-    computor: ([all], _, {e}) => all.events.find(ev => ev.id === e) },
+    computor: async ([all], _, {e}) => all.events.find(ev => ev.id === e) },
   { output: "photo(p)", inputs: ["photo_storage"],
-    computor: ([storage], _, {p}) => storage.photos[p] },
+    computor: async ([storage], _, {p}) => storage.photos[p] },
   { output: "enhanced_event(e, p)", 
     inputs: ["event_context(e)", "photo(p)"],
-    computor: ([ctx, photo], _, {e, p}) => combine(ctx, photo) }
+    computor: async ([ctx, photo], _, {e, p}) => combine(ctx, photo) }
 ]
 ```
 
@@ -362,12 +362,12 @@ pull("enhanced_event('id123', 'photo5')")
 ```javascript
 [
   { output: "status(e)", inputs: ["event_data"],
-    computor: ([data], _, {e}) => data.statuses[e] },
+    computor: async ([data], _, {e}) => data.statuses[e] },
   { output: "metadata(e)", inputs: ["event_data"],
-    computor: ([data], _, {e}) => data.metadata[e] },
+    computor: async ([data], _, {e}) => data.metadata[e] },
   { output: "full_event(e)", 
     inputs: ["status(e)", "metadata(e)"],
-    computor: ([status, meta], _, {e}) => ({id: e, status, meta}) }
+    computor: async ([status, meta], _, {e}) => ({id: e, status, meta}) }
 ]
 ```
 
@@ -609,7 +609,7 @@ Leaf nodes (nodes with no inputs) typically have pass-through computors:
 {
   output: "leaf",
   inputs: [],
-  computor: (_inputs, oldValue) => oldValue || defaultValue
+  computor: async (_inputs, oldValue) => oldValue || defaultValue
 }
 ```
 
