@@ -722,8 +722,8 @@ describe("generators/dependency_graph", () => {
             expect(result.data).toBe("new_data_processed");
 
             // Both input and output should now be clean
-            const input1Freshness = await db.get(freshnessKey("input1"));
-            const output1Freshness = await db.get(freshnessKey("output1"));
+            const input1Freshness = await graph.debugGetFreshness("input1");
+            const output1Freshness = await graph.debugGetFreshness("output1");
             expect(input1Freshness).toBe("up-to-date");
             expect(output1Freshness).toBe("up-to-date");
 
@@ -1114,7 +1114,7 @@ describe("generators/dependency_graph", () => {
             expect(computeCalls).toEqual(["output"]);
 
             // Output should now be clean
-            const outputFreshness = await db.get(freshnessKey("output"));
+            const outputFreshness = await graph.debugGetFreshness("output");
             expect(outputFreshness).toBe("up-to-date");
 
             await db.close();
