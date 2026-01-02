@@ -7,6 +7,8 @@ const { makeTypedDatabase } = require('./typed_database');
 
 /** @typedef {import('./types').DatabaseValue} DatabaseValue */
 /** @typedef {import('./types').Freshness} Freshness */
+/** @typedef {import('./types').DatabaseBatchOperation} DatabaseBatchOperation */
+
 /**
  * @template T
  * @typedef {import('./typed_database').GenericDatabase<T>} GenericDatabase
@@ -83,7 +85,7 @@ class RootDatabaseClass {
 
     /**
      * @constructor
-     * @param {import('level').Level<string, any>} db - The Level database instance
+     * @param {import('level').Level<string, unknown>} db - The Level database instance
      */
     constructor(db) {
         this.db = db;
@@ -128,6 +130,15 @@ class RootDatabaseClass {
     }
 
     /**
+     * Perform a batch operation across multiple sublevels.
+     * @param {Array<DatabaseBatchOperation>} operations
+     * @returns {Promise<void>}
+     */
+    async batch(operations) {
+        return this.db.batch(operations);
+    }
+
+    /**
      * List all schema hashes in the database.
      * @returns {AsyncIterable<string>}
      */
@@ -144,34 +155,6 @@ class RootDatabaseClass {
     async close() {
         await this.db.close();
     }
-
-    /**
-     * Backward compatibility: list keys with prefix.
-     * This is provided for test compatibility only.
-     * @param {string} prefix - The prefix
-     * @returns {Promise<string[]>}
-     */
-    async keys(prefix = '') {
-        const keys = [];
-        for await (const key of this.db.keys({
-            gte: prefix,
-            lt: prefix + '\xFF',
-        })) {
-            keys.push(key);
-        }
-        return keys;
-    }
-
-    /**
-     * Backward compatibility: batch operations.
-     * This is provided for test compatibility only.
-     * @param {Array<{type: 'put' | 'del', key: string, value?: any}>} operations
-     * @returns {Promise<void>}
-     */
-    async batch(operations) {
-        // @ts-expect-error - batch operations are correctly typed at runtime
-        await this.db.batch(operations);
-    }
 }
 
 const { Level } = require('level');
@@ -182,6 +165,7 @@ const { Level } = require('level');
  * @returns {Promise<RootDatabaseClass>}
  */
 async function makeRootDatabase(databasePath) {
+    /** @type {import('level').Level<string, unknown>} */
     const db = new Level(databasePath, { valueEncoding: 'json' });
     await db.open();
     return new RootDatabaseClass(db);

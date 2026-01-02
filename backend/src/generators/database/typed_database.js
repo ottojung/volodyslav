@@ -11,6 +11,8 @@
  * @property {(key: string) => Promise<TValue | undefined>} get - Retrieve a value
  * @property {(key: string, value: TValue) => Promise<void>} put - Store a value
  * @property {(key: string) => Promise<void>} del - Delete a value
+ * @property {(key: string, value: TValue) => { db: SimpleSublevel<string, TValue>, op: 'put', key: string, value: TValue }} putOp - Store a value operation
+ * @property {(key: string) => { db: SimpleSublevel<string, TValue>, op: 'del', key: string }} delOp - Delete a value operation
  * @property {() => AsyncIterable<string>} keys - Iterate over all keys
  * @property {() => Promise<void>} clear - Clear all entries
  */
@@ -75,9 +77,24 @@ class TypedDatabaseClass {
     }
 
     /**
-     * Iterate over all keys in the database.
-     * @returns {AsyncIterable<TKey>}
+     * Create a put operation for batch processing.
+     * @param {TKey} key - The key to store
+     * @param {TValue} value - The value to store
+     * @returns {{ db: SimpleSublevel<TKey, TValue>, op: 'put', key: TKey, value: TValue }}
      */
+    putOp(key, value) {
+        return { db: this.sublevel, op: 'put', key, value };
+    }
+
+    /**
+     * Create a delete operation for batch processing.
+     * @param {TKey} key - The key to delete
+     * @returns {{ db: SimpleSublevel<TKey, TValue>, op: 'del', key: TKey }}
+     */
+    delOp(key) {
+        return { db: this.sublevel, op: 'del', key };
+    }
+
     async *keys() {
         for await (const key of this.sublevel.keys()) {
             yield key;

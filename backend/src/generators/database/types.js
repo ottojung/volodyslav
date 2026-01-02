@@ -100,7 +100,7 @@ function isDatabaseValue(value) {
  * @typedef {object} DatabasePutOperation
  * @property {'put'} type - Operation type
  * @property {string} key - The key to store
- * @property {DatabaseValue | Freshness} value - The value to store
+ * @property {DatabaseValue | Freshness | InputsRecord | string[]} value - The value to store
  */
 
 /**
