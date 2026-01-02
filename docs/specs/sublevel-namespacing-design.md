@@ -202,13 +202,38 @@ All databases (values, freshness, inputs, revdeps) implement a common, simple, w
  */
 
 /**
+ * @template K
+ * @typedef {object} InterlevelDelOp
+ * @property {'del'} type
+ * @property {TypedDatabase<K, any>} db
+ * @property {K} key
+ */
+
+/**
+ * @template K
+ * @template V
+ * @typedef {object} InterlevelPutOp
+ * @property {'put'} type
+ * @property {TypedDatabase<K, V>} db
+ * @property {K} key
+ * @property {V} value
+ */
+
+/**
+ *
+ * @template K
+ * @template V
+ * @typedef {InterlevelPutOp<K, V>|InterlevelDelOp<K>} InterlevelBatch<K, V>
+ */
+
+/**
  * Root database structure with typed databases.
  * All sub-databases implement the TypedDatabase interface.
  * @typedef {object} RootDatabase
  * @property {ValuesDatabase} values - Node output values
  * @property {FreshnessDatabase} freshness - Node freshness state
  * @property {(schemaHash: string) => SchemaStorage} getSchemaStorage - Get schema-specific storage
- * @property {(operations: Array<{type: 'put'|'del', db: TypedDatabase<any,any>, key: any, value?: any}>) => Promise<void>} batch - Atomic batch operations across databases
+ * @property {<K, V>(operations: Array<InterlevelBatch<K, V>>) => Promise<void>} batch - Atomic batch operations across databases
  */
 ```
 
