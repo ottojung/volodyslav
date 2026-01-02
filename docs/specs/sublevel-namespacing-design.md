@@ -474,9 +474,6 @@ With sublevels, there is **no `"freshness:"` prefix at all**—it's handled by L
      ```
    - Factory function `makeRootDatabase(levelDbPath)` creates all sublevels
 
-3. Keep `DatabaseClass` unchanged for backward compatibility
-   - Will be deprecated in Phase 5
-
 **Risk**: Low - additive changes only, existing code unaffected
 
 **Files affected**: 2 new
@@ -622,39 +619,7 @@ With sublevels, there is **no `"freshness:"` prefix at all**—it's handled by L
 
 ### Backward Compatibility
 
-**Option A: Clean Break (Recommended)**
-
-- Require users to re-initialize their database
-- Provide migration script that reads old format, writes new format
-- Clear separation between old and new versions
-
-**Pros**:
-- Cleaner codebase
-- No dual-mode complexity
-- Faster implementation
-
-**Cons**:
-- Users must migrate or lose data
-- One-time migration pain
-
-**Option B: Dual-Mode Support**
-
-- Detect old vs new database format on startup
-- Support both formats during transition period
-- Gradually migrate data on read/write
-
-**Pros**:
-- No breaking changes
-- Gradual migration
-
-**Cons**:
-- Complex implementation
-- Longer maintenance burden
-- Performance overhead
-
-**Recommendation**: Option A (Clean Break) with migration script.
-
-Rationale: This is an early-stage project. Clean architecture is more valuable than backward compatibility. Users can export/import data if needed.
+This is an early-stage project. Clean architecture is more valuable than backward compatibility. Users can export/import data if needed. Do not pay any backward compatibility debt.
 
 ## Estimated Scope
 
