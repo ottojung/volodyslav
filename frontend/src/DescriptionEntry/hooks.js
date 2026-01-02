@@ -121,7 +121,7 @@ const getPhotoCountFromStorage = async (requestIdentifier, toast) => {
 
 /**
  * Handles camera return processing
- * @param {{isReturn: boolean, requestIdentifier?: string}} cameraReturn - Camera return data
+ * @param {{isReturn: boolean, requestIdentifier: string}} cameraReturn - Camera return data
  * @param {Function} setDescription - State setter
  * @param {Function} setPendingRequestIdentifier - State setter
  * @param {Function} setPhotoCount - State setter for photo count
@@ -274,8 +274,9 @@ export const useDescriptionEntry = (numberOfEntries = 10) => {
     // Handle return from camera
     useEffect(() => {
         const cameraReturn = checkCameraReturn();
-        if (cameraReturn.isReturn && cameraReturn.requestIdentifier) {
-            processCameraReturn(cameraReturn, setDescription, setPendingRequestIdentifier, setPhotoCount, toast);
+        const { requestIdentifier } = cameraReturn;
+        if (cameraReturn.isReturn && requestIdentifier) {
+            processCameraReturn({ isReturn: cameraReturn.isReturn, requestIdentifier }, setDescription, setPendingRequestIdentifier, setPhotoCount, toast);
         }
     }, [toast]);
 
