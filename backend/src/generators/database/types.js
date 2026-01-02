@@ -120,7 +120,7 @@ function isDatabaseValue(value) {
 
 /**
  * A batch operation for the database.
- * @typedef {DatabasePutOperation<unknown> | DatabaseDelOperation<unknown>} DatabaseBatchOperation
+ * @typedef {DatabasePutOperation<DatabaseValue> | DatabasePutOperation<Freshness> | DatabasePutOperation<InputsRecord> | DatabasePutOperation<string[]> | DatabaseDelOperation<DatabaseValue> | DatabaseDelOperation<Freshness> | DatabaseDelOperation<InputsRecord> | DatabaseDelOperation<string[]>} DatabaseBatchOperation
  */
 
 /**

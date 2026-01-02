@@ -161,7 +161,7 @@ function makeGraphStorage(rootDatabase, schemaHash) {
         revdeps: schemaStorage.revdeps,
         
         // Batch builder for atomic operations
-        batch: () => makeBatchBuilder(schemaStorage),
+        batch: () => makeBatchBuilder(rootDatabase, schemaStorage),
         
         // Helper methods
         ensureNodeIndexed,
