@@ -111,7 +111,7 @@ The database stores multiple concerns without clear separation:
 ### High-Level Architecture
 
 ```
-Root Database (Level<string, any>)
+Root Database (Level<string, object>)
 ├── values: Level<string, DatabaseValue>          // Node output values
 ├── freshness: Level<string, Freshness>           // Node freshness state
 └── schemas: Level<string, never>                 // Per-schema storage (no top-level values)
