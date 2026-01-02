@@ -106,48 +106,18 @@ class RootDatabaseClass {
         // Create new schema storage with sublevels
         const schemaSublevel = this.db.sublevel(schemaHash, { valueEncoding: 'json' });
         
-        /** @type {AbstractLevel<string, string, DatabaseValue>} */
+        /** @type {AbstractLevel<unknown, string, DatabaseValue>} */
         const valuesSublevel = schemaSublevel.sublevel('values', { valueEncoding: 'json' });
-        /** @type {AbstractLevel<string, string, Freshness>} */
+        /** @type {AbstractLevel<unknown, string, Freshness>} */
         const freshnessSublevel = schemaSublevel.sublevel('freshness', { valueEncoding: 'json' });
-        /** @type {AbstractLevel<string, string, InputsRecord>} */
+        /** @type {AbstractLevel<unknown, string, InputsRecord>} */
         const inputsSublevel = schemaSublevel.sublevel('inputs', { valueEncoding: 'json' });
-        /** @type {AbstractLevel<string, string, string[]>} */
+        /** @type {AbstractLevel<unknown, string, string[]>} */
         const revdepsSublevel = schemaSublevel.sublevel('revdeps', { valueEncoding: 'json' });
 
-        // Create backward-compatible database wrappers that check root level as fallback
-        const valuesDb = makeTypedDatabase(valuesSublevel);
-        const freshnessDb = makeTypedDatabase(freshnessSublevel);
-
-        // Wrap freshness database to check root level as fallback (with freshness: prefix)
-        const freshnessWithFallback = {
-            /**
-             * @param {string} key
-             * @returns {Promise<any | undefined>}
-             */
-            get: async (key) => {
-                // Try schema storage first
-                let value = await freshnessDb.get(key);
-                if (value !== undefined) {
-                    return value;
-                }
-                // Fall back to root level with freshness: prefix for backward compatibility
-                try {
-                    value = await this.db.get(`freshness:${key}`);
-                    return value;
-                } catch {
-                    return undefined;
-                }
-            },
-            put: freshnessDb.put.bind(freshnessDb),
-            del: freshnessDb.del.bind(freshnessDb),
-            keys: freshnessDb.keys.bind(freshnessDb),
-            clear: freshnessDb.clear.bind(freshnessDb),
-        };
-
         const storage = {
-            values: valuesDb,
-            freshness: freshnessWithFallback,
+            values: makeTypedDatabase(valuesSublevel),
+            freshness: makeTypedDatabase(freshnessSublevel),
             inputs: makeTypedDatabase(inputsSublevel),
             revdeps: makeTypedDatabase(revdepsSublevel),
         };

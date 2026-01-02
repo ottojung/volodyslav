@@ -96,7 +96,7 @@ class TypedDatabaseClass {
 /**
  * Factory function to create a TypedDatabase instance.
  * @template TValue
- * @param {import('abstract-level').AbstractLevel<any, string, TValue>} sublevel - The LevelDB sublevel instance
+ * @param {import('abstract-level').AbstractLevel<unknown, string, TValue>} sublevel - The LevelDB sublevel instance
  * @returns {GenericDatabase<TValue>}
  */
 function makeTypedDatabase(sublevel) {
