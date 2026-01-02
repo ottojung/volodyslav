@@ -28,17 +28,17 @@ function expectHasOwn(err, prop) {
  */
 class InMemoryDatabase {
     constructor() {
-        /** @type {Map<string, any>} */
+        /** @type {Map<string, unknown>} */
         this.kv = new Map();
         /** @type {boolean} */
         this.closed = false;
-        /** @type {Array<any>} */
+        /** @type {Array<unknown>} */
         this.batchLog = [];
-        /** @type {Array<any>} */
+        /** @type {Array<unknown>} */
         this.putLog = [];
-        /** @type {Array<any>} */
+        /** @type {Array<unknown>} */
         this.getValueLog = [];
-        /** @type {Array<any>} */
+        /** @type {Array<unknown>} */
         this.getFreshnessLog = [];
     }
 

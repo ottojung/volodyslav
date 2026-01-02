@@ -56,7 +56,7 @@ const handlePhotoRetrieval = async (pendingRequestIdentifier, toast, setPendingR
 
 /**
  * Handles submission success actions
- * @param {any} result - Submission result
+ * @param {{success: boolean, entry?: {input: string}}} result - Submission result
  * @param {string} description - The description that was submitted
  * @param {File[]} files - Files to submit
  * @param {Function} setPendingRequestIdentifier - State setter
@@ -121,7 +121,7 @@ const getPhotoCountFromStorage = async (requestIdentifier, toast) => {
 
 /**
  * Handles camera return processing
- * @param {any} cameraReturn - Camera return data
+ * @param {{isReturn: boolean, requestIdentifier?: string}} cameraReturn - Camera return data
  * @param {Function} setDescription - State setter
  * @param {Function} setPendingRequestIdentifier - State setter
  * @param {Function} setPhotoCount - State setter for photo count
@@ -154,7 +154,7 @@ const processCameraReturn = async (cameraReturn, setDescription, setPendingReque
  * @typedef {object} DescriptionEntryHook
  * @property {string} description
  * @property {boolean} isSubmitting
- * @property {any[]} recentEntries
+ * @property {import('./api').Entry[]} recentEntries
  * @property {boolean} isLoadingEntries
  * @property {string|null} pendingRequestIdentifier
  * @property {number} photoCount
@@ -174,7 +174,7 @@ const processCameraReturn = async (cameraReturn, setDescription, setPendingReque
 export const useDescriptionEntry = (numberOfEntries = 10) => {
     const [description, setDescription] = useState("");
     const [isSubmitting, setIsSubmitting] = useState(false);
-    const [recentEntries, setRecentEntries] = useState(/** @type {any[]} */([]));
+    const [recentEntries, setRecentEntries] = useState(/** @type {import('./api').Entry[]} */([]));
     const [isLoadingEntries, setIsLoadingEntries] = useState(true);
     const [pendingRequestIdentifier, setPendingRequestIdentifier] = useState(/** @type {string|null} */(null));
     const [photoCount, setPhotoCount] = useState(0);

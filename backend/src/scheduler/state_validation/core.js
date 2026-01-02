@@ -21,7 +21,7 @@ const { InvalidRegistrationError } = registrationValidation.errors;
  * @param {Registration[]} registrations
  * @param {import('../../runtime_state_storage/types').TaskRecord[]} persistedTasks
  * @param {import('../types').SchedulerCapabilities} capabilities
- * @returns {{shouldOverride: boolean, changeDetails: {missing: string[], extra: string[], differing: Array<{name: string, field: string, expected: any, actual: any}>}}}
+ * @returns {{shouldOverride: boolean, changeDetails: {missing: string[], extra: string[], differing: Array<{name: string, field: string, expected: string | number, actual: string | number}>}}}
  */
 function analyzeStateChanges(registrations, persistedTasks, capabilities) {
     // Early exit optimization for empty arrays

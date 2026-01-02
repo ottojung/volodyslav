@@ -10,7 +10,7 @@ const {
 
 /**
  * Creates an Express app configured with mocked capabilities for testing.
- * @returns {Promise<{app: import('express').Express, capabilities: any}>}
+ * @returns {Promise<{app: import('express').Express, capabilities: import('../src/capabilities/root').Capabilities}>}
  */
 async function makeTestApp() {
     const capabilities = getMockedRootCapabilities();

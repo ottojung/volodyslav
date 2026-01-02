@@ -194,7 +194,7 @@ function serialize(state) {
         .slice()
         .sort((a, b) => a.name.localeCompare(b.name))
         .map((t) => {
-            /** @type {any} */
+            /** @type {Record<string, string | number>} */
             const rec = {
                 name: t.name,
                 cronExpression: t.cronExpression,

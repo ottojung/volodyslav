@@ -6,7 +6,7 @@ import { SPACING } from "../styles.js";
 /**
  * Recent entries tab component
  * @param {Object} props
- * @param {Array<any>} props.recentEntries - Array of recent entries
+ * @param {Array<import('../api').Entry>} props.recentEntries - Array of recent entries
  * @param {boolean} props.isLoadingEntries - Whether entries are loading
  * @param {(value: string) => void} props.onShortcutClick - Called when an entry is clicked
  * @param {(id: string) => void} props.onDeleteEntry - Called when delete button is clicked

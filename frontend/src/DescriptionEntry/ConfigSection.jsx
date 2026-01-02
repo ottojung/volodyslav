@@ -35,7 +35,7 @@ function getInitialConfig() {
  * @param {(value: string) => void} props.onShortcutClick - Called when a shortcut is clicked
  * @param {(id: string) => void} props.onDeleteEntry - Called when an entry delete is requested
  * @param {string} props.currentInput - Current input value to show preview
- * @param {Array<any>} [props.recentEntries] - Array of recent entries to display
+ * @param {Array<import('./api').Entry>} [props.recentEntries] - Array of recent entries to display
  * @param {boolean} [props.isLoadingEntries] - Whether entries are loading
  * @returns {JSX.Element|null}
  */

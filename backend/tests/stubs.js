@@ -164,7 +164,7 @@ function stubDatetime(capabilities) {
 /**
  * Provides access to datetime manipulation functions when datetime is stubbed.
  * Works only with DateTime/Duration objects - no milliseconds support.
- * @param {any} capabilities - The capabilities object with stubbed datetime
+ * @param {import('../src/capabilities/root').Capabilities} capabilities - The capabilities object with stubbed datetime
  * @returns {{setDateTime: (dateTime: import('../src/datetime').DateTime) => void, advanceByDuration: (duration: import('../src/datetime').Duration) => void, getCurrentDateTime: () => import('../src/datetime').DateTime}}
  */
 function getDatetimeControl(capabilities) {
@@ -295,7 +295,7 @@ class MockRuntimeStateStorageClass {
  * 
  * @template T
  * @param {import('../src/runtime_state_storage/types').RuntimeStateStorageCapabilities} capabilities
- * @param {(storage: any) => Promise<T>} transformation
+ * @param {(storage: MockRuntimeStateStorageClass) => Promise<T>} transformation
  * @returns {Promise<T>}
  */
 async function mockRuntimeStateTransaction(capabilities, transformation) {
@@ -339,7 +339,7 @@ function isMockRuntimeStateStorage(object) {
  * Stubs the runtime state storage with in-memory implementation.
  * This replaces expensive git operations with fast in-memory operations.
  * 
- * @param {any} capabilities - Capabilities object to modify
+ * @param {import('../src/capabilities/root').Capabilities} capabilities - Capabilities object to modify
  */
 function stubRuntimeStateStorage(capabilities) {
     const storage = new Map();
