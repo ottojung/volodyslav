@@ -3,7 +3,6 @@
  */
 
 const { DatabaseQueryError } = require("./errors");
-const { isDatabaseValue, isFreshness } = require("./types");
 const { makeSublevels, getSchemaStorage } = require("./sublevels");
 
 /** @typedef {import('./types').DatabaseValue} DatabaseValue */
@@ -167,13 +166,25 @@ class DatabaseClass {
 
     /**
      * Deletes a value from the database.
+     * Automatically routes to the appropriate sublevel based on the key.
      * @param {string} key - The key to delete
      * @returns {Promise<void>}
      * @throws {DatabaseQueryError} If the operation fails
      */
     async del(key) {
         try {
-            await this.db.del(key, { sync: true });
+            // Route to appropriate sublevel based on key pattern
+            if (key.startsWith("freshness:")) {
+                // Strip prefix and delete from freshness sublevel
+                const nodeKey = key.substring("freshness:".length);
+                await this.freshness.del(nodeKey, { sync: true });
+            } else if (key.startsWith("dg:")) {
+                // Legacy schema key - delete from root database for backward compatibility
+                await this.db.del(key, { sync: true });
+            } else {
+                // Delete from values sublevel
+                await this.values.del(key, { sync: true });
+            }
         } catch (err) {
             const error = err instanceof Error ? err : new Error(String(err));
             throw new DatabaseQueryError(
@@ -187,6 +198,7 @@ class DatabaseClass {
 
     /**
      * Returns all keys with the given prefix.
+     * Queries across sublevels for backward compatibility.
      * @param {string} prefix - The key prefix to search for
      * @returns {Promise<string[]>}
      * @throws {DatabaseQueryError} If the operation fails
@@ -194,12 +206,39 @@ class DatabaseClass {
     async keys(prefix = "") {
         try {
             const keys = [];
-            for await (const key of this.db.keys({
+            
+            // Query values sublevel
+            for await (const key of this.values.keys({
                 gte: prefix,
                 lt: prefix + "\xFF",
             })) {
                 keys.push(key);
             }
+            
+            // Query freshness sublevel with freshness: prefix
+            if (prefix.startsWith("freshness:") || prefix === "") {
+                const freshnessPrefix = prefix.startsWith("freshness:") 
+                    ? prefix.substring("freshness:".length) 
+                    : "";
+                for await (const key of this.freshness.keys({
+                    gte: freshnessPrefix,
+                    lt: freshnessPrefix + "\xFF",
+                })) {
+                    keys.push(`freshness:${key}`);
+                }
+            }
+            
+            // Query root database for legacy keys
+            for await (const key of this.db.keys({
+                gte: prefix,
+                lt: prefix + "\xFF",
+            })) {
+                // Skip sublevel prefixes as we've already queried those
+                if (!key.startsWith("values:") && !key.startsWith("freshness:") && !key.startsWith("schemas:")) {
+                    keys.push(key);
+                }
+            }
+            
             return keys;
         } catch (err) {
             const error = err instanceof Error ? err : new Error(String(err));
@@ -214,6 +253,7 @@ class DatabaseClass {
 
     /**
      * Returns all values with keys matching the given prefix.
+     * Queries across sublevels for backward compatibility.
      * @param {string} prefix - The key prefix to search for
      * @returns {Promise<Array<DatabaseStoredValue>>}
      * @throws {DatabaseQueryError} If the operation fails
@@ -222,14 +262,39 @@ class DatabaseClass {
         try {
             /** @type {Array<DatabaseStoredValue>} */
             const values = [];
-            for await (const [, value] of this.db.iterator({
+            
+            // Query values sublevel
+            for await (const [, value] of this.values.iterator({
                 gte: prefix,
                 lt: prefix + "\xFF",
             })) {
-                // Trust that the database only contains valid DatabaseStoredValue types
-                // since we control all writes through the put() method
                 values.push(value);
             }
+            
+            // Query freshness sublevel if prefix matches
+            if (prefix.startsWith("freshness:") || prefix === "") {
+                const freshnessPrefix = prefix.startsWith("freshness:") 
+                    ? prefix.substring("freshness:".length) 
+                    : "";
+                for await (const [, value] of this.freshness.iterator({
+                    gte: freshnessPrefix,
+                    lt: freshnessPrefix + "\xFF",
+                })) {
+                    values.push(value);
+                }
+            }
+            
+            // Query root database for legacy keys
+            for await (const [key, value] of this.db.iterator({
+                gte: prefix,
+                lt: prefix + "\xFF",
+            })) {
+                // Skip sublevel prefixes as we've already queried those
+                if (!key.startsWith("values:") && !key.startsWith("freshness:") && !key.startsWith("schemas:")) {
+                    values.push(value);
+                }
+            }
+            
             return values;
         } catch (err) {
             const error = err instanceof Error ? err : new Error(String(err));
@@ -244,6 +309,7 @@ class DatabaseClass {
 
     /**
      * Executes multiple operations in a batch.
+     * Routes operations to appropriate sublevels based on key patterns.
      * @param {Array<DatabaseBatchOperation>} operations
      * @returns {Promise<void>}
      * @throws {DatabaseQueryError} If the operation fails
@@ -253,7 +319,48 @@ class DatabaseClass {
             return;
         }
         try {
-            await this.db.batch(operations, { sync: true });
+            // Group operations by sublevel
+            /** @type {Array<{type: 'put' | 'del', key: string, value?: any}>} */
+            const valuesOps = [];
+            /** @type {Array<{type: 'put' | 'del', key: string, value?: any}>} */
+            const freshnessOps = [];
+            /** @type {Array<{type: 'put' | 'del', key: string, value?: any}>} */
+            const legacyOps = [];
+
+            for (const op of operations) {
+                if (op.key.startsWith("freshness:")) {
+                    const nodeKey = op.key.substring("freshness:".length);
+                    if (op.type === "put") {
+                        freshnessOps.push({ type: "put", key: nodeKey, value: op.value });
+                    } else {
+                        freshnessOps.push({ type: "del", key: nodeKey });
+                    }
+                } else if (op.key.startsWith("dg:")) {
+                    // Legacy schema keys - keep in root database
+                    legacyOps.push(op);
+                } else {
+                    // Node values go to values sublevel
+                    if (op.type === "put") {
+                        valuesOps.push({ type: "put", key: op.key, value: op.value });
+                    } else {
+                        valuesOps.push({ type: "del", key: op.key });
+                    }
+                }
+            }
+
+            // Execute batches in parallel
+            const promises = [];
+            if (valuesOps.length > 0) {
+                promises.push(this.values.batch(/** @type {any} */ (valuesOps), { sync: true }));
+            }
+            if (freshnessOps.length > 0) {
+                promises.push(this.freshness.batch(/** @type {any} */ (freshnessOps), { sync: true }));
+            }
+            if (legacyOps.length > 0) {
+                promises.push(this.db.batch(legacyOps, { sync: true }));
+            }
+
+            await Promise.all(promises);
         } catch (err) {
             const error = err instanceof Error ? err : new Error(String(err));
             throw new DatabaseQueryError(
@@ -318,10 +425,10 @@ class DatabaseClass {
 
             // Execute batches
             if (valuesOps.length > 0) {
-                batchPromises.push(this.values.batch(valuesOps, { sync: true }));
+                batchPromises.push(this.values.batch(/** @type {any} */ (valuesOps), { sync: true }));
             }
             if (freshnessOps.length > 0) {
-                batchPromises.push(this.freshness.batch(freshnessOps, { sync: true }));
+                batchPromises.push(this.freshness.batch(/** @type {any} */ (freshnessOps), { sync: true }));
             }
             for (const [schemaHash, ops] of schemasOps.entries()) {
                 const schemaStorage = getSchemaStorage(this.schemas, schemaHash);
@@ -347,10 +454,10 @@ class DatabaseClass {
                 }
 
                 if (inputsOps.length > 0) {
-                    batchPromises.push(schemaStorage.inputs.batch(inputsOps, { sync: true }));
+                    batchPromises.push(schemaStorage.inputs.batch(/** @type {any} */ (inputsOps), { sync: true }));
                 }
                 if (revdepsOps.length > 0) {
-                    batchPromises.push(schemaStorage.revdeps.batch(revdepsOps, { sync: true }));
+                    batchPromises.push(schemaStorage.revdeps.batch(/** @type {any} */ (revdepsOps), { sync: true }));
                 }
             }
 
