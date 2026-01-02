@@ -211,34 +211,28 @@ All databases (values, freshness, inputs, revdeps) implement a common, simple, w
  * @property {FreshnessDatabase} freshness - Node freshness (from schema storage)
  * @property {InputsDatabase} inputs - Node inputs index
  * @property {RevdepsDatabase} revdeps - Reverse dependencies (nested sublevels)
+ * @property {() => BatchBuilder} batch - Create a batch builder for atomic operations
  * @property {(node: string, inputs: string[]) => Promise<void>} ensureNodeIndexed - Index a node's dependencies
  * @property {(input: string) => Promise<string[]>} listDependents - List all dependents of an input
  * @property {(node: string) => Promise<string[] | null>} getInputs - Get inputs for a node
  */
 
 /**
- * @template K
- * @typedef {object} InterlevelDelOp
- * @property {'del'} type
- * @property {GenericDatabase<K, any>} db
- * @property {K} key
+ * Interface for batch operations on a specific database.
+ * @template TValue
+ * @typedef {object} BatchDatabaseOps
+ * @property {(key: string, value: TValue) => void} put - Queue a put operation
+ * @property {(key: string) => void} del - Queue a delete operation
  */
 
 /**
- * @template K
- * @template V
- * @typedef {object} InterlevelPutOp
- * @property {'put'} type
- * @property {GenericDatabase<K, V>} db
- * @property {K} key
- * @property {V} value
- */
-
-/**
- *
- * @template K
- * @template V
- * @typedef {InterlevelPutOp<K, V>|InterlevelDelOp<K>} InterlevelBatch<K, V>
+ * Batch builder for atomic operations across multiple databases.
+ * Each database field is properly typed - no unions or type casts needed.
+ * @typedef {object} BatchBuilder
+ * @property {BatchDatabaseOps<DatabaseValue>} values - Batch operations for values database
+ * @property {BatchDatabaseOps<Freshness>} freshness - Batch operations for freshness database
+ * @property {BatchDatabaseOps<InputsRecord>} inputs - Batch operations for inputs database
+ * @property {() => Promise<void>} write - Execute all queued operations atomically
  */
 
 /**
@@ -247,7 +241,6 @@ All databases (values, freshness, inputs, revdeps) implement a common, simple, w
  * @typedef {object} RootDatabase
  * @property {(schemaHash: string) => SchemaStorage} getSchemaStorage - Get schema-specific storage (creates if needed)
  * @property {() => AsyncIterable<string>} listSchemas - List all schema hashes in the database
- * @property {<K, V>(operations: Array<InterlevelBatch<K, V>>) => Promise<void>} batch - Atomic batch operations across databases
  */
 ```
 
@@ -360,6 +353,13 @@ const schema2 = await rootDb.getSchemaStorage('hash2');
 await schema1.values.put("user('alice')", {name: 'Alice from schema1'});
 await schema2.values.put("user('alice')", {name: 'Alice from schema2'});
 // These are completely isolated - different namespaces
+
+// Atomic updates across databases using batch builder
+const batch = graphStorage.batch();
+batch.values.put(node, computedValue);
+batch.freshness.put(node, 'up-to-date');
+batch.inputs.put(node, { inputs: ['dep1', 'dep2'] });
+await batch.write(); // All execute atomically
 ```
 
 #### 3. No Manual String Construction or Ad-hoc Prefixes
@@ -427,18 +427,34 @@ for await (const schemaHash of rootDb.listSchemas()) {
 }
 ```
 
-#### 5. Atomic Operations
+#### 5. Atomic Operations with Builder Pattern
 
-Operations within a single database are naturally atomic. Cross-database atomicity is implementation-specific:
+The batch builder provides strongly-typed atomic operations across multiple databases:
 
 ```javascript
-// Individual database operations are atomic
-await graphStorage.values.put(node, value);
-await graphStorage.freshness.put(node, 'up-to-date');
+// ✅ Builder pattern: strongly typed, no casts needed
+const batch = graphStorage.batch();
+batch.values.put(node, computedValue);        // Type: DatabaseValue
+batch.freshness.put(node, 'up-to-date');      // Type: Freshness
+batch.inputs.put(node, { inputs: [...] });    // Type: InputsRecord
+await batch.write(); // All operations execute atomically
 
-// For truly atomic multi-database updates, use root database batch if needed
-// (implementation detail - not part of GraphStorage interface)
+// ❌ Old approach: generic batch with type union problems
+// await database.batch([
+//     { type: 'put', db: values, key: node, value: computedValue },
+//     { type: 'put', db: freshness, key: node, value: 'up-to-date' },
+// ]); // Type inference fails - V becomes DatabaseValue | Freshness
+
+// Each operation is properly typed:
+batch.values.put(node, 'up-to-date');  // ❌ Compile error: string is not DatabaseValue
+batch.freshness.put(node, {data: 1});  // ❌ Compile error: object is not Freshness
 ```
+
+**Why Builder Pattern?**
+- Maintains strong typing for heterogeneous operations
+- No type casts or unions needed
+- Clear, fluent API
+- Internally upcasts to `object` for LevelDB (implementation detail)
 
 ## Specification Updates Required
 
@@ -546,16 +562,24 @@ With sublevels, there is **no `"freshness:"` prefix at all**—it's handled by L
            inputs: schemaStorage.inputs,
            revdeps: schemaStorage.revdeps,
            
+           // Batch builder for atomic operations
+           batch() {
+               return makeBatchBuilder(rootDatabase, schemaHash);
+           },
+           
            // Helper methods
            async ensureNodeIndexed(node, inputs) {
-               // Store inputs
-               await schemaStorage.inputs.put(node, { inputs });
+               // Use batch for atomic updates
+               const batch = this.batch();
+               batch.inputs.put(node, { inputs });
                
                // Update revdeps using nested sublevels
                for (const input of inputs) {
                    const inputSublevel = schemaStorage.revdeps.getInputSublevel(input);
                    await inputSublevel.put(node, null);
                }
+               
+               await batch.write();
            },
            
            async listDependents(input) {
@@ -646,8 +670,18 @@ With sublevels, there is **no `"freshness:"` prefix at all**—it's handled by L
    }
    ```
 
-2. Update `getDatabaseStatistics()` to query schema-namespaced databases:
+2. Update methods to use batch builder for atomic operations:
    ```javascript
+   async set(nodeName, value) {
+       // Use batch builder for atomic value + freshness update
+       const batch = this.graphStorage.batch();
+       batch.values.put(nodeName, value);
+       batch.freshness.put(nodeName, 'up-to-date');
+       await batch.write();
+       
+       // Then propagate outdated state to dependents...
+   }
+   
    async getDatabaseStatistics() {
        let valueCount = 0;
        for await (const _ of this.graphStorage.values.keys()) {
@@ -665,6 +699,7 @@ With sublevels, there is **no `"freshness:"` prefix at all**—it's handled by L
    ```
 
 3. Note: Schema hash provides automatic isolation - multiple graphs can coexist in one DB file
+4. Batch builder ensures atomic updates without type casts
 
 **Risk**: Medium - constructor changes, initialization logic changes
 
@@ -672,20 +707,24 @@ With sublevels, there is **no `"freshness:"` prefix at all**—it's handled by L
 
 ### Phase 4: Update Tests (Low Risk)
 
-**Goal**: Update tests to work with new sublevel structure.
+**Goal**: Update tests to work with new sublevel structure and batch builder.
 
 **Changes**:
 1. Update test utilities in `backend/tests/stubs.js`:
    - Ensure mock database supports sublevels
+   - Mock batch builder with proper typing
    - Update assertions about key structure
 
 2. Update integration tests:
+   - Replace direct `put()`/`del()` with batch builder where atomic operations needed
    - Tests that inspect database keys directly need updates
    - Tests that only use public API should work unchanged
 
-3. Add new tests for sublevel isolation:
+3. Add new tests:
    - Verify values/freshness/indices are in separate spaces
    - Test schema isolation (multiple graphs in same database)
+   - Test batch builder with heterogeneous operations
+   - Verify batch builder maintains type safety (compile-time checks)
 
 **Risk**: Low - tests always need updates after refactoring
 
@@ -934,10 +973,23 @@ The sublevel-based design with typed database interfaces provides significant im
 3. **Schema hash is the namespace boundary**: All data (values, freshness, indices) isolated per schema, enabling multiple independent graphs in one DB file
 4. **Simple common interface**: All databases implement `GenericDatabase<TKey, TValue>`
 5. **Nested sublevels for revdeps**: `revdeps/<input>/<dependent>` eliminates composite keys and `startsWith()` filtering
-6. **GraphStorage exposes databases as fields**: Direct access to typed databases without wrapper methods
-7. **Spec independence**: Implementations free to choose storage strategies—spec focuses on behavior, not implementation
+6. **Builder pattern for batches**: Maintains strong typing for heterogeneous operations without unions or type casts
+7. **GraphStorage exposes databases as fields**: Direct access to typed databases without wrapper methods
+8. **Spec independence**: Implementations free to choose storage strategies—spec focuses on behavior, not implementation
 
 The migration is feasible with acceptable scope (13-19 hours, 18-23 files including spec updates). A clean-break migration strategy is recommended for architectural clarity.
+
+The design enables future extensions like schema metadata storage, index rebuilding, and per-schema statistics. It follows the project's conventions around encapsulation, strong typing, clear separation of concerns, and the critical "no type casting" principle.
+
+**Key Architecture Decisions**:
+- Schema hash = namespace: Solves the global values/freshness collision problem
+- Nested sublevels for revdeps: Eliminates the last remaining string prefix logic
+- Builder pattern for batches: Solves the heterogeneous operation typing problem without forcing casts
+- Multiple schemas in one DB: Natural consequence of proper namespacing
+
+**Type Safety Victory**: The builder pattern (`batch.values.put()`, `batch.freshness.put()`) maintains perfect type safety for heterogeneous operations—each method is properly typed, no unions, no `any`, no casts. Internally upcasts to `object` for LevelDB submission, which is safe and hidden from the API.
+
+**Specification Impact**: This design requires updates to `dependency-graph.md` to remove hardcoded `"freshness:"` prefix conventions, ensuring the spec remains a behavioral contract rather than an implementation prescription.
 
 The design enables future extensions like schema metadata storage, index rebuilding, and per-schema statistics. It follows the project's conventions around encapsulation, strong typing, clear separation of concerns, and the critical "no type casting" principle.
 
