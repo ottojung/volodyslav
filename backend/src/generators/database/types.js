@@ -7,6 +7,11 @@
 /** @typedef {import('../../logger').Logger} Logger */
 
 /**
+ * @template K, V
+ * @typedef {import('level').Level<K, V>} Level
+ */
+
+/**
  * Environment with pathToVolodyslavDataDirectory method
  * @typedef {object} DatabaseEnvironment
  * @property {() => string} pathToVolodyslavDataDirectory - Get path to Volodyslav data directory
@@ -103,7 +108,7 @@ function isDatabaseValue(value) {
  * A database put operation.
  * @template T
  * @typedef {object} DatabasePutOperation
- * @property {SimpleSublevel<string, T>} db - The database instance
+ * @property {Level<string, T>} db - The database instance
  * @property {'put'} type - Operation type
  * @property {string} key - The key to store
  * @property {T} value - The value to store
@@ -113,14 +118,26 @@ function isDatabaseValue(value) {
  * A database delete operation.
  * @template T
  * @typedef {object} DatabaseDelOperation
- * @property {SimpleSublevel<string, T>} db - The database instance
+ * @property {Level<string, T>} db - The database instance
  * @property {'del'} type - Operation type
  * @property {string} key - The key to delete
  */
 
 /**
+ * @template L, K, V
+ * @typedef {import('abstract-level').AbstractBatchPutOperation<L, K, V>} AbstractBatchPutOperation
+ */
+
+/**
+ * @template L, K
+ * @typedef {import('abstract-level').AbstractBatchDelOperation<L, K>} AbstractBatchDelOperation
+ */
+
+/**
  * A batch operation for the database.
- * @typedef {DatabasePutOperation<DatabaseValue> | DatabasePutOperation<Freshness> | DatabasePutOperation<InputsRecord> | DatabasePutOperation<string[]> | DatabaseDelOperation<DatabaseValue> | DatabaseDelOperation<Freshness> | DatabaseDelOperation<InputsRecord> | DatabaseDelOperation<string[]>} DatabaseBatchOperation
+ * /typedef {DatabasePutOperation<DatabaseValue> | DatabasePutOperation<Freshness> | DatabasePutOperation<InputsRecord> | DatabasePutOperation<string[]> | DatabaseDelOperation<DatabaseValue> | DatabaseDelOperation<Freshness> | DatabaseDelOperation<InputsRecord> | DatabaseDelOperation<string[]>} DatabaseBatchOperation
+ * @template K, V
+ * @typedef {AbstractBatchPutOperation<Level<string, DatabaseStoredValue>, string, DatabaseStoredValue> | AbstractBatchDelOperation<Level<string, DatabaseStoredValue>, string>} DatabaseBatchOperation
  */
 
 /**
