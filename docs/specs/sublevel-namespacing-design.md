@@ -659,7 +659,7 @@ With sublevels, there is **no `"freshness:"` prefix at all**—it's handled by L
    constructor(schema, rootDatabase, capabilities) {
        // ... validation
        
-       this.schemaHash = /* compute hash */;
+       this.schemaHash = /* compute full SHA256 hash of the graph */;
        
        // Pass rootDatabase and schemaHash to GraphStorage
        // GraphStorage gets schema-namespaced storage automatically
