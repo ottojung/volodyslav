@@ -125,7 +125,7 @@ function makeGraphStorage(database, schemaHash) {
                 schemaHash,
                 nestedSublevel: "revdeps",
                 key: revdepKey,
-                value: null,
+                value: { __revdep: true },
             });
         }
     }

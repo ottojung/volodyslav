@@ -12,6 +12,13 @@
  */
 
 /**
+ * Marker object for reverse dependency edges.
+ * We only care about key existence, not the value.
+ * @typedef {object} RevdepMarker
+ * @property {true} __revdep - Marker to indicate this is a revdep edge
+ */
+
+/**
  * Type-safe batch operation for values sublevel.
  * @typedef {object} ValuesBatchOp
  * @property {'put' | 'del'} type - Operation type
@@ -37,7 +44,7 @@
  * @property {string} schemaHash - Schema hash
  * @property {'inputs' | 'revdeps'} nestedSublevel - Either 'inputs' or 'revdeps'
  * @property {string} key - Key within the nested sublevel
- * @property {InputsRecord | null} [value] - InputsRecord for inputs, null for revdeps
+ * @property {InputsRecord | RevdepMarker} [value] - InputsRecord for inputs, RevdepMarker for revdeps
  */
 
 /**

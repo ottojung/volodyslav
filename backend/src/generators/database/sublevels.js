@@ -5,6 +5,7 @@
 /** @typedef {import('./types').DatabaseValue} DatabaseValue */
 /** @typedef {import('./types').Freshness} Freshness */
 /** @typedef {import('./batch_types').InputsRecord} InputsRecord */
+/** @typedef {import('./batch_types').RevdepMarker} RevdepMarker */
 
 /**
  * A sublevel for storing node output values.
@@ -30,7 +31,7 @@
 /**
  * A sublevel for reverse dependency index.
  * Key: "<input-node>:<dependent-node>" (e.g., "user('alice'):posts('alice')")
- * Value: null (we only care about key existence)
+ * Value: marker object (we only care about key existence)
  * @typedef {any} RevdepsLevel
  */
 

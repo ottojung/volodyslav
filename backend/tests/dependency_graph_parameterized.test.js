@@ -5,7 +5,7 @@
 const path = require("path");
 const fs = require("fs");
 const os = require("os");
-const { get: getDatabase } = require("../src/generators/database");
+const { get: getDatabase, getSchemaStorage } = require("../src/generators/database");
 const {
     makeDependencyGraph,
     makeUnchanged,
@@ -592,14 +592,13 @@ describe("Parameterized node schemas", () => {
             // Verify reverse dependency was persisted
             // The index should store: dg:<schemaHash>:revdep:base:derived("test")
             const schemaHash = graph.schemaHash;
-            const revdepKey = `dg:${schemaHash}:revdep:base:derived('test')`;
-            const revdep = await db.get(revdepKey);
+            const schemaStorage = getSchemaStorage(db.schemas, schemaHash);
+            const revdep = await schemaStorage.revdeps.get("base:derived('test')").catch(() => undefined);
             expect(revdep).toBeDefined();
-            expect(revdep).toEqual({ __edge: true });
+            expect(revdep).toEqual({ __revdep: true });
 
             // Verify inputs were persisted
-            const inputsKey = `dg:${schemaHash}:inputs:derived('test')`;
-            const inputs = await db.get(inputsKey);
+            const inputs = await schemaStorage.inputs.get("derived('test')").catch(() => undefined);
             expect(inputs).toBeDefined();
             expect(inputs).toEqual({ inputs: ["base"] });
 
@@ -652,8 +651,8 @@ describe("Parameterized node schemas", () => {
 
             // Verify inputs were persisted for the materialized item
             const schemaHash = graph.schemaHash;
-            const inputsKey = `dg:${schemaHash}:inputs:item('foo')`;
-            const inputs = await db.get(inputsKey);
+            const schemaStorage = getSchemaStorage(db.schemas, schemaHash);
+            const inputs = await schemaStorage.inputs.get("item('foo')").catch(() => undefined);
             expect(inputs).toBeDefined();
             expect(inputs).toEqual({ inputs: ["base"] });
 

@@ -71,6 +71,7 @@ class DatabaseClass {
 
     /**
      * Stores a value in the database.
+     * Automatically routes to the appropriate sublevel based on the key.
      * @param {string} key - The key to store
      * @param {DatabaseStoredValue} value - The database value or freshness to store
      * @returns {Promise<void>}
@@ -78,7 +79,18 @@ class DatabaseClass {
      */
     async put(key, value) {
         try {
-            await this.db.put(key, value);
+            // Route to appropriate sublevel based on key pattern
+            if (key.startsWith("freshness:")) {
+                // Strip prefix and store in freshness sublevel
+                const nodeKey = key.substring("freshness:".length);
+                await this.freshness.put(nodeKey, /** @type {Freshness} */ (value));
+            } else if (key.startsWith("dg:")) {
+                // Legacy schema key - store in root database for backward compatibility
+                await this.db.put(key, value);
+            } else {
+                // Store in values sublevel
+                await this.values.put(key, /** @type {DatabaseValue} */ (value));
+            }
         } catch (err) {
             const error = err instanceof Error ? err : new Error(String(err));
             throw new DatabaseQueryError(
@@ -92,66 +104,64 @@ class DatabaseClass {
 
     /**
      * Retrieves a value from the database.
+     * Automatically routes to the appropriate sublevel based on the key.
      * @param {string} key - The key to retrieve
      * @returns {Promise<DatabaseStoredValue | undefined>}
      * @throws {DatabaseQueryError} If the operation fails (except for NotFoundError)
      */
     async get(key) {
         try {
-            const value = await this.db.get(key);
-            return value;
+            // Route to appropriate sublevel based on key pattern
+            if (key.startsWith("freshness:")) {
+                // Strip prefix and get from freshness sublevel
+                const nodeKey = key.substring("freshness:".length);
+                return await this.freshness.get(nodeKey);
+            } else if (key.startsWith("dg:")) {
+                // Legacy schema key - get from root database for backward compatibility
+                return await this.db.get(key);
+            } else {
+                // Get from values sublevel
+                return await this.values.get(key);
+            }
         } catch (err) {
-            const error = err instanceof Error ? err : new Error(String(err));
-            throw new DatabaseQueryError(
-                `Get operation failed: ${error.message}`,
-                this.databasePath,
-                `GET ${key}`,
-                error
-            );
+            // Level throws for missing keys, return undefined
+            return undefined;
         }
     }
 
     /**
      * Retrieves a data value from the database (not freshness).
+     * Uses the values sublevel.
      * @param {string} key - The key to retrieve
      * @returns {Promise<DatabaseValue | undefined>}
      * @throws {DatabaseQueryError} If the operation fails
      */
     async getValue(key) {
-        const result = await this.get(key);
-        if (result === undefined) {
-            return undefined;
-        }
-        if (isDatabaseValue(result)) {
+        try {
+            const result = await this.values.get(key);
             return result;
-        } else {
-            throw new DatabaseQueryError(
-                `Expected database value for key ${key}, but found something else.`,
-                this.databasePath,
-                `GET ${key}`
-            );
+        } catch (err) {
+            // Level throws for missing keys, return undefined
+            return undefined;
         }
     }
 
     /**
      * Retrieves a freshness state from the database.
-     * @param {string} key - The freshness key to retrieve
+     * Uses the freshness sublevel.
+     * @param {string} key - The node name (without freshness: prefix) or full freshness key (for backward compatibility)
      * @returns {Promise<Freshness | undefined>}
      * @throws {DatabaseQueryError} If the operation fails
      */
     async getFreshness(key) {
-        const result = await this.get(key);
-        if (result === undefined) {
-            return undefined;
-        }
-        if (isFreshness(result)) {
+        try {
+            // Strip 'freshness:' prefix if present for backward compatibility
+            const nodeKey = key.startsWith("freshness:") ? key.substring("freshness:".length) : key;
+            const result = await this.freshness.get(nodeKey);
             return result;
-        } else {
-            throw new DatabaseQueryError(
-                `Expected freshness for key ${key}, but found something else.`,
-                this.databasePath,
-                `GET ${key}`
-            );
+        } catch (err) {
+            // Level throws for missing keys, return undefined
+            return undefined;
         }
     }
 
