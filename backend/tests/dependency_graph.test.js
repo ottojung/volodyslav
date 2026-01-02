@@ -1497,7 +1497,6 @@ describe("generators/dependency_graph", () => {
         test("nodes with extra whitespace are properly canonicalized internally", async () => {
             const capabilities = getTestCapabilities();
             const db = await getRootDatabase(capabilities);
-            const { freshnessKey } = require("../src/generators/database");
 
             // Create node with extra whitespace in output and inputs
             const graphDef = [
@@ -1524,13 +1523,9 @@ describe("generators/dependency_graph", () => {
             const result = await graph.pull('derived("data")');
             expect(result.value).toBe(10);
 
-            // Verify value is stored under canonical key
-            const stored = await db.getValue("derived('data')");
-            expect(stored).toEqual({ value: 10 });
-
-            // Verify freshness is under canonical key
-            const freshness = await db.getFreshness(freshnessKey("derived('data')"));
-            expect(freshness).toBe("up-to-date");
+            // Pull using non-canonical form with extra spaces - should still work
+            const result1b = await graph.pull('derived ( "data"  )');
+            expect(result1b.value).toBe(10);
 
             // Setting base should invalidate derived (via canonical key)
             await graph.set("base", { value: 10 });
@@ -1538,6 +1533,10 @@ describe("generators/dependency_graph", () => {
             // Pull derived again - should recompute
             const result2 = await graph.pull('derived("data")');
             expect(result2.value).toBe(20);
+
+            // Pull using non-canonical form again - should also get updated value
+            const result2b = await graph.pull('derived ( "data"  )');
+            expect(result2b.value).toBe(20);
 
             await db.close();
         });

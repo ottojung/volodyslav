@@ -180,6 +180,26 @@ class RootDatabaseClass {
     }
 
     /**
+     * Backward compatibility: get a database value directly.
+     * This is provided for test compatibility only.
+     * @param {string} key - The key
+     * @returns {Promise<any | undefined>}
+     */
+    async getValue(key) {
+        return await this.get(key);
+    }
+
+    /**
+     * Backward compatibility: get freshness state directly.
+     * This is provided for test compatibility only.
+     * @param {string} key - The key
+     * @returns {Promise<import('./types').Freshness | undefined>}
+     */
+    async getFreshness(key) {
+        return await this.get(key);
+    }
+
+    /**
      * Backward compatibility: batch operations.
      * This is provided for test compatibility only.
      * @param {Array<{type: 'put' | 'del', key: string, value?: any}>} operations
