@@ -110,7 +110,9 @@ A schema output pattern `P` **matches** a concrete node `N` if and only if:
 1. Same functor (identifier) and arity (number of arguments)
 2. For each argument position:
    * If pattern arg is a literal: it MUST equal the concrete node arg literal
-   * If pattern arg is a variable: it binds to the concrete node arg literal
+   * If pattern arg is a variable:
+     * If the variable is encountered for the first time: it binds to the concrete node arg literal
+     * If the variable was previously bound: the concrete node arg literal MUST equal the previously bound literal
 
 Two schema output patterns **overlap** if and only if there exists at least one concrete node that matches both patterns.
 
