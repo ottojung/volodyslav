@@ -20,9 +20,9 @@ const crypto = require("crypto");
 const { isUnchanged } = require("./unchanged");
 const {
     makeInvalidNodeError,
-    makeInvalidSchemaError,
     makeMissingValueError,
     makeInvalidSetError,
+    makeSchemaOverlapError,
 } = require("./errors");
 const { canonicalize, parseExpr } = require("./expr");
 const {
@@ -265,13 +265,10 @@ class DependencyGraphClass {
         }
 
         if (matches.length > 1) {
-            // Multiple patterns match - this is ambiguous
-            const patternList = matches
-                .map((m) => `'${m.compiledNode.canonicalOutput}'`)
-                .join(", ");
-            throw makeInvalidSchemaError(
-                `Ambiguous match: concrete key '${concreteKeyCanonical}' matches multiple patterns: ${patternList}`,
-                concreteKeyCanonical
+            // Multiple patterns match - this should be impossible if validateNoOverlap worked correctly
+            // This indicates a bug in overlap detection or that the patterns weren't validated
+            throw makeSchemaOverlapError(
+                matches.map((m) => m.compiledNode.canonicalOutput)
             );
         }
 
