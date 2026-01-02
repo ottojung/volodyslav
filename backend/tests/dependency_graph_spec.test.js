@@ -22,56 +22,97 @@ function expectHasOwn(err, prop) {
 }
 
 /**
- * Minimal in-memory Database that matches the spec's Database interface.
- * We purposely do NOT assume any particular "freshness key" naming convention:
- * the graph is free to choose. This DB just stores whatever keys it is asked to store.
+ * Minimal in-memory Database that matches the RootDatabase interface.
+ * We implement the sublevel structure in memory.
  */
 class InMemoryDatabase {
     constructor() {
+        /** @type {Map<string, Map<string, any>>} */
+        this.schemas = new Map();
         /** @type {Map<string, any>} */
-        this.kv = new Map();
+        this.root = new Map();
         /** @type {boolean} */
         this.closed = false;
         /** @type {Array<any>} */
         this.batchLog = [];
         /** @type {Array<any>} */
         this.putLog = [];
-        /** @type {Array<any>} */
-        this.getValueLog = [];
-        /** @type {Array<any>} */
-        this.getFreshnessLog = [];
     }
 
+    getSchemaStorage(schemaHash) {
+        if (!this.schemas.has(schemaHash)) {
+            this.schemas.set(schemaHash, new Map());
+        }
+        const schemaMap = this.schemas.get(schemaHash);
+
+        const createSublevel = (name) => {
+            const prefix = `${name}:`;
+            return {
+                async get(key) {
+                    const fullKey = prefix + key;
+                    const v = schemaMap.get(fullKey);
+                    return v === undefined ? undefined : deepClone(v);
+                },
+                async put(key, value) {
+                    const fullKey = prefix + key;
+                    schemaMap.set(fullKey, deepClone(value));
+                },
+                async del(key) {
+                    const fullKey = prefix + key;
+                    schemaMap.delete(fullKey);
+                },
+                async *keys() {
+                    for (const k of schemaMap.keys()) {
+                        if (k.startsWith(prefix)) {
+                            yield k.substring(prefix.length);
+                        }
+                    }
+                },
+                async clear() {
+                    const toDelete = [];
+                    for (const k of schemaMap.keys()) {
+                        if (k.startsWith(prefix)) {
+                            toDelete.push(k);
+                        }
+                    }
+                    for (const k of toDelete) {
+                        schemaMap.delete(k);
+                    }
+                },
+            };
+        };
+
+        return {
+            values: createSublevel('values'),
+            freshness: createSublevel('freshness'),
+            inputs: createSublevel('inputs'),
+            revdeps: createSublevel('revdeps'),
+        };
+    }
+
+    async *listSchemas() {
+        for (const schemaHash of this.schemas.keys()) {
+            yield schemaHash;
+        }
+    }
+
+    // Backward compatibility for tests that access root level
     async put(key, value) {
         if (this.closed) throw new Error("DatabaseClosed");
         this.putLog.push({ key, value });
-        this.kv.set(key, deepClone(value));
-    }
-
-    async getValue(key) {
-        if (this.closed) throw new Error("DatabaseClosed");
-        this.getValueLog.push({ key });
-        const v = this.kv.get(key);
-        return v === undefined ? undefined : deepClone(v);
-    }
-
-    async getFreshness(key) {
-        if (this.closed) throw new Error("DatabaseClosed");
-        this.getFreshnessLog.push({ key });
-        const v = this.kv.get(key);
-        return v === undefined ? undefined : deepClone(v);
+        this.root.set(key, deepClone(value));
     }
 
     async get(key) {
         if (this.closed) throw new Error("DatabaseClosed");
-        const v = this.kv.get(key);
+        const v = this.root.get(key);
         return v === undefined ? undefined : deepClone(v);
     }
 
     async keys(prefix) {
         if (this.closed) throw new Error("DatabaseClosed");
         const res = [];
-        for (const k of this.kv.keys()) {
+        for (const k of this.root.keys()) {
             if (!prefix || k.startsWith(prefix)) res.push(k);
         }
         return res;
@@ -81,15 +122,14 @@ class InMemoryDatabase {
         if (this.closed) throw new Error("DatabaseClosed");
         this.batchLog.push({ ops: deepClone(ops) });
 
-        // atomic apply: copy then commit
-        const next = new Map(this.kv);
+        // atomic apply
         for (const op of ops) {
             if (op.type === "put") {
-                next.set(op.key, deepClone(op.value));
-            } else if (op.type === "del") next.delete(op.key);
-            else throw new Error(`UnknownBatchOp:${String(op.type)}`);
+                this.root.set(op.key, deepClone(op.value));
+            } else if (op.type === "del") {
+                this.root.delete(op.key);
+            } else throw new Error(`UnknownBatchOp:${String(op.type)}`);
         }
-        this.kv = next;
     }
 
     async close() {
@@ -99,8 +139,6 @@ class InMemoryDatabase {
     resetLogs() {
         this.batchLog = [];
         this.putLog = [];
-        this.getValueLog = [];
-        this.getFreshnessLog = [];
     }
 }
 

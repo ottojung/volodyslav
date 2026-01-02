@@ -80,7 +80,10 @@ function makeBatchBuilder(schemaStorage) {
             for (const op of operations) {
                 const db = schemaStorage[op.db];
                 if (op.op === 'put') {
-                    await db.put(op.key, op.value);
+                    // LevelDB doesn't allow null or undefined values
+                    if (op.value !== null && op.value !== undefined) {
+                        await db.put(op.key, op.value);
+                    }
                 } else {
                     await db.del(op.key);
                 }

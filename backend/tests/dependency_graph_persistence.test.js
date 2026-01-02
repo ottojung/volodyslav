@@ -6,7 +6,7 @@
 const path = require("path");
 const fs = require("fs");
 const os = require("os");
-const { get: getDatabase } = require("../src/generators/database");
+const { getRootDatabase } = require("../src/generators/database");
 const {
     makeDependencyGraph,
     makeUnchanged,
@@ -36,7 +36,7 @@ describe("Dependency graph persistence and restart", () => {
     describe("Restart preserves dependent invalidation", () => {
         test("invalidates pattern instantiation after restart", async () => {
             const capabilities = getTestCapabilities();
-            const db = await getDatabase(capabilities);
+            const db = await getRootDatabase(capabilities);
             const { freshnessKey } = require("../src/generators/database");
 
             // Set up initial data
@@ -130,7 +130,7 @@ describe("Dependency graph persistence and restart", () => {
 
         test("diamond graph invalidation across restart", async () => {
             const capabilities = getTestCapabilities();
-            const db = await getDatabase(capabilities);
+            const db = await getRootDatabase(capabilities);
             const { freshnessKey } = require("../src/generators/database");
 
             const computeCalls = [];
@@ -208,7 +208,7 @@ describe("Dependency graph persistence and restart", () => {
     describe("Restart preserves downstream up-to-date propagation", () => {
         test("Unchanged propagation works after restart", async () => {
             const capabilities = getTestCapabilities();
-            const db = await getDatabase(capabilities);
+            const db = await getRootDatabase(capabilities);
             const { freshnessKey } = require("../src/generators/database");
 
             const computeCalls = [];
@@ -278,7 +278,7 @@ describe("Dependency graph persistence and restart", () => {
 
         test("Unchanged propagation with pattern instantiation after restart", async () => {
             const capabilities = getTestCapabilities();
-            const db = await getDatabase(capabilities);
+            const db = await getRootDatabase(capabilities);
             const { freshnessKey } = require("../src/generators/database");
 
             const computeCalls = [];
@@ -341,7 +341,7 @@ describe("Dependency graph persistence and restart", () => {
     describe("No initialization scan required", () => {
         test("does not scan for instantiation markers", async () => {
             const capabilities = getTestCapabilities();
-            const db = await getDatabase(capabilities);
+            const db = await getRootDatabase(capabilities);
 
             // Track DB keys() calls
             const originalKeys = db.keys.bind(db);
@@ -397,7 +397,7 @@ describe("Dependency graph persistence and restart", () => {
     describe("Schema hash namespacing", () => {
         test("different schemas use different namespaces", async () => {
             const capabilities = getTestCapabilities();
-            const db = await getDatabase(capabilities);
+            const db = await getRootDatabase(capabilities);
 
             const schemas1 = [
                 {
@@ -455,7 +455,7 @@ describe("Dependency graph persistence and restart", () => {
     describe("Index atomicity", () => {
         test("index entries are written in same batch as value", async () => {
             const capabilities = getTestCapabilities();
-            const db = await getDatabase(capabilities);
+            const db = await getRootDatabase(capabilities);
 
             const schemas = [
                 {

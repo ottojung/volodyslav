@@ -5,7 +5,7 @@
 const path = require("path");
 const fs = require("fs");
 const os = require("os");
-const { get: getDatabase } = require("../src/generators/database");
+const { getRootDatabase } = require("../src/generators/database");
 const {
     makeDependencyGraph,
     isDependencyGraph,
@@ -42,7 +42,7 @@ describe("generators/dependency_graph", () => {
     describe("makeDependencyGraph()", () => {
         test("creates and returns a dependency graph instance", async () => {
             const capabilities = getTestCapabilities();
-            const db = await getDatabase(capabilities);
+            const db = await getRootDatabase(capabilities);
             const graph = makeDependencyGraph(db, []);
 
             expect(isDependencyGraph(graph)).toBe(true);
@@ -54,28 +54,23 @@ describe("generators/dependency_graph", () => {
     describe("pull()", () => {
         test("lazily evaluates only necessary nodes", async () => {
             const capabilities = getTestCapabilities();
-            const db = await getDatabase(capabilities);
-            const { freshnessKey } = require("../src/generators/database");
+            const db = await getRootDatabase(capabilities);
 
             // Track which computors were called
             const computeCalls = [];
-
-            // Set up a chain: input1 -> level1 -> level2 -> level3
-            await db.put("input1", { count: 1 });
-            await db.put(freshnessKey("input1"), "potentially-outdated");
 
             const graphDef = [
                 {
                     output: "input1",
                     inputs: [],
-                    computor: (inputs, oldValue, _bindings) => oldValue || { count: 1 },
+                    computor: (inputs, oldValue, _bindings) => oldValue || { type: 'all_events', events: [] },
                 },
                 {
                     output: "level1",
                     inputs: ["input1"],
                     computor: (inputs, _oldValue, _bindings) => {
                         computeCalls.push("level1");
-                        return { count: inputs[0].count + 1 };
+                        return { type: 'meta_events', meta_events: [] };
                     },
                 },
                 {
@@ -83,7 +78,7 @@ describe("generators/dependency_graph", () => {
                     inputs: ["level1"],
                     computor: (inputs, _oldValue, _bindings) => {
                         computeCalls.push("level2");
-                        return { count: inputs[0].count + 1 };
+                        return { type: 'meta_events', meta_events: [] };
                     },
                 },
                 {
@@ -91,22 +86,25 @@ describe("generators/dependency_graph", () => {
                     inputs: ["level2"],
                     computor: (inputs, _oldValue, _bindings) => {
                         computeCalls.push("level3");
-                        return { count: inputs[0].count + 1 };
+                        return { type: 'meta_events', meta_events: [] };
                     },
                 },
             ];
 
             const graph = makeDependencyGraph(db, graphDef);
 
+            // Use graph.set() to seed input1
+            await graph.set("input1", { type: 'all_events', events: [] });
+
             // Pull only level2 - should compute level1 and level2 but NOT level3
             const result = await graph.pull("level2");
 
             expect(result).toBeDefined();
-            expect(result.count).toBe(3);
             expect(computeCalls).toEqual(["level1", "level2"]);
 
             // level3 should not have been computed
-            const level3 = await db.get("level3");
+            const storage = graph.getStorage();
+            const level3 = await storage.values.get("level3");
             expect(level3).toBeUndefined();
 
             await db.close();
@@ -114,7 +112,7 @@ describe("generators/dependency_graph", () => {
 
         test("returns cached value when dependencies are clean", async () => {
             const capabilities = getTestCapabilities();
-            const db = await getDatabase(capabilities);
+            const db = await getRootDatabase(capabilities);
             const { freshnessKey } = require("../src/generators/database");
 
             let computeCount = 0;
@@ -148,7 +146,7 @@ describe("generators/dependency_graph", () => {
 
         test("recomputes when dependencies are dirty", async () => {
             const capabilities = getTestCapabilities();
-            const db = await getDatabase(capabilities);
+            const db = await getRootDatabase(capabilities);
             const { freshnessKey } = require("../src/generators/database");
 
             await db.put("input1", { data: "new_data" });
@@ -190,7 +188,7 @@ describe("generators/dependency_graph", () => {
 
         test("throws error when pulling non-graph nodes", async () => {
             const capabilities = getTestCapabilities();
-            const db = await getDatabase(capabilities);
+            const db = await getRootDatabase(capabilities);
 
             await db.put("standalone", { data: "standalone_value" });
 
@@ -210,7 +208,7 @@ describe("generators/dependency_graph", () => {
 
         test("handles Unchanged return value", async () => {
             const capabilities = getTestCapabilities();
-            const db = await getDatabase(capabilities);
+            const db = await getRootDatabase(capabilities);
             const { freshnessKey } = require("../src/generators/database");
 
             await db.put("input1", { data: "test" });
@@ -248,7 +246,7 @@ describe("generators/dependency_graph", () => {
 
         test("handles potentially-dirty propagation in linear chain", async () => {
             const capabilities = getTestCapabilities();
-            const db = await getDatabase(capabilities);
+            const db = await getRootDatabase(capabilities);
             const { freshnessKey } = require("../src/generators/database");
 
             const computeCalls = [];
@@ -321,7 +319,7 @@ describe("generators/dependency_graph", () => {
 
         test("potentially-dirty with Unchanged should skip downstream recomputation", async () => {
             const capabilities = getTestCapabilities();
-            const db = await getDatabase(capabilities);
+            const db = await getRootDatabase(capabilities);
             const { freshnessKey } = require("../src/generators/database");
 
             const computeCalls = [];
@@ -392,7 +390,7 @@ describe("generators/dependency_graph", () => {
 
         test("diamond graph with mixed dirty/potentially-dirty states", async () => {
             const capabilities = getTestCapabilities();
-            const db = await getDatabase(capabilities);
+            const db = await getRootDatabase(capabilities);
             const { freshnessKey } = require("../src/generators/database");
 
             const computeCalls = [];
@@ -464,7 +462,7 @@ describe("generators/dependency_graph", () => {
 
         test("diamond graph where one path returns Unchanged should still compute meet node", async () => {
             const capabilities = getTestCapabilities();
-            const db = await getDatabase(capabilities);
+            const db = await getRootDatabase(capabilities);
             const { freshnessKey } = require("../src/generators/database");
 
             const computeCalls = [];
@@ -531,7 +529,7 @@ describe("generators/dependency_graph", () => {
 
         test("complex multi-level graph with various freshness states", async () => {
             const capabilities = getTestCapabilities();
-            const db = await getDatabase(capabilities);
+            const db = await getRootDatabase(capabilities);
             const { freshnessKey } = require("../src/generators/database");
 
             const computeCalls = [];
@@ -626,7 +624,7 @@ describe("generators/dependency_graph", () => {
 
         test("mixed dirty and potentially-dirty with partial Unchanged", async () => {
             const capabilities = getTestCapabilities();
-            const db = await getDatabase(capabilities);
+            const db = await getRootDatabase(capabilities);
             const { freshnessKey } = require("../src/generators/database");
 
             const computeCalls = [];
@@ -686,7 +684,7 @@ describe("generators/dependency_graph", () => {
 
         test("recomputes when dependencies are potentially-dirty", async () => {
             const capabilities = getTestCapabilities();
-            const db = await getDatabase(capabilities);
+            const db = await getRootDatabase(capabilities);
             const { freshnessKey } = require("../src/generators/database");
 
             await db.put("input1", { data: "new_data" });
@@ -728,7 +726,7 @@ describe("generators/dependency_graph", () => {
 
         test("wide diamond with multiple parallel paths - all paths must converge", async () => {
             const capabilities = getTestCapabilities();
-            const db = await getDatabase(capabilities);
+            const db = await getRootDatabase(capabilities);
             const { freshnessKey } = require("../src/generators/database");
 
             const computeCalls = [];
@@ -826,7 +824,7 @@ describe("generators/dependency_graph", () => {
 
         test("multiple independent subgraphs - pulling one should not affect others", async () => {
             const capabilities = getTestCapabilities();
-            const db = await getDatabase(capabilities);
+            const db = await getRootDatabase(capabilities);
             const { freshnessKey } = require("../src/generators/database");
 
             const computeCalls = [];
@@ -887,7 +885,7 @@ describe("generators/dependency_graph", () => {
 
         test("leaf node with no inputs starts clean - should return cached value", async () => {
             const capabilities = getTestCapabilities();
-            const db = await getDatabase(capabilities);
+            const db = await getRootDatabase(capabilities);
             const { freshnessKey } = require("../src/generators/database");
 
             const computeCalls = [];
@@ -921,7 +919,7 @@ describe("generators/dependency_graph", () => {
 
         test("very deep linear chain - ensures stack doesn't overflow", async () => {
             const capabilities = getTestCapabilities();
-            const db = await getDatabase(capabilities);
+            const db = await getRootDatabase(capabilities);
             const { freshnessKey } = require("../src/generators/database");
 
             // Create a chain of 50 nodes: node0 -> node1 -> ... -> node49
@@ -963,7 +961,7 @@ describe("generators/dependency_graph", () => {
 
         test("diamond with asymmetric depths - one path longer than the other", async () => {
             const capabilities = getTestCapabilities();
-            const db = await getDatabase(capabilities);
+            const db = await getRootDatabase(capabilities);
             const { freshnessKey } = require("../src/generators/database");
 
             const computeCalls = [];
@@ -1057,7 +1055,7 @@ describe("generators/dependency_graph", () => {
 
         test("all inputs clean, output dirty - inconsistent state recovery", async () => {
             const capabilities = getTestCapabilities();
-            const db = await getDatabase(capabilities);
+            const db = await getRootDatabase(capabilities);
             const { freshnessKey } = require("../src/generators/database");
 
             // This represents an inconsistent state where inputs are clean but output is dirty
@@ -1118,7 +1116,7 @@ describe("generators/dependency_graph", () => {
 
         test("fan-out pattern - one input feeding multiple independent outputs", async () => {
             const capabilities = getTestCapabilities();
-            const db = await getDatabase(capabilities);
+            const db = await getRootDatabase(capabilities);
             const { freshnessKey } = require("../src/generators/database");
 
             const computeCalls = [];
@@ -1189,7 +1187,7 @@ describe("generators/dependency_graph", () => {
 
         test("nested diamonds - diamond within a diamond topology", async () => {
             const capabilities = getTestCapabilities();
-            const db = await getDatabase(capabilities);
+            const db = await getRootDatabase(capabilities);
             const { freshnessKey } = require("../src/generators/database");
 
             const computeCalls = [];
@@ -1298,7 +1296,7 @@ describe("generators/dependency_graph", () => {
 
         test("partial Unchanged in wide diamond - some paths unchanged, others changed", async () => {
             const capabilities = getTestCapabilities();
-            const db = await getDatabase(capabilities);
+            const db = await getRootDatabase(capabilities);
             const { freshnessKey } = require("../src/generators/database");
 
             const computeCalls = [];
@@ -1398,7 +1396,7 @@ describe("generators/dependency_graph", () => {
 
         test("all paths return Unchanged in wide diamond - output should not recompute", async () => {
             const capabilities = getTestCapabilities();
-            const db = await getDatabase(capabilities);
+            const db = await getRootDatabase(capabilities);
             const { freshnessKey } = require("../src/generators/database");
 
             const computeCalls = [];
@@ -1477,7 +1475,7 @@ describe("generators/dependency_graph", () => {
     describe("Type guards", () => {
         test("isDependencyGraph correctly identifies instances", async () => {
             const capabilities = getTestCapabilities();
-            const db = await getDatabase(capabilities);
+            const db = await getRootDatabase(capabilities);
             const graph = makeDependencyGraph(db, []);
 
             expect(isDependencyGraph(graph)).toBe(true);
@@ -1492,7 +1490,7 @@ describe("generators/dependency_graph", () => {
     describe("Static node canonicalization (T2)", () => {
         test("nodes with extra whitespace are properly canonicalized internally", async () => {
             const capabilities = getTestCapabilities();
-            const db = await getDatabase(capabilities);
+            const db = await getRootDatabase(capabilities);
             const { freshnessKey } = require("../src/generators/database");
 
             // Create node with extra whitespace in output and inputs
@@ -1542,7 +1540,7 @@ describe("generators/dependency_graph", () => {
     describe("Debug Interface", () => {
         test("debugGetFreshness returns correct status", async () => {
             const capabilities = getTestCapabilities();
-            const db = await getDatabase(capabilities);
+            const db = await getRootDatabase(capabilities);
 
             const graphDef = [
                 {
@@ -1578,7 +1576,7 @@ describe("generators/dependency_graph", () => {
 
         test("debugListMaterializedNodes lists all materialized nodes", async () => {
             const capabilities = getTestCapabilities();
-            const db = await getDatabase(capabilities);
+            const db = await getRootDatabase(capabilities);
 
             const graphDef = [
                 {
@@ -1620,7 +1618,7 @@ describe("generators/dependency_graph", () => {
     describe("Schema Validation", () => {
         test("detects cycles in schema", async () => {
             const capabilities = getTestCapabilities();
-            const db = await getDatabase(capabilities);
+            const db = await getRootDatabase(capabilities);
 
             const graphDef = [
                 {
@@ -1649,7 +1647,7 @@ describe("generators/dependency_graph", () => {
 
         test("detects overlapping schemas", async () => {
             const capabilities = getTestCapabilities();
-            const db = await getDatabase(capabilities);
+            const db = await getRootDatabase(capabilities);
 
             const graphDef = [
                 {

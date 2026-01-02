@@ -131,6 +131,63 @@ class RootDatabaseClass {
     async close() {
         await this.db.close();
     }
+
+    /**
+     * Backward compatibility: put a value directly (uses a default schema).
+     * This is provided for test compatibility only.
+     * @param {string} key - The key
+     * @param {any} value - The value
+     * @returns {Promise<void>}
+     */
+    async put(key, value) {
+        await this.db.put(key, value);
+    }
+
+    /**
+     * Backward compatibility: get a value directly (uses root level).
+     * This is provided for test compatibility only.
+     * @param {string} key - The key
+     * @returns {Promise<any | undefined>}
+     */
+    async get(key) {
+        try {
+            return await this.db.get(key);
+        } catch (err) {
+            // LevelDB throws for missing keys
+            const error = /** @type {Error} */ (err);
+            if (error.message?.includes('not found') || error.message?.includes('NotFound')) {
+                return undefined;
+            }
+            throw err;
+        }
+    }
+
+    /**
+     * Backward compatibility: list keys with prefix.
+     * This is provided for test compatibility only.
+     * @param {string} prefix - The prefix
+     * @returns {Promise<string[]>}
+     */
+    async keys(prefix = '') {
+        const keys = [];
+        for await (const key of this.db.keys({
+            gte: prefix,
+            lt: prefix + '\xFF',
+        })) {
+            keys.push(key);
+        }
+        return keys;
+    }
+
+    /**
+     * Backward compatibility: batch operations.
+     * This is provided for test compatibility only.
+     * @param {Array<{type: 'put' | 'del', key: string, value?: any}>} operations
+     * @returns {Promise<void>}
+     */
+    async batch(operations) {
+        await this.db.batch(operations);
+    }
 }
 
 const { Level } = require('level');

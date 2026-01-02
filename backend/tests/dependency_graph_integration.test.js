@@ -5,7 +5,7 @@
 const path = require("path");
 const fs = require("fs");
 const os = require("os");
-const { get: getDatabase } = require("../src/generators/database");
+const { getRootDatabase } = require("../src/generators/database");
 const { makeInterface } = require("../src/generators/interface");
 const {
     makeDependencyGraph,
@@ -39,7 +39,7 @@ function getTestCapabilities() {
 describe("DependencyGraph integration with meta_events", () => {
     test("pull() fetches meta_events after updating all_events", async () => {
         const capabilities = getTestCapabilities();
-        const db = await getDatabase(capabilities);
+        const db = await getRootDatabase(capabilities);
         const iface = makeInterface(db);
 
         // Define the graph - need to include all_events as a node

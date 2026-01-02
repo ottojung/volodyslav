@@ -615,6 +615,23 @@ class DependencyGraphClass {
     async debugListMaterializedNodes() {
         return this.storage.listMaterializedNodes();
     }
+
+    /**
+     * Get the GraphStorage instance for testing purposes.
+     * This allows tests to directly access and manipulate the storage.
+     * @returns {GraphStorage}
+     */
+    getStorage() {
+        return this.storage;
+    }
+
+    /**
+     * Get the schema hash for testing purposes.
+     * @returns {string}
+     */
+    getSchemaHash() {
+        return this.schemaHash;
+    }
 }
 
 /**
