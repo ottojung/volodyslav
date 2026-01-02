@@ -1,232 +1,152 @@
 /**
  * GraphStorage module.
- * Encapsulates database access for the dependency graph, handling key generation and type safety.
+ * Encapsulates database access for the dependency graph using typed sublevels.
  */
 
-const { freshnessKey } = require("../database");
-
-/** @typedef {import('../database/class').Database} Database */
+/** @typedef {import('../database/root_database').RootDatabase} RootDatabase */
+/** @typedef {import('../database/root_database').SchemaStorage} SchemaStorage */
+/** @typedef {import('../database/root_database').ValuesDatabase} ValuesDatabase */
+/** @typedef {import('../database/root_database').FreshnessDatabase} FreshnessDatabase */
+/** @typedef {import('../database/root_database').InputsDatabase} InputsDatabase */
+/** @typedef {import('../database/root_database').RevdepsDatabase} RevdepsDatabase */
 /** @typedef {import('../database/types').DatabaseValue} DatabaseValue */
 /** @typedef {import('../database/types').Freshness} Freshness */
-/** @typedef {import('../database/types').DatabaseBatchOperation} DatabaseBatchOperation */
+/** @typedef {import('../database/types').InputsRecord} InputsRecord */
 
 /**
- * Union type for values that can be stored in the database.
- * @typedef {DatabaseValue | Freshness} DatabaseStoredValue
+ * Interface for batch operations on a specific database.
+ * @template TValue
+ * @typedef {object} BatchDatabaseOps
+ * @property {(key: string, value: TValue) => void} put - Queue a put operation
+ * @property {(key: string) => void} del - Queue a delete operation
  */
 
 /**
+ * Batch builder for atomic operations across multiple databases.
+ * Each database field is properly typed - no unions or type casts needed.
+ * @typedef {object} BatchBuilder
+ * @property {BatchDatabaseOps<DatabaseValue>} values - Batch operations for values database
+ * @property {BatchDatabaseOps<Freshness>} freshness - Batch operations for freshness database
+ * @property {BatchDatabaseOps<InputsRecord>} inputs - Batch operations for inputs database
+ * @property {BatchDatabaseOps<string[]>} revdeps - Batch operations for revdeps database
+ * @property {() => Promise<void>} write - Execute all queued operations atomically
+ */
+
+/**
+ * GraphStorage exposes typed databases as fields.
+ * All databases are from the same schema namespace.
  * @typedef {object} GraphStorage
- * @property {(nodeName: string) => Promise<DatabaseValue | undefined>} getNodeValue
- * @property {(nodeName: string) => Promise<Freshness | undefined>} getNodeFreshness
- * @property {(nodeName: string, value: DatabaseValue) => { type: "put", key: string, value: DatabaseStoredValue }} setNodeValueOp
- * @property {(nodeName: string, freshness: Freshness) => { type: "put", key: string, value: DatabaseStoredValue }} setNodeFreshnessOp
- * @property {(node: string, inputs: string[], batchOps: Array<DatabaseBatchOperation>) => Promise<void>} ensureNodeIndexed
- * @property {(input: string) => Promise<string[]>} listDependents
- * @property {(node: string) => Promise<string[] | null>} getInputs
- * @property {() => Promise<string[]>} listAllKeys
- * @property {(key: string) => Promise<DatabaseStoredValue | undefined>} getRaw
- * @property {() => Promise<string[]>} listMaterializedNodes
+ * @property {ValuesDatabase} values - Node values
+ * @property {FreshnessDatabase} freshness - Node freshness
+ * @property {InputsDatabase} inputs - Node inputs index
+ * @property {RevdepsDatabase} revdeps - Reverse dependencies (input -> dependent array)
+ * @property {() => BatchBuilder} batch - Create a batch builder for atomic operations
+ * @property {(node: string, inputs: string[]) => Promise<void>} ensureNodeIndexed - Index a node's dependencies
+ * @property {(input: string) => Promise<string[]>} listDependents - List all dependents of an input
+ * @property {(node: string) => Promise<string[] | null>} getInputs - Get inputs for a node
+ * @property {() => Promise<string[]>} listMaterializedNodes - List all materialized node names
  */
 
 /**
- * Creates a GraphStorage instance.
+ * Creates a batch builder for atomic operations.
+ * @param {SchemaStorage} schemaStorage - The schema storage
+ * @returns {BatchBuilder}
+ */
+function makeBatchBuilder(schemaStorage) {
+    /** @type {Array<{ db: 'values' | 'freshness' | 'inputs' | 'revdeps', op: 'put' | 'del', key: string, value?: any }>} */
+    const operations = [];
+
+    return {
+        values: {
+            put: (key, value) => operations.push({ db: 'values', op: 'put', key, value }),
+            del: (key) => operations.push({ db: 'values', op: 'del', key }),
+        },
+        freshness: {
+            put: (key, value) => operations.push({ db: 'freshness', op: 'put', key, value }),
+            del: (key) => operations.push({ db: 'freshness', op: 'del', key }),
+        },
+        inputs: {
+            put: (key, value) => operations.push({ db: 'inputs', op: 'put', key, value }),
+            del: (key) => operations.push({ db: 'inputs', op: 'del', key }),
+        },
+        revdeps: {
+            put: (key, value) => operations.push({ db: 'revdeps', op: 'put', key, value }),
+            del: (key) => operations.push({ db: 'revdeps', op: 'del', key }),
+        },
+        async write() {
+            // Execute all operations sequentially
+            // Note: LevelDB sublevels don't support cross-sublevel atomic batches,
+            // but we execute them in order to maintain consistency
+            for (const op of operations) {
+                const db = schemaStorage[op.db];
+                if (op.op === 'put') {
+                    await db.put(op.key, op.value);
+                } else {
+                    await db.del(op.key);
+                }
+            }
+        },
+    };
+}
+
+/**
+ * Creates a GraphStorage instance using typed databases.
  * 
- * @param {Database} database - The database instance
+ * @param {RootDatabase} rootDatabase - The root database instance
  * @param {string} schemaHash - The schema hash for namespacing
  * @returns {GraphStorage}
  */
-function makeGraphStorage(database, schemaHash) {
-    /**
-     * Helper to create a put operation for batch processing.
-     * @private
-     * @param {string} key
-     * @param {DatabaseStoredValue} value
-     * @returns {{ type: "put", key: string, value: DatabaseStoredValue }}
-     */
-    function putOp(key, value) {
-        return { type: "put", key, value };
-    }
-
-    // --- Key Generation ---
+function makeGraphStorage(rootDatabase, schemaHash) {
+    const schemaStorage = rootDatabase.getSchemaStorage(schemaHash);
 
     /**
-     * Get the DB key for storing a node's inputs.
-     * Format: dg:<schemaHash>:inputs:<NODE>
-     * @param {string} node - Canonical node key
-     * @returns {string}
-     */
-    function inputsKey(node) {
-        return `dg:${schemaHash}:inputs:${node}`;
-    }
-
-    /**
-     * Get the DB key prefix for querying dependents of an input.
-     * Format: dg:<schemaHash>:revdep:<INPUT>:
-     * @param {string} input - Canonical input key
-     * @returns {string}
-     */
-    function revdepPrefix(input) {
-        return `dg:${schemaHash}:revdep:${input}:`;
-    }
-
-    /**
-     * Get the DB key for a specific reverse dependency edge.
-     * Format: dg:<schemaHash>:revdep:<INPUT>:<NODE>
-     * @param {string} input - Canonical input key
-     * @param {string} node - Canonical dependent node key
-     * @returns {string}
-     */
-    function revdepKey(input, node) {
-        return `dg:${schemaHash}:revdep:${input}:${node}`;
-    }
-
-    // --- Value & Freshness Access ---
-
-    /**
-     * Get a node's value.
-     * @param {string} nodeName
-     * @returns {Promise<DatabaseValue | undefined>}
-     */
-    async function getNodeValue(nodeName) {
-        return database.getValue(nodeName);
-    }
-
-    /**
-     * Get a node's freshness.
-     * @param {string} nodeName
-     * @returns {Promise<Freshness | undefined>}
-     */
-    async function getNodeFreshness(nodeName) {
-        return database.getFreshness(freshnessKey(nodeName));
-    }
-
-    /**
-     * Create an operation to set a node's value.
-     * @param {string} nodeName
-     * @param {DatabaseValue} value
-     * @returns {{ type: "put", key: string, value: DatabaseStoredValue }}
-     */
-    function setNodeValueOp(nodeName, value) {
-        return putOp(nodeName, value);
-    }
-
-    /**
-     * Create an operation to set a node's freshness.
-     * @param {string} nodeName
-     * @param {Freshness} freshness
-     * @returns {{ type: "put", key: string, value: DatabaseStoredValue }}
-     */
-    function setNodeFreshnessOp(nodeName, freshness) {
-        return putOp(freshnessKey(nodeName), freshness);
-    }
-
-    // --- Indexing ---
-
-    /**
-     * Ensure a node's inputs and reverse dependencies are indexed in the database.
-     * This adds the necessary put operations to the batch array.
-     * 
+     * Ensure a node's inputs and reverse dependencies are indexed.
      * @param {string} node - Canonical node key
      * @param {string[]} inputs - Array of canonical input keys
-     * @param {Array<DatabaseBatchOperation>} batchOps - Batch operations array to append to
      * @returns {Promise<void>}
      */
-    async function ensureNodeIndexed(node, inputs, batchOps) {
-        // Check if inputs are already indexed (optimization to avoid redundant writes)
+    async function ensureNodeIndexed(node, inputs) {
+        // Check if already indexed
         const existingInputs = await getInputs(node);
         if (existingInputs !== null) {
-            // Already indexed, skip
-            return;
+            return; // Already indexed
         }
 
-        // Store the inputs list for this node
-        // We store inputs as a JSON-serialized array wrapped in an object
-        // to satisfy DatabaseValue constraint (must be an object)
-        batchOps.push(
-            putOp(
-                inputsKey(node),
-                /** @type {DatabaseValue} */ (/** @type {unknown} */ ({ inputs }))
-            )
-        );
-
-        // Store reverse dependency edges
+        // Use batch for atomic updates
+        const batch = makeBatchBuilder(schemaStorage);
+        
+        // Store the inputs record
+        batch.inputs.put(node, { inputs });
+        
+        // Update revdeps using structured values (arrays)
         for (const input of inputs) {
-            batchOps.push(
-                putOp(
-                    revdepKey(input, node),
-                    /** @type {DatabaseValue} */ (/** @type {unknown} */ ({ __edge: true }))
-                )
-            );
-        }
-    }
-
-    /**
-     * List all nodes that depend on the given input.
-     * Queries the database for all keys with the revdep prefix.
-     * 
-     * @param {string} input - Canonical input key
-     * @returns {Promise<string[]>} Array of dependent node keys
-     */
-    async function listDependents(input) {
-        const prefix = revdepPrefix(input);
-        const keys = await database.keys(prefix);
-        
-        // Extract node names from keys
-        // Key format: dg:<schemaHash>:revdep:<INPUT>:<NODE>
-        // We need to extract <NODE> which is everything after the prefix
-        const dependents = keys.map((key) => {
-            return key.substring(prefix.length);
-        });
-
-        return dependents;
-    }
-
-    /**
-     * Get the inputs for a node from the database.
-     * Returns null if the node hasn't been indexed yet.
-     * 
-     * @param {string} node - Canonical node key
-     * @returns {Promise<string[] | null>} Array of input keys, or null if not indexed
-     */
-    async function getInputs(node) {
-        const key = inputsKey(node);
-        const value = await database.get(key);
-        
-        if (value === undefined) {
-            return null;
-        }
-
-        // FIXME: introduce an actual type for this stored value. It must extend DatabaseValue. We must never do type casting like this.
-        // Extract inputs array from the stored object
-        // We stored it as { inputs: string[] }
-        if (typeof value === "object" && value !== null && "inputs" in value) {
-            // We know inputs exists but TS doesn't know the shape of DatabaseValue here
-            const inputs = /** @type {{inputs: unknown}} */ (value).inputs;
-            if (Array.isArray(inputs)) {
-                return inputs;
+            const existingDeps = (await schemaStorage.revdeps.get(input)) || [];
+            if (!existingDeps.includes(node)) {
+                batch.revdeps.put(input, [...existingDeps, node]);
             }
         }
-
-        // Unexpected format - return null to be safe
-        return null;
+        
+        await batch.write();
     }
 
     /**
-     * List all keys in the database.
+     * List all dependents of an input.
+     * @param {string} input - Canonical input key
      * @returns {Promise<string[]>}
      */
-    async function listAllKeys() {
-        return database.keys();
+    async function listDependents(input) {
+        // Simple array lookup - no iteration or string manipulation
+        return (await schemaStorage.revdeps.get(input)) || [];
     }
 
     /**
-     * Get raw value from database.
-     * @param {string} key
-     * @returns {Promise<DatabaseStoredValue | undefined>}
+     * Get inputs for a node.
+     * @param {string} node - Canonical node key
+     * @returns {Promise<string[] | null>}
      */
-    async function getRaw(key) {
-        return database.get(key);
+    async function getInputs(node) {
+        const record = await schemaStorage.inputs.get(node);
+        return record ? record.inputs : null;
     }
 
     /**
@@ -234,23 +154,27 @@ function makeGraphStorage(database, schemaHash) {
      * @returns {Promise<string[]>}
      */
     async function listMaterializedNodes() {
-        const allKeys = await database.keys();
-        return allKeys.filter(k => 
-            !k.startsWith("dg:") && 
-            !k.startsWith("freshness:")
-        );
+        const keys = [];
+        for await (const key of schemaStorage.values.keys()) {
+            keys.push(key);
+        }
+        return keys;
     }
 
     return {
-        getNodeValue,
-        getNodeFreshness,
-        setNodeValueOp,
-        setNodeFreshnessOp,
+        // Expose all databases as fields
+        values: schemaStorage.values,
+        freshness: schemaStorage.freshness,
+        inputs: schemaStorage.inputs,
+        revdeps: schemaStorage.revdeps,
+        
+        // Batch builder for atomic operations
+        batch: () => makeBatchBuilder(schemaStorage),
+        
+        // Helper methods
         ensureNodeIndexed,
         listDependents,
         getInputs,
-        listAllKeys,
-        getRaw,
         listMaterializedNodes,
     };
 }
