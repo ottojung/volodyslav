@@ -121,6 +121,23 @@ function isDatabaseValue(value) {
  * @property {string[]} inputs - Array of canonical input node names
  */
 
+/**
+ * @template F
+ * @template K
+ * @template V
+ * @typedef {import('abstract-level').AbstractLevel<F, K, V>} AbstractLevel
+ */
+
+/**
+ * @typedef {string | Buffer<ArrayBufferLike> | Uint8Array<ArrayBufferLike>} SublevelFormat
+ */
+
+/**
+ * @template K
+ * @template V
+ * @typedef {AbstractLevel<SublevelFormat, K, V>} SimpleSublevel
+ */
+
 module.exports = {
     freshnessKey,
     isFreshness,

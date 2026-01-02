@@ -58,10 +58,9 @@ const { makeTypedDatabase } = require('./typed_database');
  */
 
 /**
- * @template F
  * @template K
  * @template V
- * @typedef {import('abstract-level').AbstractLevel<any, K, V>} AbstractLevel
+ * @typedef {import('./types').SimpleSublevel<K, V>} SimpleSublevel
  */
 
 /**
@@ -106,13 +105,13 @@ class RootDatabaseClass {
         // Create new schema storage with sublevels
         const schemaSublevel = this.db.sublevel(schemaHash, { valueEncoding: 'json' });
         
-        /** @type {AbstractLevel<unknown, string, DatabaseValue>} */
+        /** @type {SimpleSublevel<string, DatabaseValue>} */
         const valuesSublevel = schemaSublevel.sublevel('values', { valueEncoding: 'json' });
-        /** @type {AbstractLevel<unknown, string, Freshness>} */
+        /** @type {SimpleSublevel<string, Freshness>} */
         const freshnessSublevel = schemaSublevel.sublevel('freshness', { valueEncoding: 'json' });
-        /** @type {AbstractLevel<unknown, string, InputsRecord>} */
+        /** @type {SimpleSublevel<string, InputsRecord>} */
         const inputsSublevel = schemaSublevel.sublevel('inputs', { valueEncoding: 'json' });
-        /** @type {AbstractLevel<unknown, string, string[]>} */
+        /** @type {SimpleSublevel<string, string[]>} */
         const revdepsSublevel = schemaSublevel.sublevel('revdeps', { valueEncoding: 'json' });
 
         const storage = {
