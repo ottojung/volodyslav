@@ -136,7 +136,7 @@ All databases (values, freshness, inputs, revdeps) implement a common, simple, w
  * Generic typed database interface.
  * @template TKey - The key type (typically string)
  * @template TValue - The value type
- * @typedef {object} TypedDatabase
+ * @typedef {object} GenericDatabase
  * @property {(key: TKey) => Promise<TValue | undefined>} get - Retrieve a value
  * @property {(key: TKey, value: TValue) => Promise<void>} put - Store a value
  * @property {(key: TKey) => Promise<void>} del - Delete a value
@@ -152,28 +152,28 @@ All databases (values, freshness, inputs, revdeps) implement a common, simple, w
  * Database for storing node output values.
  * Key: canonical node name (e.g., "user('alice')")
  * Value: the computed value (string, number, object, array, null, boolean)
- * @typedef {TypedDatabase<string, DatabaseValue>} ValuesDatabase
+ * @typedef {GenericDatabase<string, DatabaseValue>} ValuesDatabase
  */
 
 /**
  * Database for storing node freshness state.
  * Key: canonical node name (e.g., "user('alice')")
  * Value: freshness state object
- * @typedef {TypedDatabase<string, Freshness>} FreshnessDatabase
+ * @typedef {GenericDatabase<string, Freshness>} FreshnessDatabase
  */
 
 /**
  * Database for storing node input dependencies.
  * Key: canonical node name (e.g., "user('alice')")
  * Value: inputs record with array of dependency names
- * @typedef {TypedDatabase<string, InputsRecord>} InputsDatabase
+ * @typedef {GenericDatabase<string, InputsRecord>} InputsDatabase
  */
 
 /**
  * Database for reverse dependency index.
  * Key: "<input-node>:<dependent-node>" (e.g., "user('alice'):posts('alice')")
  * Value: null (we only care about key existence)
- * @typedef {TypedDatabase<string, null>} RevdepsDatabase
+ * @typedef {GenericDatabase<string, null>} RevdepsDatabase
  */
 
 /**
@@ -205,7 +205,7 @@ All databases (values, freshness, inputs, revdeps) implement a common, simple, w
  * @template K
  * @typedef {object} InterlevelDelOp
  * @property {'del'} type
- * @property {TypedDatabase<K, any>} db
+ * @property {GenericDatabase<K, any>} db
  * @property {K} key
  */
 
@@ -214,7 +214,7 @@ All databases (values, freshness, inputs, revdeps) implement a common, simple, w
  * @template V
  * @typedef {object} InterlevelPutOp
  * @property {'put'} type
- * @property {TypedDatabase<K, V>} db
+ * @property {GenericDatabase<K, V>} db
  * @property {K} key
  * @property {V} value
  */
@@ -228,7 +228,7 @@ All databases (values, freshness, inputs, revdeps) implement a common, simple, w
 
 /**
  * Root database structure with typed databases.
- * All sub-databases implement the TypedDatabase interface.
+ * All sub-databases implement the GenericDatabase interface.
  * @typedef {object} RootDatabase
  * @property {ValuesDatabase} values - Node output values
  * @property {FreshnessDatabase} freshness - Node freshness state
@@ -264,7 +264,7 @@ const value = /** @type {DatabaseValue} */ (await db.get(key)); // NEVER DO THIS
 
 #### Common Interface Pattern
 
-All databases implement `TypedDatabase<TKey, TValue>`, providing:
+All databases implement `GenericDatabase<TKey, TValue>`, providing:
 - Uniform API across all storage
 - Type-safe operations without casts
 - Easy to test with mocks
@@ -276,7 +276,7 @@ All databases implement `TypedDatabase<TKey, TValue>`, providing:
  * @template TKey
  * @template TValue
  */
-interface TypedDatabase<TKey, TValue> {
+interface GenericDatabase<TKey, TValue> {
     get(key: TKey): Promise<TValue | undefined>;
     put(key: TKey, value: TValue): Promise<void>;
     del(key: TKey): Promise<void>;
@@ -289,7 +289,7 @@ interface TypedDatabase<TKey, TValue> {
 
 #### 1. Strong Typing with Zero Type Casts
 
-Each database has a precise type contract through the `TypedDatabase` interface:
+Each database has a precise type contract through the `GenericDatabase` interface:
 
 ```javascript
 // ✅ Type-safe: No casts needed, types inferred from database field
@@ -303,7 +303,7 @@ const inputsRecord = await graphStorage.schema.inputs.get(canonicalNode);
 // Type: InputsRecord | undefined
 
 // ✅ Type-safe: All databases share the same interface
-function clearDatabase<K, V>(db: TypedDatabase<K, V>) {
+function clearDatabase<K, V>(db: GenericDatabase<K, V>) {
     await db.clear();
 }
 
@@ -456,8 +456,8 @@ With sublevels, there is **no `"freshness:"` prefix at all**—it's handled by L
 
 **Changes**:
 1. Create new module: `backend/src/generators/database/typed_database.js`
-   - Define `TypedDatabase<TKey, TValue>` interface
-   - Implement wrapper class that adapts LevelDB sublevel to `TypedDatabase` interface
+   - Define `GenericDatabase<TKey, TValue>` interface
+   - Implement wrapper class that adapts LevelDB sublevel to `GenericDatabase` interface
    - **CRITICAL**: No type casts in implementation—enforce types through wrapper
 
 2. Create new module: `backend/src/generators/database/root_database.js`
@@ -661,9 +661,9 @@ Rationale: This is an early-stage project. Clean architecture is more valuable t
 ### Files Modified
 
 **Core implementation** (~5 files):
-- `backend/src/generators/database/typed_database.js` (new - TypedDatabase interface)
+- `backend/src/generators/database/typed_database.js` (new - GenericDatabase interface)
 - `backend/src/generators/database/root_database.js` (new - RootDatabase with typed fields)
-- `backend/src/generators/database/types.js` (modified - add TypedDatabase types)
+- `backend/src/generators/database/types.js` (modified - add GenericDatabase types)
 - `backend/src/generators/dependency_graph/graph_storage.js` (modified - expose databases as fields)
 - `backend/src/generators/dependency_graph/class.js` (modified - use new GraphStorage interface)
 
@@ -831,7 +831,7 @@ The sublevel-based design with typed database interfaces provides significant im
 
 1. **Zero type casts**: All types enforced through typed database fields—no type casting anywhere in the implementation
 2. **No ad-hoc prefixes**: Only sublevels, no string concatenation like `"freshness:"` or `"dg:"`
-3. **Simple common interface**: All databases implement `TypedDatabase<TKey, TValue>`
+3. **Simple common interface**: All databases implement `GenericDatabase<TKey, TValue>`
 4. **GraphStorage exposes databases as fields**: Direct access to typed databases without wrapper methods
 5. **Spec independence**: Implementations are free to choose storage strategies—spec focuses on behavior, not implementation
 
