@@ -1,135 +1,98 @@
 /**
  * GraphStorage module.
- * Encapsulates database access for the dependency graph, handling key generation and type safety.
+ * Encapsulates database access for the dependency graph using sublevel-based storage.
  */
 
-const { freshnessKey } = require("../database");
+const { getSchemaStorage } = require("../database");
 
 /** @typedef {import('../database/class').Database} Database */
 /** @typedef {import('../database/types').DatabaseValue} DatabaseValue */
 /** @typedef {import('../database/types').Freshness} Freshness */
-/** @typedef {import('../database/types').DatabaseBatchOperation} DatabaseBatchOperation */
-
-/**
- * Union type for values that can be stored in the database.
- * @typedef {DatabaseValue | Freshness} DatabaseStoredValue
- */
+/** @typedef {import('../database/batch_types').GenericBatchOp} GenericBatchOp */
+/** @typedef {import('../database/batch_types').InputsRecord} InputsRecord */
 
 /**
  * @typedef {object} GraphStorage
  * @property {(nodeName: string) => Promise<DatabaseValue | undefined>} getNodeValue
  * @property {(nodeName: string) => Promise<Freshness | undefined>} getNodeFreshness
- * @property {(nodeName: string, value: DatabaseValue) => { type: "put", key: string, value: DatabaseStoredValue }} setNodeValueOp
- * @property {(nodeName: string, freshness: Freshness) => { type: "put", key: string, value: DatabaseStoredValue }} setNodeFreshnessOp
- * @property {(node: string, inputs: string[], batchOps: Array<DatabaseBatchOperation>) => Promise<void>} ensureNodeIndexed
+ * @property {(nodeName: string, value: DatabaseValue) => GenericBatchOp} setNodeValueOp
+ * @property {(nodeName: string, freshness: Freshness) => GenericBatchOp} setNodeFreshnessOp
+ * @property {(node: string, inputs: string[], batchOps: Array<GenericBatchOp>) => Promise<void>} ensureNodeIndexed
  * @property {(input: string) => Promise<string[]>} listDependents
  * @property {(node: string) => Promise<string[] | null>} getInputs
- * @property {() => Promise<string[]>} listAllKeys
- * @property {(key: string) => Promise<DatabaseStoredValue | undefined>} getRaw
  * @property {() => Promise<string[]>} listMaterializedNodes
  */
 
 /**
- * Creates a GraphStorage instance.
+ * Creates a GraphStorage instance using sublevel-based storage.
  * 
- * @param {Database} database - The database instance
+ * @param {Database} database - The database instance with sublevels
  * @param {string} schemaHash - The schema hash for namespacing
  * @returns {GraphStorage}
  */
 function makeGraphStorage(database, schemaHash) {
-    /**
-     * Helper to create a put operation for batch processing.
-     * @private
-     * @param {string} key
-     * @param {DatabaseStoredValue} value
-     * @returns {{ type: "put", key: string, value: DatabaseStoredValue }}
-     */
-    function putOp(key, value) {
-        return { type: "put", key, value };
-    }
-
-    // --- Key Generation ---
-
-    /**
-     * Get the DB key for storing a node's inputs.
-     * Format: dg:<schemaHash>:inputs:<NODE>
-     * @param {string} node - Canonical node key
-     * @returns {string}
-     */
-    function inputsKey(node) {
-        return `dg:${schemaHash}:inputs:${node}`;
-    }
-
-    /**
-     * Get the DB key prefix for querying dependents of an input.
-     * Format: dg:<schemaHash>:revdep:<INPUT>:
-     * @param {string} input - Canonical input key
-     * @returns {string}
-     */
-    function revdepPrefix(input) {
-        return `dg:${schemaHash}:revdep:${input}:`;
-    }
-
-    /**
-     * Get the DB key for a specific reverse dependency edge.
-     * Format: dg:<schemaHash>:revdep:<INPUT>:<NODE>
-     * @param {string} input - Canonical input key
-     * @param {string} node - Canonical dependent node key
-     * @returns {string}
-     */
-    function revdepKey(input, node) {
-        return `dg:${schemaHash}:revdep:${input}:${node}`;
-    }
+    // Get schema storage for this graph's schema
+    const schemaStorage = getSchemaStorage(database.schemas, schemaHash);
 
     // --- Value & Freshness Access ---
 
     /**
-     * Get a node's value.
+     * Get a node's value from the values sublevel.
      * @param {string} nodeName
      * @returns {Promise<DatabaseValue | undefined>}
      */
     async function getNodeValue(nodeName) {
-        return database.getValue(nodeName);
+        try {
+            return await database.values.get(nodeName);
+        } catch (err) {
+            // Level throws for missing keys, return undefined
+            return undefined;
+        }
     }
 
     /**
-     * Get a node's freshness.
+     * Get a node's freshness from the freshness sublevel.
      * @param {string} nodeName
      * @returns {Promise<Freshness | undefined>}
      */
     async function getNodeFreshness(nodeName) {
-        return database.getFreshness(freshnessKey(nodeName));
+        try {
+            return await database.freshness.get(nodeName);
+        } catch (err) {
+            // Level throws for missing keys, return undefined
+            return undefined;
+        }
     }
 
     /**
-     * Create an operation to set a node's value.
+     * Create an operation to set a node's value in the values sublevel.
      * @param {string} nodeName
      * @param {DatabaseValue} value
-     * @returns {{ type: "put", key: string, value: DatabaseStoredValue }}
+     * @returns {GenericBatchOp}
      */
     function setNodeValueOp(nodeName, value) {
-        return putOp(nodeName, value);
+        return { type: "put", sublevel: "values", key: nodeName, value };
     }
 
     /**
-     * Create an operation to set a node's freshness.
+     * Create an operation to set a node's freshness in the freshness sublevel.
      * @param {string} nodeName
      * @param {Freshness} freshness
-     * @returns {{ type: "put", key: string, value: DatabaseStoredValue }}
+     * @returns {GenericBatchOp}
      */
     function setNodeFreshnessOp(nodeName, freshness) {
-        return putOp(freshnessKey(nodeName), freshness);
+        return { type: "put", sublevel: "freshness", key: nodeName, value: freshness };
     }
 
     // --- Indexing ---
 
     /**
-     * Ensure a node's inputs and reverse dependencies are indexed in the database.
+     * Ensure a node's inputs and reverse dependencies are indexed in the schema sublevels.
      * This adds the necessary put operations to the batch array.
      * 
      * @param {string} node - Canonical node key
      * @param {string[]} inputs - Array of canonical input keys
-     * @param {Array<DatabaseBatchOperation>} batchOps - Batch operations array to append to
+     * @param {Array<GenericBatchOp>} batchOps - Batch operations array to append to
      * @returns {Promise<void>}
      */
     async function ensureNodeIndexed(node, inputs, batchOps) {
@@ -140,105 +103,96 @@ function makeGraphStorage(database, schemaHash) {
             return;
         }
 
-        // Store the inputs list for this node
-        // We store inputs as a JSON-serialized array wrapped in an object
-        // to satisfy DatabaseValue constraint (must be an object)
-        batchOps.push(
-            putOp(
-                inputsKey(node),
-                /** @type {DatabaseValue} */ (/** @type {unknown} */ ({ inputs }))
-            )
-        );
+        // Store the inputs list for this node in the inputs sublevel
+        /** @type {InputsRecord} */
+        const inputsRecord = { inputs };
+        batchOps.push({
+            type: "put",
+            sublevel: "schemas",
+            schemaHash,
+            nestedSublevel: "inputs",
+            key: node,
+            value: inputsRecord,
+        });
 
-        // Store reverse dependency edges
+        // Store reverse dependency edges in the revdeps sublevel
         for (const input of inputs) {
-            batchOps.push(
-                putOp(
-                    revdepKey(input, node),
-                    /** @type {DatabaseValue} */ (/** @type {unknown} */ ({ __edge: true }))
-                )
-            );
+            // Key format: "<input>:<node>"
+            const revdepKey = `${input}:${node}`;
+            batchOps.push({
+                type: "put",
+                sublevel: "schemas",
+                schemaHash,
+                nestedSublevel: "revdeps",
+                key: revdepKey,
+                value: null,
+            });
         }
     }
 
     /**
      * List all nodes that depend on the given input.
-     * Queries the database for all keys with the revdep prefix.
+     * Queries the revdeps sublevel for all keys with the input prefix.
      * 
      * @param {string} input - Canonical input key
      * @returns {Promise<string[]>} Array of dependent node keys
      */
     async function listDependents(input) {
-        const prefix = revdepPrefix(input);
-        const keys = await database.keys(prefix);
+        const dependents = [];
+        const prefix = `${input}:`;
         
-        // Extract node names from keys
-        // Key format: dg:<schemaHash>:revdep:<INPUT>:<NODE>
-        // We need to extract <NODE> which is everything after the prefix
-        const dependents = keys.map((key) => {
-            return key.substring(prefix.length);
-        });
+        try {
+            for await (const key of schemaStorage.revdeps.keys({
+                gte: prefix,
+                lte: prefix + "\xFF",
+            })) {
+                // Extract node name from key format "<input>:<node>"
+                const node = key.substring(prefix.length);
+                dependents.push(node);
+            }
+        } catch (err) {
+            // If sublevel doesn't exist or other error, return empty array
+            return [];
+        }
 
         return dependents;
     }
 
     /**
-     * Get the inputs for a node from the database.
+     * Get the inputs for a node from the inputs sublevel.
      * Returns null if the node hasn't been indexed yet.
      * 
      * @param {string} node - Canonical node key
      * @returns {Promise<string[] | null>} Array of input keys, or null if not indexed
      */
     async function getInputs(node) {
-        const key = inputsKey(node);
-        const value = await database.get(key);
-        
-        if (value === undefined) {
+        try {
+            const record = await schemaStorage.inputs.get(node);
+            if (record && typeof record === "object" && "inputs" in record) {
+                return record.inputs;
+            }
+            return null;
+        } catch (err) {
+            // Level throws for missing keys, return null
             return null;
         }
-
-        // FIXME: introduce an actual type for this stored value. It must extend DatabaseValue. We must never do type casting like this.
-        // Extract inputs array from the stored object
-        // We stored it as { inputs: string[] }
-        if (typeof value === "object" && value !== null && "inputs" in value) {
-            // We know inputs exists but TS doesn't know the shape of DatabaseValue here
-            const inputs = /** @type {{inputs: unknown}} */ (value).inputs;
-            if (Array.isArray(inputs)) {
-                return inputs;
-            }
-        }
-
-        // Unexpected format - return null to be safe
-        return null;
     }
 
     /**
-     * List all keys in the database.
-     * @returns {Promise<string[]>}
-     */
-    async function listAllKeys() {
-        return database.keys();
-    }
-
-    /**
-     * Get raw value from database.
-     * @param {string} key
-     * @returns {Promise<DatabaseStoredValue | undefined>}
-     */
-    async function getRaw(key) {
-        return database.get(key);
-    }
-
-    /**
-     * List all materialized nodes.
+     * List all materialized nodes (nodes with values in the values sublevel).
      * @returns {Promise<string[]>}
      */
     async function listMaterializedNodes() {
-        const allKeys = await database.keys();
-        return allKeys.filter(k => 
-            !k.startsWith("dg:") && 
-            !k.startsWith("freshness:")
-        );
+        const nodes = [];
+        try {
+            for await (const key of database.values.keys()) {
+                nodes.push(key);
+            }
+        } catch (err) {
+            // If sublevel doesn't exist or other error, return empty array
+            return [];
+        }
+        return nodes;
     }
 
     return {
@@ -249,8 +203,6 @@ function makeGraphStorage(database, schemaHash) {
         ensureNodeIndexed,
         listDependents,
         getInputs,
-        listAllKeys,
-        getRaw,
         listMaterializedNodes,
     };
 }

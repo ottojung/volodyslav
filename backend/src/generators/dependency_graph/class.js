@@ -13,7 +13,7 @@
 /** @typedef {import('./types').RecomputeResult} RecomputeResult */
 /** @typedef {import('./unchanged').Unchanged} Unchanged */
 /** @typedef {import('./graph_storage').GraphStorage} GraphStorage */
-/** @typedef {import('../database/types').DatabaseBatchOperation} DatabaseBatchOperation */
+/** @typedef {import('../database/batch_types').GenericBatchOp} GenericBatchOp */
 /** @typedef {DatabaseValue | Freshness} DatabaseStoredValue */
 
 const crypto = require("crypto");
@@ -106,7 +106,7 @@ class DependencyGraphClass {
      * Uses both static dependents map and DB-persisted reverse dependencies.
      * @private
      * @param {string} changedKey - The key that was changed
-     * @param {Array<DatabaseBatchOperation>} batchOperations - Batch to add operations to
+     * @param {Array<GenericBatchOp>} batchOperations - Batch to add operations to
      * @param {Set<string>} nodesBecomingOutdated - Set of nodes that are becoming outdated in this batch
      * @returns {Promise<void>}
      */
@@ -177,7 +177,7 @@ class DependencyGraphClass {
             throw makeInvalidSetError(canonicalKey);
         }
 
-        /** @type {Array<DatabaseBatchOperation>} */
+        /** @type {Array<GenericBatchOp>} */
         const batchOperations = [];
 
         // Store the value
@@ -195,7 +195,7 @@ class DependencyGraphClass {
         );
 
         // Execute all operations atomically
-        await this.database.batch(batchOperations);
+        await this.database.batchTyped(batchOperations);
     }
 
     /**
@@ -472,7 +472,7 @@ class DependencyGraphClass {
             oldValue !== undefined
         ) {
             // Prepare batch operations for the fast path
-            /** @type {Array<{type: "put", key: string, value: DatabaseStoredValue} | {type: "del", key: string}>} */
+            /** @type {Array<GenericBatchOp>} */
             const batchOperations = [];
 
             // Ensure node is indexed (if it has inputs)
@@ -489,7 +489,7 @@ class DependencyGraphClass {
             );
 
             // Execute all operations atomically
-            await this.database.batch(batchOperations);
+            await this.database.batchTyped(batchOperations);
 
             return { value: oldValue, status: "unchanged" };
         }
@@ -501,7 +501,7 @@ class DependencyGraphClass {
         );
 
         // Prepare batch operations
-        /** @type {Array<DatabaseBatchOperation>} */
+        /** @type {Array<GenericBatchOp>} */
         const batchOperations = [];
 
         // Ensure node is indexed (if it has inputs)
@@ -530,7 +530,7 @@ class DependencyGraphClass {
             );
 
             // Execute all operations atomically
-            await this.database.batch(batchOperations);
+            await this.database.batchTyped(batchOperations);
 
             return { value: computedValue, status: "changed" };
         } else {
@@ -540,7 +540,7 @@ class DependencyGraphClass {
             );
 
             // Execute all operations atomically
-            await this.database.batch(batchOperations);
+            await this.database.batchTyped(batchOperations);
 
             // Return old value (must exist if Unchanged returned)
             const result = await this.storage.getNodeValue(nodeName);
@@ -596,7 +596,7 @@ class DependencyGraphClass {
             // This is critical for seeded databases where values/freshness exist
             // but reverse-dep metadata is missing
             if (nodeDefinition.inputs.length > 0) {
-                /** @type {Array<{type: "put", key: string, value: DatabaseStoredValue} | {type: "del", key: string}>} */
+                /** @type {Array<GenericBatchOp>} */
                 const batchOperations = [];
                 
                 await this.storage.ensureNodeIndexed(
@@ -607,7 +607,7 @@ class DependencyGraphClass {
                 
                 // Execute indexing operations if any were added
                 if (batchOperations.length > 0) {
-                    await this.database.batch(batchOperations);
+                    await this.database.batchTyped(batchOperations);
                 }
             }
             
