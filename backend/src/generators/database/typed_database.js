@@ -24,13 +24,13 @@ class TypedDatabaseClass {
     /**
      * The underlying LevelDB sublevel instance.
      * @private
-     * @type {import('abstract-level').AbstractLevel<any, TKey, TValue>}
+     * @type {SimpleSublevel<TKey, TValue>}
      */
     sublevel;
 
     /**
      * @constructor
-     * @param {import('abstract-level').AbstractLevel<any, TKey, TValue>} sublevel - The LevelDB sublevel instance
+     * @param {SimpleSublevel<TKey, TValue>} sublevel - The LevelDB sublevel instance
      */
     constructor(sublevel) {
         this.sublevel = sublevel;
