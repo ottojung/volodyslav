@@ -168,7 +168,7 @@ Root Database (Level<string, any>)
 
 /**
  * Union of all type-safe batch operations.
- * @typedef {ValuesBatchOp | FreshnessBatchOp | SchemasBatchOp} TypeSafeBatchOp
+ * @typedef {ValuesBatchOp | FreshnessBatchOp | SchemasBatchOp} GenericBatchOp
  */
 
 /**
@@ -212,7 +212,7 @@ Root Database (Level<string, any>)
  * @property {ValuesLevel} values - Node output values
  * @property {FreshnessLevel} freshness - Node freshness state
  * @property {SchemasLevel} schemas - Schema-specific storage
- * @property {(operations: TypeSafeBatchOp[]) => Promise<void>} batch - Type-safe batch operation
+ * @property {(operations: GenericBatchOp[]) => Promise<void>} batch - Type-safe batch operation
  */
 ```
 
@@ -332,7 +332,7 @@ The `database.batch()` method uses string discriminators (`'values'`, `'freshnes
    - Provide helper to get/create schema storage
 
 2. Extend `DatabaseClass` in `backend/src/generators/database/class.js`
-   - Implement type-safe `batch()` method that accepts `TypeSafeBatchOp[]` with string discriminators
+   - Implement type-safe `batch()` method that accepts `GenericBatchOp[]` with string discriminators
    - Keep existing `get()`, `put()` methods for backward compatibility (delegate to sublevels)
    - Map string discriminators to actual sublevels internallyh()` methods for backward compatibility (delegate to sublevels)
    - Add new convenience methods if needed
