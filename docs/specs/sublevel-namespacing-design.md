@@ -944,10 +944,6 @@ async function getSchemaStatistics(rootDb, schemaHash) {
 
 **Answer**: Multiple graph instances with identical schemas automatically share the same namespace (same schema hash). This is intentional—they operate on the same data. If you need truly independent instances, they must have different schemas (even slightly different).
 
-### Q4: What about database backup/export?
-
-**Current answer**: LevelDB provides `db.createReadStream()` which works across all sublevels. No special handling needed initially.
-
 ## Conclusion
 
 The sublevel-based design with typed database interfaces provides significant improvements over the current prefix-based approach:
