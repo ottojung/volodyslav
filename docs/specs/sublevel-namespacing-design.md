@@ -117,12 +117,12 @@ The database stores multiple concerns without clear separation:
 
 ```
 Root Database (Level<string, object>)
-├── values: Level<string, DatabaseValue>          // Node output values
-├── freshness: Level<string, Freshness>           // Node freshness state
-└── schemas: Level<string, never>                 // Per-schema storage (no top-level values)
-    └── <schemaHash>: Sublevel
-        ├── inputs: Level<string, InputsRecord>   // Node -> inputs mapping
-        └── revdeps: Level<string, null>          // (input,node) reverse index
+├── values: SubLevel<string, DatabaseValue>          // Node output values
+├── freshness: SubLevel<string, Freshness>           // Node freshness state
+└── schemas: SubLevel<string, never>                 // Per-schema storage (no top-level values)
+    └── <schemaHash>: SubLevel
+        ├── inputs: SubLevel<string, InputsRecord>   // Node -> inputs mapping
+        └── revdeps: SubLevel<string, null>          // (input,node) reverse index
 ```
 
 ### Type Definitions
@@ -712,7 +712,7 @@ Once sublevels are in place, we can store schema metadata:
 /**
  * @typedef {object} DatabaseWithSublevels
  * ...
- * @property {Level<string, SchemaMetadata>} schemaMetadata
+ * @property {SubLevel<string, SchemaMetadata>} schemaMetadata
  */
 ```
 
