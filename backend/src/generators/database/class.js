@@ -7,10 +7,10 @@ const { isDatabaseValue, isFreshness } = require("./types");
 
 /** @typedef {import('./types').DatabaseValue} DatabaseValue */
 /** @typedef {import('./types').Freshness} Freshness */
-/** @typedef {import('./types').DatabaseBatchOperation} DatabaseBatchOperation */
 /** @typedef {DatabaseValue | Freshness | import('./types').InputsRecord | string[]} DatabaseStoredValue */
 /** @typedef {import('level').Level<string, DatabaseStoredValue>} LevelDB */
 /** @typedef {import('./types').DatabaseCapabilities} DatabaseCapabilities */
+/** @typedef {import('./types').DatabaseBatchOperation} DatabaseBatchOperation */
 
 /**
  * A thin wrapper around LevelDB database operations.

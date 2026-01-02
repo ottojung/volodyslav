@@ -108,7 +108,7 @@ function isDatabaseValue(value) {
  * A database put operation.
  * @template T
  * @typedef {object} DatabasePutOperation
- * @property {Level<string, T>} db - The database instance
+ * @property {SimpleSublevel<string, T>} sublevel - The database instance
  * @property {'put'} type - Operation type
  * @property {string} key - The key to store
  * @property {T} value - The value to store
@@ -118,7 +118,7 @@ function isDatabaseValue(value) {
  * A database delete operation.
  * @template T
  * @typedef {object} DatabaseDelOperation
- * @property {Level<string, T>} db - The database instance
+ * @property {SimpleSublevel<string, T>} sublevel - The database instance
  * @property {'del'} type - Operation type
  * @property {string} key - The key to delete
  */
@@ -135,10 +135,10 @@ function isDatabaseValue(value) {
 
 /**
  * A batch operation for the database.
- * /typedef {DatabasePutOperation<DatabaseValue> | DatabasePutOperation<Freshness> | DatabasePutOperation<InputsRecord> | DatabasePutOperation<string[]> | DatabaseDelOperation<DatabaseValue> | DatabaseDelOperation<Freshness> | DatabaseDelOperation<InputsRecord> | DatabaseDelOperation<string[]>} DatabaseBatchOperation
- * @template K, V
  * @typedef {AbstractBatchPutOperation<Level<string, DatabaseStoredValue>, string, DatabaseStoredValue> | AbstractBatchDelOperation<Level<string, DatabaseStoredValue>, string>} DatabaseBatchOperation
  */
+
+//* /typedef {DatabasePutOperation<DatabaseValue> | DatabasePutOperation<Freshness> | DatabasePutOperation<InputsRecord> | DatabasePutOperation<string[]> | DatabaseDelOperation<DatabaseValue> | DatabaseDelOperation<Freshness> | DatabaseDelOperation<InputsRecord> | DatabaseDelOperation<string[]>} DatabaseBatchOperation
 
 /**
  * A record storing the input dependencies of a node.
@@ -154,13 +154,29 @@ function isDatabaseValue(value) {
  */
 
 /**
+ * @template D
+ * @template F
+ * @template K
+ * @template V
+ * @typedef {import('abstract-level').AbstractSublevel<D, F, K, V>} AbstractSublevel
+ */
+
+/**
  * @typedef {string | Buffer<ArrayBufferLike> | Uint8Array<ArrayBufferLike>} SublevelFormat
+ */
+
+/**
+ * @typedef {Level<string, DatabaseStoredValue>} RootLevelType
+ */
+
+/**
+ * @typedef {AbstractSublevel<RootLevelType, SublevelFormat, string, string>} SchemaSublevelType
  */
 
 /**
  * @template K
  * @template V
- * @typedef {AbstractLevel<SublevelFormat, K, V>} SimpleSublevel
+ * @typedef {AbstractSublevel<SchemaSublevelType, SublevelFormat, K, V>} SimpleSublevel
  */
 
 module.exports = {

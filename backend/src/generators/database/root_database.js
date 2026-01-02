@@ -5,9 +5,13 @@
 
 const { makeTypedDatabase } = require('./typed_database');
 
+/** @typedef {import('./types').RootLevelType} RootLevelType */
 /** @typedef {import('./types').DatabaseValue} DatabaseValue */
 /** @typedef {import('./types').Freshness} Freshness */
-/** @typedef {import('./types').DatabaseBatchOperation} DatabaseBatchOperation */
+/** @typedef {import('./types').DatabaseStoredValue} DatabaseStoredValue */
+/**
+ * @typedef {import('./types').DatabaseBatchOperation} DatabaseBatchOperation
+ */
 
 /**
  * @template T
@@ -72,7 +76,7 @@ class RootDatabaseClass {
     /**
      * The underlying Level database instance.
      * @private
-     * @type {import('level').Level<string, unknown>}
+     * @type {RootLevelType}
      */
     db;
 
@@ -85,7 +89,7 @@ class RootDatabaseClass {
 
     /**
      * @constructor
-     * @param {import('level').Level<string, unknown>} db - The Level database instance
+     * @param {RootLevelType} db - The Level database instance
      */
     constructor(db) {
         this.db = db;
@@ -135,7 +139,29 @@ class RootDatabaseClass {
      * @returns {Promise<void>}
      */
     async batch(operations) {
-        return this.db.batch(operations);
+        /** @type {Array<import('abstract-level').AbstractBatchPutOperation<Level<string, DatabaseStoredValue>, string, DatabaseStoredValue>|import('abstract-level').AbstractBatchDelOperation<Level<string, DatabaseStoredValue>, string>>} */
+        const casted = operations.map(op => {
+            if (op.type === 'put') {
+                /** @type {import('abstract-level').AbstractBatchPutOperation<Level<string, DatabaseStoredValue>, string, DatabaseStoredValue>} */
+                const ret = {
+                    type: 'put',
+                    sublevel: op.sublevel,
+                    key: op.key,
+                    value: op.value,
+                };
+                return ret;
+            } else if (op.type === 'del') {
+                /** @type {import('abstract-level').AbstractBatchDelOperation<Level<string, DatabaseStoredValue>, string>} */
+                return {
+                    type: 'del',
+                    key: op.key,
+                    prefix: op.sublevel,
+                };
+            } else {
+                throw new Error(`Unknown operation: ${op}`);
+            }
+        });
+        return this.db.batch(casted);
     }
 
     /**
@@ -165,7 +191,7 @@ const { Level } = require('level');
  * @returns {Promise<RootDatabaseClass>}
  */
 async function makeRootDatabase(databasePath) {
-    /** @type {import('level').Level<string, unknown>} */
+    /** @type {RootLevelType} */
     const db = new Level(databasePath, { valueEncoding: 'json' });
     await db.open();
     return new RootDatabaseClass(db);

@@ -92,7 +92,7 @@ class TypedDatabaseClass {
      * @returns {DatabasePutOperation<TValue>}
      */
     putOp(key, value) {
-        return { db: this.sublevel, type: 'put', key, value };
+        return { sublevel: this.sublevel, type: 'put', key, value };
     }
 
     /**
@@ -101,7 +101,7 @@ class TypedDatabaseClass {
      * @returns {DatabaseDelOperation<TValue>}
      */
     delOp(key) {
-        return { db: this.sublevel, type: 'del', key };
+        return { sublevel: this.sublevel, type: 'del', key };
     }
 
     async *keys() {
