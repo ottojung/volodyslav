@@ -2144,6 +2144,212 @@ describe("9. Cycle detection via specialization / self-reference", () => {
 
         expect(g).toBeTruthy();
     });
+
+    test("cycle via overlap with different variable names: g(x,y) -> h(a,b) -> g(c,d)", () => {
+        const db = new InMemoryDatabase();
+
+        // g(x,y) can overlap with g(c,d) (same functor, both parameterized)
+        // h(a,b) overlaps with h(x,y) 
+        // This creates: g -> h -> g cycle
+        expect(() =>
+            makeDependencyGraph(db, [
+                {
+                    output: "g(x, y)",
+                    inputs: ["h(x, y)"],
+                    computor: async ([h]) => h,
+                },
+                {
+                    output: "h(a, b)",
+                    inputs: ["g(a, b)"],
+                    computor: async ([g]) => g,
+                },
+            ])
+        ).toThrow();
+
+        try {
+            makeDependencyGraph(db, [
+                {
+                    output: "g(x, y)",
+                    inputs: ["h(x, y)"],
+                    computor: async ([h]) => h,
+                },
+                {
+                    output: "h(a, b)",
+                    inputs: ["g(a, b)"],
+                    computor: async ([g]) => g,
+                },
+            ]);
+        } catch (e) {
+            expectOneOfNames(e, ["SchemaCycleError"]);
+        }
+    });
+
+    test("cycle through literal-variable overlap: f(x,y) <-> g(x,y)", () => {
+        const db = new InMemoryDatabase();
+
+        // Two parameterized patterns that depend on each other through overlap
+        // f(x,y) depends on g(x,y)
+        // g(a,b) depends on f(a,b)
+        // These overlap for any concrete values, creating a cycle
+        let threwError = false;
+        try {
+            makeDependencyGraph(db, [
+                {
+                    output: "f(x, y)",
+                    inputs: ["g(x, y)"],
+                    computor: async ([dep]) => dep,
+                },
+                {
+                    output: "g(a, b)",
+                    inputs: ["f(a, b)"],
+                    computor: async ([dep]) => dep,
+                },
+            ]);
+        } catch (e) {
+            threwError = true;
+            expectOneOfNames(e, ["SchemaCycleError"]);
+        }
+        expect(threwError).toBe(true);
+    });
+
+    test("no cycle when literals prevent overlap: f(x,'a') -> f(x,'b') with no f(x,'b') producer", () => {
+        const db = new InMemoryDatabase();
+
+        // f(x,'a') depends on f(x,'b'), but no schema produces f(x,'b')
+        // This is not a cycle (though it would fail at runtime when pulling)
+        const g = buildGraph(db, [
+            {
+                output: "f(x, 'a')",
+                inputs: ["f(x, 'b')"],
+                computor: async ([fb]) => fb,
+            },
+            {
+                output: "source",
+                inputs: [],
+                computor: async () => ({ ok: true }),
+            },
+        ]);
+
+        expect(g).toBeTruthy();
+    });
+
+    test("no cycle when literals differ in non-overlapping way: f('a',x) -> f('b',y) where outputs are disjoint", () => {
+        const db = new InMemoryDatabase();
+
+        // f('a',x) can never overlap with f('b',y) as outputs (different first literal)
+        // But if schema 1 depends on f('b', something) and schema 2 produces f('b', something)
+        // and schema 2 depends on f('a', something) and schema 1 produces f('a', something),
+        // that would be a cycle through the pattern overlap.
+        // Let me create a true non-cycle case:
+        const g = buildGraph(db, [
+            {
+                output: "f('a', x)",
+                inputs: ["g(x)"],  // Depends on different functor
+                computor: async ([dep]) => dep,
+            },
+            {
+                output: "f('b', y)",
+                inputs: ["h(y)"],  // Depends on different functor
+                computor: async ([dep]) => dep,
+            },
+            {
+                output: "g(z)",
+                inputs: [],
+                computor: async () => ({ ok: true }),
+            },
+            {
+                output: "h(w)",
+                inputs: [],
+                computor: async () => ({ ok: true }),
+            },
+        ]);
+
+        expect(g).toBeTruthy();
+    });
+
+    test("cycle with repeated variables: pair(x,x) -> derived(x) -> pair(y,y)", () => {
+        const db = new InMemoryDatabase();
+
+        // pair(x,x) overlaps with pair(y,y) when x=y
+        // This creates a cycle: pair -> derived -> pair
+        expect(() =>
+            makeDependencyGraph(db, [
+                {
+                    output: "pair(x, x)",
+                    inputs: ["derived(x)"],
+                    computor: async ([d]) => d,
+                },
+                {
+                    output: "derived(y)",
+                    inputs: ["pair(y, y)"],
+                    computor: async ([p]) => p,
+                },
+            ])
+        ).toThrow();
+
+        try {
+            makeDependencyGraph(db, [
+                {
+                    output: "pair(x, x)",
+                    inputs: ["derived(x)"],
+                    computor: async ([d]) => d,
+                },
+                {
+                    output: "derived(y)",
+                    inputs: ["pair(y, y)"],
+                    computor: async ([p]) => p,
+                },
+            ]);
+        } catch (e) {
+            expectOneOfNames(e, ["SchemaCycleError"]);
+        }
+    });
+
+    test("three-way cycle through overlaps: A(x) -> B(y) -> C(z) -> A(w)", () => {
+        const db = new InMemoryDatabase();
+
+        expect(() =>
+            makeDependencyGraph(db, [
+                {
+                    output: "nodeA(x)",
+                    inputs: ["nodeB(x)"],
+                    computor: async ([b]) => b,
+                },
+                {
+                    output: "nodeB(y)",
+                    inputs: ["nodeC(y)"],
+                    computor: async ([c]) => c,
+                },
+                {
+                    output: "nodeC(z)",
+                    inputs: ["nodeA(z)"],
+                    computor: async ([a]) => a,
+                },
+            ])
+        ).toThrow();
+
+        try {
+            makeDependencyGraph(db, [
+                {
+                    output: "nodeA(x)",
+                    inputs: ["nodeB(x)"],
+                    computor: async ([b]) => b,
+                },
+                {
+                    output: "nodeB(y)",
+                    inputs: ["nodeC(y)"],
+                    computor: async ([c]) => c,
+                },
+                {
+                    output: "nodeC(z)",
+                    inputs: ["nodeA(z)"],
+                    computor: async ([a]) => a,
+                },
+            ]);
+        } catch (e) {
+            expectOneOfNames(e, ["SchemaCycleError"]);
+        }
+    });
 });
 
 describe("10. Canonical key escaping stress tests", () => {
