@@ -41,7 +41,7 @@ module.exports = {
           
           locations.push({
             line: comment.loc.start.line + i,
-            column: comment.loc.start.column + matchIndex + anyIndex + 2 // +2 for "/*"
+            column: comment.loc.start.column + matchIndex + anyIndex + 2 // +2 to account for "/*" at start of comment block
           });
         }
       }
