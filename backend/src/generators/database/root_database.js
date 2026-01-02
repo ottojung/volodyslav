@@ -58,6 +58,13 @@ const { makeTypedDatabase } = require('./typed_database');
  */
 
 /**
+ * @template F
+ * @template K
+ * @template V
+ * @typedef {import('abstract-level').AbstractLevel<any, K, V>} AbstractLevel
+ */
+
+/**
  * Root database class providing schema-namespaced storage.
  */
 class RootDatabaseClass {
@@ -99,40 +106,18 @@ class RootDatabaseClass {
         // Create new schema storage with sublevels
         const schemaSublevel = this.db.sublevel(schemaHash, { valueEncoding: 'json' });
         
+        /** @type {AbstractLevel<string, string, DatabaseValue>} */
         const valuesSublevel = schemaSublevel.sublevel('values', { valueEncoding: 'json' });
+        /** @type {AbstractLevel<string, string, Freshness>} */
         const freshnessSublevel = schemaSublevel.sublevel('freshness', { valueEncoding: 'json' });
+        /** @type {AbstractLevel<string, string, InputsRecord>} */
         const inputsSublevel = schemaSublevel.sublevel('inputs', { valueEncoding: 'json' });
+        /** @type {AbstractLevel<string, string, string[]>} */
         const revdepsSublevel = schemaSublevel.sublevel('revdeps', { valueEncoding: 'json' });
 
         // Create backward-compatible database wrappers that check root level as fallback
         const valuesDb = makeTypedDatabase(valuesSublevel);
         const freshnessDb = makeTypedDatabase(freshnessSublevel);
-
-        // Wrap values database to check root level as fallback
-        const valuesWithFallback = {
-            /**
-             * @param {string} key
-             * @returns {Promise<any | undefined>}
-             */
-            get: async (key) => {
-                // Try schema storage first
-                let value = await valuesDb.get(key);
-                if (value !== undefined) {
-                    return value;
-                }
-                // Fall back to root level for backward compatibility with tests
-                try {
-                    value = await this.db.get(key);
-                    return value;
-                } catch {
-                    return undefined;
-                }
-            },
-            put: valuesDb.put.bind(valuesDb),
-            del: valuesDb.del.bind(valuesDb),
-            keys: valuesDb.keys.bind(valuesDb),
-            clear: valuesDb.clear.bind(valuesDb),
-        };
 
         // Wrap freshness database to check root level as fallback (with freshness: prefix)
         const freshnessWithFallback = {
@@ -161,7 +146,7 @@ class RootDatabaseClass {
         };
 
         const storage = {
-            values: valuesWithFallback,
+            values: valuesDb,
             freshness: freshnessWithFallback,
             inputs: makeTypedDatabase(inputsSublevel),
             revdeps: makeTypedDatabase(revdepsSublevel),
