@@ -138,6 +138,40 @@ Root Database (Level<string, any>)
  */
 
 /**
+ * Type-safe batch operation for values sublevel.
+ * @typedef {object} ValuesBatchOp
+ * @property {'put' | 'del'} type - Operation type
+ * @property {'values'} sublevel - Sublevel discriminator
+ * @property {string} key - Canonical node name
+ * @property {DatabaseValue} [value] - Required for 'put', omitted for 'del'
+ */
+
+/**
+ * Type-safe batch operation for freshness sublevel.
+ * @typedef {object} FreshnessBatchOp
+ * @property {'put' | 'del'} type - Operation type
+ * @property {'freshness'} sublevel - Sublevel discriminator
+ * @property {string} key - Canonical node name
+ * @property {Freshness} [value] - Required for 'put', omitted for 'del'
+ */
+
+/**
+ * Type-safe batch operation for schema sublevels.
+ * @typedef {object} SchemasBatchOp
+ * @property {'put' | 'del'} type - Operation type
+ * @property {'schemas'} sublevel - Sublevel discriminator
+ * @property {string} schemaHash - Schema hash
+ * @property {string} nestedSublevel - Either 'inputs' or 'revdeps'
+ * @property {string} key - Key within the nested sublevel
+ * @property {InputsRecord | null} [value] - InputsRecord for inputs, null for revdeps
+ */
+
+/**
+ * Union of all type-safe batch operations.
+ * @typedef {ValuesBatchOp | FreshnessBatchOp | SchemasBatchOp} TypeSafeBatchOp
+ */
+
+/**
  * A record storing the input dependencies of a node.
  * @typedef {object} InputsRecord
  * @property {string[]} inputs - Array of canonical input node names
@@ -178,6 +212,7 @@ Root Database (Level<string, any>)
  * @property {ValuesLevel} values - Node output values
  * @property {FreshnessLevel} freshness - Node freshness state
  * @property {SchemasLevel} schemas - Schema-specific storage
+ * @property {(operations: TypeSafeBatchOp[]) => Promise<void>} batch - Type-safe batch operation
  */
 ```
 
@@ -185,7 +220,7 @@ Root Database (Level<string, any>)
 
 #### 1. Strong Typing
 
-Each sublevel has a precise type contract:
+Each sublevel has a precise type contract, enforced at compile time:
 
 ```javascript
 // ✅ Type-safe: valuesLevel.get() returns DatabaseValue | undefined
@@ -193,6 +228,14 @@ const value = await database.values.get(canonicalNode);
 
 // ✅ Type-safe: freshnessLevel.get() returns Freshness | undefined
 const freshness = await database.freshness.get(canonicalNode);
+
+// ✅ Type-safe batch operations with string discriminators
+await database.batch([
+    { type: 'put', sublevel: 'values', key: 'user("alice")', value: userData },     // value: DatabaseValue
+    { type: 'put', sublevel: 'freshness', key: 'user("alice")', value: freshState }, // value: Freshness
+    // ❌ Compile error: value type mismatch
+    // { type: 'put', sublevel: 'freshness', key: 'user("alice")', value: userData },
+]);
 
 // ❌ Old way: runtime type checking required
 const storedValue = await database.get(key);
@@ -255,9 +298,9 @@ for await (const key of schemaStorage.revdeps.keys({ gte: prefix, lte: prefix + 
 }
 ```
 
-#### 5. Batch Operations Within Sublevels
+#### 5. Type-Safe Batch Operations
 
-Batch operations can be scoped to specific sublevels or span multiple sublevels:
+Batch operations can be scoped to specific sublevels or span multiple sublevels with type safety:
 
 ```javascript
 // Batch operation on values sublevel only
@@ -266,14 +309,15 @@ await database.values.batch([
     { type: 'put', key: 'user("bob")', value: {...} },
 ]);
 
-// Batch operation spanning multiple sublevels (atomically)
+// Type-safe batch operation spanning multiple sublevels (atomically)
+// Using string discriminators ensures type safety
 await database.batch([
-    { type: 'put', sublevel: database.values, key: 'user("alice")', value: {...} },
-    { type: 'put', sublevel: database.freshness, key: 'user("alice")', value: {...} },
+    { type: 'put', sublevel: 'values', key: 'user("alice")', value: {...} }, // value must be DatabaseValue
+    { type: 'put', sublevel: 'freshness', key: 'user("alice")', value: {...} }, // value must be Freshness
 ]);
 ```
 
-Note: The root database reference is `database` (which could be obtained via `database.values.db` or stored separately).
+The `database.batch()` method uses string discriminators (`'values'`, `'freshness'`, `'schemas'`) instead of sublevel instances to enable compile-time type checking. The implementation maps these strings to the appropriate sublevels internally.
 
 ## Implementation Plan
 
@@ -288,8 +332,9 @@ Note: The root database reference is `database` (which could be obtained via `da
    - Provide helper to get/create schema storage
 
 2. Extend `DatabaseClass` in `backend/src/generators/database/class.js`
-   - Add `this.values`, `this.freshness`, `this.schemas` fields (the typed sublevels)
-   - Keep existing `get()`, `put()`, `batch()` methods for backward compatibility (delegate to sublevels)
+   - Implement type-safe `batch()` method that accepts `TypeSafeBatchOp[]` with string discriminators
+   - Keep existing `get()`, `put()` methods for backward compatibility (delegate to sublevels)
+   - Map string discriminators to actual sublevels internallyh()` methods for backward compatibility (delegate to sublevels)
    - Add new convenience methods if needed
 
 3. Update `makeDatabase()` in `backend/src/generators/database/index.js`
@@ -310,7 +355,7 @@ Note: The root database reference is `database` (which could be obtained via `da
    ```javascript
    function makeGraphStorage(
        database,        // Root database (with .values, .freshness, .schemas)
-       schemaStorage    // SchemaStorage for this graph
+       schemaHash       // Schema hash for this graph
    ) { ... }
    ```
 
@@ -320,7 +365,9 @@ Note: The root database reference is `database` (which could be obtained via `da
    
    // ✅ Replace with direct sublevel access
    async function getInputs(node) {
-       const record = await schemaStorage.inputs.get(node);
+       const schemaStorage = database.schemas.sublevel(schemaHash);
+       const inputsLevel = schemaStorage.sublevel('inputs');
+       const record = await inputsLevel.get(node);
        return record ? record.inputs : null;
    }
    
@@ -333,7 +380,18 @@ Note: The root database reference is `database` (which could be obtained via `da
    }
    ```
 
-3. Update `listMaterializedNodes()` to use values sublevel:
+3. Update batch operations to use type-safe string discriminators:
+   ```javascript
+   function setNodeValueOp(node, value) {
+       return { type: 'put', sublevel: 'values', key: node, value };
+   }
+   
+   function setNodeFreshnessOp(node, freshness) {
+       return { type: 'put', sublevel: 'freshness', key: node, value: freshness };
+   }
+   ```
+
+4. Update `listMaterializedNodes()` to use values sublevel:
    ```javascript
    async function listMaterializedNodes() {
        const keys = [];
@@ -344,7 +402,7 @@ Note: The root database reference is `database` (which could be obtained via `da
    }
    ```
 
-4. Remove type-casting workarounds (FIXME at line 200)
+5. Remove type-casting workarounds (FIXME at line 200)
 
 **Risk**: Medium - changes internal implementation, but API unchanged
 
@@ -355,26 +413,18 @@ Note: The root database reference is `database` (which could be obtained via `da
 **Goal**: Pass schema storage to GraphStorage, remove schemaHash from keys.
 
 **Changes**:
-1. Update `class.js` to obtain schema storage from database:
+1. Update `class.js` to pass database and schemaHash to GraphStorage:
    ```javascript
    constructor(schema, database, capabilities) {
        // ... validation
        
        this.schemaHash = /* compute hash */;
        
-       // Get or create schema storage sublevel
-       this.schemaStorage = database.schemas.sublevel(this.schemaHash);
-       
-       // Create nested sublevels for inputs and revdeps
-       this.schemaStorage.inputs = this.schemaStorage.sublevel('inputs', {
-           valueEncoding: 'json'
-       });
-       this.schemaStorage.revdeps = this.schemaStorage.sublevel('revdeps');
-       
-       // Pass database and schema storage to GraphStorage
+       // Pass database and schemaHash to GraphStorage
+       // GraphStorage will access sublevels as needed
        this.graphStorage = makeGraphStorage(
            database,
-           this.schemaStorage
+           this.schemaHash
        );
    }
    ```
@@ -462,9 +512,10 @@ Rationale: This is an early-stage project. Clean architecture is more valuable t
 
 ### Files Modified
 
-**Core implementation** (~5 files):
+**Core implementation** (~6 files):
 - `backend/src/generators/database/sublevels.js` (new)
-- `backend/src/generators/database/class.js` (modified)
+- `backend/src/generators/database/batch_types.js` (new - type-safe batch operation types)
+- `backend/src/generators/database/class.js` (modified - type-safe batch() implementation)
 - `backend/src/generators/database/index.js` (modified)
 - `backend/src/generators/dependency_graph/graph_storage.js` (modified)
 - `backend/src/generators/dependency_graph/class.js` (modified)
@@ -479,16 +530,16 @@ Rationale: This is an early-stage project. Clean architecture is more valuable t
 - `backend/tests/stubs.js` (modified)
 - Various integration tests
 
-**Total estimate**: 17-22 files modified/created
+**Total estimate**: 18-23 files modified/created
 
 ### Effort Estimate
-
-- **Phase 1**: 2-3 hours (sublevel abstraction)
+3-4 hours (sublevel abstraction + type-safe batch operations)
 - **Phase 2**: 3-4 hours (GraphStorage migration)
 - **Phase 3**: 2-3 hours (DependencyGraph class updates)
 - **Phase 4**: 4-6 hours (test updates)
 - **Phase 5**: 1-2 hours (cleanup)
 
+**Total**: 13-19
 **Total**: 12-18 hours of focused development
 
 ## Future Extensions
