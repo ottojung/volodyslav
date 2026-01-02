@@ -119,14 +119,13 @@ The database stores multiple concerns without clear separation:
 
 ```
 Root Database (Level<string, object>)
-└── schemas: SubLevel<string, never>                          // Per-schema storage
-    └── <schemaHash>: SubLevel                                // Schema hash is the namespace boundary
-        ├── values: SubLevel<string, DatabaseValue>           // Node output values (per-schema)
-        ├── freshness: SubLevel<string, Freshness>            // Node freshness state (per-schema)
-        ├── inputs: SubLevel<string, InputsRecord>            // Node -> inputs mapping
-        └── revdeps: SubLevel<string, never>                  // Reverse dependencies (nested by input)
-            └── <inputNode>: SubLevel<string, null>           // All dependents of this input
-                └── <dependentNode>: null                     // Dependent existence marker
+└── <schemaHash>: SubLevel                                // Schema hash is the namespace boundary
+    ├── values: SubLevel<string, DatabaseValue>           // Node output values (per-schema)
+    ├── freshness: SubLevel<string, Freshness>            // Node freshness state (per-schema)
+    ├── inputs: SubLevel<string, InputsRecord>            // Node -> inputs mapping
+    └── revdeps: SubLevel<string, never>                  // Reverse dependencies (nested by input)
+        └── <inputNode>: SubLevel<string, null>           // All dependents of this input
+            └── <dependentNode>: null                     // Dependent existence marker
 ```
 
 **Key Design Decisions**:
