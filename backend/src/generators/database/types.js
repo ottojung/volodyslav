@@ -96,23 +96,31 @@ function isDatabaseValue(value) {
 }
 
 /**
+ * @typedef {DatabaseValue | Freshness | InputsRecord | string[]} DatabaseStoredValue
+ */
+
+/**
  * A database put operation.
+ * @template T
  * @typedef {object} DatabasePutOperation
+ * @property {SimpleSublevel<string, T>} db - The database instance
  * @property {'put'} type - Operation type
  * @property {string} key - The key to store
- * @property {DatabaseValue | Freshness | InputsRecord | string[]} value - The value to store
+ * @property {T} value - The value to store
  */
 
 /**
  * A database delete operation.
+ * @template T
  * @typedef {object} DatabaseDelOperation
+ * @property {SimpleSublevel<string, T>} db - The database instance
  * @property {'del'} type - Operation type
  * @property {string} key - The key to delete
  */
 
 /**
  * A batch operation for the database.
- * @typedef {DatabasePutOperation | DatabaseDelOperation} DatabaseBatchOperation
+ * @typedef {DatabasePutOperation<unknown> | DatabaseDelOperation<unknown>} DatabaseBatchOperation
  */
 
 /**

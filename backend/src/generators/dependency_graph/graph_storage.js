@@ -51,12 +51,12 @@
 /**
  * Creates a batch builder for atomic operations.
  * @param {RootDatabase} rootDatabase - The root database instance
+ * @param {SchemaStorage} schemaStorage - The schema storage instance
  * @returns {BatchBuilder}
  */
-function makeBatchBuilder(rootDatabase) {
+function makeBatchBuilder(rootDatabase, schemaStorage) {
     /** @type {DatabaseBatchOperation[]} */
     const operations = [];
-    const schemaStorage = rootDatabase.getSchemaStorage();
 
     return {
         values: {
@@ -64,16 +64,16 @@ function makeBatchBuilder(rootDatabase) {
             del: (key) => operations.push(schemaStorage.values.delOp(key)),
         },
         freshness: {
-            put: (key, value) => operations.push({ op: 'put', key, value }),
-            del: (key) => operations.push({ op: 'del', key }),
+            put: (key, value) => operations.push(schemaStorage.freshness.putOp(key, value)),
+            del: (key) => operations.push(schemaStorage.freshness.delOp(key)),
         },
         inputs: {
-            put: (key, value) => operations.push({ op: 'put', key, value }),
-            del: (key) => operations.push({ op: 'del', key }),
+            put: (key, value) => operations.push(schemaStorage.inputs.putOp(key, value)),
+            del: (key) => operations.push(schemaStorage.inputs.delOp(key)),
         },
         revdeps: {
-            put: (key, value) => operations.push({ op: 'put', key, value }),
-            del: (key) => operations.push({ op: 'del', key }),
+            put: (key, value) => operations.push(schemaStorage.revdeps.putOp(key, value)),
+            del: (key) => operations.push(schemaStorage.revdeps.delOp(key)),
         },
         async write() {
             await rootDatabase.batch(operations);
@@ -105,7 +105,7 @@ function makeGraphStorage(rootDatabase, schemaHash) {
         }
 
         // Use batch for atomic updates
-        const batch = makeBatchBuilder(rootDatabase);
+        const batch = makeBatchBuilder(rootDatabase, schemaStorage);
         
         // Store the inputs record
         batch.inputs.put(node, { inputs });
