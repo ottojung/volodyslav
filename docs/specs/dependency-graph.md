@@ -104,17 +104,30 @@ A **DependencyGraph** is defined by:
 * Variables in `output_expr` MUST be a superset of all variables in `input_exprs`
 * The graph MUST be acyclic when considering the schema structure (not individual instantiations)
 
-**Schema Overlap Detection (Normative):**
+**Pattern Matching and Overlap Detection (Normative):**
 
+**Matching:**
 A schema output pattern `P` **matches** a concrete node `N` if and only if:
-1. Same functor (identifier) and arity (number of arguments)
-2. For each argument position:
-   * If pattern arg is a literal: it MUST equal the concrete node arg literal
-   * If pattern arg is a variable:
-     * If the variable is encountered for the first time: it binds to the concrete node arg literal
-     * If the variable was previously bound: the concrete node arg literal MUST equal the previously bound literal
+1. Same functor (identifier) and arity (number of arguments).
+2. For each argument position, the pattern argument is compatible with the concrete argument:
+   * **Literal:** Must equal the concrete argument (type and value).
+   * **Variable:** Binds to the concrete argument. All occurrences of the same variable in `P` MUST bind to the same literal value in `N`.
 
-Two schema output patterns **overlap** if and only if there exists at least one concrete node that matches both patterns.
+**Overlap Detection:**
+Two schema output patterns `P1` and `P2` **overlap** if and only if:
+1. They have the same functor and arity.
+2. There exists a valid assignment of variables to literals that satisfies all constraints derived from unifying `P1` and `P2`.
+
+**Overlap Constraints:**
+For each argument position `i`:
+* Let `A` be the argument in `P1` and `B` be the argument in `P2`.
+* **Constraint:** `A` must equal `B`.
+
+**Satisfiability:**
+The set of constraints is satisfiable if there is no contradiction among:
+* **Literal-Literal:** `L1 == L2` is satisfiable iff `L1` and `L2` are identical (same type and value).
+* **Variable-Literal:** `V == L` imposes a constraint on `V`. If `V` is constrained to multiple different literals, it is unsatisfiable.
+* **Variable-Variable:** `V1 == V2` imposes a constraint that `V1` and `V2` must bind to the same value.
 
 **Graph Initialization Requirement:**
 The system MUST reject graphs with overlapping output patterns.
