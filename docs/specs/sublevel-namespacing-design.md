@@ -80,7 +80,7 @@ Different data types are identified by key patterns rather than explicit structu
 
 ### 4. SchemaHash as Namespace Boundary
 
-The current design uses `schemaHash` as a namespace discriminator:
+The current implementation uses weak `schemaHash` as a namespace discriminator:
 
 ```javascript
 // From class.js
