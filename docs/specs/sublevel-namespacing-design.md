@@ -5,9 +5,11 @@
 This document proposes a redesign of the dependency graph storage layer to use LevelDB sublevels for isolation and namespacing, replacing the current ad-hoc string prefix approach. The new design provides:
 
 1. **Strong typing**: Each sublevel has a well-defined key-value type contract
-2. **Logical isolation**: Different data concerns separated into distinct sublevels
-3. **Type safety**: No manual string concatenation or parsing
-4. **Maintainability**: Clear separation of concerns and reduced coupling
+2. **Absolute type safety**: **Zero type casts** in the implementation—all types enforced through interfaces
+3. **Logical isolation**: Different data concerns separated into distinct sublevels
+4. **Simple database interface**: All databases expose a common, well-typed interface
+5. **Maintainability**: Clear separation of concerns and reduced coupling
+6. **Implementation freedom**: Spec no longer dictates internal key prefixes like `"freshness:"`
 
 ## Current Issues
 
@@ -55,8 +57,11 @@ The current `Database` interface uses a single undifferentiated key-value store:
 **Problems**:
 - All values stored as `DatabaseStoredValue` union type
 - Runtime type checking required (isDatabaseValue, isFreshness)
-- Type casting necessary (see FIXME in graph_storage.js line 200)
+- **Type casting**
 - No static guarantees about what type of value exists at a given key
+- **Violates project's "no type casting" principle**
+
+**Critical Impact**: The project explicitly forbids type casting for safety reasons. The current implementation resorts to type casts because a single key-value store mixes incompatible types. This is a fundamental architectural flaw that the new design must eliminate entirely.
 
 ### 3. Implicit Naming Conventions
 
@@ -122,53 +127,53 @@ Root Database (Level<string, object>)
 
 ### Type Definitions
 
+#### Common Database Interface
+
+All databases (values, freshness, inputs, revdeps) implement a common, simple, well-typed interface:
+
 ```javascript
 /**
- * A sublevel for storing node output values.
+ * Generic typed database interface.
+ * @template TKey - The key type (typically string)
+ * @template TValue - The value type
+ * @typedef {object} TypedDatabase
+ * @property {(key: TKey) => Promise<TValue | undefined>} get - Retrieve a value
+ * @property {(key: TKey, value: TValue) => Promise<void>} put - Store a value
+ * @property {(key: TKey) => Promise<void>} del - Delete a value
+ * @property {() => AsyncIterable<TKey>} keys - Iterate over all keys
+ * @property {() => Promise<void>} clear - Clear all entries
+ */
+```
+
+#### Concrete Database Types
+
+```javascript
+/**
+ * Database for storing node output values.
  * Key: canonical node name (e.g., "user('alice')")
  * Value: the computed value (string, number, object, array, null, boolean)
- * @typedef {import('level').Level<string, DatabaseValue>} ValuesLevel
+ * @typedef {TypedDatabase<string, DatabaseValue>} ValuesDatabase
  */
 
 /**
- * A sublevel for storing node freshness state.
+ * Database for storing node freshness state.
  * Key: canonical node name (e.g., "user('alice')")
  * Value: freshness state object
- * @typedef {import('level').Level<string, Freshness>} FreshnessLevel
+ * @typedef {TypedDatabase<string, Freshness>} FreshnessDatabase
  */
 
 /**
- * Type-safe batch operation for values sublevel.
- * @typedef {object} ValuesBatchOp
- * @property {'put' | 'del'} type - Operation type
- * @property {'values'} sublevel - Sublevel discriminator
- * @property {string} key - Canonical node name
- * @property {DatabaseValue} [value] - Required for 'put', omitted for 'del'
+ * Database for storing node input dependencies.
+ * Key: canonical node name (e.g., "user('alice')")
+ * Value: inputs record with array of dependency names
+ * @typedef {TypedDatabase<string, InputsRecord>} InputsDatabase
  */
 
 /**
- * Type-safe batch operation for freshness sublevel.
- * @typedef {object} FreshnessBatchOp
- * @property {'put' | 'del'} type - Operation type
- * @property {'freshness'} sublevel - Sublevel discriminator
- * @property {string} key - Canonical node name
- * @property {Freshness} [value] - Required for 'put', omitted for 'del'
- */
-
-/**
- * Type-safe batch operation for schema sublevels.
- * @typedef {object} SchemasBatchOp
- * @property {'put' | 'del'} type - Operation type
- * @property {'schemas'} sublevel - Sublevel discriminator
- * @property {string} schemaHash - Schema hash
- * @property {string} nestedSublevel - Either 'inputs' or 'revdeps'
- * @property {string} key - Key within the nested sublevel
- * @property {InputsRecord | null} [value] - InputsRecord for inputs, null for revdeps
- */
-
-/**
- * Union of all type-safe batch operations.
- * @typedef {ValuesBatchOp | FreshnessBatchOp | SchemasBatchOp} GenericBatchOp
+ * Database for reverse dependency index.
+ * Key: "<input-node>:<dependent-node>" (e.g., "user('alice'):posts('alice')")
+ * Value: null (we only care about key existence)
+ * @typedef {TypedDatabase<string, null>} RevdepsDatabase
  */
 
 /**
@@ -178,231 +183,344 @@ Root Database (Level<string, object>)
  */
 
 /**
- * A sublevel for storing node input dependencies.
- * Key: canonical node name (e.g., "user('alice')")
- * Value: inputs record with array of dependency names
- * @typedef {import('level').Level<string, InputsRecord>} InputsLevel
- */
-
-/**
- * A sublevel for reverse dependency index.
- * Key: "<input-node>:<dependent-node>" (e.g., "user('alice'):posts('alice')")
- * Value: null (we only care about key existence)
- * @typedef {import('level').Level<string, null>} RevdepsLevel
- */
-
-/**
  * Storage container for a single dependency graph schema.
  * @typedef {object} SchemaStorage
- * @property {InputsLevel} inputs - Node inputs index
- * @property {RevdepsLevel} revdeps - Reverse dependencies index
+ * @property {InputsDatabase} inputs - Node inputs index
+ * @property {RevdepsDatabase} revdeps - Reverse dependencies index
  */
 
 /**
- * A sublevel for storing schema-specific data.
- * Each schema is stored in a nested sublevel accessed by schemaHash.
- * The sublevel itself does not store values at top-level keys.
- * @typedef {import('level').AbstractLevel<string, never>} SchemasLevel
+ * GraphStorage exposes typed databases as fields.
+ * This provides type-safe access without needing type casts.
+ * @typedef {object} GraphStorage
+ * @property {ValuesDatabase} values - Database for node values
+ * @property {FreshnessDatabase} freshness - Database for node freshness
+ * @property {SchemaStorage} schema - Schema-specific databases (inputs, revdeps)
+ * @property {(node: string, inputs: string[]) => Promise<void>} ensureNodeIndexed - Index a node's dependencies
+ * @property {(input: string) => Promise<string[]>} listDependents - List all dependents of an input
+ * @property {(node: string) => Promise<string[] | null>} getInputs - Get inputs for a node
  */
 
 /**
- * Root database structure with typed sublevels.
- * This represents the enhanced Database interface with sublevel properties.
- * @typedef {object} DatabaseWithSublevels
- * @property {ValuesLevel} values - Node output values
- * @property {FreshnessLevel} freshness - Node freshness state
- * @property {SchemasLevel} schemas - Schema-specific storage
- * @property {(operations: GenericBatchOp[]) => Promise<void>} batch - Type-safe batch operation
+ * Root database structure with typed databases.
+ * All sub-databases implement the TypedDatabase interface.
+ * @typedef {object} RootDatabase
+ * @property {ValuesDatabase} values - Node output values
+ * @property {FreshnessDatabase} freshness - Node freshness state
+ * @property {(schemaHash: string) => SchemaStorage} getSchemaStorage - Get schema-specific storage
+ * @property {(operations: Array<{type: 'put'|'del', db: TypedDatabase<any,any>, key: any, value?: any}>) => Promise<void>} batch - Atomic batch operations across databases
  */
+```
+
+### Type Safety Guarantees
+
+#### Zero Type Casts Policy
+
+**CRITICAL**: The new implementation MUST contain **zero type casts**. This is enforced through:
+
+1. **Separate typed databases**: Each database has a single, well-defined value type
+2. **Exposed as fields**: `GraphStorage` exposes databases as properly typed fields
+3. **Type inference**: TypeScript/JSDoc can infer types without casts
+
+```javascript
+// ✅ Correct: No type cast needed
+const value = await graphStorage.values.get(nodeName);
+// Type: DatabaseValue | undefined (no cast required)
+
+const freshness = await graphStorage.freshness.get(nodeName);
+// Type: Freshness | undefined (no cast required)
+
+const inputs = await graphStorage.schema.inputs.get(nodeName);
+// Type: InputsRecord | undefined (no cast required)
+
+// ❌ FORBIDDEN: Type casting
+const value = /** @type {DatabaseValue} */ (await db.get(key)); // NEVER DO THIS
+```
+
+#### Common Interface Pattern
+
+All databases implement `TypedDatabase<TKey, TValue>`, providing:
+- Uniform API across all storage
+- Type-safe operations without casts
+- Easy to test with mocks
+- Clear contracts
+
+```javascript
+/**
+ * Generic database interface - all databases implement this.
+ * @template TKey
+ * @template TValue
+ */
+interface TypedDatabase<TKey, TValue> {
+    get(key: TKey): Promise<TValue | undefined>;
+    put(key: TKey, value: TValue): Promise<void>;
+    del(key: TKey): Promise<void>;
+    keys(): AsyncIterable<TKey>;
+    clear(): Promise<void>;
+}
 ```
 
 ### Key Advantages
 
-#### 1. Strong Typing
+#### 1. Strong Typing with Zero Type Casts
 
-Each sublevel has a precise type contract, enforced at compile time:
+Each database has a precise type contract through the `TypedDatabase` interface:
 
 ```javascript
-// ✅ Type-safe: valuesLevel.get() returns DatabaseValue | undefined
-const value = await database.values.get(canonicalNode);
+// ✅ Type-safe: No casts needed, types inferred from database field
+const value = await graphStorage.values.get(canonicalNode);
+// Type: DatabaseValue | undefined
 
-// ✅ Type-safe: freshnessLevel.get() returns Freshness | undefined
-const freshness = await database.freshness.get(canonicalNode);
+const freshness = await graphStorage.freshness.get(canonicalNode);
+// Type: Freshness | undefined
 
-// ✅ Type-safe batch operations with string discriminators
-await database.batch([
-    { type: 'put', sublevel: 'values', key: 'user("alice")', value: userData },     // value: DatabaseValue
-    { type: 'put', sublevel: 'freshness', key: 'user("alice")', value: freshState }, // value: Freshness
-    // ❌ Compile error: value type mismatch
-    // { type: 'put', sublevel: 'freshness', key: 'user("alice")', value: userData },
-]);
+const inputsRecord = await graphStorage.schema.inputs.get(canonicalNode);
+// Type: InputsRecord | undefined
 
-// ❌ Old way: runtime type checking required
+// ✅ Type-safe: All databases share the same interface
+function clearDatabase<K, V>(db: TypedDatabase<K, V>) {
+    await db.clear();
+}
+
+clearDatabase(graphStorage.values);    // Works
+clearDatabase(graphStorage.freshness); // Works
+clearDatabase(graphStorage.schema.inputs); // Works
+
+// ❌ Old way: runtime type checking + type casting
 const storedValue = await database.get(key);
 if (isDatabaseValue(storedValue)) {
+    const value = /** @type {DatabaseValue} */ (storedValue); // Type cast required!
     // ...
 } else if (isFreshness(storedValue)) {
+    const freshness = /** @type {Freshness} */ (storedValue); // Type cast required!
     // ...
 }
 ```
 
 #### 2. Logical Isolation
 
-Different concerns are separated into distinct sublevels:
+Different concerns are separated into distinct databases:
 
 ```javascript
-// Values are in their own space
-await database.values.put(node, computedValue);
+// Values database
+await graphStorage.values.put(node, computedValue);
 
-// Freshness is in its own space (no collision possible)
-await database.freshness.put(node, { state: 'up-to-date' });
+// Freshness database (no collision possible with values)
+await graphStorage.freshness.put(node, 'up-to-date');
 
-// Schema indices are isolated by schemaHash
-const schemaStorage = await getSchemaStorage(database.schemas, schemaHash);
-await schemaStorage.inputs.put(node, { inputs: ['input1', 'input2'] });
+// Schema indices are in separate databases
+await graphStorage.schema.inputs.put(node, { inputs: ['input1', 'input2'] });
+await graphStorage.schema.revdeps.put(`${input}:${node}`, null);
 ```
 
-#### 3. No Manual String Construction
+#### 3. No Manual String Construction or Ad-hoc Prefixes
 
-Sublevels handle namespacing automatically:
+**CRITICAL**: The implementation uses **only sublevels**, with **zero ad-hoc string prefixes**:
 
 ```javascript
 // ❌ Old way: manual prefix construction
 const inputsKey = `dg:${schemaHash}:inputs:${node}`;
+const freshnessKey = `freshness:${node}`; // Ad-hoc prefix
 await database.put(inputsKey, { inputs: [...] });
+await database.put(freshnessKey, 'up-to-date');
 
-// ✅ New way: sublevel handles namespacing
-const schemaStorage = await getSchemaStorage(database.schemas, schemaHash);
-await schemaStorage.inputs.put(node, { inputs: [...] });
+// ✅ New way: Only sublevels, no string prefixes
+await graphStorage.schema.inputs.put(node, { inputs: [...] });
+await graphStorage.freshness.put(node, 'up-to-date');
+// LevelDB sublevels handle namespacing internally - no string concatenation
 ```
 
 #### 4. Clear Enumeration
 
-Each sublevel can be enumerated independently:
+Each database can be enumerated independently:
 
 ```javascript
 // List all materialized nodes (just values, no indices)
-const materializedNodes = await database.values.keys().all();
+const materializedNodes = [];
+for await (const key of graphStorage.values.keys()) {
+    materializedNodes.push(key);
+}
 
 // List all nodes with freshness state
-const nodesWithFreshness = await database.freshness.keys().all();
-
-// List all schemas
-const schemaHashes = await database.schemas.keys().all();
+const nodesWithFreshness = [];
+for await (const key of graphStorage.freshness.keys()) {
+    nodesWithFreshness.push(key);
+}
 
 // List all dependents of an input (within a schema)
-const prefix = `${inputNode}:`;
 const dependents = [];
-for await (const key of schemaStorage.revdeps.keys({ gte: prefix, lte: prefix + '\xff' })) {
-    dependents.push(key);
+for await (const key of graphStorage.schema.revdeps.keys()) {
+    if (key.startsWith(`${inputNode}:`)) {
+        dependents.push(key.substring(inputNode.length + 1));
+    }
 }
 ```
 
-#### 5. Type-Safe Batch Operations
+#### 5. Atomic Operations
 
-Batch operations can be scoped to specific sublevels or span multiple sublevels with type safety:
+Operations within a single database are naturally atomic. Cross-database atomicity is implementation-specific:
 
 ```javascript
-// Batch operation on values sublevel only
-await database.values.batch([
-    { type: 'put', key: 'user("alice")', value: {...} },
-    { type: 'put', key: 'user("bob")', value: {...} },
-]);
+// Individual database operations are atomic
+await graphStorage.values.put(node, value);
+await graphStorage.freshness.put(node, 'up-to-date');
 
-// Type-safe batch operation spanning multiple sublevels (atomically)
-// Using string discriminators ensures type safety
-await database.batch([
-    { type: 'put', sublevel: 'values', key: 'user("alice")', value: {...} }, // value must be DatabaseValue
-    { type: 'put', sublevel: 'freshness', key: 'user("alice")', value: {...} }, // value must be Freshness
-]);
+// For truly atomic multi-database updates, use root database batch if needed
+// (implementation detail - not part of GraphStorage interface)
 ```
 
-The `database.batch()` method uses string discriminators (`'values'`, `'freshness'`, `'schemas'`) instead of sublevel instances to enable compile-time type checking. The implementation maps these strings to the appropriate sublevels internally.
+## Specification Updates Required
+
+### Remove Hardcoded Key Prefix Convention
+
+**CRITICAL**: The current spec hardcodes the `freshnessKey()` convention:
+
+```javascript
+// From dependency-graph.md
+function freshnessKey(nodeKey: string): string {
+  return `freshness:${nodeKey}`;
+}
+```
+
+**This MUST be removed from the spec**. Key prefixes are **implementation details**, not API contracts.
+
+#### Required Changes to dependency-graph.md
+
+1. **Remove "Freshness Key Convention" section** (around line 1043)
+   - Delete the `freshnessKey()` function definition
+   - Delete any mention of `"freshness:"` prefix
+
+2. **Update "Database Storage Model" section** (around line 300)
+   - Remove: "**Freshness Keys:** Use the same convention with a prefix: `'freshness:' + canonical_node_name`"
+   - Remove examples: `'freshness:all_events'`, `"freshness:event_context('id123')"`
+
+3. **Clarify that key naming is implementation-defined**:
+   ```markdown
+   ### Storage Requirements (Normative)
+   
+   - Node values MUST be persistable and retrievable by canonical node name
+   - Freshness state MUST be persistable and retrievable by canonical node name
+   - The specific key naming scheme is implementation-defined
+   - Implementations MUST ensure no key collisions between values and freshness
+   ```
+
+4. **Update test requirements**:
+   ```markdown
+   ### Test Requirements
+   
+   - Tests MUST NOT assert specific key formats or prefixes
+   - Tests MUST use only the public `Database` interface
+   - Tests MUST verify behavior, not implementation details
+   ```
+
+#### Rationale
+
+The spec is a **behavioral contract**, not an implementation guide. By specifying `"freshness:"` as a prefix, the spec:
+- Locks implementations into a specific storage strategy
+- Prevents use of sublevels or other namespacing approaches
+- Exposes implementation details as API contracts
+- Violates separation of concerns
+
+With sublevels, there is **no `"freshness:"` prefix at all**—it's handled by LevelDB's sublevel mechanism internally.
 
 ## Implementation Plan
 
-### Phase 1: Create Sublevel Abstraction (Low Risk)
+### Phase 1: Create Typed Database Abstraction (Low Risk)
 
-**Goal**: Introduce sublevel-based database structure without changing existing code.
+**Goal**: Introduce typed database interface and sublevel wrappers.
 
 **Changes**:
-1. Create new module: `backend/src/generators/database/sublevels.js`
-   - Define typed sublevel structure
-   - Export factory function `makeSublevels(db)` that creates and returns the sublevel structure
-   - Provide helper to get/create schema storage
+1. Create new module: `backend/src/generators/database/typed_database.js`
+   - Define `TypedDatabase<TKey, TValue>` interface
+   - Implement wrapper class that adapts LevelDB sublevel to `TypedDatabase` interface
+   - **CRITICAL**: No type casts in implementation—enforce types through wrapper
 
-2. Extend `DatabaseClass` in `backend/src/generators/database/class.js`
-   - Implement type-safe `batch()` method that accepts `GenericBatchOp[]` with string discriminators
-   - Keep existing `get()`, `put()` methods for backward compatibility (delegate to sublevels)
-   - Map string discriminators to actual sublevels internallyh()` methods for backward compatibility (delegate to sublevels)
-   - Add new convenience methods if needed
+2. Create new module: `backend/src/generators/database/root_database.js`
+   - Implement `RootDatabase` class with typed database fields:
+     ```javascript
+     class RootDatabase {
+         /** @type {ValuesDatabase} */
+         values;
+         /** @type {FreshnessDatabase} */
+         freshness;
+         /** @param {string} schemaHash */
+         getSchemaStorage(schemaHash) { ... }
+     }
+     ```
+   - Factory function `makeRootDatabase(levelDbPath)` creates all sublevels
 
-3. Update `makeDatabase()` in `backend/src/generators/database/index.js`
-   - Initialize sublevels structure using the factory
-   - Attach sublevels to DatabaseClass instance
-   - No breaking changes to existing interface
+3. Keep `DatabaseClass` unchanged for backward compatibility
+   - Will be deprecated in Phase 5
 
 **Risk**: Low - additive changes only, existing code unaffected
 
-**Files affected**: 3 new/modified
+**Files affected**: 2 new
 
-### Phase 2: Migrate GraphStorage (Medium Risk)
+### Phase 2: Rewrite GraphStorage with Typed Databases (Medium Risk)
 
-**Goal**: Rewrite `graph_storage.js` to use sublevels, remove string prefix logic.
+**Goal**: Rewrite `graph_storage.js` to expose typed databases as fields, eliminate all type casts and string prefixes.
 
 **Changes**:
-1. Update `makeGraphStorage()` signature to accept the root database and schema storage:
+1. Update `makeGraphStorage()` signature:
    ```javascript
-   function makeGraphStorage(
-       database,        // Root database (with .values, .freshness, .schemas)
-       schemaHash       // Schema hash for this graph
-   ) { ... }
-   ```
-
-2. Replace key construction functions with sublevel access:
-   ```javascript
-   // ❌ Delete: inputsKey(), revdepKey()
-   
-   // ✅ Replace with direct sublevel access
-   async function getInputs(node) {
-       const schemaStorage = database.schemas.sublevel(schemaHash);
-       const inputsLevel = schemaStorage.sublevel('inputs');
-       const record = await inputsLevel.get(node);
-       return record ? record.inputs : null;
-   }
-   
-   async function getNodeValue(node) {
-       return await database.values.get(node);
-   }
-   
-   async function getNodeFreshness(node) {
-       return await database.freshness.get(node);
+   /**
+    * @param {RootDatabase} rootDatabase
+    * @param {string} schemaHash
+    * @returns {GraphStorage}
+    */
+   function makeGraphStorage(rootDatabase, schemaHash) {
+       const schemaStorage = rootDatabase.getSchemaStorage(schemaHash);
+       
+       return {
+           // Expose databases as fields
+           values: rootDatabase.values,
+           freshness: rootDatabase.freshness,
+           schema: schemaStorage,
+           
+           // Helper methods
+           async ensureNodeIndexed(node, inputs) { ... },
+           async listDependents(input) { ... },
+           async getInputs(node) { ... },
+       };
    }
    ```
 
-3. Update batch operations to use type-safe string discriminators:
+2. **Delete all key construction functions**:
    ```javascript
-   function setNodeValueOp(node, value) {
-       return { type: 'put', sublevel: 'values', key: node, value };
-   }
-   
-   function setNodeFreshnessOp(node, freshness) {
-       return { type: 'put', sublevel: 'freshness', key: node, value: freshness };
-   }
+   // ❌ DELETE: freshnessKey(), inputsKey(), revdepKey(), revdepPrefix()
+   // These are replaced by typed database fields
    ```
 
-4. Update `listMaterializedNodes()` to use values sublevel:
+3. **Remove all type-casting code** (FIXME at line 200):
+   ```javascript
+   // ❌ OLD: Type cast required
+   const value = /** @type {DatabaseValue} */ (await database.get(key));
+   
+   // ✅ NEW: No cast needed - type inferred from database field
+   const value = await graphStorage.values.get(node);
+   ```
+
+4. Update `listMaterializedNodes()` - no filtering needed:
    ```javascript
    async function listMaterializedNodes() {
        const keys = [];
-       for await (const key of database.values.keys()) {
+       for await (const key of graphStorage.values.keys()) {
            keys.push(key);
        }
        return keys;
    }
+   // No need to filter out "freshness:" or "dg:" prefixes - they don't exist!
    ```
 
-5. Remove type-casting workarounds (FIXME at line 200)
+5. Update all call sites to use database fields directly:
+   ```javascript
+   // ❌ OLD: Through wrapper methods
+   await storage.setNodeValueOp(node, value);
+   
+   // ✅ NEW: Direct database access
+   await graphStorage.values.put(node, value);
+   await graphStorage.freshness.put(node, 'up-to-date');
+   ```
 
 **Risk**: Medium - changes internal implementation, but API unchanged
 
@@ -456,19 +574,24 @@ The `database.batch()` method uses string discriminators (`'values'`, `'freshnes
 
 **Files affected**: ~10-15 test files
 
-### Phase 5: Remove Legacy Code (Low Risk)
+### Phase 5: Remove Legacy Code and Update Spec (Low Risk)
 
-**Goal**: Remove old prefix-based code once migration complete.
+**Goal**: Remove old prefix-based code once migration complete, update specification.
 
 **Changes**:
 1. Delete `freshnessKey()` from `database/types.js`
 2. Remove `DatabaseStoredValue` union type (no longer needed)
-3. Remove `isDatabaseValue`, `isFreshness` type guards (replaced by sublevel typing)
+3. Remove `isDatabaseValue`, `isFreshness` type guards (replaced by typed databases)
 4. Remove schemaHash-based key filtering logic
+5. **Update `docs/specs/dependency-graph.md`**:
+   - Remove `freshnessKey()` function definition
+   - Remove all mentions of `"freshness:"` prefix
+   - Clarify that key naming is implementation-defined
+   - Update test requirements to avoid asserting specific key formats
 
-**Risk**: Low - dead code removal
+**Risk**: Low - dead code removal and spec clarification
 
-**Files affected**: 3 modified
+**Files affected**: 4 modified (3 code files + 1 spec file)
 
 ## Migration Strategy
 
@@ -512,13 +635,12 @@ Rationale: This is an early-stage project. Clean architecture is more valuable t
 
 ### Files Modified
 
-**Core implementation** (~6 files):
-- `backend/src/generators/database/sublevels.js` (new)
-- `backend/src/generators/database/batch_types.js` (new - type-safe batch operation types)
-- `backend/src/generators/database/class.js` (modified - type-safe batch() implementation)
-- `backend/src/generators/database/index.js` (modified)
-- `backend/src/generators/dependency_graph/graph_storage.js` (modified)
-- `backend/src/generators/dependency_graph/class.js` (modified)
+**Core implementation** (~5 files):
+- `backend/src/generators/database/typed_database.js` (new - TypedDatabase interface)
+- `backend/src/generators/database/root_database.js` (new - RootDatabase with typed fields)
+- `backend/src/generators/database/types.js` (modified - add TypedDatabase types)
+- `backend/src/generators/dependency_graph/graph_storage.js` (modified - expose databases as fields)
+- `backend/src/generators/dependency_graph/class.js` (modified - use new GraphStorage interface)
 
 **Type definitions** (~2 files):
 - `backend/src/generators/database/types.js` (modified)
@@ -530,17 +652,19 @@ Rationale: This is an early-stage project. Clean architecture is more valuable t
 - `backend/tests/stubs.js` (modified)
 - Various integration tests
 
+**Specification** (~1 file):
+- `docs/specs/dependency-graph.md` (modified - remove `freshnessKey()` and prefix conventions)
+
 **Total estimate**: 18-23 files modified/created
 
 ### Effort Estimate
-3-4 hours (sublevel abstraction + type-safe batch operations)
-- **Phase 2**: 3-4 hours (GraphStorage migration)
+- **Phase 1**: 3-4 hours (typed database interface and wrappers)
+- **Phase 2**: 3-4 hours (GraphStorage rewrite with typed database fields)
 - **Phase 3**: 2-3 hours (DependencyGraph class updates)
 - **Phase 4**: 4-6 hours (test updates)
-- **Phase 5**: 1-2 hours (cleanup)
+- **Phase 5**: 1-2 hours (cleanup + spec update)
 
-**Total**: 13-19
-**Total**: 12-18 hours of focused development
+**Total**: 13-19 hours of focused development
 
 ## Future Extensions
 
@@ -678,9 +802,19 @@ async function getSchemaStatistics(database, schemaHash) {
 
 ## Conclusion
 
-The sublevel-based design provides significant improvements in type safety, maintainability, and clarity over the current prefix-based approach. The migration is feasible with acceptable scope (12-18 hours, 17-22 files). A clean-break migration strategy is recommended for architectural clarity.
+The sublevel-based design with typed database interfaces provides significant improvements over the current prefix-based approach:
 
-The design enables future extensions like schema metadata storage, index rebuilding, and per-schema statistics. It follows the project's conventions around encapsulation, strong typing, and clear separation of concerns.
+1. **Zero type casts**: All types enforced through typed database fields—no type casting anywhere in the implementation
+2. **No ad-hoc prefixes**: Only sublevels, no string concatenation like `"freshness:"` or `"dg:"`
+3. **Simple common interface**: All databases implement `TypedDatabase<TKey, TValue>`
+4. **GraphStorage exposes databases as fields**: Direct access to typed databases without wrapper methods
+5. **Spec independence**: Implementations are free to choose storage strategies—spec focuses on behavior, not implementation
+
+The migration is feasible with acceptable scope (13-19 hours, 18-23 files including spec updates). A clean-break migration strategy is recommended for architectural clarity.
+
+The design enables future extensions like schema metadata storage, index rebuilding, and per-schema statistics. It follows the project's conventions around encapsulation, strong typing, clear separation of concerns, and the critical "no type casting" principle.
+
+**Specification Impact**: This design requires updates to `dependency-graph.md` to remove hardcoded `"freshness:"` prefix conventions, ensuring the spec remains a behavioral contract rather than an implementation prescription.
 
 ## References
 
