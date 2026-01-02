@@ -85,7 +85,7 @@ The current design uses `schemaHash` as a namespace discriminator:
 ```javascript
 // From class.js
 this.schemaHash = crypto
-    .createHash("sha256")
+    .createHash("md5")
     .update(schemaStr)
     .digest("hex")
     .slice(0, 16);
@@ -115,15 +115,24 @@ The database stores multiple concerns without clear separation:
 
 ### High-Level Architecture
 
+**Schema Hash is the Namespace Boundary**: Each schema hash gets its own isolated namespace containing all data for that graph instance.
+
 ```
 Root Database (Level<string, object>)
-├── values: SubLevel<string, DatabaseValue>          // Node output values
-├── freshness: SubLevel<string, Freshness>           // Node freshness state
-└── schemas: SubLevel<string, never>                 // Per-schema storage (no top-level values)
-    └── <schemaHash>: SubLevel
-        ├── inputs: SubLevel<string, InputsRecord>   // Node -> inputs mapping
-        └── revdeps: SubLevel<string, null>          // (input,node) reverse index
+└── schemas: SubLevel<string, never>                          // Per-schema storage
+    └── <schemaHash>: SubLevel                                // Schema hash is the namespace boundary
+        ├── values: SubLevel<string, DatabaseValue>           // Node output values (per-schema)
+        ├── freshness: SubLevel<string, Freshness>            // Node freshness state (per-schema)
+        ├── inputs: SubLevel<string, InputsRecord>            // Node -> inputs mapping
+        └── revdeps: SubLevel<string, never>                  // Reverse dependencies (nested by input)
+            └── <inputNode>: SubLevel<string, null>           // All dependents of this input
+                └── <dependentNode>: null                     // Dependent existence marker
 ```
+
+**Key Design Decisions**:
+1. **Schema hash = namespace**: All data (values, freshness, indices) is isolated per schema
+2. **No composite keys**: Revdeps use nested sublevels instead of `"<input>:<dependent>"` composite keys
+3. **No string prefix logic**: `listDependents(input)` just iterates keys of sublevel `<inputNode>`—no `startsWith()` filtering
 
 ### Type Definitions
 
@@ -170,10 +179,13 @@ All databases (values, freshness, inputs, revdeps) implement a common, simple, w
  */
 
 /**
- * Database for reverse dependency index.
- * Key: "<input-node>:<dependent-node>" (e.g., "user('alice'):posts('alice')")
- * Value: null (we only care about key existence)
- * @typedef {GenericDatabase<string, null>} RevdepsDatabase
+ * Database for reverse dependency index using nested sublevels.
+ * Structure: revdeps/<inputNode>/<dependentNode> -> null
+ * Access pattern: Get sublevel for <inputNode>, then iterate its keys to list all dependents
+ * This eliminates composite keys and string prefix logic entirely.
+ * @typedef {object} RevdepsDatabase
+ * @property {(inputNode: string) => GenericDatabase<string, null>} getInputSublevel - Get sublevel for a specific input
+ * @property {() => AsyncIterable<string>} keys - Iterate over all input nodes that have dependents
  */
 
 /**
@@ -184,18 +196,22 @@ All databases (values, freshness, inputs, revdeps) implement a common, simple, w
 
 /**
  * Storage container for a single dependency graph schema.
+ * All data (values, freshness, indices) is isolated per schema hash.
  * @typedef {object} SchemaStorage
+ * @property {ValuesDatabase} values - Node output values (per-schema)
+ * @property {FreshnessDatabase} freshness - Node freshness state (per-schema)
  * @property {InputsDatabase} inputs - Node inputs index
- * @property {RevdepsDatabase} revdeps - Reverse dependencies index
+ * @property {RevdepsDatabase} revdeps - Reverse dependencies index (nested sublevels)
  */
 
 /**
  * GraphStorage exposes typed databases as fields.
- * This provides type-safe access without needing type casts.
+ * All databases are from the same schema namespace - no global values/freshness.
  * @typedef {object} GraphStorage
- * @property {ValuesDatabase} values - Database for node values
- * @property {FreshnessDatabase} freshness - Database for node freshness
- * @property {SchemaStorage} schema - Schema-specific databases (inputs, revdeps)
+ * @property {ValuesDatabase} values - Node values (from schema storage)
+ * @property {FreshnessDatabase} freshness - Node freshness (from schema storage)
+ * @property {InputsDatabase} inputs - Node inputs index
+ * @property {RevdepsDatabase} revdeps - Reverse dependencies (nested sublevels)
  * @property {(node: string, inputs: string[]) => Promise<void>} ensureNodeIndexed - Index a node's dependencies
  * @property {(input: string) => Promise<string[]>} listDependents - List all dependents of an input
  * @property {(node: string) => Promise<string[] | null>} getInputs - Get inputs for a node
@@ -227,12 +243,11 @@ All databases (values, freshness, inputs, revdeps) implement a common, simple, w
  */
 
 /**
- * Root database structure with typed databases.
- * All sub-databases implement the GenericDatabase interface.
+ * Root database structure.
+ * Schema hash is the namespace boundary - all data is stored per-schema.
  * @typedef {object} RootDatabase
- * @property {ValuesDatabase} values - Node output values
- * @property {FreshnessDatabase} freshness - Node freshness state
- * @property {(schemaHash: string) => SchemaStorage} getSchemaStorage - Get schema-specific storage
+ * @property {(schemaHash: string) => SchemaStorage} getSchemaStorage - Get schema-specific storage (creates if needed)
+ * @property {() => AsyncIterable<string>} listSchemas - List all schema hashes in the database
  * @property {<K, V>(operations: Array<InterlevelBatch<K, V>>) => Promise<void>} batch - Atomic batch operations across databases
  */
 ```
@@ -324,60 +339,92 @@ if (isDatabaseValue(storedValue)) {
 
 #### 2. Logical Isolation
 
-Different concerns are separated into distinct databases:
+All data is isolated per schema hash (the namespace boundary):
 
 ```javascript
-// Values database
+// Values database (per-schema, not global)
 await graphStorage.values.put(node, computedValue);
 
-// Freshness database (no collision possible with values)
+// Freshness database (per-schema, no collision with other schemas)
 await graphStorage.freshness.put(node, 'up-to-date');
 
-// Schema indices are in separate databases
-await graphStorage.schema.inputs.put(node, { inputs: ['input1', 'input2'] });
-await graphStorage.schema.revdeps.put(`${input}:${node}`, null);
+// Inputs index
+await graphStorage.inputs.put(node, { inputs: ['input1', 'input2'] });
+
+// Revdeps using nested sublevels (no composite keys)
+const inputSublevel = graphStorage.revdeps.getInputSublevel(input);
+await inputSublevel.put(node, null); // Just mark that node depends on input
+
+// Multiple schemas can coexist with identical node names - no collisions
+const schema1 = await rootDb.getSchemaStorage('hash1');
+const schema2 = await rootDb.getSchemaStorage('hash2');
+await schema1.values.put("user('alice')", {name: 'Alice from schema1'});
+await schema2.values.put("user('alice')", {name: 'Alice from schema2'});
+// These are completely isolated - different namespaces
 ```
 
 #### 3. No Manual String Construction or Ad-hoc Prefixes
 
-**CRITICAL**: The implementation uses **only sublevels**, with **zero ad-hoc string prefixes**:
+**CRITICAL**: The implementation uses **only sublevels**, with **zero ad-hoc string prefixes** or composite keys:
 
 ```javascript
-// ❌ Old way: manual prefix construction
+// ❌ Old way: manual prefix construction and composite keys
 const inputsKey = `dg:${schemaHash}:inputs:${node}`;
 const freshnessKey = `freshness:${node}`; // Ad-hoc prefix
+const revdepKey = `dg:${schemaHash}:revdep:${input}:${node}`; // Composite key
 await database.put(inputsKey, { inputs: [...] });
 await database.put(freshnessKey, 'up-to-date');
+await database.put(revdepKey, null);
 
-// ✅ New way: Only sublevels, no string prefixes
-await graphStorage.schema.inputs.put(node, { inputs: [...] });
+// Then later: prefix filtering to find dependents
+const prefix = `dg:${schemaHash}:revdep:${input}:`;
+const keys = await database.keys(prefix);
+const dependents = keys.map(k => k.substring(prefix.length)); // String parsing!
+
+// ✅ New way: Only sublevels, no string prefixes or composite keys
+await graphStorage.inputs.put(node, { inputs: [...] });
 await graphStorage.freshness.put(node, 'up-to-date');
-// LevelDB sublevels handle namespacing internally - no string concatenation
+
+// Revdeps use nested sublevels - no composite keys
+const inputSublevel = graphStorage.revdeps.getInputSublevel(input);
+await inputSublevel.put(node, null);
+
+// Finding dependents: just iterate the sublevel, no string parsing
+const dependents = [];
+for await (const dependent of inputSublevel.keys()) {
+    dependents.push(dependent);
+}
+// LevelDB sublevels handle all namespacing internally
 ```
 
 #### 4. Clear Enumeration
 
-Each database can be enumerated independently:
+Each database can be enumerated independently, all within a schema namespace:
 
 ```javascript
-// List all materialized nodes (just values, no indices)
+// List all materialized nodes for THIS schema
 const materializedNodes = [];
 for await (const key of graphStorage.values.keys()) {
     materializedNodes.push(key);
 }
 
-// List all nodes with freshness state
+// List all nodes with freshness state for THIS schema
 const nodesWithFreshness = [];
 for await (const key of graphStorage.freshness.keys()) {
     nodesWithFreshness.push(key);
 }
 
-// List all dependents of an input (within a schema)
+// List all dependents of an input - no string filtering needed!
+const inputSublevel = graphStorage.revdeps.getInputSublevel(inputNode);
 const dependents = [];
-for await (const key of graphStorage.schema.revdeps.keys()) {
-    if (key.startsWith(`${inputNode}:`)) {
-        dependents.push(key.substring(inputNode.length + 1));
-    }
+for await (const dependent of inputSublevel.keys()) {
+    dependents.push(dependent); // Just the node name, no parsing
+}
+
+// List all schemas in the database
+const allSchemas = [];
+for await (const schemaHash of rootDb.listSchemas()) {
+    allSchemas.push(schemaHash);
 }
 ```
 
@@ -480,7 +527,7 @@ With sublevels, there is **no `"freshness:"` prefix at all**—it's handled by L
 
 ### Phase 2: Rewrite GraphStorage with Typed Databases (Medium Risk)
 
-**Goal**: Rewrite `graph_storage.js` to expose typed databases as fields, eliminate all type casts and string prefixes.
+**Goal**: Rewrite `graph_storage.js` to expose typed databases as fields, eliminate all type casts, string prefixes, and composite keys.
 
 **Changes**:
 1. Update `makeGraphStorage()` signature:
@@ -494,15 +541,38 @@ With sublevels, there is **no `"freshness:"` prefix at all**—it's handled by L
        const schemaStorage = rootDatabase.getSchemaStorage(schemaHash);
        
        return {
-           // Expose databases as fields
-           values: rootDatabase.values,
-           freshness: rootDatabase.freshness,
-           schema: schemaStorage,
+           // Expose all databases as fields (all from schema storage)
+           values: schemaStorage.values,
+           freshness: schemaStorage.freshness,
+           inputs: schemaStorage.inputs,
+           revdeps: schemaStorage.revdeps,
            
            // Helper methods
-           async ensureNodeIndexed(node, inputs) { ... },
-           async listDependents(input) { ... },
-           async getInputs(node) { ... },
+           async ensureNodeIndexed(node, inputs) {
+               // Store inputs
+               await schemaStorage.inputs.put(node, { inputs });
+               
+               // Update revdeps using nested sublevels
+               for (const input of inputs) {
+                   const inputSublevel = schemaStorage.revdeps.getInputSublevel(input);
+                   await inputSublevel.put(node, null);
+               }
+           },
+           
+           async listDependents(input) {
+               // No string filtering - just iterate the input's sublevel
+               const inputSublevel = schemaStorage.revdeps.getInputSublevel(input);
+               const dependents = [];
+               for await (const dependent of inputSublevel.keys()) {
+                   dependents.push(dependent);
+               }
+               return dependents;
+           },
+           
+           async getInputs(node) {
+               const record = await schemaStorage.inputs.get(node);
+               return record ? record.inputs : null;
+           },
        };
    }
    ```
@@ -510,7 +580,7 @@ With sublevels, there is **no `"freshness:"` prefix at all**—it's handled by L
 2. **Delete all key construction functions**:
    ```javascript
    // ❌ DELETE: freshnessKey(), inputsKey(), revdepKey(), revdepPrefix()
-   // These are replaced by typed database fields
+   // These are replaced by typed database fields and nested sublevels
    ```
 
 3. **Remove all type-casting code** (FIXME at line 200):
@@ -531,17 +601,25 @@ With sublevels, there is **no `"freshness:"` prefix at all**—it's handled by L
        }
        return keys;
    }
-   // No need to filter out "freshness:" or "dg:" prefixes - they don't exist!
+   // No need to filter out "freshness:" or "dg:" prefixes - they're in separate schemas!
    ```
 
-5. Update all call sites to use database fields directly:
+5. **Remove all composite key logic**:
    ```javascript
-   // ❌ OLD: Through wrapper methods
-   await storage.setNodeValueOp(node, value);
+   // ❌ OLD: Composite keys and string parsing
+   const revdepKey = `${input}:${node}`;
+   await db.put(revdepKey, null);
+   const prefix = `${input}:`;
+   const keys = await db.keys(prefix);
+   const dependents = keys.map(k => k.substring(prefix.length));
    
-   // ✅ NEW: Direct database access
-   await graphStorage.values.put(node, value);
-   await graphStorage.freshness.put(node, 'up-to-date');
+   // ✅ NEW: Nested sublevels, no string manipulation
+   const inputSublevel = graphStorage.revdeps.getInputSublevel(input);
+   await inputSublevel.put(node, null);
+   const dependents = [];
+   for await (const dep of inputSublevel.keys()) {
+       dependents.push(dep);
+   }
    ```
 
 **Risk**: Medium - changes internal implementation, but API unchanged
@@ -550,26 +628,44 @@ With sublevels, there is **no `"freshness:"` prefix at all**—it's handled by L
 
 ### Phase 3: Update DependencyGraph Class (Medium Risk)
 
-**Goal**: Pass schema storage to GraphStorage, remove schemaHash from keys.
+**Goal**: Update DependencyGraph to use schema-namespaced storage.
 
 **Changes**:
-1. Update `class.js` to pass database and schemaHash to GraphStorage:
+1. Update `class.js` to pass RootDatabase and schemaHash:
    ```javascript
-   constructor(schema, database, capabilities) {
+   constructor(schema, rootDatabase, capabilities) {
        // ... validation
        
        this.schemaHash = /* compute hash */;
        
-       // Pass database and schemaHash to GraphStorage
-       // GraphStorage will access sublevels as needed
+       // Pass rootDatabase and schemaHash to GraphStorage
+       // GraphStorage gets schema-namespaced storage automatically
        this.graphStorage = makeGraphStorage(
-           database,
+           rootDatabase,
            this.schemaHash
        );
    }
    ```
 
-2. Update `getDatabaseStatistics()` to query sublevels separately
+2. Update `getDatabaseStatistics()` to query schema-namespaced databases:
+   ```javascript
+   async getDatabaseStatistics() {
+       let valueCount = 0;
+       for await (const _ of this.graphStorage.values.keys()) {
+           valueCount++;
+       }
+       
+       let freshnessCount = 0;
+       for await (const _ of this.graphStorage.freshness.keys()) {
+           freshnessCount++;
+       }
+       
+       // All counts are for THIS schema only
+       return { valueCount, freshnessCount, schemaHash: this.schemaHash };
+   }
+   ```
+
+3. Note: Schema hash provides automatic isolation - multiple graphs can coexist in one DB file
 
 **Risk**: Medium - constructor changes, initialization logic changes
 
@@ -621,15 +717,42 @@ With sublevels, there is **no `"freshness:"` prefix at all**—it's handled by L
 
 This is an early-stage project. Clean architecture is more valuable than backward compatibility. Users can export/import data if needed. Do not pay any backward compatibility debt.
 
+## Schema Isolation and Multiple Graphs
+
+**Schema hash is the namespace boundary**: All data (values, freshness, indices) is stored under the schema hash. This means:
+
+1. **Multiple schemas can coexist**: Different schemas in the same DB file are completely isolated
+2. **Same schema = same namespace**: If you create multiple graph instances with identical schemas, they share the same namespace (and thus the same data)
+3. **One physical DB file**: You can have multiple independent graphs in a single LevelDB file
+
+**Example**:
+```javascript
+const rootDb = await makeRootDatabase('/path/to/db');
+
+// Two completely independent graphs with different schemas
+const graphA = makeDependencyGraph(schemaA, rootDb); // hash: 'abc123...'
+const graphB = makeDependencyGraph(schemaB, rootDb); // hash: 'def456...'
+
+// These can have identical node names with no collision
+await graphA.set("user('alice')", {name: 'Alice from A'});
+await graphB.set("user('alice')", {name: 'Alice from B'});
+// Completely isolated - different schema hashes
+
+// Two graph instances with the same schema share data
+const graph1 = makeDependencyGraph(schemaA, rootDb); // hash: 'abc123...'
+const graph2 = makeDependencyGraph(schemaA, rootDb); // hash: 'abc123...' (same!)
+// graph1 and graph2 see the same data - same namespace
+```
+
 ## Estimated Scope
 
 ### Files Modified
 
 **Core implementation** (~5 files):
 - `backend/src/generators/database/typed_database.js` (new - GenericDatabase interface)
-- `backend/src/generators/database/root_database.js` (new - RootDatabase with typed fields)
+- `backend/src/generators/database/root_database.js` (new - RootDatabase with schema-namespaced structure)
 - `backend/src/generators/database/types.js` (modified - add GenericDatabase types)
-- `backend/src/generators/dependency_graph/graph_storage.js` (modified - expose databases as fields)
+- `backend/src/generators/dependency_graph/graph_storage.js` (modified - expose databases as fields, nested revdeps)
 - `backend/src/generators/dependency_graph/class.js` (modified - use new GraphStorage interface)
 
 **Type definitions** (~2 files):
@@ -638,9 +761,10 @@ This is an early-stage project. Clean architecture is more valuable than backwar
 
 **Tests** (~10-15 files):
 - `backend/tests/database.test.js` (modified)
-- `backend/tests/dependency_graph_*.test.js` (modified)
+- `backend/tests/dependency_graph_*.test.js` (modified - update for schema isolation)
 - `backend/tests/stubs.js` (modified)
 - Various integration tests
+- **New**: Tests for multiple schemas in one DB file
 
 **Specification** (~1 file):
 - `docs/specs/dependency-graph.md` (modified - remove `freshnessKey()` and prefix conventions)
@@ -660,25 +784,27 @@ This is an early-stage project. Clean architecture is more valuable than backwar
 
 ### Schema Metadata Storage
 
-Once sublevels are in place, we can store schema metadata:
+With schema-namespaced structure, we can add a `meta` sublevel per schema:
 
 ```javascript
 /**
  * Schema metadata.
  * @typedef {object} SchemaMetadata
- * @property {string} hash - Schema hash (16-char hex)
+ * @property {string} hash - Schema hash
  * @property {string} schemaJson - Original schema JSON
  * @property {number} createdAt - Unix timestamp
  * @property {number} lastUsedAt - Unix timestamp
  * @property {string} [description] - Optional human-readable description
  */
 
-// Add to DatabaseWithSublevels interface
-/**
- * @typedef {object} DatabaseWithSublevels
- * ...
- * @property {SubLevel<string, SchemaMetadata>} schemaMetadata
- */
+// Add to SchemaStorage
+interface SchemaStorage {
+    values: ValuesDatabase;
+    freshness: FreshnessDatabase;
+    inputs: InputsDatabase;
+    revdeps: RevdepsDatabase;
+    meta: GenericDatabase<string, any>; // For metadata like schema JSON, timestamps, etc.
+}
 ```
 
 Benefits:
@@ -688,23 +814,25 @@ Benefits:
 
 ### Index Rebuilding
 
-With clear separation of values vs indices:
+With clear separation of values vs indices (all within schema namespace):
 
 ```javascript
 /**
  * Rebuild all indices for a schema from stored values.
- * @param {DatabaseWithSublevels} database
+ * @param {RootDatabase} rootDb
  * @param {string} schemaHash
  * @returns {Promise<void>}
  */
-async function rebuildSchemaIndices(database, schemaHash) {
-    const schemaStorage = database.schemas.sublevel(schemaHash);
-    const inputsLevel = schemaStorage.sublevel('inputs');
-    const revdepsLevel = schemaStorage.sublevel('revdeps');
+async function rebuildSchemaIndices(rootDb, schemaHash) {
+    const schemaStorage = rootDb.getSchemaStorage(schemaHash);
     
     // Clear existing indices
-    await inputsLevel.clear();
-    await revdepsLevel.clear();
+    await schemaStorage.inputs.clear();
+    // Clear revdeps requires iterating input sublevels
+    for await (const inputNode of schemaStorage.revdeps.keys()) {
+        const inputSublevel = schemaStorage.revdeps.getInputSublevel(inputNode);
+        await inputSublevel.clear();
+    }
     
     // Rebuild from values
     // (requires knowledge of schema to compute dependencies)
@@ -714,31 +842,39 @@ async function rebuildSchemaIndices(database, schemaHash) {
 
 ### Per-Schema Statistics
 
-With schema isolation:
+With schema isolation, statistics are naturally scoped:
 
 ```javascript
 /**
  * Get statistics for a specific schema.
- * @param {DatabaseWithSublevels} database
+ * @param {RootDatabase} rootDb
  * @param {string} schemaHash
  * @returns {Promise<SchemaStatistics>}
  */
-async function getSchemaStatistics(database, schemaHash) {
-    const schemaStorage = database.schemas.sublevel(schemaHash);
-    const inputsLevel = schemaStorage.sublevel('inputs');
-    const revdepsLevel = schemaStorage.sublevel('revdeps');
+async function getSchemaStatistics(rootDb, schemaHash) {
+    const schemaStorage = rootDb.getSchemaStorage(schemaHash);
+    
+    let valueCount = 0;
+    for await (const _ of schemaStorage.values.keys()) {
+        valueCount++;
+    }
+    
+    let freshnessCount = 0;
+    for await (const _ of schemaStorage.freshness.keys()) {
+        freshnessCount++;
+    }
     
     let nodeCount = 0;
-    for await (const _ of inputsLevel.keys()) {
+    for await (const _ of schemaStorage.inputs.keys()) {
         nodeCount++;
     }
     
-    let edgeCount = 0;
-    for await (const _ of revdepsLevel.keys()) {
-        edgeCount++;
+    let inputNodeCount = 0;
+    for await (const _ of schemaStorage.revdeps.keys()) {
+        inputNodeCount++; // Count of input nodes that have dependents
     }
     
-    return { schemaHash, nodeCount, edgeCount };
+    return { schemaHash, valueCount, freshnessCount, nodeCount, inputNodeCount };
 }
 ```
 
@@ -784,7 +920,7 @@ async function getSchemaStatistics(database, schemaHash) {
 
 ### Q3: How to support multiple graphs with same schema?
 
-**Current answer**: Not supported currently (one graph per schema hash). Future: add instance ID to schema storage structure.
+**Answer**: Multiple graph instances with identical schemas automatically share the same namespace (same schema hash). This is intentional—they operate on the same data. If you need truly independent instances, they must have different schemas (even slightly different).
 
 ### Q4: What about database backup/export?
 
@@ -794,15 +930,22 @@ async function getSchemaStatistics(database, schemaHash) {
 
 The sublevel-based design with typed database interfaces provides significant improvements over the current prefix-based approach:
 
-1. **Zero type casts**: All types enforced through typed database fields—no type casting anywhere in the implementation
-2. **No ad-hoc prefixes**: Only sublevels, no string concatenation like `"freshness:"` or `"dg:"`
-3. **Simple common interface**: All databases implement `GenericDatabase<TKey, TValue>`
-4. **GraphStorage exposes databases as fields**: Direct access to typed databases without wrapper methods
-5. **Spec independence**: Implementations are free to choose storage strategies—spec focuses on behavior, not implementation
+1. **Zero type casts**: All types enforced through typed database fields—no type casting anywhere
+2. **No ad-hoc prefixes or composite keys**: Only nested sublevels, no string concatenation like `"freshness:"`, `"dg:"`, or `"<input>:<dependent>"`
+3. **Schema hash is the namespace boundary**: All data (values, freshness, indices) isolated per schema, enabling multiple independent graphs in one DB file
+4. **Simple common interface**: All databases implement `GenericDatabase<TKey, TValue>`
+5. **Nested sublevels for revdeps**: `revdeps/<input>/<dependent>` eliminates composite keys and `startsWith()` filtering
+6. **GraphStorage exposes databases as fields**: Direct access to typed databases without wrapper methods
+7. **Spec independence**: Implementations free to choose storage strategies—spec focuses on behavior, not implementation
 
 The migration is feasible with acceptable scope (13-19 hours, 18-23 files including spec updates). A clean-break migration strategy is recommended for architectural clarity.
 
 The design enables future extensions like schema metadata storage, index rebuilding, and per-schema statistics. It follows the project's conventions around encapsulation, strong typing, clear separation of concerns, and the critical "no type casting" principle.
+
+**Key Architecture Decisions**:
+- Schema hash = namespace: Solves the global values/freshness collision problem
+- Nested sublevels for revdeps: Eliminates the last remaining string prefix logic
+- Multiple schemas in one DB: Natural consequence of proper namespacing
 
 **Specification Impact**: This design requires updates to `dependency-graph.md` to remove hardcoded `"freshness:"` prefix conventions, ensuring the spec remains a behavioral contract rather than an implementation prescription.
 
