@@ -114,8 +114,8 @@ The database stores multiple concerns without clear separation:
 Root Database (Level<string, any>)
 ├── values: Level<string, DatabaseValue>          // Node output values
 ├── freshness: Level<string, Freshness>           // Node freshness state
-└── schemas: Level<string, SchemaStorage>         // Per-schema storage
-    └── <schemaHash>: SchemaStorage
+└── schemas: Level<string, never>                 // Per-schema storage (no top-level values)
+    └── <schemaHash>: Sublevel
         ├── inputs: Level<string, InputsRecord>   // Node -> inputs mapping
         └── revdeps: Level<string, null>          // (input,node) reverse index
 ```
@@ -166,14 +166,15 @@ Root Database (Level<string, any>)
 
 /**
  * A sublevel for storing schema-specific data.
- * Key: schemaHash (16-character hex string)
- * Value: not directly stored; contains sublevels
- * @typedef {import('level').Level<string, any>} SchemasLevel
+ * Each schema is stored in a nested sublevel accessed by schemaHash.
+ * The sublevel itself does not store values at top-level keys.
+ * @typedef {import('level').AbstractLevel<string, never>} SchemasLevel
  */
 
 /**
  * Root database structure with typed sublevels.
- * @typedef {object} RootDatabase
+ * This represents the enhanced Database interface with sublevel properties.
+ * @typedef {object} DatabaseWithSublevels
  * @property {ValuesLevel} values - Node output values
  * @property {FreshnessLevel} freshness - Node freshness state
  * @property {SchemasLevel} schemas - Schema-specific storage
@@ -248,12 +249,15 @@ const schemaHashes = await database.schemas.keys().all();
 
 // List all dependents of an input (within a schema)
 const prefix = `${inputNode}:`;
-const dependents = await schemaStorage.revdeps.keys({ gt: prefix, lt: prefix + '\xff' }).all();
+const dependents = [];
+for await (const key of schemaStorage.revdeps.keys({ gte: prefix, lte: prefix + '\xff' })) {
+    dependents.push(key);
+}
 ```
 
 #### 5. Batch Operations Within Sublevels
 
-Batch operations can be scoped to specific sublevels:
+Batch operations can be scoped to specific sublevels or span multiple sublevels:
 
 ```javascript
 // Batch operation on values sublevel only
@@ -262,13 +266,14 @@ await database.values.batch([
     { type: 'put', key: 'user("bob")', value: {...} },
 ]);
 
-// Batch operation spanning multiple sublevels
-const rootDb = database.values.parent; // Get root database
-await rootDb.batch([
+// Batch operation spanning multiple sublevels (atomically)
+await database.batch([
     { type: 'put', sublevel: database.values, key: 'user("alice")', value: {...} },
     { type: 'put', sublevel: database.freshness, key: 'user("alice")', value: {...} },
 ]);
 ```
+
+Note: The root database reference is `database` (which could be obtained via `database.values.db` or stored separately).
 
 ## Implementation Plan
 
@@ -279,16 +284,17 @@ await rootDb.batch([
 **Changes**:
 1. Create new module: `backend/src/generators/database/sublevels.js`
    - Define typed sublevel structure
-   - Export factory function `makeRootDatabase(db)`
+   - Export factory function `makeSublevels(db)` that creates and returns the sublevel structure
    - Provide helper to get/create schema storage
 
 2. Extend `DatabaseClass` in `backend/src/generators/database/class.js`
-   - Add `this.sublevels` field with typed structure
-   - Keep existing `get()`, `put()`, `batch()` methods (backward compatible)
-   - Add new methods: `getValues()`, `getFreshness()`, `getSchemaStorage(hash)`
+   - Add `this.values`, `this.freshness`, `this.schemas` fields (the typed sublevels)
+   - Keep existing `get()`, `put()`, `batch()` methods for backward compatibility (delegate to sublevels)
+   - Add new convenience methods if needed
 
 3. Update `makeDatabase()` in `backend/src/generators/database/index.js`
-   - Initialize sublevels structure
+   - Initialize sublevels structure using the factory
+   - Attach sublevels to DatabaseClass instance
    - No breaking changes to existing interface
 
 **Risk**: Low - additive changes only, existing code unaffected
@@ -300,29 +306,41 @@ await rootDb.batch([
 **Goal**: Rewrite `graph_storage.js` to use sublevels, remove string prefix logic.
 
 **Changes**:
-1. Update `makeGraphStorage()` signature to accept typed schema storage:
+1. Update `makeGraphStorage()` signature to accept the root database and schema storage:
    ```javascript
    function makeGraphStorage(
-       database,        // Root database with sublevels
+       database,        // Root database (with .values, .freshness, .schemas)
        schemaStorage    // SchemaStorage for this graph
    ) { ... }
    ```
 
 2. Replace key construction functions with sublevel access:
    ```javascript
-   // ❌ Delete: inputsKey(), revdepKey(), freshnessKey()
+   // ❌ Delete: inputsKey(), revdepKey()
    
    // ✅ Replace with direct sublevel access
    async function getInputs(node) {
        const record = await schemaStorage.inputs.get(node);
        return record ? record.inputs : null;
    }
+   
+   async function getNodeValue(node) {
+       return await database.values.get(node);
+   }
+   
+   async function getNodeFreshness(node) {
+       return await database.freshness.get(node);
+   }
    ```
 
 3. Update `listMaterializedNodes()` to use values sublevel:
    ```javascript
    async function listMaterializedNodes() {
-       return await database.values.keys().all();
+       const keys = [];
+       for await (const key of database.values.keys()) {
+           keys.push(key);
+       }
+       return keys;
    }
    ```
 
@@ -337,20 +355,23 @@ await rootDb.batch([
 **Goal**: Pass schema storage to GraphStorage, remove schemaHash from keys.
 
 **Changes**:
-1. Update `class.js` to create schema storage:
+1. Update `class.js` to obtain schema storage from database:
    ```javascript
    constructor(schema, database, capabilities) {
        // ... validation
        
        this.schemaHash = /* compute hash */;
        
-       // Get or create schema storage
-       this.schemaStorage = await getOrCreateSchemaStorage(
-           database.sublevels.schemas,
-           this.schemaHash
-       );
+       // Get or create schema storage sublevel
+       this.schemaStorage = database.schemas.sublevel(this.schemaHash);
        
-       // Pass typed storage to GraphStorage
+       // Create nested sublevels for inputs and revdeps
+       this.schemaStorage.inputs = this.schemaStorage.sublevel('inputs', {
+           valueEncoding: 'json'
+       });
+       this.schemaStorage.revdeps = this.schemaStorage.sublevel('revdeps');
+       
+       // Pass database and schema storage to GraphStorage
        this.graphStorage = makeGraphStorage(
            database,
            this.schemaStorage
@@ -487,9 +508,9 @@ Once sublevels are in place, we can store schema metadata:
  * @property {string} [description] - Optional human-readable description
  */
 
-// Add to root database structure
+// Add to DatabaseWithSublevels interface
 /**
- * @typedef {object} RootDatabase
+ * @typedef {object} DatabaseWithSublevels
  * ...
  * @property {Level<string, SchemaMetadata>} schemaMetadata
  */
@@ -507,16 +528,18 @@ With clear separation of values vs indices:
 ```javascript
 /**
  * Rebuild all indices for a schema from stored values.
- * @param {RootDatabase} database
+ * @param {DatabaseWithSublevels} database
  * @param {string} schemaHash
  * @returns {Promise<void>}
  */
 async function rebuildSchemaIndices(database, schemaHash) {
-    const schemaStorage = await getSchemaStorage(database.schemas, schemaHash);
+    const schemaStorage = database.schemas.sublevel(schemaHash);
+    const inputsLevel = schemaStorage.sublevel('inputs');
+    const revdepsLevel = schemaStorage.sublevel('revdeps');
     
     // Clear existing indices
-    await schemaStorage.inputs.clear();
-    await schemaStorage.revdeps.clear();
+    await inputsLevel.clear();
+    await revdepsLevel.clear();
     
     // Rebuild from values
     // (requires knowledge of schema to compute dependencies)
@@ -531,14 +554,24 @@ With schema isolation:
 ```javascript
 /**
  * Get statistics for a specific schema.
+ * @param {DatabaseWithSublevels} database
  * @param {string} schemaHash
  * @returns {Promise<SchemaStatistics>}
  */
-async function getSchemaStatistics(schemaHash) {
-    const schemaStorage = await getSchemaStorage(database.schemas, schemaHash);
+async function getSchemaStatistics(database, schemaHash) {
+    const schemaStorage = database.schemas.sublevel(schemaHash);
+    const inputsLevel = schemaStorage.sublevel('inputs');
+    const revdepsLevel = schemaStorage.sublevel('revdeps');
     
-    const nodeCount = await schemaStorage.inputs.keys().all().length;
-    const edgeCount = await schemaStorage.revdeps.keys().all().length;
+    let nodeCount = 0;
+    for await (const _ of inputsLevel.keys()) {
+        nodeCount++;
+    }
+    
+    let edgeCount = 0;
+    for await (const _ of revdepsLevel.keys()) {
+        edgeCount++;
+    }
     
     return { schemaHash, nodeCount, edgeCount };
 }
