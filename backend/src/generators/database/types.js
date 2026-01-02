@@ -107,20 +107,13 @@ function isDatabaseValue(value) {
 /**
  * A database put operation.
  * @template T
- * @typedef {object} DatabasePutOperation
- * @property {SimpleSublevel<string, T>} sublevel - The database instance
- * @property {'put'} type - Operation type
- * @property {string} key - The key to store
- * @property {T} value - The value to store
+ * @typedef {AbstractBatchPutOperation<SchemaSublevelType, string, T>} DatabasePutOperation
  */
 
 /**
  * A database delete operation.
  * @template T
- * @typedef {object} DatabaseDelOperation
- * @property {SimpleSublevel<string, T>} sublevel - The database instance
- * @property {'del'} type - Operation type
- * @property {string} key - The key to delete
+ * @typedef {AbstractBatchDelOperation<SchemaSublevelType, string>} DatabaseDelOperation
  */
 
 /**
