@@ -299,6 +299,16 @@ Detailed specifications for these operations are provided in the "Operations" se
 
 ## Database Storage Model
 
+### Storage Requirements (Normative)
+
+The dependency graph requires persistent storage with the following properties:
+
+* Node values MUST be persistable and retrievable by canonical node name
+* Freshness state MUST be persistable and retrievable by canonical node name
+* The specific key naming scheme and storage organization is implementation-defined
+* Implementations MUST ensure no key collisions between values, freshness, and index data
+* Implementations MUST support atomic batch operations
+
 ### Key Naming Convention
 
 Concrete node names are stored as database keys using canonical serialization:
@@ -309,13 +319,6 @@ Concrete node names are stored as database keys using canonical serialization:
 **Serialization Format:**
 
 All database keys MUST use the canonical serialization as defined in the "Canonical Serialization" section.
-
-**Freshness Keys:**
-
-Use the same convention with a prefix: `'freshness:' + canonical_node_name`
-
-* `'freshness:all_events'`
-* `"freshness:event_context('id123')"`
 
 **Materialized Node Markers:**
 
@@ -965,9 +968,10 @@ Where:
 **Normative Requirements:**
 
 * All database keys for node values MUST use `canonical(nodeName)`.
-* All database keys for freshness state MUST use `freshnessKey(canonical(nodeName))` where `freshnessKey` applies the freshness key naming convention.
+* Freshness state MUST be persisted and retrievable by canonical node name, but the specific key format is implementation-defined.
 * `pull(nodeName)` and `set(nodeName, value)` MUST behave as if they first compute `canonical(nodeName)` and then operate on that canonical form.
-* Tests MUST use canonical forms when asserting database key contents.
+* Tests MUST NOT assert specific key formats or internal storage organization.
+* Tests MUST use only the public `Database` interface.
 
 **Quoting Rules:**
 
@@ -1034,16 +1038,7 @@ interface Database {
 * The `Database` interface represents **raw storage** without dependency tracking or invalidation logic.
 * Only `graph.set()` performs invalidation and marks dependents as `potentially-outdated`.
 * Tests MAY use `database.put()` only as a seeding helper to set up initial state, but MUST use `graph.set()` for operations that should trigger dependency propagation.
-
-**Freshness Key Convention:**
-
-Freshness state is stored using a key derived from the node key:
-
-```javascript
-function freshnessKey(nodeKey: string): string {
-  return `freshness:${nodeKey}`;
-}
-```
+* Tests MUST NOT assume specific internal key formats or storage organization for freshness state or indices.
 
 ### 7) Materialization Markers (Normative Behavioral Contract)
 

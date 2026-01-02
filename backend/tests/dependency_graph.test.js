@@ -113,32 +113,38 @@ describe("generators/dependency_graph", () => {
         test("returns cached value when dependencies are clean", async () => {
             const capabilities = getTestCapabilities();
             const db = await getRootDatabase(capabilities);
-            const { freshnessKey } = require("../src/generators/database");
 
             let computeCount = 0;
 
-            await db.put("input1", { data: "test" });
-            await db.put(freshnessKey("input1"), "up-to-date");
-
-            await db.put("output1", { data: "cached_result" });
-            await db.put(freshnessKey("output1"), "up-to-date");
-
             const graphDef = [
+                {
+                    output: "input1",
+                    inputs: [],
+                    computor: () => ({ type: 'all_events', events: [] }),
+                },
                 {
                     output: "output1",
                     inputs: ["input1"],
                     computor: (inputs, _oldValue, _bindings) => {
                         computeCount++;
-                        return { data: inputs[0].data + "_computed" };
+                        return { type: 'meta_events', meta_events: [] };
                     },
                 },
             ];
 
             const graph = makeDependencyGraph(db, graphDef);
+            const storage = graph.getStorage();
+
+            // Seed data using storage after graph creation
+            await storage.values.put("input1", { type: 'all_events', events: [] });
+            await storage.freshness.put("input1", "up-to-date");
+            await storage.values.put("output1", { type: 'meta_events', meta_events: [] });
+            await storage.freshness.put("output1", "up-to-date");
+
             const result = await graph.pull("output1");
 
             // Should return cached value without computing
-            expect(result.data).toBe("cached_result");
+            expect(result.type).toBe("meta_events");
             expect(computeCount).toBe(0);
 
             await db.close();
