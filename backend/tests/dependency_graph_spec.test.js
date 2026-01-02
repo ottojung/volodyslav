@@ -21,6 +21,73 @@ function expectHasOwn(err, prop) {
     expect(Object.prototype.hasOwnProperty.call(err, prop)).toBe(true);
 }
 
+function deepClone(x) {
+    // Good enough for JSON-like DatabaseValue.
+    return x === undefined ? undefined : JSON.parse(JSON.stringify(x));
+}
+
+/**
+ * Mock sublevel for in-memory database testing.
+ */
+class InMemorySublevel {
+    constructor(rootKv, prefix, parentDb) {
+        this.rootKv = rootKv;
+        this.prefix = prefix;
+        this.parentDb = parentDb;
+        this.sublevels = new Map();
+    }
+
+    _makeKey(key) {
+        return `${this.prefix}:${key}`;
+    }
+
+    async get(key) {
+        const fullKey = this._makeKey(key);
+        const v = this.rootKv.get(fullKey);
+        if (v === undefined) {
+            throw new Error("NotFound");
+        }
+        return deepClone(v);
+    }
+
+    async put(key, value) {
+        const fullKey = this._makeKey(key);
+        this.rootKv.set(fullKey, deepClone(value));
+    }
+
+    async * keys(options = {}) {
+        const prefix = this._makeKey("");
+        for (const k of this.rootKv.keys()) {
+            if (k.startsWith(prefix)) {
+                const relativeKey = k.substring(prefix.length);
+                if (options.gte && relativeKey < options.gte) continue;
+                if (options.lte && relativeKey > options.lte) continue;
+                if (options.lt && relativeKey >= options.lt) continue;
+                yield relativeKey;
+            }
+        }
+    }
+
+    async batch(ops) {
+        for (const op of ops) {
+            if (op.type === "put") {
+                await this.put(op.key, op.value);
+            } else if (op.type === "del") {
+                const fullKey = this._makeKey(op.key);
+                this.rootKv.delete(fullKey);
+            }
+        }
+    }
+
+    sublevel(name) {
+        if (!this.sublevels.has(name)) {
+            const newPrefix = `${this.prefix}:${name}`;
+            this.sublevels.set(name, new InMemorySublevel(this.rootKv, newPrefix, this.parentDb));
+        }
+        return this.sublevels.get(name);
+    }
+}
+
 /**
  * Minimal in-memory Database that matches the spec's Database interface.
  * We purposely do NOT assume any particular "freshness key" naming convention:
@@ -40,32 +107,77 @@ class InMemoryDatabase {
         this.getValueLog = [];
         /** @type {Array<any>} */
         this.getFreshnessLog = [];
+
+        // Create sublevel mocks for the new architecture
+        this.values = new InMemorySublevel(this.kv, "values", this);
+        this.freshness = new InMemorySublevel(this.kv, "freshness", this);
+        this.schemas = new InMemorySublevel(this.kv, "schemas", this);
     }
 
     async put(key, value) {
         if (this.closed) throw new Error("DatabaseClosed");
         this.putLog.push({ key, value });
-        this.kv.set(key, deepClone(value));
+        
+        // Route to appropriate sublevel
+        if (key.startsWith("freshness:")) {
+            const nodeKey = key.substring("freshness:".length);
+            await this.freshness.put(nodeKey, value);
+        } else if (key.startsWith("dg:") || key.startsWith("values:") || key.startsWith("schemas:")) {
+            // Legacy or sublevel-prefixed key - store directly
+            this.kv.set(key, deepClone(value));
+        } else {
+            // Node value
+            await this.values.put(key, value);
+        }
     }
 
     async getValue(key) {
         if (this.closed) throw new Error("DatabaseClosed");
         this.getValueLog.push({ key });
-        const v = this.kv.get(key);
-        return v === undefined ? undefined : deepClone(v);
+        try {
+            const v = await this.values.get(key);
+            return v;
+        } catch {
+            return undefined;
+        }
     }
 
     async getFreshness(key) {
         if (this.closed) throw new Error("DatabaseClosed");
         this.getFreshnessLog.push({ key });
-        const v = this.kv.get(key);
-        return v === undefined ? undefined : deepClone(v);
+        // Strip 'freshness:' prefix if present
+        const nodeKey = key.startsWith("freshness:") ? key.substring("freshness:".length) : key;
+        try {
+            const v = await this.freshness.get(nodeKey);
+            return v;
+        } catch {
+            return undefined;
+        }
     }
 
     async get(key) {
         if (this.closed) throw new Error("DatabaseClosed");
-        const v = this.kv.get(key);
-        return v === undefined ? undefined : deepClone(v);
+        
+        // Route to appropriate sublevel
+        if (key.startsWith("freshness:")) {
+            const nodeKey = key.substring("freshness:".length);
+            try {
+                return await this.freshness.get(nodeKey);
+            } catch {
+                return undefined;
+            }
+        } else if (key.startsWith("dg:") || key.startsWith("values:") || key.startsWith("schemas:")) {
+            // Legacy or sublevel-prefixed key - get directly
+            const v = this.kv.get(key);
+            return v === undefined ? undefined : deepClone(v);
+        } else {
+            // Node value
+            try {
+                return await this.values.get(key);
+            } catch {
+                return undefined;
+            }
+        }
     }
 
     async keys(prefix) {
@@ -92,6 +204,39 @@ class InMemoryDatabase {
         this.kv = next;
     }
 
+    async batchTyped(ops) {
+        if (this.closed) throw new Error("DatabaseClosed");
+        this.batchLog.push({ ops: deepClone(ops) });
+
+        // Apply operations to appropriate sublevels
+        for (const op of ops) {
+            if (op.sublevel === "values") {
+                if (op.type === "put") {
+                    await this.values.put(op.key, op.value);
+                } else if (op.type === "del") {
+                    const fullKey = this.values._makeKey(op.key);
+                    this.kv.delete(fullKey);
+                }
+            } else if (op.sublevel === "freshness") {
+                if (op.type === "put") {
+                    await this.freshness.put(op.key, op.value);
+                } else if (op.type === "del") {
+                    const fullKey = this.freshness._makeKey(op.key);
+                    this.kv.delete(fullKey);
+                }
+            } else if (op.sublevel === "schemas") {
+                const schemaLevel = this.schemas.sublevel(op.schemaHash);
+                const nestedLevel = schemaLevel.sublevel(op.nestedSublevel);
+                if (op.type === "put") {
+                    await nestedLevel.put(op.key, op.value);
+                } else if (op.type === "del") {
+                    const fullKey = nestedLevel._makeKey(op.key);
+                    this.kv.delete(fullKey);
+                }
+            }
+        }
+    }
+
     async close() {
         this.closed = true;
     }
@@ -102,11 +247,6 @@ class InMemoryDatabase {
         this.getValueLog = [];
         this.getFreshnessLog = [];
     }
-}
-
-function deepClone(x) {
-    // Good enough for JSON-like DatabaseValue.
-    return x === undefined ? undefined : JSON.parse(JSON.stringify(x));
 }
 
 /** Helper to build a graph and assert it "looks like" a DependencyGraph. */

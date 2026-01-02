@@ -554,8 +554,14 @@ describe("Parameterized node schemas", () => {
                 },
             ];
 
-            // Should not throw
-            const db = {}; // Dummy
+            // Should not throw - provide minimal mock database
+            const db = {
+                schemas: {
+                    sublevel: () => ({
+                        sublevel: () => ({})
+                    })
+                }
+            };
             expect(() => makeDependencyGraph(db, schemas)).not.toThrow();
         });
     });
