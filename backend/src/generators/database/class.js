@@ -357,7 +357,7 @@ class DatabaseClass {
                 promises.push(this.freshness.batch(/** @type {any} */ (freshnessOps), { sync: true }));
             }
             if (legacyOps.length > 0) {
-                promises.push(this.db.batch(legacyOps, { sync: true }));
+                promises.push(this.db.batch(/** @type {any} */ (legacyOps), { sync: true }));
             }
 
             await Promise.all(promises);
