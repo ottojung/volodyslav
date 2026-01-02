@@ -7,20 +7,23 @@ const { makeTypedDatabase } = require('./typed_database');
 
 /** @typedef {import('./types').DatabaseValue} DatabaseValue */
 /** @typedef {import('./types').Freshness} Freshness */
-/** @typedef {import('./typed_database').GenericDatabase} GenericDatabase */
+/**
+ * @template T
+ * @typedef {import('./typed_database').GenericDatabase<T>} GenericDatabase
+ */
 
 /**
  * Database for storing node output values.
  * Key: canonical node name (e.g., "user('alice')")
  * Value: the computed value (object with type field)
- * @typedef {GenericDatabase} ValuesDatabase
+ * @typedef {GenericDatabase<DatabaseValue>} ValuesDatabase
  */
 
 /**
  * Database for storing node freshness state.
  * Key: canonical node name (e.g., "user('alice')")
  * Value: freshness state ('up-to-date' | 'potentially-outdated')
- * @typedef {GenericDatabase} FreshnessDatabase
+ * @typedef {GenericDatabase<Freshness>} FreshnessDatabase
  */
 
 /**
@@ -33,7 +36,7 @@ const { makeTypedDatabase } = require('./typed_database');
  * Database for storing node input dependencies.
  * Key: canonical node name
  * Value: inputs record with array of dependency names
- * @typedef {GenericDatabase} InputsDatabase
+ * @typedef {GenericDatabase<InputsRecord>} InputsDatabase
  */
 
 /**
@@ -41,7 +44,7 @@ const { makeTypedDatabase } = require('./typed_database');
  * Key: inputNode (canonical name)
  * Value: Array of dependent node names
  * This avoids composite keys and string prefix logic.
- * @typedef {GenericDatabase} RevdepsDatabase
+ * @typedef {GenericDatabase<string[]>} RevdepsDatabase
  */
 
 /**

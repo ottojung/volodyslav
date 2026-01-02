@@ -6,16 +6,12 @@
 /**
  * Generic typed database interface.
  * All databases (values, freshness, inputs, revdeps) implement this interface.
- * @template TKey - The key type (typically string)
  * @template TValue - The value type
- */
-
-/**
  * @typedef {object} GenericDatabase
- * @property {(key: any) => Promise<any | undefined>} get - Retrieve a value
- * @property {(key: any, value: any) => Promise<void>} put - Store a value
- * @property {(key: any) => Promise<void>} del - Delete a value
- * @property {() => AsyncIterable<any>} keys - Iterate over all keys
+ * @property {(key: string) => Promise<TValue | undefined>} get - Retrieve a value
+ * @property {(key: string, value: TValue) => Promise<void>} put - Store a value
+ * @property {(key: string) => Promise<void>} del - Delete a value
+ * @property {() => AsyncIterable<string>} keys - Iterate over all keys
  * @property {() => Promise<void>} clear - Clear all entries
  */
 
@@ -99,10 +95,9 @@ class TypedDatabaseClass {
 
 /**
  * Factory function to create a TypedDatabase instance.
- * @template TKey
  * @template TValue
- * @param {import('abstract-level').AbstractLevel<any, TKey, TValue>} sublevel - The LevelDB sublevel instance
- * @returns {GenericDatabase}
+ * @param {import('abstract-level').AbstractLevel<any, string, TValue>} sublevel - The LevelDB sublevel instance
+ * @returns {GenericDatabase<TValue>}
  */
 function makeTypedDatabase(sublevel) {
     return new TypedDatabaseClass(sublevel);
