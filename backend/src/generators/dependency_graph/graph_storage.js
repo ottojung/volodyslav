@@ -31,6 +31,8 @@
  * @property {BatchDatabaseOps<Freshness>} freshness - Batch operations for freshness database
  * @property {BatchDatabaseOps<InputsRecord>} inputs - Batch operations for inputs database
  * @property {BatchDatabaseOps<string[]>} revdeps - Batch operations for revdeps database
+ * @property {Map<string, Promise<any>>} _pullCache - Internal cache for deduplicating pulls within a batch
+ * @property {Map<string, any>} _pendingWrites - Internal cache for read-your-writes consistency
  */
 
 /**
@@ -54,41 +56,95 @@
 
 /**
  * Creates a batch builder for atomic operations.
+ * Supports nested calls by tracking batch context.
  * @param {SchemaStorage} schemaStorage - The schema storage instance
  * @returns {BatchFunction}
  */
 function makeBatchBuilder(schemaStorage) {
-    /** @type {DatabaseBatchOperation[]} */
-    const operations = [];
+    // Track the current batch context to support nested calls
+    let currentBatchContext = null;
 
-    /** @type {BatchBuilder} */
-    const builder = {
-        values: {
-            put: (key, value) => {
-                const op = schemaStorage.values.putOp(key, value);
-                operations.push(op);
+    /**
+     * Create a batch builder that adds operations to the given array.
+     * @param {DatabaseBatchOperation[]} operations - The operations array to add to
+     * @returns {BatchBuilder}
+     */
+    function createBuilder(operations) {
+        // Pending writes for read-your-writes consistency
+        const pendingWrites = new Map();
+        
+        return {
+            values: {
+                put: (key, value) => {
+                    const op = schemaStorage.values.putOp(key, value);
+                    operations.push(op);
+                    pendingWrites.set(`values:${key}`, value);
+                },
+                del: (key) => {
+                    operations.push(schemaStorage.values.delOp(key));
+                    pendingWrites.set(`values:${key}`, undefined);
+                },
             },
-            del: (key) => operations.push(schemaStorage.values.delOp(key)),
-        },
-        freshness: {
-            put: (key, value) => operations.push(schemaStorage.freshness.putOp(key, value)),
-            del: (key) => operations.push(schemaStorage.freshness.delOp(key)),
-        },
-        inputs: {
-            put: (key, value) => operations.push(schemaStorage.inputs.putOp(key, value)),
-            del: (key) => operations.push(schemaStorage.inputs.delOp(key)),
-        },
-        revdeps: {
-            put: (key, value) => operations.push(schemaStorage.revdeps.putOp(key, value)),
-            del: (key) => operations.push(schemaStorage.revdeps.delOp(key)),
-        },
-    };
+            freshness: {
+                put: (key, value) => {
+                    operations.push(schemaStorage.freshness.putOp(key, value));
+                    pendingWrites.set(`freshness:${key}`, value);
+                },
+                del: (key) => {
+                    operations.push(schemaStorage.freshness.delOp(key));
+                    pendingWrites.set(`freshness:${key}`, undefined);
+                },
+            },
+            inputs: {
+                put: (key, value) => {
+                    operations.push(schemaStorage.inputs.putOp(key, value));
+                    pendingWrites.set(`inputs:${key}`, value);
+                },
+                del: (key) => {
+                    operations.push(schemaStorage.inputs.delOp(key));
+                    pendingWrites.set(`inputs:${key}`, undefined);
+                },
+            },
+            revdeps: {
+                put: (key, value) => {
+                    operations.push(schemaStorage.revdeps.putOp(key, value));
+                    pendingWrites.set(`revdeps:${key}`, value);
+                },
+                del: (key) => {
+                    operations.push(schemaStorage.revdeps.delOp(key));
+                    pendingWrites.set(`revdeps:${key}`, undefined);
+                },
+            },
+            // Cache for deduplicating pulls within a batch
+            _pullCache: new Map(),
+            // Pending writes for read-your-writes consistency
+            _pendingWrites: pendingWrites,
+        };
+    }
 
     /** @type {BatchFunction} */
     const ret = async (fn) => {
-        const value = await fn(builder);
-        await schemaStorage.batch(operations);
-        return value;
+        // If we're already in a batch context, reuse it (nested call)
+        if (currentBatchContext !== null) {
+            return await fn(currentBatchContext.builder);
+        }
+
+        // Start a new top-level batch context
+        /** @type {DatabaseBatchOperation[]} */
+        const operations = [];
+        const builder = createBuilder(operations);
+        
+        currentBatchContext = { builder, operations };
+        
+        try {
+            const value = await fn(builder);
+            // Only commit at the top level
+            await schemaStorage.batch(operations);
+            return value;
+        } finally {
+            // Clear the context when exiting the top-level batch
+            currentBatchContext = null;
+        }
     };
 
     return ret;
@@ -112,10 +168,15 @@ function makeGraphStorage(rootDatabase, schemaHash) {
      * @returns {Promise<void>}
      */
     async function ensureNodeIndexed(node, inputs, batch) {
-        // Check if already indexed
+        // Check if already indexed (check pending writes first for read-your-writes consistency)
+        const pendingInputsKey = `inputs:${node}`;
+        if (batch._pendingWrites.has(pendingInputsKey)) {
+            return; // Already indexed in this batch
+        }
+        
         const existingInputs = await getInputs(node);
         if (existingInputs !== null) {
-            return; // Already indexed
+            return; // Already indexed in DB
         }
 
         // Store the inputs record
@@ -123,7 +184,16 @@ function makeGraphStorage(rootDatabase, schemaHash) {
 
         // Update revdeps using structured values (arrays)
         for (const input of inputs) {
-            const existingDeps = (await schemaStorage.revdeps.get(input)) || [];
+            // Check pending writes first for read-your-writes consistency
+            const pendingRevdepsKey = `revdeps:${input}`;
+            let existingDeps;
+            
+            if (batch._pendingWrites.has(pendingRevdepsKey)) {
+                existingDeps = batch._pendingWrites.get(pendingRevdepsKey) || [];
+            } else {
+                existingDeps = (await schemaStorage.revdeps.get(input)) || [];
+            }
+            
             if (!existingDeps.includes(node)) {
                 batch.revdeps.put(input, [...existingDeps, node]);
             }

@@ -2589,7 +2589,7 @@ describe("11. set() batching remains single atomic batch with invalidation fanou
 });
 
 describe("12. (Optional) Concurrent pulls of the same node", () => {
-    test.failing(
+    test(
         "concurrent pulls of same node should invoke computor once",
         async () => {
             const db = new InMemoryDatabase();

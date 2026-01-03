@@ -169,7 +169,7 @@ class DependencyGraphClass {
         }
 
         // Use batch builder for atomic operations
-        this.storage.withBatch(async (batch) => {
+        await this.storage.withBatch(async (batch) => {
             // Store the value
             batch.values.put(canonicalKey, value);
 
@@ -549,42 +549,53 @@ class DependencyGraphClass {
             // Canonicalize the node name
             const canonicalName = canonicalize(nodeName);
 
-            // Validate that key is concrete (no variables)
-            validateConcreteKey(canonicalName);
-
-            // Find or create the node definition
-            const nodeDefinition = this.getOrCreateConcreteNode(
-                canonicalName,
-            );
-
-            // Check freshness of this node
-            const nodeFreshness = await this.storage.freshness.get(
-                canonicalName
-            );
-
-            // Fast path: if up-to-date, return cached value immediately
-            // But first ensure the node is indexed (for pattern nodes in seeded DBs)
-            if (nodeFreshness === "up-to-date") {
-                // Ensure node is indexed if it has inputs
-                // This is critical for seeded databases where values/freshness exist
-                // but reverse-dep metadata is missing
-                if (nodeDefinition.inputs.length > 0) {
-                    await this.storage.ensureNodeIndexed(
-                        canonicalName,
-                        nodeDefinition.inputs,
-                        batch,
-                    );
-                }
-                
-                const result = await this.storage.values.get(canonicalName);
-                if (result === undefined) {
-                    throw makeMissingValueError(canonicalName);
-                }
-                return { value: result, status: "cached" };
+            // Check if this node is already being computed in this batch
+            if (batch._pullCache.has(canonicalName)) {
+                return await batch._pullCache.get(canonicalName);
             }
 
-            // Potentially-outdated or undefined freshness: need to maybe recalculate
-            return await this.maybeRecalculate(nodeDefinition, batch);
+            // Create a promise for this computation and cache it
+            const computationPromise = (async () => {
+                // Validate that key is concrete (no variables)
+                validateConcreteKey(canonicalName);
+
+                // Find or create the node definition
+                const nodeDefinition = this.getOrCreateConcreteNode(
+                    canonicalName,
+                );
+
+                // Check freshness of this node
+                const nodeFreshness = await this.storage.freshness.get(
+                    canonicalName
+                );
+
+                // Fast path: if up-to-date, return cached value immediately
+                // But first ensure the node is indexed (for pattern nodes in seeded DBs)
+                if (nodeFreshness === "up-to-date") {
+                    // Ensure node is indexed if it has inputs
+                    // This is critical for seeded databases where values/freshness exist
+                    // but reverse-dep metadata is missing
+                    if (nodeDefinition.inputs.length > 0) {
+                        await this.storage.ensureNodeIndexed(
+                            canonicalName,
+                            nodeDefinition.inputs,
+                            batch,
+                        );
+                    }
+                    
+                    const result = await this.storage.values.get(canonicalName);
+                    if (result === undefined) {
+                        throw makeMissingValueError(canonicalName);
+                    }
+                    return { value: result, status: "cached" };
+                }
+
+                // Potentially-outdated or undefined freshness: need to maybe recalculate
+                return await this.maybeRecalculate(nodeDefinition, batch);
+            })();
+
+            batch._pullCache.set(canonicalName, computationPromise);
+            return await computationPromise;
         });
     }
 
