@@ -122,8 +122,17 @@ class RootDatabaseClass {
         /** @type {SimpleSublevel<string[]>} */
         const revdepsSublevel = schemaSublevel.sublevel('revdeps', { valueEncoding: 'json' });
 
+        let touchedSchema = false;
         /** @type {(operations: DatabaseBatchOperation[]) => Promise<void>} */
         const batch = async (operations) => {
+            if (operations.length === 0) {
+                return;
+            }
+
+            if (!touchedSchema) {
+                await this.db.put(schemaHash, []); // Touch schema key
+                touchedSchema = true;
+            }
             await schemaSublevel.batch(operations);
         };
 
