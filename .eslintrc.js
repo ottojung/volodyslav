@@ -87,5 +87,18 @@ module.exports = {
             }
         ],
     },
+    overrides: [
+        {
+            files: ["frontend/src/**/*.js", "frontend/src/**/*.jsx", "backend/src/**/*.js"],
+            excludedFiles: ["frontend/src/sw.js"],
+            parser: "@typescript-eslint/parser",
+            parserOptions: {
+                ecmaVersion: "latest",
+                sourceType: "module",
+                ecmaFeatures: { jsx: true },
+                project: "./tsconfig.json",
+            },
+        },
+    ],
     ignorePatterns: ["dist/", "node_modules/", "coverage/", "docs/build/", "tools/eslint-plugin-volodyslav"],
 };

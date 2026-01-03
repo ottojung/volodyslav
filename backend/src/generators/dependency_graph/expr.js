@@ -210,10 +210,21 @@ class Parser {
     }
 
     /**
+     * Gets the current token kind without TypeScript control flow narrowing.
+     * @returns {TokenKind}
+     */
+    getCurrentKind() {
+        return this.currentToken.kind;
+    }
+
+    /**
      * Advances to the next token.
+     * @returns {void}
      */
     advance() {
         this.currentToken = this.lexer.nextToken();
+        // Explicitly mark return to help TypeScript understand mutation
+        return;
     }
 
     /**
@@ -253,40 +264,35 @@ class Parser {
      * @returns {ParsedExpr}
      */
     parseExpr() {
-        if (this.currentToken.kind !== "identifier") {
+        const initialToken = this.currentToken;
+        if (initialToken.kind !== "identifier") {
             throw new Error(
-                `Expected identifier at position ${this.currentToken.pos}`
+                `Expected identifier at position ${initialToken.pos}`
             );
         }
 
-        const name = this.currentToken.value;
+        const name = initialToken.value;
         this.advance();
 
-        // Check if it's a function call
-        // Type assertion needed because TypeScript narrows too aggressively
-        const tokenKind = /** @type {TokenKind} */ (this.currentToken.kind);
-        if (tokenKind === "lparen") {
+        // After advance(), check what kind of token we have
+        if (this.getCurrentKind() === "lparen") {
             this.advance(); // consume '('
 
             /** @type {ParsedArg[]} */
             const args = [];
 
             // Check for empty args
-            const nextToken = /** @type {TokenKind} */ (this.currentToken.kind);
-            if (nextToken === "rparen") {
-                this.advance(); // consume ')'
+            if (this.getCurrentKind() === "rparen") {
+                this.advance(); // consume '('
                 return { kind: "call", name, args: [] };
             }
 
             // Parse arguments
             args.push(this.parseTerm());
 
-            // Type assertion after parseTerm which can change currentToken
-            let nextTokenKind = /** @type {TokenKind} */ (this.currentToken.kind);
-            while (nextTokenKind === "comma") {
+            while (this.getCurrentKind() === "comma") {
                 this.advance(); // consume ','
                 args.push(this.parseTerm());
-                nextTokenKind = /** @type {TokenKind} */ (this.currentToken.kind);
             }
 
             this.expect("rparen");
@@ -303,15 +309,15 @@ class Parser {
      * @returns {ParsedExpr}
      */
     parse() {
-        if (this.currentToken.kind === "eof") {
+        const initialToken = this.currentToken;
+        if (initialToken.kind === "eof") {
             throw new Error("Expression cannot be empty");
         }
 
         const expr = this.parseExpr();
 
-        // Type assertion needed because TypeScript narrows too aggressively
-        const tokenKind = /** @type {TokenKind} */ (this.currentToken.kind);
-        if (tokenKind !== "eof") {
+        // After parseExpr(), check the current token
+        if (this.currentToken.kind !== "eof") {
             throw new Error(
                 `Unexpected token ${this.currentToken.kind} at position ${this.currentToken.pos}`
             );
