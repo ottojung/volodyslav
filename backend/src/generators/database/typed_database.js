@@ -5,6 +5,11 @@
 
 /**
  * @template T
+ * @typedef {import('./types').SimpleSublevel<T>} SimpleSublevel
+ */
+
+/**
+ * @template T
  * @typedef {import('./types').DatabasePutOperation<T>} DatabasePutOperation
  */
 
@@ -35,13 +40,13 @@ class TypedDatabaseClass {
     /**
      * The underlying LevelDB sublevel instance.
      * @private
-     * @type {SimpleSublevel<string, TValue>}
+     * @type {SimpleSublevel<TValue>}
      */
     sublevel;
 
     /**
      * @constructor
-     * @param {SimpleSublevel<string, TValue>} sublevel - The LevelDB sublevel instance
+     * @param {SimpleSublevel<TValue>} sublevel - The LevelDB sublevel instance
      */
     constructor(sublevel) {
         this.sublevel = sublevel;
@@ -120,15 +125,9 @@ class TypedDatabaseClass {
 }
 
 /**
- * @template K
- * @template V
- * @typedef {import('./types').SimpleSublevel<K, V>} SimpleSublevel
- */
-
-/**
  * Factory function to create a TypedDatabase instance.
  * @template TValue
- * @param {SimpleSublevel<string, TValue>} sublevel - The LevelDB sublevel instance
+ * @param {SimpleSublevel<TValue>} sublevel - The LevelDB sublevel instance
  * @returns {GenericDatabase<TValue>}
  */
 function makeTypedDatabase(sublevel) {

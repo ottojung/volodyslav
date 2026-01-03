@@ -6,6 +6,7 @@
 const { makeTypedDatabase } = require('./typed_database');
 
 /** @typedef {import('./types').RootLevelType} RootLevelType */
+/** @typedef {import('./types').SchemaSublevelType} SchemaSublevelType */
 /** @typedef {import('./types').DatabaseValue} DatabaseValue */
 /** @typedef {import('./types').Freshness} Freshness */
 /** @typedef {import('./types').DatabaseStoredValue} DatabaseStoredValue */
@@ -64,9 +65,8 @@ const { makeTypedDatabase } = require('./typed_database');
  */
 
 /**
- * @template K
- * @template V
- * @typedef {import('./types').SimpleSublevel<K, V>} SimpleSublevel
+ * @template T
+ * @typedef {import('./types').SimpleSublevel<T>} SimpleSublevel
  */
 
 /**
@@ -109,15 +109,16 @@ class RootDatabaseClass {
         }
 
         // Create new schema storage with sublevels
+        /** @type {SchemaSublevelType} */
         const schemaSublevel = this.db.sublevel(schemaHash, { valueEncoding: 'json' });
         
-        /** @type {SimpleSublevel<string, DatabaseValue>} */
+        /** @type {SimpleSublevel<DatabaseValue>} */
         const valuesSublevel = schemaSublevel.sublevel('values', { valueEncoding: 'json' });
-        /** @type {SimpleSublevel<string, Freshness>} */
+        /** @type {SimpleSublevel<Freshness>} */
         const freshnessSublevel = schemaSublevel.sublevel('freshness', { valueEncoding: 'json' });
-        /** @type {SimpleSublevel<string, InputsRecord>} */
+        /** @type {SimpleSublevel<InputsRecord>} */
         const inputsSublevel = schemaSublevel.sublevel('inputs', { valueEncoding: 'json' });
-        /** @type {SimpleSublevel<string, string[]>} */
+        /** @type {SimpleSublevel<string[]>} */
         const revdepsSublevel = schemaSublevel.sublevel('revdeps', { valueEncoding: 'json' });
 
         const storage = {

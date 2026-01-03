@@ -107,13 +107,13 @@ function isDatabaseValue(value) {
 /**
  * A database put operation.
  * @template T
- * @typedef {AbstractBatchPutOperation<SchemaSublevelType, string, T>} DatabasePutOperation
+ * @typedef {AbstractBatchPutOperation<AbstractSublevel<SchemaSublevelType, SublevelFormat, string, T>, string, T>} DatabasePutOperation
  */
 
 /**
  * A database delete operation.
  * @template T
- * @typedef {AbstractBatchDelOperation<SchemaSublevelType, string>} DatabaseDelOperation
+ * @typedef {AbstractBatchDelOperation<AbstractSublevel<SchemaSublevelType, SublevelFormat, string, T>, string>} DatabaseDelOperation
  */
 
 /**
@@ -128,7 +128,7 @@ function isDatabaseValue(value) {
 
 /**
  * A batch operation for the database.
- * @typedef {AbstractBatchPutOperation<Level<string, DatabaseStoredValue>, string, DatabaseStoredValue> | AbstractBatchDelOperation<Level<string, DatabaseStoredValue>, string>} DatabaseBatchOperation
+ * @typedef {AbstractBatchPutOperation<SimpleSublevel<T>, SublevelFormat, string, DatabaseStoredValue>, string, DatabaseStoredValue> | AbstractBatchDelOperation<Level<string, DatabaseStoredValue>, string>} DatabaseBatchOperation
  */
 
 //* /typedef {DatabasePutOperation<DatabaseValue> | DatabasePutOperation<Freshness> | DatabasePutOperation<InputsRecord> | DatabasePutOperation<string[]> | DatabaseDelOperation<DatabaseValue> | DatabaseDelOperation<Freshness> | DatabaseDelOperation<InputsRecord> | DatabaseDelOperation<string[]>} DatabaseBatchOperation
@@ -163,13 +163,12 @@ function isDatabaseValue(value) {
  */
 
 /**
- * @typedef {AbstractSublevel<RootLevelType, SublevelFormat, string, string>} SchemaSublevelType
+ * @typedef {AbstractSublevel<RootLevelType, SublevelFormat, string, number>} SchemaSublevelType
  */
 
 /**
- * @template K
- * @template V
- * @typedef {AbstractSublevel<SchemaSublevelType, SublevelFormat, K, V>} SimpleSublevel
+ * @template T
+ * @typedef {AbstractSublevel<SchemaSublevelType, SublevelFormat, string, T>} SimpleSublevel
  */
 
 module.exports = {

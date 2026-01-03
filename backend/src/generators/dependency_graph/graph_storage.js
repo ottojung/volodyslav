@@ -14,6 +14,8 @@
 /** @typedef {import('../database/types').InputsRecord} InputsRecord */
 /** @typedef {import('../database/root_database').DatabaseBatchOperation} DatabaseBatchOperation */
 
+/** @typedef {} */
+
 /**
  * Interface for batch operations on a specific database.
  * @template TValue
@@ -60,7 +62,20 @@ function makeBatchBuilder(rootDatabase, schemaStorage) {
 
     return {
         values: {
-            put: (key, value) => operations.push(schemaStorage.values.putOp(key, value)),
+            put: (key, value) => {
+                const op = schemaStorage.values.putOp(key, value);
+                /** @type {AbstractSublevel<AbstractSublevel<AbstractSublevel<Level<string, DatabaseStoredValue>, SublevelFormat, string, number>, SublevelFormat, string, DatabaseValue>, any, any, any>} */
+                const sublevel = op.sublevel;
+                /** @type {'put'} */
+                const type = 'put';
+                const casted = {
+                    type: type,
+                    key: op.key,
+                    sublevel: 5,
+                    value: value,
+                };
+                operations.push(casted);
+            },
             del: (key) => operations.push(schemaStorage.values.delOp(key)),
         },
         freshness: {
