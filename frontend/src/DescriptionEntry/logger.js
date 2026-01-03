@@ -4,16 +4,16 @@
  */
 
 export const logger = {
-    error: (/** @type {any} */ message, /** @type {any[]} */ ...args) => {
+    error: (/** @type {unknown} */ message, /** @type {unknown[]} */ ...args) => {
         console.error(message, ...args);
     },
-    warn: (/** @type {any} */ message, /** @type {any[]} */ ...args) => {
+    warn: (/** @type {unknown} */ message, /** @type {unknown[]} */ ...args) => {
         console.warn(message, ...args);
     },
-    info: (/** @type {any} */ message, /** @type {any[]} */ ...args) => {
+    info: (/** @type {unknown} */ message, /** @type {unknown[]} */ ...args) => {
         console.info(message, ...args);
     },
-    debug: (/** @type {any} */ message, /** @type {any[]} */ ...args) => {
+    debug: (/** @type {unknown} */ message, /** @type {unknown[]} */ ...args) => {
         console.debug(message, ...args);
     }
 };

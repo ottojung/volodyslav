@@ -194,17 +194,17 @@ function serialize(state) {
         .slice()
         .sort((a, b) => a.name.localeCompare(b.name))
         .map((t) => {
-            /** @type {any} */
+            /** @type {Record<string, string | number>} */
             const rec = {
                 name: t.name,
                 cronExpression: t.cronExpression,
                 retryDelayMs: t.retryDelayMs,
             };
-            if (t.lastSuccessTime) rec.lastSuccessTime = toISOString(t.lastSuccessTime);
-            if (t.lastFailureTime) rec.lastFailureTime = toISOString(t.lastFailureTime);
-            if (t.lastAttemptTime) rec.lastAttemptTime = toISOString(t.lastAttemptTime);
-            if (t.pendingRetryUntil) rec.pendingRetryUntil = toISOString(t.pendingRetryUntil);
-            if (t.schedulerIdentifier) rec.schedulerIdentifier = t.schedulerIdentifier;
+            if (t.lastSuccessTime) rec['lastSuccessTime'] = toISOString(t.lastSuccessTime);
+            if (t.lastFailureTime) rec['lastFailureTime'] = toISOString(t.lastFailureTime);
+            if (t.lastAttemptTime) rec['lastAttemptTime'] = toISOString(t.lastAttemptTime);
+            if (t.pendingRetryUntil) rec['pendingRetryUntil'] = toISOString(t.pendingRetryUntil);
+            if (t.schedulerIdentifier) rec['schedulerIdentifier'] = t.schedulerIdentifier;
             return rec;
         });
     return {

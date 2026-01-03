@@ -56,7 +56,7 @@ const handlePhotoRetrieval = async (pendingRequestIdentifier, toast, setPendingR
 
 /**
  * Handles submission success actions
- * @param {any} result - Submission result
+ * @param {{success: boolean, entry?: {id: string, input: string}}} result - Submission result
  * @param {string} description - The description that was submitted
  * @param {File[]} files - Files to submit
  * @param {Function} setPendingRequestIdentifier - State setter
@@ -121,13 +121,17 @@ const getPhotoCountFromStorage = async (requestIdentifier, toast) => {
 
 /**
  * Handles camera return processing
- * @param {any} cameraReturn - Camera return data
+ * @param {{isReturn: boolean, requestIdentifier?: string}} cameraReturn - Camera return data
  * @param {Function} setDescription - State setter
  * @param {Function} setPendingRequestIdentifier - State setter
  * @param {Function} setPhotoCount - State setter for photo count
  * @param {Function} toast - Toast notification function
  */
 const processCameraReturn = async (cameraReturn, setDescription, setPendingRequestIdentifier, setPhotoCount, toast) => {
+    if (!cameraReturn.requestIdentifier) {
+        return;
+    }
+    
     const restoredDescription = restoreDescription(cameraReturn.requestIdentifier);
     if (restoredDescription) {
         setDescription(restoredDescription);

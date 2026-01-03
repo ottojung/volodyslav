@@ -277,7 +277,7 @@ function isSchemaOverlap(object) {
 class InvalidComputorReturnValue extends Error {
     /**
      * @param {string} nodeName
-     * @param {any} value
+     * @param {unknown} value
      */
     constructor(nodeName, value) {
         super(
@@ -293,7 +293,7 @@ class InvalidComputorReturnValue extends Error {
 /**
  * Constructs an InvalidComputorReturnValue error.
  * @param {string} nodeName
- * @param {any} value
+ * @param {unknown} value
  * @returns {InvalidComputorReturnValue}
  */
 function makeInvalidComputorReturnValueError(nodeName, value) {
