@@ -161,7 +161,7 @@ class DependencyGraphClass {
         validateConcreteKey(canonicalKey);
 
         // Ensure node exists (will create from pattern if needed)
-        const nodeDefinition = await this.getOrCreateConcreteNode(canonicalKey);
+        const nodeDefinition = this.getOrCreateConcreteNode(canonicalKey);
 
         // Validate that this is a source node (no inputs)
         if (nodeDefinition.inputs.length > 0) {
@@ -169,22 +169,19 @@ class DependencyGraphClass {
         }
 
         // Use batch builder for atomic operations
-        const batch = this.storage.batch();
+        await this.storage.withBatch(async (batch) => {
+            // Store the value
+            batch.values.put(canonicalKey, value);
 
-        // Store the value
-        batch.values.put(canonicalKey, value);
+            // Mark this key as up-to-date
+            batch.freshness.put(canonicalKey, "up-to-date");
 
-        // Mark this key as up-to-date
-        batch.freshness.put(canonicalKey, "up-to-date");
-
-        // Collect operations to mark all dependents as potentially-outdated
-        await this.propagateOutdated(
-            canonicalKey,
-            batch
-        );
-
-        // Execute all operations atomically
-        await batch.write();
+            // Collect operations to mark all dependents as potentially-outdated
+            await this.propagateOutdated(
+                canonicalKey,
+                batch
+            );
+        });
     }
 
     /**
@@ -468,9 +465,6 @@ class DependencyGraphClass {
             // Mark up-to-date
             batch.freshness.put(nodeName, "up-to-date");
 
-            // Execute all operations atomically
-            await batch.write();
-
             return { value: oldValue, status: "unchanged" };
         }
 
@@ -515,16 +509,10 @@ class DependencyGraphClass {
             batch.values.put(nodeName, computedValue);
             batch.freshness.put(nodeName, "up-to-date");
 
-            // Execute all operations atomically
-            await batch.write();
-
             return { value: computedValue, status: "changed" };
         } else {
             // Value unchanged: mark up-to-date
             batch.freshness.put(nodeName, "up-to-date");
-
-            // Execute all operations atomically
-            await batch.write();
 
             // Return old value (must exist if Unchanged returned)
             const result = await this.storage.values.get(nodeName);
@@ -557,47 +545,47 @@ class DependencyGraphClass {
      * @returns {Promise<RecomputeResult>}
      */
     async pullWithStatus(nodeName) {
-        const batch = this.storage.batch();
+        return this.storage.withBatch(async (batch) => {
+            // Canonicalize the node name
+            const canonicalName = canonicalize(nodeName);
 
-        // Canonicalize the node name
-        const canonicalName = canonicalize(nodeName);
+            // Validate that key is concrete (no variables)
+            validateConcreteKey(canonicalName);
 
-        // Validate that key is concrete (no variables)
-        validateConcreteKey(canonicalName);
+            // Find or create the node definition
+            const nodeDefinition = this.getOrCreateConcreteNode(
+                canonicalName,
+            );
 
-        // Find or create the node definition
-        const nodeDefinition = this.getOrCreateConcreteNode(
-            canonicalName,
-        );
+            // Check freshness of this node
+            const nodeFreshness = await this.storage.freshness.get(
+                canonicalName
+            );
 
-        // Check freshness of this node
-        const nodeFreshness = await this.storage.freshness.get(
-            canonicalName
-        );
-
-        // Fast path: if up-to-date, return cached value immediately
-        // But first ensure the node is indexed (for pattern nodes in seeded DBs)
-        if (nodeFreshness === "up-to-date") {
-            // Ensure node is indexed if it has inputs
-            // This is critical for seeded databases where values/freshness exist
-            // but reverse-dep metadata is missing
-            if (nodeDefinition.inputs.length > 0) {
-                await this.storage.ensureNodeIndexed(
-                    canonicalName,
-                    nodeDefinition.inputs,
-                    batch,
-                );
+            // Fast path: if up-to-date, return cached value immediately
+            // But first ensure the node is indexed (for pattern nodes in seeded DBs)
+            if (nodeFreshness === "up-to-date") {
+                // Ensure node is indexed if it has inputs
+                // This is critical for seeded databases where values/freshness exist
+                // but reverse-dep metadata is missing
+                if (nodeDefinition.inputs.length > 0) {
+                    await this.storage.ensureNodeIndexed(
+                        canonicalName,
+                        nodeDefinition.inputs,
+                        batch,
+                    );
+                }
+                
+                const result = await this.storage.values.get(canonicalName);
+                if (result === undefined) {
+                    throw makeMissingValueError(canonicalName);
+                }
+                return { value: result, status: "cached" };
             }
-            
-            const result = await this.storage.values.get(canonicalName);
-            if (result === undefined) {
-                throw makeMissingValueError(canonicalName);
-            }
-            return { value: result, status: "cached" };
-        }
 
-        // Potentially-outdated or undefined freshness: need to maybe recalculate
-        return await this.maybeRecalculate(nodeDefinition, batch);
+            // Potentially-outdated or undefined freshness: need to maybe recalculate
+            return await this.maybeRecalculate(nodeDefinition, batch);
+        });
     }
 
     /**
