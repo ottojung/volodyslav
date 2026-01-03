@@ -113,7 +113,7 @@ function isDatabaseValue(value) {
 /**
  * A database delete operation.
  * @template T
- * @typedef {AbstractBatchDelOperation<SimpleSublevel<T>, number>} DatabaseDelOperation
+ * @typedef {AbstractBatchDelOperation<SimpleSublevel<T>, string>} DatabaseDelOperation
  */
 
 /**
@@ -163,12 +163,12 @@ function isDatabaseValue(value) {
  */
 
 /**
- * @typedef {AbstractSublevel<RootLevelType, SublevelFormat, string, number>} SchemaSublevelType
+ * @typedef {AbstractSublevel<RootLevelType, SublevelFormat, string, DatabaseStoredValue>} SchemaSublevelType
  */
 
 /**
  * @template T
- * @typedef {AbstractSublevel<SchemaSublevelType, SublevelFormat, string, T>} SimpleSublevel
+ * @typedef {AbstractSublevel<AbstractSublevel<RootLevelType, SublevelFormat, string, DatabaseStoredValue>, SublevelFormat, string, T>} SimpleSublevel
  */
 
 module.exports = {

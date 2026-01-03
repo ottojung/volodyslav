@@ -140,29 +140,6 @@ class RootDatabaseClass {
      * @returns {Promise<void>}
      */
     async batch(operations) {
-        /** @type {Array<import('abstract-level').AbstractBatchPutOperation<Level<string, DatabaseStoredValue>, string, DatabaseStoredValue>|import('abstract-level').AbstractBatchDelOperation<Level<string, DatabaseStoredValue>, string>>} */
-        const casted = operations.map(op => {
-            if (op.type === 'put') {
-                /** @type {import('abstract-level').AbstractBatchPutOperation<Level<string, DatabaseStoredValue>, string, DatabaseStoredValue>} */
-                const ret = {
-                    type: 'put',
-                    sublevel: op.sublevel,
-                    key: op.key,
-                    value: op.value,
-                };
-                return ret;
-            } else if (op.type === 'del') {
-                /** @type {import('abstract-level').AbstractBatchDelOperation<Level<string, DatabaseStoredValue>, string>} */
-                return {
-                    type: 'del',
-                    key: op.key,
-                    prefix: op.sublevel,
-                    sublevel: op.sublevel,
-                };
-            } else {
-                throw new Error(`Unknown operation: ${op}`);
-            }
-        });
         return this.db.batch(operations, { sync: true });
     }
 
