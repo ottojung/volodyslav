@@ -3,6 +3,8 @@
  * Provides a GenericDatabase interface that wraps LevelDB sublevels with strong typing.
  */
 
+/** @typedef {import('./types').SchemaSublevelType} SchemaSublevelType */
+
 /**
  * @template T
  * @typedef {import('./types').SimpleSublevel<T>} SimpleSublevel
@@ -45,10 +47,19 @@ class TypedDatabaseClass {
     sublevel;
 
     /**
+     * The parent schema sublevel instance.
+     * @private
+     * @type {SchemaSublevelType}
+     */
+    schemaSublevel;
+
+    /**
      * @constructor
+     * @param {SchemaSublevelType} schemaSublevel - The parent level
      * @param {SimpleSublevel<TValue>} sublevel - The LevelDB sublevel instance
      */
-    constructor(sublevel) {
+    constructor(schemaSublevel, sublevel) {
+        this.schemaSublevel = schemaSublevel;
         this.sublevel = sublevel;
     }
 
@@ -131,11 +142,12 @@ class TypedDatabaseClass {
 /**
  * Factory function to create a TypedDatabase instance.
  * @template TValue
+ * @param {SchemaSublevelType} schemaSublevel - The parent level
  * @param {SimpleSublevel<TValue>} sublevel - The LevelDB sublevel instance
  * @returns {GenericDatabase<TValue>}
  */
-function makeTypedDatabase(sublevel) {
-    return new TypedDatabaseClass(sublevel);
+function makeTypedDatabase(schemaSublevel,sublevel) {
+    return new TypedDatabaseClass(schemaSublevel, sublevel);
 }
 
 /**

@@ -122,10 +122,10 @@ class RootDatabaseClass {
         const revdepsSublevel = schemaSublevel.sublevel('revdeps', { valueEncoding: 'json' });
 
         const storage = {
-            values: makeTypedDatabase(valuesSublevel),
-            freshness: makeTypedDatabase(freshnessSublevel),
-            inputs: makeTypedDatabase(inputsSublevel),
-            revdeps: makeTypedDatabase(revdepsSublevel),
+            values: makeTypedDatabase(schemaSublevel, valuesSublevel),
+            freshness: makeTypedDatabase(schemaSublevel, freshnessSublevel),
+            inputs: makeTypedDatabase(schemaSublevel, inputsSublevel),
+            revdeps: makeTypedDatabase(schemaSublevel, revdepsSublevel),
         };
 
         // Cache for future use
