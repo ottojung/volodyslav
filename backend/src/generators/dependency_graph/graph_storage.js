@@ -46,7 +46,9 @@
  * @property {InputsDatabase} inputs - Node inputs index
  * @property {RevdepsDatabase} revdeps - Reverse dependencies (edge-based: composite key -> 1)
  * @property {BatchFunction} withBatch - Run a function and commit atomically everything it does
- * @property {(node: string, inputs: string[], batch: BatchBuilder) => Promise<void>} ensureNodeIndexed - Index a node's dependencies
+ * @property {(node: string, inputs: string[], batch: BatchBuilder) => Promise<void>} ensureMaterialized - Mark a node as materialized (write inputs record)
+ * @property {(node: string, inputs: string[], batch: BatchBuilder) => Promise<void>} ensureReverseDepsIndexed - Index reverse dependencies (write revdep edges)
+ * @property {(node: string, inputs: string[], batch: BatchBuilder) => Promise<void>} ensureNodeIndexed - Index a node's dependencies (deprecated, use ensureMaterialized + ensureReverseDepsIndexed)
  * @property {(input: string) => Promise<string[]>} listDependents - List all dependents of an input
  * @property {(node: string) => Promise<string[] | null>} getInputs - Get inputs for a node
  * @property {() => Promise<string[]>} listMaterializedNodes - List all materialized node names
@@ -130,7 +132,46 @@ function makeGraphStorage(rootDatabase, schemaHash) {
     const schemaStorage = rootDatabase.getSchemaStorage(schemaHash);
 
     /**
+     * Ensure a node is marked as materialized in the inputs database.
+     * This is always called regardless of whether the node has inputs.
+     * Writes the inputs record for the node.
+     * @param {string} node - Canonical node key
+     * @param {string[]} inputs - Array of canonical input keys (may be empty)
+     * @param {BatchBuilder} batch - Batch builder for atomic operations
+     * @returns {Promise<void>}
+     */
+    async function ensureMaterialized(node, inputs, batch) {
+        // Check if already indexed
+        const existingInputs = await getInputs(node);
+        if (existingInputs !== null) {
+            return; // Already materialized
+        }
+
+        // Store the inputs record (even if empty array)
+        batch.inputs.put(node, { inputs });
+    }
+
+    /**
+     * Ensure a node's reverse dependencies are indexed.
+     * This is only called when the node has inputs.
+     * Writes reverse dependency edges.
+     * @param {string} node - Canonical node key
+     * @param {string[]} inputs - Array of canonical input keys (must be non-empty)
+     * @param {BatchBuilder} batch - Batch builder for atomic operations
+     * @returns {Promise<void>}
+     */
+    async function ensureReverseDepsIndexed(node, inputs, batch) {
+        // Update revdeps using edge-based storage
+        // Each edge is stored as a separate key-value pair
+        for (const input of inputs) {
+            const edgeKey = makeRevdepKey(input, node);
+            batch.revdeps.put(edgeKey, 1);
+        }
+    }
+
+    /**
      * Ensure a node's inputs and reverse dependencies are indexed.
+     * @deprecated Use ensureMaterialized and ensureReverseDepsIndexed instead
      * @param {string} node - Canonical node key
      * @param {string[]} inputs - Array of canonical input keys
      * @param {BatchBuilder} batch - Batch builder for atomic operations
@@ -208,6 +249,8 @@ function makeGraphStorage(rootDatabase, schemaHash) {
         withBatch: makeBatchBuilder(schemaStorage),
         
         // Helper methods
+        ensureMaterialized,
+        ensureReverseDepsIndexed,
         ensureNodeIndexed,
         listDependents,
         getInputs,

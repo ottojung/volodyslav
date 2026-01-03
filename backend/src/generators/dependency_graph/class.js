@@ -176,6 +176,13 @@ class DependencyGraphClass {
             // Mark this key as up-to-date
             batch.freshness.put(canonicalKey, "up-to-date");
 
+            // Ensure the node is materialized (write inputs record with empty array)
+            await this.storage.ensureMaterialized(
+                canonicalKey,
+                nodeDefinition.inputs,
+                batch
+            );
+
             // Collect operations to mark all dependents as potentially-outdated
             await this.propagateOutdated(
                 canonicalKey,
@@ -454,9 +461,16 @@ class DependencyGraphClass {
             nodeDefinition.inputs.length > 0 &&
             oldValue !== undefined
         ) {
-            // Ensure node is indexed (if it has inputs)
+            // Ensure node is materialized
+            await this.storage.ensureMaterialized(
+                nodeName,
+                nodeDefinition.inputs,
+                batch,
+            );
+            
+            // Ensure reverse dependencies are indexed (if it has inputs)
             // This is critical for pattern nodes which have no static dependents map entry
-            await this.storage.ensureNodeIndexed(
+            await this.storage.ensureReverseDepsIndexed(
                 nodeName,
                 nodeDefinition.inputs,
                 batch,
@@ -490,9 +504,16 @@ class DependencyGraphClass {
             }
         }
 
-        // Ensure node is indexed (if it has inputs)
+        // Always ensure node is materialized (even with 0 inputs)
+        await this.storage.ensureMaterialized(
+            nodeName,
+            nodeDefinition.inputs,
+            batch,
+        );
+
+        // Ensure reverse dependencies are indexed (only if it has inputs)
         if (nodeDefinition.inputs.length > 0) {
-            await this.storage.ensureNodeIndexed(
+            await this.storage.ensureReverseDepsIndexed(
                 nodeName,
                 nodeDefinition.inputs,
                 batch,
@@ -563,13 +584,20 @@ class DependencyGraphClass {
             );
 
             // Fast path: if up-to-date, return cached value immediately
-            // But first ensure the node is indexed (for pattern nodes in seeded DBs)
+            // But first ensure the node is materialized (for seeded DBs or restart resilience)
             if (nodeFreshness === "up-to-date") {
-                // Ensure node is indexed if it has inputs
+                // Ensure node is materialized
+                await this.storage.ensureMaterialized(
+                    canonicalName,
+                    nodeDefinition.inputs,
+                    batch,
+                );
+                
+                // Ensure reverse dependencies are indexed if it has inputs
                 // This is critical for seeded databases where values/freshness exist
                 // but reverse-dep metadata is missing
                 if (nodeDefinition.inputs.length > 0) {
-                    await this.storage.ensureNodeIndexed(
+                    await this.storage.ensureReverseDepsIndexed(
                         canonicalName,
                         nodeDefinition.inputs,
                         batch,
