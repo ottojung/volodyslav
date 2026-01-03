@@ -2,7 +2,7 @@
  * DependencyGraph class for propagating data through dependency edges.
  */
 
-/** @typedef {import('./types').Database} Database */
+/** @typedef {import('../database/root_database').RootDatabase} RootDatabase */
 /** @typedef {import('./types').DatabaseValue} DatabaseValue */
 /** @typedef {import('./types').Freshness} Freshness */
 /** @typedef {import('./types').FreshnessStatus} FreshnessStatus */
@@ -13,8 +13,7 @@
 /** @typedef {import('./types').RecomputeResult} RecomputeResult */
 /** @typedef {import('./unchanged').Unchanged} Unchanged */
 /** @typedef {import('./graph_storage').GraphStorage} GraphStorage */
-/** @typedef {import('../database/types').DatabaseBatchOperation} DatabaseBatchOperation */
-/** @typedef {DatabaseValue | Freshness} DatabaseStoredValue */
+/** @typedef {import('./graph_storage').BatchBuilder} BatchBuilder */
 
 const crypto = require("crypto");
 const { isUnchanged } = require("./unchanged");
@@ -23,6 +22,7 @@ const {
     makeMissingValueError,
     makeInvalidSetError,
     makeSchemaOverlapError,
+    makeInvalidComputorReturnValueError,
 } = require("./errors");
 const { canonicalize, parseExpr } = require("./expr");
 const {
@@ -48,13 +48,6 @@ const { makeGraphStorage } = require("./graph_storage");
  * - No initialization scan needed; edges are queryable on demand from DB
  */
 class DependencyGraphClass {
-    /**
-     * The underlying database instance.
-     * @private
-     * @type {Database}
-     */
-    database;
-
     /**
      * All compiled nodes (both exact and patterns).
      * @private
@@ -106,13 +99,13 @@ class DependencyGraphClass {
      * Uses both static dependents map and DB-persisted reverse dependencies.
      * @private
      * @param {string} changedKey - The key that was changed
-     * @param {Array<DatabaseBatchOperation>} batchOperations - Batch to add operations to
+     * @param {BatchBuilder} batch - Batch builder to add operations to
      * @param {Set<string>} nodesBecomingOutdated - Set of nodes that are becoming outdated in this batch
      * @returns {Promise<void>}
      */
     async propagateOutdated(
         changedKey,
-        batchOperations,
+        batch,
         nodesBecomingOutdated = new Set()
     ) {
         // Collect dependents from both static map and DB
@@ -131,24 +124,22 @@ class DependencyGraphClass {
                 continue;
             }
 
-            const currentFreshness = await this.storage.getNodeFreshness(
+            const currentFreshness = await this.storage.freshness.get(
                 node.output
             );
 
             // Only update if not already potentially-outdated
             if (currentFreshness !== "potentially-outdated") {
-                batchOperations.push(
-                    this.storage.setNodeFreshnessOp(
-                        node.output,
-                        "potentially-outdated"
-                    )
+                batch.freshness.put(
+                    node.output,
+                    "potentially-outdated"
                 );
                 nodesBecomingOutdated.add(node.output);
 
                 // Recursively mark dependents of this node
                 await this.propagateOutdated(
                     node.output,
-                    batchOperations,
+                    batch,
                     nodesBecomingOutdated
                 );
             }
@@ -177,25 +168,23 @@ class DependencyGraphClass {
             throw makeInvalidSetError(canonicalKey);
         }
 
-        /** @type {Array<DatabaseBatchOperation>} */
-        const batchOperations = [];
+        // Use batch builder for atomic operations
+        const batch = this.storage.batch();
 
         // Store the value
-        batchOperations.push(this.storage.setNodeValueOp(canonicalKey, value));
+        batch.values.put(canonicalKey, value);
 
         // Mark this key as up-to-date
-        batchOperations.push(
-            this.storage.setNodeFreshnessOp(canonicalKey, "up-to-date")
-        );
+        batch.freshness.put(canonicalKey, "up-to-date");
 
         // Collect operations to mark all dependents as potentially-outdated
         await this.propagateOutdated(
             canonicalKey,
-            batchOperations
+            batch
         );
 
         // Execute all operations atomically
-        await this.database.batch(batchOperations);
+        await batch.write();
     }
 
     /**
@@ -343,12 +332,10 @@ class DependencyGraphClass {
 
     /**
      * @constructor
-     * @param {Database} database - The database instance
+     * @param {RootDatabase} rootDatabase - The root database instance
      * @param {Array<NodeDef>} nodeDefs - Unified node definitions
      */
-    constructor(database, nodeDefs) {
-        this.database = database;
-
+    constructor(rootDatabase, nodeDefs) {
         // Compile all node definitions
         const compiledNodes = nodeDefs.map(compileNodeDef);
 
@@ -375,7 +362,7 @@ class DependencyGraphClass {
             .substring(0, 16); // Use first 16 chars for brevity
 
         // Initialize storage helper
-        this.storage = makeGraphStorage(database, this.schemaHash);
+        this.storage = makeGraphStorage(rootDatabase, this.schemaHash);
 
         // Store compiled nodes in a map by canonical output
         this.graph = new Map();
@@ -461,7 +448,7 @@ class DependencyGraphClass {
         }
 
         // Get old value
-        const oldValue = await this.storage.getNodeValue(nodeName);
+        const oldValue = await this.storage.values.get(nodeName);
 
         // Optimization: if all inputs are 'unchanged' (meaning they were outdated but recomputed to same value),
         // then we can skip recomputation and mark ourselves up-to-date.
@@ -471,25 +458,21 @@ class DependencyGraphClass {
             nodeDefinition.inputs.length > 0 &&
             oldValue !== undefined
         ) {
-            // Prepare batch operations for the fast path
-            /** @type {Array<{type: "put", key: string, value: DatabaseStoredValue} | {type: "del", key: string}>} */
-            const batchOperations = [];
+            // Prepare batch for the fast path
+            const batch = this.storage.batch();
 
             // Ensure node is indexed (if it has inputs)
             // This is critical for pattern nodes which have no static dependents map entry
             await this.storage.ensureNodeIndexed(
                 nodeName,
-                nodeDefinition.inputs,
-                batchOperations
+                nodeDefinition.inputs
             );
 
             // Mark up-to-date
-            batchOperations.push(
-                this.storage.setNodeFreshnessOp(nodeName, "up-to-date")
-            );
+            batch.freshness.put(nodeName, "up-to-date");
 
             // Execute all operations atomically
-            await this.database.batch(batchOperations);
+            await batch.write();
 
             return { value: oldValue, status: "unchanged" };
         }
@@ -500,50 +483,56 @@ class DependencyGraphClass {
             oldValue
         );
 
+        // Validate that computor returned a valid value
+        if (!isUnchanged(computedValue)) {
+            // Not Unchanged: must be a valid DatabaseValue (not null/undefined)
+            if (computedValue === null || computedValue === undefined) {
+                throw makeInvalidComputorReturnValueError(nodeName, computedValue);
+            }
+        } else {
+            // Unchanged: must have a previous value
+            if (oldValue === undefined) {
+                throw makeInvalidComputorReturnValueError(
+                    nodeName,
+                    "Unchanged (but no previous value exists)"
+                );
+            }
+        }
+
         // Prepare batch operations
-        /** @type {Array<DatabaseBatchOperation>} */
-        const batchOperations = [];
+        const batch = this.storage.batch();
 
         // Ensure node is indexed (if it has inputs)
         if (nodeDefinition.inputs.length > 0) {
             await this.storage.ensureNodeIndexed(
                 nodeName,
-                nodeDefinition.inputs,
-                batchOperations
+                nodeDefinition.inputs
             );
         }
 
         // Mark all inputs as up-to-date (redundant but safe)
         for (const inputKey of nodeDefinition.inputs) {
-            batchOperations.push(
-                this.storage.setNodeFreshnessOp(inputKey, "up-to-date")
-            );
+            batch.freshness.put(inputKey, "up-to-date");
         }
 
         if (!isUnchanged(computedValue)) {
             // Value changed: store it, mark up-to-date
-            batchOperations.push(
-                this.storage.setNodeValueOp(nodeName, computedValue)
-            );
-            batchOperations.push(
-                this.storage.setNodeFreshnessOp(nodeName, "up-to-date")
-            );
+            batch.values.put(nodeName, computedValue);
+            batch.freshness.put(nodeName, "up-to-date");
 
             // Execute all operations atomically
-            await this.database.batch(batchOperations);
+            await batch.write();
 
             return { value: computedValue, status: "changed" };
         } else {
             // Value unchanged: mark up-to-date
-            batchOperations.push(
-                this.storage.setNodeFreshnessOp(nodeName, "up-to-date")
-            );
+            batch.freshness.put(nodeName, "up-to-date");
 
             // Execute all operations atomically
-            await this.database.batch(batchOperations);
+            await batch.write();
 
             // Return old value (must exist if Unchanged returned)
-            const result = await this.storage.getNodeValue(nodeName);
+            const result = await this.storage.values.get(nodeName);
             if (result === undefined) {
                 throw makeMissingValueError(nodeName);
             }
@@ -585,7 +574,7 @@ class DependencyGraphClass {
         );
 
         // Check freshness of this node
-        const nodeFreshness = await this.storage.getNodeFreshness(
+        const nodeFreshness = await this.storage.freshness.get(
             canonicalName
         );
 
@@ -596,22 +585,13 @@ class DependencyGraphClass {
             // This is critical for seeded databases where values/freshness exist
             // but reverse-dep metadata is missing
             if (nodeDefinition.inputs.length > 0) {
-                /** @type {Array<{type: "put", key: string, value: DatabaseStoredValue} | {type: "del", key: string}>} */
-                const batchOperations = [];
-                
                 await this.storage.ensureNodeIndexed(
                     canonicalName,
-                    nodeDefinition.inputs,
-                    batchOperations
+                    nodeDefinition.inputs
                 );
-                
-                // Execute indexing operations if any were added
-                if (batchOperations.length > 0) {
-                    await this.database.batch(batchOperations);
-                }
             }
             
-            const result = await this.storage.getNodeValue(canonicalName);
+            const result = await this.storage.values.get(canonicalName);
             if (result === undefined) {
                 throw makeMissingValueError(canonicalName);
             }
@@ -623,13 +603,13 @@ class DependencyGraphClass {
     }
 
     /**
-     * Query conceptual freshness state of a node.
-     * @param {string} nodeName - The name of the node
-     * @returns {Promise<FreshnessStatus>}
+     * Query conceptual freshness state of a node (debug interface).
+     * @param {string} nodeName - The node name to query
+     * @returns {Promise<"up-to-date" | "potentially-outdated" | "missing">}
      */
     async debugGetFreshness(nodeName) {
-        const canonicalName = canonicalize(nodeName);
-        const freshness = await this.storage.getNodeFreshness(canonicalName);
+        const canonical = canonicalize(nodeName);
+        const freshness = await this.storage.freshness.get(canonical);
         if (freshness === undefined) {
             return "missing";
         }
@@ -643,17 +623,34 @@ class DependencyGraphClass {
     async debugListMaterializedNodes() {
         return this.storage.listMaterializedNodes();
     }
+
+    /**
+     * Get the GraphStorage instance for testing purposes.
+     * This allows tests to directly access and manipulate the storage.
+     * @returns {GraphStorage}
+     */
+    getStorage() {
+        return this.storage;
+    }
+
+    /**
+     * Get the schema hash for testing purposes.
+     * @returns {string}
+     */
+    getSchemaHash() {
+        return this.schemaHash;
+    }
 }
 
 /**
  * Factory function to create a DependencyGraph instance.
  *
- * @param {Database} database - The database instance
+ * @param {RootDatabase} rootDatabase - The root database instance
  * @param {Array<NodeDef>} nodeDefs - Unified node definitions
  * @returns {DependencyGraphClass}
  */
-function makeDependencyGraph(database, nodeDefs) {
-    return new DependencyGraphClass(database, nodeDefs);
+function makeDependencyGraph(rootDatabase, nodeDefs) {
+    return new DependencyGraphClass(rootDatabase, nodeDefs);
 }
 
 /**

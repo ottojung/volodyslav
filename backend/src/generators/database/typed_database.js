@@ -1,0 +1,155 @@
+/**
+ * Typed database abstraction layer.
+ * Provides a GenericDatabase interface that wraps LevelDB sublevels with strong typing.
+ */
+
+/** @typedef {import('./types').SchemaSublevelType} SchemaSublevelType */
+
+/**
+ * @template T
+ * @typedef {import('./types').SimpleSublevel<T>} SimpleSublevel
+ */
+
+/**
+ * @template T
+ * @typedef {import('./types').DatabasePutOperation<T>} DatabasePutOperation
+ */
+
+/** 
+ * @template T
+ * @typedef {import('./types').DatabaseDelOperation<T>} DatabaseDelOperation
+ */
+
+/**
+ * Generic typed database interface.
+ * All databases (values, freshness, inputs, revdeps) implement this interface.
+ * @template TValue - The value type
+ * @typedef {object} GenericDatabase
+ * @property {(key: string) => Promise<TValue | undefined>} get - Retrieve a value
+ * @property {(key: string, value: TValue) => Promise<void>} put - Store a value
+ * @property {(key: string) => Promise<void>} del - Delete a value
+ * @property {(key: string, value: TValue) => DatabasePutOperation<TValue>} putOp - Store a value operation
+ * @property {(key: string) => DatabaseDelOperation<TValue>} delOp - Delete a value operation
+ * @property {() => AsyncIterable<string>} keys - Iterate over all keys
+ * @property {() => Promise<void>} clear - Clear all entries
+ */
+
+/**
+ * Wrapper class that adapts a LevelDB sublevel to the GenericDatabase interface.
+ * @template TValue
+ */
+class TypedDatabaseClass {
+    /**
+     * The underlying LevelDB sublevel instance.
+     * @private
+     * @type {SimpleSublevel<TValue>}
+     */
+    sublevel;
+
+    /**
+     * @constructor
+     * @param {SimpleSublevel<TValue>} sublevel - The LevelDB sublevel instance
+     */
+    constructor(sublevel) {
+        this.sublevel = sublevel;
+    }
+
+    /**
+     * Retrieve a value from the database.
+     * @param {string} key - The key to retrieve
+     * @returns {Promise<TValue | undefined>}
+     */
+    async get(key) {
+        try {
+            const value = await this.sublevel.get(key);
+            return value;
+        } catch (err) {
+            // LevelDB throws for missing keys, we return undefined
+            const error = /** @type {Error} */ (err);
+            if (error.message?.includes('not found') || error.message?.includes('NotFound')) {
+                return undefined;
+            }
+            throw err;
+        }
+    }
+
+    /**
+     * Store a value in the database.
+     * @param {string} key - The key to store
+     * @param {TValue} value - The value to store
+     * @returns {Promise<void>}
+     */
+    async put(key, value) {
+        await this.sublevel.put(key, value);
+    }
+
+    /**
+     * Delete a value from the database.
+     * @param {string} key - The key to delete
+     * @returns {Promise<void>}
+     */
+    async del(key) {
+        await this.sublevel.del(key);
+    }
+
+    /**
+     * Create a put operation for batch processing.
+     * @param {string} key - The key to store
+     * @param {TValue} value - The value to store
+     * @returns {DatabasePutOperation<TValue>}
+     */
+    putOp(key, value) {
+        return { sublevel: this.sublevel, type: 'put', key, value };
+    }
+
+    /**
+     * Create a delete operation for batch processing.
+     * @param {string} key - The key to delete
+     * @returns {DatabaseDelOperation<TValue>}
+     */
+    delOp(key) {
+        /** @type {SimpleSublevel<TValue>} */
+        const thisSublevel = this.sublevel;
+        /** @type {SimpleSublevel<TValue>} */
+        const sublevel = thisSublevel;
+        return { sublevel: sublevel, type: 'del', key };
+    }
+
+    async *keys() {
+        for await (const key of this.sublevel.keys()) {
+            yield key;
+        }
+    }
+
+    /**
+     * Clear all entries in the database.
+     * @returns {Promise<void>}
+     */
+    async clear() {
+        await this.sublevel.clear();
+    }
+}
+
+/**
+ * Factory function to create a TypedDatabase instance.
+ * @template TValue
+ * @param {SimpleSublevel<TValue>} sublevel - The LevelDB sublevel instance
+ * @returns {GenericDatabase<TValue>}
+ */
+function makeTypedDatabase(sublevel) {
+    return new TypedDatabaseClass(sublevel);
+}
+
+/**
+ * Type guard for TypedDatabase.
+ * @param {unknown} object
+ * @returns {boolean}
+ */
+function isTypedDatabase(object) {
+    return object instanceof TypedDatabaseClass;
+}
+
+module.exports = {
+    makeTypedDatabase,
+    isTypedDatabase,
+};

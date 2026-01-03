@@ -22,14 +22,15 @@ function expectHasOwn(err, prop) {
 }
 
 /**
- * Minimal in-memory Database that matches the spec's Database interface.
- * We purposely do NOT assume any particular "freshness key" naming convention:
- * the graph is free to choose. This DB just stores whatever keys it is asked to store.
+ * Minimal in-memory Database that matches the RootDatabase interface.
+ * We implement the sublevel structure in memory.
  */
 class InMemoryDatabase {
     constructor() {
+        /** @type {Map<string, Map<string, any>>} */
+        this.schemas = new Map();
         /** @type {Map<string, any>} */
-        this.kv = new Map();
+        this.root = new Map();
         /** @type {boolean} */
         this.closed = false;
         /** @type {Array<any>} */
@@ -38,40 +39,116 @@ class InMemoryDatabase {
         this.putLog = [];
         /** @type {Array<any>} */
         this.getValueLog = [];
-        /** @type {Array<any>} */
-        this.getFreshnessLog = [];
     }
 
+    getSchemaStorage(schemaHash) {
+        if (!this.schemas.has(schemaHash)) {
+            this.schemas.set(schemaHash, new Map());
+        }
+        const schemaMap = this.schemas.get(schemaHash);
+        
+        // Don't capture logs in closure - use arrow functions to preserve 'this' context
+        const createSublevel = (name) => {
+            const prefix = `${name}:`;
+            const sublevel = {
+                get: async (key) => {
+                    const fullKey = prefix + key;
+                    // Track get calls for values sublevel
+                    if (name === 'values') {
+                        this.getValueLog.push({ key });
+                    }
+                    const v = schemaMap.get(fullKey);
+                    return v === undefined ? undefined : deepClone(v);
+                },
+                put: async (key, value) => {
+                    const fullKey = prefix + key;
+                    schemaMap.set(fullKey, deepClone(value));
+                },
+                del: async (key) => {
+                    const fullKey = prefix + key;
+                    schemaMap.delete(fullKey);
+                },
+                putOp: (key, value) => {
+                    return { type: 'put', sublevel, key, value };
+                },
+                delOp: (key) => {
+                    return { type: 'del', sublevel, key };
+                },
+                keys: async function* () {
+                    for (const k of schemaMap.keys()) {
+                        if (k.startsWith(prefix)) {
+                            yield k.substring(prefix.length);
+                        }
+                    }
+                },
+                clear: async () => {
+                    const toDelete = [];
+                    for (const k of schemaMap.keys()) {
+                        if (k.startsWith(prefix)) {
+                            toDelete.push(k);
+                        }
+                    }
+                    for (const k of toDelete) {
+                        schemaMap.delete(k);
+                    }
+                },
+            };
+            return sublevel;
+        };
+
+        const values = createSublevel('values');
+        const freshness = createSublevel('freshness');
+        const inputs = createSublevel('inputs');
+        const revdeps = createSublevel('revdeps');
+
+        return {
+            values,
+            freshness,
+            inputs,
+            revdeps,
+            batch: async (operations) => {
+                // Track batch calls - use this to access current array
+                this.batchLog.push({ ops: deepClone(operations.map(op => ({ 
+                    type: op.type, 
+                    key: op.key, 
+                    value: op.value 
+                }))) });
+                
+                // Atomic application of batch operations
+                for (const op of operations) {
+                    if (op.type === 'put') {
+                        await op.sublevel.put(op.key, op.value);
+                    } else if (op.type === 'del') {
+                        await op.sublevel.del(op.key);
+                    }
+                }
+            },
+        };
+    }
+
+    async *listSchemas() {
+        for (const schemaHash of this.schemas.keys()) {
+            yield schemaHash;
+        }
+    }
+
+    // Backward compatibility for tests that access root level
     async put(key, value) {
         if (this.closed) throw new Error("DatabaseClosed");
         this.putLog.push({ key, value });
-        this.kv.set(key, deepClone(value));
-    }
-
-    async getValue(key) {
-        if (this.closed) throw new Error("DatabaseClosed");
-        this.getValueLog.push({ key });
-        const v = this.kv.get(key);
-        return v === undefined ? undefined : deepClone(v);
-    }
-
-    async getFreshness(key) {
-        if (this.closed) throw new Error("DatabaseClosed");
-        this.getFreshnessLog.push({ key });
-        const v = this.kv.get(key);
-        return v === undefined ? undefined : deepClone(v);
+        this.root.set(key, deepClone(value));
     }
 
     async get(key) {
         if (this.closed) throw new Error("DatabaseClosed");
-        const v = this.kv.get(key);
+        const v = this.root.get(key);
         return v === undefined ? undefined : deepClone(v);
     }
 
     async keys(prefix) {
         if (this.closed) throw new Error("DatabaseClosed");
         const res = [];
-        for (const k of this.kv.keys()) {
+        for (const k of this.root.keys()) {
             if (!prefix || k.startsWith(prefix)) res.push(k);
         }
         return res;
@@ -81,15 +158,14 @@ class InMemoryDatabase {
         if (this.closed) throw new Error("DatabaseClosed");
         this.batchLog.push({ ops: deepClone(ops) });
 
-        // atomic apply: copy then commit
-        const next = new Map(this.kv);
+        // atomic apply
         for (const op of ops) {
             if (op.type === "put") {
-                next.set(op.key, deepClone(op.value));
-            } else if (op.type === "del") next.delete(op.key);
-            else throw new Error(`UnknownBatchOp:${String(op.type)}`);
+                this.root.set(op.key, deepClone(op.value));
+            } else if (op.type === "del") {
+                this.root.delete(op.key);
+            } else throw new Error(`UnknownBatchOp:${String(op.type)}`);
         }
-        this.kv = next;
     }
 
     async close() {
@@ -100,7 +176,35 @@ class InMemoryDatabase {
         this.batchLog = [];
         this.putLog = [];
         this.getValueLog = [];
-        this.getFreshnessLog = [];
+    }
+
+    /**
+     * Helper to corrupt database by deleting a value from all schemas (for testing).
+     * This simulates database corruption where the value is deleted but freshness remains.
+     * @param {string} key - The key to delete
+     */
+    async corruptByDeletingValue(key) {
+        // Delete from all schemas
+        for (const schemaMap of this.schemas.values()) {
+            schemaMap.delete('values:' + key);
+        }
+    }
+
+    /**
+     * Helper to seed a schema storage directly (for testing seeded databases).
+     * This bypasses normal indexing to simulate partially-seeded databases.
+     * @param {string} schemaHash - The schema hash
+     * @param {string} sublevel - The sublevel name ('values', 'freshness', 'inputs', 'revdeps')
+     * @param {string} key - The key
+     * @param {any} value - The value
+     */
+    async seedSchemaStorage(schemaHash, sublevel, key, value) {
+        if (!this.schemas.has(schemaHash)) {
+            this.schemas.set(schemaHash, new Map());
+        }
+        const schemaMap = this.schemas.get(schemaHash);
+        const fullKey = `${sublevel}:${key}`;
+        schemaMap.set(fullKey, deepClone(value));
     }
 }
 
@@ -414,17 +518,16 @@ describe("Expression parsing & canonicalization at API boundaries", () => {
             s: { type: "string", value: "test" },
         });
 
-        // Must store under canonical value key "echo(42,'test')" (no spaces)
-        // We don't require a particular *freshness* key, but value key must be canonical.
-        const wroteValueKey =
-            db.batchLog.some((b) =>
-                b.ops.some(
-                    (op) =>
-                        op.type === "put" && op.key.includes("echo(42,'test')")
-                )
-            ) || db.putLog.some((p) => p.key.includes("echo(42,'test')"));
-
-        expect(wroteValueKey).toBe(true);
+        // Check if the value was actually stored under canonical key
+        const storage = g.getStorage();
+        const storedValue = await storage.values.get("echo(42,'test')");
+        expect(storedValue).toBeDefined();
+        
+        // Verify the canonical key stores the correct value
+        expect(storedValue).toEqual({
+            a: { type: "int", value: 42 },
+            s: { type: "string", value: "test" },
+        });
     });
 
     test("string escapes are decoded in bindings (\\n)", async () => {
@@ -1338,8 +1441,8 @@ describe("MissingValueError (detects corruption: up-to-date but missing stored v
         const v = await g.pull("leaf");
         expect(v).toEqual({ ok: true });
 
-        // Corrupt: delete the VALUE key only (we know it must be canonical node key "leaf")
-        await db.batch([{ type: "del", key: "leaf" }]);
+        // Corrupt: delete the VALUE key only (leaving freshness intact)
+        await db.corruptByDeletingValue("leaf");
 
         await expect(g.pull("leaf")).rejects.toMatchObject({
             name: "MissingValueError",
@@ -2566,14 +2669,7 @@ describe("13. Seeded database scenario: fast path must index reverse dependencie
         // 3. NO reverse-dep metadata (as if seeded from older version or partial data)
         const db2 = new InMemoryDatabase();
 
-        // Pre-populate the database with values and freshness, but NO indexing
-        await db2.put("source", { n: 10 });
-        await db2.put("freshness:source", "up-to-date");
-        await db2.put("derived", { n: 11 });
-        await db2.put("freshness:derived", "up-to-date");
-        // Note: we intentionally DO NOT add reverse-dep keys or inputs keys
-
-        // Create a new graph instance over this seeded database
+        // Create a new graph instance first to get the schema hash
         const derivedC2 = countedComputor("derived2", async ([source]) => ({
             n: source.n + 1,
         }));
@@ -2586,6 +2682,16 @@ describe("13. Seeded database scenario: fast path must index reverse dependencie
             },
             { output: "derived", inputs: ["source"], computor: derivedC2.computor },
         ]);
+
+        // Get schema hash for seeding
+        const schemaHash = g2.getSchemaHash();
+
+        // Pre-populate the database with values and freshness, but NO indexing
+        await db2.seedSchemaStorage(schemaHash, 'values', 'source', { n: 10 });
+        await db2.seedSchemaStorage(schemaHash, 'freshness', 'source', 'up-to-date');
+        await db2.seedSchemaStorage(schemaHash, 'values', 'derived', { n: 11 });
+        await db2.seedSchemaStorage(schemaHash, 'freshness', 'derived', 'up-to-date');
+        // Note: we intentionally DO NOT add reverse-dep keys or inputs keys
 
         // Pull derived once - this triggers the "allInputsUnchanged fast path"
         // because source is already up-to-date
@@ -2631,12 +2737,6 @@ describe("13. Seeded database scenario: fast path must index reverse dependencie
         // Simulate seeded scenario for pattern node
         const db2 = new InMemoryDatabase();
 
-        // Pre-populate with values and freshness, but NO reverse-dep indexing
-        await db2.put("source", { n: 10 });
-        await db2.put("freshness:source", "up-to-date");
-        await db2.put("derived('id123')", { id: "id123", n: 11 });
-        await db2.put("freshness:derived('id123')", "up-to-date");
-
         // Create new graph instance
         const derivedC2 = countedComputor("derived2", async ([source], _old, { e }) => ({
             id: e.value,
@@ -2651,6 +2751,15 @@ describe("13. Seeded database scenario: fast path must index reverse dependencie
             },
             { output: "derived(e)", inputs: ["source"], computor: derivedC2.computor },
         ]);
+
+        // Get schema hash for seeding
+        const schemaHash = g2.getSchemaHash();
+
+        // Pre-populate with values and freshness, but NO reverse-dep indexing
+        await db2.seedSchemaStorage(schemaHash, 'values', 'source', { n: 10 });
+        await db2.seedSchemaStorage(schemaHash, 'freshness', 'source', 'up-to-date');
+        await db2.seedSchemaStorage(schemaHash, 'values', "derived('id123')", { id: "id123", n: 11 });
+        await db2.seedSchemaStorage(schemaHash, 'freshness', "derived('id123')", 'up-to-date');
 
         // Pull derived - triggers fast path
         const v2 = await g2.pull("derived('id123')");
