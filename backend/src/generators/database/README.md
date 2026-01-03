@@ -1,2 +1,2 @@
 
-Generators work inside an SQL database to process event log entries and generate additional data for storage.
+Generators work inside a database to process event log entries and generate additional data for storage.
