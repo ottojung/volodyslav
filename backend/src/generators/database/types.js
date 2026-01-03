@@ -113,7 +113,7 @@ function isDatabaseValue(value) {
 /**
  * A database delete operation.
  * @template T
- * @typedef {AbstractBatchDelOperation<SimpleSublevel<T>, string>} DatabaseDelOperation
+ * @typedef {AbstractBatchDelOperation<SimpleSublevel<T>, number>} DatabaseDelOperation
  */
 
 /**

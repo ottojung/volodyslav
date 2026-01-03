@@ -8,7 +8,7 @@ const { isDatabaseValue, isFreshness } = require("./types");
 /** @typedef {import('./types').DatabaseValue} DatabaseValue */
 /** @typedef {import('./types').Freshness} Freshness */
 /** @typedef {DatabaseValue | Freshness | import('./types').InputsRecord | string[]} DatabaseStoredValue */
-/** @typedef {import('level').Level<string, DatabaseStoredValue>} LevelDB */
+/** @typedef {import("./root_database").RootLevelType} RootLevelType */
 /** @typedef {import('./types').DatabaseCapabilities} DatabaseCapabilities */
 /** @typedef {import('./types').DatabaseBatchOperation} DatabaseBatchOperation */
 
@@ -20,7 +20,7 @@ class DatabaseClass {
     /**
      * The underlying Level database instance.
      * @private
-     * @type {LevelDB}
+     * @type {RootLevelType}
      */
     db;
 
@@ -33,7 +33,7 @@ class DatabaseClass {
 
     /**
      * @constructor
-     * @param {LevelDB} db - The Level database instance
+     * @param {RootLevelType} db - The Level database instance
      * @param {string} databasePath - Path to the database directory
      */
     constructor(db, databasePath) {

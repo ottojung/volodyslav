@@ -106,7 +106,11 @@ class TypedDatabaseClass {
      * @returns {DatabaseDelOperation<TValue>}
      */
     delOp(key) {
-        return { sublevel: this.sublevel, type: 'del', key };
+        /** @type {SimpleSublevel<TValue>} */
+        const thisSublevel = this.sublevel;
+        /** @type {SimpleSublevel<TValue>} */
+        const sublevel = thisSublevel;
+        return { sublevel: sublevel, type: 'del', key };
     }
 
     async *keys() {

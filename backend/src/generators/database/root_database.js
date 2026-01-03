@@ -157,12 +157,13 @@ class RootDatabaseClass {
                     type: 'del',
                     key: op.key,
                     prefix: op.sublevel,
+                    sublevel: op.sublevel,
                 };
             } else {
                 throw new Error(`Unknown operation: ${op}`);
             }
         });
-        return this.db.batch(casted);
+        return this.db.batch(operations);
     }
 
     /**
