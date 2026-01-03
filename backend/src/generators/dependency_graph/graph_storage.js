@@ -161,6 +161,12 @@ function makeGraphStorage(rootDatabase, schemaHash) {
      * @returns {Promise<void>}
      */
     async function ensureReverseDepsIndexed(node, inputs, batch) {
+        // Check if already indexed (early exit to avoid write amplification)
+        const existingInputs = await getInputs(node);
+        if (existingInputs !== null) {
+            return; // Already indexed, skip writing revdeps
+        }
+
         // Update revdeps using edge-based storage
         // Each edge is stored as a separate key-value pair
         for (const input of inputs) {
