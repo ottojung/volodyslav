@@ -30,23 +30,20 @@ const {
 
 /**
  * Converts a ParsedArg to a ConstValue if it's a constant.
+ * Since constants are no longer supported, this always returns null.
  * @param {ParsedArg} arg
- * @returns {ConstValue | null} - Returns null if arg is a variable (identifier)
+ * @returns {ConstValue | null} - Always returns null since only variables are allowed
  */
 function argToConstValue(arg) {
     if (arg.kind === "identifier") {
         return null; // Variable
-    } else if (arg.kind === "string") {
-        return { type: "string", value: arg.value };
-    } else if (arg.kind === "number") {
-        return { type: "int", value: parseInt(arg.value, 10) };
     }
     throw new Error(`Unknown arg kind: ${arg.kind}`);
 }
 
 /**
  * Extracts variable names from a parsed expression.
- * Variables are unquoted identifiers in arguments.
+ * All identifiers in arguments are variables.
  * @param {ParsedExpr} expr
  * @returns {Set<string>}
  */
@@ -56,9 +53,8 @@ function extractVariables(expr) {
     
     if (expr.kind === "call") {
         for (const arg of expr.args) {
-            if (arg.kind === "identifier") {
-                vars.add(arg.value);
-            }
+            // All args are identifiers (variables) now
+            vars.add(arg.value);
         }
     }
     
@@ -143,146 +139,16 @@ function validateVariableCoverage(outputExpr, inputExprs, outputStr) {
 
 /**
  * Checks if two patterns can potentially match the same concrete keys.
- * Uses pattern unification: attempts to find a common substitution that makes both patterns equal.
- * Takes into account:
- * - Constants must match exactly
- * - Repeated variables in the same pattern enforce equality constraints
+ * With constants removed, patterns overlap if and only if they have
+ * the same head (functor) and the same arity.
  * 
  * @param {PatternForOverlap} node1
  * @param {PatternForOverlap} node2
  * @returns {boolean} True if patterns can overlap
  */
 function patternsCanOverlap(node1, node2) {
-    // Must have same head and arity to overlap
-    if (node1.head !== node2.head || node1.arity !== node2.arity) {
-        return false;
-    }
-
-    // Track variable bindings for unification
-    // Maps variable names to what they're bound to (either a ConstValue or another variable name with "node1:" or "node2:" prefix)
-    /** @type {Map<string, UnificationValue>} */
-    const bindings1 = new Map(); // Variables from node1
-    /** @type {Map<string, UnificationValue>} */
-    const bindings2 = new Map(); // Variables from node2
-
-    /**
-     * Resolves a variable binding to its ultimate value.
-     * @param {Map<string, UnificationValue>} bindings
-     * @param {string} varName
-     * @returns {UnificationValue | null}
-     */
-    function resolve(bindings, varName) {
-        const binding = bindings.get(varName);
-        if (!binding) return null;
-        
-        if (typeof binding === 'object' && 'kind' in binding) {
-            if (binding.kind === 'var') {
-                // Follow the chain
-                const otherBindings = binding.source === 'node1' ? bindings1 : bindings2;
-                return resolve(otherBindings, binding.name);
-            }
-        }
-        // It's a ConstValue (has 'type' field)
-        return binding;
-    }
-
-    /**
-     * Binds a variable to a value, checking for conflicts.
-     * @param {Map<string, UnificationValue>} bindings
-     * @param {string} varName
-     * @param {UnificationValue} value
-     * @returns {boolean} True if binding succeeds, false if conflict
-     */
-    function bind(bindings, varName, value) {
-        const existing = resolve(bindings, varName);
-        if (existing === null) {
-            bindings.set(varName, value);
-            return true;
-        }
-        
-        // Check if existing binding is compatible
-        if ('kind' in existing && existing.kind === 'var' && 'kind' in value && value.kind === 'var') {
-            // Both are variables - make them equal
-            const otherBindings = value.source === 'node1' ? bindings1 : bindings2;
-            return bind(otherBindings, value.name, existing);
-        } else if ('type' in existing && 'type' in value) {
-            // Both are constants - must match
-            return existing.type === value.type && existing.value === value.value;
-        } else if ('kind' in existing && existing.kind === 'var') {
-            // Existing is var, value is const - bind the var
-            const otherBindings = existing.source === 'node1' ? bindings1 : bindings2;
-            return bind(otherBindings, existing.name, value);
-        } else {
-            // Existing is const, value is var - bind the var
-            if ('kind' in value && value.kind === 'var') {
-                const otherBindings = value.source === 'node1' ? bindings1 : bindings2;
-                return bind(otherBindings, value.name, existing);
-            }
-            return false;
-        }
-    }
-
-    // Try to unify each argument position
-    for (let i = 0; i < node1.arity; i++) {
-        const arg1 = node1.outputExpr.args[i];
-        const arg2 = node2.outputExpr.args[i];
-        
-        if (arg1 === undefined || arg2 === undefined) {
-            return false;
-        }
-
-        const isVar1 = arg1.kind === "identifier";
-        const isVar2 = arg2.kind === "identifier";
-
-        if (!isVar1 && !isVar2) {
-            // Both are constants - must match exactly
-            const const1 = argToConstValue(arg1);
-            const const2 = argToConstValue(arg2);
-            
-            if (const1 === null || const2 === null) {
-                return false;
-            }
-            
-            if (const1.type !== const2.type || const1.value !== const2.value) {
-                return false; // Conflicting constants - no overlap
-            }
-        } else if (isVar1 && !isVar2) {
-            // arg1 is variable, arg2 is constant
-            const varName = arg1.value;
-            const constValue = argToConstValue(arg2);
-            
-            if (constValue === null) {
-                return false;
-            }
-            
-            if (!bind(bindings1, varName, constValue)) {
-                return false; // Inconsistent binding
-            }
-        } else if (!isVar1 && isVar2) {
-            // arg1 is constant, arg2 is variable
-            const constValue = argToConstValue(arg1);
-            const varName = arg2.value;
-            
-            if (constValue === null) {
-                return false;
-            }
-            
-            if (!bind(bindings2, varName, constValue)) {
-                return false; // Inconsistent binding
-            }
-        } else {
-            // Both are variables - unify them
-            const var1 = arg1.value;
-            const var2 = arg2.value;
-            
-            if (!bind(bindings1, var1, { kind: 'var', source: 'node2', name: var2 })) {
-                return false; // Inconsistent binding
-            }
-        }
-    }
-
-    // If we get here, patterns can potentially overlap
-    return true;
+    // Patterns overlap if they have same head and arity
+    return node1.head === node2.head && node1.arity === node2.arity;
 }
 
 /**
@@ -398,21 +264,17 @@ function compileNodeDef(nodeDef) {
     const outputVars = extractVariables(outputExpr);
     const isPattern = outputVars.size > 0;
     
-    // Compute arg kinds and constant values for output
-    /** @type {Array<'var'|'const'>} */
+    // Compute arg kinds - all arguments are now variables
+    /** @type {Array<'var'>} */
     const outputArgKinds = [];
-    /** @type {Array<ConstValue | null>} */
+    /** @type {Array<null>} */
     const outputConstArgs = [];
     
     if (outputExpr.kind === "call") {
         for (const arg of outputExpr.args) {
-            if (arg.kind === "identifier") {
-                outputArgKinds.push("var");
-                outputConstArgs.push(null);
-            } else {
-                outputArgKinds.push("const");
-                outputConstArgs.push(argToConstValue(arg));
-            }
+            // All args are identifiers (variables)
+            outputArgKinds.push("var");
+            outputConstArgs.push(null);
         }
     }
     

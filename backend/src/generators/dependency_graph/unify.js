@@ -56,11 +56,12 @@ function constValueToArg(constValue) {
 
 /**
  * Attempts to match a concrete node expression with a compiled pattern.
- * Returns typed bindings if successful, or null if matching fails.
+ * Since constants are no longer allowed, only atom-expressions can be concrete.
+ * Returns empty bindings if successful, or null if matching fails.
  *
- * @param {string} concreteKey - The concrete node key (must be fully concrete)
+ * @param {string} concreteKey - The concrete node key (must be an atom-expression)
  * @param {CompiledNode} compiledNode - The compiled node to match against
- * @returns {{ bindings: Record<string, ConstValue> } | null} Typed bindings if successful, null otherwise
+ * @returns {{ bindings: Record<string, ConstValue> } | null} Empty bindings if successful, null otherwise
  */
 function matchConcrete(concreteKey, compiledNode) {
     // Validate that concrete key has no variables
@@ -73,59 +74,21 @@ function matchConcrete(concreteKey, compiledNode) {
         return null;
     }
 
-    // Must have same arity
-    if (concreteExpr.args.length !== compiledNode.arity) {
+    // Concrete expressions can only be atom-expressions (no arguments)
+    // If the pattern has arguments, it can't match a concrete expression
+    if (concreteExpr.args.length !== 0) {
+        // This should not happen as validateConcreteKey ensures no variables
+        // and we no longer allow constants, so any args would be invalid
         return null;
     }
 
-    /** @type {Record<string, ConstValue>} */
-    const bindings = {};
-
-    // Try to match each argument position
-    for (let i = 0; i < compiledNode.arity; i++) {
-        const concreteArg = concreteExpr.args[i];
-        const patternArg = compiledNode.outputExpr.args[i];
-        
-        if (concreteArg === undefined || patternArg === undefined) {
-            return null; // Arity mismatch
-        }
-
-        if (patternArg.kind === "identifier") {
-            // Pattern arg is a variable - bind it
-            const varName = patternArg.value;
-            const concreteValue = argToConstValue(concreteArg);
-            
-            if (concreteValue === null) {
-                // This shouldn't happen as we validated concrete key
-                return null;
-            }
-            
-            if (varName in bindings) {
-                // Variable already bound - check consistency
-                const existingBinding = bindings[varName];
-                if (existingBinding && !constValuesEqual(existingBinding, concreteValue)) {
-                    return null; // Inconsistent binding (e.g., pair(x,x) with different values)
-                }
-            } else {
-                // New binding
-                bindings[varName] = concreteValue;
-            }
-        } else {
-            // Pattern arg is a constant - must match exactly
-            const patternValue = argToConstValue(patternArg);
-            const concreteValue = argToConstValue(concreteArg);
-            
-            if (patternValue === null || concreteValue === null) {
-                return null;
-            }
-            
-            if (!constValuesEqual(patternValue, concreteValue)) {
-                return null; // Constant mismatch
-            }
-        }
+    // Must have same arity (both should be 0 for atoms)
+    if (compiledNode.arity !== 0) {
+        return null;
     }
 
-    return { bindings };
+    // No bindings needed for atom-expressions
+    return { bindings: {} };
 }
 
 /**
