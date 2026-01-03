@@ -11,17 +11,50 @@ const { freshnessKey } = require("../database");
 /** @typedef {import('../database/types').DatabaseBatchOperation} DatabaseBatchOperation */
 
 /**
- * Union type for values that can be stored in the database.
- * @typedef {DatabaseValue | Freshness} DatabaseStoredValue
+ * Internal storage type for node inputs metadata
+ * @typedef {object} NodeInputsMetadata
+ * @property {string[]} inputs - Array of input node names
+ */
+
+/**
+ * Internal storage type for reverse dependency edge markers
+ * @typedef {object} RevDepEdgeMarker
+ * @property {true} __edge - Marker to indicate this is an edge entry
+ */
+
+/**
+ * Union type for all values that can be stored in the database.
+ * Includes both user data (DatabaseValue) and internal metadata.
+ * @typedef {DatabaseValue | Freshness | NodeInputsMetadata | RevDepEdgeMarker} DatabaseStoredValue
+ */
+
+/**
+ * A database put operation for graph storage with extended value types.
+ * @typedef {object} GraphStoragePutOperation
+ * @property {'put'} type - Operation type
+ * @property {string} key - The key to store
+ * @property {DatabaseStoredValue} value - The value to store
+ */
+
+/**
+ * A database delete operation.
+ * @typedef {object} GraphStorageDelOperation
+ * @property {'del'} type - Operation type
+ * @property {string} key - The key to delete
+ */
+
+/**
+ * A batch operation for graph storage.
+ * @typedef {GraphStoragePutOperation | GraphStorageDelOperation} GraphStorageBatchOperation
  */
 
 /**
  * @typedef {object} GraphStorage
  * @property {(nodeName: string) => Promise<DatabaseValue | undefined>} getNodeValue
  * @property {(nodeName: string) => Promise<Freshness | undefined>} getNodeFreshness
- * @property {(nodeName: string, value: DatabaseValue) => { type: "put", key: string, value: DatabaseStoredValue }} setNodeValueOp
- * @property {(nodeName: string, freshness: Freshness) => { type: "put", key: string, value: DatabaseStoredValue }} setNodeFreshnessOp
- * @property {(node: string, inputs: string[], batchOps: Array<DatabaseBatchOperation>) => Promise<void>} ensureNodeIndexed
+ * @property {(nodeName: string, value: DatabaseValue) => DatabaseBatchOperation} setNodeValueOp
+ * @property {(nodeName: string, freshness: Freshness) => DatabaseBatchOperation} setNodeFreshnessOp
+ * @property {(node: string, inputs: string[], batchOps: Array<any>) => Promise<void>} ensureNodeIndexed
  * @property {(input: string) => Promise<string[]>} listDependents
  * @property {(node: string) => Promise<string[] | null>} getInputs
  * @property {() => Promise<string[]>} listAllKeys
@@ -41,8 +74,8 @@ function makeGraphStorage(database, schemaHash) {
      * Helper to create a put operation for batch processing.
      * @private
      * @param {string} key
-     * @param {DatabaseStoredValue} value
-     * @returns {{ type: "put", key: string, value: DatabaseStoredValue }}
+     * @param {any} value
+     * @returns {any}
      */
     function putOp(key, value) {
         return { type: "put", key, value };
@@ -105,7 +138,7 @@ function makeGraphStorage(database, schemaHash) {
      * Create an operation to set a node's value.
      * @param {string} nodeName
      * @param {DatabaseValue} value
-     * @returns {{ type: "put", key: string, value: DatabaseStoredValue }}
+     * @returns {DatabaseBatchOperation}
      */
     function setNodeValueOp(nodeName, value) {
         return putOp(nodeName, value);
@@ -115,7 +148,7 @@ function makeGraphStorage(database, schemaHash) {
      * Create an operation to set a node's freshness.
      * @param {string} nodeName
      * @param {Freshness} freshness
-     * @returns {{ type: "put", key: string, value: DatabaseStoredValue }}
+     * @returns {DatabaseBatchOperation}
      */
     function setNodeFreshnessOp(nodeName, freshness) {
         return putOp(freshnessKey(nodeName), freshness);
@@ -129,7 +162,7 @@ function makeGraphStorage(database, schemaHash) {
      * 
      * @param {string} node - Canonical node key
      * @param {string[]} inputs - Array of canonical input keys
-     * @param {Array<DatabaseBatchOperation>} batchOps - Batch operations array to append to
+     * @param {Array<any>} batchOps - Batch operations array to append to
      * @returns {Promise<void>}
      */
     async function ensureNodeIndexed(node, inputs, batchOps) {
@@ -141,21 +174,24 @@ function makeGraphStorage(database, schemaHash) {
         }
 
         // Store the inputs list for this node
-        // We store inputs as a JSON-serialized array wrapped in an object
-        // to satisfy DatabaseValue constraint (must be an object)
+        // We store inputs as { inputs: string[] }
+        /** @type {NodeInputsMetadata} */
+        const inputsMetadata = { inputs };
         batchOps.push(
             putOp(
                 inputsKey(node),
-                /** @type {DatabaseValue} */ (/** @type {unknown} */ ({ inputs }))
+                inputsMetadata
             )
         );
 
         // Store reverse dependency edges
         for (const input of inputs) {
+            /** @type {RevDepEdgeMarker} */
+            const edgeMarker = { __edge: true };
             batchOps.push(
                 putOp(
                     revdepKey(input, node),
-                    /** @type {DatabaseValue} */ (/** @type {unknown} */ ({ __edge: true }))
+                    edgeMarker
                 )
             );
         }
@@ -197,14 +233,12 @@ function makeGraphStorage(database, schemaHash) {
             return null;
         }
 
-        // FIXME: introduce an actual type for this stored value. It must extend DatabaseValue. We must never do type casting like this.
-        // Extract inputs array from the stored object
-        // We stored it as { inputs: string[] }
+        // Extract inputs array from the stored metadata object
+        // We stored it as NodeInputsMetadata: { inputs: string[] }
         if (typeof value === "object" && value !== null && "inputs" in value) {
-            // We know inputs exists but TS doesn't know the shape of DatabaseValue here
-            const inputs = /** @type {{inputs: unknown}} */ (value).inputs;
-            if (Array.isArray(inputs)) {
-                return inputs;
+            const metadata = value;
+            if ("inputs" in metadata && Array.isArray(metadata.inputs)) {
+                return metadata.inputs;
             }
         }
 

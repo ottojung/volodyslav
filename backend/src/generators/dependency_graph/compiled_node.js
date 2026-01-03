@@ -134,14 +134,22 @@ function validateVariableCoverage(outputExpr, inputExprs, outputStr) {
 }
 
 /**
+ * Minimal node interface for pattern overlap checking.
+ * @typedef {object} PatternNode
+ * @property {string} head - The function/atom head
+ * @property {number} arity - Number of arguments
+ * @property {ParsedExpr} outputExpr - The output expression
+ */
+
+/**
  * Checks if two patterns can potentially match the same concrete keys.
  * Uses pattern unification: attempts to find a common substitution that makes both patterns equal.
  * Takes into account:
  * - Constants must match exactly
  * - Repeated variables in the same pattern enforce equality constraints
  * 
- * @param {CompiledNode} node1
- * @param {CompiledNode} node2
+ * @param {PatternNode} node1
+ * @param {PatternNode} node2
  * @returns {boolean} True if patterns can overlap
  */
 function patternsCanOverlap(node1, node2) {
@@ -317,12 +325,12 @@ function validateAcyclic(compiledNodes) {
     for (const node of compiledNodes) {
         for (const inputExpr of node.inputExprs) {
             // Create a dummy node for the input pattern to check overlap
-            // We cast to CompiledNode because patternsCanOverlap only needs specific properties
-            const inputDummy = /** @type {CompiledNode} */ ({
+            // Only needs outputExpr, head, and arity properties
+            const inputDummy = {
                 outputExpr: inputExpr,
                 head: inputExpr.name,
                 arity: inputExpr.kind === 'call' ? inputExpr.args.length : 0,
-            });
+            };
 
             for (const potentialDep of compiledNodes) {
                 if (patternsCanOverlap(inputDummy, potentialDep)) {

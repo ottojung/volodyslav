@@ -217,6 +217,15 @@ class Parser {
     }
 
     /**
+     * Gets the current token kind without TypeScript type narrowing.
+     * This is a workaround for TypeScript's control flow analysis limitations.
+     * @returns {TokenKind}
+     */
+    getCurrentKind() {
+        return this.currentToken.kind;
+    }
+
+    /**
      * Expects a specific token kind and advances.
      * @param {TokenKind} kind
      */
@@ -262,18 +271,19 @@ class Parser {
         const name = this.currentToken.value;
         this.advance();
 
+        // Use helper method to avoid TypeScript control flow narrowing issues
+        let currentKind = this.getCurrentKind();
+        
         // Check if it's a function call
-        // Type assertion needed because TypeScript narrows too aggressively
-        const tokenKind = /** @type {TokenKind} */ (this.currentToken.kind);
-        if (tokenKind === "lparen") {
+        if (currentKind === "lparen") {
             this.advance(); // consume '('
 
             /** @type {ParsedArg[]} */
             const args = [];
 
             // Check for empty args
-            const nextToken = /** @type {TokenKind} */ (this.currentToken.kind);
-            if (nextToken === "rparen") {
+            currentKind = this.getCurrentKind();
+            if (currentKind === "rparen") {
                 this.advance(); // consume ')'
                 return { kind: "call", name, args: [] };
             }
@@ -281,12 +291,12 @@ class Parser {
             // Parse arguments
             args.push(this.parseTerm());
 
-            // Type assertion after parseTerm which can change currentToken
-            let nextTokenKind = /** @type {TokenKind} */ (this.currentToken.kind);
-            while (nextTokenKind === "comma") {
+            // Check next token after parseTerm which can change currentToken
+            currentKind = this.getCurrentKind();
+            while (currentKind === "comma") {
                 this.advance(); // consume ','
                 args.push(this.parseTerm());
-                nextTokenKind = /** @type {TokenKind} */ (this.currentToken.kind);
+                currentKind = this.getCurrentKind();
             }
 
             this.expect("rparen");
@@ -309,9 +319,9 @@ class Parser {
 
         const expr = this.parseExpr();
 
-        // Type assertion needed because TypeScript narrows too aggressively
-        const tokenKind = /** @type {TokenKind} */ (this.currentToken.kind);
-        if (tokenKind !== "eof") {
+        // Use helper method to avoid TypeScript control flow narrowing issues
+        const currentKind = this.getCurrentKind();
+        if (currentKind !== "eof") {
             throw new Error(
                 `Unexpected token ${this.currentToken.kind} at position ${this.currentToken.pos}`
             );
