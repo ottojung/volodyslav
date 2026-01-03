@@ -365,10 +365,9 @@ class DependencyGraphClass {
 
         const schemaJson = JSON.stringify(schemaRepresentation);
         this.schemaHash = crypto
-            .createHash("md5")
+            .createHash("sha256")
             .update(schemaJson)
-            .digest("hex")
-            .substring(0, 16); // Use first 16 chars for brevity
+            .digest("hex");
 
         // Initialize storage helper
         this.storage = makeGraphStorage(rootDatabase, this.schemaHash);
