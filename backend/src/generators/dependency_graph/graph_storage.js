@@ -31,7 +31,10 @@
  * @property {BatchDatabaseOps<Freshness>} freshness - Batch operations for freshness database
  * @property {BatchDatabaseOps<InputsRecord>} inputs - Batch operations for inputs database
  * @property {BatchDatabaseOps<string[]>} revdeps - Batch operations for revdeps database
- * @property {() => Promise<void>} write - Execute all queued operations atomically
+ */
+
+/**
+ * @typedef {<T>(fn: (batch: BatchBuilder) => Promise<T>) => Promise<T>} BatchFunction
  */
 
 /**
@@ -42,7 +45,7 @@
  * @property {FreshnessDatabase} freshness - Node freshness
  * @property {InputsDatabase} inputs - Node inputs index
  * @property {RevdepsDatabase} revdeps - Reverse dependencies (input -> dependent array)
- * @property {() => BatchBuilder} batch - Create a batch builder for atomic operations
+ * @property {BatchFunction} withBatch - Run a function and commit atomically everything it does
  * @property {(node: string, inputs: string[], batch: BatchBuilder) => Promise<void>} ensureNodeIndexed - Index a node's dependencies
  * @property {(input: string) => Promise<string[]>} listDependents - List all dependents of an input
  * @property {(node: string) => Promise<string[] | null>} getInputs - Get inputs for a node
@@ -52,13 +55,14 @@
 /**
  * Creates a batch builder for atomic operations.
  * @param {SchemaStorage} schemaStorage - The schema storage instance
- * @returns {BatchBuilder}
+ * @returns {BatchFunction}
  */
 function makeBatchBuilder(schemaStorage) {
     /** @type {DatabaseBatchOperation[]} */
     const operations = [];
 
-    return {
+    /** @type {BatchBuilder} */
+    const builder = {
         values: {
             put: (key, value) => {
                 const op = schemaStorage.values.putOp(key, value);
@@ -78,10 +82,16 @@ function makeBatchBuilder(schemaStorage) {
             put: (key, value) => operations.push(schemaStorage.revdeps.putOp(key, value)),
             del: (key) => operations.push(schemaStorage.revdeps.delOp(key)),
         },
-        async write() {
-            await schemaStorage.batch(operations);
-        },
     };
+
+    /** @type {BatchFunction} */
+    const ret = async (fn) => {
+        const value = await fn(builder);
+        await schemaStorage.batch(operations);
+        return value;
+    };
+
+    return ret;
 }
 
 /**
@@ -160,7 +170,7 @@ function makeGraphStorage(rootDatabase, schemaHash) {
         revdeps: schemaStorage.revdeps,
         
         // Batch builder for atomic operations
-        batch: () => makeBatchBuilder(schemaStorage),
+        withBatch: makeBatchBuilder(schemaStorage),
         
         // Helper methods
         ensureNodeIndexed,
