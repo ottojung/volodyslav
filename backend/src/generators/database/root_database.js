@@ -5,22 +5,32 @@
 
 const { makeTypedDatabase } = require('./typed_database');
 
+/** @typedef {import('./types').RootLevelType} RootLevelType */
+/** @typedef {import('./types').SchemaSublevelType} SchemaSublevelType */
 /** @typedef {import('./types').DatabaseValue} DatabaseValue */
 /** @typedef {import('./types').Freshness} Freshness */
-/** @typedef {import('./typed_database').GenericDatabase} GenericDatabase */
+/** @typedef {import('./types').DatabaseStoredValue} DatabaseStoredValue */
+/**
+ * @typedef {import('./types').DatabaseBatchOperation} DatabaseBatchOperation
+ */
+
+/**
+ * @template T
+ * @typedef {import('./typed_database').GenericDatabase<T>} GenericDatabase
+ */
 
 /**
  * Database for storing node output values.
  * Key: canonical node name (e.g., "user('alice')")
  * Value: the computed value (object with type field)
- * @typedef {GenericDatabase<string, DatabaseValue>} ValuesDatabase
+ * @typedef {GenericDatabase<DatabaseValue>} ValuesDatabase
  */
 
 /**
  * Database for storing node freshness state.
  * Key: canonical node name (e.g., "user('alice')")
  * Value: freshness state ('up-to-date' | 'potentially-outdated')
- * @typedef {GenericDatabase<string, Freshness>} FreshnessDatabase
+ * @typedef {GenericDatabase<Freshness>} FreshnessDatabase
  */
 
 /**
@@ -33,7 +43,7 @@ const { makeTypedDatabase } = require('./typed_database');
  * Database for storing node input dependencies.
  * Key: canonical node name
  * Value: inputs record with array of dependency names
- * @typedef {GenericDatabase<string, InputsRecord>} InputsDatabase
+ * @typedef {GenericDatabase<InputsRecord>} InputsDatabase
  */
 
 /**
@@ -41,7 +51,7 @@ const { makeTypedDatabase } = require('./typed_database');
  * Key: inputNode (canonical name)
  * Value: Array of dependent node names
  * This avoids composite keys and string prefix logic.
- * @typedef {GenericDatabase<string, string[]>} RevdepsDatabase
+ * @typedef {GenericDatabase<string[]>} RevdepsDatabase
  */
 
 /**
@@ -52,6 +62,12 @@ const { makeTypedDatabase } = require('./typed_database');
  * @property {FreshnessDatabase} freshness - Node freshness state
  * @property {InputsDatabase} inputs - Node inputs index
  * @property {RevdepsDatabase} revdeps - Reverse dependencies (input -> array of dependents)
+ * @property {(operations: DatabaseBatchOperation[]) => Promise<void>} batch - Batch operation interface for atomic writes
+ */
+
+/**
+ * @template T
+ * @typedef {import('./types').SimpleSublevel<T>} SimpleSublevel
  */
 
 /**
@@ -61,7 +77,7 @@ class RootDatabaseClass {
     /**
      * The underlying Level database instance.
      * @private
-     * @type {import('level').Level<string, any>}
+     * @type {RootLevelType}
      */
     db;
 
@@ -74,7 +90,7 @@ class RootDatabaseClass {
 
     /**
      * @constructor
-     * @param {import('level').Level<string, any>} db - The Level database instance
+     * @param {RootLevelType} db - The Level database instance
      */
     constructor(db) {
         this.db = db;
@@ -94,14 +110,34 @@ class RootDatabaseClass {
         }
 
         // Create new schema storage with sublevels
+        /** @type {SchemaSublevelType} */
         const schemaSublevel = this.db.sublevel(schemaHash, { valueEncoding: 'json' });
         
+        /** @type {SimpleSublevel<DatabaseValue>} */
         const valuesSublevel = schemaSublevel.sublevel('values', { valueEncoding: 'json' });
+        /** @type {SimpleSublevel<Freshness>} */
         const freshnessSublevel = schemaSublevel.sublevel('freshness', { valueEncoding: 'json' });
+        /** @type {SimpleSublevel<InputsRecord>} */
         const inputsSublevel = schemaSublevel.sublevel('inputs', { valueEncoding: 'json' });
+        /** @type {SimpleSublevel<string[]>} */
         const revdepsSublevel = schemaSublevel.sublevel('revdeps', { valueEncoding: 'json' });
 
+        let touchedSchema = false;
+        /** @type {(operations: DatabaseBatchOperation[]) => Promise<void>} */
+        const batch = async (operations) => {
+            if (operations.length === 0) {
+                return;
+            }
+
+            if (!touchedSchema) {
+                await this.db.put(schemaHash, []); // Touch schema key
+                touchedSchema = true;
+            }
+            await schemaSublevel.batch(operations);
+        };
+
         const storage = {
+            batch,
             values: makeTypedDatabase(valuesSublevel),
             freshness: makeTypedDatabase(freshnessSublevel),
             inputs: makeTypedDatabase(inputsSublevel),
@@ -131,63 +167,6 @@ class RootDatabaseClass {
     async close() {
         await this.db.close();
     }
-
-    /**
-     * Backward compatibility: put a value directly (uses a default schema).
-     * This is provided for test compatibility only.
-     * @param {string} key - The key
-     * @param {any} value - The value
-     * @returns {Promise<void>}
-     */
-    async put(key, value) {
-        await this.db.put(key, value);
-    }
-
-    /**
-     * Backward compatibility: get a value directly (uses root level).
-     * This is provided for test compatibility only.
-     * @param {string} key - The key
-     * @returns {Promise<any | undefined>}
-     */
-    async get(key) {
-        try {
-            return await this.db.get(key);
-        } catch (err) {
-            // LevelDB throws for missing keys
-            const error = /** @type {Error} */ (err);
-            if (error.message?.includes('not found') || error.message?.includes('NotFound')) {
-                return undefined;
-            }
-            throw err;
-        }
-    }
-
-    /**
-     * Backward compatibility: list keys with prefix.
-     * This is provided for test compatibility only.
-     * @param {string} prefix - The prefix
-     * @returns {Promise<string[]>}
-     */
-    async keys(prefix = '') {
-        const keys = [];
-        for await (const key of this.db.keys({
-            gte: prefix,
-            lt: prefix + '\xFF',
-        })) {
-            keys.push(key);
-        }
-        return keys;
-    }
-
-    /**
-     * Backward compatibility: batch operations.
-     * This is provided for test compatibility only.
-     * @param {Array<{type: 'put' | 'del', key: string, value?: any}>} operations
-     * @returns {Promise<void>}
-     */
-    async batch(operations) {
-        await this.db.batch(operations);
-    }
 }
 
 const { Level } = require('level');
@@ -198,6 +177,7 @@ const { Level } = require('level');
  * @returns {Promise<RootDatabaseClass>}
  */
 async function makeRootDatabase(databasePath) {
+    /** @type {RootLevelType} */
     const db = new Level(databasePath, { valueEncoding: 'json' });
     await db.open();
     return new RootDatabaseClass(db);

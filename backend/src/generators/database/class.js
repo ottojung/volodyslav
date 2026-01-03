@@ -7,10 +7,10 @@ const { isDatabaseValue, isFreshness } = require("./types");
 
 /** @typedef {import('./types').DatabaseValue} DatabaseValue */
 /** @typedef {import('./types').Freshness} Freshness */
-/** @typedef {import('./types').DatabaseBatchOperation} DatabaseBatchOperation */
-/** @typedef {DatabaseValue | Freshness} DatabaseStoredValue */
-/** @typedef {import('level').Level<string, DatabaseStoredValue>} LevelDB */
+/** @typedef {DatabaseValue | Freshness | import('./types').InputsRecord | string[]} DatabaseStoredValue */
+/** @typedef {import("./root_database").RootLevelType} RootLevelType */
 /** @typedef {import('./types').DatabaseCapabilities} DatabaseCapabilities */
+/** @typedef {import('./types').DatabaseBatchOperation} DatabaseBatchOperation */
 
 /**
  * A thin wrapper around LevelDB database operations.
@@ -20,7 +20,7 @@ class DatabaseClass {
     /**
      * The underlying Level database instance.
      * @private
-     * @type {LevelDB}
+     * @type {RootLevelType}
      */
     db;
 
@@ -33,7 +33,7 @@ class DatabaseClass {
 
     /**
      * @constructor
-     * @param {LevelDB} db - The Level database instance
+     * @param {RootLevelType} db - The Level database instance
      * @param {string} databasePath - Path to the database directory
      */
     constructor(db, databasePath) {
@@ -199,29 +199,6 @@ class DatabaseClass {
                 `GetAll operation failed: ${error.message}`,
                 this.databasePath,
                 `GETALL ${prefix}*`,
-                error
-            );
-        }
-    }
-
-    /**
-     * Executes multiple operations in a batch.
-     * @param {Array<DatabaseBatchOperation>} operations
-     * @returns {Promise<void>}
-     * @throws {DatabaseQueryError} If the operation fails
-     */
-    async batch(operations) {
-        if (operations.length === 0) {
-            return;
-        }
-        try {
-            await this.db.batch(operations, { sync: true });
-        } catch (err) {
-            const error = err instanceof Error ? err : new Error(String(err));
-            throw new DatabaseQueryError(
-                `Batch operation failed: ${error.message}`,
-                this.databasePath,
-                `BATCH ${operations.length} ops`,
                 error
             );
         }

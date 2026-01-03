@@ -68,7 +68,7 @@ describe("generators/dependency_graph", () => {
                 {
                     output: "level1",
                     inputs: ["input1"],
-                    computor: (inputs, _oldValue, _bindings) => {
+                    computor: (_inputs, _oldValue, _bindings) => {
                         computeCalls.push("level1");
                         return { type: 'meta_events', meta_events: [] };
                     },
@@ -76,7 +76,7 @@ describe("generators/dependency_graph", () => {
                 {
                     output: "level2",
                     inputs: ["level1"],
-                    computor: (inputs, _oldValue, _bindings) => {
+                    computor: (_inputs, _oldValue, _bindings) => {
                         computeCalls.push("level2");
                         return { type: 'meta_events', meta_events: [] };
                     },
@@ -84,7 +84,7 @@ describe("generators/dependency_graph", () => {
                 {
                     output: "level3",
                     inputs: ["level2"],
-                    computor: (inputs, _oldValue, _bindings) => {
+                    computor: (_inputs, _oldValue, _bindings) => {
                         computeCalls.push("level3");
                         return { type: 'meta_events', meta_events: [] };
                     },
@@ -125,7 +125,7 @@ describe("generators/dependency_graph", () => {
                 {
                     output: "output1",
                     inputs: ["input1"],
-                    computor: (inputs, _oldValue, _bindings) => {
+                    computor: (_inputs, _oldValue, _bindings) => {
                         computeCount++;
                         return { type: 'meta_events', meta_events: [] };
                     },
@@ -184,8 +184,8 @@ describe("generators/dependency_graph", () => {
             expect(result.data).toBe("new_data_processed");
 
             // Both input and output should now be clean
-            const input1Freshness = await db.get(freshnessKey("input1"));
-            const output1Freshness = await db.get(freshnessKey("output1"));
+            const input1Freshness = await graph.debugGetFreshness("input1");
+            const output1Freshness = await graph.debugGetFreshness("output1");
             expect(input1Freshness).toBe("up-to-date");
             expect(output1Freshness).toBe("up-to-date");
 
@@ -244,7 +244,7 @@ describe("generators/dependency_graph", () => {
 
             // Should keep existing value and mark as clean
             expect(result.data).toBe("existing_value");
-            const output1Freshness = await db.get(freshnessKey("output1"));
+            const output1Freshness = await graph.debugGetFreshness("output1");
             expect(output1Freshness).toBe("up-to-date");
 
             await db.close();
@@ -311,10 +311,10 @@ describe("generators/dependency_graph", () => {
             expect(computeCalls).toEqual(["level1", "level2", "level3"]);
 
             // All should be clean after pull
-            const input1Freshness = await db.get(freshnessKey("input1"));
-            const level1Freshness = await db.get(freshnessKey("level1"));
-            const level2Freshness = await db.get(freshnessKey("level2"));
-            const level3Freshness = await db.get(freshnessKey("level3"));
+            const input1Freshness = await graph.debugGetFreshness("input1");
+            const level1Freshness = await graph.debugGetFreshness("level1");
+            const level2Freshness = await graph.debugGetFreshness("level2");
+            const level3Freshness = await graph.debugGetFreshness("level3");
             expect(input1Freshness).toBe("up-to-date");
             expect(level1Freshness).toBe("up-to-date");
             expect(level2Freshness).toBe("up-to-date");
@@ -384,9 +384,9 @@ describe("generators/dependency_graph", () => {
             expect(computeCalls).toEqual(["level1"]);
 
             // All should be clean after pull
-            const level1Freshness = await db.get(freshnessKey("level1"));
-            const level2Freshness = await db.get(freshnessKey("level2"));
-            const level3Freshness = await db.get(freshnessKey("level3"));
+            const level1Freshness = await graph.debugGetFreshness("level1");
+            const level2Freshness = await graph.debugGetFreshness("level2");
+            const level3Freshness = await graph.debugGetFreshness("level3");
             expect(level1Freshness).toBe("up-to-date");
             expect(level2Freshness).toBe("up-to-date");
             expect(level3Freshness).toBe("up-to-date");
@@ -454,10 +454,10 @@ describe("generators/dependency_graph", () => {
             expect(computeCalls).toEqual(["left", "right", "output"]);
 
             // All should be clean
-            const inputFreshness = await db.get(freshnessKey("input"));
-            const leftFreshness = await db.get(freshnessKey("left"));
-            const rightFreshness = await db.get(freshnessKey("right"));
-            const outputFreshness = await db.get(freshnessKey("output"));
+            const inputFreshness = await graph.debugGetFreshness("input");
+            const leftFreshness = await graph.debugGetFreshness("left");
+            const rightFreshness = await graph.debugGetFreshness("right");
+            const outputFreshness = await graph.debugGetFreshness("output");
             expect(inputFreshness).toBe("up-to-date");
             expect(leftFreshness).toBe("up-to-date");
             expect(rightFreshness).toBe("up-to-date");
@@ -527,7 +527,7 @@ describe("generators/dependency_graph", () => {
             expect(computeCalls).toEqual(["left", "right", "output"]);
 
             // All should be clean
-            const outputFreshness = await db.get(freshnessKey("output"));
+            const outputFreshness = await graph.debugGetFreshness("output");
             expect(outputFreshness).toBe("up-to-date");
 
             await db.close();
@@ -678,9 +678,9 @@ describe("generators/dependency_graph", () => {
             expect(computeCalls).toEqual(["middle"]);
 
             // All should be clean
-            const inputFreshness = await db.get(freshnessKey("input"));
-            const middleFreshness = await db.get(freshnessKey("middle"));
-            const outputFreshness = await db.get(freshnessKey("output"));
+            const inputFreshness = await graph.debugGetFreshness("input");
+            const middleFreshness = await graph.debugGetFreshness("middle");
+            const outputFreshness = await graph.debugGetFreshness("output");
             expect(inputFreshness).toBe("up-to-date");
             expect(middleFreshness).toBe("up-to-date");
             expect(outputFreshness).toBe("up-to-date");
@@ -722,8 +722,8 @@ describe("generators/dependency_graph", () => {
             expect(result.data).toBe("new_data_processed");
 
             // Both input and output should now be clean
-            const input1Freshness = await db.get(freshnessKey("input1"));
-            const output1Freshness = await db.get(freshnessKey("output1"));
+            const input1Freshness = await graph.debugGetFreshness("input1");
+            const output1Freshness = await graph.debugGetFreshness("output1");
             expect(input1Freshness).toBe("up-to-date");
             expect(output1Freshness).toBe("up-to-date");
 
@@ -1114,7 +1114,7 @@ describe("generators/dependency_graph", () => {
             expect(computeCalls).toEqual(["output"]);
 
             // Output should now be clean
-            const outputFreshness = await db.get(freshnessKey("output"));
+            const outputFreshness = await graph.debugGetFreshness("output");
             expect(outputFreshness).toBe("up-to-date");
 
             await db.close();
@@ -1497,7 +1497,6 @@ describe("generators/dependency_graph", () => {
         test("nodes with extra whitespace are properly canonicalized internally", async () => {
             const capabilities = getTestCapabilities();
             const db = await getRootDatabase(capabilities);
-            const { freshnessKey } = require("../src/generators/database");
 
             // Create node with extra whitespace in output and inputs
             const graphDef = [
@@ -1524,13 +1523,9 @@ describe("generators/dependency_graph", () => {
             const result = await graph.pull('derived("data")');
             expect(result.value).toBe(10);
 
-            // Verify value is stored under canonical key
-            const stored = await db.getValue("derived('data')");
-            expect(stored).toEqual({ value: 10 });
-
-            // Verify freshness is under canonical key
-            const freshness = await db.getFreshness(freshnessKey("derived('data')"));
-            expect(freshness).toBe("up-to-date");
+            // Pull using non-canonical form with extra spaces - should still work
+            const result1b = await graph.pull('derived ( "data"  )');
+            expect(result1b.value).toBe(10);
 
             // Setting base should invalidate derived (via canonical key)
             await graph.set("base", { value: 10 });
@@ -1538,6 +1533,10 @@ describe("generators/dependency_graph", () => {
             // Pull derived again - should recompute
             const result2 = await graph.pull('derived("data")');
             expect(result2.value).toBe(20);
+
+            // Pull using non-canonical form again - should also get updated value
+            const result2b = await graph.pull('derived ( "data"  )');
+            expect(result2b.value).toBe(20);
 
             await db.close();
         });

@@ -7,6 +7,11 @@
 /** @typedef {import('../../logger').Logger} Logger */
 
 /**
+ * @template K, V
+ * @typedef {import('level').Level<K, V>} Level
+ */
+
+/**
  * Environment with pathToVolodyslavDataDirectory method
  * @typedef {object} DatabaseEnvironment
  * @property {() => string} pathToVolodyslavDataDirectory - Get path to Volodyslav data directory
@@ -96,29 +101,74 @@ function isDatabaseValue(value) {
 }
 
 /**
+ * @typedef {DatabaseValue | Freshness | InputsRecord | string[]} DatabaseStoredValue
+ */
+
+/**
  * A database put operation.
- * @typedef {object} DatabasePutOperation
- * @property {'put'} type - Operation type
- * @property {string} key - The key to store
- * @property {DatabaseValue | Freshness} value - The value to store
+ * @template T
+ * @typedef {{ type: 'put', sublevel: SimpleSublevel<T>, key: string, value: T }} DatabasePutOperation
  */
 
 /**
  * A database delete operation.
- * @typedef {object} DatabaseDelOperation
- * @property {'del'} type - Operation type
- * @property {string} key - The key to delete
+ * @template T
+ * @typedef {{ type: 'del', sublevel: SimpleSublevel<T>, key: string }} DatabaseDelOperation
+ */
+
+/**
+ * @template L, K, V
+ * @typedef {import('abstract-level').AbstractBatchPutOperation<L, K, V>} AbstractBatchPutOperation
+ */
+
+/**
+ * @template L, K
+ * @typedef {import('abstract-level').AbstractBatchDelOperation<L, K>} AbstractBatchDelOperation
  */
 
 /**
  * A batch operation for the database.
- * @typedef {DatabasePutOperation | DatabaseDelOperation} DatabaseBatchOperation
+ * @typedef {DatabasePutOperation<DatabaseValue> | DatabasePutOperation<Freshness> | DatabasePutOperation<InputsRecord> | DatabasePutOperation<string[]> | DatabaseDelOperation<DatabaseValue> | DatabaseDelOperation<Freshness> | DatabaseDelOperation<InputsRecord> | DatabaseDelOperation<string[]>} DatabaseBatchOperation
  */
+
+//* /typedef {DatabasePutOperation<DatabaseValue> | DatabasePutOperation<Freshness> | DatabasePutOperation<InputsRecord> | DatabasePutOperation<string[]> | DatabaseDelOperation<DatabaseValue> | DatabaseDelOperation<Freshness> | DatabaseDelOperation<InputsRecord> | DatabaseDelOperation<string[]>} DatabaseBatchOperation
 
 /**
  * A record storing the input dependencies of a node.
  * @typedef {object} InputsRecord
  * @property {string[]} inputs - Array of canonical input node names
+ */
+
+/**
+ * @template F
+ * @template K
+ * @template V
+ * @typedef {import('abstract-level').AbstractLevel<F, K, V>} AbstractLevel
+ */
+
+/**
+ * @template D
+ * @template F
+ * @template K
+ * @template V
+ * @typedef {import('abstract-level').AbstractSublevel<D, F, K, V>} AbstractSublevel
+ */
+
+/**
+ * @typedef {string | Buffer<ArrayBufferLike> | Uint8Array<ArrayBufferLike>} SublevelFormat
+ */
+
+/**
+ * @typedef {Level<string, DatabaseStoredValue>} RootLevelType
+ */
+
+/**
+ * @typedef {AbstractSublevel<RootLevelType, SublevelFormat, string, DatabaseStoredValue>} SchemaSublevelType
+ */
+
+/**
+ * @template T
+ * @typedef {AbstractSublevel<AbstractSublevel<RootLevelType, SublevelFormat, string, DatabaseStoredValue>, SublevelFormat, string, T>} SimpleSublevel
  */
 
 module.exports = {

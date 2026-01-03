@@ -5,7 +5,7 @@
 const path = require("path");
 const fs = require("fs");
 const os = require("os");
-const { get: getDatabase } = require("../src/generators/database");
+const { getRootDatabase } = require("../src/generators/database");
 const {
     makeInterface,
     isInterface,
@@ -53,7 +53,7 @@ describe("generators/interface", () => {
         test("creates and returns an interface instance", async () => {
             const capabilities = getTestCapabilities();
             try {
-                const db = await getDatabase(capabilities);
+                const db = await getRootDatabase(capabilities);
                 const iface = makeInterface(db);
 
                 expect(isInterface(iface)).toBe(true);
@@ -69,7 +69,7 @@ describe("generators/interface", () => {
         test("stores events in database under all_events key", async () => {
             const capabilities = getTestCapabilities();
             try {
-                const db = await getDatabase(capabilities);
+                const db = await getRootDatabase(capabilities);
                 const iface = makeInterface(db);
 
                 const events = [
@@ -111,7 +111,7 @@ describe("generators/interface", () => {
         test("overwrites previous events on subsequent updates", async () => {
             const capabilities = getTestCapabilities();
             try {
-                const db = await getDatabase(capabilities);
+                const db = await getRootDatabase(capabilities);
                 const iface = makeInterface(db);
 
                 const firstEvents = [
@@ -158,7 +158,7 @@ describe("generators/interface", () => {
         test("handles empty events array", async () => {
             const capabilities = getTestCapabilities();
             try {
-                const db = await getDatabase(capabilities);
+                const db = await getRootDatabase(capabilities);
                 const iface = makeInterface(db);
 
                 await iface.update([]);
@@ -182,7 +182,7 @@ describe("generators/interface", () => {
         test("returns context for event with shared hashtags", async () => {
             const capabilities = getTestCapabilities();
             try {
-                const db = await getDatabase(capabilities);
+                const db = await getRootDatabase(capabilities);
                 const iface = makeInterface(db);
 
                 const events = [
@@ -239,7 +239,7 @@ describe("generators/interface", () => {
         test("returns only the event itself when no shared hashtags", async () => {
             const capabilities = getTestCapabilities();
             try {
-                const db = await getDatabase(capabilities);
+                const db = await getRootDatabase(capabilities);
                 const iface = makeInterface(db);
 
                 const events = [
@@ -271,7 +271,7 @@ describe("generators/interface", () => {
         test("propagates through dependency graph before returning context", async () => {
             const capabilities = getTestCapabilities();
             try {
-                const db = await getDatabase(capabilities);
+                const db = await getRootDatabase(capabilities);
                 const iface = makeInterface(db);
 
                 // Add events
@@ -313,7 +313,7 @@ describe("generators/interface", () => {
         test("isInterface correctly identifies instances", async () => {
             const capabilities = getTestCapabilities();
             try {
-                const db = await getDatabase(capabilities);
+                const db = await getRootDatabase(capabilities);
                 const iface = makeInterface(db);
 
                 expect(isInterface(iface)).toBe(true);

@@ -3,35 +3,52 @@
  * Provides a GenericDatabase interface that wraps LevelDB sublevels with strong typing.
  */
 
+/** @typedef {import('./types').SchemaSublevelType} SchemaSublevelType */
+
+/**
+ * @template T
+ * @typedef {import('./types').SimpleSublevel<T>} SimpleSublevel
+ */
+
+/**
+ * @template T
+ * @typedef {import('./types').DatabasePutOperation<T>} DatabasePutOperation
+ */
+
+/** 
+ * @template T
+ * @typedef {import('./types').DatabaseDelOperation<T>} DatabaseDelOperation
+ */
+
 /**
  * Generic typed database interface.
  * All databases (values, freshness, inputs, revdeps) implement this interface.
- * @template TKey - The key type (typically string)
  * @template TValue - The value type
  * @typedef {object} GenericDatabase
- * @property {(key: TKey) => Promise<TValue | undefined>} get - Retrieve a value
- * @property {(key: TKey, value: TValue) => Promise<void>} put - Store a value
- * @property {(key: TKey) => Promise<void>} del - Delete a value
- * @property {() => AsyncIterable<TKey>} keys - Iterate over all keys
+ * @property {(key: string) => Promise<TValue | undefined>} get - Retrieve a value
+ * @property {(key: string, value: TValue) => Promise<void>} put - Store a value
+ * @property {(key: string) => Promise<void>} del - Delete a value
+ * @property {(key: string, value: TValue) => DatabasePutOperation<TValue>} putOp - Store a value operation
+ * @property {(key: string) => DatabaseDelOperation<TValue>} delOp - Delete a value operation
+ * @property {() => AsyncIterable<string>} keys - Iterate over all keys
  * @property {() => Promise<void>} clear - Clear all entries
  */
 
 /**
  * Wrapper class that adapts a LevelDB sublevel to the GenericDatabase interface.
- * @template TKey
  * @template TValue
  */
 class TypedDatabaseClass {
     /**
      * The underlying LevelDB sublevel instance.
      * @private
-     * @type {import('level').AbstractLevel<any, TKey, TValue>}
+     * @type {SimpleSublevel<TValue>}
      */
     sublevel;
 
     /**
      * @constructor
-     * @param {import('level').AbstractLevel<any, TKey, TValue>} sublevel - The LevelDB sublevel instance
+     * @param {SimpleSublevel<TValue>} sublevel - The LevelDB sublevel instance
      */
     constructor(sublevel) {
         this.sublevel = sublevel;
@@ -39,7 +56,7 @@ class TypedDatabaseClass {
 
     /**
      * Retrieve a value from the database.
-     * @param {TKey} key - The key to retrieve
+     * @param {string} key - The key to retrieve
      * @returns {Promise<TValue | undefined>}
      */
     async get(key) {
@@ -58,7 +75,7 @@ class TypedDatabaseClass {
 
     /**
      * Store a value in the database.
-     * @param {TKey} key - The key to store
+     * @param {string} key - The key to store
      * @param {TValue} value - The value to store
      * @returns {Promise<void>}
      */
@@ -68,7 +85,7 @@ class TypedDatabaseClass {
 
     /**
      * Delete a value from the database.
-     * @param {TKey} key - The key to delete
+     * @param {string} key - The key to delete
      * @returns {Promise<void>}
      */
     async del(key) {
@@ -76,9 +93,28 @@ class TypedDatabaseClass {
     }
 
     /**
-     * Iterate over all keys in the database.
-     * @returns {AsyncIterable<TKey>}
+     * Create a put operation for batch processing.
+     * @param {string} key - The key to store
+     * @param {TValue} value - The value to store
+     * @returns {DatabasePutOperation<TValue>}
      */
+    putOp(key, value) {
+        return { sublevel: this.sublevel, type: 'put', key, value };
+    }
+
+    /**
+     * Create a delete operation for batch processing.
+     * @param {string} key - The key to delete
+     * @returns {DatabaseDelOperation<TValue>}
+     */
+    delOp(key) {
+        /** @type {SimpleSublevel<TValue>} */
+        const thisSublevel = this.sublevel;
+        /** @type {SimpleSublevel<TValue>} */
+        const sublevel = thisSublevel;
+        return { sublevel: sublevel, type: 'del', key };
+    }
+
     async *keys() {
         for await (const key of this.sublevel.keys()) {
             yield key;
@@ -96,10 +132,9 @@ class TypedDatabaseClass {
 
 /**
  * Factory function to create a TypedDatabase instance.
- * @template TKey
  * @template TValue
- * @param {import('level').AbstractLevel<any, TKey, TValue>} sublevel - The LevelDB sublevel instance
- * @returns {GenericDatabase<TKey, TValue>}
+ * @param {SimpleSublevel<TValue>} sublevel - The LevelDB sublevel instance
+ * @returns {GenericDatabase<TValue>}
  */
 function makeTypedDatabase(sublevel) {
     return new TypedDatabaseClass(sublevel);

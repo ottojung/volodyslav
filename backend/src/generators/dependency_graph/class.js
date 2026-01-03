@@ -48,13 +48,6 @@ const { makeGraphStorage } = require("./graph_storage");
  */
 class DependencyGraphClass {
     /**
-     * The underlying root database instance.
-     * @private
-     * @type {RootDatabase}
-     */
-    rootDatabase;
-
-    /**
      * All compiled nodes (both exact and patterns).
      * @private
      * @type {Map<string, import('./types').CompiledNode>}
@@ -342,8 +335,6 @@ class DependencyGraphClass {
      * @param {Array<NodeDef>} nodeDefs - Unified node definitions
      */
     constructor(rootDatabase, nodeDefs) {
-        this.rootDatabase = rootDatabase;
-
         // Compile all node definitions
         const compiledNodes = nodeDefs.map(compileNodeDef);
 
@@ -595,13 +586,13 @@ class DependencyGraphClass {
     }
 
     /**
-     * Query conceptual freshness state of a node.
-     * @param {string} nodeName - The name of the node
-     * @returns {Promise<FreshnessStatus>}
+     * Query conceptual freshness state of a node (debug interface).
+     * @param {string} nodeName - The node name to query
+     * @returns {Promise<"up-to-date" | "potentially-outdated" | "missing">}
      */
     async debugGetFreshness(nodeName) {
-        const canonicalName = canonicalize(nodeName);
-        const freshness = await this.storage.freshness.get(canonicalName);
+        const canonical = canonicalize(nodeName);
+        const freshness = await this.storage.freshness.get(canonical);
         if (freshness === undefined) {
             return "missing";
         }

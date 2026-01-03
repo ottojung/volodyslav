@@ -2,7 +2,7 @@
  * Interface class for direct database operations.
  */
 
-/** @typedef {import('../database/class').Database} Database */
+/** @typedef {import('../database/root_database').RootDatabase} RootDatabase */
 /** @typedef {import('../../event').Event} Event */
 /** @typedef {import('../dependency_graph').DependencyGraph} DependencyGraph */
 
@@ -23,7 +23,7 @@ class InterfaceClass {
 
     /**
      * @constructor
-     * @param {Database} database - The database instance
+     * @param {RootDatabase} database - The root database instance
      */
     constructor(database) {
         this.dependencyGraph = makeDependencyGraph(
@@ -78,7 +78,7 @@ class InterfaceClass {
 
 /**
  * Factory function to create an Interface instance.
- * @param {Database} database - The database instance
+ * @param {RootDatabase} database - The root database instance
  * @returns {InterfaceClass}
  */
 function makeInterface(database) {

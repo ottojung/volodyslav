@@ -12,6 +12,8 @@
 /** @typedef {import('../database/types').DatabaseValue} DatabaseValue */
 /** @typedef {import('../database/types').Freshness} Freshness */
 /** @typedef {import('../database/types').InputsRecord} InputsRecord */
+/** @typedef {import('../database/types').DatabaseBatchOperation} DatabaseBatchOperation */
+/** @typedef {import('../database/types').SchemaSublevelType} SchemaSublevelType */
 
 /**
  * Interface for batch operations on a specific database.
@@ -49,45 +51,35 @@
 
 /**
  * Creates a batch builder for atomic operations.
- * @param {SchemaStorage} schemaStorage - The schema storage
+ * @param {SchemaStorage} schemaStorage - The schema storage instance
  * @returns {BatchBuilder}
  */
 function makeBatchBuilder(schemaStorage) {
-    /** @type {Array<{ db: 'values' | 'freshness' | 'inputs' | 'revdeps', op: 'put' | 'del', key: string, value?: any }>} */
+    /** @type {DatabaseBatchOperation[]} */
     const operations = [];
 
     return {
         values: {
-            put: (key, value) => operations.push({ db: 'values', op: 'put', key, value }),
-            del: (key) => operations.push({ db: 'values', op: 'del', key }),
+            put: (key, value) => {
+                const op = schemaStorage.values.putOp(key, value);
+                operations.push(op);
+            },
+            del: (key) => operations.push(schemaStorage.values.delOp(key)),
         },
         freshness: {
-            put: (key, value) => operations.push({ db: 'freshness', op: 'put', key, value }),
-            del: (key) => operations.push({ db: 'freshness', op: 'del', key }),
+            put: (key, value) => operations.push(schemaStorage.freshness.putOp(key, value)),
+            del: (key) => operations.push(schemaStorage.freshness.delOp(key)),
         },
         inputs: {
-            put: (key, value) => operations.push({ db: 'inputs', op: 'put', key, value }),
-            del: (key) => operations.push({ db: 'inputs', op: 'del', key }),
+            put: (key, value) => operations.push(schemaStorage.inputs.putOp(key, value)),
+            del: (key) => operations.push(schemaStorage.inputs.delOp(key)),
         },
         revdeps: {
-            put: (key, value) => operations.push({ db: 'revdeps', op: 'put', key, value }),
-            del: (key) => operations.push({ db: 'revdeps', op: 'del', key }),
+            put: (key, value) => operations.push(schemaStorage.revdeps.putOp(key, value)),
+            del: (key) => operations.push(schemaStorage.revdeps.delOp(key)),
         },
         async write() {
-            // Execute all operations sequentially
-            // Note: LevelDB sublevels don't support cross-sublevel atomic batches,
-            // but we execute them in order to maintain consistency
-            for (const op of operations) {
-                const db = schemaStorage[op.db];
-                if (op.op === 'put') {
-                    // LevelDB doesn't allow null or undefined values
-                    if (op.value !== null && op.value !== undefined) {
-                        await db.put(op.key, op.value);
-                    }
-                } else {
-                    await db.del(op.key);
-                }
-            }
+            await schemaStorage.batch(operations);
         },
     };
 }
