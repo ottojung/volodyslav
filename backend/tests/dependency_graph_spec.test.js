@@ -46,16 +46,18 @@ class InMemoryDatabase {
             this.schemas.set(schemaHash, new Map());
         }
         const schemaMap = this.schemas.get(schemaHash);
+        
+        // Store logs references for closure access
+        const { getValueLog, batchLog } = this;
 
         const createSublevel = (name) => {
             const prefix = `${name}:`;
-            const db = this;
             const sublevel = {
                 async get(key) {
                     const fullKey = prefix + key;
                     // Track get calls for values sublevel
                     if (name === 'values') {
-                        db.getValueLog.push({ key });
+                        getValueLog.push({ key });
                     }
                     const v = schemaMap.get(fullKey);
                     return v === undefined ? undefined : deepClone(v);
@@ -101,7 +103,6 @@ class InMemoryDatabase {
         const inputs = createSublevel('inputs');
         const revdeps = createSublevel('revdeps');
 
-        const db = this;
         return {
             values,
             freshness,
@@ -109,7 +110,7 @@ class InMemoryDatabase {
             revdeps,
             async batch(operations) {
                 // Track batch calls
-                db.batchLog.push({ ops: deepClone(operations.map(op => ({ 
+                batchLog.push({ ops: deepClone(operations.map(op => ({ 
                     type: op.type, 
                     key: op.key, 
                     value: op.value 
