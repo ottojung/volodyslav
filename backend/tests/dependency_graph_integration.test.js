@@ -47,7 +47,8 @@ describe("DependencyGraph integration with meta_events", () => {
             {
                 output: "all_events",
                 inputs: [],
-                computor: (inputs, oldValue, _bindings) => oldValue,
+                computor: (inputs, oldValue, _bindings) => 
+                    oldValue || { type: "all_events", events: [] },
             },
             {
                 output: "meta_events",
@@ -59,10 +60,22 @@ describe("DependencyGraph integration with meta_events", () => {
                     }
 
                     const allEvents = allEventsEntry.events;
-                    const currentMetaEvents = oldValue
-                        ? oldValue.meta_events
-                        : [];
+                    
+                    // If no previous value, compute from scratch
+                    if (!oldValue) {
+                        const result = computeMetaEvents(allEvents, []);
+                        // computeMetaEvents should never return Unchanged when previous is empty
+                        // But handle it defensively
+                        if (isUnchanged(result)) {
+                            return { type: "meta_events", meta_events: [] };
+                        }
+                        return {
+                            type: "meta_events",
+                            meta_events: result,
+                        };
+                    }
 
+                    const currentMetaEvents = oldValue.meta_events;
                     const result = computeMetaEvents(
                         allEvents,
                         currentMetaEvents
@@ -82,29 +95,32 @@ describe("DependencyGraph integration with meta_events", () => {
 
         const graph = makeDependencyGraph(db, graphDefinition);
 
-        // Add initial events
-        await iface.update([
-            {
-                id: eventId.fromString("1"),
-                type: "test",
-                description: "Event 1",
-                date: "2024-01-01",
-                original: "test1",
-                input: "test1",
-                modifiers: {},
-                creator: { type: "user", name: "test" },
-            },
-            {
-                id: eventId.fromString("2"),
-                type: "test",
-                description: "Event 2",
-                date: "2024-01-02",
-                original: "test2",
-                input: "test2",
-                modifiers: {},
-                creator: { type: "user", name: "test" },
-            },
-        ]);
+        // Add initial events - set directly on the graph
+        await graph.set("all_events", {
+            type: "all_events",
+            events: [
+                {
+                    id: eventId.fromString("1"),
+                    type: "test",
+                    description: "Event 1",
+                    date: "2024-01-01",
+                    original: "test1",
+                    input: "test1",
+                    modifiers: {},
+                    creator: { type: "user", name: "test" },
+                },
+                {
+                    id: eventId.fromString("2"),
+                    type: "test",
+                    description: "Event 2",
+                    date: "2024-01-02",
+                    original: "test2",
+                    input: "test2",
+                    modifiers: {},
+                    creator: { type: "user", name: "test" },
+                },
+            ],
+        });
 
         // Pull meta_events
         const metaEventsEntry = await graph.pull("meta_events");
