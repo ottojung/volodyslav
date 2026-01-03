@@ -205,6 +205,27 @@ class DatabaseClass {
     }
 
     /**
+     * Executes multiple database operations atomically.
+     * @param {Array<{type: 'put' | 'del', key: string, value?: DatabaseStoredValue}>} operations - Array of operations to execute
+     * @returns {Promise<void>}
+     * @throws {DatabaseQueryError} If the batch operation fails
+     */
+    async batch(operations) {
+        try {
+            // @ts-expect-error - Level's batch types are compatible with our operation format
+            await this.db.batch(operations);
+        } catch (err) {
+            const error = err instanceof Error ? err : new Error(String(err));
+            throw new DatabaseQueryError(
+                `Batch operation failed: ${error.message}`,
+                this.databasePath,
+                `BATCH ${operations.length} ops`,
+                error
+            );
+        }
+    }
+
+    /**
      * Closes the database connection.
      * @returns {Promise<void>}
      */

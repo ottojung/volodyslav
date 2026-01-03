@@ -91,15 +91,14 @@ describe("generators/interface", () => {
 
                 await iface.update(events);
 
-                // Verify the data was stored correctly
-                const { freshnessKey } = require("../src/generators/database/types");
-                const result = await db.get("all_events");
+                // Verify the data was stored correctly by pulling from the dependency graph
+                const result = await iface.dependencyGraph.pull("all_events");
                 expect(result).toBeDefined();
                 expect(result.events).toHaveLength(2);
                 expect(result.events[0].id).toBe("event-1");
                 expect(result.events[1].id).toBe("event-2");
                 
-                const freshness = await db.get(freshnessKey("all_events"));
+                const freshness = await iface.dependencyGraph.debugGetFreshness("all_events");
                 expect(freshness).toBe("up-to-date");
 
                 await db.close();
@@ -144,7 +143,7 @@ describe("generators/interface", () => {
                 await iface.update(firstEvents);
                 await iface.update(secondEvents);
 
-                const result = await db.get("all_events");
+                const result = await iface.dependencyGraph.pull("all_events");
                 expect(result.events).toHaveLength(2);
                 expect(result.events[0].id).toBe("event-2");
                 expect(result.events[1].id).toBe("event-3");
@@ -163,12 +162,11 @@ describe("generators/interface", () => {
 
                 await iface.update([]);
 
-                const { freshnessKey } = require("../src/generators/database/types");
-                const result = await db.get("all_events");
+                const result = await iface.dependencyGraph.pull("all_events");
                 expect(result).toBeDefined();
                 expect(result.events).toHaveLength(0);
                 
-                const freshness = await db.get(freshnessKey("all_events"));
+                const freshness = await iface.dependencyGraph.debugGetFreshness("all_events");
                 expect(freshness).toBe("up-to-date");
 
                 await db.close();
@@ -296,8 +294,8 @@ describe("generators/interface", () => {
                 expect(context).toBeDefined();
                 expect(context).toHaveLength(1);
 
-                // Verify that event_context was computed in the database
-                const eventContextEntry = await db.get("event_context");
+                // Verify that event_context was computed in the dependency graph
+                const eventContextEntry = await iface.dependencyGraph.pull("event_context");
                 expect(eventContextEntry).toBeDefined();
                 expect(eventContextEntry.type).toBe("event_context");
                 expect(eventContextEntry.contexts).toHaveLength(1);
