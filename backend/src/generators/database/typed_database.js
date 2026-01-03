@@ -65,8 +65,7 @@ class TypedDatabaseClass {
             return value;
         } catch (err) {
             // LevelDB throws for missing keys, we return undefined
-            const error = /** @type {Error} */ (err);
-            if (error.message?.includes('not found') || error.message?.includes('NotFound')) {
+            if (err instanceof Error && (err.message?.includes('not found') || err.message?.includes('NotFound'))) {
                 return undefined;
             }
             throw err;

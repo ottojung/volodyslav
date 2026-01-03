@@ -174,9 +174,11 @@ const processCameraReturn = async (cameraReturn, setDescription, setPendingReque
 export const useDescriptionEntry = (numberOfEntries = 10) => {
     const [description, setDescription] = useState("");
     const [isSubmitting, setIsSubmitting] = useState(false);
-    const [recentEntries, setRecentEntries] = useState(/** @type {any[]} */([]));
+    /** @type {[import('./api').Entry[], Function]} */
+    const [recentEntries, setRecentEntries] = useState([]);
     const [isLoadingEntries, setIsLoadingEntries] = useState(true);
-    const [pendingRequestIdentifier, setPendingRequestIdentifier] = useState(/** @type {string|null} */(null));
+    /** @type {[string | null, Function]} */
+    const [pendingRequestIdentifier, setPendingRequestIdentifier] = useState(null);
     const [photoCount, setPhotoCount] = useState(0);
     const toast = useToast();
 

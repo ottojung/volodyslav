@@ -51,7 +51,7 @@ function constValueToArg(constValue) {
     } else if (constValue.type === "int") {
         return { kind: "number", value: String(constValue.value) };
     }
-    throw new Error(`Unknown const value type: ${/** @type {any} */(constValue).type}`);
+    throw new Error(`Unknown const value type: ${JSON.stringify(constValue)}`);
 }
 
 /**

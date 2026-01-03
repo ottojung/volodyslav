@@ -84,13 +84,8 @@ module.exports = {
 
     // We *must* have a TS Program to get a real TS SourceFile and its nodes.
     if (!services || !services.program || !services.esTreeNodeToTSNodeMap) {
-      // You can either silently no-op, or warn once.
-      // Here we warn once, attached to the Program node if possible.
-      return {
-        Program(node) {
-          context.report({ node, messageId: "missingParserServices" });
-        },
-      };
+      // Silently skip files without parser services (e.g., config files, tests not in tsconfig)
+      return {};
     }
 
     function shouldReport(tsNode) {
