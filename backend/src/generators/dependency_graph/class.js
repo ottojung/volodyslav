@@ -500,18 +500,18 @@ class DependencyGraphClass {
         );
 
         // Validate that computor returned a valid value
-        if (!isUnchanged(computedValue)) {
-            // Not Unchanged: must be a valid DatabaseValue (not null/undefined)
-            if (computedValue === null || computedValue === undefined) {
-                throw makeInvalidComputorReturnValueError(nodeName, computedValue);
-            }
-        } else {
-            // Unchanged: must have a previous value
+        if (isUnchanged(computedValue)) {
+            // Must have a previous value
             if (oldValue === undefined) {
                 throw makeInvalidComputorReturnValueError(
                     nodeName,
                     "Unchanged (but no previous value exists)"
                 );
+            }
+        } else {
+            // Must be a valid DatabaseValue (not null/undefined)
+            if (computedValue === null || computedValue === undefined) {
+                throw makeInvalidComputorReturnValueError(nodeName, computedValue);
             }
         }
 
