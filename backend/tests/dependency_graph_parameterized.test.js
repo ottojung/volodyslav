@@ -39,17 +39,6 @@ describe("Parameterized node schemas", () => {
         test("pull creates concrete instantiation from schema", async () => {
             const capabilities = getTestCapabilities();
             const db = await getRootDatabase(capabilities);
-
-            // Set up base data
-            await testDb.put("all_events", {
-                type: "all_events",
-                events: [
-                    { id: "id123", description: "Event 123" },
-                    { id: "id456", description: "Event 456" },
-                ],
-            });
-
-            // Define schema
             const schemas = [
                 {
                     output: "all_events",
@@ -78,6 +67,18 @@ describe("Parameterized node schemas", () => {
             const graph = makeDependencyGraph(db, schemas);
 
             const testDb = makeTestDatabase(graph);
+
+            await testDb.put("all_events", {
+
+            // Set up base data
+                type: "all_events",
+                events: [
+                    { id: "id123", description: "Event 123" },
+                    { id: "id456", description: "Event 456" },
+                ],
+            });
+
+            // Define schema
             // Pull concrete instantiation
             const result = await graph.pull('event_context("id123")');
 
@@ -97,10 +98,6 @@ describe("Parameterized node schemas", () => {
         test("caching works for instantiations", async () => {
             const capabilities = getTestCapabilities();
             const db = await getRootDatabase(capabilities);
-
-            await testDb.put("base", { value: 1 });
-
-            let computeCount = 0;
             const schemas = [
                 {
                     output: "base",
@@ -123,6 +120,11 @@ describe("Parameterized node schemas", () => {
             const graph = makeDependencyGraph(db, schemas);
 
             const testDb = makeTestDatabase(graph);
+
+            await testDb.put("base", { value: 1 });
+
+
+            let computeCount = 0;
             // First pull - should compute
             const result1 = await graph.pull('derived("abc")');
             expect(computeCount).toBe(1);
@@ -141,8 +143,6 @@ describe("Parameterized node schemas", () => {
         test("invalidation reaches demanded instantiation", async () => {
             const capabilities = getTestCapabilities();
             const db = await getRootDatabase(capabilities);
-
-            await testDb.put("source", { count: 1 });
 
             const schemas = [
                 {
@@ -163,6 +163,9 @@ describe("Parameterized node schemas", () => {
             const graph = makeDependencyGraph(db, schemas);
 
             const testDb = makeTestDatabase(graph);
+
+            await testDb.put("source", { count: 1 });
+
             // Pull instantiation
             const result1 = await graph.pull('derived("test1")');
             expect(result1.count).toBe(2);
@@ -180,8 +183,6 @@ describe("Parameterized node schemas", () => {
         test("only demanded instantiations are tracked", async () => {
             const capabilities = getTestCapabilities();
             const db = await getRootDatabase(capabilities);
-
-            await testDb.put("source", { value: 1 });
 
             const schemas = [
                 {
@@ -202,6 +203,9 @@ describe("Parameterized node schemas", () => {
             const graph = makeDependencyGraph(db, schemas);
 
             const testDb = makeTestDatabase(graph);
+
+            await testDb.put("source", { value: 1 });
+
             // Demand only one instantiation
             await graph.pull('derived("demanded")');
 
@@ -273,9 +277,6 @@ describe("Parameterized node schemas", () => {
             const capabilities = getTestCapabilities();
             const db = await getRootDatabase(capabilities);
 
-            await testDb.put("events", { events: ["e1", "e2"] });
-            await testDb.put("photos", { photos: ["p1", "p2"] });
-
             const schemas = [
                 {
                     output: "events",
@@ -301,6 +302,10 @@ describe("Parameterized node schemas", () => {
             const graph = makeDependencyGraph(db, schemas);
 
             const testDb = makeTestDatabase(graph);
+
+            await testDb.put("events", { events: ["e1", "e2"] });
+            await testDb.put("photos", { photos: ["p1", "p2"] });
+
             const result = await graph.pull('enhanced_event("e1","p2")');
             expect(result).toEqual({
                 event: "e1",
@@ -316,10 +321,6 @@ describe("Parameterized node schemas", () => {
         test("Unchanged works for instantiations", async () => {
             const capabilities = getTestCapabilities();
             const db = await getRootDatabase(capabilities);
-
-            await testDb.put("source", { value: 1 });
-
-            let computeCount = 0;
             const schemas = [
                 {
                     output: "source",
@@ -359,6 +360,11 @@ describe("Parameterized node schemas", () => {
             const graph = makeDependencyGraph(db, schemas);
 
             const testDb = makeTestDatabase(graph);
+
+            await testDb.put("source", { value: 1 });
+
+
+            let computeCount = 0;
             // Initial pull
             await graph.pull('final("test")');
 
@@ -443,8 +449,6 @@ describe("Parameterized node schemas", () => {
             const capabilities = getTestCapabilities();
             const db = await getRootDatabase(capabilities);
 
-            await testDb.put("base", { value: 1 });
-
             const schemas = [
                 {
                     output: "base",
@@ -464,6 +468,9 @@ describe("Parameterized node schemas", () => {
             const graph = makeDependencyGraph(db, schemas);
 
             const testDb = makeTestDatabase(graph);
+
+            await testDb.put("base", { value: 1 });
+
             // Pull with whitespace in string literal
             const result1 = await graph.pull('derived(" abc ")');
             expect(result1.id).toBe(" abc ");
@@ -573,8 +580,6 @@ describe("Parameterized node schemas", () => {
             const capabilities = getTestCapabilities();
             const db = await getRootDatabase(capabilities);
 
-            await testDb.put("base", { value: 10 });
-
             const schemas = [
                 {
                     output: "base",
@@ -594,6 +599,9 @@ describe("Parameterized node schemas", () => {
             const graph = makeDependencyGraph(db, schemas);
 
             const testDb = makeTestDatabase(graph);
+
+            await testDb.put("base", { value: 10 });
+
             // Pull a concrete instantiation
             const result1 = await graph.pull('derived("test")');
             expect(result1.value).toBe(20);
@@ -629,8 +637,6 @@ describe("Parameterized node schemas", () => {
             const capabilities = getTestCapabilities();
             const db = await getRootDatabase(capabilities);
 
-            await testDb.put("base", { value: 1 });
-
             const schemas = [
                 {
                     output: "base",
@@ -649,6 +655,9 @@ describe("Parameterized node schemas", () => {
             const graph = makeDependencyGraph(db, schemas);
 
             const testDb = makeTestDatabase(graph);
+
+            await testDb.put("base", { value: 1 });
+
             // First, pull an item to materialize it
             await graph.pull('item("foo")');
 
