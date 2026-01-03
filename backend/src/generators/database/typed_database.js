@@ -64,7 +64,7 @@ class TypedDatabaseClass {
      * @returns {Promise<TValue | undefined>}
      */
     async get(key) {
-        return await this.sublevel.get(key);
+        return this.sublevel.get(key);
     }
 
     /**
