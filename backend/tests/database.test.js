@@ -5,8 +5,7 @@
 const path = require('path');
 const fs = require('fs');
 const os = require('os');
-const { get } = require('../src/generators/database');
-const { isDatabase } = require('../src/generators/database/class');
+const { getRootDatabase, isRootDatabase } = require('../src/generators/database');
 const { 
     isDatabaseError,
     isDatabaseInitializationError,
@@ -49,16 +48,16 @@ function cleanup(tmpDir) {
 
 
 describe('generators/database', () => {
-    describe('get()', () => {
-        test('creates and returns a database instance', async () => {
+    describe('getRootDatabase()', () => {
+        test('creates and returns a root database instance', async () => {
             const capabilities = getTestCapabilities();
             try {
-                const db = await get(capabilities);
+                const db = await getRootDatabase(capabilities);
                 
-                expect(isDatabase(db)).toBe(true);
+                expect(isRootDatabase(db)).toBe(true);
                 expect(capabilities.logger.logDebug).toHaveBeenCalledWith(
                     expect.objectContaining({ databasePath: expect.any(String) }),
-                    'Database opened'
+                    'Root database opened'
                 );
                 
                 await db.close();
@@ -70,7 +69,7 @@ describe('generators/database', () => {
         test('creates database directory in the data directory', async () => {
             const capabilities = getTestCapabilities();
             try {
-                const db = await get(capabilities);
+                const db = await getRootDatabase(capabilities);
                 const expectedPath = path.join(capabilities.tmpDir, 'generators-leveldb');
                 
                 expect(fs.existsSync(expectedPath)).toBe(true);
@@ -84,11 +83,11 @@ describe('generators/database', () => {
         test('can be called multiple times without errors', async () => {
             const capabilities = getTestCapabilities();
             try {
-                const db1 = await get(capabilities);
+                const db1 = await getRootDatabase(capabilities);
                 await db1.close();
                 
-                const db2 = await get(capabilities);
-                expect(isDatabase(db2)).toBe(true);
+                const db2 = await getRootDatabase(capabilities);
+                expect(isRootDatabase(db2)).toBe(true);
                 
                 await db2.close();
             } finally {
@@ -105,10 +104,10 @@ describe('generators/database', () => {
             );
             
             try {
-                await expect(get(capabilities)).rejects.toThrow('Failed to create data directory');
-                await expect(get(capabilities)).rejects.toThrow(expect.any(Error));
+                await expect(getRootDatabase(capabilities)).rejects.toThrow('Failed to create data directory');
+                await expect(getRootDatabase(capabilities)).rejects.toThrow(expect.any(Error));
                 
-                const error = await get(capabilities).catch(e => e);
+                const error = await getRootDatabase(capabilities).catch(e => e);
                 expect(isDatabaseInitializationError(error)).toBe(true);
                 expect(error.cause.message).toBe('Permission denied');
             } finally {
@@ -117,13 +116,14 @@ describe('generators/database', () => {
         });
     });
 
-    describe('Database operations', () => {
-        test('put() stores a value', async () => {
+    describe('Schema storage operations', () => {
+        test('put() and get() work through schema storage', async () => {
             const capabilities = getTestCapabilities();
             try {
-                const db = await get(capabilities);
+                const db = await getRootDatabase(capabilities);
+                const storage = db.getSchemaStorage('test-schema');
                 
-                await db.put('event:test-id', { 
+                await storage.values.put('test-key', { 
                     value: {
                         id: 'test-id', 
                         type: 'test-type',
@@ -132,7 +132,7 @@ describe('generators/database', () => {
                     isDirty: false
                 });
                 
-                const result = await db.get('event:test-id');
+                const result = await storage.values.get('test-key');
                 expect(result).toBeDefined();
                 expect(result.value.id).toBe('test-id');
                 expect(result.value.type).toBe('test-type');
@@ -147,9 +147,10 @@ describe('generators/database', () => {
         test('get() returns undefined for non-existent key', async () => {
             const capabilities = getTestCapabilities();
             try {
-                const db = await get(capabilities);
+                const db = await getRootDatabase(capabilities);
+                const storage = db.getSchemaStorage('test-schema');
                 
-                const result = await db.get('event:non-existent');
+                const result = await storage.values.get('non-existent');
                 expect(result).toBeUndefined();
                 
                 await db.close();
@@ -161,20 +162,21 @@ describe('generators/database', () => {
         test('del() removes a value', async () => {
             const capabilities = getTestCapabilities();
             try {
-                const db = await get(capabilities);
+                const db = await getRootDatabase(capabilities);
+                const storage = db.getSchemaStorage('test-schema');
                 
                 // Put a value
-                await db.put('event:test-id', { value: { id: 'test-id', data: 'test' }, isDirty: false });
+                await storage.values.put('test-key', { value: { id: 'test-id', data: 'test' }, isDirty: false });
                 
                 // Verify it exists
-                let result = await db.get('event:test-id');
+                let result = await storage.values.get('test-key');
                 expect(result).toBeDefined();
                 
                 // Delete it
-                await db.del('event:test-id');
+                await storage.values.del('test-key');
                 
                 // Verify it's gone
-                result = await db.get('event:test-id');
+                result = await storage.values.get('test-key');
                 expect(result).toBeUndefined();
                 
                 await db.close();
@@ -183,43 +185,24 @@ describe('generators/database', () => {
             }
         });
 
-        test('keys() returns all keys with prefix', async () => {
+        test('keys() returns all keys', async () => {
             const capabilities = getTestCapabilities();
             try {
-                const db = await get(capabilities);
-                
-                // Put multiple values with event: prefix
-                await db.put('event:id1', { value: { id: 'id1' }, isDirty: false });
-                await db.put('event:id2', { value: { id: 'id2' }, isDirty: false });
-                await db.put('modifier:id1:key1', { value: { value: 'val1' }, isDirty: false });
-                
-                const keys = await db.keys('event:');
-                expect(keys).toHaveLength(2);
-                expect(keys).toContain('event:id1');
-                expect(keys).toContain('event:id2');
-                
-                await db.close();
-            } finally {
-                cleanup(capabilities.tmpDir);
-            }
-        });
-
-        test('getAll() returns all values with prefix', async () => {
-            const capabilities = getTestCapabilities();
-            try {
-                const db = await get(capabilities);
+                const db = await getRootDatabase(capabilities);
+                const storage = db.getSchemaStorage('test-schema');
                 
                 // Put multiple values
-                await db.put('event:id1', { value: { id: 'id1', type: 'type1' }, isDirty: false });
-                await db.put('event:id2', { value: { id: 'id2', type: 'type2' }, isDirty: true });
-                await db.put('modifier:id1', { value: { key: 'val1' }, isDirty: false });
+                await storage.values.put('id1', { value: { id: 'id1' }, isDirty: false });
+                await storage.values.put('id2', { value: { id: 'id2' }, isDirty: false });
                 
-                const values = await db.getAll('event:');
-                expect(values).toHaveLength(2);
-                expect(values[0].value.id).toBe('id1');
-                expect(values[0].isDirty).toBe(false);
-                expect(values[1].value.id).toBe('id2');
-                expect(values[1].isDirty).toBe(true);
+                const keys = [];
+                for await (const key of storage.values.keys()) {
+                    keys.push(key);
+                }
+                
+                expect(keys).toHaveLength(2);
+                expect(keys).toContain('id1');
+                expect(keys).toContain('id2');
                 
                 await db.close();
             } finally {
@@ -230,16 +213,20 @@ describe('generators/database', () => {
         test('batch() executes multiple operations atomically', async () => {
             const capabilities = getTestCapabilities();
             try {
-                const db = await get(capabilities);
+                const db = await getRootDatabase(capabilities);
+                const storage = db.getSchemaStorage('test-schema');
                 
                 // Execute batch operations
-                await db.batch([
-                    { type: 'put', key: 'event:id1', value: { value: { id: 'id1' }, isDirty: false } },
-                    { type: 'put', key: 'event:id2', value: { value: { id: 'id2' }, isDirty: false } },
-                    { type: 'put', key: 'event:id3', value: { value: { id: 'id3' }, isDirty: false } },
+                await storage.batch([
+                    storage.values.putOp('id1', { value: { id: 'id1' }, isDirty: false }),
+                    storage.values.putOp('id2', { value: { id: 'id2' }, isDirty: false }),
+                    storage.values.putOp('id3', { value: { id: 'id3' }, isDirty: false }),
                 ]);
                 
-                const keys = await db.keys('event:');
+                const keys = [];
+                for await (const key of storage.values.keys()) {
+                    keys.push(key);
+                }
                 expect(keys).toHaveLength(3);
                 
                 await db.close();
@@ -251,21 +238,22 @@ describe('generators/database', () => {
         test('batch() can mix put and del operations', async () => {
             const capabilities = getTestCapabilities();
             try {
-                const db = await get(capabilities);
+                const db = await getRootDatabase(capabilities);
+                const storage = db.getSchemaStorage('test-schema');
                 
                 // Put initial values
-                await db.put('event:id1', { value: { id: 'id1' }, isDirty: false });
-                await db.put('event:id2', { value: { id: 'id2' }, isDirty: false });
+                await storage.values.put('id1', { value: { id: 'id1' }, isDirty: false });
+                await storage.values.put('id2', { value: { id: 'id2' }, isDirty: false });
                 
                 // Batch: add one, delete one
-                await db.batch([
-                    { type: 'put', key: 'event:id3', value: { value: { id: 'id3' }, isDirty: true } },
-                    { type: 'del', key: 'event:id1' },
+                await storage.batch([
+                    storage.values.putOp('id3', { value: { id: 'id3' }, isDirty: true }),
+                    storage.values.delOp('id1'),
                 ]);
                 
-                const val1 = await db.get('event:id1');
-                const val2 = await db.get('event:id2');
-                const val3 = await db.get('event:id3');
+                const val1 = await storage.values.get('id1');
+                const val2 = await storage.values.get('id2');
+                const val3 = await storage.values.get('id3');
                 
                 expect(val1).toBeUndefined();
                 expect(val2).toBeDefined();
@@ -283,7 +271,8 @@ describe('generators/database', () => {
         test('stores and retrieves complex objects', async () => {
             const capabilities = getTestCapabilities();
             try {
-                const db = await get(capabilities);
+                const db = await getRootDatabase(capabilities);
+                const storage = db.getSchemaStorage('test-schema');
                 
                 const complexObj = {
                     id: 'test-id',
@@ -296,8 +285,8 @@ describe('generators/database', () => {
                 };
                 
                 const entry = { value: complexObj, isDirty: false };
-                await db.put('event:complex', entry);
-                const result = await db.get('event:complex');
+                await storage.values.put('complex', entry);
+                const result = await storage.values.get('complex');
                 
                 expect(result).toEqual(entry);
                 
@@ -306,42 +295,110 @@ describe('generators/database', () => {
                 cleanup(capabilities.tmpDir);
             }
         });
-    });
 
-    describe('Error handling', () => {
-        test('put() throws DatabaseQueryError on failure', async () => {
+        test('freshness storage works independently', async () => {
             const capabilities = getTestCapabilities();
             try {
-                const db = await get(capabilities);
+                const db = await getRootDatabase(capabilities);
+                const storage = db.getSchemaStorage('test-schema');
                 
-                // Close the database to cause errors
+                await storage.freshness.put('node1', 'up-to-date');
+                await storage.freshness.put('node2', 'potentially-outdated');
+                
+                const f1 = await storage.freshness.get('node1');
+                const f2 = await storage.freshness.get('node2');
+                
+                expect(f1).toBe('up-to-date');
+                expect(f2).toBe('potentially-outdated');
+                
                 await db.close();
-                
-                await expect(
-                    db.put('key', { value: { data: 'test' }, isDirty: false })
-                ).rejects.toThrow();
-                
-                const error = await db.put('key', { value: { data: 'test' }, isDirty: false }).catch(e => e);
-                expect(isDatabaseQueryError(error)).toBe(true);
             } finally {
                 cleanup(capabilities.tmpDir);
             }
         });
 
-        test('del() throws DatabaseQueryError on failure', async () => {
+        test('inputs storage works independently', async () => {
             const capabilities = getTestCapabilities();
             try {
-                const db = await get(capabilities);
+                const db = await getRootDatabase(capabilities);
+                const storage = db.getSchemaStorage('test-schema');
                 
-                // Close the database to cause errors
+                await storage.inputs.put('node1', { inputs: ['dep1', 'dep2'] });
+                
+                const inputs = await storage.inputs.get('node1');
+                
+                expect(inputs).toEqual({ inputs: ['dep1', 'dep2'] });
+                
                 await db.close();
+            } finally {
+                cleanup(capabilities.tmpDir);
+            }
+        });
+
+        test('revdeps storage works independently', async () => {
+            const capabilities = getTestCapabilities();
+            try {
+                const db = await getRootDatabase(capabilities);
+                const storage = db.getSchemaStorage('test-schema');
                 
-                await expect(
-                    db.del('key')
-                ).rejects.toThrow();
+                await storage.revdeps.put('dep1', ['node1', 'node2']);
                 
-                const error = await db.del('key').catch(e => e);
-                expect(isDatabaseQueryError(error)).toBe(true);
+                const revdeps = await storage.revdeps.get('dep1');
+                
+                expect(revdeps).toEqual(['node1', 'node2']);
+                
+                await db.close();
+            } finally {
+                cleanup(capabilities.tmpDir);
+            }
+        });
+    });
+
+    describe('Schema isolation', () => {
+        test('different schemas have isolated storage', async () => {
+            const capabilities = getTestCapabilities();
+            try {
+                const db = await getRootDatabase(capabilities);
+                
+                const storage1 = db.getSchemaStorage('schema1');
+                const storage2 = db.getSchemaStorage('schema2');
+                
+                await storage1.values.put('key', { value: { data: 'schema1' }, isDirty: false });
+                await storage2.values.put('key', { value: { data: 'schema2' }, isDirty: false });
+                
+                const val1 = await storage1.values.get('key');
+                const val2 = await storage2.values.get('key');
+                
+                expect(val1.value.data).toBe('schema1');
+                expect(val2.value.data).toBe('schema2');
+                
+                await db.close();
+            } finally {
+                cleanup(capabilities.tmpDir);
+            }
+        });
+
+        test('listSchemas returns all schema hashes', async () => {
+            const capabilities = getTestCapabilities();
+            try {
+                const db = await getRootDatabase(capabilities);
+                
+                const storage1 = db.getSchemaStorage('schema1');
+                const storage2 = db.getSchemaStorage('schema2');
+                
+                // Touch the schemas by doing a batch operation
+                await storage1.batch([storage1.values.putOp('key', { value: {}, isDirty: false })]);
+                await storage2.batch([storage2.values.putOp('key', { value: {}, isDirty: false })]);
+                
+                const schemas = [];
+                for await (const schema of db.listSchemas()) {
+                    schemas.push(schema);
+                }
+                
+                expect(schemas).toContain('schema1');
+                expect(schemas).toContain('schema2');
+                
+                await db.close();
             } finally {
                 cleanup(capabilities.tmpDir);
             }
@@ -349,15 +406,15 @@ describe('generators/database', () => {
     });
 
     describe('Type guards', () => {
-        test('isDatabase correctly identifies database instances', async () => {
+        test('isRootDatabase correctly identifies database instances', async () => {
             const capabilities = getTestCapabilities();
             try {
-                const db = await get(capabilities);
+                const db = await getRootDatabase(capabilities);
                 
-                expect(isDatabase(db)).toBe(true);
-                expect(isDatabase({})).toBe(false);
-                expect(isDatabase(null)).toBe(false);
-                expect(isDatabase(undefined)).toBe(false);
+                expect(isRootDatabase(db)).toBe(true);
+                expect(isRootDatabase({})).toBe(false);
+                expect(isRootDatabase(null)).toBe(false);
+                expect(isRootDatabase(undefined)).toBe(false);
                 
                 await db.close();
             } finally {

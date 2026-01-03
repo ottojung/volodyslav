@@ -5,7 +5,7 @@
 const path = require("path");
 const fs = require("fs");
 const os = require("os");
-const { get: getDatabase } = require("../src/generators/database");
+const { getRootDatabase } = require("../src/generators/database");
 const {
     makeDependencyGraph,
     makeUnchanged,
@@ -13,6 +13,7 @@ const {
     isInvalidNode,
 } = require("../src/generators/dependency_graph");
 const { getMockedRootCapabilities } = require("./spies");
+const { makeTestDatabase } = require("./test_database_helper");
 const { stubLogger } = require("./stubs");
 
 /**
@@ -37,18 +38,7 @@ describe("Parameterized node schemas", () => {
     describe("Basic instantiation", () => {
         test("pull creates concrete instantiation from schema", async () => {
             const capabilities = getTestCapabilities();
-            const db = await getDatabase(capabilities);
-
-            // Set up base data
-            await db.put("all_events", {
-                type: "all_events",
-                events: [
-                    { id: "id123", description: "Event 123" },
-                    { id: "id456", description: "Event 456" },
-                ],
-            });
-
-            // Define schema
+            const db = await getRootDatabase(capabilities);
             const schemas = [
                 {
                     output: "all_events",
@@ -76,6 +66,19 @@ describe("Parameterized node schemas", () => {
 
             const graph = makeDependencyGraph(db, schemas);
 
+            const testDb = makeTestDatabase(graph);
+
+            await testDb.put("all_events", {
+
+            // Set up base data
+                type: "all_events",
+                events: [
+                    { id: "id123", description: "Event 123" },
+                    { id: "id456", description: "Event 456" },
+                ],
+            });
+
+            // Define schema
             // Pull concrete instantiation
             const result = await graph.pull('event_context("id123")');
 
@@ -86,7 +89,8 @@ describe("Parameterized node schemas", () => {
             });
 
             // Verify it was stored
-            const stored = await db.getValue("event_context('id123')");
+            const storage = graph.getStorage();
+            const stored = await storage.values.get("event_context('id123')");
             expect(stored).toEqual(result);
 
             await db.close();
@@ -94,11 +98,7 @@ describe("Parameterized node schemas", () => {
 
         test("caching works for instantiations", async () => {
             const capabilities = getTestCapabilities();
-            const db = await getDatabase(capabilities);
-
-            await db.put("base", { value: 1 });
-
-            let computeCount = 0;
+            const db = await getRootDatabase(capabilities);
             const schemas = [
                 {
                     output: "base",
@@ -120,6 +120,12 @@ describe("Parameterized node schemas", () => {
 
             const graph = makeDependencyGraph(db, schemas);
 
+            const testDb = makeTestDatabase(graph);
+
+            await testDb.put("base", { value: 1 });
+
+
+            let computeCount = 0;
             // First pull - should compute
             const result1 = await graph.pull('derived("abc")');
             expect(computeCount).toBe(1);
@@ -137,9 +143,7 @@ describe("Parameterized node schemas", () => {
     describe("Invalidation", () => {
         test("invalidation reaches demanded instantiation", async () => {
             const capabilities = getTestCapabilities();
-            const db = await getDatabase(capabilities);
-
-            await db.put("source", { count: 1 });
+            const db = await getRootDatabase(capabilities);
 
             const schemas = [
                 {
@@ -159,6 +163,10 @@ describe("Parameterized node schemas", () => {
 
             const graph = makeDependencyGraph(db, schemas);
 
+            const testDb = makeTestDatabase(graph);
+
+            await testDb.put("source", { count: 1 });
+
             // Pull instantiation
             const result1 = await graph.pull('derived("test1")');
             expect(result1.count).toBe(2);
@@ -175,9 +183,7 @@ describe("Parameterized node schemas", () => {
 
         test("only demanded instantiations are tracked", async () => {
             const capabilities = getTestCapabilities();
-            const db = await getDatabase(capabilities);
-
-            await db.put("source", { value: 1 });
+            const db = await getRootDatabase(capabilities);
 
             const schemas = [
                 {
@@ -197,6 +203,10 @@ describe("Parameterized node schemas", () => {
 
             const graph = makeDependencyGraph(db, schemas);
 
+            const testDb = makeTestDatabase(graph);
+
+            await testDb.put("source", { value: 1 });
+
             // Demand only one instantiation
             await graph.pull('derived("demanded")');
 
@@ -204,16 +214,12 @@ describe("Parameterized node schemas", () => {
             await graph.set("source", { value: 2 });
 
             // The demanded one should be invalidated
-            const demandedFreshness = await db.getFreshness(
-                "freshness:derived('demanded')"
-            );
+            const demandedFreshness = await graph.debugGetFreshness("derived('demanded')");
             expect(demandedFreshness).toBe("potentially-outdated");
 
             // Non-demanded instantiations shouldn't exist in DB
-            const nonDemandedFreshness = await db.getFreshness(
-                "freshness:derived(\"not_demanded\")"
-            );
-            expect(nonDemandedFreshness).toBeUndefined();
+            const nonDemandedFreshness = await graph.debugGetFreshness("derived(\"not_demanded\")");
+            expect(nonDemandedFreshness).toBe("missing"); // "missing" means not materialized
 
             await db.close();
         });
@@ -222,9 +228,7 @@ describe("Parameterized node schemas", () => {
     describe("Restart resilience", () => {
         test("previously demanded instantiations are invalidated after restart", async () => {
             const capabilities = getTestCapabilities();
-            const db1 = await getDatabase(capabilities);
-
-            await db1.put("source", { value: 1 });
+            const db1 = await getRootDatabase(capabilities);
 
             const schemas = [
                 {
@@ -244,12 +248,16 @@ describe("Parameterized node schemas", () => {
 
             // Instance A: demand instantiation
             const graph1 = makeDependencyGraph(db1, schemas);
+            
+            const testDb1 = makeTestDatabase(graph1);
+            await testDb1.put("source", { value: 1 });
+            
             await graph1.pull('derived("persistent")');
 
             await db1.close();
 
             // Instance B: new graph with same database
-            const db2 = await getDatabase(capabilities);
+            const db2 = await getRootDatabase(capabilities);
             const graph2 = makeDependencyGraph(db2, schemas);
 
             // Update source - this should invalidate the previously demanded instantiation
@@ -266,10 +274,7 @@ describe("Parameterized node schemas", () => {
     describe("Multiple variables", () => {
         test("schema with multiple variables", async () => {
             const capabilities = getTestCapabilities();
-            const db = await getDatabase(capabilities);
-
-            await db.put("events", { events: ["e1", "e2"] });
-            await db.put("photos", { photos: ["p1", "p2"] });
+            const db = await getRootDatabase(capabilities);
 
             const schemas = [
                 {
@@ -295,6 +300,11 @@ describe("Parameterized node schemas", () => {
 
             const graph = makeDependencyGraph(db, schemas);
 
+            const testDb = makeTestDatabase(graph);
+
+            await testDb.put("events", { events: ["e1", "e2"] });
+            await testDb.put("photos", { photos: ["p1", "p2"] });
+
             const result = await graph.pull('enhanced_event("e1","p2")');
             expect(result).toEqual({
                 event: "e1",
@@ -309,11 +319,7 @@ describe("Parameterized node schemas", () => {
     describe("Unchanged propagation", () => {
         test("Unchanged works for instantiations", async () => {
             const capabilities = getTestCapabilities();
-            const db = await getDatabase(capabilities);
-
-            await db.put("source", { value: 1 });
-
-            let computeCount = 0;
+            const db = await getRootDatabase(capabilities);
             const schemas = [
                 {
                     output: "source",
@@ -352,6 +358,12 @@ describe("Parameterized node schemas", () => {
 
             const graph = makeDependencyGraph(db, schemas);
 
+            const testDb = makeTestDatabase(graph);
+
+            await testDb.put("source", { value: 1 });
+
+
+            let computeCount = 0;
             // Initial pull
             await graph.pull('final("test")');
 
@@ -370,7 +382,7 @@ describe("Parameterized node schemas", () => {
     describe("Error cases", () => {
         test("throws on schema pattern operation", async () => {
             const capabilities = getTestCapabilities();
-            const db = await getDatabase(capabilities);
+            const db = await getRootDatabase(capabilities);
 
             const schemas = [
                 {
@@ -413,11 +425,10 @@ describe("Parameterized node schemas", () => {
 
         test("throws on unknown node", async () => {
             const capabilities = getTestCapabilities();
-            const db = await getDatabase(capabilities);
+            const db = await getRootDatabase(capabilities);
 
             const graph = makeDependencyGraph(db, []);
 
-            await expect(graph.pull("unknown_node")).rejects.toThrow();
 
             let error = null;
             try {
@@ -435,9 +446,7 @@ describe("Parameterized node schemas", () => {
     describe("Whitespace handling", () => {
         test("handles whitespace in node names", async () => {
             const capabilities = getTestCapabilities();
-            const db = await getDatabase(capabilities);
-
-            await db.put("base", { value: 1 });
+            const db = await getRootDatabase(capabilities);
 
             const schemas = [
                 {
@@ -456,6 +465,10 @@ describe("Parameterized node schemas", () => {
             ];
 
             const graph = makeDependencyGraph(db, schemas);
+
+            const testDb = makeTestDatabase(graph);
+
+            await testDb.put("base", { value: 1 });
 
             // Pull with whitespace in string literal
             const result1 = await graph.pull('derived(" abc ")');
@@ -494,9 +507,7 @@ describe("Parameterized node schemas", () => {
 
         test("accepts non-overlapping schemas with repeated variables", async () => {
             const capabilities = getTestCapabilities();
-            const db = await getDatabase(capabilities);
-
-            await db.put("base", { value: 1 });
+            const db = await getRootDatabase(capabilities);
 
             // These DON'T overlap: pair(x,x) requires both args equal,
             // pair(a,b) where a != b has different args
@@ -528,6 +539,9 @@ describe("Parameterized node schemas", () => {
             // Should not throw
             const graph = makeDependencyGraph(db, nonOverlappingSchemas);
 
+            const testDb = makeTestDatabase(graph);
+            await testDb.put("base", { value: 1 });
+
             // pair(x,x) matches pair(1,1) but not pair(1,2)
             const result1 = await graph.pull('pair(1,1)');
             expect(result1.type).toBe("same_pair");
@@ -539,7 +553,7 @@ describe("Parameterized node schemas", () => {
             await db.close();
         });
 
-        test("rejects overlapping schemas due to constant mismatch", () => {
+        test("rejects overlapping schemas due to constant mismatch", async () => {
             // These DON'T overlap: different constants
             const schemas = [
                 {
@@ -555,17 +569,17 @@ describe("Parameterized node schemas", () => {
             ];
 
             // Should not throw
-            const db = {}; // Dummy
+            const capabilities = getTestCapabilities();
+            const db = await getRootDatabase(capabilities);
             expect(() => makeDependencyGraph(db, schemas)).not.toThrow();
+            await db.close();
         });
     });
 
     describe("Persistent reverse-dependency index (T1)", () => {
         test("reverse dependencies are persisted atomically with first computation", async () => {
             const capabilities = getTestCapabilities();
-            const db = await getDatabase(capabilities);
-
-            await db.put("base", { value: 10 });
+            const db = await getRootDatabase(capabilities);
 
             const schemas = [
                 {
@@ -585,23 +599,23 @@ describe("Parameterized node schemas", () => {
 
             const graph = makeDependencyGraph(db, schemas);
 
+            const testDb = makeTestDatabase(graph);
+
+            await testDb.put("base", { value: 10 });
+
             // Pull a concrete instantiation
             const result1 = await graph.pull('derived("test")');
             expect(result1.value).toBe(20);
 
-            // Verify reverse dependency was persisted
-            // The index should store: dg:<schemaHash>:revdep:base:derived("test")
-            const schemaHash = graph.schemaHash;
-            const revdepKey = `dg:${schemaHash}:revdep:base:derived('test')`;
-            const revdep = await db.get(revdepKey);
-            expect(revdep).toBeDefined();
-            expect(revdep).toEqual({ __edge: true });
+            // Verify reverse dependency was persisted using public API
+            const storage = graph.getStorage();
+            const dependents = await storage.listDependents("base");
+            expect(dependents).toContain("derived('test')");
 
             // Verify inputs were persisted
-            const inputsKey = `dg:${schemaHash}:inputs:derived('test')`;
-            const inputs = await db.get(inputsKey);
+            const inputs = await storage.getInputs("derived('test')");
             expect(inputs).toBeDefined();
-            expect(inputs).toEqual({ inputs: ["base"] });
+            expect(inputs).toEqual(["base"]);
 
             // Close and recreate graph (simulating restart)
             const graph2 = makeDependencyGraph(db, schemas);
@@ -618,9 +632,7 @@ describe("Parameterized node schemas", () => {
 
         test("reverse dependencies written in set() batch", async () => {
             const capabilities = getTestCapabilities();
-            const db = await getDatabase(capabilities);
-
-            await db.put("base", { value: 1 });
+            const db = await getRootDatabase(capabilities);
 
             const schemas = [
                 {
@@ -639,6 +651,10 @@ describe("Parameterized node schemas", () => {
 
             const graph = makeDependencyGraph(db, schemas);
 
+            const testDb = makeTestDatabase(graph);
+
+            await testDb.put("base", { value: 1 });
+
             // First, pull an item to materialize it
             await graph.pull('item("foo")');
 
@@ -646,16 +662,14 @@ describe("Parameterized node schemas", () => {
             await graph.set('base', { value: 42 });
 
             // Verify reverse dependency was persisted by checking that the dependent is marked outdated
-            const { freshnessKey } = require("../src/generators/database");
-            const itemFreshness = await db.getFreshness(freshnessKey("item('foo')"));
+            const itemFreshness = await graph.debugGetFreshness("item('foo')");
             expect(itemFreshness).toBe("potentially-outdated");
 
-            // Verify inputs were persisted for the materialized item
-            const schemaHash = graph.schemaHash;
-            const inputsKey = `dg:${schemaHash}:inputs:item('foo')`;
-            const inputs = await db.get(inputsKey);
+            // Verify inputs were persisted for the materialized item using public API
+            const storage = graph.getStorage();
+            const inputs = await storage.getInputs("item('foo')");
             expect(inputs).toBeDefined();
-            expect(inputs).toEqual({ inputs: ["base"] });
+            expect(inputs).toEqual(["base"]);
 
             // Recreate graph and verify instantiation persists
             const graph2 = makeDependencyGraph(db, schemas);

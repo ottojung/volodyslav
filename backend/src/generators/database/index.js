@@ -4,22 +4,22 @@
  */
 
 const path = require('path');
-const { makeDatabase } = require('./class');
 const { DatabaseInitializationError } = require('./errors');
 const { freshnessKey, isFreshness, isDatabaseValue } = require('./types');
+const { makeRootDatabase, isRootDatabase } = require('./root_database');
+const { makeTypedDatabase, isTypedDatabase } = require('./typed_database');
 
 /** @typedef {import('./types').DatabaseCapabilities} DatabaseCapabilities */
-/** @typedef {import('./class').Database} Database */
 
 /**
- * Gets or creates a database instance for the generators module.
+ * Gets or creates a RootDatabase instance for the generators module.
  * The database is stored in the Volodyslav data directory.
  *
  * @param {DatabaseCapabilities} capabilities - The capabilities object
- * @returns {Promise<Database>} The database instance
+ * @returns {Promise<import('./root_database').RootDatabase>} The root database instance
  * @throws {DatabaseInitializationError} If database initialization fails
  */
-async function get(capabilities) {
+async function getRootDatabase(capabilities) {
     const dataDir = capabilities.environment.pathToVolodyslavDataDirectory();
     const databasePath = path.join(dataDir, 'generators-leveldb');
 
@@ -37,13 +37,13 @@ async function get(capabilities) {
 
     // Open or create the database
     try {
-        const db = await makeDatabase(databasePath);
-        capabilities.logger.logDebug({ databasePath }, 'Database opened');
+        const db = await makeRootDatabase(databasePath);
+        capabilities.logger.logDebug({ databasePath }, 'Root database opened');
         return db;
     } catch (error) {
         const err = error instanceof Error ? error : new Error(String(error));
         throw new DatabaseInitializationError(
-            `Failed to open database: ${err.message}`,
+            `Failed to open root database: ${err.message}`,
             databasePath,
             err
         );
@@ -51,8 +51,12 @@ async function get(capabilities) {
 }
 
 module.exports = {
-    get,
+    getRootDatabase,
     freshnessKey,
     isFreshness,
     isDatabaseValue,
+    makeRootDatabase,
+    isRootDatabase,
+    makeTypedDatabase,
+    isTypedDatabase,
 };
