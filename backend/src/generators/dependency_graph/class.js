@@ -128,8 +128,7 @@ class DependencyGraphClass {
                 node.output
             );
 
-            // Only update if not already potentially-outdated
-            if (currentFreshness !== "potentially-outdated") {
+            if (currentFreshness === "up-to-date") {
                 batch.freshness.put(
                     node.output,
                     "potentially-outdated"
@@ -141,6 +140,18 @@ class DependencyGraphClass {
                     node.output,
                     batch,
                     nodesBecomingOutdated
+                );
+            } else if (currentFreshness === undefined) {
+                // Node not yet materialized, skip
+                continue;
+            } else if (currentFreshness === "potentially-outdated") {
+                // Already potentially-outdated, skip
+                continue;
+            } else {
+                /** @type {never} */
+                const x = currentFreshness;
+                throw new Error(
+                    `Unexpected freshness value ${x} for node ${node.output}`
                 );
             }
         }
