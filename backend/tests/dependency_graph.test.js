@@ -1593,8 +1593,8 @@ describe("generators/dependency_graph", () => {
             await graph.set("node1", { val: 10 });
             expect(await graph.debugGetFreshness("node1")).toBe("up-to-date");
             
-            // node2 should be potentially-outdated (propagated from set)
-            expect(await graph.debugGetFreshness("node2")).toBe("potentially-outdated");
+            // node2 should be missing (not yet materialized, so not marked outdated)
+            expect(await graph.debugGetFreshness("node2")).toBe("missing");
 
             // Pull node2 -> up-to-date
             await graph.pull("node2");
