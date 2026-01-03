@@ -15,6 +15,7 @@ const {
 } = require("../src/generators/individual/meta_events");
 const eventId = require("../src/event/id");
 const { getMockedRootCapabilities } = require("./spies");
+const { makeTestDatabase, freshnessKey } = require("./test_database_helper");
 const { stubLogger } = require("./stubs");
 
 /**
@@ -93,6 +94,7 @@ describe("DependencyGraph integration with meta_events", () => {
 
         const graph = makeDependencyGraph(db, graphDefinition);
 
+            const testDb = makeTestDatabase(graph);
         // Add initial events - set directly on the graph
         await graph.set("all_events", {
             type: "all_events",

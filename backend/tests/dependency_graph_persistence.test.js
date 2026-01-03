@@ -12,6 +12,7 @@ const {
     makeUnchanged,
 } = require("../src/generators/dependency_graph");
 const { getMockedRootCapabilities } = require("./spies");
+const { makeTestDatabase, freshnessKey } = require("./test_database_helper");
 const { stubLogger } = require("./stubs");
 
 /**
@@ -36,11 +37,8 @@ describe("Dependency graph persistence and restart", () => {
     describe("Restart preserves dependent invalidation", () => {
         test("invalidates pattern instantiation after restart", async () => {
             const capabilities = getTestCapabilities();
-            const db = await getRootDatabase(capabilities);
-            const { freshnessKey } = require("../src/generators/database");
-
-            // Set up initial data
-            await db.put("all_events", {
+            const db = await getRootDatabase(capabilities);            // Set up initial data
+            await testDb.put("all_events", {
                 type: "all_events",
                 events: [
                     { id: "id123", description: "Event 123" },
@@ -131,8 +129,6 @@ describe("Dependency graph persistence and restart", () => {
         test("diamond graph invalidation across restart", async () => {
             const capabilities = getTestCapabilities();
             const db = await getRootDatabase(capabilities);
-            const { freshnessKey } = require("../src/generators/database");
-
             const computeCalls = [];
 
             const schemas = [
@@ -177,7 +173,7 @@ describe("Dependency graph persistence and restart", () => {
             ];
 
             // Initial setup
-            await db.put("A", { value: 10 });
+            await testDb.put("A", { value: 10 });
             const graph1 = makeDependencyGraph(db, schemas);
 
             // Pull D to create instantiations
@@ -209,8 +205,6 @@ describe("Dependency graph persistence and restart", () => {
         test("Unchanged propagation works after restart", async () => {
             const capabilities = getTestCapabilities();
             const db = await getRootDatabase(capabilities);
-            const { freshnessKey } = require("../src/generators/database");
-
             const computeCalls = [];
 
             const schemas = [
@@ -239,8 +233,8 @@ describe("Dependency graph persistence and restart", () => {
             ];
 
             // Initial setup
-            await db.put("A", { value: 10 });
-            await db.put("B", { value: 100 });
+            await testDb.put("A", { value: 10 });
+            await testDb.put("B", { value: 100 });
             const graph1 = makeDependencyGraph(db, schemas);
 
             // Pull C to establish values
@@ -279,8 +273,6 @@ describe("Dependency graph persistence and restart", () => {
         test("Unchanged propagation with pattern instantiation after restart", async () => {
             const capabilities = getTestCapabilities();
             const db = await getRootDatabase(capabilities);
-            const { freshnessKey } = require("../src/generators/database");
-
             const computeCalls = [];
 
             const schemas = [
@@ -311,8 +303,8 @@ describe("Dependency graph persistence and restart", () => {
             ];
 
             // Initial setup
-            await db.put("A", { value: 10 });
-            await db.put("B('test')", { value: 100 });
+            await testDb.put("A", { value: 10 });
+            await testDb.put("B('test')", { value: 100 });
             const graph1 = makeDependencyGraph(db, schemas);
 
             // Pull C to establish pattern instantiations
@@ -367,11 +359,12 @@ describe("Dependency graph persistence and restart", () => {
                 },
             ];
 
-            await db.put("base", { value: 10 });
+            await testDb.put("base", { value: 10 });
 
             // Create graph - should NOT scan for "instantiation:" prefix
             const graph = makeDependencyGraph(db, schemas);
 
+            const testDb = makeTestDatabase(graph);
             // Pull to create instantiation
             await graph.pull("derived('test')");
 
@@ -422,7 +415,7 @@ describe("Dependency graph persistence and restart", () => {
                 },
             ];
 
-            await db.put("A", { value: 10 });
+            await testDb.put("A", { value: 10 });
 
             // Create graph with schema1
             const graph1 = makeDependencyGraph(db, schemas1);
@@ -481,9 +474,10 @@ describe("Dependency graph persistence and restart", () => {
                 return originalBatch(ops);
             });
 
-            await db.put("A", { value: 10 });
+            await testDb.put("A", { value: 10 });
             const graph = makeDependencyGraph(db, schemas);
 
+            const testDb = makeTestDatabase(graph);
             // Pull B to create instantiation
             await graph.pull("B('test')");
 

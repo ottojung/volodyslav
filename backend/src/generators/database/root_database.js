@@ -167,6 +167,54 @@ class RootDatabaseClass {
     async close() {
         await this.db.close();
     }
+
+    /**
+     * DEPRECATED: Test helper method for backward compatibility.
+     * Create a test helper that mimics the old database interface.
+     * This allows tests to use db.put(key, value) and db.put(freshnessKey(key), freshness)
+     * without knowing the schema hash upfront.
+     * 
+     * @param {string} schemaHash - The schema hash
+     * @returns {{put: (key: string, value: any) => Promise<void>, del: (key: string) => Promise<void>, close: () => Promise<void>}}
+     */
+    createTestHelper(schemaHash) {
+        const storage = this.getSchemaStorage(schemaHash);
+        const { isFreshness } = require('./types');
+        
+        return {
+            /**
+             * Put a value or freshness state.
+             * If value is a Freshness, stores in freshness database.
+             * Otherwise stores in values database.
+             * @param {string} key
+             * @param {any} value
+             */
+            put: async (key, value) => {
+                if (isFreshness(value)) {
+                    await storage.freshness.put(key, value);
+                } else {
+                    await storage.values.put(key, value);
+                }
+            },
+            
+            /**
+             * Delete a value or freshness state.
+             * Tries both databases.
+             * @param {string} key
+             */
+            del: async (key) => {
+                await storage.values.del(key);
+                await storage.freshness.del(key);
+            },
+            
+            /**
+             * Close the database.
+             */
+            close: async () => {
+                await this.close();
+            }
+        };
+    }
 }
 
 const { Level } = require('level');

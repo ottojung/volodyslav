@@ -13,6 +13,7 @@ const {
     isInvalidNode,
 } = require("../src/generators/dependency_graph");
 const { getMockedRootCapabilities } = require("./spies");
+const { makeTestDatabase, freshnessKey } = require("./test_database_helper");
 const { stubLogger } = require("./stubs");
 
 /**
@@ -40,7 +41,7 @@ describe("Parameterized node schemas", () => {
             const db = await getRootDatabase(capabilities);
 
             // Set up base data
-            await db.put("all_events", {
+            await testDb.put("all_events", {
                 type: "all_events",
                 events: [
                     { id: "id123", description: "Event 123" },
@@ -76,6 +77,7 @@ describe("Parameterized node schemas", () => {
 
             const graph = makeDependencyGraph(db, schemas);
 
+            const testDb = makeTestDatabase(graph);
             // Pull concrete instantiation
             const result = await graph.pull('event_context("id123")');
 
@@ -96,7 +98,7 @@ describe("Parameterized node schemas", () => {
             const capabilities = getTestCapabilities();
             const db = await getRootDatabase(capabilities);
 
-            await db.put("base", { value: 1 });
+            await testDb.put("base", { value: 1 });
 
             let computeCount = 0;
             const schemas = [
@@ -120,6 +122,7 @@ describe("Parameterized node schemas", () => {
 
             const graph = makeDependencyGraph(db, schemas);
 
+            const testDb = makeTestDatabase(graph);
             // First pull - should compute
             const result1 = await graph.pull('derived("abc")');
             expect(computeCount).toBe(1);
@@ -139,7 +142,7 @@ describe("Parameterized node schemas", () => {
             const capabilities = getTestCapabilities();
             const db = await getRootDatabase(capabilities);
 
-            await db.put("source", { count: 1 });
+            await testDb.put("source", { count: 1 });
 
             const schemas = [
                 {
@@ -159,6 +162,7 @@ describe("Parameterized node schemas", () => {
 
             const graph = makeDependencyGraph(db, schemas);
 
+            const testDb = makeTestDatabase(graph);
             // Pull instantiation
             const result1 = await graph.pull('derived("test1")');
             expect(result1.count).toBe(2);
@@ -177,7 +181,7 @@ describe("Parameterized node schemas", () => {
             const capabilities = getTestCapabilities();
             const db = await getRootDatabase(capabilities);
 
-            await db.put("source", { value: 1 });
+            await testDb.put("source", { value: 1 });
 
             const schemas = [
                 {
@@ -197,6 +201,7 @@ describe("Parameterized node schemas", () => {
 
             const graph = makeDependencyGraph(db, schemas);
 
+            const testDb = makeTestDatabase(graph);
             // Demand only one instantiation
             await graph.pull('derived("demanded")');
 
@@ -268,8 +273,8 @@ describe("Parameterized node schemas", () => {
             const capabilities = getTestCapabilities();
             const db = await getRootDatabase(capabilities);
 
-            await db.put("events", { events: ["e1", "e2"] });
-            await db.put("photos", { photos: ["p1", "p2"] });
+            await testDb.put("events", { events: ["e1", "e2"] });
+            await testDb.put("photos", { photos: ["p1", "p2"] });
 
             const schemas = [
                 {
@@ -295,6 +300,7 @@ describe("Parameterized node schemas", () => {
 
             const graph = makeDependencyGraph(db, schemas);
 
+            const testDb = makeTestDatabase(graph);
             const result = await graph.pull('enhanced_event("e1","p2")');
             expect(result).toEqual({
                 event: "e1",
@@ -311,7 +317,7 @@ describe("Parameterized node schemas", () => {
             const capabilities = getTestCapabilities();
             const db = await getRootDatabase(capabilities);
 
-            await db.put("source", { value: 1 });
+            await testDb.put("source", { value: 1 });
 
             let computeCount = 0;
             const schemas = [
@@ -352,6 +358,7 @@ describe("Parameterized node schemas", () => {
 
             const graph = makeDependencyGraph(db, schemas);
 
+            const testDb = makeTestDatabase(graph);
             // Initial pull
             await graph.pull('final("test")');
 
@@ -382,6 +389,7 @@ describe("Parameterized node schemas", () => {
 
             const graph = makeDependencyGraph(db, schemas);
 
+            const testDb = makeTestDatabase(graph);
             // Try to pull schema pattern directly
             await expect(graph.pull('derived(x)')).rejects.toThrow();
 
@@ -417,6 +425,7 @@ describe("Parameterized node schemas", () => {
 
             const graph = makeDependencyGraph(db, []);
 
+            const testDb = makeTestDatabase(graph);
             await expect(graph.pull("unknown_node")).rejects.toThrow();
 
             let error = null;
@@ -437,7 +446,7 @@ describe("Parameterized node schemas", () => {
             const capabilities = getTestCapabilities();
             const db = await getRootDatabase(capabilities);
 
-            await db.put("base", { value: 1 });
+            await testDb.put("base", { value: 1 });
 
             const schemas = [
                 {
@@ -457,6 +466,7 @@ describe("Parameterized node schemas", () => {
 
             const graph = makeDependencyGraph(db, schemas);
 
+            const testDb = makeTestDatabase(graph);
             // Pull with whitespace in string literal
             const result1 = await graph.pull('derived(" abc ")');
             expect(result1.id).toBe(" abc ");
@@ -496,7 +506,7 @@ describe("Parameterized node schemas", () => {
             const capabilities = getTestCapabilities();
             const db = await getRootDatabase(capabilities);
 
-            await db.put("base", { value: 1 });
+            await testDb.put("base", { value: 1 });
 
             // These DON'T overlap: pair(x,x) requires both args equal,
             // pair(a,b) where a != b has different args
@@ -528,6 +538,7 @@ describe("Parameterized node schemas", () => {
             // Should not throw
             const graph = makeDependencyGraph(db, nonOverlappingSchemas);
 
+            const testDb = makeTestDatabase(graph);
             // pair(x,x) matches pair(1,1) but not pair(1,2)
             const result1 = await graph.pull('pair(1,1)');
             expect(result1.type).toBe("same_pair");
@@ -565,7 +576,7 @@ describe("Parameterized node schemas", () => {
             const capabilities = getTestCapabilities();
             const db = await getRootDatabase(capabilities);
 
-            await db.put("base", { value: 10 });
+            await testDb.put("base", { value: 10 });
 
             const schemas = [
                 {
@@ -585,6 +596,7 @@ describe("Parameterized node schemas", () => {
 
             const graph = makeDependencyGraph(db, schemas);
 
+            const testDb = makeTestDatabase(graph);
             // Pull a concrete instantiation
             const result1 = await graph.pull('derived("test")');
             expect(result1.value).toBe(20);
@@ -620,7 +632,7 @@ describe("Parameterized node schemas", () => {
             const capabilities = getTestCapabilities();
             const db = await getRootDatabase(capabilities);
 
-            await db.put("base", { value: 1 });
+            await testDb.put("base", { value: 1 });
 
             const schemas = [
                 {
@@ -639,15 +651,14 @@ describe("Parameterized node schemas", () => {
 
             const graph = makeDependencyGraph(db, schemas);
 
+            const testDb = makeTestDatabase(graph);
             // First, pull an item to materialize it
             await graph.pull('item("foo")');
 
             // Now set the source node (base) to trigger propagation
             await graph.set('base', { value: 42 });
 
-            // Verify reverse dependency was persisted by checking that the dependent is marked outdated
-            const { freshnessKey } = require("../src/generators/database");
-            const itemFreshness = await db.getFreshness(freshnessKey("item('foo')"));
+            // Verify reverse dependency was persisted by checking that the dependent is marked outdated            const itemFreshness = await db.getFreshness(freshnessKey("item('foo')"));
             expect(itemFreshness).toBe("potentially-outdated");
 
             // Verify inputs were persisted for the materialized item
