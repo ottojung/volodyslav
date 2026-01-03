@@ -5,7 +5,7 @@
 
 const path = require('path');
 const { DatabaseInitializationError } = require('./errors');
-const { freshnessKey, isFreshness, isDatabaseValue } = require('./types');
+const { isFreshness, isDatabaseValue } = require('./types');
 const { makeRootDatabase, isRootDatabase } = require('./root_database');
 const { makeTypedDatabase, isTypedDatabase } = require('./typed_database');
 
@@ -52,7 +52,6 @@ async function getRootDatabase(capabilities) {
 
 module.exports = {
     getRootDatabase,
-    freshnessKey,
     isFreshness,
     isDatabaseValue,
     makeRootDatabase,

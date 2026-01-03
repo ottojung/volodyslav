@@ -67,15 +67,6 @@
  */
 
 /**
- * Constructs the freshness key for a given database key.
- * @param {string} key - The database key
- * @returns {string} The freshness key
- */
-function freshnessKey(key) {
-    return `freshness:${key}`;
-}
-
-/**
  * Type guard to check if a value is a Freshness state.
  * @param {unknown} value
  * @returns {value is Freshness}
@@ -172,7 +163,6 @@ function isDatabaseValue(value) {
  */
 
 module.exports = {
-    freshnessKey,
     isFreshness,
     isDatabaseValue,
 };
