@@ -89,7 +89,8 @@ describe("Parameterized node schemas", () => {
             });
 
             // Verify it was stored
-            const stored = await db.getValue("event_context('id123')");
+            const storage = graph.getStorage();
+            const stored = await storage.values.get("event_context('id123')");
             expect(stored).toEqual(result);
 
             await db.close();
@@ -213,15 +214,11 @@ describe("Parameterized node schemas", () => {
             await graph.set("source", { value: 2 });
 
             // The demanded one should be invalidated
-            const demandedFreshness = await db.getFreshness(
-                "freshness:derived('demanded')"
-            );
+            const demandedFreshness = await graph.debugGetFreshness("derived('demanded')");
             expect(demandedFreshness).toBe("potentially-outdated");
 
             // Non-demanded instantiations shouldn't exist in DB
-            const nonDemandedFreshness = await db.getFreshness(
-                "freshness:derived(\"not_demanded\")"
-            );
+            const nonDemandedFreshness = await graph.debugGetFreshness("derived(\"not_demanded\")");
             expect(nonDemandedFreshness).toBeUndefined();
 
             await db.close();
@@ -606,19 +603,15 @@ describe("Parameterized node schemas", () => {
             const result1 = await graph.pull('derived("test")');
             expect(result1.value).toBe(20);
 
-            // Verify reverse dependency was persisted
-            // The index should store: dg:<schemaHash>:revdep:base:derived("test")
-            const schemaHash = graph.schemaHash;
-            const revdepKey = `dg:${schemaHash}:revdep:base:derived('test')`;
-            const revdep = await db.get(revdepKey);
-            expect(revdep).toBeDefined();
-            expect(revdep).toEqual({ __edge: true });
+            // Verify reverse dependency was persisted using public API
+            const storage = graph.getStorage();
+            const dependents = await storage.listDependents("base");
+            expect(dependents).toContain("derived('test')");
 
             // Verify inputs were persisted
-            const inputsKey = `dg:${schemaHash}:inputs:derived('test')`;
-            const inputs = await db.get(inputsKey);
+            const inputs = await storage.getInputs("derived('test')");
             expect(inputs).toBeDefined();
-            expect(inputs).toEqual({ inputs: ["base"] });
+            expect(inputs).toEqual(["base"]);
 
             // Close and recreate graph (simulating restart)
             const graph2 = makeDependencyGraph(db, schemas);
@@ -668,12 +661,11 @@ describe("Parameterized node schemas", () => {
             const itemFreshness = await graph.debugGetFreshness("item('foo')");
             expect(itemFreshness).toBe("potentially-outdated");
 
-            // Verify inputs were persisted for the materialized item
-            const schemaHash = graph.schemaHash;
-            const inputsKey = `dg:${schemaHash}:inputs:item('foo')`;
-            const inputs = await db.get(inputsKey);
+            // Verify inputs were persisted for the materialized item using public API
+            const storage = graph.getStorage();
+            const inputs = await storage.getInputs("item('foo')");
             expect(inputs).toBeDefined();
-            expect(inputs).toEqual({ inputs: ["base"] });
+            expect(inputs).toEqual(["base"]);
 
             // Recreate graph and verify instantiation persists
             const graph2 = makeDependencyGraph(db, schemas);
