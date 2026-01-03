@@ -169,7 +169,7 @@ class DependencyGraphClass {
         }
 
         // Use batch builder for atomic operations
-        this.storage.withBatch(async (batch) => {
+        await this.storage.withBatch(async (batch) => {
             // Store the value
             batch.values.put(canonicalKey, value);
 
