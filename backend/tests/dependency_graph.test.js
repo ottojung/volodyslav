@@ -899,7 +899,8 @@ describe("generators/dependency_graph", () => {
             expect(computeCalls).toEqual(["outputA"]);
 
             // OutputB should not exist in the database yet
-            const outputB = await db.get("outputB");
+            const storage = graph.getStorage();
+            const outputB = await storage.values.get("outputB");
             expect(outputB).toBeUndefined();
 
             await db.close();

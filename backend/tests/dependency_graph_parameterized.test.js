@@ -219,7 +219,7 @@ describe("Parameterized node schemas", () => {
 
             // Non-demanded instantiations shouldn't exist in DB
             const nonDemandedFreshness = await graph.debugGetFreshness("derived(\"not_demanded\")");
-            expect(nonDemandedFreshness).toBeUndefined();
+            expect(nonDemandedFreshness).toBe("missing"); // "missing" means not materialized
 
             await db.close();
         });
