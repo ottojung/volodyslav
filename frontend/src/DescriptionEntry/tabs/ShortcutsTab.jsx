@@ -2,10 +2,12 @@ import React from "react";
 import { VStack, HStack, Text, Code, Card, CardBody, Box } from "@chakra-ui/react";
 import { SPACING } from "../styles.js";
 
+/** @typedef {import('../api.js').Shortcut} Shortcut */
+
 /**
  * Applies a shortcut transformation to text
  * @param {string} text - The text to transform
- * @param {Array<any>} shortcut - The shortcut array [pattern, replacement]
+ * @param {Shortcut} shortcut - The shortcut array [pattern, replacement]
  * @returns {string} - The transformed text
  */
 const applyShortcut = (text, shortcut) => {
@@ -20,7 +22,7 @@ const applyShortcut = (text, shortcut) => {
 
 /**
  * Gets preview of shortcut transformation
- * @param {Array<any>} shortcut - The shortcut array
+ * @param {Shortcut} shortcut - The shortcut array
  * @param {string} currentInput - Current input text
  * @returns {string|null} - Preview text or null
  */
@@ -44,7 +46,7 @@ const getShortcutPreview = (shortcut, currentInput) => {
 /**
  * Shortcuts tab component
  * @param {Object} props
- * @param {Array<any>} props.shortcuts - Array of shortcuts
+ * @param {Shortcut[]} props.shortcuts - Array of shortcuts
  * @param {(value: string) => void} props.onShortcutClick - Called when a shortcut is clicked
  * @param {string} props.currentInput - Current input text for preview
  * @returns {JSX.Element}
