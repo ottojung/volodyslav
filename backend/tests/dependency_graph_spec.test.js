@@ -1489,6 +1489,73 @@ describe("Optional debug interface (only if implementation provides it)", () => 
         const fb = await g.debugGetFreshness("b");
         expect(fb).toBe("up-to-date");
     });
+
+    test("set() on source node must include it in debugListMaterializedNodes", async () => {
+        const db = new InMemoryDatabase();
+        const g = buildGraph(db, [
+            {
+                output: "source",
+                inputs: [],
+                computor: async (_i, old) => old || { n: 0 },
+            },
+        ]);
+
+        if (typeof g.debugListMaterializedNodes !== "function") {
+            // Optional interface; skip if absent
+            return;
+        }
+
+        // Initially empty
+        const list0 = await g.debugListMaterializedNodes();
+        expect(list0).not.toContain("source");
+
+        // After set, source must be materialized
+        await g.set("source", { n: 42 });
+        
+        const list1 = await g.debugListMaterializedNodes();
+        expect(list1).toContain("source");
+        
+        // Also verify that the node is properly indexed (has an inputs record)
+        // This is important for restart resilience
+        const storage = g.getStorage();
+        const inputsRecord = await storage.getInputs("source");
+        expect(inputsRecord).not.toBeNull();
+        expect(inputsRecord).toEqual([]);
+    });
+
+    test("pull() on leaf node (inputs=[]) must include it in debugListMaterializedNodes", async () => {
+        const db = new InMemoryDatabase();
+        const g = buildGraph(db, [
+            {
+                output: "leaf",
+                inputs: [],
+                computor: async (_i, old) => old || { n: 0 },
+            },
+        ]);
+
+        if (typeof g.debugListMaterializedNodes !== "function") {
+            // Optional interface; skip if absent
+            return;
+        }
+
+        // Initially empty
+        const list0 = await g.debugListMaterializedNodes();
+        expect(list0).not.toContain("leaf");
+
+        // After pull, leaf must be materialized
+        const value = await g.pull("leaf");
+        expect(value).toEqual({ n: 0 });
+        
+        const list1 = await g.debugListMaterializedNodes();
+        expect(list1).toContain("leaf");
+        
+        // Also verify that the node is properly indexed (has an inputs record)
+        // This is important for restart resilience
+        const storage = g.getStorage();
+        const inputsRecord = await storage.getInputs("leaf");
+        expect(inputsRecord).not.toBeNull();
+        expect(inputsRecord).toEqual([]);
+    });
 });
 
 describe("Canonical DB keys for values (must be canonical serialization)", () => {
