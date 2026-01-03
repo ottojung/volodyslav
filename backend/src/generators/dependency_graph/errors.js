@@ -271,6 +271,44 @@ function isSchemaOverlap(object) {
     return object instanceof SchemaOverlap;
 }
 
+/**
+ * Error for invalid computor return value.
+ */
+class InvalidComputorReturnValue extends Error {
+    /**
+     * @param {string} nodeName
+     * @param {any} value
+     */
+    constructor(nodeName, value) {
+        super(
+            `Computor for node '${nodeName}' returned an invalid value: ${value}. ` +
+                `Computors must return a valid DatabaseValue or Unchanged, not null or undefined.`
+        );
+        this.name = "InvalidComputorReturnValue";
+        this.nodeName = nodeName;
+        this.value = value;
+    }
+}
+
+/**
+ * Constructs an InvalidComputorReturnValue error.
+ * @param {string} nodeName
+ * @param {any} value
+ * @returns {InvalidComputorReturnValue}
+ */
+function makeInvalidComputorReturnValueError(nodeName, value) {
+    return new InvalidComputorReturnValue(nodeName, value);
+}
+
+/**
+ * Type guard for InvalidComputorReturnValue.
+ * @param {unknown} object
+ * @returns {object is InvalidComputorReturnValue}
+ */
+function isInvalidComputorReturnValue(object) {
+    return object instanceof InvalidComputorReturnValue;
+}
+
 module.exports = {
     makeInvalidNodeError,
     isInvalidNode,
@@ -288,4 +326,6 @@ module.exports = {
     isMissingValue,
     makeSchemaOverlapError,
     isSchemaOverlap,
+    makeInvalidComputorReturnValueError,
+    isInvalidComputorReturnValue,
 };

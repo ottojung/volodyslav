@@ -22,6 +22,7 @@ const {
     makeMissingValueError,
     makeInvalidSetError,
     makeSchemaOverlapError,
+    makeInvalidComputorReturnValueError,
 } = require("./errors");
 const { canonicalize, parseExpr } = require("./expr");
 const {
@@ -481,6 +482,22 @@ class DependencyGraphClass {
             inputValues,
             oldValue
         );
+
+        // Validate that computor returned a valid value
+        if (!isUnchanged(computedValue)) {
+            // Not Unchanged: must be a valid DatabaseValue (not null/undefined)
+            if (computedValue === null || computedValue === undefined) {
+                throw makeInvalidComputorReturnValueError(nodeName, computedValue);
+            }
+        } else {
+            // Unchanged: must have a previous value
+            if (oldValue === undefined) {
+                throw makeInvalidComputorReturnValueError(
+                    nodeName,
+                    "Unchanged (but no previous value exists)"
+                );
+            }
+        }
 
         // Prepare batch operations
         const batch = this.storage.batch();
