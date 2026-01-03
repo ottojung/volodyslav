@@ -46,7 +46,6 @@ describe("generators/dependency_graph", () => {
             const db = await getRootDatabase(capabilities);
             const graph = makeDependencyGraph(db, []);
 
-            const testDb = makeTestDatabase(graph);
             expect(isDependencyGraph(graph)).toBe(true);
 
             await db.close();
@@ -95,7 +94,6 @@ describe("generators/dependency_graph", () => {
 
             const graph = makeDependencyGraph(db, graphDef);
 
-            const testDb = makeTestDatabase(graph);
             // Use graph.set() to seed input1
             await graph.set("input1", { type: 'all_events', events: [] });
 
@@ -137,7 +135,6 @@ describe("generators/dependency_graph", () => {
 
             const graph = makeDependencyGraph(db, graphDef);
 
-            const testDb = makeTestDatabase(graph);
             const storage = graph.getStorage();
 
             // Seed data using storage after graph creation
@@ -1488,7 +1485,6 @@ describe("generators/dependency_graph", () => {
             const db = await getRootDatabase(capabilities);
             const graph = makeDependencyGraph(db, []);
 
-            const testDb = makeTestDatabase(graph);
             expect(isDependencyGraph(graph)).toBe(true);
             expect(isDependencyGraph({})).toBe(false);
             expect(isDependencyGraph(null)).toBe(false);
@@ -1521,11 +1517,9 @@ describe("generators/dependency_graph", () => {
 
             const graph = makeDependencyGraph(db, graphDef);
 
-            const testDb = makeTestDatabase(graph);
             // Set base value
             await graph.set("base", { value: 5 });
 
-            // Pull using canonical form (no spaces)
             const result = await graph.pull('derived("data")');
             expect(result.value).toBe(10);
 
@@ -1567,12 +1561,9 @@ describe("generators/dependency_graph", () => {
             ];
 
             const graph = makeDependencyGraph(db, graphDef);
-
-            const testDb = makeTestDatabase(graph);
             // Initially missing
             expect(await graph.debugGetFreshness("node1")).toBe("missing");
 
-            // Set node1 -> up-to-date
             await graph.set("node1", { val: 10 });
             expect(await graph.debugGetFreshness("node1")).toBe("up-to-date");
             
@@ -1605,11 +1596,9 @@ describe("generators/dependency_graph", () => {
 
             const graph = makeDependencyGraph(db, graphDef);
 
-            const testDb = makeTestDatabase(graph);
             // Initially empty
             expect(await graph.debugListMaterializedNodes()).toEqual([]);
 
-            // Set node1
             await graph.set("node1", { val: 10 });
             
             const nodes = await graph.debugListMaterializedNodes();

@@ -12,7 +12,7 @@ const {
     makeUnchanged,
 } = require("../src/generators/dependency_graph");
 const { getMockedRootCapabilities } = require("./spies");
-const { makeTestDatabase, freshnessKey } = require("./test_database_helper");
+const { makeTestDatabase } = require("./test_database_helper");
 const { stubLogger } = require("./stubs");
 
 /**
@@ -37,14 +37,7 @@ describe("Dependency graph persistence and restart", () => {
     describe("Restart preserves dependent invalidation", () => {
         test("invalidates pattern instantiation after restart", async () => {
             const capabilities = getTestCapabilities();
-            const db = await getRootDatabase(capabilities);            // Set up initial data
-            await testDb.put("all_events", {
-                type: "all_events",
-                events: [
-                    { id: "id123", description: "Event 123" },
-                    { id: "id456", description: "Event 456" },
-                ],
-            });
+            const db = await getRootDatabase(capabilities);
 
             // Define graph with pattern node
             const schemas = [
@@ -80,17 +73,26 @@ describe("Dependency graph persistence and restart", () => {
             // Create graph instance A
             const graphA = makeDependencyGraph(db, schemas);
 
+            const testDb = makeTestDatabase(graphA);
+
+            // Set up initial data
+            await testDb.put("all_events", {
+                type: "all_events",
+                events: [
+                    { id: "id123", description: "Event 123" },
+                    { id: "id456", description: "Event 456" },
+                ],
+            });
+
             // Pull the pattern instantiation to create it
             const result1 = await graphA.pull("event_context('id123')");
             expect(result1.eventId).toBe("id123");
             expect(result1.totalEvents).toBe(2);
 
             // Verify all nodes are up-to-date
-            const freshness1 = await db.getFreshness(freshnessKey("all_events"));
-            const freshness2 = await db.getFreshness(freshnessKey("meta_events"));
-            const freshness3 = await db.getFreshness(
-                freshnessKey("event_context('id123')")
-            );
+            const freshness1 = await graphA.debugGetFreshness("all_events");
+            const freshness2 = await graphA.debugGetFreshness("meta_events");
+            const freshness3 = await graphA.debugGetFreshness("event_context('id123')");
             expect(freshness1).toBe("up-to-date");
             expect(freshness2).toBe("up-to-date");
             expect(freshness3).toBe("up-to-date");
@@ -109,12 +111,8 @@ describe("Dependency graph persistence and restart", () => {
             });
 
             // Verify that meta_events and event_context became potentially-outdated
-            const freshnessAfter1 = await db.getFreshness(
-                freshnessKey("meta_events")
-            );
-            const freshnessAfter2 = await db.getFreshness(
-                freshnessKey("event_context('id123')")
-            );
+            const freshnessAfter1 = await graphB.debugGetFreshness("meta_events");
+            const freshnessAfter2 = await graphB.debugGetFreshness("event_context('id123')");
             expect(freshnessAfter1).toBe("potentially-outdated");
             expect(freshnessAfter2).toBe("potentially-outdated");
 
@@ -172,9 +170,12 @@ describe("Dependency graph persistence and restart", () => {
                 },
             ];
 
+            const graph1 = makeDependencyGraph(db, schemas);
+
+            const testDb = makeTestDatabase(graph1);
+
             // Initial setup
             await testDb.put("A", { value: 10 });
-            const graph1 = makeDependencyGraph(db, schemas);
 
             // Pull D to create instantiations
             const result1 = await graph1.pull("D('test')");
@@ -189,7 +190,7 @@ describe("Dependency graph persistence and restart", () => {
             await graph2.set("A", { value: 20 });
 
             // Verify D became potentially-outdated via persisted edges
-            const freshness = await db.getFreshness(freshnessKey("D('test')"));
+            const freshness = await graph2.debugGetFreshness("D('test')");
             expect(freshness).toBe("potentially-outdated");
 
             // Pull D - should recompute
@@ -232,10 +233,13 @@ describe("Dependency graph persistence and restart", () => {
                 },
             ];
 
+            const graph1 = makeDependencyGraph(db, schemas);
+
+            const testDb = makeTestDatabase(graph1);
+
             // Initial setup
             await testDb.put("A", { value: 10 });
             await testDb.put("B", { value: 100 });
-            const graph1 = makeDependencyGraph(db, schemas);
 
             // Pull C to establish values
             const result1 = await graph1.pull("C");
@@ -243,9 +247,9 @@ describe("Dependency graph persistence and restart", () => {
             expect(computeCalls).toEqual(["B", "C"]);
 
             // All should be up-to-date
-            expect(await db.getFreshness(freshnessKey("A"))).toBe("up-to-date");
-            expect(await db.getFreshness(freshnessKey("B"))).toBe("up-to-date");
-            expect(await db.getFreshness(freshnessKey("C"))).toBe("up-to-date");
+            expect(await graph1.debugGetFreshness("A")).toBe("up-to-date");
+            expect(await graph1.debugGetFreshness("B")).toBe("up-to-date");
+            expect(await graph1.debugGetFreshness("C")).toBe("up-to-date");
 
             // *** RESTART ***
             computeCalls.length = 0;
@@ -255,8 +259,8 @@ describe("Dependency graph persistence and restart", () => {
             await graph2.set("A", { value: 20 });
 
             // B and C should be potentially-outdated
-            expect(await db.getFreshness(freshnessKey("B"))).toBe("potentially-outdated");
-            expect(await db.getFreshness(freshnessKey("C"))).toBe("potentially-outdated");
+            expect(await graph2.debugGetFreshness("B")).toBe("potentially-outdated");
+            expect(await graph2.debugGetFreshness("C")).toBe("potentially-outdated");
 
             // Pull C - B should return Unchanged and propagate up-to-date to C
             const result2 = await graph2.pull("C");
@@ -264,8 +268,8 @@ describe("Dependency graph persistence and restart", () => {
             expect(computeCalls).toEqual(["B"]); // Only B computed, C was marked up-to-date via propagation
 
             // Both B and C should be up-to-date now
-            expect(await db.getFreshness(freshnessKey("B"))).toBe("up-to-date");
-            expect(await db.getFreshness(freshnessKey("C"))).toBe("up-to-date");
+            expect(await graph2.debugGetFreshness("B")).toBe("up-to-date");
+            expect(await graph2.debugGetFreshness("C")).toBe("up-to-date");
 
             await db.close();
         });
@@ -302,10 +306,13 @@ describe("Dependency graph persistence and restart", () => {
                 },
             ];
 
+            const graph1 = makeDependencyGraph(db, schemas);
+
+            const testDb = makeTestDatabase(graph1);
+
             // Initial setup
             await testDb.put("A", { value: 10 });
             await testDb.put("B('test')", { value: 100 });
-            const graph1 = makeDependencyGraph(db, schemas);
 
             // Pull C to establish pattern instantiations
             const result1 = await graph1.pull("C('test')");
@@ -324,7 +331,7 @@ describe("Dependency graph persistence and restart", () => {
             expect(computeCalls).toEqual(['B(test)']); // Only B computed
 
             // C should be up-to-date via propagation
-            expect(await db.getFreshness(freshnessKey("C('test')"))).toBe("up-to-date");
+            expect(await graph2.debugGetFreshness("C('test')")).toBe("up-to-date");
 
             await db.close();
         });
@@ -415,11 +422,13 @@ describe("Dependency graph persistence and restart", () => {
                 },
             ];
 
-            await testDb.put("A", { value: 10 });
-
             // Create graph with schema1
             const graph1 = makeDependencyGraph(db, schemas1);
             const hash1 = graph1.schemaHash;
+
+            const testDb = makeTestDatabase(graph1);
+
+            await testDb.put("A", { value: 10 });
 
             // Create graph with schema2 (different schema)
             const graph2 = makeDependencyGraph(db, schemas2);
@@ -431,15 +440,15 @@ describe("Dependency graph persistence and restart", () => {
             // Pull B with schema2
             await graph2.pull("B");
 
-            // Verify schema2's index exists
-            const revdepKey2 = `dg:${hash2}:revdep:A:B`;
-            const revdep2 = await db.get(revdepKey2);
-            expect(revdep2).toBeDefined();
+            // Verify that schema2 can list dependents properly
+            const storage2 = graph2.getStorage();
+            const dependents2 = await storage2.listDependents("A");
+            expect(dependents2).toContain("B");
 
-            // Verify schema1's namespace is separate (no B index)
-            const revdepKey1 = `dg:${hash1}:revdep:A:B`;
-            const revdep1 = await db.get(revdepKey1);
-            expect(revdep1).toBeUndefined();
+            // Verify schema1's namespace is separate (no B in schema1)
+            const storage1 = graph1.getStorage();
+            const dependents1 = await storage1.listDependents("A");
+            expect(dependents1).not.toContain("B"); // schema1 doesn't have B node
 
             await db.close();
         });

@@ -13,7 +13,7 @@ const {
     isInvalidNode,
 } = require("../src/generators/dependency_graph");
 const { getMockedRootCapabilities } = require("./spies");
-const { makeTestDatabase, freshnessKey } = require("./test_database_helper");
+const { makeTestDatabase } = require("./test_database_helper");
 const { stubLogger } = require("./stubs");
 
 /**
@@ -389,7 +389,6 @@ describe("Parameterized node schemas", () => {
 
             const graph = makeDependencyGraph(db, schemas);
 
-            const testDb = makeTestDatabase(graph);
             // Try to pull schema pattern directly
             await expect(graph.pull('derived(x)')).rejects.toThrow();
 
@@ -425,8 +424,6 @@ describe("Parameterized node schemas", () => {
 
             const graph = makeDependencyGraph(db, []);
 
-            const testDb = makeTestDatabase(graph);
-            await expect(graph.pull("unknown_node")).rejects.toThrow();
 
             let error = null;
             try {
@@ -658,7 +655,8 @@ describe("Parameterized node schemas", () => {
             // Now set the source node (base) to trigger propagation
             await graph.set('base', { value: 42 });
 
-            // Verify reverse dependency was persisted by checking that the dependent is marked outdated            const itemFreshness = await db.getFreshness(freshnessKey("item('foo')"));
+            // Verify reverse dependency was persisted by checking that the dependent is marked outdated
+            const itemFreshness = await graph.debugGetFreshness("item('foo')");
             expect(itemFreshness).toBe("potentially-outdated");
 
             // Verify inputs were persisted for the materialized item
