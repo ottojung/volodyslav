@@ -107,13 +107,13 @@ function isDatabaseValue(value) {
 /**
  * A database put operation.
  * @template T
- * @typedef {AbstractBatchPutOperation<SimpleSublevel<T>, string, T>} DatabasePutOperation
+ * @typedef {{ type: 'put', sublevel: SimpleSublevel<T>, key: string, value: T }} DatabasePutOperation
  */
 
 /**
  * A database delete operation.
  * @template T
- * @typedef {AbstractBatchDelOperation<SimpleSublevel<T>, string>} DatabaseDelOperation
+ * @typedef {{ type: 'del', sublevel: SimpleSublevel<T>, key: string }} DatabaseDelOperation
  */
 
 /**
