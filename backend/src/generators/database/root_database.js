@@ -47,11 +47,11 @@ const { makeTypedDatabase } = require('./typed_database');
  */
 
 /**
- * Database for reverse dependency index using structured values.
- * Key: inputNode (canonical name)
- * Value: Array of dependent node names
- * This avoids composite keys and string prefix logic.
- * @typedef {GenericDatabase<string[]>} RevdepsDatabase
+ * Database for reverse dependency index using edge-based storage.
+ * Key: composite key "${inputNode}\x00${dependentNode}"
+ * Value: 1 (constant marker indicating the edge exists)
+ * This improves performance when fan-out is large by avoiding array serialization.
+ * @typedef {GenericDatabase<1>} RevdepsDatabase
  */
 
 /**
@@ -61,7 +61,7 @@ const { makeTypedDatabase } = require('./typed_database');
  * @property {ValuesDatabase} values - Node output values
  * @property {FreshnessDatabase} freshness - Node freshness state
  * @property {InputsDatabase} inputs - Node inputs index
- * @property {RevdepsDatabase} revdeps - Reverse dependencies (input -> array of dependents)
+ * @property {RevdepsDatabase} revdeps - Reverse dependencies (edge-based: composite key -> 1)
  * @property {(operations: DatabaseBatchOperation[]) => Promise<void>} batch - Batch operation interface for atomic writes
  */
 
@@ -119,7 +119,7 @@ class RootDatabaseClass {
         const freshnessSublevel = schemaSublevel.sublevel('freshness', { valueEncoding: 'json' });
         /** @type {SimpleSublevel<InputsRecord>} */
         const inputsSublevel = schemaSublevel.sublevel('inputs', { valueEncoding: 'json' });
-        /** @type {SimpleSublevel<string[]>} */
+        /** @type {SimpleSublevel<1>} */
         const revdepsSublevel = schemaSublevel.sublevel('revdeps', { valueEncoding: 'json' });
 
         let touchedSchema = false;
@@ -130,7 +130,7 @@ class RootDatabaseClass {
             }
 
             if (!touchedSchema) {
-                await this.db.put(schemaHash, []); // Touch schema key
+                await this.db.put(schemaHash, 1); // Touch schema key with constant value
                 touchedSchema = true;
             }
             await schemaSublevel.batch(operations);

@@ -101,7 +101,7 @@ function isDatabaseValue(value) {
 }
 
 /**
- * @typedef {DatabaseValue | Freshness | InputsRecord | string[]} DatabaseStoredValue
+ * @typedef {DatabaseValue | Freshness | InputsRecord | 1} DatabaseStoredValue
  */
 
 /**
@@ -128,7 +128,7 @@ function isDatabaseValue(value) {
 
 /**
  * A batch operation for the database.
- * @typedef {DatabasePutOperation<DatabaseValue> | DatabasePutOperation<Freshness> | DatabasePutOperation<InputsRecord> | DatabasePutOperation<string[]> | DatabaseDelOperation<DatabaseValue> | DatabaseDelOperation<Freshness> | DatabaseDelOperation<InputsRecord> | DatabaseDelOperation<string[]>} DatabaseBatchOperation
+ * @typedef {DatabasePutOperation<DatabaseValue> | DatabasePutOperation<Freshness> | DatabasePutOperation<InputsRecord> | DatabasePutOperation<1> | DatabaseDelOperation<DatabaseValue> | DatabaseDelOperation<Freshness> | DatabaseDelOperation<InputsRecord> | DatabaseDelOperation<1>} DatabaseBatchOperation
  */
 
 //* /typedef {DatabasePutOperation<DatabaseValue> | DatabasePutOperation<Freshness> | DatabasePutOperation<InputsRecord> | DatabasePutOperation<string[]> | DatabaseDelOperation<DatabaseValue> | DatabaseDelOperation<Freshness> | DatabaseDelOperation<InputsRecord> | DatabaseDelOperation<string[]>} DatabaseBatchOperation
