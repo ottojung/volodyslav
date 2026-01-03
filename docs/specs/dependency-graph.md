@@ -83,11 +83,11 @@ Tests MAY assert:
 * **NodeValue** — computed value at a node (arbitrary `DatabaseValue`)
 * **Freshness** — conceptual state: `"up-to-date" | "potentially-outdated"`
 * **Computor** — deterministic async function: `(inputs: DatabaseValue[], oldValue: DatabaseValue | undefined, bindings: Record<string, ConstValue>) => Promise<DatabaseValue | Unchanged>`
-* **Unchanged** — sentinel value indicating unchanged computation result
+* **Unchanged** — unique sentinel value indicating unchanged computation result. MUST NOT be a valid `DatabaseValue` (cannot be stored via `set()` or returned by `pull()`).
 * **Variable** — parameter placeholder in node schemas (identifiers in argument positions)
 * **Literal** — typed constant value (natural number or single-quoted string)
 * **ConstValue** — typed constant: `{ type: "string" | "int"; value: string | number }`
-* **DatabaseValue** — any JSON-serializable value that round-trips through database interfaces
+* **DatabaseValue** — any JSON-serializable value that round-trips through database interfaces. MUST NOT include the `Unchanged` sentinel.
 
 ### 2.2 Expression Grammar (Normative)
 
@@ -223,9 +223,11 @@ pull(N):
 
 **REQ-PULL-05:** Lazy instantiation: When pulling a concrete node, the system:
 1. Searches for matching schema pattern
-2. Extracts variable bindings
-3. Creates materialized concrete node on-demand
-4. Persists materialization marker for restart resilience
+2. Extracts variable bindings from the match
+3. Instantiates all input expressions by applying the bindings to produce concrete dependency nodes
+4. Recursively pulls all concrete dependencies
+5. Creates materialized concrete node on-demand with instantiated dependencies
+6. Persists materialization marker for restart resilience
 
 **Efficiency Optimization (Implementation-Defined):**
 
@@ -568,24 +570,6 @@ Implementations SHOULD accept both single and double quotes in input expressions
 #### E.4 Missing Values
 
 If node is `up-to-date` but has no stored value, this is database corruption. MUST throw `MissingValueError`.
-
-### Appendix F: Testing Strategy
-
-#### F.1 Property-Based Testing
-
-Tests SHOULD verify:
-1. **Correctness:** `pull(N)` equals `recompute_from_scratch(N)` for random graphs
-2. **Idempotence:** `pull(N); pull(N)` equals `pull(N)` (second call fast)
-3. **Consistency:** After `set(N, v); pull(M)`, all freshness states satisfy invariants
-
-#### F.2 Scenario Testing
-
-Tests MUST cover:
-1. Linear chains (A → B → C)
-2. Diamond graphs (A → B,C → D)
-3. Unchanged propagation
-4. Mixed freshness states
-5. Restart resilience
 
 ---
 
