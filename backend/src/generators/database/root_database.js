@@ -163,7 +163,7 @@ class RootDatabaseClass {
                 throw new Error(`Unknown operation: ${op}`);
             }
         });
-        return this.db.batch(operations);
+        return this.db.batch(operations, { sync: true });
     }
 
     /**
