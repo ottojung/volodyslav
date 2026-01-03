@@ -4,50 +4,39 @@ This document provides a formal specification for the dependency graph's operati
 
 ---
 
-## Introduction
+## 1. Core Definitions (Normative)
 
-The Dependency Graph is a lazy evaluation system that propagates changes through a directed acyclic graph (DAG) of computational nodes. It ensures that computed values are always consistent with their dependencies while minimizing recomputation through aggressive caching.
+### 1.1 Types
 
-### Key Properties
+* **NodeName** — unique identifier for a concrete node (fully instantiated expression)
+* **NodeValue** — computed value at a node (arbitrary `DatabaseValue`)
+* **Freshness** — conceptual state: `"up-to-date" | "potentially-outdated"`
+* **Computor** — deterministic async function: `(inputs: DatabaseValue[], oldValue: DatabaseValue | undefined, bindings: Record<string, ConstValue>) => Promise<DatabaseValue | Unchanged>`
+* **Unchanged** — unique sentinel value indicating unchanged computation result. MUST NOT be a valid `DatabaseValue` (cannot be stored via `set()` or returned by `pull()`).
+* **Variable** — parameter placeholder in node schemas (identifiers in argument positions)
+* **Literal** — typed constant value (natural number or single-quoted string)
+* **ConstValue** — typed constant: `{ type: "string" | "int"; value: string | number }`
+* **DatabaseValue** — any JavaScript `object` (including subtypes like arrays, but excluding `null`). MUST NOT include the `Unchanged` sentinel. MUST round-trip through database interfaces without semantic change.
 
-**Correctness Invariant:** The big-step semantics of `pull(node)` MUST produce the same result as recomputing all values from scratch, ignoring all cached state.
+### 1.2 Expression Grammar (Normative)
 
-**Efficiency Goal:** The implementation SHOULD minimize recomputation by exploiting freshness tracking and caching.
-
----
-
-## Data Model
-
-### Types
-
-* **NodeName** — unique identifier for a node in the graph (concrete, fully instantiated)
-* **NodeValue** — the computed value at a node
-* **Freshness** — conceptual predicate: `{ up-to-date, potentially-outdated }` (implementation representation is not prescribed)
-* **Computor** — a deterministic asynchronous function `(inputs: NodeValue[], oldValue: NodeValue | undefined, bindings: Record<string, ConstValue>) => Promise<NodeValue | Unchanged>`
-* **Unchanged** — the only observable sentinel value indicating the computation returned the same value as before
-* **Variable** — a parameter placeholder in node schemas (bare identifiers in argument positions)
-* **Literal** — a typed constant value appearing in expressions (nat or single-quoted string)
-* **ConstValue** — a typed constant value with kind (`'string' | 'int'`) and value (string content or number)
-
-### Node Schemas and Expressions
-
-Instead of concrete node names, the graph is defined using **node schemas** that may contain variables.
-
-**Expression Grammar (Normative):**
+**REQ-EXPR-01:** All expressions MUST conform to this grammar:
 
 ```
-expr          := atom_expr | compound_expr
+expr          := ws atom_expr ws | ws compound_expr ws
 atom_expr     := ident
-compound_expr := ident "(" args ")"
+compound_expr := ident ws "(" ws args ws ")"
 
-args          := arg ("," arg)*
+args          := arg (ws "," ws arg)*
 arg           := var | nat | string
 var           := ident
 nat           := "0" | [1-9][0-9]*
-string        := "'" (escaped_char | [^'])* "'"
+string        := "'" (escaped_char | [^'])* "'" | '"' (escaped_char_dq | [^"])* '"'
 ident         := [A-Za-z_][A-Za-z0-9_]*
+ws            := [ \t\n\r]*
 
-escaped_char  := "\\" | "\'" | "\\n" | "\\t" | "\\r"
+escaped_char     := "\\" | "\'" | "\\n" | "\\t" | "\\r"
+escaped_char_dq  := "\\" | '\"' | "\\n" | "\\t" | "\\r"
 ```
 
 **Terminology:**
@@ -63,7 +52,7 @@ escaped_char  := "\\" | "\'" | "\\n" | "\\t" | "\\r"
 * `fun_123(a, 42, 'abc', b)` — compound with free variables `a`, `b` and literals `42` (nat), `'abc'` (string)
 * `enhanced_event('id123', 'photo5')` — concrete compound with string literals
 
-**Note on String Quoting:** This specification uses **single quotes** (`'...'`) for string literals to distinguish them syntactically from variables. Implementations may choose to support double quotes as well, but the canonical form MUST use single quotes.
+**Note on String Quoting:** This specification uses **single quotes** (`'...'`) for string literals in canonical form to distinguish them syntactically from variables. Implementations MUST support both single and double quotes in input expressions, canonicalizing to single quotes.
 
 **Concrete Instantiation:**
 
@@ -71,519 +60,92 @@ A **concrete node** is a concrete expression (no free variables):
 * `event_context('id123')` — concrete instantiation with `e = 'id123'`
 * `enhanced_event('id123', 'photo5')` — concrete instantiation with two string literals
 
-### Canonical Serialization (Normative)
+### 1.3 Canonical Serialization (Normative)
 
-The function `serialize(expr)` produces a unique canonical string representation:
+**REQ-CANON-01:** The function `serialize(expr)` MUST produce a unique canonical string:
 
-**Rules:**
 1. No whitespace is included
-2. Natural numbers are rendered as decimal strings with no leading zeros (except `"0"` itself)
+2. Natural numbers are rendered as decimal with no leading zeros (except `"0"`)
 3. Strings use single-quote delimiters with escape sequences: `\'`, `\\`, `\n`, `\t`, `\r`
-4. Arguments are joined by commas with no spaces
-5. Atom-expressions: just the identifier (e.g., `all_events`)
-6. Compound-expressions: `name(arg1,arg2,...)` with no spaces
+4. Arguments joined by commas with no spaces
+5. Atom-expressions: just the identifier
+6. Compound-expressions: `name(arg1,arg2,...)`
+
+**REQ-CANON-02:** Round-trip requirement:
+* `parse(serialize(ast))` MUST equal `ast` (modulo whitespace)
+* `serialize(parse(s))` MUST canonicalize `s`
 
 **Examples:**
 * `all_events` → `"all_events"`
 * `event_context('id123')` → `"event_context('id123')"`
 * `fun(42, 'test')` → `"fun(42,'test')"`
-* `status('e1', 'active')` → `"status('e1','active')"`
 
-**Round-trip Requirement:**
-* `parse(serialize(ast))` MUST equal `ast` (modulo whitespace normalization)
-* `serialize(parse(s))` MUST canonicalize `s`
+**REQ-CANON-03:** All node names used as database keys MUST use canonical serialization.
 
-**Database Storage:**
-All database keys for node values and freshness MUST use canonical serialization.
+**REQ-CANON-04:** `pull(nodeName)` and `set(nodeName, value)` MUST accept any valid expression string and canonicalize it before processing.
 
-### Graph Structure
+### 1.4 Schema Definition
 
-A **DependencyGraph** is defined by:
-* A set of **node schemas**: `{ (output_expr, input_exprs[], computor) }`
-* Where `input_exprs` is a list of expressions this node depends on
-* Variables in `output_expr` MUST be a superset of all variables in `input_exprs`
-* The graph MUST be acyclic according to the Schema Cycle Detection rules defined below.
+**REQ-SCHEMA-01:** A dependency graph is defined by a set of node schemas:
 
-**Pattern Matching and Overlap Detection (Normative):**
-
-**Matching:**
-A schema output pattern `P` **matches** a concrete node `N` if and only if:
-1. Same functor (identifier) and arity (number of arguments).
-2. For each argument position, the pattern argument is compatible with the concrete argument:
-   * **Literal:** Must equal the concrete argument (type and value).
-   * **Variable:** Binds to the concrete argument. All occurrences of the same variable in `P` MUST bind to the same literal value in `N`.
-
-**Overlap Detection:**
-Two schema output patterns `P1` and `P2` **overlap** if and only if:
-1. They have the same functor and arity.
-2. There exists a valid assignment of variables to literals that satisfies all constraints derived from unifying `P1` and `P2`.
-
-**Overlap Constraints:**
-For each argument position `i`:
-* Let `A` be the argument in `P1` and `B` be the argument in `P2`.
-* **Constraint:** `A` must equal `B`.
-
-**Satisfiability:**
-The set of constraints is satisfiable if there is no contradiction among:
-* **Literal-Literal:** `L1 == L2` is satisfiable iff `L1` and `L2` are identical (same type and value).
-* **Variable-Literal:** `V == L` imposes a constraint on `V`. If `V` is constrained to multiple different literals, it is unsatisfiable.
-* **Variable-Variable:** `V1 == V2` imposes a constraint that `V1` and `V2` must bind to the same value.
-
-**Graph Initialization Requirement:**
-The system MUST reject graphs with overlapping output patterns.
-
-**Examples of Allowed (Non-overlapping) Patterns:**
-* `status(e, 'active')` and `status(e, 'inactive')` — disjoint due to different second literal
-* `node1(x)` and `node2(y)` — disjoint due to different functors
-
-**Examples of Disallowed (Overlapping) Patterns:**
-* `node(x)` and `node(y)` — overlap (both match `node('val')`)
-* `status(e, s)` and `status(x, 'active')` — overlap (both match `status('e1', 'active')`)
-
-**Schema Cycle Detection (Normative):**
-
-The system MUST reject graphs that contain a cycle in the schema dependency structure.
-
-**Dependency Edge Definition:**
-A directed edge exists from Schema `S` to Schema `T` if and only if:
-1. Schema `S` has an input pattern `I` in its `inputs` list.
-2. Schema `T` has an output pattern `O`.
-3. `I` and `O` **overlap** (as defined in "Overlap Detection").
-
-**Cycle Definition:**
-A cycle exists if there is a path `S1 -> S2 -> ... -> Sn -> S1` in the graph where nodes are schemas and edges are defined as above.
-
-**Rationale:**
-This ensures that no matter how variables are instantiated, it is impossible to create a concrete dependency cycle. If `S` depends on `T` at the schema level, it means there is *at least one* potential concrete instantiation where `S` waits for `T`.
-
-**Example Graph Definition:**
-
-```javascript
-[
-  {
-    output: "all_events",           // atom-expression
-    inputs: [],
-    computor: async ([], old) => old || { events: [] }
-  },
-  {
-    output: "meta_events",          // atom-expression
-    inputs: ["all_events"],
-    computor: async ([all]) => extractMeta(all)
-  },
-  {
-    output: "event_context(e)",     // parameterized compound-expression
-    inputs: ["meta_events"],
-    computor: async ([meta], old, bindings) => findContext(meta, bindings.e)
-  },
-  {
-    output: "enhanced_event(e, p)", // multi-parameter compound-expression
-    inputs: ["event_context(e)", "photo(p)"],
-    computor: async ([ctx, photo], old, bindings) => enhance(ctx, photo, bindings)
-  }
-]
+```typescript
+type NodeDef = {
+  output: string;     // Expression pattern (may contain variables)
+  inputs: string[];   // Dependency expressions
+  computor: Computor; // Computation function
+};
 ```
 
-### Freshness States
+**REQ-SCHEMA-02:** Variables in `output` MUST be a superset of all variables in `inputs` (Variable Scope Rule 1).
 
-Freshness is a **conceptual** property of nodes used for reasoning about correctness:
+**REQ-SCHEMA-03:** A **source node** is a concrete node matching a schema where `inputs = []`.
 
-* **up-to-date** — The concrete node's value is guaranteed to be consistent with all its dependencies
-* **potentially-outdated** — The concrete node MAY need recomputation because an upstream dependency changed
+### 1.5 Pattern Matching (Normative)
 
-**Conceptual Predicate:** The specification reasons about freshness using:
-* `isUpToDate(N)` — returns true if node N is up-to-date
-* `isPotentiallyOutdated(N)` — returns true if node N is potentially-outdated
+**REQ-MATCH-01:** A schema output pattern `P` **matches** concrete node `N` if:
+1. Same functor and arity
+2. For each argument position:
+   * **Literal:** Must equal concrete argument (type and value)
+   * **Variable:** Binds to concrete argument; same variable in multiple positions MUST bind to same value
 
-**Mechanism vs. State:**
-Implementations MAY use any internal **mechanism** to track freshness (e.g., version numbers, dirty bits, dependency hashes) to optimize performance or support features like Unchanged Propagation.
+**REQ-MATCH-02:** Two output patterns **overlap** if there exists a valid assignment satisfying all position-wise equality constraints.
 
-However, the resulting **conceptual freshness state** (`up-to-date` or `potentially-outdated`) MUST be observable via the `SchemaStorage.freshness` database, which is accessible through the graph's schema storage.
+**REQ-MATCH-03:** The system MUST reject graphs with overlapping output patterns at initialization (throw `SchemaOverlapError`).
 
-**Observable Special Values:**
-* `Unchanged` is an observable special value that computors may return
+### 1.6 Cycle Detection (Normative)
 
-**Note:** Freshness is tracked per **concrete instantiation**, not per schema. For example, `event_context('id123')` and `event_context('id456')` have independent freshness states.
+**REQ-CYCLE-01:** A directed edge exists from Schema S to Schema T if:
+1. S has input pattern I
+2. T has output pattern O
+3. I and O overlap
+
+**REQ-CYCLE-02:** The system MUST reject graphs with cycles at initialization (throw `SchemaCycleError`).
+
+### 1.7 Materialization
+
+**REQ-MAT-01:** A **materialized node** is any concrete node for which the implementation maintains dependency tracking and freshness state.
+
+**REQ-MAT-02:** Materialization occurs through:
+* `pull(nodeName)` — creates node with dependencies, stores value, marks `up-to-date`
+* `set(nodeName, value)` — materializes source node, marks `up-to-date`
+
+**REQ-MAT-03:** Unmaterialized nodes have no freshness state (`undefined` in `SchemaStorage.freshness`).
 
 ---
 
-## Variable Binding and Pattern Matching
+## 2. Operational Semantics (Normative)
 
-### Unification
+### 2.1 pull(nodeName) → NodeValue
 
-When `pull(concrete_node)` is called, the system MUST:
-
-1. **Pattern Match:** Find a schema whose output expression matches the requested concrete node
-2. **Extract Bindings:** Determine variable-to-literal mappings from the match
-3. **Instantiate Dependencies:** Apply bindings to all input expressions to get concrete dependency nodes
-4. **Recursively Pull:** Pull all concrete dependencies with the same bindings
-
-**Example:**
-
-Given schema: `enhanced_event(e, p)` with inputs `[event_context(e), photo(p)]`
-
-When pulling `enhanced_event('id123', 'photo5')`:
-1. Match: `enhanced_event(e, p)` matches with bindings `{e: 'id123', p: 'photo5'}`
-2. Instantiate inputs: `[event_context('id123'), photo('photo5')]`
-3. Pull both dependencies recursively
-
-### Variable Scope Rules
-
-**Rule 1: Output Variables Must Cover Inputs**
-All variables appearing in any input expression MUST also appear in the output expression.
-
-**Valid:**
-```
-event_context(e) -> derived_event(e)     // e appears in both
-all_events -> meta_events                // no variables
-```
-
-**Invalid:**
-```
-event_context(e) -> derived_event()      // ERROR: e in input but not output
-event_context(e) -> derived_event(x)     // ERROR: e not bound, x undefined
-```
-
-**Rule 2: Multiple Inputs Share Bindings**
-When a variable appears in multiple input expressions, it MUST be bound to the same literal.
-
-```
-event_context(e), photo(p) -> enhanced_event(e, p)
-```
-Pulling `enhanced_event('id123', 'photo5')` binds `e='id123', p='photo5'` for ALL inputs.
-
-**Rule 3: Literals in Input Expressions**
-Input expressions MAY contain literals (not just variables). These act as filters.
-
-```
-metadata(e), status(e, 'active') -> active_metadata(e)
-```
-This schema only applies to events with `status='active'`.
-
----
-
-## Dependency Propagation with Parameterization
-
-### Challenge: Selective Invalidation of Materialized Nodes
-
-When a source node changes (e.g., `all_events` is updated via `set()`), only **materialized** instantiations that transitively depend on it become potentially-outdated. Unmaterialized nodes (those never pulled) remain unmaterialized and are not tracked.
-
-**Example:**
-```
-all_events -> meta_events -> event_context(e)
-```
-
-When `set('all_events', newData)` is called:
-* `meta_events` becomes potentially-outdated (if it has been pulled)
-* **Only materialized instantiations** like `event_context('id123')`, `event_context('id456')` become potentially-outdated
-* Unmaterialized nodes that were never pulled remain unmaterialized (no freshness state)
-
-**Implementation Challenge:** How do we efficiently track and invalidate only the materialized instantiations?
-
-**Solution:** The implementation maintains a reverse dependency index that records which nodes have been materialized and their dependency relationships. Only nodes in this index are invalidated.
-
-## Operations on Parameterized Graphs
-
-### Source Nodes (Normative Definition)
-
-A **source node** is a concrete node `N` where:
-* It matches a schema whose `inputs = []` (no dependencies)
-
-Source nodes represent entry points to the dependency graph that receive data from external systems or direct user input.
-
-### Brief Overview of Operations
-
-The graph supports two primary operations:
-* `set(nodeName, value)` — writes a value to a source node and invalidates dependents
-* `pull(nodeName)` — computes (or retrieves cached) value for a concrete node
-
-Detailed specifications for these operations are provided in the "Operations" section below.
-
----
-
-## Database Storage Model
-
-### Storage Requirements (Normative)
-
-The dependency graph requires persistent storage with the following properties:
-
-* Node values MUST be persistable and retrievable by canonical node name
-* Freshness state MUST be persistable and retrievable by canonical node name
-* Node input dependencies MUST be persistable and retrievable to support materialization tracking
-* Reverse dependency edges MUST be persistable and queryable to enable efficient invalidation
-* The specific key naming scheme and storage organization is implementation-defined, but MUST prevent key collisions
-* Implementations MUST support atomic batch operations across all storage categories
-* Implementations MUST support schema-namespaced storage to allow multiple graph instances with different schemas to coexist
-
-### Storage Architecture
-
-The reference implementation uses a three-tier architecture:
-
-1. **RootDatabase**: Top-level database providing schema-namespaced sublevels
-2. **SchemaStorage**: Schema-specific storage containing four typed databases:
-   * `values`: Node computed values (canonical name → DatabaseValue)
-   * `freshness`: Node freshness state (canonical name → "up-to-date" | "potentially-outdated")
-   * `inputs`: Node input dependencies (canonical name → {inputs: string[]})
-   * `revdeps`: Reverse dependency edges (composite key → 1)
-3. **GraphStorage**: Optional wrapper providing helper methods (non-normative)
-
-### Key Naming Convention
-
-**Values and Freshness Keys:**
-
-Concrete node names are stored as database keys using canonical serialization:
-
-* Atom-expressions: `'all_events'`, `'meta_events'`
-* Concrete compounds: `"event_context('id123')"`, `"enhanced_event('id123','photo5')"`
-
-**Serialization Format:**
-
-All database keys MUST use the canonical serialization as defined in the "Canonical Serialization" section.
-
-**Materialized Node Markers:**
-
-Implementations MUST persist markers for materialized instantiations to ensure restart resilience. The reference implementation uses the `inputs` database: the presence of an entry indicates materialization, even if the inputs array is empty.
-
----
-
-## Parameterized Graph Examples
-
-### Example 1: Simple Linear Chain
-
-**Schema Definition:**
-```javascript
-[
-  { output: "all_events", inputs: [], computor: async ([], old) => old },
-  { output: "meta_events", inputs: ["all_events"], computor: async ([all]) => extractMeta(all) },
-  { output: "event_context(e)", inputs: ["meta_events"], 
-    computor: async ([meta], old, {e}) => meta.find(ev => ev.id === e) }
-]
-```
-
-**Operations:**
-```javascript
-set('all_events', {events: [{id: 'id123', data: '...'}]})
-pull("event_context('id123')")  // Returns event with id='id123'
-```
-
-**Dependency Chain:**
-1. `pull("event_context('id123')")`
-2. → Match schema with `e='id123'`
-3. → Pull `'meta_events'`
-4. → → Pull `'all_events'` 
-5. → Compute `event_context('id123')` with bindings `{e: 'id123'}`
-
----
-
-### Example 2: Multiple Parameters
-
-**Schema Definition:**
-```javascript
-[
-  { output: "all_events", inputs: [], computor: async ([], old) => old },
-  { output: "event_context(e)", inputs: ["all_events"],
-    computor: async ([all], _, {e}) => all.events.find(ev => ev.id === e) },
-  { output: "photo(p)", inputs: ["photo_storage"],
-    computor: async ([storage], _, {p}) => storage.photos[p] },
-  { output: "enhanced_event(e, p)", 
-    inputs: ["event_context(e)", "photo(p)"],
-    computor: async ([ctx, photo], _, {e, p}) => combine(ctx, photo) }
-]
-```
-
-**Operations:**
-```javascript
-pull("enhanced_event('id123', 'photo5')")
-```
-
-**Dependency Chain:**
-1. Match schema with `{e: 'id123', p: 'photo5'}`
-2. Pull `"event_context('id123')"` (binds `e='id123'`)
-3. → Pull `'all_events'`
-4. Pull `"photo('photo5')"` (binds `p='photo5'`)
-5. → Pull `'photo_storage'`
-6. Compute `enhanced_event('id123', 'photo5')`
-
----
-
-### Example 3: Variable Sharing
-
-**Schema Definition:**
-```javascript
-[
-  { output: "status(e)", inputs: ["event_data"],
-    computor: async ([data], _, {e}) => data.statuses[e] },
-  { output: "metadata(e)", inputs: ["event_data"],
-    computor: async ([data], _, {e}) => data.metadata[e] },
-  { output: "full_event(e)", 
-    inputs: ["status(e)", "metadata(e)"],
-    computor: async ([status, meta], _, {e}) => ({id: e, status, meta}) }
-]
-```
-
-**Key Property:** Both `status(e)` and `metadata(e)` receive the SAME binding `e='id123'` when pulling `full_event('id123')`.
-
----
-
-## Edge Cases and Error Handling
-
-### Unmatched Pull Request
-
-**Error:** `pull("event_context('id123')")` but no schema matches `event_context(e)`
-
-**Behavior:** Throw `InvalidNodeError` (same as current behavior for unknown nodes)
-
-### Partial Bindings
-
-**Error:** Schema has `output: "enhanced(e, p)"` but input is `"incomplete(e)"`
-
-**Behavior:** This is invalid at graph definition time (violates Rule 1: output variables must cover input variables). Should be caught during graph initialization.
-
-### Literals in Schema Outputs
-
-**Question:** Can a schema output contain literals?
-
-```javascript
-{ output: "event_context('id123')", ... }  // Specific to one ID?
-```
-
-**Answer:** Technically yes, but this defeats the purpose of schemas. It would only match pull requests for exactly `event_context('id123')`. Generally not useful, but not forbidden.
-
-### Multiple Matching Schemas
-
-**Error:** Two schemas both match the same pull request
-
-```javascript
-{ output: "node(x)", inputs: ["a"], ... }
-{ output: "node(y)", inputs: ["b"], ... }
-
-pull("node('val')")  // Which schema matches?
-```
-
-**Behavior:** This is ambiguous. The system MUST detect overlapping output patterns at graph initialization and reject the graph definition.
-
-**Rule:** Schema output patterns must be mutually exclusive (no two schemas can match the same concrete node).
-
-### Non-Concrete Pull/Set Requests
-
-**Error:** Attempting to pull or set a node with free variables
-
-```javascript
-pull("event_context(e)")    // ERROR: contains free variable e
-set("all_events(x)", value) // ERROR: contains free variable x
-```
-
-**Behavior:** MUST throw an error indicating that pull/set require concrete expressions.
-
----
-
-## Invariants
-
-The dependency graph MUST maintain these invariants at all stable states (between operations).
-
-**Scope:** These invariants apply to **materialized concrete nodes**.
-
-**Materialized Node Definition:**
-A **materialized concrete node** is any concrete node for which the implementation maintains dependency tracking and freshness state. Materialization occurs through:
-* **Primary mechanism:** Calling `pull(nodeName)` — creates the node with its dependencies, stores its value, and marks it `up-to-date`
-* **Source nodes:** Calling `set(nodeName, value)` — materializes the source node and marks it `up-to-date`
-
-**Key principle:** A node does NOT become materialized merely because one of its dependencies was set. Materialization is explicit through pull/set operations, not implicit through dependency relationships.
-
-**Freshness states:**
-* **Materialized nodes** have freshness state: `"up-to-date"` or `"potentially-outdated"`
-* **Unmaterialized nodes** have no freshness state (`undefined` or `"missing"` in debug interfaces)
-
-Implementations MUST persist sufficient markers to reconstruct dependency relationships after restart. Once a node has dependency tracking, it remains materialized even if its value is temporarily absent.
-
-### I1: Outdated Propagation Invariant
-
-If a materialized concrete node is `potentially-outdated`, then all materialized concrete nodes reachable from it (its dependents) are also `potentially-outdated`.
-
-**Formally:** 
-```
-∀ materialized concrete node N, materialized concrete dependent D 
-  where D depends (transitively) on N:
-  
-  isPotentiallyOutdated(N) ⟹ isPotentiallyOutdated(D)
-```
-
-### I2: Up-to-Date Upstream Invariant
-
-If a materialized concrete node is `up-to-date`, then all materialized concrete nodes it depends on (transitively) are `up-to-date`.
-
-**Formally:**
-```
-∀ materialized concrete node N, materialized concrete dependency I 
-  where N depends (transitively) on I:
-  
-  isUpToDate(N) ⟹ isUpToDate(I)
-```
-
-### I3: Value Consistency Invariant
-
-If a materialized concrete node is `up-to-date`, its value MUST equal what would be computed by recursively evaluating all its dependencies and applying its computor function with the appropriate bindings.
-
-**Formally:**
-```
-∀ materialized concrete node N:
-  isUpToDate(N) ⟹ 
-    value(N) = computor_schema(N)(
-      [value(I₁), ..., value(Iₙ)], 
-      previous_value(N), 
-      bindings(N)
-    )
-  where I₁, ..., Iₙ are N's concrete dependencies 
-    and bindings(N) are the variable bindings
-```
-
----
-
-## Operations
-
-### set(nodeName, value)
-
-**Preconditions:** 
+**Preconditions:**
 * `nodeName` MUST be a concrete expression (no free variables)
-* `nodeName` MUST be a source node (see definition in "Source Nodes" section)
-
-**Effects:**
-1. Store `value` at `nodeName`
-2. Mark `nodeName` as `up-to-date`
-3. Mark all **already-materialized** dependents (transitively) as `potentially-outdated`
-
-**Key behavior:** Only dependents that have been previously materialized (pulled) are marked as outdated. Nodes that have never been pulled remain unmaterialized and are not affected by this operation.
-
-**Postconditions:**
-* `isUpToDate(nodeName)` = true
-* All reachable **materialized** dependents satisfy `isPotentiallyOutdated(D)` = true
-* Unmaterialized dependents (never pulled) remain unmaterialized
-* Invariants I1, I2, I3 are preserved
-
-**Error Handling:**
-* If `nodeName` contains free variables, throw error
-* If `nodeName` is not a source node, throw `InvalidSetError`
-
----
-
-### pull(nodeName) → NodeValue
-
-**Preconditions:** 
-* `nodeName` MUST be a concrete expression (no free variables)
-* For schema-based nodes: a matching schema pattern must exist in the graph to instantiate from
-
-**Lazy Instantiation:** Unlike traditional dependency graphs that require all nodes to be pre-defined, this implementation supports lazy instantiation of parameterized nodes. When `pull()` is called with a concrete instantiation (e.g., `event_context('id123')`), the system:
-1. Searches for a matching schema pattern (e.g., `event_context(e)`)
-2. Extracts variable bindings from the match (e.g., `{e: 'id123'}`)
-3. Creates a materialized concrete node on-demand with instantiated dependencies
-4. Persists an instantiation marker for restart resilience
-
-This allows the graph to support an unbounded set of parameterized nodes without pre-creating every possible instantiation.
+* A matching schema pattern MUST exist
 
 **Big-Step Semantics (Correctness Specification):**
 
 ```
 pull(N):
-  bindings = extract_bindings(N)  // Extract variable bindings from pattern match
+  bindings = extract_bindings(N)
   inputs_values = [pull(I) for I in inputs_of(N)]
   old_value = stored_value(N)
   new_value = computor_N(inputs_values, old_value, bindings)
@@ -593,204 +155,148 @@ pull(N):
   return stored_value(N)
 ```
 
----
+**REQ-PULL-01:** `pull` MUST return a `Promise<DatabaseValue>`.
 
-## Correctness Properties
+**REQ-PULL-02:** `pull` MUST throw `NonConcreteNodeError` if `nodeName` contains free variables.
 
-### P1: Semantic Equivalence
+**REQ-PULL-03:** `pull` MUST throw `InvalidNodeError` if no schema matches.
 
-For any node N and any state of the database:
+**REQ-PULL-04:** `pull` MUST ensure each computor is invoked at most once per top-level call (property P3).
 
-```
-result_pull = pull(N)
-result_recompute = full_recompute_from_scratch(N)
+**REQ-PULL-05:** Lazy instantiation: When pulling a concrete node, the system:
+1. Searches for matching schema pattern
+2. Extracts variable bindings from the match
+3. Instantiates all input expressions by applying the bindings to produce concrete dependency nodes
+4. Recursively pulls all concrete dependencies
+5. Creates materialized concrete node on-demand with instantiated dependencies
+6. Persists materialization marker for restart resilience
 
-⟹ result_pull = result_recompute
-```
+**Efficiency Optimization (Implementation-Defined):**
 
-Where `full_recompute_from_scratch` ignores all cached values and freshness states.
+Implementations MAY use any strategy to achieve property P3 (e.g., memoization, freshness checks, in-flight tracking). The specific mechanism is not prescribed.
 
-### P2: Progress
+### 2.2 set(nodeName, value)
 
-Every call to `pull(N)` MUST terminate (assuming all computor functions terminate).
+**Preconditions:**
+* `nodeName` MUST be a concrete expression (no free variables)
+* `nodeName` MUST match a schema (throw `InvalidNodeError` otherwise)
+* `nodeName` MUST be a source node (throw `InvalidSetError` if not)
 
-**Proof sketch:** The graph is acyclic, so recursive calls form a DAG traversal. Each node is visited at most once per pull due to freshness caching.
+**Effects:**
+1. Store `value` at canonical key
+2. Mark `nodeName` as `up-to-date`
+3. Mark all **materialized** transitive dependents as `potentially-outdated`
 
-### P3: Computor Invoked At Most Once Per Pull
+**REQ-SET-01:** `set` MUST return a `Promise<void>`.
 
-A node's computor MUST be invoked at most once per `pull()` operation, even if the node appears in multiple dependency paths.
+**REQ-SET-02:** `set` MUST throw `NonConcreteNodeError` if `nodeName` contains free variables.
 
-**Note:** This is a requirement, not a mechanism. Implementations are free to achieve this property through any means (e.g., memoization, in-flight tracking, freshness checks, etc.).
+**REQ-SET-03:** `set` MUST throw `InvalidNodeError` if no schema matches.
 
-### P4: Freshness Preservation
+**REQ-SET-04:** `set` MUST throw `InvalidSetError` if `nodeName` is not a source node.
 
-After `pull(N)` completes:
-* N is marked `up-to-date`
-* All nodes on which N (transitively) depends are marked `up-to-date`
-* All nodes that (transitively) depend on N remain `potentially-outdated` (unless optimized by downstream propagation)
+**REQ-SET-05:** All operations MUST be executed atomically in a single database batch.
 
----
+**REQ-SET-06:** Only dependents that have been previously materialized (pulled) are marked outdated. Unmaterialized nodes remain unmaterialized.
 
-## Optimization: Unchanged Propagation
+### 2.3 Unchanged Propagation Optimization
 
-When a computor returns `Unchanged`:
-1. The node's value is NOT updated (keeps old value)
-2. The node is marked `up-to-date`
-3. Downstream propagation MAY occur (see below)
+**REQ-UNCH-01:** When a computor returns `Unchanged`:
+1. Node's value MUST NOT be updated (keeps old value)
+2. Node MUST be marked `up-to-date`
 
-**Soundness Requirement (Normative):**
-
-An implementation SHOULD mark a dependent node `D` up-to-date without recomputing `D` **if and only if** it can **prove** that `D`'s value would be unchanged under recomputation given the current values of its dependencies.
-
-**Formally:**
-```
-mark_up_to_date(D) without recomputation is valid ⟺
-  computor_D(current_input_values, stored_value(D), bindings(D)) 
-    would return stored_value(D) or Unchanged
-```
+**REQ-UNCH-02:** An implementation MAY mark dependent D `up-to-date` without recomputing **if and only if** it can prove D's value would be unchanged given current input values.
 
 ---
 
-## Additional Edge Cases
+## 3. Required Interfaces (Normative)
 
-### Missing Values
-
-If a node is marked `up-to-date` but has no stored value, this is an error state that MUST throw an exception.
-
-**Rationale:** An `up-to-date` node guarantees value availability. If the value is missing, the database is corrupted.
-
-### Leaf Nodes
-
-Leaf nodes (nodes with no inputs) typically have pass-through computors:
-
-```javascript
-{
-  output: "leaf",
-  inputs: [],
-  computor: async (_inputs, oldValue) => oldValue || defaultValue
-}
-```
-
-These nodes are written directly via `set()` and serve as entry points to the graph.
-
----
-
-## Implementation Notes
-
-### Batching
-
-All database operations within a single `set` call MUST be batched and executed atomically.
-
-Database operations during `pull` MUST be batched per node recomputation.
-
-### Dependents Map
-
-To efficiently implement downstream propagation and marking potentially-outdated, implementations SHOULD pre-compute a reverse dependency map:
-
-```javascript
-dependentsMap: Map<NodeName, Array<Node>>
-```
-
-This allows O(1) lookup of a node's immediate dependents.
-
----
-
-## Testing Strategy
-
-### Property-Based Testing
-
-Tests SHOULD verify:
-1. **Correctness:** `pull(N)` equals `recompute_from_scratch(N)` for random graphs and states
-2. **Idempotence:** `pull(N); pull(N)` equals `pull(N)` (second call should be fast)
-3. **Consistency:** After `set(N, v); pull(M)`, all freshness states satisfy invariants
-
-### Scenario Testing
-
-Tests MUST cover:
-1. Linear chains (A → B → C)
-2. Diamond graphs (A → B,C → D)
-3. Unchanged propagation (node returns `Unchanged`, dependents skip recomputation)
-4. Mixed freshness states (some up-to-date, some potentially-outdated)
-
----
-
-## JavaScript Interfaces & Conformance Contract (Normative)
-
-This section defines the concrete JavaScript interfaces, API contracts, and error taxonomy that implementations MUST provide and tests MAY observe. These definitions enable deterministic test synthesis and unambiguous implementation audits.
-
-### 1) Core Runtime Types (Normative)
-
-#### 1.1 `ConstValue`
-
-A `ConstValue` represents a typed constant value that can appear in expressions or variable bindings.
-
-**Type Definition:**
+### 3.1 Factory Function
 
 ```typescript
-type ConstValue =
-  | { type: "string"; value: string }
-  | { type: "int"; value: number };
+function makeDependencyGraph(
+  rootDatabase: RootDatabase,
+  nodeDefs: NodeDef[]
+): DependencyGraph;
 ```
 
-**Normative Requirements:**
+**REQ-FACTORY-01:** MUST validate all schemas at construction (throw on parse errors, scope violations, overlaps, cycles).
 
-* `type` MUST be either `"string"` or `"int"`.
-* For `type: "string"`, the `value` field MUST contain the **decoded** string content (escape sequences interpreted).
-* For `type: "int"`, the `value` field MUST be a JavaScript number representing a natural integer (0, 1, 2, ...).
-* Parsing MUST reject non-natural numbers (negative, floats, etc.) per the grammar rules.
+**REQ-FACTORY-02:** MUST compute schema identifier and obtain schema-namespaced storage via `rootDatabase.getSchemaStorage(schemaId)`.
 
-**Examples:**
+**REQ-FACTORY-03:** MUST NOT mutate `nodeDefs` or `rootDatabase`.
 
-```javascript
-{ type: "string", value: "hello" }        // String constant
-{ type: "int", value: 42 }                // Natural number constant
-{ type: "string", value: "line1\nline2" } // With decoded newline
-```
+### 3.2 DependencyGraph Interface
 
-#### 1.2 `Unchanged`
-
-`Unchanged` is a unique sentinel value that computors MAY return to indicate that the computed value has not changed.
-
-**Normative Requirements:**
-
-* `Unchanged` MUST be a unique sentinel value that cannot be confused with any valid `DatabaseValue`.
-* Implementations MUST expose a type guard function `isUnchanged(value): boolean` that returns `true` if and only if `value` is the `Unchanged` sentinel.
-* The `Unchanged` sentinel MUST be obtained via a factory function `makeUnchanged()` or equivalent.
-
-**Example Usage:**
-
-```javascript
-const unchanged = makeUnchanged();
-if (isUnchanged(value)) {
-  // Handle unchanged case
+```typescript
+interface DependencyGraph {
+  pull(nodeName: string): Promise<DatabaseValue>;
+  set(nodeName: string, value: DatabaseValue): Promise<void>;
+  getStorage(): SchemaStorage;
 }
 ```
 
-**Observable Behavior:**
+**REQ-IFACE-01:** Implementations MUST provide type guard `isDependencyGraph(value): boolean`.
 
-* When a computor returns `Unchanged`, the node's stored value MUST NOT be updated.
-* The node MUST be marked `up-to-date`.
-* Implementations MAY propagate the `up-to-date` state to downstream dependents (see "Optimization: Unchanged Propagation" section).
+**REQ-IFACE-02:** `getStorage()` MUST return the `SchemaStorage` instance for the graph.
 
-#### 1.3 `DatabaseValue`
+### 3.3 Database Interfaces
 
-A `DatabaseValue` represents any value that can be stored and retrieved through the database interfaces (`GenericDatabase`, `SchemaStorage`, etc.).
+#### GenericDatabase<T>
 
-**Normative Requirements:**
+```typescript
+interface GenericDatabase<T> {
+  get(key: string): Promise<T | undefined>;
+  put(key: string, value: T): Promise<void>;
+  del(key: string): Promise<void>;
+  putOp(key: string, value: T): DatabaseBatchOperation;
+  delOp(key: string): DatabaseBatchOperation;
+  keys(): AsyncIterable<string>;
+  clear(): Promise<void>;
+}
+```
 
-* `DatabaseValue` MUST be an arbitrary JSON-serializable object (or implementation-defined type that is stable across database roundtrips).
-* Values MUST round-trip through the database interfaces without semantic change: `get(k)` after `put(k, v)` MUST return a value semantically equivalent to `v`.
-* If the database supports richer types beyond JSON, tests MUST NOT assume those types unless explicitly documented.
+**REQ-DB-01:** Values MUST round-trip without semantic change.
 
-**Type Guard:**
+#### SchemaStorage
 
-Implementations SHOULD provide a type guard `isDatabaseValue(value): boolean` to distinguish `DatabaseValue` from `Freshness` or other internal types.
+```typescript
+interface SchemaStorage {
+  values: GenericDatabase<DatabaseValue>;      // Node output values
+  freshness: GenericDatabase<Freshness>;       // Node freshness state
+  inputs: GenericDatabase<InputsRecord>;       // Node input dependencies
+  revdeps: GenericDatabase<1>;                 // Reverse dependency edges
+  batch(operations: DatabaseBatchOperation[]): Promise<void>;
+}
 
-### 2) `Computor` (Normative)
+type InputsRecord = { inputs: string[] };
+```
 
-A `Computor` is a deterministic function that computes a node's value based on its input values, previous value, and variable bindings.
+**REQ-STORAGE-01:** `values` MUST store node values keyed by canonical node name.
 
-**Function Signature:**
+**REQ-STORAGE-02:** `freshness` MUST store conceptual freshness (`"up-to-date" | "potentially-outdated"`) keyed by canonical node name.
+
+**REQ-STORAGE-03:** `inputs` MUST store dependency arrays keyed by canonical node name.
+
+**REQ-STORAGE-04:** `revdeps` MUST support querying dependents of a node (specific key format is implementation-defined).
+
+**REQ-STORAGE-05:** `batch()` MUST execute operations atomically (all-or-nothing).
+
+#### RootDatabase
+
+```typescript
+interface RootDatabase {
+  getSchemaStorage(schemaId: string): SchemaStorage;
+  listSchemas(): AsyncIterable<string>;
+  close(): Promise<void>;
+}
+```
+
+**REQ-ROOT-01:** `getSchemaStorage()` MUST return isolated storage per schema identifier.
+
+**REQ-ROOT-02:** Different schema identifiers MUST NOT share storage or cause key collisions.
+
+### 3.4 Computor Signature
 
 ```typescript
 type Computor = (
@@ -800,721 +306,298 @@ type Computor = (
 ) => Promise<DatabaseValue | Unchanged>;
 ```
 
-**Normative Requirements:**
+**REQ-COMP-01:** Computors MUST be deterministic with respect to `(inputs, oldValue, bindings)`.
 
-* Computors MUST be **asynchronous** and return a `Promise`.
-* Computors MUST be **deterministic** with respect to `(inputs, oldValue, bindings)`: given the same inputs, old value, and bindings, they MUST produce the same result.
-* Computors MUST NOT have hidden side effects that affect their output (no hidden state, no nondeterminism from random number generators, timestamps, etc.).
-* Computors MUST NOT be invoked more than once per node per top-level `pull()` call (property P3 from the spec).
-* Computors MAY return `Unchanged` to indicate that the value has not changed. This is observable only through storage behavior (value not replaced) and potentially through debug instrumentation if provided.
+**REQ-COMP-02:** Computors MUST NOT have hidden side effects affecting output.
 
-**Parameters:**
+**REQ-COMP-03:** Computors MAY return `Unchanged` sentinel to indicate no value change.
 
-* `inputs: DatabaseValue[]` — Ordered array of input node values. Length and order MUST match the node schema's `inputs` array.
-* `oldValue: DatabaseValue | undefined` — The node's previous stored value, or `undefined` if no value exists yet.
-* `bindings: Record<string, ConstValue>` — Variable-to-constant mappings extracted from pattern matching. Empty object `{}` for non-parameterized nodes.
+**REQ-COMP-04:** Implementations MUST expose `makeUnchanged()` factory and `isUnchanged(value)` type guard.
 
-**Return Value:**
+### 3.5 Error Taxonomy
 
-* `DatabaseValue` — The newly computed value, which will be stored.
-* `Unchanged` — The sentinel value indicating no change. The old value will be retained.
+All errors MUST provide stable `.name` property and required fields:
 
-**Note on Synchronous Computors:**
+| Error Name | Required Fields | Thrown When |
+|------------|----------------|-------------|
+| `InvalidExpressionError` | `expression: string` | Invalid expression syntax |
+| `NonConcreteNodeError` | `pattern: string` | Expression contains free variables in pull/set |
+| `InvalidNodeError` | `nodeName: string` | No schema matches the node |
+| `InvalidSetError` | `nodeName: string` | Node is not a source node |
+| `SchemaOverlapError` | `patterns: string[]` | Overlapping output patterns at init |
+| `InvalidSchemaError` | `schemaOutput: string` | Schema definition problems at init |
+| `SchemaCycleError` | `cycle: string[]` | Cyclic schema dependencies at init |
+| `MissingValueError` | `nodeName: string` | Up-to-date node has no stored value |
 
-While this specification defines computors as asynchronous (`Promise`-returning), implementations MAY accept synchronous computor functions for convenience and automatically wrap them in `Promise.resolve()`. However, the canonical signature and all interface contracts MUST treat computors as asynchronous.
+**REQ-ERR-01:** All error types MUST provide type guard functions (e.g., `isInvalidExpressionError(value): boolean`).
 
-### 3) Node Schema Definition Object Shape (`NodeDef`) (Normative)
+---
 
-A `NodeDef` defines a node schema in the dependency graph.
+## 4. Persistence & Materialization (Normative)
 
-**Type Definition:**
+### 4.1 Materialization Markers
 
-```typescript
-type NodeDef = {
-  output: string;     // Expression string (pattern or concrete)
-  inputs: string[];   // Array of expression strings (dependencies)
-  computor: Computor; // Async function that computes the output
-};
+**REQ-PERSIST-01:** Implementations MUST persist sufficient markers to reconstruct materialized node set after restart.
+
+**REQ-PERSIST-02:** If node N was materialized before restart, then after restart (same `RootDatabase`, same schema):
+* `set(source, v)` MUST mark all previously materialized transitive dependents as `potentially-outdated`
+* This MUST occur WITHOUT requiring re-pull
+
+**REQ-PERSIST-03:** The specific persistence mechanism (metadata keys, reverse index, etc.) is implementation-defined.
+
+### 4.2 Invariants
+
+The graph MUST maintain these invariants for all materialized nodes:
+
+**I1 (Outdated Propagation):** If materialized node N is `potentially-outdated`, all materialized transitive dependents are also `potentially-outdated`.
+
+**I2 (Up-to-Date Upstream):** If materialized node N is `up-to-date`, all materialized transitive dependencies are also `up-to-date`.
+
+**I3 (Value Consistency):** If materialized node N is `up-to-date`, its value equals what would be computed by recursively evaluating dependencies and applying computor.
+
+### 4.3 Correctness Properties
+
+**P1 (Semantic Equivalence):** `pull(N)` produces same result as recomputing from scratch.
+
+**P2 (Progress):** Every `pull(N)` call terminates (assuming computors terminate).
+
+**P3 (Single Invocation):** Each computor invoked at most once per top-level `pull()`.
+
+**P4 (Freshness Preservation):** After `pull(N)`, N and all transitive dependencies are `up-to-date`.
+
+---
+
+## 5. Test-Visible Contract (Normative)
+
+This section defines exactly what conformance tests MAY assert. All other implementation details are internal and subject to change.
+
+### 5.1 Public API
+
+Tests MAY assert the existence and signatures of:
+
+* `makeDependencyGraph(rootDatabase: RootDatabase, nodeDefs: NodeDef[]): DependencyGraph` — Factory function
+* `DependencyGraph.pull(nodeName: string): Promise<DatabaseValue>` — Retrieve/compute node value
+* `DependencyGraph.set(nodeName: string, value: DatabaseValue): Promise<void>` — Write source node value
+* `DependencyGraph.getStorage(): SchemaStorage` — Access schema storage for testing
+* `isDependencyGraph(value): boolean` — Type guard
+
+### 5.2 Observable Error Taxonomy
+
+Tests MAY assert error names (via `.name` property) and required fields (see section 3.5 for complete taxonomy).
+
+### 5.3 Canonicalization Requirement
+
+Tests MAY assert:
+* `pull("event_context('id')")` and `pull("event_context(\"id\")")` behave identically (quoting normalization)
+* Database keys use single-quote format for strings
+* See REQ-CANON-03 and REQ-CANON-04 in section 1.3
+
+### 5.4 Freshness Observability
+
+**REQ-FRESH-01:** Implementations MUST expose the conceptual freshness state via `SchemaStorage.freshness`:
+
+* `"up-to-date"` — Node value is consistent with dependencies
+* `"potentially-outdated"` — Node may need recomputation
+* `undefined` — Node is not materialized
+
+Tests MAY assert freshness state via `schemaStorage.freshness.get(canonicalNodeName)`.
+
+**REQ-FRESH-02:** Internal freshness tracking mechanisms (versions, epochs, etc.) are implementation-defined and NOT observable to tests.
+
+### 5.5 Restart Resilience
+
+**REQ-RESTART-01:** Materialized nodes MUST remain materialized across graph restarts (same `RootDatabase`, same schema).
+
+**REQ-RESTART-02:** After restart, `set(source, value)` MUST invalidate all previously materialized transitive dependents WITHOUT requiring re-pull.
+
+Tests MAY assert:
+* Pull a node, restart graph instance, call `set()` on upstream source, verify downstream node is marked `potentially-outdated`
+
+### 5.6 Behavioral Guarantees
+
+**REQ-BEHAVE-01 = P1** (see §4.3): `pull(N)` MUST produce the same result as recomputing all values from scratch (Semantic Equivalence).
+
+**REQ-BEHAVE-02 = P3** (see §4.3): Each computor MUST be invoked at most once per top-level `pull()` call (Single Invocation).
+
+**REQ-BEHAVE-03 = P4** (see §4.3): After `pull(N)` completes, N and all its transitive dependencies MUST be marked `up-to-date` (Freshness Preservation).
+
+---
+
+## 6. Appendices (Non-Normative)
+
+### Appendix A: Examples
+
+#### A.1 Simple Linear Chain
+
+**Schema:**
+```javascript
+[
+  { output: "all_events", inputs: [], 
+    computor: async ([], old) => old || { events: [] } },
+  { output: "meta_events", inputs: ["all_events"], 
+    computor: async ([all]) => extractMeta(all) },
+  { output: "event_context(e)", inputs: ["meta_events"], 
+    computor: async ([meta], old, {e}) => meta.find(ev => ev.id === e.value) }
+]
 ```
 
-**Normative Requirements:**
+**Operations:**
+```javascript
+await graph.set('all_events', {events: [{id: 'id123', data: '...'}]});
+const result = await graph.pull("event_context('id123')");
+// Returns event with id='id123'
+```
 
-* `output` MUST be a valid expression string that parses according to the Expression Grammar.
-* Each entry in `inputs` MUST be a valid expression string that parses according to the Expression Grammar.
-* Variables in `output` MUST be a superset of all variables appearing in all `inputs` expressions (Rule 1: Output Variables Must Cover Inputs).
-* The schema set MUST be rejected at graph initialization if any two `output` patterns overlap (see "Schema Overlap Detection" section).
-* The schema set MUST be rejected at graph initialization if the schema structure forms a cycle (schema-level acyclicity requirement).
-* `computor` MUST be a valid `Computor` function as defined above.
-
-**Example:**
+#### A.2 Multiple Parameters
 
 ```javascript
-{
-  output: "enhanced_event(e, p)",
-  inputs: ["event_context(e)", "photo(p)"],
-  computor: async (inputs, oldValue, bindings) => {
-    const [context, photo] = inputs;
-    return { ...context, photo, eventId: bindings.e.value };
-  }
-}
+[
+  { output: "all_events", inputs: [], 
+    computor: async ([], old) => old },
+  { output: "event_context(e)", inputs: ["all_events"],
+    computor: async ([all], _, {e}) => all.events.find(ev => ev.id === e.value) },
+  { output: "photo(p)", inputs: ["photo_storage"],
+    computor: async ([storage], _, {p}) => storage.photos[p.value] },
+  { output: "enhanced_event(e, p)", 
+    inputs: ["event_context(e)", "photo(p)"],
+    computor: async ([ctx, photo], _, {e, p}) => combine(ctx, photo) }
+]
 ```
 
-### 4) Public API: Graph Construction and Operations (Normative)
-
-#### 4.1 Factory Function
-
-**Function Signature:**
-
-```typescript
-function makeDependencyGraph(
-  rootDatabase: RootDatabase,
-  nodeDefs: NodeDef[]
-): DependencyGraph;
-```
-
-**Normative Requirements:**
-
-* `makeDependencyGraph` MUST be the only public way to construct a `DependencyGraph` instance.
-* The function MUST validate all schemas at construction time (synchronously or during first use) and throw on:
-  * Parse errors (invalid expression syntax)
-  * Variable scope rule violations (Rule 1)
-  * Overlapping output patterns
-  * Schema cycles
-* The function MUST compile and cache any derived artifacts needed for efficient operation (variable lists, canonical forms, pattern indexes, etc.), but the internal representation is not prescribed.
-* The function MUST compute a schema hash from the canonical representation of all node schemas and use it to obtain schema-namespaced storage via `rootDatabase.getSchemaStorage(schemaHash)`.
-* The function MUST NOT mutate the provided `nodeDefs` array or `rootDatabase` object.
-
-**Returns:**
-
-A `DependencyGraph` instance that exposes the operations defined below.
-
-**Throws:**
-
-* `InvalidExpressionError` — If any `output` or `inputs` expression fails to parse.
-* `InvalidSchemaError` — If variable scope rules are violated or other schema definition problems occur.
-* `SchemaOverlapError` — If two or more schemas have overlapping `output` patterns.
-* `SchemaCycleError` — If the schema structure is cyclic.
-
-#### 4.2 `DependencyGraph` Interface
-
-**Type Definition:**
-
-```typescript
-interface DependencyGraph {
-  pull(nodeName: string): Promise<DatabaseValue>;
-  set(nodeName: string, value: DatabaseValue): Promise<void>;
-}
-```
-
-**Type Guard:**
-
-Implementations MUST provide a type guard function `isDependencyGraph(value): boolean`.
-
-#### 4.3 `pull` Method
-
-**Signature:**
-
-```typescript
-pull(nodeName: string): Promise<DatabaseValue>
-```
-
-**Normative Requirements:**
-
-* `pull` MUST accept any string that parses as a valid expression according to the Expression Grammar.
-* `pull` MUST accept expressions with non-canonical quoting (e.g., double quotes if supported) and canonicalize them internally before processing.
-* `pull` MUST reject expressions with free variables (non-concrete expressions) by throwing `NonConcreteNodeError`.
-* `pull` MUST throw `InvalidNodeError` if the concrete node has no matching schema.
-* `pull` MUST return a `Promise` that resolves to the node's computed `DatabaseValue`.
-* `pull` MUST ensure that each node's computor is invoked at most once per top-level `pull()` call (property P3).
-* `pull` MUST produce the same result as recomputing all values from scratch, ignoring all cached state (Correctness Invariant, property P1).
-
-**Behavior:**
-
-1. Parse and canonicalize `nodeName`.
-2. Validate that the expression is concrete (no free variables).
-3. Find or instantiate the node schema.
-4. Check freshness:
-   * If `up-to-date`: Return cached value immediately.
-   * If `potentially-outdated` or missing: Recursively pull inputs, recompute if necessary, store result, mark `up-to-date`.
-5. Return the node's value.
-
-**Throws:**
-
-* `InvalidExpressionError` — If `nodeName` does not parse as a valid expression.
-* `NonConcreteNodeError` — If `nodeName` contains free variables.
-* `InvalidNodeError` — If no schema matches.
-* `MissingValueError` — If the node is marked `up-to-date` but has no stored value (database corruption).
-
-#### 4.4 `set` Method
-
-**Signature:**
-
-```typescript
-set(nodeName: string, value: DatabaseValue): Promise<void>
-```
-
-**Normative Requirements:**
-
-* `set` MUST accept any string that parses as a valid expression according to the Expression Grammar.
-* `set` MUST accept expressions with non-canonical quoting and canonicalize them internally before processing.
-* `set` MUST reject expressions with free variables (non-concrete expressions) by throwing `NonConcreteNodeError`.
-* `set` MUST throw `InvalidNodeError` if the concrete node has no matching schema.
-* `set` MUST reject non-source nodes by throwing `InvalidSetError`.
-* `set` MUST store the value at the canonical node key.
-* `set` MUST mark the node as `up-to-date`.
-* `set` MUST mark all materialized transitive dependents as `potentially-outdated`.
-* All operations MUST be performed atomically in a single database batch.
-
-**Behavior:**
-
-1. Parse and canonicalize `nodeName`.
-2. Validate that the expression is concrete (no free variables).
-3. Find or validate that the node schema exists.
-4. Validate that the node is a source node (see "Source Nodes" section).
-5. Store `value` at the canonical key.
-6. Mark the node as `up-to-date`.
-7. Recursively mark all dependents as `potentially-outdated`.
-8. Commit all operations atomically via `schemaStorage.batch()`.
-
-**Throws:**
-
-* `InvalidExpressionError` — If `nodeName` does not parse as a valid expression.
-* `NonConcreteNodeError` — If `nodeName` contains free variables.
-* `InvalidNodeError` — If no schema matches.
-* `InvalidSetError` — If the node is not a source node.
-
-### 5) Canonicalization at API Boundaries and DB Keys (Normative)
-
-**Canonical Form Definition:**
-
-For any expression string `expr`, the canonical form is defined as:
-
-```
-canonical(expr) := serialize(parse(expr))
-```
-
-Where:
-* `parse(expr)` parses the expression into an AST.
-* `serialize(ast)` produces the canonical string representation.
-
-**Normative Requirements:**
-
-* All database keys for node values MUST use `canonical(nodeName)`.
-* Freshness state MUST be persisted and retrievable by canonical node name, but the specific key format is implementation-defined.
-* `pull(nodeName)` and `set(nodeName, value)` MUST behave as if they first compute `canonical(nodeName)` and then operate on that canonical form.
-* Tests MUST NOT assert specific key formats or internal storage organization.
-* Tests SHOULD use the public `DependencyGraph` interface and MAY access `SchemaStorage` for verification purposes via implementation-provided test helpers.
-
-**Quoting Rules:**
-
-* The canonical form MUST use **single quotes** (`'...'`) for string literals.
-* Implementations MAY accept **double quotes** (`"..."`) in input expressions for convenience.
-* If double quotes are accepted, they MUST be canonicalized to single quotes in `serialize()`.
-* If double quotes are NOT supported, the parser MUST reject them with `InvalidExpressionError`.
-
-**Recommendation:**
-
-Implementations SHOULD accept double quotes in parsing and canonicalize to single quotes for maximum flexibility.
-
-**Examples:**
+#### A.3 Variable Sharing
 
 ```javascript
-canonical('event_context("id123")')  // → "event_context('id123')"
-canonical("event_context('id123')")  // → "event_context('id123')"
-canonical("all_events")              // → "all_events"
-canonical("fun(42, 'test')")         // → "fun(42,'test')"
+[
+  { output: "status(e)", inputs: ["event_data"],
+    computor: async ([data], _, {e}) => data.statuses[e.value] },
+  { output: "metadata(e)", inputs: ["event_data"],
+    computor: async ([data], _, {e}) => data.metadata[e.value] },
+  { output: "full_event(e)", 
+    inputs: ["status(e)", "metadata(e)"],
+    computor: async ([status, meta], _, {e}) => ({id: e.value, status, meta}) }
+]
 ```
 
-### 6) Required Database Interface for Conformance Tests (Normative)
+### Appendix B: Recommended Storage Architecture
 
-The dependency graph implementation uses a three-tier database architecture to support schema-namespaced storage with typed sublevels. This section defines the normative interfaces that implementations MUST provide.
+This section describes the reference implementation's storage design. Implementations MAY use different designs as long as they satisfy the normative requirements.
 
-#### 6.1 `GenericDatabase<T>` Interface
+#### B.1 Recommended Reverse Dependency Storage
 
-A `GenericDatabase<T>` represents a key-value store for a specific value type `T`.
+**Edge-Based Storage:** Store each reverse dependency as a separate key:
 
-**Type Definition:**
+* **Key format:** `"${inputNode}\x00${dependentNode}"`
+* **Value:** Constant `1`
 
-```typescript
-interface GenericDatabase<T> {
-  // Store or overwrite a value at key
-  get(key: string): Promise<T | undefined>;
-  
-  // Retrieve stored value or undefined if missing
-  put(key: string, value: T): Promise<void>;
-  
-  // Delete a value at key
-  del(key: string): Promise<void>;
-  
-  // Create a batch put operation (for atomic batching)
-  putOp(key: string, value: T): DatabaseBatchOperation;
-  
-  // Create a batch delete operation (for atomic batching)
-  delOp(key: string): DatabaseBatchOperation;
-  
-  // Iterate over all keys
-  keys(): AsyncIterable<string>;
-  
-  // Clear all data
-  clear(): Promise<void>;
-}
+**Benefits:**
+* Efficient iteration without deserializing arrays
+* Incremental updates (add edge without reading full array)
+* Scales better for high fan-out nodes
 
-type DatabaseBatchOperation =
-  | { type: "put"; sublevel: GenericDatabase<any>; key: string; value: any }
-  | { type: "del"; sublevel: GenericDatabase<any>; key: string };
-```
+**Alternative:** Implementations MAY use adjacency lists (`inputNode -> [dependent1, dependent2, ...]`) if preferred.
 
-**Normative Requirements:**
+#### B.2 Recommended Schema Identifier Algorithm
 
-* `get(key)` MUST return the stored value or `undefined` if no value exists at `key`.
-* `put(key, value)` MUST store `value` at `key`, overwriting any existing value.
-* `del(key)` MUST remove the value at `key` if it exists.
-* `putOp(key, value)` MUST return a batch operation descriptor that can be executed via `SchemaStorage.batch()`.
-* `delOp(key)` MUST return a batch operation descriptor that can be executed via `SchemaStorage.batch()`.
-* `keys()` MUST return an async iterator over all keys in the database.
-* `clear()` MUST remove all key-value pairs from the database.
-* Values MUST round-trip without semantic change: after `put(k, v)`, `get(k)` MUST return a value semantically equivalent to `v`.
-
-#### 6.2 `SchemaStorage` Interface
-
-A `SchemaStorage` represents isolated storage for a single dependency graph schema instance. All data (values, freshness, indices) is namespaced per schema hash.
-
-**Type Definition:**
-
-```typescript
-type ValuesDatabase = GenericDatabase<DatabaseValue>;
-type FreshnessDatabase = GenericDatabase<Freshness>;
-type InputsDatabase = GenericDatabase<InputsRecord>;
-type RevdepsDatabase = GenericDatabase<1>; // Edge-based storage: composite key -> constant 1
-
-type InputsRecord = {
-  inputs: string[]; // Array of canonical input node names
-};
-
-interface SchemaStorage {
-  // Node output values (key: canonical node name)
-  values: ValuesDatabase;
-  
-  // Node freshness state (key: canonical node name)
-  freshness: FreshnessDatabase;
-  
-  // Node inputs index (key: canonical node name, value: inputs array)
-  inputs: InputsDatabase;
-  
-  // Reverse dependencies (key: "${inputNode}\x00${dependentNode}", value: 1)
-  revdeps: RevdepsDatabase;
-  
-  // Atomically execute a batch of operations
-  batch(operations: DatabaseBatchOperation[]): Promise<void>;
-}
-```
-
-**Normative Requirements:**
-
-* `values` MUST store node computed values keyed by canonical node name.
-* `freshness` MUST store conceptual freshness state (`"up-to-date"` or `"potentially-outdated"`) keyed by canonical node name.
-* `inputs` MUST store node input dependency arrays keyed by canonical node name.
-* `revdeps` MUST store reverse dependency edges using composite keys `"${inputNode}\x00${dependentNode}"` mapping to the constant value `1`.
-  * This edge-based storage improves performance for large fan-out scenarios by avoiding array serialization.
-* `batch(operations)` MUST execute all operations atomically: either all succeed or all fail (no partial application).
-* `batch(operations)` operations MUST be applied in the order specified in the `operations` array.
-
-**Rationale for Reverse Dependency Storage:**
-
-The `revdeps` database uses edge-based storage where each edge is a separate key rather than storing arrays of dependents. This design:
-* Enables efficient iteration over dependents without deserializing large arrays
-* Supports incremental updates (adding edges without reading/writing full arrays)
-* Scales better for nodes with high fan-out (many dependents)
-
-#### 6.3 `RootDatabase` Interface
-
-A `RootDatabase` provides schema-namespaced storage using database sublevels. Multiple dependency graph instances with different schemas can coexist in the same root database without key collisions.
-
-**Type Definition:**
-
-```typescript
-interface RootDatabase {
-  // Get schema-specific storage (creates if needed)
-  getSchemaStorage(schemaHash: string): SchemaStorage;
-  
-  // List all schema hashes in the database
-  listSchemas(): AsyncIterable<string>;
-  
-  // Close the database connection
-  close(): Promise<void>;
-}
-```
-
-**Normative Requirements:**
-
-* `getSchemaStorage(schemaHash)` MUST return a `SchemaStorage` instance isolated to the specified schema hash.
-  * Multiple calls with the same `schemaHash` SHOULD return the same instance (caching is recommended).
-  * Different schema hashes MUST result in isolated storage namespaces (no key collisions).
-* `listSchemas()` MUST return an async iterator over all schema hashes that have been used.
-* `close()` MUST cleanly shut down the database connection and release resources.
-
-**Schema Hash Computation:**
-
-The schema hash is computed from the canonical representation of all node schemas:
-
+**Algorithm:**
 ```javascript
 const schemaRepresentation = compiledNodes
-  .map((node) => ({
+  .map(node => ({
     output: node.canonicalOutput,
     inputs: node.canonicalInputs,
   }))
   .sort((a, b) => a.output.localeCompare(b.output));
 
 const schemaJson = JSON.stringify(schemaRepresentation);
-const schemaHash = crypto.createHash("md5").update(schemaJson).digest("hex").substring(0, 16);
+const schemaId = crypto.createHash("md5")
+  .update(schemaJson)
+  .digest("hex")
+  .substring(0, 16);
 ```
 
-This ensures that graphs with identical schemas share storage, while graphs with different schemas are isolated.
+**Purpose:** Ensures graphs with identical schemas share storage; different schemas are isolated.
 
-**Database vs. Graph API:**
+**Alternative:** Implementations MAY use different algorithms (SHA-256, UUIDs, etc.) or namespacing strategies.
 
-* The `RootDatabase` interface represents **raw storage** without dependency tracking or invalidation logic.
-* Only `graph.set()` performs invalidation and marks dependents as `potentially-outdated`.
-* Tests MAY use `schemaStorage.values.put()` only as a seeding helper to set up initial state, but MUST use `graph.set()` for operations that should trigger dependency propagation.
-* Tests MUST NOT assume specific internal key formats or storage organization beyond what is documented here.
+#### B.3 Optional GraphStorage Helper Wrapper
 
-### 7) Materialization Markers (Normative Behavioral Contract)
+Implementations MAY provide a convenience wrapper extending `SchemaStorage`:
 
-Implementations MUST persist sufficient information to reconstruct the set of materialized nodes after a restart.
+```typescript
+interface GraphStorage extends SchemaStorage {
+  withBatch<T>(fn: (batch: BatchBuilder) => Promise<T>): Promise<T>;
+  ensureMaterialized(node: string, inputs: string[], batch: BatchBuilder): Promise<void>;
+  ensureReverseDepsIndexed(node: string, inputs: string[], batch: BatchBuilder): Promise<void>;
+  listDependents(input: string): Promise<string[]>;
+  getInputs(node: string): Promise<string[] | null>;
+  listMaterializedNodes(): Promise<string[]>;
+}
+```
 
-**Normative Requirements:**
+This is non-normative and not required for conformance.
 
-* A **materialized node** is any concrete node for which the implementation maintains dependency tracking and freshness state.
-* **Efficiency principle:** Only materialized nodes consume storage and participate in invalidation propagation. Nodes that have never been pulled do not exist in the dependency tracking system, enabling the graph to support infinite potential instantiations without memory overhead.
-* If a node is materialized before a graph restart, then after restart (new `DependencyGraph` instance over the same `RootDatabase`):
-  * `set(source, v)` MUST mark all previously materialized transitive dependents as `potentially-outdated`
-  * This MUST occur **without** requiring re-pull of those dependents to rediscover them.
-  * Unmaterialized nodes (never pulled before or after restart) remain unmaterialized.
-* The specific mechanism for persisting materialization markers (separate keys, metadata, reverse dependency index, etc.) is **not prescribed**.
-* Tests MUST validate this property through behavioral assertions (e.g., after restart, a previously-pulled dependent is marked `potentially-outdated` after source `set()`) and MUST NOT assert specific key formats or marker structures.
+### Appendix C: Optional Debug Interface
 
-**Implementation Guidance (Non-Normative):**
-
-The reference implementation achieves restart resilience through:
-
-1. **Inputs Index (`SchemaStorage.inputs`)**: When a node is materialized, its input dependencies are written to the `inputs` database with the record `{ inputs: [canonicalInput1, canonicalInput2, ...] }`. This serves as the materialization marker.
-
-2. **Reverse Dependency Index (`SchemaStorage.revdeps`)**: For each input dependency, a reverse edge is written as `"${inputNode}\x00${dependentNode}" -> 1`. This enables efficient dependent lookup during invalidation without scanning all nodes.
-
-3. **Schema Hash Namespacing**: Multiple graph instances with different schemas are isolated via `schemaHash` prefixes in the `RootDatabase`, preventing collisions.
-
-After restart:
-* The new graph instance reconnects to the same schema storage via `rootDatabase.getSchemaStorage(schemaHash)`.
-* When `set(source, v)` is called, the implementation queries `schemaStorage.revdeps` to find all dependents and marks them as `potentially-outdated`.
-* No explicit re-discovery or scanning is required.
-
-### 8) Observability and Test Hooks (Normative)
-
-#### 8.1 Freshness Observability Policy
-
-The **conceptual freshness state** (`up-to-date` or `potentially-outdated`) MUST be observable via the `SchemaStorage.freshness` database.
-
-**Rationale:**
-
-While implementations may use various internal mechanisms (versions, epochs, etc.) to track freshness, the resulting state is a normative part of the system's contract. Tests must be able to verify that nodes are correctly marked as `potentially-outdated` after invalidation.
-
-**Conformance Test Restrictions:**
-
-* Tests MUST use `schemaStorage.freshness.get(canonicalNodeName)` to assert freshness state.
-* The value returned MUST be the conceptual state: `"up-to-date"`, `"potentially-outdated"`, or `undefined` (if not materialized).
-* **Unmaterialized nodes:** When a node has never been pulled, `schemaStorage.freshness.get()` returns `undefined`, indicating the node has no freshness tracking. This is distinct from `"potentially-outdated"` which indicates a materialized node that needs recomputation.
-* Tests MUST NOT rely on internal implementation details of the freshness mechanism (e.g., specific version numbers, metadata objects, etc.).
-
-**Test Database Access:**
-
-Tests need to obtain the `SchemaStorage` instance for the graph being tested. Implementations SHOULD provide a way to obtain this for testing purposes. Common patterns include:
-
-* `graph.getStorage()` — Returns the `GraphStorage` or `SchemaStorage` instance (see section 8.3)
-* `rootDatabase.getSchemaStorage(schemaHash)` — Direct access if schema hash is known
-
-#### 8.2 Optional Debug Interface (Recommended)
-
-To enable stronger conformance tests and easier debugging, implementations MAY provide an optional debug interface:
-
-**Type Definition:**
+For testing and debugging, implementations MAY provide:
 
 ```typescript
 interface DependencyGraphDebug {
-  // Query conceptual freshness state of a node
-  debugGetFreshness(nodeName: string): Promise<
-    "up-to-date" | "potentially-outdated" | "missing"
-  >;
-
-  // List all materialized nodes (canonical names)
+  debugGetFreshness(nodeName: string): Promise<"up-to-date" | "potentially-outdated" | "missing">;
   debugListMaterializedNodes(): Promise<string[]>;
 }
 ```
 
-**Normative Requirements (If Implemented):**
+**Note:** `"missing"` represents `undefined` freshness (unmaterialized node).
 
-* `debugGetFreshness(nodeName)` MUST return the conceptual freshness state of the node:
-  * `"up-to-date"` — Node has been pulled/set and is guaranteed consistent with dependencies.
-  * `"potentially-outdated"` — Node has been pulled but may need recomputation due to upstream changes.
-  * `"missing"` — Node is **not materialized** (has never been pulled; no dependency tracking exists).
-  
-  The `"missing"` state is a debug convenience representing `undefined` freshness in the storage layer. It indicates the node exists in the schema but has not yet been instantiated through `pull()` or `set()`.
-* `debugListMaterializedNodes()` MUST return an array of canonical node names for all materialized nodes.
-* The debug interface MUST reflect the same conceptual state that governs the graph's operational behavior (no divergence).
+### Appendix D: Implementation Notes
 
-**Usage:**
+#### D.1 Batching
 
-This interface is intended for test builds and debugging only. Production code SHOULD NOT depend on it.
+All database operations within a single `set()` call SHOULD be batched atomically.
 
-#### 8.3 GraphStorage (Implementation Helper, Non-Normative)
+Database operations during `pull()` SHOULD be batched per node recomputation.
 
-Implementations MAY provide a `GraphStorage` convenience wrapper that extends `SchemaStorage` with helper methods for common operations. This is an implementation detail and not required for conformance, but is documented here because it appears in the reference implementation.
+#### D.2 Dependent Lookup Optimization
 
-**Example Type Definition:**
+To efficiently implement invalidation, implementations SHOULD maintain a reverse dependency index allowing O(1) lookup of immediate dependents.
 
-```typescript
-interface GraphStorage extends SchemaStorage {
-  // Helper: Run a function with a batch builder and commit atomically
-  withBatch<T>(fn: (batch: BatchBuilder) => Promise<T>): Promise<T>;
-  
-  // Helper: Mark a node as materialized (write inputs record)
-  ensureMaterialized(node: string, inputs: string[], batch: BatchBuilder): Promise<void>;
-  
-  // Helper: Index reverse dependencies (write revdep edges)
-  ensureReverseDepsIndexed(node: string, inputs: string[], batch: BatchBuilder): Promise<void>;
-  
-  // Helper: List all dependents of an input
-  listDependents(input: string): Promise<string[]>;
-  
-  // Helper: Get inputs for a node
-  getInputs(node: string): Promise<string[] | null>;
-  
-  // Helper: List all materialized node names
-  listMaterializedNodes(): Promise<string[]>;
-}
+#### D.3 Quoting Flexibility
 
-type BatchBuilder = {
-  values: { put: (key: string, value: DatabaseValue) => void; del: (key: string) => void };
-  freshness: { put: (key: string, value: Freshness) => void; del: (key: string) => void };
-  inputs: { put: (key: string, value: InputsRecord) => void; del: (key: string) => void };
-  revdeps: { put: (key: string, value: 1) => void; del: (key: string) => void };
-};
-```
+Implementations MUST accept both single and double quotes in input expressions and canonicalize to single quotes. This improves developer ergonomics.
 
-**Implementation Access:**
+### Appendix E: Edge Cases
 
-If `GraphStorage` is provided, implementations SHOULD expose it via:
+#### E.1 Unmatched Pull Request
 
-```typescript
-interface DependencyGraph {
-  // ... other methods
-  getStorage(): GraphStorage;
-  getSchemaHash(): string; // For debugging/testing
-}
-```
+**Error:** `pull("event_context('id123')")` but no schema matches.
 
-This allows tests to directly access and manipulate storage for setup, verification, and debugging purposes.
+**Behavior:** Throw `InvalidNodeError`.
 
-### 9) Error Taxonomy (Normative)
+#### E.2 Non-Concrete Pull/Set
 
-All errors thrown by the dependency graph MUST have stable, documented names (via `.name` property) or codes (via `.code` property) for reliable test assertions.
+**Error:** `pull("event_context(e)")` with free variable.
 
-#### 9.1 `InvalidExpressionError`
+**Behavior:** Throw `NonConcreteNodeError`.
 
-**When Thrown:**
+#### E.3 Literals in Schema Outputs
 
-* During `makeDependencyGraph()` initialization if any `output` or `inputs` expression fails to parse.
-* During `pull(nodeName)` or `set(nodeName, value)` if `nodeName` does not parse as a valid expression.
+**Question:** Can output contain literals (e.g., `"event_context('id123')")?
 
-**Error Properties:**
+**Answer:** Technically yes, but defeats parameterization purpose. Would only match exact node. Not recommended but not forbidden.
 
-* `name: "InvalidExpressionError"` (or equivalent stable identifier)
-* `message: string` — Human-readable description
-* `expression: string` — The invalid expression string
+#### E.4 Missing Values
 
-**Type Guard:**
+If node is `up-to-date` but has no stored value, this is database corruption. MUST throw `MissingValueError`.
 
-```typescript
-function isInvalidExpressionError(value): value is InvalidExpressionError;
-```
+---
 
-#### 9.2 `NonConcreteNodeError`
-
-**When Thrown:**
-
-* During `pull(nodeName)` or `set(nodeName, value)` if `nodeName` contains free variables (is not a concrete expression).
-
-**Error Properties:**
-
-* `name: "NonConcreteNodeError"` (or equivalent: `"SchemaPatternNotAllowed"`)
-* `message: string` — Human-readable description
-* `pattern: string` — The non-concrete expression string
-
-**Type Guard:**
-
-```typescript
-function isNonConcreteNodeError(value): value is NonConcreteNodeError;
-```
-
-**Alternative Names:**
-
-Implementations MAY use the name `SchemaPatternNotAllowed` instead of `NonConcreteNodeError`. Both names refer to the same error condition and are acceptable for conformance as long as the choice is documented and stable.
-
-#### 9.3 `InvalidNodeError`
-
-**When Thrown:**
-
-* During `pull(nodeName)` if no schema matches the concrete node.
-* During `set(nodeName, value)` if no schema matches the concrete node.
-
-**Error Properties:**
-
-* `name: "InvalidNodeError"` (or equivalent: `"InvalidNode"`)
-* `message: string` — Human-readable description
-* `nodeName: string` — The canonical node name that was not found
-
-**Type Guard:**
-
-```typescript
-function isInvalidNodeError(value): value is InvalidNodeError;
-```
-
-#### 9.4 `InvalidSetError`
-
-**When Thrown:**
-
-* During `set(nodeName, value)` if `nodeName` is not a source node.
-
-**Error Properties:**
-
-* `name: "InvalidSetError"`
-* `message: string` — Human-readable description
-* `nodeName: string` — The canonical node name that is not a source
-
-**Type Guard:**
-
-```typescript
-function isInvalidSetError(value): value is InvalidSetError;
-```
-
-#### 9.5 `SchemaOverlapError`
-
-**When Thrown:**
-
-* During `makeDependencyGraph()` initialization if two or more schemas have overlapping `output` patterns.
-
-**Error Properties:**
-
-* `name: "SchemaOverlapError"`
-* `message: string` — Human-readable description listing the overlapping patterns
-* `patterns: string[]` — The overlapping canonical output patterns
-
-**Type Guard:**
-
-```typescript
-function isSchemaOverlapError(value): value is SchemaOverlapError;
-```
-
-#### 9.6 `InvalidSchemaError`
-
-**When Thrown:**
-
-* During `makeDependencyGraph()` initialization if variable scope rules are violated or other schema definition problems occur (excluding overlaps and cycles, which have dedicated errors).
-
-**Error Properties:**
-
-* `name: "InvalidSchemaError"` (or equivalent: `"InvalidSchema"`)
-* `message: string` — Human-readable description
-* `schemaOutput: string` — The problematic schema output pattern
-
-**Type Guard:**
-
-```typescript
-function isInvalidSchemaError(value): value is InvalidSchemaError;
-```
-
-#### 9.7 `SchemaCycleError`
-
-**When Thrown:**
-
-* During `makeDependencyGraph()` initialization if the schema structure forms a cycle.
-
-**Error Properties:**
-
-* `name: "SchemaCycleError"`
-* `message: string` — Human-readable description including the cycle
-* `cycle: string[]` — The nodes involved in the cycle (canonical names)
-
-**Type Guard:**
-
-```typescript
-function isSchemaCycleError(value): value is SchemaCycleError;
-```
-
-#### 9.8 `MissingValueError`
-
-**When Thrown:**
-
-* During `pull(nodeName)` if a node is marked `up-to-date` but has no stored value (indicates database corruption or implementation bug).
-
-**Error Properties:**
-
-* `name: "MissingValueError"`
-* `message: string` — Human-readable description
-* `nodeName: string` — The canonical node name with missing value
-
-**Type Guard:**
-
-```typescript
-function isMissingValueError(value): value is MissingValueError;
-```
-
-#### 9.9 Error Timing
-
-Errors MUST be thrown at specific, predictable times:
-
-| Error | Timing |
-|-------|--------|
-| `InvalidExpressionError` | Initialization (schema parsing) OR runtime (`pull`/`set` with invalid input) |
-| `NonConcreteNodeError` | Runtime (`pull`/`set` with free variables) |
-| `InvalidNodeError` | Runtime (`pull`/`set` on unknown node) |
-| `InvalidSetError` | Runtime (`set` on non-source node) |
-| `SchemaOverlapError` | Initialization (schema validation) |
-| `InvalidSchemaError` | Initialization (schema validation) |
-| `SchemaCycleError` | Initialization (schema validation) |
-| `MissingValueError` | Runtime (`pull` detects corruption) |
-
-### 10) Conformance Summary
+## Conformance Summary
 
 An implementation conforms to this specification if and only if:
 
-1. It provides all types, interfaces, and functions defined in this section with matching signatures and semantics:
-   * `RootDatabase` with `getSchemaStorage()`, `listSchemas()`, `close()`
-   * `SchemaStorage` with typed databases (`values`, `freshness`, `inputs`, `revdeps`) and `batch()`
-   * `GenericDatabase<T>` with `get()`, `put()`, `del()`, `putOp()`, `delOp()`, `keys()`, `clear()`
-   * `makeDependencyGraph(rootDatabase, nodeDefs)` factory function
-   * `DependencyGraph` with `pull()` and `set()` methods
-   * `isDependencyGraph()` type guard
-   * `makeUnchanged()` and `isUnchanged()` for the Unchanged sentinel
-2. It throws the documented errors with stable names/codes at the specified times.
-3. It enforces all MUST requirements and respects all MUST NOT prohibitions.
-4. It produces results consistent with the big-step semantics and correctness properties (P1-P4).
-5. It passes all conformance tests derived from this specification.
+1. It provides all required types, interfaces, and functions with matching signatures
+2. It throws documented errors with stable names at specified times
+3. It enforces all REQ-* requirements
+4. It produces results consistent with big-step semantics and correctness properties
+5. It passes all conformance tests derived from this specification
 
-**Optional Features (Non-Normative):**
-
-Implementations MAY provide additional features as long as they do not violate the normative requirements or change observable behavior:
-
-* `GraphStorage` convenience wrapper with helper methods
-* `DependencyGraphDebug` interface with `debugGetFreshness()` and `debugListMaterializedNodes()`
-* `graph.getStorage()` and `graph.getSchemaHash()` for testing/debugging access
-* Extended error information beyond the required fields
-* Performance optimizations (caching, lazy evaluation strategies, etc.)
-
-**Backward Compatibility Note:**
-
-Earlier versions of this specification defined a simpler `Database` interface without schema namespacing. Implementations following that earlier specification will not conform to this version. The current design with `RootDatabase` and `SchemaStorage` is necessary to:
-
-* Support multiple graph instances with different schemas in the same database
-* Provide efficient, typed access to specialized storage (values, freshness, indices)
-* Enable restart resilience through persistent materialization markers
-* Scale to large graphs with efficient reverse dependency lookups
+Optional features (GraphStorage, Debug interface, etc.) MAY be provided without affecting conformance.
