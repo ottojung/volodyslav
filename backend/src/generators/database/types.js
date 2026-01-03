@@ -107,13 +107,13 @@ function isDatabaseValue(value) {
 /**
  * A database put operation.
  * @template T
- * @typedef {AbstractBatchPutOperation<AbstractSublevel<SchemaSublevelType, SublevelFormat, string, T>, string, T>} DatabasePutOperation
+ * @typedef {AbstractBatchPutOperation<SimpleSublevel<T>, string, T>} DatabasePutOperation
  */
 
 /**
  * A database delete operation.
  * @template T
- * @typedef {AbstractBatchDelOperation<AbstractSublevel<SchemaSublevelType, SublevelFormat, string, T>, string>} DatabaseDelOperation
+ * @typedef {AbstractBatchDelOperation<SimpleSublevel<T>, string>} DatabaseDelOperation
  */
 
 /**
@@ -128,7 +128,7 @@ function isDatabaseValue(value) {
 
 /**
  * A batch operation for the database.
- * @typedef {AbstractBatchPutOperation<SimpleSublevel<T>, SublevelFormat, string, DatabaseStoredValue>, string, DatabaseStoredValue> | AbstractBatchDelOperation<Level<string, DatabaseStoredValue>, string>} DatabaseBatchOperation
+ * @typedef {DatabasePutOperation<DatabaseValue> | DatabasePutOperation<Freshness> | DatabasePutOperation<InputsRecord> | DatabasePutOperation<string[]> | DatabaseDelOperation<DatabaseValue> | DatabaseDelOperation<Freshness> | DatabaseDelOperation<InputsRecord> | DatabaseDelOperation<string[]>} DatabaseBatchOperation
  */
 
 //* /typedef {DatabasePutOperation<DatabaseValue> | DatabasePutOperation<Freshness> | DatabasePutOperation<InputsRecord> | DatabasePutOperation<string[]> | DatabaseDelOperation<DatabaseValue> | DatabaseDelOperation<Freshness> | DatabaseDelOperation<InputsRecord> | DatabaseDelOperation<string[]>} DatabaseBatchOperation
