@@ -465,7 +465,7 @@ class DependencyGraphClass {
             await this.storage.ensureMaterialized(
                 nodeName,
                 nodeDefinition.inputs,
-                batch,
+                batch
             );
             
             // Ensure reverse dependencies are indexed (if it has inputs)
@@ -473,7 +473,7 @@ class DependencyGraphClass {
             await this.storage.ensureReverseDepsIndexed(
                 nodeName,
                 nodeDefinition.inputs,
-                batch,
+                batch
             );
 
             // Mark up-to-date
@@ -508,7 +508,7 @@ class DependencyGraphClass {
         await this.storage.ensureMaterialized(
             nodeName,
             nodeDefinition.inputs,
-            batch,
+            batch
         );
 
         // Ensure reverse dependencies are indexed (only if it has inputs)
@@ -516,7 +516,7 @@ class DependencyGraphClass {
             await this.storage.ensureReverseDepsIndexed(
                 nodeName,
                 nodeDefinition.inputs,
-                batch,
+                batch
             );
         }
 
@@ -590,7 +590,7 @@ class DependencyGraphClass {
                 await this.storage.ensureMaterialized(
                     canonicalName,
                     nodeDefinition.inputs,
-                    batch,
+                    batch
                 );
                 
                 // Ensure reverse dependencies are indexed if it has inputs
@@ -600,7 +600,7 @@ class DependencyGraphClass {
                     await this.storage.ensureReverseDepsIndexed(
                         canonicalName,
                         nodeDefinition.inputs,
-                        batch,
+                        batch
                     );
                 }
                 
