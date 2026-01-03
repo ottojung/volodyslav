@@ -197,7 +197,7 @@ Freshness is a **conceptual** property of nodes used for reasoning about correct
 **Mechanism vs. State:**
 Implementations MAY use any internal **mechanism** to track freshness (e.g., version numbers, dirty bits, dependency hashes) to optimize performance or support features like Unchanged Propagation.
 
-However, the resulting **conceptual freshness state** (`up-to-date` or `potentially-outdated`) MUST be observable via the `Database` interface.
+However, the resulting **conceptual freshness state** (`up-to-date` or `potentially-outdated`) MUST be observable via the `SchemaStorage.freshness` database, which is accessible through the graph's schema storage.
 
 **Observable Special Values:**
 * `Unchanged` is an observable special value that computors may return
@@ -305,11 +305,27 @@ The dependency graph requires persistent storage with the following properties:
 
 * Node values MUST be persistable and retrievable by canonical node name
 * Freshness state MUST be persistable and retrievable by canonical node name
-* The specific key naming scheme and storage organization is implementation-defined
-* Implementations MUST ensure no key collisions between values, freshness, and index data
-* Implementations MUST support atomic batch operations
+* Node input dependencies MUST be persistable and retrievable to support materialization tracking
+* Reverse dependency edges MUST be persistable and queryable to enable efficient invalidation
+* The specific key naming scheme and storage organization is implementation-defined, but MUST prevent key collisions
+* Implementations MUST support atomic batch operations across all storage categories
+* Implementations MUST support schema-namespaced storage to allow multiple graph instances with different schemas to coexist
+
+### Storage Architecture
+
+The reference implementation uses a three-tier architecture:
+
+1. **RootDatabase**: Top-level database providing schema-namespaced sublevels
+2. **SchemaStorage**: Schema-specific storage containing four typed databases:
+   * `values`: Node computed values (canonical name → DatabaseValue)
+   * `freshness`: Node freshness state (canonical name → "up-to-date" | "potentially-outdated")
+   * `inputs`: Node input dependencies (canonical name → {inputs: string[]})
+   * `revdeps`: Reverse dependency edges (composite key → 1)
+3. **GraphStorage**: Optional wrapper providing helper methods (non-normative)
 
 ### Key Naming Convention
+
+**Values and Freshness Keys:**
 
 Concrete node names are stored as database keys using canonical serialization:
 
@@ -322,7 +338,7 @@ All database keys MUST use the canonical serialization as defined in the "Canoni
 
 **Materialized Node Markers:**
 
-Implementations MUST persist markers for materialized instantiations to ensure restart resilience. The specific mechanism is implementation-defined, but MUST allow reconstruction of the set of materialized nodes after restart.
+Implementations MUST persist markers for materialized instantiations to ensure restart resilience. The reference implementation uses the `inputs` database: the presence of an entry indicates materialization, even if the inputs array is empty.
 
 ---
 
@@ -746,12 +762,12 @@ if (isUnchanged(value)) {
 
 #### 1.3 `DatabaseValue`
 
-A `DatabaseValue` represents any value that can be stored and retrieved through the `Database` interface.
+A `DatabaseValue` represents any value that can be stored and retrieved through the database interfaces (`GenericDatabase`, `SchemaStorage`, etc.).
 
 **Normative Requirements:**
 
 * `DatabaseValue` MUST be an arbitrary JSON-serializable object (or implementation-defined type that is stable across database roundtrips).
-* Values MUST round-trip through the `Database` interface without semantic change: `getValue(k)` after `put(k, v)` MUST return a value semantically equivalent to `v`.
+* Values MUST round-trip through the database interfaces without semantic change: `get(k)` after `put(k, v)` MUST return a value semantically equivalent to `v`.
 * If the database supports richer types beyond JSON, tests MUST NOT assume those types unless explicitly documented.
 
 **Type Guard:**
@@ -839,7 +855,7 @@ type NodeDef = {
 
 ```typescript
 function makeDependencyGraph(
-  database: Database,
+  rootDatabase: RootDatabase,
   nodeDefs: NodeDef[]
 ): DependencyGraph;
 ```
@@ -853,7 +869,8 @@ function makeDependencyGraph(
   * Overlapping output patterns
   * Schema cycles
 * The function MUST compile and cache any derived artifacts needed for efficient operation (variable lists, canonical forms, pattern indexes, etc.), but the internal representation is not prescribed.
-* The function MUST NOT mutate the provided `nodeDefs` array or `database` object.
+* The function MUST compute a schema hash from the canonical representation of all node schemas and use it to obtain schema-namespaced storage via `rootDatabase.getSchemaStorage(schemaHash)`.
+* The function MUST NOT mutate the provided `nodeDefs` array or `rootDatabase` object.
 
 **Returns:**
 
@@ -943,7 +960,7 @@ set(nodeName: string, value: DatabaseValue): Promise<void>
 4. Store `value` at the canonical key.
 5. Mark the node as `up-to-date`.
 6. Recursively mark all dependents as `potentially-outdated`.
-7. Commit all operations atomically via `database.batch()`.
+7. Commit all operations atomically via `schemaStorage.batch()`.
 
 **Throws:**
 
@@ -971,7 +988,7 @@ Where:
 * Freshness state MUST be persisted and retrievable by canonical node name, but the specific key format is implementation-defined.
 * `pull(nodeName)` and `set(nodeName, value)` MUST behave as if they first compute `canonical(nodeName)` and then operate on that canonical form.
 * Tests MUST NOT assert specific key formats or internal storage organization.
-* Tests MUST use only the public `Database` interface.
+* Tests SHOULD use the public `DependencyGraph` interface and MAY access `SchemaStorage` for verification purposes via implementation-provided test helpers.
 
 **Quoting Rules:**
 
@@ -995,28 +1012,119 @@ canonical("fun(42, 'test')")         // → "fun(42,'test')"
 
 ### 6) Required Database Interface for Conformance Tests (Normative)
 
-The `Database` interface defines the minimal contract that the dependency graph requires for storage and retrieval.
+The dependency graph implementation uses a three-tier database architecture to support schema-namespaced storage with typed sublevels. This section defines the normative interfaces that implementations MUST provide.
+
+#### 6.1 `GenericDatabase<T>` Interface
+
+A `GenericDatabase<T>` represents a key-value store for a specific value type `T`.
 
 **Type Definition:**
 
 ```typescript
-interface Database {
+interface GenericDatabase<T> {
   // Store or overwrite a value at key
-  put(key: string, value: DatabaseValue | Freshness): Promise<void>;
-
+  get(key: string): Promise<T | undefined>;
+  
   // Retrieve stored value or undefined if missing
-  getValue(key: string): Promise<DatabaseValue | undefined>;
+  put(key: string, value: T): Promise<void>;
+  
+  // Delete a value at key
+  del(key: string): Promise<void>;
+  
+  // Create a batch put operation (for atomic batching)
+  putOp(key: string, value: T): DatabaseBatchOperation;
+  
+  // Create a batch delete operation (for atomic batching)
+  delOp(key: string): DatabaseBatchOperation;
+  
+  // Iterate over all keys
+  keys(): AsyncIterable<string>;
+  
+  // Clear all data
+  clear(): Promise<void>;
+}
 
-  // Retrieve stored freshness or undefined if missing
-  // MUST return the conceptual freshness state ("up-to-date" | "potentially-outdated")
-  getFreshness(key: string): Promise<Freshness | undefined>;
+type DatabaseBatchOperation =
+  | { type: "put"; sublevel: GenericDatabase<any>; key: string; value: any }
+  | { type: "del"; sublevel: GenericDatabase<any>; key: string };
+```
 
+**Normative Requirements:**
+
+* `get(key)` MUST return the stored value or `undefined` if no value exists at `key`.
+* `put(key, value)` MUST store `value` at `key`, overwriting any existing value.
+* `del(key)` MUST remove the value at `key` if it exists.
+* `putOp(key, value)` MUST return a batch operation descriptor that can be executed via `SchemaStorage.batch()`.
+* `delOp(key)` MUST return a batch operation descriptor that can be executed via `SchemaStorage.batch()`.
+* `keys()` MUST return an async iterator over all keys in the database.
+* `clear()` MUST remove all key-value pairs from the database.
+* Values MUST round-trip without semantic change: after `put(k, v)`, `get(k)` MUST return a value semantically equivalent to `v`.
+
+#### 6.2 `SchemaStorage` Interface
+
+A `SchemaStorage` represents isolated storage for a single dependency graph schema instance. All data (values, freshness, indices) is namespaced per schema hash.
+
+**Type Definition:**
+
+```typescript
+type ValuesDatabase = GenericDatabase<DatabaseValue>;
+type FreshnessDatabase = GenericDatabase<Freshness>;
+type InputsDatabase = GenericDatabase<InputsRecord>;
+type RevdepsDatabase = GenericDatabase<1>; // Edge-based storage: composite key -> constant 1
+
+type InputsRecord = {
+  inputs: string[]; // Array of canonical input node names
+};
+
+interface SchemaStorage {
+  // Node output values (key: canonical node name)
+  values: ValuesDatabase;
+  
+  // Node freshness state (key: canonical node name)
+  freshness: FreshnessDatabase;
+  
+  // Node inputs index (key: canonical node name, value: inputs array)
+  inputs: InputsDatabase;
+  
+  // Reverse dependencies (key: "${inputNode}\x00${dependentNode}", value: 1)
+  revdeps: RevdepsDatabase;
+  
   // Atomically execute a batch of operations
-  batch(ops: Array<
-    | { type: "put"; key: string; value: DatabaseValue | Freshness }
-    | { type: "del"; key: string }
-  >): Promise<void>;
+  batch(operations: DatabaseBatchOperation[]): Promise<void>;
+}
+```
 
+**Normative Requirements:**
+
+* `values` MUST store node computed values keyed by canonical node name.
+* `freshness` MUST store conceptual freshness state (`"up-to-date"` or `"potentially-outdated"`) keyed by canonical node name.
+* `inputs` MUST store node input dependency arrays keyed by canonical node name.
+* `revdeps` MUST store reverse dependency edges using composite keys `"${inputNode}\x00${dependentNode}"` mapping to the constant value `1`.
+  * This edge-based storage improves performance for large fan-out scenarios by avoiding array serialization.
+* `batch(operations)` MUST execute all operations atomically: either all succeed or all fail (no partial application).
+* `batch(operations)` operations MUST be applied in the order specified in the `operations` array.
+
+**Rationale for Reverse Dependency Storage:**
+
+The `revdeps` database uses edge-based storage where each edge is a separate key rather than storing arrays of dependents. This design:
+* Enables efficient iteration over dependents without deserializing large arrays
+* Supports incremental updates (adding edges without reading/writing full arrays)
+* Scales better for nodes with high fan-out (many dependents)
+
+#### 6.3 `RootDatabase` Interface
+
+A `RootDatabase` provides schema-namespaced storage using database sublevels. Multiple dependency graph instances with different schemas can coexist in the same root database without key collisions.
+
+**Type Definition:**
+
+```typescript
+interface RootDatabase {
+  // Get schema-specific storage (creates if needed)
+  getSchemaStorage(schemaHash: string): SchemaStorage;
+  
+  // List all schema hashes in the database
+  listSchemas(): AsyncIterable<string>;
+  
   // Close the database connection
   close(): Promise<void>;
 }
@@ -1024,21 +1132,36 @@ interface Database {
 
 **Normative Requirements:**
 
-* `put(key, value)` MUST store `value` at `key`, overwriting any existing value.
-* `getValue(key)` MUST return the stored `DatabaseValue` or `undefined` if no value exists at `key`.
-* `getFreshness(key)` MUST return the conceptual `Freshness` state (`"up-to-date"` or `"potentially-outdated"`) or `undefined` if no freshness state exists at `key`.
-  * If the implementation stores additional metadata (e.g., versions), `getFreshness` MUST return the derived conceptual state.
-* `batch(ops)` MUST execute all operations atomically: either all succeed or all fail (no partial application).
-* `batch(ops)` operations MUST be applied in the order specified in the `ops` array.
-* `put` and `getValue` MUST round-trip values without mutation: after `put(k, v)`, `getValue(k)` MUST return a value semantically equivalent to `v`.
+* `getSchemaStorage(schemaHash)` MUST return a `SchemaStorage` instance isolated to the specified schema hash.
+  * Multiple calls with the same `schemaHash` SHOULD return the same instance (caching is recommended).
+  * Different schema hashes MUST result in isolated storage namespaces (no key collisions).
+* `listSchemas()` MUST return an async iterator over all schema hashes that have been used.
 * `close()` MUST cleanly shut down the database connection and release resources.
+
+**Schema Hash Computation:**
+
+The schema hash is computed from the canonical representation of all node schemas:
+
+```javascript
+const schemaRepresentation = compiledNodes
+  .map((node) => ({
+    output: node.canonicalOutput,
+    inputs: node.canonicalInputs,
+  }))
+  .sort((a, b) => a.output.localeCompare(b.output));
+
+const schemaJson = JSON.stringify(schemaRepresentation);
+const schemaHash = crypto.createHash("md5").update(schemaJson).digest("hex").substring(0, 16);
+```
+
+This ensures that graphs with identical schemas share storage, while graphs with different schemas are isolated.
 
 **Database vs. Graph API:**
 
-* The `Database` interface represents **raw storage** without dependency tracking or invalidation logic.
+* The `RootDatabase` interface represents **raw storage** without dependency tracking or invalidation logic.
 * Only `graph.set()` performs invalidation and marks dependents as `potentially-outdated`.
-* Tests MAY use `database.put()` only as a seeding helper to set up initial state, but MUST use `graph.set()` for operations that should trigger dependency propagation.
-* Tests MUST NOT assume specific internal key formats or storage organization for freshness state or indices.
+* Tests MAY use `schemaStorage.values.put()` only as a seeding helper to set up initial state, but MUST use `graph.set()` for operations that should trigger dependency propagation.
+* Tests MUST NOT assume specific internal key formats or storage organization beyond what is documented here.
 
 ### 7) Materialization Markers (Normative Behavioral Contract)
 
@@ -1047,7 +1170,7 @@ Implementations MUST persist sufficient information to reconstruct the set of ma
 **Normative Requirements:**
 
 * A **materialized node** is any concrete node for which the implementation maintains dependency tracking.
-* If a node is materialized before a graph restart, then after restart (new `DependencyGraph` instance over the same `Database`):
+* If a node is materialized before a graph restart, then after restart (new `DependencyGraph` instance over the same `RootDatabase`):
   * `set(source, v)` MUST mark all previously materialized transitive dependents as `potentially-outdated`
   * This MUST occur **without** requiring re-pull of those dependents to rediscover them.
 * The specific mechanism for persisting materialization markers (separate keys, metadata, reverse dependency index, etc.) is **not prescribed**.
@@ -1055,16 +1178,24 @@ Implementations MUST persist sufficient information to reconstruct the set of ma
 
 **Implementation Guidance (Non-Normative):**
 
-Common strategies include:
-* Maintaining a reverse dependency index in the database.
-* Storing a materialization marker key for each instantiated node.
-* Using schema hash namespacing to avoid conflicts between different graph schemas.
+The reference implementation achieves restart resilience through:
+
+1. **Inputs Index (`SchemaStorage.inputs`)**: When a node is materialized, its input dependencies are written to the `inputs` database with the record `{ inputs: [canonicalInput1, canonicalInput2, ...] }`. This serves as the materialization marker.
+
+2. **Reverse Dependency Index (`SchemaStorage.revdeps`)**: For each input dependency, a reverse edge is written as `"${inputNode}\x00${dependentNode}" -> 1`. This enables efficient dependent lookup during invalidation without scanning all nodes.
+
+3. **Schema Hash Namespacing**: Multiple graph instances with different schemas are isolated via `schemaHash` prefixes in the `RootDatabase`, preventing collisions.
+
+After restart:
+* The new graph instance reconnects to the same schema storage via `rootDatabase.getSchemaStorage(schemaHash)`.
+* When `set(source, v)` is called, the implementation queries `schemaStorage.revdeps` to find all dependents and marks them as `potentially-outdated`.
+* No explicit re-discovery or scanning is required.
 
 ### 8) Observability and Test Hooks (Normative)
 
 #### 8.1 Freshness Observability Policy
 
-The **conceptual freshness state** (`up-to-date` or `potentially-outdated`) MUST be observable via the `Database.getFreshness()` method.
+The **conceptual freshness state** (`up-to-date` or `potentially-outdated`) MUST be observable via the `SchemaStorage.freshness` database.
 
 **Rationale:**
 
@@ -1072,9 +1203,16 @@ While implementations may use various internal mechanisms (versions, epochs, etc
 
 **Conformance Test Restrictions:**
 
-* Tests MUST use `Database.getFreshness()` to assert freshness state.
-* Tests MUST NOT assert the raw value stored at the freshness key if it differs from the conceptual state (e.g., if the implementation stores a complex object).
-* Tests MUST NOT rely on internal implementation details of the freshness mechanism (e.g., specific version numbers).
+* Tests MUST use `schemaStorage.freshness.get(canonicalNodeName)` to assert freshness state.
+* The value returned MUST be the conceptual state: `"up-to-date"`, `"potentially-outdated"`, or `undefined` (if not materialized).
+* Tests MUST NOT rely on internal implementation details of the freshness mechanism (e.g., specific version numbers, metadata objects, etc.).
+
+**Test Database Access:**
+
+Tests need to obtain the `SchemaStorage` instance for the graph being tested. Implementations SHOULD provide a way to obtain this for testing purposes. Common patterns include:
+
+* `graph.getStorage()` — Returns the `GraphStorage` or `SchemaStorage` instance (see section 8.3)
+* `rootDatabase.getSchemaStorage(schemaHash)` — Direct access if schema hash is known
 
 #### 8.2 Optional Debug Interface (Recommended)
 
@@ -1106,6 +1244,55 @@ interface DependencyGraphDebug {
 **Usage:**
 
 This interface is intended for test builds and debugging only. Production code SHOULD NOT depend on it.
+
+#### 8.3 GraphStorage (Implementation Helper, Non-Normative)
+
+Implementations MAY provide a `GraphStorage` convenience wrapper that extends `SchemaStorage` with helper methods for common operations. This is an implementation detail and not required for conformance, but is documented here because it appears in the reference implementation.
+
+**Example Type Definition:**
+
+```typescript
+interface GraphStorage extends SchemaStorage {
+  // Helper: Run a function with a batch builder and commit atomically
+  withBatch<T>(fn: (batch: BatchBuilder) => Promise<T>): Promise<T>;
+  
+  // Helper: Mark a node as materialized (write inputs record)
+  ensureMaterialized(node: string, inputs: string[], batch: BatchBuilder): Promise<void>;
+  
+  // Helper: Index reverse dependencies (write revdep edges)
+  ensureReverseDepsIndexed(node: string, inputs: string[], batch: BatchBuilder): Promise<void>;
+  
+  // Helper: List all dependents of an input
+  listDependents(input: string): Promise<string[]>;
+  
+  // Helper: Get inputs for a node
+  getInputs(node: string): Promise<string[] | null>;
+  
+  // Helper: List all materialized node names
+  listMaterializedNodes(): Promise<string[]>;
+}
+
+type BatchBuilder = {
+  values: { put: (key: string, value: DatabaseValue) => void; del: (key: string) => void };
+  freshness: { put: (key: string, value: Freshness) => void; del: (key: string) => void };
+  inputs: { put: (key: string, value: InputsRecord) => void; del: (key: string) => void };
+  revdeps: { put: (key: string, value: 1) => void; del: (key: string) => void };
+};
+```
+
+**Implementation Access:**
+
+If `GraphStorage` is provided, implementations SHOULD expose it via:
+
+```typescript
+interface DependencyGraph {
+  // ... other methods
+  getStorage(): GraphStorage;
+  getSchemaHash(): string; // For debugging/testing
+}
+```
+
+This allows tests to directly access and manipulate storage for setup, verification, and debugging purposes.
 
 ### 9) Error Taxonomy (Normative)
 
@@ -1279,10 +1466,34 @@ Errors MUST be thrown at specific, predictable times:
 
 An implementation conforms to this specification if and only if:
 
-1. It provides all types, interfaces, and functions defined in this section with matching signatures and semantics.
+1. It provides all types, interfaces, and functions defined in this section with matching signatures and semantics:
+   * `RootDatabase` with `getSchemaStorage()`, `listSchemas()`, `close()`
+   * `SchemaStorage` with typed databases (`values`, `freshness`, `inputs`, `revdeps`) and `batch()`
+   * `GenericDatabase<T>` with `get()`, `put()`, `del()`, `putOp()`, `delOp()`, `keys()`, `clear()`
+   * `makeDependencyGraph(rootDatabase, nodeDefs)` factory function
+   * `DependencyGraph` with `pull()` and `set()` methods
+   * `isDependencyGraph()` type guard
+   * `makeUnchanged()` and `isUnchanged()` for the Unchanged sentinel
 2. It throws the documented errors with stable names/codes at the specified times.
 3. It enforces all MUST requirements and respects all MUST NOT prohibitions.
 4. It produces results consistent with the big-step semantics and correctness properties (P1-P4).
 5. It passes all conformance tests derived from this specification.
 
-Implementations MAY provide additional features (debug interfaces, performance optimizations, extended error information) as long as they do not violate the normative requirements or change observable behavior defined in this specification.
+**Optional Features (Non-Normative):**
+
+Implementations MAY provide additional features as long as they do not violate the normative requirements or change observable behavior:
+
+* `GraphStorage` convenience wrapper with helper methods
+* `DependencyGraphDebug` interface with `debugGetFreshness()` and `debugListMaterializedNodes()`
+* `graph.getStorage()` and `graph.getSchemaHash()` for testing/debugging access
+* Extended error information beyond the required fields
+* Performance optimizations (caching, lazy evaluation strategies, etc.)
+
+**Backward Compatibility Note:**
+
+Earlier versions of this specification defined a simpler `Database` interface without schema namespacing. Implementations following that earlier specification will not conform to this version. The current design with `RootDatabase` and `SchemaStorage` is necessary to:
+
+* Support multiple graph instances with different schemas in the same database
+* Provide efficient, typed access to specialized storage (values, freshness, indices)
+* Enable restart resilience through persistent materialization markers
+* Scale to large graphs with efficient reverse dependency lookups
