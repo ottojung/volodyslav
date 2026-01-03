@@ -4,80 +4,9 @@ This document provides a formal specification for the dependency graph's operati
 
 ---
 
-## 1. Test-Visible Contract (Normative)
+## 1. Core Definitions (Normative)
 
-This section defines exactly what conformance tests MAY assert. All other implementation details are internal and subject to change.
-
-### 1.1 Public API
-
-Tests MAY assert the existence and signatures of:
-
-* `makeDependencyGraph(rootDatabase: RootDatabase, nodeDefs: NodeDef[]): DependencyGraph` — Factory function
-* `DependencyGraph.pull(nodeName: string): Promise<DatabaseValue>` — Retrieve/compute node value
-* `DependencyGraph.set(nodeName: string, value: DatabaseValue): Promise<void>` — Write source node value
-* `isDependencyGraph(value): boolean` — Type guard
-
-### 1.2 Observable Error Taxonomy
-
-Tests MAY assert error names (via `.name` property) and required fields:
-
-| Error Name | Required Fields | Thrown When |
-|------------|----------------|-------------|
-| `InvalidExpressionError` | `expression: string` | Invalid expression syntax |
-| `NonConcreteNodeError` | `pattern: string` | Expression contains free variables in pull/set |
-| `InvalidNodeError` | `nodeName: string` | No schema matches the node |
-| `InvalidSetError` | `nodeName: string` | Node is not a source node |
-| `SchemaOverlapError` | `patterns: string[]` | Overlapping output patterns at init |
-| `InvalidSchemaError` | `schemaOutput: string` | Schema definition problems at init |
-| `SchemaCycleError` | `cycle: string[]` | Cyclic schema dependencies at init |
-| `MissingValueError` | `nodeName: string` | Up-to-date node has no stored value |
-
-**REQ-ERR-01:** All error types MUST provide type guard functions (e.g., `isInvalidExpressionError(value): boolean`).
-
-### 1.3 Canonicalization Requirement
-
-**REQ-CANON-01:** All node names used as database keys MUST use canonical serialization.
-
-**REQ-CANON-02:** `pull(nodeName)` and `set(nodeName, value)` MUST accept any valid expression string and canonicalize it before processing.
-
-Tests MAY assert:
-* `pull("event_context('id')")` and `pull("event_context(\"id\")")` behave identically (quoting normalization)
-* Database keys use single-quote format for strings
-
-### 1.4 Freshness Observability
-
-**REQ-FRESH-01:** Implementations MUST expose the conceptual freshness state via `SchemaStorage.freshness`:
-
-* `"up-to-date"` — Node value is consistent with dependencies
-* `"potentially-outdated"` — Node may need recomputation
-* `undefined` — Node is not materialized
-
-Tests MAY assert freshness state via `schemaStorage.freshness.get(canonicalNodeName)`.
-
-**REQ-FRESH-02:** Internal freshness tracking mechanisms (versions, epochs, etc.) are implementation-defined and NOT observable to tests.
-
-### 1.5 Restart Resilience
-
-**REQ-RESTART-01:** Materialized nodes MUST remain materialized across graph restarts (same `RootDatabase`, same schema).
-
-**REQ-RESTART-02:** After restart, `set(source, value)` MUST invalidate all previously materialized transitive dependents WITHOUT requiring re-pull.
-
-Tests MAY assert:
-* Pull a node, restart graph instance, call `set()` on upstream source, verify downstream node is marked `potentially-outdated`
-
-### 1.6 Behavioral Guarantees
-
-**REQ-BEHAVE-01:** `pull(N)` MUST produce the same result as recomputing all values from scratch (Semantic Equivalence, property P1).
-
-**REQ-BEHAVE-02:** Each computor MUST be invoked at most once per top-level `pull()` call (property P3).
-
-**REQ-BEHAVE-03:** After `pull(N)` completes, N and all its transitive dependencies MUST be marked `up-to-date` (Freshness Preservation, property P4).
-
----
-
-## 2. Core Definitions (Normative)
-
-### 2.1 Types
+### 1.1 Types
 
 * **NodeName** — unique identifier for a concrete node (fully instantiated expression)
 * **NodeValue** — computed value at a node (arbitrary `DatabaseValue`)
@@ -87,51 +16,62 @@ Tests MAY assert:
 * **Variable** — parameter placeholder in node schemas (identifiers in argument positions)
 * **Literal** — typed constant value (natural number or single-quoted string)
 * **ConstValue** — typed constant: `{ type: "string" | "int"; value: string | number }`
-* **DatabaseValue** — any JSON-serializable value that round-trips through database interfaces. MUST NOT include the `Unchanged` sentinel.
+* **DatabaseValue** — any JavaScript `object` (including subtypes like arrays, but excluding `null`). MUST NOT include the `Unchanged` sentinel. MUST round-trip through database interfaces without semantic change.
 
-### 2.2 Expression Grammar (Normative)
+### 1.2 Expression Grammar (Normative)
 
 **REQ-EXPR-01:** All expressions MUST conform to this grammar:
 
 ```
-expr          := atom_expr | compound_expr
+expr          := ws atom_expr ws | ws compound_expr ws
 atom_expr     := ident
-compound_expr := ident "(" args ")"
+compound_expr := ident ws "(" ws args ws ")"
 
-args          := arg ("," arg)*
+args          := arg (ws "," ws arg)*
 arg           := var | nat | string
 var           := ident
 nat           := "0" | [1-9][0-9]*
-string        := "'" (escaped_char | [^'])* "'"
+string        := "'" (escaped_char | [^'])* "'" | '"' (escaped_char_dq | [^"])* '"'
 ident         := [A-Za-z_][A-Za-z0-9_]*
+ws            := [ \t\n\r]*
 
-escaped_char  := "\\" | "\'" | "\\n" | "\\t" | "\\r"
+escaped_char     := "\\" | "\'" | "\\n" | "\\t" | "\\r"
+escaped_char_dq  := "\\" | '\"' | "\\n" | "\\t" | "\\r"
 ```
 
 **Terminology:**
-* **atom-expression** — expression with no arguments (e.g., `all_events`)
-* **compound-expression** — expression with arguments (e.g., `event_context(e)`)
-* **free variables** — identifiers in argument positions that are not literals
-* **concrete expression** — expression where `freeVars(expr) = ∅`
+* **atom-expression** — an expression with no arguments (e.g., `all_events`)
+* **compound-expression** — an expression with arguments (e.g., `event_context(e)`)
+* **free variables** — identifiers occurring in argument positions that are not literals
+* **concrete expression** — an expression where `freeVars(expr) = ∅` (no free variables)
 
 **Examples:**
-* `all_events` — atom-expression
-* `event_context(e)` — compound with free variable `e`
-* `event_context('id123')` — concrete compound
-* `enhanced_event('id123', 'photo5')` — concrete compound with two string literals
+* `all_events` — atom-expression (no arguments)
+* `event_context(e)` — compound-expression with free variable `e`
+* `event_context('id123')` — concrete compound-expression (no free variables)
+* `fun_123(a, 42, 'abc', b)` — compound with free variables `a`, `b` and literals `42` (nat), `'abc'` (string)
+* `enhanced_event('id123', 'photo5')` — concrete compound with string literals
 
-### 2.3 Canonical Serialization (Normative)
+**Note on String Quoting:** This specification uses **single quotes** (`'...'`) for string literals in canonical form to distinguish them syntactically from variables. Implementations MUST support both single and double quotes in input expressions, canonicalizing to single quotes.
 
-**REQ-CANON-03:** The function `serialize(expr)` MUST produce a unique canonical string:
+**Concrete Instantiation:**
 
-1. No whitespace
-2. Natural numbers rendered as decimal with no leading zeros (except `"0"`)
+A **concrete node** is a concrete expression (no free variables):
+* `event_context('id123')` — concrete instantiation with `e = 'id123'`
+* `enhanced_event('id123', 'photo5')` — concrete instantiation with two string literals
+
+### 1.3 Canonical Serialization (Normative)
+
+**REQ-CANON-01:** The function `serialize(expr)` MUST produce a unique canonical string:
+
+1. No whitespace is included
+2. Natural numbers are rendered as decimal with no leading zeros (except `"0"`)
 3. Strings use single-quote delimiters with escape sequences: `\'`, `\\`, `\n`, `\t`, `\r`
 4. Arguments joined by commas with no spaces
 5. Atom-expressions: just the identifier
 6. Compound-expressions: `name(arg1,arg2,...)`
 
-**REQ-CANON-04:** Round-trip requirement:
+**REQ-CANON-02:** Round-trip requirement:
 * `parse(serialize(ast))` MUST equal `ast` (modulo whitespace)
 * `serialize(parse(s))` MUST canonicalize `s`
 
@@ -140,9 +80,11 @@ escaped_char  := "\\" | "\'" | "\\n" | "\\t" | "\\r"
 * `event_context('id123')` → `"event_context('id123')"`
 * `fun(42, 'test')` → `"fun(42,'test')"`
 
-**REQ-CANON-05:** Implementations SHOULD accept double quotes in input expressions and canonicalize to single quotes.
+**REQ-CANON-03:** All node names used as database keys MUST use canonical serialization.
 
-### 2.4 Schema Definition
+**REQ-CANON-04:** `pull(nodeName)` and `set(nodeName, value)` MUST accept any valid expression string and canonicalize it before processing.
+
+### 1.4 Schema Definition
 
 **REQ-SCHEMA-01:** A dependency graph is defined by a set of node schemas:
 
@@ -158,7 +100,7 @@ type NodeDef = {
 
 **REQ-SCHEMA-03:** A **source node** is a concrete node matching a schema where `inputs = []`.
 
-### 2.5 Pattern Matching (Normative)
+### 1.5 Pattern Matching (Normative)
 
 **REQ-MATCH-01:** A schema output pattern `P` **matches** concrete node `N` if:
 1. Same functor and arity
@@ -170,7 +112,7 @@ type NodeDef = {
 
 **REQ-MATCH-03:** The system MUST reject graphs with overlapping output patterns at initialization (throw `SchemaOverlapError`).
 
-### 2.6 Cycle Detection (Normative)
+### 1.6 Cycle Detection (Normative)
 
 **REQ-CYCLE-01:** A directed edge exists from Schema S to Schema T if:
 1. S has input pattern I
@@ -179,7 +121,7 @@ type NodeDef = {
 
 **REQ-CYCLE-02:** The system MUST reject graphs with cycles at initialization (throw `SchemaCycleError`).
 
-### 2.7 Materialization
+### 1.7 Materialization
 
 **REQ-MAT-01:** A **materialized node** is any concrete node for which the implementation maintains dependency tracking and freshness state.
 
@@ -191,9 +133,9 @@ type NodeDef = {
 
 ---
 
-## 3. Operational Semantics (Normative)
+## 2. Operational Semantics (Normative)
 
-### 3.1 pull(nodeName) → NodeValue
+### 2.1 pull(nodeName) → NodeValue
 
 **Preconditions:**
 * `nodeName` MUST be a concrete expression (no free variables)
@@ -233,11 +175,12 @@ pull(N):
 
 Implementations MAY use any strategy to achieve property P3 (e.g., memoization, freshness checks, in-flight tracking). The specific mechanism is not prescribed.
 
-### 3.2 set(nodeName, value)
+### 2.2 set(nodeName, value)
 
 **Preconditions:**
 * `nodeName` MUST be a concrete expression (no free variables)
-* `nodeName` MUST be a source node
+* `nodeName` MUST match a schema (throw `InvalidNodeError` otherwise)
+* `nodeName` MUST be a source node (throw `InvalidSetError` if not)
 
 **Effects:**
 1. Store `value` at canonical key
@@ -248,13 +191,15 @@ Implementations MAY use any strategy to achieve property P3 (e.g., memoization, 
 
 **REQ-SET-02:** `set` MUST throw `NonConcreteNodeError` if `nodeName` contains free variables.
 
-**REQ-SET-03:** `set` MUST throw `InvalidSetError` if `nodeName` is not a source node.
+**REQ-SET-03:** `set` MUST throw `InvalidNodeError` if no schema matches.
 
-**REQ-SET-04:** All operations MUST be executed atomically in a single database batch.
+**REQ-SET-04:** `set` MUST throw `InvalidSetError` if `nodeName` is not a source node.
 
-**REQ-SET-05:** Only dependents that have been previously materialized (pulled) are marked outdated. Unmaterialized nodes remain unmaterialized.
+**REQ-SET-05:** All operations MUST be executed atomically in a single database batch.
 
-### 3.3 Unchanged Propagation Optimization
+**REQ-SET-06:** Only dependents that have been previously materialized (pulled) are marked outdated. Unmaterialized nodes remain unmaterialized.
+
+### 2.3 Unchanged Propagation Optimization
 
 **REQ-UNCH-01:** When a computor returns `Unchanged`:
 1. Node's value MUST NOT be updated (keeps old value)
@@ -264,9 +209,9 @@ Implementations MAY use any strategy to achieve property P3 (e.g., memoization, 
 
 ---
 
-## 4. Required Interfaces (Normative)
+## 3. Required Interfaces (Normative)
 
-### 4.1 Factory Function
+### 3.1 Factory Function
 
 ```typescript
 function makeDependencyGraph(
@@ -277,22 +222,25 @@ function makeDependencyGraph(
 
 **REQ-FACTORY-01:** MUST validate all schemas at construction (throw on parse errors, scope violations, overlaps, cycles).
 
-**REQ-FACTORY-02:** MUST compute schema hash and obtain schema-namespaced storage via `rootDatabase.getSchemaStorage(schemaHash)`.
+**REQ-FACTORY-02:** MUST compute schema identifier and obtain schema-namespaced storage via `rootDatabase.getSchemaStorage(schemaId)`.
 
 **REQ-FACTORY-03:** MUST NOT mutate `nodeDefs` or `rootDatabase`.
 
-### 4.2 DependencyGraph Interface
+### 3.2 DependencyGraph Interface
 
 ```typescript
 interface DependencyGraph {
   pull(nodeName: string): Promise<DatabaseValue>;
   set(nodeName: string, value: DatabaseValue): Promise<void>;
+  getStorage(): SchemaStorage;
 }
 ```
 
 **REQ-IFACE-01:** Implementations MUST provide type guard `isDependencyGraph(value): boolean`.
 
-### 4.3 Database Interfaces
+**REQ-IFACE-02:** `getStorage()` MUST return the `SchemaStorage` instance for the graph.
+
+### 3.3 Database Interfaces
 
 #### GenericDatabase<T>
 
@@ -338,17 +286,17 @@ type InputsRecord = { inputs: string[] };
 
 ```typescript
 interface RootDatabase {
-  getSchemaStorage(schemaHash: string): SchemaStorage;
+  getSchemaStorage(schemaId: string): SchemaStorage;
   listSchemas(): AsyncIterable<string>;
   close(): Promise<void>;
 }
 ```
 
-**REQ-ROOT-01:** `getSchemaStorage()` MUST return isolated storage per schema hash.
+**REQ-ROOT-01:** `getSchemaStorage()` MUST return isolated storage per schema identifier.
 
-**REQ-ROOT-02:** Different schema hashes MUST NOT share storage or cause key collisions.
+**REQ-ROOT-02:** Different schema identifiers MUST NOT share storage or cause key collisions.
 
-### 4.4 Computor Signature
+### 3.4 Computor Signature
 
 ```typescript
 type Computor = (
@@ -366,15 +314,28 @@ type Computor = (
 
 **REQ-COMP-04:** Implementations MUST expose `makeUnchanged()` factory and `isUnchanged(value)` type guard.
 
-### 4.5 Error Taxonomy
+### 3.5 Error Taxonomy
 
-All errors MUST provide stable `.name` property and required fields. See section 1.2 for complete taxonomy.
+All errors MUST provide stable `.name` property and required fields:
+
+| Error Name | Required Fields | Thrown When |
+|------------|----------------|-------------|
+| `InvalidExpressionError` | `expression: string` | Invalid expression syntax |
+| `NonConcreteNodeError` | `pattern: string` | Expression contains free variables in pull/set |
+| `InvalidNodeError` | `nodeName: string` | No schema matches the node |
+| `InvalidSetError` | `nodeName: string` | Node is not a source node |
+| `SchemaOverlapError` | `patterns: string[]` | Overlapping output patterns at init |
+| `InvalidSchemaError` | `schemaOutput: string` | Schema definition problems at init |
+| `SchemaCycleError` | `cycle: string[]` | Cyclic schema dependencies at init |
+| `MissingValueError` | `nodeName: string` | Up-to-date node has no stored value |
+
+**REQ-ERR-01:** All error types MUST provide type guard functions (e.g., `isInvalidExpressionError(value): boolean`).
 
 ---
 
-## 5. Persistence & Materialization (Normative)
+## 4. Persistence & Materialization (Normative)
 
-### 5.1 Materialization Markers
+### 4.1 Materialization Markers
 
 **REQ-PERSIST-01:** Implementations MUST persist sufficient markers to reconstruct materialized node set after restart.
 
@@ -384,7 +345,7 @@ All errors MUST provide stable `.name` property and required fields. See section
 
 **REQ-PERSIST-03:** The specific persistence mechanism (metadata keys, reverse index, etc.) is implementation-defined.
 
-### 5.2 Invariants
+### 4.2 Invariants
 
 The graph MUST maintain these invariants for all materialized nodes:
 
@@ -394,7 +355,7 @@ The graph MUST maintain these invariants for all materialized nodes:
 
 **I3 (Value Consistency):** If materialized node N is `up-to-date`, its value equals what would be computed by recursively evaluating dependencies and applying computor.
 
-### 5.3 Correctness Properties
+### 4.3 Correctness Properties
 
 **P1 (Semantic Equivalence):** `pull(N)` produces same result as recomputing from scratch.
 
@@ -403,6 +364,62 @@ The graph MUST maintain these invariants for all materialized nodes:
 **P3 (Single Invocation):** Each computor invoked at most once per top-level `pull()`.
 
 **P4 (Freshness Preservation):** After `pull(N)`, N and all transitive dependencies are `up-to-date`.
+
+---
+
+## 5. Test-Visible Contract (Normative)
+
+This section defines exactly what conformance tests MAY assert. All other implementation details are internal and subject to change.
+
+### 5.1 Public API
+
+Tests MAY assert the existence and signatures of:
+
+* `makeDependencyGraph(rootDatabase: RootDatabase, nodeDefs: NodeDef[]): DependencyGraph` — Factory function
+* `DependencyGraph.pull(nodeName: string): Promise<DatabaseValue>` — Retrieve/compute node value
+* `DependencyGraph.set(nodeName: string, value: DatabaseValue): Promise<void>` — Write source node value
+* `DependencyGraph.getStorage(): SchemaStorage` — Access schema storage for testing
+* `isDependencyGraph(value): boolean` — Type guard
+
+### 5.2 Observable Error Taxonomy
+
+Tests MAY assert error names (via `.name` property) and required fields (see section 3.5 for complete taxonomy).
+
+### 5.3 Canonicalization Requirement
+
+Tests MAY assert:
+* `pull("event_context('id')")` and `pull("event_context(\"id\")")` behave identically (quoting normalization)
+* Database keys use single-quote format for strings
+* See REQ-CANON-03 and REQ-CANON-04 in section 1.3
+
+### 5.4 Freshness Observability
+
+**REQ-FRESH-01:** Implementations MUST expose the conceptual freshness state via `SchemaStorage.freshness`:
+
+* `"up-to-date"` — Node value is consistent with dependencies
+* `"potentially-outdated"` — Node may need recomputation
+* `undefined` — Node is not materialized
+
+Tests MAY assert freshness state via `schemaStorage.freshness.get(canonicalNodeName)`.
+
+**REQ-FRESH-02:** Internal freshness tracking mechanisms (versions, epochs, etc.) are implementation-defined and NOT observable to tests.
+
+### 5.5 Restart Resilience
+
+**REQ-RESTART-01:** Materialized nodes MUST remain materialized across graph restarts (same `RootDatabase`, same schema).
+
+**REQ-RESTART-02:** After restart, `set(source, value)` MUST invalidate all previously materialized transitive dependents WITHOUT requiring re-pull.
+
+Tests MAY assert:
+* Pull a node, restart graph instance, call `set()` on upstream source, verify downstream node is marked `potentially-outdated`
+
+### 5.6 Behavioral Guarantees
+
+**REQ-BEHAVE-01 = P1** (see §4.3): `pull(N)` MUST produce the same result as recomputing all values from scratch (Semantic Equivalence).
+
+**REQ-BEHAVE-02 = P3** (see §4.3): Each computor MUST be invoked at most once per top-level `pull()` call (Single Invocation).
+
+**REQ-BEHAVE-03 = P4** (see §4.3): After `pull(N)` completes, N and all its transitive dependencies MUST be marked `up-to-date` (Freshness Preservation).
 
 ---
 
@@ -479,7 +496,7 @@ This section describes the reference implementation's storage design. Implementa
 
 **Alternative:** Implementations MAY use adjacency lists (`inputNode -> [dependent1, dependent2, ...]`) if preferred.
 
-#### B.2 Recommended Schema Hash Algorithm
+#### B.2 Recommended Schema Identifier Algorithm
 
 **Algorithm:**
 ```javascript
@@ -491,7 +508,7 @@ const schemaRepresentation = compiledNodes
   .sort((a, b) => a.output.localeCompare(b.output));
 
 const schemaJson = JSON.stringify(schemaRepresentation);
-const schemaHash = crypto.createHash("md5")
+const schemaId = crypto.createHash("md5")
   .update(schemaJson)
   .digest("hex")
   .substring(0, 16);
@@ -499,7 +516,7 @@ const schemaHash = crypto.createHash("md5")
 
 **Purpose:** Ensures graphs with identical schemas share storage; different schemas are isolated.
 
-**Alternative:** Implementations MAY use different hash algorithms (SHA-256, etc.) or namespacing strategies.
+**Alternative:** Implementations MAY use different algorithms (SHA-256, UUIDs, etc.) or namespacing strategies.
 
 #### B.3 Optional GraphStorage Helper Wrapper
 
@@ -545,7 +562,7 @@ To efficiently implement invalidation, implementations SHOULD maintain a reverse
 
 #### D.3 Quoting Flexibility
 
-Implementations SHOULD accept both single and double quotes in input expressions and canonicalize to single quotes. This improves developer ergonomics.
+Implementations MUST accept both single and double quotes in input expressions and canonicalize to single quotes. This improves developer ergonomics.
 
 ### Appendix E: Edge Cases
 
