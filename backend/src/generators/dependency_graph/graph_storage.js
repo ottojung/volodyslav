@@ -13,6 +13,7 @@
 /** @typedef {import('../database/types').Freshness} Freshness */
 /** @typedef {import('../database/types').InputsRecord} InputsRecord */
 /** @typedef {import('../database/types').DatabaseBatchOperation} DatabaseBatchOperation */
+/** @typedef {import('../database/types').SchemaSublevelType} SchemaSublevelType */
 
 /**
  * Interface for batch operations on a specific database.
@@ -50,11 +51,10 @@
 
 /**
  * Creates a batch builder for atomic operations.
- * @param {RootDatabase} rootDatabase - The root database instance
  * @param {SchemaStorage} schemaStorage - The schema storage instance
  * @returns {BatchBuilder}
  */
-function makeBatchBuilder(rootDatabase, schemaStorage) {
+function makeBatchBuilder(schemaStorage) {
     /** @type {DatabaseBatchOperation[]} */
     const operations = [];
 
@@ -79,7 +79,7 @@ function makeBatchBuilder(rootDatabase, schemaStorage) {
             del: (key) => operations.push(schemaStorage.revdeps.delOp(key)),
         },
         async write() {
-            await rootDatabase.batch(operations);
+            await schemaStorage.sublevel.batch(operations);
         },
     };
 }
@@ -108,7 +108,7 @@ function makeGraphStorage(rootDatabase, schemaHash) {
         }
 
         // Use batch for atomic updates
-        const batch = makeBatchBuilder(rootDatabase, schemaStorage);
+        const batch = makeBatchBuilder(schemaStorage);
         
         // Store the inputs record
         batch.inputs.put(node, { inputs });
@@ -164,7 +164,7 @@ function makeGraphStorage(rootDatabase, schemaHash) {
         revdeps: schemaStorage.revdeps,
         
         // Batch builder for atomic operations
-        batch: () => makeBatchBuilder(rootDatabase, schemaStorage),
+        batch: () => makeBatchBuilder(schemaStorage),
         
         // Helper methods
         ensureNodeIndexed,

@@ -205,29 +205,6 @@ class DatabaseClass {
     }
 
     /**
-     * Executes multiple operations in a batch.
-     * @param {Array<DatabaseBatchOperation>} operations
-     * @returns {Promise<void>}
-     * @throws {DatabaseQueryError} If the operation fails
-     */
-    async batch(operations) {
-        if (operations.length === 0) {
-            return;
-        }
-        try {
-            await this.db.batch(operations, { sync: true });
-        } catch (err) {
-            const error = err instanceof Error ? err : new Error(String(err));
-            throw new DatabaseQueryError(
-                `Batch operation failed: ${error.message}`,
-                this.databasePath,
-                `BATCH ${operations.length} ops`,
-                error
-            );
-        }
-    }
-
-    /**
      * Closes the database connection.
      * @returns {Promise<void>}
      */

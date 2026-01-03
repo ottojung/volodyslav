@@ -48,7 +48,6 @@ class TypedDatabaseClass {
 
     /**
      * The parent schema sublevel instance.
-     * @private
      * @type {SchemaSublevelType}
      */
     schemaSublevel;
