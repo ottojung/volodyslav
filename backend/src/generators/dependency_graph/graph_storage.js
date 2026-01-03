@@ -43,7 +43,7 @@
  * @property {InputsDatabase} inputs - Node inputs index
  * @property {RevdepsDatabase} revdeps - Reverse dependencies (input -> dependent array)
  * @property {() => BatchBuilder} batch - Create a batch builder for atomic operations
- * @property {(node: string, inputs: string[]) => Promise<void>} ensureNodeIndexed - Index a node's dependencies
+ * @property {(node: string, inputs: string[], batch: BatchBuilder) => Promise<void>} ensureNodeIndexed - Index a node's dependencies
  * @property {(input: string) => Promise<string[]>} listDependents - List all dependents of an input
  * @property {(node: string) => Promise<string[] | null>} getInputs - Get inputs for a node
  * @property {() => Promise<string[]>} listMaterializedNodes - List all materialized node names
@@ -98,21 +98,19 @@ function makeGraphStorage(rootDatabase, schemaHash) {
      * Ensure a node's inputs and reverse dependencies are indexed.
      * @param {string} node - Canonical node key
      * @param {string[]} inputs - Array of canonical input keys
+     * @param {BatchBuilder} batch - Batch builder for atomic operations
      * @returns {Promise<void>}
      */
-    async function ensureNodeIndexed(node, inputs) {
+    async function ensureNodeIndexed(node, inputs, batch) {
         // Check if already indexed
         const existingInputs = await getInputs(node);
         if (existingInputs !== null) {
             return; // Already indexed
         }
 
-        // Use batch for atomic updates
-        const batch = makeBatchBuilder(schemaStorage);
-        
         // Store the inputs record
         batch.inputs.put(node, { inputs });
-        
+
         // Update revdeps using structured values (arrays)
         for (const input of inputs) {
             const existingDeps = (await schemaStorage.revdeps.get(input)) || [];
@@ -120,8 +118,6 @@ function makeGraphStorage(rootDatabase, schemaHash) {
                 batch.revdeps.put(input, [...existingDeps, node]);
             }
         }
-        
-        await batch.write();
     }
 
     /**

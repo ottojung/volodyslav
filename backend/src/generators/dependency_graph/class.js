@@ -273,10 +273,10 @@ class DependencyGraphClass {
      * Dynamic edges are persisted to DB when the node is computed/set, not here.
      * @private
      * @param {string} concreteKeyCanonical - Canonical concrete node key
-     * @returns {Promise<ConcreteNodeDefinition>}
+     * @returns {ConcreteNodeDefinition}
      * @throws {Error} If no pattern matches and node not in graph
      */
-    async getOrCreateConcreteNode(concreteKeyCanonical) {
+    getOrCreateConcreteNode(concreteKeyCanonical) {
         // Check if it's an exact node in the graph
         const exactNode = this.graphIndex.exactIndex.get(concreteKeyCanonical);
         if (exactNode) {
@@ -423,9 +423,10 @@ class DependencyGraphClass {
      *
      * @private
      * @param {ConcreteNodeDefinition} nodeDefinition - The node to maybe recalculate
+     * @param {BatchBuilder} batch - Batch builder for atomic operations
      * @returns {Promise<RecomputeResult>}
      */
-    async maybeRecalculate(nodeDefinition) {
+    async maybeRecalculate(nodeDefinition, batch) {
         const nodeName = nodeDefinition.output;
 
         // Pull all inputs (recursively ensures they're up-to-date)
@@ -433,8 +434,6 @@ class DependencyGraphClass {
         let allInputsUnchanged = true;
 
         for (const inputKey of nodeDefinition.inputs) {
-            // Ensure input node exists
-            await this.getOrCreateConcreteNode(inputKey);
             const { value: inputValue, status: inputStatus } =
                 await this.pullWithStatus(inputKey);
             inputValues.push(inputValue);
@@ -458,14 +457,12 @@ class DependencyGraphClass {
             nodeDefinition.inputs.length > 0 &&
             oldValue !== undefined
         ) {
-            // Prepare batch for the fast path
-            const batch = this.storage.batch();
-
             // Ensure node is indexed (if it has inputs)
             // This is critical for pattern nodes which have no static dependents map entry
             await this.storage.ensureNodeIndexed(
                 nodeName,
-                nodeDefinition.inputs
+                nodeDefinition.inputs,
+                batch,
             );
 
             // Mark up-to-date
@@ -499,14 +496,12 @@ class DependencyGraphClass {
             }
         }
 
-        // Prepare batch operations
-        const batch = this.storage.batch();
-
         // Ensure node is indexed (if it has inputs)
         if (nodeDefinition.inputs.length > 0) {
             await this.storage.ensureNodeIndexed(
                 nodeName,
-                nodeDefinition.inputs
+                nodeDefinition.inputs,
+                batch,
             );
         }
 
@@ -562,6 +557,8 @@ class DependencyGraphClass {
      * @returns {Promise<RecomputeResult>}
      */
     async pullWithStatus(nodeName) {
+        const batch = this.storage.batch();
+
         // Canonicalize the node name
         const canonicalName = canonicalize(nodeName);
 
@@ -569,8 +566,8 @@ class DependencyGraphClass {
         validateConcreteKey(canonicalName);
 
         // Find or create the node definition
-        const nodeDefinition = await this.getOrCreateConcreteNode(
-            canonicalName
+        const nodeDefinition = this.getOrCreateConcreteNode(
+            canonicalName,
         );
 
         // Check freshness of this node
@@ -587,7 +584,8 @@ class DependencyGraphClass {
             if (nodeDefinition.inputs.length > 0) {
                 await this.storage.ensureNodeIndexed(
                     canonicalName,
-                    nodeDefinition.inputs
+                    nodeDefinition.inputs,
+                    batch,
                 );
             }
             
@@ -599,7 +597,7 @@ class DependencyGraphClass {
         }
 
         // Potentially-outdated or undefined freshness: need to maybe recalculate
-        return await this.maybeRecalculate(nodeDefinition);
+        return await this.maybeRecalculate(nodeDefinition, batch);
     }
 
     /**
