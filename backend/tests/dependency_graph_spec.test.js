@@ -794,12 +794,8 @@ describe("Basic operational semantics: set/pull, caching, invalidation", () => {
         await g.set("a", { s: "a()" });
 
         await expect(g.debugGetFreshness("a")).resolves.toBe("up-to-date");
-        await expect(g.debugGetFreshness("b")).resolves.toBe(
-            "potentially-outdated"
-        );
-        await expect(g.debugGetFreshness("c")).resolves.toBe(
-            "potentially-outdated"
-        );
+        await expect(g.debugGetFreshness("b")).resolves.toBe("missing");
+        await expect(g.debugGetFreshness("c")).resolves.toBe("missing");
 
         const c = await g.pull("c");
         expect(c).toEqual({ s: "c(b(a()))" });
@@ -867,12 +863,8 @@ describe("Basic operational semantics: set/pull, caching, invalidation", () => {
         await g.set("a", { s: "a()" });
 
         await expect(g.debugGetFreshness("a")).resolves.toBe("up-to-date");
-        await expect(g.debugGetFreshness("b")).resolves.toBe(
-            "potentially-outdated"
-        );
-        await expect(g.debugGetFreshness("c")).resolves.toBe(
-            "potentially-outdated"
-        );
+        await expect(g.debugGetFreshness("b")).resolves.toBe("missing");
+        await expect(g.debugGetFreshness("c")).resolves.toBe("missing");
 
         const c = await g.pull("c");
         expect(c).toEqual({ s: "c(b(a()))" });
@@ -963,10 +955,10 @@ describe("Basic operational semantics: set/pull, caching, invalidation", () => {
         await g.set("a", { s: "a()" });
 
         await expect(fr("a")).resolves.toBe("up-to-date");
-        await expect(fr("b")).resolves.toBe("potentially-outdated");
-        await expect(fr("c")).resolves.toBe("potentially-outdated");
-        await expect(fr("d")).resolves.toBe("potentially-outdated");
-        await expect(fr("e")).resolves.toBe("potentially-outdated");
+        await expect(fr("b")).resolves.toBe("missing");
+        await expect(fr("c")).resolves.toBe("missing");
+        await expect(fr("d")).resolves.toBe("missing");
+        await expect(fr("e")).resolves.toBe("missing");
 
         const c = await g.pull("c");
         expect(c).toEqual({ s: "c(b(a()))" });
@@ -980,16 +972,16 @@ describe("Basic operational semantics: set/pull, caching, invalidation", () => {
         await expect(fr("a")).resolves.toBe("up-to-date");
         await expect(fr("b")).resolves.toBe("up-to-date");
         await expect(fr("c")).resolves.toBe("up-to-date");
-        await expect(fr("d")).resolves.toBe("potentially-outdated");
-        await expect(fr("e")).resolves.toBe("potentially-outdated");
+        await expect(fr("d")).resolves.toBe("missing");
+        await expect(fr("e")).resolves.toBe("missing");
 
         await g.set("a", { s: "a()" });
 
         await expect(fr("a")).resolves.toBe("up-to-date");
         await expect(fr("b")).resolves.toBe("potentially-outdated");
         await expect(fr("c")).resolves.toBe("potentially-outdated");
-        await expect(fr("d")).resolves.toBe("potentially-outdated");
-        await expect(fr("e")).resolves.toBe("potentially-outdated");
+        await expect(fr("d")).resolves.toBe("missing");
+        await expect(fr("e")).resolves.toBe("missing");
 
         const b = await g.pull("b");
         expect(b).toEqual({ s: "b(a())" });
@@ -1003,8 +995,8 @@ describe("Basic operational semantics: set/pull, caching, invalidation", () => {
         await expect(fr("a")).resolves.toBe("up-to-date");
         await expect(fr("b")).resolves.toBe("up-to-date");
         await expect(fr("c")).resolves.toBe("potentially-outdated");
-        await expect(fr("d")).resolves.toBe("potentially-outdated");
-        await expect(fr("e")).resolves.toBe("potentially-outdated");
+        await expect(fr("d")).resolves.toBe("missing");
+        await expect(fr("e")).resolves.toBe("missing");
     });
 
     test("unchanged optimization long with skips", async () => {
@@ -1064,10 +1056,10 @@ describe("Basic operational semantics: set/pull, caching, invalidation", () => {
         await g.set("a", { s: "a()" });
 
         await expect(fr("a")).resolves.toBe("up-to-date");
-        await expect(fr("b")).resolves.toBe("potentially-outdated");
-        await expect(fr("c")).resolves.toBe("potentially-outdated");
-        await expect(fr("d")).resolves.toBe("potentially-outdated");
-        await expect(fr("e")).resolves.toBe("potentially-outdated");
+        await expect(fr("b")).resolves.toBe("missing");
+        await expect(fr("c")).resolves.toBe("missing");
+        await expect(fr("d")).resolves.toBe("missing");
+        await expect(fr("e")).resolves.toBe("missing");
 
         const c = await g.pull("c");
         expect(c).toEqual({ s: "c(b(a()))" });
@@ -1081,16 +1073,16 @@ describe("Basic operational semantics: set/pull, caching, invalidation", () => {
         await expect(fr("a")).resolves.toBe("up-to-date");
         await expect(fr("b")).resolves.toBe("up-to-date");
         await expect(fr("c")).resolves.toBe("up-to-date");
-        await expect(fr("d")).resolves.toBe("potentially-outdated");
-        await expect(fr("e")).resolves.toBe("potentially-outdated");
+        await expect(fr("d")).resolves.toBe("missing");
+        await expect(fr("e")).resolves.toBe("missing");
 
         await g.set("a", { s: "a()" });
 
         await expect(fr("a")).resolves.toBe("up-to-date");
         await expect(fr("b")).resolves.toBe("potentially-outdated");
         await expect(fr("c")).resolves.toBe("potentially-outdated");
-        await expect(fr("d")).resolves.toBe("potentially-outdated");
-        await expect(fr("e")).resolves.toBe("potentially-outdated");
+        await expect(fr("d")).resolves.toBe("missing");
+        await expect(fr("e")).resolves.toBe("missing");
 
         const b = await g.pull("b");
         expect(b).toEqual({ s: "b(a())" });
@@ -1104,8 +1096,8 @@ describe("Basic operational semantics: set/pull, caching, invalidation", () => {
         await expect(fr("a")).resolves.toBe("up-to-date");
         await expect(fr("b")).resolves.toBe("up-to-date");
         await expect(fr("c")).resolves.toBe("potentially-outdated");
-        await expect(fr("d")).resolves.toBe("potentially-outdated");
-        await expect(fr("e")).resolves.toBe("potentially-outdated");
+        await expect(fr("d")).resolves.toBe("missing");
+        await expect(fr("e")).resolves.toBe("missing");
 
         const e1 = await g.pull("e");
         expect(e1).toEqual({ s: "e(d(c(b(a()))))" });
