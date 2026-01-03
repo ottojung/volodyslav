@@ -3,7 +3,7 @@
  */
 
 /** @typedef {import('../../event').Event} Event */
-/** @typedef {import('../database/class').Database} Database */
+/** @typedef {import('../database/root_database').RootDatabase} RootDatabase */
 /** @typedef {import('../database/types').DatabaseValue} DatabaseValue */
 /** @typedef {import('../database/types').Freshness} Freshness */
 /** @typedef {import('./unchanged').Unchanged} Unchanged */
@@ -16,7 +16,7 @@
 /**
  * Capabilities needed for DependencyGraph operations
  * @typedef {object} DependencyGraphCapabilities
- * @property {Database} database - A database instance
+ * @property {RootDatabase} database - A root database instance
  */
 
 /**
