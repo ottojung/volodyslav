@@ -62,7 +62,7 @@ const { makeTypedDatabase } = require('./typed_database');
  * @property {FreshnessDatabase} freshness - Node freshness state
  * @property {InputsDatabase} inputs - Node inputs index
  * @property {RevdepsDatabase} revdeps - Reverse dependencies (input -> array of dependents)
- * @property {SchemaSublevelType} sublevel - The parent schema sublevel
+ * @property {SchemaSublevelType['batch']} batch - Batch operation interface for atomic writes
  */
 
 /**
@@ -122,8 +122,11 @@ class RootDatabaseClass {
         /** @type {SimpleSublevel<string[]>} */
         const revdepsSublevel = schemaSublevel.sublevel('revdeps', { valueEncoding: 'json' });
 
+        /** @type {SchemaSublevelType['batch']} */
+        const batch = schemaSublevel.batch;
+
         const storage = {
-            sublevel: schemaSublevel,
+            batch,
             values: makeTypedDatabase(valuesSublevel),
             freshness: makeTypedDatabase(freshnessSublevel),
             inputs: makeTypedDatabase(inputsSublevel),

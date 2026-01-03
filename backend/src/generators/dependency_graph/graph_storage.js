@@ -79,7 +79,7 @@ function makeBatchBuilder(schemaStorage) {
             del: (key) => operations.push(schemaStorage.revdeps.delOp(key)),
         },
         async write() {
-            await schemaStorage.sublevel.batch(operations);
+            await schemaStorage.batch(operations);
         },
     };
 }
