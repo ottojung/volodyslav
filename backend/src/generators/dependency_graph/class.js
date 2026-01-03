@@ -40,7 +40,7 @@ const { makeGraphStorage } = require("./graph_storage");
  * Algorithm overview:
  * - pull() checks freshness: up-to-date → return cached, potentially-outdated → maybeRecalculate
  * - maybeRecalculate() pulls all inputs, computes, marks up-to-date
- * - When Unchanged is returned, propagate up-to-date state downstream to potentially-outdated nodes
+ * - When Unchanged is returned, skips recalculation for the nodes up the call stack
  *
  * Persistence model:
  * - Reverse dependencies and inputs are persisted in DB under schema-namespaced keys
