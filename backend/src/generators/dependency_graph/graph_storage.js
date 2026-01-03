@@ -76,15 +76,19 @@ function makeBatchBuilder(schemaStorage) {
                 del: (key) => operations.push(schemaStorage.values.delOp(key)),
             },
             freshness: {
-                put: (key, value) => operations.push(schemaStorage.freshness.putOp(key, value)),
-                del: (key) => operations.push(schemaStorage.freshness.delOp(key)),
+                put: (key, value) =>
+                    operations.push(schemaStorage.freshness.putOp(key, value)),
+                del: (key) =>
+                    operations.push(schemaStorage.freshness.delOp(key)),
             },
             inputs: {
-                put: (key, value) => operations.push(schemaStorage.inputs.putOp(key, value)),
+                put: (key, value) =>
+                    operations.push(schemaStorage.inputs.putOp(key, value)),
                 del: (key) => operations.push(schemaStorage.inputs.delOp(key)),
             },
             revdeps: {
-                put: (key, value) => operations.push(schemaStorage.revdeps.putOp(key, value)),
+                put: (key, value) =>
+                    operations.push(schemaStorage.revdeps.putOp(key, value)),
                 del: (key) => operations.push(schemaStorage.revdeps.delOp(key)),
             },
         };
@@ -114,7 +118,7 @@ function makeRevdepKey(input, dependent) {
  * @returns {{input: string, dependent: string}}
  */
 function parseRevdepKey(key) {
-    const parts = key.split('\x00');
+    const parts = key.split("\x00");
     if (parts.length !== 2 || !parts[0] || !parts[1]) {
         throw new Error(`Invalid revdep key format: ${key}`);
     }
@@ -123,7 +127,7 @@ function parseRevdepKey(key) {
 
 /**
  * Creates a GraphStorage instance using typed databases.
- * 
+ *
  * @param {RootDatabase} rootDatabase - The root database instance
  * @param {string} schemaHash - The schema hash for namespacing
  * @returns {GraphStorage}
@@ -210,7 +214,7 @@ function makeGraphStorage(rootDatabase, schemaHash) {
     async function listDependents(input) {
         const dependents = [];
         const prefix = `${input}\x00`;
-        
+
         // Iterate over all keys that start with the input prefix
         for await (const key of schemaStorage.revdeps.keys()) {
             if (key.startsWith(prefix)) {
@@ -218,7 +222,7 @@ function makeGraphStorage(rootDatabase, schemaHash) {
                 dependents.push(dependent);
             }
         }
-        
+
         return dependents;
     }
 
@@ -250,10 +254,10 @@ function makeGraphStorage(rootDatabase, schemaHash) {
         freshness: schemaStorage.freshness,
         inputs: schemaStorage.inputs,
         revdeps: schemaStorage.revdeps,
-        
+
         // Batch builder for atomic operations
         withBatch: makeBatchBuilder(schemaStorage),
-        
+
         // Helper methods
         ensureMaterialized,
         ensureReverseDepsIndexed,

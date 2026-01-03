@@ -129,10 +129,7 @@ class DependencyGraphClass {
             );
 
             if (currentFreshness === "up-to-date") {
-                batch.freshness.put(
-                    node.output,
-                    "potentially-outdated"
-                );
+                batch.freshness.put(node.output, "potentially-outdated");
                 nodesBecomingOutdated.add(node.output);
 
                 // Recursively mark dependents of this node
@@ -195,10 +192,7 @@ class DependencyGraphClass {
             );
 
             // Collect operations to mark all dependents as potentially-outdated
-            await this.propagateOutdated(
-                canonicalKey,
-                batch
-            );
+            await this.propagateOutdated(canonicalKey, batch);
         });
     }
 
@@ -478,7 +472,7 @@ class DependencyGraphClass {
                 nodeDefinition.inputs,
                 batch
             );
-            
+
             // Ensure reverse dependencies are indexed (if it has inputs)
             // This is critical for pattern nodes which have no static dependents map entry
             await this.storage.ensureReverseDepsIndexed(
@@ -511,7 +505,10 @@ class DependencyGraphClass {
         } else {
             // Must be a valid DatabaseValue (not null/undefined)
             if (computedValue === null || computedValue === undefined) {
-                throw makeInvalidComputorReturnValueError(nodeName, computedValue);
+                throw makeInvalidComputorReturnValueError(
+                    nodeName,
+                    computedValue
+                );
             }
         }
 
@@ -584,9 +581,7 @@ class DependencyGraphClass {
             validateConcreteKey(canonicalName);
 
             // Find or create the node definition
-            const nodeDefinition = this.getOrCreateConcreteNode(
-                canonicalName,
-            );
+            const nodeDefinition = this.getOrCreateConcreteNode(canonicalName);
 
             // Check freshness of this node
             const nodeFreshness = await this.storage.freshness.get(
@@ -602,7 +597,7 @@ class DependencyGraphClass {
                     nodeDefinition.inputs,
                     batch
                 );
-                
+
                 // Ensure reverse dependencies are indexed if it has inputs
                 // This is critical for seeded databases where values/freshness exist
                 // but reverse-dep metadata is missing
@@ -613,7 +608,7 @@ class DependencyGraphClass {
                         batch
                     );
                 }
-                
+
                 const result = await this.storage.values.get(canonicalName);
                 if (result === undefined) {
                     throw makeMissingValueError(canonicalName);
