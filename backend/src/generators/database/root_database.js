@@ -124,10 +124,10 @@ class RootDatabaseClass {
 
         const storage = {
             sublevel: schemaSublevel,
-            values: makeTypedDatabase(schemaSublevel, valuesSublevel),
-            freshness: makeTypedDatabase(schemaSublevel, freshnessSublevel),
-            inputs: makeTypedDatabase(schemaSublevel, inputsSublevel),
-            revdeps: makeTypedDatabase(schemaSublevel, revdepsSublevel),
+            values: makeTypedDatabase(valuesSublevel),
+            freshness: makeTypedDatabase(freshnessSublevel),
+            inputs: makeTypedDatabase(inputsSublevel),
+            revdeps: makeTypedDatabase(revdepsSublevel),
         };
 
         // Cache for future use

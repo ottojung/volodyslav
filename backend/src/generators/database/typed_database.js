@@ -47,18 +47,10 @@ class TypedDatabaseClass {
     sublevel;
 
     /**
-     * The parent schema sublevel instance.
-     * @type {SchemaSublevelType}
-     */
-    schemaSublevel;
-
-    /**
      * @constructor
-     * @param {SchemaSublevelType} schemaSublevel - The parent level
      * @param {SimpleSublevel<TValue>} sublevel - The LevelDB sublevel instance
      */
-    constructor(schemaSublevel, sublevel) {
-        this.schemaSublevel = schemaSublevel;
+    constructor(sublevel) {
         this.sublevel = sublevel;
     }
 
@@ -141,12 +133,11 @@ class TypedDatabaseClass {
 /**
  * Factory function to create a TypedDatabase instance.
  * @template TValue
- * @param {SchemaSublevelType} schemaSublevel - The parent level
  * @param {SimpleSublevel<TValue>} sublevel - The LevelDB sublevel instance
  * @returns {GenericDatabase<TValue>}
  */
-function makeTypedDatabase(schemaSublevel,sublevel) {
-    return new TypedDatabaseClass(schemaSublevel, sublevel);
+function makeTypedDatabase(sublevel) {
+    return new TypedDatabaseClass(sublevel);
 }
 
 /**
