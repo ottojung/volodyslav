@@ -58,34 +58,35 @@
  * @returns {BatchFunction}
  */
 function makeBatchBuilder(schemaStorage) {
-    /** @type {DatabaseBatchOperation[]} */
-    const operations = [];
-
-    /** @type {BatchBuilder} */
-    const builder = {
-        values: {
-            put: (key, value) => {
-                const op = schemaStorage.values.putOp(key, value);
-                operations.push(op);
-            },
-            del: (key) => operations.push(schemaStorage.values.delOp(key)),
-        },
-        freshness: {
-            put: (key, value) => operations.push(schemaStorage.freshness.putOp(key, value)),
-            del: (key) => operations.push(schemaStorage.freshness.delOp(key)),
-        },
-        inputs: {
-            put: (key, value) => operations.push(schemaStorage.inputs.putOp(key, value)),
-            del: (key) => operations.push(schemaStorage.inputs.delOp(key)),
-        },
-        revdeps: {
-            put: (key, value) => operations.push(schemaStorage.revdeps.putOp(key, value)),
-            del: (key) => operations.push(schemaStorage.revdeps.delOp(key)),
-        },
-    };
-
     /** @type {BatchFunction} */
     const ret = async (fn) => {
+        // Create a fresh operations array for each invocation
+        /** @type {DatabaseBatchOperation[]} */
+        const operations = [];
+
+        /** @type {BatchBuilder} */
+        const builder = {
+            values: {
+                put: (key, value) => {
+                    const op = schemaStorage.values.putOp(key, value);
+                    operations.push(op);
+                },
+                del: (key) => operations.push(schemaStorage.values.delOp(key)),
+            },
+            freshness: {
+                put: (key, value) => operations.push(schemaStorage.freshness.putOp(key, value)),
+                del: (key) => operations.push(schemaStorage.freshness.delOp(key)),
+            },
+            inputs: {
+                put: (key, value) => operations.push(schemaStorage.inputs.putOp(key, value)),
+                del: (key) => operations.push(schemaStorage.inputs.delOp(key)),
+            },
+            revdeps: {
+                put: (key, value) => operations.push(schemaStorage.revdeps.putOp(key, value)),
+                del: (key) => operations.push(schemaStorage.revdeps.delOp(key)),
+            },
+        };
+
         const value = await fn(builder);
         await schemaStorage.batch(operations);
         return value;
