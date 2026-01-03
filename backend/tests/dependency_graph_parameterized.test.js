@@ -230,8 +230,6 @@ describe("Parameterized node schemas", () => {
             const capabilities = getTestCapabilities();
             const db1 = await getRootDatabase(capabilities);
 
-            await db1.put("source", { value: 1 });
-
             const schemas = [
                 {
                     output: "source",
@@ -250,6 +248,10 @@ describe("Parameterized node schemas", () => {
 
             // Instance A: demand instantiation
             const graph1 = makeDependencyGraph(db1, schemas);
+            
+            const testDb1 = makeTestDatabase(graph1);
+            await testDb1.put("source", { value: 1 });
+            
             await graph1.pull('derived("persistent")');
 
             await db1.close();
@@ -507,8 +509,6 @@ describe("Parameterized node schemas", () => {
             const capabilities = getTestCapabilities();
             const db = await getRootDatabase(capabilities);
 
-            await testDb.put("base", { value: 1 });
-
             // These DON'T overlap: pair(x,x) requires both args equal,
             // pair(a,b) where a != b has different args
             // But they can both exist because they match different concrete keys
@@ -540,6 +540,8 @@ describe("Parameterized node schemas", () => {
             const graph = makeDependencyGraph(db, nonOverlappingSchemas);
 
             const testDb = makeTestDatabase(graph);
+            await testDb.put("base", { value: 1 });
+
             // pair(x,x) matches pair(1,1) but not pair(1,2)
             const result1 = await graph.pull('pair(1,1)');
             expect(result1.type).toBe("same_pair");
@@ -551,7 +553,7 @@ describe("Parameterized node schemas", () => {
             await db.close();
         });
 
-        test("rejects overlapping schemas due to constant mismatch", () => {
+        test("rejects overlapping schemas due to constant mismatch", async () => {
             // These DON'T overlap: different constants
             const schemas = [
                 {
@@ -567,8 +569,10 @@ describe("Parameterized node schemas", () => {
             ];
 
             // Should not throw
-            const db = {}; // Dummy
+            const capabilities = getTestCapabilities();
+            const db = await getRootDatabase(capabilities);
             expect(() => makeDependencyGraph(db, schemas)).not.toThrow();
+            await db.close();
         });
     });
 

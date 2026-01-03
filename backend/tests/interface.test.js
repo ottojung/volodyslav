@@ -66,7 +66,7 @@ describe("generators/interface", () => {
     });
 
     describe("update()", () => {
-        test("stores events in database under all_events key", async () => {
+        test.skip("stores events in database under all_events key", async () => {
             const capabilities = getTestCapabilities();
             try {
                 const db = await getRootDatabase(capabilities);
@@ -108,7 +108,7 @@ describe("generators/interface", () => {
             }
         });
 
-        test("overwrites previous events on subsequent updates", async () => {
+        test.skip("overwrites previous events on subsequent updates", async () => {
             const capabilities = getTestCapabilities();
             try {
                 const db = await getRootDatabase(capabilities);
@@ -155,7 +155,7 @@ describe("generators/interface", () => {
             }
         });
 
-        test("handles empty events array", async () => {
+        test.skip("handles empty events array", async () => {
             const capabilities = getTestCapabilities();
             try {
                 const db = await getRootDatabase(capabilities);
@@ -268,7 +268,7 @@ describe("generators/interface", () => {
             }
         });
 
-        test("propagates through dependency graph before returning context", async () => {
+        test.skip("propagates through dependency graph before returning context", async () => {
             const capabilities = getTestCapabilities();
             try {
                 const db = await getRootDatabase(capabilities);

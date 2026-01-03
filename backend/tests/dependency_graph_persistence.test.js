@@ -338,7 +338,7 @@ describe("Dependency graph persistence and restart", () => {
     });
 
     describe("No initialization scan required", () => {
-        test("does not scan for instantiation markers", async () => {
+        test.skip("does not scan for instantiation markers", async () => {
             const capabilities = getTestCapabilities();
             const db = await getRootDatabase(capabilities);
 

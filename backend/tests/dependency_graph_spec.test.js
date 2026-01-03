@@ -47,43 +47,41 @@ class InMemoryDatabase {
         }
         const schemaMap = this.schemas.get(schemaHash);
         
-        // Don't capture logs in closure - access via 'this' to always get current reference
-        const self = this;
-
+        // Don't capture logs in closure - use arrow functions to preserve 'this' context
         const createSublevel = (name) => {
             const prefix = `${name}:`;
             const sublevel = {
-                async get(key) {
+                get: async (key) => {
                     const fullKey = prefix + key;
                     // Track get calls for values sublevel
                     if (name === 'values') {
-                        self.getValueLog.push({ key });
+                        this.getValueLog.push({ key });
                     }
                     const v = schemaMap.get(fullKey);
                     return v === undefined ? undefined : deepClone(v);
                 },
-                async put(key, value) {
+                put: async (key, value) => {
                     const fullKey = prefix + key;
                     schemaMap.set(fullKey, deepClone(value));
                 },
-                async del(key) {
+                del: async (key) => {
                     const fullKey = prefix + key;
                     schemaMap.delete(fullKey);
                 },
-                putOp(key, value) {
+                putOp: (key, value) => {
                     return { type: 'put', sublevel, key, value };
                 },
-                delOp(key) {
+                delOp: (key) => {
                     return { type: 'del', sublevel, key };
                 },
-                async *keys() {
+                keys: async function* () {
                     for (const k of schemaMap.keys()) {
                         if (k.startsWith(prefix)) {
                             yield k.substring(prefix.length);
                         }
                     }
                 },
-                async clear() {
+                clear: async () => {
                     const toDelete = [];
                     for (const k of schemaMap.keys()) {
                         if (k.startsWith(prefix)) {
@@ -108,9 +106,9 @@ class InMemoryDatabase {
             freshness,
             inputs,
             revdeps,
-            async batch(operations) {
-                // Track batch calls - use self.batchLog to access current array
-                self.batchLog.push({ ops: deepClone(operations.map(op => ({ 
+            batch: async (operations) => {
+                // Track batch calls - use this to access current array
+                this.batchLog.push({ ops: deepClone(operations.map(op => ({ 
                     type: op.type, 
                     key: op.key, 
                     value: op.value 
