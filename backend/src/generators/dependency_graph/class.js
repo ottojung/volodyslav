@@ -536,14 +536,8 @@ class DependencyGraphClass {
             batch.freshness.put(inputKey, "up-to-date");
         }
 
-        if (!isUnchanged(computedValue)) {
-            // Value changed: store it, mark up-to-date
-            batch.values.put(nodeName, computedValue);
-            batch.freshness.put(nodeName, "up-to-date");
-
-            return { value: computedValue, status: "changed" };
-        } else {
-            // Value unchanged: mark up-to-date
+        if (isUnchanged(computedValue)) {
+            // Mark up-to-date
             batch.freshness.put(nodeName, "up-to-date");
 
             // Return old value (must exist if Unchanged returned)
@@ -552,6 +546,11 @@ class DependencyGraphClass {
                 throw makeMissingValueError(nodeName);
             }
             return { value: result, status: "unchanged" };
+        } else {
+            // Store value, mark up-to-date
+            batch.values.put(nodeName, computedValue);
+            batch.freshness.put(nodeName, "up-to-date");
+            return { value: computedValue, status: "changed" };
         }
     }
 
