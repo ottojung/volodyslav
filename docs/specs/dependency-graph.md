@@ -946,6 +946,7 @@ set(nodeName: string, value: DatabaseValue): Promise<void>
 * `set` MUST accept any string that parses as a valid expression according to the Expression Grammar.
 * `set` MUST accept expressions with non-canonical quoting and canonicalize them internally before processing.
 * `set` MUST reject expressions with free variables (non-concrete expressions) by throwing `NonConcreteNodeError`.
+* `set` MUST throw `InvalidNodeError` if the concrete node has no matching schema.
 * `set` MUST reject non-source nodes by throwing `InvalidSetError`.
 * `set` MUST store the value at the canonical node key.
 * `set` MUST mark the node as `up-to-date`.
@@ -956,16 +957,18 @@ set(nodeName: string, value: DatabaseValue): Promise<void>
 
 1. Parse and canonicalize `nodeName`.
 2. Validate that the expression is concrete (no free variables).
-3. Validate that the node is a source node (see "Source Nodes" section).
-4. Store `value` at the canonical key.
-5. Mark the node as `up-to-date`.
-6. Recursively mark all dependents as `potentially-outdated`.
-7. Commit all operations atomically via `schemaStorage.batch()`.
+3. Find or validate that the node schema exists.
+4. Validate that the node is a source node (see "Source Nodes" section).
+5. Store `value` at the canonical key.
+6. Mark the node as `up-to-date`.
+7. Recursively mark all dependents as `potentially-outdated`.
+8. Commit all operations atomically via `schemaStorage.batch()`.
 
 **Throws:**
 
 * `InvalidExpressionError` — If `nodeName` does not parse as a valid expression.
 * `NonConcreteNodeError` — If `nodeName` contains free variables.
+* `InvalidNodeError` — If no schema matches.
 * `InvalidSetError` — If the node is not a source node.
 
 ### 5) Canonicalization at API Boundaries and DB Keys (Normative)
@@ -1344,6 +1347,7 @@ Implementations MAY use the name `SchemaPatternNotAllowed` instead of `NonConcre
 **When Thrown:**
 
 * During `pull(nodeName)` if no schema matches the concrete node.
+* During `set(nodeName, value)` if no schema matches the concrete node.
 
 **Error Properties:**
 
@@ -1455,7 +1459,7 @@ Errors MUST be thrown at specific, predictable times:
 |-------|--------|
 | `InvalidExpressionError` | Initialization (schema parsing) OR runtime (`pull`/`set` with invalid input) |
 | `NonConcreteNodeError` | Runtime (`pull`/`set` with free variables) |
-| `InvalidNodeError` | Runtime (`pull` on unknown node) |
+| `InvalidNodeError` | Runtime (`pull`/`set` on unknown node) |
 | `InvalidSetError` | Runtime (`set` on non-source node) |
 | `SchemaOverlapError` | Initialization (schema validation) |
 | `InvalidSchemaError` | Initialization (schema validation) |
