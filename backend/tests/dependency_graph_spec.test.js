@@ -520,17 +520,16 @@ describe("Expression parsing & canonicalization at API boundaries", () => {
             s: { type: "string", value: "test" },
         });
 
-        // Must store under canonical value key "echo(42,'test')" (no spaces)
-        // We don't require a particular *freshness* key, but value key must be canonical.
-        const wroteValueKey =
-            db.batchLog.some((b) =>
-                b.ops.some(
-                    (op) =>
-                        op.type === "put" && op.key.includes("echo(42,'test')")
-                )
-            ) || db.putLog.some((p) => p.key.includes("echo(42,'test')"));
-
-        expect(wroteValueKey).toBe(true);
+        // Check if the value was actually stored under canonical key
+        const storage = g.getStorage();
+        const storedValue = await storage.values.get("echo(42,'test')");
+        expect(storedValue).toBeDefined();
+        
+        // Verify the canonical key stores the correct value
+        expect(storedValue).toEqual({
+            a: { type: "int", value: 42 },
+            s: { type: "string", value: "test" },
+        });
     });
 
     test("string escapes are decoded in bindings (\\n)", async () => {
