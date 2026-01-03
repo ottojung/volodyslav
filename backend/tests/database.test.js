@@ -227,7 +227,7 @@ describe('generators/database', () => {
             }
         });
 
-        test.skip('batch() executes multiple operations atomically', async () => {
+        test('batch() executes multiple operations atomically', async () => {
             const capabilities = getTestCapabilities();
             try {
                 const db = await get(capabilities);
@@ -248,7 +248,7 @@ describe('generators/database', () => {
             }
         });
 
-        test.skip('batch() can mix put and del operations', async () => {
+        test('batch() can mix put and del operations', async () => {
             const capabilities = getTestCapabilities();
             try {
                 const db = await get(capabilities);
