@@ -341,11 +341,16 @@ describe('generators/database', () => {
                 const db = await getRootDatabase(capabilities);
                 const storage = db.getSchemaStorage('test-schema');
                 
-                await storage.revdeps.put('dep1', ['node1', 'node2']);
+                // Store edges using composite keys
+                await storage.revdeps.put('dep1\x00node1', 1);
+                await storage.revdeps.put('dep1\x00node2', 1);
                 
-                const revdeps = await storage.revdeps.get('dep1');
+                // Retrieve edge
+                const edge1 = await storage.revdeps.get('dep1\x00node1');
+                const edge2 = await storage.revdeps.get('dep1\x00node2');
                 
-                expect(revdeps).toEqual(['node1', 'node2']);
+                expect(edge1).toBe(1);
+                expect(edge2).toBe(1);
                 
                 await db.close();
             } finally {

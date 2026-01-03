@@ -30,7 +30,7 @@
  * @property {BatchDatabaseOps<DatabaseValue>} values - Batch operations for values database
  * @property {BatchDatabaseOps<Freshness>} freshness - Batch operations for freshness database
  * @property {BatchDatabaseOps<InputsRecord>} inputs - Batch operations for inputs database
- * @property {BatchDatabaseOps<string[]>} revdeps - Batch operations for revdeps database
+ * @property {BatchDatabaseOps<1>} revdeps - Batch operations for revdeps database (edge-based storage)
  */
 
 /**
@@ -44,7 +44,7 @@
  * @property {ValuesDatabase} values - Node values
  * @property {FreshnessDatabase} freshness - Node freshness
  * @property {InputsDatabase} inputs - Node inputs index
- * @property {RevdepsDatabase} revdeps - Reverse dependencies (input -> dependent array)
+ * @property {RevdepsDatabase} revdeps - Reverse dependencies (edge-based: composite key -> 1)
  * @property {BatchFunction} withBatch - Run a function and commit atomically everything it does
  * @property {(node: string, inputs: string[], batch: BatchBuilder) => Promise<void>} ensureNodeIndexed - Index a node's dependencies
  * @property {(input: string) => Promise<string[]>} listDependents - List all dependents of an input
@@ -96,6 +96,30 @@ function makeBatchBuilder(schemaStorage) {
 }
 
 /**
+ * Create a composite key for an edge in the revdeps database.
+ * Uses null byte as delimiter between input and dependent node names.
+ * @param {string} input - The input node (canonical name)
+ * @param {string} dependent - The dependent node (canonical name)
+ * @returns {string}
+ */
+function makeRevdepKey(input, dependent) {
+    return `${input}\x00${dependent}`;
+}
+
+/**
+ * Parse a composite key from the revdeps database.
+ * @param {string} key - The composite key
+ * @returns {{input: string, dependent: string}}
+ */
+function parseRevdepKey(key) {
+    const parts = key.split('\x00');
+    if (parts.length !== 2 || !parts[0] || !parts[1]) {
+        throw new Error(`Invalid revdep key format: ${key}`);
+    }
+    return { input: parts[0], dependent: parts[1] };
+}
+
+/**
  * Creates a GraphStorage instance using typed databases.
  * 
  * @param {RootDatabase} rootDatabase - The root database instance
@@ -122,23 +146,33 @@ function makeGraphStorage(rootDatabase, schemaHash) {
         // Store the inputs record
         batch.inputs.put(node, { inputs });
 
-        // Update revdeps using structured values (arrays)
+        // Update revdeps using edge-based storage
+        // Each edge is stored as a separate key-value pair
         for (const input of inputs) {
-            const existingDeps = (await schemaStorage.revdeps.get(input)) || [];
-            if (!existingDeps.includes(node)) {
-                batch.revdeps.put(input, [...existingDeps, node]);
-            }
+            const edgeKey = makeRevdepKey(input, node);
+            batch.revdeps.put(edgeKey, 1);
         }
     }
 
     /**
      * List all dependents of an input.
+     * Iterates over all keys with the input prefix to collect dependents.
      * @param {string} input - Canonical input key
      * @returns {Promise<string[]>}
      */
     async function listDependents(input) {
-        // Simple array lookup - no iteration or string manipulation
-        return (await schemaStorage.revdeps.get(input)) || [];
+        const dependents = [];
+        const prefix = `${input}\x00`;
+        
+        // Iterate over all keys that start with the input prefix
+        for await (const key of schemaStorage.revdeps.keys()) {
+            if (key.startsWith(prefix)) {
+                const { dependent } = parseRevdepKey(key);
+                dependents.push(dependent);
+            }
+        }
+        
+        return dependents;
     }
 
     /**
