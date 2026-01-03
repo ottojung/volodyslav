@@ -157,11 +157,7 @@ describe("generators/dependency_graph", () => {
 
         test("recomputes when dependencies are dirty", async () => {
             const capabilities = getTestCapabilities();
-            const db = await getRootDatabase(capabilities);            await testDb.put("input1", { data: "new_data" });
-            await testDb.put(freshnessKey("input1"), "potentially-outdated");
-
-            await testDb.put("output1", { data: "old_result" });
-            await testDb.put(freshnessKey("output1"), "potentially-outdated");
+            const db = await getRootDatabase(capabilities);
 
             const graphDef = [
                 {
@@ -182,6 +178,13 @@ describe("generators/dependency_graph", () => {
             const graph = makeDependencyGraph(db, graphDef);
 
             const testDb = makeTestDatabase(graph);
+
+            await testDb.put("input1", { data: "new_data" });
+            await testDb.put(freshnessKey("input1"), "potentially-outdated");
+
+            await testDb.put("output1", { data: "old_result" });
+            await testDb.put(freshnessKey("output1"), "potentially-outdated");
+
             const result = await graph.pull("output1");
 
             // Should have recomputed with new input
@@ -200,11 +203,12 @@ describe("generators/dependency_graph", () => {
             const capabilities = getTestCapabilities();
             const db = await getRootDatabase(capabilities);
 
-            await testDb.put("standalone", { data: "standalone_value" });
-
             const graph = makeDependencyGraph(db, []);
 
             const testDb = makeTestDatabase(graph);
+
+            await testDb.put("standalone", { data: "standalone_value" });
+
             await expect(graph.pull("standalone")).rejects.toThrow(
                 "Node standalone not found in the dependency graph."
             );
