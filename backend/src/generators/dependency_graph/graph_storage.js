@@ -62,6 +62,7 @@
  */
 function makeBatchBuilder(schemaStorage) {
     // Track the current batch context to support nested calls
+    /** @type {{builder: BatchBuilder, operations: DatabaseBatchOperation[]} | null} */
     let currentBatchContext = null;
 
     /**
