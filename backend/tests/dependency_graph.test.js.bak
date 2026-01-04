@@ -1521,7 +1521,7 @@ describe("generators/dependency_graph", () => {
     });
 
     describe("Static node canonicalization (T2)", () => {
-        test.skip("nodes with extra whitespace are properly canonicalized internally", async () => {
+        test("nodes with extra whitespace are properly canonicalized internally", async () => {
             const capabilities = getTestCapabilities();
             const db = await getRootDatabase(capabilities);
 

@@ -36,7 +36,7 @@ function getTestCapabilities() {
 
 describe("Parameterized node schemas", () => {
     describe("Basic instantiation", () => {
-        test.skip("pull creates concrete instantiation from schema", async () => {
+        test("pull creates concrete instantiation from schema", async () => {
             const capabilities = getTestCapabilities();
             const db = await getRootDatabase(capabilities);
             const schemas = [
@@ -96,7 +96,7 @@ describe("Parameterized node schemas", () => {
             await db.close();
         });
 
-        test.skip("caching works for instantiations", async () => {
+        test("caching works for instantiations", async () => {
             const capabilities = getTestCapabilities();
             const db = await getRootDatabase(capabilities);
             const schemas = [
@@ -141,7 +141,7 @@ describe("Parameterized node schemas", () => {
     });
 
     describe("Invalidation", () => {
-        test.skip("invalidation reaches demanded instantiation", async () => {
+        test("invalidation reaches demanded instantiation", async () => {
             const capabilities = getTestCapabilities();
             const db = await getRootDatabase(capabilities);
 
@@ -181,7 +181,7 @@ describe("Parameterized node schemas", () => {
             await db.close();
         });
 
-        test.skip("only demanded instantiations are tracked", async () => {
+        test("only demanded instantiations are tracked", async () => {
             const capabilities = getTestCapabilities();
             const db = await getRootDatabase(capabilities);
 
@@ -226,7 +226,7 @@ describe("Parameterized node schemas", () => {
     });
 
     describe("Restart resilience", () => {
-        test.skip("previously demanded instantiations are invalidated after restart", async () => {
+        test("previously demanded instantiations are invalidated after restart", async () => {
             const capabilities = getTestCapabilities();
             const db1 = await getRootDatabase(capabilities);
 
@@ -272,7 +272,7 @@ describe("Parameterized node schemas", () => {
     });
 
     describe("Multiple variables", () => {
-        test.skip("schema with multiple variables", async () => {
+        test("schema with multiple variables", async () => {
             const capabilities = getTestCapabilities();
             const db = await getRootDatabase(capabilities);
 
@@ -317,7 +317,7 @@ describe("Parameterized node schemas", () => {
     });
 
     describe("Unchanged propagation", () => {
-        test.skip("Unchanged works for instantiations", async () => {
+        test("Unchanged works for instantiations", async () => {
             const capabilities = getTestCapabilities();
             const db = await getRootDatabase(capabilities);
             const schemas = [
@@ -444,7 +444,7 @@ describe("Parameterized node schemas", () => {
     });
 
     describe("Whitespace handling", () => {
-        test.skip("handles whitespace in node names", async () => {
+        test("handles whitespace in node names", async () => {
             const capabilities = getTestCapabilities();
             const db = await getRootDatabase(capabilities);
 
@@ -505,7 +505,7 @@ describe("Parameterized node schemas", () => {
             }).toThrow("Schema patterns overlap");
         });
 
-        test.skip("accepts non-overlapping schemas with repeated variables", async () => {
+        test("accepts non-overlapping schemas with repeated variables", async () => {
             const capabilities = getTestCapabilities();
             const db = await getRootDatabase(capabilities);
 
@@ -553,7 +553,7 @@ describe("Parameterized node schemas", () => {
             await db.close();
         });
 
-        test.skip("rejects overlapping schemas due to constant mismatch", async () => {
+        test("rejects overlapping schemas due to constant mismatch", async () => {
             // These DON'T overlap: different constants
             const schemas = [
                 {
@@ -577,7 +577,7 @@ describe("Parameterized node schemas", () => {
     });
 
     describe("Persistent reverse-dependency index (T1)", () => {
-        test.skip("reverse dependencies are persisted atomically with first computation", async () => {
+        test("reverse dependencies are persisted atomically with first computation", async () => {
             const capabilities = getTestCapabilities();
             const db = await getRootDatabase(capabilities);
 
@@ -630,7 +630,7 @@ describe("Parameterized node schemas", () => {
             await db.close();
         });
 
-        test.skip("reverse dependencies written in set() batch", async () => {
+        test("reverse dependencies written in set() batch", async () => {
             const capabilities = getTestCapabilities();
             const db = await getRootDatabase(capabilities);
 

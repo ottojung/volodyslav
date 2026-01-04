@@ -35,7 +35,7 @@ function getTestCapabilities() {
 
 describe("Dependency graph persistence and restart", () => {
     describe("Restart preserves dependent invalidation", () => {
-        test.skip("invalidates pattern instantiation after restart", async () => {
+        test("invalidates pattern instantiation after restart", async () => {
             const capabilities = getTestCapabilities();
             const db = await getRootDatabase(capabilities);
 
@@ -124,7 +124,7 @@ describe("Dependency graph persistence and restart", () => {
             await db.close();
         });
 
-        test.skip("diamond graph invalidation across restart", async () => {
+        test("diamond graph invalidation across restart", async () => {
             const capabilities = getTestCapabilities();
             const db = await getRootDatabase(capabilities);
             const computeCalls = [];
@@ -274,7 +274,7 @@ describe("Dependency graph persistence and restart", () => {
             await db.close();
         });
 
-        test.skip("Unchanged propagation with pattern instantiation after restart", async () => {
+        test("Unchanged propagation with pattern instantiation after restart", async () => {
             const capabilities = getTestCapabilities();
             const db = await getRootDatabase(capabilities);
             const computeCalls = [];
@@ -338,7 +338,7 @@ describe("Dependency graph persistence and restart", () => {
     });
 
     describe("No initialization scan required", () => {
-        test.skip("does not scan storage during graph creation", async () => {
+        test("does not scan storage during graph creation", async () => {
             const capabilities = getTestCapabilities();
             const db = await getRootDatabase(capabilities);
 
@@ -458,7 +458,7 @@ describe("Dependency graph persistence and restart", () => {
     });
 
     describe("Index atomicity", () => {
-        test.skip("index entries are written in same batch as value", async () => {
+        test("index entries are written in same batch as value", async () => {
             const capabilities = getTestCapabilities();
             const db = await getRootDatabase(capabilities);
 
