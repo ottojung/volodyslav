@@ -1,8 +1,19 @@
 /**
  * Node key handling - stores node identities as JSON objects.
  * 
+ * This is the preferred approach for creating concrete node keys.
  * A concrete node key is: {head: string, args: Array<unknown>}
- * This is simpler than expression strings with embedded JSON.
+ * This is simpler and cleaner than the old approach of embedding JSON in expression strings.
+ * 
+ * Example:
+ * - Pattern: "event(e)" with bindings {e: {id: 5, time: "today"}}
+ * - Old format: 'event("{\"id\":5,\"time\":\"today\"}")'  (awkward!)
+ * - New format: '{"head":"event","args":[{"id":5,"time":"today"}]}'  (clean!)
+ * 
+ * The new format:
+ * - Eliminates the awkward mix of expression syntax and embedded JSON
+ * - Makes serialization/deserialization straightforward
+ * - Works naturally with any JSON-serializable binding values
  */
 
 /** @typedef {import('./types').DatabaseValue} DatabaseValue */

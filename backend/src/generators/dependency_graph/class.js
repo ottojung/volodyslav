@@ -35,7 +35,19 @@ const { makeGraphStorage } = require("./graph_storage");
 const { createNodeKeyFromPattern, serializeNodeKey } = require("./node_key");
 
 /**
- * A dependency graph that propagates data through edges based on freshness tracking.
+ * DependencyGraph class for propagating data through dependency edges.
+ *
+ * Node Identity:
+ * - Concrete nodes use JSON key format: {head: string, args: Array<unknown>}
+ * - Example: derived(x) with {x: "test"} → {"head":"derived","args":["test"]}
+ * - Pattern names (e.g., "event(e)") are only used for schema definitions
+ * - Actual node instances are identified by serialized JSON keys
+ * 
+ * Bindings:
+ * - pull(nodeName, bindings) accepts optional bindings: Record<string, unknown>
+ * - Bindings are any JSON-serializable values (primitives or objects)
+ * - Different bindings create separate cached instances
+ * - Computors receive bindings as third parameter
  *
  * Algorithm overview:
  * - pull() checks freshness: up-to-date → return cached, potentially-outdated → maybeRecalculate

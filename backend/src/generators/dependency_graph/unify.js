@@ -30,6 +30,11 @@ function validateConcreteKey(concreteKey) {
 /**
  * Converts a ParsedArg to a value that can be used as a binding.
  * For string args containing JSON, deserializes them back to objects.
+ * 
+ * NOTE: This function is primarily for backward compatibility with the old
+ * expression-based format where objects were embedded as JSON strings in expressions.
+ * New code uses JSON node keys directly via node_key.js.
+ * 
  * @param {ParsedArg} arg
  * @returns {unknown}
  */
@@ -53,6 +58,10 @@ function argToValue(arg) {
 /**
  * Converts a value to a ParsedArg.
  * For objects, serializes them to JSON strings.
+ * 
+ * NOTE: This function is primarily for backward compatibility with the old
+ * expression-based format. New code uses JSON node keys directly via node_key.js.
+ * 
  * @param {unknown} value
  * @returns {ParsedArg}
  */
@@ -133,6 +142,10 @@ function matchConcrete(concreteKey, compiledNode) {
 
 /**
  * Substitutes variables in an expression pattern with their bindings.
+ * 
+ * NOTE: This function is for backward compatibility and testing. New code uses
+ * createNodeKeyFromPattern() and serializeNodeKey() from node_key.js instead,
+ * which directly creates JSON keys without going through expression strings.
  * 
  * @param {string} pattern - The pattern (e.g., "photo(p)" or "event(x)")
  * @param {Record<string, unknown>} bindings - Variable bindings

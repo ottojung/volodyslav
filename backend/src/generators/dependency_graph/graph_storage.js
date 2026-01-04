@@ -168,14 +168,13 @@ function makeGraphStorage(rootDatabase, schemaHash) {
         // We only check the first input to avoid too many DB reads
         if (inputs.length > 0) {
             const firstInput = inputs[0];
-            if (firstInput === undefined) {
-                // This should never happen given the length check, but TypeScript doesn't know that
-                throw new Error("Unexpected undefined first input");
-            }
-            const firstEdgeKey = makeRevdepKey(firstInput, node);
-            const existingEdge = await schemaStorage.revdeps.get(firstEdgeKey);
-            if (existingEdge !== undefined) {
-                return; // Already indexed, skip writing revdeps
+            // TypeScript doesn't understand that inputs[0] is defined when length > 0
+            if (firstInput !== undefined) {
+                const firstEdgeKey = makeRevdepKey(firstInput, node);
+                const existingEdge = await schemaStorage.revdeps.get(firstEdgeKey);
+                if (existingEdge !== undefined) {
+                    return; // Already indexed, skip writing revdeps
+                }
             }
         }
 
