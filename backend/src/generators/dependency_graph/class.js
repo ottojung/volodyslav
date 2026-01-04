@@ -22,6 +22,7 @@ const {
     makeInvalidSetError,
     makeSchemaOverlapError,
     makeInvalidComputorReturnValueError,
+    makeSchemaPatternNotAllowedError,
 } = require("./errors");
 const { canonicalize, parseExpr } = require("./expr");
 const {
@@ -295,6 +296,12 @@ class DependencyGraphClass {
                 // This looks like a pattern name, not a concrete key
                 // Just check if it matches structurally
                 if (compiled.head === head && compiled.arity === arity) {
+                    // If this is a pattern (has variables), we can't match without bindings
+                    if (compiled.isPattern) {
+                        // Pattern must be instantiated with bindings, not pulled directly
+                        // This will cause getOrCreateConcreteNode to fail if bindings weren't provided
+                        return null;
+                    }
                     matches.push({
                         compiledNode: compiled,
                         bindings: {},
@@ -359,9 +366,28 @@ class DependencyGraphClass {
             return cached;
         }
 
-        // Try to find matching pattern using pattern name if provided
-        const match = this.findMatchingPattern(patternName || concreteKeyCanonical);
+        // Try to find matching pattern
+        // If concreteKeyCanonical is a JSON key, use it for matching
+        // Otherwise use patternName if provided
+        const keyForMatching = concreteKeyCanonical.startsWith('{') ? concreteKeyCanonical : (patternName || concreteKeyCanonical);
+        const match = this.findMatchingPattern(keyForMatching);
         if (!match) {
+            // Check if this looks like a pattern with variables
+            // If so, throw SchemaPatternNotAllowed (only if bindings weren't provided)
+            const testExpr = parseExpr(patternName || concreteKeyCanonical);
+            if (testExpr.kind === "call" && Object.keys(bindings).length === 0) {
+                // Has arguments but no bindings - check if any compiled pattern matches by head/arity
+                const indexKey = `${testExpr.name}/${testExpr.args.length}`;
+                const candidates = this.graphIndex.patternIndex.get(indexKey);
+                if (candidates && candidates.length > 0) {
+                    const firstCandidate = candidates[0];
+                    if (firstCandidate && firstCandidate.isPattern) {
+                        // Pattern exists but wasn't matched - needs bindings
+                        throw makeSchemaPatternNotAllowedError(patternName || concreteKeyCanonical);
+                    }
+                }
+            }
+            
             // Node doesn't exist - throw error
             throw makeInvalidNodeError(concreteKeyCanonical);
         }
