@@ -30,7 +30,7 @@ const {
     validateNoOverlap,
     validateAcyclic,
 } = require("./compiled_node");
-const { matchConcrete, validateConcreteKey } = require("./unify");
+
 const { makeGraphStorage } = require("./graph_storage");
 const { createNodeKeyFromPattern, serializeNodeKey } = require("./node_key");
 
@@ -177,9 +177,6 @@ class DependencyGraphClass {
         // Canonicalize the key
         const canonicalKey = canonicalize(key);
 
-        // Validate that key is concrete (no variables)
-        validateConcreteKey(canonicalKey);
-
         // Ensure node exists (will create from pattern if needed)
         const nodeDefinition = this.getOrCreateConcreteNode(canonicalKey);
 
@@ -241,7 +238,7 @@ class DependencyGraphClass {
      * Finds a compiled pattern that matches the given concrete node key.
      * Throws if multiple patterns match (ambiguity).
      * @private
-     * @param {string} concreteKeyCanonical - Canonical concrete node key (or pattern name)
+     * @param {string} concreteKeyCanonical - Canonical concrete node key (JSON format) or pattern name
      * @returns {{ compiledNode: CompiledNode, bindings: Record<string, unknown> } | null}
      */
     findMatchingPattern(concreteKeyCanonical) {
@@ -250,19 +247,12 @@ class DependencyGraphClass {
         
         // Check if it's a JSON key (new format)
         if (concreteKeyCanonical.startsWith('{')) {
-            try {
-                const { deserializeNodeKey } = require("./node_key");
-                jsonKey = deserializeNodeKey(concreteKeyCanonical);
-                head = jsonKey.head;
-                arity = jsonKey.args.length;
-            } catch {
-                // Not valid JSON, fall back to parsing as expression
-                const expr = parseExpr(concreteKeyCanonical);
-                head = expr.name;
-                arity = expr.args.length;
-            }
+            const { deserializeNodeKey } = require("./node_key");
+            jsonKey = deserializeNodeKey(concreteKeyCanonical);
+            head = jsonKey.head;
+            arity = jsonKey.args.length;
         } else {
-            // Parse as expression (old format or pattern name)
+            // Parse as expression (pattern name)
             const expr = parseExpr(concreteKeyCanonical);
             head = expr.name;
             arity = expr.args.length;
@@ -304,28 +294,18 @@ class DependencyGraphClass {
                         bindings,
                     });
                 }
-            } else if (!concreteKeyCanonical.includes('"')) {
-                // This looks like a pattern name, not a concrete key
+            } else {
+                // This is a pattern name, not a concrete key
                 // Just check if it matches structurally
                 if (compiled.head === head && compiled.arity === arity) {
                     // If this is a pattern (has variables), we can't match without bindings
                     if (compiled.isPattern) {
                         // Pattern must be instantiated with bindings, not pulled directly
-                        // This will cause getOrCreateConcreteNode to fail if bindings weren't provided
                         return null;
                     }
                     matches.push({
                         compiledNode: compiled,
                         bindings: {},
-                    });
-                }
-            } else {
-                // Try to match concrete key using old format
-                const result = matchConcrete(concreteKeyCanonical, compiled);
-                if (result) {
-                    matches.push({
-                        compiledNode: compiled,
-                        bindings: result.bindings,
                     });
                 }
             }
@@ -337,7 +317,6 @@ class DependencyGraphClass {
 
         if (matches.length > 1) {
             // Multiple patterns match - this should be impossible if validateNoOverlap worked correctly
-            // This indicates a bug in overlap detection or that the patterns weren't validated
             throw makeSchemaOverlapError(
                 matches.map((m) => m.compiledNode.canonicalOutput)
             );

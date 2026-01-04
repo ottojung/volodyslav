@@ -62,15 +62,12 @@ function createNodeKeyFromPattern(pattern, bindings) {
     
     // For call expressions, substitute variables with their bindings
     const args = expr.args.map(arg => {
-        if (arg.kind === "identifier") {
-            const varName = arg.value;
-            const binding = bindings[varName];
-            if (binding !== undefined) {
-                return binding;
-            }
-            throw new Error(`Variable '${varName}' not found in bindings`);
+        const varName = arg.value;
+        const binding = bindings[varName];
+        if (binding !== undefined) {
+            return binding;
         }
-        throw new Error(`Pattern should only contain identifiers, got ${arg.kind}`);
+        throw new Error(`Variable '${varName}' not found in bindings`);
     });
     
     return { head: expr.name, args };

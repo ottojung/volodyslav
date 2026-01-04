@@ -239,16 +239,6 @@ function compileNodeDef(nodeDef) {
     const outputVars = extractVariables(outputExpr);
     const isPattern = outputVars.size > 0;
     
-    // Compute arg kinds - can be 'identifier', 'string', or 'number'
-    /** @type {Array<'identifier' | 'string' | 'number'>} */
-    const outputArgKinds = [];
-    
-    if (outputExpr.kind === "call") {
-        for (const arg of outputExpr.args) {
-            outputArgKinds.push(arg.kind);
-        }
-    }
-    
     // Find repeated variable positions
     const repeatedVarPositions = findRepeatedVarPositions(outputExpr);
     
@@ -273,7 +263,6 @@ function compileNodeDef(nodeDef) {
         head,
         arity,
         isPattern,
-        outputArgKinds,
         repeatedVarPositions,
         varsUsedInInputs,
     };

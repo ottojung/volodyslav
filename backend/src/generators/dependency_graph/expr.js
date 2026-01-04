@@ -6,7 +6,7 @@ const { makeInvalidExpressionError } = require("./errors");
 
 /**
  * Token types for the lexer.
- * @typedef {'identifier' | 'string' | 'number' | 'lparen' | 'rparen' | 'comma' | 'eof'} TokenKind
+ * @typedef {'identifier' | 'lparen' | 'rparen' | 'comma' | 'eof'} TokenKind
  */
 
 /**
@@ -18,10 +18,10 @@ const { makeInvalidExpressionError } = require("./errors");
  */
 
 /**
- * Argument in a parsed expression - can be identifier (variable), string, or number constant.
+ * Argument in a parsed expression - only identifiers (variables) are supported.
  * @typedef {Object} ParsedArg
- * @property {'identifier' | 'string' | 'number'} kind
- * @property {string} value - Variable name (for identifier) or string value (for string) or number string (for number)
+ * @property {'identifier'} kind
+ * @property {string} value - Variable name
  */
 
 /**
@@ -78,74 +78,16 @@ class Lexer {
     }
 
     /**
-     * Reads a quoted string literal.
-     * @param {string} quoteChar
+     * Reads an identifier.
      * @returns {Token}
      */
-    readString(quoteChar) {
-        const startPos = this.pos;
-        this.next(); // consume opening quote
-        let value = "";
-
-        let ch = this.peek();
-        while (ch !== null) {
-            if (ch === quoteChar) {
-                this.next(); // consume closing quote
-                return { kind: "string", value, pos: startPos };
-            }
-            if (ch === "\\") {
-                this.next(); // consume backslash
-                const escaped = this.next();
-                if (escaped === null) {
-                    throw new Error(`Unclosed string literal at position ${startPos}`);
-                }
-                // Handle escape sequences
-                if (escaped === quoteChar) {
-                    value += quoteChar;
-                } else if (escaped === "\\") {
-                    value += "\\";
-                } else if (escaped === "n") {
-                    value += "\n";
-                } else if (escaped === "t") {
-                    value += "\t";
-                } else if (escaped === "r") {
-                    value += "\r";
-                } else {
-                    // For simplicity, accept any escaped character as-is
-                    value += escaped;
-                }
-            } else {
-                value += ch;
-                this.next();
-            }
-            ch = this.peek();
-        }
-
-        throw new Error(`Unclosed string literal at position ${startPos}`);
-    }
-
-    /**
-     * Reads an identifier or number.
-     * @returns {Token}
-     */
-    readIdentifierOrNumber() {
+    readIdentifier() {
         const startPos = this.pos;
         let value = "";
 
         // Read all alphanumeric and underscore characters
         while (this.peek() && /[a-zA-Z0-9_]/.test(this.peek() || "")) {
             value += this.next();
-        }
-
-        // Check if it's a valid natural number
-        if (/^\d+$/.test(value)) {
-            // Validate natural number format
-            if (value.length > 1 && value[0] === "0") {
-                throw new Error(
-                    `Invalid number format at position ${startPos}: leading zeros not allowed (${value})`
-                );
-            }
-            return { kind: "number", value, pos: startPos };
         }
 
         // Check if it's a valid identifier
@@ -184,11 +126,8 @@ class Lexer {
             this.next();
             return { kind: "comma", value: ",", pos };
         }
-        if (ch === '"' || ch === "'") {
-            return this.readString(ch);
-        }
-        if (/[a-zA-Z0-9_]/.test(ch)) {
-            return this.readIdentifierOrNumber();
+        if (/[a-zA-Z_]/.test(ch)) {
+            return this.readIdentifier();
         }
 
         throw new Error(`Unexpected character '${ch}' at position ${pos}`);
@@ -241,17 +180,17 @@ class Parser {
     }
 
     /**
-     * Parses a term (identifiers for variables, strings and numbers for constants).
+     * Parses a term (only identifiers for variables).
      * @returns {ParsedArg}
      */
     parseTerm() {
         const token = this.currentToken;
-        if (token.kind === "identifier" || token.kind === "string" || token.kind === "number") {
+        if (token.kind === "identifier") {
             this.advance();
             return { kind: token.kind, value: token.value };
         }
         throw new Error(
-            `Expected identifier, string, or number but got ${token.kind} at position ${token.pos}`
+            `Expected identifier but got ${token.kind} at position ${token.pos}`
         );
     }
 
@@ -328,7 +267,7 @@ class Parser {
  * Supports:
  * - atoms: "name"
  * - calls: "name(arg1, arg2, ...)"
- * - args can be: identifiers, quoted strings, or natural numbers
+ * - args can only be identifiers (variables)
  *
  * @param {string} str - The expression string to parse
  * @returns {ParsedExpr}
@@ -350,26 +289,12 @@ function parseExpr(str) {
 
 /**
  * Renders a parsed argument to its canonical string form.
- * Handles identifiers (variables), strings, and numbers.
+ * Only identifiers are supported.
  * @param {ParsedArg} arg
  * @returns {string}
  */
 function renderArg(arg) {
-    if (arg.kind === "identifier") {
-        return arg.value;
-    } else if (arg.kind === "string") {
-        // Escape quotes and backslashes in the string value
-        const escaped = arg.value
-            .replace(/\\/g, "\\\\")
-            .replace(/"/g, '\\"')
-            .replace(/\n/g, "\\n")
-            .replace(/\t/g, "\\t")
-            .replace(/\r/g, "\\r");
-        return `"${escaped}"`;
-    } else if (arg.kind === "number") {
-        return arg.value;
-    }
-    throw new Error(`Unknown arg kind: ${arg.kind}`);
+    return arg.value;
 }
 
 /**

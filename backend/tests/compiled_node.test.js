@@ -40,7 +40,6 @@ describe("compiled_node", () => {
             expect(compiled.head).toBe("event_context");
             expect(compiled.arity).toBe(1);
             expect(compiled.isPattern).toBe(true);
-            expect(compiled.outputArgKinds).toEqual(["identifier"]);
             expect(compiled.varsUsedInInputs).toEqual(new Set());
         });
 
@@ -55,7 +54,6 @@ describe("compiled_node", () => {
 
             expect(compiled.canonicalOutput).toBe("all_events");
             expect(compiled.isPattern).toBe(false);
-            expect(compiled.outputArgKinds).toEqual([]);
         });
 
         test("detects repeated variables", () => {

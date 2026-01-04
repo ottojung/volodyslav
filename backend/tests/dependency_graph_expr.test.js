@@ -115,14 +115,6 @@ describe("dependency_graph/expr", () => {
         test("throws on invalid function name", () => {
             expect(() => parseExpr("123foo(x)")).toThrow("identifier");
         });
-
-        test("throws on leading zeros in numbers", () => {
-            expect(() => parseExpr("foo(01)")).toThrow("leading zeros not allowed");
-        });
-
-        test("throws on unclosed string", () => {
-            expect(() => parseExpr('foo("unclosed')).toThrow("Unclosed string");
-        });
     });
 
     describe("canonicalize()", () => {
@@ -145,26 +137,6 @@ describe("dependency_graph/expr", () => {
             expect(canonicalize("foo(a,b,c)")).toBe("foo(a,b,c)");
             expect(canonicalize("foo( a , b , c )")).toBe("foo(a,b,c)");
             expect(canonicalize(" foo ( a , b , c ) ")).toBe("foo(a,b,c)");
-        });
-
-        test("accepts quoted strings", () => {
-            expect(canonicalize('status(e, "active")')).toBe('status(e,"active")');
-            expect(canonicalize('foo( "a" , "b" )')).toBe('foo("a","b")');
-        });
-
-        test("accepts numbers", () => {
-            expect(canonicalize("photo(5)")).toBe("photo(5)");
-            expect(canonicalize("photo( 42 )")).toBe("photo(42)");
-            expect(canonicalize("count(0)")).toBe("count(0)");
-        });
-
-        test("accepts mixed arg types with constants and variables", () => {
-            expect(canonicalize('mix("str", 5, x)')).toBe('mix("str",5,x)');
-        });
-
-        test("handles string escapes", () => {
-            expect(canonicalize('foo("a\\"b")')).toBe('foo("a\\"b")');
-            expect(canonicalize('foo("line\\n")')).toBe('foo("line\\n")');
         });
 
         test("throws on malformed expression", () => {

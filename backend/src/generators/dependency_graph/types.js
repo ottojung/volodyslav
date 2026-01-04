@@ -78,8 +78,7 @@
  * @property {Array<string>} canonicalInputs - Canonical forms of inputs
  * @property {string} head - Head/name of the output expression
  * @property {number} arity - Number of arguments in output
- * @property {boolean} isPattern - True if output contains variables (unquoted identifiers)
- * @property {Array<'identifier' | 'string' | 'number'>} outputArgKinds - Kind of each output argument position
+ * @property {boolean} isPattern - True if output contains variables (identifiers)
  * @property {Map<string, Array<number>>} repeatedVarPositions - Map from variable name to positions where it appears
  * @property {Set<string>} varsUsedInInputs - Variables used in any input pattern
  */
