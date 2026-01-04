@@ -357,7 +357,7 @@ describe("Bound variables in computors", () => {
                 {
                     output: "f(x, y)",
                     inputs: ["g(x)", "h(y)"],
-                    computor: (inputs, oldValue, bindings) => {
+                    computor: (inputs, _oldValue, _bindings) => {
                         return { value: `f(${inputs[0].value}, ${inputs[1].value})` };
                     },
                 },
@@ -404,14 +404,14 @@ describe("Bound variables in computors", () => {
                 {
                     output: "h(y)",
                     inputs: ["s2"],
-                    computor: (inputs, oldValue, bindings) => {
+                    computor: (inputs, _oldValue, bindings) => {
                         return { value: `h(${bindings.y}, ${inputs[0].value})` };
                     },
                 },
                 {
                     output: "f(x, y, z)",
                     inputs: ["g(x, z)", "h(y)"],
-                    computor: (inputs, oldValue, bindings) => {
+                    computor: (inputs, _oldValue, _bindings) => {
                         return { value: `f(${inputs[0].value}, ${inputs[1].value})` };
                     },
                 },
