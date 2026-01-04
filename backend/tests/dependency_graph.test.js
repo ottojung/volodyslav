@@ -1520,54 +1520,6 @@ describe("generators/dependency_graph", () => {
         });
     });
 
-    describe("Static node canonicalization (T2)", () => {
-        test("nodes with extra whitespace are properly canonicalized internally", async () => {
-            const capabilities = getTestCapabilities();
-            const db = await getRootDatabase(capabilities);
-
-            // Create node with extra whitespace in output and inputs
-            const graphDef = [
-                {
-                    output: "base",
-                    inputs: [],
-                    computor: (_inputs, oldValue, _bindings) => oldValue || { value: 1 },
-                },
-                {
-                    output: 'derived ( "data"  )', // Extra spaces - should be canonicalized
-                    inputs: ["  base  "], // Extra spaces - should be canonicalized
-                    computor: (inputs, _oldValue, _bindings) => {
-                        return { value: inputs[0].value * 2 };
-                    },
-                },
-            ];
-
-            const graph = makeDependencyGraph(db, graphDef);
-
-            // Set base value
-            await graph.set("base", { value: 5 });
-
-            const result = await graph.pull('derived("data")');
-            expect(result.value).toBe(10);
-
-            // Pull using non-canonical form with extra spaces - should still work
-            const result1b = await graph.pull('derived ( "data"  )');
-            expect(result1b.value).toBe(10);
-
-            // Setting base should invalidate derived (via canonical key)
-            await graph.set("base", { value: 10 });
-
-            // Pull derived again - should recompute
-            const result2 = await graph.pull('derived("data")');
-            expect(result2.value).toBe(20);
-
-            // Pull using non-canonical form again - should also get updated value
-            const result2b = await graph.pull('derived ( "data"  )');
-            expect(result2b.value).toBe(20);
-
-            await db.close();
-        });
-    });
-
     describe("Debug Interface", () => {
         test("debugGetFreshness returns correct status", async () => {
             const capabilities = getTestCapabilities();

@@ -8,7 +8,6 @@
 /** @typedef {import('./types').FreshnessStatus} FreshnessStatus */
 /** @typedef {import('./types').NodeDef} NodeDef */
 /** @typedef {import('./types').CompiledNode} CompiledNode */
-/** @typedef {import('./types').ConstValue} ConstValue */
 /** @typedef {import('./types').ConcreteNodeDefinition} ConcreteNodeDefinition */
 /** @typedef {import('./types').RecomputeResult} RecomputeResult */
 /** @typedef {import('./unchanged').Unchanged} Unchanged */
@@ -230,7 +229,7 @@ class DependencyGraphClass {
      * Throws if multiple patterns match (ambiguity).
      * @private
      * @param {string} concreteKeyCanonical - Canonical concrete node key
-     * @returns {{ compiledNode: CompiledNode, bindings: Record<string, ConstValue> } | null}
+     * @returns {{ compiledNode: CompiledNode, bindings: Record<string, never> } | null}
      */
     findMatchingPattern(concreteKeyCanonical) {
         const expr = parseExpr(concreteKeyCanonical);
@@ -245,7 +244,7 @@ class DependencyGraphClass {
         }
 
         // Collect all matching patterns
-        /** @type {Array<{ compiledNode: CompiledNode, bindings: Record<string, ConstValue> }>} */
+        /** @type {Array<{ compiledNode: CompiledNode, bindings: Record<string, never> }>} */
         const matches = [];
 
         for (const compiled of candidates) {

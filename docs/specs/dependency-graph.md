@@ -14,7 +14,6 @@ This document provides a formal specification for the dependency graph's operati
 * **Computor** — deterministic async function: `(inputs: DatabaseValue[], oldValue: DatabaseValue | undefined, bindings: Record<string, ConstValue>) => Promise<DatabaseValue | Unchanged>`
 * **Unchanged** — unique sentinel value indicating unchanged computation result. MUST NOT be a valid `DatabaseValue` (cannot be stored via `set()` or returned by `pull()`).
 * **Variable** — parameter placeholder in node schemas (identifiers in argument positions)
-* **Literal** — typed constant value (natural number or single-quoted string)
 * **ConstValue** — typed constant: `{ type: "string" | "int"; value: string | number }`
 * **DatabaseValue** — any JavaScript `object` (including subtypes like arrays, but excluding `null`). MUST NOT include the `Unchanged` sentinel. MUST round-trip through database interfaces without semantic change.
 
@@ -28,48 +27,31 @@ atom_expr     := ident
 compound_expr := ident ws "(" ws args ws ")"
 
 args          := arg (ws "," ws arg)*
-arg           := var | nat | string
+arg           := var
 var           := ident
-nat           := "0" | [1-9][0-9]*
-string        := "'" (escaped_char | [^'])* "'" | '"' (escaped_char_dq | [^"])* '"'
 ident         := [A-Za-z_][A-Za-z0-9_]*
 ws            := [ \t\n\r]*
-
-escaped_char     := "\\" | "\'" | "\\n" | "\\t" | "\\r"
-escaped_char_dq  := "\\" | '\"' | "\\n" | "\\t" | "\\r"
 ```
 
 **Terminology:**
 * **atom-expression** — an expression with no arguments (e.g., `all_events`)
 * **compound-expression** — an expression with arguments (e.g., `event_context(e)`)
-* **free variables** — identifiers occurring in argument positions that are not literals
-* **concrete expression** — an expression where `freeVars(expr) = ∅` (no free variables)
+* **free variables** — all identifiers occurring in argument positions
+* **concrete expression** — an expression where `freeVars(expr) = ∅` (no free variables); only atom-expressions can be concrete
 
 **Examples:**
-* `all_events` — atom-expression (no arguments)
+* `all_events` — atom-expression (no arguments), also a concrete expression
 * `event_context(e)` — compound-expression with free variable `e`
-* `event_context('id123')` — concrete compound-expression (no free variables)
-* `fun_123(a, 42, 'abc', b)` — compound with free variables `a`, `b` and literals `42` (nat), `'abc'` (string)
-* `enhanced_event('id123', 'photo5')` — concrete compound with string literals
-
-**Note on String Quoting:** This specification uses **single quotes** (`'...'`) for string literals in canonical form to distinguish them syntactically from variables. Implementations MUST support both single and double quotes in input expressions, canonicalizing to single quotes.
-
-**Concrete Instantiation:**
-
-A **concrete node** is a concrete expression (no free variables):
-* `event_context('id123')` — concrete instantiation with `e = 'id123'`
-* `enhanced_event('id123', 'photo5')` — concrete instantiation with two string literals
+* `enhanced_event(e, p)` — compound-expression with free variables `e` and `p`
 
 ### 1.3 Canonical Serialization (Normative)
 
 **REQ-CANON-01:** The function `serialize(expr)` MUST produce a unique canonical string:
 
 1. No whitespace is included
-2. Natural numbers are rendered as decimal with no leading zeros (except `"0"`)
-3. Strings use single-quote delimiters with escape sequences: `\'`, `\\`, `\n`, `\t`, `\r`
-4. Arguments joined by commas with no spaces
-5. Atom-expressions: just the identifier
-6. Compound-expressions: `name(arg1,arg2,...)`
+2. Arguments joined by commas with no spaces
+3. Atom-expressions: just the identifier
+4. Compound-expressions: `name(arg1,arg2,...)`
 
 **REQ-CANON-02:** Round-trip requirement:
 * `parse(serialize(ast))` MUST equal `ast` (modulo whitespace)
@@ -77,8 +59,8 @@ A **concrete node** is a concrete expression (no free variables):
 
 **Examples:**
 * `all_events` → `"all_events"`
-* `event_context('id123')` → `"event_context('id123')"`
-* `fun(42, 'test')` → `"fun(42,'test')"`
+* `event_context(e)` → `"event_context(e)"`
+* `enhanced_event(e, p)` → `"enhanced_event(e,p)"`
 
 **REQ-CANON-03:** All node names used as database keys MUST use canonical serialization.
 
@@ -102,13 +84,9 @@ type NodeDef = {
 
 ### 1.5 Pattern Matching (Normative)
 
-**REQ-MATCH-01:** A schema output pattern `P` **matches** concrete node `N` if:
-1. Same functor and arity
-2. For each argument position:
-   * **Literal:** Must equal concrete argument (type and value)
-   * **Variable:** Binds to concrete argument; same variable in multiple positions MUST bind to same value
+**REQ-MATCH-01:** Since arguments can only be variables, a schema output pattern `P` **matches** concrete node `N` if and only if `N` is an atom-expression (has no arguments) and has the same functor as `P`.
 
-**REQ-MATCH-02:** Two output patterns **overlap** if there exists a valid assignment satisfying all position-wise equality constraints.
+**REQ-MATCH-02:** Two output patterns **overlap** if they have the same head (functor) and the same arity.
 
 **REQ-MATCH-03:** The system MUST reject graphs with overlapping output patterns at initialization (throw `SchemaOverlapError`).
 
@@ -388,8 +366,7 @@ Tests MAY assert error names (via `.name` property) and required fields (see sec
 ### 5.3 Canonicalization Requirement
 
 Tests MAY assert:
-* `pull("event_context('id')")` and `pull("event_context(\"id\")")` behave identically (quoting normalization)
-* Database keys use single-quote format for strings
+* Whitespace normalization in expressions
 * See REQ-CANON-03 and REQ-CANON-04 in section 1.3
 
 ### 5.4 Freshness Observability
@@ -444,8 +421,9 @@ Tests MAY assert:
 **Operations:**
 ```javascript
 await graph.set('all_events', {events: [{id: 'id123', data: '...'}]});
-const result = await graph.pull("event_context('id123')");
-// Returns event with id='id123'
+// Note: With the removal of constants, pulling event_context(e) requires
+// passing a variable binding through a parameterized approach, or
+// event_context must be redesigned to not use parameters.
 ```
 
 #### A.2 Multiple Parameters
@@ -560,15 +538,15 @@ Database operations during `pull()` SHOULD be batched per node recomputation.
 
 To efficiently implement invalidation, implementations SHOULD maintain a reverse dependency index allowing O(1) lookup of immediate dependents.
 
-#### D.3 Quoting Flexibility
+#### D.3 Reserved for Future Use
 
-Implementations MUST accept both single and double quotes in input expressions and canonicalize to single quotes. This improves developer ergonomics.
+This section is reserved for future implementation notes.
 
 ### Appendix E: Edge Cases
 
 #### E.1 Unmatched Pull Request
 
-**Error:** `pull("event_context('id123')")` but no schema matches.
+**Error:** `pull("unknown_node")` but no schema matches.
 
 **Behavior:** Throw `InvalidNodeError`.
 
@@ -578,13 +556,9 @@ Implementations MUST accept both single and double quotes in input expressions a
 
 **Behavior:** Throw `NonConcreteNodeError`.
 
-#### E.3 Literals in Schema Outputs
+**Note:** Since only atom-expressions can be concrete (no arguments), any compound-expression will contain free variables and thus be rejected by `pull()` and `set()`.
 
-**Question:** Can output contain literals (e.g., `"event_context('id123')")?
-
-**Answer:** Technically yes, but defeats parameterization purpose. Would only match exact node. Not recommended but not forbidden.
-
-#### E.4 Missing Values
+#### E.3 Missing Values
 
 If node is `up-to-date` but has no stored value, this is database corruption. MUST throw `MissingValueError`.
 

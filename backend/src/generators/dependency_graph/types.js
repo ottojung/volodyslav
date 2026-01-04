@@ -20,27 +20,10 @@
  */
 
 /**
- * A string constant value.
- * @typedef {object} StringConstant
- * @property {'string'} type - The type of constant
- * @property {string} value - The string value
- */
-
-/**
- * An integer constant value.
- * @typedef {object} IntConstant
- * @property {'int'} type - The type of constant
- * @property {number} value - The integer value
- */
-
-/**
- * A constant value (string or integer).
- * @typedef {StringConstant | IntConstant} ConstValue
- */
-
-/**
- * A computor function for node definitions that receives typed bindings for variables.
- * @typedef {(inputs: Array<DatabaseValue>, oldValue: DatabaseValue | undefined, bindings: Record<string, ConstValue>) => DatabaseValue | Unchanged} NodeDefComputor
+ * A computor function for node definitions.
+ * Since constants are no longer supported in expressions, bindings are always empty.
+ * The bindings parameter is kept for backward compatibility but will always be an empty object.
+ * @typedef {(inputs: Array<DatabaseValue>, oldValue: DatabaseValue | undefined, bindings: Record<string, never>) => DatabaseValue | Unchanged} NodeDefComputor
  */
 
 /**
@@ -96,8 +79,7 @@
  * @property {string} head - Head/name of the output expression
  * @property {number} arity - Number of arguments in output
  * @property {boolean} isPattern - True if output contains variables (unquoted identifiers)
- * @property {Array<'var'|'const'>} outputArgKinds - Kind of each output argument position
- * @property {Array<ConstValue | null>} outputConstArgs - Constant values for each output position (null if variable)
+ * @property {Array<'var'>} outputArgKinds - Kind of each output argument position (always 'var' since constants are not allowed)
  * @property {Map<string, Array<number>>} repeatedVarPositions - Map from variable name to positions where it appears
  * @property {Set<string>} varsUsedInInputs - Variables used in any input pattern
  */

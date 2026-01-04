@@ -1,5 +1,5 @@
 /**
- * Expression parsing and canonicalization with support for quoted strings and natural numbers.
+ * Expression parsing and canonicalization.
  */
 
 const { makeInvalidExpressionError } = require("./errors");
@@ -18,10 +18,10 @@ const { makeInvalidExpressionError } = require("./errors");
  */
 
 /**
- * Argument in a parsed expression - can be identifier, string, or number.
+ * Argument in a parsed expression - only identifiers (variables) are allowed.
  * @typedef {Object} ParsedArg
- * @property {'identifier' | 'string' | 'number'} kind
- * @property {string} value - Raw value (identifier name, string content, or number as string)
+ * @property {'identifier'} kind
+ * @property {string} value - Variable name
  */
 
 /**
@@ -241,21 +241,18 @@ class Parser {
     }
 
     /**
-     * Parses a term (identifier, string, or number).
+     * Parses a term (only identifiers are allowed as arguments).
      * @returns {ParsedArg}
      */
     parseTerm() {
         const token = this.currentToken;
-        if (
-            token.kind === "identifier" ||
-            token.kind === "string" ||
-            token.kind === "number"
-        ) {
+        if (token.kind === "identifier") {
             this.advance();
             return { kind: token.kind, value: token.value };
         }
+        // Reject strings and numbers - only variables allowed
         throw new Error(
-            `Expected term (identifier, string, or number) but got ${token.kind} at position ${token.pos}`
+            `Expected identifier (variable) but got ${token.kind} at position ${token.pos}`
         );
     }
 
@@ -354,22 +351,12 @@ function parseExpr(str) {
 
 /**
  * Renders a parsed argument to its canonical string form.
+ * Only identifiers are accepted during parsing since constants are not allowed.
  * @param {ParsedArg} arg
  * @returns {string}
  */
 function renderArg(arg) {
     if (arg.kind === "identifier") {
-        return arg.value;
-    } else if (arg.kind === "string") {
-        // Escape special characters for canonical form
-        const escaped = arg.value
-            .replace(/\\/g, "\\\\")
-            .replace(/'/g, "\\'")
-            .replace(/\n/g, "\\n")
-            .replace(/\t/g, "\\t")
-            .replace(/\r/g, "\\r");
-        return `'${escaped}'`;
-    } else if (arg.kind === "number") {
         return arg.value;
     }
     throw new Error(`Unknown arg kind: ${arg.kind}`);

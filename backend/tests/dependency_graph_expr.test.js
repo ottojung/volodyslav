@@ -76,69 +76,28 @@ describe("dependency_graph/expr", () => {
             });
         });
 
-        test("parses quoted string arguments", () => {
-            const result = parseExpr('status(e, "active")');
-            expect(result).toEqual({
-                kind: "call",
-                name: "status",
-                args: [
-                    { kind: "identifier", value: "e" },
-                    { kind: "string", value: "active" },
-                ],
-            });
+        test("rejects quoted string arguments", () => {
+            expect(() => parseExpr('status(e, "active")')).toThrow("Expected identifier (variable)");
         });
 
-        test("parses natural number arguments", () => {
-            const result = parseExpr("photo(5)");
-            expect(result).toEqual({
-                kind: "call",
-                name: "photo",
-                args: [{ kind: "number", value: "5" }],
-            });
+        test("rejects natural number arguments", () => {
+            expect(() => parseExpr("photo(5)")).toThrow("Expected identifier (variable)");
         });
 
-        test("parses zero as number", () => {
-            const result = parseExpr("count(0)");
-            expect(result).toEqual({
-                kind: "call",
-                name: "count",
-                args: [{ kind: "number", value: "0" }],
-            });
+        test("rejects zero as number", () => {
+            expect(() => parseExpr("count(0)")).toThrow("Expected identifier (variable)");
         });
 
-        test("parses mixed arg types", () => {
-            const result = parseExpr('foo("str", 42, x)');
-            expect(result).toEqual({
-                kind: "call",
-                name: "foo",
-                args: [
-                    { kind: "string", value: "str" },
-                    { kind: "number", value: "42" },
-                    { kind: "identifier", value: "x" },
-                ],
-            });
+        test("rejects mixed arg types with constants", () => {
+            expect(() => parseExpr('foo("str", 42, x)')).toThrow("Expected identifier (variable)");
         });
 
-        test("parses numeric arguments including multi-digit (T5)", () => {
-            const result = parseExpr("node(123)");
-            expect(result).toEqual({
-                kind: "call",
-                name: "node",
-                args: [{ kind: "number", value: "123" }],
-            });
-            
-            // Verify canonicalization works
-            expect(canonicalize("node(123)")).toBe("node(123)");
-            expect(canonicalize("node( 456 )")).toBe("node(456)");
+        test("rejects numeric arguments including multi-digit", () => {
+            expect(() => parseExpr("node(123)")).toThrow("Expected identifier (variable)");
         });
 
-        test("handles string escapes", () => {
-            const result = parseExpr('msg("hello\\"world")');
-            expect(result).toEqual({
-                kind: "call",
-                name: "msg",
-                args: [{ kind: "string", value: 'hello"world' }],
-            });
+        test("rejects string escapes", () => {
+            expect(() => parseExpr('msg("hello\\"world")')).toThrow("Expected identifier (variable)");
         });
 
         test("throws on empty string", () => {
@@ -188,24 +147,24 @@ describe("dependency_graph/expr", () => {
             expect(canonicalize(" foo ( a , b , c ) ")).toBe("foo(a,b,c)");
         });
 
-        test("canonicalizes quoted strings", () => {
-            expect(canonicalize('status(e, "active")')).toBe("status(e,'active')");
-            expect(canonicalize('foo( "a" , "b" )')).toBe("foo('a','b')");
+        test("rejects quoted strings", () => {
+            expect(() => canonicalize('status(e, "active")')).toThrow("Expected identifier (variable)");
+            expect(() => canonicalize('foo( "a" , "b" )')).toThrow("Expected identifier (variable)");
         });
 
-        test("canonicalizes numbers", () => {
-            expect(canonicalize("photo(5)")).toBe("photo(5)");
-            expect(canonicalize("photo( 42 )")).toBe("photo(42)");
-            expect(canonicalize("count(0)")).toBe("count(0)");
+        test("rejects numbers", () => {
+            expect(() => canonicalize("photo(5)")).toThrow("Expected identifier (variable)");
+            expect(() => canonicalize("photo( 42 )")).toThrow("Expected identifier (variable)");
+            expect(() => canonicalize("count(0)")).toThrow("Expected identifier (variable)");
         });
 
-        test("canonicalizes mixed arg types", () => {
-            expect(canonicalize('mix("str", 5, x)')).toBe("mix('str',5,x)");
+        test("rejects mixed arg types with constants", () => {
+            expect(() => canonicalize('mix("str", 5, x)')).toThrow("Expected identifier (variable)");
         });
 
-        test("preserves string escapes in canonical form", () => {
-            expect(canonicalize('foo("a\\"b")')).toBe("foo('a\"b')");
-            expect(canonicalize('foo("line\\n")')).toBe("foo('line\\n')");
+        test("rejects string escapes", () => {
+            expect(() => canonicalize('foo("a\\"b")')).toThrow("Expected identifier (variable)");
+            expect(() => canonicalize('foo("line\\n")')).toThrow("Expected identifier (variable)");
         });
 
         test("throws on malformed expression", () => {
