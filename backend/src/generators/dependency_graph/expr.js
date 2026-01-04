@@ -18,10 +18,10 @@ const { makeInvalidExpressionError } = require("./errors");
  */
 
 /**
- * Argument in a parsed expression - only identifiers (variables) are allowed.
+ * Argument in a parsed expression - can be identifier (variable), string, or number constant.
  * @typedef {Object} ParsedArg
- * @property {'identifier'} kind
- * @property {string} value - Variable name
+ * @property {'identifier' | 'string' | 'number'} kind
+ * @property {string} value - Variable name (for identifier) or string value (for string) or number string (for number)
  */
 
 /**
@@ -241,18 +241,17 @@ class Parser {
     }
 
     /**
-     * Parses a term (only identifiers are allowed as arguments).
+     * Parses a term (identifiers for variables, strings and numbers for constants).
      * @returns {ParsedArg}
      */
     parseTerm() {
         const token = this.currentToken;
-        if (token.kind === "identifier") {
+        if (token.kind === "identifier" || token.kind === "string" || token.kind === "number") {
             this.advance();
             return { kind: token.kind, value: token.value };
         }
-        // Reject strings and numbers - only variables allowed
         throw new Error(
-            `Expected identifier (variable) but got ${token.kind} at position ${token.pos}`
+            `Expected identifier, string, or number but got ${token.kind} at position ${token.pos}`
         );
     }
 
@@ -351,12 +350,23 @@ function parseExpr(str) {
 
 /**
  * Renders a parsed argument to its canonical string form.
- * Only identifiers are accepted during parsing since constants are not allowed.
+ * Handles identifiers (variables), strings, and numbers.
  * @param {ParsedArg} arg
  * @returns {string}
  */
 function renderArg(arg) {
     if (arg.kind === "identifier") {
+        return arg.value;
+    } else if (arg.kind === "string") {
+        // Escape quotes and backslashes in the string value
+        const escaped = arg.value
+            .replace(/\\/g, "\\\\")
+            .replace(/"/g, '\\"')
+            .replace(/\n/g, "\\n")
+            .replace(/\t/g, "\\t")
+            .replace(/\r/g, "\\r");
+        return `"${escaped}"`;
+    } else if (arg.kind === "number") {
         return arg.value;
     }
     throw new Error(`Unknown arg kind: ${arg.kind}`);

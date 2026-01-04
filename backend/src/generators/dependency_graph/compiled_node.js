@@ -16,7 +16,7 @@ const {
 
 /**
  * Extracts variable names from a parsed expression.
- * All identifiers in arguments are variables.
+ * Only identifiers in arguments are variables (strings and numbers are constants).
  * @param {ParsedExpr} expr
  * @returns {Set<string>}
  */
@@ -26,8 +26,10 @@ function extractVariables(expr) {
     
     if (expr.kind === "call") {
         for (const arg of expr.args) {
-            // All args are identifiers (variables) now
-            vars.add(arg.value);
+            // Only identifiers are variables
+            if (arg.kind === "identifier") {
+                vars.add(arg.value);
+            }
         }
     }
     
@@ -237,14 +239,15 @@ function compileNodeDef(nodeDef) {
     const outputVars = extractVariables(outputExpr);
     const isPattern = outputVars.size > 0;
     
-    // Compute arg kinds - all arguments are now variables
-    /** @type {Array<'var'>} */
+    // Compute arg kinds - can be 'var', 'string', or 'number'
+    /** @type {Array<'var' | 'string' | 'number'>} */
     const outputArgKinds = [];
     
     if (outputExpr.kind === "call") {
         for (let i = 0; i < outputExpr.args.length; i++) {
-            // All args are identifiers (variables)
-            outputArgKinds.push("var");
+            const arg = outputExpr.args[i];
+            if (arg === undefined) continue;
+            outputArgKinds.push(arg.kind);
         }
     }
     

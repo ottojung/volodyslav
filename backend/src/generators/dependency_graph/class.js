@@ -229,7 +229,7 @@ class DependencyGraphClass {
      * Throws if multiple patterns match (ambiguity).
      * @private
      * @param {string} concreteKeyCanonical - Canonical concrete node key
-     * @returns {{ compiledNode: CompiledNode, bindings: Record<string, never> } | null}
+     * @returns {{ compiledNode: CompiledNode, bindings: Record<string, DatabaseValue> } | null}
      */
     findMatchingPattern(concreteKeyCanonical) {
         const expr = parseExpr(concreteKeyCanonical);
@@ -244,7 +244,7 @@ class DependencyGraphClass {
         }
 
         // Collect all matching patterns
-        /** @type {Array<{ compiledNode: CompiledNode, bindings: Record<string, never> }>} */
+        /** @type {Array<{ compiledNode: CompiledNode, bindings: Record<string, DatabaseValue> }>} */
         const matches = [];
 
         for (const compiled of candidates) {
@@ -557,10 +557,11 @@ class DependencyGraphClass {
      * - If node is potentially-outdated: maybe recalculate (check inputs first)
      *
      * @param {string} nodeName - The name of the node to pull
+     * @param {Record<string, DatabaseValue>} [bindings={}] - Variable bindings for parameterized nodes
      * @returns {Promise<DatabaseValue>} The node's value
      */
-    async pull(nodeName) {
-        const { value } = await this.pullWithStatus(nodeName);
+    async pull(nodeName, bindings = {}) {
+        const { value } = await this.pullWithStatus(nodeName, bindings);
         return value;
     }
 
@@ -568,22 +569,32 @@ class DependencyGraphClass {
      * Internal pull that returns status for optimization.
      * @private
      * @param {string} nodeName
+     * @param {Record<string, DatabaseValue>} [bindings={}]
      * @returns {Promise<RecomputeResult>}
      */
-    async pullWithStatus(nodeName) {
+    async pullWithStatus(nodeName, bindings = {}) {
         return this.storage.withBatch(async (batch) => {
             // Canonicalize the node name
             const canonicalName = canonicalize(nodeName);
 
+            // If bindings provided, substitute them to get concrete key
+            let concreteKey = canonicalName;
+            if (Object.keys(bindings).length > 0) {
+                // Parse the pattern and substitute bindings
+                const expr = parseExpr(canonicalName);
+                const variables = extractVariables(expr);
+                concreteKey = substitute(canonicalName, bindings, variables);
+            }
+
             // Validate that key is concrete (no variables)
-            validateConcreteKey(canonicalName);
+            validateConcreteKey(concreteKey);
 
             // Find or create the node definition
-            const nodeDefinition = this.getOrCreateConcreteNode(canonicalName);
+            const nodeDefinition = this.getOrCreateConcreteNode(concreteKey);
 
             // Check freshness of this node
             const nodeFreshness = await this.storage.freshness.get(
-                canonicalName
+                concreteKey
             );
 
             // Fast path: if up-to-date, return cached value immediately
@@ -591,7 +602,7 @@ class DependencyGraphClass {
             if (nodeFreshness === "up-to-date") {
                 // Ensure node is materialized
                 await this.storage.ensureMaterialized(
-                    canonicalName,
+                    concreteKey,
                     nodeDefinition.inputs,
                     batch
                 );
@@ -601,15 +612,15 @@ class DependencyGraphClass {
                 // but reverse-dep metadata is missing
                 if (nodeDefinition.inputs.length > 0) {
                     await this.storage.ensureReverseDepsIndexed(
-                        canonicalName,
+                        concreteKey,
                         nodeDefinition.inputs,
                         batch
                     );
                 }
 
-                const result = await this.storage.values.get(canonicalName);
+                const result = await this.storage.values.get(concreteKey);
                 if (result === undefined) {
-                    throw makeMissingValueError(canonicalName);
+                    throw makeMissingValueError(concreteKey);
                 }
                 return { value: result, status: "cached" };
             }

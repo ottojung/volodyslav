@@ -2,11 +2,13 @@
  * Unification algorithm for matching concrete nodes against compiled patterns.
  */
 
-const { parseExpr } = require("./expr");
+const { parseExpr, renderExpr, renderArg } = require("./expr");
 const { makeSchemaPatternNotAllowedError } = require("./errors");
 
 /** @typedef {import('./types').CompiledNode} CompiledNode */
+/** @typedef {import('./types').DatabaseValue} DatabaseValue */
 /** @typedef {import('./expr').ParsedArg} ParsedArg */
+/** @typedef {import('./expr').ParsedExpr} ParsedExpr */
 
 /**
  * Validates that a concrete key contains only constants (no variables).
@@ -26,13 +28,40 @@ function validateConcreteKey(concreteKey) {
 }
 
 /**
+ * Converts a ParsedArg to a DatabaseValue.
+ * @param {ParsedArg} arg
+ * @returns {DatabaseValue}
+ */
+function argToValue(arg) {
+    if (arg.kind === "string") {
+        return arg.value;
+    } else if (arg.kind === "number") {
+        return parseInt(arg.value, 10);
+    }
+    throw new Error(`Cannot convert ${arg.kind} to value`);
+}
+
+/**
+ * Converts a DatabaseValue to a ParsedArg.
+ * @param {DatabaseValue} value
+ * @returns {ParsedArg}
+ */
+function valueToArg(value) {
+    if (typeof value === "string") {
+        return { kind: "string", value };
+    } else if (typeof value === "number") {
+        return { kind: "number", value: String(value) };
+    }
+    throw new Error(`Cannot convert value ${JSON.stringify(value)} to arg`);
+}
+
+/**
  * Attempts to match a concrete node expression with a compiled pattern.
- * Since constants are no longer allowed, only atom-expressions can be concrete.
- * Returns empty bindings if successful, or null if matching fails.
+ * Returns bindings if successful, or null if matching fails.
  *
- * @param {string} concreteKey - The concrete node key (must be an atom-expression)
+ * @param {string} concreteKey - The concrete node key (must contain only constants, no variables)
  * @param {CompiledNode} compiledNode - The compiled node to match against
- * @returns {{ bindings: Record<string, never> } | null} Empty bindings if successful, null otherwise
+ * @returns {{ bindings: Record<string, DatabaseValue> } | null} Bindings if successful, null otherwise
  */
 function matchConcrete(concreteKey, compiledNode) {
     // Validate that concrete key has no variables
@@ -45,38 +74,87 @@ function matchConcrete(concreteKey, compiledNode) {
         return null;
     }
 
-    // Concrete expressions can only be atom-expressions (no arguments)
-    // If the pattern has arguments, it can't match a concrete expression
-    if (concreteExpr.args.length !== 0) {
-        // This should not happen as validateConcreteKey ensures no variables
-        // and we no longer allow constants, so any args would be invalid
+    // Must have same arity
+    if (concreteExpr.args.length !== compiledNode.arity) {
         return null;
     }
 
-    // Must have same arity (both should be 0 for atoms)
-    if (compiledNode.arity !== 0) {
-        return null;
+    // Match arguments and extract bindings
+    /** @type {Record<string, DatabaseValue>} */
+    const bindings = {};
+
+    for (let i = 0; i < concreteExpr.args.length; i++) {
+        const concreteArg = concreteExpr.args[i];
+        const patternArg = compiledNode.outputExpr.args[i];
+
+        if (!concreteArg || !patternArg) {
+            return null;
+        }
+
+        if (patternArg.kind === "identifier") {
+            // Variable in pattern - bind to concrete value
+            const varName = patternArg.value;
+            const value = argToValue(concreteArg);
+
+            // Check for consistency if variable already bound
+            if (varName in bindings) {
+                // For consistent matching with repeated variables
+                if (JSON.stringify(bindings[varName]) !== JSON.stringify(value)) {
+                    return null;
+                }
+            } else {
+                bindings[varName] = value;
+            }
+        } else {
+            // Constant in pattern - must match exactly
+            if (concreteArg.kind !== patternArg.kind || concreteArg.value !== patternArg.value) {
+                return null;
+            }
+        }
     }
 
-    // No bindings needed for atom-expressions
-    return { bindings: {} };
+    return { bindings };
 }
 
 /**
  * Substitutes variables in an expression pattern with their bindings.
- * Since constants are no longer supported and bindings are always empty,
- * this function now simply returns the pattern unchanged.
- *
- * @param {string} pattern - The pattern (e.g., "photo(p)" or "all_events")
- * @param {Record<string, never>} _bindings - Always empty since no constants
- * @param {Set<string>} _variables - Set of variable names (unused now)
- * @returns {string} The pattern unchanged (canonical form)
+ * 
+ * @param {string} pattern - The pattern (e.g., "photo(p)" or "event(x)")
+ * @param {Record<string, DatabaseValue>} bindings - Variable bindings
+ * @param {Set<string>} variables - Set of variable names in the pattern
+ * @returns {string} The substituted expression (canonical form)
  */
-function substitute(pattern, _bindings, _variables) {
-    // Since constants are not allowed and bindings are always empty,
-    // patterns cannot be instantiated with concrete values.
-    // This function now just returns the pattern as-is.
-    return pattern;
+function substitute(pattern, bindings, variables) {
+    const expr = parseExpr(pattern);
+
+    if (expr.kind === "atom") {
+        // No substitution needed for atoms
+        return pattern;
+    }
+
+    // Substitute each argument
+    const substitutedArgs = expr.args.map(arg => {
+        if (arg.kind === "identifier") {
+            const varName = arg.value;
+            if (varName in bindings) {
+                return valueToArg(bindings[varName]);
+            } else {
+                // Variable not bound - keep as is (shouldn't happen if validation is correct)
+                return arg;
+            }
+        } else {
+            // Constant - keep as is
+            return arg;
+        }
+    });
+
+    const substitutedExpr = {
+        kind: /** @type {const} */ ("call"),
+        name: expr.name,
+        args: substitutedArgs,
+    };
+
+    return renderExpr(substitutedExpr);
 }
 
 module.exports = {

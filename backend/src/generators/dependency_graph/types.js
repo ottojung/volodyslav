@@ -21,9 +21,8 @@
 
 /**
  * A computor function for node definitions.
- * Since constants are no longer supported in expressions, bindings are always empty.
- * The bindings parameter is kept for backward compatibility but will always be an empty object.
- * @typedef {(inputs: Array<DatabaseValue>, oldValue: DatabaseValue | undefined, bindings: Record<string, never>) => DatabaseValue | Unchanged} NodeDefComputor
+ * Receives inputs, optional old value, and bindings for any variables in the pattern.
+ * @typedef {(inputs: Array<DatabaseValue>, oldValue: DatabaseValue | undefined, bindings: Record<string, DatabaseValue>) => DatabaseValue | Unchanged} NodeDefComputor
  */
 
 /**
@@ -79,7 +78,7 @@
  * @property {string} head - Head/name of the output expression
  * @property {number} arity - Number of arguments in output
  * @property {boolean} isPattern - True if output contains variables (unquoted identifiers)
- * @property {Array<'var'>} outputArgKinds - Kind of each output argument position (always 'var' since constants are not allowed)
+ * @property {Array<'var' | 'string' | 'number'>} outputArgKinds - Kind of each output argument position
  * @property {Map<string, Array<number>>} repeatedVarPositions - Map from variable name to positions where it appears
  * @property {Set<string>} varsUsedInInputs - Variables used in any input pattern
  */
