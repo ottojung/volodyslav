@@ -4,7 +4,6 @@
 
 /** @typedef {import('../database/root_database').RootDatabase} RootDatabase */
 /** @typedef {import('./types').DatabaseValue} DatabaseValue */
-/** @typedef {import('./types').BindingValue} BindingValue */
 /** @typedef {import('./types').Freshness} Freshness */
 /** @typedef {import('./types').FreshnessStatus} FreshnessStatus */
 /** @typedef {import('./types').NodeDef} NodeDef */
@@ -230,7 +229,7 @@ class DependencyGraphClass {
      * Throws if multiple patterns match (ambiguity).
      * @private
      * @param {string} concreteKeyCanonical - Canonical concrete node key
-     * @returns {{ compiledNode: CompiledNode, bindings: Record<string, BindingValue> } | null}
+     * @returns {{ compiledNode: CompiledNode, bindings: Record<string, unknown> } | null}
      */
     findMatchingPattern(concreteKeyCanonical) {
         const expr = parseExpr(concreteKeyCanonical);
@@ -245,7 +244,7 @@ class DependencyGraphClass {
         }
 
         // Collect all matching patterns
-        /** @type {Array<{ compiledNode: CompiledNode, bindings: Record<string, BindingValue> }>} */
+        /** @type {Array<{ compiledNode: CompiledNode, bindings: Record<string, unknown> }>} */
         const matches = [];
 
         for (const compiled of candidates) {
@@ -328,6 +327,7 @@ class DependencyGraphClass {
              * @returns {DatabaseValue | Unchanged}
              */
             computor: (inputValues, oldValue) =>
+                // @ts-expect-error - bindings are Record<string, unknown> internally but DatabaseValue externally
                 compiledNode.source.computor(inputValues, oldValue, bindings),
         };
 
@@ -558,7 +558,7 @@ class DependencyGraphClass {
      * - If node is potentially-outdated: maybe recalculate (check inputs first)
      *
      * @param {string} nodeName - The name of the node to pull
-     * @param {Record<string, BindingValue>} [bindings={}] - Variable bindings for parameterized nodes
+     * @param {Record<string, DatabaseValue>} [bindings={}] - Variable bindings for parameterized nodes
      * @returns {Promise<DatabaseValue>} The node's value
      */
     async pull(nodeName, bindings = {}) {
@@ -570,7 +570,7 @@ class DependencyGraphClass {
      * Internal pull that returns status for optimization.
      * @private
      * @param {string} nodeName
-     * @param {Record<string, BindingValue>} [bindings={}]
+     * @param {Record<string, DatabaseValue>} [bindings={}]
      * @returns {Promise<RecomputeResult>}
      */
     async pullWithStatus(nodeName, bindings = {}) {

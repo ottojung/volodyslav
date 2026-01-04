@@ -6,7 +6,7 @@ const { parseExpr, renderExpr } = require("./expr");
 const { makeSchemaPatternNotAllowedError } = require("./errors");
 
 /** @typedef {import('./types').CompiledNode} CompiledNode */
-/** @typedef {import('./types').BindingValue} BindingValue */
+/** @typedef {import('./types').DatabaseValue} DatabaseValue */
 /** @typedef {import('./expr').ParsedArg} ParsedArg */
 /** @typedef {import('./expr').ParsedExpr} ParsedExpr */
 
@@ -28,22 +28,32 @@ function validateConcreteKey(concreteKey) {
 }
 
 /**
- * Converts a ParsedArg to a BindingValue.
+ * Converts a ParsedArg to a value that can be used as a binding.
+ * For string args containing JSON, deserializes them back to objects.
+ * Returns unknown since JSON.parse returns unknown type.
  * @param {ParsedArg} arg
- * @returns {BindingValue}
+ * @returns {unknown}
  */
 function argToValue(arg) {
     if (arg.kind === "string") {
-        return arg.value;
+        // Try to parse as JSON in case it's a serialized object
+        try {
+            return JSON.parse(arg.value);
+        } catch {
+            // If not valid JSON, return as string (primitive binding)
+            return arg.value;
+        }
     } else if (arg.kind === "number") {
+        // Return as number (primitive binding)
         return parseInt(arg.value, 10);
     }
     throw new Error(`Cannot convert ${arg.kind} to value`);
 }
 
 /**
- * Converts a BindingValue to a ParsedArg.
- * @param {BindingValue} value
+ * Converts a value to a ParsedArg.
+ * For objects, serializes them to JSON strings.
+ * @param {unknown} value
  * @returns {ParsedArg}
  */
 function valueToArg(value) {
@@ -51,6 +61,9 @@ function valueToArg(value) {
         return { kind: "string", value };
     } else if (typeof value === "number") {
         return { kind: "number", value: String(value) };
+    } else if (typeof value === "object" && value !== null) {
+        // Serialize objects to JSON strings
+        return { kind: "string", value: JSON.stringify(value) };
     }
     throw new Error(`Cannot convert value ${JSON.stringify(value)} to arg`);
 }
@@ -61,7 +74,7 @@ function valueToArg(value) {
  *
  * @param {string} concreteKey - The concrete node key (must contain only constants, no variables)
  * @param {CompiledNode} compiledNode - The compiled node to match against
- * @returns {{ bindings: Record<string, BindingValue> } | null} Bindings if successful, null otherwise
+ * @returns {{ bindings: Record<string, unknown> } | null} Bindings if successful, null otherwise
  */
 function matchConcrete(concreteKey, compiledNode) {
     // Validate that concrete key has no variables
@@ -80,7 +93,7 @@ function matchConcrete(concreteKey, compiledNode) {
     }
 
     // Match arguments and extract bindings
-    /** @type {Record<string, BindingValue>} */
+    /** @type {Record<string, unknown>} */
     const bindings = {};
 
     for (let i = 0; i < concreteExpr.args.length; i++) {
@@ -99,9 +112,9 @@ function matchConcrete(concreteKey, compiledNode) {
             // Check for consistency if variable already bound
             if (varName in bindings) {
                 // For consistent matching with repeated variables
-                // DatabaseValue is either string or number, so we can use strict equality
+                // Use JSON comparison for any type of value
                 const existing = bindings[varName];
-                if (typeof existing !== typeof value || existing !== value) {
+                if (JSON.stringify(existing) !== JSON.stringify(value)) {
                     return null;
                 }
             } else {
@@ -122,7 +135,7 @@ function matchConcrete(concreteKey, compiledNode) {
  * Substitutes variables in an expression pattern with their bindings.
  * 
  * @param {string} pattern - The pattern (e.g., "photo(p)" or "event(x)")
- * @param {Record<string, BindingValue>} bindings - Variable bindings
+ * @param {Record<string, unknown>} bindings - Variable bindings
  * @param {Set<string>} _variables - Set of variable names in the pattern (unused)
  * @returns {string} The substituted expression (canonical form)
  */
