@@ -61,6 +61,7 @@ function createNodeKeyFromPattern(pattern, bindings) {
     }
     
     // For call expressions, substitute variables with their bindings
+    // All args are guaranteed to be identifiers since expr parsing only supports identifiers
     const args = expr.args.map(arg => {
         const varName = arg.value;
         const binding = bindings[varName];
