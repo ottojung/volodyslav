@@ -171,37 +171,42 @@ class DependencyGraphClass {
      * All operations are performed atomically in a single batch.
      * @param {string} key - The name of the node to set
      * @param {DatabaseValue} value - The value to set
+     * @param {Record<string, unknown>} [bindings={}] - Variable bindings for parameterized nodes
      * @returns {Promise<void>}
      */
-    async set(key, value) {
+    async set(key, value, bindings = {}) {
         // Canonicalize the key
         const canonicalKey = canonicalize(key);
+        
+        // Convert to JSON format key
+        const nodeKey = createNodeKeyFromPattern(canonicalKey, bindings);
+        const concreteKey = serializeNodeKey(nodeKey);
 
         // Ensure node exists (will create from pattern if needed)
-        const nodeDefinition = this.getOrCreateConcreteNode(canonicalKey);
+        const nodeDefinition = this.getOrCreateConcreteNode(concreteKey, canonicalKey, bindings);
 
         // Validate that this is a source node (no inputs)
         if (nodeDefinition.inputs.length > 0) {
-            throw makeInvalidSetError(canonicalKey);
+            throw makeInvalidSetError(concreteKey);
         }
 
         // Use batch builder for atomic operations
         await this.storage.withBatch(async (batch) => {
             // Store the value
-            batch.values.put(canonicalKey, value);
+            batch.values.put(concreteKey, value);
 
             // Mark this key as up-to-date
-            batch.freshness.put(canonicalKey, "up-to-date");
+            batch.freshness.put(concreteKey, "up-to-date");
 
             // Ensure the node is materialized (write inputs record with empty array)
             await this.storage.ensureMaterialized(
-                canonicalKey,
+                concreteKey,
                 nodeDefinition.inputs,
                 batch
             );
 
             // Collect operations to mark all dependents as potentially-outdated
-            await this.propagateOutdated(canonicalKey, batch);
+            await this.propagateOutdated(concreteKey, batch);
         });
     }
 
@@ -245,7 +250,7 @@ class DependencyGraphClass {
         let head, arity;
         let jsonKey = null;
         
-        // Check if it's a JSON key (new format)
+        // Check if it's a JSON key
         if (concreteKeyCanonical.startsWith('{')) {
             const { deserializeNodeKey } = require("./node_key");
             jsonKey = deserializeNodeKey(concreteKeyCanonical);
@@ -333,7 +338,7 @@ class DependencyGraphClass {
      * Gets or creates a concrete node instantiation.
      * Dynamic edges are persisted to DB when the node is computed/set, not here.
      * @private
-     * @param {string} concreteKeyCanonical - Canonical concrete node key (might be old or new format)
+     * @param {string} concreteKeyCanonical - Canonical concrete node key (JSON format)
      * @param {string} [patternName] - Original pattern name for matching
      * @param {Record<string, unknown>} [bindings={}] - Bindings for this instance
      * @returns {ConcreteNodeDefinition}
@@ -343,9 +348,15 @@ class DependencyGraphClass {
         // Check if it's an exact node in the graph (try both keys)
         const exactNode = this.graphIndex.exactIndex.get(patternName || concreteKeyCanonical);
         if (exactNode) {
+            // Convert all inputs to JSON format
+            const jsonInputs = exactNode.canonicalInputs.map(input => {
+                const inputKey = createNodeKeyFromPattern(input, {});
+                return serializeNodeKey(inputKey);
+            });
+            
             return {
                 output: concreteKeyCanonical,
-                inputs: exactNode.canonicalInputs,
+                inputs: jsonInputs,
                 computor: (inputs, oldValue) =>
                     exactNode.source.computor(inputs, oldValue, {}),
             };
@@ -398,11 +409,13 @@ class DependencyGraphClass {
                 );
                 
                 if (hasVariables && Object.keys(actualBindings).length > 0) {
-                    // Use new node key format for inputs with bindings
+                    // Use node key format for inputs with bindings
                     const inputKey = createNodeKeyFromPattern(inputPattern, actualBindings);
                     return serializeNodeKey(inputKey);
                 }
-                return inputPattern;
+                // Always use JSON format, even for inputs without variables
+                const inputKey = createNodeKeyFromPattern(inputPattern, {});
+                return serializeNodeKey(inputKey);
             }
         );
 
@@ -663,7 +676,7 @@ class DependencyGraphClass {
      */
     async pullWithStatus(nodeName, bindings = {}) {
         return this.storage.withBatch(async (batch) => {
-            // Check if nodeName is already a JSON key (new format)
+            // Check if nodeName is already a JSON key
             let concreteKey;
             let canonicalName;
             let extractedBindings = bindings;
@@ -697,15 +710,9 @@ class DependencyGraphClass {
                 // Canonicalize the node name
                 canonicalName = canonicalize(nodeName);
 
-                // Create concrete key using new JSON-based format
-                if (Object.keys(bindings).length > 0) {
-                    // Use new node key format: {head, args}
-                    const nodeKey = createNodeKeyFromPattern(canonicalName, bindings);
-                    concreteKey = serializeNodeKey(nodeKey);
-                } else {
-                    // For patterns without bindings, use old format for now (backward compat)
-                    concreteKey = canonicalName;
-                }
+                // Create concrete key using JSON-based format
+                const nodeKey = createNodeKeyFromPattern(canonicalName, bindings);
+                concreteKey = serializeNodeKey(nodeKey);
             }
 
             // Find or create the node definition
@@ -752,11 +759,16 @@ class DependencyGraphClass {
     /**
      * Query conceptual freshness state of a node (debug interface).
      * @param {string} nodeName - The node name to query
+     * @param {Record<string, unknown>} [bindings={}] - Variable bindings for parameterized nodes
      * @returns {Promise<"up-to-date" | "potentially-outdated" | "missing">}
      */
-    async debugGetFreshness(nodeName) {
+    async debugGetFreshness(nodeName, bindings = {}) {
         const canonical = canonicalize(nodeName);
-        const freshness = await this.storage.freshness.get(canonical);
+        // Convert to JSON format key
+        const nodeKey = createNodeKeyFromPattern(canonical, bindings);
+        const concreteKey = serializeNodeKey(nodeKey);
+        
+        const freshness = await this.storage.freshness.get(concreteKey);
         if (freshness === undefined) {
             return "missing";
         }
