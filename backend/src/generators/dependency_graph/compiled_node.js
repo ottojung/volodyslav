@@ -11,35 +11,8 @@ const {
 
 /** @typedef {import('./types').NodeDef} NodeDef */
 /** @typedef {import('./types').CompiledNode} CompiledNode */
-/** @typedef {import('./types').ConstValue} ConstValue */
 /** @typedef {import('./expr').ParsedExpr} ParsedExpr */
 /** @typedef {import('./expr').ParsedArg} ParsedArg */
-
-/**
- * A variable reference used during unification.
- * @typedef {object} UnificationVar
- * @property {'var'} kind - Discriminator for variable references
- * @property {'node1' | 'node2'} source - Which node the variable comes from
- * @property {string} name - Variable name
- */
-
-/**
- * Value used during unification - either a constant or a variable reference.
- * @typedef {ConstValue | UnificationVar} UnificationValue
- */
-
-/**
- * Converts a ParsedArg to a ConstValue if it's a constant.
- * Since constants are no longer supported, this always returns null.
- * @param {ParsedArg} arg
- * @returns {ConstValue | null} - Always returns null since only variables are allowed
- */
-function argToConstValue(arg) {
-    if (arg.kind === "identifier") {
-        return null; // Variable
-    }
-    throw new Error(`Unknown arg kind: ${arg.kind}`);
-}
 
 /**
  * Extracts variable names from a parsed expression.
