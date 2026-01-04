@@ -372,6 +372,60 @@ describe("Bound variables in computors", () => {
 
             await db.close();
         });
+
+        test("a graph f(x, y, z) <- (g(x, z) <- k(x) <- s1) + (h(y) <- s2)", async () => {
+            const capabilities = getTestCapabilities();
+            const db = await getRootDatabase(capabilities);
+            const schemas = [
+                {
+                    output: "s1",
+                    inputs: [],
+                    computor: () => ({ value: "s1" }),
+                },
+                {
+                    output: "s2",
+                    inputs: [],
+                    computor: () => ({ value: "s2" }),
+                },
+                {
+                    output: "k(x)",
+                    inputs: ["s1"],
+                    computor: (inputs, oldValue, bindings) => {
+                        return { value: `k(${bindings.x}, ${inputs[0].value})` };
+                    },
+                },
+                {
+                    output: "g(x, z)",
+                    inputs: ["k(x)"],
+                    computor: (inputs, oldValue, bindings) => {
+                        return { value: `g(${inputs[0].value}, ${bindings.z})` };
+                    },
+                },
+                {
+                    output: "h(y)",
+                    inputs: ["s2"],
+                    computor: (inputs, oldValue, bindings) => {
+                        return { value: `h(${bindings.y}, ${inputs[0].value})` };
+                    },
+                },
+                {
+                    output: "f(x, y, z)",
+                    inputs: ["g(x, z)", "h(y)"],
+                    computor: (inputs, oldValue, bindings) => {
+                        return { value: `f(${inputs[0].value}, ${inputs[1].value})` };
+                    },
+                },
+            ];
+
+            const graph = makeDependencyGraph(db, schemas);
+
+            // Pull f with specific bindings
+            const result = await graph.pull("f(x, y, z)", { x: "A", y: "B", z: "C" });
+
+            expect(result).toEqual({ value: "f(g(k(A, s1), C), h(B, s2))" });
+
+            await db.close();
+        });
     });
 
     describe("Single computor invocation per pull", () => {
