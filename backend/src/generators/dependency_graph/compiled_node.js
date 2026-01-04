@@ -240,14 +240,11 @@ function compileNodeDef(nodeDef) {
     // Compute arg kinds - all arguments are now variables
     /** @type {Array<'var'>} */
     const outputArgKinds = [];
-    /** @type {Array<null>} */
-    const outputConstArgs = [];
     
     if (outputExpr.kind === "call") {
         for (let i = 0; i < outputExpr.args.length; i++) {
             // All args are identifiers (variables)
             outputArgKinds.push("var");
-            outputConstArgs.push(null);
         }
     }
     
@@ -276,7 +273,6 @@ function compileNodeDef(nodeDef) {
         arity,
         isPattern,
         outputArgKinds,
-        outputConstArgs,
         repeatedVarPositions,
         varsUsedInInputs,
     };
@@ -285,7 +281,6 @@ function compileNodeDef(nodeDef) {
 module.exports = {
     compileNodeDef,
     extractVariables,
-    argToConstValue,
     validateNoOverlap,
     validateAcyclic,
     patternsCanOverlap,

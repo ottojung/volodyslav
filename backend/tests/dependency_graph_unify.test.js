@@ -82,33 +82,18 @@ describe("dependency_graph/unify", () => {
     });
 
     describe("substitute()", () => {
-        test("substitutes variables", () => {
-            const bindings = { p: { type: "string", value: "photo5" } };
-            const variables = new Set(["p"]);
-            const result = substitute("photo(p)", bindings, variables);
-            // Result is the instantiated pattern
-            expect(result).toBe("photo('photo5')");
-        });
-
-        test("substitutes multiple variables", () => {
-            const bindings = {
-                a: { type: "string", value: "id1" },
-                b: { type: "string", value: "id2" },
-            };
-            const variables = new Set(["a", "b"]);
-            const result = substitute("relation(a, b)", bindings, variables);
-            expect(result).toBe("relation('id1','id2')");
-        });
-
-        test("handles atom pattern unchanged", () => {
+        test("returns pattern unchanged since constants are not supported", () => {
+            // Since constants are no longer supported in expressions,
+            // substitute now just returns the pattern as-is
             const result = substitute("all_events", {}, new Set());
             expect(result).toBe("all_events");
         });
 
-        test("throws if variable not in bindings", () => {
-            expect(() =>
-                substitute("photo(p)", {}, new Set(["p"]))
-            ).toThrow();
+        test("returns pattern with variables unchanged", () => {
+            // Even patterns with variables are returned unchanged
+            // since we can't instantiate them with constant values
+            const result = substitute("photo(p)", {}, new Set(["p"]));
+            expect(result).toBe("photo(p)");
         });
     });
 });

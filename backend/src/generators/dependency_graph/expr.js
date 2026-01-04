@@ -351,25 +351,12 @@ function parseExpr(str) {
 
 /**
  * Renders a parsed argument to its canonical string form.
- * Note: While parsing only accepts identifiers, this function must handle
- * string and number args for substitution (converting ConstValue back to strings).
+ * Only identifiers are accepted during parsing since constants are not allowed.
  * @param {ParsedArg} arg
  * @returns {string}
  */
 function renderArg(arg) {
     if (arg.kind === "identifier") {
-        return arg.value;
-    } else if (arg.kind === "string") {
-        // For substitution: render string values with escaping
-        // Escape special characters for canonical form
-        const escaped = arg.value
-            .replace(/\\/g, "\\\\")
-            .replace(/'/g, "\\'")
-            .replace(/\n/g, "\\n")
-            .replace(/\t/g, "\\t")
-            .replace(/\r/g, "\\r");
-        return `'${escaped}'`;
-    } else if (arg.kind === "number") {
         return arg.value;
     }
     throw new Error(`Unknown arg kind: ${arg.kind}`);

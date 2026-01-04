@@ -2,11 +2,10 @@
  * Unification algorithm for matching concrete nodes against compiled patterns.
  */
 
-const { parseExpr, renderExpr } = require("./expr");
+const { parseExpr } = require("./expr");
 const { makeSchemaPatternNotAllowedError } = require("./errors");
 
 /** @typedef {import('./types').CompiledNode} CompiledNode */
-/** @typedef {import('./types').ConstValue} ConstValue */
 /** @typedef {import('./expr').ParsedArg} ParsedArg */
 
 /**
@@ -27,27 +26,13 @@ function validateConcreteKey(concreteKey) {
 }
 
 /**
- * Renders a ConstValue back to a ParsedArg for substitution.
- * @param {ConstValue} constValue
- * @returns {{kind: 'string' | 'number', value: string}}
- */
-function constValueToArg(constValue) {
-    if (constValue.type === "string") {
-        return { kind: "string", value: constValue.value };
-    } else if (constValue.type === "int") {
-        return { kind: "number", value: String(constValue.value) };
-    }
-    throw new Error(`Unknown const value type: ${JSON.stringify(constValue)}`);
-}
-
-/**
  * Attempts to match a concrete node expression with a compiled pattern.
  * Since constants are no longer allowed, only atom-expressions can be concrete.
  * Returns empty bindings if successful, or null if matching fails.
  *
  * @param {string} concreteKey - The concrete node key (must be an atom-expression)
  * @param {CompiledNode} compiledNode - The compiled node to match against
- * @returns {{ bindings: Record<string, ConstValue> } | null} Empty bindings if successful, null otherwise
+ * @returns {{ bindings: Record<string, never> } | null} Empty bindings if successful, null otherwise
  */
 function matchConcrete(concreteKey, compiledNode) {
     // Validate that concrete key has no variables
@@ -78,49 +63,20 @@ function matchConcrete(concreteKey, compiledNode) {
 }
 
 /**
- * Substitutes variables in an expression pattern with their typed bindings.
+ * Substitutes variables in an expression pattern with their bindings.
+ * Since constants are no longer supported and bindings are always empty,
+ * this function now simply returns the pattern unchanged.
  *
- * @param {string} pattern - The pattern (e.g., "photo(p)")
- * @param {Record<string, ConstValue>} bindings - Typed variable bindings
- * @param {Set<string>} variables - Set of variable names
- * @returns {string} The instantiated pattern (canonical form)
+ * @param {string} pattern - The pattern (e.g., "photo(p)" or "all_events")
+ * @param {Record<string, never>} _bindings - Always empty since no constants
+ * @param {Set<string>} _variables - Set of variable names (unused now)
+ * @returns {string} The pattern unchanged (canonical form)
  */
-function substitute(pattern, bindings, variables) {
-    const expr = parseExpr(pattern);
-
-    if (expr.kind === "atom") {
-        // Atoms don't need substitution
-        return expr.name;
-    }
-
-    // Substitute variables in arguments
-    const substitutedArgs = expr.args.map((arg) => {
-        if (arg.kind === "identifier" && variables.has(arg.value)) {
-            // It's a variable - substitute with binding
-            if (!(arg.value in bindings)) {
-                throw new Error(
-                    `Variable '${arg.value}' not found in bindings when substituting '${pattern}'`
-                );
-            }
-            const constValue = bindings[arg.value];
-            if (!constValue) {
-                throw new Error(
-                    `Variable '${arg.value}' has undefined binding when substituting '${pattern}'`
-                );
-            }
-            return constValueToArg(constValue);
-        }
-        // It's a constant - pass through
-        return arg;
-    });
-
-    // Render back to canonical string
-    return renderExpr({
-        kind: "call",
-        name: expr.name,
-        // @ts-expect-error - substitutedArgs may contain string/number kind args from constValueToArg()
-        args: substitutedArgs,
-    });
+function substitute(pattern, _bindings, _variables) {
+    // Since constants are not allowed and bindings are always empty,
+    // patterns cannot be instantiated with concrete values.
+    // This function now just returns the pattern as-is.
+    return pattern;
 }
 
 module.exports = {

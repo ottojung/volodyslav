@@ -2,27 +2,10 @@
  * Tests for compiled_node module.
  */
 
-const { compileNodeDef, extractVariables, argToConstValue } = require("../src/generators/dependency_graph/compiled_node");
+const { compileNodeDef, extractVariables } = require("../src/generators/dependency_graph/compiled_node");
 const { parseExpr } = require("../src/generators/dependency_graph/expr");
 
 describe("compiled_node", () => {
-    describe("argToConstValue()", () => {
-        test("returns null for identifier (variable)", () => {
-            const arg = { kind: "identifier", value: "x" };
-            expect(argToConstValue(arg)).toBeNull();
-        });
-
-        test("throws for string args (no longer supported)", () => {
-            const arg = { kind: "string", value: "active" };
-            expect(() => argToConstValue(arg)).toThrow("Unknown arg kind");
-        });
-
-        test("throws for number args (no longer supported)", () => {
-            const arg = { kind: "number", value: "42" };
-            expect(() => argToConstValue(arg)).toThrow("Unknown arg kind");
-        });
-    });
-
     describe("extractVariables()", () => {
         test("extracts variables from call expression", () => {
             const expr = parseExpr("foo(x, y, z)");
@@ -58,7 +41,6 @@ describe("compiled_node", () => {
             expect(compiled.arity).toBe(1);
             expect(compiled.isPattern).toBe(true);
             expect(compiled.outputArgKinds).toEqual(["var"]);
-            expect(compiled.outputConstArgs).toEqual([null]);
             expect(compiled.varsUsedInInputs).toEqual(new Set());
         });
 
@@ -74,7 +56,6 @@ describe("compiled_node", () => {
             expect(compiled.canonicalOutput).toBe("all_events");
             expect(compiled.isPattern).toBe(false);
             expect(compiled.outputArgKinds).toEqual([]);
-            expect(compiled.outputConstArgs).toEqual([]);
         });
 
         test("detects repeated variables", () => {
