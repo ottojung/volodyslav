@@ -11,6 +11,19 @@ const {
     isUnchanged,
 } = require("../src/generators/dependency_graph");
 
+/**
+ * Converts a node name to JSON key format for assertions.
+ * @param {string} name - Node name like "a" or "event(e)"
+ * @returns {string} JSON key
+ */
+function toJsonKey(name) {
+    const { createNodeKeyFromPattern, serializeNodeKey } = require("../src/generators/dependency_graph/node_key");
+    const { canonicalize } = require("../src/generators/dependency_graph/expr");
+    const canonical = canonicalize(name);
+    const nodeKey = createNodeKeyFromPattern(canonical, {});
+    return serializeNodeKey(nodeKey);
+}
+
 function expectOneOfNames(err, names) {
     expect(err).toBeTruthy();
     const n = err.name || err.code;
@@ -181,12 +194,17 @@ class InMemoryDatabase {
     /**
      * Helper to corrupt database by deleting a value from all schemas (for testing).
      * This simulates database corruption where the value is deleted but freshness remains.
-     * @param {string} key - The key to delete
+     * @param {string} key - The key to delete (will be converted to JSON format)
      */
     async corruptByDeletingValue(key) {
+        // Convert to JSON key format
+        const { createNodeKeyFromPattern, serializeNodeKey } = require("../src/generators/dependency_graph/node_key");
+        const { canonicalize } = require("../src/generators/dependency_graph/expr");
+        const jsonKey = serializeNodeKey(createNodeKeyFromPattern(canonicalize(key), {}));
+        
         // Delete from all schemas
         for (const schemaMap of this.schemas.values()) {
-            schemaMap.delete('values:' + key);
+            schemaMap.delete('values:' + jsonKey);
         }
     }
 
@@ -1188,8 +1206,8 @@ describe("Optional debug interface (only if implementation provides it)", () => 
 
         const list = await g.debugListMaterializedNodes();
         expect(Array.isArray(list)).toBe(true);
-        expect(list).toContain("a");
-        expect(list).toContain("b");
+        expect(list).toContain(toJsonKey("a"));
+        expect(list).toContain(toJsonKey("b"));
 
         const fb = await g.debugGetFreshness("b");
         expect(fb).toBe("up-to-date");
@@ -1212,18 +1230,18 @@ describe("Optional debug interface (only if implementation provides it)", () => 
 
         // Initially empty
         const list0 = await g.debugListMaterializedNodes();
-        expect(list0).not.toContain("source");
+        expect(list0).not.toContain(toJsonKey("source"));
 
         // After set, source must be materialized
         await g.set("source", { n: 42 });
         
         const list1 = await g.debugListMaterializedNodes();
-        expect(list1).toContain("source");
+        expect(list1).toContain(toJsonKey("source"));
         
         // Also verify that the node is properly indexed (has an inputs record)
         // This is important for restart resilience
         const storage = g.getStorage();
-        const inputsRecord = await storage.getInputs("source");
+        const inputsRecord = await storage.getInputs(toJsonKey("source"));
         expect(inputsRecord).not.toBeNull();
         expect(inputsRecord).toEqual([]);
     });
@@ -1245,19 +1263,19 @@ describe("Optional debug interface (only if implementation provides it)", () => 
 
         // Initially empty
         const list0 = await g.debugListMaterializedNodes();
-        expect(list0).not.toContain("leaf");
+        expect(list0).not.toContain(toJsonKey("leaf"));
 
         // After pull, leaf must be materialized
         const value = await g.pull("leaf");
         expect(value).toEqual({ n: 0 });
         
         const list1 = await g.debugListMaterializedNodes();
-        expect(list1).toContain("leaf");
+        expect(list1).toContain(toJsonKey("leaf"));
         
         // Also verify that the node is properly indexed (has an inputs record)
         // This is important for restart resilience
         const storage = g.getStorage();
-        const inputsRecord = await storage.getInputs("leaf");
+        const inputsRecord = await storage.getInputs(toJsonKey("leaf"));
         expect(inputsRecord).not.toBeNull();
         expect(inputsRecord).toEqual([]);
     });

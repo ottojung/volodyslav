@@ -33,6 +33,20 @@ function getTestCapabilities() {
     return { ...capabilities, tmpDir };
 }
 
+/**
+ * Converts a node name to its JSON key format.
+ * @param {string} nodeName - Node name
+ * @param {Record<string, unknown>} [bindings={}] - Optional bindings
+ * @returns {string} JSON key
+ */
+function toJsonKey(nodeName, bindings = {}) {
+    const { createNodeKeyFromPattern, serializeNodeKey } = require("../src/generators/dependency_graph/node_key");
+    const { canonicalize } = require("../src/generators/dependency_graph/expr");
+    const canonical = canonicalize(nodeName);
+    const nodeKey = createNodeKeyFromPattern(canonical, bindings);
+    return serializeNodeKey(nodeKey);
+}
+
 describe("Dependency graph persistence and restart", () => {
     describe("Restart preserves downstream up-to-date propagation", () => {
         test("Unchanged propagation works after restart", async () => {
@@ -155,13 +169,13 @@ describe("Dependency graph persistence and restart", () => {
 
             // Verify that schema2 can list dependents properly
             const storage2 = graph2.getStorage();
-            const dependents2 = await storage2.listDependents("A");
-            expect(dependents2).toContain("B");
+            const dependents2 = await storage2.listDependents(toJsonKey("A"));
+            expect(dependents2).toContain(toJsonKey("B"));
 
             // Verify schema1's namespace is separate (no B in schema1)
             const storage1 = graph1.getStorage();
-            const dependents1 = await storage1.listDependents("A");
-            expect(dependents1).not.toContain("B"); // schema1 doesn't have B node
+            const dependents1 = await storage1.listDependents(toJsonKey("A"));
+            expect(dependents1).not.toContain(toJsonKey("B")); // schema1 doesn't have B node
 
             await db.close();
         });

@@ -178,9 +178,18 @@ class DependencyGraphClass {
         // Canonicalize the key
         const canonicalKey = canonicalize(key);
         
-        // Convert to JSON format key
-        const nodeKey = createNodeKeyFromPattern(canonicalKey, bindings);
-        const concreteKey = serializeNodeKey(nodeKey);
+        // Try to convert to JSON format key
+        let concreteKey;
+        try {
+            const nodeKey = createNodeKeyFromPattern(canonicalKey, bindings);
+            concreteKey = serializeNodeKey(nodeKey);
+        } catch (err) {
+            // If creating the key fails due to missing bindings, throw SchemaPatternNotAllowed
+            if (err instanceof Error && err.message.includes('not found in bindings')) {
+                throw makeSchemaPatternNotAllowedError(canonicalKey);
+            }
+            throw err;
+        }
 
         // Ensure node exists (will create from pattern if needed)
         const nodeDefinition = this.getOrCreateConcreteNode(concreteKey, canonicalKey, bindings);
@@ -710,9 +719,17 @@ class DependencyGraphClass {
                 // Canonicalize the node name
                 canonicalName = canonicalize(nodeName);
 
-                // Create concrete key using JSON-based format
-                const nodeKey = createNodeKeyFromPattern(canonicalName, bindings);
-                concreteKey = serializeNodeKey(nodeKey);
+                // Try to create concrete key using JSON-based format
+                try {
+                    const nodeKey = createNodeKeyFromPattern(canonicalName, bindings);
+                    concreteKey = serializeNodeKey(nodeKey);
+                } catch (err) {
+                    // If creating the key fails due to missing bindings, throw SchemaPatternNotAllowed
+                    if (err instanceof Error && err.message.includes('not found in bindings')) {
+                        throw makeSchemaPatternNotAllowedError(canonicalName);
+                    }
+                    throw err;
+                }
             }
 
             // Find or create the node definition
