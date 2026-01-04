@@ -14,6 +14,24 @@
  */
 
 const { isFreshness } = require('../src/generators/database');
+const { createNodeKeyFromPattern, serializeNodeKey } = require('../src/generators/dependency_graph/node_key');
+const { canonicalize } = require('../src/generators/dependency_graph/expr');
+const { isJsonKey } = require('./test_json_key_helper');
+
+/**
+ * Converts a node name to JSON key format if needed.
+ * @param {string} key
+ * @returns {string}
+ */
+function toJsonKey(key) {
+    // If already a valid JSON key, return as-is
+    if (isJsonKey(key)) {
+        return key;
+    }
+    const canonical = canonicalize(key);
+    const nodeKey = createNodeKeyFromPattern(canonical, {});
+    return serializeNodeKey(nodeKey);
+}
 
 /**
  * Create a test database interface that mimics the old Database class.
@@ -26,29 +44,33 @@ function makeTestDatabase(graph) {
     return {
         /**
          * Put a value. Automatically routes to values or freshness database based on type.
+         * Automatically converts node names to JSON key format.
          * @param {string} key
          * @param {any} value
          */
         async put(key, value) {
+            const jsonKey = toJsonKey(key);
             if (isFreshness(value)) {
-                await storage.freshness.put(key, value);
+                await storage.freshness.put(jsonKey, value);
             } else {
-                await storage.values.put(key, value);
+                await storage.values.put(jsonKey, value);
             }
         },
         
         /**
          * Delete a value. Tries both databases.
+         * Automatically converts node names to JSON key format.
          * @param {string} key
          */
         async del(key) {
+            const jsonKey = toJsonKey(key);
             try {
-                await storage.values.del(key);
+                await storage.values.del(jsonKey);
             } catch (e) {
                 // Ignore if not found
             }
             try {
-                await storage.freshness.del(key);
+                await storage.freshness.del(jsonKey);
             } catch (e) {
                 // Ignore if not found
             }

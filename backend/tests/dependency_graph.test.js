@@ -14,6 +14,7 @@ const {
 const { getMockedRootCapabilities } = require("./spies");
 const { makeTestDatabase, freshnessKey } = require("./test_database_helper");
 const { stubLogger } = require("./stubs");
+const { toJsonKey } = require("./test_json_key_helper");
 
 /**
  * @typedef {import('../src/generators/database/types').DatabaseCapabilities} DatabaseCapabilities
@@ -138,10 +139,10 @@ describe("generators/dependency_graph", () => {
             const storage = graph.getStorage();
 
             // Seed data using storage after graph creation
-            await storage.values.put("input1", { type: 'all_events', events: [] });
-            await storage.freshness.put("input1", "up-to-date");
-            await storage.values.put("output1", { type: 'meta_events', meta_events: [] });
-            await storage.freshness.put("output1", "up-to-date");
+            await storage.values.put(toJsonKey("input1"), { type: 'all_events', events: [] });
+            await storage.freshness.put(toJsonKey("input1"), "up-to-date");
+            await storage.values.put(toJsonKey("output1"), { type: 'meta_events', meta_events: [] });
+            await storage.freshness.put(toJsonKey("output1"), "up-to-date");
 
             const result = await graph.pull("output1");
 
@@ -207,12 +208,12 @@ describe("generators/dependency_graph", () => {
             await testDb.put("standalone", { data: "standalone_value" });
 
             await expect(graph.pull("standalone")).rejects.toThrow(
-                "Node standalone not found in the dependency graph."
+                "not found in the dependency graph."
             );
 
             // Also verify error type
             await expect(graph.pull("standalone")).rejects.toThrow(
-                /Node standalone not found in the dependency graph./
+                /not found in the dependency graph./
             );
 
             await db.close();
@@ -245,7 +246,7 @@ describe("generators/dependency_graph", () => {
             await testDb.put("input1", { data: "test" });
             await testDb.put(freshnessKey("input1"), "potentially-outdated");
             await testDb.put("output1", { data: "existing_value" });
-            await testDb.put(freshnessKey("output1"), "up-to-date");            await testDb.put("input1", { data: "test" });
+            await testDb.put(freshnessKey("output1"), "up-to-date");
 
             const result = await graph.pull("output1");
 
@@ -1580,15 +1581,15 @@ describe("generators/dependency_graph", () => {
             await graph.set("node1", { val: 10 });
             
             const nodes = await graph.debugListMaterializedNodes();
-            expect(nodes).toContain("node1");
-            expect(nodes).not.toContain("node2");
+            expect(nodes).toContain(toJsonKey("node1"));
+            expect(nodes).not.toContain(toJsonKey("node2"));
 
             // Pull node2
             await graph.pull("node2");
             
             const nodes2 = await graph.debugListMaterializedNodes();
-            expect(nodes2).toContain("node1");
-            expect(nodes2).toContain("node2");
+            expect(nodes2).toContain(toJsonKey("node1"));
+            expect(nodes2).toContain(toJsonKey("node2"));
             expect(nodes2.length).toBe(2);
 
             await db.close();

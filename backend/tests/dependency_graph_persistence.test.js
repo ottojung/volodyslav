@@ -14,6 +14,7 @@ const {
 const { getMockedRootCapabilities } = require("./spies");
 const { makeTestDatabase } = require("./test_database_helper");
 const { stubLogger } = require("./stubs");
+const { toJsonKey } = require("./test_json_key_helper");
 
 /**
  * Creates test capabilities with a temporary data directory.
@@ -155,13 +156,13 @@ describe("Dependency graph persistence and restart", () => {
 
             // Verify that schema2 can list dependents properly
             const storage2 = graph2.getStorage();
-            const dependents2 = await storage2.listDependents("A");
-            expect(dependents2).toContain("B");
+            const dependents2 = await storage2.listDependents(toJsonKey("A"));
+            expect(dependents2).toContain(toJsonKey("B"));
 
             // Verify schema1's namespace is separate (no B in schema1)
             const storage1 = graph1.getStorage();
-            const dependents1 = await storage1.listDependents("A");
-            expect(dependents1).not.toContain("B"); // schema1 doesn't have B node
+            const dependents1 = await storage1.listDependents(toJsonKey("A"));
+            expect(dependents1).not.toContain(toJsonKey("B")); // schema1 doesn't have B node
 
             await db.close();
         });
