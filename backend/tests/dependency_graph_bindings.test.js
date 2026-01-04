@@ -282,6 +282,12 @@ describe("Bound variables in computors", () => {
             const capabilities = getTestCapabilities();
             const db = await getRootDatabase(capabilities);
 
+            function stringJoin(arr, sep = ", ") {
+                return arr.reduce((acc, curr, index) => {
+                    return acc + (index === 0 ? "" : sep) + curr;
+                }, "");
+            }
+
             const schemas = [
                 {
                     output: "source",
@@ -293,7 +299,7 @@ describe("Bound variables in computors", () => {
                     output: `layer1_${i}(x)`,
                     inputs: ["source"],
                     computor: (inputs, oldValue, bindings) => {
-                        return { value: inputs[0].value + i, x: `layer1_${i}(${bindings.x})` };
+                        return { value: `l1_${i}(${inputs[0].value + i}, ${bindings.x})` };
                     },
                 })),
                 // Layer 2
@@ -301,8 +307,8 @@ describe("Bound variables in computors", () => {
                     output: `layer2_${i}(x)`,
                     inputs: [ `layer1_1(x)`, `layer1_2(x)`, `layer1_3(x)` ],
                     computor: (inputs, oldValue, bindings) => {
-                        const sum = inputs.reduce((acc, curr) => acc + curr.value, 0);
-                        return { value: sum + i, x: `layer2_${i}(${bindings.x})` };
+                        const sum = stringJoin(inputs.map(input => input.value));
+                        return { value: `l2_${i}(${sum}, ${bindings.x})` };
                     },
                 })),
                 // Layer 3
@@ -310,8 +316,8 @@ describe("Bound variables in computors", () => {
                     output: `layer3_${i}(x)`,
                     inputs: [ `layer2_1(x)`, `layer2_2(x)`, `layer2_3(x)` ],
                     computor: (inputs, oldValue, bindings) => {
-                        const sum = inputs.reduce((acc, curr) => acc + curr.value, 0);
-                        return { value: sum + i, x: `layer3_${i}(${bindings.x})` };
+                        const sum = stringJoin(inputs.map(input => input.value));
+                        return { value: `l3_${i}(${sum}, ${bindings.x})` };
                     },
                 })),
             ];
@@ -320,13 +326,10 @@ describe("Bound variables in computors", () => {
             await graph.set("source", { value: 1 });
 
             // Pull one of the deepest nodes
-            const result = await graph.pull("layer3_2(x)", { x: "complex" });
+            const result = await graph.pull("layer3_2(x)", { x: "7" });
 
             // Manually compute expected value
-            // Layer 1: values are 2, 3, 4
-            // Layer 2: sums are (2+3+4)+1=10, (2+3+4)+2=11, (2+3+4)+3=12
-            // Layer 3: sums are (10+11+12)+1=34, (10+11+12)+2=35, (10+11+12)+3=36
-            expect(result).toEqual({ value: 35, x: "layer3_2(complex)" });
+            expect(result).toEqual({ value: "l3_2(l2_1(l1_1(2, 7), l1_2(3, 7), l1_3(4, 7), 7), l2_2(l1_1(2, 7), l1_2(3, 7), l1_3(4, 7), 7), l2_3(l1_1(2, 7), l1_2(3, 7), l1_3(4, 7), 7), 7)" });
 
             await db.close();
 
