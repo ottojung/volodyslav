@@ -1,21 +1,17 @@
 /**
- * Node key handling - keys are JSON objects, not expression strings.
+ * Node key handling - stores node identities as JSON objects.
  * 
- * A node key is an object with:
- * - head: string (the node name)
- * - args: Array<DatabaseValue> (the bound values)
- * 
- * For patterns (schema definitions), args contain variable names as strings.
- * For concrete nodes (actual instances), args contain DatabaseValue objects.
+ * A concrete node key is: {head: string, args: Array<DatabaseValue>}
+ * This is simpler than expression strings with embedded JSON.
  */
 
 /** @typedef {import('./types').DatabaseValue} DatabaseValue */
 
 /**
- * A node key object.
+ * A node key object for concrete nodes.
  * @typedef {object} NodeKey
  * @property {string} head - The node name/head
- * @property {Array<DatabaseValue>} args - The arguments (bindings for concrete nodes)
+ * @property {Array<DatabaseValue>} args - The arguments (bound values)
  */
 
 /**
@@ -25,6 +21,7 @@
  * @returns {string}
  */
 function serializeNodeKey(key) {
+    // Stable JSON serialization
     return JSON.stringify({ head: key.head, args: key.args });
 }
 
@@ -44,7 +41,7 @@ function deserializeNodeKey(serialized) {
  * @param {Record<string, DatabaseValue>} bindings - Variable bindings
  * @returns {NodeKey}
  */
-function createNodeKey(pattern, bindings) {
+function createNodeKeyFromPattern(pattern, bindings) {
     const { parseExpr } = require("./expr");
     const expr = parseExpr(pattern);
     
@@ -56,8 +53,9 @@ function createNodeKey(pattern, bindings) {
     const args = expr.args.map(arg => {
         if (arg.kind === "identifier") {
             const varName = arg.value;
-            if (varName in bindings) {
-                return bindings[varName];
+            const binding = bindings[varName];
+            if (binding !== undefined) {
+                return binding;
             }
             throw new Error(`Variable '${varName}' not found in bindings`);
         }
@@ -67,19 +65,8 @@ function createNodeKey(pattern, bindings) {
     return { head: expr.name, args };
 }
 
-/**
- * Checks if a node key is concrete (no unbound variables).
- * Since we construct keys from bindings, they're always concrete.
- * @param {NodeKey} _key
- * @returns {boolean}
- */
-function isConcreteKey(_key) {
-    return true; // Keys created with createNodeKey are always concrete
-}
-
 module.exports = {
     serializeNodeKey,
     deserializeNodeKey,
-    createNodeKey,
-    isConcreteKey,
+    createNodeKeyFromPattern,
 };
