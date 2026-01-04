@@ -276,8 +276,9 @@ class DependencyGraphClass {
                 
                 for (let i = 0; i < jsonKey.args.length; i++) {
                     const patternArg = compiled.outputExpr.args[i];
-                    if (patternArg && patternArg.kind === "identifier") {
-                        bindings[patternArg.value] = jsonKey.args[i];
+                    const argValue = jsonKey.args[i];
+                    if (patternArg && patternArg.kind === "identifier" && argValue !== undefined) {
+                        bindings[patternArg.value] = argValue;
                     } else {
                         allMatch = false;
                         break;
@@ -336,7 +337,7 @@ class DependencyGraphClass {
      * @private
      * @param {string} concreteKeyCanonical - Canonical concrete node key (might be old or new format)
      * @param {string} [patternName] - Original pattern name for matching
-     * @param {Record<string, DatabaseValue>} [bindings={}] - Bindings for this instance
+     * @param {Record<string, unknown>} [bindings={}] - Bindings for this instance
      * @returns {ConcreteNodeDefinition}
      * @throws {Error} If no pattern matches and node not in graph
      */
@@ -375,9 +376,7 @@ class DependencyGraphClass {
             (inputPattern) => {
                 if (Object.keys(actualBindings).length > 0) {
                     // Use new node key format for inputs with bindings
-                    // Cast to DatabaseValue for createNodeKeyFromPattern
-                    const dbBindings = /** @type {Record<string, DatabaseValue>} */ (/** @type {unknown} */ (actualBindings));
-                    const inputKey = createNodeKeyFromPattern(inputPattern, dbBindings);
+                    const inputKey = createNodeKeyFromPattern(inputPattern, actualBindings);
                     return serializeNodeKey(inputKey);
                 }
                 return inputPattern;
@@ -393,11 +392,8 @@ class DependencyGraphClass {
              * @param {DatabaseValue | undefined} oldValue
              * @returns {DatabaseValue | Unchanged}
              */
-            computor: (inputValues, oldValue) => {
-                // Cast bindings back to DatabaseValue for computor
-                const dbBindings = /** @type {Record<string, DatabaseValue>} */ (/** @type {unknown} */ (actualBindings));
-                return compiledNode.source.computor(inputValues, oldValue, dbBindings);
-            },
+            computor: (inputValues, oldValue) =>
+                compiledNode.source.computor(inputValues, oldValue, actualBindings),
         };
 
         // Cache it
@@ -627,7 +623,7 @@ class DependencyGraphClass {
      * - If node is potentially-outdated: maybe recalculate (check inputs first)
      *
      * @param {string} nodeName - The name of the node to pull
-     * @param {Record<string, DatabaseValue>} [bindings={}] - Variable bindings for parameterized nodes
+     * @param {Record<string, unknown>} [bindings={}] - Variable bindings for parameterized nodes
      * @returns {Promise<DatabaseValue>} The node's value
      */
     async pull(nodeName, bindings = {}) {
@@ -639,7 +635,7 @@ class DependencyGraphClass {
      * Internal pull that returns status for optimization.
      * @private
      * @param {string} nodeName
-     * @param {Record<string, DatabaseValue>} [bindings={}]
+     * @param {Record<string, unknown>} [bindings={}]
      * @returns {Promise<RecomputeResult>}
      */
     async pullWithStatus(nodeName, bindings = {}) {
@@ -667,9 +663,7 @@ class DependencyGraphClass {
                             // Find the pattern to extract variable names
                             const match = this.findMatchingPattern(concreteKey);
                             if (match) {
-                                // Cast to DatabaseValue
-                                // eslint-disable-next-line volodyslav/no-type-casts
-                                extractedBindings = /** @type {Record<string, DatabaseValue>} */ (/** @type {unknown} */ (match.bindings));
+                                extractedBindings = match.bindings;
                             }
                         }
                     }

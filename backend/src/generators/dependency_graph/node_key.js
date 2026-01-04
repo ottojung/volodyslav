@@ -1,7 +1,7 @@
 /**
  * Node key handling - stores node identities as JSON objects.
  * 
- * A concrete node key is: {head: string, args: Array<DatabaseValue>}
+ * A concrete node key is: {head: string, args: Array<unknown>}
  * This is simpler than expression strings with embedded JSON.
  */
 
@@ -11,7 +11,7 @@
  * A node key object for concrete nodes.
  * @typedef {object} NodeKey
  * @property {string} head - The node name/head
- * @property {Array<DatabaseValue>} args - The arguments (bound values)
+ * @property {Array<unknown>} args - The arguments (bound values - can be any JSON value)
  */
 
 /**
@@ -38,7 +38,7 @@ function deserializeNodeKey(serialized) {
  * Creates a node key from a pattern string and bindings.
  * Pattern like "event(e)" with bindings {e: {id: 5}} becomes {head: "event", args: [{id: 5}]}
  * @param {string} pattern - Pattern string like "event(e)" or "all_events"
- * @param {Record<string, DatabaseValue>} bindings - Variable bindings
+ * @param {Record<string, unknown>} bindings - Variable bindings (can be any JSON-serializable value)
  * @returns {NodeKey}
  */
 function createNodeKeyFromPattern(pattern, bindings) {

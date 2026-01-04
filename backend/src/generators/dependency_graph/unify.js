@@ -30,7 +30,6 @@ function validateConcreteKey(concreteKey) {
 /**
  * Converts a ParsedArg to a value that can be used as a binding.
  * For string args containing JSON, deserializes them back to objects.
- * Returns unknown since JSON.parse returns unknown type.
  * @param {ParsedArg} arg
  * @returns {unknown}
  */
@@ -38,7 +37,8 @@ function argToValue(arg) {
     if (arg.kind === "string") {
         // Try to parse as JSON in case it's a serialized object
         try {
-            return JSON.parse(arg.value);
+            const parsed = JSON.parse(arg.value);
+            return parsed;
         } catch {
             // If not valid JSON, return as string (primitive binding)
             return arg.value;
