@@ -16,15 +16,16 @@
 const { isFreshness } = require('../src/generators/database');
 const { createNodeKeyFromPattern, serializeNodeKey } = require('../src/generators/dependency_graph/node_key');
 const { canonicalize } = require('../src/generators/dependency_graph/expr');
+const { isJsonKey } = require('./test_json_key_helper');
 
 /**
- * Converts a node name to JSON key format.
+ * Converts a node name to JSON key format if needed.
  * @param {string} key
  * @returns {string}
  */
 function toJsonKey(key) {
-    // If already a JSON key, return as-is
-    if (key.startsWith('{')) {
+    // If already a valid JSON key, return as-is
+    if (isJsonKey(key)) {
         return key;
     }
     const canonical = canonicalize(key);

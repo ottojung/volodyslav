@@ -10,19 +10,7 @@ const {
     makeUnchanged,
     isUnchanged,
 } = require("../src/generators/dependency_graph");
-
-/**
- * Converts a node name to JSON key format for assertions.
- * @param {string} name - Node name like "a" or "event(e)"
- * @returns {string} JSON key
- */
-function toJsonKey(name) {
-    const { createNodeKeyFromPattern, serializeNodeKey } = require("../src/generators/dependency_graph/node_key");
-    const { canonicalize } = require("../src/generators/dependency_graph/expr");
-    const canonical = canonicalize(name);
-    const nodeKey = createNodeKeyFromPattern(canonical, {});
-    return serializeNodeKey(nodeKey);
-}
+const { toJsonKey } = require("./test_json_key_helper");
 
 function expectOneOfNames(err, names) {
     expect(err).toBeTruthy();
@@ -197,10 +185,7 @@ class InMemoryDatabase {
      * @param {string} key - The key to delete (will be converted to JSON format)
      */
     async corruptByDeletingValue(key) {
-        // Convert to JSON key format
-        const { createNodeKeyFromPattern, serializeNodeKey } = require("../src/generators/dependency_graph/node_key");
-        const { canonicalize } = require("../src/generators/dependency_graph/expr");
-        const jsonKey = serializeNodeKey(createNodeKeyFromPattern(canonicalize(key), {}));
+        const jsonKey = toJsonKey(key);
         
         // Delete from all schemas
         for (const schemaMap of this.schemas.values()) {

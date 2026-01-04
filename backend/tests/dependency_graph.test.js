@@ -14,6 +14,7 @@ const {
 const { getMockedRootCapabilities } = require("./spies");
 const { makeTestDatabase, freshnessKey } = require("./test_database_helper");
 const { stubLogger } = require("./stubs");
+const { toJsonKey } = require("./test_json_key_helper");
 
 /**
  * @typedef {import('../src/generators/database/types').DatabaseCapabilities} DatabaseCapabilities
@@ -37,21 +38,6 @@ function getTestCapabilities() {
     };
 
     return { ...capabilities, tmpDir };
-}
-
-/**
- * Converts a node name to its JSON key format.
- * Helper for tests that need to manually seed storage.
- * @param {string} nodeName - Node name like "input1" or "derived(x)"
- * @param {Record<string, unknown>} [bindings={}] - Optional bindings
- * @returns {string} JSON key
- */
-function toJsonKey(nodeName, bindings = {}) {
-    const { createNodeKeyFromPattern, serializeNodeKey } = require("../src/generators/dependency_graph/node_key");
-    const { canonicalize } = require("../src/generators/dependency_graph/expr");
-    const canonical = canonicalize(nodeName);
-    const nodeKey = createNodeKeyFromPattern(canonical, bindings);
-    return serializeNodeKey(nodeKey);
 }
 
 describe("generators/dependency_graph", () => {
