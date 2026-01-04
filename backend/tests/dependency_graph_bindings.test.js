@@ -485,4 +485,80 @@ describe("Bound variables in computors", () => {
             await db.close();
         });
     });
+
+    describe("Invalid bindings", () => {
+        test("pulling with missing bindings throws error", async () => {
+            const capabilities = getTestCapabilities();
+            const db = await getRootDatabase(capabilities);
+
+            const schemas = [
+                {
+                    output: "derived(x)",
+                    inputs: [],
+                    computor: (inputs, oldValue, bindings) => {
+                        return { x: bindings.x };
+                    },
+                },
+            ];
+
+            const graph = makeDependencyGraph(db, schemas);
+
+            // Pull without required binding
+            await expect(graph.pull("derived(x)")).rejects.toThrow(
+                /Cannot operate directly on /
+            );
+
+            await db.close();
+        });
+
+        test("pulling with extra bindings is fine", async () => {
+            const capabilities = getTestCapabilities();
+            const db = await getRootDatabase(capabilities);
+
+            const schemas = [
+                {
+                    output: "derived(x)",
+                    inputs: [],
+                    computor: (inputs, oldValue, bindings) => {
+                        return { x: bindings.x };
+                    },
+                },
+            ];
+
+            const graph = makeDependencyGraph(db, schemas);
+
+            // Pull with extra binding
+            await expect(graph.pull("derived(x)", { x: 1, y: 2 })).resolves.toEqual({ x: 1 });
+
+            await db.close();
+        });
+
+        test("unbound variable cannot be instantiated", async () => {
+            const capabilities = getTestCapabilities();
+            const db = await getRootDatabase(capabilities);
+
+            const schemas = [
+                {
+                    output: "source(x)",
+                    inputs: [],
+                    computor: (inputs, oldValue, bindings) => {
+                        return { x: bindings.x };
+                    },
+                },
+                {
+                    output: "derived",
+                    inputs: ["source(x)"],
+                    computor: (inputs, _oldValue, _bindings) => {
+                        return { data: inputs[0] };
+                    },
+                },
+            ];
+
+            expect(() => makeDependencyGraph(db, schemas)).toThrow(
+                /input variable 'x' is not present in/i
+            );
+
+            await db.close();
+        });
+    });
 });
