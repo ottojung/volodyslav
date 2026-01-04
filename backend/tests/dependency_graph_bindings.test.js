@@ -277,6 +277,60 @@ describe("Bound variables in computors", () => {
 
             await db.close();
         });
+
+        test("paratemerization of a K_{3,3,3} graph", async () => {
+            const capabilities = getTestCapabilities();
+            const db = await getRootDatabase(capabilities);
+
+            const schemas = [
+                {
+                    output: "source",
+                    inputs: [],
+                    computor: () => ({ value: 1 }),
+                },
+                // Layer 1
+                ...[1, 2, 3].map(i => ({
+                    output: `layer1_${i}(x)`,
+                    inputs: ["source"],
+                    computor: (inputs, oldValue, bindings) => {
+                        return { value: inputs[0].value + i, x: bindings.x };
+                    },
+                })),
+                // Layer 2
+                ...[1, 2, 3].map(i => ({
+                    output: `layer2_${i}(x)`,
+                    inputs: [ `layer1_1(x)`, `layer1_2(x)`, `layer1_3(x)` ],
+                    computor: (inputs, oldValue, bindings) => {
+                        const sum = inputs.reduce((acc, curr) => acc + curr.value, 0);
+                        return { value: sum + i, x: bindings.x };
+                    },
+                })),
+                // Layer 3
+                ...[1, 2, 3].map(i => ({
+                    output: `layer3_${i}(x)`,
+                    inputs: [ `layer2_1(x)`, `layer2_2(x)`, `layer2_3(x)` ],
+                    computor: (inputs, oldValue, bindings) => {
+                        const sum = inputs.reduce((acc, curr) => acc + curr.value, 0);
+                        return { value: sum + i, x: bindings.x };
+                    },
+                })),
+            ];
+
+            const graph = makeDependencyGraph(db, schemas);
+            await graph.set("source", { value: 1 });
+
+            // Pull one of the deepest nodes
+            const result = await graph.pull("layer3_2(x)", { x: "complex" });
+
+            // Manually compute expected value
+            // Layer 1: values are 2, 3, 4
+            // Layer 2: sums are (2+3+4)+1=10, (2+3+4)+2=11, (2+3+4)+3=12
+            // Layer 3: sums are (10+11+12)+1=34, (10+11+12)+2=35, (10+11+12)+3=36
+            expect(result).toEqual({ value: 35, x: "complex" });
+
+            await db.close();
+
+        });
     });
 
     describe("Single computor invocation per pull", () => {
