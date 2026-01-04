@@ -239,14 +239,12 @@ function compileNodeDef(nodeDef) {
     const outputVars = extractVariables(outputExpr);
     const isPattern = outputVars.size > 0;
     
-    // Compute arg kinds - can be 'var', 'string', or 'number'
-    /** @type {Array<'var' | 'string' | 'number'>} */
+    // Compute arg kinds - can be 'identifier', 'string', or 'number'
+    /** @type {Array<'identifier' | 'string' | 'number'>} */
     const outputArgKinds = [];
     
     if (outputExpr.kind === "call") {
-        for (let i = 0; i < outputExpr.args.length; i++) {
-            const arg = outputExpr.args[i];
-            if (arg === undefined) continue;
+        for (const arg of outputExpr.args) {
             outputArgKinds.push(arg.kind);
         }
     }

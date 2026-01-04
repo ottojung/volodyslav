@@ -99,7 +99,9 @@ function matchConcrete(concreteKey, compiledNode) {
             // Check for consistency if variable already bound
             if (varName in bindings) {
                 // For consistent matching with repeated variables
-                if (JSON.stringify(bindings[varName]) !== JSON.stringify(value)) {
+                // DatabaseValue is either string or number, so we can use strict equality
+                const existing = bindings[varName];
+                if (typeof existing !== typeof value || existing !== value) {
                     return null;
                 }
             } else {
