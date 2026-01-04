@@ -164,10 +164,19 @@ function makeGraphStorage(rootDatabase, schemaHash) {
      * @returns {Promise<void>}
      */
     async function ensureReverseDepsIndexed(node, inputs, batch) {
-        // Check if already indexed (early exit to avoid write amplification)
-        const existingInputs = await getInputs(node);
-        if (existingInputs !== null) {
-            return; // Already indexed, skip writing revdeps
+        // Check if already indexed by checking if any revdep edge exists
+        // We only check the first input to avoid too many DB reads
+        if (inputs.length > 0) {
+            const firstInput = inputs[0];
+            if (firstInput === undefined) {
+                // This should never happen given the length check, but TypeScript doesn't know that
+                throw new Error("Unexpected undefined first input");
+            }
+            const firstEdgeKey = makeRevdepKey(firstInput, node);
+            const existingEdge = await schemaStorage.revdeps.get(firstEdgeKey);
+            if (existingEdge !== undefined) {
+                return; // Already indexed, skip writing revdeps
+            }
         }
 
         // Update revdeps using edge-based storage

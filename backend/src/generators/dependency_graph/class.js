@@ -400,7 +400,13 @@ class DependencyGraphClass {
         // Instantiate inputs by substituting bindings
         const concreteInputs = compiledNode.canonicalInputs.map(
             (inputPattern) => {
-                if (Object.keys(actualBindings).length > 0) {
+                // Check if this input pattern has variables
+                const inputExpr = parseExpr(inputPattern);
+                const hasVariables = inputExpr.kind === "call" && inputExpr.args.some(
+                    arg => arg.kind === "identifier"
+                );
+                
+                if (hasVariables && Object.keys(actualBindings).length > 0) {
                     // Use new node key format for inputs with bindings
                     const inputKey = createNodeKeyFromPattern(inputPattern, actualBindings);
                     return serializeNodeKey(inputKey);
