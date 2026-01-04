@@ -15,8 +15,84 @@ This document provides a formal specification for the dependency graph's operati
 * **Unchanged** — unique sentinel value indicating unchanged computation result. MUST NOT be a valid `DatabaseValue` (cannot be stored via `set()` or returned by `pull()`).
 * **Variable** — parameter placeholder in node schemas (identifiers in argument positions)
 * **DatabaseValue** — any JavaScript `object` (including subtypes like arrays, but excluding `null`). MUST NOT include the `Unchanged` sentinel. MUST round-trip through database interfaces without semantic change.
+* **BindingEnvironment** — a mapping from variable names to concrete values: `Record<string, DatabaseValue>`. Used to instantiate a specific node from an expression pattern.
 
-### 1.2 Expression Grammar (Normative)
+### 1.2 Expressions as an Infinite Graph (Normative)
+
+This section establishes the fundamental mental model for understanding how expressions denote infinite families of nodes and how the dependency graph operates over this infinite space using a finite schema.
+
+#### 1.2.1 Expressions Denote Node Families
+
+An **expression** is a symbolic template that denotes a (possibly infinite) family of nodes. The expression defines the structure, while variable bindings select a specific member of that family.
+
+**Components:**
+* The **head** (or **functor**) of an expression is its identifier—the name that categorizes the family.
+* The **arguments** are variable positions that can be assigned concrete `DatabaseValue` instances at runtime.
+
+**Examples:**
+
+* `all_events` — An atom expression with no variables. Denotes exactly one node (a family of size 1).
+* `full_event(e)` — Denotes the infinite family `{ full_event(e=v) | v ∈ DatabaseValue }`.
+  - Each distinct `DatabaseValue` for `e` identifies a different member of this family.
+* `enhanced_event(e, p)` — Denotes `{ enhanced_event(e=v₁, p=v₂) | v₁, v₂ ∈ DatabaseValue }`.
+  - The Cartesian product of all possible values for `e` and `p` forms this family.
+
+#### 1.2.2 Node Instances (Addresses Within Families)
+
+A **node instance** is a specific member of a node family, identified by:
+1. An expression pattern (e.g., `full_event(e)`)
+2. A binding environment B: `Record<string, DatabaseValue>` that assigns concrete values to all variables in the expression
+
+**Notation:** We write `expr@B` to denote a node instance, where:
+* `expr` is the expression pattern
+* `B` is the binding environment
+
+**Examples:**
+
+* `full_event(e)` with `B = { e: {id: "evt_123"} }` identifies the specific node `full_event(e={id: "evt_123"})`.
+* `enhanced_event(e, p)` with `B = { e: {id: "evt_123"}, p: {id: "photo_456"} }` identifies one specific enhanced event.
+
+**Identity:** Two node instances are identical if and only if:
+1. Their expression patterns are syntactically identical (after canonicalization), AND
+2. Their binding environments are structurally equal (deep equality on `DatabaseValue` objects)
+
+#### 1.2.3 Schema as a Template for Infinite Edges
+
+A **schema** defines the dependency structure between node families, not between individual nodes.
+
+When a schema declares:
+```javascript
+{
+  output: "full_event(e)",
+  inputs: ["event_data(e)", "metadata(e)"],
+  computor: async ([data, meta], old, bindings) => ({ ...data, ...meta })
+}
+```
+
+This means: **For every binding environment B**, the node instance `full_event(e)@B` depends on:
+* `event_data(e)@B` (same bindings)
+* `metadata(e)@B` (same bindings)
+
+The schema implicitly defines infinitely many dependency edges—one set for each possible binding environment.
+
+#### 1.2.4 Public Interface: Addressing Nodes
+
+The public API requires both the pattern and bindings to address a specific node:
+
+* `pull(nodeName, bindings)` — Evaluates the node instance identified by pattern `nodeName` and binding environment `bindings`
+* `set(nodeName, value, bindings)` — Stores `value` at the node instance identified by `nodeName` and `bindings`
+
+**For atom expressions** (expressions with no arguments like `all_events`):
+* The binding environment is empty: `{}`
+* The pattern alone identifies exactly one node
+* `pull("all_events", {})` and `pull("all_events")` are equivalent
+
+**For compound expressions** (expressions with arguments like `full_event(e)`):
+* Bindings MUST provide values for all variables
+* Different bindings address different node instances
+* `pull("full_event(e)", {e: {id: "123"}})` and `pull("full_event(e)", {e: {id: "456"}})` address distinct nodes
+
+### 1.3 Expression Grammar (Normative)
 
 **REQ-EXPR-01:** All expressions MUST conform to this grammar:
 
@@ -33,17 +109,18 @@ ws            := [ \t\n\r]*
 ```
 
 **Terminology:**
-* **atom-expression** — an expression with no arguments (e.g., `all_events`)
-* **compound-expression** — an expression with arguments (e.g., `event_context(e)`)
-* **free variables** — all identifiers occurring in argument positions
-* **concrete expression** — an expression where `freeVars(expr) = ∅` (no free variables); only atom-expressions can be concrete
+* **atom-expression** — an expression with no arguments (e.g., `all_events`). Denotes a family of exactly one node.
+* **compound-expression** — an expression with one or more arguments (e.g., `event_context(e)`, `enhanced_event(e, p)`). Each argument is a variable. Denotes an infinite family of nodes.
+* **variable** — an identifier in an argument position; represents a parameter that can be bound to any `DatabaseValue`
+* **pattern** — an expression used in a schema definition to describe a family of nodes
+* **free variables** — all variables (identifiers occurring in argument positions) in an expression
 
 **Examples:**
-* `all_events` — atom-expression (no arguments), also a concrete expression
-* `event_context(e)` — compound-expression with free variable `e`
-* `enhanced_event(e, p)` — compound-expression with free variables `e` and `p`
+* `all_events` — atom-expression with zero variables; denotes a singleton family
+* `event_context(e)` — compound-expression with one variable `e`; denotes an infinite family indexed by values of `e`
+* `enhanced_event(e, p)` — compound-expression with two variables `e` and `p`; denotes an infinite family indexed by pairs of values
 
-### 1.3 Canonical Serialization (Normative)
+### 1.4 Canonical Serialization (Normative)
 
 **REQ-CANON-01:** The function `serialize(expr)` MUST produce a unique canonical string:
 
@@ -61,120 +138,135 @@ ws            := [ \t\n\r]*
 * `event_context(e)` → `"event_context(e)"`
 * `enhanced_event(e, p)` → `"enhanced_event(e,p)"`
 
-**REQ-CANON-03:** All node names used as database keys MUST use canonical serialization.
+**REQ-CANON-03:** All node names used as database keys MUST use canonical serialization combined with binding information.
 
-**REQ-CANON-04:** `pull(nodeName)` and `set(nodeName, value)` MUST accept any valid expression string and canonicalize it before processing.
+**REQ-CANON-04:** `pull(nodeName, bindings)` and `set(nodeName, value, bindings)` MUST accept any valid expression string and canonicalize it before processing.
 
-### 1.4 Schema Definition
+### 1.5 Schema Definition (Normative)
 
 **REQ-SCHEMA-01:** A dependency graph is defined by a set of node schemas:
 
 ```typescript
 type NodeDef = {
   output: string;     // Expression pattern (may contain variables)
-  inputs: string[];   // Dependency expressions
+  inputs: string[];   // Dependency expression patterns
   computor: Computor; // Computation function
 };
 ```
 
 **REQ-SCHEMA-02:** Variables in `output` MUST be a superset of all variables in `inputs` (Variable Scope Rule 1).
 
-**REQ-SCHEMA-03:** A **source node** is a concrete node matching a schema where `inputs = []`.
+**REQ-SCHEMA-03:** A **source node** is any node instance matching a schema where `inputs = []`. Source nodes have no dependencies and their values are set explicitly via `set()`.
 
-### 1.5 Pattern Matching (Normative)
+**Pattern Instantiation:** When evaluating a node instance `output@B`:
+1. Each input pattern `input_i` is instantiated with the same binding environment `B`
+2. The computor receives the values of all instantiated input nodes
+3. The computor receives `B` as its third parameter for reference
 
-**REQ-MATCH-01:** Since arguments can only be variables, a schema output pattern `P` **matches** concrete node `N` if and only if `N` is an atom-expression (has no arguments) and has the same functor as `P`.
+### 1.6 Pattern Matching (Normative)
 
-**REQ-MATCH-02:** Two output patterns **overlap** if they have the same head (functor) and the same arity.
+**REQ-MATCH-01:** A schema output pattern `P` **matches** an expression `E` if and only if:
+1. `P` and `E` have the same functor (head identifier), AND
+2. `P` and `E` have the same arity (number of arguments)
+
+**REQ-MATCH-02:** Two output patterns **overlap** if they have the same functor and the same arity.
 
 **REQ-MATCH-03:** The system MUST reject graphs with overlapping output patterns at initialization (throw `SchemaOverlapError`).
 
-### 1.6 Cycle Detection (Normative)
+**Note on Matching:** Pattern matching is purely structural and does not consider variable names or binding values. The pattern `full_event(e)` matches any expression of the form `full_event(x)` regardless of the variable name used.
+
+### 1.7 Cycle Detection (Normative)
 
 **REQ-CYCLE-01:** A directed edge exists from Schema S to Schema T if:
 1. S has input pattern I
 2. T has output pattern O
-3. I and O overlap
+3. Patterns I and O match (same functor and arity)
 
 **REQ-CYCLE-02:** The system MUST reject graphs with cycles at initialization (throw `SchemaCycleError`).
 
-### 1.7 Materialization
+### 1.8 Materialization (Normative)
 
-**REQ-MAT-01:** A **materialized node** is any concrete node for which the implementation maintains dependency tracking and freshness state.
+**REQ-MAT-01:** A **materialized node** is any node instance for which the implementation maintains dependency tracking and freshness state.
 
 **REQ-MAT-02:** Materialization occurs through:
-* `pull(nodeName)` — creates node with dependencies, stores value, marks `up-to-date`
-* `set(nodeName, value)` — materializes source node, marks `up-to-date`
+* `pull(nodeName, bindings)` — creates node instance with dependencies, stores value, marks `up-to-date`
+* `set(nodeName, value, bindings)` — materializes source node instance, marks `up-to-date`
 
-**REQ-MAT-03:** Unmaterialized nodes have no freshness state (`undefined` in `SchemaStorage.freshness`).
+**REQ-MAT-03:** Unmaterialized node instances have no freshness state (`undefined` in `SchemaStorage.freshness`).
 
 ---
 
 ## 2. Operational Semantics (Normative)
 
-### 2.1 pull(nodeName) → NodeValue
+### 2.1 pull(nodeName, bindings) → NodeValue
+
+**Signature:** `pull(nodeName: string, bindings?: Record<string, DatabaseValue>): Promise<DatabaseValue>`
 
 **Preconditions:**
-* `nodeName` MUST be a concrete expression (no free variables)
+* `nodeName` MUST be a valid expression pattern
+* `bindings` MUST provide `DatabaseValue` for all variables in `nodeName`
 * A matching schema pattern MUST exist
 
 **Big-Step Semantics (Correctness Specification):**
 
 ```
-pull(N):
-  bindings = extract_bindings(N)
-  inputs_values = [pull(I) for I in inputs_of(N)]
-  old_value = stored_value(N)
-  new_value = computor_N(inputs_values, old_value, bindings)
+pull(N, B):
+  pattern = canonicalize(N)
+  inputs_values = [pull(I, B) for I in inputs_of(pattern)]
+  old_value = stored_value(pattern@B)
+  new_value = computor_of(pattern)(inputs_values, old_value, B)
   if new_value ≠ Unchanged:
-    store(N, new_value)
-  mark_up_to_date(N)
-  return stored_value(N)
+    store(pattern@B, new_value)
+  mark_up_to_date(pattern@B)
+  return stored_value(pattern@B)
 ```
 
 **REQ-PULL-01:** `pull` MUST return a `Promise<DatabaseValue>`.
 
-**REQ-PULL-02:** `pull` MUST throw `NonConcreteNodeError` if `nodeName` contains free variables.
+**REQ-PULL-02:** `pull` MUST throw `InvalidNodeError` if no schema pattern matches `nodeName`.
 
-**REQ-PULL-03:** `pull` MUST throw `InvalidNodeError` if no schema matches.
+**REQ-PULL-03:** `pull` MUST throw an error if `bindings` does not provide values for all variables in `nodeName`.
 
-**REQ-PULL-04:** `pull` MUST ensure each computor is invoked at most once per top-level call (property P3).
+**REQ-PULL-04:** `pull` MUST ensure each computor is invoked at most once per top-level call for each unique node instance (property P3).
 
-**REQ-PULL-05:** Lazy instantiation: When pulling a concrete node, the system:
+**REQ-PULL-05:** Lazy instantiation: When pulling a node instance, the system:
 1. Searches for matching schema pattern
-2. Extracts variable bindings from the match
-3. Instantiates all input expressions by applying the bindings to produce concrete dependency nodes
-4. Recursively pulls all concrete dependencies
-5. Creates materialized concrete node on-demand with instantiated dependencies
+2. Uses the provided binding environment `B`
+3. Instantiates all input expressions by applying `B` to produce input node instances
+4. Recursively pulls all input node instances (with the same bindings where variables overlap)
+5. Creates materialized node instance on-demand with instantiated dependencies
 6. Persists materialization marker for restart resilience
 
 **Efficiency Optimization (Implementation-Defined):**
 
 Implementations MAY use any strategy to achieve property P3 (e.g., memoization, freshness checks, in-flight tracking). The specific mechanism is not prescribed.
 
-### 2.2 set(nodeName, value)
+### 2.2 set(nodeName, value, bindings)
+
+**Signature:** `set(nodeName: string, value: DatabaseValue, bindings?: Record<string, DatabaseValue>): Promise<void>`
 
 **Preconditions:**
-* `nodeName` MUST be a concrete expression (no free variables)
+* `nodeName` MUST be a valid expression pattern
+* `bindings` MUST provide `DatabaseValue` for all variables in `nodeName`
 * `nodeName` MUST match a schema (throw `InvalidNodeError` otherwise)
-* `nodeName` MUST be a source node (throw `InvalidSetError` if not)
+* `nodeName` MUST match a source node schema (throw `InvalidSetError` if not)
 
 **Effects:**
-1. Store `value` at canonical key
-2. Mark `nodeName` as `up-to-date`
+1. Store `value` at the node instance identified by `nodeName@bindings`
+2. Mark that node instance as `up-to-date`
 3. Mark all **materialized** transitive dependents as `potentially-outdated`
 
 **REQ-SET-01:** `set` MUST return a `Promise<void>`.
 
-**REQ-SET-02:** `set` MUST throw `NonConcreteNodeError` if `nodeName` contains free variables.
+**REQ-SET-02:** `set` MUST throw `InvalidNodeError` if no schema pattern matches `nodeName`.
 
-**REQ-SET-03:** `set` MUST throw `InvalidNodeError` if no schema matches.
+**REQ-SET-03:** `set` MUST throw an error if `bindings` does not provide values for all variables in `nodeName`.
 
-**REQ-SET-04:** `set` MUST throw `InvalidSetError` if `nodeName` is not a source node.
+**REQ-SET-04:** `set` MUST throw `InvalidSetError` if the matching schema is not a source node (has non-empty `inputs`).
 
 **REQ-SET-05:** All operations MUST be executed atomically in a single database batch.
 
-**REQ-SET-06:** Only dependents that have been previously materialized (pulled) are marked outdated. Unmaterialized nodes remain unmaterialized.
+**REQ-SET-06:** Only dependents that have been previously materialized (pulled) are marked outdated. Unmaterialized node instances remain unmaterialized.
 
 ### 2.3 Unchanged Propagation Optimization
 
@@ -207,8 +299,8 @@ function makeDependencyGraph(
 
 ```typescript
 interface DependencyGraph {
-  pull(nodeName: string): Promise<DatabaseValue>;
-  set(nodeName: string, value: DatabaseValue): Promise<void>;
+  pull(nodeName: string, bindings?: Record<string, DatabaseValue>): Promise<DatabaseValue>;
+  set(nodeName: string, value: DatabaseValue, bindings?: Record<string, DatabaseValue>): Promise<void>;
   getStorage(): SchemaStorage;
 }
 ```
@@ -216,6 +308,10 @@ interface DependencyGraph {
 **REQ-IFACE-01:** Implementations MUST provide type guard `isDependencyGraph(value): boolean`.
 
 **REQ-IFACE-02:** `getStorage()` MUST return the `SchemaStorage` instance for the graph.
+
+**REQ-IFACE-03:** For atom-expressions (no variables), `bindings` parameter defaults to `{}` and may be omitted.
+
+**REQ-IFACE-04:** For compound-expressions (with variables), `bindings` MUST be provided with values for all variables.
 
 ### 3.3 Database Interfaces
 
@@ -298,15 +394,17 @@ All errors MUST provide stable `.name` property and required fields:
 | Error Name | Required Fields | Thrown When |
 |------------|----------------|-------------|
 | `InvalidExpressionError` | `expression: string` | Invalid expression syntax |
-| `NonConcreteNodeError` | `pattern: string` | Expression contains free variables in pull/set |
-| `InvalidNodeError` | `nodeName: string` | No schema matches the node |
+| `InvalidNodeError` | `nodeName: string` | No schema matches the node pattern |
 | `InvalidSetError` | `nodeName: string` | Node is not a source node |
 | `SchemaOverlapError` | `patterns: string[]` | Overlapping output patterns at init |
 | `InvalidSchemaError` | `schemaOutput: string` | Schema definition problems at init |
 | `SchemaCycleError` | `cycle: string[]` | Cyclic schema dependencies at init |
 | `MissingValueError` | `nodeName: string` | Up-to-date node has no stored value |
+| `MissingBindingsError` | `nodeName: string, missingVars: string[]` | Required bindings not provided for variables |
 
 **REQ-ERR-01:** All error types MUST provide type guard functions (e.g., `isInvalidExpressionError(value): boolean`).
+
+**Note:** The `NonConcreteNodeError` from earlier versions has been removed. Instead, missing bindings result in `MissingBindingsError`.
 
 ---
 
@@ -314,33 +412,33 @@ All errors MUST provide stable `.name` property and required fields:
 
 ### 4.1 Materialization Markers
 
-**REQ-PERSIST-01:** Implementations MUST persist sufficient markers to reconstruct materialized node set after restart.
+**REQ-PERSIST-01:** Implementations MUST persist sufficient markers to reconstruct materialized node instance set after restart.
 
-**REQ-PERSIST-02:** If node N was materialized before restart, then after restart (same `RootDatabase`, same schema):
-* `set(source, v)` MUST mark all previously materialized transitive dependents as `potentially-outdated`
+**REQ-PERSIST-02:** If node instance `N@B` was materialized before restart, then after restart (same `RootDatabase`, same schema):
+* `set(source, v, bindings)` MUST mark all previously materialized transitive dependents as `potentially-outdated`
 * This MUST occur WITHOUT requiring re-pull
 
 **REQ-PERSIST-03:** The specific persistence mechanism (metadata keys, reverse index, etc.) is implementation-defined.
 
 ### 4.2 Invariants
 
-The graph MUST maintain these invariants for all materialized nodes:
+The graph MUST maintain these invariants for all materialized node instances:
 
-**I1 (Outdated Propagation):** If materialized node N is `potentially-outdated`, all materialized transitive dependents are also `potentially-outdated`.
+**I1 (Outdated Propagation):** If materialized node instance `N@B` is `potentially-outdated`, all materialized transitive dependents are also `potentially-outdated`.
 
-**I2 (Up-to-Date Upstream):** If materialized node N is `up-to-date`, all materialized transitive dependencies are also `up-to-date`.
+**I2 (Up-to-Date Upstream):** If materialized node instance `N@B` is `up-to-date`, all materialized transitive dependencies are also `up-to-date`.
 
-**I3 (Value Consistency):** If materialized node N is `up-to-date`, its value equals what would be computed by recursively evaluating dependencies and applying computor.
+**I3 (Value Consistency):** If materialized node instance `N@B` is `up-to-date`, its value equals what would be computed by recursively evaluating dependencies and applying computor.
 
 ### 4.3 Correctness Properties
 
-**P1 (Semantic Equivalence):** `pull(N)` produces same result as recomputing from scratch.
+**P1 (Semantic Equivalence):** `pull(N, B)` produces same result as recomputing from scratch.
 
-**P2 (Progress):** Every `pull(N)` call terminates (assuming computors terminate).
+**P2 (Progress):** Every `pull(N, B)` call terminates (assuming computors terminate).
 
-**P3 (Single Invocation):** Each computor invoked at most once per top-level `pull()`.
+**P3 (Single Invocation):** Each computor invoked at most once per top-level `pull()` for each unique node instance.
 
-**P4 (Freshness Preservation):** After `pull(N)`, N and all transitive dependencies are `up-to-date`.
+**P4 (Freshness Preservation):** After `pull(N, B)`, the node instance `N@B` and all transitive dependencies are `up-to-date`.
 
 ---
 
@@ -353,8 +451,8 @@ This section defines exactly what conformance tests MAY assert. All other implem
 Tests MAY assert the existence and signatures of:
 
 * `makeDependencyGraph(rootDatabase: RootDatabase, nodeDefs: NodeDef[]): DependencyGraph` — Factory function
-* `DependencyGraph.pull(nodeName: string): Promise<DatabaseValue>` — Retrieve/compute node value
-* `DependencyGraph.set(nodeName: string, value: DatabaseValue): Promise<void>` — Write source node value
+* `DependencyGraph.pull(nodeName: string, bindings?: Record<string, DatabaseValue>): Promise<DatabaseValue>` — Retrieve/compute node value
+* `DependencyGraph.set(nodeName: string, value: DatabaseValue, bindings?: Record<string, DatabaseValue>): Promise<void>` — Write source node value
 * `DependencyGraph.getStorage(): SchemaStorage` — Access schema storage for testing
 * `isDependencyGraph(value): boolean` — Type guard
 
@@ -382,20 +480,20 @@ Tests MAY assert freshness state via `schemaStorage.freshness.get(canonicalNodeN
 
 ### 5.5 Restart Resilience
 
-**REQ-RESTART-01:** Materialized nodes MUST remain materialized across graph restarts (same `RootDatabase`, same schema).
+**REQ-RESTART-01:** Materialized node instances MUST remain materialized across graph restarts (same `RootDatabase`, same schema).
 
-**REQ-RESTART-02:** After restart, `set(source, value)` MUST invalidate all previously materialized transitive dependents WITHOUT requiring re-pull.
+**REQ-RESTART-02:** After restart, `set(source, value, bindings)` MUST invalidate all previously materialized transitive dependents WITHOUT requiring re-pull.
 
 Tests MAY assert:
-* Pull a node, restart graph instance, call `set()` on upstream source, verify downstream node is marked `potentially-outdated`
+* Pull a node instance, restart graph instance, call `set()` on upstream source with appropriate bindings, verify downstream node instance is marked `potentially-outdated`
 
 ### 5.6 Behavioral Guarantees
 
-**REQ-BEHAVE-01 = P1** (see §4.3): `pull(N)` MUST produce the same result as recomputing all values from scratch (Semantic Equivalence).
+**REQ-BEHAVE-01 = P1** (see §4.3): `pull(N, B)` MUST produce the same result as recomputing all values from scratch (Semantic Equivalence).
 
-**REQ-BEHAVE-02 = P3** (see §4.3): Each computor MUST be invoked at most once per top-level `pull()` call (Single Invocation).
+**REQ-BEHAVE-02 = P3** (see §4.3): Each computor MUST be invoked at most once per top-level `pull()` call for each unique node instance (Single Invocation).
 
-**REQ-BEHAVE-03 = P4** (see §4.3): After `pull(N)` completes, N and all its transitive dependencies MUST be marked `up-to-date` (Freshness Preservation).
+**REQ-BEHAVE-03 = P4** (see §4.3): After `pull(N, B)` completes, node instance `N@B` and all its transitive dependencies MUST be marked `up-to-date` (Freshness Preservation).
 
 ---
 
@@ -413,17 +511,27 @@ Tests MAY assert:
   { output: "meta_events", inputs: ["all_events"], 
     computor: async ([all]) => extractMeta(all) },
   { output: "event_context(e)", inputs: ["meta_events"], 
-    computor: async ([meta], old, {e}) => meta.find(ev => ev.id === e.value) }
+    computor: async ([meta], old, {e}) => meta.find(ev => ev.id === e.id) }
 ]
 ```
 
 **Operations:**
 ```javascript
-await graph.set('all_events', {events: [{id: 'id123', data: '...'}]});
-// Note: With the removal of constants, pulling event_context(e) requires
-// passing a variable binding through a parameterized approach, or
-// event_context must be redesigned to not use parameters.
+// Set source (atom expression, no bindings needed)
+await graph.set('all_events', {events: [{id: 'evt_123', data: '...'}]});
+
+// Pull derived atom expression
+const meta = await graph.pull('meta_events');
+
+// Pull parameterized node with bindings
+const context = await graph.pull('event_context(e)', { e: {id: 'evt_123'} });
 ```
+
+**How it works:**
+* `all_events` is an atom expression—it denotes a single node
+* `event_context(e)` is a compound expression—it denotes an infinite family
+* Calling `pull('event_context(e)', {e: {id: 'evt_123'}})` selects one specific member of that family
+* Different bindings create different node instances: `event_context(e)@{e:{id:'evt_123'}}` vs `event_context(e)@{e:{id:'evt_456'}}`
 
 #### A.2 Multiple Parameters
 
@@ -431,29 +539,68 @@ await graph.set('all_events', {events: [{id: 'id123', data: '...'}]});
 [
   { output: "all_events", inputs: [], 
     computor: async ([], old) => old },
+  { output: "photo_storage", inputs: [],
+    computor: async ([], old) => old },
   { output: "event_context(e)", inputs: ["all_events"],
-    computor: async ([all], _, {e}) => all.events.find(ev => ev.id === e.value) },
+    computor: async ([all], _, {e}) => all.events.find(ev => ev.id === e.id) },
   { output: "photo(p)", inputs: ["photo_storage"],
-    computor: async ([storage], _, {p}) => storage.photos[p.value] },
+    computor: async ([storage], _, {p}) => storage.photos[p.id] },
   { output: "enhanced_event(e, p)", 
     inputs: ["event_context(e)", "photo(p)"],
-    computor: async ([ctx, photo], _, {e, p}) => combine(ctx, photo) }
+    computor: async ([ctx, photo], _, {e, p}) => ({...ctx, photo}) }
 ]
 ```
+
+**Operations:**
+```javascript
+// Set sources
+await graph.set('all_events', {events: [{id: 'evt_123'}]});
+await graph.set('photo_storage', {photos: {'photo_456': {url: '...'}}});
+
+// Pull with multiple bindings
+const enhanced = await graph.pull('enhanced_event(e, p)', {
+  e: {id: 'evt_123'},
+  p: {id: 'photo_456'}
+});
+```
+
+**How it works:**
+* `enhanced_event(e, p)` denotes the Cartesian product of all possible event and photo values
+* The schema declares: for any bindings `B`, `enhanced_event(e,p)@B` depends on `event_context(e)@B` and `photo(p)@B`
+* When we pull with `{e: {id: 'evt_123'}, p: {id: 'photo_456'}}`, the system instantiates both dependencies with the same bindings
 
 #### A.3 Variable Sharing
 
 ```javascript
 [
+  { output: "event_data", inputs: [],
+    computor: async ([], old) => old },
   { output: "status(e)", inputs: ["event_data"],
-    computor: async ([data], _, {e}) => data.statuses[e.value] },
+    computor: async ([data], _, {e}) => data.statuses[e.id] },
   { output: "metadata(e)", inputs: ["event_data"],
-    computor: async ([data], _, {e}) => data.metadata[e.value] },
+    computor: async ([data], _, {e}) => data.metadata[e.id] },
   { output: "full_event(e)", 
     inputs: ["status(e)", "metadata(e)"],
-    computor: async ([status, meta], _, {e}) => ({id: e.value, status, meta}) }
+    computor: async ([status, meta], _, {e}) => ({id: e.id, status, meta}) }
 ]
 ```
+
+**Operations:**
+```javascript
+await graph.set('event_data', {
+  statuses: {'evt_123': 'active'},
+  metadata: {'evt_123': {created: '2024-01-01'}}
+});
+
+// Pull with shared variable binding
+const fullEvent = await graph.pull('full_event(e)', {e: {id: 'evt_123'}});
+// Result: {id: 'evt_123', status: 'active', meta: {created: '2024-01-01'}}
+```
+
+**How it works:**
+* All three parameterized expressions share the same variable `e`
+* When pulling `full_event(e)@{e:{id:'evt_123'}}`, both dependencies are instantiated with the same binding
+* The binding propagates through the entire dependency chain, ensuring consistency
 
 ### Appendix B: Recommended Storage Architecture
 
@@ -545,21 +692,44 @@ This section is reserved for future implementation notes.
 
 #### E.1 Unmatched Pull Request
 
-**Error:** `pull("unknown_node")` but no schema matches.
+**Error:** `pull("unknown_node", {})` but no schema pattern matches.
 
 **Behavior:** Throw `InvalidNodeError`.
 
-#### E.2 Non-Concrete Pull/Set
+#### E.2 Missing Bindings
 
-**Error:** `pull("event_context(e)")` with free variable.
+**Error:** `pull("event_context(e)", {})` without providing required binding for `e`.
 
-**Behavior:** Throw `NonConcreteNodeError`.
+**Behavior:** Throw `MissingBindingsError` (or equivalent error indicating missing bindings).
 
-**Note:** Since only atom-expressions can be concrete (no arguments), any compound-expression will contain free variables and thus be rejected by `pull()` and `set()`.
+**Example:**
+```javascript
+// Schema has: output: "event_context(e)"
+
+// ❌ Wrong: Missing required binding for 'e'
+await graph.pull("event_context(e)", {});
+
+// ✅ Correct: Provide binding for all variables
+await graph.pull("event_context(e)", {e: {id: 'evt_123'}});
+```
 
 #### E.3 Missing Values
 
-If node is `up-to-date` but has no stored value, this is database corruption. MUST throw `MissingValueError`.
+If node instance is `up-to-date` but has no stored value, this is database corruption. MUST throw `MissingValueError`.
+
+#### E.4 Atom Expressions with Bindings
+
+**Scenario:** Providing bindings for an atom expression (no variables).
+
+**Behavior:** Bindings are accepted but ignored. Atom expressions denote exactly one node regardless of bindings.
+
+**Example:**
+```javascript
+// These are equivalent for atom expressions:
+await graph.pull("all_events", {});
+await graph.pull("all_events", {x: "ignored"});
+await graph.pull("all_events"); // bindings default to {}
+```
 
 ---
 
