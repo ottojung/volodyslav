@@ -303,21 +303,21 @@ describe("Bound variables in computors", () => {
                 {
                     output: "consumer1(x)",
                     inputs: ["expensive(x)"],
-                    computor: (inputs, oldValue, bindings) => {
+                    computor: (inputs, _oldValue, _bindings) => {
                         return { from: "consumer1", data: inputs[0] };
                     },
                 },
                 {
                     output: "consumer2(x)",
                     inputs: ["expensive(x)"],
-                    computor: (inputs, oldValue, bindings) => {
+                    computor: (inputs, _oldValue, _bindings) => {
                         return { from: "consumer2", data: inputs[0] };
                     },
                 },
                 {
                     output: "top(x)",
                     inputs: ["consumer1(x)", "consumer2(x)"],
-                    computor: (inputs, oldValue, bindings) => {
+                    computor: (inputs, _oldValue, _bindings) => {
                         return { c1: inputs[0], c2: inputs[1] };
                     },
                 },

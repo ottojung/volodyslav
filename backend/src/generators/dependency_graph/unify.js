@@ -2,11 +2,11 @@
  * Unification algorithm for matching concrete nodes against compiled patterns.
  */
 
-const { parseExpr, renderExpr, renderArg } = require("./expr");
+const { parseExpr, renderExpr } = require("./expr");
 const { makeSchemaPatternNotAllowedError } = require("./errors");
 
 /** @typedef {import('./types').CompiledNode} CompiledNode */
-/** @typedef {import('./types').DatabaseValue} DatabaseValue */
+/** @typedef {import('./types').BindingValue} BindingValue */
 /** @typedef {import('./expr').ParsedArg} ParsedArg */
 /** @typedef {import('./expr').ParsedExpr} ParsedExpr */
 
@@ -28,9 +28,9 @@ function validateConcreteKey(concreteKey) {
 }
 
 /**
- * Converts a ParsedArg to a DatabaseValue.
+ * Converts a ParsedArg to a BindingValue.
  * @param {ParsedArg} arg
- * @returns {DatabaseValue}
+ * @returns {BindingValue}
  */
 function argToValue(arg) {
     if (arg.kind === "string") {
@@ -42,8 +42,8 @@ function argToValue(arg) {
 }
 
 /**
- * Converts a DatabaseValue to a ParsedArg.
- * @param {DatabaseValue} value
+ * Converts a BindingValue to a ParsedArg.
+ * @param {BindingValue} value
  * @returns {ParsedArg}
  */
 function valueToArg(value) {
@@ -61,7 +61,7 @@ function valueToArg(value) {
  *
  * @param {string} concreteKey - The concrete node key (must contain only constants, no variables)
  * @param {CompiledNode} compiledNode - The compiled node to match against
- * @returns {{ bindings: Record<string, DatabaseValue> } | null} Bindings if successful, null otherwise
+ * @returns {{ bindings: Record<string, BindingValue> } | null} Bindings if successful, null otherwise
  */
 function matchConcrete(concreteKey, compiledNode) {
     // Validate that concrete key has no variables
@@ -80,7 +80,7 @@ function matchConcrete(concreteKey, compiledNode) {
     }
 
     // Match arguments and extract bindings
-    /** @type {Record<string, DatabaseValue>} */
+    /** @type {Record<string, BindingValue>} */
     const bindings = {};
 
     for (let i = 0; i < concreteExpr.args.length; i++) {
@@ -122,11 +122,11 @@ function matchConcrete(concreteKey, compiledNode) {
  * Substitutes variables in an expression pattern with their bindings.
  * 
  * @param {string} pattern - The pattern (e.g., "photo(p)" or "event(x)")
- * @param {Record<string, DatabaseValue>} bindings - Variable bindings
- * @param {Set<string>} variables - Set of variable names in the pattern
+ * @param {Record<string, BindingValue>} bindings - Variable bindings
+ * @param {Set<string>} _variables - Set of variable names in the pattern (unused)
  * @returns {string} The substituted expression (canonical form)
  */
-function substitute(pattern, bindings, variables) {
+function substitute(pattern, bindings, _variables) {
     const expr = parseExpr(pattern);
 
     if (expr.kind === "atom") {
@@ -138,8 +138,9 @@ function substitute(pattern, bindings, variables) {
     const substitutedArgs = expr.args.map(arg => {
         if (arg.kind === "identifier") {
             const varName = arg.value;
-            if (varName in bindings) {
-                return valueToArg(bindings[varName]);
+            const binding = bindings[varName];
+            if (binding !== undefined) {
+                return valueToArg(binding);
             } else {
                 // Variable not bound - keep as is (shouldn't happen if validation is correct)
                 return arg;
@@ -150,8 +151,9 @@ function substitute(pattern, bindings, variables) {
         }
     });
 
+    /** @type {ParsedExpr} */
     const substitutedExpr = {
-        kind: /** @type {const} */ ("call"),
+        kind: "call",
         name: expr.name,
         args: substitutedArgs,
     };

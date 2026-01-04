@@ -9,6 +9,11 @@
 /** @typedef {import('./unchanged').Unchanged} Unchanged */
 
 /**
+ * Binding value type - JSON-serializable primitives for variable bindings.
+ * @typedef {string | number} BindingValue
+ */
+
+/**
  * Union type for values that can be stored in the database.
  * @typedef {DatabaseValue | Freshness} DatabaseStoredValue
  */
@@ -22,7 +27,7 @@
 /**
  * A computor function for node definitions.
  * Receives inputs, optional old value, and bindings for any variables in the pattern.
- * @typedef {(inputs: Array<DatabaseValue>, oldValue: DatabaseValue | undefined, bindings: Record<string, DatabaseValue>) => DatabaseValue | Unchanged} NodeDefComputor
+ * @typedef {(inputs: Array<DatabaseValue>, oldValue: DatabaseValue | undefined, bindings: Record<string, BindingValue>) => DatabaseValue | Unchanged} NodeDefComputor
  */
 
 /**
