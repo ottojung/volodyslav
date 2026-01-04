@@ -40,7 +40,7 @@ describe("compiled_node", () => {
             expect(compiled.head).toBe("event_context");
             expect(compiled.arity).toBe(1);
             expect(compiled.isPattern).toBe(true);
-            expect(compiled.outputArgKinds).toEqual(["var"]);
+            expect(compiled.outputArgKinds).toEqual(["identifier"]);
             expect(compiled.varsUsedInInputs).toEqual(new Set());
         });
 
