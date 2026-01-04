@@ -11,10 +11,9 @@ This document provides a formal specification for the dependency graph's operati
 * **NodeName** — unique identifier for a concrete node (fully instantiated expression)
 * **NodeValue** — computed value at a node (arbitrary `DatabaseValue`)
 * **Freshness** — conceptual state: `"up-to-date" | "potentially-outdated"`
-* **Computor** — deterministic async function: `(inputs: DatabaseValue[], oldValue: DatabaseValue | undefined, bindings: Record<string, ConstValue>) => Promise<DatabaseValue | Unchanged>`
+* **Computor** — deterministic async function: `(inputs: DatabaseValue[], oldValue: DatabaseValue | undefined, bindings: Record<string, DatabaseValue>) => Promise<DatabaseValue | Unchanged>`
 * **Unchanged** — unique sentinel value indicating unchanged computation result. MUST NOT be a valid `DatabaseValue` (cannot be stored via `set()` or returned by `pull()`).
 * **Variable** — parameter placeholder in node schemas (identifiers in argument positions)
-* **ConstValue** — typed constant: `{ type: "string" | "int"; value: string | number }`
 * **DatabaseValue** — any JavaScript `object` (including subtypes like arrays, but excluding `null`). MUST NOT include the `Unchanged` sentinel. MUST round-trip through database interfaces without semantic change.
 
 ### 1.2 Expression Grammar (Normative)
@@ -280,7 +279,7 @@ interface RootDatabase {
 type Computor = (
   inputs: DatabaseValue[],
   oldValue: DatabaseValue | undefined,
-  bindings: Record<string, ConstValue>
+  bindings: Record<string, DatabaseValue>
 ) => Promise<DatabaseValue | Unchanged>;
 ```
 
