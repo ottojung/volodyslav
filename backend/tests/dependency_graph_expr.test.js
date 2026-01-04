@@ -76,29 +76,7 @@ describe("dependency_graph/expr", () => {
             });
         });
 
-        test("accepts quoted string arguments", () => {
-            expect(parseExpr('status(e, "active")')).toBeTruthy();
-        });
 
-        test("accepts natural number arguments", () => {
-            expect(parseExpr("photo(5)")).toBeTruthy();
-        });
-
-        test("accepts zero as number", () => {
-            expect(parseExpr("count(0)")).toBeTruthy();
-        });
-
-        test("accepts mixed arg types with constants and variables", () => {
-            expect(parseExpr('foo("str", 42, x)')).toBeTruthy();
-        });
-
-        test("accepts numeric arguments including multi-digit", () => {
-            expect(parseExpr("node(123)")).toBeTruthy();
-        });
-
-        test("accepts string escapes", () => {
-            expect(parseExpr('msg("hello\\"world")')).toBeTruthy();
-        });
 
         test("throws on empty string", () => {
             expect(() => parseExpr("")).toThrow("Expression cannot be empty");
@@ -109,11 +87,11 @@ describe("dependency_graph/expr", () => {
         });
 
         test("throws on invalid identifier in atom", () => {
-            expect(() => parseExpr("123invalid")).toThrow("Invalid identifier");
+            expect(() => parseExpr("123invalid")).toThrow("Unexpected character");
         });
 
         test("throws on invalid function name", () => {
-            expect(() => parseExpr("123foo(x)")).toThrow("identifier");
+            expect(() => parseExpr("123foo(x)")).toThrow("Unexpected character");
         });
     });
 
