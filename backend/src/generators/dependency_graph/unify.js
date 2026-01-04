@@ -118,7 +118,7 @@ function substitute(pattern, bindings, variables) {
     return renderExpr({
         kind: "call",
         name: expr.name,
-        // @ts-ignore - substitutedArgs may contain string/number kind args from constValueToArg()
+        // @ts-expect-error - substitutedArgs may contain string/number kind args from constValueToArg()
         args: substitutedArgs,
     });
 }

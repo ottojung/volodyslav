@@ -359,8 +359,8 @@ function parseExpr(str) {
 function renderArg(arg) {
     if (arg.kind === "identifier") {
         return arg.value;
-    // @ts-ignore - renderArg also handles substituted string/number args from substitute()
     } else if (arg.kind === "string") {
+        // For substitution: render string values with escaping
         // Escape special characters for canonical form
         const escaped = arg.value
             .replace(/\\/g, "\\\\")
