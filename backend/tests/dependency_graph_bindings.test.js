@@ -334,6 +334,44 @@ describe("Bound variables in computors", () => {
             await db.close();
 
         });
+
+        test("a graph f(x, y) <- g(x) + h(y)", async () => {
+            const capabilities = getTestCapabilities();
+            const db = await getRootDatabase(capabilities);
+
+            const schemas = [
+                {
+                    output: "g(x)",
+                    inputs: [],
+                    computor: (inputs, oldValue, bindings) => {
+                        return { value: `g(${bindings.x})` };
+                    },
+                },
+                {
+                    output: "h(y)",
+                    inputs: [],
+                    computor: (inputs, oldValue, bindings) => {
+                        return { value: `h(${bindings.y})` };
+                    },
+                },
+                {
+                    output: "f(x, y)",
+                    inputs: ["g(x)", "h(y)"],
+                    computor: (inputs, oldValue, bindings) => {
+                        return { value: `f(${inputs[0].value}, ${inputs[1].value})` };
+                    },
+                },
+            ];
+
+            const graph = makeDependencyGraph(db, schemas);
+
+            // Pull f with specific bindings
+            const result = await graph.pull("f(x, y)", { x: "A", y: "B" });
+
+            expect(result).toEqual({ value: "f(g(A), h(B))" });
+
+            await db.close();
+        });
     });
 
     describe("Single computor invocation per pull", () => {
