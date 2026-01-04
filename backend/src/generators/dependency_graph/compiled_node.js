@@ -271,7 +271,7 @@ function compileNodeDef(nodeDef) {
     const outputConstArgs = [];
     
     if (outputExpr.kind === "call") {
-        for (const arg of outputExpr.args) {
+        for (let i = 0; i < outputExpr.args.length; i++) {
             // All args are identifiers (variables)
             outputArgKinds.push("var");
             outputConstArgs.push(null);

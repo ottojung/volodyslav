@@ -353,12 +353,13 @@ function parseExpr(str) {
  * Renders a parsed argument to its canonical string form.
  * Note: While parsing only accepts identifiers, this function must handle
  * string and number args for substitution (converting ConstValue back to strings).
- * @param {ParsedArg | {kind: 'string', value: string} | {kind: 'number', value: string}} arg
+ * @param {ParsedArg} arg
  * @returns {string}
  */
 function renderArg(arg) {
     if (arg.kind === "identifier") {
         return arg.value;
+    // @ts-ignore - renderArg also handles substituted string/number args from substitute()
     } else if (arg.kind === "string") {
         // Escape special characters for canonical form
         const escaped = arg.value

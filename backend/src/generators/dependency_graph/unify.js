@@ -3,7 +3,6 @@
  */
 
 const { parseExpr, renderExpr } = require("./expr");
-const { argToConstValue } = require("./compiled_node");
 const { makeSchemaPatternNotAllowedError } = require("./errors");
 
 /** @typedef {import('./types').CompiledNode} CompiledNode */
@@ -28,22 +27,9 @@ function validateConcreteKey(concreteKey) {
 }
 
 /**
- * Checks if two constant values are equal.
- * @param {ConstValue} a
- * @param {ConstValue} b
- * @returns {boolean}
- */
-function constValuesEqual(a, b) {
-    if (a.type !== b.type) {
-        return false;
-    }
-    return a.value === b.value;
-}
-
-/**
  * Renders a ConstValue back to a ParsedArg for substitution.
  * @param {ConstValue} constValue
- * @returns {ParsedArg}
+ * @returns {{kind: 'string' | 'number', value: string}}
  */
 function constValueToArg(constValue) {
     if (constValue.type === "string") {
@@ -132,6 +118,7 @@ function substitute(pattern, bindings, variables) {
     return renderExpr({
         kind: "call",
         name: expr.name,
+        // @ts-ignore - substitutedArgs may contain string/number kind args from constValueToArg()
         args: substitutedArgs,
     });
 }

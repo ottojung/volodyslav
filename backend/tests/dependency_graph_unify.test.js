@@ -56,7 +56,7 @@ describe("dependency_graph/unify", () => {
             expect(result).toBeNull();
         });
 
-        test("matches atom pattern", () => {
+        test("matches concrete atom pattern", () => {
             const nodeDef = {
                 output: "all_events",
                 inputs: [],
