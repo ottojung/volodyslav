@@ -293,7 +293,7 @@ describe("Bound variables in computors", () => {
                     output: `layer1_${i}(x)`,
                     inputs: ["source"],
                     computor: (inputs, oldValue, bindings) => {
-                        return { value: inputs[0].value + i, x: bindings.x };
+                        return { value: inputs[0].value + i, x: `layer1_${i}(${bindings.x})` };
                     },
                 })),
                 // Layer 2
@@ -302,7 +302,7 @@ describe("Bound variables in computors", () => {
                     inputs: [ `layer1_1(x)`, `layer1_2(x)`, `layer1_3(x)` ],
                     computor: (inputs, oldValue, bindings) => {
                         const sum = inputs.reduce((acc, curr) => acc + curr.value, 0);
-                        return { value: sum + i, x: bindings.x };
+                        return { value: sum + i, x: `layer2_${i}(${bindings.x})` };
                     },
                 })),
                 // Layer 3
@@ -311,7 +311,7 @@ describe("Bound variables in computors", () => {
                     inputs: [ `layer2_1(x)`, `layer2_2(x)`, `layer2_3(x)` ],
                     computor: (inputs, oldValue, bindings) => {
                         const sum = inputs.reduce((acc, curr) => acc + curr.value, 0);
-                        return { value: sum + i, x: bindings.x };
+                        return { value: sum + i, x: `layer3_${i}(${bindings.x})` };
                     },
                 })),
             ];
@@ -326,7 +326,7 @@ describe("Bound variables in computors", () => {
             // Layer 1: values are 2, 3, 4
             // Layer 2: sums are (2+3+4)+1=10, (2+3+4)+2=11, (2+3+4)+3=12
             // Layer 3: sums are (10+11+12)+1=34, (10+11+12)+2=35, (10+11+12)+3=36
-            expect(result).toEqual({ value: 35, x: "complex" });
+            expect(result).toEqual({ value: 35, x: "layer3_2(complex)" });
 
             await db.close();
 
