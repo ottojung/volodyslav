@@ -15,10 +15,9 @@
  */
 
 const { makeArityMismatchError } = require("./errors");
-const { asNodeKeyString, unwrapNodeKeyString } = require("./nominal_types");
 
 /** @typedef {import('./types').ConstValue} ConstValue */
-/** @typedef {import('./nominal_types').NodeKeyString} NodeKeyString */
+/** @typedef {string} NodeKeyString */
 
 /**
  * A node key object for concrete nodes.
@@ -36,7 +35,7 @@ const { asNodeKeyString, unwrapNodeKeyString } = require("./nominal_types");
 function serializeNodeKey(key) {
     // Stable JSON serialization
     const serialized = JSON.stringify({ head: key.head, args: key.args });
-    return asNodeKeyString(serialized);
+    return serialized;
 }
 
 /**
@@ -45,8 +44,7 @@ function serializeNodeKey(key) {
  * @returns {NodeKey}
  */
 function deserializeNodeKey(serialized) {
-    const unwrapped = unwrapNodeKeyString(serialized);
-    return JSON.parse(unwrapped);
+    return JSON.parse(serialized);
 }
 
 /**

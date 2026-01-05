@@ -17,7 +17,6 @@ const { isFreshness } = require('../src/generators/database');
 const { createNodeKeyFromPattern, serializeNodeKey } = require('../src/generators/dependency_graph/node_key');
 const { canonicalize } = require('../src/generators/dependency_graph/expr');
 const { isJsonKey } = require('./test_json_key_helper');
-const { unwrapNodeKeyString } = require('../src/generators/dependency_graph/nominal_types');
 
 /**
  * Converts a node name to JSON key format if needed.
@@ -32,7 +31,7 @@ function toJsonKey(key) {
     const canonical = canonicalize(key);
     const nodeKey = createNodeKeyFromPattern(canonical, {});
     const nodeKeyString = serializeNodeKey(nodeKey);
-    return unwrapNodeKeyString(nodeKeyString);
+    return nodeKeyString;
 }
 
 /**

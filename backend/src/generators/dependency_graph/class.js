@@ -14,7 +14,7 @@
 /** @typedef {import('./unchanged').Unchanged} Unchanged */
 /** @typedef {import('./graph_storage').GraphStorage} GraphStorage */
 /** @typedef {import('./graph_storage').BatchBuilder} BatchBuilder */
-/** @typedef {import('./nominal_types').NodeKeyString} NodeKeyString */
+/** @typedef {string} NodeKeyString */
 /** @typedef {import('./node_key').NodeKey} NodeKey */
 
 const crypto = require("crypto");
@@ -282,8 +282,7 @@ class DependencyGraphClass {
         compiledNode,
         bindings
     ) {
-        const { unwrapNodeKeyString } = require("./nominal_types");
-        const concreteKeyString = unwrapNodeKeyString(concreteKeyCanonical);
+        const concreteKeyString = concreteKeyCanonical;
 
         // Check instantiation cache
         const cached = this.concreteInstantiations.get(concreteKeyString);
@@ -297,7 +296,7 @@ class DependencyGraphClass {
             const jsonInputs = compiledNode.canonicalInputs.map((input) => {
                 const inputKey = createNodeKeyFromPattern(input, []);
                 const serialized = serializeNodeKey(inputKey);
-                return unwrapNodeKeyString(serialized);
+                return serialized;
             });
 
             const concreteNode = {
@@ -347,7 +346,7 @@ class DependencyGraphClass {
                 inputBindings
             );
             const serialized = serializeNodeKey(inputKey);
-            return unwrapNodeKeyString(serialized);
+            return serialized;
         });
 
         // Create concrete node with wrapper computor
@@ -692,11 +691,9 @@ class DependencyGraphClass {
      */
     async pullByNodeKeyStringWithStatus(nodeKeyStr) {
         return this.storage.withBatch(async (batch) => {
-            const { asNodeKeyString } = require("./nominal_types");
             const { deserializeNodeKey } = require("./node_key");
             
-            const nodeKeyString = asNodeKeyString(nodeKeyStr);
-            const nodeKey = deserializeNodeKey(nodeKeyString);
+            const nodeKey = deserializeNodeKey(nodeKeyStr);
             const nodeName = nodeKey.head;
             const bindings = nodeKey.args;
 
@@ -717,7 +714,7 @@ class DependencyGraphClass {
 
             // Find or create the node definition
             const nodeDefinition = this.getOrCreateConcreteNode(
-                nodeKeyString,
+                nodeKeyStr,
                 compiledNode,
                 bindings
             );
@@ -784,8 +781,7 @@ class DependencyGraphClass {
         const nodeKey = { head: nodeName, args: bindings };
         const concreteKey = serializeNodeKey(nodeKey);
 
-        const { unwrapNodeKeyString } = require("./nominal_types");
-        const concreteKeyString = unwrapNodeKeyString(concreteKey);
+        const concreteKeyString = concreteKey;
 
         const freshness = await this.storage.freshness.get(concreteKeyString);
         if (freshness === undefined) {

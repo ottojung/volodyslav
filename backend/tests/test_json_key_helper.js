@@ -5,7 +5,6 @@
 
 const { createNodeKeyFromPattern, serializeNodeKey } = require("../src/generators/dependency_graph/node_key");
 const { canonicalize } = require("../src/generators/dependency_graph/expr");
-const { unwrapNodeKeyString } = require("../src/generators/dependency_graph/nominal_types");
 
 /**
  * Converts a node name to its JSON key format.
@@ -18,7 +17,7 @@ function toJsonKey(nodeName, bindings = {}) {
     const canonical = canonicalize(nodeName);
     const nodeKey = createNodeKeyFromPattern(canonical, bindings);
     const nodeKeyString = serializeNodeKey(nodeKey);
-    return unwrapNodeKeyString(nodeKeyString);
+    return nodeKeyString;
 }
 
 /**

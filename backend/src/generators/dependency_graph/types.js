@@ -40,11 +40,19 @@
  */
 
 /**
+ * @typedef {string} SchemaPattern
+ */
+
+/**
+ * @typedef {string} NodeKeyString
+ */
+
+/**
  * A concrete node definition with resolved inputs and output.
  * Used for runtime instantiations of pattern nodes.
  * @typedef {object} ConcreteNodeDefinition
- * @property {string} output - Canonical concrete output key
- * @property {Array<string>} inputs - Array of canonical concrete input keys
+ * @property {SchemaPattern} output - Canonical concrete output key
+ * @property {Array<SchemaPattern>} inputs - Array of canonical concrete input keys
  * @property {ConcreteNodeComputor} computor - Function that computes the output from inputs and old value
  */
 
