@@ -1,11 +1,11 @@
 /**
  * Node key handling - stores node identities as JSON objects.
  * 
- * A concrete node key is: {head: string, args: Array<unknown>}
+ * A concrete node key is: {head: string, args: Array<ConstValue>}
  * This provides clean serialization for any JSON-serializable binding values.
  * 
  * Example:
- * - Pattern: "event(e)" with bindings {e: {id: 5, time: "today"}}
+ * - Pattern: "event(e)" with bindings [{id: 5, time: "today"}]
  * - Concrete key: '{"head":"event","args":[{"id":5,"time":"today"}]}'
  * 
  * Benefits:
@@ -16,13 +16,13 @@
 
 const { makeArityMismatchError } = require("./errors");
 
-/** @typedef {import('./types').DatabaseValue} DatabaseValue */
+/** @typedef {import('./types').ConstValue} ConstValue */
 
 /**
  * A node key object for concrete nodes.
  * @typedef {object} NodeKey
  * @property {string} head - The node name/head
- * @property {Array<unknown>} args - The arguments (bound values - can be any JSON value)
+ * @property {Array<ConstValue>} args - The arguments (bound values - ConstValue types only)
  */
 
 /**
@@ -50,7 +50,7 @@ function deserializeNodeKey(serialized) {
  * Pattern like "event(e)" with bindings [{id: 5}] becomes {head: "event", args: [{id: 5}]}
  * Variable names are ignored - only position matters.
  * @param {string} pattern - Pattern string like "event(e)" or "all_events"
- * @param {Array<unknown>} bindings - Positional bindings array (can be any JSON-serializable values)
+ * @param {Array<ConstValue>} bindings - Positional bindings array (ConstValue types only)
  * @returns {NodeKey}
  */
 function createNodeKeyFromPattern(pattern, bindings) {

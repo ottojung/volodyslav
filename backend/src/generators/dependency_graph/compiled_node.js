@@ -12,6 +12,7 @@ const {
 
 /** @typedef {import('./types').NodeDef} NodeDef */
 /** @typedef {import('./types').CompiledNode} CompiledNode */
+/** @typedef {import('./types').ConstValue} ConstValue */
 /** @typedef {import('./expr').ParsedExpr} ParsedExpr */
 /** @typedef {import('./expr').ParsedArg} ParsedArg */
 
@@ -371,9 +372,9 @@ function createVariablePositionMap(outputExpr) {
  * Given an output's positional bindings and the input pattern's variables,
  * creates the input's positional bindings by looking up each variable's position in the output.
  * @param {ParsedExpr} inputExpr - The input pattern expression
- * @param {Array<unknown>} outputBindings - The positional bindings for the output
+ * @param {Array<ConstValue>} outputBindings - The positional bindings for the output
  * @param {Map<string, number>} varToPosition - Map from variable name to position in output
- * @returns {Array<unknown>} Positional bindings for the input pattern
+ * @returns {Array<ConstValue>} Positional bindings for the input pattern
  */
 function extractInputBindings(inputExpr, outputBindings, varToPosition) {
     if (inputExpr.kind === "atom") {

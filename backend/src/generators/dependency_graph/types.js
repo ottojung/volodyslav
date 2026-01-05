@@ -9,6 +9,14 @@
 /** @typedef {import('./unchanged').Unchanged} Unchanged */
 
 /**
+ * Serializable value type for bindings in dependency graph.
+ * A ConstValue can be a number, string, null, an array of ConstValues, or a record of ConstValues.
+ * Due to JSDoc limitations with recursive types, this is defined as 'unknown' but should be treated as:
+ * number | string | null | Array<ConstValue> | Record<string, ConstValue>
+ * @typedef {unknown} ConstValue
+ */
+
+/**
  * Union type for values that can be stored in the database.
  * @typedef {DatabaseValue | Freshness} DatabaseStoredValue
  */
@@ -23,8 +31,8 @@
  * A computor function for node definitions.
  * Receives inputs, optional old value, and positional bindings array.
  * Bindings are matched to argument positions by position (not by variable name).
- * Each binding can be any JSON-serializable value (primitives or DatabaseValue objects).
- * @typedef {(inputs: Array<DatabaseValue>, oldValue: DatabaseValue | undefined, bindings: Array<unknown>) => DatabaseValue | Unchanged} NodeDefComputor
+ * Each binding must be a ConstValue (JSON-serializable primitives, arrays, or records).
+ * @typedef {(inputs: Array<DatabaseValue>, oldValue: DatabaseValue | undefined, bindings: Array<ConstValue>) => DatabaseValue | Unchanged} NodeDefComputor
  */
 
 /**
