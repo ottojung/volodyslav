@@ -468,7 +468,7 @@ All errors MUST provide stable `.name` property and required fields:
 **REQ-PERSIST-01:** Implementations MUST persist sufficient markers to reconstruct materialized node instance set after restart.
 
 **REQ-PERSIST-02:** If node instance `N@B` was materialized before restart, then after restart (same `RootDatabase`, same schema):
-* `set(source, v, bindings)` MUST mark all previously materialized transitive dependents as `potentially-outdated`
+* `set(nodeName, v, bindings)` MUST mark all previously materialized transitive dependents as `potentially-outdated`
 * This MUST occur WITHOUT requiring re-pull
 
 **REQ-PERSIST-03:** The specific persistence mechanism (metadata keys, reverse index, etc.) is implementation-defined.
