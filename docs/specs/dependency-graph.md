@@ -425,6 +425,7 @@ All errors MUST provide stable `.name` property and required fields:
 | `SchemaCycleError` | `cycle: Array<string>` | Cyclic schema dependencies at init (schema validation) |
 | `MissingValueError` | `nodeKey: string` | Up-to-date node has no stored value (internal) |
 | `ArityMismatchError` | `nodeName: string, expectedArity: number, actualArity: number` | Bindings array length does not match node arity (public API) |
+| `SchemaArityConflictError` | `nodeName: string, arities: Array<number>` | Same head with different arities in schema (schema validation) |
 
 **REQ-ERR-01:** All error types MUST provide type guard functions (e.g., `isInvalidExpressionError(value): boolean`).
 
