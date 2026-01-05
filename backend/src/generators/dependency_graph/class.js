@@ -14,6 +14,7 @@
 /** @typedef {import('./types').NodeKeyString} NodeKeyString */
 /** @typedef {import('./types').NodeName} NodeName */
 /** @typedef {import('./types').SchemaPattern} SchemaPattern */
+/** @typedef {import('./types').SchemaHash} SchemaHash */
 /** @typedef {import('./unchanged').Unchanged} Unchanged */
 /** @typedef {import('./graph_storage').GraphStorage} GraphStorage */
 /** @typedef {import('./graph_storage').BatchBuilder} BatchBuilder */
@@ -114,7 +115,7 @@ class DependencyGraphClass {
      * Stable hash of the schema (compiled nodes).
      * Used to namespace DB keys so different schemas don't interfere.
      * @private
-     * @type {string}
+     * @type {SchemaHash}
      */
     schemaHash;
 
@@ -795,7 +796,7 @@ class DependencyGraphClass {
 
     /**
      * Get the schema hash for testing purposes.
-     * @returns {string}
+     * @returns {SchemaHash}
      */
     getSchemaHash() {
         return this.schemaHash;

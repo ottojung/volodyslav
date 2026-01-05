@@ -55,6 +55,11 @@
  */
 
 /**
+ * A schema hash string identifying a dependency graph schema.
+ * @typedef {string} SchemaHash
+ */
+
+/**
  * A concrete node definition with resolved inputs and output.
  * Used for runtime instantiations of pattern nodes.
  * @typedef {object} ConcreteNodeDefinition

@@ -15,6 +15,7 @@
 /** @typedef {import('../database/types').DatabaseBatchOperation} DatabaseBatchOperation */
 /** @typedef {import('../database/types').SchemaSublevelType} SchemaSublevelType */
 /** @typedef {import('./types').NodeKeyString} NodeKeyString */
+/** @typedef {import('./types').SchemaHash} SchemaHash */
 
 /**
  * Interface for batch operations on a specific database.
@@ -129,7 +130,7 @@ function parseRevdepKey(key) {
  * Creates a GraphStorage instance using typed databases.
  *
  * @param {RootDatabase} rootDatabase - The root database instance
- * @param {string} schemaHash - The schema hash for namespacing
+ * @param {SchemaHash} schemaHash - The schema hash for namespacing
  * @returns {GraphStorage}
  */
 function makeGraphStorage(rootDatabase, schemaHash) {
@@ -139,8 +140,8 @@ function makeGraphStorage(rootDatabase, schemaHash) {
      * Ensure a node is marked as materialized in the inputs database.
      * This is always called regardless of whether the node has inputs.
      * Writes the inputs record for the node.
-     * @param {string} node - Canonical node key
-     * @param {string[]} inputs - Array of canonical input keys (may be empty)
+     * @param {NodeKeyString} node - Canonical node key
+     * @param {NodeKeyString[]} inputs - Array of canonical input keys (may be empty)
      * @param {BatchBuilder} batch - Batch builder for atomic operations
      * @returns {Promise<void>}
      */
@@ -159,8 +160,8 @@ function makeGraphStorage(rootDatabase, schemaHash) {
      * Ensure a node's reverse dependencies are indexed.
      * This is only called when the node has inputs.
      * Writes reverse dependency edges.
-     * @param {string} node - Canonical node key
-     * @param {string[]} inputs - Array of canonical input keys (must be non-empty)
+     * @param {NodeKeyString} node - Canonical node key
+     * @param {NodeKeyString[]} inputs - Array of canonical input keys (must be non-empty)
      * @param {BatchBuilder} batch - Batch builder for atomic operations
      * @returns {Promise<void>}
      */
@@ -190,8 +191,8 @@ function makeGraphStorage(rootDatabase, schemaHash) {
     /**
      * List all dependents of an input.
      * Iterates over all keys with the input prefix to collect dependents.
-     * @param {string} input - Canonical input key
-     * @returns {Promise<string[]>}
+     * @param {NodeKeyString} input - Canonical input key
+     * @returns {Promise<NodeKeyString[]>}
      */
     async function listDependents(input) {
         const dependents = [];
@@ -210,8 +211,8 @@ function makeGraphStorage(rootDatabase, schemaHash) {
 
     /**
      * Get inputs for a node.
-     * @param {string} node - Canonical node key
-     * @returns {Promise<string[] | null>}
+     * @param {NodeKeyString} node - Canonical node key
+     * @returns {Promise<NodeKeyString[] | null>}
      */
     async function getInputs(node) {
         const record = await schemaStorage.inputs.get(node);
@@ -220,7 +221,7 @@ function makeGraphStorage(rootDatabase, schemaHash) {
 
     /**
      * List all materialized nodes.
-     * @returns {Promise<string[]>}
+     * @returns {Promise<NodeKeyString[]>}
      */
     async function listMaterializedNodes() {
         const keys = [];
