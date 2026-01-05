@@ -872,3 +872,9 @@ An implementation conforms to this specification if and only if:
 5. It passes all conformance tests derived from this specification
 
 Optional features (GraphStorage, Debug interface, etc.) MAY be provided without affecting conformance.
+
+---
+
+## Related Documentation
+
+For guidance on migrating data between different schema versions, see [DependencyGraph Migration Strategy](../dependency-graph-migrations.md).
