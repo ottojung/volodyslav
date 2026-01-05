@@ -314,16 +314,13 @@ function renderExpr(expr) {
 /**
  * Canonicalizes an expression string.
  *
- * @param {string} str - The expression string to canonicalize
+ * @param {string | ParsedExpr} str - The expression string to canonicalize
  * @returns {string} The canonical form (still a valid expression)
  * @throws {Error} If the expression is malformed
  */
 function canonicalize(str) {
-    const parsed = parseExpr(str);
-    if (parsed.kind === "atom") {
-        return parsed.name;
-    }
-    return `${parsed.name}/${parsed.args.length}`;
+    const parsed = typeof str === "string" ? parseExpr(str) : str;
+    return parsed.name;
 }
 
 module.exports = {

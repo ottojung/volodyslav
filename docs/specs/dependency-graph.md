@@ -136,26 +136,14 @@ ws            := [ \t\n\r]*
 
 ### 1.4 Canonical Serialization (Normative)
 
-**REQ-CANON-01:** The function `canonicalize(expr)` MUST produce a unique canonical string:
-
-1. Format: `head/arity` where:
-   - `head` is the expression name (identifier)
-   - `arity` is the number of arguments
-2. Atom-expressions: just the identifier (no `/0` suffix)
-3. Compound-expressions: `name/N` where N is the number of arguments
-4. Variable names and whitespace do NOT affect canonicalization
-
-**REQ-CANON-02:** Equality and identity:
-* Two expressions have the same canonical form if and only if they have the same head (functor) and same arity (number of arguments)
-* Variable names in the original expression do NOT affect the canonical form
-* The canonical form is NOT a parseable expression—it's an index key
+**REQ-CANON-01:** The function `canonicalize(expr)` MUST produce a unique canonical string that is just the head (functor) of the expression. In particular, it does not include variable names or whitespace.
 
 **Examples:**
-* `all_events` → `"all_events"`
-* `event_context(e)` → `"event_context/1"`
-* `event_context(x)` → `"event_context/1"` (same as above)
-* `enhanced_event(e, p)` → `"enhanced_event/2"`
-* `enhanced_event(x, y)` → `"enhanced_event/2"` (same as above)
+* `"all_events"` → `"all_events"`
+* `"event_context(e)"` → `"event_context"`
+* `"event_context(x)"` → `"event_context"` (same as above)
+* `"enhanced_event(e, p)"` → `"enhanced_event"`
+* `"   enhanced_event   (   x, y)   "` → `"enhanced_event"` (same as above)
 
 **REQ-CANON-03:** Pattern Matching:
 * The canonical form is used for pattern matching and schema indexing

@@ -26,7 +26,7 @@ const {
     makeSchemaPatternNotAllowedError,
     makeArityMismatchError,
 } = require("./errors");
-const { parseExpr, renderExpr } = require("./expr");
+const { parseExpr, renderExpr, canonicalize } = require("./expr");
 const {
     compileNodeDef,
     validateNoOverlap,
@@ -290,8 +290,7 @@ class DependencyGraphClass {
             arity = expr.args.length;
         }
 
-        const indexKey = `${head}/${arity}`;
-
+        const indexKey = `${head}`;
         const candidates = this.graphIndex.patternIndex.get(indexKey);
         if (!candidates) {
             return null;
@@ -351,15 +350,19 @@ class DependencyGraphClass {
      * Dynamic edges are persisted to DB when the node is computed/set, not here.
      * @private
      * @param {string} concreteKeyCanonical - Canonical concrete node key (JSON format)
-     * @param {string} [patternName] - Original pattern name for matching
+     * @param {string} [schemaPattern] - Original pattern name for matching
      * @param {Array<ConstValue>} [bindings=[]] - Positional bindings for this instance
      * @returns {ConcreteNodeDefinition}
      * @throws {Error} If no pattern matches and node not in graph
      */
-    getOrCreateConcreteNode(concreteKeyCanonical, patternName, bindings = []) {
+    getOrCreateConcreteNode(
+        concreteKeyCanonical,
+        schemaPattern,
+        bindings = []
+    ) {
         // Check if it's an exact node in the graph (try both keys)
         const exactNode = this.graphIndex.exactIndex.get(
-            patternName || concreteKeyCanonical
+            schemaPattern || concreteKeyCanonical
         );
         if (exactNode) {
             // Convert all inputs to JSON format
@@ -384,25 +387,25 @@ class DependencyGraphClass {
 
         // Try to find matching pattern
         // If concreteKeyCanonical is a JSON key, use it for matching
-        // Otherwise use patternName if provided
+        // Otherwise use schemaPattern if provided
         const keyForMatching = concreteKeyCanonical.startsWith("{")
             ? concreteKeyCanonical
-            : patternName || concreteKeyCanonical;
+            : schemaPattern || concreteKeyCanonical;
         const match = this.findMatchingPattern(keyForMatching);
         if (!match) {
             // Check if this looks like a pattern with variables
             // If so, throw SchemaPatternNotAllowed (only if bindings weren't provided)
-            const testExpr = parseExpr(patternName || concreteKeyCanonical);
+            const testExpr = parseExpr(schemaPattern || concreteKeyCanonical);
             if (testExpr.kind === "call" && bindings.length === 0) {
                 // Has arguments but no bindings - check if any compiled pattern matches by head/arity
-                const indexKey = `${testExpr.name}/${testExpr.args.length}`;
+                const indexKey = canonicalize(schemaPattern || concreteKeyCanonical);
                 const candidates = this.graphIndex.patternIndex.get(indexKey);
                 if (candidates && candidates.length > 0) {
                     const firstCandidate = candidates[0];
                     if (firstCandidate && firstCandidate.isPattern) {
                         // Pattern exists but wasn't matched - needs bindings
                         throw makeSchemaPatternNotAllowedError(
-                            patternName || concreteKeyCanonical
+                            schemaPattern || concreteKeyCanonical
                         );
                     }
                 }
@@ -522,7 +525,7 @@ class DependencyGraphClass {
         for (const compiled of compiledNodes) {
             if (compiled.isPattern) {
                 // Pattern node - index by head/arity
-                const key = `${compiled.head}/${compiled.arity}`;
+                const key = canonicalize(compiled.outputExpr);
                 if (!this.graphIndex.patternIndex.has(key)) {
                     this.graphIndex.patternIndex.set(key, []);
                 }

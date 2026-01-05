@@ -102,27 +102,27 @@ describe("dependency_graph/expr", () => {
         });
 
         test("canonicalizes empty argument list to head/0", () => {
-            expect(canonicalize("foo()")).toBe("foo/0");
-            expect(canonicalize("foo( )")).toBe("foo/0");
+            expect(canonicalize("foo()")).toBe("foo");
+            expect(canonicalize("foo( )")).toBe("foo");
         });
 
         test("canonicalizes to head/arity format", () => {
-            expect(canonicalize("event_context(e)")).toBe("event_context/1");
-            expect(canonicalize("event_context( e )")).toBe("event_context/1");
-            expect(canonicalize("event_context(x)")).toBe("event_context/1");
+            expect(canonicalize("event_context(e)")).toBe("event_context");
+            expect(canonicalize("event_context( e )")).toBe("event_context");
+            expect(canonicalize("event_context(x)")).toBe("event_context");
         });
 
         test("canonicalizes with multiple args to head/arity", () => {
-            expect(canonicalize("foo(a,b,c)")).toBe("foo/3");
-            expect(canonicalize("foo( a , b , c )")).toBe("foo/3");
-            expect(canonicalize(" foo ( a , b , c ) ")).toBe("foo/3");
+            expect(canonicalize("foo(a,b,c)")).toBe("foo");
+            expect(canonicalize("foo( a , b , c )")).toBe("foo");
+            expect(canonicalize(" foo ( a , b , c ) ")).toBe("foo");
         });
 
         test("variable names don't affect canonicalization", () => {
-            expect(canonicalize("event_context(e)")).toBe("event_context/1");
-            expect(canonicalize("event_context(x)")).toBe("event_context/1");
-            expect(canonicalize("enhanced_event(e, p)")).toBe("enhanced_event/2");
-            expect(canonicalize("enhanced_event(x, y)")).toBe("enhanced_event/2");
+            expect(canonicalize("event_context(e)")).toBe("event_context");
+            expect(canonicalize("event_context(x)")).toBe("event_context");
+            expect(canonicalize("enhanced_event(e, p)")).toBe("enhanced_event");
+            expect(canonicalize("enhanced_event(x, y)")).toBe("enhanced_event");
         });
 
         test("throws on malformed expression", () => {
