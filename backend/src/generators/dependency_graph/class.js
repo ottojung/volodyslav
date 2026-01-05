@@ -4,6 +4,7 @@
 
 /** @typedef {import('../database/root_database').RootDatabase} RootDatabase */
 /** @typedef {import('./types').DatabaseValue} DatabaseValue */
+/** @typedef {import('./types').ConstValue} ConstValue */
 /** @typedef {import('./types').Freshness} Freshness */
 /** @typedef {import('./types').FreshnessStatus} FreshnessStatus */
 /** @typedef {import('./types').NodeDef} NodeDef */
@@ -40,7 +41,7 @@ const { createNodeKeyFromPattern, serializeNodeKey } = require("./node_key");
  * DependencyGraph class for propagating data through dependency edges.
  *
  * Node Identity:
- * - Concrete nodes use JSON key format: {head: string, args: Array<unknown>}
+ * - Concrete nodes use JSON key format: {head: string, args: Array<ConstValue>}
  * - Example: derived(x) with {x: "test"} → {"head":"derived","args":["test"]}
  * - Pattern names (e.g., "event(e)") are only used for schema definitions
  * - Actual node instances are identified by serialized JSON keys
@@ -181,7 +182,7 @@ class DependencyGraphClass {
      * All operations are performed atomically in a single batch.
      * @param {string} head - The head/name of the node (identifier only, e.g., "full_event")
      * @param {DatabaseValue} value - The value to set
-     * @param {Array<unknown>} [bindings=[]] - Positional bindings array for parameterized nodes
+     * @param {Array<ConstValue>} [bindings=[]] - Positional bindings array for parameterized nodes
      * @returns {Promise<void>}
      */
     async set(head, value, bindings = []) {
@@ -262,7 +263,7 @@ class DependencyGraphClass {
      * Throws if multiple patterns match (ambiguity).
      * @private
      * @param {string} concreteKeyCanonical - Canonical concrete node key (JSON format) or pattern name
-     * @returns {{ compiledNode: CompiledNode, bindings: Array<unknown> } | null}
+     * @returns {{ compiledNode: CompiledNode, bindings: Array<ConstValue> } | null}
      */
     findMatchingPattern(concreteKeyCanonical) {
         let head, arity;
@@ -289,7 +290,7 @@ class DependencyGraphClass {
         }
 
         // Collect all matching patterns
-        /** @type {Array<{ compiledNode: CompiledNode, bindings: Array<unknown> }>} */
+        /** @type {Array<{ compiledNode: CompiledNode, bindings: Array<ConstValue> }>} */
         const matches = [];
 
         for (const compiled of candidates) {
@@ -343,7 +344,7 @@ class DependencyGraphClass {
      * @private
      * @param {string} concreteKeyCanonical - Canonical concrete node key (JSON format)
      * @param {string} [patternName] - Original pattern name for matching
-     * @param {Array<unknown>} [bindings=[]] - Positional bindings for this instance
+     * @param {Array<ConstValue>} [bindings=[]] - Positional bindings for this instance
      * @returns {ConcreteNodeDefinition}
      * @throws {Error} If no pattern matches and node not in graph
      */
@@ -669,7 +670,7 @@ class DependencyGraphClass {
      * - If node is potentially-outdated: maybe recalculate (check inputs first)
      *
      * @param {string} head - The head/name of the node (identifier only, e.g., "full_event")
-     * @param {Array<unknown>} [bindings=[]] - Positional bindings array for parameterized nodes
+     * @param {Array<ConstValue>} [bindings=[]] - Positional bindings array for parameterized nodes
      * @returns {Promise<DatabaseValue>} The node's value
      */
     async pull(head, bindings = []) {
@@ -682,7 +683,7 @@ class DependencyGraphClass {
      * Accepts head-only string from public API.
      * @private
      * @param {string} head - The head/name of the node (identifier only)
-     * @param {Array<unknown>} [bindings=[]]
+     * @param {Array<ConstValue>} [bindings=[]]
      * @returns {Promise<RecomputeResult>}
      */
     async pullWithStatus(head, bindings = []) {
@@ -814,7 +815,7 @@ class DependencyGraphClass {
     /**
      * Query conceptual freshness state of a node (debug interface).
      * @param {string} head - The head/name of the node (identifier only)
-     * @param {Array<unknown>} [bindings=[]] - Positional bindings array for parameterized nodes
+     * @param {Array<ConstValue>} [bindings=[]] - Positional bindings array for parameterized nodes
      * @returns {Promise<"up-to-date" | "potentially-outdated" | "missing">}
      */
     async debugGetFreshness(head, bindings = []) {
