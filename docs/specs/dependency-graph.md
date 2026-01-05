@@ -95,7 +95,7 @@ The public API requires both the pattern and bindings to address a specific node
 * Bindings are matched to argument positions, not variable names
 * Different bindings address different node instances
 * `pull("full_event(e)", [{id: "123"}])` and `pull("full_event(e)", [{id: "456"}])` address distinct nodes
-* `pull("full_event(e)", [{id: "123"}])` and `pull("full_event(x)", [{id: "123"}])` address the **same** node (variable names are irrelevant)
+* `pull("full_event(e)", [{id: "123"}])` and `pull("full_event(x)", [{id: "123"}])` address the **same** node (variable names are irrelevant here)
 
 ### 1.3 Expression Grammar (Normative)
 
@@ -580,7 +580,7 @@ const context = await graph.pull('event_context(e)', [{id: 'evt_123'}]);
 * Calling `pull('event_context(e)', [{id: 'evt_123'}])` selects one specific member of that family
 * The binding array `[{id: 'evt_123'}]` has length 1, matching the arity of `event_context(e)`
 * Different bindings create different node instances: `event_context(e)@[{id:'evt_123'}]` vs `event_context(e)@[{id:'evt_456'}]`
-* Variable names are irrelevant: `pull('event_context(e)', [{id: '123'}])` and `pull('event_context(x)', [{id: '123'}])` address the same node
+* Variable names irrelevancy: `pull('event_context(e)', [{id: '123'}])` and `pull('event_context(x)', [{id: '123'}])` address the same node
 
 #### A.2 Multiple Parameters
 
