@@ -79,8 +79,8 @@
 /**
  * Unified node definition.
  * @typedef {object} NodeDef
- * @property {string} output - Pattern or exact key (e.g., "event_context(e)" or 'status("active")')
- * @property {Array<string>} inputs - Pattern dependencies
+ * @property {SchemaPattern} output - Pattern or exact key (e.g., "event_context(e)" or 'status("active")')
+ * @property {Array<SchemaPattern>} inputs - Pattern dependencies
  * @property {NodeDefComputor} computor - Function that computes the output from inputs, old value, and typed bindings
  */
 
@@ -89,9 +89,9 @@
  * @typedef {object} CompiledNode
  * @property {NodeDef} source - The original node definition
  * @property {import('./expr').ParsedExpr} outputExpr - Parsed output expression
- * @property {string} canonicalOutput - Canonical form of output
+ * @property {SchemaPattern} canonicalOutput - Canonical form of output
  * @property {Array<import('./expr').ParsedExpr>} inputExprs - Parsed input expressions
- * @property {Array<string>} canonicalInputs - Canonical forms of inputs
+ * @property {Array<SchemaPattern>} canonicalInputs - Canonical forms of inputs
  * @property {string} head - Head/name of the output expression
  * @property {number} arity - Number of arguments in output
  * @property {boolean} isPattern - True if output contains variables (identifiers)
