@@ -666,8 +666,8 @@ const fullEvent = await graph.pull('full_event', [{id: 'evt_123'}]);
 **How it works:**
 * Schema defines all three expressions with arity 1 (one argument position)
 * When pulling `full_event` with `[{id:'evt_123'}]`, both dependencies are instantiated with the same positional binding
-* The binding propagates through the entire dependency chain, ensuring consistency
-* Variable names (`e` in this case) are schema-internal—public API uses nodeName only
+* The binding propagates through the entire dependency chain
+* Variable names (`e` in this case) are schema-internal—public API uses `nodeName` only
 
 ### Appendix C: Optional Debug Interface
 
