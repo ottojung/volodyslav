@@ -14,7 +14,7 @@ This document provides a formal specification for the dependency graph's operati
 * **Computor** — deterministic async function: `(inputs: DatabaseValue[], oldValue: DatabaseValue | undefined, bindings: DatabaseValue[]) => Promise<DatabaseValue | Unchanged>`
 * **Unchanged** — unique sentinel value indicating unchanged computation result. MUST NOT be a valid `DatabaseValue` (cannot be stored via `set()` or returned by `pull()`).
 * **Variable** — parameter placeholder in node schemas (identifiers in argument positions)
-* **DatabaseValue** — any JavaScript `object` (including subtypes like arrays, but excluding `null`). MUST NOT include the `Unchanged` sentinel. MUST round-trip through database interfaces without semantic change.
+* **DatabaseValue** — a JSON serializable JavaScript value. MUST round-trip through database interfaces without semantic change.
 * **BindingEnvironment** — a positional array of concrete values: `DatabaseValue[]`. Used to instantiate a specific node from an expression pattern. The array length MUST match the number of variables (arity) of the expression. Bindings are matched to variables by position, not by name.
 
 ### 1.2 Expressions as an Infinite Graph (Normative)
