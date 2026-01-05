@@ -486,7 +486,7 @@ Tests MAY assert error names (via `.name` property) and required fields (see sec
 
 Tests MAY assert:
 * Whitespace normalization in expressions
-* See REQ-CANON-03 and REQ-CANON-04 in section 1.3
+* See REQ-CANON-03 and REQ-CANON-04 in section 1.4
 
 ### 5.4 Freshness Observability
 
