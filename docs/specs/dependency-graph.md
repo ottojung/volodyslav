@@ -309,7 +309,7 @@ pull(nodeName, B):
   return stored_value(nodeKey)
 ```
 
-Note: this specification omits freshness concerns.
+Note: this specification only describes input-output semantics. It ignores freshness tracking, caching, etc.
 
 **REQ-PULL-01:** `pull` MUST throw `InvalidNodeError` if no schema output has the given nodeName.
 
