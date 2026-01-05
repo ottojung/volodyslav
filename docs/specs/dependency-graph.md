@@ -8,15 +8,16 @@ This document provides a formal specification for the dependency graph's operati
 
 ### 1.1 Types
 
-* **NodePattern** — an expression string that may contain variables, e.g., `"full_event(e)"` or `"all_events"`. Used in API calls and schema definitions to denote families of nodes.
-* **BindingEnvironment** — a positional array of concrete values: `DatabaseValue[]`. Used to instantiate a specific node from a pattern. The array length MUST match the number of variables (arity) of the pattern. Bindings are matched to variables by position, not by name.
-* **NodeInstance** — a specific node identified by a `NodePattern` and `BindingEnvironment`. Conceptually: `{ pattern: NodePattern, bindings: BindingEnvironment }`. Notation: `pattern@bindings`.
-* **NodeKey** — stable string key used for storage, derived from the canonical pattern and bindings. This is the actual database key. Format: JSON serialization of `{ head: string, args: DatabaseValue[] }`.
+* **NodeHead** — an identifier string (head/functor only), e.g., `"full_event"` or `"all_events"`. Used in public API calls to identify node families. Does NOT include variable syntax.
+* **SchemaPattern** — an expression string that may contain variables, e.g., `"full_event(e)"` or `"all_events"`. Used ONLY in schema definitions to denote families of nodes and for variable mapping.
+* **BindingEnvironment** — a positional array of concrete values: `DatabaseValue[]`. Used to instantiate a specific node from a family. The array length MUST match the arity of the node. Bindings are matched to argument positions by position, not by name.
+* **NodeInstance** — a specific node identified by a `NodeHead` and `BindingEnvironment`. Conceptually: `{ head: NodeHead, bindings: BindingEnvironment }`. Notation: `head@bindings`.
+* **NodeKey** — stable string key used for storage, derived from the head and bindings. This is the actual database key. Format: JSON serialization of `{ head: string, args: DatabaseValue[] }`.
 * **NodeValue** — computed value at a node (arbitrary `DatabaseValue`)
 * **Freshness** — conceptual state: `"up-to-date" | "potentially-outdated"`
 * **Computor** — deterministic async function: `(inputs: DatabaseValue[], oldValue: DatabaseValue | undefined, bindings: DatabaseValue[]) => Promise<DatabaseValue | Unchanged>`
 * **Unchanged** — unique sentinel value indicating unchanged computation result. MUST NOT be a valid `DatabaseValue` (cannot be stored via `set()` or returned by `pull()`).
-* **Variable** — parameter placeholder in node schemas (identifiers in argument positions)
+* **Variable** — parameter placeholder in node schemas (identifiers in argument positions). Variables are internal to schema definitions and not exposed in public API.
 * **DatabaseValue** — a JSON serializable JavaScript value. MUST round-trip through database interfaces without semantic change.
 
 ### 1.2 Expressions as an Infinite Graph (Normative)
@@ -82,22 +83,28 @@ The schema implicitly defines infinitely many dependency edges—one set for eac
 
 #### 1.2.4 Public Interface: Addressing Nodes
 
-The public API requires both the pattern and bindings to address a specific node:
+**IMPORTANT: The public API uses head-only addressing. Expression patterns with variables are internal to schema definitions.**
 
-* `pull(pattern, bindings)` — Evaluates the node instance identified by `NodePattern` and `BindingEnvironment`
-* `set(pattern, value, bindings)` — Stores `value` at the node instance identified by `NodePattern` and `BindingEnvironment`
+The public API requires both the head and bindings to address a specific node:
 
-**For atom expressions** (expressions with no arguments like `all_events`):
+* `pull(head, bindings)` — Evaluates the node instance identified by `NodeHead` and `BindingEnvironment`
+* `set(head, value, bindings)` — Stores `value` at the node instance identified by `NodeHead` and `BindingEnvironment`
+
+**For arity-0 nodes** (nodes with no arguments like `all_events`):
 * The binding environment is empty: `[]`
-* The pattern alone identifies exactly one node
+* The head alone identifies exactly one node
 * `pull("all_events", [])` and `pull("all_events")` are equivalent
 
-**For compound expressions** (expressions with arguments like `full_event(e)`):
-* Bindings array length MUST match the number of arguments (arity)
-* Bindings are matched to argument positions, not variable names
+**For arity > 0 nodes** (nodes with arguments):
+* Bindings array length MUST match the arity of the node
+* Bindings are matched to argument positions by position
 * Different bindings address different node instances
-* `pull("full_event(e)", [{id: "123"}])` and `pull("full_event(e)", [{id: "456"}])` address distinct nodes
-* `pull("full_event(e)", [{id: "123"}])` and `pull("full_event(x)", [{id: "123"}])` address the **same** node (variable names are irrelevant here)
+* `pull("full_event", [{id: "123"}])` and `pull("full_event", [{id: "456"}])` address distinct nodes
+
+**Schema Pattern vs Public Head:**
+* Schema definition: `output: "full_event(e)"` — uses expression pattern with variable
+* Public API call: `pull("full_event", [value])` — uses head only, no variable syntax
+* The arity is determined by the schema, not by the caller
 
 ### 1.3 Expression Grammar (Normative)
 
@@ -252,15 +259,19 @@ await graph.pull("full_event(my_event)", [{id: "123"}]);
 
 ### 1.8 Pattern Matching (Normative)
 
-**REQ-MATCH-01:** A schema output pattern `P` **matches** an expression `E` if and only if:
-1. `P` and `E` have the same functor (head identifier), AND
-2. `P` and `E` have the same arity (number of arguments)
+**REQ-MATCH-01:** A schema output pattern `P` **matches** a head `H` if and only if:
+1. `P` and `H` have the same functor (head identifier), AND
+2. The arity of `P` matches the expected arity for `H`
 
 **REQ-MATCH-02:** Two output patterns **overlap** if they have the same functor and the same arity.
 
 **REQ-MATCH-03:** The system MUST reject graphs with overlapping output patterns at initialization (throw `SchemaOverlapError`).
 
-**Note on Matching:** Pattern matching is purely structural and does not consider variable names or binding values. The pattern `full_event(e)` matches any expression of the form `full_event(x)` regardless of the variable name used. Since bindings are positional, variable names have no semantic significance—they serve only as documentation.
+**REQ-MATCH-04 (NEW):** Each head (functor) MUST have a single, unique arity across all schema outputs. The system MUST reject graphs where the same head appears with different arities (throw `SchemaArityConflictError`).
+
+**Note on Matching:** Pattern matching in schema definitions is purely structural and does not consider variable names. The pattern `full_event(e)` and `full_event(x)` are equivalent—both define an arity-1 node family. Variable names serve only for documentation and variable mapping between inputs and outputs.
+
+**Note on Public API:** The public API uses only the head identifier (e.g., `"full_event"`), not expression patterns. The arity is determined by the schema, and callers must provide bindings that match the expected arity.
 
 ### 1.9 Cycle Detection (Normative)
 
@@ -276,31 +287,33 @@ await graph.pull("full_event(my_event)", [{id: "123"}]);
 **REQ-MAT-01:** A **materialized node** is any NodeInstance (identified by NodeKey) for which the implementation maintains dependency tracking and freshness state.
 
 **REQ-MAT-02:** Materialization occurs through:
-* `pull(pattern, bindings)` — creates NodeInstance with dependencies, stores value at NodeKey, marks `up-to-date`
-* `set(pattern, value, bindings)` — materializes source NodeInstance at NodeKey, marks `up-to-date`
+* `pull(head, bindings)` — creates NodeInstance with dependencies, stores value at NodeKey, marks `up-to-date`
+* `set(head, value, bindings)` — materializes source NodeInstance at NodeKey, marks `up-to-date`
 
 ---
 
 ## 2. Operational Semantics (Normative)
 
-### 2.1 pull(pattern, bindings) → NodeValue
+### 2.1 pull(head, bindings) → NodeValue
 
-**Signature:** `pull(pattern: NodePattern, bindings?: BindingEnvironment): Promise<DatabaseValue>`
+**Signature:** `pull(head: NodeHead, bindings?: BindingEnvironment): Promise<DatabaseValue>`
 
 **Preconditions:**
-* `pattern` MUST be a valid expression pattern (NodePattern)
-* `bindings` array length MUST match the arity (number of arguments) of `pattern`
-* A matching schema pattern MUST exist
+* `head` MUST be a valid node head identifier (string matching the `ident` production)
+* A schema output with matching head MUST exist (throw `InvalidNodeError` otherwise)
+* `bindings` array length MUST match the arity of the node as defined in the schema (throw `ArityMismatchError` otherwise)
 
 **Big-Step Semantics (Correctness Specification):**
 
 ```
-pull(P, B):
-  canonical = canonicalize(P)
-  nodeKey = createNodeKey(P, B)  // Stable storage key
-  inputs_values = [pull(I, B) for I in inputs_of(canonical)]
+pull(H, B):
+  schema = lookup_schema_by_head(H)  // O(1) lookup
+  if schema is null: throw InvalidNodeError
+  if schema.arity ≠ B.length: throw ArityMismatchError
+  nodeKey = createNodeKey(H, B)  // {"head": H, "args": B}
+  inputs_values = [pull(I_head, I_bindings) for I in inputs_of(schema)]
   old_value = stored_value(nodeKey)
-  new_value = computor_of(canonical)(inputs_values, old_value, B)
+  new_value = computor_of(schema)(inputs_values, old_value, B)
   if new_value ≠ Unchanged:
     store(nodeKey, new_value)
   mark_up_to_date(nodeKey)
@@ -309,44 +322,46 @@ pull(P, B):
 
 **REQ-PULL-01:** `pull` MUST return a `Promise<DatabaseValue>`.
 
-**REQ-PULL-02:** `pull` MUST throw `InvalidNodeError` if no schema pattern matches the canonical form of `pattern`.
+**REQ-PULL-02:** `pull` MUST throw `InvalidNodeError` if no schema output has the given head.
 
-**REQ-PULL-03:** `pull` MUST throw `ArityMismatchError` if `bindings` array length does not match the arity of `pattern`.
+**REQ-PULL-03:** `pull` MUST throw `ArityMismatchError` if `bindings` array length does not match the arity defined in the schema for the given head.
 
 **REQ-PULL-04:** `pull` MUST ensure each computor is invoked at most once per top-level call for each unique node instance (property P3).
 
 **REQ-PULL-05:** Lazy instantiation: When pulling a node instance, the system:
-1. Searches for matching schema pattern
-2. Uses the provided binding environment `B`
-3. Instantiates all input expressions by applying `B` to produce input node instances
-4. Recursively pulls all input node instances (with the same bindings where variables overlap)
-5. Creates materialized node instance on-demand with instantiated dependencies
-6. Persists materialization marker for restart resilience
+1. Looks up schema by head identifier (O(1))
+2. Validates arity matches bindings length
+3. Creates NodeKey from head and bindings
+4. Instantiates all input dependencies using variable name mapping from schema
+5. Recursively pulls all input node instances
+6. Creates materialized node instance on-demand with instantiated dependencies
+7. Persists materialization marker for restart resilience
 
 **Efficiency Optimization (Implementation-Defined):**
 
 Implementations MAY use any strategy to achieve property P3 (e.g., memoization, freshness checks, in-flight tracking). The specific mechanism is not prescribed.
 
-### 2.2 set(pattern, value, bindings)
+### 2.2 set(head, value, bindings)
 
-**Signature:** `set(pattern: NodePattern, value: DatabaseValue, bindings?: BindingEnvironment): Promise<void>`
+**Signature:** `set(head: NodeHead, value: DatabaseValue, bindings?: BindingEnvironment): Promise<void>`
 
 **Preconditions:**
-* `pattern` MUST be a valid expression pattern (NodePattern)
-* `bindings` array length MUST match the arity (number of arguments) of `pattern`
-* `pattern` MUST match a schema (throw `InvalidNodeError` otherwise)
-* `pattern` MUST match a source node schema (throw `InvalidSetError` if not)
+* `head` MUST be a valid node head identifier
+* A schema output with matching head MUST exist (throw `InvalidNodeError` otherwise)
+* `bindings` array length MUST match the arity of the node (throw `ArityMismatchError` otherwise)
+* The matching schema MUST be a source node (throw `InvalidSetError` if it has inputs)
 
 **Effects:**
-1. Store `value` at the node instance (NodeKey) derived from `pattern@bindings`
-2. Mark that node instance as `up-to-date`
-3. Mark all **materialized** transitive dependents as `potentially-outdated`
+1. Create NodeKey from `head@bindings`
+2. Store `value` at that NodeKey
+3. Mark that node instance as `up-to-date`
+4. Mark all **materialized** transitive dependents as `potentially-outdated`
 
 **REQ-SET-01:** `set` MUST return a `Promise<void>`.
 
-**REQ-SET-02:** `set` MUST throw `InvalidNodeError` if no schema pattern matches the canonical form of `pattern`.
+**REQ-SET-02:** `set` MUST throw `InvalidNodeError` if no schema output has the given head.
 
-**REQ-SET-03:** `set` MUST throw `ArityMismatchError` if `bindings` array length does not match the arity of `pattern`.
+**REQ-SET-03:** `set` MUST throw `ArityMismatchError` if `bindings` array length does not match the arity defined in the schema.
 
 **REQ-SET-04:** `set` MUST throw `InvalidSetError` if the matching schema is not a source node (has non-empty `inputs`).
 
@@ -375,18 +390,20 @@ function makeDependencyGraph(
 ): DependencyGraph;
 ```
 
-**REQ-FACTORY-01:** MUST validate all schemas at construction (throw on parse errors, scope violations, overlaps, cycles).
+**REQ-FACTORY-01:** MUST validate all schemas at construction (throw on parse errors, scope violations, overlaps, cycles, and arity conflicts).
 
 **REQ-FACTORY-02:** MUST compute schema identifier and obtain schema-namespaced storage via `rootDatabase.getSchemaStorage(schemaId)`.
 
 **REQ-FACTORY-03:** MUST NOT mutate `nodeDefs` or `rootDatabase`.
 
+**REQ-FACTORY-04 (NEW):** MUST reject schemas where the same head appears with different arities (throw `SchemaArityConflictError`).
+
 ### 3.2 DependencyGraph Interface
 
 ```typescript
 interface DependencyGraph {
-  pull(pattern: NodePattern, bindings?: BindingEnvironment): Promise<DatabaseValue>;
-  set(pattern: NodePattern, value: DatabaseValue, bindings?: BindingEnvironment): Promise<void>;
+  pull(head: NodeHead, bindings?: BindingEnvironment): Promise<DatabaseValue>;
+  set(head: NodeHead, value: DatabaseValue, bindings?: BindingEnvironment): Promise<void>;
   getStorage(): SchemaStorage;
 }
 ```
