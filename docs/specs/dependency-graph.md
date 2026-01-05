@@ -366,7 +366,7 @@ Implementations MAY use any strategy to achieve property P3 (e.g., memoization, 
 ```typescript
 function makeDependencyGraph(
   rootDatabase: RootDatabase,
-  nodeDefs: NodeDef[]
+  nodeDefs: Array<NodeDef>
 ): DependencyGraph;
 ```
 
@@ -509,7 +509,7 @@ This section defines exactly what conformance tests MAY assert. All other implem
 
 Tests MAY assert the existence and signatures of:
 
-* `makeDependencyGraph(rootDatabase: RootDatabase, nodeDefs: NodeDef[]): DependencyGraph` — Factory function
+* `makeDependencyGraph(rootDatabase: RootDatabase, nodeDefs: Array<NodeDef>): DependencyGraph` — Factory function
 * `DependencyGraph.pull(nodeName: NodeName, bindings?: BindingEnvironment): Promise<DatabaseValue>` — Retrieve/compute node value
 * `DependencyGraph.set(nodeName: NodeName, value: DatabaseValue, bindings?: BindingEnvironment): Promise<void>` — Write source node value
 * `isDependencyGraph(value): boolean` — Type guard
