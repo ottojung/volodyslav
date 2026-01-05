@@ -11,9 +11,8 @@
 /**
  * Serializable value type for bindings in dependency graph.
  * A ConstValue can be a number, string, null, an array of ConstValues, or a record of ConstValues.
- * Due to JSDoc limitations with recursive types, this is defined as 'unknown' but should be treated as:
- * number | string | null | Array<ConstValue> | Record<string, ConstValue>
- * @typedef {unknown} ConstValue
+ * Due to JSDoc limitations with recursive types, the recursive reference is marked as 'unknown'.
+ * @typedef {number|string|null|Array<unknown>|Record<string, unknown>} ConstValue
  */
 
 /**
