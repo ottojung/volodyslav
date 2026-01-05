@@ -8,7 +8,7 @@ const os = require("os");
 const { getRootDatabase } = require("../src/generators/database");
 const {
     makeDependencyGraph,
-    isSchemaPatternNotAllowed,
+    isArityMismatch,
     isInvalidNode,
 } = require("../src/generators/dependency_graph");
 const { getMockedRootCapabilities } = require("./spies");
@@ -58,7 +58,7 @@ describe("Parameterized node schemas", () => {
                 error = err;
             }
             expect(error).not.toBeNull();
-            expect(isSchemaPatternNotAllowed(error)).toBe(true);
+            expect(isArityMismatch(error)).toBe(true);
 
             // Try to set schema pattern directly
             await expect(
@@ -72,7 +72,7 @@ describe("Parameterized node schemas", () => {
                 error = err;
             }
             expect(error).not.toBeNull();
-            expect(isSchemaPatternNotAllowed(error)).toBe(true);
+            expect(isArityMismatch(error)).toBe(true);
 
             await db.close();
         });

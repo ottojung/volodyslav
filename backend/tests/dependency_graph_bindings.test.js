@@ -505,7 +505,7 @@ describe("Bound variables in computors", () => {
 
             // Pull without required binding
             await expect(graph.pull("derived(x)")).rejects.toThrow(
-                /Cannot operate directly on /
+                /Arity mismatch: pattern 'derived\(x\)' expects 1 arguments but received 0 bindings/
             );
 
             await db.close();
@@ -528,9 +528,8 @@ describe("Bound variables in computors", () => {
             const graph = makeDependencyGraph(db, schemas);
 
             // Pull with wrong number of bindings (arity mismatch)
-            // This will be caught as a pattern error since the arity doesn't match
             await expect(graph.pull("derived(x)", [1, 2])).rejects.toThrow(
-                /Cannot operate directly on schema pattern/
+                /Arity mismatch: pattern 'derived\(x\)' expects 1 arguments but received 2 bindings/
             );
 
             await db.close();

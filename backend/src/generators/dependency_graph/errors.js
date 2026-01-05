@@ -101,6 +101,46 @@ function isSchemaPatternNotAllowed(object) {
 }
 
 /**
+ * Error for arity mismatch in bindings.
+ */
+class ArityMismatch extends Error {
+    /**
+     * @param {string} pattern
+     * @param {number} expected
+     * @param {number} received
+     */
+    constructor(pattern, expected, received) {
+        super(
+            `Arity mismatch: pattern '${pattern}' expects ${expected} arguments but received ${received} bindings`
+        );
+        this.name = "ArityMismatchError";
+        this.pattern = pattern;
+        this.expected = expected;
+        this.received = received;
+    }
+}
+
+/**
+ * Constructs an ArityMismatch error.
+ * @param {string} pattern
+ * @param {number} expected
+ * @param {number} received
+ * @returns {ArityMismatch}
+ */
+function makeArityMismatchError(pattern, expected, received) {
+    return new ArityMismatch(pattern, expected, received);
+}
+
+/**
+ * Type guard for ArityMismatch.
+ * @param {unknown} object
+ * @returns {object is ArityMismatch}
+ */
+function isArityMismatch(object) {
+    return object instanceof ArityMismatch;
+}
+
+/**
  * Error for invalid expression syntax (parse failures).
  */
 class InvalidExpression extends Error {
@@ -316,6 +356,8 @@ module.exports = {
     isInvalidSchema,
     makeSchemaPatternNotAllowedError,
     isSchemaPatternNotAllowed,
+    makeArityMismatchError,
+    isArityMismatch,
     makeInvalidExpressionError,
     isInvalidExpression,
     makeInvalidSetError,

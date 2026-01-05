@@ -14,6 +14,8 @@
  * - No mixing of expression syntax with embedded JSON
  */
 
+const { makeArityMismatchError } = require("./errors");
+
 /** @typedef {import('./types').DatabaseValue} DatabaseValue */
 
 /**
@@ -62,9 +64,7 @@ function createNodeKeyFromPattern(pattern, bindings) {
     // For call expressions, use positional bindings
     // The arity must match the bindings array length
     if (expr.args.length !== bindings.length) {
-        throw new Error(
-            `Arity mismatch: pattern '${pattern}' has ${expr.args.length} arguments but received ${bindings.length} bindings`
-        );
+        throw makeArityMismatchError(pattern, expr.args.length, bindings.length);
     }
     
     // Simply use the bindings array as args (variable names are ignored)

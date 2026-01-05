@@ -179,17 +179,8 @@ class DependencyGraphClass {
         const canonicalKey = canonicalize(key);
         
         // Try to convert to JSON format key
-        let concreteKey;
-        try {
-            const nodeKey = createNodeKeyFromPattern(canonicalKey, bindings);
-            concreteKey = serializeNodeKey(nodeKey);
-        } catch (err) {
-            // If creating the key fails due to arity mismatch, throw SchemaPatternNotAllowed
-            if (err instanceof Error && err.message.includes('Arity mismatch')) {
-                throw makeSchemaPatternNotAllowedError(canonicalKey);
-            }
-            throw err;
-        }
+        const nodeKey = createNodeKeyFromPattern(canonicalKey, bindings);
+        const concreteKey = serializeNodeKey(nodeKey);
 
         // Ensure node exists (will create from pattern if needed)
         const nodeDefinition = this.getOrCreateConcreteNode(concreteKey, canonicalKey, bindings);
@@ -699,16 +690,8 @@ class DependencyGraphClass {
                 canonicalName = canonicalize(nodeName);
 
                 // Try to create concrete key using JSON-based format
-                try {
-                    const nodeKey = createNodeKeyFromPattern(canonicalName, bindings);
-                    concreteKey = serializeNodeKey(nodeKey);
-                } catch (err) {
-                    // If creating the key fails due to arity mismatch, throw SchemaPatternNotAllowed
-                    if (err instanceof Error && err.message.includes('Arity mismatch')) {
-                        throw makeSchemaPatternNotAllowedError(canonicalName);
-                    }
-                    throw err;
-                }
+                const nodeKey = createNodeKeyFromPattern(canonicalName, bindings);
+                concreteKey = serializeNodeKey(nodeKey);
             }
 
             // Find or create the node definition

@@ -467,7 +467,7 @@ describe("pull/set concrete-ness & node existence errors", () => {
 
         await expect(g.pull("event_context(e)")).rejects.toMatchObject({
             name: expect.stringMatching(
-                /^(NonConcreteNodeError|SchemaPatternNotAllowed)$/
+                /^(NonConcreteNodeError|SchemaPatternNotAllowed|ArityMismatchError)$/
             ),
         });
     });
@@ -485,7 +485,7 @@ describe("pull/set concrete-ness & node existence errors", () => {
         await expect(g.set("event_context(e)", { x: 1 })).rejects.toMatchObject(
             {
                 name: expect.stringMatching(
-                    /^(NonConcreteNodeError|SchemaPatternNotAllowed)$/
+                    /^(NonConcreteNodeError|SchemaPatternNotAllowed|ArityMismatchError)$/
                 ),
             }
         );
