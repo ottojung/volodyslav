@@ -8,14 +8,16 @@ This document provides a formal specification for the dependency graph's operati
 
 ### 1.1 Types
 
-* **NodeName** — unique identifier for a concrete node (fully instantiated expression)
+* **NodePattern** — an expression string that may contain variables, e.g., `"full_event(e)"` or `"all_events"`. Used in API calls and schema definitions to denote families of nodes.
+* **BindingEnvironment** — a positional array of concrete values: `DatabaseValue[]`. Used to instantiate a specific node from a pattern. The array length MUST match the number of variables (arity) of the pattern. Bindings are matched to variables by position, not by name.
+* **NodeInstance** — a specific node identified by a `NodePattern` and `BindingEnvironment`. Conceptually: `{ pattern: NodePattern, bindings: BindingEnvironment }`. Notation: `pattern@bindings`.
+* **NodeKey** — stable string key used for storage, derived from the canonical pattern and bindings. This is the actual database key. Format: JSON serialization of `{ head: string, args: DatabaseValue[] }`.
 * **NodeValue** — computed value at a node (arbitrary `DatabaseValue`)
 * **Freshness** — conceptual state: `"up-to-date" | "potentially-outdated"`
 * **Computor** — deterministic async function: `(inputs: DatabaseValue[], oldValue: DatabaseValue | undefined, bindings: DatabaseValue[]) => Promise<DatabaseValue | Unchanged>`
 * **Unchanged** — unique sentinel value indicating unchanged computation result. MUST NOT be a valid `DatabaseValue` (cannot be stored via `set()` or returned by `pull()`).
 * **Variable** — parameter placeholder in node schemas (identifiers in argument positions)
 * **DatabaseValue** — a JSON serializable JavaScript value. MUST round-trip through database interfaces without semantic change.
-* **BindingEnvironment** — a positional array of concrete values: `DatabaseValue[]`. Used to instantiate a specific node from an expression pattern. The array length MUST match the number of variables (arity) of the expression. Bindings are matched to variables by position, not by name.
 
 ### 1.2 Expressions as an Infinite Graph (Normative)
 
@@ -82,8 +84,8 @@ The schema implicitly defines infinitely many dependency edges—one set for eac
 
 The public API requires both the pattern and bindings to address a specific node:
 
-* `pull(nodeName, bindings)` — Evaluates the node instance identified by pattern `nodeName` and binding environment `bindings`
-* `set(nodeName, value, bindings)` — Stores `value` at the node instance identified by `nodeName` and `bindings`
+* `pull(pattern, bindings)` — Evaluates the node instance identified by `NodePattern` and `BindingEnvironment`
+* `set(pattern, value, bindings)` — Stores `value` at the node instance identified by `NodePattern` and `BindingEnvironment`
 
 **For atom expressions** (expressions with no arguments like `all_events`):
 * The binding environment is empty: `[]`
@@ -150,14 +152,35 @@ ws            := [ \t\n\r]*
 
 **REQ-CANON-03:** Pattern Matching:
 * The canonical form is used for pattern matching and schema indexing
-* Original expression strings (with variable names) are preserved for error messages and node key creation
+* Original expression strings (with variable names) are preserved for error messages and NodeKey creation
 * When creating concrete node instances, the original expression is parsed to extract arity
 
-**REQ-CANON-03:** All node names used as database keys MUST use canonical serialization combined with binding information.
+**REQ-CANON-04:** All storage operations MUST use NodeKey (not NodePattern) as database keys. A NodeKey is derived from: (1) parsing the pattern to extract head and arity, and (2) combining with the BindingEnvironment to produce a stable JSON key.
 
-**REQ-CANON-04:** `pull(nodeName, bindings)` and `set(nodeName, value, bindings)` MUST accept any valid expression string and canonicalize it before processing. Canonicalization MUST NOT affect binding interpretation—bindings are always positional regardless of variable names in the expression.
+**REQ-CANON-05:** `pull(pattern, bindings)` and `set(pattern, value, bindings)` MUST accept any valid NodePattern string. The pattern is canonicalized for schema matching, but the original pattern is used (along with bindings) to create the NodeKey for storage. Canonicalization MUST NOT affect binding interpretation—bindings are always positional regardless of variable names in the expression.
 
-### 1.5 Schema Definition (Normative)
+### 1.5 NodeKey Format (Normative)
+
+**REQ-KEY-01:** A NodeKey is a stable, JSON-serialized string that uniquely identifies a NodeInstance in storage. Format:
+
+```json
+{"head": "function_name", "args": [binding0, binding1, ...]}
+```
+
+**REQ-KEY-02:** NodeKey creation from (NodePattern, BindingEnvironment):
+1. Parse the NodePattern to extract the head (function name) and arity
+2. Verify that `bindings.length === arity` (throw ArityMismatchError otherwise)
+3. Construct the key object: `{ head: string, args: bindings }`
+4. Serialize to JSON string using `JSON.stringify()`
+
+**Examples:**
+* Pattern: `"all_events"`, Bindings: `[]` → NodeKey: `'{"head":"all_events","args":[]}'`
+* Pattern: `"event_context(e)"`, Bindings: `[{id: "123"}]` → NodeKey: `'{"head":"event_context","args":[{"id":"123"}]}'`
+* Pattern: `"event_context(x)"`, Bindings: `[{id: "123"}]` → **Same** NodeKey (variable names don't matter)
+
+**REQ-KEY-03:** All database operations (storing values, freshness, dependencies) MUST use NodeKey as the storage key, NOT the NodePattern or canonical form.
+
+### 1.6 Schema Definition (Normative)
 
 **REQ-SCHEMA-01:** A dependency graph is defined by a set of node schemas:
 
@@ -175,7 +198,7 @@ type NodeDef = {
 
 **REQ-SCHEMA-04:** All variable names within an expression MUST be unique. Expressions with duplicate variable names (e.g., `event(a, b, c, b, d)` where `b` appears twice) MUST be rejected with an `InvalidSchemaError`. This requirement applies to both `output` and `inputs` expressions in node definitions.
 
-### 1.6 Variable Name Mapping and Positional Bindings (Normative)
+### 1.7 Variable Name Mapping and Positional Bindings (Normative)
 
 **Key Principle:** Bindings are always positional arrays, but variable names in input patterns are mapped to output pattern variables by name to determine the correct positional slice.
 
@@ -227,7 +250,7 @@ await graph.pull("full_event(my_event)", [{id: "123"}]);
 2. Each input pattern `input_i` is instantiated by extracting the relevant positional bindings based on variable name mapping
 3. The computor receives the values of all instantiated input nodes in the order they appear in the `inputs` array
 
-### 1.7 Pattern Matching (Normative)
+### 1.8 Pattern Matching (Normative)
 
 **REQ-MATCH-01:** A schema output pattern `P` **matches** an expression `E` if and only if:
 1. `P` and `E` have the same functor (head identifier), AND
@@ -239,7 +262,7 @@ await graph.pull("full_event(my_event)", [{id: "123"}]);
 
 **Note on Matching:** Pattern matching is purely structural and does not consider variable names or binding values. The pattern `full_event(e)` matches any expression of the form `full_event(x)` regardless of the variable name used. Since bindings are positional, variable names have no semantic significance—they serve only as documentation.
 
-### 1.8 Cycle Detection (Normative)
+### 1.9 Cycle Detection (Normative)
 
 **REQ-CYCLE-01:** A directed edge exists from Schema S to Schema T if:
 1. S has input pattern I
@@ -248,46 +271,47 @@ await graph.pull("full_event(my_event)", [{id: "123"}]);
 
 **REQ-CYCLE-02:** The system MUST reject graphs with cycles at initialization (throw `SchemaCycleError`).
 
-### 1.9 Materialization (Normative)
+### 1.10 Materialization (Normative)
 
-**REQ-MAT-01:** A **materialized node** is any node instance for which the implementation maintains dependency tracking and freshness state.
+**REQ-MAT-01:** A **materialized node** is any NodeInstance (identified by NodeKey) for which the implementation maintains dependency tracking and freshness state.
 
 **REQ-MAT-02:** Materialization occurs through:
-* `pull(nodeName, bindings)` — creates node instance with dependencies, stores value, marks `up-to-date`
-* `set(nodeName, value, bindings)` — materializes source node instance, marks `up-to-date`
+* `pull(pattern, bindings)` — creates NodeInstance with dependencies, stores value at NodeKey, marks `up-to-date`
+* `set(pattern, value, bindings)` — materializes source NodeInstance at NodeKey, marks `up-to-date`
 
 ---
 
 ## 2. Operational Semantics (Normative)
 
-### 2.1 pull(nodeName, bindings) → NodeValue
+### 2.1 pull(pattern, bindings) → NodeValue
 
-**Signature:** `pull(nodeName: string, bindings?: DatabaseValue[]): Promise<DatabaseValue>`
+**Signature:** `pull(pattern: NodePattern, bindings?: BindingEnvironment): Promise<DatabaseValue>`
 
 **Preconditions:**
-* `nodeName` MUST be a valid expression pattern
-* `bindings` array length MUST match the arity (number of arguments) of `nodeName`
+* `pattern` MUST be a valid expression pattern (NodePattern)
+* `bindings` array length MUST match the arity (number of arguments) of `pattern`
 * A matching schema pattern MUST exist
 
 **Big-Step Semantics (Correctness Specification):**
 
 ```
-pull(N, B):
-  pattern = canonicalize(N)
-  inputs_values = [pull(I, B) for I in inputs_of(pattern)]
-  old_value = stored_value(pattern@B)
-  new_value = computor_of(pattern)(inputs_values, old_value, B)
+pull(P, B):
+  canonical = canonicalize(P)
+  nodeKey = createNodeKey(P, B)  // Stable storage key
+  inputs_values = [pull(I, B) for I in inputs_of(canonical)]
+  old_value = stored_value(nodeKey)
+  new_value = computor_of(canonical)(inputs_values, old_value, B)
   if new_value ≠ Unchanged:
-    store(pattern@B, new_value)
-  mark_up_to_date(pattern@B)
-  return stored_value(pattern@B)
+    store(nodeKey, new_value)
+  mark_up_to_date(nodeKey)
+  return stored_value(nodeKey)
 ```
 
 **REQ-PULL-01:** `pull` MUST return a `Promise<DatabaseValue>`.
 
-**REQ-PULL-02:** `pull` MUST throw `InvalidNodeError` if no schema pattern matches `nodeName`.
+**REQ-PULL-02:** `pull` MUST throw `InvalidNodeError` if no schema pattern matches the canonical form of `pattern`.
 
-**REQ-PULL-03:** `pull` MUST throw `BindingArityMismatchError` if `bindings` array length does not match the arity of `nodeName`.
+**REQ-PULL-03:** `pull` MUST throw `ArityMismatchError` if `bindings` array length does not match the arity of `pattern`.
 
 **REQ-PULL-04:** `pull` MUST ensure each computor is invoked at most once per top-level call for each unique node instance (property P3).
 
@@ -303,26 +327,26 @@ pull(N, B):
 
 Implementations MAY use any strategy to achieve property P3 (e.g., memoization, freshness checks, in-flight tracking). The specific mechanism is not prescribed.
 
-### 2.2 set(nodeName, value, bindings)
+### 2.2 set(pattern, value, bindings)
 
-**Signature:** `set(nodeName: string, value: DatabaseValue, bindings?: DatabaseValue[]): Promise<void>`
+**Signature:** `set(pattern: NodePattern, value: DatabaseValue, bindings?: BindingEnvironment): Promise<void>`
 
 **Preconditions:**
-* `nodeName` MUST be a valid expression pattern
-* `bindings` array length MUST match the arity (number of arguments) of `nodeName`
-* `nodeName` MUST match a schema (throw `InvalidNodeError` otherwise)
-* `nodeName` MUST match a source node schema (throw `InvalidSetError` if not)
+* `pattern` MUST be a valid expression pattern (NodePattern)
+* `bindings` array length MUST match the arity (number of arguments) of `pattern`
+* `pattern` MUST match a schema (throw `InvalidNodeError` otherwise)
+* `pattern` MUST match a source node schema (throw `InvalidSetError` if not)
 
 **Effects:**
-1. Store `value` at the node instance identified by `nodeName@bindings`
+1. Store `value` at the node instance (NodeKey) derived from `pattern@bindings`
 2. Mark that node instance as `up-to-date`
 3. Mark all **materialized** transitive dependents as `potentially-outdated`
 
 **REQ-SET-01:** `set` MUST return a `Promise<void>`.
 
-**REQ-SET-02:** `set` MUST throw `InvalidNodeError` if no schema pattern matches `nodeName`.
+**REQ-SET-02:** `set` MUST throw `InvalidNodeError` if no schema pattern matches the canonical form of `pattern`.
 
-**REQ-SET-03:** `set` MUST throw `BindingArityMismatchError` if `bindings` array length does not match the arity of `nodeName`.
+**REQ-SET-03:** `set` MUST throw `ArityMismatchError` if `bindings` array length does not match the arity of `pattern`.
 
 **REQ-SET-04:** `set` MUST throw `InvalidSetError` if the matching schema is not a source node (has non-empty `inputs`).
 
@@ -361,8 +385,8 @@ function makeDependencyGraph(
 
 ```typescript
 interface DependencyGraph {
-  pull(nodeName: string, bindings?: DatabaseValue[]): Promise<DatabaseValue>;
-  set(nodeName: string, value: DatabaseValue, bindings?: DatabaseValue[]): Promise<void>;
+  pull(pattern: NodePattern, bindings?: BindingEnvironment): Promise<DatabaseValue>;
+  set(pattern: NodePattern, value: DatabaseValue, bindings?: BindingEnvironment): Promise<void>;
   getStorage(): SchemaStorage;
 }
 ```
@@ -407,11 +431,11 @@ interface SchemaStorage {
 type InputsRecord = { inputs: string[] };
 ```
 
-**REQ-STORAGE-01:** `values` MUST store node values keyed by canonical node name.
+**REQ-STORAGE-01:** `values` MUST store node values keyed by NodeKey (stable string derived from pattern and bindings).
 
-**REQ-STORAGE-02:** `freshness` MUST store conceptual freshness (`"up-to-date" | "potentially-outdated"`) keyed by canonical node name.
+**REQ-STORAGE-02:** `freshness` MUST store conceptual freshness (`"up-to-date" | "potentially-outdated"`) keyed by NodeKey.
 
-**REQ-STORAGE-03:** `inputs` MUST store dependency arrays keyed by canonical node name.
+**REQ-STORAGE-03:** `inputs` MUST store dependency arrays keyed by NodeKey.
 
 **REQ-STORAGE-04:** `revdeps` MUST support querying dependents of a node (specific key format is implementation-defined).
 
@@ -458,13 +482,13 @@ All errors MUST provide stable `.name` property and required fields:
 | Error Name | Required Fields | Thrown When |
 |------------|----------------|-------------|
 | `InvalidExpressionError` | `expression: string` | Invalid expression syntax |
-| `InvalidNodeError` | `nodeName: string` | No schema matches the node pattern |
-| `InvalidSetError` | `nodeName: string` | Node is not a source node |
+| `InvalidNodeError` | `pattern: NodePattern` | No schema matches the node pattern |
+| `InvalidSetError` | `pattern: NodePattern` | Node is not a source node |
 | `SchemaOverlapError` | `patterns: string[]` | Overlapping output patterns at init |
 | `InvalidSchemaError` | `schemaOutput: string` | Schema definition problems at init |
 | `SchemaCycleError` | `cycle: string[]` | Cyclic schema dependencies at init |
-| `MissingValueError` | `nodeName: string` | Up-to-date node has no stored value |
-| `BindingArityMismatchError` | `nodeName: string, expectedArity: number, actualArity: number` | Bindings array length does not match expression arity |
+| `MissingValueError` | `nodeKey: NodeKey` | Up-to-date node has no stored value |
+| `ArityMismatchError` | `pattern: NodePattern, expectedArity: number, actualArity: number` | Bindings array length does not match expression arity |
 
 **REQ-ERR-01:** All error types MUST provide type guard functions (e.g., `isInvalidExpressionError(value): boolean`).
 
@@ -515,8 +539,8 @@ This section defines exactly what conformance tests MAY assert. All other implem
 Tests MAY assert the existence and signatures of:
 
 * `makeDependencyGraph(rootDatabase: RootDatabase, nodeDefs: NodeDef[]): DependencyGraph` — Factory function
-* `DependencyGraph.pull(nodeName: string, bindings?: DatabaseValue[]): Promise<DatabaseValue>` — Retrieve/compute node value
-* `DependencyGraph.set(nodeName: string, value: DatabaseValue, bindings?: DatabaseValue[]): Promise<void>` — Write source node value
+* `DependencyGraph.pull(pattern: NodePattern, bindings?: BindingEnvironment): Promise<DatabaseValue>` — Retrieve/compute node value
+* `DependencyGraph.set(pattern: NodePattern, value: DatabaseValue, bindings?: BindingEnvironment): Promise<void>` — Write source node value
 * `DependencyGraph.getStorage(): SchemaStorage` — Access schema storage for testing
 * `isDependencyGraph(value): boolean` — Type guard
 
@@ -747,7 +771,7 @@ For testing and debugging, implementations MAY provide:
 
 ```typescript
 interface DependencyGraphDebug {
-  debugGetFreshness(nodeName: string): Promise<"up-to-date" | "potentially-outdated" | "missing">;
+  debugGetFreshness(pattern: NodePattern, bindings?: BindingEnvironment): Promise<"up-to-date" | "potentially-outdated" | "missing">;
   debugListMaterializedNodes(): Promise<string[]>;
 }
 ```
