@@ -305,15 +305,12 @@ await graph.pull("full_event", [{id: "123"}]);
 
 ```
 pull(nodeName, B):
-  schema = lookup_schema_by_nodeName(nodeName)  // O(1) lookup
-  if schema is null: throw InvalidNodeError
-  if schema.arity ≠ B.length: throw ArityMismatchError
-  nodeKey = createNodeKey(nodeName, B)  // {"head": nodeName, "args": B}
+  schema = lookup_schema_by_nodeName(nodeName)
+  nodeKey = createNodeKey(nodeName, B)
   inputs_values = [pull(I_nodeName, I_bindings) for I in inputs_of(schema)]
   old_value = stored_value(nodeKey)
   new_value = computor_of(schema)(inputs_values, old_value, B)
-  if new_value ≠ Unchanged:
-    store(nodeKey, new_value)
+  store(nodeKey, new_value)
   mark_up_to_date(nodeKey)
   return stored_value(nodeKey)
 ```
