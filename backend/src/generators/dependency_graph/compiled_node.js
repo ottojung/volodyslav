@@ -76,6 +76,31 @@ function findRepeatedVarPositions(outputExpr) {
 }
 
 /**
+ * Validates that an expression has no duplicate variable names.
+ * @param {ParsedExpr} expr
+ * @param {string} exprStr - For error messages
+ */
+function validateNoDuplicateVariables(expr, exprStr) {
+    if (expr.kind !== "call") {
+        return; // Atoms have no variables
+    }
+    
+    const seen = new Set();
+    for (const arg of expr.args) {
+        if (arg.kind === "identifier") {
+            const varName = arg.value;
+            if (seen.has(varName)) {
+                throw makeInvalidSchemaError(
+                    `Duplicate variable '${varName}' in expression`,
+                    exprStr
+                );
+            }
+            seen.add(varName);
+        }
+    }
+}
+
+/**
  * Validates that all variables used in inputs appear in the output.
  * This is the variable coverage rule.
  * @param {ParsedExpr} outputExpr
@@ -227,9 +252,21 @@ function compileNodeDef(nodeDef) {
     const outputExpr = parseExpr(nodeDef.output);
     const canonicalOutput = renderExpr(outputExpr);
     
+    // Validate no duplicate variables in output
+    validateNoDuplicateVariables(outputExpr, nodeDef.output);
+    
     // Parse inputs
     const inputExprs = nodeDef.inputs.map(parseExpr);
     const canonicalInputs = inputExprs.map(renderExpr);
+    
+    // Validate no duplicate variables in any input
+    for (let i = 0; i < nodeDef.inputs.length; i++) {
+        const inputExpr = inputExprs[i];
+        const inputStr = nodeDef.inputs[i];
+        if (inputExpr && inputStr) {
+            validateNoDuplicateVariables(inputExpr, inputStr);
+        }
+    }
     
     // Extract head and arity from output
     const head = outputExpr.name;

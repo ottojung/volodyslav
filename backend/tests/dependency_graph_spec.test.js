@@ -285,6 +285,44 @@ describe("Schema validation (construction-time errors)", () => {
         }
     });
 
+    test("throws InvalidSchemaError for duplicate variable names in output", () => {
+        const db = new InMemoryDatabase();
+        let error;
+        try {
+            makeDependencyGraph(db, [
+                {
+                    output: "event(a, b, c, b, d)",
+                    inputs: [],
+                    computor: async () => ({ ok: true }),
+                },
+            ]);
+        } catch (e) {
+            error = e;
+        }
+        expect(error).toBeTruthy();
+        expectOneOfNames(error, ["InvalidSchema"]);
+        expect(error.message).toMatch(/Duplicate variable 'b'/);
+    });
+
+    test("throws InvalidSchemaError for duplicate variable names in input", () => {
+        const db = new InMemoryDatabase();
+        let error;
+        try {
+            makeDependencyGraph(db, [
+                {
+                    output: "derived(x, y)",
+                    inputs: ["source(x, z, x)"],
+                    computor: async () => ({ ok: true }),
+                },
+            ]);
+        } catch (e) {
+            error = e;
+        }
+        expect(error).toBeTruthy();
+        expectOneOfNames(error, ["InvalidSchema"]);
+        expect(error.message).toMatch(/Duplicate variable 'x'/);
+    });
+
     test("throws InvalidSchemaError when output variables do not cover input variables", () => {
         const db = new InMemoryDatabase();
         expect(() =>

@@ -56,17 +56,15 @@ describe("compiled_node", () => {
             expect(compiled.isPattern).toBe(false);
         });
 
-        test("detects repeated variables", () => {
+        test("rejects repeated variables", () => {
             const nodeDef = {
                 output: "pair(x, x)",
                 inputs: [],
                 computor: () => ({}),
             };
 
-            const compiled = compileNodeDef(nodeDef);
-
-            expect(compiled.repeatedVarPositions).toEqual(
-                new Map([["x", [0, 1]]])
+            expect(() => compileNodeDef(nodeDef)).toThrow(
+                /Duplicate variable 'x'/
             );
         });
 

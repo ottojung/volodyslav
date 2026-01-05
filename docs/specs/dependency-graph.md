@@ -173,6 +173,8 @@ type NodeDef = {
 
 **REQ-SCHEMA-03:** A **source node** is any node instance matching a schema where `inputs = []`. Source nodes have no dependencies and their values are set explicitly via `set()`.
 
+**REQ-SCHEMA-04:** All variable names within an expression MUST be unique. Expressions with duplicate variable names (e.g., `event(a, b, c, b, d)` where `b` appears twice) MUST be rejected with an `InvalidSchemaError`. This requirement applies to both `output` and `inputs` expressions in node definitions.
+
 ### 1.6 Variable Name Mapping and Positional Bindings (Normative)
 
 **Key Principle:** Bindings are always positional arrays, but variable names in input patterns are mapped to output pattern variables by name to determine the correct positional slice.
