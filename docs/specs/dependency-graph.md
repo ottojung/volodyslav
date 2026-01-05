@@ -192,8 +192,6 @@ type NodeDef = {
 * `pull(nodeName, bindings)` — creates node instance with dependencies, stores value, marks `up-to-date`
 * `set(nodeName, value, bindings)` — materializes source node instance, marks `up-to-date`
 
-**REQ-MAT-03:** Unmaterialized node instances have no freshness state (`undefined` in `SchemaStorage.freshness`).
-
 ---
 
 ## 2. Operational Semantics (Normative)
@@ -468,15 +466,7 @@ Tests MAY assert:
 
 ### 5.4 Freshness Observability
 
-**REQ-FRESH-01:** Implementations MUST expose the conceptual freshness state via `SchemaStorage.freshness`:
-
-* `"up-to-date"` — Node value is consistent with dependencies
-* `"potentially-outdated"` — Node may need recomputation
-* `undefined` — Node is not materialized
-
-Tests MAY assert freshness state via `schemaStorage.freshness.get(canonicalNodeName)`.
-
-**REQ-FRESH-02:** Internal freshness tracking mechanisms (versions, epochs, etc.) are implementation-defined and NOT observable to tests.
+**REQ-FRESH-01:** Internal freshness tracking mechanisms (versions, epochs, etc.) are implementation-defined and NOT observable to tests.
 
 ### 5.5 Restart Resilience
 
