@@ -10,7 +10,7 @@ This document provides a formal specification for the dependency graph's operati
 
 * **NodeHead** — an identifier string (head/functor only), e.g., `"full_event"` or `"all_events"`. Used in public API calls to identify node families. Does NOT include variable syntax.
 * **SchemaPattern** — an expression string that may contain variables, e.g., `"full_event(e)"` or `"all_events"`. Used ONLY in schema definitions to denote families of nodes and for variable mapping.
-* **ConstValue** — a serializable value type. Defined recursively as: `number | string | null | Array<ConstValue> | Record<string, ConstValue>`. Any subtype of `Serializable` is valid.
+* **ConstValue** — a serializable value type. Defined recursively as: `number | string | null | Array<ConstValue> | Record<string, ConstValue>`.
 * **BindingEnvironment** — a positional array of concrete values: `ConstValue[]`. Used to instantiate a specific node from a family. The array length MUST match the arity of the node. Bindings are matched to argument positions by position, not by name.
 * **NodeInstance** — a specific node identified by a `NodeHead` and `BindingEnvironment`. Conceptually: `{ head: NodeHead, bindings: BindingEnvironment }`. Notation: `head@bindings`.
 * **NodeKey** — stable string key used for storage, derived from the head and bindings. This is the actual database key. Format: JSON serialization of `{ head: string, args: ConstValue[] }`.
