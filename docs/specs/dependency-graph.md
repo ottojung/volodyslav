@@ -14,7 +14,7 @@ This document provides a formal specification for the dependency graph's operati
 * **ConstValue** - A subtype of `Serializable`.
 * **BindingEnvironment** — a positional array of concrete values: `Array<ConstValue>`. Used to instantiate a specific node from a family. The array length MUST match the arity of the node. Bindings are matched to argument positions by position, not by name.
 * **NodeInstance** — a specific node identified by a `NodeName` and `BindingEnvironment`. Conceptually: `{ nodeName: NodeName, bindings: BindingEnvironment }`. Notation: `nodeName@bindings`.
-* **NodeKey** — stable string key used for storage, derived from the head and bindings. This is the actual database key. Format: JSON serialization of `{ head: string, args: Array<ConstValue> }`.
+* **NodeKey** — a stable string key used for storage, derived from the head and bindings. This is the actual database key.
 * **NodeValue** — computed value at a node (arbitrary `DatabaseValue`)
 * **Freshness** — conceptual state: `"up-to-date" | "potentially-outdated"`
 * **Computor** — deterministic async function: `(inputs: Array<DatabaseValue>, oldValue: DatabaseValue | undefined, bindings: Array<ConstValue>) => Promise<DatabaseValue | Unchanged>`
@@ -150,28 +150,13 @@ ws            := [ \t\n\r]*
 * Original expression strings (with variable names) are preserved for error messages
 * Schema patterns are canonicalized at initialization for O(1) lookup by functor and arity
 
-**REQ-CANON-04:** All storage operations MUST use NodeKey (JSON format) as database keys. A NodeKey is derived from: (1) the nodeName (functor), and (2) the BindingEnvironment to produce a stable JSON key.
+**REQ-CANON-04:** All storage operations MUST use NodeKey as database keys. A NodeKey is derived from: (1) the nodeName (functor), and (2) the BindingEnvironment to produce a stable key.
 
 ### 1.5 NodeKey Format (Normative)
 
-**REQ-KEY-01:** A NodeKey is a stable, JSON-serialized string that uniquely identifies a NodeInstance in storage. Format:
+**REQ-KEY-01:** A NodeKey is a stable, deserializable string that uniquely identifies a `NodeInstance` in storage.
 
-```json
-{"head": "function_name", "args": [binding0, binding1, ...]}
-```
-
-**REQ-KEY-02:** NodeKey creation from (NodeName, BindingEnvironment):
-1. Use the nodeName as the head (functor identifier)
-2. Verify that `bindings.length` matches the expected arity from the schema (throw `ArityMismatchError` otherwise)
-3. Construct the key object: `{ head: nodeName, args: bindings }`
-4. Serialize to JSON string using `JSON.stringify()`
-
-**Examples:**
-* NodeName: `"all_events"`, Bindings: `[]` → NodeKey: `'{"head":"all_events","args":[]}'`
-* NodeName: `"event_context"`, Bindings: `[{id: "123"}]` → NodeKey: `'{"head":"event_context","args":[{"id":"123"}]}'`
-* Different bindings create different keys: `event_context` with `[{id: "123"}]` vs `[{id: "456"}]`
-
-**REQ-KEY-03:** All database operations (storing values, freshness, dependencies) MUST use NodeKey as the storage key (JSON serialized format).
+**REQ-KEY-02:** All database operations (storing values, freshness, dependencies) MUST use NodeKey as the storage key.
 
 ### 1.6 Schema Definition (Normative)
 
@@ -674,7 +659,7 @@ interface DependencyGraphDebug {
 
 **Notes:**
 - `"missing"` represents `undefined` freshness (unmaterialized node)
-- `debugListMaterializedNodes()` returns NodeKey strings (JSON format)
+- `debugListMaterializedNodes()` returns NodeKey strings
 - `debugGetSchemaHash()` returns the schema identifier used for storage namespacing
 - Tests MAY use these methods to inspect internal state and validate behavior
 
