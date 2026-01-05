@@ -51,7 +51,7 @@ describe("Bound variables in computors", () => {
                     inputs: ["source"],
                     computor: (inputs, oldValue, bindings) => {
                         // Computor should receive bindings with x
-                        return { value: inputs[0].value, x: bindings.x };
+                        return { value: inputs[0].value, x: bindings[0] };
                     },
                 },
             ];
@@ -62,7 +62,7 @@ describe("Bound variables in computors", () => {
             await graph.set("source", { value: 42 });
 
             // Pull with bindings
-            const result = await graph.pull("derived(x)", { x: "test" });
+            const result = await graph.pull("derived(x)", ["test"]);
 
             expect(result).toEqual({ value: 42, x: "test" });
 
@@ -85,8 +85,8 @@ describe("Bound variables in computors", () => {
                     output: "derived(x)",
                     inputs: ["source"],
                     computor: (inputs, oldValue, bindings) => {
-                        computorCallLog.push({ x: bindings.x });
-                        return { value: inputs[0].value, x: bindings.x };
+                        computorCallLog.push({ x: bindings[0] });
+                        return { value: inputs[0].value, x: bindings[0] };
                     },
                 },
             ];
@@ -95,8 +95,8 @@ describe("Bound variables in computors", () => {
             await graph.set("source", { value: 1 });
 
             // Pull with different bindings - should compute each separately
-            const result1 = await graph.pull("derived(x)", { x: "first" });
-            const result2 = await graph.pull("derived(x)", { x: "second" });
+            const result1 = await graph.pull("derived(x)", ["first"]);
+            const result2 = await graph.pull("derived(x)", ["second"]);
 
             expect(result1).toEqual({ value: 1, x: "first" });
             expect(result2).toEqual({ value: 1, x: "second" });
@@ -125,8 +125,8 @@ describe("Bound variables in computors", () => {
                     output: "derived(x)",
                     inputs: ["source"],
                     computor: (inputs, oldValue, bindings) => {
-                        computorCallLog.push({ x: bindings.x });
-                        return { value: inputs[0].value, x: bindings.x };
+                        computorCallLog.push({ x: bindings[0] });
+                        return { value: inputs[0].value, x: bindings[0] };
                     },
                 },
             ];
@@ -135,8 +135,8 @@ describe("Bound variables in computors", () => {
             await graph.set("source", { value: 1 });
 
             // Pull same bindings twice
-            const result1 = await graph.pull("derived(x)", { x: "test" });
-            const result2 = await graph.pull("derived(x)", { x: "test" });
+            const result1 = await graph.pull("derived(x)", ["test"]);
+            const result2 = await graph.pull("derived(x)", ["test"]);
 
             expect(result1).toEqual({ value: 1, x: "test" });
             expect(result2).toEqual({ value: 1, x: "test" });
@@ -165,8 +165,8 @@ describe("Bound variables in computors", () => {
                     output: "derived(x)",
                     inputs: ["source"],
                     computor: (inputs, oldValue, bindings) => {
-                        computorCallLog.push({ x: bindings.x, value: inputs[0].value });
-                        return { value: inputs[0].value, x: bindings.x };
+                        computorCallLog.push({ x: bindings[0], value: inputs[0].value  });
+                        return { value: inputs[0].value, x: bindings[0] };
                     },
                 },
             ];
@@ -175,8 +175,8 @@ describe("Bound variables in computors", () => {
             await graph.set("source", { value: 1 });
 
             // Pull with two different bindings
-            await graph.pull("derived(x)", { x: "first" });
-            await graph.pull("derived(x)", { x: "second" });
+            await graph.pull("derived(x)", ["first"]);
+            await graph.pull("derived(x)", ["second"]);
 
             expect(computorCallLog).toHaveLength(2);
             computorCallLog.length = 0; // clear log
@@ -185,8 +185,8 @@ describe("Bound variables in computors", () => {
             await graph.set("source", { value: 2 });
 
             // Pull again - both should recompute
-            const result1 = await graph.pull("derived(x)", { x: "first" });
-            const result2 = await graph.pull("derived(x)", { x: "second" });
+            const result1 = await graph.pull("derived(x)", ["first"]);
+            const result2 = await graph.pull("derived(x)", ["second"]);
 
             expect(result1).toEqual({ value: 2, x: "first" });
             expect(result2).toEqual({ value: 2, x: "second" });
@@ -212,7 +212,7 @@ describe("Bound variables in computors", () => {
                     output: "derived(x)",
                     inputs: ["source"],
                     computor: (inputs, oldValue, bindings) => {
-                        return { value: inputs[0].value, x: bindings.x };
+                        return { value: inputs[0].value, x: bindings[0] };
                     },
                 },
             ];
@@ -221,8 +221,8 @@ describe("Bound variables in computors", () => {
             await graph1.set("source", { value: 1 });
 
             // Materialize instances with different bindings
-            await graph1.pull("derived(x)", { x: "first" });
-            await graph1.pull("derived(x)", { x: "second" });
+            await graph1.pull("derived(x)", ["first"]);
+            await graph1.pull("derived(x)", ["second"]);
 
             await db1.close();
 
@@ -231,8 +231,8 @@ describe("Bound variables in computors", () => {
             const graph2 = makeDependencyGraph(db2, schemas);
 
             // Pull should get cached values
-            const result1 = await graph2.pull("derived(x)", { x: "first" });
-            const result2 = await graph2.pull("derived(x)", { x: "second" });
+            const result1 = await graph2.pull("derived(x)", ["first"]);
+            const result2 = await graph2.pull("derived(x)", ["second"]);
 
             expect(result1).toEqual({ value: 1, x: "first" });
             expect(result2).toEqual({ value: 1, x: "second" });
@@ -256,14 +256,14 @@ describe("Bound variables in computors", () => {
                     output: "middle(x)",
                     inputs: ["source"],
                     computor: (inputs, oldValue, bindings) => {
-                        return { value: inputs[0].value * 2, x: bindings.x };
+                        return { value: inputs[0].value * 2, x: bindings[0] };
                     },
                 },
                 {
                     output: "final(x)",
                     inputs: ["middle(x)"],
                     computor: (inputs, oldValue, bindings) => {
-                        return { value: inputs[0].value + 1, x: bindings.x };
+                        return { value: inputs[0].value + 1, x: bindings[0] };
                     },
                 },
             ];
@@ -271,7 +271,7 @@ describe("Bound variables in computors", () => {
             const graph = makeDependencyGraph(db, schemas);
             await graph.set("source", { value: 10 });
 
-            const result = await graph.pull("final(x)", { x: "deep" });
+            const result = await graph.pull("final(x)", ["deep"]);
 
             expect(result).toEqual({ value: 21, x: "deep" });
 
@@ -299,7 +299,7 @@ describe("Bound variables in computors", () => {
                     output: `layer1_${i}(x)`,
                     inputs: ["source"],
                     computor: (inputs, oldValue, bindings) => {
-                        return { value: `l1_${i}(${inputs[0].value + i}, ${bindings.x})` };
+                        return { value: `l1_${i}(${inputs[0].value + i}, ${bindings[0]})` };
                     },
                 })),
                 // Layer 2
@@ -308,7 +308,7 @@ describe("Bound variables in computors", () => {
                     inputs: [ `layer1_1(x)`, `layer1_2(x)`, `layer1_3(x)` ],
                     computor: (inputs, oldValue, bindings) => {
                         const sum = stringJoin(inputs.map(input => input.value));
-                        return { value: `l2_${i}(${sum}, ${bindings.x})` };
+                        return { value: `l2_${i}(${sum}, ${bindings[0]})` };
                     },
                 })),
                 // Layer 3
@@ -317,7 +317,7 @@ describe("Bound variables in computors", () => {
                     inputs: [ `layer2_1(x)`, `layer2_2(x)`, `layer2_3(x)` ],
                     computor: (inputs, oldValue, bindings) => {
                         const sum = stringJoin(inputs.map(input => input.value));
-                        return { value: `l3_${i}(${sum}, ${bindings.x})` };
+                        return { value: `l3_${i}(${sum}, ${bindings[0]})` };
                     },
                 })),
             ];
@@ -326,7 +326,7 @@ describe("Bound variables in computors", () => {
             await graph.set("source", { value: 1 });
 
             // Pull one of the deepest nodes
-            const result = await graph.pull("layer3_2(x)", { x: "7" });
+            const result = await graph.pull("layer3_2(x)", ["7"]);
 
             // Manually compute expected value
             expect(result).toEqual({ value: "l3_2(l2_1(l1_1(2, 7), l1_2(3, 7), l1_3(4, 7), 7), l2_2(l1_1(2, 7), l1_2(3, 7), l1_3(4, 7), 7), l2_3(l1_1(2, 7), l1_2(3, 7), l1_3(4, 7), 7), 7)" });
@@ -344,14 +344,14 @@ describe("Bound variables in computors", () => {
                     output: "g(x)",
                     inputs: [],
                     computor: (inputs, oldValue, bindings) => {
-                        return { value: `g(${bindings.x})` };
+                        return { value: `g(${bindings[0]})` };
                     },
                 },
                 {
                     output: "h(y)",
                     inputs: [],
                     computor: (inputs, oldValue, bindings) => {
-                        return { value: `h(${bindings.y})` };
+                        return { value: `h(${bindings[0]})` };
                     },
                 },
                 {
@@ -366,7 +366,7 @@ describe("Bound variables in computors", () => {
             const graph = makeDependencyGraph(db, schemas);
 
             // Pull f with specific bindings
-            const result = await graph.pull("f(x, y)", { x: "A", y: "B" });
+            const result = await graph.pull("f(x, y)", ["A", "B"]);
 
             expect(result).toEqual({ value: "f(g(A), h(B))" });
 
@@ -391,21 +391,21 @@ describe("Bound variables in computors", () => {
                     output: "k(x)",
                     inputs: ["s1"],
                     computor: (inputs, oldValue, bindings) => {
-                        return { value: `k(${bindings.x}, ${inputs[0].value})` };
+                        return { value: `k(${bindings[0]}, ${inputs[0].value})` };
                     },
                 },
                 {
                     output: "g(x, z)",
                     inputs: ["k(x)"],
                     computor: (inputs, oldValue, bindings) => {
-                        return { value: `g(${inputs[0].value}, ${bindings.z})` };
+                        return { value: `g(${inputs[0].value}, ${bindings[1]})` };
                     },
                 },
                 {
                     output: "h(y)",
                     inputs: ["s2"],
                     computor: (inputs, _oldValue, bindings) => {
-                        return { value: `h(${bindings.y}, ${inputs[0].value})` };
+                        return { value: `h(${bindings[0]}, ${inputs[0].value})` };
                     },
                 },
                 {
@@ -420,7 +420,7 @@ describe("Bound variables in computors", () => {
             const graph = makeDependencyGraph(db, schemas);
 
             // Pull f with specific bindings
-            const result = await graph.pull("f(x, y, z)", { x: "A", y: "B", z: "C" });
+            const result = await graph.pull("f(x, y, z)", ["A", "B", "C"]);
 
             expect(result).toEqual({ value: "f(g(k(A, s1), C), h(B, s2))" });
 
@@ -445,8 +445,8 @@ describe("Bound variables in computors", () => {
                     output: "expensive(x)",
                     inputs: ["source"],
                     computor: (inputs, oldValue, bindings) => {
-                        computorCallLog.push({ x: bindings.x });
-                        return { value: inputs[0].value, x: bindings.x };
+                        computorCallLog.push({ x: bindings[0] });
+                        return { value: inputs[0].value, x: bindings[0] };
                     },
                 },
                 {
@@ -476,7 +476,7 @@ describe("Bound variables in computors", () => {
             await graph.set("source", { value: 1 });
 
             // Pull top - should compute expensive only once even though two consumers depend on it
-            await graph.pull("top(x)", { x: "shared" });
+            await graph.pull("top(x)", ["shared"]);
 
             // expensive(x) should only be computed once
             expect(computorCallLog).toHaveLength(1);
@@ -496,7 +496,7 @@ describe("Bound variables in computors", () => {
                     output: "derived(x)",
                     inputs: [],
                     computor: (inputs, oldValue, bindings) => {
-                        return { x: bindings.x };
+                        return { x: bindings[0] };
                     },
                 },
             ];
@@ -511,7 +511,7 @@ describe("Bound variables in computors", () => {
             await db.close();
         });
 
-        test("pulling with extra bindings is fine", async () => {
+        test("pulling with wrong arity throws error", async () => {
             const capabilities = getTestCapabilities();
             const db = await getRootDatabase(capabilities);
 
@@ -520,15 +520,18 @@ describe("Bound variables in computors", () => {
                     output: "derived(x)",
                     inputs: [],
                     computor: (inputs, oldValue, bindings) => {
-                        return { x: bindings.x };
+                        return { x: bindings[0] };
                     },
                 },
             ];
 
             const graph = makeDependencyGraph(db, schemas);
 
-            // Pull with extra binding
-            await expect(graph.pull("derived(x)", { x: 1, y: 2 })).resolves.toEqual({ x: 1 });
+            // Pull with wrong number of bindings (arity mismatch)
+            // This will be caught as a pattern error since the arity doesn't match
+            await expect(graph.pull("derived(x)", [1, 2])).rejects.toThrow(
+                /Cannot operatex directly on schema pattern/
+            );
 
             await db.close();
         });
@@ -542,7 +545,7 @@ describe("Bound variables in computors", () => {
                     output: "source(x)",
                     inputs: [],
                     computor: (inputs, oldValue, bindings) => {
-                        return { x: bindings.x };
+                        return { x: bindings[0] };
                     },
                 },
                 {

@@ -21,9 +21,10 @@
 
 /**
  * A computor function for node definitions.
- * Receives inputs, optional old value, and bindings for any variables in the pattern.
- * Bindings can be any JSON-serializable value (primitives or DatabaseValue objects).
- * @typedef {(inputs: Array<DatabaseValue>, oldValue: DatabaseValue | undefined, bindings: Record<string, unknown>) => DatabaseValue | Unchanged} NodeDefComputor
+ * Receives inputs, optional old value, and positional bindings array.
+ * Bindings are matched to argument positions by position (not by variable name).
+ * Each binding can be any JSON-serializable value (primitives or DatabaseValue objects).
+ * @typedef {(inputs: Array<DatabaseValue>, oldValue: DatabaseValue | undefined, bindings: Array<unknown>) => DatabaseValue | Unchanged} NodeDefComputor
  */
 
 /**

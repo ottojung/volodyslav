@@ -43,11 +43,11 @@ describe("Bound variables with DatabaseValue objects", () => {
                 output: "derived(x)",
                 inputs: ["source"],
                 computor: (inputs, _oldValue, bindings) => {
-                    // bindings.x should be a full DatabaseValue object
+                    // bindings[0] should be a full DatabaseValue object
                     return {
                         type: "meta_events",
                         meta_events: [],
-                        boundTo: bindings.x,
+                        boundTo: bindings[0],
                     };
                 },
             },
@@ -60,7 +60,7 @@ describe("Bound variables with DatabaseValue objects", () => {
 
         // Pull with object binding
         const objectBinding = { type: "all_events", events: [{ id: "test" }] };
-        const result = await graph.pull("derived(x)", { x: objectBinding });
+        const result = await graph.pull("derived(x)", [objectBinding]);
 
         expect(result).toEqual({
             type: "meta_events",
@@ -87,11 +87,11 @@ describe("Bound variables with DatabaseValue objects", () => {
                 output: "derived(x)",
                 inputs: ["source"],
                 computor: (inputs, _oldValue, bindings) => {
-                    computorCallLog.push({ x: bindings.x });
+                    computorCallLog.push({ x: bindings[0] });
                     return {
                         type: "meta_events",
                         meta_events: [],
-                        boundTo: bindings.x,
+                        boundTo: bindings[0],
                     };
                 },
             },
@@ -104,8 +104,8 @@ describe("Bound variables with DatabaseValue objects", () => {
         const binding1 = { type: "all_events", events: [{ id: "first" }] };
         const binding2 = { type: "all_events", events: [{ id: "second" }] };
 
-        const result1 = await graph.pull("derived(x)", { x: binding1 });
-        const result2 = await graph.pull("derived(x)", { x: binding2 });
+        const result1 = await graph.pull("derived(x)", [binding1]);
+        const result2 = await graph.pull("derived(x)", [binding2]);
 
         expect(result1.boundTo).toEqual(binding1);
         expect(result2.boundTo).toEqual(binding2);
@@ -132,11 +132,11 @@ describe("Bound variables with DatabaseValue objects", () => {
                 output: "derived(x)",
                 inputs: ["source"],
                 computor: (inputs, _oldValue, bindings) => {
-                    computorCallLog.push({ x: bindings.x });
+                    computorCallLog.push({ x: bindings[0] });
                     return {
                         type: "meta_events",
                         meta_events: [],
-                        boundTo: bindings.x,
+                        boundTo: bindings[0],
                     };
                 },
             },
@@ -148,8 +148,8 @@ describe("Bound variables with DatabaseValue objects", () => {
         const binding = { type: "all_events", events: [{ id: "test" }] };
 
         // Pull same bindings twice
-        const result1 = await graph.pull("derived(x)", { x: binding });
-        const result2 = await graph.pull("derived(x)", { x: binding });
+        const result1 = await graph.pull("derived(x)", [binding]);
+        const result2 = await graph.pull("derived(x)", [binding]);
 
         expect(result1).toEqual(result2);
 

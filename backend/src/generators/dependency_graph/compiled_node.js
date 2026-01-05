@@ -268,10 +268,78 @@ function compileNodeDef(nodeDef) {
     };
 }
 
+/**
+ * Creates a mapping from variable names to their positions in the output pattern.
+ * Used to translate from named variables to positional bindings.
+ * @param {ParsedExpr} outputExpr - The output expression pattern
+ * @returns {Map<string, number>} Map from variable name to position index
+ */
+function createVariablePositionMap(outputExpr) {
+    /** @type {Map<string, number>} */
+    const varToPosition = new Map();
+    
+    if (outputExpr.kind === "call") {
+        for (let i = 0; i < outputExpr.args.length; i++) {
+            const arg = outputExpr.args[i];
+            if (arg === undefined) continue;
+            
+            if (arg.kind === "identifier") {
+                const varName = arg.value;
+                // Use first occurrence if variable appears multiple times
+                if (!varToPosition.has(varName)) {
+                    varToPosition.set(varName, i);
+                }
+            }
+        }
+    }
+    
+    return varToPosition;
+}
+
+/**
+ * Extracts positional bindings for an input pattern based on variable name mapping.
+ * Given an output's positional bindings and the input pattern's variables,
+ * creates the input's positional bindings by looking up each variable's position in the output.
+ * @param {ParsedExpr} inputExpr - The input pattern expression
+ * @param {Array<unknown>} outputBindings - The positional bindings for the output
+ * @param {Map<string, number>} varToPosition - Map from variable name to position in output
+ * @returns {Array<unknown>} Positional bindings for the input pattern
+ */
+function extractInputBindings(inputExpr, outputBindings, varToPosition) {
+    if (inputExpr.kind === "atom") {
+        return [];
+    }
+    
+    // For call expressions, map each argument variable to its binding value
+    const inputBindings = [];
+    for (const arg of inputExpr.args) {
+        if (arg.kind === "identifier") {
+            const varName = arg.value;
+            const position = varToPosition.get(varName);
+            if (position === undefined) {
+                throw new Error(
+                    `Variable '${varName}' not found in output pattern (should have been caught by validation)`
+                );
+            }
+            const binding = outputBindings[position];
+            if (binding === undefined) {
+                throw new Error(
+                    `No binding provided for variable '${varName}' at position ${position}`
+                );
+            }
+            inputBindings.push(binding);
+        }
+    }
+    
+    return inputBindings;
+}
+
 module.exports = {
     compileNodeDef,
     extractVariables,
     validateNoOverlap,
     validateAcyclic,
     patternsCanOverlap,
+    createVariablePositionMap,
+    extractInputBindings,
 };

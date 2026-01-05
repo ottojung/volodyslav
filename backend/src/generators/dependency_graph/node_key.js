@@ -44,10 +44,11 @@ function deserializeNodeKey(serialized) {
 }
 
 /**
- * Creates a node key from a pattern string and bindings.
- * Pattern like "event(e)" with bindings {e: {id: 5}} becomes {head: "event", args: [{id: 5}]}
+ * Creates a node key from a pattern string and positional bindings.
+ * Pattern like "event(e)" with bindings [{id: 5}] becomes {head: "event", args: [{id: 5}]}
+ * Variable names are ignored - only position matters.
  * @param {string} pattern - Pattern string like "event(e)" or "all_events"
- * @param {Record<string, unknown>} bindings - Variable bindings (can be any JSON-serializable value)
+ * @param {Array<unknown>} bindings - Positional bindings array (can be any JSON-serializable values)
  * @returns {NodeKey}
  */
 function createNodeKeyFromPattern(pattern, bindings) {
@@ -58,18 +59,16 @@ function createNodeKeyFromPattern(pattern, bindings) {
         return { head: expr.name, args: [] };
     }
     
-    // For call expressions, substitute variables with their bindings
-    // All args are guaranteed to be identifiers since expr parsing only supports identifiers
-    const args = expr.args.map(arg => {
-        const varName = arg.value;
-        const binding = bindings[varName];
-        if (binding !== undefined) {
-            return binding;
-        }
-        throw new Error(`Variable '${varName}' not found in bindings`);
-    });
+    // For call expressions, use positional bindings
+    // The arity must match the bindings array length
+    if (expr.args.length !== bindings.length) {
+        throw new Error(
+            `Arity mismatch: pattern '${pattern}' has ${expr.args.length} arguments but received ${bindings.length} bindings`
+        );
+    }
     
-    return { head: expr.name, args };
+    // Simply use the bindings array as args (variable names are ignored)
+    return { head: expr.name, args: bindings };
 }
 
 module.exports = {
