@@ -456,13 +456,13 @@ type Computor = (
 
 **REQ-COMP-01:** Computors MUST be deterministic with respect to `(inputs, oldValue, bindings)`.
 
-**REQ-COMP-04a:** The `bindings` parameter is a positional array matching the schema output pattern's arguments by position. For example, if the output pattern is `full_event(e)`, then `bindings[0]` contains the value for the first argument position.
-
 **REQ-COMP-02:** Computors MUST NOT have hidden side effects affecting output.
 
 **REQ-COMP-03:** Computors MAY return `Unchanged` sentinel to indicate no value change.
 
 **REQ-COMP-04:** Implementations MUST expose `makeUnchanged()` factory and `isUnchanged(value)` type guard.
+
+**REQ-COMP-05:** The `bindings` parameter is a positional array matching the schema output pattern's arguments by position. For example, if the output pattern is `full_event(e)`, then `bindings[0]` contains the value for the first argument position, `e`.
 
 ### 3.5 Error Taxonomy
 
