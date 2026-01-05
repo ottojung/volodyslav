@@ -392,9 +392,7 @@ function makeDependencyGraph(
 
 **REQ-FACTORY-02:** MUST compute schema identifier for internal storage namespacing.
 
-**REQ-FACTORY-03:** MUST NOT mutate `nodeDefs` or `rootDatabase`.
-
-**REQ-FACTORY-04 (NEW):** MUST reject schemas where the same head appears with different arities (throw `SchemaArityConflictError`).
+**REQ-FACTORY-03:** MUST reject schemas where the same head appears with different arities (throw `SchemaArityConflictError`).
 
 ### 3.2 DependencyGraph Interface
 
