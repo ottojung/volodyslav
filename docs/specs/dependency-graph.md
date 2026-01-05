@@ -85,9 +85,7 @@ The schema implicitly defines infinitely many dependency edges—one set for eac
 
 #### 1.2.4 Public Interface: Addressing Nodes
 
-**IMPORTANT: The public API uses nodeName-only addressing. Expression patterns with variables are internal to schema definitions.**
-
-The public API requires both the nodeName (functor) and bindings to address a specific node:
+The public API requires both the `nodeName` (functor) and bindings to address a specific node:
 
 * `pull(nodeName, bindings)` — Evaluates the node instance identified by `NodeName` and `BindingEnvironment`
 * `set(nodeName, value, bindings)` — Stores `value` at the node instance identified by `NodeName` and `BindingEnvironment`
