@@ -311,7 +311,6 @@ pull(nodeName, B):
   old_value = stored_value(nodeKey)
   new_value = computor_of(schema)(inputs_values, old_value, B)
   store(nodeKey, new_value)
-  mark_up_to_date(nodeKey)
   return stored_value(nodeKey)
 ```
 
