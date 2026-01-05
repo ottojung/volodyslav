@@ -554,7 +554,7 @@ class DependencyGraphClass {
 
         for (const inputKey of nodeDefinition.inputs) {
             const { value: inputValue, status: inputStatus } =
-                await this.pullByNodeKeyWithStatus(inputKey);
+                await this.pullByNodeKeyStringWithStatus(inputKey);
             inputValues.push(inputValue);
 
             // If input is NOT 'unchanged', we can't guarantee we are unchanged.
@@ -744,13 +744,13 @@ class DependencyGraphClass {
     }
 
     /**
-     * Internal pull by NodeKey (for recursive calls within the graph).
+     * Internal pull by NodeKey string (for recursive calls within the graph).
      * Accepts serialized NodeKey JSON string.
      * @private
      * @param {string} nodeKeyStr - Serialized NodeKey JSON string
      * @returns {Promise<RecomputeResult>}
      */
-    async pullByNodeKeyWithStatus(nodeKeyStr) {
+    async pullByNodeKeyStringWithStatus(nodeKeyStr) {
         return this.storage.withBatch(async (batch) => {
             const { deserializeNodeKey } = require("./node_key");
             const nodeKey = deserializeNodeKey(nodeKeyStr);
