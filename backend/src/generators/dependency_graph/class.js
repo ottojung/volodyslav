@@ -14,6 +14,8 @@
 /** @typedef {import('./unchanged').Unchanged} Unchanged */
 /** @typedef {import('./graph_storage').GraphStorage} GraphStorage */
 /** @typedef {import('./graph_storage').BatchBuilder} BatchBuilder */
+/** @typedef {import('./nominal_types').NodeKeyString} NodeKeyString */
+/** @typedef {import('./node_key').NodeKey} NodeKey */
 
 const crypto = require("crypto");
 const { isUnchanged } = require("./unchanged");
@@ -213,27 +215,27 @@ class DependencyGraphClass {
         // Ensure node exists (will create from pattern if needed)
         const nodeDefinition = this.getOrCreateConcreteNode(
             concreteKey,
-            compiledNode.canonicalOutput,
+            compiledNode,
             bindings
         );
 
         // Use batch builder for atomic operations
         await this.storage.withBatch(async (batch) => {
             // Store the value
-            batch.values.put(concreteKey, value);
+            batch.values.put(nodeDefinition.output, value);
 
             // Mark this key as up-to-date
-            batch.freshness.put(concreteKey, "up-to-date");
+            batch.freshness.put(nodeDefinition.output, "up-to-date");
 
             // Ensure the node is materialized (write inputs record with empty array)
             await this.storage.ensureMaterialized(
-                concreteKey,
+                nodeDefinition.output,
                 nodeDefinition.inputs,
                 batch
             );
 
             // Collect operations to mark all dependents as potentially-outdated
-            await this.propagateOutdated(concreteKey, batch);
+            await this.propagateOutdated(nodeDefinition.output, batch);
         });
     }
 
@@ -267,160 +269,52 @@ class DependencyGraphClass {
     }
 
     /**
-     * Finds a compiled pattern that matches the given concrete node key.
-     * Throws if multiple patterns match (ambiguity).
-     * @private
-     * @param {string} concreteKeyCanonical - Canonical concrete node key (JSON format) or pattern name
-     * @returns {{ compiledNode: CompiledNode, bindings: Array<ConstValue> } | null}
-     */
-    findMatchingPattern(concreteKeyCanonical) {
-        let head, arity;
-        let jsonKey = null;
-
-        // Check if it's a JSON key
-        if (concreteKeyCanonical.startsWith("{")) {
-            const { deserializeNodeKey } = require("./node_key");
-            jsonKey = deserializeNodeKey(concreteKeyCanonical);
-            head = jsonKey.head;
-            arity = jsonKey.args.length;
-        } else {
-            // Parse as expression (pattern name)
-            const expr = parseExpr(concreteKeyCanonical);
-            head = expr.name;
-            arity = expr.args.length;
-        }
-
-        const indexKey = `${head}`;
-        const candidates = this.graphIndex.patternIndex.get(indexKey);
-        if (!candidates) {
-            return null;
-        }
-
-        // Collect all matching patterns
-        /** @type {Array<{ compiledNode: CompiledNode, bindings: Array<ConstValue> }>} */
-        const matches = [];
-
-        for (const compiled of candidates) {
-            // If we have a JSON key, extract bindings from it (positional)
-            if (jsonKey) {
-                // Simply use the JSON key args as positional bindings
-                const bindings = jsonKey.args;
-
-                matches.push({
-                    compiledNode: compiled,
-                    bindings,
-                });
-            } else {
-                // This is a pattern name, not a concrete key
-                // Just check if it matches structurally
-                if (compiled.head === head && compiled.arity === arity) {
-                    // If this is a pattern (has variables), we can't match without bindings
-                    if (compiled.isPattern) {
-                        // Pattern must be instantiated with bindings, not pulled directly
-                        return null;
-                    }
-                    matches.push({
-                        compiledNode: compiled,
-                        bindings: [],
-                    });
-                }
-            }
-        }
-
-        if (matches.length === 0) {
-            return null;
-        }
-
-        if (matches.length > 1) {
-            // Multiple patterns match - this should be impossible if validateNoOverlap worked correctly
-            throw makeSchemaOverlapError(
-                matches.map((m) => m.compiledNode.canonicalOutput)
-            );
-        }
-
-        const match = matches[0];
-        if (!match) {
-            return null;
-        }
-        return match;
-    }
-
-    /**
      * Gets or creates a concrete node instantiation.
      * Dynamic edges are persisted to DB when the node is computed/set, not here.
+     * This is a runtime-only function that operates on instance data, not schema patterns.
      * @private
-     * @param {string} concreteKeyCanonical - Canonical concrete node key (JSON format)
-     * @param {string} [schemaPattern] - Original pattern name for matching
-     * @param {Array<ConstValue>} [bindings=[]] - Positional bindings for this instance
+     * @param {NodeKeyString} concreteKeyCanonical - Canonical concrete node key (NodeKeyString)
+     * @param {CompiledNode} compiledNode - The compiled node definition
+     * @param {Array<ConstValue>} bindings - Positional bindings for this instance
      * @returns {ConcreteNodeDefinition}
-     * @throws {Error} If no pattern matches and node not in graph
+     * @throws {Error} If pattern matching fails
      */
     getOrCreateConcreteNode(
         concreteKeyCanonical,
-        schemaPattern,
-        bindings = []
+        compiledNode,
+        bindings
     ) {
-        // Check if it's an exact node in the graph (try both keys)
-        const exactNode = this.graphIndex.exactIndex.get(
-            schemaPattern || concreteKeyCanonical
-        );
-        if (exactNode) {
-            // Convert all inputs to JSON format
-            const jsonInputs = exactNode.canonicalInputs.map((input) => {
-                const inputKey = createNodeKeyFromPattern(input, []);
-                return serializeNodeKey(inputKey);
-            });
-
-            return {
-                output: concreteKeyCanonical,
-                inputs: jsonInputs,
-                computor: (inputs, oldValue) =>
-                    exactNode.source.computor(inputs, oldValue, []),
-            };
-        }
+        const { unwrapNodeKeyString } = require("./nominal_types");
+        const concreteKeyString = unwrapNodeKeyString(concreteKeyCanonical);
 
         // Check instantiation cache
-        const cached = this.concreteInstantiations.get(concreteKeyCanonical);
+        const cached = this.concreteInstantiations.get(concreteKeyString);
         if (cached) {
             return cached;
         }
 
-        // Try to find matching pattern
-        // If concreteKeyCanonical is a JSON key, use it for matching
-        // Otherwise use schemaPattern if provided
-        const keyForMatching = concreteKeyCanonical.startsWith("{")
-            ? concreteKeyCanonical
-            : schemaPattern || concreteKeyCanonical;
-        const match = this.findMatchingPattern(keyForMatching);
-        if (!match) {
-            // Check if this looks like a pattern with variables
-            // If so, throw SchemaPatternNotAllowed (only if bindings weren't provided)
-            const testExpr = parseExpr(schemaPattern || concreteKeyCanonical);
-            if (testExpr.kind === "call" && bindings.length === 0) {
-                // Has arguments but no bindings - check if any compiled pattern matches by head/arity
-                const indexKey = canonicalize(schemaPattern || concreteKeyCanonical);
-                const candidates = this.graphIndex.patternIndex.get(indexKey);
-                if (candidates && candidates.length > 0) {
-                    const firstCandidate = candidates[0];
-                    if (firstCandidate && firstCandidate.isPattern) {
-                        // Pattern exists but wasn't matched - needs bindings
-                        throw makeSchemaPatternNotAllowedError(
-                            schemaPattern || concreteKeyCanonical
-                        );
-                    }
-                }
-            }
+        // If it's not a pattern (arity 0 or no variables), create simple concrete node
+        if (!compiledNode.isPattern) {
+            // Convert all inputs to JSON format
+            const jsonInputs = compiledNode.canonicalInputs.map((input) => {
+                const inputKey = createNodeKeyFromPattern(input, []);
+                const serialized = serializeNodeKey(inputKey);
+                return unwrapNodeKeyString(serialized);
+            });
 
-            // Node doesn't exist - throw error
-            throw makeInvalidNodeError(concreteKeyCanonical);
+            const concreteNode = {
+                output: concreteKeyString,
+                inputs: jsonInputs,
+                computor: (inputs, oldValue) =>
+                    compiledNode.source.computor(inputs, oldValue, []),
+            };
+
+            // Cache it
+            this.concreteInstantiations.set(concreteKeyString, concreteNode);
+            return concreteNode;
         }
 
-        const { compiledNode, bindings: extractedBindings } = match;
-
-        // Use provided bindings if available, otherwise use extracted ones
-        const actualBindings =
-            bindings.length > 0 ? bindings : extractedBindings;
-
+        // Pattern node - instantiate with bindings
         // Import the helper functions for variable position mapping
         const {
             createVariablePositionMap,
@@ -434,24 +328,28 @@ class DependencyGraphClass {
 
         // Instantiate inputs by extracting appropriate positional bindings
         const concreteInputs = compiledNode.inputExprs.map((inputExpr) => {
+            const { renderExpr } = require("./expr");
+            
             // Extract bindings for this input based on variable name mapping
             const inputBindings = extractInputBindings(
                 inputExpr,
-                actualBindings,
+                bindings,
                 varToPosition
             );
 
             // Create node key with positional bindings
+            const inputPattern = renderExpr(inputExpr);
             const inputKey = createNodeKeyFromPattern(
-                renderExpr(inputExpr),
+                inputPattern,
                 inputBindings
             );
-            return serializeNodeKey(inputKey);
+            const serialized = serializeNodeKey(inputKey);
+            return unwrapNodeKeyString(serialized);
         });
 
         // Create concrete node with wrapper computor
         const concreteNode = {
-            output: concreteKeyCanonical,
+            output: concreteKeyString,
             inputs: concreteInputs,
             /**
              * @param {Array<DatabaseValue>} inputValues
@@ -462,12 +360,12 @@ class DependencyGraphClass {
                 compiledNode.source.computor(
                     inputValues,
                     oldValue,
-                    actualBindings
+                    bindings
                 ),
         };
 
         // Cache it
-        this.concreteInstantiations.set(concreteKeyCanonical, concreteNode);
+        this.concreteInstantiations.set(concreteKeyString, concreteNode);
 
         // Dynamic edges will be persisted to DB when this node is computed or set
 
@@ -742,19 +640,19 @@ class DependencyGraphClass {
             // Find or create the node definition
             const nodeDefinition = this.getOrCreateConcreteNode(
                 concreteKey,
-                compiledNode.canonicalOutput,
+                compiledNode,
                 bindings
             );
 
             // Check freshness of this node
-            const nodeFreshness = await this.storage.freshness.get(concreteKey);
+            const nodeFreshness = await this.storage.freshness.get(nodeDefinition.output);
 
             // Fast path: if up-to-date, return cached value immediately
             // But first ensure the node is materialized (for seeded DBs or restart resilience)
             if (nodeFreshness === "up-to-date") {
                 // Ensure node is materialized
                 await this.storage.ensureMaterialized(
-                    concreteKey,
+                    nodeDefinition.output,
                     nodeDefinition.inputs,
                     batch
                 );
@@ -764,15 +662,15 @@ class DependencyGraphClass {
                 // but reverse-dep metadata is missing
                 if (nodeDefinition.inputs.length > 0) {
                     await this.storage.ensureReverseDepsIndexed(
-                        concreteKey,
+                        nodeDefinition.output,
                         nodeDefinition.inputs,
                         batch
                     );
                 }
 
-                const result = await this.storage.values.get(concreteKey);
+                const result = await this.storage.values.get(nodeDefinition.output);
                 if (result === undefined) {
-                    throw makeMissingValueError(concreteKey);
+                    throw makeMissingValueError(nodeDefinition.output);
                 }
                 return { value: result, status: "cached" };
             }
@@ -791,8 +689,11 @@ class DependencyGraphClass {
      */
     async pullByNodeKeyStringWithStatus(nodeKeyStr) {
         return this.storage.withBatch(async (batch) => {
+            const { asNodeKeyString } = require("./nominal_types");
             const { deserializeNodeKey } = require("./node_key");
-            const nodeKey = deserializeNodeKey(nodeKeyStr);
+            
+            const nodeKeyString = asNodeKeyString(nodeKeyStr);
+            const nodeKey = deserializeNodeKey(nodeKeyString);
             const nodeName = nodeKey.head;
             const bindings = nodeKey.args;
 
@@ -811,24 +712,22 @@ class DependencyGraphClass {
                 );
             }
 
-            const concreteKey = nodeKeyStr;
-
             // Find or create the node definition
             const nodeDefinition = this.getOrCreateConcreteNode(
-                concreteKey,
-                compiledNode.canonicalOutput,
+                nodeKeyString,
+                compiledNode,
                 bindings
             );
 
             // Check freshness of this node
-            const nodeFreshness = await this.storage.freshness.get(concreteKey);
+            const nodeFreshness = await this.storage.freshness.get(nodeKeyStr);
 
             // Fast path: if up-to-date, return cached value immediately
             // But first ensure the node is materialized (for seeded DBs or restart resilience)
             if (nodeFreshness === "up-to-date") {
                 // Ensure node is materialized
                 await this.storage.ensureMaterialized(
-                    concreteKey,
+                    nodeKeyStr,
                     nodeDefinition.inputs,
                     batch
                 );
@@ -838,15 +737,15 @@ class DependencyGraphClass {
                 // but reverse-dep metadata is missing
                 if (nodeDefinition.inputs.length > 0) {
                     await this.storage.ensureReverseDepsIndexed(
-                        concreteKey,
+                        nodeKeyStr,
                         nodeDefinition.inputs,
                         batch
                     );
                 }
 
-                const result = await this.storage.values.get(concreteKey);
+                const result = await this.storage.values.get(nodeKeyStr);
                 if (result === undefined) {
-                    throw makeMissingValueError(concreteKey);
+                    throw makeMissingValueError(nodeKeyStr);
                 }
                 return { value: result, status: "cached" };
             }
@@ -882,7 +781,10 @@ class DependencyGraphClass {
         const nodeKey = { head: nodeName, args: bindings };
         const concreteKey = serializeNodeKey(nodeKey);
 
-        const freshness = await this.storage.freshness.get(concreteKey);
+        const { unwrapNodeKeyString } = require("./nominal_types");
+        const concreteKeyString = unwrapNodeKeyString(concreteKey);
+
+        const freshness = await this.storage.freshness.get(concreteKeyString);
         if (freshness === undefined) {
             return "missing";
         }
