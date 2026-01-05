@@ -176,7 +176,7 @@ ws            := [ \t\n\r]*
 
 **REQ-KEY-02:** NodeKey creation from (NodeName, BindingEnvironment):
 1. Use the nodeName as the head (functor identifier)
-2. Verify that `bindings.length` matches the expected arity from the schema (throw ArityMismatchError otherwise)
+2. Verify that `bindings.length` matches the expected arity from the schema (throw `ArityMismatchError` otherwise)
 3. Construct the key object: `{ head: nodeName, args: bindings }`
 4. Serialize to JSON string using `JSON.stringify()`
 
@@ -771,7 +771,7 @@ This section is reserved for future implementation notes.
 
 **Error:** `pull("event_context(e)", [])` with wrong number of bindings.
 
-**Behavior:** Throw `BindingArityMismatchError`.
+**Behavior:** Throw `ArityMismatchError`.
 
 **Example:**
 ```javascript
@@ -804,7 +804,7 @@ await graph.pull("all_events", []);
 await graph.pull("all_events"); // bindings default to []
 
 // ❌ Wrong: Non-empty bindings for atom expression
-await graph.pull("all_events", [{x: "value"}]); // throws BindingArityMismatchError
+await graph.pull("all_events", [{x: "value"}]); // throws `ArityMismatchError`
 ```
 
 ---
