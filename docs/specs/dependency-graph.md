@@ -669,46 +669,6 @@ const fullEvent = await graph.pull('full_event', [{id: 'evt_123'}]);
 * The binding propagates through the entire dependency chain, ensuring consistency
 * Variable names (`e` in this case) are schema-internal—public API uses nodeName only
 
-### Appendix B: Recommended Storage Architecture
-
-This section describes the reference implementation's storage design. Implementations MAY use different designs as long as they satisfy the normative requirements.
-
-#### B.1 Recommended Reverse Dependency Storage
-
-**Edge-Based Storage:** Store each reverse dependency as a separate key:
-
-* **Key format:** `"${inputNode}\x00${dependentNode}"`
-* **Value:** Constant `1`
-
-**Benefits:**
-* Efficient iteration without deserializing arrays
-* Incremental updates (add edge without reading full array)
-* Scales better for high fan-out nodes
-
-**Alternative:** Implementations MAY use adjacency lists (`inputNode -> [dependent1, dependent2, ...]`) if preferred.
-
-#### B.2 Recommended Schema Identifier Algorithm
-
-**Algorithm:**
-```javascript
-const schemaRepresentation = compiledNodes
-  .map(node => ({
-    output: node.canonicalOutput,
-    inputs: node.canonicalInputs,
-  }))
-  .sort((a, b) => a.output.localeCompare(b.output));
-
-const schemaJson = JSON.stringify(schemaRepresentation);
-const schemaId = crypto.createHash("md5")
-  .update(schemaJson)
-  .digest("hex")
-  .substring(0, 16);
-```
-
-**Purpose:** Ensures graphs with identical schemas share storage; different schemas are isolated.
-
-**Alternative:** Implementations MAY use different algorithms (SHA-256, UUIDs, etc.) or namespacing strategies.
-
 ### Appendix C: Optional Debug Interface
 
 For testing and debugging, implementations MAY provide:
