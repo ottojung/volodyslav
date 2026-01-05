@@ -457,8 +457,6 @@ All errors MUST provide stable `.name` property and required fields:
 
 **REQ-ERR-01:** All error types MUST provide type guard functions (e.g., `isInvalidExpressionError(value): boolean`).
 
-**Note:** The `NonConcreteNodeError` from earlier versions has been removed. Instead, missing bindings result in `MissingBindingsError`.
-
 ---
 
 ## 4. Persistence & Materialization (Normative)
