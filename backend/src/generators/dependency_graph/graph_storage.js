@@ -14,13 +14,15 @@
 /** @typedef {import('../database/types').InputsRecord} InputsRecord */
 /** @typedef {import('../database/types').DatabaseBatchOperation} DatabaseBatchOperation */
 /** @typedef {import('../database/types').SchemaSublevelType} SchemaSublevelType */
+/** @typedef {import('./types').NodeKeyString} NodeKeyString */
+/** @typedef {import('./types').SchemaHash} SchemaHash */
 
 /**
  * Interface for batch operations on a specific database.
  * @template TValue
  * @typedef {object} BatchDatabaseOps
- * @property {(key: string, value: TValue) => void} put - Queue a put operation
- * @property {(key: string) => void} del - Queue a delete operation
+ * @property {(key: NodeKeyString, value: TValue) => void} put - Queue a put operation
+ * @property {(key: NodeKeyString) => void} del - Queue a delete operation
  */
 
 /**
@@ -46,11 +48,11 @@
  * @property {InputsDatabase} inputs - Node inputs index
  * @property {RevdepsDatabase} revdeps - Reverse dependencies (edge-based: composite key -> 1)
  * @property {BatchFunction} withBatch - Run a function and commit atomically everything it does
- * @property {(node: string, inputs: string[], batch: BatchBuilder) => Promise<void>} ensureMaterialized - Mark a node as materialized (write inputs record)
- * @property {(node: string, inputs: string[], batch: BatchBuilder) => Promise<void>} ensureReverseDepsIndexed - Index reverse dependencies (write revdep edges)
- * @property {(input: string) => Promise<string[]>} listDependents - List all dependents of an input
- * @property {(node: string) => Promise<string[] | null>} getInputs - Get inputs for a node
- * @property {() => Promise<string[]>} listMaterializedNodes - List all materialized node names
+ * @property {(node: NodeKeyString, inputs: NodeKeyString[], batch: BatchBuilder) => Promise<void>} ensureMaterialized - Mark a node as materialized (write inputs record)
+ * @property {(node: NodeKeyString, inputs: NodeKeyString[], batch: BatchBuilder) => Promise<void>} ensureReverseDepsIndexed - Index reverse dependencies (write revdep edges)
+ * @property {(input: NodeKeyString) => Promise<NodeKeyString[]>} listDependents - List all dependents of an input
+ * @property {(node: NodeKeyString) => Promise<NodeKeyString[] | null>} getInputs - Get inputs for a node
+ * @property {() => Promise<NodeKeyString[]>} listMaterializedNodes - List all materialized node names
  */
 
 /**
@@ -103,8 +105,8 @@ function makeBatchBuilder(schemaStorage) {
 /**
  * Create a composite key for an edge in the revdeps database.
  * Uses null byte as delimiter between input and dependent node names.
- * @param {string} input - The input node (canonical name)
- * @param {string} dependent - The dependent node (canonical name)
+ * @param {NodeKeyString} input - The input node (canonical name)
+ * @param {NodeKeyString} dependent - The dependent node (canonical name)
  * @returns {string}
  */
 function makeRevdepKey(input, dependent) {
@@ -114,7 +116,7 @@ function makeRevdepKey(input, dependent) {
 /**
  * Parse a composite key from the revdeps database.
  * @param {string} key - The composite key
- * @returns {{input: string, dependent: string}}
+ * @returns {{input: NodeKeyString, dependent: NodeKeyString}}
  */
 function parseRevdepKey(key) {
     const parts = key.split("\x00");
@@ -128,7 +130,7 @@ function parseRevdepKey(key) {
  * Creates a GraphStorage instance using typed databases.
  *
  * @param {RootDatabase} rootDatabase - The root database instance
- * @param {string} schemaHash - The schema hash for namespacing
+ * @param {SchemaHash} schemaHash - The schema hash for namespacing
  * @returns {GraphStorage}
  */
 function makeGraphStorage(rootDatabase, schemaHash) {
@@ -138,8 +140,8 @@ function makeGraphStorage(rootDatabase, schemaHash) {
      * Ensure a node is marked as materialized in the inputs database.
      * This is always called regardless of whether the node has inputs.
      * Writes the inputs record for the node.
-     * @param {string} node - Canonical node key
-     * @param {string[]} inputs - Array of canonical input keys (may be empty)
+     * @param {NodeKeyString} node - Canonical node key
+     * @param {NodeKeyString[]} inputs - Array of canonical input keys (may be empty)
      * @param {BatchBuilder} batch - Batch builder for atomic operations
      * @returns {Promise<void>}
      */
@@ -158,8 +160,8 @@ function makeGraphStorage(rootDatabase, schemaHash) {
      * Ensure a node's reverse dependencies are indexed.
      * This is only called when the node has inputs.
      * Writes reverse dependency edges.
-     * @param {string} node - Canonical node key
-     * @param {string[]} inputs - Array of canonical input keys (must be non-empty)
+     * @param {NodeKeyString} node - Canonical node key
+     * @param {NodeKeyString[]} inputs - Array of canonical input keys (must be non-empty)
      * @param {BatchBuilder} batch - Batch builder for atomic operations
      * @returns {Promise<void>}
      */
@@ -189,8 +191,8 @@ function makeGraphStorage(rootDatabase, schemaHash) {
     /**
      * List all dependents of an input.
      * Iterates over all keys with the input prefix to collect dependents.
-     * @param {string} input - Canonical input key
-     * @returns {Promise<string[]>}
+     * @param {NodeKeyString} input - Canonical input key
+     * @returns {Promise<NodeKeyString[]>}
      */
     async function listDependents(input) {
         const dependents = [];
@@ -209,8 +211,8 @@ function makeGraphStorage(rootDatabase, schemaHash) {
 
     /**
      * Get inputs for a node.
-     * @param {string} node - Canonical node key
-     * @returns {Promise<string[] | null>}
+     * @param {NodeKeyString} node - Canonical node key
+     * @returns {Promise<NodeKeyString[] | null>}
      */
     async function getInputs(node) {
         const record = await schemaStorage.inputs.get(node);
@@ -219,7 +221,7 @@ function makeGraphStorage(rootDatabase, schemaHash) {
 
     /**
      * List all materialized nodes.
-     * @returns {Promise<string[]>}
+     * @returns {Promise<NodeKeyString[]>}
      */
     async function listMaterializedNodes() {
         const keys = [];

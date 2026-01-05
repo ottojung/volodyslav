@@ -30,7 +30,8 @@ function toJsonKey(key) {
     }
     const canonical = canonicalize(key);
     const nodeKey = createNodeKeyFromPattern(canonical, {});
-    return serializeNodeKey(nodeKey);
+    const nodeKeyString = serializeNodeKey(nodeKey);
+    return nodeKeyString;
 }
 
 /**

@@ -17,6 +17,7 @@
 const { makeArityMismatchError } = require("./errors");
 
 /** @typedef {import('./types').ConstValue} ConstValue */
+/** @typedef {string} NodeKeyString */
 
 /**
  * A node key object for concrete nodes.
@@ -29,16 +30,17 @@ const { makeArityMismatchError } = require("./errors");
  * Creates a canonical string representation of a node key for storage.
  * Uses JSON serialization for stable, deterministic keys.
  * @param {NodeKey} key
- * @returns {string}
+ * @returns {NodeKeyString}
  */
 function serializeNodeKey(key) {
     // Stable JSON serialization
-    return JSON.stringify({ head: key.head, args: key.args });
+    const serialized = JSON.stringify({ head: key.head, args: key.args });
+    return serialized;
 }
 
 /**
  * Parses a serialized node key back to an object.
- * @param {string} serialized
+ * @param {NodeKeyString} serialized
  * @returns {NodeKey}
  */
 function deserializeNodeKey(serialized) {
