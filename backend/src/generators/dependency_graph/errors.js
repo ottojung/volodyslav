@@ -105,16 +105,16 @@ function isSchemaPatternNotAllowed(object) {
  */
 class ArityMismatch extends Error {
     /**
-     * @param {string} pattern
+     * @param {string} head - The node head/name
      * @param {number} expected
      * @param {number} received
      */
-    constructor(pattern, expected, received) {
+    constructor(head, expected, received) {
         super(
-            `Arity mismatch: pattern '${pattern}' expects ${expected} arguments but received ${received} bindings`
+            `Arity mismatch: head '${head}' expects ${expected} arguments but received ${received} bindings`
         );
         this.name = "ArityMismatchError";
-        this.pattern = pattern;
+        this.head = head;
         this.expected = expected;
         this.received = received;
     }
@@ -122,13 +122,13 @@ class ArityMismatch extends Error {
 
 /**
  * Constructs an ArityMismatch error.
- * @param {string} pattern
+ * @param {string} head - The node head/name
  * @param {number} expected
  * @param {number} received
  * @returns {ArityMismatch}
  */
-function makeArityMismatchError(pattern, expected, received) {
-    return new ArityMismatch(pattern, expected, received);
+function makeArityMismatchError(head, expected, received) {
+    return new ArityMismatch(head, expected, received);
 }
 
 /**
@@ -349,6 +349,44 @@ function isInvalidComputorReturnValue(object) {
     return object instanceof InvalidComputorReturnValue;
 }
 
+/**
+ * Error for schema arity conflict (same head with different arities).
+ */
+class SchemaArityConflict extends Error {
+    /**
+     * @param {string} head
+     * @param {number[]} arities
+     */
+    constructor(head, arities) {
+        super(
+            `Schema arity conflict: head '${head}' appears with multiple arities [${arities.join(", ")}]. ` +
+                `Each head must have a single arity across all schema outputs.`
+        );
+        this.name = "SchemaArityConflictError";
+        this.head = head;
+        this.arities = arities;
+    }
+}
+
+/**
+ * Constructs a SchemaArityConflict error.
+ * @param {string} head
+ * @param {number[]} arities
+ * @returns {SchemaArityConflict}
+ */
+function makeSchemaArityConflictError(head, arities) {
+    return new SchemaArityConflict(head, arities);
+}
+
+/**
+ * Type guard for SchemaArityConflict.
+ * @param {unknown} object
+ * @returns {object is SchemaArityConflict}
+ */
+function isSchemaArityConflict(object) {
+    return object instanceof SchemaArityConflict;
+}
+
 module.exports = {
     makeInvalidNodeError,
     isInvalidNode,
@@ -370,4 +408,6 @@ module.exports = {
     isSchemaOverlap,
     makeInvalidComputorReturnValueError,
     isInvalidComputorReturnValue,
+    makeSchemaArityConflictError,
+    isSchemaArityConflict,
 };

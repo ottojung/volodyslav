@@ -24,6 +24,8 @@ const {
     isMissingValue,
     makeSchemaOverlapError,
     isSchemaOverlap,
+    makeSchemaArityConflictError,
+    isSchemaArityConflict,
 } = require('./errors');
 
 /** @typedef {import('./types').DependencyGraphCapabilities} DependencyGraphCapabilities */
@@ -53,4 +55,6 @@ module.exports = {
     isMissingValue,
     makeSchemaOverlapError,
     isSchemaOverlap,
+    makeSchemaArityConflictError,
+    isSchemaArityConflict,
 };
