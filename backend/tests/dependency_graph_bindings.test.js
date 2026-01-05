@@ -530,7 +530,7 @@ describe("Bound variables in computors", () => {
             // Pull with wrong number of bindings (arity mismatch)
             // This will be caught as a pattern error since the arity doesn't match
             await expect(graph.pull("derived(x)", [1, 2])).rejects.toThrow(
-                /Cannot operatex directly on schema pattern/
+                /Cannot operate directly on schema pattern/
             );
 
             await db.close();
