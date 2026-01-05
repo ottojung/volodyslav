@@ -33,6 +33,12 @@ const {
     validateAcyclic,
     validateSingleArityPerHead,
 } = require("./compiled_node");
+const {
+     createVariablePositionMap,
+     extractInputBindings,
+} = require("./compiled_node");
+const { renderExpr } = require("./expr");
+const { deserializeNodeKey } = require("./node_key");
 
 const { makeGraphStorage } = require("./graph_storage");
 const { createNodeKeyFromPattern, serializeNodeKey } = require("./node_key");
@@ -316,13 +322,6 @@ class DependencyGraphClass {
             return concreteNode;
         }
 
-        // Pattern node - instantiate with bindings
-        // Import the helper functions for variable position mapping
-        const {
-            createVariablePositionMap,
-            extractInputBindings,
-        } = require("./compiled_node");
-
         // Create variable position map from output pattern
         const varToPosition = createVariablePositionMap(
             compiledNode.outputExpr
@@ -330,8 +329,6 @@ class DependencyGraphClass {
 
         // Instantiate inputs by extracting appropriate positional bindings
         const concreteInputs = compiledNode.inputExprs.map((inputExpr) => {
-            const { renderExpr } = require("./expr");
-            
             // Extract bindings for this input based on variable name mapping
             const inputBindings = extractInputBindings(
                 inputExpr,
@@ -691,8 +688,6 @@ class DependencyGraphClass {
      */
     async pullByNodeKeyStringWithStatus(nodeKeyStr) {
         return this.storage.withBatch(async (batch) => {
-            const { deserializeNodeKey } = require("./node_key");
-            
             const nodeKey = deserializeNodeKey(nodeKeyStr);
             const nodeName = nodeKey.head;
             const bindings = nodeKey.args;
