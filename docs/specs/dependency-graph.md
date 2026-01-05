@@ -282,11 +282,11 @@ await graph.pull("full_event", [{id: "123"}]);
 
 ### 1.10 Materialization (Normative)
 
-**REQ-MAT-01:** A **materialized node** is any NodeInstance (identified by NodeKey) for which the implementation maintains dependency tracking and freshness state.
+**REQ-MAT-01:** A **materialized node** is any `NodeInstance` (identified by `NodeKey`) for which the implementation maintains dependency tracking and freshness state.
 
 **REQ-MAT-02:** Materialization occurs through:
-* `pull(head, bindings)` — creates NodeInstance with dependencies, stores value at NodeKey, marks `up-to-date`
-* `set(head, value, bindings)` — materializes source NodeInstance at NodeKey, marks `up-to-date`
+* `pull(head, bindings)` — creates `NodeInstance` with dependencies, stores value at `NodeKey`, marks `up-to-date`
+* `set(head, value, bindings)` — materializes source `NodeInstance` at `NodeKey`, marks `up-to-date`
 
 ---
 
