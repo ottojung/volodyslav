@@ -101,20 +101,28 @@ describe("dependency_graph/expr", () => {
             expect(canonicalize("  all_events  ")).toBe("all_events");
         });
 
-        test("canonicalizes empty argument list (T4)", () => {
-            expect(canonicalize("foo()")).toBe("foo()");
-            expect(canonicalize("foo( )")).toBe("foo()");
+        test("canonicalizes empty argument list to head/0", () => {
+            expect(canonicalize("foo()")).toBe("foo/0");
+            expect(canonicalize("foo( )")).toBe("foo/0");
         });
 
-        test("canonicalizes with single arg", () => {
-            expect(canonicalize("event_context(e)")).toBe("event_context(e)");
-            expect(canonicalize("event_context( e )")).toBe("event_context(e)");
+        test("canonicalizes to head/arity format", () => {
+            expect(canonicalize("event_context(e)")).toBe("event_context/1");
+            expect(canonicalize("event_context( e )")).toBe("event_context/1");
+            expect(canonicalize("event_context(x)")).toBe("event_context/1");
         });
 
-        test("canonicalizes with multiple args", () => {
-            expect(canonicalize("foo(a,b,c)")).toBe("foo(a,b,c)");
-            expect(canonicalize("foo( a , b , c )")).toBe("foo(a,b,c)");
-            expect(canonicalize(" foo ( a , b , c ) ")).toBe("foo(a,b,c)");
+        test("canonicalizes with multiple args to head/arity", () => {
+            expect(canonicalize("foo(a,b,c)")).toBe("foo/3");
+            expect(canonicalize("foo( a , b , c )")).toBe("foo/3");
+            expect(canonicalize(" foo ( a , b , c ) ")).toBe("foo/3");
+        });
+
+        test("variable names don't affect canonicalization", () => {
+            expect(canonicalize("event_context(e)")).toBe("event_context/1");
+            expect(canonicalize("event_context(x)")).toBe("event_context/1");
+            expect(canonicalize("enhanced_event(e, p)")).toBe("enhanced_event/2");
+            expect(canonicalize("enhanced_event(x, y)")).toBe("enhanced_event/2");
         });
 
         test("throws on malformed expression", () => {

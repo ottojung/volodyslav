@@ -175,12 +175,12 @@ class DependencyGraphClass {
      * @returns {Promise<void>}
      */
     async set(key, value, bindings = []) {
-        // Canonicalize the key
-        const canonicalKey = canonicalize(key);
-        
-        // Try to convert to JSON format key
-        const nodeKey = createNodeKeyFromPattern(canonicalKey, bindings);
+        // Parse the original key to create node key
+        const nodeKey = createNodeKeyFromPattern(key, bindings);
         const concreteKey = serializeNodeKey(nodeKey);
+        
+        // Canonicalize for pattern matching
+        const canonicalKey = canonicalize(key);
 
         // Ensure node exists (will create from pattern if needed)
         const nodeDefinition = this.getOrCreateConcreteNode(concreteKey, canonicalKey, bindings);
@@ -686,12 +686,12 @@ class DependencyGraphClass {
                     canonicalName = nodeName;
                 }
             } else {
-                // Canonicalize the node name
-                canonicalName = canonicalize(nodeName);
-
-                // Try to create concrete key using JSON-based format
-                const nodeKey = createNodeKeyFromPattern(canonicalName, bindings);
+                // Create concrete key from original node name
+                const nodeKey = createNodeKeyFromPattern(nodeName, bindings);
                 concreteKey = serializeNodeKey(nodeKey);
+                
+                // Canonicalize for pattern matching
+                canonicalName = canonicalize(nodeName);
             }
 
             // Find or create the node definition
@@ -742,9 +742,8 @@ class DependencyGraphClass {
      * @returns {Promise<"up-to-date" | "potentially-outdated" | "missing">}
      */
     async debugGetFreshness(nodeName, bindings = []) {
-        const canonical = canonicalize(nodeName);
         // Convert to JSON format key
-        const nodeKey = createNodeKeyFromPattern(canonical, bindings);
+        const nodeKey = createNodeKeyFromPattern(nodeName, bindings);
         const concreteKey = serializeNodeKey(nodeKey);
         
         const freshness = await this.storage.freshness.get(concreteKey);

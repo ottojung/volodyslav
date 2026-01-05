@@ -313,15 +313,17 @@ function renderExpr(expr) {
 
 /**
  * Canonicalizes an expression string.
- * Removes irrelevant whitespace and returns a standardized form.
  *
  * @param {string} str - The expression string to canonicalize
- * @returns {string} The canonical form
+ * @returns {string} The canonical form (still a valid expression)
  * @throws {Error} If the expression is malformed
  */
 function canonicalize(str) {
     const parsed = parseExpr(str);
-    return renderExpr(parsed);
+    if (parsed.kind === "atom") {
+        return parsed.name;
+    }
+    return `${parsed.name}/${parsed.args.length}`;
 }
 
 module.exports = {

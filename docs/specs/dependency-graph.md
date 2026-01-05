@@ -127,21 +127,31 @@ ws            := [ \t\n\r]*
 
 ### 1.4 Canonical Serialization (Normative)
 
-**REQ-CANON-01:** The function `serialize(expr)` MUST produce a unique canonical string:
+**REQ-CANON-01:** The function `canonicalize(expr)` MUST produce a unique canonical string:
 
-1. No whitespace is included
-2. Arguments joined by commas with no spaces
-3. Atom-expressions: just the identifier
-4. Compound-expressions: `name(arg1,arg2,...)`
+1. Format: `head/arity` where:
+   - `head` is the expression name (identifier)
+   - `arity` is the number of arguments
+2. Atom-expressions: just the identifier (no `/0` suffix)
+3. Compound-expressions: `name/N` where N is the number of arguments
+4. Variable names and whitespace do NOT affect canonicalization
 
-**REQ-CANON-02:** Round-trip requirement:
-* `parse(serialize(ast))` MUST equal `ast` (modulo whitespace)
-* `serialize(parse(s))` MUST canonicalize `s`
+**REQ-CANON-02:** Equality and identity:
+* Two expressions have the same canonical form if and only if they have the same head (functor) and same arity (number of arguments)
+* Variable names in the original expression do NOT affect the canonical form
+* The canonical form is NOT a parseable expression—it's an index key
 
 **Examples:**
 * `all_events` → `"all_events"`
-* `event_context(e)` → `"event_context(e)"`
-* `enhanced_event(e, p)` → `"enhanced_event(e,p)"`
+* `event_context(e)` → `"event_context/1"`
+* `event_context(x)` → `"event_context/1"` (same as above)
+* `enhanced_event(e, p)` → `"enhanced_event/2"`
+* `enhanced_event(x, y)` → `"enhanced_event/2"` (same as above)
+
+**REQ-CANON-03:** Pattern Matching:
+* The canonical form is used for pattern matching and schema indexing
+* Original expression strings (with variable names) are preserved for error messages and node key creation
+* When creating concrete node instances, the original expression is parsed to extract arity
 
 **REQ-CANON-03:** All node names used as database keys MUST use canonical serialization combined with binding information.
 
