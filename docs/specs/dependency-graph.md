@@ -322,15 +322,6 @@ Note: this is a conceptual specification, it omits freshness concerns.
 
 **REQ-PULL-03:** `pull` MUST ensure each computor is invoked at most once per top-level call for each unique node instance (property P3).
 
-**REQ-PULL-04:** Lazy instantiation: When pulling a node instance, the system:
-1. Looks up schema by nodeName (O(1))
-2. Validates arity matches bindings length
-3. Creates NodeKey from nodeName and bindings
-4. Instantiates all input dependencies using variable name mapping from schema
-5. Recursively pulls all input node instances
-6. Creates materialized node instance on-demand with instantiated dependencies
-7. Persists materialization marker for restart resilience
-
 **Efficiency Optimization (Implementation-Defined):**
 
 Implementations MAY use any strategy to achieve property P3 (e.g., memoization, freshness checks, in-flight tracking). The specific mechanism is not prescribed.
