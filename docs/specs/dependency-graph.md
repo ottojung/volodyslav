@@ -505,7 +505,7 @@ Tests MAY assert the existence and signatures of:
 
 * `makeDependencyGraph(rootDatabase: RootDatabase, nodeDefs: Array<NodeDef>): DependencyGraph` — Factory function
 * `DependencyGraph.pull(nodeName: NodeName, bindings?: BindingEnvironment): Promise<DatabaseValue>` — Retrieve/compute node value
-* `DependencyGraph.set(nodeName: NodeName, value: DatabaseValue, bindings?: BindingEnvironment): Promise<void>` — Write source node value
+* `DependencyGraph.set(nodeName: NodeName, value: DatabaseValue, bindings?: BindingEnvironment): Promise<void>` — Write the node value
 * `isDependencyGraph(value): boolean` — Type guard
 
 ### 5.2 Observable Error Taxonomy
