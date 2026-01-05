@@ -60,7 +60,7 @@ describe("Bound variables with DatabaseValue objects", () => {
 
         // Pull with object binding
         const objectBinding = { type: "all_events", events: [{ id: "test" }] };
-        const result = await graph.pull("derived(x)", [objectBinding]);
+        const result = await graph.pull("derived", [objectBinding]);
 
         expect(result).toEqual({
             type: "meta_events",
@@ -104,8 +104,8 @@ describe("Bound variables with DatabaseValue objects", () => {
         const binding1 = { type: "all_events", events: [{ id: "first" }] };
         const binding2 = { type: "all_events", events: [{ id: "second" }] };
 
-        const result1 = await graph.pull("derived(x)", [binding1]);
-        const result2 = await graph.pull("derived(x)", [binding2]);
+        const result1 = await graph.pull("derived", [binding1]);
+        const result2 = await graph.pull("derived", [binding2]);
 
         expect(result1.boundTo).toEqual(binding1);
         expect(result2.boundTo).toEqual(binding2);
@@ -148,8 +148,8 @@ describe("Bound variables with DatabaseValue objects", () => {
         const binding = { type: "all_events", events: [{ id: "test" }] };
 
         // Pull same bindings twice
-        const result1 = await graph.pull("derived(x)", [binding]);
-        const result2 = await graph.pull("derived(x)", [binding]);
+        const result1 = await graph.pull("derived", [binding]);
+        const result2 = await graph.pull("derived", [binding]);
 
         expect(result1).toEqual(result2);
 

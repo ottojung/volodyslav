@@ -62,7 +62,7 @@ describe("Bound variables in computors", () => {
             await graph.set("source", { value: 42 });
 
             // Pull with bindings
-            const result = await graph.pull("derived(x)", ["test"]);
+            const result = await graph.pull("derived", ["test"]);
 
             expect(result).toEqual({ value: 42, x: "test" });
 
@@ -95,8 +95,8 @@ describe("Bound variables in computors", () => {
             await graph.set("source", { value: 1 });
 
             // Pull with different bindings - should compute each separately
-            const result1 = await graph.pull("derived(x)", ["first"]);
-            const result2 = await graph.pull("derived(x)", ["second"]);
+            const result1 = await graph.pull("derived", ["first"]);
+            const result2 = await graph.pull("derived", ["second"]);
 
             expect(result1).toEqual({ value: 1, x: "first" });
             expect(result2).toEqual({ value: 1, x: "second" });
@@ -135,8 +135,8 @@ describe("Bound variables in computors", () => {
             await graph.set("source", { value: 1 });
 
             // Pull same bindings twice
-            const result1 = await graph.pull("derived(x)", ["test"]);
-            const result2 = await graph.pull("derived(x)", ["test"]);
+            const result1 = await graph.pull("derived", ["test"]);
+            const result2 = await graph.pull("derived", ["test"]);
 
             expect(result1).toEqual({ value: 1, x: "test" });
             expect(result2).toEqual({ value: 1, x: "test" });
@@ -175,8 +175,8 @@ describe("Bound variables in computors", () => {
             await graph.set("source", { value: 1 });
 
             // Pull with two different bindings
-            await graph.pull("derived(x)", ["first"]);
-            await graph.pull("derived(x)", ["second"]);
+            await graph.pull("derived", ["first"]);
+            await graph.pull("derived", ["second"]);
 
             expect(computorCallLog).toHaveLength(2);
             computorCallLog.length = 0; // clear log
@@ -185,8 +185,8 @@ describe("Bound variables in computors", () => {
             await graph.set("source", { value: 2 });
 
             // Pull again - both should recompute
-            const result1 = await graph.pull("derived(x)", ["first"]);
-            const result2 = await graph.pull("derived(x)", ["second"]);
+            const result1 = await graph.pull("derived", ["first"]);
+            const result2 = await graph.pull("derived", ["second"]);
 
             expect(result1).toEqual({ value: 2, x: "first" });
             expect(result2).toEqual({ value: 2, x: "second" });
@@ -221,8 +221,8 @@ describe("Bound variables in computors", () => {
             await graph1.set("source", { value: 1 });
 
             // Materialize instances with different bindings
-            await graph1.pull("derived(x)", ["first"]);
-            await graph1.pull("derived(x)", ["second"]);
+            await graph1.pull("derived", ["first"]);
+            await graph1.pull("derived", ["second"]);
 
             await db1.close();
 
@@ -231,8 +231,8 @@ describe("Bound variables in computors", () => {
             const graph2 = makeDependencyGraph(db2, schemas);
 
             // Pull should get cached values
-            const result1 = await graph2.pull("derived(x)", ["first"]);
-            const result2 = await graph2.pull("derived(x)", ["second"]);
+            const result1 = await graph2.pull("derived", ["first"]);
+            const result2 = await graph2.pull("derived", ["second"]);
 
             expect(result1).toEqual({ value: 1, x: "first" });
             expect(result2).toEqual({ value: 1, x: "second" });
@@ -271,7 +271,7 @@ describe("Bound variables in computors", () => {
             const graph = makeDependencyGraph(db, schemas);
             await graph.set("source", { value: 10 });
 
-            const result = await graph.pull("final(x)", ["deep"]);
+            const result = await graph.pull("final", ["deep"]);
 
             expect(result).toEqual({ value: 21, x: "deep" });
 
@@ -326,7 +326,7 @@ describe("Bound variables in computors", () => {
             await graph.set("source", { value: 1 });
 
             // Pull one of the deepest nodes
-            const result = await graph.pull("layer3_2(x)", ["7"]);
+            const result = await graph.pull("layer3_2", ["7"]);
 
             // Manually compute expected value
             expect(result).toEqual({ value: "l3_2(l2_1(l1_1(2, 7), l1_2(3, 7), l1_3(4, 7), 7), l2_2(l1_1(2, 7), l1_2(3, 7), l1_3(4, 7), 7), l2_3(l1_1(2, 7), l1_2(3, 7), l1_3(4, 7), 7), 7)" });
@@ -366,7 +366,7 @@ describe("Bound variables in computors", () => {
             const graph = makeDependencyGraph(db, schemas);
 
             // Pull f with specific bindings
-            const result = await graph.pull("f(x, y)", ["A", "B"]);
+            const result = await graph.pull("f", ["A", "B"]);
 
             expect(result).toEqual({ value: "f(g(A), h(B))" });
 
@@ -420,7 +420,7 @@ describe("Bound variables in computors", () => {
             const graph = makeDependencyGraph(db, schemas);
 
             // Pull f with specific bindings
-            const result = await graph.pull("f(x, y, z)", ["A", "B", "C"]);
+            const result = await graph.pull("f", ["A", "B", "C"]);
 
             expect(result).toEqual({ value: "f(g(k(A, s1), C), h(B, s2))" });
 
@@ -476,7 +476,7 @@ describe("Bound variables in computors", () => {
             await graph.set("source", { value: 1 });
 
             // Pull top - should compute expensive only once even though two consumers depend on it
-            await graph.pull("top(x)", ["shared"]);
+            await graph.pull("top", ["shared"]);
 
             // expensive(x) should only be computed once
             expect(computorCallLog).toHaveLength(1);
@@ -504,8 +504,8 @@ describe("Bound variables in computors", () => {
             const graph = makeDependencyGraph(db, schemas);
 
             // Pull without required binding
-            await expect(graph.pull("derived(x)")).rejects.toThrow(
-                /Arity mismatch: pattern 'derived\(x\)' expects 1 arguments but received 0 bindings/
+            await expect(graph.pull("derived")).rejects.toThrow(
+                /Arity mismatch: head 'derived' expects 1 arguments but received 0 bindings/
             );
 
             await db.close();
@@ -528,8 +528,8 @@ describe("Bound variables in computors", () => {
             const graph = makeDependencyGraph(db, schemas);
 
             // Pull with wrong number of bindings (arity mismatch)
-            await expect(graph.pull("derived(x)", [1, 2])).rejects.toThrow(
-                /Arity mismatch: pattern 'derived\(x\)' expects 1 arguments but received 2 bindings/
+            await expect(graph.pull("derived", [1, 2])).rejects.toThrow(
+                /Arity mismatch: head 'derived' expects 1 arguments but received 2 bindings/
             );
 
             await db.close();

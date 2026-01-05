@@ -226,7 +226,6 @@ class DependencyGraphClass {
             // Collect operations to mark all dependents as potentially-outdated
             await this.propagateOutdated(concreteKey, batch);
         });
-        });
     }
 
     /**
@@ -555,7 +554,7 @@ class DependencyGraphClass {
 
         for (const inputKey of nodeDefinition.inputs) {
             const { value: inputValue, status: inputStatus } =
-                await this.pullWithStatus(inputKey);
+                await this.pullByNodeKeyWithStatus(inputKey);
             inputValues.push(inputValue);
 
             // If input is NOT 'unchanged', we can't guarantee we are unchanged.
@@ -680,6 +679,7 @@ class DependencyGraphClass {
 
     /**
      * Internal pull that returns status for optimization.
+     * Accepts head-only string from public API.
      * @private
      * @param {string} head - The head/name of the node (identifier only)
      * @param {Array<unknown>} [bindings=[]]
@@ -701,6 +701,74 @@ class DependencyGraphClass {
             // Create NodeKey for storage
             const nodeKey = { head, args: bindings };
             const concreteKey = serializeNodeKey(nodeKey);
+
+            // Find or create the node definition
+            const nodeDefinition = this.getOrCreateConcreteNode(concreteKey, compiledNode.canonicalOutput, bindings);
+
+            // Check freshness of this node
+            const nodeFreshness = await this.storage.freshness.get(
+                concreteKey
+            );
+
+            // Fast path: if up-to-date, return cached value immediately
+            // But first ensure the node is materialized (for seeded DBs or restart resilience)
+            if (nodeFreshness === "up-to-date") {
+                // Ensure node is materialized
+                await this.storage.ensureMaterialized(
+                    concreteKey,
+                    nodeDefinition.inputs,
+                    batch
+                );
+
+                // Ensure reverse dependencies are indexed if it has inputs
+                // This is critical for seeded databases where values/freshness exist
+                // but reverse-dep metadata is missing
+                if (nodeDefinition.inputs.length > 0) {
+                    await this.storage.ensureReverseDepsIndexed(
+                        concreteKey,
+                        nodeDefinition.inputs,
+                        batch
+                    );
+                }
+
+                const result = await this.storage.values.get(concreteKey);
+                if (result === undefined) {
+                    throw makeMissingValueError(concreteKey);
+                }
+                return { value: result, status: "cached" };
+            }
+
+            // Potentially-outdated or undefined freshness: need to maybe recalculate
+            return await this.maybeRecalculate(nodeDefinition, batch);
+        });
+    }
+
+    /**
+     * Internal pull by NodeKey (for recursive calls within the graph).
+     * Accepts serialized NodeKey JSON string.
+     * @private
+     * @param {string} nodeKeyStr - Serialized NodeKey JSON string
+     * @returns {Promise<RecomputeResult>}
+     */
+    async pullByNodeKeyWithStatus(nodeKeyStr) {
+        return this.storage.withBatch(async (batch) => {
+            const { deserializeNodeKey } = require("./node_key");
+            const nodeKey = deserializeNodeKey(nodeKeyStr);
+            const head = nodeKey.head;
+            const bindings = nodeKey.args;
+
+            // Lookup schema by head
+            const compiledNode = this.headIndex.get(head);
+            if (!compiledNode) {
+                throw makeInvalidNodeError(head);
+            }
+
+            // Validate arity matches bindings
+            if (compiledNode.arity !== bindings.length) {
+                throw makeArityMismatchError(head, compiledNode.arity, bindings.length);
+            }
+
+            const concreteKey = nodeKeyStr;
 
             // Find or create the node definition
             const nodeDefinition = this.getOrCreateConcreteNode(concreteKey, compiledNode.canonicalOutput, bindings);

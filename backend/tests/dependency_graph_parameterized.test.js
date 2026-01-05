@@ -48,7 +48,9 @@ describe("Parameterized node schemas", () => {
 
             const graph = makeDependencyGraph(db, schemas);
 
-            // Try to pull schema pattern directly
+            // Try to pull with an identifier that looks like a pattern
+            // In the new API, "derived(x)" is treated as a literal head name, not a pattern
+            // Since the real head is "derived", this should throw InvalidNode
             await expect(graph.pull('derived(x)')).rejects.toThrow();
 
             let error = null;
@@ -58,9 +60,9 @@ describe("Parameterized node schemas", () => {
                 error = err;
             }
             expect(error).not.toBeNull();
-            expect(isArityMismatch(error)).toBe(true);
+            expect(isInvalidNode(error)).toBe(true);
 
-            // Try to set schema pattern directly
+            // Try to set with an identifier that looks like a pattern
             await expect(
                 graph.set("derived(x)", { value: 1 })
             ).rejects.toThrow();
@@ -72,7 +74,7 @@ describe("Parameterized node schemas", () => {
                 error = err;
             }
             expect(error).not.toBeNull();
-            expect(isArityMismatch(error)).toBe(true);
+            expect(isInvalidNode(error)).toBe(true);
 
             await db.close();
         });

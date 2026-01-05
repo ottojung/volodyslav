@@ -64,7 +64,7 @@ function createNodeKeyFromPattern(pattern, bindings) {
     // For call expressions, use positional bindings
     // The arity must match the bindings array length
     if (expr.args.length !== bindings.length) {
-        throw makeArityMismatchError(pattern, expr.args.length, bindings.length);
+        throw makeArityMismatchError(expr.name, expr.args.length, bindings.length);
     }
     
     // Simply use the bindings array as args (variable names are ignored)
