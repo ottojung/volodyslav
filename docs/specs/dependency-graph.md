@@ -684,7 +684,7 @@ This section is reserved for future implementation notes.
 
 #### E.1 Unmatched Pull Request
 
-**Error:** `pull("unknown_node", {})` but no schema pattern matches.
+**Error:** `pull("unknown_node", [])` but no schema pattern matches.
 
 **Behavior:** Throw `InvalidNodeError`.
 
