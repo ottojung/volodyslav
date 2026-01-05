@@ -314,6 +314,8 @@ pull(nodeName, B):
   return stored_value(nodeKey)
 ```
 
+Note: this is a conceptual specification, it omits freshness concerns.
+
 **REQ-PULL-01:** `pull` MUST return a `Promise<DatabaseValue>`.
 
 **REQ-PULL-02:** `pull` MUST throw `InvalidNodeError` if no schema output has the given nodeName.
