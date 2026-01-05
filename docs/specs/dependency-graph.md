@@ -32,21 +32,21 @@ An **expression** is a symbolic template that denotes a (possibly infinite) fami
 
 **Components:**
 * The **head** (or **functor**) of an expression is its identifier—the name that categorizes the family.
-* The **arguments** are variable positions that can be assigned concrete `DatabaseValue` instances at runtime.
+* The **arguments** are variable positions that can be assigned concrete `ConstValue` instances at runtime.
 
 **Examples:**
 
 * `all_events` — An atom expression with no variables. Denotes exactly one node (a family of size 1).
-* `full_event(e)` — Denotes the infinite family `{ full_event(e=v) | v ∈ DatabaseValue }`.
-  - Each distinct `DatabaseValue` for `e` identifies a different member of this family.
-* `enhanced_event(e, p)` — Denotes `{ enhanced_event(e=v₁, p=v₂) | v₁, v₂ ∈ DatabaseValue }`.
+* `full_event(e)` — Denotes the infinite family `{ full_event(e=v) | v ∈ ConstValue }`.
+  - Each distinct `ConstValue` for `e` identifies a different member of this family.
+* `enhanced_event(e, p)` — Denotes `{ enhanced_event(e=v₁, p=v₂) | v₁, v₂ ∈ ConstValue }`.
   - The Cartesian product of all possible values for `e` and `p` forms this family.
 
 #### 1.2.2 Node Instances (Addresses Within Families)
 
 A **node instance** is a specific member of a node family, identified by:
 1. An expression pattern (e.g., `full_event(e)`)
-2. A binding environment B: `DatabaseValue[]` that assigns concrete values to all argument positions in the expression
+2. A binding environment B: `ConstValue[]` that assigns concrete values to all argument positions in the expression
 
 **Notation:** We write `expr@B` to denote a node instance, where:
 * `expr` is the expression pattern
@@ -60,7 +60,7 @@ A **node instance** is a specific member of a node family, identified by:
 
 **Identity:** Two node instances are identical if and only if:
 1. Their expression patterns have the same functor and arity (after canonicalization), AND
-2. Their binding environments are structurally equal (deep equality on `DatabaseValue` objects, compared positionally)
+2. Their binding environments are structurally equal (deep equality on `ConstValue` objects, compared positionally)
 
 #### 1.2.3 Schema as a Template for Infinite Edges
 
@@ -75,7 +75,7 @@ When a schema declares:
 }
 ```
 
-This means: **For every binding environment B** (a `DatabaseValue[]` of length 1), the node instance `full_event(e)@B` depends on:
+This means: **For every binding environment B** (a `constvalue[]` of length 1), the node instance `full_event(e)@B` depends on:
 * `event_data(e)@B` (same positional bindings)
 * `metadata(e)@B` (same positional bindings)
 
@@ -127,7 +127,7 @@ ws            := [ \t\n\r]*
 **Terminology:**
 * **atom-expression** — an expression with no arguments (e.g., `all_events`). Denotes a family of exactly one node.
 * **compound-expression** — an expression with one or more arguments (e.g., `event_context(e)`, `enhanced_event(e, p)`). Each argument is a variable. Denotes an infinite family of nodes.
-* **variable** — an identifier in an argument position; represents a parameter that can be bound to any `DatabaseValue`
+* **variable** — an identifier in an argument position; represents a parameter that can be bound to any `constvalue`
 * **pattern** — an expression used in a schema definition to describe a family of nodes
 * **free variables** — all variables (identifiers occurring in argument positions) in an expression
 
