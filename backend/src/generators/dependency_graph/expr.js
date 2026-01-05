@@ -2,6 +2,10 @@
  * Expression parsing and canonicalization.
  */
 
+/**
+ * @typedef {import('./types').SchemaPattern} SchemaPattern
+ */
+
 const { makeInvalidExpressionError } = require("./errors");
 
 /**
@@ -269,7 +273,7 @@ class Parser {
  * - calls: "name(arg1, arg2, ...)"
  * - args can only be identifiers (variables)
  *
- * @param {string} str - The expression string to parse
+ * @param {SchemaPattern} str - The expression string to parse
  * @returns {ParsedExpr}
  * @throws {Error} If the expression is malformed
  */
@@ -300,7 +304,7 @@ function renderArg(arg) {
 /**
  * Renders a parsed expression to its canonical string form.
  * @param {ParsedExpr} expr
- * @returns {string}
+ * @returns {SchemaPattern}
  */
 function renderExpr(expr) {
     if (expr.kind === "atom") {
@@ -314,8 +318,8 @@ function renderExpr(expr) {
 /**
  * Canonicalizes an expression string.
  *
- * @param {string | ParsedExpr} str - The expression string to canonicalize
- * @returns {string} The canonical form (still a valid expression)
+ * @param {SchemaPattern | ParsedExpr} str - The expression string to canonicalize
+ * @returns {SchemaPattern} The canonical form (still a valid expression)
  * @throws {Error} If the expression is malformed
  */
 function canonicalize(str) {
