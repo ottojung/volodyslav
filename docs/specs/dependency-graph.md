@@ -390,7 +390,7 @@ function makeDependencyGraph(
 
 **REQ-FACTORY-01:** MUST validate all schemas at construction (throw on parse errors, scope violations, overlaps, cycles, and arity conflicts).
 
-**REQ-FACTORY-02:** MUST compute schema identifier and obtain schema-namespaced storage via `rootDatabase.getSchemaStorage(schemaId)`.
+**REQ-FACTORY-02:** MUST compute schema identifier for internal storage namespacing.
 
 **REQ-FACTORY-03:** MUST NOT mutate `nodeDefs` or `rootDatabase`.
 
@@ -402,17 +402,14 @@ function makeDependencyGraph(
 interface DependencyGraph {
   pull(nodeName: NodeName, bindings?: BindingEnvironment): Promise<DatabaseValue>;
   set(nodeName: NodeName, value: DatabaseValue, bindings?: BindingEnvironment): Promise<void>;
-  getStorage(): SchemaStorage;
 }
 ```
 
 **REQ-IFACE-01:** Implementations MUST provide type guard `isDependencyGraph(value): boolean`.
 
-**REQ-IFACE-02:** `getStorage()` MUST return the `SchemaStorage` instance for the graph.
+**REQ-IFACE-02:** For atom-expressions (arity 0), `bindings` parameter defaults to `[]` and may be omitted.
 
-**REQ-IFACE-03:** For atom-expressions (arity 0), `bindings` parameter defaults to `[]` and may be omitted.
-
-**REQ-IFACE-04:** For compound-expressions (arity > 0), `bindings` MUST be provided with length matching the expression arity.
+**REQ-IFACE-03:** For compound-expressions (arity > 0), `bindings` MUST be provided with length matching the expression arity.
 
 ### 3.3 Database Interfaces
 
@@ -432,41 +429,20 @@ interface GenericDatabase<T> {
 
 **REQ-DB-01:** Values MUST round-trip without semantic change.
 
-#### SchemaStorage
-
-```typescript
-interface SchemaStorage {
-  values: GenericDatabase<DatabaseValue>;      // Node output values
-  freshness: GenericDatabase<Freshness>;       // Node freshness state
-  inputs: GenericDatabase<InputsRecord>;       // Node input dependencies
-  revdeps: GenericDatabase<1>;                 // Reverse dependency edges
-  batch(operations: DatabaseBatchOperation[]): Promise<void>;
-}
-
-type InputsRecord = { inputs: string[] };
-```
-
-**REQ-STORAGE-01:** `values` MUST store node values keyed by NodeKey (stable string derived from pattern and bindings).
-
-**REQ-STORAGE-02:** `freshness` MUST store conceptual freshness (`"up-to-date" | "potentially-outdated"`) keyed by NodeKey.
-
-**REQ-STORAGE-03:** `inputs` MUST store dependency arrays keyed by NodeKey.
-
-**REQ-STORAGE-04:** `revdeps` MUST support querying dependents of a node (specific key format is implementation-defined).
-
-**REQ-STORAGE-05:** `batch()` MUST execute operations atomically (all-or-nothing).
+**Note on Storage:** Internal storage organization (including how values, freshness, dependencies, and reverse dependencies are stored) is implementation-defined and not exposed in the public interface.
 
 #### RootDatabase
 
 ```typescript
 interface RootDatabase {
-  getSchemaStorage(schemaId: string): SchemaStorage;
+  // Internal interface - specifics are implementation-defined
+  // Must support schema-namespaced storage and isolation
   listSchemas(): AsyncIterable<string>;
   close(): Promise<void>;
 }
 ```
 
-**REQ-ROOT-01:** `getSchemaStorage()` MUST return isolated storage per schema identifier.
+**REQ-ROOT-01:** Implementations MUST provide isolated storage per schema identifier.
 
 **REQ-ROOT-02:** Different schema identifiers MUST NOT share storage or cause key collisions.
 
@@ -556,7 +532,6 @@ Tests MAY assert the existence and signatures of:
 * `makeDependencyGraph(rootDatabase: RootDatabase, nodeDefs: NodeDef[]): DependencyGraph` — Factory function
 * `DependencyGraph.pull(nodeName: NodeName, bindings?: BindingEnvironment): Promise<DatabaseValue>` — Retrieve/compute node value
 * `DependencyGraph.set(nodeName: NodeName, value: DatabaseValue, bindings?: BindingEnvironment): Promise<void>` — Write source node value
-* `DependencyGraph.getStorage(): SchemaStorage` — Access schema storage for testing
 * `isDependencyGraph(value): boolean` — Type guard
 
 ### 5.2 Observable Error Taxonomy
@@ -763,35 +738,30 @@ const schemaId = crypto.createHash("md5")
 
 **Alternative:** Implementations MAY use different algorithms (SHA-256, UUIDs, etc.) or namespacing strategies.
 
-#### B.3 Optional GraphStorage Helper Wrapper
-
-Implementations MAY provide a convenience wrapper extending `SchemaStorage`:
-
-```typescript
-interface GraphStorage extends SchemaStorage {
-  withBatch<T>(fn: (batch: BatchBuilder) => Promise<T>): Promise<T>;
-  ensureMaterialized(node: string, inputs: string[], batch: BatchBuilder): Promise<void>;
-  ensureReverseDepsIndexed(node: string, inputs: string[], batch: BatchBuilder): Promise<void>;
-  listDependents(input: string): Promise<string[]>;
-  getInputs(node: string): Promise<string[] | null>;
-  listMaterializedNodes(): Promise<string[]>;
-}
-```
-
-This is non-normative and not required for conformance.
-
 ### Appendix C: Optional Debug Interface
 
 For testing and debugging, implementations MAY provide:
 
 ```typescript
 interface DependencyGraphDebug {
-  debugGetFreshness(pattern: NodePattern, bindings?: BindingEnvironment): Promise<"up-to-date" | "potentially-outdated" | "missing">;
+  // Query freshness state of a specific node instance
+  debugGetFreshness(nodeName: NodeName, bindings?: BindingEnvironment): Promise<"up-to-date" | "potentially-outdated" | "missing">;
+  
+  // List all materialized node instances (NodeKey strings)
   debugListMaterializedNodes(): Promise<string[]>;
+  
+  // Get the schema hash/identifier for this graph (for storage inspection)
+  debugGetSchemaHash(): string;
 }
 ```
 
-**Note:** `"missing"` represents `undefined` freshness (unmaterialized node).
+**Purpose:** These methods expose internal state for testing purposes only. They are not part of the normative public API.
+
+**Notes:**
+- `"missing"` represents `undefined` freshness (unmaterialized node)
+- `debugListMaterializedNodes()` returns NodeKey strings (JSON format)
+- `debugGetSchemaHash()` returns the schema identifier used for storage namespacing
+- Tests MAY use these methods to inspect internal state and validate behavior
 
 ### Appendix D: Implementation Notes
 
