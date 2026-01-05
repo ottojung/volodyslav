@@ -12,6 +12,8 @@
 /** @typedef {import('./types').ConcreteNodeDefinition} ConcreteNodeDefinition */
 /** @typedef {import('./types').RecomputeResult} RecomputeResult */
 /** @typedef {import('./types').NodeKeyString} NodeKeyString */
+/** @typedef {import('./types').NodeName} NodeName */
+/** @typedef {import('./types').SchemaPattern} SchemaPattern */
 /** @typedef {import('./unchanged').Unchanged} Unchanged */
 /** @typedef {import('./graph_storage').GraphStorage} GraphStorage */
 /** @typedef {import('./graph_storage').BatchBuilder} BatchBuilder */
@@ -47,7 +49,7 @@ const { createNodeKeyFromPattern, serializeNodeKey } = require("./node_key");
  * DependencyGraph class for propagating data through dependency edges.
  *
  * Node Identity:
- * - Concrete nodes use JSON key format: {nodeName: string, args: Array<ConstValue>}
+ * - Concrete nodes use JSON key format: {nodeName: NodeName, args: Array<ConstValue>}
  * - Example: derived(x) with bindings ["test"] → {"head":"derived","args":["test"]}
  * - Pattern names (e.g., "event(e)") are only used for schema definitions
  * - Actual node instances are identified by serialized JSON keys
@@ -72,14 +74,14 @@ class DependencyGraphClass {
     /**
      * All compiled nodes (both exact and patterns).
      * @private
-     * @type {Map<string, import('./types').CompiledNode>}
+     * @type {Map<NodeName, import('./types').CompiledNode>}
      */
     graph;
 
     /**
      * Index for fast lookup of compiled nodes.
      * @private
-     * @type {{ exactIndex: Map<string, import('./types').CompiledNode>, patternIndex: Map<string, Array<import('./types').CompiledNode>> }}
+     * @type {{ exactIndex: Map<NodeName, import('./types').CompiledNode>, patternIndex: Map<NodeName, Array<import('./types').CompiledNode>> }}
      */
     graphIndex;
 
@@ -87,7 +89,7 @@ class DependencyGraphClass {
      * Index for fast lookup by nodeName (node name/functor only).
      * Maps nodeName to the single CompiledNode with that functor.
      * @private
-     * @type {Map<string, import('./types').CompiledNode>}
+     * @type {Map<NodeName, import('./types').CompiledNode>}
      */
     headIndex;
 
@@ -96,7 +98,7 @@ class DependencyGraphClass {
      * Maps each node to the list of nodes that directly depend on it.
      * Dynamic edges from pattern instantiations are stored in DB, not here.
      * @private
-     * @type {Map<string, Array<{output: string, inputs: string[]}>>}
+     * @type {Map<NodeName, Array<{output: NodeKeyString, inputs: NodeKeyString[]}>>}
      */
     dependentsMap;
 
@@ -104,7 +106,7 @@ class DependencyGraphClass {
      * Cache of concrete instantiated nodes created from patterns on demand.
      * Maps canonical output to a runtime node with concrete inputs and wrapped computor.
      * @private
-     * @type {Map<string, ConcreteNodeDefinition>}
+     * @type {Map<NodeKeyString, ConcreteNodeDefinition>}
      */
     concreteInstantiations;
 
@@ -127,9 +129,9 @@ class DependencyGraphClass {
      * Recursively collects operations to mark dependent nodes as potentially-dirty.
      * Uses both static dependents map and DB-persisted reverse dependencies.
      * @private
-     * @param {string} changedKey - The key that was changed
+     * @param {NodeKeyString} changedKey - The key that was changed
      * @param {BatchBuilder} batch - Batch builder to add operations to
-     * @param {Set<string>} nodesBecomingOutdated - Set of nodes that are becoming outdated in this batch
+     * @param {Set<NodeKeyString>} nodesBecomingOutdated - Set of nodes that are becoming outdated in this batch
      * @returns {Promise<void>}
      */
     async propagateOutdated(
@@ -186,7 +188,7 @@ class DependencyGraphClass {
     /**
      * Sets a specific node's value, marking it up-to-date and propagating changes.
      * All operations are performed atomically in a single batch.
-     * @param {string} nodeName - The node name (functor only, e.g., "full_event")
+     * @param {NodeName} nodeName - The node name (functor only, e.g., "full_event")
      * @param {DatabaseValue} value - The value to set
      * @param {Array<ConstValue>} [bindings=[]] - Positional bindings array for parameterized nodes
      * @returns {Promise<void>}
@@ -587,7 +589,7 @@ class DependencyGraphClass {
      * - If node is up-to-date: return cached value (fast path)
      * - If node is potentially-outdated: maybe recalculate (check inputs first)
      *
-     * @param {string} nodeName - The node name (functor only, e.g., "full_event")
+     * @param {NodeName} nodeName - The node name (functor only, e.g., "full_event")
      * @param {Array<ConstValue>} [bindings=[]] - Positional bindings array for parameterized nodes
      * @returns {Promise<DatabaseValue>} The node's value
      */
@@ -600,7 +602,7 @@ class DependencyGraphClass {
      * Internal pull that returns status for optimization.
      * Accepts nodeName-only string from public API.
      * @private
-     * @param {string} nodeName - The node name (functor only)
+     * @param {NodeName} nodeName - The node name (functor only)
      * @param {Array<ConstValue>} [bindings=[]]
      * @returns {Promise<RecomputeResult>}
      */
@@ -672,7 +674,7 @@ class DependencyGraphClass {
      * Internal pull by NodeKey string (for recursive calls within the graph).
      * Accepts serialized NodeKey JSON string.
      * @private
-     * @param {string} nodeKeyStr - Serialized NodeKey JSON string
+     * @param {NodeKeyString} nodeKeyStr - Serialized NodeKey JSON string
      * @returns {Promise<RecomputeResult>}
      */
     async pullByNodeKeyStringWithStatus(nodeKeyStr) {
@@ -741,7 +743,7 @@ class DependencyGraphClass {
 
     /**
      * Query conceptual freshness state of a node (debug interface).
-     * @param {string} nodeName - The node name (functor only)
+     * @param {NodeName} nodeName - The node name (functor only)
      * @param {Array<ConstValue>} [bindings=[]] - Positional bindings array for parameterized nodes
      * @returns {Promise<"up-to-date" | "potentially-outdated" | "missing">}
      */
@@ -776,7 +778,7 @@ class DependencyGraphClass {
 
     /**
      * List all materialized nodes (canonical names).
-     * @returns {Promise<string[]>}
+     * @returns {Promise<NodeKeyString[]>}
      */
     async debugListMaterializedNodes() {
         return this.storage.listMaterializedNodes();

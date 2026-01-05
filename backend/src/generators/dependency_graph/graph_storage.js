@@ -14,13 +14,14 @@
 /** @typedef {import('../database/types').InputsRecord} InputsRecord */
 /** @typedef {import('../database/types').DatabaseBatchOperation} DatabaseBatchOperation */
 /** @typedef {import('../database/types').SchemaSublevelType} SchemaSublevelType */
+/** @typedef {import('./types').NodeKeyString} NodeKeyString */
 
 /**
  * Interface for batch operations on a specific database.
  * @template TValue
  * @typedef {object} BatchDatabaseOps
- * @property {(key: string, value: TValue) => void} put - Queue a put operation
- * @property {(key: string) => void} del - Queue a delete operation
+ * @property {(key: NodeKeyString, value: TValue) => void} put - Queue a put operation
+ * @property {(key: NodeKeyString) => void} del - Queue a delete operation
  */
 
 /**
@@ -46,11 +47,11 @@
  * @property {InputsDatabase} inputs - Node inputs index
  * @property {RevdepsDatabase} revdeps - Reverse dependencies (edge-based: composite key -> 1)
  * @property {BatchFunction} withBatch - Run a function and commit atomically everything it does
- * @property {(node: string, inputs: string[], batch: BatchBuilder) => Promise<void>} ensureMaterialized - Mark a node as materialized (write inputs record)
- * @property {(node: string, inputs: string[], batch: BatchBuilder) => Promise<void>} ensureReverseDepsIndexed - Index reverse dependencies (write revdep edges)
- * @property {(input: string) => Promise<string[]>} listDependents - List all dependents of an input
- * @property {(node: string) => Promise<string[] | null>} getInputs - Get inputs for a node
- * @property {() => Promise<string[]>} listMaterializedNodes - List all materialized node names
+ * @property {(node: NodeKeyString, inputs: NodeKeyString[], batch: BatchBuilder) => Promise<void>} ensureMaterialized - Mark a node as materialized (write inputs record)
+ * @property {(node: NodeKeyString, inputs: NodeKeyString[], batch: BatchBuilder) => Promise<void>} ensureReverseDepsIndexed - Index reverse dependencies (write revdep edges)
+ * @property {(input: NodeKeyString) => Promise<NodeKeyString[]>} listDependents - List all dependents of an input
+ * @property {(node: NodeKeyString) => Promise<NodeKeyString[] | null>} getInputs - Get inputs for a node
+ * @property {() => Promise<NodeKeyString[]>} listMaterializedNodes - List all materialized node names
  */
 
 /**
@@ -103,8 +104,8 @@ function makeBatchBuilder(schemaStorage) {
 /**
  * Create a composite key for an edge in the revdeps database.
  * Uses null byte as delimiter between input and dependent node names.
- * @param {string} input - The input node (canonical name)
- * @param {string} dependent - The dependent node (canonical name)
+ * @param {NodeKeyString} input - The input node (canonical name)
+ * @param {NodeKeyString} dependent - The dependent node (canonical name)
  * @returns {string}
  */
 function makeRevdepKey(input, dependent) {
@@ -114,7 +115,7 @@ function makeRevdepKey(input, dependent) {
 /**
  * Parse a composite key from the revdeps database.
  * @param {string} key - The composite key
- * @returns {{input: string, dependent: string}}
+ * @returns {{input: NodeKeyString, dependent: NodeKeyString}}
  */
 function parseRevdepKey(key) {
     const parts = key.split("\x00");
