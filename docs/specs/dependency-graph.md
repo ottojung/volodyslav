@@ -194,7 +194,7 @@ ws            := [ \t\n\r]*
 ```typescript
 type NodeDef = {
   output: string;     // Expression pattern (may contain variables)
-  inputs: string[];   // Dependency expression patterns
+  inputs: Array<string>;   // Dependency expression patterns
   computor: Computor; // Computation function
 };
 ```
@@ -455,9 +455,9 @@ All errors MUST provide stable `.name` property and required fields:
 | `InvalidExpressionError` | `expression: string` | Invalid expression syntax (schema parsing) |
 | `InvalidNodeError` | `nodeName: string` | No schema matches the given nodeName (public API) |
 | `InvalidSetError` | `nodeName: string` | Node is not a source node (public API) |
-| `SchemaOverlapError` | `patterns: string[]` | Overlapping output patterns at init (schema validation) |
+| `SchemaOverlapError` | `patterns: Array<string>` | Overlapping output patterns at init (schema validation) |
 | `InvalidSchemaError` | `schemaPattern: string` | Schema definition problems at init (schema validation) |
-| `SchemaCycleError` | `cycle: string[]` | Cyclic schema dependencies at init (schema validation) |
+| `SchemaCycleError` | `cycle: Array<string>` | Cyclic schema dependencies at init (schema validation) |
 | `MissingValueError` | `nodeKey: string` | Up-to-date node has no stored value (internal) |
 | `ArityMismatchError` | `nodeName: string, expectedArity: number, actualArity: number` | Bindings array length does not match node arity (public API) |
 
@@ -728,7 +728,7 @@ interface DependencyGraphDebug {
   debugGetFreshness(nodeName: NodeName, bindings?: BindingEnvironment): Promise<"up-to-date" | "potentially-outdated" | "missing">;
   
   // List all materialized node instances (NodeKey strings)
-  debugListMaterializedNodes(): Promise<string[]>;
+  debugListMaterializedNodes(): Promise<Array<string>>;
   
   // Get the schema hash/identifier for this graph (for storage inspection)
   debugGetSchemaHash(): string;
