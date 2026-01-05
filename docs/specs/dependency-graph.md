@@ -316,15 +316,13 @@ pull(nodeName, B):
 
 Note: this is a conceptual specification, it omits freshness concerns.
 
-**REQ-PULL-01:** `pull` MUST return a `Promise<DatabaseValue>`.
+**REQ-PULL-01:** `pull` MUST throw `InvalidNodeError` if no schema output has the given nodeName.
 
-**REQ-PULL-02:** `pull` MUST throw `InvalidNodeError` if no schema output has the given nodeName.
+**REQ-PULL-02:** `pull` MUST throw `ArityMismatchError` if `bindings` array length does not match the arity defined in the schema for the given nodeName.
 
-**REQ-PULL-03:** `pull` MUST throw `ArityMismatchError` if `bindings` array length does not match the arity defined in the schema for the given nodeName.
+**REQ-PULL-03:** `pull` MUST ensure each computor is invoked at most once per top-level call for each unique node instance (property P3).
 
-**REQ-PULL-04:** `pull` MUST ensure each computor is invoked at most once per top-level call for each unique node instance (property P3).
-
-**REQ-PULL-05:** Lazy instantiation: When pulling a node instance, the system:
+**REQ-PULL-04:** Lazy instantiation: When pulling a node instance, the system:
 1. Looks up schema by nodeName (O(1))
 2. Validates arity matches bindings length
 3. Creates NodeKey from nodeName and bindings
