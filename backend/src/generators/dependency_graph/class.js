@@ -41,13 +41,13 @@ const { createNodeKeyFromPattern, serializeNodeKey } = require("./node_key");
  * DependencyGraph class for propagating data through dependency edges.
  *
  * Node Identity:
- * - Concrete nodes use JSON key format: {head: string, args: Array<ConstValue>}
- * - Example: derived(x) with {x: "test"} → {"head":"derived","args":["test"]}
+ * - Concrete nodes use JSON key format: {nodeName: string, args: Array<ConstValue>}
+ * - Example: derived(x) with bindings ["test"] → {"head":"derived","args":["test"]}
  * - Pattern names (e.g., "event(e)") are only used for schema definitions
  * - Actual node instances are identified by serialized JSON keys
  * 
  * Bindings:
- * - pull(nodeName, bindings) accepts optional bindings: Record<string, unknown>
+ * - pull(nodeName, bindings) accepts optional bindings: Array<ConstValue>
  * - Bindings are any JSON-serializable values (primitives or objects)
  * - Different bindings create separate cached instances
  * - Computors receive bindings as third parameter
@@ -78,8 +78,8 @@ class DependencyGraphClass {
     graphIndex;
 
     /**
-     * Index for fast lookup by head (node name only).
-     * Maps head to the single CompiledNode with that head.
+     * Index for fast lookup by nodeName (node name/functor only).
+     * Maps nodeName to the single CompiledNode with that functor.
      * @private
      * @type {Map<string, import('./types').CompiledNode>}
      */
@@ -180,25 +180,25 @@ class DependencyGraphClass {
     /**
      * Sets a specific node's value, marking it up-to-date and propagating changes.
      * All operations are performed atomically in a single batch.
-     * @param {string} head - The head/name of the node (identifier only, e.g., "full_event")
+     * @param {string} nodeName - The node name (functor only, e.g., "full_event")
      * @param {DatabaseValue} value - The value to set
      * @param {Array<ConstValue>} [bindings=[]] - Positional bindings array for parameterized nodes
      * @returns {Promise<void>}
      */
-    async set(head, value, bindings = []) {
-        // Lookup schema by head
-        const compiledNode = this.headIndex.get(head);
+    async set(nodeName, value, bindings = []) {
+        // Lookup schema by nodeName
+        const compiledNode = this.headIndex.get(nodeName);
         if (!compiledNode) {
-            throw makeInvalidNodeError(head);
+            throw makeInvalidNodeError(nodeName);
         }
 
         // Validate arity matches bindings
         if (compiledNode.arity !== bindings.length) {
-            throw makeArityMismatchError(head, compiledNode.arity, bindings.length);
+            throw makeArityMismatchError(nodeName, compiledNode.arity, bindings.length);
         }
 
         // Create NodeKey for storage
-        const nodeKey = { head, args: bindings };
+        const nodeKey = { head: nodeName, args: bindings };
         const concreteKey = serializeNodeKey(nodeKey);
 
         // Ensure node exists (will create from pattern if needed)
@@ -510,7 +510,7 @@ class DependencyGraphClass {
             }
         }
 
-        // Build head index for O(1) lookup by head name only
+        // Build nodeName index for O(1) lookup by nodeName (functor) only
         this.headIndex = new Map();
         for (const compiled of compiledNodes) {
             this.headIndex.set(compiled.head, compiled);
@@ -669,38 +669,38 @@ class DependencyGraphClass {
      * - If node is up-to-date: return cached value (fast path)
      * - If node is potentially-outdated: maybe recalculate (check inputs first)
      *
-     * @param {string} head - The head/name of the node (identifier only, e.g., "full_event")
+     * @param {string} nodeName - The node name (functor only, e.g., "full_event")
      * @param {Array<ConstValue>} [bindings=[]] - Positional bindings array for parameterized nodes
      * @returns {Promise<DatabaseValue>} The node's value
      */
-    async pull(head, bindings = []) {
-        const { value } = await this.pullWithStatus(head, bindings);
+    async pull(nodeName, bindings = []) {
+        const { value } = await this.pullWithStatus(nodeName, bindings);
         return value;
     }
 
     /**
      * Internal pull that returns status for optimization.
-     * Accepts head-only string from public API.
+     * Accepts nodeName-only string from public API.
      * @private
-     * @param {string} head - The head/name of the node (identifier only)
+     * @param {string} nodeName - The node name (functor only)
      * @param {Array<ConstValue>} [bindings=[]]
      * @returns {Promise<RecomputeResult>}
      */
-    async pullWithStatus(head, bindings = []) {
+    async pullWithStatus(nodeName, bindings = []) {
         return this.storage.withBatch(async (batch) => {
-            // Lookup schema by head
-            const compiledNode = this.headIndex.get(head);
+            // Lookup schema by nodeName
+            const compiledNode = this.headIndex.get(nodeName);
             if (!compiledNode) {
-                throw makeInvalidNodeError(head);
+                throw makeInvalidNodeError(nodeName);
             }
 
             // Validate arity matches bindings
             if (compiledNode.arity !== bindings.length) {
-                throw makeArityMismatchError(head, compiledNode.arity, bindings.length);
+                throw makeArityMismatchError(nodeName, compiledNode.arity, bindings.length);
             }
 
             // Create NodeKey for storage
-            const nodeKey = { head, args: bindings };
+            const nodeKey = { head: nodeName, args: bindings };
             const concreteKey = serializeNodeKey(nodeKey);
 
             // Find or create the node definition
@@ -755,18 +755,18 @@ class DependencyGraphClass {
         return this.storage.withBatch(async (batch) => {
             const { deserializeNodeKey } = require("./node_key");
             const nodeKey = deserializeNodeKey(nodeKeyStr);
-            const head = nodeKey.head;
+            const nodeName = nodeKey.head;
             const bindings = nodeKey.args;
 
-            // Lookup schema by head
-            const compiledNode = this.headIndex.get(head);
+            // Lookup schema by nodeName
+            const compiledNode = this.headIndex.get(nodeName);
             if (!compiledNode) {
-                throw makeInvalidNodeError(head);
+                throw makeInvalidNodeError(nodeName);
             }
 
             // Validate arity matches bindings
             if (compiledNode.arity !== bindings.length) {
-                throw makeArityMismatchError(head, compiledNode.arity, bindings.length);
+                throw makeArityMismatchError(nodeName, compiledNode.arity, bindings.length);
             }
 
             const concreteKey = nodeKeyStr;
@@ -814,24 +814,24 @@ class DependencyGraphClass {
 
     /**
      * Query conceptual freshness state of a node (debug interface).
-     * @param {string} head - The head/name of the node (identifier only)
+     * @param {string} nodeName - The node name (functor only)
      * @param {Array<ConstValue>} [bindings=[]] - Positional bindings array for parameterized nodes
      * @returns {Promise<"up-to-date" | "potentially-outdated" | "missing">}
      */
-    async debugGetFreshness(head, bindings = []) {
-        // Lookup schema to validate head and get arity
-        const compiledNode = this.headIndex.get(head);
+    async debugGetFreshness(nodeName, bindings = []) {
+        // Lookup schema to validate nodeName and get arity
+        const compiledNode = this.headIndex.get(nodeName);
         if (!compiledNode) {
-            throw makeInvalidNodeError(head);
+            throw makeInvalidNodeError(nodeName);
         }
 
         // Validate arity
         if (compiledNode.arity !== bindings.length) {
-            throw makeArityMismatchError(head, compiledNode.arity, bindings.length);
+            throw makeArityMismatchError(nodeName, compiledNode.arity, bindings.length);
         }
 
         // Convert to JSON format key
-        const nodeKey = { head, args: bindings };
+        const nodeKey = { head: nodeName, args: bindings };
         const concreteKey = serializeNodeKey(nodeKey);
         
         const freshness = await this.storage.freshness.get(concreteKey);

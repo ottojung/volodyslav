@@ -505,7 +505,7 @@ describe("Bound variables in computors", () => {
 
             // Pull without required binding
             await expect(graph.pull("derived")).rejects.toThrow(
-                /Arity mismatch: head 'derived' expects 1 arguments but received 0 bindings/
+                /Arity mismatch: nodeName 'derived' expects 1 arguments but received 0 bindings/
             );
 
             await db.close();
@@ -529,7 +529,7 @@ describe("Bound variables in computors", () => {
 
             // Pull with wrong number of bindings (arity mismatch)
             await expect(graph.pull("derived", [1, 2])).rejects.toThrow(
-                /Arity mismatch: head 'derived' expects 1 arguments but received 2 bindings/
+                /Arity mismatch: nodeName 'derived' expects 1 arguments but received 2 bindings/
             );
 
             await db.close();

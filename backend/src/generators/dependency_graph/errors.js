@@ -105,30 +105,30 @@ function isSchemaPatternNotAllowed(object) {
  */
 class ArityMismatch extends Error {
     /**
-     * @param {string} head - The node head/name
+     * @param {string} nodeName - The node name (functor/head)
      * @param {number} expected
      * @param {number} received
      */
-    constructor(head, expected, received) {
+    constructor(nodeName, expected, received) {
         super(
-            `Arity mismatch: head '${head}' expects ${expected} arguments but received ${received} bindings`
+            `Arity mismatch: nodeName '${nodeName}' expects ${expected} arguments but received ${received} bindings`
         );
         this.name = "ArityMismatchError";
-        this.head = head;
-        this.expected = expected;
-        this.received = received;
+        this.nodeName = nodeName;
+        this.expectedArity = expected;
+        this.actualArity = received;
     }
 }
 
 /**
  * Constructs an ArityMismatch error.
- * @param {string} head - The node head/name
+ * @param {string} nodeName - The node name (functor/head)
  * @param {number} expected
  * @param {number} received
  * @returns {ArityMismatch}
  */
-function makeArityMismatchError(head, expected, received) {
-    return new ArityMismatch(head, expected, received);
+function makeArityMismatchError(nodeName, expected, received) {
+    return new ArityMismatch(nodeName, expected, received);
 }
 
 /**
