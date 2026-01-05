@@ -286,7 +286,7 @@ await graph.pull("full_event", [{id: "123"}]);
 
 **REQ-MAT-02:** Materialization occurs through:
 * `pull(nodeName, bindings)` — creates `NodeInstance` with dependencies, stores value at `NodeKey`, marks `up-to-date`
-* `set(nodeName, value, bindings)` — materializes source `NodeInstance` at `NodeKey`, marks `up-to-date`
+* `set(nodeName, value, bindings)` — materializes a `NodeInstance` at `NodeKey`, marks `up-to-date`
 
 ---
 
