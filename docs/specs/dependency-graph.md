@@ -296,12 +296,7 @@ await graph.pull("full_event", [{id: "123"}]);
 
 **Signature:** `pull(nodeName: NodeName, bindings?: BindingEnvironment): Promise<DatabaseValue>`
 
-**Preconditions:**
-* `nodeName` MUST be a valid node identifier (string matching the `ident` production)
-* A schema output with matching nodeName MUST exist (throw `InvalidNodeError` otherwise)
-* `bindings` array length MUST match the arity of the node as defined in the schema (throw `ArityMismatchError` otherwise)
-
-**Big-Step Semantics (Correctness Specification):**
+**Big-Step Semantics:**
 
 ```
 pull(nodeName, B):
@@ -314,7 +309,7 @@ pull(nodeName, B):
   return stored_value(nodeKey)
 ```
 
-Note: this is a conceptual specification, it omits freshness concerns.
+Note: this specification omits freshness concerns.
 
 **REQ-PULL-01:** `pull` MUST throw `InvalidNodeError` if no schema output has the given nodeName.
 
