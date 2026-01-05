@@ -454,17 +454,6 @@ class DependencyGraphClass {
     }
 
     /**
-     * Propagates up-to-date state to downstream potentially-outdated nodes.
-     * Called AFTER a node is marked up-to-date.
-     * Only affects potentially-outdated nodes whose inputs are all up-to-date.
-     * Uses both static dependents and DB-persisted reverse dependencies.
-     *
-     * @private
-     * @param {string} nodeName - The node that was marked up-to-date
-     * @returns {Promise<void>}
-     */
-
-    /**
      * Maybe recalculates a potentially-outdated node.
      * If all inputs are up-to-date, returns cached value.
      * Otherwise, recalculates.
