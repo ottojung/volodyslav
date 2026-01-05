@@ -23,12 +23,10 @@ const {
     makeInvalidNodeError,
     makeMissingValueError,
     makeInvalidSetError,
-    makeSchemaOverlapError,
     makeInvalidComputorReturnValueError,
-    makeSchemaPatternNotAllowedError,
     makeArityMismatchError,
 } = require("./errors");
-const { parseExpr, renderExpr, canonicalize } = require("./expr");
+const { canonicalize } = require("./expr");
 const {
     compileNodeDef,
     validateNoOverlap,
@@ -305,6 +303,11 @@ class DependencyGraphClass {
             const concreteNode = {
                 output: concreteKeyString,
                 inputs: jsonInputs,
+                /**
+                 * @param {Array<DatabaseValue>} inputs
+                 * @param {DatabaseValue | undefined} oldValue
+                 * @returns {DatabaseValue | Unchanged}
+                 */
                 computor: (inputs, oldValue) =>
                     compiledNode.source.computor(inputs, oldValue, []),
             };
