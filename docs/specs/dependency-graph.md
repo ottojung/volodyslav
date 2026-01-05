@@ -326,8 +326,8 @@ Implementations MAY use any strategy to achieve property P3 (e.g., memoization, 
 **Signature:** `set(nodeName: NodeName, value: DatabaseValue, bindings?: BindingEnvironment): Promise<void>`
 
 **Effects:**
-1. Create NodeKey from `nodeName@bindings`
-2. Store `value` at that NodeKey
+1. Create `NodeKey` from `nodeName@bindings`
+2. Store `value` at that `NodeKey`
 3. Mark that node instance as `up-to-date`
 4. Mark all **materialized** transitive dependents as `potentially-outdated`
 
