@@ -11,10 +11,10 @@
 /** @typedef {import('./types').CompiledNode} CompiledNode */
 /** @typedef {import('./types').ConcreteNodeDefinition} ConcreteNodeDefinition */
 /** @typedef {import('./types').RecomputeResult} RecomputeResult */
+/** @typedef {import('./types').NodeKeyString} NodeKeyString */
 /** @typedef {import('./unchanged').Unchanged} Unchanged */
 /** @typedef {import('./graph_storage').GraphStorage} GraphStorage */
 /** @typedef {import('./graph_storage').BatchBuilder} BatchBuilder */
-/** @typedef {string} NodeKeyString */
 /** @typedef {import('./node_key').NodeKey} NodeKey */
 
 const crypto = require("crypto");
