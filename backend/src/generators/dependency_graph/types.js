@@ -40,11 +40,18 @@
  */
 
 /**
+ * An expression string pattern used in node definitions.
  * @typedef {string} SchemaPattern
  */
 
 /**
+ * A serialized node key string for storage.
  * @typedef {string} NodeKeyString
+ */
+
+/**
+ * The head/functor part of SchemaPattern.
+ * @typedef {string} NodeName
  */
 
 /**
