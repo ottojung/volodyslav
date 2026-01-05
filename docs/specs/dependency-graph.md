@@ -12,12 +12,12 @@ This document provides a formal specification for the dependency graph's operati
 * **SchemaPattern** — an expression string that may contain variables, e.g., `"full_event(e)"` or `"all_events"`. Used ONLY in schema definitions to denote families of nodes and for variable mapping.
 * **Serializable** - a serializable value type. Defined recursively as: `number | string | null | Array<Serializable> | Record<string, Serializable>`.
 * **ConstValue** - A subtype of `Serializable`.
-* **BindingEnvironment** — a positional array of concrete values: `ConstValue[]`. Used to instantiate a specific node from a family. The array length MUST match the arity of the node. Bindings are matched to argument positions by position, not by name.
+* **BindingEnvironment** — a positional array of concrete values: `Array<ConstValue>`. Used to instantiate a specific node from a family. The array length MUST match the arity of the node. Bindings are matched to argument positions by position, not by name.
 * **NodeInstance** — a specific node identified by a `NodeName` and `BindingEnvironment`. Conceptually: `{ nodeName: NodeName, bindings: BindingEnvironment }`. Notation: `nodeName@bindings`.
-* **NodeKey** — stable string key used for storage, derived from the head and bindings. This is the actual database key. Format: JSON serialization of `{ head: string, args: ConstValue[] }`.
+* **NodeKey** — stable string key used for storage, derived from the head and bindings. This is the actual database key. Format: JSON serialization of `{ head: string, args: Array<ConstValue> }`.
 * **NodeValue** — computed value at a node (arbitrary `DatabaseValue`)
 * **Freshness** — conceptual state: `"up-to-date" | "potentially-outdated"`
-* **Computor** — deterministic async function: `(inputs: DatabaseValue[], oldValue: DatabaseValue | undefined, bindings: ConstValue[]) => Promise<DatabaseValue | Unchanged>`
+* **Computor** — deterministic async function: `(inputs: Array<DatabaseValue>, oldValue: DatabaseValue | undefined, bindings: Array<ConstValue>) => Promise<DatabaseValue | Unchanged>`
 * **Unchanged** — unique sentinel value indicating unchanged computation result. MUST NOT be a valid `DatabaseValue` (cannot be stored via `set()` or returned by `pull()`).
 * **Variable** — parameter placeholder in node schemas (identifiers in argument positions). Variables are internal to schema definitions and not exposed in public API.
 * **DatabaseValue** — a subtype of `Serializable`, excluding `null`.
@@ -46,7 +46,7 @@ An **expression** is a symbolic template that denotes a (possibly infinite) fami
 
 A **node instance** is a specific member of a node family, identified by:
 1. An expression pattern (e.g., `full_event(e)`)
-2. A binding environment B: `ConstValue[]` that assigns concrete values to all argument positions in the expression
+2. A binding environment B: `Array<ConstValue>` that assigns concrete values to all argument positions in the expression
 
 **Notation:** We write `expr@B` to denote a node instance, where:
 * `expr` is the expression pattern
@@ -75,7 +75,7 @@ When a schema declares:
 }
 ```
 
-This means: **For every binding environment B** (a `constvalue[]` of length 1), the node instance `full_event(e)@B` depends on:
+This means: **For every binding environment B** (a `Array<ConstValue>` of length 1), the node instance `full_event(e)@B` depends on:
 * `event_data(e)@B` (same positional bindings)
 * `metadata(e)@B` (same positional bindings)
 
@@ -430,9 +430,9 @@ interface RootDatabase {
 
 ```typescript
 type Computor = (
-  inputs: DatabaseValue[],
+  inputs: Array<DatabaseValue>,
   oldValue: DatabaseValue | undefined,
-  bindings: ConstValue[]
+  bindings: Array<ConstValue>
 ) => Promise<DatabaseValue | Unchanged>;
 ```
 
