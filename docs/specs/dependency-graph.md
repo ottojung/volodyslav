@@ -10,7 +10,8 @@ This document provides a formal specification for the dependency graph's operati
 
 * **NodeName** — an identifier string (functor/head only), e.g., `"full_event"` or `"all_events"`. Used in public API calls to identify node families. Does NOT include variable syntax or arity suffix.
 * **SchemaPattern** — an expression string that may contain variables, e.g., `"full_event(e)"` or `"all_events"`. Used ONLY in schema definitions to denote families of nodes and for variable mapping.
-* **ConstValue** — a serializable value type. Defined recursively as: `number | string | null | Array<ConstValue> | Record<string, ConstValue>`.
+* **Serializable** - a serializable value type. Defined recursively as: `number | string | null | Array<Serializable> | Record<string, Serializable>`.
+* **ConstValue** - A subtype of `Serializable`.
 * **BindingEnvironment** — a positional array of concrete values: `ConstValue[]`. Used to instantiate a specific node from a family. The array length MUST match the arity of the node. Bindings are matched to argument positions by position, not by name.
 * **NodeInstance** — a specific node identified by a `NodeName` and `BindingEnvironment`. Conceptually: `{ nodeName: NodeName, bindings: BindingEnvironment }`. Notation: `nodeName@bindings`.
 * **NodeKey** — stable string key used for storage, derived from the head and bindings. This is the actual database key. Format: JSON serialization of `{ head: string, args: ConstValue[] }`.
@@ -19,7 +20,7 @@ This document provides a formal specification for the dependency graph's operati
 * **Computor** — deterministic async function: `(inputs: DatabaseValue[], oldValue: DatabaseValue | undefined, bindings: ConstValue[]) => Promise<DatabaseValue | Unchanged>`
 * **Unchanged** — unique sentinel value indicating unchanged computation result. MUST NOT be a valid `DatabaseValue` (cannot be stored via `set()` or returned by `pull()`).
 * **Variable** — parameter placeholder in node schemas (identifiers in argument positions). Variables are internal to schema definitions and not exposed in public API.
-* **DatabaseValue** — a JSON serializable JavaScript value. MUST round-trip through database interfaces without semantic change.
+* **DatabaseValue** — a subtype of `Serializable`, excluding `null`.
 
 ### 1.2 Expressions as an Infinite Graph (Normative)
 
