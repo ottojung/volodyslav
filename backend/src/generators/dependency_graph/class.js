@@ -197,17 +197,17 @@ class DependencyGraphClass {
             throw makeArityMismatchError(nodeName, compiledNode.arity, bindings.length);
         }
 
+        // Validate that this is a source node (no inputs)
+        if (compiledNode.source.inputs.length > 0) {
+            throw makeInvalidSetError(nodeName);
+        }
+
         // Create NodeKey for storage
         const nodeKey = { head: nodeName, args: bindings };
         const concreteKey = serializeNodeKey(nodeKey);
 
         // Ensure node exists (will create from pattern if needed)
         const nodeDefinition = this.getOrCreateConcreteNode(concreteKey, compiledNode.canonicalOutput, bindings);
-
-        // Validate that this is a source node (no inputs)
-        if (nodeDefinition.inputs.length > 0) {
-            throw makeInvalidSetError(concreteKey);
-        }
 
         // Use batch builder for atomic operations
         await this.storage.withBatch(async (batch) => {
