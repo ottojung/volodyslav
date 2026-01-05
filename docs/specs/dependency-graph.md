@@ -526,10 +526,7 @@ Tests MAY assert:
 
 **REQ-RESTART-01:** Materialized node instances MUST remain materialized across graph restarts (same `RootDatabase`, same schema).
 
-**REQ-RESTART-02:** After restart, `set(source, value, bindings)` MUST invalidate all previously materialized transitive dependents WITHOUT requiring re-pull.
-
-Tests MAY assert:
-* Pull a node instance, restart graph instance, call `set()` on upstream source with appropriate bindings, verify downstream node instance is marked `potentially-outdated`
+**REQ-RESTART-02:** After restart, `set(nodeName, value, bindings)` MUST invalidate all previously materialized transitive dependents WITHOUT requiring re-pull.
 
 ### 5.6 Behavioral Guarantees
 
