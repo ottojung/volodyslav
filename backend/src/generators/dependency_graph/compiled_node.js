@@ -6,7 +6,8 @@ const { parseExpr, renderExpr } = require("./expr");
 const { 
     makeInvalidSchemaError, 
     makeSchemaOverlapError, 
-    makeSchemaCycleError 
+    makeSchemaCycleError,
+    makeSchemaArityConflictError,
 } = require("./errors");
 
 /** @typedef {import('./types').NodeDef} NodeDef */
@@ -243,6 +244,38 @@ function validateAcyclic(compiledNodes) {
 }
 
 /**
+ * Validates that each head has only one arity across all schema outputs.
+ * This ensures no arity polymorphism (same head with different arities).
+ * @param {CompiledNode[]} compiledNodes
+ * @throws {Error} If a head appears with multiple arities
+ */
+function validateSingleArityPerHead(compiledNodes) {
+    /** @type {Map<string, Set<number>>} */
+    const headToArities = new Map();
+    
+    for (const node of compiledNodes) {
+        const head = node.head;
+        
+        if (!headToArities.has(head)) {
+            headToArities.set(head, new Set());
+        }
+        
+        const arities = headToArities.get(head);
+        if (arities) {
+            arities.add(node.arity);
+        }
+    }
+    
+    // Check for conflicts
+    for (const [head, arities] of headToArities.entries()) {
+        if (arities.size > 1) {
+            const aritiesArray = Array.from(arities).sort((a, b) => a - b);
+            throw makeSchemaArityConflictError(head, aritiesArray);
+        }
+    }
+}
+
+/**
  * Compiles a node definition into a CompiledNode with all metadata cached.
  * @param {NodeDef} nodeDef
  * @returns {CompiledNode}
@@ -376,6 +409,7 @@ module.exports = {
     extractVariables,
     validateNoOverlap,
     validateAcyclic,
+    validateSingleArityPerHead,
     patternsCanOverlap,
     createVariablePositionMap,
     extractInputBindings,

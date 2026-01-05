@@ -23,12 +23,14 @@ const {
     makeSchemaOverlapError,
     makeInvalidComputorReturnValueError,
     makeSchemaPatternNotAllowedError,
+    makeArityMismatchError,
 } = require("./errors");
 const { canonicalize, parseExpr, renderExpr } = require("./expr");
 const {
     compileNodeDef,
     validateNoOverlap,
     validateAcyclic,
+    validateSingleArityPerHead,
 } = require("./compiled_node");
 
 const { makeGraphStorage } = require("./graph_storage");
@@ -73,6 +75,14 @@ class DependencyGraphClass {
      * @type {{ exactIndex: Map<string, import('./types').CompiledNode>, patternIndex: Map<string, Array<import('./types').CompiledNode>> }}
      */
     graphIndex;
+
+    /**
+     * Index for fast lookup by head (node name only).
+     * Maps head to the single CompiledNode with that head.
+     * @private
+     * @type {Map<string, import('./types').CompiledNode>}
+     */
+    headIndex;
 
     /**
      * Pre-computed map from node name to array of dependent nodes (for static edges only).
@@ -169,21 +179,29 @@ class DependencyGraphClass {
     /**
      * Sets a specific node's value, marking it up-to-date and propagating changes.
      * All operations are performed atomically in a single batch.
-     * @param {string} key - The name of the node to set
+     * @param {string} head - The head/name of the node (identifier only, e.g., "full_event")
      * @param {DatabaseValue} value - The value to set
      * @param {Array<unknown>} [bindings=[]] - Positional bindings array for parameterized nodes
      * @returns {Promise<void>}
      */
-    async set(key, value, bindings = []) {
-        // Parse the original key to create node key
-        const nodeKey = createNodeKeyFromPattern(key, bindings);
+    async set(head, value, bindings = []) {
+        // Lookup schema by head
+        const compiledNode = this.headIndex.get(head);
+        if (!compiledNode) {
+            throw makeInvalidNodeError(head);
+        }
+
+        // Validate arity matches bindings
+        if (compiledNode.arity !== bindings.length) {
+            throw makeArityMismatchError(head, compiledNode.arity, bindings.length);
+        }
+
+        // Create NodeKey for storage
+        const nodeKey = { head, args: bindings };
         const concreteKey = serializeNodeKey(nodeKey);
-        
-        // Canonicalize for pattern matching
-        const canonicalKey = canonicalize(key);
 
         // Ensure node exists (will create from pattern if needed)
-        const nodeDefinition = this.getOrCreateConcreteNode(concreteKey, canonicalKey, bindings);
+        const nodeDefinition = this.getOrCreateConcreteNode(concreteKey, compiledNode.canonicalOutput, bindings);
 
         // Validate that this is a source node (no inputs)
         if (nodeDefinition.inputs.length > 0) {
@@ -207,6 +225,7 @@ class DependencyGraphClass {
 
             // Collect operations to mark all dependents as potentially-outdated
             await this.propagateOutdated(concreteKey, batch);
+        });
         });
     }
 
@@ -438,6 +457,9 @@ class DependencyGraphClass {
         // Validate acyclic
         validateAcyclic(compiledNodes);
 
+        // Validate single arity per head (new requirement)
+        validateSingleArityPerHead(compiledNodes);
+
         // Compute schema hash for namespacing DB keys
         // Use a stable canonical representation of the schema
         const schemaRepresentation = compiledNodes
@@ -486,6 +508,12 @@ class DependencyGraphClass {
                     compiled
                 );
             }
+        }
+
+        // Build head index for O(1) lookup by head name only
+        this.headIndex = new Map();
+        for (const compiled of compiledNodes) {
+            this.headIndex.set(compiled.head, compiled);
         }
 
         // Initialize instantiation cache
@@ -641,61 +669,41 @@ class DependencyGraphClass {
      * - If node is up-to-date: return cached value (fast path)
      * - If node is potentially-outdated: maybe recalculate (check inputs first)
      *
-     * @param {string} nodeName - The name of the node to pull
+     * @param {string} head - The head/name of the node (identifier only, e.g., "full_event")
      * @param {Array<unknown>} [bindings=[]] - Positional bindings array for parameterized nodes
      * @returns {Promise<DatabaseValue>} The node's value
      */
-    async pull(nodeName, bindings = []) {
-        const { value } = await this.pullWithStatus(nodeName, bindings);
+    async pull(head, bindings = []) {
+        const { value } = await this.pullWithStatus(head, bindings);
         return value;
     }
 
     /**
      * Internal pull that returns status for optimization.
      * @private
-     * @param {string} nodeName
+     * @param {string} head - The head/name of the node (identifier only)
      * @param {Array<unknown>} [bindings=[]]
      * @returns {Promise<RecomputeResult>}
      */
-    async pullWithStatus(nodeName, bindings = []) {
+    async pullWithStatus(head, bindings = []) {
         return this.storage.withBatch(async (batch) => {
-            // Check if nodeName is already a JSON key
-            let concreteKey;
-            let canonicalName;
-            let extractedBindings = bindings;
-            
-            if (nodeName.startsWith('{')) {
-                // Already in JSON format, use as-is
-                concreteKey = nodeName;
-                // Extract pattern name and bindings from JSON
-                try {
-                    const { deserializeNodeKey } = require("./node_key");
-                    const nodeKey = deserializeNodeKey(nodeName);
-                    canonicalName = nodeKey.head;
-                    if (nodeKey.args.length > 0) {
-                        // Build pattern name for matching
-                        const varNames = new Array(nodeKey.args.length).fill(0).map((_, i) => String.fromCharCode(97 + i));
-                        canonicalName += `(${varNames.join(',')})`;
-                        
-                        // If bindings not provided, extract from JSON key
-                        if (bindings.length === 0) {
-                            extractedBindings = nodeKey.args;
-                        }
-                    }
-                } catch {
-                    canonicalName = nodeName;
-                }
-            } else {
-                // Create concrete key from original node name
-                const nodeKey = createNodeKeyFromPattern(nodeName, bindings);
-                concreteKey = serializeNodeKey(nodeKey);
-                
-                // Canonicalize for pattern matching
-                canonicalName = canonicalize(nodeName);
+            // Lookup schema by head
+            const compiledNode = this.headIndex.get(head);
+            if (!compiledNode) {
+                throw makeInvalidNodeError(head);
             }
 
+            // Validate arity matches bindings
+            if (compiledNode.arity !== bindings.length) {
+                throw makeArityMismatchError(head, compiledNode.arity, bindings.length);
+            }
+
+            // Create NodeKey for storage
+            const nodeKey = { head, args: bindings };
+            const concreteKey = serializeNodeKey(nodeKey);
+
             // Find or create the node definition
-            const nodeDefinition = this.getOrCreateConcreteNode(concreteKey, canonicalName, extractedBindings);
+            const nodeDefinition = this.getOrCreateConcreteNode(concreteKey, compiledNode.canonicalOutput, bindings);
 
             // Check freshness of this node
             const nodeFreshness = await this.storage.freshness.get(
@@ -737,13 +745,24 @@ class DependencyGraphClass {
 
     /**
      * Query conceptual freshness state of a node (debug interface).
-     * @param {string} nodeName - The node name to query
+     * @param {string} head - The head/name of the node (identifier only)
      * @param {Array<unknown>} [bindings=[]] - Positional bindings array for parameterized nodes
      * @returns {Promise<"up-to-date" | "potentially-outdated" | "missing">}
      */
-    async debugGetFreshness(nodeName, bindings = []) {
+    async debugGetFreshness(head, bindings = []) {
+        // Lookup schema to validate head and get arity
+        const compiledNode = this.headIndex.get(head);
+        if (!compiledNode) {
+            throw makeInvalidNodeError(head);
+        }
+
+        // Validate arity
+        if (compiledNode.arity !== bindings.length) {
+            throw makeArityMismatchError(head, compiledNode.arity, bindings.length);
+        }
+
         // Convert to JSON format key
-        const nodeKey = createNodeKeyFromPattern(nodeName, bindings);
+        const nodeKey = { head, args: bindings };
         const concreteKey = serializeNodeKey(nodeKey);
         
         const freshness = await this.storage.freshness.get(concreteKey);

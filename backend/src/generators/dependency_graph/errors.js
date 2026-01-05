@@ -349,6 +349,44 @@ function isInvalidComputorReturnValue(object) {
     return object instanceof InvalidComputorReturnValue;
 }
 
+/**
+ * Error for schema arity conflict (same head with different arities).
+ */
+class SchemaArityConflict extends Error {
+    /**
+     * @param {string} head
+     * @param {number[]} arities
+     */
+    constructor(head, arities) {
+        super(
+            `Schema arity conflict: head '${head}' appears with multiple arities [${arities.join(", ")}]. ` +
+                `Each head must have a single arity across all schema outputs.`
+        );
+        this.name = "SchemaArityConflictError";
+        this.head = head;
+        this.arities = arities;
+    }
+}
+
+/**
+ * Constructs a SchemaArityConflict error.
+ * @param {string} head
+ * @param {number[]} arities
+ * @returns {SchemaArityConflict}
+ */
+function makeSchemaArityConflictError(head, arities) {
+    return new SchemaArityConflict(head, arities);
+}
+
+/**
+ * Type guard for SchemaArityConflict.
+ * @param {unknown} object
+ * @returns {object is SchemaArityConflict}
+ */
+function isSchemaArityConflict(object) {
+    return object instanceof SchemaArityConflict;
+}
+
 module.exports = {
     makeInvalidNodeError,
     isInvalidNode,
@@ -370,4 +408,6 @@ module.exports = {
     isSchemaOverlap,
     makeInvalidComputorReturnValueError,
     isInvalidComputorReturnValue,
+    makeSchemaArityConflictError,
+    isSchemaArityConflict,
 };
