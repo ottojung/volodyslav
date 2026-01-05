@@ -59,7 +59,7 @@ A **node instance** is a specific member of a node family, identified by:
 * Variable names do not affect identity: `full_event(e)@[{id: "123"}]` and `full_event(x)@[{id: "123"}]` are the same node instance.
 
 **Identity:** Two node instances are identical if and only if:
-1. Their expression patterns have the same functor and arity (after canonicalization), AND
+1. Their expression patterns have the same functor and arity, AND
 2. Their binding environments are structurally equal (deep equality on `ConstValue` objects, compared positionally)
 
 #### 1.2.3 Schema as a Template for Infinite Edges
@@ -148,7 +148,7 @@ ws            := [ \t\n\r]*
 **REQ-CANON-03:** Pattern Matching:
 * The canonical form is used for pattern matching and schema indexing
 * Original expression strings (with variable names) are preserved for error messages
-* Schema patterns are canonicalized at initialization for O(1) lookup by functor and arity
+* Schema patterns are canonicalized at initialization for O(1) lookup
 
 **REQ-CANON-04:** All storage operations MUST use NodeKey as database keys. A NodeKey is derived from: (1) the nodeName (functor), and (2) the BindingEnvironment to produce a stable key.
 
@@ -204,7 +204,7 @@ When evaluating `enhanced_event(e, p)@[{id: "evt_123"}, {id: "photo_456"}]`:
 **REQ-BINDING-02:** Variable names in the output pattern define a **namespace** for that schema. All variables in input patterns must exist in this namespace (enforced by REQ-SCHEMA-02).
 
 **REQ-BINDING-03:** Public API calls use `nodeName` (functor only) with positional bindings:
-1. The system matches the nodeName to a schema by functor and arity (REQ-MATCH-01)
+1. The system matches the nodeName to a schema (REQ-MATCH-01)
 2. The positional bindings are used directly
 3. Variable names are schema-internal only
 
