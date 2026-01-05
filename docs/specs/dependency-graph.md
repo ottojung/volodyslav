@@ -325,12 +325,6 @@ Implementations MAY use any strategy to achieve property P3 (e.g., memoization, 
 
 **Signature:** `set(nodeName: NodeName, value: DatabaseValue, bindings?: BindingEnvironment): Promise<void>`
 
-**Preconditions:**
-* `nodeName` MUST be a valid node identifier
-* A schema output with matching nodeName MUST exist (throw `InvalidNodeError` otherwise)
-* `bindings` array length MUST match the arity of the node (throw `ArityMismatchError` otherwise)
-* The matching schema MUST be a source node (throw `InvalidSetError` if it has inputs)
-
 **Effects:**
 1. Create NodeKey from `nodeName@bindings`
 2. Store `value` at that NodeKey
