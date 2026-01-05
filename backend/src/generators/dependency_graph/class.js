@@ -25,7 +25,7 @@ const {
     makeSchemaPatternNotAllowedError,
     makeArityMismatchError,
 } = require("./errors");
-const { canonicalize, parseExpr, renderExpr } = require("./expr");
+const { parseExpr, renderExpr } = require("./expr");
 const {
     compileNodeDef,
     validateNoOverlap,

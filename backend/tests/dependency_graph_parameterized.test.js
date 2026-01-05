@@ -8,7 +8,6 @@ const os = require("os");
 const { getRootDatabase } = require("../src/generators/database");
 const {
     makeDependencyGraph,
-    isArityMismatch,
     isInvalidNode,
 } = require("../src/generators/dependency_graph");
 const { getMockedRootCapabilities } = require("./spies");
