@@ -107,6 +107,57 @@ class DependencyGraphClass {
     storage;
 
     /**
+     * @constructor
+     * @param {RootDatabase} rootDatabase - The root database instance
+     * @param {Array<NodeDef>} nodeDefs - Unified node definitions
+     */
+    constructor(rootDatabase, nodeDefs) {
+        // Compile all node definitions
+        const compiledNodes = nodeDefs.map(compileNodeDef);
+
+        // Validate no overlaps
+        validateNoOverlap(compiledNodes);
+
+        // Validate acyclic
+        validateAcyclic(compiledNodes);
+
+        // Validate single arity per head (new requirement)
+        validateSingleArityPerHead(compiledNodes);
+
+        // Compute schema hash for namespacing DB keys
+        // Use a stable canonical representation of the schema
+        const schemaRepresentation = compiledNodes
+            .map((node) => ({
+                output: renderExpr(node.outputExpr),
+                inputs: node.inputExprs.map(renderExpr),
+            }))
+            .sort((a, b) =>
+                schemaPatternToString(a.output).localeCompare(
+                    schemaPatternToString(b.output)
+                )
+            );
+
+        const schemaJson = JSON.stringify(schemaRepresentation);
+        const hash = crypto
+            .createHash("sha256")
+            .update(schemaJson)
+            .digest("hex");
+        this.schemaHash = stringToSchemaHash(hash);
+
+        // Initialize storage helper
+        this.storage = makeGraphStorage(rootDatabase, this.schemaHash);
+
+        // Build nodeName index for O(1) lookup by nodeName (functor) only
+        this.headIndex = new Map();
+        for (const compiled of compiledNodes) {
+            this.headIndex.set(compiled.head, compiled);
+        }
+
+        // Initialize instantiation cache
+        this.concreteInstantiations = new Map();
+    }
+
+    /**
      * Recursively collects operations to mark dependent nodes as potentially-dirty.
      * Uses both static dependents map and DB-persisted reverse dependencies.
      * @private
@@ -303,57 +354,6 @@ class DependencyGraphClass {
         // Dynamic edges will be persisted to DB when this node is computed or set
 
         return concreteNode;
-    }
-
-    /**
-     * @constructor
-     * @param {RootDatabase} rootDatabase - The root database instance
-     * @param {Array<NodeDef>} nodeDefs - Unified node definitions
-     */
-    constructor(rootDatabase, nodeDefs) {
-        // Compile all node definitions
-        const compiledNodes = nodeDefs.map(compileNodeDef);
-
-        // Validate no overlaps
-        validateNoOverlap(compiledNodes);
-
-        // Validate acyclic
-        validateAcyclic(compiledNodes);
-
-        // Validate single arity per head (new requirement)
-        validateSingleArityPerHead(compiledNodes);
-
-        // Compute schema hash for namespacing DB keys
-        // Use a stable canonical representation of the schema
-        const schemaRepresentation = compiledNodes
-            .map((node) => ({
-                output: renderExpr(node.outputExpr),
-                inputs: node.inputExprs.map(renderExpr),
-            }))
-            .sort((a, b) =>
-                schemaPatternToString(a.output).localeCompare(
-                    schemaPatternToString(b.output)
-                )
-            );
-
-        const schemaJson = JSON.stringify(schemaRepresentation);
-        const hash = crypto
-            .createHash("sha256")
-            .update(schemaJson)
-            .digest("hex");
-        this.schemaHash = stringToSchemaHash(hash);
-
-        // Initialize storage helper
-        this.storage = makeGraphStorage(rootDatabase, this.schemaHash);
-
-        // Build nodeName index for O(1) lookup by nodeName (functor) only
-        this.headIndex = new Map();
-        for (const compiled of compiledNodes) {
-            this.headIndex.set(compiled.head, compiled);
-        }
-
-        // Initialize instantiation cache
-        this.concreteInstantiations = new Map();
     }
 
     /**
