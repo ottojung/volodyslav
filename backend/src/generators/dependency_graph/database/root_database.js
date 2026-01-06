@@ -83,7 +83,7 @@ class RootDatabaseClass {
     /**
      * Cache of schema storages.
      * @private
-     * @type {Map<string, SchemaStorage>}
+     * @type {Map<SchemaHash, SchemaStorage>}
      */
     schemaStorages;
 
@@ -104,7 +104,7 @@ class RootDatabaseClass {
     getSchemaStorage(schemaHash) {
         // Check cache first
         const schemaHashStr = schemaHashToString(schemaHash);
-        const cached = this.schemaStorages.get(schemaHashStr);
+        const cached = this.schemaStorages.get(schemaHash);
         if (cached) {
             return cached;
         }
@@ -145,7 +145,7 @@ class RootDatabaseClass {
         };
 
         // Cache for future use
-        this.schemaStorages.set(schemaHashStr, storage);
+        this.schemaStorages.set(schemaHash, storage);
 
         return storage;
     }
