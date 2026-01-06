@@ -100,7 +100,7 @@ class DependencyGraphClass {
      * Maps each node to the list of nodes that directly depend on it.
      * Dynamic edges from pattern instantiations are stored in DB, not here.
      * @private
-     * @type {Map<NodeName, Array<{output: NodeKeyString, inputs: NodeKeyString[]}>>}
+     * @type {Map<NodeKeyString, Array<{output: NodeKeyString, inputs: NodeKeyString[]}>>}
      */
     dependentsMap;
 
