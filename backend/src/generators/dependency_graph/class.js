@@ -81,13 +81,6 @@ const { stringToSchemaHash } = require('../database');
  */
 class DependencyGraphClass {
     /**
-     * All compiled nodes (both exact and patterns).
-     * @private
-     * @type {Map<SchemaPattern, CompiledNode>}
-     */
-    graph;
-
-    /**
      * Index for fast lookup of compiled nodes.
      * @private
      * @type {{ exactIndex: Map<SchemaPattern, CompiledNode>, patternIndex: Map<SchemaPattern, Array<CompiledNode>> }}
@@ -440,12 +433,6 @@ class DependencyGraphClass {
 
         // Initialize storage helper
         this.storage = makeGraphStorage(rootDatabase, this.schemaHash);
-
-        // Store compiled nodes in a map by canonical output
-        this.graph = new Map();
-        for (const compiled of compiledNodes) {
-            this.graph.set(compiled.canonicalOutput, compiled);
-        }
 
         // Build graph index
         this.graphIndex = {
