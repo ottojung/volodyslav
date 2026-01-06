@@ -21,16 +21,20 @@
  */
 
 /**
+ * @typedef {import('../dependency_graph/types').NodeKeyString} NodeKeyString
+ */
+
+/**
  * Generic typed database interface.
  * All databases (values, freshness, inputs, revdeps) implement this interface.
  * @template TValue - The value type
  * @typedef {object} GenericDatabase
- * @property {(key: string) => Promise<TValue | undefined>} get - Retrieve a value
- * @property {(key: string, value: TValue) => Promise<void>} put - Store a value
- * @property {(key: string) => Promise<void>} del - Delete a value
- * @property {(key: string, value: TValue) => DatabasePutOperation<TValue>} putOp - Store a value operation
- * @property {(key: string) => DatabaseDelOperation<TValue>} delOp - Delete a value operation
- * @property {() => AsyncIterable<string>} keys - Iterate over all keys
+ * @property {(key: NodeKeyString) => Promise<TValue | undefined>} get - Retrieve a value
+ * @property {(key: NodeKeyString, value: TValue) => Promise<void>} put - Store a value
+ * @property {(key: NodeKeyString) => Promise<void>} del - Delete a value
+ * @property {(key: NodeKeyString, value: TValue) => DatabasePutOperation<TValue>} putOp - Store a value operation
+ * @property {(key: NodeKeyString) => DatabaseDelOperation<TValue>} delOp - Delete a value operation
+ * @property {() => AsyncIterable<NodeKeyString>} keys - Iterate over all keys
  * @property {() => Promise<void>} clear - Clear all entries
  */
 
@@ -60,7 +64,7 @@ class TypedDatabaseClass {
      * Note: Level v10+ returns `undefined` for missing keys rather than throwing an error.
      * This is the expected behavior and we pass it through directly.
      * 
-     * @param {string} key - The key to retrieve
+     * @param {NodeKeyString} key - The key to retrieve
      * @returns {Promise<TValue | undefined>}
      */
     async get(key) {
@@ -69,7 +73,7 @@ class TypedDatabaseClass {
 
     /**
      * Store a value in the database.
-     * @param {string} key - The key to store
+     * @param {NodeKeyString} key - The key to store
      * @param {TValue} value - The value to store
      * @returns {Promise<void>}
      */
@@ -79,7 +83,7 @@ class TypedDatabaseClass {
 
     /**
      * Delete a value from the database.
-     * @param {string} key - The key to delete
+     * @param {NodeKeyString} key - The key to delete
      * @returns {Promise<void>}
      */
     async del(key) {
@@ -88,7 +92,7 @@ class TypedDatabaseClass {
 
     /**
      * Create a put operation for batch processing.
-     * @param {string} key - The key to store
+     * @param {NodeKeyString} key - The key to store
      * @param {TValue} value - The value to store
      * @returns {DatabasePutOperation<TValue>}
      */
@@ -98,7 +102,7 @@ class TypedDatabaseClass {
 
     /**
      * Create a delete operation for batch processing.
-     * @param {string} key - The key to delete
+     * @param {NodeKeyString} key - The key to delete
      * @returns {DatabaseDelOperation<TValue>}
      */
     delOp(key) {
