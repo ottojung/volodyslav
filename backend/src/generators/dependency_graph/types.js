@@ -41,22 +41,22 @@
 
 /**
  * An expression string pattern used in node definitions.
- * @typedef {string} SchemaPattern
+ * @typedef {import('../database/types').SchemaPattern} SchemaPattern
  */
 
 /**
  * A serialized node key string for storage.
- * @typedef {string} NodeKeyString
+ * @typedef {import('../database/types').NodeKeyString} NodeKeyString
  */
 
 /**
  * The head/functor part of SchemaPattern.
- * @typedef {string} NodeName
+ * @typedef {import('../database/types').NodeName} NodeName
  */
 
 /**
  * A schema hash string identifying a dependency graph schema.
- * @typedef {string} SchemaHash
+ * @typedef {import('../database/types').SchemaHash} SchemaHash
  */
 
 /**

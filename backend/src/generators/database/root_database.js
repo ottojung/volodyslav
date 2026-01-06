@@ -10,9 +10,8 @@ const { makeTypedDatabase } = require('./typed_database');
 /** @typedef {import('./types').DatabaseValue} DatabaseValue */
 /** @typedef {import('./types').Freshness} Freshness */
 /** @typedef {import('./types').DatabaseStoredValue} DatabaseStoredValue */
-/**
- * @typedef {import('./types').DatabaseBatchOperation} DatabaseBatchOperation
- */
+/** @typedef {import('./types').DatabaseBatchOperation} DatabaseBatchOperation */
+/** @typedef {import('./types').SchemaHash} SchemaHash */
 
 /**
  * @template T
@@ -99,20 +98,21 @@ class RootDatabaseClass {
 
     /**
      * Get schema-specific storage (creates if needed).
-     * @param {string} schemaHash - The schema hash
+     * @param {SchemaHash} schemaHash - The schema hash
      * @returns {SchemaStorage}
      */
     getSchemaStorage(schemaHash) {
         // Check cache first
-        const cached = this.schemaStorages.get(schemaHash);
+        const schemaHashStr = schemaHashToString(schemaHash);
+        const cached = this.schemaStorages.get(schemaHashStr);
         if (cached) {
             return cached;
         }
 
         // Create new schema storage with sublevels
         /** @type {SchemaSublevelType} */
-        const schemaSublevel = this.db.sublevel(schemaHash, { valueEncoding: 'json' });
-        
+        const schemaSublevel = this.db.sublevel(schemaHashStr, { valueEncoding: 'json' });
+
         /** @type {SimpleSublevel<DatabaseValue>} */
         const valuesSublevel = schemaSublevel.sublevel('values', { valueEncoding: 'json' });
         /** @type {SimpleSublevel<Freshness>} */
@@ -130,7 +130,7 @@ class RootDatabaseClass {
             }
 
             if (!touchedSchema) {
-                await this.db.put(schemaHash, 1); // Touch schema key with constant value
+                await this.db.put(schemaHashStr, 1); // Touch schema key with constant value
                 touchedSchema = true;
             }
             await schemaSublevel.batch(operations);
@@ -145,7 +145,7 @@ class RootDatabaseClass {
         };
 
         // Cache for future use
-        this.schemaStorages.set(schemaHash, storage);
+        this.schemaStorages.set(schemaHashStr, storage);
 
         return storage;
     }
@@ -170,6 +170,7 @@ class RootDatabaseClass {
 }
 
 const { Level } = require('level');
+const { schemaHashToString } = require('./types');
 
 /**
  * Factory function to create a RootDatabase instance.
