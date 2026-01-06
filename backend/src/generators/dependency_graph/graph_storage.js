@@ -102,7 +102,7 @@ function makeBatchBuilder(schemaStorage) {
     return ret;
 }
 
-const KEYSEPARATOR = ":";
+const KEYSEPARATOR = "%";
 
 /**
  * Create a composite key for an edge in the revdeps database.
