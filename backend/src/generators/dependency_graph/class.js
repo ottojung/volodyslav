@@ -3,8 +3,7 @@
  */
 
 const { 
-    nodeNameToString,
-    stringToSchemaPattern, schemaPatternToString,
+    schemaPatternToString,
     stringToNodeName,
 } = require('../database');
 
@@ -36,7 +35,6 @@ const {
     makeInvalidComputorReturnValueError,
     makeArityMismatchError,
 } = require("./errors");
-const { canonicalize } = require("./expr");
 const {
     compileNodeDef,
     validateNoOverlap,
@@ -81,28 +79,12 @@ const { stringToSchemaHash } = require('../database');
  */
 class DependencyGraphClass {
     /**
-     * Index for fast lookup of compiled nodes.
-     * @private
-     * @type {{ exactIndex: Map<SchemaPattern, CompiledNode>, patternIndex: Map<SchemaPattern, Array<CompiledNode>> }}
-     */
-    graphIndex;
-
-    /**
      * Index for fast lookup by nodeName (node name/functor only).
      * Maps nodeName to the single CompiledNode with that functor.
      * @private
      * @type {Map<NodeName, CompiledNode>}
      */
     headIndex;
-
-    /**
-     * Pre-computed map from node name to array of dependent nodes (for static edges only).
-     * Maps each node to the list of nodes that directly depend on it.
-     * Dynamic edges from pattern instantiations are stored in DB, not here.
-     * @private
-     * @type {Map<SchemaPattern, Array<{output: SchemaPattern, inputs: SchemaPattern[]}>>}
-     */
-    dependentsMap;
 
     /**
      * Cache of concrete instantiated nodes created from patterns on demand.
@@ -141,56 +123,24 @@ class DependencyGraphClass {
         batch,
         nodesBecomingOutdated = new Set()
     ) {
-        // Convert concrete key to schema pattern for static lookup
-        const nodeKey = deserializeNodeKey(changedKey);
-        let schemaPattern;
-        if (nodeKey.args.length === 0) {
-            // Arity 0: just the head
-            schemaPattern = stringToSchemaPattern(nodeNameToString(nodeKey.head));
-        } else {
-            // Arity N: create pattern with placeholder variables
-            const varNames = nodeKey.args.map((_, i) => `v${i}`);
-            const pattern = `${nodeNameToString(nodeKey.head)}(${varNames.join(",")})`;
-            schemaPattern = stringToSchemaPattern(pattern);
-        }
-        
-        // Collect dependents from both static map and DB
-        const staticDependents = this.dependentsMap.get(schemaPattern) || [];
         const dynamicDependents = await this.storage.listDependents(changedKey);
-
-        // Combine both sources
-        // Static dependents have SchemaPattern outputs, convert to NodeKeyString
-        // Dynamic dependents already have NodeKeyString outputs
-        const staticDependentsConverted = staticDependents.map(dep => {
-            // For static deps, convert SchemaPattern output to NodeKeyString
-            // Static deps are non-pattern nodes, so we can create a simple key
-            const depNodeKey = createNodeKeyFromPattern(dep.output, []);
-            const depKeyString = serializeNodeKey(depNodeKey);
-            return { output: depKeyString, inputs: [] }; // inputs not needed for propagation
-        });
-        
-        const allDependents = [
-            ...staticDependentsConverted,
-            ...dynamicDependents.map((output) => ({ output, inputs: [] })),
-        ];
-
-        for (const node of allDependents) {
+        for (const output of dynamicDependents) {
             // Optimization: if already marked outdated in this batch, skip
-            if (nodesBecomingOutdated.has(node.output)) {
+            if (nodesBecomingOutdated.has(output)) {
                 continue;
             }
 
             const currentFreshness = await this.storage.freshness.get(
-                node.output
+                output
             );
 
             if (currentFreshness === "up-to-date") {
-                batch.freshness.put(node.output, "potentially-outdated");
-                nodesBecomingOutdated.add(node.output);
+                batch.freshness.put(output, "potentially-outdated");
+                nodesBecomingOutdated.add(output);
 
                 // Recursively mark dependents of this node
                 await this.propagateOutdated(
-                    node.output,
+                    output,
                     batch,
                     nodesBecomingOutdated
                 );
@@ -204,7 +154,7 @@ class DependencyGraphClass {
                 /** @type {never} */
                 const x = currentFreshness;
                 throw new Error(
-                    `Unexpected freshness value ${x} for node ${node.output}`
+                    `Unexpected freshness value ${x} for node ${output}`
                 );
             }
         }
@@ -270,35 +220,6 @@ class DependencyGraphClass {
             // Collect operations to mark all dependents as potentially-outdated
             await this.propagateOutdated(nodeDefinition.output, batch);
         });
-    }
-
-    /**
-     * Pre-computes the dependents map for efficient lookups of static edges.
-     * Dynamic edges from pattern instantiations are stored in DB, not here.
-     * @private
-     * @returns {void}
-     */
-    calculateDependents() {
-        for (const compiled of this.graphIndex.exactIndex.values()) {
-            // Only compute for non-pattern nodes (static edges)
-            if (!compiled.isPattern) {
-                for (const inputKey of compiled.canonicalInputs) {
-                    if (!this.dependentsMap.has(inputKey)) {
-                        this.dependentsMap.set(inputKey, []);
-                    }
-                    const val = this.dependentsMap.get(inputKey);
-                    if (val === undefined) {
-                        throw new Error(
-                            `Unexpected undefined value in dependentsMap for key ${inputKey}`
-                        );
-                    }
-                    val.push({
-                        output: compiled.canonicalOutput,
-                        inputs: compiled.canonicalInputs,
-                    });
-                }
-            }
-        }
     }
 
     /**
@@ -434,32 +355,6 @@ class DependencyGraphClass {
         // Initialize storage helper
         this.storage = makeGraphStorage(rootDatabase, this.schemaHash);
 
-        // Build graph index
-        this.graphIndex = {
-            exactIndex: new Map(),
-            patternIndex: new Map(),
-        };
-
-        for (const compiled of compiledNodes) {
-            if (compiled.isPattern) {
-                // Pattern node - index by head/arity
-                const key = canonicalize(compiled.outputExpr);
-                if (!this.graphIndex.patternIndex.has(key)) {
-                    this.graphIndex.patternIndex.set(key, []);
-                }
-                const patterns = this.graphIndex.patternIndex.get(key);
-                if (patterns) {
-                    patterns.push(compiled);
-                }
-            } else {
-                // Exact node - index by canonical output
-                this.graphIndex.exactIndex.set(
-                    compiled.canonicalOutput,
-                    compiled
-                );
-            }
-        }
-
         // Build nodeName index for O(1) lookup by nodeName (functor) only
         this.headIndex = new Map();
         for (const compiled of compiledNodes) {
@@ -468,10 +363,6 @@ class DependencyGraphClass {
 
         // Initialize instantiation cache
         this.concreteInstantiations = new Map();
-
-        // Pre-compute reverse dependency map for static edges only
-        this.dependentsMap = new Map();
-        this.calculateDependents();
     }
 
     /**
