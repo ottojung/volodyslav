@@ -2,10 +2,7 @@
  * DependencyGraph class for propagating data through dependency edges.
  */
 
-const { 
-    schemaPatternToString,
-    stringToNodeName,
-} = require('../database');
+const { schemaPatternToString, stringToNodeName } = require("../database");
 
 /** @typedef {import('../database/root_database').RootDatabase} RootDatabase */
 /** @typedef {import('./types').DatabaseValue} DatabaseValue */
@@ -42,15 +39,15 @@ const {
     validateSingleArityPerHead,
 } = require("./compiled_node");
 const {
-     createVariablePositionMap,
-     extractInputBindings,
+    createVariablePositionMap,
+    extractInputBindings,
 } = require("./compiled_node");
 const { renderExpr } = require("./expr");
 const { deserializeNodeKey } = require("./node_key");
 
 const { makeGraphStorage } = require("./graph_storage");
 const { createNodeKeyFromPattern, serializeNodeKey } = require("./node_key");
-const { stringToSchemaHash } = require('../database');
+const { stringToSchemaHash } = require("../database");
 
 /**
  * DependencyGraph class for propagating data through dependency edges.
@@ -130,9 +127,7 @@ class DependencyGraphClass {
                 continue;
             }
 
-            const currentFreshness = await this.storage.freshness.get(
-                output
-            );
+            const currentFreshness = await this.storage.freshness.get(output);
 
             if (currentFreshness === "up-to-date") {
                 batch.freshness.put(output, "potentially-outdated");
@@ -233,11 +228,7 @@ class DependencyGraphClass {
      * @returns {ConcreteNode}
      * @throws {Error} If pattern matching fails
      */
-    getOrCreateConcreteNode(
-        concreteKeyCanonical,
-        compiledNode,
-        bindings
-    ) {
+    getOrCreateConcreteNode(concreteKeyCanonical, compiledNode, bindings) {
         const concreteKeyString = concreteKeyCanonical;
 
         // Check instantiation cache
@@ -303,11 +294,7 @@ class DependencyGraphClass {
              * @type {ConcreteNodeComputor}
              */
             computor: (inputValues, oldValue) =>
-                compiledNode.source.computor(
-                    inputValues,
-                    oldValue,
-                    bindings
-                ),
+                compiledNode.source.computor(inputValues, oldValue, bindings),
         };
 
         // Cache it
@@ -343,7 +330,11 @@ class DependencyGraphClass {
                 output: renderExpr(node.outputExpr),
                 inputs: node.inputExprs.map(renderExpr),
             }))
-            .sort((a, b) => schemaPatternToString(a.output).localeCompare(schemaPatternToString(b.output)));
+            .sort((a, b) =>
+                schemaPatternToString(a.output).localeCompare(
+                    schemaPatternToString(b.output)
+                )
+            );
 
         const schemaJson = JSON.stringify(schemaRepresentation);
         const hash = crypto
@@ -546,7 +537,9 @@ class DependencyGraphClass {
             );
 
             // Check freshness of this node
-            const nodeFreshness = await this.storage.freshness.get(nodeDefinition.output);
+            const nodeFreshness = await this.storage.freshness.get(
+                nodeDefinition.output
+            );
 
             // Fast path: if up-to-date, return cached value immediately
             // But first ensure the node is materialized (for seeded DBs or restart resilience)
@@ -569,9 +562,13 @@ class DependencyGraphClass {
                     );
                 }
 
-                const result = await this.storage.values.get(nodeDefinition.output);
+                const result = await this.storage.values.get(
+                    nodeDefinition.output
+                );
                 if (result === undefined) {
-                    throw makeMissingValueError(deserializeNodeKey(nodeDefinition.output).head);
+                    throw makeMissingValueError(
+                        deserializeNodeKey(nodeDefinition.output).head
+                    );
                 }
                 return { value: result, status: "cached" };
             }
@@ -642,7 +639,9 @@ class DependencyGraphClass {
 
                 const result = await this.storage.values.get(nodeKeyStr);
                 if (result === undefined) {
-                    throw makeMissingValueError(deserializeNodeKey(nodeKeyStr).head);
+                    throw makeMissingValueError(
+                        deserializeNodeKey(nodeKeyStr).head
+                    );
                 }
                 return { value: result, status: "cached" };
             }
