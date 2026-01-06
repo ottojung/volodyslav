@@ -98,13 +98,13 @@ function isDatabaseValue(value) {
 /**
  * A database put operation.
  * @template T
- * @typedef {{ type: 'put', sublevel: SimpleSublevel<T>, key: string, value: T }} DatabasePutOperation
+ * @typedef {{ type: 'put', sublevel: SimpleSublevel<T>, key: DatabaseKey, value: T }} DatabasePutOperation
  */
 
 /**
  * A database delete operation.
  * @template T
- * @typedef {{ type: 'del', sublevel: SimpleSublevel<T>, key: string }} DatabaseDelOperation
+ * @typedef {{ type: 'del', sublevel: SimpleSublevel<T>, key: DatabaseKey }} DatabaseDelOperation
  */
 
 /**
@@ -335,21 +335,25 @@ function schemaHashToString(schemaHash) {
  * @typedef {import('abstract-level').AbstractSublevel<D, F, K, V>} AbstractSublevel
  */
 
+/** 
+ * @typedef {string | NodeKeyString} DatabaseKey
+ */
+
 /**
  * @typedef {string | Buffer<ArrayBufferLike> | Uint8Array<ArrayBufferLike>} SublevelFormat
  */
 
 /**
- * @typedef {Level<string, DatabaseStoredValue>} RootLevelType
+ * @typedef {Level<DatabaseKey, DatabaseStoredValue>} RootLevelType
  */
 
 /**
- * @typedef {AbstractSublevel<RootLevelType, SublevelFormat, string, DatabaseStoredValue>} SchemaSublevelType
+ * @typedef {AbstractSublevel<RootLevelType, SublevelFormat, DatabaseKey, DatabaseStoredValue>} SchemaSublevelType
  */
 
 /**
  * @template T
- * @typedef {AbstractSublevel<AbstractSublevel<RootLevelType, SublevelFormat, string, DatabaseStoredValue>, SublevelFormat, string, T>} SimpleSublevel
+ * @typedef {AbstractSublevel<AbstractSublevel<RootLevelType, SublevelFormat, DatabaseKey, DatabaseStoredValue>, SublevelFormat, DatabaseKey, T>} SimpleSublevel
  */
 
 module.exports = {

@@ -150,10 +150,6 @@ class RootDatabaseClass {
         return storage;
     }
 
-    /**
-     * List all schema hashes in the database.
-     * @returns {AsyncIterable<string>}
-     */
     async *listSchemas() {
         for await (const key of this.db.keys()) {
             yield key;
