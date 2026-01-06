@@ -466,7 +466,7 @@ class DependencyGraphClass {
      * @returns {Promise<RecomputeResult>}
      */
     async maybeRecalculate(nodeDefinition, batch) {
-        const nodeName = nodeDefinition.output;
+        const nodeKey = nodeDefinition.output;
 
         // Pull all inputs (recursively ensures they're up-to-date)
         const inputValues = [];
@@ -486,7 +486,7 @@ class DependencyGraphClass {
         }
 
         // Get old value
-        const oldValue = await this.storage.values.get(nodeName);
+        const oldValue = await this.storage.values.get(nodeKey);
 
         // Optimization: if all inputs are 'unchanged' (meaning they were outdated but recomputed to same value),
         // then we can skip recomputation and mark ourselves up-to-date.
@@ -498,7 +498,7 @@ class DependencyGraphClass {
         ) {
             // Ensure node is materialized
             await this.storage.ensureMaterialized(
-                nodeName,
+                nodeKey,
                 nodeDefinition.inputs,
                 batch
             );
@@ -506,13 +506,13 @@ class DependencyGraphClass {
             // Ensure reverse dependencies are indexed (if it has inputs)
             // This is critical for pattern nodes which have no static dependents map entry
             await this.storage.ensureReverseDepsIndexed(
-                nodeName,
+                nodeKey,
                 nodeDefinition.inputs,
                 batch
             );
 
             // Mark up-to-date
-            batch.freshness.put(nodeName, "up-to-date");
+            batch.freshness.put(nodeKey, "up-to-date");
 
             return { value: oldValue, status: "unchanged" };
         }
@@ -528,7 +528,7 @@ class DependencyGraphClass {
             // Must have a previous value
             if (oldValue === undefined) {
                 throw makeInvalidComputorReturnValueError(
-                    nodeName,
+                    nodeKey,
                     "Unchanged (but no previous value exists)"
                 );
             }
@@ -536,7 +536,7 @@ class DependencyGraphClass {
             // Must be a valid DatabaseValue (not null/undefined)
             if (computedValue === null || computedValue === undefined) {
                 throw makeInvalidComputorReturnValueError(
-                    nodeName,
+                    nodeKey,
                     computedValue
                 );
             }
@@ -544,7 +544,7 @@ class DependencyGraphClass {
 
         // Always ensure node is materialized (even with 0 inputs)
         await this.storage.ensureMaterialized(
-            nodeName,
+            nodeKey,
             nodeDefinition.inputs,
             batch
         );
@@ -552,7 +552,7 @@ class DependencyGraphClass {
         // Ensure reverse dependencies are indexed (only if it has inputs)
         if (nodeDefinition.inputs.length > 0) {
             await this.storage.ensureReverseDepsIndexed(
-                nodeName,
+                nodeKey,
                 nodeDefinition.inputs,
                 batch
             );
@@ -565,18 +565,18 @@ class DependencyGraphClass {
 
         if (isUnchanged(computedValue)) {
             // Mark up-to-date
-            batch.freshness.put(nodeName, "up-to-date");
+            batch.freshness.put(nodeKey, "up-to-date");
 
             // Return old value (must exist if Unchanged returned)
-            const result = await this.storage.values.get(nodeName);
+            const result = await this.storage.values.get(nodeKey);
             if (result === undefined) {
-                throw makeMissingValueError(nodeName);
+                throw makeMissingValueError(nodeKey);
             }
             return { value: result, status: "unchanged" };
         } else {
             // Store value, mark up-to-date
-            batch.values.put(nodeName, computedValue);
-            batch.freshness.put(nodeName, "up-to-date");
+            batch.values.put(nodeKey, computedValue);
+            batch.freshness.put(nodeKey, "up-to-date");
             return { value: computedValue, status: "changed" };
         }
     }
