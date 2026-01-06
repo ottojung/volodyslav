@@ -48,7 +48,7 @@ const { makeTypedDatabase } = require('./typed_database');
 
 /**
  * Database for reverse dependency index using edge-based storage.
- * Key: composite key "${inputNode}\x00${dependentNode}"
+ * Key: composite key "${inputNode}${KEYSEPARATOR}${dependentNode}"
  * Value: 1 (constant marker indicating the edge exists)
  * This improves performance when fan-out is large by avoiding array serialization.
  * @typedef {GenericDatabase<1>} RevdepsDatabase
