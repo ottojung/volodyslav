@@ -122,8 +122,6 @@ function isDatabaseValue(value) {
  * @typedef {DatabasePutOperation<DatabaseValue> | DatabasePutOperation<Freshness> | DatabasePutOperation<InputsRecord> | DatabasePutOperation<1> | DatabaseDelOperation<DatabaseValue> | DatabaseDelOperation<Freshness> | DatabaseDelOperation<InputsRecord> | DatabaseDelOperation<1>} DatabaseBatchOperation
  */
 
-//* /typedef {DatabasePutOperation<DatabaseValue> | DatabasePutOperation<Freshness> | DatabasePutOperation<InputsRecord> | DatabasePutOperation<string[]> | DatabaseDelOperation<DatabaseValue> | DatabaseDelOperation<Freshness> | DatabaseDelOperation<InputsRecord> | DatabaseDelOperation<string[]>} DatabaseBatchOperation
-
 /**
  * A record storing the input dependencies of a node.
  * @typedef {object} InputsRecord
