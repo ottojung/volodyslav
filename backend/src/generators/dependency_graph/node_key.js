@@ -15,7 +15,7 @@
  */
 
 const { makeArityMismatchError } = require("./errors");
-const { stringToNodeKeyString, nodeNameToString, stringToNodeName, nodeKeyStringToString } = require("../database/types");
+const { stringToNodeKeyString, nodeNameToString, stringToNodeName, nodeKeyStringToString } = require("../database");
 
 /** @typedef {import('./types').ConstValue} ConstValue */
 /** @typedef {import('./types').NodeKeyString} NodeKeyString */
