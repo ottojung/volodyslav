@@ -396,8 +396,8 @@ class DependencyGraphClass {
         // Use a stable canonical representation of the schema
         const schemaRepresentation = compiledNodes
             .map((node) => ({
-                output: node.canonicalOutput,
-                inputs: node.canonicalInputs,
+                output: node.source.output,
+                inputs: node.source.inputs,
             }))
             .sort((a, b) => a.output.localeCompare(b.output));
 
