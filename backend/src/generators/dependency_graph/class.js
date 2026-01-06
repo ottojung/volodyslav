@@ -19,6 +19,7 @@
 /** @typedef {import('./graph_storage').GraphStorage} GraphStorage */
 /** @typedef {import('./graph_storage').BatchBuilder} BatchBuilder */
 /** @typedef {import('./node_key').NodeKey} NodeKey */
+/** @typedef {import('./types').ConcreteNodeComputor} ConcreteNodeComputor */
 
 const crypto = require("crypto");
 const { isUnchanged } = require("./unchanged");
@@ -312,12 +313,11 @@ class DependencyGraphClass {
                 output: concreteKeyString,
                 inputs: jsonInputs,
                 /**
-                 * @param {Array<DatabaseValue>} inputs
-                 * @param {DatabaseValue | undefined} oldValue
-                 * @returns {DatabaseValue | Unchanged}
+                 * @type {ConcreteNodeComputor}
                  */
-                computor: (inputs, oldValue) =>
-                    compiledNode.source.computor(inputs, oldValue, []),
+                computor: (inputs, oldValue) => {
+                    return compiledNode.source.computor(inputs, oldValue, []);
+                },
             };
 
             // Cache it
@@ -354,9 +354,7 @@ class DependencyGraphClass {
             output: concreteKeyString,
             inputs: concreteInputs,
             /**
-             * @param {Array<DatabaseValue>} inputValues
-             * @param {DatabaseValue | undefined} oldValue
-             * @returns {DatabaseValue | Unchanged}
+             * @type {ConcreteNodeComputor}
              */
             computor: (inputValues, oldValue) =>
                 compiledNode.source.computor(

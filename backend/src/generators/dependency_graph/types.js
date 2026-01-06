@@ -31,12 +31,12 @@
  * Receives inputs, optional old value, and positional bindings array.
  * Bindings are matched to argument positions by position (not by variable name).
  * Each binding must be a ConstValue (JSON-serializable primitives, arrays, or records).
- * @typedef {(inputs: Array<DatabaseValue>, oldValue: DatabaseValue | undefined, bindings: Array<ConstValue>) => DatabaseValue | Unchanged} NodeDefComputor
+ * @typedef {(inputs: Array<DatabaseValue>, oldValue: DatabaseValue | undefined, bindings: Array<ConstValue>) => Promise<DatabaseValue | Unchanged>} NodeDefComputor
  */
 
 /**
  * Simpler computor without bindings parameter (used for concrete instantiated nodes).
- * @typedef {(inputs: Array<DatabaseValue>, oldValue: DatabaseValue | undefined) => DatabaseValue | Unchanged} ConcreteNodeComputor
+ * @typedef {(inputs: Array<DatabaseValue>, oldValue: DatabaseValue | undefined) => Promise<DatabaseValue | Unchanged>} ConcreteNodeComputor
  */
 
 /**
