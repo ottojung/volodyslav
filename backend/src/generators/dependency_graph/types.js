@@ -90,9 +90,14 @@
 
 /**
  * Unified node definition.
+ *
+ * Note:
+ * This does not use nominal types, ie SchemaPattern, because this is user input.
+ * The output and inputs can be any strings, not necessarily valid patterns.
+ *
  * @typedef {object} NodeDef
- * @property {SchemaPattern} output - Pattern or exact key (e.g., "event_context(e)" or 'status("active")')
- * @property {Array<SchemaPattern>} inputs - Pattern dependencies
+ * @property {string} output - Pattern or exact key (e.g., "event_context(e)" or 'status("active")')
+ * @property {Array<string>} inputs - Pattern dependencies
  * @property {NodeDefComputor} computor - Function that computes the output from inputs, old value, and typed bindings
  */
 
