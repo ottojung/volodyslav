@@ -1376,10 +1376,18 @@ describe("1. Deep linear chains: freshness should prevent reevaluation", () => {
                 expect(counters[`n${i}`].calls).toBe(1); // still 1
             }
 
+            // Third pull: should trigger NO recomputation (freshness caching)
+            const v3 = await g.pull(tail);
+            expect(v3).toEqual({ n: k });
+
+            for (let i = 1; i <= k; i++) {
+                expect(counters[`n${i}`].calls).toBe(1); // still 1
+            }
+
             // After set(A), pull(tail) should recompute each downstream node exactly once
             await g.set("a", { n: 100 });
-            const v3 = await g.pull(tail);
-            expect(v3).toEqual({ n: 100 + k });
+            const v4 = await g.pull(tail);
+            expect(v4).toEqual({ n: 100 + k });
 
             for (let i = 1; i <= k; i++) {
                 expect(counters[`n${i}`].calls).toBe(2); // now 2
