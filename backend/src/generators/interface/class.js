@@ -2,6 +2,8 @@
  * Interface class for direct database operations.
  */
 
+const { stringToNodeName } = require('../database/types');
+
 /** @typedef {import('../database/root_database').RootDatabase} RootDatabase */
 /** @typedef {import('../../event').Event} Event */
 /** @typedef {import('../dependency_graph').DependencyGraph} DependencyGraph */
@@ -42,7 +44,7 @@ class InterfaceClass {
         const serializedEvents = all_events; // Events are already in serialized form.
         /** @type {import('../database/types').AllEventsEntry} */
         const value = { events: serializedEvents, type: "all_events" };
-        await this.dependencyGraph.set("all_events", value);
+        await this.dependencyGraph.set(stringToNodeName("all_events"), value);
     }
 
     /**
@@ -56,7 +58,7 @@ class InterfaceClass {
     async getEventBasicContext(event) {
         // Pull the event_context node (lazy evaluation)
         const eventContextEntry = await this.dependencyGraph.pull(
-            "event_context"
+            stringToNodeName("event_context")
         );
 
         if (!eventContextEntry || eventContextEntry.type !== "event_context") {

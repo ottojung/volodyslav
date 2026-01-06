@@ -3,6 +3,8 @@
  * Encapsulates database access for the dependency graph using typed sublevels.
  */
 
+const { stringToNodeKeyString, nodeKeyStringToString } = require('../database/types');
+
 /** @typedef {import('../database/root_database').RootDatabase} RootDatabase */
 /** @typedef {import('../database/root_database').SchemaStorage} SchemaStorage */
 /** @typedef {import('../database/root_database').ValuesDatabase} ValuesDatabase */
@@ -112,7 +114,9 @@ const KEYSEPARATOR = "%";
  * @returns {string}
  */
 function makeRevdepKey(input, dependent) {
-    return `${input}${KEYSEPARATOR}${dependent}`;
+    const inputStr = nodeKeyStringToString(input);
+    const dependentStr = nodeKeyStringToString(dependent);
+    return `${inputStr}${KEYSEPARATOR}${dependentStr}`;
 }
 
 /**
@@ -125,7 +129,7 @@ function parseRevdepKey(key) {
     if (parts.length !== 2 || !parts[0] || !parts[1]) {
         throw new Error(`Invalid revdep key format: ${key}`);
     }
-    return { input: parts[0], dependent: parts[1] };
+    return { input: stringToNodeKeyString(parts[0]), dependent: stringToNodeKeyString(parts[1]) };
 }
 
 /**
@@ -154,8 +158,10 @@ function makeGraphStorage(rootDatabase, schemaHash) {
             return; // Already materialized
         }
 
+        // Convert NodeKeyString[] to string[] for storage
+        const inputsAsStrings = inputs.map(nodeKeyStringToString);
         // Store the inputs record (even if empty array)
-        batch.inputs.put(node, { inputs });
+        batch.inputs.put(node, { inputs: inputsAsStrings });
     }
 
     /**
@@ -175,7 +181,8 @@ function makeGraphStorage(rootDatabase, schemaHash) {
             // TypeScript doesn't understand that inputs[0] is defined when length > 0
             if (firstInput !== undefined) {
                 const firstEdgeKey = makeRevdepKey(firstInput, node);
-                const existingEdge = await schemaStorage.revdeps.get(firstEdgeKey);
+                // Cast: revdeps uses composite string keys, not NodeKeyString
+                const existingEdge = await schemaStorage.revdeps.get(stringToNodeKeyString(firstEdgeKey));
                 if (existingEdge !== undefined) {
                     return; // Already indexed, skip writing revdeps
                 }
@@ -186,7 +193,8 @@ function makeGraphStorage(rootDatabase, schemaHash) {
         // Each edge is stored as a separate key-value pair
         for (const input of inputs) {
             const edgeKey = makeRevdepKey(input, node);
-            batch.revdeps.put(edgeKey, 1);
+            // Cast: revdeps uses composite string keys, not NodeKeyString
+            batch.revdeps.put(stringToNodeKeyString(edgeKey), 1);
         }
     }
 
@@ -198,10 +206,13 @@ function makeGraphStorage(rootDatabase, schemaHash) {
      */
     async function listDependents(input) {
         const dependents = [];
-        const prefix = `${input}${KEYSEPARATOR}`;
+        const inputStr = nodeKeyStringToString(input);
+        const prefix = `${inputStr}${KEYSEPARATOR}`;
 
         // Iterate over all keys that start with the input prefix
-        for await (const key of schemaStorage.revdeps.keys()) {
+        // Cast: revdeps.keys() returns NodeKeyString but they're composite strings
+        for await (const nodeKeyStringKey of schemaStorage.revdeps.keys()) {
+            const key = nodeKeyStringToString(nodeKeyStringKey);
             if (key.startsWith(prefix)) {
                 const { dependent } = parseRevdepKey(key);
                 dependents.push(dependent);
@@ -218,7 +229,9 @@ function makeGraphStorage(rootDatabase, schemaHash) {
      */
     async function getInputs(node) {
         const record = await schemaStorage.inputs.get(node);
-        return record ? record.inputs : null;
+        if (!record) return null;
+        // Convert string[] from DB to NodeKeyString[]
+        return record.inputs.map(stringToNodeKeyString);
     }
 
     /**
@@ -228,7 +241,7 @@ function makeGraphStorage(rootDatabase, schemaHash) {
     async function listMaterializedNodes() {
         const keys = [];
         for await (const key of schemaStorage.values.keys()) {
-            keys.push(key);
+            keys.push(key); // key is already NodeKeyString
         }
         return keys;
     }

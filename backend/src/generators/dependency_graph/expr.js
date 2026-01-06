@@ -2,6 +2,8 @@
  * Expression parsing and canonicalization.
  */
 
+const { stringToSchemaPattern, schemaPatternToString } = require("../database/types");
+
 /**
  * @typedef {import('./types').SchemaPattern} SchemaPattern
  */
@@ -278,8 +280,9 @@ class Parser {
  * @throws {Error} If the expression is malformed
  */
 function parseExpr(str) {
+    const strValue = schemaPatternToString(str);
     try {
-        const lexer = new Lexer(str);
+        const lexer = new Lexer(strValue);
         const parser = new Parser(lexer);
         return parser.parse();
     } catch (err) {
@@ -287,7 +290,7 @@ function parseExpr(str) {
             throw err;
         }
         const message = err instanceof Error ? err.message : String(err);
-        throw makeInvalidExpressionError(str, message);
+        throw makeInvalidExpressionError(strValue, message);
     }
 }
 
@@ -308,10 +311,10 @@ function renderArg(arg) {
  */
 function renderExpr(expr) {
     if (expr.kind === "atom") {
-        return expr.name;
+        return stringToSchemaPattern(expr.name);
     } else {
         const renderedArgs = expr.args.map(renderArg).join(",");
-        return `${expr.name}(${renderedArgs})`;
+        return stringToSchemaPattern(`${expr.name}(${renderedArgs})`);
     }
 }
 
@@ -323,8 +326,8 @@ function renderExpr(expr) {
  * @throws {Error} If the expression is malformed
  */
 function canonicalize(str) {
-    const parsed = typeof str === "string" ? parseExpr(str) : str;
-    return parsed.name;
+    const parsed = typeof str === "object" && "name" in str ? str : parseExpr(str);
+    return stringToSchemaPattern(parsed.name);
 }
 
 module.exports = {

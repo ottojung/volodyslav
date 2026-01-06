@@ -3,6 +3,7 @@
  */
 
 const { parseExpr, renderExpr } = require("./expr");
+const { stringToNodeName, schemaPatternToString } = require("../database/types");
 const { 
     makeInvalidSchemaError, 
     makeSchemaOverlapError, 
@@ -271,7 +272,7 @@ function validateSingleArityPerHead(compiledNodes) {
     for (const [head, arities] of headToArities.entries()) {
         if (arities.size > 1) {
             const aritiesArray = Array.from(arities).sort((a, b) => a - b);
-            throw makeSchemaArityConflictError(head, aritiesArray);
+            throw makeSchemaArityConflictError(stringToNodeName(head), aritiesArray);
         }
     }
 }
@@ -287,7 +288,7 @@ function compileNodeDef(nodeDef) {
     const canonicalOutput = renderExpr(outputExpr);
     
     // Validate no duplicate variables in output
-    validateNoDuplicateVariables(outputExpr, nodeDef.output);
+    validateNoDuplicateVariables(outputExpr, schemaPatternToString(nodeDef.output));
     
     // Parse inputs
     const inputExprs = nodeDef.inputs.map(parseExpr);
@@ -298,7 +299,7 @@ function compileNodeDef(nodeDef) {
         const inputExpr = inputExprs[i];
         const inputStr = nodeDef.inputs[i];
         if (inputExpr && inputStr) {
-            validateNoDuplicateVariables(inputExpr, inputStr);
+            validateNoDuplicateVariables(inputExpr, schemaPatternToString(inputStr));
         }
     }
     
@@ -323,7 +324,7 @@ function compileNodeDef(nodeDef) {
     }
     
     // Validate variable coverage
-    validateVariableCoverage(outputExpr, inputExprs, nodeDef.output);
+    validateVariableCoverage(outputExpr, inputExprs, schemaPatternToString(nodeDef.output));
     
     return {
         source: nodeDef,
