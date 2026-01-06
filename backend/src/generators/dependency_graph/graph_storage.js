@@ -3,7 +3,7 @@
  * Encapsulates database access for the dependency graph using typed sublevels.
  */
 
-const { stringToNodeKeyString, nodeKeyStringToString } = require('./database');
+const { stringToNodeKeyString, nodeKeyStringToString } = require("./database");
 
 /** @typedef {import('./database/root_database').RootDatabase} RootDatabase */
 /** @typedef {import('./database/root_database').SchemaStorage} SchemaStorage */
@@ -151,7 +151,7 @@ function makeGraphStorage(rootDatabase, schemaHash) {
         for (const input of inputs) {
             // Get existing dependents for this input
             const existingDependents = await schemaStorage.revdeps.get(input);
-            
+
             if (existingDependents !== undefined) {
                 // Check if this node is already in the dependents list
                 if (existingDependents.includes(node)) {
@@ -200,7 +200,7 @@ function makeGraphStorage(rootDatabase, schemaHash) {
     async function listMaterializedNodes() {
         const keys = [];
         for await (const key of schemaStorage.values.keys()) {
-            if (typeof key !== 'string') {
+            if (typeof key !== "string") {
                 throw new Error("Invalid key type in values database");
             }
             keys.push(stringToNodeKeyString(key));
