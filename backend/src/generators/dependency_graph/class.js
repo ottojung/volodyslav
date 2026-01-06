@@ -46,6 +46,7 @@ const { deserializeNodeKey } = require("./node_key");
 
 const { makeGraphStorage } = require("./graph_storage");
 const { createNodeKeyFromPattern, serializeNodeKey } = require("./node_key");
+const { stringToSchemaHash } = require('../database');
 
 /**
  * DependencyGraph class for propagating data through dependency edges.
@@ -400,10 +401,11 @@ class DependencyGraphClass {
             .sort((a, b) => a.output.localeCompare(b.output));
 
         const schemaJson = JSON.stringify(schemaRepresentation);
-        this.schemaHash = crypto
+        const hash = crypto
             .createHash("sha256")
             .update(schemaJson)
             .digest("hex");
+        this.schemaHash = stringToSchemaHash(hash);
 
         // Initialize storage helper
         this.storage = makeGraphStorage(rootDatabase, this.schemaHash);

@@ -143,10 +143,42 @@ function isDatabaseValue(value) {
  * @typedef {string} NodeName
  */
 
+class SchemaHashClass {
+    /**
+     * @private
+     * @type {undefined}
+     */
+    __brand;
+    constructor() {
+        if (this.__brand !== undefined) {
+            throw new Error("SchemaHash cannot be instantiated");
+        }
+    }
+}
+
 /**
  * A schema hash string identifying a dependency graph schema.
- * @typedef {unknown} SchemaHash
+ * @typedef {SchemaHashClass} SchemaHash
  */
+
+/**
+ * @param {string} _value
+ * @returns {_value is SchemaHash}
+ */
+function castToSchemaHash(_value) {
+    return true;
+}
+
+/**
+ * @param {string} schemaHashStr 
+ * @returns {SchemaHash}
+ */
+function stringToSchemaHash(schemaHashStr) {
+    if (castToSchemaHash(schemaHashStr)) {
+        return schemaHashStr;
+    }
+    throw new Error("Invalid schema hash string");
+}
 
 /**
  * @param {SchemaHash} schemaHash
@@ -195,4 +227,6 @@ module.exports = {
     isFreshness,
     isDatabaseValue,
     schemaHashToString,
+    stringToSchemaHash,
+    SchemaHashClass,
 };
