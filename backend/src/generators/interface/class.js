@@ -2,7 +2,7 @@
  * Interface class for direct database operations.
  */
 
-/** @typedef {import('../database/root_database').RootDatabase} RootDatabase */
+/** @typedef {import('../dependency_graph/database/root_database').RootDatabase} RootDatabase */
 /** @typedef {import('../../event').Event} Event */
 /** @typedef {import('../dependency_graph').DependencyGraph} DependencyGraph */
 
@@ -40,7 +40,7 @@ class InterfaceClass {
      */
     async update(all_events) {
         const serializedEvents = all_events; // Events are already in serialized form.
-        /** @type {import('../database/types').AllEventsEntry} */
+        /** @type {import('../dependency_graph/database/types').AllEventsEntry} */
         const value = { events: serializedEvents, type: "all_events" };
         await this.dependencyGraph.set("all_events", value);
     }

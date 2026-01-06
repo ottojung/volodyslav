@@ -3,7 +3,7 @@
  */
 
 const { parseExpr, renderExpr } = require("./expr");
-const { stringToSchemaPattern } = require("../database");
+const { stringToSchemaPattern } = require("./database");
 const { 
     makeInvalidSchemaError, 
     makeSchemaOverlapError, 

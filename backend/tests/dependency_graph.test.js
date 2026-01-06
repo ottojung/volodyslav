@@ -5,7 +5,7 @@
 const path = require("path");
 const fs = require("fs");
 const os = require("os");
-const { getRootDatabase } = require("../src/generators/database");
+const { getRootDatabase } = require("../src/generators/dependency_graph/database");
 const {
     makeDependencyGraph,
     isDependencyGraph,
@@ -17,7 +17,7 @@ const { stubLogger } = require("./stubs");
 const { toJsonKey } = require("./test_json_key_helper");
 
 /**
- * @typedef {import('../src/generators/database/types').DatabaseCapabilities} DatabaseCapabilities
+ * @typedef {import('../src/generators/dependency_graph/database/types').DatabaseCapabilities} DatabaseCapabilities
  */
 
 /**

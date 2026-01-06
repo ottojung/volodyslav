@@ -13,7 +13,7 @@
  *   await testDb.put("key", "up-to-date");  // stores to storage.freshness
  */
 
-const { isFreshness } = require('../src/generators/database');
+const { isFreshness } = require('../src/generators/dependency_graph/database');
 const { createNodeKeyFromPattern, serializeNodeKey } = require('../src/generators/dependency_graph/node_key');
 const { canonicalize } = require('../src/generators/dependency_graph/expr');
 const { isJsonKey } = require('./test_json_key_helper');

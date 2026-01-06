@@ -5,17 +5,18 @@
 const path = require('path');
 const fs = require('fs');
 const os = require('os');
-const { getRootDatabase, isRootDatabase } = require('../src/generators/database');
+const { getRootDatabase, isRootDatabase } = require('../src/generators/dependency_graph/database');
 const { 
     isDatabaseError,
     isDatabaseInitializationError,
     isDatabaseQueryError 
-} = require('../src/generators/database/errors');
+} = require('../src/generators/dependency_graph/database/errors');
 const { getMockedRootCapabilities } = require('./spies');
 const { stubLogger } = require('./stubs');
+const { DatabaseError, DatabaseInitializationError, DatabaseQueryError } = require('../src/generators/dependency_graph/database/errors');
 
 /**
- * @typedef {import('../src/generators/database/types').DatabaseCapabilities} DatabaseCapabilities
+ * @typedef {import('../src/generators/dependency_graph/database/types').DatabaseCapabilities} DatabaseCapabilities
  */
 
 /**
@@ -428,7 +429,6 @@ describe('generators/database', () => {
         });
 
         test('error type guards work correctly', () => {
-            const { DatabaseError, DatabaseInitializationError, DatabaseQueryError } = require('../src/generators/database/errors');
             
             const dbError = new DatabaseError('test', '/path/db');
             const initError = new DatabaseInitializationError('test', '/path/db');

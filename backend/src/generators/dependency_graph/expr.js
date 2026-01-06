@@ -7,7 +7,7 @@ const {
     schemaPatternToString,
     nodeNameToString,
     stringToNodeName,
-} = require("../database");
+} = require("./database");
 
 /**
  * @typedef {import('./types').SchemaPattern} SchemaPattern

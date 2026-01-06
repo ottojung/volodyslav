@@ -2,9 +2,9 @@
  * DependencyGraph class for propagating data through dependency edges.
  */
 
-const { schemaPatternToString, stringToNodeName } = require("../database");
+const { schemaPatternToString, stringToNodeName } = require("./database");
 
-/** @typedef {import('../database/root_database').RootDatabase} RootDatabase */
+/** @typedef {import('./database/root_database').RootDatabase} RootDatabase */
 /** @typedef {import('./types').DatabaseValue} DatabaseValue */
 /** @typedef {import('./types').ConstValue} ConstValue */
 /** @typedef {import('./types').Freshness} Freshness */
@@ -47,7 +47,7 @@ const { deserializeNodeKey } = require("./node_key");
 
 const { makeGraphStorage } = require("./graph_storage");
 const { createNodeKeyFromPattern, serializeNodeKey } = require("./node_key");
-const { stringToSchemaHash } = require("../database");
+const { stringToSchemaHash } = require("./database");
 
 /**
  * DependencyGraph class for propagating data through dependency edges.

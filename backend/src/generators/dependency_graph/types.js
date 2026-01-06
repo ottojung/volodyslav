@@ -3,9 +3,9 @@
  */
 
 /** @typedef {import('../../event').Event} Event */
-/** @typedef {import('../database/root_database').RootDatabase} RootDatabase */
-/** @typedef {import('../database/types').DatabaseValue} DatabaseValue */
-/** @typedef {import('../database/types').Freshness} Freshness */
+/** @typedef {import('./database/root_database').RootDatabase} RootDatabase */
+/** @typedef {import('./database/types').DatabaseValue} DatabaseValue */
+/** @typedef {import('./database/types').Freshness} Freshness */
 /** @typedef {import('./unchanged').Unchanged} Unchanged */
 
 /**
@@ -41,22 +41,22 @@
 
 /**
  * An expression string pattern used in node definitions.
- * @typedef {import('../database/types').SchemaPattern} SchemaPattern
+ * @typedef {import('./database/types').SchemaPattern} SchemaPattern
  */
 
 /**
  * A serialized node key string for storage.
- * @typedef {import('../database/types').NodeKeyString} NodeKeyString
+ * @typedef {import('./database/types').NodeKeyString} NodeKeyString
  */
 
 /**
  * The head/functor part of SchemaPattern.
- * @typedef {import('../database/types').NodeName} NodeName
+ * @typedef {import('./database/types').NodeName} NodeName
  */
 
 /**
  * A schema hash string identifying a dependency graph schema.
- * @typedef {import('../database/types').SchemaHash} SchemaHash
+ * @typedef {import('./database/types').SchemaHash} SchemaHash
  */
 
 /**

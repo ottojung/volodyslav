@@ -3,22 +3,22 @@
  * Encapsulates database access for the dependency graph using typed sublevels.
  */
 
-const { stringToNodeKeyString, nodeKeyStringToString } = require('../database');
+const { stringToNodeKeyString, nodeKeyStringToString } = require('./database');
 
-/** @typedef {import('../database/root_database').RootDatabase} RootDatabase */
-/** @typedef {import('../database/root_database').SchemaStorage} SchemaStorage */
-/** @typedef {import('../database/root_database').ValuesDatabase} ValuesDatabase */
-/** @typedef {import('../database/root_database').FreshnessDatabase} FreshnessDatabase */
-/** @typedef {import('../database/root_database').InputsDatabase} InputsDatabase */
-/** @typedef {import('../database/root_database').RevdepsDatabase} RevdepsDatabase */
-/** @typedef {import('../database/types').DatabaseValue} DatabaseValue */
-/** @typedef {import('../database/types').Freshness} Freshness */
-/** @typedef {import('../database/types').InputsRecord} InputsRecord */
-/** @typedef {import('../database/types').DatabaseBatchOperation} DatabaseBatchOperation */
-/** @typedef {import('../database/types').SchemaSublevelType} SchemaSublevelType */
+/** @typedef {import('./database/root_database').RootDatabase} RootDatabase */
+/** @typedef {import('./database/root_database').SchemaStorage} SchemaStorage */
+/** @typedef {import('./database/root_database').ValuesDatabase} ValuesDatabase */
+/** @typedef {import('./database/root_database').FreshnessDatabase} FreshnessDatabase */
+/** @typedef {import('./database/root_database').InputsDatabase} InputsDatabase */
+/** @typedef {import('./database/root_database').RevdepsDatabase} RevdepsDatabase */
+/** @typedef {import('./database/types').DatabaseValue} DatabaseValue */
+/** @typedef {import('./database/types').Freshness} Freshness */
+/** @typedef {import('./database/types').InputsRecord} InputsRecord */
+/** @typedef {import('./database/types').DatabaseBatchOperation} DatabaseBatchOperation */
+/** @typedef {import('./database/types').SchemaSublevelType} SchemaSublevelType */
 /** @typedef {import('./types').NodeKeyString} NodeKeyString */
 /** @typedef {import('./types').SchemaHash} SchemaHash */
-/** @typedef {import('../database/types').DatabaseKey} DatabaseKey */
+/** @typedef {import('./database/types').DatabaseKey} DatabaseKey */
 
 /**
  * Interface for batch operations on a specific database.

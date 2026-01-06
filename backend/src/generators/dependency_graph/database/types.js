@@ -2,9 +2,9 @@
  * Type definitions for Database capabilities.
  */
 
-/** @typedef {import('../../filesystem/checker').FileChecker} FileChecker */
-/** @typedef {import('../../filesystem/creator').FileCreator} FileCreator */
-/** @typedef {import('../../logger').Logger} Logger */
+/** @typedef {import('../../../filesystem/checker').FileChecker} FileChecker */
+/** @typedef {import('../../../filesystem/creator').FileCreator} FileCreator */
+/** @typedef {import('../../../logger').Logger} Logger */
 
 /**
  * @template K, V
@@ -27,15 +27,15 @@
  */
 
 /**
- * @typedef {import('../../event').Event} Event
+ * @typedef {import('../../../event').Event} Event
  */
 
 /**
- * @typedef {import('../individual/meta_events').MetaEvent} MetaEvent
+ * @typedef {import('../../individual/meta_events').MetaEvent} MetaEvent
  */
 
 /**
- * @typedef {import('../individual/event_context/compute').EventContextEntry} ContextEntry
+ * @typedef {import('../../individual/event_context/compute').EventContextEntry} ContextEntry
  */
 
 /**

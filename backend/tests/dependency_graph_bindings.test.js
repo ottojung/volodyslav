@@ -11,7 +11,7 @@
 const path = require("path");
 const fs = require("fs");
 const os = require("os");
-const { getRootDatabase } = require("../src/generators/database");
+const { getRootDatabase } = require("../src/generators/dependency_graph/database");
 const { makeDependencyGraph } = require("../src/generators/dependency_graph");
 const { getMockedRootCapabilities } = require("./spies");
 const { stubLogger } = require("./stubs");

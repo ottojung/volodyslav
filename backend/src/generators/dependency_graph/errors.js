@@ -1,6 +1,6 @@
 
-/** @typedef {import('../database/types').NodeName} NodeName */
-/** @typedef {import('../database/types').SchemaPattern} SchemaPattern */
+/** @typedef {import('./database/types').NodeName} NodeName */
+/** @typedef {import('./database/types').SchemaPattern} SchemaPattern */
 
 /**
  * Base error class for database operations.
