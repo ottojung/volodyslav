@@ -353,7 +353,7 @@ describe("DependencyGraph concurrency", () => {
             expect(computeCount).toBeGreaterThanOrEqual(1);
         });
 
-        test("multiple threads doing set-pull cycles maintain consistency", async () => {
+        test("concurrent set-pull cycles maintain consistency", async () => {
             const db = new InMemoryDatabase();
 
             const graph = makeDependencyGraph(db, [
@@ -376,7 +376,7 @@ describe("DependencyGraph concurrency", () => {
             // Initial value
             await graph.set("counter", { type: "test", value: 0 });
 
-            // Simulate multiple threads doing increment + read cycles
+            // Simulate concurrent async operations doing increment + read cycles
             const cycles = [];
             for (let i = 1; i <= 5; i++) {
                 cycles.push(
