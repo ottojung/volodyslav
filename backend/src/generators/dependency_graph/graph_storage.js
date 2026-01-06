@@ -212,7 +212,7 @@ function makeGraphStorage(rootDatabase, schemaHash) {
         // Iterate over all keys that start with the input prefix
         // Cast: revdeps.keys() returns NodeKeyString but they're composite strings
         for await (const nodeKeyStringKey of schemaStorage.revdeps.keys()) {
-            const key = nodeKeyStringToString(nodeKeyStringKey);
+            const key = nodeKeyStringKey.toString();
             if (key.startsWith(prefix)) {
                 const { dependent } = parseRevdepKey(key);
                 dependents.push(dependent);
@@ -241,7 +241,10 @@ function makeGraphStorage(rootDatabase, schemaHash) {
     async function listMaterializedNodes() {
         const keys = [];
         for await (const key of schemaStorage.values.keys()) {
-            keys.push(key); // key is already NodeKeyString
+            if (typeof key !== 'string') {
+                throw new Error("Invalid key type in values database");
+            }
+            keys.push(stringToNodeKeyString(key));
         }
         return keys;
     }
