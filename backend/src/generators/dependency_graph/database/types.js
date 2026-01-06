@@ -336,7 +336,7 @@ function schemaHashToString(schemaHash) {
  */
 
 /** 
- * @typedef {string | NodeKeyString} DatabaseKey
+ * @typedef {NodeKeyString | SchemaHash} DatabaseKey
  */
 
 /**

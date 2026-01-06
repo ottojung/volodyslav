@@ -130,7 +130,7 @@ class RootDatabaseClass {
             }
 
             if (!touchedSchema) {
-                await this.db.put(schemaHashStr, 1); // Touch schema key with constant value
+                await this.db.put(schemaHash, 1); // Touch schema key with constant value
                 touchedSchema = true;
             }
             await schemaSublevel.batch(operations);
