@@ -128,19 +128,148 @@ function isDatabaseValue(value) {
  * @property {string[]} inputs - Array of canonical input node names
  */
 
+class SchemaPatternClass {
+    /**
+     * @private
+     * @type {undefined}
+     */
+    __brand;
+    constructor() {
+        if (this.__brand !== undefined) {
+            throw new Error("SchemaPattern cannot be instantiated");
+        }
+    }
+}
+
+/**
+ * @param {string} _value
+ * @returns {_value is SchemaPattern}
+ */
+function castToSchemaPattern(_value) {
+    return true;
+}
+
+/**
+ * @param {string} schemaPatternStr 
+ * @returns {SchemaPattern}
+ */
+function stringToSchemaPattern(schemaPatternStr) {
+    if (castToSchemaPattern(schemaPatternStr)) {
+        return schemaPatternStr;
+    }
+    throw new Error("Invalid schema pattern string");
+}
+
+/**
+ * @param {SchemaPattern} schemaPattern
+ * @returns {string}
+ */
+function schemaPatternToString(schemaPattern) {
+    if (typeof schemaPattern === "string") {
+        return schemaPattern;
+    }
+    throw new Error("Invalid schema pattern type");
+}
+
 /**
  * An expression string pattern used in node definitions.
- * @typedef {string} SchemaPattern
+ * @typedef {SchemaPatternClass} SchemaPattern
  */
+
+class NodeKeyStringClass {
+    /**
+     * @private
+     * @type {undefined}
+     */
+    __brand;
+    constructor() {
+        if (this.__brand !== undefined) {
+            throw new Error("NodeKeyString cannot be instantiated");
+        }
+    }
+}
+
+/**
+ * @param {string} _value
+ * @returns {_value is NodeKeyString}
+ */
+function castToNodeKeyString(_value) {
+    return true;
+}
+
+/**
+ * @param {string} nodeKeyStr 
+ * @returns {NodeKeyString}
+ */
+function stringToNodeKeyString(nodeKeyStr) {
+    if (castToNodeKeyString(nodeKeyStr)) {
+        return nodeKeyStr;
+    }
+    throw new Error("Invalid node key string");
+}
+
+/**
+ * @param {NodeKeyString} nodeKeyString
+ * @returns {string}
+ */
+function nodeKeyStringToString(nodeKeyString) {
+    if (typeof nodeKeyString === "string") {
+        return nodeKeyString;
+    }
+    throw new Error("Invalid node key string type");
+}
 
 /**
  * A serialized node key string for storage.
- * @typedef {string} NodeKeyString
+ * @typedef {NodeKeyStringClass} NodeKeyString
  */
+
+class NodeNameClass {
+    /**
+     * @private
+     * @type {undefined}
+     */
+    __brand;
+    constructor() {
+        if (this.__brand !== undefined) {
+            throw new Error("NodeName cannot be instantiated");
+        }
+    }
+}
+
+/**
+ * @param {string} _value
+ * @returns {_value is NodeName}
+ */
+function castToNodeName(_value) {
+    return true;
+}
+
+/**
+ * @param {string} nodeNameStr 
+ * @returns {NodeName}
+ */
+function stringToNodeName(nodeNameStr) {
+    if (castToNodeName(nodeNameStr)) {
+        return nodeNameStr;
+    }
+    throw new Error("Invalid node name string");
+}
+
+/**
+ * @param {NodeName} nodeName
+ * @returns {string}
+ */
+function nodeNameToString(nodeName) {
+    if (typeof nodeName === "string") {
+        return nodeName;
+    }
+    throw new Error("Invalid node name type");
+}
 
 /**
  * The head/functor part of SchemaPattern.
- * @typedef {string} NodeName
+ * @typedef {NodeNameClass} NodeName
  */
 
 class SchemaHashClass {
@@ -229,4 +358,13 @@ module.exports = {
     schemaHashToString,
     stringToSchemaHash,
     SchemaHashClass,
+    nodeNameToString,
+    stringToNodeName,
+    NodeNameClass,
+    nodeKeyStringToString,
+    stringToNodeKeyString,
+    NodeKeyStringClass,
+    schemaPatternToString,
+    stringToSchemaPattern,
+    SchemaPatternClass,
 };
