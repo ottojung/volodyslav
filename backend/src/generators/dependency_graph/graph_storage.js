@@ -35,7 +35,7 @@ const { stringToNodeKeyString, nodeKeyStringToString } = require('./database');
  * @property {BatchDatabaseOps<DatabaseValue>} values - Batch operations for values database
  * @property {BatchDatabaseOps<Freshness>} freshness - Batch operations for freshness database
  * @property {BatchDatabaseOps<InputsRecord>} inputs - Batch operations for inputs database
- * @property {BatchDatabaseOps<string[]>} revdeps - Batch operations for revdeps database (input node -> array of dependents)
+ * @property {BatchDatabaseOps<NodeKeyString[]>} revdeps - Batch operations for revdeps database (input node -> array of dependents)
  */
 
 /**
@@ -148,22 +148,20 @@ function makeGraphStorage(rootDatabase, schemaHash) {
      */
     async function ensureReverseDepsIndexed(node, inputs, batch) {
         // For each input, add this node to its dependents array
-        const nodeStr = nodeKeyStringToString(node);
-        
         for (const input of inputs) {
             // Get existing dependents for this input
             const existingDependents = await schemaStorage.revdeps.get(input);
             
             if (existingDependents !== undefined) {
                 // Check if this node is already in the dependents list
-                if (existingDependents.includes(nodeStr)) {
+                if (existingDependents.includes(node)) {
                     continue; // Already indexed, skip
                 }
                 // Add this node to the existing dependents array
-                batch.revdeps.put(input, [...existingDependents, nodeStr]);
+                batch.revdeps.put(input, [...existingDependents, node]);
             } else {
                 // Create a new dependents array with just this node
-                batch.revdeps.put(input, [nodeStr]);
+                batch.revdeps.put(input, [node]);
             }
         }
     }
@@ -180,7 +178,7 @@ function makeGraphStorage(rootDatabase, schemaHash) {
             return [];
         }
         // Convert string[] from DB to NodeKeyString[]
-        return dependents.map(stringToNodeKeyString);
+        return dependents;
     }
 
     /**

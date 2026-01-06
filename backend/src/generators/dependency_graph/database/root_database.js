@@ -12,6 +12,7 @@ const { makeTypedDatabase } = require('./typed_database');
 /** @typedef {import('./types').DatabaseStoredValue} DatabaseStoredValue */
 /** @typedef {import('./types').DatabaseBatchOperation} DatabaseBatchOperation */
 /** @typedef {import('./types').SchemaHash} SchemaHash */
+/** @typedef {import('./types').NodeKeyString} NodeKeyString */
 
 /**
  * @template T
@@ -49,7 +50,7 @@ const { makeTypedDatabase } = require('./typed_database');
  * Database for reverse dependency index.
  * Key: canonical input node name
  * Value: array of canonical dependent node names
- * @typedef {GenericDatabase<string[]>} RevdepsDatabase
+ * @typedef {GenericDatabase<NodeKeyString[]>} RevdepsDatabase
  */
 
 /**
@@ -118,7 +119,7 @@ class RootDatabaseClass {
         const freshnessSublevel = schemaSublevel.sublevel('freshness', { valueEncoding: 'json' });
         /** @type {SimpleSublevel<InputsRecord>} */
         const inputsSublevel = schemaSublevel.sublevel('inputs', { valueEncoding: 'json' });
-        /** @type {SimpleSublevel<string[]>} */
+        /** @type {SimpleSublevel<NodeKeyString[]>} */
         const revdepsSublevel = schemaSublevel.sublevel('revdeps', { valueEncoding: 'json' });
 
         let touchedSchema = false;

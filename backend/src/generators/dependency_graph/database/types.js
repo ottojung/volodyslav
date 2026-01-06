@@ -92,7 +92,7 @@ function isDatabaseValue(value) {
 }
 
 /**
- * @typedef {DatabaseValue | Freshness | InputsRecord | string[] | 1} DatabaseStoredValue
+ * @typedef {DatabaseValue | Freshness | InputsRecord | NodeKeyString[] | 1} DatabaseStoredValue
  */
 
 /**
@@ -119,7 +119,7 @@ function isDatabaseValue(value) {
 
 /**
  * A batch operation for the database.
- * @typedef {DatabasePutOperation<DatabaseValue> | DatabasePutOperation<Freshness> | DatabasePutOperation<InputsRecord> | DatabasePutOperation<string[]> | DatabaseDelOperation<DatabaseValue> | DatabaseDelOperation<Freshness> | DatabaseDelOperation<InputsRecord> | DatabaseDelOperation<string[]>} DatabaseBatchOperation
+ * @typedef {DatabasePutOperation<DatabaseValue> | DatabasePutOperation<Freshness> | DatabasePutOperation<InputsRecord> | DatabasePutOperation<NodeKeyString[]> | DatabaseDelOperation<DatabaseValue> | DatabaseDelOperation<Freshness> | DatabaseDelOperation<InputsRecord> | DatabaseDelOperation<NodeKeyString[]>} DatabaseBatchOperation
  */
 
 /**
