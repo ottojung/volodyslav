@@ -15,14 +15,17 @@
  */
 
 const { makeArityMismatchError } = require("./errors");
+const { stringToNodeKeyString, nodeNameToString, stringToNodeName, nodeKeyStringToString } = require("../database");
 
 /** @typedef {import('./types').ConstValue} ConstValue */
-/** @typedef {string} NodeKeyString */
+/** @typedef {import('./types').NodeKeyString} NodeKeyString */
+/** @typedef {import('./types').NodeName} NodeName */
+/** @typedef {import('./types').SchemaPattern} SchemaPattern */
 
 /**
  * A node key object for concrete nodes.
  * @typedef {object} NodeKey
- * @property {string} head - The node name/head
+ * @property {NodeName} head - The node name/head
  * @property {Array<ConstValue>} args - The arguments (bound values - ConstValue types only)
  */
 
@@ -34,8 +37,9 @@ const { makeArityMismatchError } = require("./errors");
  */
 function serializeNodeKey(key) {
     // Stable JSON serialization
-    const serialized = JSON.stringify({ head: key.head, args: key.args });
-    return serialized;
+    const headStr = nodeNameToString(key.head);
+    const serialized = JSON.stringify({ head: headStr, args: key.args });
+    return stringToNodeKeyString(serialized);
 }
 
 /**
@@ -44,33 +48,36 @@ function serializeNodeKey(key) {
  * @returns {NodeKey}
  */
 function deserializeNodeKey(serialized) {
-    return JSON.parse(serialized);
+    const str = nodeKeyStringToString(serialized);
+    const parsed = JSON.parse(str);
+    return { head: stringToNodeName(parsed.head), args: parsed.args };
 }
 
 /**
  * Creates a node key from a pattern string and positional bindings.
  * Pattern like "event(e)" with bindings [{id: 5}] becomes {head: "event", args: [{id: 5}]}
  * Variable names are ignored - only position matters.
- * @param {string} pattern - Pattern string like "event(e)" or "all_events"
+ * @param {SchemaPattern} pattern - Pattern string like "event(e)" or "all_events"
  * @param {Array<ConstValue>} bindings - Positional bindings array (ConstValue types only)
  * @returns {NodeKey}
  */
 function createNodeKeyFromPattern(pattern, bindings) {
     const { parseExpr } = require("./expr");
     const expr = parseExpr(pattern);
+    const head = expr.name;
     
     if (expr.kind === "atom") {
-        return { head: expr.name, args: [] };
+        return { head, args: [] };
     }
     
     // For call expressions, use positional bindings
     // The arity must match the bindings array length
     if (expr.args.length !== bindings.length) {
-        throw makeArityMismatchError(expr.name, expr.args.length, bindings.length);
+        throw makeArityMismatchError(head, expr.args.length, bindings.length);
     }
     
     // Simply use the bindings array as args (variable names are ignored)
-    return { head: expr.name, args: bindings };
+    return { head, args: bindings };
 }
 
 module.exports = {

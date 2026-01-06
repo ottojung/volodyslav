@@ -63,8 +63,8 @@
  * A concrete node definition with resolved inputs and output.
  * Used for runtime instantiations of pattern nodes.
  * @typedef {object} ConcreteNode
- * @property {SchemaPattern} output - Canonical concrete output key
- * @property {Array<SchemaPattern>} inputs - Array of canonical concrete input keys
+ * @property {NodeKeyString} output - Serialized concrete output key
+ * @property {Array<NodeKeyString>} inputs - Array of serialized concrete input keys
  * @property {ConcreteNodeComputor} computor - Function that computes the output from inputs and old value
  */
 
@@ -90,21 +90,30 @@
 
 /**
  * Unified node definition.
+ *
+ * Note:
+ * This does not use nominal types, ie SchemaPattern, because this is user input.
+ * The output and inputs can be any strings, not necessarily valid patterns.
+ *
  * @typedef {object} NodeDef
- * @property {SchemaPattern} output - Pattern or exact key (e.g., "event_context(e)" or 'status("active")')
- * @property {Array<SchemaPattern>} inputs - Pattern dependencies
+ * @property {string} output - Pattern or exact key (e.g., "event_context(e)" or 'status("active")')
+ * @property {Array<string>} inputs - Pattern dependencies
  * @property {NodeDefComputor} computor - Function that computes the output from inputs, old value, and typed bindings
  */
 
 /**
- * Compiled node with cached metadata for efficient matching and instantiation.
+ * @typedef {import('./expr').ParsedExpr} ParsedExpr
+ */
+
+/**
+ * Compiled node with cached metaArray<data> for efficient matching and instantiation.
  * @typedef {object} CompiledNode
  * @property {NodeDef} source - The original node definition
- * @property {import('./expr').ParsedExpr} outputExpr - Parsed output expression
+ * @property {ParsedExpr} outputExpr - Parsed output expression
  * @property {SchemaPattern} canonicalOutput - Canonical form of output
- * @property {Array<import('./expr').ParsedExpr>} inputExprs - Parsed input expressions
+ * @property {Array<ParsedExpr>} inputExprs - Parsed input expressions
  * @property {Array<SchemaPattern>} canonicalInputs - Canonical forms of inputs
- * @property {string} head - Head/name of the output expression
+ * @property {NodeName} head - Head/name of the output expression
  * @property {number} arity - Number of arguments in output
  * @property {boolean} isPattern - True if output contains variables (identifiers)
  * @property {Map<string, Array<number>>} repeatedVarPositions - Map from variable name to positions where it appears

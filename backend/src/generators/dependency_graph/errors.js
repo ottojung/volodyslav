@@ -1,9 +1,13 @@
+
+/** @typedef {import('../database/types').NodeName} NodeName */
+/** @typedef {import('../database/types').SchemaPattern} SchemaPattern */
+
 /**
  * Base error class for database operations.
  */
 class InvalidNode extends Error {
     /**
-     * @param {string} nodeName
+     * @param {NodeName} nodeName
      */
     constructor(nodeName) {
         super(`Node ${nodeName} not found in the dependency graph.`);
@@ -14,7 +18,7 @@ class InvalidNode extends Error {
 
 /**
  * Constructs an InvalidNode error.
- * @param {string} nodeName
+ * @param {NodeName} nodeName
  * @returns {InvalidNode}
  */
 function makeInvalidNodeError(nodeName) {
@@ -105,7 +109,7 @@ function isSchemaPatternNotAllowed(object) {
  */
 class ArityMismatch extends Error {
     /**
-     * @param {string} nodeName - The node name (functor/head)
+     * @param {NodeName} nodeName - The node name (functor/head)
      * @param {number} expected
      * @param {number} received
      */
@@ -122,7 +126,7 @@ class ArityMismatch extends Error {
 
 /**
  * Constructs an ArityMismatch error.
- * @param {string} nodeName - The node name (functor/head)
+ * @param {NodeName} nodeName - The node name (functor/head)
  * @param {number} expected
  * @param {number} received
  * @returns {ArityMismatch}
@@ -179,7 +183,7 @@ function isInvalidExpression(object) {
  */
 class InvalidSet extends Error {
     /**
-     * @param {string} nodeName
+     * @param {NodeName} nodeName
      */
     constructor(nodeName) {
         super(
@@ -193,7 +197,7 @@ class InvalidSet extends Error {
 
 /**
  * Constructs an InvalidSet error.
- * @param {string} nodeName
+ * @param {NodeName} nodeName
  * @returns {InvalidSet}
  */
 function makeInvalidSetError(nodeName) {
@@ -214,7 +218,7 @@ function isInvalidSet(object) {
  */
 class SchemaCycle extends Error {
     /**
-     * @param {string[]} cycle
+     * @param {Array<SchemaPattern>} cycle
      */
     constructor(cycle) {
         super(`Schema cycle detected: ${cycle.join(" -> ")}`);
@@ -225,7 +229,7 @@ class SchemaCycle extends Error {
 
 /**
  * Constructs a SchemaCycle error.
- * @param {string[]} cycle
+ * @param {Array<SchemaPattern>} cycle
  * @returns {SchemaCycle}
  */
 function makeSchemaCycleError(cycle) {
@@ -246,7 +250,7 @@ function isSchemaCycle(object) {
  */
 class MissingValue extends Error {
     /**
-     * @param {string} nodeName
+     * @param {NodeName} nodeName
      */
     constructor(nodeName) {
         super(
@@ -260,7 +264,7 @@ class MissingValue extends Error {
 
 /**
  * Constructs a MissingValue error.
- * @param {string} nodeName
+ * @param {NodeName} nodeName
  * @returns {MissingValue}
  */
 function makeMissingValueError(nodeName) {
@@ -281,7 +285,7 @@ function isMissingValue(object) {
  */
 class SchemaOverlap extends Error {
     /**
-     * @param {string[]} patterns
+     * @param {Array<SchemaPattern>} patterns
      */
     constructor(patterns) {
         super(
@@ -295,7 +299,7 @@ class SchemaOverlap extends Error {
 
 /**
  * Constructs a SchemaOverlap error.
- * @param {string[]} patterns
+ * @param {Array<SchemaPattern>} patterns
  * @returns {SchemaOverlap}
  */
 function makeSchemaOverlapError(patterns) {
@@ -316,7 +320,7 @@ function isSchemaOverlap(object) {
  */
 class InvalidComputorReturnValue extends Error {
     /**
-     * @param {string} nodeName
+     * @param {NodeName} nodeName
      * @param {unknown} value
      */
     constructor(nodeName, value) {
@@ -332,7 +336,7 @@ class InvalidComputorReturnValue extends Error {
 
 /**
  * Constructs an InvalidComputorReturnValue error.
- * @param {string} nodeName
+ * @param {NodeName} nodeName
  * @param {unknown} value
  * @returns {InvalidComputorReturnValue}
  */
@@ -354,7 +358,7 @@ function isInvalidComputorReturnValue(object) {
  */
 class SchemaArityConflict extends Error {
     /**
-     * @param {string} head
+     * @param {NodeName} head
      * @param {number[]} arities
      */
     constructor(head, arities) {
@@ -370,7 +374,7 @@ class SchemaArityConflict extends Error {
 
 /**
  * Constructs a SchemaArityConflict error.
- * @param {string} head
+ * @param {NodeName} head
  * @param {number[]} arities
  * @returns {SchemaArityConflict}
  */

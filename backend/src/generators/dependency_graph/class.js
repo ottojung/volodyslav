@@ -2,6 +2,12 @@
  * DependencyGraph class for propagating data through dependency edges.
  */
 
+const { 
+    nodeNameToString,
+    stringToSchemaPattern, schemaPatternToString,
+    stringToNodeName,
+} = require('../database');
+
 /** @typedef {import('../database/root_database').RootDatabase} RootDatabase */
 /** @typedef {import('./types').DatabaseValue} DatabaseValue */
 /** @typedef {import('./types').ConstValue} ConstValue */
@@ -77,14 +83,14 @@ class DependencyGraphClass {
     /**
      * All compiled nodes (both exact and patterns).
      * @private
-     * @type {Map<NodeName, import('./types').CompiledNode>}
+     * @type {Map<SchemaPattern, CompiledNode>}
      */
     graph;
 
     /**
      * Index for fast lookup of compiled nodes.
      * @private
-     * @type {{ exactIndex: Map<NodeName, import('./types').CompiledNode>, patternIndex: Map<NodeName, Array<import('./types').CompiledNode>> }}
+     * @type {{ exactIndex: Map<SchemaPattern, CompiledNode>, patternIndex: Map<SchemaPattern, Array<CompiledNode>> }}
      */
     graphIndex;
 
@@ -92,7 +98,7 @@ class DependencyGraphClass {
      * Index for fast lookup by nodeName (node name/functor only).
      * Maps nodeName to the single CompiledNode with that functor.
      * @private
-     * @type {Map<NodeName, import('./types').CompiledNode>}
+     * @type {Map<NodeName, CompiledNode>}
      */
     headIndex;
 
@@ -101,7 +107,7 @@ class DependencyGraphClass {
      * Maps each node to the list of nodes that directly depend on it.
      * Dynamic edges from pattern instantiations are stored in DB, not here.
      * @private
-     * @type {Map<NodeKeyString, Array<{output: NodeKeyString, inputs: NodeKeyString[]}>>}
+     * @type {Map<SchemaPattern, Array<{output: SchemaPattern, inputs: SchemaPattern[]}>>}
      */
     dependentsMap;
 
@@ -142,13 +148,36 @@ class DependencyGraphClass {
         batch,
         nodesBecomingOutdated = new Set()
     ) {
+        // Convert concrete key to schema pattern for static lookup
+        const nodeKey = deserializeNodeKey(changedKey);
+        let schemaPattern;
+        if (nodeKey.args.length === 0) {
+            // Arity 0: just the head
+            schemaPattern = stringToSchemaPattern(nodeNameToString(nodeKey.head));
+        } else {
+            // Arity N: create pattern with placeholder variables
+            const varNames = nodeKey.args.map((_, i) => `v${i}`);
+            const pattern = `${nodeNameToString(nodeKey.head)}(${varNames.join(",")})`;
+            schemaPattern = stringToSchemaPattern(pattern);
+        }
+        
         // Collect dependents from both static map and DB
-        const staticDependents = this.dependentsMap.get(changedKey) || [];
+        const staticDependents = this.dependentsMap.get(schemaPattern) || [];
         const dynamicDependents = await this.storage.listDependents(changedKey);
 
-        // Combine both sources, mapping dynamic dependents to the same structure
+        // Combine both sources
+        // Static dependents have SchemaPattern outputs, convert to NodeKeyString
+        // Dynamic dependents already have NodeKeyString outputs
+        const staticDependentsConverted = staticDependents.map(dep => {
+            // For static deps, convert SchemaPattern output to NodeKeyString
+            // Static deps are non-pattern nodes, so we can create a simple key
+            const depNodeKey = createNodeKeyFromPattern(dep.output, []);
+            const depKeyString = serializeNodeKey(depNodeKey);
+            return { output: depKeyString, inputs: [] }; // inputs not needed for propagation
+        });
+        
         const allDependents = [
-            ...staticDependents,
+            ...staticDependentsConverted,
             ...dynamicDependents.map((output) => ({ output, inputs: [] })),
         ];
 
@@ -191,22 +220,24 @@ class DependencyGraphClass {
     /**
      * Sets a specific node's value, marking it up-to-date and propagating changes.
      * All operations are performed atomically in a single batch.
-     * @param {NodeName} nodeName - The node name (functor only, e.g., "full_event")
+     * @param {string} nodeName - The node name (functor only, e.g., "full_event")
      * @param {DatabaseValue} value - The value to set
      * @param {Array<ConstValue>} [bindings=[]] - Positional bindings array for parameterized nodes
      * @returns {Promise<void>}
      */
     async set(nodeName, value, bindings = []) {
+        const nodeNameTyped = stringToNodeName(nodeName);
+
         // Lookup schema by nodeName
-        const compiledNode = this.headIndex.get(nodeName);
+        const compiledNode = this.headIndex.get(nodeNameTyped);
         if (!compiledNode) {
-            throw makeInvalidNodeError(nodeName);
+            throw makeInvalidNodeError(nodeNameTyped);
         }
 
         // Validate arity matches bindings
         if (compiledNode.arity !== bindings.length) {
             throw makeArityMismatchError(
-                nodeName,
+                nodeNameTyped,
                 compiledNode.arity,
                 bindings.length
             );
@@ -214,11 +245,11 @@ class DependencyGraphClass {
 
         // Validate that this is a source node (no inputs)
         if (compiledNode.source.inputs.length > 0) {
-            throw makeInvalidSetError(nodeName);
+            throw makeInvalidSetError(nodeNameTyped);
         }
 
         // Create NodeKey for storage
-        const nodeKey = { head: nodeName, args: bindings };
+        const nodeKey = { head: nodeNameTyped, args: bindings };
         const concreteKey = serializeNodeKey(nodeKey);
 
         // Ensure node exists (will create from pattern if needed)
@@ -398,7 +429,7 @@ class DependencyGraphClass {
                 output: renderExpr(node.outputExpr),
                 inputs: node.inputExprs.map(renderExpr),
             }))
-            .sort((a, b) => a.output.localeCompare(b.output));
+            .sort((a, b) => schemaPatternToString(a.output).localeCompare(schemaPatternToString(b.output)));
 
         const schemaJson = JSON.stringify(schemaRepresentation);
         const hash = crypto
@@ -530,7 +561,7 @@ class DependencyGraphClass {
             // Must have a previous value
             if (oldValue === undefined) {
                 throw makeInvalidComputorReturnValueError(
-                    nodeKey,
+                    deserializeNodeKey(nodeKey).head,
                     "Unchanged (but no previous value exists)"
                 );
             }
@@ -538,7 +569,7 @@ class DependencyGraphClass {
             // Must be a valid DatabaseValue (not null/undefined)
             if (computedValue === null || computedValue === undefined) {
                 throw makeInvalidComputorReturnValueError(
-                    nodeKey,
+                    deserializeNodeKey(nodeKey).head,
                     computedValue
                 );
             }
@@ -572,7 +603,7 @@ class DependencyGraphClass {
             // Return old value (must exist if Unchanged returned)
             const result = await this.storage.values.get(nodeKey);
             if (result === undefined) {
-                throw makeMissingValueError(nodeKey);
+                throw makeMissingValueError(deserializeNodeKey(nodeKey).head);
             }
             return { value: result, status: "unchanged" };
         } else {
@@ -590,12 +621,13 @@ class DependencyGraphClass {
      * - If node is up-to-date: return cached value (fast path)
      * - If node is potentially-outdated: maybe recalculate (check inputs first)
      *
-     * @param {NodeName} nodeName - The node name (functor only, e.g., "full_event")
+     * @param {string} nodeName - The node name (functor only, e.g., "full_event")
      * @param {Array<ConstValue>} [bindings=[]] - Positional bindings array for parameterized nodes
      * @returns {Promise<DatabaseValue>} The node's value
      */
     async pull(nodeName, bindings = []) {
-        const { value } = await this.pullWithStatus(nodeName, bindings);
+        const nodeNameValue = stringToNodeName(nodeName);
+        const { value } = await this.pullWithStatus(nodeNameValue, bindings);
         return value;
     }
 
@@ -661,7 +693,7 @@ class DependencyGraphClass {
 
                 const result = await this.storage.values.get(nodeDefinition.output);
                 if (result === undefined) {
-                    throw makeMissingValueError(nodeDefinition.output);
+                    throw makeMissingValueError(deserializeNodeKey(nodeDefinition.output).head);
                 }
                 return { value: result, status: "cached" };
             }
@@ -732,7 +764,7 @@ class DependencyGraphClass {
 
                 const result = await this.storage.values.get(nodeKeyStr);
                 if (result === undefined) {
-                    throw makeMissingValueError(nodeKeyStr);
+                    throw makeMissingValueError(deserializeNodeKey(nodeKeyStr).head);
                 }
                 return { value: result, status: "cached" };
             }

@@ -3,6 +3,7 @@
  */
 
 const { parseExpr, renderExpr } = require("./expr");
+const { stringToSchemaPattern } = require("../database");
 const { 
     makeInvalidSchemaError, 
     makeSchemaOverlapError, 
@@ -13,6 +14,7 @@ const {
 /** @typedef {import('./types').NodeDef} NodeDef */
 /** @typedef {import('./types').CompiledNode} CompiledNode */
 /** @typedef {import('./types').ConstValue} ConstValue */
+/** @typedef {import('./types').NodeName} NodeName */
 /** @typedef {import('./expr').ParsedExpr} ParsedExpr */
 /** @typedef {import('./expr').ParsedArg} ParsedArg */
 
@@ -135,7 +137,7 @@ function validateVariableCoverage(outputExpr, inputExprs, outputStr) {
  * Minimal pattern interface for overlap checking.
  * @typedef {object} PatternForOverlap
  * @property {ParsedExpr} outputExpr - The output expression  
- * @property {string} head - Head/name of the pattern
+ * @property {NodeName} head - Head/name of the pattern
  * @property {number} arity - Number of arguments
  */
 
@@ -251,7 +253,7 @@ function validateAcyclic(compiledNodes) {
  * @throws {Error} If a head appears with multiple arities
  */
 function validateSingleArityPerHead(compiledNodes) {
-    /** @type {Map<string, Set<number>>} */
+    /** @type {Map<NodeName, Set<number>>} */
     const headToArities = new Map();
     
     for (const node of compiledNodes) {
@@ -283,14 +285,14 @@ function validateSingleArityPerHead(compiledNodes) {
  */
 function compileNodeDef(nodeDef) {
     // Parse output
-    const outputExpr = parseExpr(nodeDef.output);
+    const outputExpr = parseExpr(stringToSchemaPattern(nodeDef.output));
     const canonicalOutput = renderExpr(outputExpr);
     
     // Validate no duplicate variables in output
     validateNoDuplicateVariables(outputExpr, nodeDef.output);
     
     // Parse inputs
-    const inputExprs = nodeDef.inputs.map(parseExpr);
+    const inputExprs = nodeDef.inputs.map(stringToSchemaPattern).map(parseExpr);
     const canonicalInputs = inputExprs.map(renderExpr);
     
     // Validate no duplicate variables in any input
