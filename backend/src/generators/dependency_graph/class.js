@@ -6,7 +6,7 @@ const {
     nodeNameToString,
     stringToSchemaPattern, schemaPatternToString,
     stringToNodeName,
-} = require('../database/types');
+} = require('../database');
 
 /** @typedef {import('../database/root_database').RootDatabase} RootDatabase */
 /** @typedef {import('./types').DatabaseValue} DatabaseValue */
@@ -90,7 +90,7 @@ class DependencyGraphClass {
     /**
      * Index for fast lookup of compiled nodes.
      * @private
-     * @type {{ exactIndex: Map<NodeName, import('./types').CompiledNode>, patternIndex: Map<NodeName, Array<import('./types').CompiledNode>> }}
+     * @type {{ exactIndex: Map<SchemaPattern, import('./types').CompiledNode>, patternIndex: Map<SchemaPattern, Array<import('./types').CompiledNode>> }}
      */
     graphIndex;
 
@@ -98,7 +98,7 @@ class DependencyGraphClass {
      * Index for fast lookup by nodeName (node name/functor only).
      * Maps nodeName to the single CompiledNode with that functor.
      * @private
-     * @type {Map<NodeName, import('./types').CompiledNode>}
+     * @type {Map<string, import('./types').CompiledNode>}
      */
     headIndex;
 
@@ -107,7 +107,7 @@ class DependencyGraphClass {
      * Maps each node to the list of nodes that directly depend on it.
      * Dynamic edges from pattern instantiations are stored in DB, not here.
      * @private
-     * @type {Map<NodeKeyString, Array<{output: NodeKeyString, inputs: NodeKeyString[]}>>}
+     * @type {Map<SchemaPattern, Array<{output: SchemaPattern, inputs: SchemaPattern[]}>>}
      */
     dependentsMap;
 
@@ -229,7 +229,7 @@ class DependencyGraphClass {
         const nodeNameTyped = stringToNodeName(nodeName);
 
         // Lookup schema by nodeName
-        const compiledNode = this.headIndex.get(nodeNameTyped);
+        const compiledNode = this.headIndex.get(nodeNameToString(nodeNameTyped));
         if (!compiledNode) {
             throw makeInvalidNodeError(nodeNameTyped);
         }
@@ -561,7 +561,7 @@ class DependencyGraphClass {
             // Must have a previous value
             if (oldValue === undefined) {
                 throw makeInvalidComputorReturnValueError(
-                    nodeKey,
+                    deserializeNodeKey(nodeKey).head,
                     "Unchanged (but no previous value exists)"
                 );
             }
@@ -569,7 +569,7 @@ class DependencyGraphClass {
             // Must be a valid DatabaseValue (not null/undefined)
             if (computedValue === null || computedValue === undefined) {
                 throw makeInvalidComputorReturnValueError(
-                    nodeKey,
+                    deserializeNodeKey(nodeKey).head,
                     computedValue
                 );
             }
@@ -603,7 +603,7 @@ class DependencyGraphClass {
             // Return old value (must exist if Unchanged returned)
             const result = await this.storage.values.get(nodeKey);
             if (result === undefined) {
-                throw makeMissingValueError(nodeKey);
+                throw makeMissingValueError(deserializeNodeKey(nodeKey).head);
             }
             return { value: result, status: "unchanged" };
         } else {
@@ -642,7 +642,7 @@ class DependencyGraphClass {
     async pullWithStatus(nodeName, bindings = []) {
         return this.storage.withBatch(async (batch) => {
             // Lookup schema by nodeName
-            const compiledNode = this.headIndex.get(nodeName);
+            const compiledNode = this.headIndex.get(nodeNameToString(nodeName));
             if (!compiledNode) {
                 throw makeInvalidNodeError(nodeName);
             }
@@ -693,7 +693,7 @@ class DependencyGraphClass {
 
                 const result = await this.storage.values.get(nodeDefinition.output);
                 if (result === undefined) {
-                    throw makeMissingValueError(nodeDefinition.output);
+                    throw makeMissingValueError(deserializeNodeKey(nodeDefinition.output).head);
                 }
                 return { value: result, status: "cached" };
             }
@@ -717,7 +717,7 @@ class DependencyGraphClass {
             const bindings = nodeKey.args;
 
             // Lookup schema by nodeName
-            const compiledNode = this.headIndex.get(nodeName);
+            const compiledNode = this.headIndex.get(nodeNameToString(nodeName));
             if (!compiledNode) {
                 throw makeInvalidNodeError(nodeName);
             }
@@ -764,7 +764,7 @@ class DependencyGraphClass {
 
                 const result = await this.storage.values.get(nodeKeyStr);
                 if (result === undefined) {
-                    throw makeMissingValueError(nodeKeyStr);
+                    throw makeMissingValueError(deserializeNodeKey(nodeKeyStr).head);
                 }
                 return { value: result, status: "cached" };
             }
@@ -782,7 +782,7 @@ class DependencyGraphClass {
      */
     async debugGetFreshness(nodeName, bindings = []) {
         // Lookup schema to validate nodeName and get arity
-        const compiledNode = this.headIndex.get(nodeName);
+        const compiledNode = this.headIndex.get(nodeNameToString(nodeName));
         if (!compiledNode) {
             throw makeInvalidNodeError(nodeName);
         }
