@@ -15,7 +15,7 @@
  * @typedef {import('./types').DatabasePutOperation<T>} DatabasePutOperation
  */
 
-/** 
+/**
  * @template T
  * @typedef {import('./types').DatabaseDelOperation<T>} DatabaseDelOperation
  */
@@ -60,10 +60,10 @@ class TypedDatabaseClass {
 
     /**
      * Retrieve a value from the database.
-     * 
+     *
      * Note: Level v10+ returns `undefined` for missing keys rather than throwing an error.
      * This is the expected behavior and we pass it through directly.
-     * 
+     *
      * @param {NodeKeyString} key - The key to retrieve
      * @returns {Promise<TValue | undefined>}
      */
@@ -97,7 +97,7 @@ class TypedDatabaseClass {
      * @returns {DatabasePutOperation<TValue>}
      */
     putOp(key, value) {
-        return { sublevel: this.sublevel, type: 'put', key, value };
+        return { sublevel: this.sublevel, type: "put", key, value };
     }
 
     /**
@@ -110,7 +110,7 @@ class TypedDatabaseClass {
         const thisSublevel = this.sublevel;
         /** @type {SimpleSublevel<TValue>} */
         const sublevel = thisSublevel;
-        return { sublevel: sublevel, type: 'del', key };
+        return { sublevel: sublevel, type: "del", key };
     }
 
     async *keys() {
