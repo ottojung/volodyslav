@@ -1,5 +1,6 @@
 
 /** @typedef {import('../database/types').NodeName} NodeName */
+/** @typedef {import('../database/types').SchemaPattern} SchemaPattern */
 
 /**
  * Base error class for database operations.
@@ -217,7 +218,7 @@ function isInvalidSet(object) {
  */
 class SchemaCycle extends Error {
     /**
-     * @param {string[]} cycle
+     * @param {Array<SchemaPattern>} cycle
      */
     constructor(cycle) {
         super(`Schema cycle detected: ${cycle.join(" -> ")}`);
@@ -228,7 +229,7 @@ class SchemaCycle extends Error {
 
 /**
  * Constructs a SchemaCycle error.
- * @param {string[]} cycle
+ * @param {Array<SchemaPattern>} cycle
  * @returns {SchemaCycle}
  */
 function makeSchemaCycleError(cycle) {
@@ -284,7 +285,7 @@ function isMissingValue(object) {
  */
 class SchemaOverlap extends Error {
     /**
-     * @param {string[]} patterns
+     * @param {Array<SchemaPattern>} patterns
      */
     constructor(patterns) {
         super(
@@ -298,7 +299,7 @@ class SchemaOverlap extends Error {
 
 /**
  * Constructs a SchemaOverlap error.
- * @param {string[]} patterns
+ * @param {Array<SchemaPattern>} patterns
  * @returns {SchemaOverlap}
  */
 function makeSchemaOverlapError(patterns) {
