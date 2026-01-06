@@ -3,7 +3,7 @@
  * Encapsulates database access for the dependency graph using typed sublevels.
  */
 
-const { stringToNodeKeyString, nodeKeyStringToString } = require('../database/types');
+const { stringToNodeKeyString, nodeKeyStringToString } = require('../database');
 
 /** @typedef {import('../database/root_database').RootDatabase} RootDatabase */
 /** @typedef {import('../database/root_database').SchemaStorage} SchemaStorage */

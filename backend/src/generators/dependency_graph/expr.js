@@ -2,7 +2,7 @@
  * Expression parsing and canonicalization.
  */
 
-const { stringToSchemaPattern, schemaPatternToString } = require("../database/types");
+const { stringToSchemaPattern, schemaPatternToString } = require("../database");
 
 /**
  * @typedef {import('./types').SchemaPattern} SchemaPattern
