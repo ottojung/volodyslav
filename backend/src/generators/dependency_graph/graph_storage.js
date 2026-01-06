@@ -102,6 +102,8 @@ function makeBatchBuilder(schemaStorage) {
     return ret;
 }
 
+const KEYSEPARATOR = "\x00";
+
 /**
  * Create a composite key for an edge in the revdeps database.
  * Uses null byte as delimiter between input and dependent node names.
@@ -110,7 +112,7 @@ function makeBatchBuilder(schemaStorage) {
  * @returns {string}
  */
 function makeRevdepKey(input, dependent) {
-    return `${input}\x00${dependent}`;
+    return `${input}${KEYSEPARATOR}${dependent}`;
 }
 
 /**
@@ -119,7 +121,7 @@ function makeRevdepKey(input, dependent) {
  * @returns {{input: NodeKeyString, dependent: NodeKeyString}}
  */
 function parseRevdepKey(key) {
-    const parts = key.split("\x00");
+    const parts = key.split(KEYSEPARATOR);
     if (parts.length !== 2 || !parts[0] || !parts[1]) {
         throw new Error(`Invalid revdep key format: ${key}`);
     }
@@ -196,7 +198,7 @@ function makeGraphStorage(rootDatabase, schemaHash) {
      */
     async function listDependents(input) {
         const dependents = [];
-        const prefix = `${input}\x00`;
+        const prefix = `${input}${KEYSEPARATOR}`;
 
         // Iterate over all keys that start with the input prefix
         for await (const key of schemaStorage.revdeps.keys()) {
