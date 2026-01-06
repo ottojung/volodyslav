@@ -41,7 +41,6 @@ module.exports = {
                 vars: "all",
                 args: "after-used",
                 argsIgnorePattern: "^_",
-                classIgnorePattern: "^_",
             },
         ],
         "import/no-cycle": ["error", { maxDepth: "∞" }],
