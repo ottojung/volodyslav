@@ -62,7 +62,7 @@
 /**
  * A concrete node definition with resolved inputs and output.
  * Used for runtime instantiations of pattern nodes.
- * @typedef {object} ConcreteNote
+ * @typedef {object} ConcreteNode
  * @property {SchemaPattern} output - Canonical concrete output key
  * @property {Array<SchemaPattern>} inputs - Array of canonical concrete input keys
  * @property {ConcreteNodeComputor} computor - Function that computes the output from inputs and old value

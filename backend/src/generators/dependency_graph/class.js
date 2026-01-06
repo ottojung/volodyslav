@@ -9,7 +9,7 @@
 /** @typedef {import('./types').FreshnessStatus} FreshnessStatus */
 /** @typedef {import('./types').NodeDef} NodeDef */
 /** @typedef {import('./types').CompiledNode} CompiledNode */
-/** @typedef {import('./types').ConcreteNote} ConcreteNote */
+/** @typedef {import('./types').ConcreteNode} ConcreteNode */
 /** @typedef {import('./types').RecomputeResult} RecomputeResult */
 /** @typedef {import('./types').NodeKeyString} NodeKeyString */
 /** @typedef {import('./types').NodeName} NodeName */
@@ -107,7 +107,7 @@ class DependencyGraphClass {
      * Cache of concrete instantiated nodes created from patterns on demand.
      * Maps canonical output to a runtime node with concrete inputs and wrapped computor.
      * @private
-     * @type {Map<NodeKeyString, ConcreteNote>}
+     * @type {Map<NodeKeyString, ConcreteNode>}
      */
     concreteInstantiations;
 
@@ -283,7 +283,7 @@ class DependencyGraphClass {
      * @param {NodeKeyString} concreteKeyCanonical - Canonical concrete node key (NodeKeyString)
      * @param {CompiledNode} compiledNode - The compiled node definition
      * @param {Array<ConstValue>} bindings - Positional bindings for this instance
-     * @returns {ConcreteNote}
+     * @returns {ConcreteNode}
      * @throws {Error} If pattern matching fails
      */
     getOrCreateConcreteNode(
@@ -463,7 +463,7 @@ class DependencyGraphClass {
      * Special optimization: if computation returns Unchanged, propagate up-to-date downstream.
      *
      * @private
-     * @param {ConcreteNote} nodeDefinition - The node to maybe recalculate
+     * @param {ConcreteNode} nodeDefinition - The node to maybe recalculate
      * @param {BatchBuilder} batch - Batch builder for atomic operations
      * @returns {Promise<RecomputeResult>}
      */
