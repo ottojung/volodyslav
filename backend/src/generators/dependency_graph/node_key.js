@@ -64,19 +64,20 @@ function deserializeNodeKey(serialized) {
 function createNodeKeyFromPattern(pattern, bindings) {
     const { parseExpr } = require("./expr");
     const expr = parseExpr(pattern);
+    const head = expr.name;
     
     if (expr.kind === "atom") {
-        return { head: stringToNodeName(expr.name), args: [] };
+        return { head, args: [] };
     }
     
     // For call expressions, use positional bindings
     // The arity must match the bindings array length
     if (expr.args.length !== bindings.length) {
-        throw makeArityMismatchError(stringToNodeName(expr.name), expr.args.length, bindings.length);
+        throw makeArityMismatchError(head, expr.args.length, bindings.length);
     }
     
     // Simply use the bindings array as args (variable names are ignored)
-    return { head: stringToNodeName(expr.name), args: bindings };
+    return { head, args: bindings };
 }
 
 module.exports = {

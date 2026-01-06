@@ -2,10 +2,19 @@
  * Expression parsing and canonicalization.
  */
 
-const { stringToSchemaPattern, schemaPatternToString } = require("../database");
+const {
+    stringToSchemaPattern,
+    schemaPatternToString,
+    nodeNameToString,
+    stringToNodeName,
+} = require("../database");
 
 /**
  * @typedef {import('./types').SchemaPattern} SchemaPattern
+ */
+
+/**
+ * @typedef {import('./types').NodeName} NodeName
  */
 
 const { makeInvalidExpressionError } = require("./errors");
@@ -34,7 +43,7 @@ const { makeInvalidExpressionError } = require("./errors");
  * Parsed expression - either an atom or a function call.
  * @typedef {Object} ParsedExpr
  * @property {'atom' | 'call'} kind - The kind of expression
- * @property {string} name - The name/head of the expression (identifier only)
+ * @property {NodeName} name - The name/head of the expression (identifier only)
  * @property {ParsedArg[]} args - Arguments (empty for atoms)
  */
 
@@ -225,7 +234,7 @@ class Parser {
             // Check for empty args
             if (this.getCurrentKind() === "rparen") {
                 this.advance(); // consume '('
-                return { kind: "call", name, args: [] };
+                return { kind: "call", name: stringToNodeName(name), args: [] };
             }
 
             // Parse arguments
@@ -238,11 +247,11 @@ class Parser {
 
             this.expect("rparen");
 
-            return { kind: "call", name, args };
+            return { kind: "call", name: stringToNodeName(name), args };
         }
 
         // It's an atom
-        return { kind: "atom", name, args: [] };
+        return { kind: "atom", name: stringToNodeName(name), args: [] };
     }
 
     /**
@@ -310,11 +319,12 @@ function renderArg(arg) {
  * @returns {SchemaPattern}
  */
 function renderExpr(expr) {
+    const nodeNameStr = nodeNameToString(expr.name);
     if (expr.kind === "atom") {
-        return stringToSchemaPattern(expr.name);
+        return stringToSchemaPattern(nodeNameStr);
     } else {
         const renderedArgs = expr.args.map(renderArg).join(",");
-        return stringToSchemaPattern(`${expr.name}(${renderedArgs})`);
+        return stringToSchemaPattern(`${nodeNameStr}(${renderedArgs})`);
     }
 }
 
@@ -326,8 +336,10 @@ function renderExpr(expr) {
  * @throws {Error} If the expression is malformed
  */
 function canonicalize(str) {
-    const parsed = typeof str === "object" && "name" in str ? str : parseExpr(str);
-    return stringToSchemaPattern(parsed.name);
+    const parsed =
+        typeof str === "object" && "name" in str ? str : parseExpr(str);
+    const nodeNameStr = nodeNameToString(parsed.name);
+    return stringToSchemaPattern(nodeNameStr);
 }
 
 module.exports = {

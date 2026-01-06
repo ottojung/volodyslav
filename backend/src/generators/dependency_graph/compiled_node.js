@@ -3,7 +3,7 @@
  */
 
 const { parseExpr, renderExpr } = require("./expr");
-const { stringToNodeName, stringToSchemaPattern } = require("../database");
+const { stringToSchemaPattern } = require("../database");
 const { 
     makeInvalidSchemaError, 
     makeSchemaOverlapError, 
@@ -14,6 +14,7 @@ const {
 /** @typedef {import('./types').NodeDef} NodeDef */
 /** @typedef {import('./types').CompiledNode} CompiledNode */
 /** @typedef {import('./types').ConstValue} ConstValue */
+/** @typedef {import('./types').NodeName} NodeName */
 /** @typedef {import('./expr').ParsedExpr} ParsedExpr */
 /** @typedef {import('./expr').ParsedArg} ParsedArg */
 
@@ -136,7 +137,7 @@ function validateVariableCoverage(outputExpr, inputExprs, outputStr) {
  * Minimal pattern interface for overlap checking.
  * @typedef {object} PatternForOverlap
  * @property {ParsedExpr} outputExpr - The output expression  
- * @property {string} head - Head/name of the pattern
+ * @property {NodeName} head - Head/name of the pattern
  * @property {number} arity - Number of arguments
  */
 
@@ -252,7 +253,7 @@ function validateAcyclic(compiledNodes) {
  * @throws {Error} If a head appears with multiple arities
  */
 function validateSingleArityPerHead(compiledNodes) {
-    /** @type {Map<string, Set<number>>} */
+    /** @type {Map<NodeName, Set<number>>} */
     const headToArities = new Map();
     
     for (const node of compiledNodes) {
@@ -272,7 +273,7 @@ function validateSingleArityPerHead(compiledNodes) {
     for (const [head, arities] of headToArities.entries()) {
         if (arities.size > 1) {
             const aritiesArray = Array.from(arities).sort((a, b) => a - b);
-            throw makeSchemaArityConflictError(stringToNodeName(head), aritiesArray);
+            throw makeSchemaArityConflictError(head, aritiesArray);
         }
     }
 }

@@ -102,14 +102,18 @@
  */
 
 /**
- * Compiled node with cached metadata for efficient matching and instantiation.
+ * @typedef {import('./expr').ParsedExpr} ParsedExpr
+ */
+
+/**
+ * Compiled node with cached metaArray<data> for efficient matching and instantiation.
  * @typedef {object} CompiledNode
  * @property {NodeDef} source - The original node definition
- * @property {import('./expr').ParsedExpr} outputExpr - Parsed output expression
+ * @property {ParsedExpr} outputExpr - Parsed output expression
  * @property {SchemaPattern} canonicalOutput - Canonical form of output
- * @property {Array<import('./expr').ParsedExpr>} inputExprs - Parsed input expressions
+ * @property {Array<ParsedExpr>} inputExprs - Parsed input expressions
  * @property {Array<SchemaPattern>} canonicalInputs - Canonical forms of inputs
- * @property {string} head - Head/name of the output expression
+ * @property {NodeName} head - Head/name of the output expression
  * @property {number} arity - Number of arguments in output
  * @property {boolean} isPattern - True if output contains variables (identifiers)
  * @property {Map<string, Array<number>>} repeatedVarPositions - Map from variable name to positions where it appears

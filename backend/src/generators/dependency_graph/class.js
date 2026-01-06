@@ -98,7 +98,7 @@ class DependencyGraphClass {
      * Index for fast lookup by nodeName (node name/functor only).
      * Maps nodeName to the single CompiledNode with that functor.
      * @private
-     * @type {Map<string, import('./types').CompiledNode>}
+     * @type {Map<NodeName, import('./types').CompiledNode>}
      */
     headIndex;
 
@@ -229,7 +229,7 @@ class DependencyGraphClass {
         const nodeNameTyped = stringToNodeName(nodeName);
 
         // Lookup schema by nodeName
-        const compiledNode = this.headIndex.get(nodeNameToString(nodeNameTyped));
+        const compiledNode = this.headIndex.get(nodeNameTyped);
         if (!compiledNode) {
             throw makeInvalidNodeError(nodeNameTyped);
         }
@@ -642,7 +642,7 @@ class DependencyGraphClass {
     async pullWithStatus(nodeName, bindings = []) {
         return this.storage.withBatch(async (batch) => {
             // Lookup schema by nodeName
-            const compiledNode = this.headIndex.get(nodeNameToString(nodeName));
+            const compiledNode = this.headIndex.get(nodeName);
             if (!compiledNode) {
                 throw makeInvalidNodeError(nodeName);
             }
@@ -717,7 +717,7 @@ class DependencyGraphClass {
             const bindings = nodeKey.args;
 
             // Lookup schema by nodeName
-            const compiledNode = this.headIndex.get(nodeNameToString(nodeName));
+            const compiledNode = this.headIndex.get(nodeName);
             if (!compiledNode) {
                 throw makeInvalidNodeError(nodeName);
             }
@@ -782,7 +782,7 @@ class DependencyGraphClass {
      */
     async debugGetFreshness(nodeName, bindings = []) {
         // Lookup schema to validate nodeName and get arity
-        const compiledNode = this.headIndex.get(nodeNameToString(nodeName));
+        const compiledNode = this.headIndex.get(nodeName);
         if (!compiledNode) {
             throw makeInvalidNodeError(nodeName);
         }
