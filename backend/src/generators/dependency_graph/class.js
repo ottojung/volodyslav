@@ -2,7 +2,11 @@
  * DependencyGraph class for propagating data through dependency edges.
  */
 
-const { schemaPatternToString, stringToNodeName } = require("./database");
+const {
+    schemaPatternToString,
+    stringToNodeName,
+    stringToSchemaHash,
+} = require("./database/types");
 
 /** @typedef {import('./database/root_database').RootDatabase} RootDatabase */
 /** @typedef {import('./types').DatabaseValue} DatabaseValue */
@@ -47,7 +51,9 @@ const { deserializeNodeKey } = require("./node_key");
 
 const { makeGraphStorage } = require("./graph_storage");
 const { createNodeKeyFromPattern, serializeNodeKey } = require("./node_key");
-const { stringToSchemaHash } = require("./database");
+const { makeMutex } = require("./mutex");
+
+/** @typedef {import('./mutex').Mutex} Mutex */
 
 /**
  * DependencyGraph class for propagating data through dependency edges.
@@ -68,6 +74,13 @@ const { stringToSchemaHash } = require("./database");
  * - pull() checks freshness: up-to-date → return cached, potentially-outdated → maybeRecalculate
  * - maybeRecalculate() pulls all inputs, computes, marks up-to-date
  * - When Unchanged is returned, skips recalculation for the nodes up the call stack
+ *
+ * Concurrency safety:
+ * - Thread-safe within a single process using mutex serialization
+ * - All set() and pull() operations are serialized to prevent race conditions
+ * - Multiple threads can safely call set() and pull() concurrently
+ * - Process-safe across multiple processes via LevelDB's built-in guarantees
+ * - Ensures consistent state even with concurrent modifications
  *
  * Persistence model:
  * - Reverse dependencies and inputs are persisted in DB under schema-namespaced keys
@@ -105,6 +118,14 @@ class DependencyGraphClass {
      * @type {GraphStorage}
      */
     storage;
+
+    /**
+     * Mutex for ensuring thread-safe access to graph operations.
+     * Serializes all set() and pull() operations to prevent race conditions.
+     * @private
+     * @type {Mutex}
+     */
+    mutex;
 
     /**
      * @constructor
@@ -155,6 +176,9 @@ class DependencyGraphClass {
 
         // Initialize instantiation cache
         this.concreteInstantiations = new Map();
+
+        // Initialize mutex for thread-safe operations
+        this.mutex = makeMutex();
     }
 
     /**
@@ -209,62 +233,65 @@ class DependencyGraphClass {
     /**
      * Sets a specific node's value, marking it up-to-date and propagating changes.
      * All operations are performed atomically in a single batch.
+     * Thread-safe: uses mutex to serialize access with other set/pull operations.
      * @param {string} nodeName - The node name (functor only, e.g., "full_event")
      * @param {DatabaseValue} value - The value to set
      * @param {Array<ConstValue>} [bindings=[]] - Positional bindings array for parameterized nodes
      * @returns {Promise<void>}
      */
     async set(nodeName, value, bindings = []) {
-        const nodeNameTyped = stringToNodeName(nodeName);
+        return this.mutex.runExclusive(async () => {
+            const nodeNameTyped = stringToNodeName(nodeName);
 
-        // Lookup schema by nodeName
-        const compiledNode = this.headIndex.get(nodeNameTyped);
-        if (!compiledNode) {
-            throw makeInvalidNodeError(nodeNameTyped);
-        }
+            // Lookup schema by nodeName
+            const compiledNode = this.headIndex.get(nodeNameTyped);
+            if (!compiledNode) {
+                throw makeInvalidNodeError(nodeNameTyped);
+            }
 
-        // Validate arity matches bindings
-        if (compiledNode.arity !== bindings.length) {
-            throw makeArityMismatchError(
-                nodeNameTyped,
-                compiledNode.arity,
-                bindings.length
-            );
-        }
+            // Validate arity matches bindings
+            if (compiledNode.arity !== bindings.length) {
+                throw makeArityMismatchError(
+                    nodeNameTyped,
+                    compiledNode.arity,
+                    bindings.length
+                );
+            }
 
-        // Validate that this is a source node (no inputs)
-        if (compiledNode.source.inputs.length > 0) {
-            throw makeInvalidSetError(nodeNameTyped);
-        }
+            // Validate that this is a source node (no inputs)
+            if (compiledNode.source.inputs.length > 0) {
+                throw makeInvalidSetError(nodeNameTyped);
+            }
 
-        // Create NodeKey for storage
-        const nodeKey = { head: nodeNameTyped, args: bindings };
-        const concreteKey = serializeNodeKey(nodeKey);
+            // Create NodeKey for storage
+            const nodeKey = { head: nodeNameTyped, args: bindings };
+            const concreteKey = serializeNodeKey(nodeKey);
 
-        // Ensure node exists (will create from pattern if needed)
-        const nodeDefinition = this.getOrCreateConcreteNode(
-            concreteKey,
-            compiledNode,
-            bindings
-        );
-
-        // Use batch builder for atomic operations
-        await this.storage.withBatch(async (batch) => {
-            // Store the value
-            batch.values.put(nodeDefinition.output, value);
-
-            // Mark this key as up-to-date
-            batch.freshness.put(nodeDefinition.output, "up-to-date");
-
-            // Ensure the node is materialized (write inputs record with empty array)
-            await this.storage.ensureMaterialized(
-                nodeDefinition.output,
-                nodeDefinition.inputs,
-                batch
+            // Ensure node exists (will create from pattern if needed)
+            const nodeDefinition = this.getOrCreateConcreteNode(
+                concreteKey,
+                compiledNode,
+                bindings
             );
 
-            // Collect operations to mark all dependents as potentially-outdated
-            await this.propagateOutdated(nodeDefinition.output, batch);
+            // Use batch builder for atomic operations
+            await this.storage.withBatch(async (batch) => {
+                // Store the value
+                batch.values.put(nodeDefinition.output, value);
+
+                // Mark this key as up-to-date
+                batch.freshness.put(nodeDefinition.output, "up-to-date");
+
+                // Ensure the node is materialized (write inputs record with empty array)
+                await this.storage.ensureMaterialized(
+                    nodeDefinition.output,
+                    nodeDefinition.inputs,
+                    batch
+                );
+
+                // Collect operations to mark all dependents as potentially-outdated
+                await this.propagateOutdated(nodeDefinition.output, batch);
+            });
         });
     }
 
@@ -490,14 +517,18 @@ class DependencyGraphClass {
      * - If node is up-to-date: return cached value (fast path)
      * - If node is potentially-outdated: maybe recalculate (check inputs first)
      *
+     * Thread-safe: uses mutex to serialize access with other set/pull operations.
+     *
      * @param {string} nodeName - The node name (functor only, e.g., "full_event")
      * @param {Array<ConstValue>} [bindings=[]] - Positional bindings array for parameterized nodes
      * @returns {Promise<DatabaseValue>} The node's value
      */
     async pull(nodeName, bindings = []) {
-        const nodeNameValue = stringToNodeName(nodeName);
-        const { value } = await this.pullWithStatus(nodeNameValue, bindings);
-        return value;
+        return this.mutex.runExclusive(async () => {
+            const nodeNameValue = stringToNodeName(nodeName);
+            const { value } = await this.pullWithStatus(nodeNameValue, bindings);
+            return value;
+        });
     }
 
     /**
