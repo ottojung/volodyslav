@@ -5,7 +5,7 @@
 const path = require("path");
 const fs = require("fs");
 const os = require("os");
-const { getRootDatabase } = require("../src/generators/database");
+const { getRootDatabase } = require("../src/generators/dependency_graph/database");
 const {
     makeInterface,
     isInterface,
@@ -15,7 +15,7 @@ const { getMockedRootCapabilities } = require("./spies");
 const { stubLogger } = require("./stubs");
 
 /**
- * @typedef {import('../src/generators/database/types').DatabaseCapabilities} DatabaseCapabilities
+ * @typedef {import('../src/generators/dependency_graph/database/types').DatabaseCapabilities} DatabaseCapabilities
  */
 
 /**

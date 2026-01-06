@@ -35,7 +35,7 @@ const { stringToNodeKeyString, nodeKeyStringToString } = require('./database');
  * @property {BatchDatabaseOps<DatabaseValue>} values - Batch operations for values database
  * @property {BatchDatabaseOps<Freshness>} freshness - Batch operations for freshness database
  * @property {BatchDatabaseOps<InputsRecord>} inputs - Batch operations for inputs database
- * @property {BatchDatabaseOps<1>} revdeps - Batch operations for revdeps database (edge-based storage)
+ * @property {BatchDatabaseOps<string[]>} revdeps - Batch operations for revdeps database (input node -> array of dependents)
  */
 
 /**
@@ -49,10 +49,10 @@ const { stringToNodeKeyString, nodeKeyStringToString } = require('./database');
  * @property {ValuesDatabase} values - Node values
  * @property {FreshnessDatabase} freshness - Node freshness
  * @property {InputsDatabase} inputs - Node inputs index
- * @property {RevdepsDatabase} revdeps - Reverse dependencies (edge-based: composite key -> 1)
+ * @property {RevdepsDatabase} revdeps - Reverse dependencies (input node -> array of dependents)
  * @property {BatchFunction} withBatch - Run a function and commit atomically everything it does
  * @property {(node: NodeKeyString, inputs: NodeKeyString[], batch: BatchBuilder) => Promise<void>} ensureMaterialized - Mark a node as materialized (write inputs record)
- * @property {(node: NodeKeyString, inputs: NodeKeyString[], batch: BatchBuilder) => Promise<void>} ensureReverseDepsIndexed - Index reverse dependencies (write revdep edges)
+ * @property {(node: NodeKeyString, inputs: NodeKeyString[], batch: BatchBuilder) => Promise<void>} ensureReverseDepsIndexed - Index reverse dependencies (write revdep arrays)
  * @property {(input: NodeKeyString) => Promise<NodeKeyString[]>} listDependents - List all dependents of an input
  * @property {(node: NodeKeyString) => Promise<NodeKeyString[] | null>} getInputs - Get inputs for a node
  * @property {() => Promise<NodeKeyString[]>} listMaterializedNodes - List all materialized node names
@@ -105,34 +105,6 @@ function makeBatchBuilder(schemaStorage) {
     return ret;
 }
 
-const KEYSEPARATOR = "%";
-
-/**
- * Create a composite key for an edge in the revdeps database.
- * Uses null byte as delimiter between input and dependent node names.
- * @param {NodeKeyString} input - The input node (canonical name)
- * @param {NodeKeyString} dependent - The dependent node (canonical name)
- * @returns {string}
- */
-function makeRevdepKey(input, dependent) {
-    const inputStr = nodeKeyStringToString(input);
-    const dependentStr = nodeKeyStringToString(dependent);
-    return `${inputStr}${KEYSEPARATOR}${dependentStr}`;
-}
-
-/**
- * Parse a composite key from the revdeps database.
- * @param {string} key - The composite key
- * @returns {{input: NodeKeyString, dependent: NodeKeyString}}
- */
-function parseRevdepKey(key) {
-    const parts = key.split(KEYSEPARATOR);
-    if (parts.length !== 2 || !parts[0] || !parts[1]) {
-        throw new Error(`Invalid revdep key format: ${key}`);
-    }
-    return { input: stringToNodeKeyString(parts[0]), dependent: stringToNodeKeyString(parts[1]) };
-}
-
 /**
  * Creates a GraphStorage instance using typed databases.
  *
@@ -168,57 +140,47 @@ function makeGraphStorage(rootDatabase, schemaHash) {
     /**
      * Ensure a node's reverse dependencies are indexed.
      * This is only called when the node has inputs.
-     * Writes reverse dependency edges.
+     * Writes reverse dependency arrays.
      * @param {NodeKeyString} node - Canonical node key
      * @param {NodeKeyString[]} inputs - Array of canonical input keys (must be non-empty)
      * @param {BatchBuilder} batch - Batch builder for atomic operations
      * @returns {Promise<void>}
      */
     async function ensureReverseDepsIndexed(node, inputs, batch) {
-        // Check if already indexed by checking if any revdep edge exists
-        // We only check the first input to avoid too many DB reads
-        if (inputs.length > 0) {
-            const firstInput = inputs[0];
-            // TypeScript doesn't understand that inputs[0] is defined when length > 0
-            if (firstInput !== undefined) {
-                const firstEdgeKey = makeRevdepKey(firstInput, node);
-                const existingEdge = await schemaStorage.revdeps.get(firstEdgeKey);
-                if (existingEdge !== undefined) {
-                    return; // Already indexed, skip writing revdeps
-                }
-            }
-        }
-
-        // Update revdeps using edge-based storage
-        // Each edge is stored as a separate key-value pair
+        // For each input, add this node to its dependents array
+        const nodeStr = nodeKeyStringToString(node);
+        
         for (const input of inputs) {
-            const edgeKey = makeRevdepKey(input, node);
-            batch.revdeps.put(edgeKey, 1);
+            // Get existing dependents for this input
+            const existingDependents = await schemaStorage.revdeps.get(input);
+            
+            if (existingDependents !== undefined) {
+                // Check if this node is already in the dependents list
+                if (existingDependents.includes(nodeStr)) {
+                    continue; // Already indexed, skip
+                }
+                // Add this node to the existing dependents array
+                batch.revdeps.put(input, [...existingDependents, nodeStr]);
+            } else {
+                // Create a new dependents array with just this node
+                batch.revdeps.put(input, [nodeStr]);
+            }
         }
     }
 
     /**
      * List all dependents of an input.
-     * Iterates over all keys with the input prefix to collect dependents.
+     * Returns the array of dependents stored for this input.
      * @param {NodeKeyString} input - Canonical input key
      * @returns {Promise<NodeKeyString[]>}
      */
     async function listDependents(input) {
-        const dependents = [];
-        const inputStr = nodeKeyStringToString(input);
-        const prefix = `${inputStr}${KEYSEPARATOR}`;
-
-        // Iterate over all keys that start with the input prefix
-        // Cast: revdeps.keys() returns NodeKeyString but they're composite strings
-        for await (const nodeKeyStringKey of schemaStorage.revdeps.keys()) {
-            const key = nodeKeyStringKey.toString();
-            if (key.startsWith(prefix)) {
-                const { dependent } = parseRevdepKey(key);
-                dependents.push(dependent);
-            }
+        const dependents = await schemaStorage.revdeps.get(input);
+        if (dependents === undefined) {
+            return [];
         }
-
-        return dependents;
+        // Convert string[] from DB to NodeKeyString[]
+        return dependents.map(stringToNodeKeyString);
     }
 
     /**
