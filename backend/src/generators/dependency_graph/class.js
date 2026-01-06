@@ -83,14 +83,14 @@ class DependencyGraphClass {
     /**
      * All compiled nodes (both exact and patterns).
      * @private
-     * @type {Map<SchemaPattern, import('./types').CompiledNode>}
+     * @type {Map<SchemaPattern, CompiledNode>}
      */
     graph;
 
     /**
      * Index for fast lookup of compiled nodes.
      * @private
-     * @type {{ exactIndex: Map<SchemaPattern, import('./types').CompiledNode>, patternIndex: Map<SchemaPattern, Array<import('./types').CompiledNode>> }}
+     * @type {{ exactIndex: Map<SchemaPattern, CompiledNode>, patternIndex: Map<SchemaPattern, Array<CompiledNode>> }}
      */
     graphIndex;
 
@@ -98,7 +98,7 @@ class DependencyGraphClass {
      * Index for fast lookup by nodeName (node name/functor only).
      * Maps nodeName to the single CompiledNode with that functor.
      * @private
-     * @type {Map<NodeName, import('./types').CompiledNode>}
+     * @type {Map<NodeName, CompiledNode>}
      */
     headIndex;
 
