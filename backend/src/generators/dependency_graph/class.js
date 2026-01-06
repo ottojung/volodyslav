@@ -286,7 +286,7 @@ class DependencyGraphClass {
      * @returns {void}
      */
     calculateDependents() {
-        for (const compiled of this.graph.values()) {
+        for (const compiled of this.graphIndex.exactIndex.values()) {
             // Only compute for non-pattern nodes (static edges)
             if (!compiled.isPattern) {
                 for (const inputKey of compiled.canonicalInputs) {
