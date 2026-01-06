@@ -18,13 +18,14 @@ const { stringToNodeKeyString, nodeKeyStringToString } = require('../database');
 /** @typedef {import('../database/types').SchemaSublevelType} SchemaSublevelType */
 /** @typedef {import('./types').NodeKeyString} NodeKeyString */
 /** @typedef {import('./types').SchemaHash} SchemaHash */
+/** @typedef {import('../database/types').DatabaseKey} DatabaseKey */
 
 /**
  * Interface for batch operations on a specific database.
  * @template TValue
  * @typedef {object} BatchDatabaseOps
- * @property {(key: NodeKeyString, value: TValue) => void} put - Queue a put operation
- * @property {(key: NodeKeyString) => void} del - Queue a delete operation
+ * @property {(key: DatabaseKey, value: TValue) => void} put - Queue a put operation
+ * @property {(key: DatabaseKey) => void} del - Queue a delete operation
  */
 
 /**
@@ -181,8 +182,7 @@ function makeGraphStorage(rootDatabase, schemaHash) {
             // TypeScript doesn't understand that inputs[0] is defined when length > 0
             if (firstInput !== undefined) {
                 const firstEdgeKey = makeRevdepKey(firstInput, node);
-                // Cast: revdeps uses composite string keys, not NodeKeyString
-                const existingEdge = await schemaStorage.revdeps.get(stringToNodeKeyString(firstEdgeKey));
+                const existingEdge = await schemaStorage.revdeps.get(firstEdgeKey);
                 if (existingEdge !== undefined) {
                     return; // Already indexed, skip writing revdeps
                 }
@@ -193,8 +193,7 @@ function makeGraphStorage(rootDatabase, schemaHash) {
         // Each edge is stored as a separate key-value pair
         for (const input of inputs) {
             const edgeKey = makeRevdepKey(input, node);
-            // Cast: revdeps uses composite string keys, not NodeKeyString
-            batch.revdeps.put(stringToNodeKeyString(edgeKey), 1);
+            batch.revdeps.put(edgeKey, 1);
         }
     }
 
