@@ -7,6 +7,7 @@
 /** @typedef {import("./logger").Logger} Logger */
 
 const random = require("./random");
+const path = require('path');
 
 /**
  * @typedef {object} Capabilities
@@ -22,8 +23,6 @@ const random = require("./random");
  * @returns {Promise<string>}
  */
 async function getVersion(capabilities) {
-    const path = require('path');
-
     // First, try to read version from VERSION file (for installed versions)
     const versionFilePath = path.join(__dirname, '..', '..', 'VERSION');
     try {
