@@ -6,7 +6,6 @@
 
 const {
     makeDependencyGraph,
-    makeUnchanged,
 } = require("../src/generators/dependency_graph");
 
 /**

@@ -6,7 +6,7 @@ const {
     schemaPatternToString,
     stringToNodeName,
     stringToSchemaHash,
-} = require("./database/types");
+} = require("./database");
 
 /** @typedef {import('./database/root_database').RootDatabase} RootDatabase */
 /** @typedef {import('./types').DatabaseValue} DatabaseValue */
