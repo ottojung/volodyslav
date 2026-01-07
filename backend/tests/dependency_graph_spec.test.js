@@ -1702,9 +1702,7 @@ describe("11. set() batching remains single atomic batch with invalidation fanou
 });
 
 describe("12. (Optional) Concurrent pulls of the same node", () => {
-    test.failing(
-        "concurrent pulls of same node should invoke computor once",
-        async () => {
+    test("concurrent pulls of same node should invoke computor once", async () => {
             const db = new InMemoryDatabase();
 
             let resolveBarrier;
@@ -1748,7 +1746,6 @@ describe("12. (Optional) Concurrent pulls of the same node", () => {
 
             // Computor should have been invoked only once (in-flight dedupe)
             expect(counter.calls).toBe(1);
-        }
-    );
+        });
 });
 

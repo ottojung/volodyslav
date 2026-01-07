@@ -2,7 +2,11 @@
  * DependencyGraph class for propagating data through dependency edges.
  */
 
-const { schemaPatternToString, stringToNodeName } = require("./database");
+const {
+    schemaPatternToString,
+    stringToNodeName,
+    stringToSchemaHash,
+} = require("./database");
 
 /** @typedef {import('./database/root_database').RootDatabase} RootDatabase */
 /** @typedef {import('./types').DatabaseValue} DatabaseValue */
@@ -47,7 +51,9 @@ const { deserializeNodeKey } = require("./node_key");
 
 const { makeGraphStorage } = require("./graph_storage");
 const { createNodeKeyFromPattern, serializeNodeKey } = require("./node_key");
-const { stringToSchemaHash } = require("./database");
+const { make: makeSleeper } = require("../../sleeper");
+
+/** @typedef {import('../../sleeper').SleepCapability} SleepCapability */
 
 /**
  * DependencyGraph class for propagating data through dependency edges.
@@ -68,6 +74,13 @@ const { stringToSchemaHash } = require("./database");
  * - pull() checks freshness: up-to-date → return cached, potentially-outdated → maybeRecalculate
  * - maybeRecalculate() pulls all inputs, computes, marks up-to-date
  * - When Unchanged is returned, skips recalculation for the nodes up the call stack
+ *
+ * Concurrency safety:
+ * - Thread-safe within a single process using sleeper's withMutex serialization
+ * - All set() and pull() operations are serialized to prevent race conditions
+ * - Multiple threads can safely call set() and pull() concurrently
+ * - Process-safe across multiple processes via LevelDB's built-in guarantees
+ * - Ensures consistent state even with concurrent modifications
  *
  * Persistence model:
  * - Reverse dependencies and inputs are persisted in DB under schema-namespaced keys
@@ -105,6 +118,21 @@ class DependencyGraphClass {
      * @type {GraphStorage}
      */
     storage;
+
+    /**
+     * Sleeper instance for mutex operations.
+     * Provides withMutex for thread-safe access to graph operations.
+     * @private
+     * @type {SleepCapability}
+     */
+    sleeper;
+
+    /**
+     * Mutex key for serializing all set() and pull() operations.
+     * @private
+     * @type {string}
+     */
+    static MUTEX_KEY = 'dependency-graph-operations';
 
     /**
      * @constructor
@@ -155,6 +183,9 @@ class DependencyGraphClass {
 
         // Initialize instantiation cache
         this.concreteInstantiations = new Map();
+
+        // Initialize sleeper for thread-safe operations
+        this.sleeper = makeSleeper();
     }
 
     /**
@@ -207,14 +238,15 @@ class DependencyGraphClass {
     }
 
     /**
-     * Sets a specific node's value, marking it up-to-date and propagating changes.
-     * All operations are performed atomically in a single batch.
+     * Internal implementation of set without mutex protection.
+     * Do not call directly - use set() instead.
+     * @private
      * @param {string} nodeName - The node name (functor only, e.g., "full_event")
      * @param {DatabaseValue} value - The value to set
-     * @param {Array<ConstValue>} [bindings=[]] - Positional bindings array for parameterized nodes
+     * @param {Array<ConstValue>} bindings - Positional bindings array for parameterized nodes
      * @returns {Promise<void>}
      */
-    async set(nodeName, value, bindings = []) {
+    async unsafeSet(nodeName, value, bindings) {
         const nodeNameTyped = stringToNodeName(nodeName);
 
         // Lookup schema by nodeName
@@ -266,6 +298,22 @@ class DependencyGraphClass {
             // Collect operations to mark all dependents as potentially-outdated
             await this.propagateOutdated(nodeDefinition.output, batch);
         });
+    }
+
+    /**
+     * Sets a specific node's value, marking it up-to-date and propagating changes.
+     * All operations are performed atomically in a single batch.
+     * Thread-safe: uses sleeper's withMutex to serialize access with other set/pull operations.
+     * @param {string} nodeName - The node name (functor only, e.g., "full_event")
+     * @param {DatabaseValue} value - The value to set
+     * @param {Array<ConstValue>} [bindings=[]] - Positional bindings array for parameterized nodes
+     * @returns {Promise<void>}
+     */
+    async set(nodeName, value, bindings = []) {
+        return this.sleeper.withMutex(
+            DependencyGraphClass.MUTEX_KEY,
+            () => this.unsafeSet(nodeName, value, bindings)
+        );
     }
 
     /**
@@ -484,20 +532,37 @@ class DependencyGraphClass {
     }
 
     /**
+     * Internal implementation of pull without mutex protection.
+     * Do not call directly - use pull() instead.
+     * @private
+     * @param {string} nodeName - The node name (functor only, e.g., "full_event")
+     * @param {Array<ConstValue>} bindings - Positional bindings array for parameterized nodes
+     * @returns {Promise<DatabaseValue>} The node's value
+     */
+    async unsafePull(nodeName, bindings) {
+        const nodeNameValue = stringToNodeName(nodeName);
+        const { value } = await this.pullWithStatus(nodeNameValue, bindings);
+        return value;
+    }
+
+    /**
      * Pulls a specific node's value, lazily evaluating dependencies as needed.
      *
      * Algorithm:
      * - If node is up-to-date: return cached value (fast path)
      * - If node is potentially-outdated: maybe recalculate (check inputs first)
      *
+     * Thread-safe: uses sleeper's withMutex to serialize access with other set/pull operations.
+     *
      * @param {string} nodeName - The node name (functor only, e.g., "full_event")
      * @param {Array<ConstValue>} [bindings=[]] - Positional bindings array for parameterized nodes
      * @returns {Promise<DatabaseValue>} The node's value
      */
     async pull(nodeName, bindings = []) {
-        const nodeNameValue = stringToNodeName(nodeName);
-        const { value } = await this.pullWithStatus(nodeNameValue, bindings);
-        return value;
+        return this.sleeper.withMutex(
+            DependencyGraphClass.MUTEX_KEY,
+            () => this.unsafePull(nodeName, bindings)
+        );
     }
 
     /**
