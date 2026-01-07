@@ -1,7 +1,10 @@
 /**
  * Simple async mutex implementation for concurrency control.
  * Ensures that only one async operation can execute at a time within a critical section.
+ * Based on the pattern from sleeper.js withMutex implementation.
  */
+
+const memconst = require('../../memconst');
 
 /**
  * @template T
@@ -15,57 +18,55 @@
 
 class MutexClass {
     /**
-     * Queue of pending operations.
-     * Each entry is a function that resolves when it's this operation's turn.
+     * Map storing the currently executing operation promise.
      * @private
-     * @type {Array<() => void>}
+     * @type {Map<string, () => Promise<unknown>>}
      */
-    queue;
+    mutexMap;
 
     /**
-     * Whether an operation is currently executing.
+     * The single mutex key used for all operations.
      * @private
-     * @type {boolean}
+     * @type {string}
      */
-    locked;
+    static MUTEX_KEY = 'default';
 
     constructor() {
-        this.queue = [];
-        this.locked = false;
+        this.mutexMap = new Map();
     }
 
     /**
      * Execute a function exclusively.
      * If another function is already executing, wait for it to complete first.
+     * Uses the same pattern as sleeper.js withMutex.
      * @template T
      * @param {AsyncFunction<T>} fn - The async function to execute
      * @returns {Promise<T>} - The result of the function
      */
     async runExclusive(fn) {
-        // Wait for lock to be available
-        if (this.locked) {
-            await new Promise((resolve) => {
-                this.queue.push(resolve);
-            });
-        }
-
-        // Acquire lock
-        this.locked = true;
-
-        try {
-            // Execute the function
-            return await fn();
-        } finally {
-            // Release the lock and notify next waiter
-            const next = this.queue.shift();
-            if (next) {
-                // There's a waiter, give them the lock
-                next();
+        const key = MutexClass.MUTEX_KEY;
+        
+        // Wait for any existing operation to complete
+        for (;;) {
+            const existing = this.mutexMap.get(key);
+            if (existing === undefined) {
+                break;
             } else {
-                // No waiters, release the lock
-                this.locked = false;
+                await existing();
             }
         }
+
+        // Create a memoized wrapper for this operation
+        const wrapped = memconst(async () => {
+            this.mutexMap.set(key, wrapped);
+            try {
+                return await fn();
+            } finally {
+                this.mutexMap.delete(key);
+            }
+        });
+        
+        return await wrapped();
     }
 }
 
