@@ -56,6 +56,11 @@ const { make: makeSleeper } = require("../../sleeper");
 /** @typedef {import('../../sleeper').SleepCapability} SleepCapability */
 
 /**
+ * Mutex key for serializing all set() and pull() operations.
+ */
+const MUTEX_KEY = 'dependency-graph-operations';
+
+/**
  * DependencyGraph class for propagating data through dependency edges.
  *
  * Node Identity:
@@ -126,13 +131,6 @@ class DependencyGraphClass {
      * @type {SleepCapability}
      */
     sleeper;
-
-    /**
-     * Mutex key for serializing all set() and pull() operations.
-     * @private
-     * @type {string}
-     */
-    static MUTEX_KEY = 'dependency-graph-operations';
 
     /**
      * @constructor
@@ -311,7 +309,7 @@ class DependencyGraphClass {
      */
     async set(nodeName, value, bindings = []) {
         return this.sleeper.withMutex(
-            DependencyGraphClass.MUTEX_KEY,
+            MUTEX_KEY,
             () => this.unsafeSet(nodeName, value, bindings)
         );
     }
@@ -560,7 +558,7 @@ class DependencyGraphClass {
      */
     async pull(nodeName, bindings = []) {
         return this.sleeper.withMutex(
-            DependencyGraphClass.MUTEX_KEY,
+            MUTEX_KEY,
             () => this.unsafePull(nodeName, bindings)
         );
     }
