@@ -45,6 +45,8 @@ describe("Bound variables in computors", () => {
                     output: "source",
                     inputs: [],
                     computor: () => ({ value: 42 }),
+                    isDeterministic: true,
+                    hasSideEffects: false,
                 },
                 {
                     output: "derived(x)",
@@ -53,6 +55,8 @@ describe("Bound variables in computors", () => {
                         // Computor should receive bindings with x
                         return { value: inputs[0].value, x: bindings[0] };
                     },
+                    isDeterministic: true,
+                    hasSideEffects: false,
                 },
             ];
 
@@ -80,6 +84,8 @@ describe("Bound variables in computors", () => {
                     output: "source",
                     inputs: [],
                     computor: () => ({ value: 1 }),
+                    isDeterministic: true,
+                    hasSideEffects: false,
                 },
                 {
                     output: "derived(x)",
@@ -88,6 +94,8 @@ describe("Bound variables in computors", () => {
                         computorCallLog.push({ x: bindings[0] });
                         return { value: inputs[0].value, x: bindings[0] };
                     },
+                    isDeterministic: true,
+                    hasSideEffects: false,
                 },
             ];
 
@@ -120,6 +128,8 @@ describe("Bound variables in computors", () => {
                     output: "source",
                     inputs: [],
                     computor: () => ({ value: 1 }),
+                    isDeterministic: true,
+                    hasSideEffects: false,
                 },
                 {
                     output: "derived(x)",
@@ -128,6 +138,8 @@ describe("Bound variables in computors", () => {
                         computorCallLog.push({ x: bindings[0] });
                         return { value: inputs[0].value, x: bindings[0] };
                     },
+                    isDeterministic: true,
+                    hasSideEffects: false,
                 },
             ];
 
@@ -160,6 +172,8 @@ describe("Bound variables in computors", () => {
                     output: "source",
                     inputs: [],
                     computor: () => ({ value: 1 }),
+                    isDeterministic: true,
+                    hasSideEffects: false,
                 },
                 {
                     output: "derived(x)",
@@ -168,6 +182,8 @@ describe("Bound variables in computors", () => {
                         computorCallLog.push({ x: bindings[0], value: inputs[0].value  });
                         return { value: inputs[0].value, x: bindings[0] };
                     },
+                    isDeterministic: true,
+                    hasSideEffects: false,
                 },
             ];
 
@@ -207,6 +223,8 @@ describe("Bound variables in computors", () => {
                     output: "source",
                     inputs: [],
                     computor: () => ({ value: 1 }),
+                    isDeterministic: true,
+                    hasSideEffects: false,
                 },
                 {
                     output: "derived(x)",
@@ -214,6 +232,8 @@ describe("Bound variables in computors", () => {
                     computor: (inputs, oldValue, bindings) => {
                         return { value: inputs[0].value, x: bindings[0] };
                     },
+                    isDeterministic: true,
+                    hasSideEffects: false,
                 },
             ];
 
@@ -251,6 +271,8 @@ describe("Bound variables in computors", () => {
                     output: "source",
                     inputs: [],
                     computor: () => ({ value: 10 }),
+                    isDeterministic: true,
+                    hasSideEffects: false,
                 },
                 {
                     output: "middle(x)",
@@ -258,6 +280,8 @@ describe("Bound variables in computors", () => {
                     computor: (inputs, oldValue, bindings) => {
                         return { value: inputs[0].value * 2, x: bindings[0] };
                     },
+                    isDeterministic: true,
+                    hasSideEffects: false,
                 },
                 {
                     output: "final(x)",
@@ -265,6 +289,8 @@ describe("Bound variables in computors", () => {
                     computor: (inputs, oldValue, bindings) => {
                         return { value: inputs[0].value + 1, x: bindings[0] };
                     },
+                    isDeterministic: true,
+                    hasSideEffects: false,
                 },
             ];
 
@@ -293,6 +319,8 @@ describe("Bound variables in computors", () => {
                     output: "source",
                     inputs: [],
                     computor: () => ({ value: 1 }),
+                    isDeterministic: true,
+                    hasSideEffects: false,
                 },
                 // Layer 1
                 ...[1, 2, 3].map(i => ({
@@ -346,6 +374,8 @@ describe("Bound variables in computors", () => {
                     computor: (inputs, oldValue, bindings) => {
                         return { value: `g(${bindings[0]})` };
                     },
+                    isDeterministic: true,
+                    hasSideEffects: false,
                 },
                 {
                     output: "h(y)",
@@ -353,6 +383,8 @@ describe("Bound variables in computors", () => {
                     computor: (inputs, oldValue, bindings) => {
                         return { value: `h(${bindings[0]})` };
                     },
+                    isDeterministic: true,
+                    hasSideEffects: false,
                 },
                 {
                     output: "f(x, y)",
@@ -360,6 +392,8 @@ describe("Bound variables in computors", () => {
                     computor: (inputs, _oldValue, _bindings) => {
                         return { value: `f(${inputs[0].value}, ${inputs[1].value})` };
                     },
+                    isDeterministic: true,
+                    hasSideEffects: false,
                 },
             ];
 
@@ -381,11 +415,15 @@ describe("Bound variables in computors", () => {
                     output: "s1",
                     inputs: [],
                     computor: () => ({ value: "s1" }),
+                    isDeterministic: true,
+                    hasSideEffects: false,
                 },
                 {
                     output: "s2",
                     inputs: [],
                     computor: () => ({ value: "s2" }),
+                    isDeterministic: true,
+                    hasSideEffects: false,
                 },
                 {
                     output: "k(x)",
@@ -393,6 +431,8 @@ describe("Bound variables in computors", () => {
                     computor: (inputs, oldValue, bindings) => {
                         return { value: `k(${bindings[0]}, ${inputs[0].value})` };
                     },
+                    isDeterministic: true,
+                    hasSideEffects: false,
                 },
                 {
                     output: "g(x, z)",
@@ -400,6 +440,8 @@ describe("Bound variables in computors", () => {
                     computor: (inputs, oldValue, bindings) => {
                         return { value: `g(${inputs[0].value}, ${bindings[1]})` };
                     },
+                    isDeterministic: true,
+                    hasSideEffects: false,
                 },
                 {
                     output: "h(y)",
@@ -407,6 +449,8 @@ describe("Bound variables in computors", () => {
                     computor: (inputs, _oldValue, bindings) => {
                         return { value: `h(${bindings[0]}, ${inputs[0].value})` };
                     },
+                    isDeterministic: true,
+                    hasSideEffects: false,
                 },
                 {
                     output: "f(x, y, z)",
@@ -414,6 +458,8 @@ describe("Bound variables in computors", () => {
                     computor: (inputs, _oldValue, _bindings) => {
                         return { value: `f(${inputs[0].value}, ${inputs[1].value})` };
                     },
+                    isDeterministic: true,
+                    hasSideEffects: false,
                 },
             ];
 
@@ -440,6 +486,8 @@ describe("Bound variables in computors", () => {
                     output: "source",
                     inputs: [],
                     computor: () => ({ value: 1 }),
+                    isDeterministic: true,
+                    hasSideEffects: false,
                 },
                 {
                     output: "expensive(x)",
@@ -448,6 +496,8 @@ describe("Bound variables in computors", () => {
                         computorCallLog.push({ x: bindings[0] });
                         return { value: inputs[0].value, x: bindings[0] };
                     },
+                    isDeterministic: true,
+                    hasSideEffects: false,
                 },
                 {
                     output: "consumer1(x)",
@@ -455,6 +505,8 @@ describe("Bound variables in computors", () => {
                     computor: (inputs, _oldValue, _bindings) => {
                         return { from: "consumer1", data: inputs[0] };
                     },
+                    isDeterministic: true,
+                    hasSideEffects: false,
                 },
                 {
                     output: "consumer2(x)",
@@ -462,6 +514,8 @@ describe("Bound variables in computors", () => {
                     computor: (inputs, _oldValue, _bindings) => {
                         return { from: "consumer2", data: inputs[0] };
                     },
+                    isDeterministic: true,
+                    hasSideEffects: false,
                 },
                 {
                     output: "top(x)",
@@ -469,6 +523,8 @@ describe("Bound variables in computors", () => {
                     computor: (inputs, _oldValue, _bindings) => {
                         return { c1: inputs[0], c2: inputs[1] };
                     },
+                    isDeterministic: true,
+                    hasSideEffects: false,
                 },
             ];
 
@@ -498,6 +554,8 @@ describe("Bound variables in computors", () => {
                     computor: (inputs, oldValue, bindings) => {
                         return { x: bindings[0] };
                     },
+                    isDeterministic: true,
+                    hasSideEffects: false,
                 },
             ];
 
@@ -522,6 +580,8 @@ describe("Bound variables in computors", () => {
                     computor: (inputs, oldValue, bindings) => {
                         return { x: bindings[0] };
                     },
+                    isDeterministic: true,
+                    hasSideEffects: false,
                 },
             ];
 
@@ -546,6 +606,8 @@ describe("Bound variables in computors", () => {
                     computor: (inputs, oldValue, bindings) => {
                         return { x: bindings[0] };
                     },
+                    isDeterministic: true,
+                    hasSideEffects: false,
                 },
                 {
                     output: "derived",
@@ -553,6 +615,8 @@ describe("Bound variables in computors", () => {
                     computor: (inputs, _oldValue, _bindings) => {
                         return { data: inputs[0] };
                     },
+                    isDeterministic: true,
+                    hasSideEffects: false,
                 },
             ];
 

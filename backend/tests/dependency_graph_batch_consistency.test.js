@@ -47,6 +47,8 @@ describe("dependency_graph batch consistency", () => {
                         output: "source",
                         inputs: [],
                         computor: () => ({ type: "all_events", events: [] }),
+                        isDeterministic: true,
+                        hasSideEffects: false,
                     },
                 ];
 
@@ -77,6 +79,8 @@ describe("dependency_graph batch consistency", () => {
                         output: "source",
                         inputs: [],
                         computor: () => ({ type: "all_events", events: [] }),
+                        isDeterministic: true,
+                        hasSideEffects: false,
                     },
                 ];
 
@@ -111,6 +115,8 @@ describe("dependency_graph batch consistency", () => {
                         output: "source",
                         inputs: [],
                         computor: () => ({ type: "all_events", events: [] }),
+                        isDeterministic: true,
+                        hasSideEffects: false,
                     },
                 ];
 
@@ -149,6 +155,8 @@ describe("dependency_graph batch consistency", () => {
                         output: "source",
                         inputs: [],
                         computor: () => ({ type: "all_events", events: [] }),
+                        isDeterministic: true,
+                        hasSideEffects: false,
                     },
                 ];
 
@@ -176,6 +184,8 @@ describe("dependency_graph batch consistency", () => {
                         output: "source",
                         inputs: [],
                         computor: () => ({ type: "all_events", events: [] }),
+                        isDeterministic: true,
+                        hasSideEffects: false,
                     },
                 ];
 
@@ -211,11 +221,15 @@ describe("dependency_graph batch consistency", () => {
                         output: "derived",
                         inputs: ["source"],
                         computor: () => ({ type: "meta_events", meta_events: [] }),
+                        isDeterministic: true,
+                        hasSideEffects: false,
                     },
                     {
                         output: "source",
                         inputs: [],
                         computor: () => ({ type: "all_events", events: [] }),
+                        isDeterministic: true,
+                        hasSideEffects: false,
                     },
                 ];
 
@@ -246,11 +260,15 @@ describe("dependency_graph batch consistency", () => {
                         output: "derived",
                         inputs: ["source"],
                         computor: () => ({ type: "meta_events", meta_events: [] }),
+                        isDeterministic: true,
+                        hasSideEffects: false,
                     },
                     {
                         output: "source",
                         inputs: [],
                         computor: () => ({ type: "all_events", events: [] }),
+                        isDeterministic: true,
+                        hasSideEffects: false,
                     },
                 ];
 
@@ -282,16 +300,22 @@ describe("dependency_graph batch consistency", () => {
                     output: "source",
                     inputs: [],
                     computor: () => ({ type: "all_events", events: [] }),
+                    isDeterministic: true,
+                    hasSideEffects: false,
                 },
                 {
                     output: "dependentA(x)",
                     inputs: ["source"],
                     computor: () => ({ type: "meta_events", meta_events: [] }),
+                    isDeterministic: true,
+                    hasSideEffects: false,
                 },
                 {
                     output: "dependentB(y)",
                     inputs: ["source"],
                     computor: () => ({ type: "meta_events", meta_events: [] }),
+                    isDeterministic: true,
+                    hasSideEffects: false,
                 },
             ];
 
@@ -329,11 +353,15 @@ describe("dependency_graph batch consistency", () => {
                     output: "source",
                     inputs: [],
                     computor: () => ({ type: "all_events", events: [] }),
+                    isDeterministic: true,
+                    hasSideEffects: false,
                 },
                 {
                     output: "derived",
                     inputs: ["source"],
                     computor: () => ({ type: "meta_events", meta_events: [] }),
+                    isDeterministic: true,
+                    hasSideEffects: false,
                 },
             ];
 

@@ -38,6 +38,8 @@ describe("Bound variables with DatabaseValue objects", () => {
                 output: "source",
                 inputs: [],
                 computor: () => ({ type: "all_events", events: [] }),
+                isDeterministic: true,
+                hasSideEffects: false,
             },
             {
                 output: "derived(x)",
@@ -50,6 +52,8 @@ describe("Bound variables with DatabaseValue objects", () => {
                         boundTo: bindings[0],
                     };
                 },
+                isDeterministic: true,
+                hasSideEffects: false,
             },
         ];
 
@@ -82,6 +86,8 @@ describe("Bound variables with DatabaseValue objects", () => {
                 output: "source",
                 inputs: [],
                 computor: () => ({ type: "all_events", events: [] }),
+                isDeterministic: true,
+                hasSideEffects: false,
             },
             {
                 output: "derived(x)",
@@ -94,6 +100,8 @@ describe("Bound variables with DatabaseValue objects", () => {
                         boundTo: bindings[0],
                     };
                 },
+                isDeterministic: true,
+                hasSideEffects: false,
             },
         ];
 
@@ -127,6 +135,8 @@ describe("Bound variables with DatabaseValue objects", () => {
                 output: "source",
                 inputs: [],
                 computor: () => ({ type: "all_events", events: [] }),
+                isDeterministic: true,
+                hasSideEffects: false,
             },
             {
                 output: "derived(x)",
@@ -139,6 +149,8 @@ describe("Bound variables with DatabaseValue objects", () => {
                         boundTo: bindings[0],
                     };
                 },
+                isDeterministic: true,
+                hasSideEffects: false,
             },
         ];
 
